@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pg-diverge configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "adapter": {
+      "default": "supabase-auto",
+      "type": "string",
+      "enum": [
+        "supabase-auto",
+        "postgres"
+      ]
+    },
+    "cascade": {
+      "default": "never",
+      "type": "string",
+      "const": "never"
+    },
+    "destructiveChanges": {
+      "default": "hint-required",
+      "type": "string",
+      "enum": [
+        "hint-required",
+        "block",
+        "allow"
+      ]
+    },
+    "environments": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "databaseUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "databaseUrl"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "excludedGrantRoles": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hints": {
+      "default": {
+        "destructive": [],
+        "renames": []
+      },
+      "type": "object",
+      "properties": {
+        "destructive": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "renames": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "idempotency": {
+      "default": "required",
+      "type": "string",
+      "const": "required"
+    },
+    "lockTimeout": {
+      "default": "5s",
+      "type": "string"
+    },
+    "normalize": {
+      "default": "off",
+      "type": "string",
+      "enum": [
+        "off",
+        "deparse"
+      ]
+    },
+    "managedSchemas": {
+      "default": [
+        "auth",
+        "storage",
+        "realtime",
+        "vault",
+        "extensions",
+        "cron",
+        "net",
+        "supabase_functions",
+        "graphql",
+        "graphql_public"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "postgresVersion": {
+      "default": "15+",
+      "type": "string"
+    },
+    "renameDetection": {
+      "default": "hints-only",
+      "type": "string",
+      "enum": [
+        "hints-only",
+        "off"
+      ]
+    },
+    "schemaPaths": {
+      "default": [
+        "supabase/schemas"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "schemas": {
+      "default": {
+        "exclude": [],
+        "include": []
+      },
+      "type": "object",
+      "properties": {
+        "exclude": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "include": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "statementTimeout": {
+      "default": "60s",
+      "type": "string"
+    },
+    "transactionMode": {
+      "default": "per-migration",
+      "type": "string",
+      "enum": [
+        "per-migration",
+        "per-statement"
+      ]
+    },
+    "validators": {
+      "default": [
+        "internal-parser"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

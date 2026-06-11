@@ -1,0 +1,8 @@
+coverage
+dist
+node_modules
+*.tgz
+.env
+.env.*
+api-docs
+benchmarks/results

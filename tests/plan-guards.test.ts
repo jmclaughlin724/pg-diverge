@@ -1,0 +1,151 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import type { MigrationPlan, PgDivergeConfig, SchemaModel } from "../src/core.js";
+import { resolveDatabaseUrl } from "../src/database-url.js";
+import { planSchemaDiff } from "../src/planner.js";
+import { extractObjectsFromSql } from "../src/sql/extract.js";
+import { verifyMigration } from "../src/verify.js";
+
+const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+
+async function model(
+  sql: string,
+  source: string,
+  config?: Partial<PgDivergeConfig>,
+): Promise<SchemaModel> {
+  const extracted = await extractObjectsFromSql(sql, config ? { config } : {});
+  return {
+    diagnostics: extracted.diagnostics,
+    fingerprint: source,
+    objects: extracted.objects,
+    source,
+  };
+}
+
+async function diff(
+  fromSql: string,
+  toSql: string,
+  config?: Partial<PgDivergeConfig>,
+): Promise<MigrationPlan> {
+  const from = await model(fromSql, "test:from", config);
+  const to = await model(toSql, "test:to", config);
+  return planSchemaDiff(from, to, config ? { config } : {});
+}
+
+describe("rename hint guards", () => {
+  const fromSql = "CREATE TABLE app.accounts (id integer);\nCREATE VIEW app.v AS SELECT 1 AS one;";
+
+  it("blocks rename hints that change the object kind", async () => {
+    const plan = await diff(fromSql, "CREATE VIEW app.v AS SELECT 1 AS one;", {
+      hints: { destructive: [], renames: [{ from: "table:app.accounts", to: "view:app.v" }] },
+    });
+
+    expect(plan.diagnostics.some((item) => item.code === "PD_PLAN_RENAME_KIND_MISMATCH")).toBe(
+      true,
+    );
+  });
+
+  it("blocks rename hints that move an object between schemas", async () => {
+    const plan = await diff(
+      fromSql,
+      "CREATE SCHEMA archive;\nCREATE TABLE archive.accounts (id integer);",
+      {
+        hints: {
+          destructive: [],
+          renames: [{ from: "table:app.accounts", to: "table:archive.accounts" }],
+        },
+      },
+    );
+
+    expect(
+      plan.diagnostics.some((item) => item.code === "PD_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED"),
+    ).toBe(true);
+  });
+
+  it("reports rename hints that match nothing", async () => {
+    const plan = await diff(fromSql, fromSql, {
+      hints: { destructive: [], renames: [{ from: "table:app.missing", to: "table:app.other" }] },
+    });
+
+    expect(plan.diagnostics.some((item) => item.code === "PD_PLAN_RENAME_HINT_UNMATCHED")).toBe(
+      true,
+    );
+  });
+});
+
+describe("cross-schema dependency ordering", () => {
+  it("creates the referenced schema and table before the dependent view", async () => {
+    const plan = await diff(
+      "",
+      [
+        "CREATE SCHEMA app;",
+        "CREATE SCHEMA reporting;",
+        "CREATE VIEW reporting.account_rollup AS SELECT id FROM app.accounts;",
+        "CREATE TABLE app.accounts (id integer);",
+      ].join("\n"),
+    );
+
+    const order = plan.operations.map((operation) => operation.key);
+    expect(order.indexOf("schema:app")).toBeLessThan(order.indexOf("table:app.accounts"));
+    expect(order.indexOf("table:app.accounts")).toBeLessThan(
+      order.indexOf("view:reporting.account_rollup"),
+    );
+    expect(order.indexOf("schema:reporting")).toBeLessThan(
+      order.indexOf("view:reporting.account_rollup"),
+    );
+  });
+});
+
+describe("managed schema adapter policy", () => {
+  const managedSql = "CREATE TABLE auth.mirror (id integer);";
+
+  it("blocks managed Supabase schemas under supabase-auto", async () => {
+    const extracted = await extractObjectsFromSql(managedSql);
+
+    expect(extracted.diagnostics.some((item) => item.code === "PD_SUPABASE_MANAGED_SCHEMA")).toBe(
+      true,
+    );
+  });
+
+  it("permits the same schema under the postgres adapter", async () => {
+    const extracted = await extractObjectsFromSql(managedSql, {
+      config: { adapter: "postgres" },
+    });
+
+    expect(extracted.diagnostics.some((item) => item.code === "PD_SUPABASE_MANAGED_SCHEMA")).toBe(
+      false,
+    );
+  });
+});
+
+describe.skipIf(!databaseUrl)("non-idempotent migration detection", () => {
+  it("fails verification when the migration does not produce the target state", {
+    timeout: 60_000,
+  }, async () => {
+    if (!databaseUrl) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), "pgd-drift-"));
+    await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
+    await writeFile(
+      join(directory, "to.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.expected (id integer);",
+    );
+    const migrationPath = join(directory, "migration.sql");
+    await writeFile(migrationPath, "CREATE TABLE IF NOT EXISTS app.unexpected (id integer);\n");
+
+    const diagnostics = await verifyMigration({
+      databaseUrl,
+      from: `dump:${join(directory, "from.sql")}`,
+      migrationPath,
+      to: `dump:${join(directory, "to.sql")}`,
+    });
+
+    const mismatch = diagnostics.find((item) => item.code === "PD_VERIFY_FINGERPRINT_MISMATCH");
+    expect(mismatch).toBeDefined();
+    expect(mismatch?.hint).toContain("missing from migration result: table:app.expected");
+    expect(mismatch?.hint).toContain("not present in target: table:app.unexpected");
+  });
+});

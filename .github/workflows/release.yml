@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      PG_DIVERGE_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm audit signatures
+      - run: npm run check
+      - run: npm run check:package
+      - run: npm run benchmark
+      - run: npm run fixture:diff
+      - name: Verify fixture migration
+        run: npm run fixture:verify
+      - name: Corpus oracle (dirty-real reconvergence)
+        run: npm run corpus:check
+      - name: Pack package
+        run: |
+          tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
+          echo "PG_DIVERGE_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
+      - name: Smoke global tarball install
+        run: |
+          prefix="$(mktemp -d)"
+          npm install -g --prefix "$prefix" "$PG_DIVERGE_TARBALL"
+          "$prefix/bin/pg-diverge" --version
+          "$prefix/bin/pg-diverge" diff \
+            --from dir:tests/fixtures/basic/from \
+            --to dir:tests/fixtures/basic/to \
+            --out "$RUNNER_TEMP/smoke.sql"
+          "$prefix/bin/pg-diverge" check "$RUNNER_TEMP/smoke.sql"
+      - name: Smoke npx from tarball
+        run: npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge --version
+      - run: npm publish --access public --provenance

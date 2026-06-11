@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/pg-diverge-tool-gate.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking pg-diverge generated-migration policy"
+          }
+        ]
+      }
+    ]
+  }
+}

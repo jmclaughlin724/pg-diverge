@@ -1,0 +1,162 @@
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Client } from "pg";
+import { describe, expect, it } from "vitest";
+import type { SchemaModel } from "../src/core.js";
+import { resolveDatabaseUrl } from "../src/database-url.js";
+import { planSchemaDiff } from "../src/planner.js";
+import { renderMigrationSplit } from "../src/render.js";
+import { extractObjectsFromSql } from "../src/sql/extract.js";
+import { verifyMigration } from "../src/verify.js";
+
+const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+
+async function model(sql: string, source: string): Promise<SchemaModel> {
+  const extracted = await extractObjectsFromSql(sql, { config: { adapter: "postgres" } });
+  expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  return { diagnostics: [], fingerprint: source, objects: extracted.objects, source };
+}
+
+describe("concurrent index split rendering", () => {
+  it("moves CONCURRENTLY statements to a companion script under adapter postgres", async () => {
+    const from = await model("CREATE TABLE app.items (id integer);", "test:from");
+    const to = await model(
+      "CREATE TABLE app.items (id integer);\nCREATE INDEX CONCURRENTLY items_idx ON app.items (id);",
+      "test:to",
+    );
+    const plan = planSchemaDiff(from, to, { config: { adapter: "postgres" } });
+    const rendered = renderMigrationSplit(plan, {
+      config: { adapter: "postgres" },
+      includeHeader: false,
+    });
+
+    expect(rendered.concurrentSql).toContain("CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx");
+    expect(rendered.concurrentSql).toContain("outside a transaction");
+    expect(rendered.sql).not.toContain("CONCURRENTLY");
+  });
+
+  it("returns a single script when no concurrent statements exist", async () => {
+    const from: SchemaModel = {
+      diagnostics: [],
+      fingerprint: "test:from",
+      objects: [],
+      source: "test:from",
+    };
+    const to = await model("CREATE TABLE app.items (id integer);", "test:to");
+    const plan = planSchemaDiff(from, to);
+    const rendered = renderMigrationSplit(plan, { includeHeader: false });
+
+    expect(rendered.concurrentSql).toBeUndefined();
+    expect(rendered.sql).toContain("CREATE TABLE IF NOT EXISTS app.items");
+  });
+});
+
+describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
+  it("fails without --ensure-roles and passes with it for grants to missing roles", {
+    timeout: 60_000,
+  }, async () => {
+    if (!databaseUrl) {
+      return;
+    }
+    const role = `pgd_wave_d_role_${process.pid}`;
+    const directory = await mkdtemp(join(tmpdir(), "pgd-roles-"));
+    const fromSql = "CREATE SCHEMA app;";
+    const toSql = [
+      "CREATE SCHEMA app;",
+      "CREATE TABLE app.items (id integer);",
+      `GRANT SELECT ON TABLE app.items TO ${role};`,
+    ].join("\n");
+    await writeFile(join(directory, "from.sql"), fromSql);
+    await writeFile(join(directory, "to.sql"), toSql);
+    const migrationPath = join(directory, "migration.sql");
+    await writeFile(
+      migrationPath,
+      `CREATE TABLE IF NOT EXISTS app.items (id integer);\nGRANT SELECT ON TABLE app.items TO ${role};\n`,
+    );
+    const admin = new Client({ connectionString: databaseUrl });
+    await admin.connect();
+    try {
+      const baseOptions = {
+        config: { adapter: "postgres" as const },
+        databaseUrl,
+        from: `dump:${join(directory, "from.sql")}`,
+        migrationPath,
+        to: `dump:${join(directory, "to.sql")}`,
+      };
+      const withoutRoles = await verifyMigration(baseOptions);
+      expect(withoutRoles.some((item) => item.severity === "error")).toBe(true);
+
+      const withRoles = await verifyMigration({ ...baseOptions, ensureRoles: true });
+      expect(withRoles.filter((item) => item.severity === "error")).toEqual([]);
+
+      const exists = await admin.query("SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = $1", [
+        role,
+      ]);
+      expect(exists.rows).toHaveLength(1);
+    } finally {
+      await admin.query(`DROP ROLE IF EXISTS ${role}`).catch((error) => {
+        console.error("wave-d role cleanup failed", error);
+      });
+      await admin.end();
+    }
+  });
+});
+
+describe("verify remote-database guard", () => {
+  it("refuses non-local hosts without PG_DIVERGE_VERIFY_ALLOW_REMOTE", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pgd-remote-guard-"));
+    await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
+    await writeFile(join(directory, "to.sql"), "CREATE SCHEMA app;");
+    const migrationPath = join(directory, "migration.sql");
+    await writeFile(migrationPath, "CREATE SCHEMA IF NOT EXISTS app;\n");
+
+    const diagnostics = await verifyMigration({
+      databaseUrl: "postgresql://postgres:postgres@db.example.com:5432/postgres",
+      from: `dump:${join(directory, "from.sql")}`,
+      migrationPath,
+      to: `dump:${join(directory, "to.sql")}`,
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("PD_VERIFY_FAILED");
+    expect(diagnostics[0]?.message).toContain("db.example.com");
+    expect(diagnostics[0]?.hint).toContain("PG_DIVERGE_VERIFY_ALLOW_REMOTE");
+  });
+});
+
+describe.skipIf(!databaseUrl)("CLI concurrent companion file", () => {
+  it("writes the .concurrent.sql companion when diffing to a file", {
+    timeout: 30_000,
+  }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pgd-split-"));
+    await writeFile(join(directory, "from.sql"), "CREATE TABLE app.items (id integer);");
+    await writeFile(
+      join(directory, "to.sql"),
+      "CREATE TABLE app.items (id integer);\nCREATE INDEX CONCURRENTLY items_idx ON app.items (id);",
+    );
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const run = promisify(execFile);
+    const outPath = join(directory, "migration.sql");
+    const configPath = join(directory, "pg-diverge.config.json");
+    await writeFile(configPath, JSON.stringify({ adapter: "postgres" }));
+    await run("node", [
+      "dist/cli.js",
+      "--config",
+      configPath,
+      "diff",
+      "--from",
+      `dump:${join(directory, "from.sql")}`,
+      "--to",
+      `dump:${join(directory, "to.sql")}`,
+      "--out",
+      outPath,
+    ]);
+
+    const main = await readFile(outPath, "utf8");
+    const concurrent = await readFile(join(directory, "migration.concurrent.sql"), "utf8");
+    expect(main).not.toContain("CONCURRENTLY");
+    expect(concurrent).toContain("CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx");
+  });
+});

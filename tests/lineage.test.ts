@@ -1,0 +1,136 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { describe, expect, it } from "vitest";
+import { latestLineage, parseLineage } from "../src/lineage.js";
+
+const run = promisify(execFile);
+
+type CliResult = { code: number; stderr: string; stdout: string };
+
+async function cli(args: string[]): Promise<CliResult> {
+  try {
+    const { stdout, stderr } = await run("node", ["dist/cli.js", ...args]);
+    return { code: 0, stderr, stdout };
+  } catch (error) {
+    const failure = error as { code?: number; stderr?: string; stdout?: string };
+    return { code: failure.code ?? 1, stderr: failure.stderr ?? "", stdout: failure.stdout ?? "" };
+  }
+}
+
+describe("lineage parsing", () => {
+  it("parses the embedded lineage marker", () => {
+    const lineage = parseLineage("-- header\n-- pg-diverge: lineage from=abc123 to=def456\nSET x;");
+
+    expect(lineage).toEqual({ from: "abc123", to: "def456" });
+  });
+
+  it("returns undefined for hand-authored migrations", () => {
+    expect(parseLineage("-- migration\nCREATE TABLE t (id int);")).toBeUndefined();
+  });
+
+  it("finds the newest lineage-bearing migration by filename order", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pgd-lineage-"));
+    await writeFile(
+      join(directory, "0001_old.sql"),
+      "-- pg-diverge: lineage from=a to=b\nSELECT 1;",
+    );
+    await writeFile(
+      join(directory, "0002_new.sql"),
+      "-- pg-diverge: lineage from=b to=c\nSELECT 1;",
+    );
+    await writeFile(join(directory, "0003_hand.sql"), "-- hand-authored\nSELECT 1;");
+
+    const latest = await latestLineage(directory);
+
+    expect(latest?.from).toBe("b");
+    expect(latest?.to).toBe("c");
+    expect(latest?.file).toContain("0002_new.sql");
+  });
+
+  it("returns undefined for missing or lineage-free directories", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pgd-lineage-empty-"));
+
+    expect(await latestLineage(directory)).toBeUndefined();
+    expect(await latestLineage(join(directory, "missing"))).toBeUndefined();
+  });
+});
+
+describe("diff lineage chain gate", () => {
+  const fromArg = "dir:tests/fixtures/basic/from";
+  const toArg = "dir:tests/fixtures/basic/to";
+
+  it("blocks duplicate transitions, broken chains, and overwrites; --no-check-chain bypasses", {
+    timeout: 60_000,
+  }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pgd-chain-"));
+    const first = join(directory, "0001_first.sql");
+
+    const initial = await cli(["diff", "--from", fromArg, "--to", toArg, "--out", first]);
+    expect(initial.code).toBe(0);
+    expect(parseLineage(await readFile(first, "utf8"))).toBeDefined();
+
+    const duplicate = await cli([
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--out",
+      join(directory, "0002_dup.sql"),
+    ]);
+    expect(duplicate.code).toBe(2);
+    expect(duplicate.stderr).toContain("PD_DIFF_LINEAGE_DUPLICATE");
+
+    const broken = await cli([
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      fromArg,
+      "--out",
+      join(directory, "0003_broken.sql"),
+    ]);
+    expect(broken.code).toBe(2);
+    expect(broken.stderr).toContain("PD_DIFF_LINEAGE_BROKEN");
+
+    const continued = await cli([
+      "diff",
+      "--from",
+      toArg,
+      "--to",
+      toArg,
+      "--out",
+      join(directory, "0004_next.sql"),
+    ]);
+    expect(continued.code).toBe(0);
+
+    const bypassed = await cli([
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--no-check-chain",
+      "--out",
+      join(directory, "0005_bypass.sql"),
+    ]);
+    expect(bypassed.code).toBe(0);
+
+    const clobber = await cli([
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--no-check-chain",
+      "--out",
+      first,
+    ]);
+    expect(clobber.code).toBe(2);
+    expect(clobber.stderr).toContain("PD_DIFF_OUTPUT_EXISTS");
+    expect(parseLineage(await readFile(first, "utf8"))).toBeDefined();
+  });
+});

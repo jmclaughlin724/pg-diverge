@@ -1,0 +1,96 @@
+{
+  "name": "pg-diverge",
+  "version": "0.1.0",
+  "description": "Deterministic, replay-safe PostgreSQL and Supabase migrations from declarative SQL tree changes.",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "author": "John McLaughlin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jmclaughlin724/pg-diverge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jmclaughlin724/pg-diverge/issues"
+  },
+  "homepage": "https://github.com/jmclaughlin724/pg-diverge#readme",
+  "bin": {
+    "pg-diverge": "bin/pg-diverge"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    ".agents",
+    ".claude",
+    ".codex",
+    "AGENTS.md",
+    "benchmarks/README.md",
+    "benchmarks/compare.js",
+    "benchmarks/fixtures",
+    "benchmarks/plot.js",
+    "benchmarks/tools",
+    "bin",
+    "config-schema.json",
+    "corpus",
+    "dist",
+    "docs",
+    "examples",
+    "LICENSE",
+    "LICENSE-COMMERCIAL.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "benchmark": "npm run build && node dist/benchmark.js",
+    "bench:compare": "npm run build && node benchmarks/compare.js",
+    "bench:plot": "node benchmarks/plot.js",
+    "build": "tsc -p tsconfig.json && node dist/config-schema-gen.js",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "check:package": "publint && attw --pack . --profile esm-only",
+    "clean": "rm -rf dist coverage",
+    "docs:api": "typedoc src/index.ts --out api-docs",
+    "corpus:check": "npm run build && node dist/cli.js corpus --corpus-dir corpus/supabase-style",
+    "fixture:diff": "node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out stdout",
+    "fixture:verify": "npm run build && out=$(mktemp -d)/basic.sql && node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out \"$out\" && node dist/cli.js verify --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --migration \"$out\"",
+    "format": "biome check --write .",
+    "lint": "biome check .",
+    "pack:dry": "npm pack --dry-run",
+    "postinstall": "node bin/postinstall.mjs",
+    "prepare": "npm run build",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "postgres",
+    "postgresql",
+    "supabase",
+    "migration",
+    "schema",
+    "diff",
+    "sql"
+  ],
+  "dependencies": {
+    "commander": "^14.0.3",
+    "libpg-query": "^17.7.3",
+    "pg": "^8.21.0",
+    "pgsql-deparser": "^17.18.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.3",
+    "@biomejs/biome": "^2.4.16",
+    "@types/node": "^25.9.3",
+    "@types/pg": "^8.15.6",
+    "@vitest/coverage-v8": "^4.1.8",
+    "publint": "^0.3.21",
+    "typedoc": "^0.28.19",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

@@ -1,0 +1,27 @@
+name: pg-diverge
+description: Run pg-diverge gates (drift detection, migration check, verify) against a declarative SQL tree.
+branding:
+  color: blue
+  icon: git-merge
+inputs:
+  args:
+    description: Arguments passed to pg-diverge (e.g. "diff --from database:$DATABASE_URL --to dir:supabase/schemas --fail-on-diff --quiet").
+    required: true
+  version:
+    description: pg-diverge version to run (npm dist-tag or exact version).
+    required: false
+    default: latest
+runs:
+  using: composite
+  steps:
+    - name: Run pg-diverge
+      shell: bash
+      env:
+        PG_DIVERGE_ACTION_VERSION: ${{ inputs.version }}
+        PG_DIVERGE_ACTION_ARGS: ${{ inputs.args }}
+      run: |
+        case "$PG_DIVERGE_ACTION_VERSION" in
+          latest|next|[0-9]*.[0-9]*.[0-9]*|[0-9]*.[0-9]*.[0-9]*-*) ;;
+          *) echo "invalid pg-diverge version: $PG_DIVERGE_ACTION_VERSION" >&2; exit 1 ;;
+        esac
+        npx --yes "pg-diverge@${PG_DIVERGE_ACTION_VERSION}" $PG_DIVERGE_ACTION_ARGS

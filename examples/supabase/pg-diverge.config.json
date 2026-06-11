@@ -1,0 +1,15 @@
+{
+  "adapter": "supabase-auto",
+  "destructiveChanges": "hint-required",
+  "excludedGrantRoles": [
+    "supabase_admin",
+    "supabase_auth_admin",
+    "supabase_storage_admin",
+    "dashboard_user",
+    "pgbouncer",
+    "authenticator"
+  ],
+  "schemaPaths": ["schemas"],
+  "transactionMode": "per-migration",
+  "validators": ["internal-parser"]
+}
