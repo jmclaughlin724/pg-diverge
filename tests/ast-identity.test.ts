@@ -131,3 +131,60 @@ describe("statement facts", () => {
     expect(fn.metadata.outParams).toEqual([{ mode: "FUNC_PARAM_OUT", name: "b", type: "text" }]);
   });
 });
+
+describe("view qualification canonicalization", () => {
+  it("hashes PG15-style sole-relation qualification equal to the bare form", async () => {
+    const qualified = await singleObject(
+      "CREATE VIEW app.v AS SELECT upper(accounts.name) AS name FROM app.accounts;",
+    );
+    const bare = await singleObject(
+      "CREATE VIEW app.v AS SELECT upper(name) AS name FROM app.accounts;",
+    );
+
+    expect(qualified.hash).toBe(bare.hash);
+  });
+
+  it("hashes alias qualification equal to the bare form", async () => {
+    const qualified = await singleObject("CREATE VIEW app.v AS SELECT a.name FROM app.accounts a;");
+    const bare = await singleObject("CREATE VIEW app.v AS SELECT name FROM app.accounts a;");
+
+    expect(qualified.hash).toBe(bare.hash);
+  });
+
+  it("hashes materialized view qualification equal to the bare form", async () => {
+    const qualified = await singleObject(
+      "CREATE MATERIALIZED VIEW app.mv AS SELECT accounts.name FROM app.accounts;",
+    );
+    const bare = await singleObject(
+      "CREATE MATERIALIZED VIEW app.mv AS SELECT name FROM app.accounts;",
+    );
+
+    expect(qualified.hash).toBe(bare.hash);
+  });
+
+  it("preserves qualification when the scope has multiple relations", async () => {
+    const qualified = await singleObject(
+      "CREATE VIEW app.v AS SELECT accounts.name FROM app.accounts, app.other;",
+    );
+    const bare = await singleObject(
+      "CREATE VIEW app.v AS SELECT name FROM app.accounts, app.other;",
+    );
+
+    expect(qualified.hash).not.toBe(bare.hash);
+  });
+
+  it("strips inner sole-relation refs but preserves correlated outer refs", async () => {
+    const qualified = await singleObject(
+      "CREATE VIEW app.v AS SELECT (SELECT b.x FROM app.b WHERE b.y = accounts.name) AS x FROM app.accounts;",
+    );
+    const innerBare = await singleObject(
+      "CREATE VIEW app.v AS SELECT (SELECT x FROM app.b WHERE y = accounts.name) AS x FROM app.accounts;",
+    );
+    const outerBare = await singleObject(
+      "CREATE VIEW app.v AS SELECT (SELECT b.x FROM app.b WHERE b.y = name) AS x FROM app.accounts;",
+    );
+
+    expect(qualified.hash).toBe(innerBare.hash);
+    expect(qualified.hash).not.toBe(outerBare.hash);
+  });
+});

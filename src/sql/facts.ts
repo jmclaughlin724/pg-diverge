@@ -13,6 +13,7 @@ import {
   stringValue,
   typeNameToSql,
 } from "./ast.js";
+import { canonicalPolicyNode, canonicalViewNode } from "./canonical-nodes.js";
 import { normalizeObjectSql } from "./normalize-deparse.js";
 import { astObjectHash, shapeHash } from "./object-hash.js";
 import { parseSqlAst } from "./parser.js";
@@ -209,35 +210,24 @@ function canonicalHash(object: SchemaObject, statements: { node: AstNode; tag: s
       object.ref,
     );
   }
+  if (object.ref.kind === "view" || object.ref.kind === "materialized-view") {
+    // pg_get_viewdef qualifies every column with its relation name on PG 15
+    // (`upper(accounts.name)`) where PG 16+ and declarative sources write the
+    // bare column (`upper(name)`). Stripping the qualifier is provably safe
+    // only when it names the sole plain relation of the innermost SELECT
+    // scope, so both lanes converge to that form and everything else (joins,
+    // correlated outer refs) keeps its written qualification.
+    return astObjectHash(
+      statements.map((item) => canonicalViewNode(item.node, []) as AstNode),
+      object.key,
+      object.ref,
+    );
+  }
   return astObjectHash(
     statements.map((item) => item.node),
     object.key,
     object.ref,
   );
-}
-
-function canonicalPolicyNode(node: unknown): unknown {
-  if (Array.isArray(node)) {
-    return node.map((item) => canonicalPolicyNode(item));
-  }
-  if (typeof node !== "object" || node === null) {
-    return node;
-  }
-  const record = node as Record<string, unknown>;
-  const typeCast = asRecord(record.TypeCast);
-  if (typeCast && asRecord(typeCast.arg)?.A_Const !== undefined) {
-    return canonicalPolicyNode(typeCast.arg);
-  }
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (key === "ResTarget" && typeof value === "object" && value !== null) {
-      const { name: _alias, ...rest } = value as Record<string, unknown>;
-      result[key] = canonicalPolicyNode(rest);
-      continue;
-    }
-    result[key] = canonicalPolicyNode(value);
-  }
-  return result;
 }
 
 function addConstraintNode(alterTableStmt: AstNode | undefined): AstNode | undefined {
