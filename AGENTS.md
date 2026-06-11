@@ -18,16 +18,18 @@ pg-diverge generates deterministic, replay-safe PostgreSQL/Supabase migrations f
 
 ## Common Commands
 
+Zero-flag defaults: `--from` resolves to the database (then `git:HEAD`), `--to` to the config schema tree, output to `config.migrationsDir` with a derived name, `check` to the whole migrations directory, `verify --migration` to the newest pending file. Applied defaults print to stderr; flags override.
+
 ```bash
-pg-diverge diff --from git:HEAD --to dir:supabase/schemas --name <change> --migrations-dir supabase/migrations
-pg-diverge check <migration.sql>
-pg-diverge verify --from git:HEAD --to dir:supabase/schemas --migration <migration.sql>
-pg-diverge diff --from "database:$DATABASE_URL" --to dir:supabase/schemas --fail-on-diff --quiet   # CI drift gate (exit 3 on drift)
-pg-diverge diff ... --summary            # blocked-plan triage: operation/diagnostic counts by kind and schema
-pg-diverge diff ... --write-hints <file> # reviewable hints.destructive skeleton for gated keys
+pg-diverge diff                          # render the migration from applied state -> schema tree
+pg-diverge check                         # replay-safety gate for the migrations directory
+pg-diverge verify                        # apply-twice proof for the newest pending migration
+pg-diverge diff --fail-on-diff --quiet   # CI drift gate (exit 3 on drift)
+pg-diverge diff --summary                # blocked-plan triage: operation/diagnostic counts by kind and schema
+pg-diverge diff --write-hints <file>     # reviewable hints.destructive skeleton for gated keys
 pg-diverge audit --from <source>         # support-matrix coverage + out-of-contract statements by code
 pg-diverge selfcheck                     # cross-lane identity parity proof against a live catalog (PD_SELFCHECK_*)
-pg-diverge migrations --migrations-dir supabase/migrations  # applied/pending/ghost/out-of-order vs history table
+pg-diverge migrations                    # applied/pending/ghost/out-of-order vs history table
 ```
 
 ## Repository Development (pg-diverge itself)

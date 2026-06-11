@@ -38,6 +38,7 @@ export const pgDivergeConfigSchema = z.strictObject({
   hints: hintsSchema,
   idempotency: z.literal("required").default("required"),
   lockTimeout: z.string().default("5s"),
+  migrationsDir: z.string().default("supabase/migrations"),
   normalize: z.enum(["off", "deparse"]).default("off"),
   managedSchemas: z
     .array(z.string())

@@ -15,22 +15,23 @@ This skill is a direct execution contract for producing schema migrations with p
 2. **Generate the migration:**
 
    ```bash
-   pg-diverge diff --from git:HEAD --to dir:supabase/schemas \
-     --name <snake_case_change> --migrations-dir supabase/migrations
+   pg-diverge diff
    ```
 
-   The write is no-clobber and chain-gated. If it exits 2, read the diagnostic:
+   Zero-flag defaults (printed to stderr; flags override): `--from` resolves to the database (then `git:HEAD`), `--to` to the config schema tree, and the file lands in `config.migrationsDir` as `<UTC timestamp>_<derived name>.sql`. Pass `--name <snake_case>` to control the name. The write is no-clobber and chain-gated. If it exits 2, read the diagnostic:
    - `PD_PLAN_DESTRUCTIVE_HINT_REQUIRED` / `PD_PLAN_COLUMN_ALTER_HINT_REQUIRED` / `PD_PLAN_VIEW_REPLACE_INCOMPATIBLE` / `PD_PLAN_ROUTINE_RETURN_TYPE_CHANGED` — review the rendered `-- BLOCKED` section, then add the exact object key to `hints.destructive` in `pg-diverge.config.json` and regenerate. Never use `"*"` in committed config.
    - `PD_DIFF_LINEAGE_BROKEN` — a pending generated migration exists; diff from the post-migration state instead: `--from database:<db with pending applied>`.
    - `PD_DIFF_LINEAGE_DUPLICATE` — the transition is already pending; apply or remove the pending migration instead of regenerating.
    - Renames: declare `{ "from": "<key>", "to": "<key>" }` in `hints.renames`; renames are never inferred.
 
-3. **Check replay safety:** `pg-diverge check <migration.sql>` — must exit 0 for generated and hand-authored migrations alike.
+3. **Check replay safety:** `pg-diverge check` gates every `.sql` in the migrations directory (or name specific files) — must exit 0 for generated and hand-authored migrations alike.
 4. **Verify execution** (when any database is resolvable — the URL auto-resolves from `PG_DIVERGE_DATABASE_URL` or the nearest `supabase/config.toml`):
 
    ```bash
-   pg-diverge verify --from git:HEAD --to dir:supabase/schemas --migration <migration.sql>
+   pg-diverge verify
    ```
+
+   Defaults to the newest pending migration in the migrations directory with the same from/to defaults as `diff`; pass `--migration <file>` to verify a specific one.
 
    Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
 
@@ -39,10 +40,18 @@ This skill is a direct execution contract for producing schema migrations with p
 ## Drift Detection
 
 ```bash
-pg-diverge diff --from "database:$DATABASE_URL" --to dir:supabase/schemas --fail-on-diff --quiet
+pg-diverge diff --fail-on-diff --quiet
 ```
 
 Exit 3 means the live database and the tree have diverged; exit 0 means parity. Use this as a CI gate (`docs/ci.md` has the full pipeline recipe).
+
+When drift is large or blocked, triage before editing:
+
+- `pg-diverge diff --summary` — operation/diagnostic counts grouped by kind and schema, printed even when the plan is blocked.
+- `pg-diverge diff --write-hints <file>` — writes the gated destructive object keys as a reviewable `hints.destructive` skeleton (no-clobber).
+- `pg-diverge audit --from <source> [--json]` — modeled coverage by kind/schema plus every statement outside the contract grouped by diagnostic code.
+- `pg-diverge selfcheck` — re-extracts a live catalog's rendered SQL and reports any object whose identity diverges (`PD_SELFCHECK_*`); zero mismatches proves cross-lane identity parity.
+- `pg-diverge migrations` — classifies on-disk migrations against a target's applied history: applied, pending, ghost, or out-of-order.
 
 ## Boundaries
 

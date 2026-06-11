@@ -1,8 +1,13 @@
 import { watch } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Command } from "commander";
+import {
+  defaultMigrationName,
+  resolveMigrationsDir,
+  resolveSourceDefaults,
+} from "./cli-defaults.js";
 import type { SummaryTone } from "./cli-tools.js";
 import { colorizeSummaryLine } from "./cli-tools.js";
 import type { PgDivergeConfig } from "./config.js";
@@ -13,15 +18,15 @@ import { planSchemaDiff } from "./planner.js";
 import { renderMigrationSplit } from "./render.js";
 import { extractSourceModel, filterModelBySchemas } from "./source.js";
 
-type PlanCommandOptions = { from: string; to: string; schema?: string; timing?: boolean };
+type PlanCommandOptions = { from?: string; to?: string; schema?: string; timing?: boolean };
 type DiffOptions = PlanCommandOptions & {
   checkChain: boolean;
   dryRun?: boolean;
   failOnDiff?: boolean;
   json?: boolean;
-  migrationsDir: string;
+  migrationsDir?: string;
   name?: string;
-  out: string;
+  out?: string;
   summary?: boolean;
   watch?: boolean;
   writeHints?: string;
@@ -31,19 +36,20 @@ export interface DiffCommandContext {
   cliVersion: string;
   loadCliConfig: () => Promise<PgDivergeConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
+  resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
 }
 
 export function registerDiffCommands(program: Command, context: DiffCommandContext): void {
   program
     .command("plan")
-    .requiredOption("--from <source>", "source model before the change")
-    .requiredOption("--to <target>", "source model after the change")
+    .option("--from <source>", "source model before the change (default: database, then git:HEAD)")
+    .option("--to <target>", "source model after the change (default: the config schema tree)")
     .option("--schema <names>", "comma-separated schema filter")
     .option("--timing", "print extract/plan phase timings to stderr")
     .description("Print the planned object-level schema diff as JSON (use `diff` to render SQL).")
     .action(async (options: PlanCommandOptions) => {
       const config = await context.loadCliConfig();
-      const plan = await buildPlan(options, config);
+      const plan = await buildPlan(await withSourceDefaults(options, config, context), config);
       context.printDiagnostics(plan.diagnostics);
       process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
       if (hasErrors(plan.diagnostics)) {
@@ -53,11 +59,14 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
 
   program
     .command("diff")
-    .requiredOption("--from <source>", "source model before the change")
-    .requiredOption("--to <target>", "source model after the change")
-    .option("--out <file>", "output file path or stdout", "stdout")
-    .option("--name <snake_case>", "write to <migrations-dir>/<UTC timestamp>_<name>.sql")
-    .option("--migrations-dir <dir>", "migrations directory for --name", "supabase/migrations")
+    .option("--from <source>", "source model before the change (default: database, then git:HEAD)")
+    .option("--to <target>", "source model after the change (default: the config schema tree)")
+    .option(
+      "--out <file>",
+      "output file path or stdout (default: <migrations-dir>/<UTC timestamp>_<name>.sql)",
+    )
+    .option("--name <snake_case>", "migration name (default: derived from the planned operations)")
+    .option("--migrations-dir <dir>", "migrations directory (default: config.migrationsDir)")
     .option("--schema <names>", "comma-separated schema filter")
     .option("--dry-run", "print the migration and target path without writing")
     .option("--json", "print a JSON payload (fingerprint, operations, sql) instead of raw SQL")
@@ -79,19 +88,38 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
       "--watch",
       "re-print the drift summary whenever a dir: source changes (editor loop; implies --dry-run --summary)",
     )
-    .description("Render a replay-safe migration from the planned schema diff.")
+    .description(
+      "Render a replay-safe migration from the planned schema diff (zero flags: database/git:HEAD → schema tree → migrations directory).",
+    )
     .action(async (options: DiffOptions) => {
       const config = await context.loadCliConfig();
-      if (options.watch) {
-        await watchDiff(options, config, context);
+      const resolved = await withSourceDefaults(options, config, context);
+      if (resolved.watch) {
+        await watchDiff(resolved, config, context);
         return;
       }
-      await runDiff(options, config, context);
+      await runDiff(resolved, config, context);
     });
 }
 
+type WithSources<T> = T & { from: string; to: string };
+
+async function withSourceDefaults<T extends PlanCommandOptions>(
+  options: T,
+  config: PgDivergeConfig,
+  context: DiffCommandContext,
+): Promise<WithSources<T>> {
+  const resolved = await resolveSourceDefaults(options, config, () =>
+    context.resolveCliDatabaseUrl(),
+  );
+  if (resolved.notice !== undefined) {
+    process.stderr.write(resolved.notice);
+  }
+  return { ...options, from: resolved.from, to: resolved.to };
+}
+
 async function runDiff(
-  options: DiffOptions,
+  options: WithSources<DiffOptions>,
   config: PgDivergeConfig,
   context: DiffCommandContext,
 ): Promise<void> {
@@ -125,11 +153,22 @@ async function runDiff(
   if (options.timing) {
     process.stderr.write(`timing: render ${Math.round(performance.now() - renderStart)}ms\n`);
   }
-  const outPath = options.name
-    ? resolve(process.cwd(), options.migrationsDir, `${migrationTimestamp()}_${options.name}.sql`)
-    : options.out === "stdout"
-      ? undefined
-      : resolve(process.cwd(), options.out);
+  const migrationsDir = resolveMigrationsDir(options.migrationsDir, config);
+  const defaultedOut = options.name === undefined && options.out === undefined;
+  if (defaultedOut && plan.operations.length === 0 && !options.json) {
+    process.stderr.write("no schema changes\n");
+    return;
+  }
+  const outPath =
+    options.name !== undefined || defaultedOut
+      ? resolve(
+          process.cwd(),
+          migrationsDir,
+          `${migrationTimestamp()}_${options.name ?? defaultMigrationName(plan)}.sql`,
+        )
+      : options.out === "stdout" || options.out === undefined
+        ? undefined
+        : resolve(process.cwd(), options.out);
   if (outPath !== undefined && options.checkChain) {
     const chainDiagnostics = await checkLineageChain(plan, dirname(outPath));
     if (chainDiagnostics.length > 0) {
@@ -170,6 +209,7 @@ async function runDiff(
     process.stdout.write(payload);
   } else {
     try {
+      await mkdir(dirname(outPath), { recursive: true });
       await writeFile(outPath, rendered.sql, { flag: "wx" });
       if (rendered.concurrentSql !== undefined && concurrentPath !== undefined) {
         await writeFile(concurrentPath, rendered.concurrentSql, { flag: "wx" });
@@ -208,7 +248,7 @@ async function runDiff(
  * Watch never writes files — it forces dry-run summary mode.
  */
 async function watchDiff(
-  options: DiffOptions,
+  options: WithSources<DiffOptions>,
   config: PgDivergeConfig,
   context: DiffCommandContext,
 ): Promise<void> {
@@ -220,7 +260,12 @@ async function watchDiff(
     process.exitCode = 1;
     return;
   }
-  const watchedOptions: DiffOptions = { ...options, dryRun: true, summary: true, watch: false };
+  const watchedOptions: WithSources<DiffOptions> = {
+    ...options,
+    dryRun: true,
+    summary: true,
+    watch: false,
+  };
   let running = false;
   let queued = false;
   const run = async () => {
@@ -259,7 +304,7 @@ async function watchDiff(
 }
 
 async function buildPlan(
-  options: PlanCommandOptions,
+  options: WithSources<PlanCommandOptions>,
   config: PgDivergeConfig,
 ): Promise<MigrationPlan> {
   const extractStart = performance.now();

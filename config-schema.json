@@ -99,6 +99,10 @@
       "default": "5s",
       "type": "string"
     },
+    "migrationsDir": {
+      "default": "supabase/migrations",
+      "type": "string"
+    },
     "normalize": {
       "default": "off",
       "type": "string",

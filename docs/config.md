@@ -22,10 +22,11 @@ Unknown keys are rejected (the schema is strict), so typos fail loudly. The scaf
 | `idempotency` | `"required"` | Rendered SQL is replay-safe by construction. Not configurable away. |
 | `lockTimeout` | `"5s"` | Value for the `SET lock_timeout` migration preamble. |
 | `managedSchemas` | Supabase set | Schemas treated as platform-owned under `supabase-auto`. |
+| `migrationsDir` | `"supabase/migrations"` | Where zero-flag `diff` writes migrations, zero-arg `check` reads them, and `verify` finds the newest pending file. The `--migrations-dir` flag overrides per command. |
 | `normalize` | `"off"` | `"deparse"` rewrites every object's SQL into canonical form via `pgsql-deparser` (the pure-TypeScript companion of the `libpg-query` parser). Fidelity-gated per object: the canonical text is used only when it reparses to the identical location-stripped parse tree, otherwise the source text is kept with a `PD_NORMALIZE_*` warning. Hashes never change (identity is AST-based); rendered output becomes formatting-independent. `check` always runs the round-trip proof and reports `PD_CHECK_DEPARSE_*` findings regardless of this setting. |
 | `postgresVersion` | `"15+"` | Documentation of the supported floor; guards target PostgreSQL 15+ syntax. |
 | `renameDetection` | `"hints-only"` | `hints-only` uses `hints.renames`; `off` disables rename handling entirely. |
-| `schemaPaths` | `["supabase/schemas"]` | Paths read by `git:` sources. `supabase/config.toml` is read only to discover the local database URL (`[db] port`), never for schema paths; configure paths here. |
+| `schemaPaths` | `["supabase/schemas"]` | Paths read by `git:` sources and the default `--to dir:` target (the first entry). `supabase/config.toml` is read only to discover the local database URL (`[db] port`), never for schema paths; configure paths here. |
 | `schemas.include` / `schemas.exclude` | `[]` | Persistent schema filters applied to every extracted model (the CLI `--schema` flag composes on top). |
 | `statementTimeout` | `"60s"` | Value for the `SET statement_timeout` migration preamble. |
 | `transactionMode` | `"per-migration"` | How `verify` applies the migration and how transaction hazards are graded. `per-migration` mirrors runners like `supabase db push` (one transaction per file); `per-statement` matches autocommit runners. |

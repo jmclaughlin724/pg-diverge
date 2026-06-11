@@ -4,6 +4,13 @@ import { Command } from "commander";
 import { checkMigrationSql } from "./check.js";
 import type { CheckReporter, FileDiagnostics } from "./check-reporters.js";
 import { renderCheckReport } from "./check-reporters.js";
+import {
+  defaultTreeSource,
+  latestMigrationFile,
+  migrationFiles,
+  resolveMigrationsDir,
+  resolveSourceDefaults,
+} from "./cli-defaults.js";
 import { filterModel, registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
@@ -17,15 +24,16 @@ import { extractSourceModel } from "./source.js";
 import { verifyMigration } from "./verify.js";
 
 type GlobalOptions = { config?: string; env?: string; quiet?: boolean };
-type InspectOptions = { from: string; schema?: string };
+type InspectOptions = { from?: string; schema?: string };
 type VerifyOptions = {
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
   databaseUrl?: string;
   ensureRoles?: boolean;
   ensureEnvironment?: boolean;
   keepDatabases?: boolean;
-  migration: string;
+  migration?: string;
+  migrationsDir?: string;
 };
 
 const cliVersion = await readPackageVersion();
@@ -68,12 +76,13 @@ program
 
 program
   .command("inspect")
-  .requiredOption("--from <source>", "source to inspect")
+  .option("--from <source>", "source to inspect (default: the config schema tree)")
   .option("--schema <names>", "comma-separated schema filter")
   .description("Extract and print a deterministic schema model.")
   .action(async (options: InspectOptions) => {
     const config = await loadCliConfig();
-    const model = filterModel(await extractSourceModel(options.from, { config }), options.schema);
+    const source = options.from ?? defaultTreeSource(config);
+    const model = filterModel(await extractSourceModel(source, { config }), options.schema);
     printDiagnostics(model.diagnostics);
     process.stdout.write(`${JSON.stringify(model, null, 2)}\n`);
     if (hasErrors(model.diagnostics)) {
@@ -81,19 +90,32 @@ program
     }
   });
 
-registerDiffCommands(program, { cliVersion, loadCliConfig, printDiagnostics });
+registerDiffCommands(program, {
+  cliVersion,
+  loadCliConfig,
+  printDiagnostics,
+  resolveCliDatabaseUrl,
+});
 registerReportCommands(program, { loadCliConfig, printDiagnostics, resolveCliDatabaseUrl });
 registerToolCommands(program, { loadCliConfig, printDiagnostics, resolveCliDatabaseUrl });
 
 program
   .command("check")
-  .argument("<migrations...>")
+  .argument("[migrations...]", "migration files (default: every .sql in config.migrationsDir)")
   .option("--reporter <name>", "text | github | sarif | json", "text")
   .description(
-    "Validate replay-safety and parser diagnostics for one or more migration files (shell globs expand to a directory gate; `-` reads stdin).",
+    "Validate replay-safety and parser diagnostics for migration files (shell globs expand to a directory gate; `-` reads stdin; zero args checks the migrations directory).",
   )
-  .action(async (migrationPaths: string[], options: { reporter: string }) => {
+  .action(async (migrationArgs: string[], options: { reporter: string }) => {
     const config = await loadCliConfig();
+    const migrationPaths =
+      migrationArgs.length > 0
+        ? migrationArgs
+        : await migrationFiles(resolve(process.cwd(), config.migrationsDir));
+    if (migrationPaths.length === 0) {
+      process.stderr.write(`no migrations found in ${config.migrationsDir}\n`);
+      return;
+    }
     const results: FileDiagnostics[] = [];
     for (const migrationPath of migrationPaths) {
       const sql = migrationPath === "-" ? await readStdin() : await readFile(migrationPath, "utf8");
@@ -118,9 +140,13 @@ program
 
 program
   .command("verify")
-  .requiredOption("--from <source>", "source model before the change")
-  .requiredOption("--to <target>", "source model after the change")
-  .requiredOption("--migration <file>", "migration SQL file to apply twice")
+  .option("--from <source>", "source model before the change (default: database, then git:HEAD)")
+  .option("--to <target>", "source model after the change (default: the config schema tree)")
+  .option(
+    "--migration <file>",
+    "migration SQL file to apply twice (default: newest .sql in config.migrationsDir)",
+  )
+  .option("--migrations-dir <dir>", "migrations directory (default: config.migrationsDir)")
   .option(
     "--database-url <url>",
     "PostgreSQL URL whose role can create temporary databases (default: PG_DIVERGE_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
@@ -148,15 +174,32 @@ program
       process.exitCode = 1;
       return;
     }
+    const migrationsDir = resolveMigrationsDir(options.migrationsDir, config);
+    const migrationPath =
+      options.migration ?? (await latestMigrationFile(resolve(process.cwd(), migrationsDir)));
+    if (migrationPath === undefined) {
+      process.stderr.write(`no migration to verify: ${migrationsDir} has no .sql files\n`);
+      process.exitCode = 1;
+      return;
+    }
+    const sources = await resolveSourceDefaults(options, config, () =>
+      resolveCliDatabaseUrl(options.databaseUrl),
+    );
+    if (sources.notice !== undefined) {
+      process.stderr.write(sources.notice);
+    }
+    if (options.migration === undefined) {
+      process.stderr.write(`defaults: --migration ${migrationPath} (flags override)\n`);
+    }
     const diagnostics = await verifyMigration({
       config,
       databaseUrl,
       ensureRoles: options.ensureRoles === true,
       ...(options.ensureEnvironment === true ? { ensureEnvironment: true } : {}),
       ...(options.keepDatabases === true ? { keepDatabases: true } : {}),
-      from: options.from,
-      migrationPath: options.migration,
-      to: options.to,
+      from: sources.from,
+      migrationPath,
+      to: sources.to,
     });
     printDiagnostics(diagnostics);
     if (hasErrors(diagnostics)) {
