@@ -1,4 +1,4 @@
-import { watch } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -17,6 +17,7 @@ import { latestLineage } from "./lineage.js";
 import { planSchemaDiff } from "./planner.js";
 import { renderMigrationSplit } from "./render.js";
 import { extractSourceModel, filterModelBySchemas } from "./source.js";
+import { generateDatabaseTypes } from "./typegen.js";
 
 type PlanCommandOptions = { from?: string; to?: string; schema?: string; timing?: boolean };
 type DiffOptions = PlanCommandOptions & {
@@ -237,10 +238,24 @@ async function runDiff(
         ? payload
         : `${outPath}\n${concurrentPath === undefined ? "" : `${concurrentPath}\n`}`,
     );
+    await refreshTypesFile(options.to, config);
   }
   if (options.failOnDiff && plan.operations.length > 0) {
     process.exitCode = 3;
   }
+}
+
+async function refreshTypesFile(toSource: string, config: SupaschemaConfig): Promise<void> {
+  const typesPath = resolve(process.cwd(), config.typesFile);
+  if (!existsSync(typesPath)) {
+    return;
+  }
+  const model = await extractSourceModel(toSource, { config });
+  if (hasErrors(model.diagnostics)) {
+    return;
+  }
+  await writeFile(typesPath, await generateDatabaseTypes(model));
+  process.stderr.write(`types: ${config.typesFile} refreshed from ${toSource}\n`);
 }
 
 /**
