@@ -13,7 +13,7 @@ pg-diverge generates deterministic, replay-safe PostgreSQL/Supabase migrations f
 - Destructive intent is explicit. Drops, column type changes, and PostgreSQL-incompatible replacements stay blocked until the exact object key is added to `hints.destructive` after review. Never add `"*"` to committed config.
 - Verification must match the runner: keep `transactionMode: "per-migration"` for `supabase db push`-style runners. Run `pg-diverge check` always and `pg-diverge verify` before merge when a database is reachable.
 - Respect the lineage chain gate. When `diff` refuses with `PD_DIFF_LINEAGE_BROKEN` or `PD_DIFF_LINEAGE_DUPLICATE`, regenerate from the post-migration state (`--from database:<applied db>`); `--no-check-chain` is for explicit human-approved bypasses only.
-- Database URLs are never hard-coded: flag (`$ENV` supported) > `PG_DIVERGE_DATABASE_URL` > auto-discovery from the nearest `supabase/config.toml`.
+- Database URLs are never hard-coded: flag (`$ENV` supported) > named `config.environments` entry via `--env` > `PG_DIVERGE_DATABASE_URL` > auto-discovery from the nearest `supabase/config.toml`.
 - `pg-diverge explain <CODE>` decodes any `PD_*` diagnostic offline; `docs/hints.md` has recovery steps for blocked plans.
 
 ## Common Commands

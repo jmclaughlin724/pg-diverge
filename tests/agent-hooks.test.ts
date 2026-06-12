@@ -107,4 +107,16 @@ describe("codex generated-migration tool gate", () => {
     };
     expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
   });
+
+  it("allows deleting a stale generated migration (the sanctioned recovery lane)", async () => {
+    const { generated } = await fixtures();
+    const patch = `*** Begin Patch\n*** Delete File: ${generated}\n*** End Patch`;
+    const result = await runHook(script, {
+      tool_input: { patch },
+      tool_name: "apply_patch",
+    });
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({});
+  });
 });

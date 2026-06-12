@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 
 const lineageMarker = "-- pg-diverge: lineage ";
-const patchFileHeaders = ["*** Update File: ", "*** Delete File: "];
+const patchFileHeaders = ["*** Update File: "];
 
 function patchTargets(patchText) {
   const targets = [];
@@ -55,7 +55,7 @@ try {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: `${blocked} is a pg-diverge-generated migration (lineage marker present). Do not hand-edit or delete-and-rewrite it directly: change the declarative schema tree and regenerate with \`pg-diverge diff\`. See .claude/rules/pg-diverge.md.`,
+      permissionDecisionReason: `${blocked} is a pg-diverge-generated migration (lineage marker present). Do not hand-edit it: change the declarative schema tree, delete this file if it is stale, and regenerate with \`pg-diverge diff\`. See .claude/rules/pg-diverge.md.`,
     },
   });
 } catch (error) {
