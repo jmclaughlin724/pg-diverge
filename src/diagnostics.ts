@@ -62,7 +62,9 @@ export function redactSecrets(value: string): string {
 }
 
 function isUserinfoEnd(char: string): boolean {
-  return char === "@" || char === "/" || char === " " || char === "\t" || char === "\n" || char === "\r";
+  return (
+    char === "@" || char === "/" || char === " " || char === "\t" || char === "\n" || char === "\r"
+  );
 }
 
 function redactUrlCredentials(value: string): string {
