@@ -11,7 +11,7 @@ SUPASCHEMA_COMPARE_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/p
 npm run bench:plot
 ```
 
-`bench:plot` accepts any number of result JSON files plus an optional output directory and emits one artifact set per fixture (sample size), so each scale is saved and read separately:
+`bench:plot` accepts any number of result JSON files plus an optional output directory and emits one artifact set per fixture (sample size), so each scale is saved and read separately. `--charts-dir <dir>` sends the SVG charts to a different directory than the data artifacts:
 
 ```bash
 node benchmarks/plot.js benchmarks/results/comparison.json benchmarks/results/comparison-xl.json
@@ -22,6 +22,12 @@ Outputs:
 - `benchmarks/results/comparison.json` — raw rows from `bench:compare` (use `SUPASCHEMA_COMPARE_OUT` to direct separate runs to separate files, e.g. `comparison-xl.json`)
 - per fixture: `<fixture>-latency.svg`, `<fixture>-correctness.svg`, and `<fixture>-results.json` (that fixture's rows plus source-run metadata)
 - `summary.md` — per-fixture result tables plus a cross-fixture scaling table (each tool's median and its ratio vs its own smallest fixture)
+
+The published chart set in `docs/benchmarks/` (per-fixture latency/correctness charts plus the three head-to-head charts: xl, xxl, and the full-workflow lane) is rebuilt in one command from the four reference comparison JSONs:
+
+```bash
+npm run bench:plot:docs
+```
 
 ## Tool Selection
 
@@ -57,7 +63,7 @@ Adapters:
 - `supaschema-workflow` — the full real-world step measured as one command: `diff` writes the migration and refreshes seeded `database.types.ts` + `database.zod.ts` (TypeScript types **and** runtime Zod validators) in the same invocation
 - `supabase-*-workflow` — the same real-world step for each Supabase engine: `db diff`, apply the generated migration to the database (types cannot regenerate from unapplied SQL), then `supabase gen types --lang=typescript --db-url` (TypeScript only; no validators)
 
-Both workflow lanes are spawned through the same `tools/run-workflow.mjs` wrapper, so per-process overhead is identical on both sides. Workflow rows are charted separately (`workflow-latency.svg`) and excluded from the diff-only charts; never average the two lanes together. The captured output of a workflow run is still the generated migration, so verification and accuracy scoring apply to workflow rows unchanged.
+Both workflow lanes are spawned through the same `tools/run-workflow.mjs` wrapper, so per-process overhead is identical on both sides. Workflow rows are charted separately (the `head-to-head-workflow-xl.svg` chart, via `plot-head-to-head.js --workflow`) and excluded from the diff-only charts; never average the two lanes together. The captured output of a workflow run is still the generated migration, so verification and accuracy scoring apply to workflow rows unchanged.
 
 ## Reading Results
 
