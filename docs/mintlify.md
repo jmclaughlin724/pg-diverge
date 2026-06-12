@@ -42,3 +42,20 @@ Connect the GitHub repository in the Mintlify dashboard:
 4. Keep the Mintlify GitHub App installed so pushes deploy automatically.
 
 Because the content root is `docs/`, the rest of the repository (source code, tests, fixtures, package metadata, agent instructions) is never scanned; `docs/.mintignore` only needs to exclude stray non-content files.
+
+## Cloudflare custom domain
+
+The repository includes a Cloudflare Worker for routing `https://supaschema.com` to the Mintlify-hosted origin at `https://supaschema.mintlify.dev` while preserving the public custom host:
+
+```js
+const DOCS_URL = "supaschema.mintlify.dev";
+const CUSTOM_URL = "supaschema.com";
+```
+
+Deploy it with Wrangler after authenticating Cloudflare:
+
+```bash
+npx wrangler deploy
+```
+
+The Worker is configured by `wrangler.toml` as the Cloudflare Custom Domain target for both `supaschema.com` and `www.supaschema.com`; `www` redirects permanently to the apex domain. Keep the Mintlify dashboard in monorepo mode with `/docs` as the documentation path so GitHub preview/deployment checks read the same content root that local validation uses.
