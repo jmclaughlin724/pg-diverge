@@ -36,6 +36,8 @@
 <text x="84.0" y="182.6" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="end">200s</text>
 <line x1="96" y1="142.9" x2="930" y2="142.9" stroke="#1e293b" stroke-width="1" />
 <text x="84.0" y="146.9" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="end">500s</text>
+<line x1="96" y1="116.0" x2="930" y2="116.0" stroke="#1e293b" stroke-width="1" />
+<text x="84.0" y="120.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="end">1000s</text>
 <text x="96.0" y="500.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="550" text-anchor="middle">additive</text>
 <text x="96.0" y="518.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">1 table</text>
 <text x="304.5" y="500.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="550" text-anchor="middle">functions-policies</text>
@@ -100,5 +102,5 @@
 <text x="958.0" y="338.9" fill="#22d3ee" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650">supaschema-file 3.23s</text>
 <line x1="936" y1="344.8" x2="954" y2="352.9" stroke="#34d399" stroke-opacity="0.45" stroke-width="1" />
 <text x="958.0" y="356.9" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650">supaschema-db 2.78s</text>
-<text x="36.0" y="538.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  Apple Silicon  ·  1 iteration</text>
+<text x="36.0" y="538.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  macOS  ·  1 iteration</text>
 </svg>

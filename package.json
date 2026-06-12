@@ -30,6 +30,8 @@
     "benchmarks/README.md",
     "benchmarks/compare.js",
     "benchmarks/fixtures",
+    "benchmarks/plot-lib.js",
+    "benchmarks/plot-svg.js",
     "benchmarks/plot.js",
     "benchmarks/tools",
     "bin",

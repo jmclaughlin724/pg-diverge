@@ -16,7 +16,7 @@ Measured head-to-head against the Supabase CLI's diff engines on identical fixtu
 
 |  | supaschema | Supabase CLI engines (all five) |
 | --- | --- | --- |
-| Diff latency, 1 → 2,500 tables (~17,500 objects) | 0.2s → 3.2s | ~3.5s → ~3.5 minutes |
+| Diff latency, 1 → 2,500 tables (~17,500 objects) | 0.2s → 3.2s | 3.6–4.6s → ~3.5 minutes |
 | Generated SQL survives a second apply | every fixture | fails on column/index changes |
 | Diff content vs intended change (F1) | 1.000 on every scored fixture | 0.982–0.999 (every engine missed the same policy change) |
 | Infrastructure per diff | none — pure TypeScript + WASM | Docker shadow database |

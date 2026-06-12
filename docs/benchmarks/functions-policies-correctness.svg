@@ -82,5 +82,5 @@
 <text x="850.0" y="375.5" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" text-anchor="middle">✓ 3/3</text>
 <rect x="985" y="360" width="120" height="23" rx="11.5" fill="rgba(100,116,139,0.12)" stroke="#64748b" stroke-opacity="0.55" />
 <text x="1045.0" y="375.5" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" text-anchor="middle">—</text>
-<text x="36.0" y="432.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  Apple Silicon  ·  3 iterations</text>
+<text x="36.0" y="432.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  macOS  ·  3 iterations</text>
 </svg>

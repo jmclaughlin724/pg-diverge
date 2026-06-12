@@ -44,6 +44,7 @@ export function isSupaschema(label) {
 export function logTicks(minMs, maxMs) {
   const candidates = [
     10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000, 200_000, 500_000,
+    1_000_000,
   ];
   return candidates.filter((value) => value >= minMs && value <= maxMs * 1.05);
 }
@@ -58,7 +59,7 @@ export function logDomain(values) {
 
 export function logX(value, domain, x0, chartWidth) {
   const span = Math.log10(domain.ceil) - Math.log10(domain.floor);
-  return x0 + ((Math.log10(value) - Math.log10(domain.floor)) / span) * chartWidth;
+  return x0 + ((Math.log10(Math.max(1, value)) - Math.log10(domain.floor)) / span) * chartWidth;
 }
 
 export function envFooter(environments, fixture) {
@@ -73,11 +74,18 @@ export function envFooter(environments, fixture) {
     supaschemaVersion,
     supabaseVersion,
     env.node ? `Node ${env.node}` : undefined,
-    env.platform === "darwin" ? "Apple Silicon" : env.platform,
+    platformLabel(env.platform, env.arch),
     env.iterations ? `${env.iterations} iteration${env.iterations === 1 ? "" : "s"}` : undefined,
   ]
     .filter(Boolean)
     .join("  ·  ");
+}
+
+function platformLabel(platform, arch) {
+  if (platform === "darwin") {
+    return arch === "arm64" ? "Apple Silicon" : "macOS";
+  }
+  return [platform, arch].filter(Boolean).join(" ") || undefined;
 }
 
 export function groupedStats(rows) {

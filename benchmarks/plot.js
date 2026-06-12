@@ -16,6 +16,7 @@ for (const input of inputs) {
   const payload = JSON.parse(await readFile(input, "utf8"));
   allResults.push(...payload.results);
   environments.push({
+    arch: payload.environment.arch,
     completedAt: payload.completedAt,
     fixtures: [...new Set(payload.results.map((item) => item.fixture))].sort(),
     iterations: payload.environment.iterations,
@@ -114,10 +115,15 @@ function renderSummaryMarkdown() {
         .map((item) => item.elapsedMs);
       return values.length > 0 ? percentile(values, 0.5) : undefined;
     });
-    const base = medians.find((value) => value !== undefined);
-    const cells = medians.map((value) =>
-      value === undefined ? "—" : `${formatSeconds(value)} (${(value / base).toFixed(1)}x)`,
-    );
+    const base = medians.find((value) => value !== undefined && value > 0);
+    const cells = medians.map((value) => {
+      if (value === undefined) {
+        return "—";
+      }
+      return base
+        ? `${formatSeconds(value)} (${(value / base).toFixed(1)}x)`
+        : formatSeconds(value);
+    });
     lines.push(`| ${adapter} | ${cells.join(" | ")} |`);
   }
   lines.push("");

@@ -56,5 +56,5 @@
 <rect x="300" y="312" width="517.5" height="18" rx="4" fill="url(#slateGradient)" />
 <line x1="829.6" y1="309" x2="829.6" y2="333" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
 <text x="1164.0" y="325.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">3.70s  ·  p95 4.03s</text>
-<text x="36.0" y="388.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  Apple Silicon  ·  3 iterations</text>
+<text x="36.0" y="388.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  macOS  ·  3 iterations</text>
 </svg>
