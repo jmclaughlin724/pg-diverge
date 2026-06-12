@@ -72,3 +72,6 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` hints | — | The mismatch hint names the differing objects: missing from the migration result, not present in the target, and definition differs. |
 | `SUPA_VERIFY_FAILED` | error | Temporary database verification failed. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` | error | Applying the migration twice did not produce the target catalog fingerprint. |
+| `SUPA_VERIFY_ROLE_CAPABILITY` | error | The verification role cannot `CREATE DATABASE`; use a role with `CREATEDB` (on local Supabase stacks prefer `supabase_admin`). |
+| `SUPA_VERIFY_STUB_REFERENCE` | warning | A `verify` failure under `--ensure-environment` references a Supabase-managed schema that the environment stub only provisions minimally; the failure may be a stub limitation rather than a real migration defect. Re-run against a real Supabase database to confirm. |
+| `SUPA_VERIFY_RECONVERGENCE` | error | The migrated catalog cross-lane diffed against the target model is not empty; the model declares state the catalog cannot reproduce (false drift), or lane parity is broken. |
