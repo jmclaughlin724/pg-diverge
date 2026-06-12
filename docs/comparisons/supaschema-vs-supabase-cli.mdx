@@ -1,0 +1,79 @@
+---
+title: "supaschema vs Supabase CLI db diff"
+description: "Compare supaschema with Supabase CLI db diff for declarative schemas, Docker-free migration generation, RLS policy changes, replay safety, and types."
+---
+
+# supaschema vs Supabase CLI db diff
+
+`supaschema` is best when you want deterministic PostgreSQL or Supabase migrations from declarative SQL files without Docker, a shadow database, or a hand-edited generated migration. The Supabase CLI remains the standard runner for applying migrations to Supabase; `supaschema` is designed to generate and prove the SQL before that apply step.
+
+## Short answer
+
+Use `supaschema` when the schema files are the source of truth and you need a fast, replay-safe migration from those files. Use the Supabase CLI to apply the reviewed migration with `supabase db push` after `supaschema check` and, when possible, `supaschema verify`.
+
+## Comparison
+
+| Capability | supaschema | Supabase CLI db diff |
+| --- | --- | --- |
+| Migration generation source | Declarative SQL files, git refs, dumps, catalogs, or read-only database catalogs | Database-backed diff workflow |
+| Docker or shadow database for generation | Not required | Commonly required by database-backed engines |
+| Type generation before apply | Yes, from schema files with `supaschema types` | Usually generated from an already-applied database state |
+| Replay safety | Generated SQL is guarded and checked | Generated SQL may need manual review for retry safety |
+| RLS policy body changes | Policy expressions are compared structurally | Engines can miss policy-body changes when names stay stable |
+| Destructive change handling | Fails closed until exact hints are approved | Depends on generated output and reviewer discipline |
+| Applies to production | No, generation/proof only | Yes, via Supabase migration commands |
+
+## Why the workflow is different
+
+`supaschema` parses SQL with PostgreSQL's parser compiled to WebAssembly. It compares the resulting parse trees and renders a guarded migration from the structural difference. That means it can compare a declared target schema against a git ref, a directory, a dump, a catalog snapshot, or a read-only live catalog without creating a temporary database.
+
+The practical loop is:
+
+```bash
+npx supaschema diff
+npx supaschema check
+npx supaschema verify
+supabase db push
+```
+
+`diff` writes the migration and refreshes types. `check` catches replay-safety and lock hazards. `verify` applies the migration twice in disposable databases and confirms the result matches the declared target. `supabase db push` remains the apply step.
+
+## RLS policy safety
+
+Row Level Security policies are tenant boundaries in many Supabase applications. If a policy changes from a broad predicate to a tenant-scoped predicate, the migration generator must see the body change, not just the policy name.
+
+`supaschema` models policy expressions and surfaces predicate changes as first-class operations. That makes RLS policy changes visible in review and CI.
+
+## Benchmark results
+
+The repository benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. On the 1,000-table fixture, `supaschema` generates the migration and refreshed types in one command, while database-backed workflows need multiple steps and a database that has already caught up.
+
+See [benchmarks](/benchmarks) for latency, accuracy, and replay-safety charts, and see the [anilize case study](/case-study-anilize) for a production Supabase schema with thousands of objects.
+
+## When to use each tool
+
+Choose `supaschema` for:
+
+- Declarative schema repositories where SQL files are the source of truth.
+- CI gates that need to detect drift and prove replay safety.
+- Supabase projects where Docker or shadow database startup is slow or unavailable.
+- Teams that want TypeScript and Zod output before applying a migration.
+- Projects where RLS policy changes need explicit review.
+
+Keep using the Supabase CLI for:
+
+- Applying the final migration to local, staging, or production Supabase databases.
+- Managing Supabase platform resources outside the schema migration file.
+- Existing deployment workflows that already call `supabase db push`.
+
+## Minimal migration pipeline
+
+```bash
+npm install --save-dev supaschema
+npx supaschema init
+npx supaschema diff
+npx supaschema check
+supabase db push
+```
+
+Add `npx supaschema verify` before merge when CI can reach a disposable PostgreSQL database.
