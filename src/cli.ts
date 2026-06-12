@@ -160,6 +160,10 @@ program
     "stub Supabase-provisioned surfaces (auth helpers, cron schema) in the temporary databases (default under adapter supabase-auto)",
   )
   .option(
+    "--no-ensure-environment",
+    "disable the Supabase environment stub even under adapter supabase-auto (verify against a real Supabase database)",
+  )
+  .option(
     "--keep-databases",
     "keep the temporary databases after the run and print their names (debugging failed verifies)",
   )
@@ -195,7 +199,9 @@ program
       config,
       databaseUrl,
       ensureRoles: options.ensureRoles === true,
-      ...(options.ensureEnvironment === true ? { ensureEnvironment: true } : {}),
+      ...(options.ensureEnvironment === undefined
+        ? {}
+        : { ensureEnvironment: options.ensureEnvironment }),
       ...(options.keepDatabases === true ? { keepDatabases: true } : {}),
       from: sources.from,
       migrationPath,

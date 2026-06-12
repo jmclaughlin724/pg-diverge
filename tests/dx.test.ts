@@ -94,3 +94,14 @@ describe("stdin sources", () => {
     expect(result.stdout).toContain("ok");
   });
 });
+
+describe("verify environment flags", () => {
+  it("exposes --no-ensure-environment so the supabase-auto stub default can be disabled", () => {
+    const result = spawnSync(process.execPath, [cliPath, "verify", "--help"], {
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("--ensure-environment");
+    expect(result.stdout).toContain("--no-ensure-environment");
+  });
+});

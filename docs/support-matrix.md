@@ -37,7 +37,7 @@ With `adapter: "supabase-auto"`, objects in these platform-owned schemas are blo
 - The `auth.uid()`, `auth.role()`, `auth.jwt()`, and `auth.email()` helper functions.
 - The `cron.job` and `cron.job_run_details` tables.
 
-The stub is symmetric across both temporary databases and subtracted from the reconvergence check, so it never affects catalog parity. It is an **approximation**: other managed objects (`storage.*`, `realtime.*`, `vault.*`, `auth.identities`, `auth.sessions`, …) are not stubbed. A migration that references an un-stubbed managed object fails verify with `SUPA_VERIFY_FAILED` plus a `SUPA_VERIFY_STUB_REFERENCE` warning naming the schema — that failure may be a stub limitation rather than a real defect; re-run verify against a real Supabase database (without `--ensure-environment`) to confirm.
+The stub is symmetric across both temporary databases and subtracted from the reconvergence check, so it never affects catalog parity. It is an **approximation**: other managed objects (`storage.*`, `realtime.*`, `vault.*`, `auth.identities`, `auth.sessions`, …) are not stubbed. A migration that references an un-stubbed managed object fails verify with `SUPA_VERIFY_FAILED` plus a `SUPA_VERIFY_STUB_REFERENCE` warning naming the schema — that failure may be a stub limitation rather than a real defect; re-run verify against a real Supabase database with `--no-ensure-environment` to confirm.
 
 ## Examples
 
