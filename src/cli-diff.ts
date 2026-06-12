@@ -1,5 +1,6 @@
-import { existsSync, watch } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { watch } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
+import { mkdir, open, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Command } from "commander";
@@ -247,15 +248,27 @@ async function runDiff(
 
 async function refreshTypesFile(toSource: string, config: SupaschemaConfig): Promise<void> {
   const typesPath = resolve(process.cwd(), config.typesFile);
-  if (!existsSync(typesPath)) {
-    return;
+  let handle: FileHandle;
+  try {
+    handle = await open(typesPath, "r+");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
   }
-  const model = await extractSourceModel(toSource, { config });
-  if (hasErrors(model.diagnostics)) {
-    return;
+  try {
+    const model = await extractSourceModel(toSource, { config });
+    if (hasErrors(model.diagnostics)) {
+      return;
+    }
+    const types = await generateDatabaseTypes(model);
+    await handle.truncate(0);
+    await handle.write(types, 0);
+    process.stderr.write(`types: ${config.typesFile} refreshed from ${toSource}\n`);
+  } finally {
+    await handle.close();
   }
-  await writeFile(typesPath, await generateDatabaseTypes(model));
-  process.stderr.write(`types: ${config.typesFile} refreshed from ${toSource}\n`);
 }
 
 /**
