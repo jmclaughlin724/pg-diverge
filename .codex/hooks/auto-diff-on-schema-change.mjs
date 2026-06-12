@@ -2,10 +2,12 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const editTools = new Set(["Edit", "MultiEdit", "Write", "apply_patch"]);
 const lineageMarker = "-- supaschema: lineage ";
 const addHeader = "*** Add File: ";
+const deleteHeader = "*** Delete File: ";
 const updateHeader = "*** Update File: ";
 
 try {
@@ -13,7 +15,7 @@ try {
   const projectDir = resolve(
     (typeof payload?.cwd === "string" && payload.cwd) || process.env.CODEX_PROJECT_DIR || ".",
   );
-  const schemaPaths = readSchemaPaths(projectDir);
+  const schemaPaths = await readSchemaPaths(projectDir);
   const changed = editTargets(payload, projectDir).filter(
     (path) =>
       path.endsWith(".sql") &&
@@ -98,6 +100,8 @@ function editTargets(payload, projectDir) {
     for (const line of patch.split("\n")) {
       if (line.startsWith(addHeader)) {
         out.push(resolve(projectDir, line.slice(addHeader.length).trim()));
+      } else if (line.startsWith(deleteHeader)) {
+        out.push(resolve(projectDir, line.slice(deleteHeader.length).trim()));
       } else if (line.startsWith(updateHeader)) {
         out.push(resolve(projectDir, line.slice(updateHeader.length).trim()));
       }
@@ -118,14 +122,28 @@ function isGeneratedMigration(path) {
   }
 }
 
-function readSchemaPaths(projectDir) {
-  try {
-    const parsed = JSON.parse(readFileSync(join(projectDir, "supaschema.config.json"), "utf8"));
-    if (Array.isArray(parsed?.schemaPaths) && parsed.schemaPaths.length > 0) {
-      return parsed.schemaPaths.map(String);
+async function readSchemaPaths(projectDir) {
+  const jsonPath = join(projectDir, "supaschema.config.json");
+  if (existsSync(jsonPath)) {
+    const parsed = JSON.parse(readFileSync(jsonPath, "utf8"));
+    return schemaPathsFromConfig(parsed) ?? ["supabase/schemas"];
+  }
+  for (const file of ["supaschema.config.mjs", "supaschema.config.js"]) {
+    const path = join(projectDir, file);
+    if (!existsSync(path)) {
+      continue;
     }
-  } catch {}
+    const loaded = await import(pathToFileURL(path).href);
+    return schemaPathsFromConfig(loaded.default ?? {}) ?? ["supabase/schemas"];
+  }
   return ["supabase/schemas"];
+}
+
+function schemaPathsFromConfig(config) {
+  if (Array.isArray(config?.schemaPaths) && config.schemaPaths.length > 0) {
+    return config.schemaPaths.map(String);
+  }
+  return undefined;
 }
 
 function resolveBinary(projectDir) {

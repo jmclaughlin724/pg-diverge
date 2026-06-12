@@ -22,7 +22,7 @@ The `types` command reads your declarative schema tree and emits two output file
 
 ## Auto-run with `diff`
 
-You don't have to invoke `types` manually after every schema change. The `diff` command calls it automatically once it has finished writing a new migration file. If you prefer to disable that behaviour, set `autoTypes: false` in your config.
+You don't have to invoke `types` manually after every schema change. The `diff` command refreshes the configured `typesFile` and `zodFile` after it successfully writes a new migration file. Use `--dry-run` or `--out stdout` when you want to preview a diff without writing a migration or refreshing generated type files.
 
 ## Configuration
 

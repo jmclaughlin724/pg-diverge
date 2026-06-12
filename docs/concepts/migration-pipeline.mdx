@@ -150,7 +150,7 @@ When you run `supaschema diff`, a lot happens between reading your SQL files and
 
   ### Stage 5 — Verify
 
-  The `verify` stage is the final and strongest safety layer. It provisions a **throwaway database** (an ephemeral PostgreSQL instance that supaschema spins up and destroys), applies the migration twice, and confirms that:
+  The `verify` stage is the final and strongest safety layer. It connects to the PostgreSQL server referenced by `--database-url`, creates two temporary databases on that server, applies the migration twice, and confirms that:
 
   1. The first application succeeds without error.
   2. The second application also succeeds without error (idempotency proof).
@@ -164,7 +164,7 @@ When you run `supaschema diff`, a lot happens between reading your SQL files and
   If the second application changes the schema state — for example, because a `CREATE TABLE` was rendered without `IF NOT EXISTS` — the verify stage fails and reports exactly which objects differed between application one and application two.
 
   <Note>
-    The throwaway database used by `verify` is spun up locally via a lightweight embedded PostgreSQL binary. It requires no Docker, no shadow database configuration, and no external services. The entire verify cycle typically completes in under ten seconds.
+    `verify` needs a disposable PostgreSQL server whose role can `CREATE DATABASE`. A local Supabase stack, local PostgreSQL service, or CI service container works; supaschema creates and drops the temporary databases itself unless `--keep-databases` is set.
   </Note>
 </Steps>
 

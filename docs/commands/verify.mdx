@@ -85,7 +85,7 @@ npx supaschema verify \
 </ParamField>
 
 <ParamField path="--ensure-environment" type="boolean">
-  Stubs out Supabase-specific surfaces (extensions, helper functions, storage schema, etc.) in both temp databases so that migrations that reference Supabase internals apply cleanly. Enabled automatically when the `supabase-auto` adapter is active. Pass explicitly if you are using a generic adapter but targeting a Supabase-hosted database.
+  Stubs the minimal Supabase-managed surfaces that common schema trees reference: `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`, `auth.email()`, `cron.job`, and `cron.job_run_details`. It does not create storage, realtime, vault, identities, sessions, or extension-owned objects. Enabled automatically when the `supabase-auto` adapter is active.
 </ParamField>
 
 <ParamField path="--keep-databases" type="boolean">
@@ -93,7 +93,7 @@ npx supaschema verify \
 </ParamField>
 
 <ParamField path="--config" type="path">
-  Path to a supaschema config file. Defaults to `supaschema.config.ts` (or `.js` / `.json`) in the current working directory.
+  Path to a supaschema config file. Defaults to `supaschema.config.json`, then `supaschema.config.mjs`, then `supaschema.config.js` in the current working directory.
 </ParamField>
 
 ## Environment Variables
@@ -160,7 +160,7 @@ jobs:
 ```
 
 <Tip>
-  Pair `verify` with `diff` in the same CI job: run `diff --dry-run --out /tmp/migration.sql` first to generate the candidate migration, then pass that file to `verify --migration /tmp/migration.sql`. This proves the migration that would actually be written is safe before you commit it.
+  Pair `verify` with `diff` in the same CI job: run `diff --out /tmp/migration.sql` first to write the candidate migration, then pass that file to `verify --migration /tmp/migration.sql`. For a no-write preview, use `diff --out stdout > /tmp/migration.sql`.
 </Tip>
 
 ## Inspecting Failures

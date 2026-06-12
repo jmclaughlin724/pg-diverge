@@ -60,10 +60,13 @@ The CLI is designed to slot into existing Supabase projects without changing you
 supaschema also exposes a programmatic API for use inside build scripts, test harnesses, or custom tooling. Install the package and import the functions you need directly in your Node.js code.
 
 ```typescript theme={null}
-import { diff, check } from "supaschema";
+import { checkMigrationSql, extractSourceModel, planSchemaDiff, renderMigration } from "supaschema";
 
-const result = await diff({ from: "supabase/migrations", to: "supabase/schemas" });
-console.log(result.sql);
+const from = await extractSourceModel("git:HEAD");
+const to = await extractSourceModel("dir:supabase/schemas");
+const plan = planSchemaDiff(from, to);
+const sql = renderMigration(plan);
+const diagnostics = await checkMigrationSql(sql);
 ```
 
 ## Available Commands

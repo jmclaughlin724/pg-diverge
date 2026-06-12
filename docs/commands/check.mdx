@@ -25,7 +25,7 @@ cat migration.sql | npx supaschema check -
 ```
 
 <Note>
-  When you pass a directory, supaschema scans for all `*.sql` files within it (non-recursively). Pass `-` as the sole argument to read from standard input.
+  With no arguments, supaschema scans the configured migrations directory for `*.sql` files. Explicit arguments must be migration files, shell-expanded globs, or `-` for standard input; explicit directory arguments are not expanded.
 </Note>
 
 ## Examples

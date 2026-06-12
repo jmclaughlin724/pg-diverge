@@ -89,7 +89,7 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
   npx supaschema audit --from dir:supabase/schemas --json
   ```
 
-  The output is a table grouped by object type (tables, views, functions, triggers, policies, indexes, …) with counts and a supported/unsupported breakdown. Objects in the `unsupported` category are passed through verbatim in generated migrations rather than being diff-managed.
+  The output is a table grouped by object type (tables, views, functions, triggers, policies, indexes, …) with counts and a supported/unsupported breakdown. Unsupported DDL is fail-closed: `diff` reports `SUPA_EXTRACT_UNSUPPORTED` and stops instead of copying unsupported statements into generated migrations.
 
   Flags: `--from <source>` (required), `--json`.
 </Accordion>
@@ -169,7 +169,6 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
     "migrationsDir": "supabase/migrations",
     "typesFile": "database.types.ts",
     "zodFile": "database.zod.ts",
-    "autoTypes": true,
     "environments": {}
   }
   ```
