@@ -104,7 +104,7 @@
       "type": "string"
     },
     "normalize": {
-      "default": "off",
+      "default": "deparse",
       "type": "string",
       "enum": [
         "off",

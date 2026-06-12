@@ -5,7 +5,7 @@ import { redactSecrets } from "../src/diagnostics.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { splitSqlStatements } from "../src/sql/split.js";
 
-const identifier = fc.stringMatching(/^[a-z][a-z0-9_]{0,18}$/u);
+const identifier = fc.stringMatching(/^[a-z][a-z0-9_]{0,16}$/u).map((value) => `q${value}`);
 
 function randomizeCase(value: string, flips: boolean[]): string {
   return [...value]

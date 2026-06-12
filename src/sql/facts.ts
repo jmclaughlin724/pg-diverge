@@ -440,11 +440,19 @@ export function keywordOffset(sql: string, steps: KeywordStep[]): number | undef
   return index;
 }
 
+function isWordStartChar(char: string): boolean {
+  return (char >= "a" && char <= "z") || (char >= "A" && char <= "Z") || char === "_";
+}
+
+function isWordContinuationChar(char: string): boolean {
+  return (char >= "0" && char <= "9") || char === "$";
+}
+
 function readWord(sql: string, start: number): { end: number; text: string } | undefined {
   let end = start;
   while (end < sql.length) {
     const char = sql[end] ?? "";
-    if (!/[A-Za-z_]/.test(char) && !(end > start && /[0-9$]/.test(char))) {
+    if (!(isWordStartChar(char) || (end > start && isWordContinuationChar(char)))) {
       break;
     }
     end += 1;

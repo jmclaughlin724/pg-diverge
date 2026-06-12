@@ -12,7 +12,8 @@ async function renderCreates(
   sql: string,
   config?: { adapter?: "supabase-auto" | "postgres" },
 ): Promise<string> {
-  const extracted = await extractObjectsFromSql(sql, config ? { config } : {});
+  const spliceConfig = { normalize: "off" as const, ...config };
+  const extracted = await extractObjectsFromSql(sql, { config: spliceConfig });
   expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
   const to: SchemaModel = {
     diagnostics: [],
@@ -20,7 +21,7 @@ async function renderCreates(
     objects: extracted.objects,
     source: "test:to",
   };
-  const plan = planSchemaDiff(emptyModel(), to, config ? { config } : {});
+  const plan = planSchemaDiff(emptyModel(), to, { config: spliceConfig });
   return renderMigration(plan, { includeHeader: false });
 }
 

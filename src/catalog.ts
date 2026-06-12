@@ -13,7 +13,7 @@ import { diagnostic } from "./diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "./hash.js";
 import { suppressDefaultAclImpliedGrants } from "./source-normalize.js";
 import { finalizeObjects } from "./sql/facts.js";
-import { formatQualifiedName, quoteIdent } from "./sql/identifiers.js";
+import { formatQualifiedName, quoteIdent, stripOuterDoubleQuotes } from "./sql/identifiers.js";
 import { makeObject } from "./sql/statements.js";
 
 export interface ExtractCatalogOptions {
@@ -422,7 +422,7 @@ function normalizePolicyRoles(value: unknown): string[] {
       return trimmed
         .slice(1, -1)
         .split(",")
-        .map((role) => role.trim().replace(/^"|"$/g, ""))
+        .map((role) => stripOuterDoubleQuotes(role.trim()))
         .filter(Boolean);
     }
     return trimmed

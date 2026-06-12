@@ -32,7 +32,7 @@ describe("in-CREATE constraint decomposition", () => {
   id bigint CONSTRAINT "accounts pk" PRIMARY KEY,
   score integer CONSTRAINT score_positive CHECK (score >= 0)
 );`,
-      { config: { adapter: "postgres" }, file: "t.sql" },
+      { config: { adapter: "postgres", normalize: "off" }, file: "t.sql" },
     );
 
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);

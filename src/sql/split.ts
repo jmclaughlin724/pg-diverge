@@ -87,13 +87,30 @@ export function splitSqlStatements(sql: string): string[] {
   }
   return statements;
 }
+function isTagStartChar(char: string): boolean {
+  return (char >= "a" && char <= "z") || (char >= "A" && char <= "Z") || char === "_";
+}
+
+function isTagChar(char: string): boolean {
+  return isTagStartChar(char) || (char >= "0" && char <= "9");
+}
+
 function readDollarTag(sql: string, index: number): string | undefined {
   if (sql[index] !== "$") {
     return undefined;
   }
-  const rest = sql.slice(index);
-  const match = /^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/.exec(rest);
-  return match?.[0];
+  if (sql[index + 1] === "$") {
+    return "$$";
+  }
+  let cursor = index + 1;
+  if (!isTagStartChar(sql[cursor] ?? "")) {
+    return undefined;
+  }
+  cursor += 1;
+  while (isTagChar(sql[cursor] ?? "")) {
+    cursor += 1;
+  }
+  return sql[cursor] === "$" ? sql.slice(index, cursor + 1) : undefined;
 }
 export function splitTopLevel(input: string, separator = ","): string[] {
   const parts: string[] = [];
