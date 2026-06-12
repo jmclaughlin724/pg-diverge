@@ -28,7 +28,7 @@ async function runHook(
 }
 
 async function fixtures(): Promise<{ generated: string; handAuthored: string }> {
-  const directory = await mkdtemp(join(tmpdir(), "pgd-agent-hooks-"));
+  const directory = await mkdtemp(join(tmpdir(), "supa-agent-hooks-"));
   const generated = join(directory, "20260611000000_generated.sql");
   const handAuthored = join(directory, "20260611000001_hand.sql");
   await writeFile(generated, lineageSql);

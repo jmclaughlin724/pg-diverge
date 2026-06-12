@@ -59,8 +59,8 @@ describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
     if (!databaseUrl) {
       return;
     }
-    const role = `pgd_wave_d_role_${process.pid}`;
-    const directory = await mkdtemp(join(tmpdir(), "pgd-roles-"));
+    const role = `supa_wave_d_role_${process.pid}`;
+    const directory = await mkdtemp(join(tmpdir(), "supa-roles-"));
     const fromSql = "CREATE SCHEMA app;";
     const toSql = [
       "CREATE SCHEMA app;",
@@ -105,7 +105,7 @@ describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
 
 describe("verify remote-database guard", () => {
   it("refuses non-local hosts without SUPASCHEMA_VERIFY_ALLOW_REMOTE", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-remote-guard-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-remote-guard-"));
     await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
     await writeFile(join(directory, "to.sql"), "CREATE SCHEMA app;");
     const migrationPath = join(directory, "migration.sql");
@@ -129,7 +129,7 @@ describe.skipIf(!databaseUrl)("CLI concurrent companion file", () => {
   it("writes the .concurrent.sql companion when diffing to a file", {
     timeout: 30_000,
   }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-split-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-split-"));
     await writeFile(join(directory, "from.sql"), "CREATE TABLE app.items (id integer);");
     await writeFile(
       join(directory, "to.sql"),

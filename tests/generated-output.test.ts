@@ -102,7 +102,7 @@ describe.each(scenarios)("generated migration standards: $name", (scenario) => {
       const { tmpdir } = await import("node:os");
       const { join } = await import("node:path");
       const sql = await renderScenario(scenario);
-      const directory = await mkdtemp(join(tmpdir(), `pgd-out-${scenario.name}-`));
+      const directory = await mkdtemp(join(tmpdir(), `supa-out-${scenario.name}-`));
       const migrationPath = join(directory, "migration.sql");
       await writeFile(migrationPath, sql);
 

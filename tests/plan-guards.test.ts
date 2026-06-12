@@ -127,7 +127,7 @@ describe.skipIf(!databaseUrl)("non-idempotent migration detection", () => {
     if (!databaseUrl) {
       return;
     }
-    const directory = await mkdtemp(join(tmpdir(), "pgd-drift-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-drift-"));
     await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
     await writeFile(
       join(directory, "to.sql"),

@@ -128,7 +128,7 @@ if (excluded > 0) {
 async function fixpointApply(inputStatements) {
   const admin = new Client({ connectionString: databaseUrl });
   await admin.connect();
-  const probeDb = `pgd_fixture_build_${process.pid}`;
+  const probeDb = `supa_fixture_build_${process.pid}`;
   await admin.query(`DROP DATABASE IF EXISTS ${probeDb} WITH (FORCE)`);
   await admin.query(`CREATE DATABASE ${probeDb}`);
   const probeUrl = new URL(databaseUrl);

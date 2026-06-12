@@ -32,7 +32,7 @@ describe("lineage parsing", () => {
   });
 
   it("finds the newest lineage-bearing migration by filename order", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-lineage-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-lineage-"));
     await writeFile(
       join(directory, "0001_old.sql"),
       "-- supaschema: lineage from=a to=b\nSELECT 1;",
@@ -51,7 +51,7 @@ describe("lineage parsing", () => {
   });
 
   it("returns undefined for missing or lineage-free directories", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-lineage-empty-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-lineage-empty-"));
 
     expect(await latestLineage(directory)).toBeUndefined();
     expect(await latestLineage(join(directory, "missing"))).toBeUndefined();
@@ -65,7 +65,7 @@ describe("diff lineage chain gate", () => {
   it("blocks duplicate transitions, broken chains, and overwrites; --no-check-chain bypasses", {
     timeout: 60_000,
   }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-chain-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-chain-"));
     const first = join(directory, "0001_first.sql");
 
     const initial = await cli(["diff", "--from", fromArg, "--to", toArg, "--out", first]);

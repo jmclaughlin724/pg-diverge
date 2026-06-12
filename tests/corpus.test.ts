@@ -22,7 +22,7 @@ describe.skipIf(!databaseUrl)("corpus oracle", () => {
   });
 
   it("fails loud when the tree declares state the catalog cannot reproduce", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-corpus-dirty-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-corpus-dirty-"));
     await mkdir(join(root, "migrations"));
     await mkdir(join(root, "tree"));
     await writeFile(

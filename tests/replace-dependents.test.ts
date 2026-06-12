@@ -14,7 +14,7 @@ const dependents = [
 ].join("\n");
 
 async function modelFromSql(sql: string) {
-  const root = await mkdtemp(join(tmpdir(), "pgd-replace-deps-"));
+  const root = await mkdtemp(join(tmpdir(), "supa-replace-deps-"));
   await writeFile(join(root, "001.sql"), sql);
   return await extractSourceModel(`dir:${root}`);
 }

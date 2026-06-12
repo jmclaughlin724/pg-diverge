@@ -6,7 +6,7 @@ import { planSchemaDiff } from "../src/planner.js";
 import { extractSourceModel } from "../src/source.js";
 
 async function modelFromSql(sql: string) {
-  const root = await mkdtemp(join(tmpdir(), "pgd-normalize-"));
+  const root = await mkdtemp(join(tmpdir(), "supa-normalize-"));
   await mkdir(root, { recursive: true });
   await writeFile(join(root, "001.sql"), sql);
   return await extractSourceModel(`dir:${root}`);
@@ -185,7 +185,7 @@ describe("schema-scoped diagnostic suppression", () => {
   });
 
   it("suppresses findings outside an include scope", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-suppress-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-suppress-"));
     await writeFile(join(root, "001.sql"), sql);
     const model = await extractSourceModel(`dir:${root}`, {
       config: { schemas: { exclude: [], include: ["app"] } },
@@ -234,7 +234,7 @@ describe("rls facet identity", () => {
 
 describe("extension namespace filtering", () => {
   it("excludes extensions installed into excluded schemas", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-ext-exclude-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-ext-exclude-"));
     await writeFile(
       join(root, "001.sql"),
       "CREATE EXTENSION IF NOT EXISTS pg_graphql WITH SCHEMA graphql;\nCREATE EXTENSION IF NOT EXISTS pgmq;\nCREATE SCHEMA app;\n",
@@ -251,7 +251,7 @@ describe("extension namespace filtering", () => {
   });
 
   it("keeps schema-less extensions in scope under exclusion", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-ext-keep-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-ext-keep-"));
     await writeFile(
       join(root, "001.sql"),
       "CREATE EXTENSION IF NOT EXISTS pgmq;\nCREATE SCHEMA app;\n",

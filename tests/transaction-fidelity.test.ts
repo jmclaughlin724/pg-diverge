@@ -69,7 +69,7 @@ describe("nontransactional statement escalation", () => {
 
 describe("config model filters", () => {
   it("filters schemas and excluded grant roles from extracted models", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-filters-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-filters-"));
     await writeFile(
       join(directory, "schema.sql"),
       [
@@ -98,7 +98,7 @@ describe("config model filters", () => {
 
 describe("supabase view security_invoker", () => {
   it("warns for public views without security_invoker under supabase-auto", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-secinv-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-secinv-"));
     await writeFile(
       join(directory, "views.sql"),
       [
@@ -123,7 +123,7 @@ describe.skipIf(!databaseUrl)("transactional verify fidelity", () => {
     if (!databaseUrl) {
       return;
     }
-    const directory = await mkdtemp(join(tmpdir(), "pgd-enum-verify-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-enum-verify-"));
     const fromSql = [
       "CREATE SCHEMA app;",
       "CREATE TYPE app.mood AS ENUM ('happy', 'sad');",

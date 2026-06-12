@@ -11,7 +11,7 @@ import { migrationsStatus } from "../src/migrations-status.js";
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 async function migrationDir(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "pgd-migrations-"));
+  const root = await mkdtemp(join(tmpdir(), "supa-migrations-"));
   await writeFile(join(root, "20260101000000_one.sql"), "SELECT 1;\n");
   await writeFile(join(root, "20260102000000_two.sql"), "SELECT 2;\n");
   const lineage = lineageLine({
@@ -40,7 +40,7 @@ describe.skipIf(!databaseUrl)("migrations status (against a target)", () => {
   it("classifies applied, pending, ghost, and out-of-order versions", async () => {
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
-    const db = `pgd_migrations_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
+    const db = `supa_migrations_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
     await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
     await admin.query(`CREATE DATABASE ${db}`);
     const url = new URL(databaseUrl as string);

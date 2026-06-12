@@ -11,7 +11,7 @@ const run = promisify(execFile);
 
 describe("supabase database URL discovery", () => {
   it("reads [db] port from the nearest supabase/config.toml, walking upward", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-url-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-url-"));
     await mkdir(join(root, "supabase"), { recursive: true });
     await writeFile(
       join(root, "supabase", "config.toml"),
@@ -26,13 +26,13 @@ describe("supabase database URL discovery", () => {
   });
 
   it("returns undefined when no supabase config exists upward", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-url-none-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-url-none-"));
 
     expect(resolveSupabaseLocalDatabaseUrl(root)).toBeUndefined();
   });
 
   it("applies the Supabase default port when [db] omits it", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-url-default-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-url-default-"));
     await mkdir(join(root, "supabase"), { recursive: true });
     await writeFile(join(root, "supabase", "config.toml"), "[db]\nmajor_version = 17\n");
 
@@ -43,18 +43,18 @@ describe("supabase database URL discovery", () => {
 
   it("prefers an explicit value and supports $ENV indirection", () => {
     expect(resolveDatabaseUrl("postgresql://x@y/z")).toBe("postgresql://x@y/z");
-    process.env.PGD_URL_TEST = "postgresql://from-env@host/db";
+    process.env.SUPA_URL_TEST = "postgresql://from-env@host/db";
     try {
-      expect(resolveDatabaseUrl("$PGD_URL_TEST")).toBe("postgresql://from-env@host/db");
+      expect(resolveDatabaseUrl("$SUPA_URL_TEST")).toBe("postgresql://from-env@host/db");
     } finally {
-      delete process.env.PGD_URL_TEST;
+      delete process.env.SUPA_URL_TEST;
     }
   });
 });
 
 describe("install-time config scaffold", () => {
   it("creates supaschema.config.json in the consumer root and never overwrites", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "pgd-postinstall-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-"));
     const env = { ...process.env, INIT_CWD: consumer };
 
     await run("node", ["bin/postinstall.mjs"], { env });

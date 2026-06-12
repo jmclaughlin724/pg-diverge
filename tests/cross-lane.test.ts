@@ -93,7 +93,7 @@ describe.skipIf(!databaseUrl)("cross-lane identity parity", () => {
     const falseChanges = await collectFalseChanges(
       "tests/fixtures/parity/tree",
       [
-        `DO $pgd$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_parity_role') THEN CREATE ROLE app_parity_role NOLOGIN; END IF; END $pgd$;`,
+        `DO $supa$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_parity_role') THEN CREATE ROLE app_parity_role NOLOGIN; END IF; END $supa$;`,
       ],
       ["DROP ROLE IF EXISTS app_parity_role;"],
     );
