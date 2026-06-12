@@ -100,7 +100,7 @@ export async function finalizeObject(
     return [
       ...parsed.diagnostics,
       diagnostic(
-        "PD_OBJECT_PARSE_FAILED",
+        "SUPA_OBJECT_PARSE_FAILED",
         "error",
         `object SQL for ${object.key} did not parse; object identity fell back to text`,
         { file: object.file, ref: object.ref, statement: object.sql },

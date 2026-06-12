@@ -119,7 +119,7 @@ describe("migrations directory defaults", () => {
   });
 
   it("lists and picks the newest migration file", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pgd-defaults-"));
+    const dir = await mkdtemp(join(tmpdir(), "supa-defaults-"));
     await writeFile(join(dir, "20240101000000_one.sql"), "SELECT 1;\n");
     await writeFile(join(dir, "20250101000000_two.sql"), "SELECT 2;\n");
     await writeFile(join(dir, "notes.md"), "not sql\n");

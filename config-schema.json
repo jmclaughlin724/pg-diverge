@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "pg-diverge configuration",
+  "title": "supaschema configuration",
   "type": "object",
   "properties": {
     "$schema": {

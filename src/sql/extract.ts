@@ -4,8 +4,8 @@ import type {
   ExtractOptions,
   ObjectKind,
   ObjectRef,
-  PgDivergeConfig,
   SchemaObject,
+  SupaschemaConfig,
 } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 import type { AstStatement } from "./ast.js";
@@ -75,7 +75,7 @@ export async function extractObjectsFromSql(
     if (!diagnostics.some((item) => item.severity === "error")) {
       diagnostics.push(
         diagnostic(
-          "PD_EXTRACT_PARSER_REQUIRED",
+          "SUPA_EXTRACT_PARSER_REQUIRED",
           "error",
           "AST extraction requires the libpg-query parser",
           { file: options.file },
@@ -115,14 +115,14 @@ export async function extractObjectsFromSql(
 function parseStatement(
   statement: AstStatement,
   ordinal: number,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   file: string | undefined,
 ): ParseStatementResult {
   if (sideEffectTags.has(statement.tag)) {
     return {
       diagnostics: [
         diagnostic(
-          "PD_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
+          "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
           "error",
           "side-effect statements are not schema objects and cannot be rendered as replay-safe migrations",
           {
@@ -142,7 +142,7 @@ function parseStatement(
     return {
       diagnostics: [
         diagnostic(
-          "PD_EXTRACT_UNSUPPORTED",
+          "SUPA_EXTRACT_UNSUPPORTED",
           "error",
           `unsupported or ambiguous DDL statement (${statement.tag}): ${head}`,
           {

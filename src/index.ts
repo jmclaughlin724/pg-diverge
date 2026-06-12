@@ -2,7 +2,7 @@ export type { AuditFinding, AuditReport } from "./audit.js";
 export { auditModel, renderAuditReport } from "./audit.js";
 export { extractCatalogModel } from "./catalog.js";
 export { checkMigrationSql } from "./check.js";
-export { defaultConfig, loadConfig, pgDivergeConfigSchema, resolveConfig } from "./config.js";
+export { defaultConfig, loadConfig, resolveConfig, supaschemaConfigSchema } from "./config.js";
 export type {
   CheckOptions,
   Diagnostic,
@@ -13,12 +13,12 @@ export type {
   MigrationPlan,
   ObjectKind,
   ObjectRef,
-  PgDivergeConfig,
-  PgDivergeHints,
   RenameHint,
   RenderOptions,
   SchemaModel,
   SchemaObject,
+  SupaschemaConfig,
+  SupaschemaHints,
   TableColumn,
   VerifyMigrationOptions,
 } from "./core.js";

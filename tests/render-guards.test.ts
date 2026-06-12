@@ -45,7 +45,7 @@ describe("AST-spliced create guards", () => {
       "CREATE TABLE app.items (id integer);\nCREATE UNIQUE INDEX CONCURRENTLY items_idx ON app.items (id);",
     );
 
-    expect(sql).toContain("PD_PLAN_CONCURRENT_INDEX_UNSUPPORTED");
+    expect(sql).toContain("SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED");
     expect(sql).not.toContain("CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS items_idx");
   });
 

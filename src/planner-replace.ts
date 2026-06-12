@@ -1,8 +1,8 @@
-import type { MigrationOperation, PgDivergeConfig, SchemaObject } from "./core.js";
+import type { MigrationOperation, SchemaObject, SupaschemaConfig } from "./core.js";
 import { diagnostic } from "./diagnostics.js";
 import { stableJson } from "./hash.js";
 
-export function isDestructiveAllowed(key: string, config: PgDivergeConfig): boolean {
+export function isDestructiveAllowed(key: string, config: SupaschemaConfig): boolean {
   if (config.destructiveChanges === "allow") {
     return true;
   }
@@ -15,7 +15,7 @@ export function isDestructiveAllowed(key: string, config: PgDivergeConfig): bool
 
 export function refineReplaceOperation(
   operation: MigrationOperation,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): MigrationOperation {
   if (operation.ref.kind === "view") {
     return refineViewReplace(operation, config);
@@ -28,7 +28,7 @@ export function refineReplaceOperation(
 
 function refineViewReplace(
   operation: MigrationOperation,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): MigrationOperation {
   const before = viewColumns(operation.before);
   const after = viewColumns(operation.after);
@@ -36,7 +36,7 @@ function refineViewReplace(
     return operation;
   }
   operation.diagnostics = operation.diagnostics.filter(
-    (item) => item.code !== "PD_PLAN_VIEW_REPLACE_VERIFY_REQUIRED",
+    (item) => item.code !== "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED",
   );
   const prefixCompatible =
     after.length >= before.length && before.every((column, index) => after[index] === column);
@@ -44,7 +44,7 @@ function refineViewReplace(
     return operation;
   }
   return markDropRequired(operation, config, "viewDropRequired", {
-    code: "PD_PLAN_VIEW_REPLACE_INCOMPATIBLE",
+    code: "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE",
     hint: `Add "${operation.key}" to hints.destructive to render a guarded DROP VIEW + CREATE after review.`,
     message:
       "view replacement drops, renames, or reorders output columns; CREATE OR REPLACE VIEW cannot apply it",
@@ -53,7 +53,7 @@ function refineViewReplace(
 
 function refineRoutineReplace(
   operation: MigrationOperation,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): MigrationOperation {
   const before = routineShape(operation.before);
   const after = routineShape(operation.after);
@@ -61,7 +61,7 @@ function refineRoutineReplace(
     return operation;
   }
   return markDropRequired(operation, config, "routineDropRequired", {
-    code: "PD_PLAN_ROUTINE_RETURN_TYPE_CHANGED",
+    code: "SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED",
     hint: `Add "${operation.key}" to hints.destructive to render a guarded DROP + CREATE after review.`,
     message:
       "routine replacement changes the return type or OUT parameters; CREATE OR REPLACE cannot apply it",
@@ -70,7 +70,7 @@ function refineRoutineReplace(
 
 function markDropRequired(
   operation: MigrationOperation,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   metadataFlag: "routineDropRequired" | "viewDropRequired",
   failure: { code: string; hint: string; message: string },
 ): MigrationOperation {

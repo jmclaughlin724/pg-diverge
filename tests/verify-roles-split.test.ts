@@ -10,7 +10,7 @@ import { renderMigrationSplit } from "../src/render.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { verifyMigration } from "../src/verify.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 async function model(sql: string, source: string): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql, { config: { adapter: "postgres" } });
@@ -59,8 +59,8 @@ describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
     if (!databaseUrl) {
       return;
     }
-    const role = `pgd_wave_d_role_${process.pid}`;
-    const directory = await mkdtemp(join(tmpdir(), "pgd-roles-"));
+    const role = `supa_wave_d_role_${process.pid}`;
+    const directory = await mkdtemp(join(tmpdir(), "supa-roles-"));
     const fromSql = "CREATE SCHEMA app;";
     const toSql = [
       "CREATE SCHEMA app;",
@@ -104,8 +104,8 @@ describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
 });
 
 describe("verify remote-database guard", () => {
-  it("refuses non-local hosts without PG_DIVERGE_VERIFY_ALLOW_REMOTE", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-remote-guard-"));
+  it("refuses non-local hosts without SUPASCHEMA_VERIFY_ALLOW_REMOTE", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-remote-guard-"));
     await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
     await writeFile(join(directory, "to.sql"), "CREATE SCHEMA app;");
     const migrationPath = join(directory, "migration.sql");
@@ -119,9 +119,9 @@ describe("verify remote-database guard", () => {
     });
 
     expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0]?.code).toBe("PD_VERIFY_FAILED");
+    expect(diagnostics[0]?.code).toBe("SUPA_VERIFY_FAILED");
     expect(diagnostics[0]?.message).toContain("db.example.com");
-    expect(diagnostics[0]?.hint).toContain("PG_DIVERGE_VERIFY_ALLOW_REMOTE");
+    expect(diagnostics[0]?.hint).toContain("SUPASCHEMA_VERIFY_ALLOW_REMOTE");
   });
 });
 
@@ -129,7 +129,7 @@ describe.skipIf(!databaseUrl)("CLI concurrent companion file", () => {
   it("writes the .concurrent.sql companion when diffing to a file", {
     timeout: 30_000,
   }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-split-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-split-"));
     await writeFile(join(directory, "from.sql"), "CREATE TABLE app.items (id integer);");
     await writeFile(
       join(directory, "to.sql"),
@@ -139,7 +139,7 @@ describe.skipIf(!databaseUrl)("CLI concurrent companion file", () => {
     const { promisify } = await import("node:util");
     const run = promisify(execFile);
     const outPath = join(directory, "migration.sql");
-    const configPath = join(directory, "pg-diverge.config.json");
+    const configPath = join(directory, "supaschema.config.json");
     await writeFile(configPath, JSON.stringify({ adapter: "postgres" }));
     await run("node", [
       "dist/cli.js",

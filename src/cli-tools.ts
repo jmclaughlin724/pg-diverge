@@ -1,12 +1,12 @@
 import type { Command } from "commander";
-import type { PgDivergeConfig } from "./config.js";
+import type { SupaschemaConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { hasErrors } from "./diagnostics.js";
 import { renderDoctorReport, runDoctor } from "./doctor.js";
 import { extractSourceModel } from "./source.js";
 
 export interface ToolCommandContext {
-  loadCliConfig: () => Promise<PgDivergeConfig>;
+  loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
   resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
 }
@@ -72,30 +72,30 @@ function completionScript(shell: string, program: Command): string | undefined {
   switch (shell) {
     case "bash":
       return [
-        "_pg_diverge_completions() {",
+        "_supaschema_completions() {",
         '  if [ "$COMP_CWORD" -eq 1 ]; then',
         `    COMPREPLY=($(compgen -W "${list}" -- "\${COMP_WORDS[1]}"))`,
         "  fi",
         "}",
-        "complete -F _pg_diverge_completions pg-diverge",
+        "complete -F _supaschema_completions supaschema",
         "",
       ].join("\n");
     case "zsh":
       return [
-        "#compdef pg-diverge",
-        "_pg_diverge() {",
+        "#compdef supaschema",
+        "_supaschema() {",
         "  local -a commands",
         `  commands=(${commands.map((name) => `'${name}'`).join(" ")})`,
         "  if (( CURRENT == 2 )); then",
         "    _describe 'command' commands",
         "  fi",
         "}",
-        '_pg_diverge "$@"',
+        '_supaschema "$@"',
         "",
       ].join("\n");
     case "fish":
       return `${commands
-        .map((name) => `complete -c pg-diverge -n "__fish_use_subcommand" -a ${name}`)
+        .map((name) => `complete -c supaschema -n "__fish_use_subcommand" -a ${name}`)
         .join("\n")}\n`;
     default:
       return undefined;

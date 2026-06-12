@@ -21,7 +21,7 @@ export function resolveSupabaseLocalDatabaseUrl(cwd: string = process.cwd()): st
 
 /**
  * Database URL precedence shared by `verify`, tests, and benchmarks:
- * explicit value (supports `$ENV_NAME` indirection) > PG_DIVERGE_DATABASE_URL
+ * explicit value (supports `$ENV_NAME` indirection) > SUPASCHEMA_DATABASE_URL
  * > the local Supabase stack discovered from supabase/config.toml.
  */
 export function resolveDatabaseUrl(
@@ -39,7 +39,7 @@ export function resolveDatabaseUrl(
     }
     return explicit;
   }
-  return process.env.PG_DIVERGE_DATABASE_URL ?? resolveSupabaseLocalDatabaseUrl(cwd);
+  return process.env.SUPASCHEMA_DATABASE_URL ?? resolveSupabaseLocalDatabaseUrl(cwd);
 }
 
 function readTomlDbPort(content: string): number | undefined {

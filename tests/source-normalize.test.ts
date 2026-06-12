@@ -6,7 +6,7 @@ import { planSchemaDiff } from "../src/planner.js";
 import { extractSourceModel } from "../src/source.js";
 
 async function modelFromSql(sql: string) {
-  const root = await mkdtemp(join(tmpdir(), "pgd-normalize-"));
+  const root = await mkdtemp(join(tmpdir(), "supa-normalize-"));
   await mkdir(root, { recursive: true });
   await writeFile(join(root, "001.sql"), sql);
   return await extractSourceModel(`dir:${root}`);
@@ -84,7 +84,7 @@ describe("split privilege aggregation", () => {
       "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO PUBLIC;\nGRANT INSERT ON TABLE app.t TO PUBLIC WITH GRANT OPTION;\n",
     );
 
-    expect(errors(model).map((item) => item.code)).toContain("PD_EXTRACT_DUPLICATE_OBJECT");
+    expect(errors(model).map((item) => item.code)).toContain("SUPA_EXTRACT_DUPLICATE_OBJECT");
   });
 
   it("merges split default-privilege statements with a real default to revoke", async () => {
@@ -140,7 +140,7 @@ describe("standalone column default amendments", () => {
   it("fails closed when the amended table is missing", async () => {
     const model = await modelFromSql("ALTER TABLE app.missing ALTER COLUMN id SET DEFAULT 5;\n");
 
-    expect(errors(model).map((item) => item.code)).toContain("PD_EXTRACT_UNSUPPORTED");
+    expect(errors(model).map((item) => item.code)).toContain("SUPA_EXTRACT_UNSUPPORTED");
   });
 });
 
@@ -185,7 +185,7 @@ describe("schema-scoped diagnostic suppression", () => {
   });
 
   it("suppresses findings outside an include scope", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-suppress-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-suppress-"));
     await writeFile(join(root, "001.sql"), sql);
     const model = await extractSourceModel(`dir:${root}`, {
       config: { schemas: { exclude: [], include: ["app"] } },
@@ -204,7 +204,7 @@ describe("empty plan drift invariant", () => {
     const plan = planSchemaDiff(model, drifted);
 
     expect(plan.operations).toHaveLength(0);
-    expect(plan.diagnostics.map((item) => item.code)).toContain("PD_PLAN_EMPTY_WITH_DRIFT");
+    expect(plan.diagnostics.map((item) => item.code)).toContain("SUPA_PLAN_EMPTY_WITH_DRIFT");
   });
 
   it("stays silent for genuinely identical models", async () => {
@@ -213,7 +213,7 @@ describe("empty plan drift invariant", () => {
     const plan = planSchemaDiff(model, model);
 
     expect(plan.operations).toHaveLength(0);
-    expect(plan.diagnostics.map((item) => item.code)).not.toContain("PD_PLAN_EMPTY_WITH_DRIFT");
+    expect(plan.diagnostics.map((item) => item.code)).not.toContain("SUPA_PLAN_EMPTY_WITH_DRIFT");
   });
 });
 
@@ -234,7 +234,7 @@ describe("rls facet identity", () => {
 
 describe("extension namespace filtering", () => {
   it("excludes extensions installed into excluded schemas", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-ext-exclude-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-ext-exclude-"));
     await writeFile(
       join(root, "001.sql"),
       "CREATE EXTENSION IF NOT EXISTS pg_graphql WITH SCHEMA graphql;\nCREATE EXTENSION IF NOT EXISTS pgmq;\nCREATE SCHEMA app;\n",
@@ -251,7 +251,7 @@ describe("extension namespace filtering", () => {
   });
 
   it("keeps schema-less extensions in scope under exclusion", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-ext-keep-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-ext-keep-"));
     await writeFile(
       join(root, "001.sql"),
       "CREATE EXTENSION IF NOT EXISTS pgmq;\nCREATE SCHEMA app;\n",

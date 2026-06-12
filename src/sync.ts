@@ -2,12 +2,12 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkMigrationSql } from "./check.js";
-import type { Diagnostic, PgDivergeConfig } from "./core.js";
+import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
 import { migrationsStatus, renderMigrationsStatus } from "./migrations-status.js";
 
 export interface SyncOptions {
-  config?: Partial<PgDivergeConfig>;
+  config?: Partial<SupaschemaConfig>;
   databaseUrl?: string;
   directory: string;
   /** Apply pending migrations to the target via `supabase migration up`. */
@@ -24,12 +24,12 @@ export interface SyncResult {
 }
 
 /**
- * Auto-sync orchestration: pg-diverge gates, the Supabase CLI applies. Every
+ * Auto-sync orchestration: supaschema gates, the Supabase CLI applies. Every
  * pending migration must pass the static replay-safety check before any
  * runner executes; ghost or out-of-order history refuses outright; and
  * nothing touches a database unless `local`/`remote` was explicitly chosen —
  * the default is a dry run that prints exactly what would execute. History
- * stays runner-owned: pg-diverge never writes
+ * stays runner-owned: supaschema never writes
  * supabase_migrations.schema_migrations itself.
  */
 export async function syncMigrations(options: SyncOptions): Promise<SyncResult> {
@@ -85,7 +85,7 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
     if (exitCode !== 0) {
       diagnostics.push(
         diagnostic(
-          "PD_SYNC_RUNNER_FAILED",
+          "SUPA_SYNC_RUNNER_FAILED",
           "error",
           `\`${command} ${args.join(" ")}\` exited with code ${exitCode}`,
           { hint: "The migration runner owns apply/deploy; inspect its output above." },

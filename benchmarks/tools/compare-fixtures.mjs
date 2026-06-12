@@ -18,7 +18,7 @@ export async function discoverFixtures(fixtureRoot) {
     fixtures.push(await fixtureFromDirectory(join(fixtureRoot, entry.name), entry.name));
   }
 
-  const extraDirs = (process.env.PG_DIVERGE_COMPARE_FIXTURE_DIRS ?? "")
+  const extraDirs = (process.env.SUPASCHEMA_COMPARE_FIXTURE_DIRS ?? "")
     .split(/[,:]/)
     .map((value) => value.trim())
     .filter(Boolean);
@@ -41,8 +41,8 @@ async function fixtureFromDirectory(directory, name) {
     if (Array.isArray(config.schemas) && config.schemas.length > 0) {
       fixture.schemas = config.schemas.map(String);
     }
-    if (typeof config.pgDivergeAdapter === "string") {
-      fixture.pgDivergeAdapter = config.pgDivergeAdapter;
+    if (typeof config.supaschemaAdapter === "string") {
+      fixture.supaschemaAdapter = config.supaschemaAdapter;
     }
   } catch {}
   return fixture;

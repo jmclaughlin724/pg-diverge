@@ -67,7 +67,7 @@ export function auditModel(model: SchemaModel): AuditReport {
 
 export function renderAuditReport(report: AuditReport): string {
   const lines: string[] = [];
-  lines.push(`pg-diverge audit: ${report.source}`);
+  lines.push(`supaschema audit: ${report.source}`);
   lines.push(
     `objects modeled: ${report.totalObjects} across ${Object.keys(report.objectsBySchema).length} schema(s)`,
   );
@@ -89,6 +89,6 @@ export function renderAuditReport(report: AuditReport): string {
       lines.push(`    ${sample}`);
     }
   }
-  lines.push("run `pg-diverge explain <CODE>` for remediation guidance per code");
+  lines.push("run `supaschema explain <CODE>` for remediation guidance per code");
   return `${lines.join("\n")}\n`;
 }

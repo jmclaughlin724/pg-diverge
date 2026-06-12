@@ -83,7 +83,7 @@ export function sortOperations(
         .map((operation) => operation.key),
     );
     diagnostics.push(
-      diagnostic("PD_PLAN_DEPENDENCY_CYCLE", "error", "dependency ordering has a cycle", {
+      diagnostic("SUPA_PLAN_DEPENDENCY_CYCLE", "error", "dependency ordering has a cycle", {
         hint: traceCycle(leftover, outgoing) ?? [...leftover].join(", "),
       }),
     );

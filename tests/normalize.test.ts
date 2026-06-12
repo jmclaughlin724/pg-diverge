@@ -13,7 +13,7 @@ const tidyTree =
   "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint PRIMARY KEY, name varchar(20) DEFAULT 'x');\nCREATE INDEX IF NOT EXISTS t_name_idx ON app.t (name);\nREVOKE ALL ON SCHEMA app FROM PUBLIC;\n";
 
 async function treeDir(sql: string): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "pgd-norm-"));
+  const root = await mkdtemp(join(tmpdir(), "supa-norm-"));
   await writeFile(join(root, "001.sql"), sql);
   return root;
 }
@@ -61,7 +61,8 @@ describe("deparse round-trip proof (tier 1, always on)", () => {
     expect(
       diagnostics.filter(
         (item) =>
-          item.code === "PD_CHECK_DEPARSE_MISMATCH" || item.code === "PD_CHECK_DEPARSE_UNSUPPORTED",
+          item.code === "SUPA_CHECK_DEPARSE_MISMATCH" ||
+          item.code === "SUPA_CHECK_DEPARSE_UNSUPPORTED",
       ),
     ).toEqual([]);
     expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);

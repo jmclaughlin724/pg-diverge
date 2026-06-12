@@ -235,7 +235,7 @@ function applyColumnDefaultAmendments(
     if (!(table && shape && column && amendment)) {
       diagnostics.push(
         diagnostic(
-          "PD_EXTRACT_UNSUPPORTED",
+          "SUPA_EXTRACT_UNSUPPORTED",
           "error",
           "ALTER COLUMN DEFAULT targets a table or column not present in the source model",
           { file: marker.file, ref: marker.ref, statement: marker.sql },
@@ -292,7 +292,7 @@ function applySequenceOwnedByAmendments(
     if (!(sequence && shape && amendment)) {
       diagnostics.push(
         diagnostic(
-          "PD_EXTRACT_UNSUPPORTED",
+          "SUPA_EXTRACT_UNSUPPORTED",
           "error",
           "ALTER SEQUENCE ... OWNED BY targets a sequence not present in the source model",
           { file: marker.file, ref: marker.ref, statement: marker.sql },

@@ -84,7 +84,7 @@ const fullPrivilegeSets = new Map<string, string[]>([
 
 // PostgreSQL's built-in default ACL (acldefault): PUBLIC implicitly holds
 // EXECUTE on routines and USAGE on types/domains/languages. pg_dump only
-// dumps ACL deltas against these defaults; both pg-diverge lanes do the
+// dumps ACL deltas against these defaults; both supaschema lanes do the
 // same so an explicit grant on one object does not surface the materialized
 // default entries as drift.
 const builtinPublicDefaults = new Map<string, string[]>([

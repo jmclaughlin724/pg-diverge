@@ -7,7 +7,7 @@ import { extractSourceModel } from "../src/source.js";
 
 describe("model format versioning", () => {
   it("stamps extracted models with the current format version", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-format-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-format-"));
     await writeFile(join(directory, "schema.sql"), "CREATE TABLE app.items (id integer);");
 
     const model = await extractSourceModel(`dir:${directory}`);
@@ -16,7 +16,7 @@ describe("model format versioning", () => {
   });
 
   it("warns when a catalog snapshot has no or a different format version", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-format-snap-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-format-snap-"));
     const snapshotPath = join(directory, "catalog.json");
     await writeFile(
       snapshotPath,
@@ -25,13 +25,13 @@ describe("model format versioning", () => {
 
     const model = await extractSourceModel(`catalog:${snapshotPath}`);
 
-    expect(model.diagnostics.some((item) => item.code === "PD_CATALOG_SNAPSHOT_VERSION")).toBe(
+    expect(model.diagnostics.some((item) => item.code === "SUPA_CATALOG_SNAPSHOT_VERSION")).toBe(
       true,
     );
   });
 
   it("accepts snapshots stamped with the current format version", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-format-current-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-format-current-"));
     const snapshotPath = join(directory, "catalog.json");
     await writeFile(
       snapshotPath,

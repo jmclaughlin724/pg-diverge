@@ -1,4 +1,4 @@
-DO $pg_diverge$
+DO $supaschema$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'anon') THEN
     CREATE ROLE anon NOLOGIN NOINHERIT;
@@ -10,4 +10,4 @@ BEGIN
     CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS;
   END IF;
 END
-$pg_diverge$;
+$supaschema$;

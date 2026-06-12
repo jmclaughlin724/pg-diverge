@@ -7,7 +7,7 @@ import { resolveDatabaseUrl } from "../src/database-url.js";
 import { extractSourceModel } from "../src/source.js";
 import { verifyMigration } from "../src/verify.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 const enumHazardMigration = `SET lock_timeout = '5s';
 ALTER TYPE app.mood ADD VALUE IF NOT EXISTS 'curious';
@@ -19,7 +19,7 @@ describe("enum value same-transaction hazard", () => {
     const diagnostics = await checkMigrationSql(enumHazardMigration);
 
     const hazard = diagnostics.find(
-      (item) => item.code === "PD_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION",
+      (item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION",
     );
     expect(hazard?.severity).toBe("error");
   });
@@ -30,7 +30,7 @@ describe("enum value same-transaction hazard", () => {
     });
 
     const hazard = diagnostics.find(
-      (item) => item.code === "PD_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION",
+      (item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION",
     );
     expect(hazard?.severity).toBe("warning");
   });
@@ -41,7 +41,7 @@ describe("enum value same-transaction hazard", () => {
     );
 
     expect(
-      diagnostics.some((item) => item.code === "PD_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION"),
+      diagnostics.some((item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION"),
     ).toBe(false);
   });
 });
@@ -52,7 +52,7 @@ describe("nontransactional statement escalation", () => {
       "CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON app.items (id);",
     );
 
-    const finding = diagnostics.find((item) => item.code === "PD_CHECK_NONTRANSACTIONAL_INDEX");
+    const finding = diagnostics.find((item) => item.code === "SUPA_CHECK_NONTRANSACTIONAL_INDEX");
     expect(finding?.severity).toBe("error");
   });
 
@@ -62,14 +62,14 @@ describe("nontransactional statement escalation", () => {
       { config: { adapter: "postgres", transactionMode: "per-statement" } },
     );
 
-    const finding = diagnostics.find((item) => item.code === "PD_CHECK_NONTRANSACTIONAL_INDEX");
+    const finding = diagnostics.find((item) => item.code === "SUPA_CHECK_NONTRANSACTIONAL_INDEX");
     expect(finding?.severity).toBe("warning");
   });
 });
 
 describe("config model filters", () => {
   it("filters schemas and excluded grant roles from extracted models", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-filters-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-filters-"));
     await writeFile(
       join(directory, "schema.sql"),
       [
@@ -98,7 +98,7 @@ describe("config model filters", () => {
 
 describe("supabase view security_invoker", () => {
   it("warns for public views without security_invoker under supabase-auto", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "pgd-secinv-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-secinv-"));
     await writeFile(
       join(directory, "views.sql"),
       [
@@ -109,7 +109,7 @@ describe("supabase view security_invoker", () => {
     const checked = await extractSourceModel(`dir:${directory}`);
 
     const warnings = checked.diagnostics.filter(
-      (item) => item.code === "PD_SUPABASE_VIEW_SECURITY_INVOKER",
+      (item) => item.code === "SUPA_SUPABASE_VIEW_SECURITY_INVOKER",
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.ref?.name).toBe("exposed");
@@ -123,7 +123,7 @@ describe.skipIf(!databaseUrl)("transactional verify fidelity", () => {
     if (!databaseUrl) {
       return;
     }
-    const directory = await mkdtemp(join(tmpdir(), "pgd-enum-verify-"));
+    const directory = await mkdtemp(join(tmpdir(), "supa-enum-verify-"));
     const fromSql = [
       "CREATE SCHEMA app;",
       "CREATE TYPE app.mood AS ENUM ('happy', 'sad');",

@@ -1,13 +1,13 @@
 # Hints Guide
 
-`pg-diverge` fails closed when intent cannot be proven from the SQL parse tree. Hints are the explicit, reviewable way to state intent.
+`supaschema` fails closed when intent cannot be proven from the SQL parse tree. Hints are the explicit, reviewable way to state intent.
 
 ## Destructive changes
 
 A blocked plan looks like this:
 
 ```
-ERROR PD_PLAN_DESTRUCTIVE_HINT_REQUIRED [table:app.legacy_imports]: drop of table requires an explicit destructive-change hint
+ERROR SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED [table:app.legacy_imports]: drop of table requires an explicit destructive-change hint
   hint: Add "table:app.legacy_imports" to hints.destructive only after reviewing the migration.
 ```
 
@@ -27,7 +27,7 @@ Dropped grants render as `REVOKE`, and dropped default privileges render as the 
 
 ## Column drops and type changes
 
-When only columns change, the hinted plan renders data-preserving column ALTERs instead of replacing the table (`PD_PLAN_COLUMN_ALTER_HINT_REQUIRED`):
+When only columns change, the hinted plan renders data-preserving column ALTERs instead of replacing the table (`SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED`):
 
 - removed columns render `ALTER TABLE ... DROP COLUMN IF EXISTS`,
 - type changes render `ALTER COLUMN ... TYPE <type> USING <column>::<type>`,
@@ -37,7 +37,7 @@ Identity/generated changes and table-constraint changes fall back to the replace
 
 ## Incompatible view and routine replacements
 
-PostgreSQL rejects `CREATE OR REPLACE` when a view drops/renames/reorders output columns (`PD_PLAN_VIEW_REPLACE_INCOMPATIBLE`) or a routine changes its return type or OUT parameters (`PD_PLAN_ROUTINE_RETURN_TYPE_CHANGED`). Hinting the object key renders a guarded `DROP ... IF EXISTS` followed by the new definition. Dependent objects (views over views) must be hinted and recreated in the same plan.
+PostgreSQL rejects `CREATE OR REPLACE` when a view drops/renames/reorders output columns (`SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE`) or a routine changes its return type or OUT parameters (`SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED`). Hinting the object key renders a guarded `DROP ... IF EXISTS` followed by the new definition. Dependent objects (views over views) must be hinted and recreated in the same plan.
 
 ## Renames
 
@@ -53,10 +53,10 @@ Without a hint, a rename diffs as drop+create (destructive, blocked). Declare th
 
 The rendered SQL is a guarded `DO` block: it raises if both names exist, renames if only the old name exists, and is a no-op if the rename already happened. Rename hints:
 
-- must keep the same object kind (`PD_PLAN_RENAME_KIND_MISMATCH`),
-- must stay in the same schema (`PD_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED`),
-- support schemas, tables, sequences, indexes, functions, procedures, views, and materialized views (`PD_PLAN_RENAME_UNSUPPORTED` otherwise),
-- always carry a `PD_PLAN_RENAME_VERIFY_REQUIRED` warning — run `pg-diverge verify`.
+- must keep the same object kind (`SUPA_PLAN_RENAME_KIND_MISMATCH`),
+- must stay in the same schema (`SUPA_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED`),
+- support schemas, tables, sequences, indexes, functions, procedures, views, and materialized views (`SUPA_PLAN_RENAME_UNSUPPORTED` otherwise),
+- always carry a `SUPA_PLAN_RENAME_VERIFY_REQUIRED` warning — run `supaschema verify`.
 
 ## Object keys
 
@@ -70,7 +70,7 @@ index:app.accounts_email_idx:accounts
 grant:grant:table:app.accounts:authenticated
 ```
 
-`pg-diverge plan` prints every operation key; copy keys from there rather than constructing them by hand.
+`supaschema plan` prints every operation key; copy keys from there rather than constructing them by hand.
 
 ## Enum reordering and removal
 
@@ -85,8 +85,8 @@ DROP TYPE IF EXISTS app.mood;
 ALTER TYPE app.mood_next RENAME TO mood;
 ```
 
-Validate it with `pg-diverge check` and `pg-diverge verify` like any hand-authored migration.
+Validate it with `supaschema check` and `supaschema verify` like any hand-authored migration.
 
 ## Changes that have no hint
 
-Data backfills and `CASCADE` drops have no hint lane by design. Hand-author those migrations and validate them with `pg-diverge check` and `pg-diverge verify`.
+Data backfills and `CASCADE` drops have no hint lane by design. Hand-author those migrations and validate them with `supaschema check` and `supaschema verify`.

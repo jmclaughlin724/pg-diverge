@@ -44,7 +44,12 @@ async function parseUncached(sql: string): Promise<ParsedSqlAst> {
     if (!parser) {
       return {
         diagnostics: [
-          diagnostic("PD_PARSE_UNAVAILABLE", "warning", "libpg-query did not expose a parser", {}),
+          diagnostic(
+            "SUPA_PARSE_UNAVAILABLE",
+            "warning",
+            "libpg-query did not expose a parser",
+            {},
+          ),
         ],
       };
     }
@@ -55,7 +60,7 @@ async function parseUncached(sql: string): Promise<ParsedSqlAst> {
   } catch (error) {
     return {
       diagnostics: [
-        diagnostic("PD_PARSE_ERROR", "error", errorMessage(error), {
+        diagnostic("SUPA_PARSE_ERROR", "error", errorMessage(error), {
           statement: sql,
         }),
       ],

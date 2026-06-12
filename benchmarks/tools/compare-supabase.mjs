@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 
-let portCursor = Number(process.env.PG_DIVERGE_COMPARE_PORT_BASE ?? 55_400);
+let portCursor = Number(process.env.SUPASCHEMA_COMPARE_PORT_BASE ?? 55_400);
 
 export async function prepareSupabaseWorkdir(context, adapter, iteration) {
   if (!adapter.id.startsWith("supabase-")) {
@@ -63,5 +63,5 @@ function stableProjectId(fixtureName, adapterId, iteration) {
   for (const character of source) {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
-  return `pg-diverge-${hash.toString(36)}`;
+  return `supaschema-${hash.toString(36)}`;
 }

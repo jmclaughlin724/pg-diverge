@@ -1,6 +1,6 @@
 # Support Matrix
 
-`pg-diverge` is fail-closed: unsupported DDL blocks migration generation instead of guessing. Extraction and checking are AST-only — every statement is classified through the PostgreSQL parser, never regex.
+`supaschema` is fail-closed: unsupported DDL blocks migration generation instead of guessing. Extraction and checking are AST-only — every statement is classified through the PostgreSQL parser, never regex.
 
 | Object | Extract | Render | Notes |
 | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ With `adapter: "supabase-auto"`, objects in these platform-owned schemas are blo
 
   ```bash
   cd examples/supabase
-  npx pg-diverge diff --from dir:schemas --to dir:schemas-next --out stdout
+  npx supaschema diff --from dir:schemas --to dir:schemas-next --out stdout
   ```
 
 - `examples/postgres/schemas` demonstrates a generic PostgreSQL schema tree without Supabase-managed schema rules.

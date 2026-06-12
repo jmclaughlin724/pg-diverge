@@ -5,7 +5,7 @@ import { planSchemaDiff } from "../src/planner.js";
 import { extractSourceModel } from "../src/source.js";
 import { splitSqlStatements } from "../src/sql/split.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 const strictKinds = new Set([
   "schema",
@@ -35,7 +35,7 @@ async function collectFalseChanges(
   }
   const admin = new Client({ connectionString: databaseUrl });
   await admin.connect();
-  const databaseName = `pg_diverge_parity_${process.pid}_${Date.now().toString(16)}`;
+  const databaseName = `supaschema_parity_${process.pid}_${Date.now().toString(16)}`;
   try {
     for (const statement of prepare) {
       await admin.query(statement);
@@ -93,7 +93,7 @@ describe.skipIf(!databaseUrl)("cross-lane identity parity", () => {
     const falseChanges = await collectFalseChanges(
       "tests/fixtures/parity/tree",
       [
-        `DO $pgd$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_parity_role') THEN CREATE ROLE app_parity_role NOLOGIN; END IF; END $pgd$;`,
+        `DO $supa$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_parity_role') THEN CREATE ROLE app_parity_role NOLOGIN; END IF; END $supa$;`,
       ],
       ["DROP ROLE IF EXISTS app_parity_role;"],
     );

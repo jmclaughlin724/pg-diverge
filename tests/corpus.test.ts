@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { runCorpus } from "../src/corpus.js";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 const committedCorpus = resolve(import.meta.dirname, "../corpus/supabase-style");
 
 describe.skipIf(!databaseUrl)("corpus oracle", () => {
@@ -22,7 +22,7 @@ describe.skipIf(!databaseUrl)("corpus oracle", () => {
   });
 
   it("fails loud when the tree declares state the catalog cannot reproduce", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pgd-corpus-dirty-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-corpus-dirty-"));
     await mkdir(join(root, "migrations"));
     await mkdir(join(root, "tree"));
     await writeFile(

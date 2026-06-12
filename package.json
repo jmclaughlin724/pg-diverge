@@ -1,5 +1,5 @@
 {
-  "name": "pg-diverge",
+  "name": "supaschema",
   "version": "0.1.0",
   "description": "From declarative schema to fully synced database in milliseconds with one command. No ORM, no Docker, and no shadow database needed.",
   "type": "module",
@@ -7,14 +7,14 @@
   "author": "John McLaughlin",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jmclaughlin724/pg-diverge.git"
+    "url": "git+https://github.com/jmclaughlin724/supaschema.git"
   },
   "bugs": {
-    "url": "https://github.com/jmclaughlin724/pg-diverge/issues"
+    "url": "https://github.com/jmclaughlin724/supaschema/issues"
   },
-  "homepage": "https://github.com/jmclaughlin724/pg-diverge#readme",
+  "homepage": "https://github.com/jmclaughlin724/supaschema#readme",
   "bin": {
-    "pg-diverge": "bin/pg-diverge"
+    "supaschema": "bin/supaschema"
   },
   "exports": {
     ".": {

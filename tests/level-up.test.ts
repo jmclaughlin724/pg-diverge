@@ -11,10 +11,10 @@ import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
 import { verifyMigration } from "../src/verify.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 async function modelFromSql(sql: string) {
-  const root = await mkdtemp(join(tmpdir(), "pgd-levelup-"));
+  const root = await mkdtemp(join(tmpdir(), "supa-levelup-"));
   await mkdir(root, { recursive: true });
   await writeFile(join(root, "001.sql"), sql);
   return await extractSourceModel(`dir:${root}`);
@@ -39,7 +39,7 @@ describe("audit report", () => {
 
     expect(report.supported).toBe(false);
     const codes = report.findings.map((finding) => finding.code);
-    expect(codes).toContain("PD_EXTRACT_SIDE_EFFECT_UNSUPPORTED");
+    expect(codes).toContain("SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED");
     expect(report.findings[0]?.samples[0]).toContain("DO $$");
   });
 });
@@ -77,7 +77,7 @@ describe("foreign data wrapper tier", () => {
     const plan = planSchemaDiff(from, to);
 
     expect(plan.diagnostics.map((item) => item.code)).toContain(
-      "PD_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+      "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
     );
   });
 });
@@ -86,9 +86,9 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
   it("applies auth/cron-dependent trees against bare temporary databases", async () => {
     const treeSql =
       "CREATE SCHEMA app;\nCREATE TABLE app.notes (id bigint PRIMARY KEY, owner_id uuid);\nALTER TABLE app.notes ENABLE ROW LEVEL SECURITY;\nCREATE POLICY notes_owner ON app.notes FOR SELECT TO authenticated USING (owner_id = auth.uid());\nCREATE VIEW app.cron_health WITH (security_invoker = true) AS SELECT jobid, status FROM cron.job_run_details;\n";
-    const root = await mkdtemp(join(tmpdir(), "pgd-envpack-"));
+    const root = await mkdtemp(join(tmpdir(), "supa-envpack-"));
     await writeFile(join(root, "001.sql"), treeSql);
-    const migration = join(await mkdtemp(join(tmpdir(), "pgd-envpack-mig-")), "noop.sql");
+    const migration = join(await mkdtemp(join(tmpdir(), "supa-envpack-mig-")), "noop.sql");
     await writeFile(migration, "SET lock_timeout = '5s';\n");
 
     const diagnostics = await verifyMigration({
@@ -106,16 +106,16 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
   it("fails fast with a capability diagnostic for a NOCREATEDB role", async () => {
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
-    const role = `pgd_nocreate_${process.pid}`;
+    const role = `supa_nocreate_${process.pid}`;
     await admin.query(`DROP ROLE IF EXISTS ${role}`);
-    await admin.query(`CREATE ROLE ${role} LOGIN PASSWORD 'pgd-test' NOCREATEDB`);
+    await admin.query(`CREATE ROLE ${role} LOGIN PASSWORD 'supa-test' NOCREATEDB`);
     try {
       const url = new URL(databaseUrl as string);
       url.username = role;
-      url.password = "pgd-test";
-      const root = await mkdtemp(join(tmpdir(), "pgd-preflight-"));
+      url.password = "supa-test";
+      const root = await mkdtemp(join(tmpdir(), "supa-preflight-"));
       await writeFile(join(root, "001.sql"), "CREATE SCHEMA app;\n");
-      const migration = join(await mkdtemp(join(tmpdir(), "pgd-preflight-mig-")), "noop.sql");
+      const migration = join(await mkdtemp(join(tmpdir(), "supa-preflight-mig-")), "noop.sql");
       await writeFile(migration, "SET lock_timeout = '5s';\n");
 
       const diagnostics = await verifyMigration({
@@ -125,7 +125,7 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
         to: `dir:${root.replaceAll("\\", "/")}`,
       });
 
-      expect(diagnostics.map((item) => item.code)).toContain("PD_VERIFY_ROLE_CAPABILITY");
+      expect(diagnostics.map((item) => item.code)).toContain("SUPA_VERIFY_ROLE_CAPABILITY");
     } finally {
       await admin.query(`DROP ROLE IF EXISTS ${role}`);
       await admin.end();
@@ -135,14 +135,14 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
 
 describe.skipIf(!databaseUrl)("bootstrap ordering proof", () => {
   it("creates the full real-shape tree from empty and verifies catalog parity", async () => {
-    const emptyRoot = await mkdtemp(join(tmpdir(), "pgd-empty-"));
+    const emptyRoot = await mkdtemp(join(tmpdir(), "supa-empty-"));
     const tree = "dir:tests/fixtures/realshape/tree";
     const from = await extractSourceModel(`dir:${emptyRoot.replaceAll("\\", "/")}`);
     const to = await extractSourceModel(tree);
     const plan = planSchemaDiff(from, to);
     expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
     const rendered = renderMigration(plan);
-    const migration = join(await mkdtemp(join(tmpdir(), "pgd-bootstrap-mig-")), "bootstrap.sql");
+    const migration = join(await mkdtemp(join(tmpdir(), "supa-bootstrap-mig-")), "bootstrap.sql");
     await writeFile(migration, rendered);
 
     expect(await checkMigrationSql(rendered)).toEqual([]);

@@ -69,7 +69,7 @@ export async function extractCatalogModel(options: ExtractCatalogOptions): Promi
   } catch (error) {
     return {
       diagnostics: [
-        diagnostic("PD_CATALOG_EXTRACT_FAILED", "error", errorMessage(error), {
+        diagnostic("SUPA_CATALOG_EXTRACT_FAILED", "error", errorMessage(error), {
           hint: "Confirm the database URL is reachable and the role can read pg_catalog.",
         }),
       ],

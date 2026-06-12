@@ -10,7 +10,7 @@ import {
 } from "./cli-defaults.js";
 import type { SummaryTone } from "./cli-tools.js";
 import { colorizeSummaryLine } from "./cli-tools.js";
-import type { PgDivergeConfig } from "./config.js";
+import type { SupaschemaConfig } from "./config.js";
 import type { Diagnostic, MigrationPlan, SchemaModel } from "./core.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
 import { latestLineage } from "./lineage.js";
@@ -34,7 +34,7 @@ type DiffOptions = PlanCommandOptions & {
 
 export interface DiffCommandContext {
   cliVersion: string;
-  loadCliConfig: () => Promise<PgDivergeConfig>;
+  loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
   resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
 }
@@ -73,7 +73,7 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
     .option("--fail-on-diff", "exit with code 3 when the plan contains operations (CI drift gate)")
     .option(
       "--no-check-chain",
-      "skip the lineage chain gate against pending pg-diverge migrations in the output directory",
+      "skip the lineage chain gate against pending supaschema migrations in the output directory",
     )
     .option(
       "--summary",
@@ -106,7 +106,7 @@ type WithSources<T> = T & { from: string; to: string };
 
 async function withSourceDefaults<T extends PlanCommandOptions>(
   options: T,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   context: DiffCommandContext,
 ): Promise<WithSources<T>> {
   const resolved = await resolveSourceDefaults(options, config, () =>
@@ -120,7 +120,7 @@ async function withSourceDefaults<T extends PlanCommandOptions>(
 
 async function runDiff(
   options: WithSources<DiffOptions>,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   context: DiffCommandContext,
 ): Promise<void> {
   const plan = await buildPlan(options, config);
@@ -218,9 +218,9 @@ async function runDiff(
       if (error instanceof Error && "code" in error && error.code === "EEXIST") {
         context.printDiagnostics([
           diagnostic(
-            "PD_DIFF_OUTPUT_EXISTS",
+            "SUPA_DIFF_OUTPUT_EXISTS",
             "error",
-            "the output migration file already exists; pg-diverge never overwrites migrations",
+            "the output migration file already exists; supaschema never overwrites migrations",
             {
               file: outPath,
               hint: "Choose a new --out path or --name, or remove the stale file.",
@@ -249,7 +249,7 @@ async function runDiff(
  */
 async function watchDiff(
   options: WithSources<DiffOptions>,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   context: DiffCommandContext,
 ): Promise<void> {
   const watchedDirs = [options.from, options.to]
@@ -305,7 +305,7 @@ async function watchDiff(
 
 async function buildPlan(
   options: WithSources<PlanCommandOptions>,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): Promise<MigrationPlan> {
   const extractStart = performance.now();
   const from = filterModel(await extractSourceModel(options.from, { config }), options.schema);
@@ -357,9 +357,9 @@ async function checkLineageChain(plan: MigrationPlan, directory: string): Promis
   if (latest.from === plan.fromFingerprint && latest.to === plan.toFingerprint) {
     return [
       diagnostic(
-        "PD_DIFF_LINEAGE_DUPLICATE",
+        "SUPA_DIFF_LINEAGE_DUPLICATE",
         "error",
-        "a pending pg-diverge migration already covers this exact from/to transition",
+        "a pending supaschema migration already covers this exact from/to transition",
         {
           file: latest.file,
           hint: "Apply or remove the pending migration, or pass --no-check-chain to bypass.",
@@ -370,9 +370,9 @@ async function checkLineageChain(plan: MigrationPlan, directory: string): Promis
   if (latest.to !== plan.fromFingerprint) {
     return [
       diagnostic(
-        "PD_DIFF_LINEAGE_BROKEN",
+        "SUPA_DIFF_LINEAGE_BROKEN",
         "error",
-        "the plan's from-state does not continue the newest pending pg-diverge migration",
+        "the plan's from-state does not continue the newest pending supaschema migration",
         {
           file: latest.file,
           hint: `Pending migration ends at model ${latest.to.slice(0, 12)}… but this plan starts from ${plan.fromFingerprint.slice(0, 12)}…; diff from the post-migration state (e.g. --from database:<applied-db>) or pass --no-check-chain.`,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MigrationPlan, PgDivergeConfig, SchemaModel } from "../src/core.js";
+import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../src/core.js";
 import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
@@ -13,7 +13,7 @@ async function model(sql: string, source: string): Promise<SchemaModel> {
 async function diff(
   fromSql: string,
   toSql: string,
-  config?: Partial<PgDivergeConfig>,
+  config?: Partial<SupaschemaConfig>,
 ): Promise<MigrationPlan> {
   const from = await model(fromSql, "test:from");
   const to = await model(toSql, "test:to");
@@ -36,7 +36,7 @@ describe("column-level alter lane", () => {
     expect(operation?.kind).toBe("alter");
     expect(operation?.blocked).toBe(true);
     expect(
-      operation?.diagnostics.some((item) => item.code === "PD_PLAN_COLUMN_ALTER_HINT_REQUIRED"),
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED"),
     ).toBe(true);
   });
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 
-const lineageMarker = "-- pg-diverge: lineage ";
+const lineageMarker = "-- supaschema: lineage ";
 const editTools = new Set(["Edit", "MultiEdit", "Write"]);
 
 try {
@@ -22,9 +22,9 @@ try {
     process.exit(0);
   }
   process.stderr.write(
-    `${filePath} is a pg-diverge-generated migration (lineage marker present). ` +
+    `${filePath} is a supaschema-generated migration (lineage marker present). ` +
       "Do not hand-edit it: change the declarative schema tree, delete this file if it is stale, " +
-      "and regenerate with `pg-diverge diff`. See .claude/rules/pg-diverge.md.\n",
+      "and regenerate with `supaschema diff`. See .claude/rules/supaschema.md.\n",
   );
   process.exit(2);
 } catch {

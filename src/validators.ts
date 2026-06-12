@@ -32,7 +32,7 @@ export async function runConfiguredValidators(
     return [];
   }
   const diagnostics: Diagnostic[] = [];
-  const tempRoot = await mkdtemp(join(tmpdir(), "pg-diverge-"));
+  const tempRoot = await mkdtemp(join(tmpdir(), "supaschema-"));
   const tempFile = join(tempRoot, "migration.sql");
   try {
     await writeFile(tempFile, sql);
@@ -40,7 +40,7 @@ export async function runConfiguredValidators(
       const spec = validatorSpec(validator);
       if (!spec) {
         diagnostics.push(
-          diagnostic("PD_VALIDATOR_UNKNOWN", "error", `unknown validator "${validator}"`, {
+          diagnostic("SUPA_VALIDATOR_UNKNOWN", "error", `unknown validator "${validator}"`, {
             hint: "Supported validators: internal-parser, squawk, squawk-cli, pgls, postgres-language-server, sqlfluff, pg-formatter.",
           }),
         );
@@ -96,13 +96,13 @@ async function runValidator(
   } catch (error) {
     if (isMissingExecutable(error)) {
       return [
-        diagnostic("PD_VALIDATOR_UNAVAILABLE", "error", `validator "${name}" is not available`, {
+        diagnostic("SUPA_VALIDATOR_UNAVAILABLE", "error", `validator "${name}" is not available`, {
           hint: `Install the validator or remove "${name}" from validators.`,
         }),
       ];
     }
     return [
-      diagnostic("PD_VALIDATOR_FAILED", "error", `validator "${name}" reported diagnostics`, {
+      diagnostic("SUPA_VALIDATOR_FAILED", "error", `validator "${name}" reported diagnostics`, {
         hint: commandOutput(error),
       }),
     ];

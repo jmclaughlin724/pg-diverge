@@ -7,9 +7,9 @@ import { resolveConfig } from "./config.js";
 import type {
   Diagnostic,
   ExtractOptions,
-  PgDivergeConfig,
   SchemaModel,
   SchemaObject,
+  SupaschemaConfig,
 } from "./core.js";
 import { diagnostic } from "./diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "./hash.js";
@@ -42,7 +42,7 @@ export async function extractSourceModel(
 async function extractRawModel(
   source: string,
   cwd: string,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): Promise<SchemaModel> {
   if (source.startsWith("catalog:")) {
     return readCatalogSource(source.slice("catalog:".length), cwd, source);
@@ -79,8 +79,8 @@ async function extractRawModel(
 }
 
 const schemaScopedDiagnosticCodes = new Set([
-  "PD_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
-  "PD_EXTRACT_UNSUPPORTED",
+  "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
+  "SUPA_EXTRACT_UNSUPPORTED",
 ]);
 
 export function filterModelBySchemas(model: SchemaModel, schemas: Set<string>): SchemaModel {
@@ -104,7 +104,7 @@ export function filterModelBySchemas(model: SchemaModel, schemas: Set<string>): 
   };
 }
 
-function applyConfigModelFilters(model: SchemaModel, config: PgDivergeConfig): SchemaModel {
+function applyConfigModelFilters(model: SchemaModel, config: SupaschemaConfig): SchemaModel {
   let current = model;
   if (config.schemas.include.length > 0) {
     current = filterModelBySchemas(current, new Set(config.schemas.include));
@@ -170,12 +170,12 @@ async function readCatalogSource(path: string, cwd: string, source: string): Pro
   if (raw.formatVersion !== MODEL_FORMAT_VERSION) {
     diagnostics.push(
       diagnostic(
-        "PD_CATALOG_SNAPSHOT_VERSION",
+        "SUPA_CATALOG_SNAPSHOT_VERSION",
         "warning",
-        `catalog snapshot model version ${raw.formatVersion ?? "unknown"} does not match this pg-diverge model version ${MODEL_FORMAT_VERSION}`,
+        `catalog snapshot model version ${raw.formatVersion ?? "unknown"} does not match this supaschema model version ${MODEL_FORMAT_VERSION}`,
         {
           file: fullPath,
-          hint: "Object hashes are version-specific; regenerate the snapshot with `pg-diverge inspect` to avoid false replacements.",
+          hint: "Object hashes are version-specific; regenerate the snapshot with `supaschema inspect` to avoid false replacements.",
         },
       ),
     );
@@ -194,7 +194,7 @@ async function readCatalogSource(path: string, cwd: string, source: string): Pro
 async function modelFromSqlFiles(
   files: SqlFile[],
   source: string,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): Promise<SchemaModel> {
   const extractedObjects: SchemaObject[] = [];
   const diagnostics: Diagnostic[] = [];
@@ -293,7 +293,7 @@ function duplicateKeyDiagnostics(objects: SchemaObject[]): Diagnostic[] {
     const previous = seen.get(object.key);
     if (previous) {
       diagnostics.push(
-        diagnostic("PD_EXTRACT_DUPLICATE_OBJECT", "error", "duplicate object identity", {
+        diagnostic("SUPA_EXTRACT_DUPLICATE_OBJECT", "error", "duplicate object identity", {
           file: object.file,
           hint: `first seen in ${previous.file ?? "unknown source"}`,
           ref: object.ref,
