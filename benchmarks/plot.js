@@ -42,21 +42,28 @@ for (const fixture of fixtures) {
   const latencyPath = join(outputDir, `${fixture}-latency.svg`);
   const correctnessPath = join(outputDir, `${fixture}-correctness.svg`);
   const resultsPath = join(outputDir, `${fixture}-results.json`);
-  await writeFile(latencyPath, renderLatencySvg(measuredRows, fixture, environments), "utf8");
-  await writeFile(correctnessPath, renderCorrectnessSvg(diffRows, fixture, environments), "utf8");
+  if (measuredRows.length > 0) {
+    await writeFile(latencyPath, renderLatencySvg(measuredRows, fixture, environments), "utf8");
+    await writeFile(correctnessPath, renderCorrectnessSvg(diffRows, fixture, environments), "utf8");
+    written.push(latencyPath, correctnessPath);
+  }
   await writeFile(
     resultsPath,
     `${JSON.stringify({ environments, fixture, results: rows }, null, 2)}\n`,
     "utf8",
   );
-  written.push(latencyPath, correctnessPath, resultsPath);
+  written.push(resultsPath);
 }
-if (fixtures.length > 1) {
+const measuredDiffResults = diffResults.filter((item) => !item.skipped && !item.unsupported);
+if (fixtures.length > 1 && measuredDiffResults.length > 0) {
   const scalingPath = join(outputDir, "scaling-latency.svg");
   await writeFile(scalingPath, renderScalingSvg(diffResults, fixtures, environments), "utf8");
   written.push(scalingPath);
 }
-if (fixtures.length > 1 && workflowResults.length > 0) {
+const measuredWorkflowResults = workflowResults.filter(
+  (item) => !item.skipped && !item.unsupported,
+);
+if (fixtures.length > 1 && measuredWorkflowResults.length > 0) {
   const workflowPath = join(outputDir, "workflow-latency.svg");
   await writeFile(
     workflowPath,

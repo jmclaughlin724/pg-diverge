@@ -35,6 +35,11 @@ if (spec.genTypes) {
 function run(step) {
   return new Promise((resolveRun, rejectRun) => {
     const child = spawn(step.command, step.args, { stdio: ["ignore", "pipe", "pipe"] });
+    const forward = (signal) => () => child.kill(signal);
+    const onTerm = forward("SIGTERM");
+    const onInt = forward("SIGINT");
+    process.on("SIGTERM", onTerm);
+    process.on("SIGINT", onInt);
     let stdout = "";
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
@@ -44,9 +49,14 @@ function run(step) {
     child.stderr.on("data", (chunk) => {
       process.stderr.write(chunk);
     });
-    child.on("error", rejectRun);
+    const finish = (handler) => (value) => {
+      process.removeListener("SIGTERM", onTerm);
+      process.removeListener("SIGINT", onInt);
+      handler(value);
+    };
+    child.on("error", finish(rejectRun));
     child.on("close", (exitCode) => {
-      resolveRun({ exitCode: exitCode ?? 1, stdout });
+      finish(resolveRun)({ exitCode: exitCode ?? 1, stdout });
     });
   });
 }

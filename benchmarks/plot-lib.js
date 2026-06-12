@@ -42,7 +42,7 @@ export function isSupaschema(label) {
 }
 
 export function isWorkflow(label) {
-  return label.includes("workflow");
+  return label.endsWith("-workflow");
 }
 
 export function logTicks(minMs, maxMs) {

@@ -199,6 +199,8 @@ function supabaseWorkflowAdapter(id, engineFlag) {
         diff: { args: diffArgs, command: supabaseBinary },
         genTypes: {
           args: [
+            "--workdir",
+            context.runRoot,
             "gen",
             "types",
             "--lang=typescript",
