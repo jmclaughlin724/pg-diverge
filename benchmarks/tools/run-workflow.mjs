@@ -19,6 +19,7 @@ if (diff.exitCode !== 0) {
 if (spec.applyDatabaseUrl) {
   const migrationSql = await readFile(spec.migrationPath, "utf8");
   if (migrationSql.trim()) {
+    process.stderr.write("workflow: applying migration\n");
     await applyMigrationSql(spec.applyDatabaseUrl, migrationSql);
   }
 }
@@ -34,10 +35,24 @@ if (spec.genTypes) {
 
 function run(step) {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(step.command, step.args, { stdio: ["ignore", "pipe", "pipe"] });
-    const forward = (signal) => () => child.kill(signal);
-    const onTerm = forward("SIGTERM");
-    const onInt = forward("SIGINT");
+    const child = spawn(step.command, step.args, {
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const killChild = (signal) => {
+      if (process.platform !== "win32" && child.pid) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {
+          child.kill(signal);
+          return;
+        }
+      }
+      child.kill(signal);
+    };
+    const onTerm = () => killChild("SIGTERM");
+    const onInt = () => killChild("SIGINT");
     process.on("SIGTERM", onTerm);
     process.on("SIGINT", onInt);
     let stdout = "";

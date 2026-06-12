@@ -172,7 +172,10 @@ function supabaseWorkflowAdapter(id, engineFlag) {
     resolveBinary: resolveSupabaseBinary,
     retryDelayMs: 2_000,
     retryOnFailure(execution) {
-      return execution.stderr.includes("Address already in use");
+      return (
+        execution.stderr.includes("Address already in use") &&
+        !execution.stderr.includes("workflow: applying migration")
+      );
     },
     async command(context) {
       const supabaseBinary = await resolveSupabaseBinary();
