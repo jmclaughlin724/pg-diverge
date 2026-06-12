@@ -1,3 +1,8 @@
+---
+title: "Configuration"
+description: "Configuration options, defaults, environments, validators, and examples for supaschema."
+---
+
 # Configuration Reference
 
 `supaschema` looks for config in this order:

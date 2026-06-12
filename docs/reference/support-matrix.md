@@ -1,3 +1,8 @@
+---
+title: "Support matrix"
+description: "The PostgreSQL object types supaschema extracts, renders, checks, and intentionally blocks."
+---
+
 # Support Matrix
 
 `supaschema` is fail-closed: unsupported DDL blocks migration generation instead of guessing. Extraction and checking are AST-only — every statement is classified through the PostgreSQL parser, never regex.
@@ -28,6 +33,16 @@
 ## Supabase Adapter
 
 With `adapter: "supabase-auto"`, objects in these platform-owned schemas are blocked: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
+
+## Verify Environment Stub
+
+`verify --ensure-environment` (the default under `adapter: "supabase-auto"`) provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that *references* managed schemas can apply against bare PostgreSQL:
+
+- `auth.users` with the stable GoTrue column set (`id`, `aud`, `role`, `email`, `phone`, `raw_app_meta_data`, `raw_user_meta_data`, `last_sign_in_at`, `is_anonymous`, …).
+- The `auth.uid()`, `auth.role()`, `auth.jwt()`, and `auth.email()` helper functions.
+- The `cron.job` and `cron.job_run_details` tables.
+
+The stub is symmetric across both temporary databases and subtracted from the reconvergence check, so it never affects catalog parity. It is an **approximation**: other managed objects (`storage.*`, `realtime.*`, `vault.*`, `auth.identities`, `auth.sessions`, …) are not stubbed. A migration that references an un-stubbed managed object fails verify with `SUPA_VERIFY_FAILED` plus a `SUPA_VERIFY_STUB_REFERENCE` warning naming the schema — that failure may be a stub limitation rather than a real defect; re-run verify against a real Supabase database (without `--ensure-environment`) to confirm.
 
 ## Examples
 

@@ -1,0 +1,180 @@
+---
+title: "supaschema types: Generate TypeScript Types from Schema"
+description: "types generates Supabase-compatible TypeScript interfaces and Zod validators directly from your schema files — no database connection required."
+---
+
+# supaschema types: Generate TypeScript Types from Schema
+
+> types generates Supabase-compatible TypeScript interfaces and Zod validators directly from your schema files — no database connection required.
+
+The `types` command reads your declarative schema tree and emits two output files: a `database.types.ts` file containing Supabase-compatible TypeScript interfaces, and a `database.zod.ts` file containing matching Zod validators. Because supaschema parses your schema files directly, you never need a live database connection to regenerate your types — your schema files are the source of truth.
+
+## How it works
+
+`supaschema types` walks the schema source you point it at (by default the directories listed under `schemaPaths` in your config), builds an in-memory model of every table, view, enum, and composite type, then writes two files:
+
+* **`database.types.ts`** — the same shape that the Supabase CLI's `gen types typescript` command produces, so it drops in as a direct replacement. It exports a `Database` interface you pass directly to `createClient<Database>`.
+* **`database.zod.ts`** — a matching set of Zod schemas derived from the same model, one schema per table row type, ready to use in API handlers and form validation.
+
+<Note>
+  You do not need a running database. `types` is a pure static analysis step — it never opens a connection. Run it in CI after linting your schema files, before your build step.
+</Note>
+
+## Auto-run with `diff`
+
+You don't have to invoke `types` manually after every schema change. The `diff` command calls it automatically once it has finished writing a new migration file. If you prefer to disable that behaviour, set `autoTypes: false` in your config.
+
+## Configuration
+
+Two config keys control where the output files land:
+
+| Key         | Default             | Description                               |
+| ----------- | ------------------- | ----------------------------------------- |
+| `typesFile` | `database.types.ts` | Output path for the TypeScript types file |
+| `zodFile`   | `database.zod.ts`   | Output path for the Zod validators file   |
+
+Both paths are resolved relative to the directory that contains your `supaschema.config.json`.
+
+## Flags
+
+<ParamField path="--from" type="string">
+  The schema source to parse. Accepts the same source specifiers as `diff` and `inspect` — for example `dir:supabase/schemas` or `git:HEAD`. Defaults to the first entry in `schemaPaths` from your config file.
+</ParamField>
+
+<ParamField path="--out" type="path | stdout">
+  Override the output path for the TypeScript types file, or pass `stdout` to print the types directly to standard output. When `--out stdout` is used, the Zod validators file is not written. Overrides `typesFile` from config.
+</ParamField>
+
+<ParamField path="--config" type="string">
+  Path to a `supaschema.config.json` file. Defaults to `supaschema.config.json` in the current working directory.
+</ParamField>
+
+## Usage
+
+```bash theme={null}
+# Generate types from the schema source in your config
+npx supaschema types
+
+# Point at a specific schema directory
+npx supaschema types --from dir:supabase/schemas
+
+# Write the TypeScript types to a custom path
+npx supaschema types --out src/lib/database.types.ts
+
+# Print the TypeScript types to stdout (Zod file not written)
+npx supaschema types --out stdout
+
+# Use a non-default config file
+npx supaschema types --config config/supaschema.config.json
+```
+
+## Example output
+
+Given a `profiles` table and an `order_status` enum in your schema, the generated `database.types.ts` looks like this:
+
+```typescript theme={null}
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string
+          username: string
+          avatar_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          username: string
+          avatar_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          username?: string
+          avatar_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+    }
+    Views: {}
+    Functions: {}
+    Enums: {
+      order_status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled"
+    }
+    CompositeTypes: {}
+  }
+}
+```
+
+The companion `database.zod.ts` exports a matching Zod schema for each row type:
+
+```typescript theme={null}
+import { z } from "zod"
+
+export const ProfileRowSchema = z.object({
+  id: z.string().uuid(),
+  username: z.string(),
+  avatar_url: z.string().nullable(),
+  updated_at: z.string().nullable(),
+})
+
+export type ProfileRow = z.infer<typeof ProfileRowSchema>
+
+export const OrderStatusSchema = z.enum([
+  "pending",
+  "confirmed",
+  "shipped",
+  "delivered",
+  "cancelled",
+])
+```
+
+## Integrating with the Supabase client
+
+Pass the generated `Database` type to `createClient` and every query you write becomes fully type-checked:
+
+```typescript theme={null}
+import { createClient } from "@supabase/supabase-js"
+import type { Database } from "./database.types"
+
+const supabase = createClient<Database>(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+)
+
+// TypeScript now knows the shape of every table
+const { data, error } = await supabase
+  .from("profiles")
+  .select("id, username, avatar_url")
+
+// data is inferred as Array<{ id: string; username: string; avatar_url: string | null }>
+```
+
+<Tip>
+  Commit `database.types.ts` and `database.zod.ts` to version control alongside your schema files. That way every pull request carries the type changes that correspond to its migration, and reviewers can see the impact of a schema change without running any commands.
+</Tip>
+
+## Keeping types in sync in CI
+
+Add a `types` step after your schema lint step and before your build:
+
+```yaml theme={null}
+# Example GitHub Actions step
+- name: Generate types
+  run: npx supaschema types
+
+- name: Check for uncommitted type drift
+  run: git diff --exit-code database.types.ts database.zod.ts
+```
+
+If the working tree is dirty after regenerating, the diff step fails and surfaces the mismatch before it reaches a reviewer.

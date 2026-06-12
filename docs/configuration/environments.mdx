@@ -1,0 +1,53 @@
+---
+title: "Environments and Database URLs"
+description: "How supaschema resolves database URLs — named environments, $ENV indirection, SUPASCHEMA_DATABASE_URL, and supabase/config.toml discovery."
+---
+
+# Environments and Database URLs
+
+> Every command resolves its database URL the same way: explicit flag, then a named `environments` entry, then `SUPASCHEMA_DATABASE_URL`, then the local Supabase stack discovered from `supabase/config.toml`.
+
+Commands that read a live catalog (`diff --from database:...`, `verify`, `migrations`, `sync`, `doctor`) need a database URL. You rarely have to spell one out: supaschema resolves it from the most explicit source available.
+
+## Resolution order
+
+1. **An explicit value** — the `--database-url` flag or a `database:<url>` source. The value supports `$ENV_NAME` indirection: pass `$STAGING_DB` and supaschema reads the URL from that environment variable, failing loudly if it is unset.
+2. **A named environment** — the global `--env <name>` flag looks up `environments.<name>.databaseUrl` in the config. These values support the same `$ENV_NAME` indirection.
+3. **`SUPASCHEMA_DATABASE_URL`** — the environment variable, when set.
+4. **The local Supabase stack** — the nearest `supabase/config.toml` (searched upward from the working directory) supplies the local URL from its `[db] port`. This is why a plain `npx supaschema diff` works in a Supabase project with the stack running.
+
+<Note>
+  `supabase/config.toml` is read only to discover the local database URL — never for schema paths. Schema locations come from `schemaPaths` in `supaschema.config.json`.
+</Note>
+
+## Named environments
+
+Define targets once in `supaschema.config.json` and select them per run with `--env`:
+
+```json
+{
+  "environments": {
+    "staging": { "databaseUrl": "$STAGING_DB" },
+    "production": { "databaseUrl": "$PRODUCTION_DB" }
+  }
+}
+```
+
+```bash
+supaschema --env staging diff --fail-on-diff   # drift gate against staging
+supaschema --env staging migrations            # reconcile files vs staging history
+```
+
+Keeping the actual URLs in environment variables (`$STAGING_DB`) means the committed config carries no credentials — the recommended pattern for CI and for teams.
+
+<Warning>
+  Do not hard-code connection strings in scripts, config, or CI. Use `$ENV_NAME` indirection or `SUPASCHEMA_DATABASE_URL`, and inject the secret from your CI provider's secret store.
+</Warning>
+
+## Remote targets and `verify`
+
+`verify` creates and drops throwaway databases, so it refuses non-local hosts unless you explicitly opt in with `SUPASCHEMA_VERIFY_ALLOW_REMOTE=1`. The role it connects with must have `CREATEDB`; a capability preflight fails fast when it does not.
+
+## Diagnosing resolution
+
+`supaschema doctor` prints which resolution lane produced the URL, whether the database is reachable, and whether the role has `CREATEDB` — the first stop when a command can't find or reach a database. Diagnostics redact credentials (URL passwords, JWTs, secrets) before printing.

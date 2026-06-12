@@ -1,0 +1,46 @@
+---
+title: "Benchmarks"
+description: "Latency, accuracy, and replay-safety results for supaschema compared with Supabase CLI diff engines."
+---
+
+# Benchmarks
+
+The benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. Every generated migration is applied once, applied a second time, and compared against the target catalog.
+
+Reference run: 2026-06-12 on Apple Silicon, Node 24, PostgreSQL 17.6, and Supabase CLI 2.106.0.
+
+## Speed and accuracy
+
+At 1,000 tables (~7,000 objects), `supaschema` against each of the five Supabase CLI engines — median diff latency, accuracy (F1 vs a ground-truth change manifest), and whether the migration survives a second apply:
+
+![supaschema vs every Supabase CLI engine at 1,000 tables — latency bars, F1 accuracy, and replay-safety](/benchmarks/head-to-head-xl.svg)
+
+The gap widens with scale. At 2,500 tables (~17,500 objects) the engines cross three minutes while `supaschema` stays around three seconds — still scoring F1 `1.000`, while every engine still drops the same policy and still fails the second apply:
+
+![supaschema vs every Supabase CLI engine at 2,500 tables — latency bars, F1 accuracy, and replay-safety](/benchmarks/head-to-head-xxl.svg)
+
+## Full workflow
+
+The diff is only half the loop. Getting a migration **and** regenerated types is one `supaschema diff` — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
+
+![Full workflow at 1,000 tables — supaschema's migration + regenerated types in one command vs db diff + apply + gen types per engine](/benchmarks/head-to-head-workflow-xl.svg)
+
+## Accuracy
+
+Diff output is scored two ways: **F1** against a ground-truth change manifest by object identity, and the **catalog fingerprint** — the generated migration is applied to a throwaway database and the result is compared to the target. `supaschema` scores F1 `1.000` on every manifest-carrying fixture (the generated `realistic`/`xl`/`xxl` set) in file, live-database, and full-workflow modes. The compared Supabase engines score `0.982-0.999` and miss the same RLS policy change — and on that fixture each engine's migration also fails the fingerprint check, so the miss is confirmed objectively, not just by the rubric.
+
+## Replay safety
+
+![XL fixture correctness](/benchmarks/xl-correctness.svg)
+
+Every compared engine reaches the target catalog after one apply. Only `supaschema` also succeeds on the second apply for every fixture; the other engines emit unguarded column and index changes that fail when a migration is retried.
+
+## Reproduce
+
+Run the benchmark harness from this repository:
+
+```bash
+npm run benchmark
+```
+
+The harness and comparison utilities live in the repository's `benchmarks/` directory.

@@ -15,7 +15,7 @@ supaschema generates deterministic, replay-safe PostgreSQL/Supabase migrations f
 - Verification must match the runner: keep `transactionMode: "per-migration"` for `supabase db push`-style runners. Run `supaschema check` always and `supaschema verify` before merge when a database is reachable.
 - Respect the lineage chain gate. When `diff` refuses with `SUPA_DIFF_LINEAGE_BROKEN` or `SUPA_DIFF_LINEAGE_DUPLICATE`, regenerate from the post-migration state (`--from database:<applied db>`); `--no-check-chain` is for explicit human-approved bypasses only.
 - Database URLs are never hard-coded: flag (`$ENV` supported) > named `config.environments` entry via `--env` > `SUPASCHEMA_DATABASE_URL` > auto-discovery from the nearest `supabase/config.toml`.
-- `supaschema explain <CODE>` decodes any `SUPA_*` diagnostic offline; `docs/hints.md` has recovery steps for blocked plans.
+- `supaschema explain <CODE>` decodes any `SUPA_*` diagnostic offline; `docs/configuration/hints.md` has recovery steps for blocked plans.
 
 ## Common Commands
 

@@ -1,0 +1,248 @@
+---
+title: "Schema Sources: How supaschema Reads Your Schema"
+description: "supaschema reads schemas from SQL files on disk, Git refs, a live database, SQL dump files, or saved catalog snapshots. No Docker or shadow database required."
+---
+
+# Schema Sources: How supaschema Reads Your Schema
+
+> supaschema reads schemas from SQL files on disk, Git refs, a live database, SQL dump files, or saved catalog snapshots. No Docker or shadow database required.
+
+Every supaschema command that computes a diff needs two inputs: a **from** source (the current state) and a **to** source (the desired state). A source is any representation of a PostgreSQL schema that supaschema can parse into a SchemaModel. You select sources using the `--from` and `--to` flags, each accepting a typed URI in the form `<prefix>:<location>`. This document covers every available source type, when to reach for each one, and which `--from`/`--to` combinations suit common workflows.
+
+## Source Reference
+
+<CardGroup cols={2}>
+  <Card title="Directory" icon="folder-open">
+    **Syntax:** `dir:supabase/schemas`
+
+    SQL files on disk. The default `--to` source for most commands. supaschema recursively reads every `.sql` file in the specified path.
+  </Card>
+
+  <Card title="Git ref" icon="code-branch">
+    **Syntax:** `git:HEAD`, `git:origin/main`, `git:abc1234`
+
+    Schema at any committed Git ref. supaschema checks out the `schemaPaths` files at that ref without touching your working tree.
+  </Card>
+
+  <Card title="Live database" icon="database">
+    **Syntax:** `database:$DATABASE_URL`
+
+    Read-only introspection of a live PostgreSQL connection. Never writes to the database.
+  </Card>
+
+  <Card title="SQL dump" icon="file-arrow-down">
+    **Syntax:** `dump:path/to/schema.sql`, `dump:-`
+
+    A single SQL file, or standard input (`-`). Useful for one-off analysis of `pg_dump` output.
+  </Card>
+
+  <Card title="Catalog snapshot" icon="camera">
+    **Syntax:** `catalog:path/to/snapshot.json`
+
+    A JSON file produced by `supaschema inspect`. Lets you compare against a saved point-in-time without a live database.
+  </Card>
+</CardGroup>
+
+***
+
+## `dir:` — SQL Files on Disk
+
+The `dir:` source is the backbone of the declarative workflow. supaschema walks the given directory, parses every `.sql` file it finds, and assembles a SchemaModel from all the `CREATE` statements inside.
+
+```bash theme={null}
+supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas
+```
+
+**When to use it:**
+
+* Local development — your schema files live in the repository alongside your application code.
+* Any command where the desired state is what you have currently checked out.
+
+<Tip>
+  You can specify multiple schema directories using the `schemaPaths` key in `supaschema.config.json` for project-wide defaults so you don't have to type the path on every command.
+</Tip>
+
+### Directory layout example
+
+```
+supabase/
+└── schemas/
+    ├── tables/
+    │   ├── users.sql
+    │   ├── orders.sql
+    │   └── products.sql
+    ├── functions/
+    │   └── place_order.sql
+    └── policies/
+        └── orders_rls.sql
+```
+
+supaschema does not care about subdirectories or file names — it reads everything recursively and merges the results into one SchemaModel.
+
+***
+
+## `git:` — Schema at a Git Ref
+
+The `git:` source lets supaschema read the `schemaPaths` files as they exist at any Git commit, branch, or tag — without modifying your working tree or requiring a database connection.
+
+```bash theme={null}
+# Compare the current working tree against the main branch
+supaschema diff --from git:origin/main --to dir:supabase/schemas
+
+# Compare two branches against each other
+supaschema diff --from git:origin/main --to git:feature/add-subscriptions
+```
+
+**When to use it:**
+
+* **CI pull request checks** — generate the migration that would be produced by merging this branch, and fail the pipeline if it contains unreviewed destructive operations.
+* **Release diffs** — quickly see what changed between two tagged versions.
+* **Code review** — produce a human-readable SQL diff alongside the file diff in your PR.
+
+<Note>
+  supaschema resolves `git:` refs against the repository that contains your `schemaPaths`. The working directory must be inside a Git repository, and the ref must be reachable (fetched). For remote refs like `git:origin/main`, run `git fetch` first in your CI step.
+</Note>
+
+### CI pipeline example
+
+```yaml theme={null}
+# .github/workflows/migration-check.yml
+- name: Check migration safety
+  run: |
+    supaschema diff \
+      --from git:origin/main \
+      --to dir:supabase/schemas \
+      --dry-run \
+      --fail-on-diff
+```
+
+***
+
+## `database:` — Live Database Introspection
+
+The `database:` source connects to a running PostgreSQL instance, queries the system catalogs (`pg_class`, `pg_attribute`, `information_schema`, etc.), and builds a SchemaModel from what is actually deployed. The connection is **read-only** — supaschema never executes DDL against a `database:` source.
+
+```bash theme={null}
+# Generate a migration from live DB to your local schema files
+supaschema diff \
+  --from database:$DATABASE_URL \
+  --to dir:supabase/schemas
+
+# Detect drift: compare live DB against the last saved snapshot
+supaschema diff \
+  --from database:$DATABASE_URL \
+  --to catalog:snapshots/last-deploy.json
+```
+
+**When to use it:**
+
+* **Initial onboarding** — you have an existing database and want to generate your first declarative schema files.
+* **Drift detection** — check whether someone has made out-of-band changes directly on the server.
+* **Generating a migration from scratch** — when you have no prior snapshot, the live database is the most authoritative "from" state.
+
+<Warning>
+  The `DATABASE_URL` you pass is used for introspection only. supaschema does not cache credentials or send them anywhere. However, treat this URL as a secret — pass it via environment variable rather than hard-coding it in scripts that end up in version control.
+</Warning>
+
+### Connection string formats
+
+```bash theme={null}
+# Standard PostgreSQL URL
+database:postgresql://user:password@host:5432/dbname
+
+# Supabase pooler URL (transaction mode)
+database:postgresql://postgres.abcxyz:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+
+# Via environment variable
+database:$DATABASE_URL
+```
+
+***
+
+## `dump:` — SQL Dump File
+
+The `dump:` source treats a single SQL file — such as the output of `pg_dump --schema-only` — as a schema source. You can point it at a file path or pass `-` to read from standard input.
+
+```bash theme={null}
+# Analyse a pg_dump file
+supaschema diff \
+  --from dump:backups/prod-schema-2024-06-01.sql \
+  --to dir:supabase/schemas
+
+# Pipe pg_dump directly
+pg_dump --schema-only $PROD_URL | supaschema diff --from dump:- --to dir:supabase/schemas
+```
+
+**When to use it:**
+
+* **One-off analysis** — you received a schema dump from a client or legacy system and want to diff it against your current declarative files.
+* **Audit trails** — archive periodic `pg_dump` snapshots and compare them over time.
+* **Offline workflows** — you have a dump but no live connection to the source database.
+
+<Note>
+  `dump:` sources accept the full `pg_dump --schema-only` output format, including `SET` statements and `pg_catalog` preambles. supaschema filters these automatically and focuses on user-defined objects.
+</Note>
+
+***
+
+## `catalog:` — Saved Catalog Snapshot
+
+A catalog snapshot is the JSON output of `supaschema inspect`. It captures a SchemaModel — including the fingerprint — at a specific point in time. You can save it to a file and reference it later as a source.
+
+```bash theme={null}
+# Save a snapshot after a successful deployment
+supaschema inspect --from database:$DATABASE_URL > snapshots/post-deploy.json
+
+# Later: check if the live DB has drifted from that snapshot
+supaschema diff \
+  --from database:$DATABASE_URL \
+  --to catalog:snapshots/post-deploy.json
+```
+
+**When to use it:**
+
+* **Drift detection without a second live connection** — store the post-deploy snapshot in your repo and compare against it in CI instead of needing credentials to a second environment.
+* **Reproducible comparisons** — a `catalog:` file is deterministic and version-controllable, unlike a live database connection.
+* **Debugging** — share a `catalog:` file with a teammate so they can reproduce a diff locally without access to your database.
+
+```json theme={null}
+// snapshots/post-deploy.json (abbreviated)
+{
+  "fingerprint": "e7b4a1d3f2c9...",
+  "capturedAt": "2024-06-01T14:32:00Z",
+  "objects": [
+    {
+      "kind": "table",
+      "schema": "public",
+      "name": "orders",
+      "hash": "a3f9c2..."
+    }
+  ]
+}
+```
+
+***
+
+## Common `--from` / `--to` Combinations
+
+The table below summarises the most useful source pairings and the workflow each one powers.
+
+| Scenario                | `--from`                 | `--to`                               | Purpose                                                        |
+| ----------------------- | ------------------------ | ------------------------------------ | -------------------------------------------------------------- |
+| Local development       | `database:$LOCAL_URL`    | `dir:supabase/schemas`               | Generate a migration from your local DB to edited schema files |
+| PR safety check (CI)    | `git:origin/main`        | `dir:supabase/schemas`               | Diff the branch against the base without a database            |
+| Deploy to production    | `database:$PROD_URL`     | `dir:supabase/schemas`               | Generate a migration targeting the live production database    |
+| Drift detection         | `database:$PROD_URL`     | `catalog:snapshots/last-deploy.json` | Detect out-of-band changes on the server                       |
+| Onboarding existing DB  | `database:$DATABASE_URL` | `dir:supabase/schemas`               | Bootstrap declarative files from a live database               |
+| Cross-branch comparison | `git:origin/main`        | `git:feature/my-branch`              | Preview the migration a merge would produce                    |
+| Analyse a legacy dump   | `dump:legacy-schema.sql` | `dir:supabase/schemas`               | Diff a dump file against your current schema                   |
+
+<Tip>
+  For most teams, the `--from` source defaults to the live database URL (discovered from `supabase/config.toml` in Supabase projects, or set via the `SUPASCHEMA_DATABASE_URL` environment variable), while `--to` defaults to `dir:supabase/schemas`. You can encode both in `supaschema.config.json` using `schemaPaths` so that every `diff` command picks them up automatically:
+
+  ```json theme={null}
+  {
+    "schemaPaths": ["supabase/schemas"]
+  }
+  ```
+</Tip>

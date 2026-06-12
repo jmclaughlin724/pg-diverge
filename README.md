@@ -155,7 +155,7 @@ Every engine's migration applies once and reaches the target catalog. Only supas
 | `migrations` | Files on disk vs a database's applied history: applied, pending, ghosts, out-of-order |
 | `sync` | Gate pending migrations, then optionally drive the Supabase CLI (`--local` / `--remote`) |
 | `audit` | Coverage report for adopting an existing schema |
-| `corpus` / `selfcheck` | The engine's own correctness oracles ([docs/corpus.md](docs/corpus.md)) |
+| `corpus` / `selfcheck` | The engine's own correctness oracles ([docs/guides/corpus-oracle.md](docs/guides/corpus-oracle.md)) |
 | `doctor` / `init` / `completion` / `explain` | Setup diagnosis · config scaffold · shell completions · offline diagnostic decoder |
 
 Defaults: `--from` is the database (falling back to `git:HEAD`), `--to` is the schema tree, and output lands in the migrations directory — paths set by `schemaPaths` and `migrationsDir` in the config. Full flags: [docs/commands.md](docs/commands.md). Exit codes: `0` ok · `1` runtime error · `2` diagnostic errors · `3` drift found.
@@ -178,7 +178,7 @@ Either side of a diff can be any of these — generating a diff never creates a 
 - Renames come only from `hints.renames`. `CASCADE` is never emitted. Idempotency is required, not optional.
 - Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) are never treated as schema changes, and unsupported DDL produces a blocking diagnostic instead of passing through.
 - Diagnostics redact credentials (URL passwords, JWTs, secrets).
-- Recovery steps for blocked plans: [docs/hints.md](docs/hints.md) · config reference: [docs/config.md](docs/config.md).
+- Recovery steps for blocked plans: [docs/configuration/hints.md](docs/configuration/hints.md) · config reference: [docs/configuration/config-file.md](docs/configuration/config-file.md).
 
 ## AI Agents
 
@@ -216,11 +216,11 @@ import {
 
 ## Scope and Stability
 
-Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes, sequences, functions/procedures, views/materialized views, triggers, RLS, policies, grants/default privileges, foreign data wrappers, comments. Deliberate non-goals (partitioning, publications, event triggers, collations) fail closed with diagnostics ([support matrix](docs/support-matrix.md)). Pre-1.0: pin an exact version in CI. Worked Supabase and plain-PostgreSQL setups live in `examples/`.
+Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes, sequences, functions/procedures, views/materialized views, triggers, RLS, policies, grants/default privileges, foreign data wrappers, comments. Deliberate non-goals (partitioning, publications, event triggers, collations) fail closed with diagnostics ([support matrix](docs/reference/support-matrix.md)). Pre-1.0: pin an exact version in CI. Worked Supabase and plain-PostgreSQL setups live in `examples/`.
 
 ## Documentation
 
-[commands](docs/commands.md) · [config](docs/config.md) · [hints & recovery](docs/hints.md) · [CI recipes](docs/ci.md) · [CI gate & paid tier](docs/ci-gate.md) · [diagnostics](docs/diagnostics.md) · [support matrix](docs/support-matrix.md) · [corpus oracle](docs/corpus.md) · [case study](docs/case-study-anilize.md) · [benchmark harness](benchmarks/README.md)
+[commands](docs/commands.md) · [config](docs/configuration/config-file.md) · [hints & recovery](docs/configuration/hints.md) · [CI recipes](docs/guides/ci-github-actions.md) · [CI gate & paid tier](docs/guides/ci-gate.md) · [diagnostics](docs/reference/diagnostics.md) · [support matrix](docs/reference/support-matrix.md) · [corpus oracle](docs/guides/corpus-oracle.md) · [case study](docs/case-study-anilize.md) · [benchmark harness](benchmarks/README.md)
 
 ## Development
 
