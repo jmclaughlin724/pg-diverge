@@ -9,7 +9,8 @@ supaschema generates deterministic, replay-safe PostgreSQL/Supabase migrations f
 ## Invariants
 
 - Migrations are generated, never hand-authored. Schema intent changes in the declarative tree (`supabase/schemas/**` or the project's tree); `supaschema diff` renders the migration.
-- A `.sql` file containing the `-- supaschema: lineage` marker is a generated artifact. Never edit it by hand — change the source tree and regenerate. Hooks in both agent runtimes block such edits.
+- A `.sql` file containing the `-- supaschema: lineage` marker is a generated artifact. Never edit it by hand — change the source tree and regenerate. The PreToolUse hook blocks such edits in both agent runtimes.
+- The bundle also wires a PostToolUse hook in both runtimes: a write to a schema-tree `.sql` file auto-runs `supaschema diff` then `supaschema check` and returns the generated migration name, or the blocking `SUPA_*` diagnostic, as context. Treat that as the authoritative diff result and act on any reported code; the hook generates and proves but never applies to a database.
 - Destructive intent is explicit. Drops, column type changes, and PostgreSQL-incompatible replacements stay blocked until the exact object key is added to `hints.destructive` after review. Never add `"*"` to committed config.
 - Verification must match the runner: keep `transactionMode: "per-migration"` for `supabase db push`-style runners. Run `supaschema check` always and `supaschema verify` before merge when a database is reachable.
 - Respect the lineage chain gate. When `diff` refuses with `SUPA_DIFF_LINEAGE_BROKEN` or `SUPA_DIFF_LINEAGE_DUPLICATE`, regenerate from the post-migration state (`--from database:<applied db>`); `--no-check-chain` is for explicit human-approved bypasses only.

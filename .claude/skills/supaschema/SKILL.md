@@ -9,6 +9,8 @@ description: Generate, check, and verify replay-safe PostgreSQL/Supabase migrati
 
 This skill is a direct execution contract for producing schema migrations with supaschema. Follow the workflow in order; do not hand-author migration SQL for changes the declarative tree can express, and never edit a generated migration (the `-- supaschema: lineage` marker) by hand.
 
+When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`), a write to a schema-tree `.sql` file auto-runs steps 2–3 — `diff` then `check` — and returns the generated migration name, or the blocking `SUPA_*` diagnostic, as context. Read that context as the diff result and act on any reported code. The commands below are the same workflow for CI, hand runs, `verify`, and any step the hook reports as blocked; the hook never applies to a database.
+
 ## Workflow
 
 1. **Edit the declarative tree** (`supabase/schemas/**` or the project's configured tree) to express the desired end state. Use schema-qualified object names.
