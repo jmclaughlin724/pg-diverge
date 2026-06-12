@@ -19,14 +19,50 @@ export async function preflightCapability(admin: Client): Promise<Diagnostic | u
   );
 }
 
+// The stub mirrors the stable GoTrue auth.users column set so that RLS
+// policies, foreign keys, and views referencing auth.users columns
+// (role, email, phone, raw_app_meta_data, ...) resolve during verify
+// instead of failing with a false-negative undefined-column error. auth
+// is a managed schema, so user trees only reference it; a wider stub is
+// pure reference-resolution benefit and is subtracted from reconvergence.
 export const supabaseEnvironmentStubSql = `
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS auth.users (
+  instance_id uuid,
   id uuid PRIMARY KEY,
-  email text,
+  aud varchar(255),
+  role varchar(255),
+  email varchar(255),
+  encrypted_password varchar(255),
+  email_confirmed_at timestamptz,
+  invited_at timestamptz,
+  confirmation_token varchar(255),
+  confirmation_sent_at timestamptz,
+  recovery_token varchar(255),
+  recovery_sent_at timestamptz,
+  email_change_token_new varchar(255),
+  email_change varchar(255),
+  email_change_sent_at timestamptz,
+  last_sign_in_at timestamptz,
   raw_app_meta_data jsonb,
   raw_user_meta_data jsonb,
-  created_at timestamptz DEFAULT now()
+  is_super_admin boolean,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz,
+  phone text,
+  phone_confirmed_at timestamptz,
+  phone_change text,
+  phone_change_token varchar(255),
+  phone_change_sent_at timestamptz,
+  confirmed_at timestamptz,
+  email_change_token_current varchar(255),
+  email_change_confirm_status smallint,
+  banned_until timestamptz,
+  reauthentication_token varchar(255),
+  reauthentication_sent_at timestamptz,
+  is_sso_user boolean DEFAULT false,
+  deleted_at timestamptz,
+  is_anonymous boolean DEFAULT false
 );
 CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid

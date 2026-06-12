@@ -55,6 +55,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
   const migrationDb = tempDatabaseName("migration");
   const targetDb = tempDatabaseName("target");
   const created: string[] = [];
+  const environmentEnsured = options.ensureEnvironment ?? config.adapter === "supabase-auto";
   try {
     await admin.connect();
     const capability = await preflightCapability(admin);
@@ -76,7 +77,6 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
         );
       }
     }
-    const environmentEnsured = options.ensureEnvironment ?? config.adapter === "supabase-auto";
     if (environmentEnsured) {
       // Stubs land in both databases, so catalog parity is unaffected.
       await applySql(migrationUrl, supabaseEnvironmentStubSql, "per-statement");
@@ -144,11 +144,27 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
       );
     }
   } catch (error) {
+    const message = errorMessage(error);
     diagnostics.push(
-      diagnostic("SUPA_VERIFY_FAILED", "error", errorMessage(error), {
+      diagnostic("SUPA_VERIFY_FAILED", "error", message, {
         hint: "Use a disposable PostgreSQL database URL whose role can CREATE DATABASE and DROP DATABASE.",
       }),
     );
+    const stubbedSchema = environmentEnsured
+      ? managedSchemaReferenced(message, config.managedSchemas)
+      : undefined;
+    if (stubbedSchema !== undefined) {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_VERIFY_STUB_REFERENCE",
+          "warning",
+          `verify failed while referencing the "${stubbedSchema}" managed schema, which --ensure-environment provisions only as a minimal stub`,
+          {
+            hint: `--ensure-environment stubs auth.users (the GoTrue column set), the auth.uid/role/jwt/email helpers, and the cron tables; other ${stubbedSchema} objects are absent. This may be a stub limitation rather than a real migration defect — re-run verify against a real Supabase database (without --ensure-environment) to confirm.`,
+          },
+        ),
+      );
+    }
   } finally {
     if (options.keepDatabases === true && created.length > 0) {
       diagnostics.push(
@@ -284,4 +300,14 @@ function errorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function managedSchemaReferenced(message: string, managedSchemas: string[]): string | undefined {
+  const lower = message.toLowerCase();
+  for (const schema of managedSchemas) {
+    if (lower.includes(`${schema.toLowerCase()}.`)) {
+      return schema;
+    }
+  }
+  return undefined;
 }

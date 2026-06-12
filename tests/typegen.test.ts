@@ -152,6 +152,21 @@ describe("review-hardened typegen", () => {
   });
 });
 
+const overloadedSql = `CREATE SCHEMA app;
+CREATE FUNCTION app.f(a integer) RETURNS integer LANGUAGE sql AS $$ SELECT a $$;
+CREATE FUNCTION app.f(a text) RETURNS text LANGUAGE sql AS $$ SELECT a $$;
+`;
+
+describe("overloaded function typegen", () => {
+  it("unions every overload instead of silently keeping the first", async () => {
+    const types = await typesFor(overloadedSql);
+
+    expect(types).toContain(
+      "f: { Args: { a: number } | { a: string }; Returns: number | string };",
+    );
+  });
+});
+
 describe("zod schema generation", () => {
   async function zodFor(sql: string): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "supa-zodgen-"));

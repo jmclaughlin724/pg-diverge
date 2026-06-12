@@ -9,6 +9,7 @@ import { planSchemaDiff } from "../src/planner.js";
 import { renderMigrationSplit } from "../src/render.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { verifyMigration } from "../src/verify.js";
+import { supabaseEnvironmentStubSql } from "../src/verify-environment.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
@@ -100,6 +101,109 @@ describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
       });
       await admin.end();
     }
+  });
+});
+
+describe("verify environment stub surface", () => {
+  it("stubs the stable GoTrue auth.users column set so references resolve", () => {
+    for (const column of [
+      "role varchar",
+      "email varchar",
+      "phone text",
+      "raw_app_meta_data jsonb",
+      "raw_user_meta_data jsonb",
+      "last_sign_in_at timestamptz",
+      "is_anonymous boolean",
+    ]) {
+      expect(supabaseEnvironmentStubSql).toContain(column);
+    }
+  });
+});
+
+describe.skipIf(!databaseUrl)("verify managed-schema stub", () => {
+  it("flags a failure referencing an un-stubbed managed schema", {
+    timeout: 60_000,
+  }, async () => {
+    if (!databaseUrl) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), "supa-stub-storage-"));
+    const policy =
+      "CREATE POLICY items_select ON app.items FOR SELECT TO public USING (EXISTS (SELECT 1 FROM storage.objects));";
+    await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
+    await writeFile(
+      join(directory, "to.sql"),
+      [
+        "CREATE SCHEMA app;",
+        "CREATE TABLE app.items (id integer);",
+        "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY;",
+        policy,
+      ].join("\n"),
+    );
+    const migrationPath = join(directory, "migration.sql");
+    await writeFile(
+      migrationPath,
+      [
+        "CREATE TABLE IF NOT EXISTS app.items (id integer);",
+        "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY;",
+        "DROP POLICY IF EXISTS items_select ON app.items;",
+        policy,
+      ].join("\n"),
+    );
+    const diagnostics = await verifyMigration({
+      config: { adapter: "supabase-auto" },
+      databaseUrl,
+      ensureEnvironment: true,
+      from: `dump:${join(directory, "from.sql")}`,
+      migrationPath,
+      to: `dump:${join(directory, "to.sql")}`,
+    });
+    const stub = diagnostics.find((item) => item.code === "SUPA_VERIFY_STUB_REFERENCE");
+    expect(stub).toBeDefined();
+    expect(stub?.message).toContain("storage");
+  });
+});
+
+describe.skipIf(!databaseUrl)("verify policy subquery reconvergence", () => {
+  it("converges a policy whose subquery references its own relation", {
+    timeout: 60_000,
+  }, async () => {
+    if (!databaseUrl) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), "supa-policy-subq-"));
+    const policy =
+      "CREATE POLICY items_sel ON app.items FOR SELECT TO public USING (id IN (SELECT item_id FROM app.members));";
+    await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
+    await writeFile(
+      join(directory, "to.sql"),
+      [
+        "CREATE SCHEMA app;",
+        "CREATE TABLE app.members (item_id integer);",
+        "CREATE TABLE app.items (id integer);",
+        "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY;",
+        policy,
+      ].join("\n"),
+    );
+    const migrationPath = join(directory, "migration.sql");
+    await writeFile(
+      migrationPath,
+      [
+        "CREATE TABLE IF NOT EXISTS app.members (item_id integer);",
+        "CREATE TABLE IF NOT EXISTS app.items (id integer);",
+        "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY;",
+        "DROP POLICY IF EXISTS items_sel ON app.items;",
+        policy,
+      ].join("\n"),
+    );
+    const diagnostics = await verifyMigration({
+      config: { adapter: "postgres" },
+      databaseUrl,
+      from: `dump:${join(directory, "from.sql")}`,
+      migrationPath,
+      to: `dump:${join(directory, "to.sql")}`,
+    });
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
   });
 });
 
