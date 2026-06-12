@@ -56,18 +56,14 @@ jobs:
         run: |
           tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
           echo "PG_DIVERGE_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
-      - name: Smoke global tarball install
+      - name: Smoke npx from tarball
         run: |
-          prefix="$(mktemp -d)"
-          npm install -g --prefix "$prefix" "$PG_DIVERGE_TARBALL"
-          "$prefix/bin/pg-diverge" --version
-          "$prefix/bin/pg-diverge" diff \
+          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge --version
+          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge diff \
             --from dir:tests/fixtures/basic/from \
             --to dir:tests/fixtures/basic/to \
             --out "$RUNNER_TEMP/smoke.sql"
-          "$prefix/bin/pg-diverge" check "$RUNNER_TEMP/smoke.sql"
-      - name: Smoke npx from tarball
-        run: npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge --version
+          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge check "$RUNNER_TEMP/smoke.sql"
 
   check-os:
     # Path handling and git: sources without a database; DB-gated tests skip.
