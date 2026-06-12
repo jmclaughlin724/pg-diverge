@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractSourceModel } from "../src/source.js";
 import { generateDatabaseTypes } from "../src/typegen.js";
+import { generateZodSchemas } from "../src/typegen-zod.js";
 
 const treeSql = `CREATE SCHEMA app;
 CREATE TYPE app.status AS ENUM ('draft', 'active');
@@ -82,5 +83,41 @@ describe("database type generation", () => {
     expect(types).toContain('status: ["draft", "active"],');
     expect(types).toContain("export type Tables<");
     expect(types).toContain("export type Enums<");
+  });
+});
+
+describe("zod schema generation", () => {
+  async function zodFor(sql: string): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), "supa-zodgen-"));
+    await writeFile(join(root, "001_app.sql"), sql);
+    const model = await extractSourceModel(`dir:${root}`);
+    expect(model.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    return await generateZodSchemas(model);
+  }
+
+  it("emits runtime validators mirroring the generated types", async () => {
+    const zod = await zodFor(treeSql);
+
+    expect(zod).toContain('import { z } from "zod";');
+    expect(zod).toContain('const app_status = z.enum(["draft", "active"]);');
+    expect(zod).toContain("export const jsonSchema: z.ZodType<Json>");
+    expect(zod).toContain("name: z.string(),");
+    expect(zod).toContain("email: z.string().nullable(),");
+    expect(zod).toContain("tags: z.array(z.string()),");
+    expect(zod).toContain("payload: jsonSchema.nullable(),");
+    expect(zod).toContain("state: app_status,");
+  });
+
+  it("derives insert optionality and omits generated columns from writes", async () => {
+    const zod = await zodFor(treeSql);
+    const insert = zod.slice(zod.indexOf("Insert: z.object({"), zod.indexOf("Update: z.object({"));
+
+    expect(insert).toContain("id: z.number().optional(),");
+    expect(insert).toContain("name: z.string(),");
+    expect(insert).toContain("email: z.string().nullable().optional(),");
+    expect(insert).not.toContain("doubled");
+    const update = zod.slice(zod.indexOf("Update: z.object({"), zod.indexOf("Views: {"));
+    expect(update).toContain("name: z.string().optional(),");
+    expect(update).not.toContain("doubled");
   });
 });

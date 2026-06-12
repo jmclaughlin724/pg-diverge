@@ -8,6 +8,7 @@ import { hasErrors } from "./diagnostics.js";
 import { renderDoctorReport, runDoctor } from "./doctor.js";
 import { extractSourceModel } from "./source.js";
 import { generateDatabaseTypes } from "./typegen.js";
+import { generateZodSchemas } from "./typegen-zod.js";
 
 export interface ToolCommandContext {
   loadCliConfig: () => Promise<SupaschemaConfig>;
@@ -39,9 +40,9 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
   program
     .command("types")
     .option("--from <source>", "source to type (default: the config schema tree)")
-    .option("--out <file|stdout>", "output path (default: config.typesFile)")
+    .option("--out <file|stdout>", "TypeScript output path (default: config.typesFile)")
     .description(
-      "Generate Supabase-compatible TypeScript types straight from the schema tree — no database, no introspection, no applied migrations required.",
+      "Generate Supabase-compatible TypeScript types and Zod validators straight from the schema tree — no database, no introspection, no applied migrations required.",
     )
     .action(async (options: { from?: string; out?: string }) => {
       const config = await context.loadCliConfig();
@@ -60,7 +61,9 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
       }
       const outPath = resolve(process.cwd(), target);
       await writeFile(outPath, types);
-      process.stdout.write(`${outPath}\n`);
+      const zodPath = resolve(process.cwd(), config.zodFile);
+      await writeFile(zodPath, await generateZodSchemas(model));
+      process.stdout.write(`${outPath}\n${zodPath}\n`);
     });
 
   program

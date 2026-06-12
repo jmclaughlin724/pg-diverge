@@ -46,5 +46,6 @@ export { extractSourceModel } from "./source.js";
 export type { SyncOptions, SyncResult } from "./sync.js";
 export { syncMigrations } from "./sync.js";
 export { generateDatabaseTypes } from "./typegen.js";
+export { generateZodSchemas } from "./typegen-zod.js";
 export { runConfiguredValidators } from "./validators.js";
 export { verifyMigration } from "./verify.js";

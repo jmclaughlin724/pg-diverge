@@ -19,6 +19,7 @@ import { planSchemaDiff } from "./planner.js";
 import { renderMigrationSplit } from "./render.js";
 import { extractSourceModel, filterModelBySchemas } from "./source.js";
 import { generateDatabaseTypes } from "./typegen.js";
+import { generateZodSchemas } from "./typegen-zod.js";
 
 type PlanCommandOptions = { from?: string; to?: string; schema?: string; timing?: boolean };
 type DiffOptions = PlanCommandOptions & {
@@ -247,27 +248,33 @@ async function runDiff(
 }
 
 async function refreshTypesFile(toSource: string, config: SupaschemaConfig): Promise<void> {
-  const typesPath = resolve(process.cwd(), config.typesFile);
-  let handle: FileHandle;
-  try {
-    handle = await open(typesPath, "r+");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return;
+  const targets: { generate: (model: SchemaModel) => Promise<string>; relative: string }[] = [
+    { generate: generateDatabaseTypes, relative: config.typesFile },
+    { generate: generateZodSchemas, relative: config.zodFile },
+  ];
+  let model: SchemaModel | undefined;
+  for (const target of targets) {
+    let handle: FileHandle;
+    try {
+      handle = await open(resolve(process.cwd(), target.relative), "r+");
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
     }
-    throw error;
-  }
-  try {
-    const model = await extractSourceModel(toSource, { config });
-    if (hasErrors(model.diagnostics)) {
-      return;
+    try {
+      model = model ?? (await extractSourceModel(toSource, { config }));
+      if (hasErrors(model.diagnostics)) {
+        return;
+      }
+      const generated = await target.generate(model);
+      await handle.truncate(0);
+      await handle.write(generated, 0);
+      process.stderr.write(`types: ${target.relative} refreshed from ${toSource}\n`);
+    } finally {
+      await handle.close();
     }
-    const types = await generateDatabaseTypes(model);
-    await handle.truncate(0);
-    await handle.write(types, 0);
-    process.stderr.write(`types: ${config.typesFile} refreshed from ${toSource}\n`);
-  } finally {
-    await handle.close();
   }
 }
 

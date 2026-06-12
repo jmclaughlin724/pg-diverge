@@ -24,7 +24,7 @@ Zero-flag defaults: `--from` resolves to the database (then `git:HEAD`), `--to` 
 supaschema diff                          # render the migration from applied state -> schema tree (refreshes the types file when present)
 supaschema check                         # replay-safety gate for the migrations directory
 supaschema verify                        # apply-twice proof for the newest pending migration
-supaschema types                         # Supabase-compatible TypeScript types from the tree; no database or introspection
+supaschema types                         # Supabase-compatible TypeScript types + Zod validators from the tree; no database or introspection
 supaschema diff --fail-on-diff --quiet   # CI drift gate (exit 3 on drift)
 supaschema diff --summary                # blocked-plan triage: operation/diagnostic counts by kind and schema
 supaschema diff --write-hints <file>     # reviewable hints.destructive skeleton for gated keys

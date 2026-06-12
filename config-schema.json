@@ -107,6 +107,10 @@
       "default": "database.types.ts",
       "type": "string"
     },
+    "zodFile": {
+      "default": "database.zod.ts",
+      "type": "string"
+    },
     "normalize": {
       "default": "deparse",
       "type": "string",
