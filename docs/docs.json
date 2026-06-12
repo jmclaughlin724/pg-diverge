@@ -19,7 +19,11 @@
   },
   "seo": {
     "metatags": {
-      "canonical": "https://supaschema.com"
+      "canonical": "https://supaschema.com",
+      "application-name": "supaschema",
+      "og:site_name": "supaschema",
+      "og:type": "website",
+      "twitter:card": "summary_large_image"
     }
   },
   "navbar": {
@@ -56,6 +60,14 @@
             "href": "/commands/diff"
           },
           {
+            "label": "FAQ",
+            "href": "/faq"
+          },
+          {
+            "label": "Benchmarks",
+            "href": "/benchmarks"
+          },
+          {
             "label": "Configuration",
             "href": "/configuration/config-file"
           }
@@ -73,6 +85,10 @@
             "href": "https://www.npmjs.com/package/supaschema"
           },
           {
+            "label": "Comparison",
+            "href": "/comparisons/supaschema-vs-supabase-cli"
+          },
+          {
             "label": "Issues",
             "href": "https://github.com/jmclaughlin724/supaschema/issues"
           }
@@ -85,12 +101,24 @@
       {
         "group": "Get Started",
         "icon": "rocket",
-        "pages": ["introduction", "installation", "quickstart"]
+        "pages": ["introduction", "installation", "quickstart", "faq"]
       },
       {
         "group": "Core Concepts",
         "icon": "book-open",
         "pages": ["concepts/declarative-schema", "concepts/migration-pipeline", "concepts/sources"]
+      },
+      {
+        "group": "Use Cases",
+        "icon": "search",
+        "pages": [
+          "comparisons/supaschema-vs-supabase-cli",
+          "guides/supabase-db-diff-without-docker",
+          "guides/declarative-postgres-schema-management",
+          "guides/idempotent-postgres-migrations",
+          "guides/rls-policy-migration-safety",
+          "guides/generate-supabase-types-without-database"
+        ]
       },
       {
         "group": "Commands",
@@ -130,11 +158,6 @@
         "group": "Reference",
         "icon": "library",
         "pages": ["reference/diagnostics", "reference/library-api", "reference/support-matrix"]
-      },
-      {
-        "group": "Operations",
-        "icon": "wrench",
-        "pages": ["release", "mintlify"]
       }
     ]
   },
@@ -192,12 +215,40 @@
       "destination": "/introduction"
     },
     {
+      "source": "/compare",
+      "destination": "/comparisons/supaschema-vs-supabase-cli"
+    },
+    {
+      "source": "/supaschema-vs-supabase-cli",
+      "destination": "/comparisons/supaschema-vs-supabase-cli"
+    },
+    {
       "source": "/concepts",
       "destination": "/concepts/declarative-schema"
     },
     {
       "source": "/guides/type-generation",
+      "destination": "/guides/generate-supabase-types-without-database"
+    },
+    {
+      "source": "/types",
       "destination": "/commands/types"
+    },
+    {
+      "source": "/supabase-db-diff-without-docker",
+      "destination": "/guides/supabase-db-diff-without-docker"
+    },
+    {
+      "source": "/declarative-postgres-schema-management",
+      "destination": "/guides/declarative-postgres-schema-management"
+    },
+    {
+      "source": "/idempotent-postgres-migrations",
+      "destination": "/guides/idempotent-postgres-migrations"
+    },
+    {
+      "source": "/rls-policy-migration-safety",
+      "destination": "/guides/rls-policy-migration-safety"
     },
     {
       "source": "/guides/destructive-changes",

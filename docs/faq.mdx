@@ -1,0 +1,82 @@
+---
+title: "supaschema FAQ"
+description: "Direct answers about supaschema, declarative PostgreSQL migrations, Supabase schema diffs, replay safety, RLS policies, and type generation."
+---
+
+# supaschema FAQ
+
+This FAQ gives short, citation-friendly answers about `supaschema`: what it is, how it differs from database-backed diff tools, what it generates, and how it fits into a Supabase or PostgreSQL migration workflow.
+
+## What is supaschema?
+
+`supaschema` is a CLI and Node.js library that generates deterministic PostgreSQL and Supabase migrations from declarative SQL schema files. You edit the desired schema tree, run `supaschema diff`, and get a timestamped migration plus refreshed TypeScript and Zod output.
+
+## Is supaschema affiliated with Supabase?
+
+No. `supaschema` is an independent open-source project for PostgreSQL and Supabase projects. It generates SQL migrations that you can apply with your existing runner, including `supabase db push`.
+
+## Does supaschema apply migrations to my database?
+
+No. `supaschema` is a generator and prover. It writes migration files, checks them for replay safety, and can verify them in disposable databases. Your existing migration runner applies the final SQL to real environments.
+
+## Does supaschema need Docker or a shadow database?
+
+No for migration generation and type generation. `supaschema diff` parses schema files with PostgreSQL's parser compiled to WebAssembly, so it does not need to spin up Docker, replay the schema into a shadow database, or introspect a database before producing SQL.
+
+## How is supaschema different from `supabase db diff`?
+
+`supabase db diff` compares database states through engines that rely on a database-backed workflow. `supaschema` compares SQL definitions structurally from parse trees, so it can generate migrations from files and git refs without a shadow database. It also guards generated statements so retries do not fail on already-created objects.
+
+For a deeper comparison, see [supaschema vs Supabase CLI](/comparisons/supaschema-vs-supabase-cli).
+
+## Can supaschema generate Supabase TypeScript types without a database?
+
+Yes. `supaschema types` emits Supabase-compatible `database.types.ts` plus `database.zod.ts` directly from the declarative schema tree. It does not need a live database or a previously applied migration.
+
+## What makes a migration replay-safe?
+
+A replay-safe migration can be run more than once without failing on objects it already created. `supaschema` emits guarded SQL such as `CREATE TABLE IF NOT EXISTS`, `DROP ... IF EXISTS`, and catalog-checked `DO` blocks around operations that PostgreSQL does not expose as simple idempotent statements.
+
+## How does supaschema handle destructive changes?
+
+Destructive changes fail closed. Drops, unsafe type changes, and PostgreSQL-incompatible replacements stay blocked until the exact object key is reviewed and added to `hints.destructive`. The committed config should never use a wildcard destructive hint.
+
+## Does supaschema understand Row Level Security policies?
+
+Yes. RLS policies are modeled as schema objects, including their `USING` and `WITH CHECK` expressions. A changed policy predicate is surfaced as a reviewable migration operation instead of being treated as unchanged because the policy name stayed the same.
+
+## What should CI run?
+
+Most projects should run:
+
+```bash
+npx supaschema diff --fail-on-diff --quiet
+npx supaschema check
+```
+
+When a disposable database is reachable, also run:
+
+```bash
+npx supaschema verify
+```
+
+See [GitHub Actions CI](/guides/ci-github-actions) for a complete workflow.
+
+## Which PostgreSQL objects are supported?
+
+`supaschema` models schemas, extensions, enum/domain/composite types, tables, constraints, indexes, sequences, functions, procedures, views, materialized views, triggers, RLS, policies, grants, default privileges, comments, and foreign data wrappers. Unsupported DDL fails with a diagnostic instead of passing through silently. See the [support matrix](/reference/support-matrix).
+
+## What happens when supaschema blocks a diff?
+
+Every blocking diagnostic has a `SUPA_*` code. Run:
+
+```bash
+npx supaschema explain SUPA_CODE
+```
+
+The offline explanation tells you what failed, why the plan was blocked, and how to recover.
+
+## What license does supaschema use?
+
+`supaschema` is dual-licensed: AGPL-3.0 for open-source projects and a commercial license for proprietary use.
+

@@ -27,7 +27,7 @@ When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/ho
    - Renames: declare `{ "from": "<key>", "to": "<key>" }` in `hints.renames`; renames are never inferred.
 
 3. **Check replay safety:** `supaschema check` gates every `.sql` in the migrations directory (or name specific files) — must exit 0 for generated and hand-authored migrations alike.
-4. **Verify execution** (when any database is resolvable — the URL auto-resolves from `SUPASCHEMA_DATABASE_URL` or the nearest `supabase/config.toml`):
+4. **Verify execution** (when any database is resolvable — URL precedence is `--database-url` (`$ENV` supported), named `config.environments` via global `--env`, `SUPASCHEMA_DATABASE_URL`, then the nearest `supabase/config.toml`):
 
    ```bash
    supaschema verify
@@ -35,9 +35,13 @@ When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/ho
 
    Defaults to the newest pending migration in the migrations directory with the same from/to defaults as `diff`; pass `--migration <file>` to verify a specific one.
 
-   Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
+   Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). Use `--ensure-environment` when a plain PostgreSQL verification server needs Supabase-provisioned surfaces; it is the default under `adapter: "supabase-auto"`. A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
 
-5. **Commit** the tree change, the generated migration, and the refreshed types file together. supaschema never stages or applies; the migration runner (e.g. `supabase db push`) owns the database. TypeScript types come from the tree (`supaschema types` creates `database.types.ts`; every later `diff` refreshes it) — never wait for a deploy or run introspection-based typegen to get correct types.
+5. **Commit** the tree change, the generated migration, and the refreshed types file together. The diff/check/verify workflow never stages or applies; the migration runner (e.g. `supabase db push`) owns the database. TypeScript types come from the tree (`supaschema types` creates `database.types.ts`; every later `diff` refreshes it) — never wait for a deploy or run introspection-based typegen to get correct types.
+
+## Operational Sync
+
+`supaschema sync` is the optional apply gate, not the default generation workflow. With no `--local` or `--remote` flag it is a dry run that reconciles migration status and checks pending files. With `--local` or `--remote`, it runs the same gates and then delegates the actual apply/deploy to the Supabase CLI. Do not run apply flags unless the human explicitly requested that operational action.
 
 ## Drift Detection
 
@@ -60,4 +64,5 @@ When drift is large or blocked, triage before editing:
 - Sources for either side of a diff: `dir:<tree>`, `git:<ref>`, `database:<url|$ENV>`, `dump:<file.sql>`, `catalog:<snapshot.json>`.
 - Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) and enum reordering/removal are hand-authored migrations — validate them with `check` and `verify`; the enum recipe is in `docs/configuration/hints.md`.
 - Keep `transactionMode: "per-migration"` for transactional runners; `CREATE INDEX CONCURRENTLY` is blocked under `supabase-auto` and splits to a `.concurrent.sql` companion under `adapter: "postgres"`.
+- Database URL resolution for CLI commands is flag (`$ENV` supported) > named `config.environments` via global `--env` > `SUPASCHEMA_DATABASE_URL` > nearest `supabase/config.toml`.
 - `supaschema explain <SUPA_CODE>` decodes any diagnostic offline.

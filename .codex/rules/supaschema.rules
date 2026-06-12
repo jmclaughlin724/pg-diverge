@@ -22,8 +22,12 @@
 # - Run `supaschema check` on every migration; run `supaschema verify` before
 #   merge when a database is reachable. Keep transactionMode per-migration
 #   for transactional runners such as `supabase db push`.
-# - Database URLs resolve flag > named config.environments entry via --env >
-#   SUPASCHEMA_DATABASE_URL > the nearest supabase/config.toml; do not
-#   hard-code connection strings.
+# - `supaschema sync` is an explicit operational handoff. With no apply flag it
+#   is a dry run; with --local or --remote it gates status and replay safety,
+#   then delegates apply/deploy to the Supabase CLI. Do not use apply flags
+#   without an explicit human request.
+# - Database URLs resolve flag ($ENV indirection supported) > named
+#   config.environments entry via --env > SUPASCHEMA_DATABASE_URL > the nearest
+#   supabase/config.toml; do not hard-code connection strings.
 # - Decode any SUPA_* diagnostic with `supaschema explain <CODE>`; recovery
 #   steps live in docs/configuration/hints.md.

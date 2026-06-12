@@ -19,5 +19,6 @@ This rule owns how schema migrations are produced and protected in a repo that u
 - Renames are declared in `hints.renames`, never inferred. Kind changes and cross-schema moves are unsupported by design.
 - Run `supaschema check` on every generated or hand-authored migration. Run `supaschema verify` before merge when a database is reachable; keep `transactionMode: "per-migration"` for transactional runners such as `supabase db push`.
 - `CREATE INDEX CONCURRENTLY` is blocked under `adapter: "supabase-auto"`; under `adapter: "postgres"` it lands in the `.concurrent.sql` companion, which runs outside a transaction through an operational lane.
+- `supaschema sync` is an explicit operational handoff. With no apply flag it is a dry run; with `--local` or `--remote` it runs migration status and replay-safety gates, then delegates the actual apply/deploy to the Supabase CLI. Agents must not use apply flags without an explicit human request.
 - Database URLs resolve flag (`$ENV` indirection supported) > named `config.environments` entry via `--env` > `SUPASCHEMA_DATABASE_URL` > nearest `supabase/config.toml`. Do not hard-code connection strings in scripts, config, or CI.
 - Decode any `SUPA_*` diagnostic with `supaschema explain <CODE>`; recovery procedures live in `docs/configuration/hints.md`.

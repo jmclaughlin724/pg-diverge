@@ -31,12 +31,12 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: Update npm for OIDC trusted publishing (requires npm >= 11.5.1)
+      - name: Confirm npm supports OIDC trusted publishing
         run: |
-          npm install -g npm@11.17.0
           npm --version
+          node -e "const { execFileSync } = require('node:child_process'); const version = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(); const [major, minor, patch] = version.split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) throw new Error('npm >= 11.5.1 is required for trusted publishing');"
       - run: npm ci
       - run: npm audit signatures
       - run: npm run check
@@ -48,9 +48,12 @@ jobs:
       - name: Corpus oracle (dirty-real reconvergence)
         run: npm run corpus:check
       - name: Pack package
+        id: pack
         run: |
           tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
-          echo "SUPASCHEMA_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
+          tarball_path="$RUNNER_TEMP/$tarball"
+          echo "SUPASCHEMA_TARBALL=$tarball_path" >> "$GITHUB_ENV"
+          echo "tarball_path=$tarball_path" >> "$GITHUB_OUTPUT"
       - name: Smoke npx from tarball
         run: |
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
@@ -64,7 +67,7 @@ jobs:
         id: attest
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
-          subject-path: ${{ env.SUPASCHEMA_TARBALL }}
+          subject-path: ${{ steps.pack.outputs.tarball_path }}
       - name: Attach signed artifacts to the release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,69 @@
+---
+title: "Declarative PostgreSQL schema management"
+description: "Manage PostgreSQL schemas declaratively with SQL files, deterministic diffs, replay-safe migrations, explicit destructive hints, and CI drift checks."
+---
+
+# Declarative PostgreSQL schema management
+
+Declarative PostgreSQL schema management means the desired database schema lives in versioned SQL files. Developers edit the target state, and a tool generates the migration required to move from the current state to that target.
+
+`supaschema` implements this workflow for PostgreSQL and Supabase without requiring an ORM, Docker, or a shadow database during migration generation.
+
+## Why declarative schema management helps
+
+Hand-authored migrations describe the steps you think are needed. Declarative schema files describe the state you actually want. That difference matters when the same schema must stay aligned across local development, CI, staging, and production.
+
+With `supaschema`, the normal loop is:
+
+```bash
+npx supaschema diff
+npx supaschema check
+npx supaschema verify
+```
+
+The output is a generated migration file with a lineage marker, plus refreshed TypeScript and Zod files when type output is enabled.
+
+## Schema files are the source of truth
+
+By default, `supaschema` reads SQL from `supabase/schemas/`, but the paths are configurable. Split the schema by domain, feature, or dependency order:
+
+```text
+supabase/schemas/
+  001_extensions.sql
+  010_auth.sql
+  020_billing.sql
+  030_policies.sql
+```
+
+The migration is generated from these files. If the migration contains a `-- supaschema: lineage` marker, do not hand-edit it; change the schema tree and regenerate.
+
+## Safety model
+
+`supaschema` fails closed on ambiguity:
+
+- Drops require exact `hints.destructive` approval.
+- Renames require explicit hints.
+- Unsupported PostgreSQL DDL produces diagnostics instead of pass-through SQL.
+- Generated statements are guarded for replay safety.
+- Existing migrations are checked for chain continuity.
+
+This makes schema review focus on intent: the declared target changed, the generated migration reflects that target, and CI proves the file can be retried safely.
+
+## Works with Supabase and plain PostgreSQL
+
+For Supabase projects, `supaschema` fits into the existing `supabase/schemas/` and `supabase/migrations/` layout. For plain PostgreSQL projects, configure `schemaPaths`, `migrationsDir`, and optional named environments in `supaschema.config.json`.
+
+Sources can be directories, git refs, live read-only catalogs, dumps, or saved catalog JSON:
+
+```bash
+npx supaschema diff --from git:main --to dir:supabase/schemas
+npx supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas
+```
+
+## Related guides
+
+- [Quickstart](/quickstart)
+- [Configuration file](/configuration/config-file)
+- [Destructive change hints](/configuration/hints)
+- [Support matrix](/reference/support-matrix)
+
