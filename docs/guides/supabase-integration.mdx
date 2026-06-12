@@ -1,0 +1,60 @@
+---
+title: "Supabase Integration"
+description: "How supaschema fits a Supabase project — config.toml discovery, managed schemas, the supabase-auto adapter, sync with the Supabase CLI, and verify's environment stubs."
+---
+
+# Supabase Integration
+
+> supaschema is built for Supabase projects out of the box: the local stack is discovered automatically, platform-owned schemas are protected, and your migrations still apply through `supabase db push`.
+
+supaschema generates and proves migrations; it never applies them. In a Supabase project the Supabase CLI stays the runner and keeps sole ownership of the migration history table — supaschema slots in before it.
+
+## Zero-config defaults
+
+In a repository with a `supabase/` directory, the defaults line up with the Supabase CLI's conventions:
+
+- The declarative tree is read from `supabase/schemas` (`schemaPaths`).
+- Migrations are written to `supabase/migrations` (`migrationsDir`) with the CLI's `<UTC timestamp>_<name>.sql` naming, so `supabase db push` picks them up unchanged.
+- The local database URL is discovered from the nearest `supabase/config.toml` (`[db] port`) — see [Environments](/configuration/environments) for the full resolution order.
+- Generated types are Supabase-compatible: `database.types.ts` matches `supabase gen types typescript`'s shape, plus runtime Zod validators in `database.zod.ts`.
+
+## Managed schemas and the `supabase-auto` adapter
+
+The default adapter is `supabase-auto`. It treats the platform-provisioned schemas — `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, `graphql_public` — as managed: your declarative tree cannot claim ownership of them, so a diff never tries to recreate or drop what Supabase provisions. The set is configurable via `managedSchemas`.
+
+`supabase-auto` also blocks `CREATE INDEX CONCURRENTLY` plans: transactional runners like `supabase db push` wrap each migration in a transaction, where `CONCURRENTLY` is illegal. Under `adapter: "postgres"`, concurrent index builds land in a `<migration>.concurrent.sql` companion file instead, to be run outside a transaction through an operational lane.
+
+Keep `transactionMode: "per-migration"` (the default) — it mirrors how `supabase db push` applies each file in one transaction, so `verify` and the lock-hazard grading match production behavior.
+
+## Verifying Supabase trees against bare PostgreSQL
+
+`supaschema verify` proves a migration in throwaway databases — plain PostgreSQL, not a full Supabase stack. Under `supabase-auto`, `--ensure-environment` is on by default: it stubs the Supabase-provisioned surfaces a real tree references (`auth.uid()`-family helpers, `auth.users`, the cron schema) so RLS policies and triggers verify without Docker or a Supabase container. `--ensure-roles` pre-creates `NOLOGIN` roles referenced by grants and policies.
+
+Platform-owned grants can be excluded from extracted models with `excludedGrantRoles` (e.g. `supabase_admin`, `authenticator`), so they never show up as drift.
+
+## Applying with the Supabase CLI
+
+Two lanes, both runner-owned:
+
+```bash
+# Lane 1: generate, prove, and apply by hand
+npx supaschema diff
+npx supaschema check
+npx supaschema verify
+supabase db push          # the runner applies; supaschema never touches your real databases
+
+# Lane 2: gated orchestration
+npx supaschema sync            # dry run: reconcile history, gate pending migrations
+npx supaschema sync --local    # then run `supabase migration up`
+npx supaschema sync --remote   # then run `supabase db push` (runner prompts intact)
+```
+
+`sync` refuses on ghost or out-of-order history and runs the replay-safety check on every pending migration before it lets the Supabase CLI act. Use [`supaschema migrations`](/commands/migrations) to see how disk files reconcile against each database's applied history.
+
+## Adopting an existing Supabase project
+
+1. Dump your current schema into the tree (`supabase db dump` or your existing `schemas/` files).
+2. Run `supaschema audit --from dir:supabase/schemas` for a support-matrix coverage report of what the contract models.
+3. Run `supaschema diff --from database:$URL --fail-on-diff` to confirm tree and database agree before the first generated migration.
+
+The [case study](/case-study-anilize) walks this adoption on a production ~8,300-object Supabase tree.

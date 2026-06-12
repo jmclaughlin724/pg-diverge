@@ -1,3 +1,8 @@
+---
+title: "Release"
+description: "Release and trusted publishing checklist for the supaschema npm package."
+---
+
 # Release
 
 The package is designed for npm trusted publishing from GitHub Actions.

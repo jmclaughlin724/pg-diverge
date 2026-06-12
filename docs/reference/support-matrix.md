@@ -1,3 +1,8 @@
+---
+title: "Support matrix"
+description: "The PostgreSQL object types supaschema extracts, renders, checks, and intentionally blocks."
+---
+
 # Support Matrix
 
 `supaschema` is fail-closed: unsupported DDL blocks migration generation instead of guessing. Extraction and checking are AST-only — every statement is classified through the PostgreSQL parser, never regex.
@@ -31,7 +36,7 @@ With `adapter: "supabase-auto"`, objects in these platform-owned schemas are blo
 
 ## Verify Environment Stub
 
-`verify --ensure-environment` (the default under `adapter: "supabase-auto"`) provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that _references_ managed schemas can apply against bare PostgreSQL:
+`verify --ensure-environment` (the default under `adapter: "supabase-auto"`) provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that *references* managed schemas can apply against bare PostgreSQL:
 
 - `auth.users` with the stable GoTrue column set (`id`, `aud`, `role`, `email`, `phone`, `raw_app_meta_data`, `raw_user_meta_data`, `last_sign_in_at`, `is_anonymous`, …).
 - The `auth.uid()`, `auth.role()`, `auth.jwt()`, and `auth.email()` helper functions.

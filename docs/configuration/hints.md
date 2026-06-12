@@ -1,3 +1,8 @@
+---
+title: "Hints"
+description: "How to approve reviewed destructive changes and renames without weakening fail-closed planning."
+---
+
 # Hints Guide
 
 `supaschema` fails closed when intent cannot be proven from the SQL parse tree. Hints are the explicit, reviewable way to state intent.

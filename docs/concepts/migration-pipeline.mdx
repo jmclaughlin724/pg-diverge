@@ -1,0 +1,236 @@
+---
+title: "The supaschema Migration Pipeline: All Six Stages"
+description: "How supaschema extracts, diffs, renders, checks, and verifies a migration from schema files to production-ready SQL, without ever touching your database."
+---
+
+# The supaschema Migration Pipeline: All Six Stages
+
+> How supaschema extracts, diffs, renders, checks, and verifies a migration from schema files to production-ready SQL, without ever touching your database.
+
+When you run `supaschema diff`, a lot happens between reading your SQL files and producing a finished migration. supaschema works through a structured pipeline of six stages — Extract, Plan, Render, Check, Verify, and Apply — before the finished SQL reaches your deployment runner. Understanding each stage helps you interpret error messages, tune safety settings, and trust the output. This page walks through every stage in detail.
+
+<Note>
+  supaschema **never connects to or modifies your production database**. The pipeline is a pure SQL generation process. Applying the migration is always a separate, explicit step owned by your runner (such as the Supabase CLI or a custom script).
+</Note>
+
+***
+
+## Pipeline Overview
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│ EXTRACT  │───▶│  PLAN    │───▶│  RENDER  │───▶│  CHECK   │───▶│  VERIFY  │
+│          │    │          │    │          │    │          │    │          │
+│ from/to  │    │ diff ops │    │ SQL text │    │ 20+ rules│    │ apply x2 │
+│ → models │    │ + flags  │    │ + order  │    │ static   │    │ throwaway│
+└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+                                                                      │
+                                                                      ▼
+                                                               Your runner
+                                                               applies SQL
+```
+
+<Steps>
+  ### Stage 1 — Extract
+
+  supaschema resolves both the `--from` and `--to` sources into a **SchemaModel** each. A SchemaModel is a structured, in-memory catalogue of every database object found in that source, with each object carrying a normalised definition and a deterministic content hash.
+
+  The extraction process varies by source type:
+
+  | Source type | How extraction works                                                                         |
+  | ----------- | -------------------------------------------------------------------------------------------- |
+  | `dir:`      | SQL files are parsed with PostgreSQL's WASM parser; `CREATE` statements become model entries |
+  | `git:`      | Files at the given ref are checked out in-memory and parsed the same way                     |
+  | `database:` | System catalogs (`pg_class`, `information_schema`, etc.) are queried read-only               |
+  | `dump:`     | A single SQL file is parsed as if it were a `dir:` with one file                             |
+  | `catalog:`  | The JSON snapshot is deserialised directly into a SchemaModel                                |
+
+  After extraction you have two models: the **current state** (from) and the **desired state** (to). Every subsequent stage works from these two models — no source is read again.
+
+  ```bash theme={null}
+  # You can inspect what supaschema extracted from any source
+  supaschema inspect --from dir:supabase/schemas
+  supaschema inspect --from database:$DATABASE_URL
+  ```
+
+  ```json theme={null}
+  // Abbreviated inspect output
+  {
+    "fingerprint": "e7b4a1d3f2c9...",
+    "objectCount": 38,
+    "objects": [
+      { "kind": "table",    "schema": "public", "name": "orders",   "hash": "a3f9c2..." },
+      { "kind": "index",    "schema": "public", "name": "orders_user_id_idx", "hash": "b2e811..." },
+      { "kind": "function", "schema": "public", "name": "place_order", "hash": "d4c73f..." }
+    ]
+  }
+  ```
+
+  ### Stage 2 — Plan
+
+  Once both SchemaModels exist, supaschema calls `planSchemaDiff()` to compute a **MigrationPlan** — an ordered list of operations describing every change needed to evolve the "from" state into the "to" state.
+
+  Each operation in the plan carries:
+
+  ```typescript theme={null}
+  interface MigrationOperation {
+    kind:        "create" | "alter" | "replace" | "drop" | "rename";
+    ref:         ObjectRef;   // { kind: ObjectKind, schema, name, ... }
+    key:         string;      // fully-qualified stable identity string
+    destructive: boolean;     // would this lose data?
+    blocked:     boolean;     // requires an explicit hint to proceed
+    diagnostics: Diagnostic[];
+  }
+  ```
+
+  **Operation kinds explained:**
+
+  * **`create`** — the object exists in "to" but not in "from". Always safe.
+  * **`alter`** — the object exists in both but the definition changed. Safe for most column and constraint changes.
+  * **`replace`** — the object must be dropped and recreated (e.g. changing a function's return type or an enum's label). Potentially destructive.
+  * **`drop`** — the object exists in "from" but not in "to". Always destructive.
+  * **`rename`** — supaschema detected a rename from an explicit hint. Produces `ALTER TABLE … RENAME` rather than a drop-and-create pair.
+
+  <Warning>
+    Operations with `destructive: true` are blocked by default. supaschema will refuse to render SQL for them unless you provide an explicit hint (via the `hints.destructive` list in your config or an inline `-- @supaschema allow-drop` comment in your schema file). This prevents accidental data loss during automated deployments.
+  </Warning>
+
+  ### Stage 3 — Render
+
+  The planner passes the MigrationPlan to the **renderer**, which turns operations into SQL text. The renderer respects **dependency order** — if creating table B requires table A to exist first, table A's `CREATE TABLE` appears earlier in the output, regardless of which file defined it.
+
+  Dependency ordering handles:
+
+  * Foreign key references (referenced table before referencing table)
+  * View dependencies (base tables before views, views before views that query them)
+  * Function dependencies (types before functions that use them)
+  * Policy dependencies (tables and roles before RLS policies)
+
+  The renderer also applies **idempotency wrappers** where needed:
+
+  ```sql theme={null}
+  -- Rendered output (idempotent)
+  ALTER TABLE public.orders
+    ADD COLUMN IF NOT EXISTS fulfilled_at timestamptz;
+
+  CREATE INDEX IF NOT EXISTS orders_user_id_idx
+    ON public.orders (user_id);
+  ```
+
+  If any operation in the plan is `blocked: true` (i.e. destructive and not explicitly allowed), the render stage emits an error listing every blocked operation and exits before producing any SQL. This is intentional — a partially rendered migration with some operations omitted would leave the schema in an inconsistent state.
+
+  <Tip>
+    To allow a specific destructive operation, add the object key to `hints.destructive` in your `supaschema.config.json`. This makes the intent explicit and keeps the approval tracked in version control alongside the schema change.
+  </Tip>
+
+  ### Stage 4 — Check
+
+  Before the migration SQL leaves supaschema, it passes through a **static analysis** phase: the `check` stage. This stage runs more than 20 replay-safety rules against the rendered SQL without executing it.
+
+  **Replay-safe** means: the migration can be applied to a database that is already at the target state without raising an error or changing any data. In other words, applying it twice produces the same result as applying it once.
+
+  Rules enforced by the checker include:
+
+  | Category          | Example rules                                                                   |
+  | ----------------- | ------------------------------------------------------------------------------- |
+  | Idempotency       | `CREATE TABLE` must use `IF NOT EXISTS`; `ADD COLUMN` must use `IF NOT EXISTS`  |
+  | Destructive ops   | Any `DROP` without an explicit allow hint is a check failure                    |
+  | Constraint safety | Adding a `NOT NULL` constraint to an existing column with no default is flagged |
+  | Index safety      | `CREATE INDEX` without `CONCURRENTLY` on a large table triggers a warning       |
+  | Enum safety       | Adding a value to an enum in a transaction block is flagged                     |
+  | Policy safety     | Enabling RLS without at least one permissive policy is flagged                  |
+  | Sequence safety   | Changing a sequence `owned by` a column that no longer exists is flagged        |
+
+  ```bash theme={null}
+  # Run only static checks against your migrations directory (no database needed)
+  supaschema check
+  ```
+
+  The `check` command exits with code `0` when all rules pass, `2` when any rule fails, and `1` when the pipeline itself encounters a runtime error. This makes it suitable as a standalone CI gate.
+
+  ### Stage 5 — Verify
+
+  The `verify` stage is the final and strongest safety layer. It provisions a **throwaway database** (an ephemeral PostgreSQL instance that supaschema spins up and destroys), applies the migration twice, and confirms that:
+
+  1. The first application succeeds without error.
+  2. The second application also succeeds without error (idempotency proof).
+  3. After the second application, the schema fingerprint matches the expected "to" state.
+
+  ```bash theme={null}
+  # Run the verify stage against the newest pending migration
+  supaschema verify
+  ```
+
+  If the second application changes the schema state — for example, because a `CREATE TABLE` was rendered without `IF NOT EXISTS` — the verify stage fails and reports exactly which objects differed between application one and application two.
+
+  <Note>
+    The throwaway database used by `verify` is spun up locally via a lightweight embedded PostgreSQL binary. It requires no Docker, no shadow database configuration, and no external services. The entire verify cycle typically completes in under ten seconds.
+  </Note>
+</Steps>
+
+***
+
+## Stage 6 — Apply (Your Runner)
+
+supaschema stops at the end of the Verify stage. It outputs the finished migration SQL to your migrations directory (by default `supabase/migrations/`) and then steps back.
+
+Applying that SQL to a real database is the responsibility of **your deployment runner**:
+
+```bash theme={null}
+# Apply with the Supabase CLI
+supabase db push
+
+# Apply with psql directly
+psql $DATABASE_URL -f supabase/migrations/0012_add_order_status.sql
+
+# Generate and pipe to psql in one step
+supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas --out stdout \
+  | psql $DATABASE_URL
+```
+
+This separation is intentional. supaschema never holds a connection to your production database, which means it cannot accidentally apply a migration at the wrong moment, and it fits naturally into any existing deployment pipeline.
+
+***
+
+## Exit Codes
+
+supaschema uses consistent exit codes across all commands so you can rely on them in CI scripts:
+
+| Code | Meaning                                                                   |
+| ---- | ------------------------------------------------------------------------- |
+| `0`  | Success — pipeline completed, all checks passed                           |
+| `1`  | Runtime error — an unexpected problem (parse failure, missing file, etc.) |
+| `2`  | Diagnostic errors — at least one check rule or validation error was found |
+| `3`  | Drift found — `--fail-on-diff` detected operations in the plan            |
+
+```bash theme={null}
+supaschema diff --from git:origin/main --to dir:supabase/schemas --fail-on-diff
+if [ $? -eq 3 ]; then
+  echo "Schema has pending changes — a migration needs to be generated and reviewed"
+fi
+```
+
+***
+
+## Putting It All Together
+
+A typical end-to-end developer workflow looks like this:
+
+```bash theme={null}
+# 1. Edit your schema files
+vim supabase/schemas/orders.sql
+
+# 2. Preview the planned migration (dry-run: Extract + Plan + Render, no writes)
+supaschema diff --from database:$LOCAL_URL --to dir:supabase/schemas --dry-run
+
+# 3. Generate the migration file (Extract + Plan + Render + Check)
+supaschema diff --from database:$LOCAL_URL --to dir:supabase/schemas
+
+# 4. Prove the migration is idempotent (Verify stage)
+supaschema verify
+
+# 5. Apply with your runner
+supabase db push
+```
+
+Each stage builds trust incrementally. By the time you hand the SQL to your runner, it has been parsed with PostgreSQL's own grammar, diffed at the object level, dependency-ordered, statically analysed against 20+ rules, and proven idempotent against a real PostgreSQL engine — all without ever touching your production database.

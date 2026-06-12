@@ -45,7 +45,7 @@ When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/ho
 supaschema diff --fail-on-diff --quiet
 ```
 
-Exit 3 means the live database and the tree have diverged; exit 0 means parity. Use this as a CI gate (`docs/ci.md` has the full pipeline recipe).
+Exit 3 means the live database and the tree have diverged; exit 0 means parity. Use this as a CI gate (`docs/guides/ci-github-actions.md` has the full pipeline recipe).
 
 When drift is large or blocked, triage before editing:
 
@@ -58,6 +58,6 @@ When drift is large or blocked, triage before editing:
 ## Boundaries
 
 - Sources for either side of a diff: `dir:<tree>`, `git:<ref>`, `database:<url|$ENV>`, `dump:<file.sql>`, `catalog:<snapshot.json>`.
-- Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) and enum reordering/removal are hand-authored migrations — validate them with `check` and `verify`; the enum recipe is in `docs/hints.md`.
+- Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) and enum reordering/removal are hand-authored migrations — validate them with `check` and `verify`; the enum recipe is in `docs/configuration/hints.md`.
 - Keep `transactionMode: "per-migration"` for transactional runners; `CREATE INDEX CONCURRENTLY` is blocked under `supabase-auto` and splits to a `.concurrent.sql` companion under `adapter: "postgres"`.
 - `supaschema explain <SUPA_CODE>` decodes any diagnostic offline.

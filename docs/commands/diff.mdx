@@ -1,0 +1,160 @@
+---
+title: "supaschema diff: Generate SQL Migrations from Schema"
+description: "diff compares two schema sources and emits a replay-safe SQL migration. Supports --from, --to, --out, --watch, --fail-on-diff, and more."
+---
+
+# supaschema diff: Generate SQL Migrations from Schema
+
+> diff compares two schema sources and emits a replay-safe SQL migration. Supports --from, --to, --out, --watch, --fail-on-diff, and more.
+
+The `diff` command is the primary workflow entry point in supaschema. It compares a **before-state** (your live database or a git ref) against an **after-state** (your declarative schema directory) and renders an idempotent, replay-safe SQL migration. By default it writes the migration to `supabase/migrations/TIMESTAMP_name.sql` and then refreshes your TypeScript types automatically. You can redirect output to stdout, preview without writing, or run continuously in watch mode.
+
+## Default Behavior
+
+When you run `npx supaschema diff` with no flags, supaschema:
+
+1. Reads `--from` from your live local database (or `git:HEAD` when no database connection is configured).
+2. Reads `--to` from `dir:supabase/schemas`.
+3. Writes the resulting migration to `supabase/migrations/<TIMESTAMP>_migration.sql`.
+4. Refreshes TypeScript types from the updated schema.
+
+If there is nothing to migrate, the command exits with code `0` and writes no file.
+
+<Note>
+  TypeScript type generation runs automatically after every successful migration write. Pass `--dry-run` or `--out stdout` to skip the write step and suppress type generation.
+</Note>
+
+## Examples
+
+```bash theme={null}
+# Basic: diff against your live local Supabase
+npx supaschema diff
+
+# PR diff: compare branch against base
+npx supaschema diff --from "git:origin/main" --to dir:supabase/schemas --out /tmp/migration.sql
+
+# Drift detection: exit 3 if live DB is behind the schema
+npx supaschema diff --fail-on-diff --quiet
+
+# Watch mode for editor feedback
+npx supaschema diff --watch
+
+# Preview without writing
+npx supaschema diff --dry-run --summary
+```
+
+## Flags
+
+<ParamField path="--from" type="source">
+  The **before-state** source to diff against. Accepts a database URL, a `git:<ref>` specifier (e.g. `git:HEAD`, `git:origin/main`), or a `dir:<path>` pointing to a schema directory. Defaults to your live local database, falling back to `git:HEAD` when no database is reachable.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  The **after-state** source representing the desired schema. Accepts the same specifiers as `--from`. Defaults to `dir:supabase/schemas`.
+</ParamField>
+
+<ParamField path="--out" type="path | stdout">
+  Where to write the rendered SQL. Pass a file path to override the default timestamped filename, or pass `stdout` to print directly to standard output without touching the filesystem. Using `--out stdout` skips TypeScript type generation.
+</ParamField>
+
+<ParamField path="--name" type="string">
+  Overrides the descriptive segment of the generated migration filename. For example, `--name add_accounts` produces `20240101000000_add_accounts.sql`. Has no effect when `--out` is set to `stdout` or an explicit path.
+</ParamField>
+
+<ParamField path="--migrations-dir" type="path">
+  Overrides the directory where migrations are written. Defaults to `supabase/migrations`. Useful when your project layout differs from the Supabase convention.
+</ParamField>
+
+<ParamField path="--schema" type="string">
+  A comma-separated list of PostgreSQL schema names to include in the diff. When omitted, all schemas tracked by your configuration are diffed. Example: `--schema public,auth`.
+</ParamField>
+
+<ParamField path="--dry-run" type="boolean">
+  Renders the SQL plan and prints it without writing any file. Combine with `--summary` to get a human-readable operation count alongside the SQL.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Outputs a structured JSON payload instead of raw SQL. The payload includes the rendered SQL, the operation list, and any diagnostics. Useful for programmatic consumption in custom CI scripts.
+</ParamField>
+
+<ParamField path="--fail-on-diff" type="boolean">
+  Exits with code `3` when the computed plan contains at least one operation. Use this as a **drift gate** in CI: your pipeline fails if the live database has diverged from the declared schema.
+</ParamField>
+
+<ParamField path="--no-check-chain" type="boolean">
+  Skips the migration lineage chain gate. By default, supaschema verifies that the new migration's parent hash matches the tip of the existing chain. Pass this flag when you intentionally operate outside normal linear history (e.g. merging a squashed migration).
+</ParamField>
+
+<ParamField path="--summary" type="boolean">
+  Prints a human-readable summary of operations and diagnostics after rendering the SQL. Shows counts of creates, alters, drops, and any warnings.
+</ParamField>
+
+<ParamField path="--write-hints" type="path">
+  Path where supaschema writes the gated destructive object keys as a `hints.destructive` skeleton for review. When the plan contains blocked destructive operations (e.g. a column drop), this file lists each object key so you can explicitly approve them before supaschema will write the real migration. The file is never overwritten if it already exists.
+</ParamField>
+
+<ParamField path="--timing" type="boolean">
+  Prints per-phase timing information to `stderr` after the command completes. Useful for profiling slow diffs on large schemas.
+</ParamField>
+
+<ParamField path="--watch" type="boolean">
+  Re-runs the diff automatically whenever files in the `dir:` source change. Implies `--dry-run` and `--summary` — watch mode never writes migration files. Press `Ctrl+C` to stop. Intended for tight feedback loops during schema authoring.
+</ParamField>
+
+<ParamField path="--quiet" type="boolean">
+  Suppresses all non-essential output, including progress spinners and informational messages. Errors and the migration SQL itself are still emitted.
+</ParamField>
+
+<ParamField path="--config" type="path">
+  Path to a supaschema config file. Defaults to `supaschema.config.ts` (or `.js` / `.json`) in the current working directory.
+</ParamField>
+
+<ParamField path="--env" type="string">
+  Selects a named environment block from your config file (e.g. `--env staging`). Named environments let you store per-environment database URLs and schema paths in one config without repeating flags.
+</ParamField>
+
+## Source Specifiers
+
+The `--from` and `--to` flags accept the following source formats:
+
+| Format       | Example                          | Description                 |
+| ------------ | -------------------------------- | --------------------------- |
+| Database URL | `postgresql://user:pass@host/db` | Live database introspection |
+| `git:<ref>`  | `git:HEAD`, `git:origin/main`    | Schema files at a git ref   |
+| `dir:<path>` | `dir:supabase/schemas`           | Schema files on disk        |
+
+<Tip>
+  In pull-request workflows, set `--from "git:origin/main"` and `--to dir:supabase/schemas` to produce a migration that captures exactly what changed on your branch — no live database required.
+</Tip>
+
+## Exit Codes
+
+| Code | Meaning                                                    |
+| ---- | ---------------------------------------------------------- |
+| `0`  | Success — migration written (or nothing to migrate)        |
+| `1`  | Error — command failed to complete                         |
+| `2`  | Diagnostics errors — static analysis found blocking issues |
+| `3`  | `--fail-on-diff` triggered — plan was non-empty            |
+
+<Warning>
+  Exit code `3` is only produced when you explicitly pass `--fail-on-diff`. A non-empty migration plan does **not** cause a non-zero exit under normal usage.
+</Warning>
+
+## CI Integration
+
+Use `--fail-on-diff` to gate merges on schema drift:
+
+```yaml theme={null}
+# .github/workflows/drift-check.yml
+- name: Check for schema drift
+  run: npx supaschema diff --fail-on-diff --quiet
+  env:
+    SUPASCHEMA_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+```
+
+Use `--json` to consume the plan in downstream pipeline steps:
+
+```bash theme={null}
+plan=$(npx supaschema diff --dry-run --json)
+echo "$plan" | jq '.operations | length'
+```

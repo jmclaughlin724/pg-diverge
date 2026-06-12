@@ -1,3 +1,8 @@
+---
+title: "Diagnostics"
+description: "SUPA diagnostic codes, severities, meanings, and recovery entry points."
+---
+
 # Diagnostics
 
 Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `statement`, and `hint` fields.
@@ -57,7 +62,7 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_CHECK_DEPARSE_UNSUPPORTED` | warning | A statement cannot be deparsed for the round-trip proof. |
 | `SUPA_NORMALIZE_FIDELITY` | warning | Deparsed SQL did not reparse to the identical parse tree; the object kept its source text under `normalize: "deparse"`. |
 | `SUPA_NORMALIZE_UNSUPPORTED` | warning | The deparser cannot render this object; it kept its source text under `normalize: "deparse"`. |
-| `SUPA_CORPUS_RECONVERGENCE` | error | The corpus oracle did not converge: residual operations remain after applying the rendered reconciliation to the dirty corpus database, the second apply changed the catalog, or a pipeline stage failed (see `docs/corpus.md`). |
+| `SUPA_CORPUS_RECONVERGENCE` | error | The corpus oracle did not converge: residual operations remain after applying the rendered reconciliation to the dirty corpus database, the second apply changed the catalog, or a pipeline stage failed (see `docs/guides/corpus-oracle.md`). |
 | `SUPA_CHECK_VOLATILE_DEFAULT_REWRITE` | warning | `ADD COLUMN` with a volatile default rewrites the whole table. |
 | `SUPA_CHECK_INSERT_ON_CONFLICT` | error | `INSERT` statements in migrations must use `ON CONFLICT` for replay safety. |
 | `SUPA_CHECK_DML_REVIEW` | warning | `UPDATE`/`DELETE` statements need explicit idempotency review. |

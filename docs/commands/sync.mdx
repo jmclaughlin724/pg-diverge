@@ -1,0 +1,119 @@
+---
+title: "supaschema sync: Gate and Apply Pending Migrations"
+description: "sync checks pending migrations pass static validation, then optionally drives the Supabase CLI to apply them locally or push them remotely."
+---
+
+# supaschema sync: Gate and Apply Pending Migrations
+
+> sync checks pending migrations pass static validation, then optionally drives the Supabase CLI to apply them locally or push them remotely.
+
+The `sync` command is the bridge between your migration files on disk and a running database. It first runs the same static validation gate as the `check` command against every pending migration, and only if all checks pass does it hand off to the Supabase CLI to do the actual work. With no flags, `sync` runs in dry-run mode — it tells you what it would do without touching anything.
+
+## What it does
+
+`supaschema sync` follows these steps in order:
+
+1. **Reconcile** — calls the same logic as `supaschema migrations` to identify pending files and detect any ghost versions or out-of-order history.
+2. **Gate** — runs static validation (`check`) against each pending migration. If any file fails, the command stops and reports the diagnostics without applying anything.
+3. **Apply** (only with `--local` or `--remote`) — invokes the Supabase CLI to apply or push the pending migrations.
+
+<Note>
+  supaschema never writes to the migrations history table itself. It delegates all application to the Supabase CLI (`supabase migration up` for local, `supabase db push` for remote), which owns the history record. This means your history table stays consistent with what the Supabase toolchain expects.
+</Note>
+
+## Dry-run mode
+
+Running `supaschema sync` without `--local` or `--remote` prints a plan of what would be applied but executes nothing. Use this to verify the gate logic in CI without needing a live database, or to preview what a deployment will do before you approve it.
+
+```
+Pending migrations (2):
+
+  20240401090000_add_order_status.sql     ✓ check passed
+  20240415160000_create_notifications.sql ✓ check passed
+
+No runner flag provided — dry run only. Pass --local or --remote to apply.
+```
+
+## Safety gates
+
+`sync` refuses to proceed if it detects either of the following conditions:
+
+* **Ghost versions** — a version is in the history table but the file is missing on disk (`SUPA_MIGRATIONS_GHOST_VERSIONS`).
+* **Out-of-order files** — a file has a lower version number than the highest applied version but is not itself applied (`SUPA_MIGRATIONS_OUT_OF_ORDER`).
+
+These gates exist because applying migrations in the presence of history inconsistencies can silently corrupt your schema state. Fix the underlying issue first, then re-run `sync`.
+
+<Warning>
+  Never use `--remote` against a production database without first reviewing the output of a dry run and confirming the pending migrations are exactly what you expect. The Supabase CLI's `db push` is not transactional across multiple migration files.
+</Warning>
+
+## Flags
+
+<ParamField path="--local" type="boolean">
+  Apply pending migrations to the local Supabase stack by invoking `supabase migration up`. Requires the Supabase CLI to be installed and a local stack to be running (`supabase start`).
+</ParamField>
+
+<ParamField path="--remote" type="boolean">
+  Push pending migrations to the linked remote Supabase project by invoking `supabase db push`. Requires the Supabase CLI to be installed and a project to be linked (`supabase link`).
+</ParamField>
+
+<ParamField path="--database-url" type="string">
+  Connection URL for the target database, used during the reconciliation step to fetch applied history. Falls back to `SUPASCHEMA_DATABASE_URL` or the active environment config if not provided.
+</ParamField>
+
+<ParamField path="--migrations-dir" type="string">
+  Path to the migrations directory. Defaults to `supabase/migrations`.
+</ParamField>
+
+<ParamField path="--env" type="string">
+  Name of a configured environment from `supaschema.config.json`. Resolves the database URL and any environment-specific settings from that entry. This is a global flag available on all commands.
+</ParamField>
+
+<ParamField path="--config" type="string">
+  Path to a `supaschema.config.json` file. Defaults to `supaschema.config.json` in the current working directory. This is a global flag available on all commands.
+</ParamField>
+
+## Usage
+
+```bash theme={null}
+# Dry run: show what would be applied, gate checks included
+npx supaschema sync
+
+# Apply pending migrations to the local Supabase stack
+npx supaschema sync --local
+
+# Push pending migrations to the linked remote Supabase project
+npx supaschema sync --remote
+
+# Dry run against a named environment
+npx supaschema sync --env staging
+
+# Apply to local with a custom migrations directory
+npx supaschema sync --local --migrations-dir db/migrations
+```
+
+## Exit codes
+
+| Code | Meaning                                                                                                                                                                                                    |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | Success. All pending migrations passed the gate and (if a runner flag was provided) were applied successfully. Also returned when there are no pending migrations.                                         |
+| `1`  | Unexpected error — a runtime failure such as a configuration problem, a missing Supabase CLI binary, or a network error.                                                                                   |
+| `2`  | Gate failure — one or more pending migrations failed static validation, or ghost/out-of-order history was detected. No migrations were applied. Check the diagnostic output to identify the failing files. |
+
+## Diagnostic codes
+
+<Accordion title="SUPA_SYNC_RUNNER_FAILED">
+  The Supabase CLI command that `sync` delegated to (`supabase migration up` or `supabase db push`) exited with a non-zero code. The underlying CLI output is included in the error message. Check that the Supabase CLI is installed, your local stack is running (for `--local`), and your project is linked (for `--remote`).
+</Accordion>
+
+<Accordion title="SUPA_MIGRATIONS_GHOST_VERSIONS">
+  One or more versions appear in the history table but the corresponding SQL files are missing from disk. `sync` will not apply any migrations until you resolve the ghost versions. See the `migrations` command reference for details.
+</Accordion>
+
+<Accordion title="SUPA_MIGRATIONS_OUT_OF_ORDER">
+  One or more SQL files on disk have version numbers lower than the highest applied version, but are not recorded as applied. `sync` refuses to proceed in this state because applying the pending files would leave a gap in the ordered history. Resolve the ordering conflict before retrying.
+</Accordion>
+
+<Tip>
+  In a CI/CD pipeline, run `npx supaschema sync` (dry run) on every pull request to catch gate failures early, then run `npx supaschema sync --remote` in your deployment job after the pull request merges. This gives you a two-stage safety check without any extra configuration.
+</Tip>

@@ -1,0 +1,185 @@
+---
+title: "supaschema verify: Prove Idempotency and Convergence"
+description: "verify applies your migration twice in throwaway databases and compares catalog fingerprints to prove idempotency and convergence to the declared schema."
+---
+
+# supaschema verify: Prove Idempotency and Convergence
+
+> verify applies your migration twice in throwaway databases and compares catalog fingerprints to prove idempotency and convergence to the declared schema.
+
+The `verify` command gives you a cryptographic proof that your migration is both **idempotent** and **convergent**. It creates two throwaway databases, applies the migration twice to the first, applies your target schema model directly to the second, then compares catalog fingerprints across both. If the fingerprints match, your migration is proven safe. If they diverge, supaschema tells you exactly which catalog objects differ. Temp databases are always cleaned up on success — you only retain them on failure when you need to inspect what went wrong.
+
+<Note>
+  `verify` requires a local database URL for a PostgreSQL instance where your user has `CREATEDB` privileges. It refuses remote databases by default to protect production data from accidental writes.
+</Note>
+
+## How It Works
+
+```
+┌──────────────────────────────┐   ┌──────────────────────────────┐
+│  Migration database          │   │  Target (model) database     │
+│                              │   │                              │
+│  1. Apply --from state       │   │  1. Apply --to state         │
+│  2. Apply --migration SQL    │   │     (declarative model only) │
+│  3. Apply --migration SQL    │   │                              │
+│     again (idempotency run)  │   │                              │
+│                              │   │                              │
+│  Catalog fingerprint ────────┼───┼───► Compare ◄───────────────│
+└──────────────────────────────┘   └──────────────────────────────┘
+```
+
+A match proves two things simultaneously:
+
+1. **Idempotency** — applying the migration a second time produces no change.
+2. **Convergence** — the migration drives the database to exactly the schema your declarative model describes.
+
+## Examples
+
+```bash theme={null}
+# Verify against local Supabase stack
+npx supaschema verify \
+  --from "git:HEAD" \
+  --to dir:supabase/schemas \
+  --migration supabase/migrations/20240101000000_add_accounts.sql \
+  --database-url postgresql://postgres:postgres@localhost:54322/postgres
+
+# Keep databases after failure for inspection
+npx supaschema verify \
+  --from "git:HEAD" --to dir:supabase/schemas \
+  --migration /tmp/migration.sql \
+  --database-url postgresql://postgres:postgres@localhost:54322/postgres \
+  --keep-databases
+
+# With role stubs for Supabase RLS
+npx supaschema verify \
+  --from "git:HEAD" --to dir:supabase/schemas \
+  --migration migration.sql \
+  --database-url postgresql://... \
+  --ensure-roles
+```
+
+## Flags
+
+<ParamField path="--from" type="source">
+  The **before-state** source. supaschema applies this state to both temp databases before applying any migration or model SQL. Accepts a database URL, `git:<ref>`, or `dir:<path>`. This should match the `--from` value you used when generating the migration with `diff`.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  The **after-state** (target model) source. Applied directly to the second temp database for the convergence comparison. Accepts the same specifiers as `--from`. Typically `dir:supabase/schemas`.
+</ParamField>
+
+<ParamField path="--migration" type="path">
+  Path to the `.sql` migration file you want to verify. This file is applied twice to the first temp database (once for functionality, once to prove idempotency). Defaults to the newest `.sql` file in your configured migrations directory.
+</ParamField>
+
+<ParamField path="--migrations-dir" type="path">
+  Overrides the directory used when resolving the default `--migration` file. Defaults to `supabase/migrations`.
+</ParamField>
+
+<ParamField path="--database-url" type="url">
+  Connection string for a local PostgreSQL instance where your user has `CREATEDB` privileges. supaschema creates and destroys temp databases on this server. You can also set the `SUPASCHEMA_DATABASE_URL` environment variable instead of passing this flag on every invocation.
+</ParamField>
+
+<ParamField path="--ensure-roles" type="boolean">
+  Pre-creates any `NOLOGIN` roles that the migration grants permissions to (for example `authenticated`, `anon`, `service_role` in Supabase projects) before applying migration SQL. Without this flag, `GRANT ... TO authenticated` will fail in a fresh temp database that does not have those roles.
+</ParamField>
+
+<ParamField path="--ensure-environment" type="boolean">
+  Stubs out Supabase-specific surfaces (extensions, helper functions, storage schema, etc.) in both temp databases so that migrations that reference Supabase internals apply cleanly. Enabled automatically when the `supabase-auto` adapter is active. Pass explicitly if you are using a generic adapter but targeting a Supabase-hosted database.
+</ParamField>
+
+<ParamField path="--keep-databases" type="boolean">
+  Preserves both temp databases after a failure instead of dropping them. Use this flag when you need to inspect the diverging catalog state with `psql` or a GUI client. Databases are always dropped on success regardless of this flag.
+</ParamField>
+
+<ParamField path="--config" type="path">
+  Path to a supaschema config file. Defaults to `supaschema.config.ts` (or `.js` / `.json`) in the current working directory.
+</ParamField>
+
+## Environment Variables
+
+| Variable                         | Description                                                                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `SUPASCHEMA_DATABASE_URL`        | Default database URL — equivalent to `--database-url`                                                                    |
+| `SUPASCHEMA_VERIFY_ALLOW_REMOTE` | Set to `1` to allow `verify` against remote databases. Only use this for intentionally disposable remote infrastructure. |
+
+<Warning>
+  `verify` refuses remote database URLs by default. If you set `SUPASCHEMA_VERIFY_ALLOW_REMOTE=1`, make absolutely sure the target server is disposable. The command creates and drops databases automatically, and it cannot distinguish a staging server from a production one.
+</Warning>
+
+## Diagnostic Codes
+
+When `verify` fails, it emits one or more of the following structured diagnostic codes:
+
+| Code                               | Meaning                                                                                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SUPA_VERIFY_FINGERPRINT_MISMATCH` | The catalog fingerprints of the migration database and the target model database do not match. The migration does not converge to the declared schema. |
+| `SUPA_VERIFY_RECONVERGENCE`        | The second application of the migration changed the catalog state, proving the migration is not idempotent.                                            |
+| `SUPA_VERIFY_FAILED`               | A general failure during database setup, SQL application, or fingerprint collection. Check the accompanying error message for details.                 |
+| `SUPA_VERIFY_CLEANUP_FAILED`       | The temp databases could not be dropped after a failure. The connection string and database names are printed so you can clean them up manually.       |
+
+## Exit Codes
+
+| Code | Meaning                                                                       |
+| ---- | ----------------------------------------------------------------------------- |
+| `0`  | Both fingerprints match and the migration is proven idempotent and convergent |
+| `2`  | Verification failed — diagnostics contain one or more of the codes above      |
+
+## CI Integration
+
+Run `verify` as a required check on every pull request that touches `supabase/migrations`:
+
+```yaml theme={null}
+# .github/workflows/verify.yml
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:15.1.0.117
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 54322:5432
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify latest migration
+        run: |
+          migration=$(ls supabase/migrations/*.sql | sort | tail -n 1)
+          npx supaschema verify \
+            --from "git:origin/main" \
+            --to dir:supabase/schemas \
+            --migration "$migration" \
+            --database-url postgresql://postgres:postgres@localhost:54322/postgres \
+            --ensure-roles
+```
+
+<Tip>
+  Pair `verify` with `diff` in the same CI job: run `diff --dry-run --out /tmp/migration.sql` first to generate the candidate migration, then pass that file to `verify --migration /tmp/migration.sql`. This proves the migration that would actually be written is safe before you commit it.
+</Tip>
+
+## Inspecting Failures
+
+When `verify` returns `SUPA_VERIFY_FINGERPRINT_MISMATCH` or `SUPA_VERIFY_RECONVERGENCE`, re-run with `--keep-databases` and connect to each temp database to compare them directly:
+
+```bash theme={null}
+npx supaschema verify \
+  --from "git:HEAD" --to dir:supabase/schemas \
+  --migration migration.sql \
+  --database-url postgresql://postgres:postgres@localhost:54322/postgres \
+  --keep-databases
+
+# supaschema prints the temp database names on failure, e.g.:
+#   migration_db: supaschema_verify_migration_a1b2c3
+#   target_db:    supaschema_verify_target_a1b2c3
+
+psql postgresql://postgres:postgres@localhost:54322/supaschema_verify_migration_a1b2c3
+psql postgresql://postgres:postgres@localhost:54322/supaschema_verify_target_a1b2c3
+```
+
+Use `\dt *.*` or query `information_schema.tables` in each database to locate the diverging objects reported in the diagnostic output.

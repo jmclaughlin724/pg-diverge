@@ -26,4 +26,4 @@
 #   SUPASCHEMA_DATABASE_URL > the nearest supabase/config.toml; do not
 #   hard-code connection strings.
 # - Decode any SUPA_* diagnostic with `supaschema explain <CODE>`; recovery
-#   steps live in docs/hints.md.
+#   steps live in docs/configuration/hints.md.

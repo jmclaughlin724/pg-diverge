@@ -1,3 +1,8 @@
+---
+title: "Case study"
+description: "supaschema measured against a production multi-tenant Supabase platform: ~30 schemas, ~8,300 objects, hundreds of RLS policies."
+---
+
 # Case study: a production multi-tenant Supabase platform
 
 supaschema was built while developing a production multi-tenant SaaS on Supabase: roughly **30 schemas, ~8,300 schema objects, and hundreds of RLS policies** (tenant isolation is enforced in the database, so almost every table carries policies). The pain that motivated the project was concrete: every schema edit meant waiting on the Supabase CLI's shadow-database diff before a migration — and its generated types — could catch up. That wait is a tax on every change, and it grows with the schema.
@@ -12,7 +17,7 @@ Extracting and planning the entire declarative tree (8,271 modeled objects) runs
 extract-from 1012ms · extract-to 876ms · plan 5ms
 ```
 
-A full diff is two extractions plus a plan — **~1.9 seconds over the entire production tree.** The equivalent Supabase CLI diff replays all 8,300 objects into a fresh Docker shadow database on every run, which is minutes at this scale (see the [scaling benchmark](../README.md#speed)).
+A full diff is two extractions plus a plan — **~1.9 seconds over the entire production tree.** The equivalent Supabase CLI diff replays all 8,300 objects into a fresh Docker shadow database on every run, which is minutes at this scale (see the [benchmarks](/benchmarks#speed-and-accuracy)).
 
 The 8,271 figure is what supaschema models; the tree also produced 91 expected fail-closed diagnostics, concentrated in the bootstrap layer (managed-schema declarations for `extensions`/`vault`/roles, which a real adoption excludes via `schemas.exclude`) plus normalize-fidelity warnings. None are engine errors.
 
@@ -42,7 +47,7 @@ node benchmarks/compare.js
 
 ## Security: the miss that speed hides
 
-Speed is the felt pain; the more dangerous gap is correctness on RLS. On a multi-tenant platform, a policy's `USING` predicate **is** the tenant boundary. Tightening `USING (true)` to `USING (tenant_id = current_tenant())` is a one-line change that closes an isolation hole — and every Supabase CLI diff engine measured here silently drops that policy change (it diffs policies by name, not by body). See the [functions-policies](../README.md#accuracy) and realistic fixtures, where each engine scores F1 0.982–0.999 on exactly that miss while supaschema scores 1.000, and the missed-policy migration provably fails to reach the target catalog.
+Speed is the felt pain; the more dangerous gap is correctness on RLS. On a multi-tenant platform, a policy's `USING` predicate **is** the tenant boundary. Tightening `USING (true)` to `USING (tenant_id = current_tenant())` is a one-line change that closes an isolation hole — and every Supabase CLI diff engine measured here silently drops that policy change (it diffs policies by name, not by body). See the [accuracy results](/benchmarks#accuracy) for the manifest-carrying fixtures, where each engine scores F1 0.982–0.999 on exactly that miss while supaschema scores 1.000, and the missed-policy migration provably fails to reach the target catalog.
 
 A slow diff costs seconds. An unreplayable diff costs a deploy. A silently dropped policy change ships a tenant-isolation hole that review, CI, and the migration runner all wave through — which on this platform's hundreds of policies is the failure mode that actually matters.
 

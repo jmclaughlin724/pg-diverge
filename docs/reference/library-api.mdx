@@ -1,0 +1,57 @@
+---
+title: "Library API"
+description: "Every CLI capability as an exported, typed function — the supaschema Node.js library surface."
+---
+
+# Library API
+
+> Everything the CLI does is an exported, typed function. Import from `supaschema` to embed extraction, planning, rendering, checking, and verification in your own tooling.
+
+```ts
+import {
+  extractSourceModel,   // any source prefix -> SchemaModel
+  extractCatalogModel,  // live pg_catalog -> SchemaModel
+  planSchemaDiff,       // two models -> MigrationPlan
+  renderMigrationSplit, // plan -> { sql, concurrentSql? }
+  checkMigrationSql,    // SQL -> replay-safety diagnostics
+  verifyMigration,      // apply-twice + reconvergence proof
+  migrationsStatus,     // disk files vs applied history
+  syncMigrations,       // gate + orchestrate the migration runner
+  runCorpus,            // the corpus oracle
+  resolveDatabaseUrl,
+  parseLineage,
+  loadConfig,
+} from "supaschema";
+```
+
+## Core pipeline
+
+| Export | Maps to | Purpose |
+| --- | --- | --- |
+| `extractSourceModel` | `inspect` | Parse any source (`dir:`, `git:`, `database:`, `dump:`, `catalog:`) into a `SchemaModel`. |
+| `extractCatalogModel` | `inspect` | Read a live `pg_catalog` (read-only) into a `SchemaModel`. |
+| `planSchemaDiff` | `plan` | Diff two models into a `MigrationPlan` of ordered, dependency-aware operations. |
+| `renderMigration` / `renderMigrationSplit` | `diff` | Render a plan to guarded SQL; the split form separates a `concurrentSql` companion for `CREATE INDEX CONCURRENTLY` under the `postgres` adapter. |
+| `checkMigrationSql` | `check` | Static replay-safety and lock-hazard diagnostics for any migration SQL. |
+| `verifyMigration` | `verify` | The apply-twice proof in throwaway databases, plus the reconvergence cross-check. |
+
+## Operations and state
+
+| Export | Maps to | Purpose |
+| --- | --- | --- |
+| `migrationsStatus` / `renderMigrationsStatus` | `migrations` | Reconcile disk files against a database's applied history (applied, pending, ghosts, out-of-order). |
+| `syncMigrations` | `sync` | Gate pending migrations, then optionally drive the Supabase CLI. |
+| `auditModel` / `renderAuditReport` | `audit` | Support-matrix coverage report for adopting an existing schema. |
+| `runCorpus` / `renderCorpusReport` | `corpus` | Replay a corpus tree and require reconvergence to zero. |
+| `generateDatabaseTypes` / `generateZodSchemas` | `types` | Supabase-compatible TypeScript types and runtime Zod validators from a model. |
+
+## Support utilities
+
+| Export | Purpose |
+| --- | --- |
+| `loadConfig` / `resolveConfig` / `defaultConfig` / `supaschemaConfigSchema` | Load and validate `supaschema.config.json` (the Zod schema is exported). |
+| `resolveDatabaseUrl` / `resolveSupabaseLocalDatabaseUrl` | The [URL resolution lanes](/configuration/environments), including `supabase/config.toml` discovery. |
+| `parseLineage` / `latestLineage` / `lineageLine` | Read and produce the `-- supaschema: lineage` markers that chain migrations. |
+| `runConfiguredValidators` | Run the configured external validators (`squawk`, `sqlfluff`, …) against SQL. |
+
+All exports ship TypeScript types (`SchemaModel`, `MigrationPlan`, `SyncOptions`, `CorpusReport`, …). For the full generated signature reference, run `npm run docs:api` in the repository — it builds a TypeDoc site from `src/index.ts`.
