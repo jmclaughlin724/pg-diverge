@@ -19,6 +19,155 @@ import {
   truncate,
 } from "./plot-lib.js";
 
+export function renderHeadToHeadSvg(rows, fixture, environments, options = {}) {
+  const map = new Map();
+  for (const row of rows) {
+    const bucket = map.get(row.adapter) ?? { f1s: [], latencies: [], total: 0, twice: 0 };
+    bucket.latencies.push(row.elapsedMs);
+    if (typeof row.outputF1 === "number") {
+      bucket.f1s.push(row.outputF1);
+    }
+    if (row.appliesTwice) {
+      bucket.twice += 1;
+    }
+    bucket.total += 1;
+    map.set(row.adapter, bucket);
+  }
+  const groups = [...map.entries()]
+    .map(([label, b]) => ({
+      f1:
+        b.f1s.length > 0 ? b.f1s.reduce((sum, value) => sum + value, 0) / b.f1s.length : undefined,
+      label,
+      median: percentile(b.latencies, 0.5),
+      p95: percentile(b.latencies, 0.95),
+      total: b.total,
+      twice: b.twice,
+    }))
+    .sort((a, b) => a.median - b.median || a.label.localeCompare(b.label));
+  const width = 1200;
+  const rowHeight = 50;
+  const labelX = 36;
+  const x0 = 236;
+  const chartWidth = 336;
+  const f1ColX = 690;
+  const replayColX = 850;
+  const top = 158;
+  const height = top + groups.length * rowHeight + 78;
+  const domainMax = niceCeil(Math.max(...groups.map((group) => group.p95)));
+  const xFor = (value) => x0 + (Math.max(0, value) / domainMax) * chartWidth;
+  const tablesNote = fixtureScale[fixture]?.tables;
+  const supaMedians = groups.filter((g) => isSupaschema(g.label)).map((g) => g.median);
+  const engineMedians = groups.filter((g) => !isSupaschema(g.label)).map((g) => g.median);
+  const speedup =
+    supaMedians.length > 0 && engineMedians.length > 0
+      ? Math.floor(Math.min(...engineMedians) / Math.max(...supaMedians))
+      : 0;
+  const title =
+    options.title ??
+    `supaschema vs every Supabase CLI engine${tablesNote ? ` — ${tablesNote}` : ""}`;
+  const parts = [
+    svgHeader(width, height),
+    defs(),
+    `<rect width="100%" height="100%" rx="14" fill="${theme.bg}" />`,
+    text(labelX, 50, title, { fill: theme.title, size: 22, weight: "700" }),
+    text(
+      labelX,
+      74,
+      options.subtitle ??
+        "Median diff latency (linear, lower is better) · accuracy F1 vs ground truth · replay-safe = migration applies twice",
+      { fill: theme.subtitle, size: 12.5 },
+    ),
+  ];
+  if (speedup >= 2) {
+    const chipWidth = 250;
+    const chipX = width - 36 - chipWidth;
+    parts.push(
+      `<rect x="${chipX}" y="32" width="${chipWidth}" height="42" rx="11" fill="rgba(16,185,129,0.12)" stroke="${theme.passStroke}" stroke-opacity="0.55" />`,
+      text(chipX + chipWidth / 2, 59, `supaschema ≥ ${speedup}× faster`, {
+        anchor: "middle",
+        fill: theme.accent,
+        size: 17,
+        weight: "700",
+      }),
+    );
+  }
+  for (const [header, columnX] of [
+    [options.latencyHeader ?? "median diff", x0],
+    ["accuracy (F1)", f1ColX + 60],
+    ["replay-safe", replayColX + 60],
+  ]) {
+    parts.push(
+      text(columnX, top - 18, header, {
+        anchor: header === "median diff" ? "start" : "middle",
+        fill: theme.muted,
+        size: 11.5,
+        weight: "600",
+      }),
+    );
+  }
+  const plotBottom = top + groups.length * rowHeight - 12;
+  const tickStep = domainMax <= 10_000 ? 2000 : domainMax <= 60_000 ? 10_000 : 50_000;
+  for (let tickValue = 0; tickValue <= domainMax + 1; tickValue += tickStep) {
+    const tickX = xFor(tickValue);
+    parts.push(
+      `<line x1="${tickX.toFixed(1)}" y1="${top - 8}" x2="${tickX.toFixed(1)}" y2="${plotBottom}" stroke="${theme.grid}" stroke-width="1" />`,
+      text(tickX, plotBottom + 22, formatSeconds(tickValue), {
+        anchor: "middle",
+        fill: theme.muted,
+        size: 11,
+      }),
+    );
+  }
+  for (const [index, group] of groups.entries()) {
+    const y = top + index * rowHeight;
+    const supa = isSupaschema(group.label);
+    const barFill = supa ? "url(#supaGradient)" : "url(#slateGradient)";
+    const barEnd = xFor(group.median);
+    const p95X = xFor(group.p95);
+    if (supa) {
+      parts.push(`<circle cx="${labelX + 5}" cy="${y + 11}" r="4" fill="${theme.accent}" />`);
+    }
+    parts.push(
+      text(labelX + 18, y + 15, truncate(group.label, 22), {
+        fill: supa ? theme.title : theme.text,
+        size: 13,
+        weight: supa ? "650" : "450",
+      }),
+      `<rect x="${x0}" y="${y}" width="${Math.max(3, barEnd - x0).toFixed(1)}" height="20" rx="5" fill="${barFill}" />`,
+      `<line x1="${p95X.toFixed(1)}" y1="${y - 3}" x2="${p95X.toFixed(1)}" y2="${y + 23}" stroke="${theme.title}" stroke-opacity="0.45" stroke-width="2" />`,
+      text(barEnd + 8, y + 15, formatSeconds(group.median), {
+        fill: supa ? theme.accent : theme.subtitle,
+        size: 12,
+        weight: supa ? "700" : "500",
+      }),
+    );
+    if (group.f1 === undefined) {
+      parts.push(chip(f1ColX, y - 2, "—", "muted"));
+    } else {
+      parts.push(chip(f1ColX, y - 2, group.f1.toFixed(3), group.f1 >= 0.9995 ? "pass" : "warn"));
+    }
+    parts.push(passFailChip(replayColX, y - 2, group.twice, group.total));
+  }
+  parts.push(
+    text(labelX, height - 22, envFooter(environments, fixture), { fill: theme.muted, size: 11 }),
+    svgFooter(),
+  );
+  return parts.join("\n");
+}
+
+function niceCeil(value) {
+  const steps = [
+    5000, 10_000, 15_000, 20_000, 25_000, 30_000, 40_000, 50_000, 60_000, 80_000, 100_000, 150_000,
+    200_000, 250_000,
+  ];
+  for (const step of steps) {
+    if (value <= step) {
+      return step;
+    }
+  }
+  return Math.ceil(value / 50_000) * 50_000;
+}
+
 export function renderLatencySvg(rows, fixture, environments) {
   const groups = groupedStats(rows);
   const width = 1200;

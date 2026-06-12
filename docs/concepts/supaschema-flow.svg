@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="380" viewBox="0 0 1200 380" role="img">
+<rect width="100%" height="100%" rx="14" fill="#0b1220" />
+<text x="40.0" y="52.0" fill="#f8fafc" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="700">The supaschema workflow</text>
+<text x="40.0" y="78.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="400">The parser already knows every table, column, type, and policy — so nothing waits on a database.</text>
+<line x1="192" y1="162" x2="225" y2="162" stroke="#64748b" stroke-width="2" />
+<path d="M225,157 L232,162 L225,167 Z" fill="#64748b" />
+<line x1="386" y1="162" x2="419" y2="162" stroke="#64748b" stroke-width="2" />
+<path d="M419,157 L426,162 L419,167 Z" fill="#64748b" />
+<line x1="580" y1="162" x2="613" y2="162" stroke="#64748b" stroke-width="2" />
+<path d="M613,157 L620,162 L613,167 Z" fill="#64748b" />
+<line x1="774" y1="162" x2="807" y2="162" stroke="#64748b" stroke-width="2" />
+<path d="M807,157 L814,162 L807,167 Z" fill="#64748b" />
+<line x1="968" y1="162" x2="1001" y2="162" stroke="#64748b" stroke-width="2" />
+<path d="M1001,157 L1008,162 L1001,167 Z" fill="#64748b" />
+<rect x="40" y="132" width="150" height="60" rx="12" fill="rgba(82,96,121,0.16)" stroke="#526079" stroke-opacity="0.7" stroke-width="1.5" />
+<text x="115.0" y="160.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="650" text-anchor="middle">Edit schema</text>
+<text x="115.0" y="179.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" text-anchor="middle">SQL files</text>
+<rect x="234" y="132" width="150" height="60" rx="12" fill="rgba(16,185,129,0.10)" stroke="#10b981" stroke-opacity="0.7" stroke-width="1.5" />
+<text x="309.0" y="160.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="650" text-anchor="middle">Parse</text>
+<text x="309.0" y="179.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" text-anchor="middle">embedded Postgres</text>
+<rect x="266.7" y="202" width="84.6" height="22" rx="11" fill="rgba(16,185,129,0.12)" stroke="#34d399" stroke-opacity="0.5" />
+<text x="309.0" y="217.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle">no database</text>
+<rect x="428" y="132" width="150" height="60" rx="12" fill="rgba(16,185,129,0.10)" stroke="#10b981" stroke-opacity="0.7" stroke-width="1.5" />
+<text x="503.0" y="160.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="650" text-anchor="middle">Compare ASTs</text>
+<text x="503.0" y="179.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" text-anchor="middle">policy bodies too</text>
+<rect x="440.9" y="202" width="124.2" height="22" rx="11" fill="rgba(16,185,129,0.12)" stroke="#34d399" stroke-opacity="0.5" />
+<text x="503.0" y="217.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle">catches RLS drift</text>
+<rect x="622" y="132" width="150" height="60" rx="12" fill="rgba(16,185,129,0.10)" stroke="#10b981" stroke-opacity="0.7" stroke-width="1.5" />
+<text x="697.0" y="160.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="650" text-anchor="middle">Render</text>
+<text x="697.0" y="179.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" text-anchor="middle">guarded migration</text>
+<rect x="654.7" y="202" width="84.6" height="22" rx="11" fill="rgba(16,185,129,0.12)" stroke="#34d399" stroke-opacity="0.5" />
+<text x="697.0" y="217.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle">replay-safe</text>
+<rect x="816" y="132" width="150" height="60" rx="12" fill="rgba(16,185,129,0.10)" stroke="#10b981" stroke-opacity="0.7" stroke-width="1.5" />
+<text x="891.0" y="160.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="650" text-anchor="middle">Types + Zod</text>
+<text x="891.0" y="179.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" text-anchor="middle">same command</text>
+<rect x="838.8" y="202" width="104.4" height="22" rx="11" fill="rgba(16,185,129,0.12)" stroke="#34d399" stroke-opacity="0.5" />
+<text x="891.0" y="217.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle">no apply first</text>
+<rect x="1010" y="132" width="150" height="60" rx="12" fill="rgba(82,96,121,0.16)" stroke="#526079" stroke-opacity="0.7" stroke-width="1.5" />
+<text x="1085.0" y="160.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="650" text-anchor="middle">Your runner</text>
+<text x="1085.0" y="179.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" text-anchor="middle">applies the SQL</text>
+<path d="M234,236 L234,246 L966,246 L966,236" fill="none" stroke="#10b981" stroke-opacity="0.6" stroke-width="1.5" />
+<line x1="600" y1="246" x2="600" y2="254" stroke="#10b981" stroke-opacity="0.6" stroke-width="1.5" />
+<text x="600.0" y="270.0" fill="#10b981" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" text-anchor="middle">No Docker · no shadow database · no introspection</text>
+<rect x="40" y="292" width="1120" height="48" rx="10" fill="rgba(52,211,153,0.08)" stroke="#10b981" stroke-opacity="0.45" />
+<rect x="40" y="292" width="5" height="48" rx="2.5" fill="#10b981" />
+<text x="62.0" y="321.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="500">Policy bodies are compared structurally, so the tenant-isolation regression every CLI engine misses is caught before it merges.</text>
+<text x="40.0" y="362.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema: PostgreSQL's own parser ships in the package, so no step needs a database.</text>
+</svg>
