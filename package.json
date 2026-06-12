@@ -1,7 +1,7 @@
 {
   "name": "pg-diverge",
   "version": "0.1.0",
-  "description": "Deterministic, replay-safe PostgreSQL and Supabase migrations from declarative SQL tree changes.",
+  "description": "From declarative schema to fully synced database in milliseconds with one command. No ORM, no Docker, and no shadow database needed.",
   "type": "module",
   "license": "AGPL-3.0-only",
   "author": "John McLaughlin",
