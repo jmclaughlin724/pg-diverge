@@ -1,6 +1,6 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   defaultMigrationName,
@@ -125,7 +125,7 @@ describe("migrations directory defaults", () => {
     await writeFile(join(dir, "notes.md"), "not sql\n");
 
     const files = await migrationFiles(dir);
-    expect(files.map((file) => file.split("/").at(-1))).toEqual([
+    expect(files.map((file) => basename(file))).toEqual([
       "20240101000000_one.sql",
       "20250101000000_two.sql",
     ]);
