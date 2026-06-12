@@ -16,9 +16,9 @@ Measured head-to-head against the Supabase CLI's diff engines on identical fixtu
 
 |  | supaschema | Supabase CLI engines (all five) |
 | --- | --- | --- |
-| Diff latency, 1 → 2,500 tables (~17,500 objects) | 0.2s → 2.7s | ~7.5s → ~5 minutes |
+| Diff latency, 1 → 2,500 tables (~17,500 objects) | 0.2s → 3.2s | ~3.5s → ~3.5 minutes |
 | Generated SQL survives a second apply | every fixture | fails on column/index changes |
-| Diff content vs intended change (F1) | 1.000 on every scored fixture | 0.982–0.999 (each missed a policy change) |
+| Diff content vs intended change (F1) | 1.000 on every scored fixture | 0.982–0.999 (every engine missed the same policy change) |
 | Infrastructure per diff | none — pure TypeScript + WASM | Docker shadow database |
 | Ambiguous change (rename, drop, type change) | blocked until explicitly hinted | inferred or dropped silently |
 
@@ -88,33 +88,31 @@ No flags are needed day to day: sources, output paths, and names all have sensib
 
 ## Benchmarks
 
-All numbers are reproducible from this repo (`npm run benchmark`; harness in [benchmarks/README.md](benchmarks/README.md)) and verified, not just timed: every generated migration is applied in one transaction, applied a second time, and the resulting catalog is compared against the target. Reference run 2026-06-11: Apple Silicon, Node 24, PostgreSQL 17.6, Supabase CLI 2.105.
+All numbers are reproducible from this repo (`npm run benchmark`; harness in [benchmarks/README.md](benchmarks/README.md)) and verified, not just timed: every generated migration is applied in one transaction, applied a second time, and the resulting catalog is compared against the target. Reference run 2026-06-12: Apple Silicon, Node 24, PostgreSQL 17.6, Supabase CLI 2.106.0.
 
 ### Speed
 
+![Diff latency vs schema size](docs/benchmarks/scaling-latency.svg)
+
+supaschema's cost is parsing and planning, so it stays in seconds at every scale: **0.2s** at one table, **1.4s** at 1,000 tables, **3.2s** at 2,500 tables (~17,500 objects). Every shadow-database engine pays for a full schema replay into a fresh Docker database on every diff: **~4 seconds at a single table**, **~39 seconds** at 1,000 tables, and **~3.5 minutes** at 2,500 — a gap that widens from ~20x to ~70x as your schema grows.
+
 ![Realistic fixture latency](docs/benchmarks/realistic-latency.svg)
-
-Median diff time for the same 50-table fixture and change set (ticks mark p95). supaschema lands near **0.3s** whether it parses SQL files or reads a live catalog. Every shadow-database engine clusters near **8 seconds**, because each diff replays the whole schema into a fresh Docker database first.
-
-![XL fixture latency](docs/benchmarks/xl-latency.svg)
-
-![XXL fixture latency](docs/benchmarks/xxl-latency.svg)
-
-The gap grows with schema size — under **1 second vs ~45 seconds** at 1,000 tables, **~2–3 seconds vs 4–5 minutes** at 2,500:
 
 | Median diff time     | 1 table | 50 tables | 1,000 tables | 2,500 tables |
 | -------------------- | ------- | --------- | ------------ | ------------ |
-| supaschema (files)   | 203ms   | 279ms     | 861ms        | 2,652ms      |
-| supaschema (live db) | 250ms   | 272ms     | 912ms        | 1,765ms      |
-| supabase default     | 9,400ms | 8,079ms   | 42,764ms     | 218,949ms    |
-| supabase migra       | 7,592ms | 7,764ms   | 45,353ms     | 294,067ms    |
-| supabase pg-delta    | 7,517ms | 8,569ms   | 41,838ms     | 244,773ms    |
-| supabase pg-schema   | 7,727ms | 8,188ms   | 42,833ms     | 279,616ms    |
-| supabase pgadmin     | 7,553ms | 8,189ms   | 46,304ms     | 280,360ms    |
+| supaschema (files)   | 0.19s   | 0.19s     | 1.38s        | 3.23s        |
+| supaschema (live db) | 0.21s   | 0.23s     | 1.25s        | 2.78s        |
+| supabase default     | 3.86s   | 4.11s     | 39.12s       | 208.48s      |
+| supabase migra       | 3.81s   | 4.43s     | 38.74s       | 204.54s      |
+| supabase pg-delta    | 3.58s   | 4.15s     | 38.52s       | 207.47s      |
+| supabase pg-schema   | 4.61s   | 3.98s     | 38.57s       | 205.59s      |
+| supabase pgadmin     | 3.73s   | 4.01s     | 38.74s       | 209.98s      |
+
+Per-fixture latency charts: [additive](docs/benchmarks/additive-latency.svg) · [functions-policies](docs/benchmarks/functions-policies-latency.svg) · [xl](docs/benchmarks/xl-latency.svg) · [xxl](docs/benchmarks/xxl-latency.svg).
 
 ### Accuracy
 
-Each diff is scored against a ground-truth change manifest: precision, recall, and F1, where whole-table rewrites and destructive drop+create of data-bearing objects count against precision. supaschema scores **F1 1.000** on every fixture at every scale. Every Supabase engine scores **0.982–0.999, and the gap is always the same miss: each silently dropped an RLS policy change.**
+Each diff is scored against a ground-truth change manifest: precision, recall, and F1, where whole-table rewrites and destructive drop+create of data-bearing objects count against precision. supaschema scores **F1 1.000** on every fixture at every scale, in both file and live-database modes. Every Supabase engine scores **0.982–0.999, and the gap is always the same miss: each silently dropped an RLS policy change.**
 
 That miss matters more than speed. A slow diff costs seconds and an unreplayable diff costs a deploy, but a silently dropped policy change ships a tenant-isolation hole that review, CI, and the migration runner all wave through.
 

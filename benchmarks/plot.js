@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { fixtureScale, formatSeconds, groupedStats, percentile } from "./plot-lib.js";
+import { renderCorrectnessSvg, renderLatencySvg, renderScalingSvg } from "./plot-svg.js";
 
 const jsonInputs = process.argv.slice(2).filter((arg) => arg.endsWith(".json"));
 const dirArgs = process.argv.slice(2).filter((arg) => !arg.endsWith(".json"));
@@ -17,11 +19,17 @@ for (const input of inputs) {
     completedAt: payload.completedAt,
     fixtures: [...new Set(payload.results.map((item) => item.fixture))].sort(),
     iterations: payload.environment.iterations,
+    node: payload.environment.node,
+    platform: payload.environment.platform,
     source: basename(input),
     toolVersions: payload.environment.toolVersions,
   });
 }
-const fixtures = [...new Set(allResults.map((item) => item.fixture))].sort();
+const fixtures = [...new Set(allResults.map((item) => item.fixture))].sort(
+  (left, right) =>
+    (fixtureScale[left]?.order ?? 99) - (fixtureScale[right]?.order ?? 99) ||
+    left.localeCompare(right),
+);
 await mkdir(outputDir, { recursive: true });
 const written = [];
 for (const fixture of fixtures) {
@@ -30,14 +38,19 @@ for (const fixture of fixtures) {
   const latencyPath = join(outputDir, `${fixture}-latency.svg`);
   const correctnessPath = join(outputDir, `${fixture}-correctness.svg`);
   const resultsPath = join(outputDir, `${fixture}-results.json`);
-  await writeFile(latencyPath, renderLatencySvg(measuredRows, fixture), "utf8");
-  await writeFile(correctnessPath, renderCorrectnessSvg(rows, fixture), "utf8");
+  await writeFile(latencyPath, renderLatencySvg(measuredRows, fixture, environments), "utf8");
+  await writeFile(correctnessPath, renderCorrectnessSvg(rows, fixture, environments), "utf8");
   await writeFile(
     resultsPath,
     `${JSON.stringify({ environments, fixture, results: rows }, null, 2)}\n`,
     "utf8",
   );
   written.push(latencyPath, correctnessPath, resultsPath);
+}
+if (fixtures.length > 1) {
+  const scalingPath = join(outputDir, "scaling-latency.svg");
+  await writeFile(scalingPath, renderScalingSvg(allResults, fixtures, environments), "utf8");
+  written.push(scalingPath);
 }
 const summaryPath = join(outputDir, "summary.md");
 await writeFile(summaryPath, renderSummaryMarkdown(), "utf8");
@@ -46,78 +59,11 @@ for (const path of written) {
   process.stdout.write(`${path}\n`);
 }
 
-function renderLatencySvg(rows, fixture) {
-  const groups = groupedStats(rows);
-  const width = 1200;
-  const rowHeight = 28;
-  const height = Math.max(180, 90 + groups.length * rowHeight);
-  const max = Math.max(...groups.map((item) => item.p95), 1);
-  const chartWidth = 760;
-  const labelWidth = 330;
-  const x = 380;
-  const parts = [
-    svgHeader(width, height),
-    text(24, 38, `Diff generation latency — ${fixture} fixture`, 20, "600"),
-    text(24, 62, "Bars show median elapsed time; tick shows p95. Lower is better.", 12, "400"),
-  ];
-  for (const [index, group] of groups.entries()) {
-    const y = 92 + index * rowHeight;
-    const medianWidth = Math.max(1, (group.median / max) * chartWidth);
-    const p95X = x + (group.p95 / max) * chartWidth;
-    parts.push(text(24, y + 14, truncate(group.label, 46), 11, "500"));
-    parts.push(
-      `<rect x="${x}" y="${y}" width="${medianWidth.toFixed(1)}" height="16" rx="3" fill="#2563eb" />`,
-    );
-    parts.push(
-      `<line x1="${p95X.toFixed(1)}" y1="${y - 2}" x2="${p95X.toFixed(1)}" y2="${y + 20}" stroke="#111827" stroke-width="2" />`,
-    );
-    parts.push(
-      text(
-        labelWidth + chartWidth + 70,
-        y + 13,
-        `${group.median}ms / p95 ${group.p95}ms`,
-        11,
-        "400",
-      ),
-    );
-  }
-  parts.push(svgFooter());
-  return parts.join("\n");
-}
-
-function renderCorrectnessSvg(rows, fixture) {
-  const groups = groupedCorrectness(rows);
-  const width = 1100;
-  const rowHeight = 28;
-  const height = Math.max(180, 90 + groups.length * rowHeight);
-  const parts = [
-    svgHeader(width, height),
-    text(24, 38, `Generated migration verification — ${fixture} fixture`, 20, "600"),
-    text(
-      24,
-      62,
-      "Green means every successful run applied once, applied twice, and matched the target fingerprint.",
-      12,
-      "400",
-    ),
-  ];
-  for (const [index, group] of groups.entries()) {
-    const y = 92 + index * rowHeight;
-    const color = group.ok ? "#16a34a" : "#dc2626";
-    const label = group.ok ? "verified" : "not fully verified";
-    parts.push(text(24, y + 14, truncate(group.label, 58), 11, "500"));
-    parts.push(`<rect x="420" y="${y}" width="150" height="17" rx="3" fill="${color}" />`);
-    parts.push(text(586, y + 13, `${label} (${group.verified}/${group.total})`, 11, "400"));
-  }
-  parts.push(svgFooter());
-  return parts.join("\n");
-}
-
 function renderSummaryMarkdown() {
   const lines = [
     "# Comparison Summary",
     "",
-    "Generated by `npm run bench:plot`. One section per fixture (sample size); scaling ratios compare each tool's median against its own smallest-fixture median, so growth with schema size is the per-tool regression curve.",
+    "Generated by `npm run bench:plot`. One section per fixture (sample size); scaling ratios compare each tool's median against its own smallest-fixture median, so growth with schema size is the per-tool regression curve. All durations are seconds.",
     "",
     "## Source Runs",
     "",
@@ -148,11 +94,11 @@ function renderSummaryMarkdown() {
           ? (scored.reduce((sum, item) => sum + item.outputF1, 0) / scored.length).toFixed(3)
           : "—";
       lines.push(
-        `| ${group.label} | ${mode} | ${groupRows.length} | ${group.median}ms | ${group.p95}ms | ${once}/${groupRows.length} | ${twice}/${groupRows.length} | ${verified}/${groupRows.length} | ${f1} |`,
+        `| ${group.label} | ${mode} | ${groupRows.length} | ${formatSeconds(group.median)} | ${formatSeconds(group.p95)} | ${once}/${groupRows.length} | ${twice}/${groupRows.length} | ${verified}/${groupRows.length} | ${f1} |`,
       );
     }
   }
-  lines.push("", "## Scaling Across Fixtures (median ms, ratio vs own smallest)", "");
+  lines.push("", "## Scaling Across Fixtures (median seconds, ratio vs own smallest)", "");
   const adapters = [...new Set(allResults.map((item) => item.adapter))].sort();
   lines.push(`| Tool | ${fixtures.join(" | ")} |`, `| --- |${" --- |".repeat(fixtures.length)}`);
   for (const adapter of adapters) {
@@ -170,81 +116,10 @@ function renderSummaryMarkdown() {
     });
     const base = medians.find((value) => value !== undefined);
     const cells = medians.map((value) =>
-      value === undefined ? "—" : `${value}ms (${(value / base).toFixed(1)}x)`,
+      value === undefined ? "—" : `${formatSeconds(value)} (${(value / base).toFixed(1)}x)`,
     );
     lines.push(`| ${adapter} | ${cells.join(" | ")} |`);
   }
   lines.push("");
   return lines.join("\n");
-}
-
-function groupedStats(rows) {
-  const map = new Map();
-  for (const row of rows) {
-    const label = row.adapter;
-    const bucket = map.get(label) ?? [];
-    bucket.push(row.elapsedMs);
-    map.set(label, bucket);
-  }
-  return [...map.entries()]
-    .map(([label, values]) => ({
-      label,
-      median: percentile(values, 0.5),
-      p95: percentile(values, 0.95),
-    }))
-    .sort((left, right) => left.median - right.median || left.label.localeCompare(right.label));
-}
-
-function groupedCorrectness(rows) {
-  const map = new Map();
-  for (const row of rows) {
-    const label = row.adapter;
-    const bucket = map.get(label) ?? [];
-    bucket.push(row);
-    map.set(label, bucket);
-  }
-  return [...map.entries()]
-    .map(([label, values]) => {
-      const verified = values.filter(
-        (item) => item.appliesOnce && item.appliesTwice && item.matchesTargetFingerprint,
-      ).length;
-      return {
-        label,
-        ok: verified === values.length,
-        total: values.length,
-        verified,
-      };
-    })
-    .sort((left, right) => left.label.localeCompare(right.label));
-}
-
-function percentile(values, percentileValue) {
-  const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * percentileValue) - 1);
-  return sorted[index] ?? 0;
-}
-
-function svgHeader(width, height) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">
-<rect width="100%" height="100%" fill="#ffffff" />`;
-}
-
-function svgFooter() {
-  return "</svg>";
-}
-
-function text(x, y, value, size, weight) {
-  return `<text x="${x}" y="${y}" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="${size}" font-weight="${weight}">${escapeXml(value)}</text>`;
-}
-
-function truncate(value, length) {
-  return value.length > length ? `${value.slice(0, length - 1)}...` : value;
-}
-
-function escapeXml(value) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
