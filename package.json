@@ -88,6 +88,7 @@
     "@types/node": "^25.9.3",
     "@types/pg": "^8.15.6",
     "@vitest/coverage-v8": "^4.1.8",
+    "fast-check": "^4.8.0",
     "publint": "^0.3.21",
     "typedoc": "^0.28.19",
     "typescript": "^6.0.3",
