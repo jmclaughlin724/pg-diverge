@@ -1,19 +1,27 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const lineageMarker = "-- pg-diverge: lineage ";
-const patchFileHeaders = ["*** Update File: ", "*** Delete File: "];
+const updateHeader = "*** Update File: ";
+const deleteHeader = "*** Delete File: ";
+const addHeader = "*** Add File: ";
 
 function patchTargets(patchText) {
-  const targets = [];
+  const updates = [];
+  const deletes = [];
+  const adds = new Set();
   for (const line of patchText.split("\n")) {
-    for (const header of patchFileHeaders) {
-      if (line.startsWith(header)) {
-        targets.push(line.slice(header.length).trim());
-      }
+    if (line.startsWith(updateHeader)) {
+      updates.push(resolve(line.slice(updateHeader.length).trim()));
+    } else if (line.startsWith(deleteHeader)) {
+      deletes.push(resolve(line.slice(deleteHeader.length).trim()));
+    } else if (line.startsWith(addHeader)) {
+      adds.add(resolve(line.slice(addHeader.length).trim()));
     }
   }
-  return targets;
+  const rewrites = deletes.filter((path) => adds.has(path));
+  return [...updates, ...rewrites];
 }
 
 function editTargets(payload) {
@@ -55,7 +63,7 @@ try {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: `${blocked} is a pg-diverge-generated migration (lineage marker present). Do not hand-edit or delete-and-rewrite it directly: change the declarative schema tree and regenerate with \`pg-diverge diff\`. See .claude/rules/pg-diverge.md.`,
+      permissionDecisionReason: `${blocked} is a pg-diverge-generated migration (lineage marker present). Do not hand-edit it: change the declarative schema tree, delete this file if it is stale, and regenerate with \`pg-diverge diff\`. See .claude/rules/pg-diverge.md.`,
     },
   });
 } catch (error) {

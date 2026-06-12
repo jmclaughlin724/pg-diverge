@@ -18,5 +18,5 @@ This rule owns how schema migrations are produced and protected in a repo that u
 - Renames are declared in `hints.renames`, never inferred. Kind changes and cross-schema moves are unsupported by design.
 - Run `pg-diverge check` on every generated or hand-authored migration. Run `pg-diverge verify` before merge when a database is reachable; keep `transactionMode: "per-migration"` for transactional runners such as `supabase db push`.
 - `CREATE INDEX CONCURRENTLY` is blocked under `adapter: "supabase-auto"`; under `adapter: "postgres"` it lands in the `.concurrent.sql` companion, which runs outside a transaction through an operational lane.
-- Database URLs resolve flag (`$ENV` indirection supported) > `PG_DIVERGE_DATABASE_URL` > nearest `supabase/config.toml`. Do not hard-code connection strings in scripts, config, or CI.
+- Database URLs resolve flag (`$ENV` indirection supported) > named `config.environments` entry via `--env` > `PG_DIVERGE_DATABASE_URL` > nearest `supabase/config.toml`. Do not hard-code connection strings in scripts, config, or CI.
 - Decode any `PD_*` diagnostic with `pg-diverge explain <CODE>`; recovery procedures live in `docs/hints.md`.

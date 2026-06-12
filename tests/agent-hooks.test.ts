@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -100,6 +100,47 @@ describe("codex generated-migration tool gate", () => {
     const result = await runHook(script, {
       tool_input: { file_path: generated },
       tool_name: "edit_file",
+    });
+
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    };
+    expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+
+  it("allows deleting a stale generated migration (the sanctioned recovery lane)", async () => {
+    const { generated } = await fixtures();
+    const patch = `*** Begin Patch\n*** Delete File: ${generated}\n*** End Patch`;
+    const result = await runHook(script, {
+      tool_input: { patch },
+      tool_name: "apply_patch",
+    });
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({});
+  });
+
+  it("denies delete-and-rewrite patches that replace a generated migration in place", async () => {
+    const { generated } = await fixtures();
+    const patch = `*** Begin Patch\n*** Delete File: ${generated}\n*** Add File: ${generated}\n+-- hand-written replacement\n*** End Patch`;
+    const result = await runHook(script, {
+      tool_input: { patch },
+      tool_name: "apply_patch",
+    });
+
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    };
+    expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+
+  it("denies delete-and-rewrite patches even when the two headers spell the path differently", async () => {
+    const { generated } = await fixtures();
+    const dotSpelled = `${dirname(generated)}${sep}.${sep}${basename(generated)}`;
+    const patch = `*** Begin Patch\n*** Delete File: ${dotSpelled}\n*** Add File: ${generated}\n+-- hand-written replacement\n*** End Patch`;
+    const result = await runHook(script, {
+      tool_input: { patch },
+      tool_name: "apply_patch",
     });
 
     const output = JSON.parse(result.stdout) as {

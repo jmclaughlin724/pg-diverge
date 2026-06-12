@@ -15,7 +15,8 @@
 # - Run `pg-diverge check` on every migration; run `pg-diverge verify` before
 #   merge when a database is reachable. Keep transactionMode per-migration
 #   for transactional runners such as `supabase db push`.
-# - Database URLs resolve flag > PG_DIVERGE_DATABASE_URL > the nearest
-#   supabase/config.toml; do not hard-code connection strings.
+# - Database URLs resolve flag > named config.environments entry via --env >
+#   PG_DIVERGE_DATABASE_URL > the nearest supabase/config.toml; do not
+#   hard-code connection strings.
 # - Decode any PD_* diagnostic with `pg-diverge explain <CODE>`; recovery
 #   steps live in docs/hints.md.
