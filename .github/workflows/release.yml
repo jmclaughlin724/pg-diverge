@@ -31,12 +31,12 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: Update npm for OIDC trusted publishing (requires npm >= 11.5.1)
+      - name: Confirm npm supports OIDC trusted publishing
         run: |
-          npm install -g npm@11.17.0
           npm --version
+          node -e "const { execFileSync } = require('node:child_process'); const version = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(); const [major, minor, patch] = version.split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) throw new Error('npm >= 11.5.1 is required for trusted publishing');"
       - run: npm ci
       - run: npm audit signatures
       - run: npm run check
