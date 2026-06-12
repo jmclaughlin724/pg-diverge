@@ -1,33 +1,60 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="286" viewBox="0 0 1200 286" role="img">
-<rect width="100%" height="100%" fill="#ffffff" />
-<text x="24" y="38" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="600">Diff generation latency — realistic fixture</text>
-<text x="24" y="62" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="400">Bars show median elapsed time; tick shows p95. Lower is better.</text>
-<text x="24" y="106" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500">supaschema-db</text>
-<rect x="380" y="92" width="23.5" height="16" rx="3" fill="#2563eb" />
-<line x1="406.6" y1="90" x2="406.6" y2="112" stroke="#111827" stroke-width="2" />
-<text x="1160" y="105" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="400">272ms / p95 307ms</text>
-<text x="24" y="134" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500">supaschema-file</text>
-<rect x="380" y="120" width="24.1" height="16" rx="3" fill="#2563eb" />
-<line x1="405.2" y1="118" x2="405.2" y2="140" stroke="#111827" stroke-width="2" />
-<text x="1160" y="133" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="400">279ms / p95 291ms</text>
-<text x="24" y="162" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500">supabase-migra</text>
-<rect x="380" y="148" width="671.8" height="16" rx="3" fill="#2563eb" />
-<line x1="1052.1" y1="146" x2="1052.1" y2="168" stroke="#111827" stroke-width="2" />
-<text x="1160" y="161" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="400">7764ms / p95 7767ms</text>
-<text x="24" y="190" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500">supabase-default</text>
-<rect x="380" y="176" width="699.1" height="16" rx="3" fill="#2563eb" />
-<line x1="1087.0" y1="174" x2="1087.0" y2="196" stroke="#111827" stroke-width="2" />
-<text x="1160" y="189" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="400">8079ms / p95 8170ms</text>
-<text x="24" y="218" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500">supabase-pg-schema</text>
-<rect x="380" y="204" width="708.5" height="16" rx="3" fill="#2563eb" />
-<line x1="1113.6" y1="202" x2="1113.6" y2="224" stroke="#111827" stroke-width="2" />
-<text x="1160" y="217" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="400">8188ms / p95 8478ms</text>
-<text x="24" y="246" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500">supabase-pgadmin</text>
-<rect x="380" y="232" width="708.6" height="16" rx="3" fill="#2563eb" />
-<line x1="1140.0" y1="230" x2="1140.0" y2="252" stroke="#111827" stroke-width="2" />
-<text x="1160" y="245" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="400">8189ms / p95 8783ms</text>
-<text x="24" y="274" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="500">supabase-pg-delta</text>
-<rect x="380" y="260" width="741.5" height="16" rx="3" fill="#2563eb" />
-<line x1="1133.6" y1="258" x2="1133.6" y2="280" stroke="#111827" stroke-width="2" />
-<text x="1160" y="273" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="400">8569ms / p95 8709ms</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="410" viewBox="0 0 1200 410" role="img">
+<defs>
+<linearGradient id="supaGradient" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0%" stop-color="#059669" />
+<stop offset="100%" stop-color="#34d399" />
+</linearGradient>
+<linearGradient id="slateGradient" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0%" stop-color="#3b4757" />
+<stop offset="100%" stop-color="#526079" />
+</linearGradient>
+</defs>
+<rect width="100%" height="100%" rx="14" fill="#0b1220" />
+<text x="36.0" y="46.0" fill="#f8fafc" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="700">Diff latency — realistic fixture (50 tables)</text>
+<text x="36.0" y="70.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400">Median seconds per diff, log scale · whisker marks p95 · lower is better</text>
+<line x1="300.0" y1="94" x2="300.0" y2="336" stroke="#1e293b" stroke-width="1" />
+<text x="300.0" y="358.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">0.10s</text>
+<line x1="399.3" y1="94" x2="399.3" y2="336" stroke="#1e293b" stroke-width="1" />
+<text x="399.3" y="358.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">0.20s</text>
+<line x1="530.7" y1="94" x2="530.7" y2="336" stroke="#1e293b" stroke-width="1" />
+<text x="530.7" y="358.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">0.50s</text>
+<line x1="630.0" y1="94" x2="630.0" y2="336" stroke="#1e293b" stroke-width="1" />
+<text x="630.0" y="358.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">1.00s</text>
+<line x1="729.3" y1="94" x2="729.3" y2="336" stroke="#1e293b" stroke-width="1" />
+<text x="729.3" y="358.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">2.00s</text>
+<line x1="860.7" y1="94" x2="860.7" y2="336" stroke="#1e293b" stroke-width="1" />
+<text x="860.7" y="358.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">5.00s</text>
+<line x1="960.0" y1="94" x2="960.0" y2="336" stroke="#1e293b" stroke-width="1" />
+<text x="960.0" y="358.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">10.0s</text>
+<circle cx="41" cy="117" r="4" fill="#34d399" />
+<text x="54.0" y="121.0" fill="#f8fafc" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="650">supaschema-file</text>
+<rect x="300" y="108" width="89.7" height="18" rx="4" fill="url(#supaGradient)" />
+<line x1="390.5" y1="105" x2="390.5" y2="129" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="121.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650" text-anchor="end">0.19s  ·  p95 0.19s</text>
+<circle cx="41" cy="151" r="4" fill="#34d399" />
+<text x="54.0" y="155.0" fill="#f8fafc" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="650">supaschema-db</text>
+<rect x="300" y="142" width="121.2" height="18" rx="4" fill="url(#supaGradient)" />
+<line x1="424.3" y1="139" x2="424.3" y2="163" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="155.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650" text-anchor="end">0.23s  ·  p95 0.24s</text>
+<text x="54.0" y="189.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pg-schema</text>
+<rect x="300" y="176" width="528.1" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="829.1" y1="173" x2="829.1" y2="197" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="189.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">3.98s  ·  p95 4.01s</text>
+<text x="54.0" y="223.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pgadmin</text>
+<rect x="300" y="210" width="529.2" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="842.3" y1="207" x2="842.3" y2="231" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="223.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">4.01s  ·  p95 4.40s</text>
+<text x="54.0" y="257.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-default</text>
+<rect x="300" y="244" width="532.4" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="843.3" y1="241" x2="843.3" y2="265" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="257.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">4.11s  ·  p95 4.43s</text>
+<text x="54.0" y="291.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pg-delta</text>
+<rect x="300" y="278" width="534.1" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="848.2" y1="275" x2="848.2" y2="299" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="291.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">4.15s  ·  p95 4.58s</text>
+<text x="54.0" y="325.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-migra</text>
+<rect x="300" y="312" width="543.2" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="862.5" y1="309" x2="862.5" y2="333" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="325.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">4.43s  ·  p95 5.07s</text>
+<text x="36.0" y="388.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  macOS  ·  3 iterations</text>
 </svg>

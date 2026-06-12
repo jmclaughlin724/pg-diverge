@@ -116,6 +116,7 @@ async function runFixtureAdapters(contextBase, fixture) {
 const payload = {
   completedAt: new Date().toISOString(),
   environment: {
+    arch: process.arch,
     databaseEnabled: Boolean(databaseUrl),
     iterations,
     node: process.version,
