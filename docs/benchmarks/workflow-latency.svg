@@ -10,8 +10,8 @@
 </linearGradient>
 </defs>
 <rect width="100%" height="100%" rx="14" fill="#0b1220" />
-<text x="36.0" y="46.0" fill="#f8fafc" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="700">Diff latency vs schema size</text>
-<text x="36.0" y="70.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400">Median seconds per diff at each fixture scale, log scale · lower is better</text>
+<text x="36.0" y="46.0" fill="#f8fafc" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="700">Full workflow: migration + regenerated types</text>
+<text x="36.0" y="70.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400">supaschema: one diff = migration + TS types + Zod · Supabase engines: db diff + apply + gen types · log scale</text>
 <line x1="96" y1="474.0" x2="910" y2="474.0" stroke="#1e293b" stroke-width="1" />
 <text x="84.0" y="478.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="end">0.10s</text>
 <line x1="96" y1="447.1" x2="910" y2="447.1" stroke="#1e293b" stroke-width="1" />
@@ -48,59 +48,51 @@
 <text x="706.5" y="518.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">1,000 tables</text>
 <text x="910.0" y="500.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="550" text-anchor="middle">xxl</text>
 <text x="910.0" y="518.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">2,500 tables</text>
-<path d="M96.0,438.2 L299.5,436.0 L503.0,440.3 L706.5,364.7 L910.0,346.7" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-<circle cx="96.0" cy="438.2" r="4.5" fill="#34d399" />
-<circle cx="299.5" cy="436.0" r="4.5" fill="#34d399" />
-<circle cx="503.0" cy="440.3" r="4.5" fill="#34d399" />
-<circle cx="706.5" cy="364.7" r="4.5" fill="#34d399" />
-<circle cx="910.0" cy="346.7" r="4.5" fill="#34d399" />
-<path d="M96.0,445.7 L299.5,444.8 L503.0,438.9 L706.5,371.3 L910.0,339.7" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-<circle cx="96.0" cy="445.7" r="4.5" fill="#22d3ee" />
-<circle cx="299.5" cy="444.8" r="4.5" fill="#22d3ee" />
-<circle cx="503.0" cy="438.9" r="4.5" fill="#22d3ee" />
-<circle cx="706.5" cy="371.3" r="4.5" fill="#22d3ee" />
-<circle cx="910.0" cy="339.7" r="4.5" fill="#22d3ee" />
-<path d="M96.0,329.7 L299.5,324.3 L503.0,320.2 L706.5,238.3 L910.0,175.5" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
-<circle cx="96.0" cy="329.7" r="3.5" fill="#94a3b8" />
-<circle cx="299.5" cy="324.3" r="3.5" fill="#94a3b8" />
-<circle cx="503.0" cy="320.2" r="3.5" fill="#94a3b8" />
-<circle cx="706.5" cy="238.3" r="3.5" fill="#94a3b8" />
-<circle cx="910.0" cy="175.5" r="3.5" fill="#94a3b8" />
-<path d="M96.0,330.3 L299.5,329.4 L503.0,319.2 L706.5,241.9 L910.0,177.2" fill="none" stroke="#7c8aa0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
-<circle cx="96.0" cy="330.3" r="3.5" fill="#7c8aa0" />
-<circle cx="299.5" cy="329.4" r="3.5" fill="#7c8aa0" />
-<circle cx="503.0" cy="319.2" r="3.5" fill="#7c8aa0" />
-<circle cx="706.5" cy="241.9" r="3.5" fill="#7c8aa0" />
-<circle cx="910.0" cy="177.2" r="3.5" fill="#7c8aa0" />
-<path d="M96.0,327.9 L299.5,330.2 L503.0,321.2 L706.5,240.2 L910.0,177.3" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
-<circle cx="96.0" cy="327.9" r="3.5" fill="#64748b" />
-<circle cx="299.5" cy="330.2" r="3.5" fill="#64748b" />
-<circle cx="503.0" cy="321.2" r="3.5" fill="#64748b" />
-<circle cx="706.5" cy="240.2" r="3.5" fill="#64748b" />
-<circle cx="910.0" cy="177.3" r="3.5" fill="#64748b" />
-<path d="M96.0,325.7 L299.5,330.3 L503.0,323.3 L706.5,240.2 L910.0,175.4" fill="none" stroke="#8896ab" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
-<circle cx="96.0" cy="325.7" r="3.5" fill="#8896ab" />
-<circle cx="299.5" cy="330.3" r="3.5" fill="#8896ab" />
-<circle cx="503.0" cy="323.3" r="3.5" fill="#8896ab" />
-<circle cx="706.5" cy="240.2" r="3.5" fill="#8896ab" />
-<circle cx="910.0" cy="175.4" r="3.5" fill="#8896ab" />
-<path d="M96.0,329.9 L299.5,325.4 L503.0,326.6 L706.5,239.3 L910.0,176.4" fill="none" stroke="#566379" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
-<circle cx="96.0" cy="329.9" r="3.5" fill="#566379" />
-<circle cx="299.5" cy="325.4" r="3.5" fill="#566379" />
-<circle cx="503.0" cy="326.6" r="3.5" fill="#566379" />
-<circle cx="706.5" cy="239.3" r="3.5" fill="#566379" />
-<circle cx="910.0" cy="176.4" r="3.5" fill="#566379" />
-<text x="938.0" y="175.4" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-pg-schema 217s</text>
-<line x1="916" y1="175.5" x2="934" y2="189.4" stroke="#94a3b8" stroke-opacity="0.45" stroke-width="1" />
-<text x="938.0" y="193.4" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-default 216s</text>
-<line x1="916" y1="176.4" x2="934" y2="207.4" stroke="#566379" stroke-opacity="0.45" stroke-width="1" />
-<text x="938.0" y="211.4" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-pgadmin 211s</text>
-<line x1="916" y1="177.2" x2="934" y2="225.4" stroke="#7c8aa0" stroke-opacity="0.45" stroke-width="1" />
-<text x="938.0" y="229.4" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-migra 207s</text>
-<line x1="916" y1="177.3" x2="934" y2="243.4" stroke="#64748b" stroke-opacity="0.45" stroke-width="1" />
-<text x="938.0" y="247.4" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-pg-delta 207s</text>
-<text x="938.0" y="339.7" fill="#22d3ee" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650">supaschema-file 3.17s</text>
-<line x1="916" y1="346.7" x2="934" y2="353.7" stroke="#34d399" stroke-opacity="0.45" stroke-width="1" />
-<text x="938.0" y="357.7" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650">supaschema-db 2.64s</text>
+<path d="M96.0,439.3 L299.5,440.8 L503.0,436.3 L706.5,353.0 L910.0,320.3" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+<circle cx="96.0" cy="439.3" r="4.5" fill="#34d399" />
+<circle cx="299.5" cy="440.8" r="4.5" fill="#34d399" />
+<circle cx="503.0" cy="436.3" r="4.5" fill="#34d399" />
+<circle cx="706.5" cy="353.0" r="4.5" fill="#34d399" />
+<circle cx="910.0" cy="320.3" r="4.5" fill="#34d399" />
+<path d="M96.0,313.8 L299.5,316.9 L503.0,309.8 L706.5,232.1 L910.0,174.7" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
+<circle cx="96.0" cy="313.8" r="3.5" fill="#94a3b8" />
+<circle cx="299.5" cy="316.9" r="3.5" fill="#94a3b8" />
+<circle cx="503.0" cy="309.8" r="3.5" fill="#94a3b8" />
+<circle cx="706.5" cy="232.1" r="3.5" fill="#94a3b8" />
+<circle cx="910.0" cy="174.7" r="3.5" fill="#94a3b8" />
+<path d="M96.0,316.3 L299.5,316.7 L503.0,309.4 L706.5,236.7 L910.0,175.0" fill="none" stroke="#7c8aa0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
+<circle cx="96.0" cy="316.3" r="3.5" fill="#7c8aa0" />
+<circle cx="299.5" cy="316.7" r="3.5" fill="#7c8aa0" />
+<circle cx="503.0" cy="309.4" r="3.5" fill="#7c8aa0" />
+<circle cx="706.5" cy="236.7" r="3.5" fill="#7c8aa0" />
+<circle cx="910.0" cy="175.0" r="3.5" fill="#7c8aa0" />
+<path d="M96.0,313.4 L299.5,314.4 L503.0,312.5 L706.5,236.2 L910.0,173.4" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
+<circle cx="96.0" cy="313.4" r="3.5" fill="#64748b" />
+<circle cx="299.5" cy="314.4" r="3.5" fill="#64748b" />
+<circle cx="503.0" cy="312.5" r="3.5" fill="#64748b" />
+<circle cx="706.5" cy="236.2" r="3.5" fill="#64748b" />
+<circle cx="910.0" cy="173.4" r="3.5" fill="#64748b" />
+<path d="M96.0,311.6 L299.5,313.8 L503.0,311.2 L706.5,236.1 L910.0,173.2" fill="none" stroke="#8896ab" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
+<circle cx="96.0" cy="311.6" r="3.5" fill="#8896ab" />
+<circle cx="299.5" cy="313.8" r="3.5" fill="#8896ab" />
+<circle cx="503.0" cy="311.2" r="3.5" fill="#8896ab" />
+<circle cx="706.5" cy="236.1" r="3.5" fill="#8896ab" />
+<circle cx="910.0" cy="173.2" r="3.5" fill="#8896ab" />
+<path d="M96.0,303.3 L299.5,315.2 L503.0,305.9 L706.5,234.7 L910.0,176.2" fill="none" stroke="#566379" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.75" />
+<circle cx="96.0" cy="303.3" r="3.5" fill="#566379" />
+<circle cx="299.5" cy="315.2" r="3.5" fill="#566379" />
+<circle cx="503.0" cy="305.9" r="3.5" fill="#566379" />
+<circle cx="706.5" cy="234.7" r="3.5" fill="#566379" />
+<circle cx="910.0" cy="176.2" r="3.5" fill="#566379" />
+<text x="938.0" y="173.2" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-pg-schema-workflow 230s</text>
+<line x1="916" y1="173.4" x2="934" y2="187.2" stroke="#64748b" stroke-opacity="0.45" stroke-width="1" />
+<text x="938.0" y="191.2" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-pg-delta-workflow 229s</text>
+<line x1="916" y1="174.7" x2="934" y2="205.2" stroke="#94a3b8" stroke-opacity="0.45" stroke-width="1" />
+<text x="938.0" y="209.2" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-default-workflow 221s</text>
+<line x1="916" y1="175.0" x2="934" y2="223.2" stroke="#7c8aa0" stroke-opacity="0.45" stroke-width="1" />
+<text x="938.0" y="227.2" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-migra-workflow 219s</text>
+<line x1="916" y1="176.2" x2="934" y2="241.2" stroke="#566379" stroke-opacity="0.45" stroke-width="1" />
+<text x="938.0" y="245.2" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450">supabase-pgadmin-workflow 213s</text>
+<text x="938.0" y="320.3" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650">supaschema-workflow 5.22s</text>
 <text x="36.0" y="538.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  Apple Silicon  ·  1–3 iterations per fixture</text>
 </svg>

@@ -34,33 +34,33 @@
 <text x="960.0" y="358.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" text-anchor="middle">1000s</text>
 <circle cx="41" cy="117" r="4" fill="#34d399" />
 <text x="54.0" y="121.0" fill="#f8fafc" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="650">supaschema-db</text>
-<rect x="300" y="108" width="97.6" height="18" rx="4" fill="url(#supaGradient)" />
-<line x1="397.6" y1="105" x2="397.6" y2="129" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
-<text x="1164.0" y="121.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650" text-anchor="end">2.78s  ·  p95 2.78s</text>
+<rect x="300" y="108" width="92.9" height="18" rx="4" fill="url(#supaGradient)" />
+<line x1="392.9" y1="105" x2="392.9" y2="129" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="121.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650" text-anchor="end">2.64s  ·  p95 2.64s</text>
 <circle cx="41" cy="151" r="4" fill="#34d399" />
 <text x="54.0" y="155.0" fill="#f8fafc" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="650">supaschema-file</text>
-<rect x="300" y="142" width="112.1" height="18" rx="4" fill="url(#supaGradient)" />
-<line x1="412.1" y1="139" x2="412.1" y2="163" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
-<text x="1164.0" y="155.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650" text-anchor="end">3.23s  ·  p95 3.23s</text>
-<text x="54.0" y="189.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-migra</text>
-<rect x="300" y="176" width="508.4" height="18" rx="4" fill="url(#slateGradient)" />
-<line x1="808.4" y1="173" x2="808.4" y2="197" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
-<text x="1164.0" y="189.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">205s  ·  p95 205s</text>
-<text x="54.0" y="223.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pg-schema</text>
-<rect x="300" y="210" width="508.9" height="18" rx="4" fill="url(#slateGradient)" />
-<line x1="808.9" y1="207" x2="808.9" y2="231" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
-<text x="1164.0" y="223.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">206s  ·  p95 206s</text>
-<text x="54.0" y="257.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pg-delta</text>
-<rect x="300" y="244" width="509.7" height="18" rx="4" fill="url(#slateGradient)" />
-<line x1="809.7" y1="241" x2="809.7" y2="265" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
-<text x="1164.0" y="257.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">207s  ·  p95 207s</text>
+<rect x="300" y="142" width="110.2" height="18" rx="4" fill="url(#supaGradient)" />
+<line x1="410.2" y1="139" x2="410.2" y2="163" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="155.0" fill="#34d399" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="650" text-anchor="end">3.17s  ·  p95 3.17s</text>
+<text x="54.0" y="189.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pg-delta</text>
+<rect x="300" y="176" width="509.4" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="809.4" y1="173" x2="809.4" y2="197" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="189.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">207s  ·  p95 207s</text>
+<text x="54.0" y="223.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-migra</text>
+<rect x="300" y="210" width="509.5" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="809.5" y1="207" x2="809.5" y2="231" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="223.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">207s  ·  p95 207s</text>
+<text x="54.0" y="257.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pgadmin</text>
+<rect x="300" y="244" width="511.5" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="811.5" y1="241" x2="811.5" y2="265" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="257.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">211s  ·  p95 211s</text>
 <text x="54.0" y="291.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-default</text>
-<rect x="300" y="278" width="510.2" height="18" rx="4" fill="url(#slateGradient)" />
-<line x1="810.2" y1="275" x2="810.2" y2="299" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
-<text x="1164.0" y="291.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">208s  ·  p95 208s</text>
-<text x="54.0" y="325.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pgadmin</text>
-<rect x="300" y="312" width="510.9" height="18" rx="4" fill="url(#slateGradient)" />
-<line x1="810.9" y1="309" x2="810.9" y2="333" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
-<text x="1164.0" y="325.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">210s  ·  p95 210s</text>
-<text x="36.0" y="388.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  macOS  ·  1 iteration</text>
+<rect x="300" y="278" width="513.7" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="813.7" y1="275" x2="813.7" y2="299" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="291.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">216s  ·  p95 216s</text>
+<text x="54.0" y="325.0" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="450">supabase-pg-schema</text>
+<rect x="300" y="312" width="513.9" height="18" rx="4" fill="url(#slateGradient)" />
+<line x1="813.9" y1="309" x2="813.9" y2="333" stroke="#f8fafc" stroke-opacity="0.55" stroke-width="2" />
+<text x="1164.0" y="325.0" fill="#94a3b8" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="450" text-anchor="end">217s  ·  p95 217s</text>
+<text x="36.0" y="388.0" fill="#64748b" font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400">supaschema 0.1.0  ·  Supabase CLI 2.106.0  ·  Node v24.14.0  ·  Apple Silicon  ·  1 iteration</text>
 </svg>

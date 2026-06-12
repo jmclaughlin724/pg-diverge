@@ -178,11 +178,15 @@ export function renderCorrectnessSvg(rows, fixture, environments) {
   return parts.join("\n");
 }
 
-export function renderScalingSvg(allResults, fixtures, environments) {
+export function renderScalingSvg(allResults, fixtures, environments, options = {}) {
+  const title = options.title ?? "Diff latency vs schema size";
+  const subtitle =
+    options.subtitle ??
+    "Median seconds per diff at each fixture scale, log scale · lower is better";
   const width = 1200;
   const height = 560;
   const left = 96;
-  const right = width - 270;
+  const right = width - 290;
   const top = 116;
   const bottom = height - 86;
   const adapters = [...new Set(allResults.map((item) => item.adapter))].sort(
@@ -223,11 +227,8 @@ export function renderScalingSvg(allResults, fixtures, environments) {
     svgHeader(width, height),
     defs(),
     `<rect width="100%" height="100%" rx="14" fill="${theme.bg}" />`,
-    text(36, 46, "Diff latency vs schema size", { fill: theme.title, size: 21, weight: "700" }),
-    text(36, 70, "Median seconds per diff at each fixture scale, log scale · lower is better", {
-      fill: theme.subtitle,
-      size: 12.5,
-    }),
+    text(36, 46, title, { fill: theme.title, size: 21, weight: "700" }),
+    text(36, 70, subtitle, { fill: theme.subtitle, size: 12.5 }),
   ];
   for (const tickValue of ticks) {
     const y = yFor(tickValue);

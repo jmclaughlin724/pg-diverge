@@ -4,13 +4,15 @@
 
 **From declarative schema to fully synced database in milliseconds with one command.** No ORM, no Docker, and no shadow database needed.
 
+**And it catches the tenant-isolation regression other diff tools ship.** An RLS policy's `USING` predicate _is_ the tenant boundary, and every Supabase CLI diff engine compares policies by name — so a tightened predicate is silently dropped from the migration. supaschema compares policy bodies structurally, so that isolation hole is caught before it merges. Speed is the felt pain; the dropped policy is the dangerous one, and the same parser-based, no-database design delivers both.
+
 The promise of declarative schema management sounds great: keep your schema in SQL files, edit them in your editor, diff against your database to produce a type-safe, idempotent migration, and get regenerated types back in your repo.
 
 In practice, the existing tooling needs a running database at every step. Diff engines replay your schema into a throwaway Docker database just to read it, and type generators introspect only what your database has already applied — so an unapplied change sitting in your editor can't produce a migration or its types until the database catches up. That's a backlog, a time sink, and a constant drain on CPU.
 
 supaschema knows every table, column, type, and enum without a database because it's built on PostgreSQL's own parser. The same system that would normally interpret your SQL inside a Docker container ships inside the package, embedded in your repo.
 
-Migrations diff and Zod-validated types generate without a database, without an ORM, without Docker, without a shadow database, without introspection, and without applying anything to your local or remote database. All within milliseconds.
+Migrations diff without an ORM, without Docker, without a shadow database, and without introspection — reading your live catalog directly and read-only, or your schema files and git refs with no database at all. Zod-validated types generate with no database whatsoever. Nothing is applied to your local or remote database. All within milliseconds.
 
 Measured head-to-head against the Supabase CLI's diff engines on identical fixtures ([benchmarks](#benchmarks)):
 
@@ -28,7 +30,7 @@ Measured head-to-head against the Supabase CLI's diff engines on identical fixtu
 npm install --save-dev supaschema
 ```
 
-Requires Node 22+ and PostgreSQL 15+. Installing scaffolds `supaschema.config.json` for you. In a Supabase project the database URL is discovered from `supabase/config.toml` automatically; anywhere else, set `SUPASCHEMA_DATABASE_URL` or define named `environments` in the config. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
+Requires Node 22+ and PostgreSQL 15+. Run `npx supaschema init` to scaffold `supaschema.config.json`. In a Supabase project the database URL is discovered from `supabase/config.toml` automatically; anywhere else, set `SUPASCHEMA_DATABASE_URL` or define named `environments` in the config. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
 
 ## Quick Start
 
@@ -92,9 +94,22 @@ All numbers are reproducible from this repo (`npm run benchmark`; harness in [be
 
 ### Speed
 
+**The diff alone:**
+
 ![Diff latency vs schema size](docs/benchmarks/scaling-latency.svg)
 
 supaschema's cost is parsing and planning, so it stays in seconds at every scale: **0.2s** at one table, **1.4s** at 1,000 tables, **3.2s** at 2,500 tables (~17,500 objects). Every shadow-database engine pays for a full schema replay into a fresh Docker database on every diff: **~4 seconds at a single table**, **~39 seconds** at 1,000 tables, and **~3.5 minutes** at 2,500 — a gap that widens from ~20x to ~70x as your schema grows.
+
+**The full real-world step — migration plus regenerated types:**
+
+![Full workflow: migration + regenerated types](docs/benchmarks/workflow-latency.svg)
+
+In the real workflow you don't stop at the diff: you need the migration _and_ your regenerated types. For supaschema that's still one command — `diff` writes the migration and refreshes `database.types.ts` and `database.zod.ts` in the same invocation — so the full step costs **0.23s** at one table and **5.2s** at 2,500. The engines can't regenerate types from unapplied SQL, so their full step is `db diff`, then apply the migration, then `supabase gen types`: **~6 seconds** at a single table, **~45 seconds** at 1,000 tables, **~3.7 minutes** at 2,500 — and what comes back is TypeScript only, with no runtime validators.
+
+| Median, full workflow | 1 table | 50 tables | 1,000 tables | 2,500 tables |
+| --- | --- | --- | --- | --- |
+| supaschema (migration + TS types + Zod) | 0.24s | 0.26s | 2.25s | 5.22s |
+| supabase engines (diff + apply + gen types) | 5.7–8.1s | 6.4–7.6s | 44.8–50.4s | 212.6–229.7s |
 
 ![Realistic fixture latency](docs/benchmarks/realistic-latency.svg)
 
@@ -112,9 +127,11 @@ Per-fixture latency charts: [additive](docs/benchmarks/additive-latency.svg) · 
 
 ### Accuracy
 
-Each diff is scored against a ground-truth change manifest: precision, recall, and F1, where whole-table rewrites and destructive drop+create of data-bearing objects count against precision. supaschema scores **F1 1.000** on every fixture at every scale, in both file and live-database modes. Every Supabase engine scores **0.982–0.999, and the gap is always the same miss: each silently dropped an RLS policy change.**
+Two independent measures back every run. **F1** scores the emitted statements against a ground-truth change manifest by object identity — recall is "did you touch every object that changed", precision penalizes operations beyond the intent and destructive drop+create of data-bearing objects. The **catalog fingerprint** is the objective oracle that needs no manifest: the generated migration is applied to a throwaway database and the resulting catalog is compared to the target. F1 says you named the right objects; the fingerprint says the SQL is actually correct.
 
-That miss matters more than speed. A slow diff costs seconds and an unreplayable diff costs a deploy, but a silently dropped policy change ships a tenant-isolation hole that review, CI, and the migration runner all wave through.
+Every fixture is scored — the generated `realistic`/`xl`/`xxl` set and the hand-authored `additive`/`functions-policies` fixtures all carry manifests. supaschema scores **F1 1.000** on each, in both file and live-database modes. Every Supabase engine scores **0.982–0.999, and the gap is always the same miss: each silently dropped an RLS policy change** — and on that fixture each engine's migration also fails the fingerprint check, so the miss is confirmed objectively, not just by the rubric.
+
+That miss matters more than speed. A slow diff costs seconds and an unreplayable diff costs a deploy, but a silently dropped policy change ships a tenant-isolation hole that review, CI, and the migration runner all wave through. The same comparison run against a real ~8,300-object production Supabase tree is written up in the [anilize case study](docs/case-study-anilize.md).
 
 ### Replay safety
 
@@ -208,7 +225,7 @@ Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes,
 
 ## Documentation
 
-[commands](docs/commands.md) · [config](docs/config.md) · [hints & recovery](docs/hints.md) · [CI recipes](docs/ci.md) · [diagnostics](docs/diagnostics.md) · [support matrix](docs/support-matrix.md) · [corpus oracle](docs/corpus.md) · [benchmark harness](benchmarks/README.md)
+[commands](docs/commands.md) · [config](docs/config.md) · [hints & recovery](docs/hints.md) · [CI recipes](docs/ci.md) · [CI gate & paid tier](docs/ci-gate.md) · [diagnostics](docs/diagnostics.md) · [support matrix](docs/support-matrix.md) · [corpus oracle](docs/corpus.md) · [case study](docs/case-study-anilize.md) · [benchmark harness](benchmarks/README.md)
 
 ## Development
 

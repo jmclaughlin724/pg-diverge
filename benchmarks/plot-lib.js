@@ -41,6 +41,10 @@ export function isSupaschema(label) {
   return label.startsWith("supaschema");
 }
 
+export function isWorkflow(label) {
+  return label.endsWith("-workflow");
+}
+
 export function logTicks(minMs, maxMs) {
   const candidates = [
     10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000, 200_000, 500_000,
