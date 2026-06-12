@@ -240,14 +240,18 @@ async function runDiff(
         ? payload
         : `${outPath}\n${concurrentPath === undefined ? "" : `${concurrentPath}\n`}`,
     );
-    await refreshTypesFile(options.to, config);
+    await refreshTypesFile(options.to, config, options.schema);
   }
   if (options.failOnDiff && plan.operations.length > 0) {
     process.exitCode = 3;
   }
 }
 
-async function refreshTypesFile(toSource: string, config: SupaschemaConfig): Promise<void> {
+async function refreshTypesFile(
+  toSource: string,
+  config: SupaschemaConfig,
+  schemaFilter: string | undefined,
+): Promise<void> {
   const targets: { generate: (model: SchemaModel) => Promise<string>; relative: string }[] = [
     { generate: generateDatabaseTypes, relative: config.typesFile },
     { generate: generateZodSchemas, relative: config.zodFile },
@@ -264,7 +268,7 @@ async function refreshTypesFile(toSource: string, config: SupaschemaConfig): Pro
       throw error;
     }
     try {
-      model = model ?? (await extractSourceModel(toSource, { config }));
+      model = model ?? filterModel(await extractSourceModel(toSource, { config }), schemaFilter);
       if (hasErrors(model.diagnostics)) {
         return;
       }

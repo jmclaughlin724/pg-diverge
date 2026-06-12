@@ -1,7 +1,7 @@
 import type { SchemaModel } from "./core.js";
 import { quoteKey } from "./typegen.js";
 import type { ColumnShape, SchemaShapes } from "./typegen-model.js";
-import { collectSchemaShapes, scalarTypeCategory } from "./typegen-model.js";
+import { collectSchemaShapes, resolveColumnType } from "./typegen-model.js";
 
 export async function generateZodSchemas(model: SchemaModel): Promise<string> {
   const shapes = await collectSchemaShapes(model);
@@ -39,7 +39,7 @@ export async function generateZodSchemas(model: SchemaModel): Promise<string> {
   lines.push("");
   lines.push("export const schemas = {");
   for (const [schemaName, entry] of sortedSchemas) {
-    const zodFor = makeZodExpr(shapes, schemaName, enumIdents);
+    const zodFor = (sqlType: string) => zodExpr(shapes, schemaName, enumIdents, sqlType);
     lines.push(`  ${quoteKey(schemaName)}: {`);
     lines.push("    Enums: {");
     for (const item of [...entry.enums].sort((a, b) => a.name.localeCompare(b.name))) {
@@ -70,7 +70,7 @@ export async function generateZodSchemas(model: SchemaModel): Promise<string> {
       lines.push("        }),");
       lines.push("        Update: z.object({");
       for (const column of table.columns) {
-        if (column.generated !== undefined) {
+        if (column.generated !== undefined || column.identity === "a") {
           continue;
         }
         const base = zodFor(column.type);
@@ -133,39 +133,34 @@ function sanitizeIdent(value: string): string {
   return first >= "0" && first <= "9" ? `_${result}` : result;
 }
 
-function makeZodExpr(
+function zodExpr(
   shapes: SchemaShapes,
   schemaName: string,
   enumIdents: Map<string, string>,
-): (sqlType: string) => string {
-  return (sqlType: string) => {
-    const { arrayDepth, base, category } = scalarTypeCategory(sqlType);
-    let mapped: string;
-    if (category === "number") {
-      mapped = "z.number()";
-    } else if (category === "string") {
-      mapped = "z.string()";
-    } else if (category === "boolean") {
-      mapped = "z.boolean()";
-    } else if (category === "json") {
-      mapped = "jsonSchema";
-    } else {
-      const found = shapes.enumKeys.get(base) ?? shapes.enumKeys.get(`${schemaName}.${base}`);
-      const ident = found ? enumIdents.get(`${found.schema}.${found.name}`) : undefined;
-      mapped = ident ?? "z.unknown()";
-    }
-    for (let depth = 0; depth < arrayDepth; depth += 1) {
-      mapped = `z.array(${mapped})`;
-    }
-    return mapped;
-  };
+  sqlType: string,
+): string {
+  const resolved = resolveColumnType(shapes, schemaName, sqlType);
+  let mapped: string;
+  if (resolved.kind === "enum" && resolved.enumRef) {
+    mapped = enumIdents.get(`${resolved.enumRef.schema}.${resolved.enumRef.name}`) ?? "z.unknown()";
+  } else if (resolved.kind === "json") {
+    mapped = "jsonSchema";
+  } else if (resolved.kind === "unknown") {
+    mapped = "z.unknown()";
+  } else {
+    mapped = `z.${resolved.kind}()`;
+  }
+  for (let depth = 0; depth < resolved.arrayDepth; depth += 1) {
+    mapped = `z.array(${mapped})`;
+  }
+  return mapped;
 }
 
 function zodInsertField(
   column: ColumnShape,
   zodFor: (sqlType: string) => string,
 ): string | undefined {
-  if (column.generated !== undefined) {
+  if (column.generated !== undefined || column.identity === "a") {
     return undefined;
   }
   const base = zodFor(column.type);

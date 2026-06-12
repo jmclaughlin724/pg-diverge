@@ -1,5 +1,5 @@
-import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { defaultTreeSource } from "./cli-defaults.js";
 import type { SupaschemaConfig } from "./config.js";
@@ -60,8 +60,10 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
         return;
       }
       const outPath = resolve(process.cwd(), target);
+      await mkdir(dirname(outPath), { recursive: true });
       await writeFile(outPath, types);
       const zodPath = resolve(process.cwd(), config.zodFile);
+      await mkdir(dirname(zodPath), { recursive: true });
       await writeFile(zodPath, await generateZodSchemas(model));
       process.stdout.write(`${outPath}\n${zodPath}\n`);
     });

@@ -1,6 +1,11 @@
 import type { SchemaModel } from "./core.js";
-import type { ColumnShape, RelationshipShape, SchemaShapes } from "./typegen-model.js";
-import { collectSchemaShapes, scalarTypeCategory } from "./typegen-model.js";
+import type {
+  ColumnShape,
+  FunctionShape,
+  RelationshipShape,
+  SchemaShapes,
+} from "./typegen-model.js";
+import { collectSchemaShapes, resolveColumnType } from "./typegen-model.js";
 
 export async function generateDatabaseTypes(model: SchemaModel): Promise<string> {
   const shapes = await collectSchemaShapes(model);
@@ -13,14 +18,14 @@ export async function generateDatabaseTypes(model: SchemaModel): Promise<string>
     left.localeCompare(right),
   );
   for (const [schemaName, entry] of sortedSchemas) {
-    const enumRef = makeEnumRef(shapes, schemaName);
+    const typeOf = (sqlType: string) => tsType(shapes, schemaName, sqlType);
     lines.push(`  ${quoteKey(schemaName)}: {`);
     lines.push("    Tables: {");
     for (const table of [...entry.tables].sort((a, b) => a.name.localeCompare(b.name))) {
       lines.push(`      ${quoteKey(table.name)}: {`);
       lines.push("        Row: {");
       for (const column of table.columns) {
-        const base = tsType(column.type, enumRef);
+        const base = typeOf(column.type);
         lines.push(
           `          ${quoteKey(column.name)}: ${column.notNull ? base : `${base} | null`};`,
         );
@@ -28,12 +33,12 @@ export async function generateDatabaseTypes(model: SchemaModel): Promise<string>
       lines.push("        };");
       lines.push("        Insert: {");
       for (const column of table.columns) {
-        lines.push(`          ${insertField(column, enumRef)}`);
+        lines.push(`          ${insertField(column, typeOf)}`);
       }
       lines.push("        };");
       lines.push("        Update: {");
       for (const column of table.columns) {
-        lines.push(`          ${updateField(column, enumRef)}`);
+        lines.push(`          ${updateField(column, typeOf)}`);
       }
       lines.push("        };");
       lines.push(`        Relationships: ${renderRelationships(table.relationships)};`);
@@ -45,7 +50,7 @@ export async function generateDatabaseTypes(model: SchemaModel): Promise<string>
       lines.push(`      ${quoteKey(view.name)}: {`);
       lines.push("        Row: {");
       for (const column of view.columns) {
-        lines.push(`          ${quoteKey(column.name)}: ${tsType(column.type, enumRef)} | null;`);
+        lines.push(`          ${quoteKey(column.name)}: ${typeOf(column.type)} | null;`);
       }
       lines.push("        };");
       lines.push("      };");
@@ -61,12 +66,12 @@ export async function generateDatabaseTypes(model: SchemaModel): Promise<string>
     for (const composite of [...entry.composites].sort((a, b) => a.name.localeCompare(b.name))) {
       lines.push(`      ${quoteKey(composite.name)}: {`);
       for (const column of composite.columns) {
-        lines.push(`        ${quoteKey(column.name)}: ${tsType(column.type, enumRef)} | null;`);
+        lines.push(`        ${quoteKey(column.name)}: ${typeOf(column.type)} | null;`);
       }
       lines.push("      };");
     }
     lines.push("    };");
-    lines.push("    Functions: { [_ in never]: never };");
+    lines.push(...functionsBlock(entry.functions, typeOf));
     lines.push("  };");
   }
   lines.push("};");
@@ -77,49 +82,62 @@ export async function generateDatabaseTypes(model: SchemaModel): Promise<string>
   return `${lines.join("\n")}\n`;
 }
 
-function makeEnumRef(
-  shapes: SchemaShapes,
-  schemaName: string,
-): (key: string) => string | undefined {
-  return (key: string) => {
-    const found = shapes.enumKeys.get(key) ?? shapes.enumKeys.get(`${schemaName}.${key}`);
-    return found ? `Database["${found.schema}"]["Enums"]["${found.name}"]` : undefined;
-  };
-}
-
-function tsType(sqlType: string, enumRef: (key: string) => string | undefined): string {
-  const { arrayDepth, base, category } = scalarTypeCategory(sqlType);
+function tsType(shapes: SchemaShapes, schemaName: string, sqlType: string): string {
+  const resolved = resolveColumnType(shapes, schemaName, sqlType);
   let mapped: string;
-  if (category === "number") {
-    mapped = "number";
-  } else if (category === "string") {
-    mapped = "string";
-  } else if (category === "boolean") {
-    mapped = "boolean";
-  } else if (category === "json") {
+  if (resolved.kind === "enum" && resolved.enumRef) {
+    mapped = `Database["${resolved.enumRef.schema}"]["Enums"]["${resolved.enumRef.name}"]`;
+  } else if (resolved.kind === "json") {
     mapped = "Json";
+  } else if (resolved.kind === "unknown") {
+    mapped = "unknown";
   } else {
-    mapped = enumRef(base) ?? "unknown";
+    mapped = resolved.kind;
   }
-  return mapped + "[]".repeat(arrayDepth);
+  return mapped + "[]".repeat(resolved.arrayDepth);
 }
 
-function insertField(column: ColumnShape, enumRef: (key: string) => string | undefined): string {
-  if (column.generated !== undefined) {
+function insertField(column: ColumnShape, typeOf: (sqlType: string) => string): string {
+  if (column.generated !== undefined || column.identity === "a") {
     return `${quoteKey(column.name)}?: never;`;
   }
-  const base = tsType(column.type, enumRef);
+  const base = typeOf(column.type);
   const type = column.notNull ? base : `${base} | null`;
   const optional = !column.notNull || column.default !== undefined || column.identity !== undefined;
   return `${quoteKey(column.name)}${optional ? "?" : ""}: ${type};`;
 }
 
-function updateField(column: ColumnShape, enumRef: (key: string) => string | undefined): string {
-  if (column.generated !== undefined) {
+function updateField(column: ColumnShape, typeOf: (sqlType: string) => string): string {
+  if (column.generated !== undefined || column.identity === "a") {
     return `${quoteKey(column.name)}?: never;`;
   }
-  const base = tsType(column.type, enumRef);
+  const base = typeOf(column.type);
   return `${quoteKey(column.name)}?: ${column.notNull ? base : `${base} | null`};`;
+}
+
+function functionsBlock(functions: FunctionShape[], typeOf: (sqlType: string) => string): string[] {
+  const named = new Map<string, FunctionShape>();
+  for (const fn of functions) {
+    if (!named.has(fn.name)) {
+      named.set(fn.name, fn);
+    }
+  }
+  if (named.size === 0) {
+    return ["    Functions: { [_ in never]: never };"];
+  }
+  const lines = ["    Functions: {"];
+  for (const fn of [...named.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+    const args = fn.args
+      .map((arg) => `${quoteKey(arg.name)}${arg.optional ? "?" : ""}: ${typeOf(arg.type)}`)
+      .join("; ");
+    const returnsBase = fn.returns ? typeOf(fn.returns.type) : "unknown";
+    const returns = fn.returns?.setof ? `${returnsBase}[]` : returnsBase;
+    lines.push(
+      `      ${quoteKey(fn.name)}: { Args: ${args.length > 0 ? `{ ${args} }` : "Record<PropertyKey, never>"}; Returns: ${returns} };`,
+    );
+  }
+  lines.push("    };");
+  return lines;
 }
 
 function renderRelationships(relationships: RelationshipShape[]): string {
@@ -128,7 +146,7 @@ function renderRelationships(relationships: RelationshipShape[]): string {
   }
   const items = relationships.map(
     (item) =>
-      `{ foreignKeyName: ${JSON.stringify(item.foreignKeyName)}; columns: ${tupleType(item.columns)}; isOneToOne: false; referencedRelation: ${JSON.stringify(item.referencedRelation)}; referencedColumns: ${tupleType(item.referencedColumns)} }`,
+      `{ foreignKeyName: ${JSON.stringify(item.foreignKeyName)}; columns: ${tupleType(item.columns)}; isOneToOne: ${item.isOneToOne}; referencedRelation: ${JSON.stringify(item.referencedRelation)}; referencedColumns: ${tupleType(item.referencedColumns)} }`,
   );
   return `[${items.join(", ")}]`;
 }

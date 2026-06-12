@@ -86,6 +86,72 @@ describe("database type generation", () => {
   });
 });
 
+const hardenedSql = `CREATE SCHEMA app;
+CREATE SCHEMA audit;
+CREATE DOMAIN app.email AS text;
+CREATE TYPE app.status AS ENUM ('draft', 'active');
+CREATE TYPE audit.status AS ENUM ('ok', 'bad');
+CREATE TABLE app.users (
+  id bigint GENERATED ALWAYS AS IDENTITY,
+  contact app.email NOT NULL,
+  state status NOT NULL
+);
+ALTER TABLE ONLY app.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+CREATE TABLE audit.logs (
+  id bigint PRIMARY KEY,
+  state status NOT NULL,
+  user_id bigint UNIQUE REFERENCES app.users
+);
+CREATE VIEW app.user_emails (uid, mail) AS SELECT id, contact FROM app.users;
+CREATE VIEW app.all_users AS SELECT u.* FROM app.users u;
+CREATE FUNCTION app.get_user(uid bigint, fallback text DEFAULT 'none') RETURNS SETOF text LANGUAGE sql AS $$ SELECT contact FROM app.users $$;
+`;
+
+describe("review-hardened typegen", () => {
+  it("treats always-generated identity as never and standalone primary keys as not null", async () => {
+    const types = await typesFor(hardenedSql);
+    const users = types.slice(types.indexOf("users: {"), types.indexOf("user_emails"));
+
+    expect(users).toContain("id: number;");
+    expect(users).toContain("id?: never;");
+  });
+
+  it("maps domains to their base type and resolves shadowed enums schema-locally", async () => {
+    const types = await typesFor(hardenedSql);
+
+    expect(types).toContain("contact: string;");
+    const users = types.slice(types.indexOf("users: {"), types.indexOf("Views"));
+    expect(users).toContain('state: Database["app"]["Enums"]["status"];');
+    const logs = types.slice(types.indexOf("logs: {"));
+    expect(logs).toContain('state: Database["audit"]["Enums"]["status"];');
+  });
+
+  it("resolves shorthand foreign keys to the target primary key and marks unique FKs one-to-one", async () => {
+    const types = await typesFor(hardenedSql);
+
+    expect(types).toContain('referencedRelation: "users"');
+    expect(types).toContain('referencedColumns: ["id"]');
+    expect(types).toContain("isOneToOne: true");
+  });
+
+  it("maps alias-list view columns positionally and expands qualified star selects", async () => {
+    const types = await typesFor(hardenedSql);
+    const views = types.slice(types.indexOf("Views: {"), types.indexOf("Enums: {"));
+
+    expect(views).toContain("uid: number | null;");
+    expect(views).toContain("mail: string | null;");
+    expect(views).toContain("contact: string | null;");
+  });
+
+  it("populates Functions with named args, optionality, and setof returns", async () => {
+    const types = await typesFor(hardenedSql);
+
+    expect(types).toContain(
+      "get_user: { Args: { uid: number; fallback?: string }; Returns: string[] };",
+    );
+  });
+});
+
 describe("zod schema generation", () => {
   async function zodFor(sql: string): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "supa-zodgen-"));
