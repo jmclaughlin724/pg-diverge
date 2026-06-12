@@ -68,7 +68,7 @@ No flags are needed day to day: sources, output paths, and names all have sensib
 
 - **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, `DROP ... IF EXISTS`, catalog-checked `DO` blocks). A crashed deploy can simply run the file again.
 - **Fails closed on ambiguity.** Drops, renames, and type changes stay blocked until you approve the exact object in `hints`. Nothing is inferred from name similarity.
-- **Pre-normalized output.** `normalize: "deparse"` rewrites SQL into canonical PostgreSQL form, so formatting differences never read as schema changes.
+- **Pre-normalized output.** Optional normalization rewrites every migration into one canonical SQL style (`normalize: "deparse"`).
 - **No git ceremony.** Schema files are diffed straight from disk — no staging or committing before you can generate.
 - **Everything stays in sync.** Your editor validates the config via JSON Schema and `--watch` re-diffs on save; named `environments` point commands at local, staging, or production; `migrations` reconciles files against each database's applied history; `--fail-on-diff` gates drift in CI.
 - **Accuracy is measured, not assumed.** Diff output is scored against ground-truth change manifests ([benchmarks](#accuracy)).
@@ -115,16 +115,14 @@ Every engine's migration applies once and reaches the target catalog. Only supas
 
 ## How It Works
 
-The engine is built on PostgreSQL's own parser. `libpg-query` compiles the server's actual C parser — the same grammar PostgreSQL itself runs — to WebAssembly, so every statement from every source is parsed in-process into the server's native parse tree. That is what replaces the shadow database: the component that would have validated and interpreted your SQL inside a Docker container is embedded in the library. SQL is never classified, compared, or rewritten with regex anywhere in the engine.
+supaschema reads SQL with PostgreSQL's own parser, shipped inside the package. The part of Postgres that understands SQL runs in the library itself — that's why no Docker and no shadow database are needed, and why the engine never touches SQL with regex.
 
-Everything downstream operates on those parse trees:
-
-1. **Extract** — every statement is parsed and classified into a typed object model; live databases are read with read-only `pg_catalog` queries and reconstructed through the same parser.
-2. **Compare** — objects match by a SHA-256 hash of the location-stripped parse tree, so the same definition in a SQL file and a live catalog hashes identically across keyword case, type aliases, identifier quoting, and guard spellings. Version-specific catalog quirks (such as PostgreSQL 15 qualifying view columns) are canonicalized at the tree level, and privileges are modeled as deltas so catalog ACL noise never reads as drift.
-3. **Plan** — operations are ordered along dependency edges collected from the trees; column changes become per-column `ALTER`s; destructive operations are hint-gated.
-4. **Render** — guard clauses are spliced at parser-reported statement offsets, producing guarded SQL with a lock-timeout preamble and a lineage marker; `normalize: "deparse"` rewrites output through `pgsql-deparser` (the parser's TypeScript companion), fidelity-gated so the canonical text must re-parse to the identical tree; `CREATE INDEX CONCURRENTLY` splits into a `.concurrent.sql` companion under the `postgres` adapter.
-5. **Gate** — migration writes never overwrite, and the lineage chain refuses a migration that doesn't continue the newest pending one.
-6. **Verify** — the migration runs twice in disposable databases, one transaction per file (exactly how `supabase db push` runs it); the catalog must match the target and a re-diff must come back empty.
+1. **Parse** — every statement, from your files or a live database, becomes a parse tree.
+2. **Compare** — two definitions are equal when their parse trees are equal. Formatting, keyword case, and type spellings can never show up as fake changes.
+3. **Plan** — changes are ordered by dependency. Anything destructive waits for your explicit approval in `hints`.
+4. **Render** — the migration is written as guarded SQL that is safe to run twice, stamped with a lineage marker that chains it to the next one.
+5. **Gate** — existing migrations are never overwritten, and a migration that doesn't continue the chain is refused.
+6. **Verify** — the migration runs twice in throwaway databases, applied exactly the way `supabase db push` applies it, and the result must match your schema files.
 
 ## Commands
 
@@ -156,7 +154,7 @@ Either side of a diff can be any of these — generating a diff never creates a 
 
 ## Safety
 
-- Destructive changes require the exact object key in `hints.destructive`; column changes then render as per-column `ALTER`s instead of dropping and recreating the table. Type changes that can rewrite the heap under an `ACCESS EXCLUSIVE` lock are flagged (`SUPA_CHECK_ALTER_COLUMN_TYPE_REWRITE`).
+- Destructive changes require the exact object key in `hints.destructive`; column changes then render as per-column `ALTER`s instead of dropping and recreating the table, and type changes that would rewrite the whole table are flagged (`SUPA_CHECK_ALTER_COLUMN_TYPE_REWRITE`).
 - Renames come only from `hints.renames`. `CASCADE` is never emitted. Idempotency is required, not optional.
 - Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) are never treated as schema changes, and unsupported DDL produces a blocking diagnostic instead of passing through.
 - Diagnostics redact credentials (URL passwords, JWTs, secrets).
