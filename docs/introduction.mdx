@@ -19,7 +19,7 @@ supaschema takes a different approach. It parses your declarative schema files u
 
 * **No infrastructure required.** supaschema never touches a real database during migration generation. No Docker, no shadow DB, no network calls.
 * **Built on PostgreSQL's own parser.** supaschema uses the official PostgreSQL parser compiled to WebAssembly, so it understands your SQL the same way the database does.
-* **20–70× faster than alternative engines.** supaschema's diff engine consistently outperforms competing tools in benchmarks across schema sizes.
+* **16–68× faster than alternative engines.** supaschema's diff engine consistently outperforms competing tools in benchmarks across schema sizes.
 * **Perfect F1 accuracy (1.000).** Independent accuracy benchmarks show supaschema produces zero false positives and zero false negatives in migration output.
 * **Replay-safe migrations.** Every generated migration is idempotent and safe to re-run, so you can integrate it into CI/CD pipelines without fear of destructive side effects.
 
@@ -29,11 +29,11 @@ The table below shows median diff time across schema sizes and F1 accuracy score
 
 | Tool                 | 1 table    | 1,000 tables | 2,500 tables | F1 Accuracy |
 | -------------------- | ---------- | ------------ | ------------ | ----------- |
-| **supaschema**       | **0.19 s** | **1.38 s**   | **3.23 s**   | **1.000**   |
-| Supabase CLI engines | 3.6–4.6 s  | \~39 s       | \~3.5 min    | 0.982–0.999 |
+| **supaschema**       | **0.21 s** | **1.41 s**   | **3.17 s**   | **1.000**   |
+| Supabase CLI engines | 4.0–4.5 s  | 39–43 s      | \~3.5 min    | 0.982–0.999 |
 
 <Note>
-  Benchmark figures come from a reference run on Apple Silicon, Node 24, PostgreSQL 17.6, and Supabase CLI 2.106.0. The 20–70× speedup range reflects the spread from small to large schemas — the gap widens as your schema grows because shadow-database engines pay for a full schema replay into a fresh Docker database on every diff. The Supabase CLI accuracy gap is always the same miss: each engine silently drops an RLS policy change.
+  Benchmark figures come from a reference run on Apple Silicon, Node 24, PostgreSQL 17.6, and Supabase CLI 2.106.0. The 16–68× speedup range reflects the spread from small to large schemas — the gap widens as your schema grows because shadow-database engines pay for a full schema replay into a fresh Docker database on every diff. The Supabase CLI accuracy gap is always the same miss: each engine silently drops an RLS policy change.
 </Note>
 
 ## Two Ways to Use supaschema
