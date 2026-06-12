@@ -1,5 +1,6 @@
 import { watch } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
+import { mkdir, open, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Command } from "commander";
@@ -17,6 +18,8 @@ import { latestLineage } from "./lineage.js";
 import { planSchemaDiff } from "./planner.js";
 import { renderMigrationSplit } from "./render.js";
 import { extractSourceModel, filterModelBySchemas } from "./source.js";
+import { generateDatabaseTypes } from "./typegen.js";
+import { generateZodSchemas } from "./typegen-zod.js";
 
 type PlanCommandOptions = { from?: string; to?: string; schema?: string; timing?: boolean };
 type DiffOptions = PlanCommandOptions & {
@@ -237,9 +240,45 @@ async function runDiff(
         ? payload
         : `${outPath}\n${concurrentPath === undefined ? "" : `${concurrentPath}\n`}`,
     );
+    await refreshTypesFile(options.to, config, options.schema);
   }
   if (options.failOnDiff && plan.operations.length > 0) {
     process.exitCode = 3;
+  }
+}
+
+async function refreshTypesFile(
+  toSource: string,
+  config: SupaschemaConfig,
+  schemaFilter: string | undefined,
+): Promise<void> {
+  const targets: { generate: (model: SchemaModel) => Promise<string>; relative: string }[] = [
+    { generate: generateDatabaseTypes, relative: config.typesFile },
+    { generate: generateZodSchemas, relative: config.zodFile },
+  ];
+  let model: SchemaModel | undefined;
+  for (const target of targets) {
+    let handle: FileHandle;
+    try {
+      handle = await open(resolve(process.cwd(), target.relative), "r+");
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+    try {
+      model = model ?? filterModel(await extractSourceModel(toSource, { config }), schemaFilter);
+      if (hasErrors(model.diagnostics)) {
+        return;
+      }
+      const generated = await target.generate(model);
+      await handle.truncate(0);
+      await handle.write(generated, 0);
+      process.stderr.write(`types: ${target.relative} refreshed from ${toSource}\n`);
+    } finally {
+      await handle.close();
+    }
   }
 }
 

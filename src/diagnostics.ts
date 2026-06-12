@@ -52,14 +52,48 @@ export function formatDiagnostics(diagnostics: Diagnostic[]): string {
 }
 
 export function redactSecrets(value: string): string {
-  return value
-    .replace(/([a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:)([^@\s/]+)(@)/giu, "$1[redacted]$3")
+  return redactUrlCredentials(value)
     .replace(
       /\b(password|pass|pwd|token|secret|api[_-]?key|service[_-]?role[_-]?key)(\s*[:=]\s*)(["']?)[^"'\s,;)]+/giu,
       "$1$2$3[redacted]",
     )
     .replace(/\b(sb_secret_)[A-Za-z0-9_-]+/g, "$1[redacted]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]");
+}
+
+function isUserinfoEnd(char: string): boolean {
+  return (
+    char === "@" || char === "/" || char === " " || char === "\t" || char === "\n" || char === "\r"
+  );
+}
+
+function redactUrlCredentials(value: string): string {
+  let result = "";
+  let index = 0;
+  while (index < value.length) {
+    const marker = value.indexOf("://", index);
+    if (marker === -1) {
+      result += value.slice(index);
+      break;
+    }
+    const afterScheme = marker + 3;
+    result += value.slice(index, afterScheme);
+    let cursor = afterScheme;
+    let colon = -1;
+    while (cursor < value.length && !isUserinfoEnd(value[cursor] ?? "")) {
+      if (value[cursor] === ":" && colon === -1) {
+        colon = cursor;
+      }
+      cursor += 1;
+    }
+    if (value[cursor] === "@" && colon > afterScheme && cursor > colon + 1) {
+      result += `${value.slice(afterScheme, colon + 1)}[redacted]`;
+      index = cursor;
+    } else {
+      index = afterScheme;
+    }
+  }
+  return result;
 }
 
 function formatRef(ref: ObjectRef): string {

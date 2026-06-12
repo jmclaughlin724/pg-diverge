@@ -62,6 +62,8 @@ npx supaschema verify   # applies it twice in throwaway databases, compares cata
 supabase db push        # your runner applies it — supaschema never touches your real databases
 ```
 
+Types come from the same tree, in the same step. Run `npx supaschema types` once to create `database.types.ts` and `database.zod.ts` (runtime Zod validators); from then on every `diff` refreshes them with the migration. You never wait for a deploy to get correct types.
+
 No flags are needed day to day: sources, output paths, and names all have sensible defaults, every applied default is printed, and every flag overrides ([commands](#commands)).
 
 ## Features
@@ -69,6 +71,7 @@ No flags are needed day to day: sources, output paths, and names all have sensib
 - **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, `DROP ... IF EXISTS`, catalog-checked `DO` blocks). A crashed deploy can simply run the file again.
 - **Fails closed on ambiguity.** Drops, renames, and type changes stay blocked until you approve the exact object in `hints`. Nothing is inferred from name similarity.
 - **Normalized output.** Migrations are written in one canonical SQL style, so formatting never shows up as a change. An object the deparser can't faithfully reproduce keeps your original spelling and says so with a warning.
+- **Types and validators without a database.** `supaschema types` writes Supabase-compatible TypeScript types plus runtime Zod validators straight from your schema files, and `diff` refreshes both automatically with every migration. No introspection, no running database, no applying migrations first — the parser already knows your schema, so you never stop mid-workflow to deploy before types can regenerate.
 - **No git ceremony.** Schema files are diffed straight from disk — no staging or committing before you can generate.
 - **Everything stays in sync.** Your editor validates the config via JSON Schema and `--watch` re-diffs on save; named `environments` point commands at local, staging, or production; `migrations` reconciles files against each database's applied history; `--fail-on-diff` gates drift in CI.
 - **Accuracy is measured, not assumed.** Diff output is scored against ground-truth change manifests ([benchmarks](#accuracy)).
@@ -131,6 +134,7 @@ supaschema reads SQL with PostgreSQL's own parser, shipped inside the package. T
 | `diff` | Generate the migration (`--fail-on-diff` CI drift gate, `--watch` editor loop, `--out stdout`, `--write-hints`) |
 | `check` | Static replay-safety gate for the migrations directory or named files — including other tools' migrations (`--reporter github\|sarif\|json`) |
 | `verify` | Apply-twice proof for the newest pending migration in disposable databases |
+| `types` | Generate Supabase-compatible TypeScript types and Zod validators from the schema tree — no database needed (`--out stdout` to print) |
 | `plan` / `inspect` / `fingerprint` | JSON diff plan · extracted schema model · one-line schema-equality hash |
 | `migrations` | Files on disk vs a database's applied history: applied, pending, ghosts, out-of-order |
 | `sync` | Gate pending migrations, then optionally drive the Supabase CLI (`--local` / `--remote`) |

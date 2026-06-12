@@ -1,9 +1,14 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
+import { defaultTreeSource } from "./cli-defaults.js";
 import type { SupaschemaConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { hasErrors } from "./diagnostics.js";
 import { renderDoctorReport, runDoctor } from "./doctor.js";
 import { extractSourceModel } from "./source.js";
+import { generateDatabaseTypes } from "./typegen.js";
+import { generateZodSchemas } from "./typegen-zod.js";
 
 export interface ToolCommandContext {
   loadCliConfig: () => Promise<SupaschemaConfig>;
@@ -30,6 +35,37 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
       if (!report.healthy) {
         process.exitCode = 2;
       }
+    });
+
+  program
+    .command("types")
+    .option("--from <source>", "source to type (default: the config schema tree)")
+    .option("--out <file|stdout>", "TypeScript output path (default: config.typesFile)")
+    .description(
+      "Generate Supabase-compatible TypeScript types and Zod validators straight from the schema tree — no database, no introspection, no applied migrations required.",
+    )
+    .action(async (options: { from?: string; out?: string }) => {
+      const config = await context.loadCliConfig();
+      const source = options.from ?? defaultTreeSource(config);
+      const model = await extractSourceModel(source, { config });
+      context.printDiagnostics(model.diagnostics);
+      if (hasErrors(model.diagnostics)) {
+        process.exitCode = 2;
+        return;
+      }
+      const types = await generateDatabaseTypes(model);
+      const target = options.out ?? config.typesFile;
+      if (target === "stdout") {
+        process.stdout.write(types);
+        return;
+      }
+      const outPath = resolve(process.cwd(), target);
+      await mkdir(dirname(outPath), { recursive: true });
+      await writeFile(outPath, types);
+      const zodPath = resolve(process.cwd(), config.zodFile);
+      await mkdir(dirname(zodPath), { recursive: true });
+      await writeFile(zodPath, await generateZodSchemas(model));
+      process.stdout.write(`${outPath}\n${zodPath}\n`);
     });
 
   program

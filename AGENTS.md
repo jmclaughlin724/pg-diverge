@@ -21,9 +21,10 @@ supaschema generates deterministic, replay-safe PostgreSQL/Supabase migrations f
 Zero-flag defaults: `--from` resolves to the database (then `git:HEAD`), `--to` to the config schema tree, output to `config.migrationsDir` with a derived name, `check` to the whole migrations directory, `verify --migration` to the newest pending file. Applied defaults print to stderr; flags override.
 
 ```bash
-supaschema diff                          # render the migration from applied state -> schema tree
+supaschema diff                          # render the migration from applied state -> schema tree (refreshes the types file when present)
 supaschema check                         # replay-safety gate for the migrations directory
 supaschema verify                        # apply-twice proof for the newest pending migration
+supaschema types                         # Supabase-compatible TypeScript types + Zod validators from the tree; no database or introspection
 supaschema diff --fail-on-diff --quiet   # CI drift gate (exit 3 on drift)
 supaschema diff --summary                # blocked-plan triage: operation/diagnostic counts by kind and schema
 supaschema diff --write-hints <file>     # reviewable hints.destructive skeleton for gated keys

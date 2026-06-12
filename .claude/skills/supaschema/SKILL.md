@@ -35,7 +35,7 @@ This skill is a direct execution contract for producing schema migrations with s
 
    Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
 
-5. **Commit** the tree change and the generated migration together. supaschema never stages or applies; the migration runner (e.g. `supabase db push`) owns the database.
+5. **Commit** the tree change, the generated migration, and the refreshed types file together. supaschema never stages or applies; the migration runner (e.g. `supabase db push`) owns the database. TypeScript types come from the tree (`supaschema types` creates `database.types.ts`; every later `diff` refreshes it) — never wait for a deploy or run introspection-based typegen to get correct types.
 
 ## Drift Detection
 
