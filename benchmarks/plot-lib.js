@@ -63,7 +63,12 @@ export function logX(value, domain, x0, chartWidth) {
 }
 
 export function envFooter(environments, fixture) {
-  const env = environments.find((item) => item.fixtures.includes(fixture)) ?? environments[0] ?? {};
+  const env =
+    (fixture === undefined
+      ? environments[0]
+      : environments.find((item) => item.fixtures.includes(fixture))) ??
+    environments[0] ??
+    {};
   const supabaseVersion = env.toolVersions?.supabase
     ? `Supabase CLI ${env.toolVersions.supabase}`
     : undefined;
@@ -75,10 +80,23 @@ export function envFooter(environments, fixture) {
     supabaseVersion,
     env.node ? `Node ${env.node}` : undefined,
     platformLabel(env.platform, env.arch),
-    env.iterations ? `${env.iterations} iteration${env.iterations === 1 ? "" : "s"}` : undefined,
+    iterationsLabel(fixture === undefined ? environments : [env]),
   ]
     .filter(Boolean)
     .join("  ·  ");
+}
+
+function iterationsLabel(environments) {
+  const counts = [
+    ...new Set(environments.map((item) => item.iterations).filter((value) => value > 0)),
+  ].sort((left, right) => left - right);
+  if (counts.length === 0) {
+    return undefined;
+  }
+  if (counts.length === 1) {
+    return `${counts[0]} iteration${counts[0] === 1 ? "" : "s"}`;
+  }
+  return `${counts[0]}–${counts.at(-1)} iterations per fixture`;
 }
 
 function platformLabel(platform, arch) {
@@ -123,7 +141,7 @@ export function groupedCorrectness(rows) {
             ? scored.reduce((sum, item) => sum + item.outputF1, 0) / scored.length
             : undefined,
         label,
-        match: measured.filter((item) => item.matchesTargetFingerprint).length,
+        match: measured.filter((item) => item.matchesTargetAfterFirstApply).length,
         once: measured.filter((item) => item.appliesOnce).length,
         total: measured.length,
         twice: measured.filter((item) => item.appliesTwice).length,

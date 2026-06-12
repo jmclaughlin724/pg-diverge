@@ -211,7 +211,9 @@ export function renderScalingSvg(allResults, fixtures, environments) {
   const xFor = (index) => left + (index / Math.max(1, fixtures.length - 1)) * (right - left);
   const yFor = (value) => {
     const span = Math.log10(domain.ceil) - Math.log10(domain.floor);
-    return bottom - ((Math.log10(value) - Math.log10(domain.floor)) / span) * (bottom - top);
+    return (
+      bottom - ((Math.log10(Math.max(1, value)) - Math.log10(domain.floor)) / span) * (bottom - top)
+    );
   };
   const supaColors = [theme.accent, "#22d3ee"];
   const engineColors = ["#94a3b8", "#7c8aa0", "#64748b", "#8896ab", "#566379"];
@@ -288,7 +290,7 @@ export function renderScalingSvg(allResults, fixtures, environments) {
   }
   parts.push(...renderEndLabels(endLabels, { bottom, right, top }));
   parts.push(
-    text(36, height - 22, envFooter(environments, fixtures.at(-1)), {
+    text(36, height - 22, envFooter(environments, undefined), {
       fill: theme.muted,
       size: 11,
     }),
