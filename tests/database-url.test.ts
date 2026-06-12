@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -52,20 +52,23 @@ describe("supabase database URL discovery", () => {
   });
 });
 
-describe("install-time config scaffold", () => {
-  it("creates supaschema.config.json in the consumer root and never overwrites", async () => {
+describe("install-time config notice", () => {
+  it("prints an init hint to the consumer and writes nothing", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-"));
     const env = { ...process.env, INIT_CWD: consumer };
 
-    await run("node", ["bin/postinstall.mjs"], { env });
-    const configPath = join(consumer, "supaschema.config.json");
-    expect(existsSync(configPath)).toBe(true);
-    const written = await readFile(configPath, "utf8");
-    expect(JSON.parse(written)).toHaveProperty("adapter", "supabase-auto");
+    const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
+    expect(stdout).toContain("supaschema init");
+    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
+  });
 
-    await writeFile(configPath, '{"adapter":"postgres"}\n');
-    await run("node", ["bin/postinstall.mjs"], { env });
-    expect(await readFile(configPath, "utf8")).toBe('{"adapter":"postgres"}\n');
+  it("stays silent when the consumer already has a config", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-existing-"));
+    await writeFile(join(consumer, "supaschema.config.json"), '{"adapter":"postgres"}\n');
+    const env = { ...process.env, INIT_CWD: consumer };
+
+    const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
+    expect(stdout).toBe("");
   });
 
   it("does nothing inside supaschema's own checkout", async () => {

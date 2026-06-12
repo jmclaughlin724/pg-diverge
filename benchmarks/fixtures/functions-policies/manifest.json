@@ -1,0 +1,5 @@
+[
+  { "change": "change", "key": "policy:app.accounts_select:accounts" },
+  { "change": "change", "key": "function:app.greeting()" },
+  { "change": "change", "key": "view:app.account_names" }
+]

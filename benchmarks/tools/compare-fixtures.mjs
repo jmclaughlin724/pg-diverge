@@ -45,6 +45,12 @@ async function fixtureFromDirectory(directory, name) {
       fixture.supaschemaAdapter = config.supaschemaAdapter;
     }
   } catch {}
+  try {
+    const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
+    if (Array.isArray(manifest)) {
+      fixture.manifest = manifest;
+    }
+  } catch {}
   return fixture;
 }
 

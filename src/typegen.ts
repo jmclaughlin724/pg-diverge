@@ -116,28 +116,43 @@ function updateField(column: ColumnShape, typeOf: (sqlType: string) => string): 
 }
 
 function functionsBlock(functions: FunctionShape[], typeOf: (sqlType: string) => string): string[] {
-  const named = new Map<string, FunctionShape>();
+  const grouped = new Map<string, FunctionShape[]>();
   for (const fn of functions) {
-    if (!named.has(fn.name)) {
-      named.set(fn.name, fn);
-    }
+    const overloads = grouped.get(fn.name) ?? [];
+    overloads.push(fn);
+    grouped.set(fn.name, overloads);
   }
-  if (named.size === 0) {
+  if (grouped.size === 0) {
     return ["    Functions: { [_ in never]: never };"];
   }
   const lines = ["    Functions: {"];
-  for (const fn of [...named.values()].sort((a, b) => a.name.localeCompare(b.name))) {
-    const args = fn.args
-      .map((arg) => `${quoteKey(arg.name)}${arg.optional ? "?" : ""}: ${typeOf(arg.type)}`)
-      .join("; ");
-    const returnsBase = fn.returns ? typeOf(fn.returns.type) : "unknown";
-    const returns = fn.returns?.setof ? `${returnsBase}[]` : returnsBase;
+  for (const [name, overloads] of [...grouped.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    const argVariants = sortedUnique(overloads.map((fn) => renderFunctionArgs(fn, typeOf)));
+    const returnVariants = sortedUnique(overloads.map((fn) => renderFunctionReturns(fn, typeOf)));
     lines.push(
-      `      ${quoteKey(fn.name)}: { Args: ${args.length > 0 ? `{ ${args} }` : "Record<PropertyKey, never>"}; Returns: ${returns} };`,
+      `      ${quoteKey(name)}: { Args: ${argVariants.join(" | ")}; Returns: ${returnVariants.join(" | ")} };`,
     );
   }
   lines.push("    };");
   return lines;
+}
+
+function renderFunctionArgs(fn: FunctionShape, typeOf: (sqlType: string) => string): string {
+  const args = fn.args
+    .map((arg) => `${quoteKey(arg.name)}${arg.optional ? "?" : ""}: ${typeOf(arg.type)}`)
+    .join("; ");
+  return args.length > 0 ? `{ ${args} }` : "Record<PropertyKey, never>";
+}
+
+function renderFunctionReturns(fn: FunctionShape, typeOf: (sqlType: string) => string): string {
+  const base = fn.returns ? typeOf(fn.returns.type) : "unknown";
+  return fn.returns?.setof ? `${base}[]` : base;
+}
+
+function sortedUnique(values: string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
 function renderRelationships(relationships: RelationshipShape[]): string {
