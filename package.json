@@ -59,7 +59,7 @@
     "check:package": "publint && attw --pack . --profile esm-only",
     "clean": "rm -rf dist coverage",
     "docs:api": "typedoc src/index.ts --out api-docs",
-    "docs:check": "cd docs && npx --yes mint@4.2.616 validate && npx --yes mint@4.2.616 broken-links --check-anchors && npx --yes mint@4.2.616 a11y",
+    "docs:check": "npx --yes mint@4.2.616 validate && cd docs && npx --yes mint@4.2.616 validate && npx --yes mint@4.2.616 broken-links --check-anchors && npx --yes mint@4.2.616 a11y",
     "docs:dev": "cd docs && npx --yes mint@4.2.616 dev --no-open",
     "corpus:check": "npm run build && node dist/cli.js corpus --corpus-dir corpus/supabase-style",
     "fixture:diff": "node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out stdout",
