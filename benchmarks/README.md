@@ -51,13 +51,13 @@ Fixtures: the on-disk pairs under `benchmarks/fixtures/` (`additive`, `functions
 
 Adapters:
 
-- `supaschema-file`
-- `supaschema-db`
-- `supabase-default`
-- `supabase-migra`
-- `supabase-pg-delta`
-- `supabase-pg-schema`
-- `supabase-pgadmin`
+- `supaschema-file` — `diff` between two SQL dumps (diff only)
+- `supaschema-db` — `diff` between two live catalogs (diff only)
+- `supabase-default` / `supabase-migra` / `supabase-pg-delta` / `supabase-pg-schema` / `supabase-pgadmin` — `supabase db diff` per engine (diff only)
+- `supaschema-workflow` — the full real-world step measured as one command: `diff` writes the migration and refreshes seeded `database.types.ts` + `database.zod.ts` (TypeScript types **and** runtime Zod validators) in the same invocation
+- `supabase-*-workflow` — the same real-world step for each Supabase engine: `db diff`, apply the generated migration to the database (types cannot regenerate from unapplied SQL), then `supabase gen types --lang=typescript --db-url` (TypeScript only; no validators)
+
+Both workflow lanes are spawned through the same `tools/run-workflow.mjs` wrapper, so per-process overhead is identical on both sides. Workflow rows are charted separately (`workflow-latency.svg`) and excluded from the diff-only charts; never average the two lanes together. The captured output of a workflow run is still the generated migration, so verification and accuracy scoring apply to workflow rows unchanged.
 
 ## Reading Results
 
@@ -88,6 +88,16 @@ Single sequential reference run, 2026-06-12 (`BENCH_ALL_SEQUENTIAL=1 bash benchm
 | `realistic` | 0.19s / 0.23s | 4.0–4.4s | supaschema only | 1.000 / 0.982 |
 | `xl` | 1.38s / 1.25s | 38.5–39.1s | supaschema only | 1.000 / 0.999 |
 | `xxl` | 3.2s / 2.8s | 204.5–210.0s | supaschema only | 1.000 / 0.999 |
+
+The full-workflow lanes (same run) measure the real-world step of producing the migration **and** regenerated types:
+
+| Fixture | `supaschema-workflow` (migration + TS types + Zod) | `supabase-*-workflow` (db diff + apply + gen types) |
+| --- | --- | --- |
+| `additive` | 0.24s | 5.8–8.1s |
+| `functions-policies` | 0.23s | 5.7–6.2s |
+| `realistic` | 0.26s | 6.4–7.6s |
+| `xl` | 2.25s | 44.8–50.4s |
+| `xxl` | 5.22s | 212.6–229.7s |
 
 Regression with schema size: supaschema stays near three seconds through 2,500 tables because its cost is parse/plan/catalog-read bound. All five Supabase shadow-database engines cluster near ~3.5–4.5s even at one table and grow with schema replay cost to ~39s at 1,000 tables and ~3.4–3.5 minutes at 2,500 — the gap grows from ~20× to ~70×. Verification outcomes are scale-independent: Supabase engines emit unguarded DDL, so apply-twice fails on every fixture whose diff contains `ADD COLUMN`/`CREATE INDEX` statements (`additive`, `realistic`, `xl`, `xxl`); `functions-policies` passes everywhere because its diff is entirely `CREATE OR REPLACE`. Accuracy outcomes: supaschema scores F1 1.000 in both modes on every manifest-scored fixture; every Supabase engine misses the policy-predicate change (recall loss → 0.982 at 50 tables, 0.999 at 1,000/2,500 where the larger manifest dilutes the same miss).
 

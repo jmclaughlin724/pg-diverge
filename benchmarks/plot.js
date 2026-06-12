@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import { fixtureScale, formatSeconds, groupedStats, percentile } from "./plot-lib.js";
+import { fixtureScale, formatSeconds, groupedStats, isWorkflow, percentile } from "./plot-lib.js";
 import { renderCorrectnessSvg, renderLatencySvg, renderScalingSvg } from "./plot-svg.js";
 
 const jsonInputs = process.argv.slice(2).filter((arg) => arg.endsWith(".json"));
@@ -33,14 +33,17 @@ const fixtures = [...new Set(allResults.map((item) => item.fixture))].sort(
 );
 await mkdir(outputDir, { recursive: true });
 const written = [];
+const diffResults = allResults.filter((item) => !isWorkflow(item.adapter));
+const workflowResults = allResults.filter((item) => isWorkflow(item.adapter));
 for (const fixture of fixtures) {
   const rows = allResults.filter((item) => item.fixture === fixture);
-  const measuredRows = rows.filter((item) => !item.skipped && !item.unsupported);
+  const diffRows = diffResults.filter((item) => item.fixture === fixture);
+  const measuredRows = diffRows.filter((item) => !item.skipped && !item.unsupported);
   const latencyPath = join(outputDir, `${fixture}-latency.svg`);
   const correctnessPath = join(outputDir, `${fixture}-correctness.svg`);
   const resultsPath = join(outputDir, `${fixture}-results.json`);
   await writeFile(latencyPath, renderLatencySvg(measuredRows, fixture, environments), "utf8");
-  await writeFile(correctnessPath, renderCorrectnessSvg(rows, fixture, environments), "utf8");
+  await writeFile(correctnessPath, renderCorrectnessSvg(diffRows, fixture, environments), "utf8");
   await writeFile(
     resultsPath,
     `${JSON.stringify({ environments, fixture, results: rows }, null, 2)}\n`,
@@ -50,8 +53,21 @@ for (const fixture of fixtures) {
 }
 if (fixtures.length > 1) {
   const scalingPath = join(outputDir, "scaling-latency.svg");
-  await writeFile(scalingPath, renderScalingSvg(allResults, fixtures, environments), "utf8");
+  await writeFile(scalingPath, renderScalingSvg(diffResults, fixtures, environments), "utf8");
   written.push(scalingPath);
+}
+if (fixtures.length > 1 && workflowResults.length > 0) {
+  const workflowPath = join(outputDir, "workflow-latency.svg");
+  await writeFile(
+    workflowPath,
+    renderScalingSvg(workflowResults, fixtures, environments, {
+      subtitle:
+        "supaschema: one diff = migration + TS types + Zod · Supabase engines: db diff + apply + gen types · log scale",
+      title: "Full workflow: migration + regenerated types",
+    }),
+    "utf8",
+  );
+  written.push(workflowPath);
 }
 const summaryPath = join(outputDir, "summary.md");
 await writeFile(summaryPath, renderSummaryMarkdown(), "utf8");
