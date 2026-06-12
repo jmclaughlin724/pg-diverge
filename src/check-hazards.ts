@@ -1,4 +1,4 @@
-import type { Diagnostic, PgDivergeConfig } from "./core.js";
+import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { diagnostic } from "./diagnostics.js";
 import type { AstStatement } from "./sql/ast.js";
 import { asRecord, qualifiedName, readString } from "./sql/ast.js";
@@ -30,7 +30,7 @@ export function recordEnumAdditions(
 export function enumValueUseDiagnostics(
   statement: AstStatement,
   state: Map<string, Set<string>>,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): Diagnostic[] {
   if (state.size === 0 || statement.tag === "AlterEnumStmt") {
     return [];
@@ -43,7 +43,7 @@ export function enumValueUseDiagnostics(
   const severity = config.transactionMode === "per-migration" ? "error" : "warning";
   return uses.map((use) =>
     diagnostic(
-      "PD_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION",
+      "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION",
       severity,
       `enum value ${use} is added and used in the same migration; PostgreSQL cannot use a value added in the same transaction`,
       {
@@ -97,7 +97,7 @@ function castStringLiteral(arg: unknown): string | undefined {
 
 export function escalateNontransactional(
   diagnostics: Diagnostic[],
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): Diagnostic[] {
   const escalate = config.adapter === "supabase-auto" || config.transactionMode === "per-migration";
   if (!escalate) {
@@ -105,8 +105,8 @@ export function escalateNontransactional(
   }
   return diagnostics.map((item) => {
     if (
-      item.code === "PD_CHECK_NONTRANSACTIONAL_INDEX" ||
-      item.code === "PD_CHECK_NONTRANSACTIONAL_REFRESH"
+      item.code === "SUPA_CHECK_NONTRANSACTIONAL_INDEX" ||
+      item.code === "SUPA_CHECK_NONTRANSACTIONAL_REFRESH"
     ) {
       return { ...item, severity: "error" as const };
     }

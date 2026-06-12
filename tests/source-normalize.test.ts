@@ -84,7 +84,7 @@ describe("split privilege aggregation", () => {
       "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO PUBLIC;\nGRANT INSERT ON TABLE app.t TO PUBLIC WITH GRANT OPTION;\n",
     );
 
-    expect(errors(model).map((item) => item.code)).toContain("PD_EXTRACT_DUPLICATE_OBJECT");
+    expect(errors(model).map((item) => item.code)).toContain("SUPA_EXTRACT_DUPLICATE_OBJECT");
   });
 
   it("merges split default-privilege statements with a real default to revoke", async () => {
@@ -140,7 +140,7 @@ describe("standalone column default amendments", () => {
   it("fails closed when the amended table is missing", async () => {
     const model = await modelFromSql("ALTER TABLE app.missing ALTER COLUMN id SET DEFAULT 5;\n");
 
-    expect(errors(model).map((item) => item.code)).toContain("PD_EXTRACT_UNSUPPORTED");
+    expect(errors(model).map((item) => item.code)).toContain("SUPA_EXTRACT_UNSUPPORTED");
   });
 });
 
@@ -204,7 +204,7 @@ describe("empty plan drift invariant", () => {
     const plan = planSchemaDiff(model, drifted);
 
     expect(plan.operations).toHaveLength(0);
-    expect(plan.diagnostics.map((item) => item.code)).toContain("PD_PLAN_EMPTY_WITH_DRIFT");
+    expect(plan.diagnostics.map((item) => item.code)).toContain("SUPA_PLAN_EMPTY_WITH_DRIFT");
   });
 
   it("stays silent for genuinely identical models", async () => {
@@ -213,7 +213,7 @@ describe("empty plan drift invariant", () => {
     const plan = planSchemaDiff(model, model);
 
     expect(plan.operations).toHaveLength(0);
-    expect(plan.diagnostics.map((item) => item.code)).not.toContain("PD_PLAN_EMPTY_WITH_DRIFT");
+    expect(plan.diagnostics.map((item) => item.code)).not.toContain("SUPA_PLAN_EMPTY_WITH_DRIFT");
   });
 });
 

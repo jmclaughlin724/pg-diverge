@@ -33,27 +33,27 @@ const { scoreDiffOutput } = await import(join(packageRoot, "dist/diff-score.js")
 const fixtureRoot = resolve(here, "fixtures");
 const outputPath = resolve(
   packageRoot,
-  process.env.PG_DIVERGE_COMPARE_OUT ?? "benchmarks/results/comparison.json",
+  process.env.SUPASCHEMA_COMPARE_OUT ?? "benchmarks/results/comparison.json",
 );
-const selectedTools = csvSet(process.env.PG_DIVERGE_COMPARE_TOOLS);
-const selectedFixtures = csvSet(process.env.PG_DIVERGE_COMPARE_FIXTURES);
-const iterations = numberEnv("PG_DIVERGE_COMPARE_ITERATIONS", 10);
-const warmups = numberEnv("PG_DIVERGE_COMPARE_WARMUPS", 1);
-const commandTimeoutMs = numberEnv("PG_DIVERGE_COMPARE_TIMEOUT_MS", 30_000);
-const databaseUrl = process.env.PG_DIVERGE_COMPARE_DATABASE_URL;
+const selectedTools = csvSet(process.env.SUPASCHEMA_COMPARE_TOOLS);
+const selectedFixtures = csvSet(process.env.SUPASCHEMA_COMPARE_FIXTURES);
+const iterations = numberEnv("SUPASCHEMA_COMPARE_ITERATIONS", 10);
+const warmups = numberEnv("SUPASCHEMA_COMPARE_WARMUPS", 1);
+const commandTimeoutMs = numberEnv("SUPASCHEMA_COMPARE_TIMEOUT_MS", 30_000);
+const databaseUrl = process.env.SUPASCHEMA_COMPARE_DATABASE_URL;
 
 if (databaseUrl) {
   assertLocalDatabaseUrl(databaseUrl);
 }
 
 const startedAt = new Date().toISOString();
-const tempRoot = await mkdtemp(join(tmpdir(), "pg-diverge-compare-"));
+const tempRoot = await mkdtemp(join(tmpdir(), "supaschema-compare-"));
 const fixtures = [
   ...(await discoverFixtures(fixtureRoot)),
   ...(await materializeGeneratedFixtures(
     tempRoot,
-    numberEnv("PG_DIVERGE_COMPARE_XL_TABLES", 0),
-    numberEnv("PG_DIVERGE_COMPARE_XXL_TABLES", 0),
+    numberEnv("SUPASCHEMA_COMPARE_XL_TABLES", 0),
+    numberEnv("SUPASCHEMA_COMPARE_XXL_TABLES", 0),
   )),
 ].sort((left, right) => left.name.localeCompare(right.name));
 const results = [];
@@ -71,7 +71,7 @@ try {
     }
   }
 } finally {
-  if (!process.env.PG_DIVERGE_COMPARE_KEEP_TEMP) {
+  if (!process.env.SUPASCHEMA_COMPARE_KEEP_TEMP) {
     await rm(tempRoot, { force: true, recursive: true });
   }
 }
@@ -124,7 +124,7 @@ const payload = {
     toolVersions: await collectToolVersions(),
     warmups,
   },
-  generatedBy: "pg-diverge bench:compare",
+  generatedBy: "supaschema bench:compare",
   results,
   startedAt,
 };
@@ -143,7 +143,7 @@ async function prepareFixtureContext(fixture) {
     fromSql,
     fromSqlPath: fixture.fromSqlPath,
     packageRoot,
-    pgDivergeAdapter: fixture.pgDivergeAdapter,
+    supaschemaAdapter: fixture.supaschemaAdapter,
     schemas: fixture.schemas,
     tempRoot,
     toDirectory: fixture.toDirectory,
@@ -160,7 +160,7 @@ async function prepareFixtureContext(fixture) {
     context.templateToName = basename(new URL(urls[1]).pathname);
     // Objects must not be owned by supabase_admin: the Supabase CLI's diff
     // engines silently omit supabase_admin-owned objects (empty diff, exit 0).
-    const seedRole = process.env.PG_DIVERGE_COMPARE_SEED_ROLE;
+    const seedRole = process.env.SUPASCHEMA_COMPARE_SEED_ROLE;
     await applySql(urls[0], fromSql);
     await applySql(urls[1], toSql);
     if (seedRole) {
@@ -187,11 +187,11 @@ async function prepareRunContext(adapter, base, iteration) {
   };
   try {
     await prepareSupabaseWorkdir(context, adapter, iteration);
-    if (base.pgDivergeAdapter && adapter.id.startsWith("pg-diverge")) {
-      context.pgDivergeConfigPath = join(runRoot, "pg-diverge.config.json");
+    if (base.supaschemaAdapter && adapter.id.startsWith("supaschema")) {
+      context.supaschemaConfigPath = join(runRoot, "supaschema.config.json");
       await writeFile(
-        context.pgDivergeConfigPath,
-        `${JSON.stringify({ adapter: base.pgDivergeAdapter })}\n`,
+        context.supaschemaConfigPath,
+        `${JSON.stringify({ adapter: base.supaschemaAdapter })}\n`,
         "utf8",
       );
     }
@@ -212,7 +212,7 @@ async function prepareRunContext(adapter, base, iteration) {
 }
 
 async function cleanupRunContext(context) {
-  if (!process.env.PG_DIVERGE_COMPARE_KEEP_TEMP) {
+  if (!process.env.SUPASCHEMA_COMPARE_KEEP_TEMP) {
     await dropTemporaryDatabases(databaseUrl, context.createdDatabaseUrls ?? []);
     await rm(context.runRoot, { force: true, recursive: true });
   }
@@ -305,7 +305,7 @@ async function verifyGeneratedSql(context, generatedSql) {
       matchesTargetAfterFirstApply: false,
       matchesTargetAfterSecondApply: false,
       matchesTargetFingerprint: false,
-      reason: "set PG_DIVERGE_COMPARE_DATABASE_URL to verify generated SQL",
+      reason: "set SUPASCHEMA_COMPARE_DATABASE_URL to verify generated SQL",
     };
   }
   const [migrationUrl] = await createTemporaryDatabases(databaseUrl, 1, context.templateFromName);
@@ -358,7 +358,7 @@ async function verifyGeneratedSql(context, generatedSql) {
 
 async function adapterSkipReason(adapter, context) {
   if (adapter.requiresDatabase && !databaseUrl) {
-    return "set PG_DIVERGE_COMPARE_DATABASE_URL to enable database-backed comparisons";
+    return "set SUPASCHEMA_COMPARE_DATABASE_URL to enable database-backed comparisons";
   }
   const availability = await adapterAvailability(adapter);
   if (!availability.available) {
@@ -474,7 +474,7 @@ function sleep(ms) {
 async function collectToolVersions() {
   const packageJson = JSON.parse(await readFile(resolve(packageRoot, "package.json"), "utf8"));
   return {
-    "pg-diverge": packageJson.version,
+    supaschema: packageJson.version,
     supabase: await commandVersion("supabase", ["--version"]),
   };
 }

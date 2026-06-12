@@ -16,7 +16,7 @@ jobs:
       matrix:
         postgres: [15, 16, 17]
     env:
-      PG_DIVERGE_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      SUPASCHEMA_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     services:
       postgres:
         image: postgres:${{ matrix.postgres }}
@@ -55,15 +55,15 @@ jobs:
       - name: Pack package
         run: |
           tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
-          echo "PG_DIVERGE_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
+          echo "SUPASCHEMA_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
       - name: Smoke npx from tarball
         run: |
-          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge --version
-          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge diff \
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
             --from dir:tests/fixtures/basic/from \
             --to dir:tests/fixtures/basic/to \
             --out "$RUNNER_TEMP/smoke.sql"
-          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge check "$RUNNER_TEMP/smoke.sql"
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke.sql"
 
   check-os:
     # Path handling and git: sources without a database; DB-gated tests skip.

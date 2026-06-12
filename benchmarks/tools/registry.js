@@ -9,7 +9,7 @@ const localSupabaseBinary = resolve(root, "node_modules/.bin/supabase");
 export const adapters = [
   {
     binary: process.execPath,
-    id: "pg-diverge-file",
+    id: "supaschema-file",
     mode: "source-file diff",
     output: "sql",
     requiresDatabase: false,
@@ -17,7 +17,7 @@ export const adapters = [
       return {
         args: [
           resolve(root, "dist/cli.js"),
-          ...(context.pgDivergeConfigPath ? ["--config", context.pgDivergeConfigPath] : []),
+          ...(context.supaschemaConfigPath ? ["--config", context.supaschemaConfigPath] : []),
           "--quiet",
           "diff",
           "--from",
@@ -33,7 +33,7 @@ export const adapters = [
   },
   {
     binary: process.execPath,
-    id: "pg-diverge-db",
+    id: "supaschema-db",
     mode: "live-catalog diff",
     output: "sql",
     requiresDatabase: true,
@@ -41,7 +41,7 @@ export const adapters = [
       return {
         args: [
           resolve(root, "dist/cli.js"),
-          ...(context.pgDivergeConfigPath ? ["--config", context.pgDivergeConfigPath] : []),
+          ...(context.supaschemaConfigPath ? ["--config", context.supaschemaConfigPath] : []),
           "--quiet",
           "diff",
           "--from",

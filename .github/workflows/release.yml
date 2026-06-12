@@ -15,7 +15,7 @@ jobs:
       id-token: write
       attestations: write
     env:
-      PG_DIVERGE_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      SUPASCHEMA_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     services:
       postgres:
         image: postgres:15
@@ -46,26 +46,26 @@ jobs:
       - name: Pack package
         run: |
           tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
-          echo "PG_DIVERGE_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
+          echo "SUPASCHEMA_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
       - name: Smoke npx from tarball
         run: |
-          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge --version
-          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge diff \
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
             --from dir:tests/fixtures/basic/from \
             --to dir:tests/fixtures/basic/to \
             --out "$RUNNER_TEMP/smoke.sql"
-          npx --yes --package "$PG_DIVERGE_TARBALL" pg-diverge check "$RUNNER_TEMP/smoke.sql"
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke.sql"
       - run: npm publish --access public --provenance
       - name: Attest tarball provenance
         id: attest
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
-          subject-path: ${{ env.PG_DIVERGE_TARBALL }}
+          subject-path: ${{ env.SUPASCHEMA_TARBALL }}
       - name: Attach signed artifacts to the release
         env:
           GH_TOKEN: ${{ github.token }}
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
         run: |
-          signed_bundle="$RUNNER_TEMP/$(basename "$PG_DIVERGE_TARBALL").sigstore"
+          signed_bundle="$RUNNER_TEMP/$(basename "$SUPASCHEMA_TARBALL").sigstore"
           cp "$BUNDLE_PATH" "$signed_bundle"
-          gh release upload "$GITHUB_REF_NAME" "$PG_DIVERGE_TARBALL" "$signed_bundle" --repo "$GITHUB_REPOSITORY"
+          gh release upload "$GITHUB_REF_NAME" "$SUPASCHEMA_TARBALL" "$signed_bundle" --repo "$GITHUB_REPOSITORY"

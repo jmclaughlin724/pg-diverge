@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Client } from "pg";
-import type { PgDivergeConfig } from "./config.js";
+import type { SupaschemaConfig } from "./config.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { migrationsStatus } from "./migrations-status.js";
 import { parseSqlAst } from "./sql/parser.js";
@@ -20,7 +20,7 @@ export interface DoctorReport {
 const minimumNodeMajor = 22;
 
 export async function runDoctor(
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   options: { configPath?: string; cwd?: string; databaseUrl?: string } = {},
 ): Promise<DoctorReport> {
   const cwd = options.cwd ?? process.cwd();
@@ -55,8 +55,8 @@ export async function runDoctor(
   const resolved = resolveDatabaseUrl(explicit);
   const lane = explicit
     ? "explicit --database-url"
-    : process.env.PG_DIVERGE_DATABASE_URL
-      ? "PG_DIVERGE_DATABASE_URL"
+    : process.env.SUPASCHEMA_DATABASE_URL
+      ? "SUPASCHEMA_DATABASE_URL"
       : resolveSupabaseLocalDatabaseUrl()
         ? "supabase/config.toml auto-discovery"
         : "none";

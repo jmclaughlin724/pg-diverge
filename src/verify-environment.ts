@@ -10,7 +10,7 @@ export async function preflightCapability(admin: Client): Promise<Diagnostic | u
     return undefined;
   }
   return diagnostic(
-    "PD_VERIFY_ROLE_CAPABILITY",
+    "SUPA_VERIFY_ROLE_CAPABILITY",
     "error",
     "the verification role cannot CREATE DATABASE",
     {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkMigrationSql } from "../src/check.js";
-import type { PgDivergeConfig } from "../src/core.js";
+import type { SupaschemaConfig } from "../src/core.js";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
@@ -8,10 +8,10 @@ import { extractSourceModel } from "../src/source.js";
 import { parseSqlAst } from "../src/sql/parser.js";
 import { verifyMigration } from "../src/verify.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 interface Scenario {
-  config?: Partial<PgDivergeConfig>;
+  config?: Partial<SupaschemaConfig>;
   ensureRoles?: boolean;
   from: string;
   name: string;
@@ -66,7 +66,7 @@ describe.each(scenarios)("generated migration standards: $name", (scenario) => {
     expect(parsed.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
   });
 
-  it("passes pg-diverge's own replay-safety checker", async () => {
+  it("passes supaschema's own replay-safety checker", async () => {
     const sql = await renderScenario(scenario);
     const diagnostics = await checkMigrationSql(
       sql,

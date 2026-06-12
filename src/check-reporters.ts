@@ -77,8 +77,8 @@ function renderSarif(files: FileDiagnostics[]): string {
         results,
         tool: {
           driver: {
-            informationUri: "https://github.com/jmclaughlin724/pg-diverge",
-            name: "pg-diverge",
+            informationUri: "https://github.com/jmclaughlin724/supaschema",
+            name: "supaschema",
             rules: [...new Set(results.map((result) => result.ruleId))].map((code) => ({
               id: code,
             })),

@@ -2,18 +2,18 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { MigrationPlan, PgDivergeConfig, SchemaModel } from "../src/core.js";
+import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../src/core.js";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 import { planSchemaDiff } from "../src/planner.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { verifyMigration } from "../src/verify.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 async function model(
   sql: string,
   source: string,
-  config?: Partial<PgDivergeConfig>,
+  config?: Partial<SupaschemaConfig>,
 ): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql, config ? { config } : {});
   return {
@@ -27,7 +27,7 @@ async function model(
 async function diff(
   fromSql: string,
   toSql: string,
-  config?: Partial<PgDivergeConfig>,
+  config?: Partial<SupaschemaConfig>,
 ): Promise<MigrationPlan> {
   const from = await model(fromSql, "test:from", config);
   const to = await model(toSql, "test:to", config);
@@ -42,7 +42,7 @@ describe("rename hint guards", () => {
       hints: { destructive: [], renames: [{ from: "table:app.accounts", to: "view:app.v" }] },
     });
 
-    expect(plan.diagnostics.some((item) => item.code === "PD_PLAN_RENAME_KIND_MISMATCH")).toBe(
+    expect(plan.diagnostics.some((item) => item.code === "SUPA_PLAN_RENAME_KIND_MISMATCH")).toBe(
       true,
     );
   });
@@ -60,7 +60,7 @@ describe("rename hint guards", () => {
     );
 
     expect(
-      plan.diagnostics.some((item) => item.code === "PD_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED"),
+      plan.diagnostics.some((item) => item.code === "SUPA_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED"),
     ).toBe(true);
   });
 
@@ -69,7 +69,7 @@ describe("rename hint guards", () => {
       hints: { destructive: [], renames: [{ from: "table:app.missing", to: "table:app.other" }] },
     });
 
-    expect(plan.diagnostics.some((item) => item.code === "PD_PLAN_RENAME_HINT_UNMATCHED")).toBe(
+    expect(plan.diagnostics.some((item) => item.code === "SUPA_PLAN_RENAME_HINT_UNMATCHED")).toBe(
       true,
     );
   });
@@ -104,7 +104,7 @@ describe("managed schema adapter policy", () => {
   it("blocks managed Supabase schemas under supabase-auto", async () => {
     const extracted = await extractObjectsFromSql(managedSql);
 
-    expect(extracted.diagnostics.some((item) => item.code === "PD_SUPABASE_MANAGED_SCHEMA")).toBe(
+    expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(
       true,
     );
   });
@@ -114,7 +114,7 @@ describe("managed schema adapter policy", () => {
       config: { adapter: "postgres" },
     });
 
-    expect(extracted.diagnostics.some((item) => item.code === "PD_SUPABASE_MANAGED_SCHEMA")).toBe(
+    expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(
       false,
     );
   });
@@ -143,7 +143,7 @@ describe.skipIf(!databaseUrl)("non-idempotent migration detection", () => {
       to: `dump:${join(directory, "to.sql")}`,
     });
 
-    const mismatch = diagnostics.find((item) => item.code === "PD_VERIFY_FINGERPRINT_MISMATCH");
+    const mismatch = diagnostics.find((item) => item.code === "SUPA_VERIFY_FINGERPRINT_MISMATCH");
     expect(mismatch).toBeDefined();
     expect(mismatch?.hint).toContain("missing from migration result: table:app.expected");
     expect(mismatch?.hint).toContain("not present in target: table:app.unexpected");

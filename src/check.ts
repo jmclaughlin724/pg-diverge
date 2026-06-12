@@ -21,11 +21,11 @@ import { parseSqlAst } from "./sql/parser.js";
 import { runConfiguredValidators } from "./validators.js";
 
 const guardedCreateChecks: { code: string; kind: string; tag: string }[] = [
-  { code: "PD_CHECK_CREATE_SCHEMA_GUARD", kind: "SCHEMA", tag: "CreateSchemaStmt" },
-  { code: "PD_CHECK_CREATE_EXTENSION_GUARD", kind: "EXTENSION", tag: "CreateExtensionStmt" },
-  { code: "PD_CHECK_CREATE_TABLE_GUARD", kind: "TABLE", tag: "CreateStmt" },
-  { code: "PD_CHECK_CREATE_SEQUENCE_GUARD", kind: "SEQUENCE", tag: "CreateSeqStmt" },
-  { code: "PD_CHECK_CREATE_INDEX_GUARD", kind: "INDEX", tag: "IndexStmt" },
+  { code: "SUPA_CHECK_CREATE_SCHEMA_GUARD", kind: "SCHEMA", tag: "CreateSchemaStmt" },
+  { code: "SUPA_CHECK_CREATE_EXTENSION_GUARD", kind: "EXTENSION", tag: "CreateExtensionStmt" },
+  { code: "SUPA_CHECK_CREATE_TABLE_GUARD", kind: "TABLE", tag: "CreateStmt" },
+  { code: "SUPA_CHECK_CREATE_SEQUENCE_GUARD", kind: "SEQUENCE", tag: "CreateSeqStmt" },
+  { code: "SUPA_CHECK_CREATE_INDEX_GUARD", kind: "INDEX", tag: "IndexStmt" },
 ];
 
 const volatileDefaultFunctions = new Set([
@@ -85,7 +85,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
       if (readString(node.name) === "search_path") {
         diagnostics.push(
           diagnostic(
-            "PD_CHECK_SEARCH_PATH",
+            "SUPA_CHECK_SEARCH_PATH",
             "error",
             "migrations must not depend on session search_path",
             {
@@ -99,9 +99,14 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
     case "ViewStmt":
       if (!readBoolean(node.replace)) {
         diagnostics.push(
-          diagnostic("PD_CHECK_CREATE_VIEW_REPLACE", "error", "VIEW creation must use OR REPLACE", {
-            statement: statement.text,
-          }),
+          diagnostic(
+            "SUPA_CHECK_CREATE_VIEW_REPLACE",
+            "error",
+            "VIEW creation must use OR REPLACE",
+            {
+              statement: statement.text,
+            },
+          ),
         );
       }
       break;
@@ -114,7 +119,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
     case "CreateDomainStmt":
       diagnostics.push(
         diagnostic(
-          "PD_CHECK_CREATE_TYPE_GUARD",
+          "SUPA_CHECK_CREATE_TYPE_GUARD",
           "error",
           "TYPE and DOMAIN creation must be wrapped in a catalog guard",
           { statement: statement.text },
@@ -129,7 +134,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
       ) {
         diagnostics.push(
           diagnostic(
-            "PD_CHECK_CREATE_MATERIALIZED_VIEW_GUARD",
+            "SUPA_CHECK_CREATE_MATERIALIZED_VIEW_GUARD",
             "error",
             "MATERIALIZED VIEW creation must use IF NOT EXISTS or a catalog guard",
             { statement: statement.text },
@@ -141,7 +146,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
       if (!previousDrops(previous, "OBJECT_POLICY")) {
         diagnostics.push(
           diagnostic(
-            "PD_CHECK_POLICY_REPLACEMENT",
+            "SUPA_CHECK_POLICY_REPLACEMENT",
             "error",
             "CREATE POLICY has no OR REPLACE form and must be preceded by DROP POLICY IF EXISTS",
             { statement: statement.text },
@@ -153,7 +158,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
       if (!readBoolean(node.replace) && !previousDrops(previous, "OBJECT_TRIGGER")) {
         diagnostics.push(
           diagnostic(
-            "PD_CHECK_CREATE_TRIGGER_REPLACEMENT",
+            "SUPA_CHECK_CREATE_TRIGGER_REPLACEMENT",
             "error",
             "CREATE TRIGGER must be preceded by DROP TRIGGER IF EXISTS",
             { statement: statement.text },
@@ -165,7 +170,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
       if (readBoolean(node.concurrent)) {
         diagnostics.push(
           diagnostic(
-            "PD_CHECK_NONTRANSACTIONAL_INDEX",
+            "SUPA_CHECK_NONTRANSACTIONAL_INDEX",
             "warning",
             "CREATE INDEX CONCURRENTLY cannot run inside a transaction block",
             {
@@ -180,7 +185,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
       if (readBoolean(node.concurrent)) {
         diagnostics.push(
           diagnostic(
-            "PD_CHECK_NONTRANSACTIONAL_REFRESH",
+            "SUPA_CHECK_NONTRANSACTIONAL_REFRESH",
             "warning",
             "REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction block",
             {
@@ -198,7 +203,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
       if (asRecord(node.onConflictClause) === undefined) {
         diagnostics.push(
           diagnostic(
-            "PD_CHECK_INSERT_ON_CONFLICT",
+            "SUPA_CHECK_INSERT_ON_CONFLICT",
             "error",
             "INSERT statements in migrations must use ON CONFLICT for replay safety",
             { statement: statement.text },
@@ -210,7 +215,7 @@ function checkStatement(statement: AstStatement, previous: AstStatement | undefi
     case "DeleteStmt":
       diagnostics.push(
         diagnostic(
-          "PD_CHECK_DML_REVIEW",
+          "SUPA_CHECK_DML_REVIEW",
           "warning",
           "data-modifying statements in migrations require explicit idempotency review",
           { statement: statement.text },
@@ -239,7 +244,7 @@ function checkDropStatement(node: AstNode, text: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   if (readString(node.behavior) === "DROP_CASCADE") {
     diagnostics.push(
-      diagnostic("PD_CHECK_CASCADE", "error", "implicit CASCADE is forbidden", {
+      diagnostic("SUPA_CHECK_CASCADE", "error", "implicit CASCADE is forbidden", {
         hint: "Drop dependent objects explicitly in dependency order.",
         statement: text,
       }),
@@ -247,7 +252,7 @@ function checkDropStatement(node: AstNode, text: string): Diagnostic[] {
   }
   if (!readBoolean(node.missing_ok)) {
     diagnostics.push(
-      diagnostic("PD_CHECK_DROP_IF_EXISTS", "error", "DROP statements must use IF EXISTS", {
+      diagnostic("SUPA_CHECK_DROP_IF_EXISTS", "error", "DROP statements must use IF EXISTS", {
         statement: text,
       }),
     );
@@ -260,7 +265,7 @@ function checkFunctionStatement(node: AstNode, text: string): Diagnostic[] {
   if (!readBoolean(node.replace)) {
     diagnostics.push(
       diagnostic(
-        "PD_CHECK_CREATE_ROUTINE_REPLACE",
+        "SUPA_CHECK_CREATE_ROUTINE_REPLACE",
         "error",
         "FUNCTION and PROCEDURE creation must use OR REPLACE",
         { statement: text },
@@ -285,7 +290,7 @@ function checkFunctionStatement(node: AstNode, text: string): Diagnostic[] {
   if (securityDefiner && !setsSearchPath) {
     diagnostics.push(
       diagnostic(
-        "PD_CHECK_SECURITY_DEFINER_SEARCH_PATH",
+        "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH",
         "warning",
         "SECURITY DEFINER functions should set a safe function-local search_path",
         { statement: text },
@@ -303,7 +308,7 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
     if (subtype === "AT_AddConstraint") {
       diagnostics.push(
         diagnostic(
-          "PD_CHECK_ADD_CONSTRAINT_GUARD",
+          "SUPA_CHECK_ADD_CONSTRAINT_GUARD",
           "error",
           "ADD CONSTRAINT must be wrapped in a catalog guard",
           { statement: text },
@@ -313,7 +318,7 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
     if (subtype === "AT_AlterColumnType") {
       diagnostics.push(
         diagnostic(
-          "PD_CHECK_ALTER_COLUMN_TYPE_REWRITE",
+          "SUPA_CHECK_ALTER_COLUMN_TYPE_REWRITE",
           "warning",
           "ALTER COLUMN TYPE can rewrite the table under an ACCESS EXCLUSIVE lock",
           {
@@ -326,7 +331,7 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
     if (subtype === "AT_SetNotNull") {
       diagnostics.push(
         diagnostic(
-          "PD_CHECK_SET_NOT_NULL_SCAN",
+          "SUPA_CHECK_SET_NOT_NULL_SCAN",
           "warning",
           "SET NOT NULL scans the full table unless a validated CHECK constraint already proves it",
           { statement: text },
@@ -338,7 +343,7 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
       if (columnDef && hasVolatileDefault(columnDef)) {
         diagnostics.push(
           diagnostic(
-            "PD_CHECK_VOLATILE_DEFAULT_REWRITE",
+            "SUPA_CHECK_VOLATILE_DEFAULT_REWRITE",
             "warning",
             "ADD COLUMN with a volatile default rewrites the whole table",
             {

@@ -25,11 +25,11 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
   const config = resolveConfig(options.config);
   const diagnostics: Diagnostic[] = [];
   try {
-    assertLocalDatabaseUrl(options.databaseUrl, "PG_DIVERGE_VERIFY_ALLOW_REMOTE");
+    assertLocalDatabaseUrl(options.databaseUrl, "SUPASCHEMA_VERIFY_ALLOW_REMOTE");
   } catch (error) {
     return [
-      diagnostic("PD_VERIFY_FAILED", "error", errorMessage(error), {
-        hint: "verify creates and drops databases; non-local hosts require PG_DIVERGE_VERIFY_ALLOW_REMOTE=1.",
+      diagnostic("SUPA_VERIFY_FAILED", "error", errorMessage(error), {
+        hint: "verify creates and drops databases; non-local hosts require SUPASCHEMA_VERIFY_ALLOW_REMOTE=1.",
       }),
     ];
   }
@@ -72,7 +72,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
     if (options.ensureRoles === true) {
       for (const role of await collectReferencedRoles([from, to])) {
         await admin.query(
-          `DO $pg_diverge$\nBEGIN\n  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = ${quoteRoleLiteral(role)}) THEN\n    CREATE ROLE ${quoteIdent(role)} NOLOGIN;\n  END IF;\nEND\n$pg_diverge$`,
+          `DO $supaschema$\nBEGIN\n  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = ${quoteRoleLiteral(role)}) THEN\n    CREATE ROLE ${quoteIdent(role)} NOLOGIN;\n  END IF;\nEND\n$supaschema$`,
         );
       }
     }
@@ -98,7 +98,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
     if (afterMigration.fingerprint !== expectedTarget.fingerprint) {
       diagnostics.push(
         diagnostic(
-          "PD_VERIFY_FINGERPRINT_MISMATCH",
+          "SUPA_VERIFY_FINGERPRINT_MISMATCH",
           "error",
           "migration result catalog fingerprint does not match target catalog fingerprint",
           {
@@ -134,7 +134,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
         .join(", ");
       diagnostics.push(
         diagnostic(
-          "PD_VERIFY_RECONVERGENCE",
+          "SUPA_VERIFY_RECONVERGENCE",
           "error",
           `${residualOperations.length} operation(s) remain between the migrated catalog and the target model; the diff would never converge to empty`,
           {
@@ -145,7 +145,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
     }
   } catch (error) {
     diagnostics.push(
-      diagnostic("PD_VERIFY_FAILED", "error", errorMessage(error), {
+      diagnostic("SUPA_VERIFY_FAILED", "error", errorMessage(error), {
         hint: "Use a disposable PostgreSQL database URL whose role can CREATE DATABASE and DROP DATABASE.",
       }),
     );
@@ -153,7 +153,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
     if (options.keepDatabases === true && created.length > 0) {
       diagnostics.push(
         diagnostic(
-          "PD_VERIFY_CLEANUP_FAILED",
+          "SUPA_VERIFY_CLEANUP_FAILED",
           "warning",
           `kept temporary databases for inspection: ${created.join(", ")}`,
           { hint: "Drop them manually when done (--keep-databases was set)." },
@@ -169,7 +169,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
           await admin.query(`DROP DATABASE IF EXISTS ${quoteIdent(databaseName)} WITH (FORCE)`);
         } catch (cleanupError) {
           diagnostics.push(
-            diagnostic("PD_VERIFY_CLEANUP_FAILED", "warning", errorMessage(cleanupError), {
+            diagnostic("SUPA_VERIFY_CLEANUP_FAILED", "warning", errorMessage(cleanupError), {
               hint: `Temporary database ${databaseName} may need manual removal.`,
             }),
           );

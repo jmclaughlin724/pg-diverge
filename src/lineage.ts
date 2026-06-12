@@ -8,7 +8,7 @@ export interface MigrationLineage {
   to: string;
 }
 
-const lineagePrefix = "-- pg-diverge: lineage ";
+const lineagePrefix = "-- supaschema: lineage ";
 const headerByteLimit = 4096;
 
 export function lineageLine(plan: MigrationPlan): string {
@@ -16,7 +16,7 @@ export function lineageLine(plan: MigrationPlan): string {
 }
 
 /**
- * Parses the machine-readable lineage marker pg-diverge embeds in every
+ * Parses the machine-readable lineage marker supaschema embeds in every
  * rendered migration header. Hand-authored migrations have no marker and are
  * invisible to the chain gate by design.
  */
@@ -42,7 +42,7 @@ export function parseLineage(content: string): { from: string; to: string } | un
 }
 
 /**
- * Finds the newest pg-diverge-generated migration in a directory by filename
+ * Finds the newest supaschema-generated migration in a directory by filename
  * order (timestamped names sort chronologically). Returns undefined when no
  * lineage-bearing migration exists, which disables the chain gate.
  */

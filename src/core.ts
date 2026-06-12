@@ -1,4 +1,4 @@
-import type { PgDivergeConfig } from "./config.js";
+import type { SupaschemaConfig } from "./config.js";
 
 export type DiagnosticSeverity = "info" | "warning" | "error";
 
@@ -109,24 +109,24 @@ export interface RenameHint {
   to: string;
 }
 
-export interface PgDivergeHints {
+export interface SupaschemaHints {
   destructive?: string[];
   renames?: RenameHint[];
 }
 
 export interface ExtractOptions {
-  config?: Partial<PgDivergeConfig>;
+  config?: Partial<SupaschemaConfig>;
   cwd?: string;
 }
 
 export interface RenderOptions {
-  config?: Partial<PgDivergeConfig>;
+  config?: Partial<SupaschemaConfig>;
   includeHeader?: boolean;
   version?: string;
 }
 
 export interface CheckOptions {
-  config?: Partial<PgDivergeConfig>;
+  config?: Partial<SupaschemaConfig>;
   cwd?: string;
   parse?: boolean;
 }
@@ -137,7 +137,7 @@ export interface VerifyMigrationOptions {
   to: string;
   migrationPath: string;
   cwd?: string;
-  config?: Partial<PgDivergeConfig>;
+  config?: Partial<SupaschemaConfig>;
 
   ensureRoles?: boolean;
   /**
@@ -153,4 +153,4 @@ export interface VerifyMigrationOptions {
   keepDatabases?: boolean;
 }
 
-export type { PgDivergeConfig } from "./config.js";
+export type { SupaschemaConfig } from "./config.js";

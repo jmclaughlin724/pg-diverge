@@ -11,7 +11,7 @@ import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
 import { verifyMigration } from "../src/verify.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 async function modelFromSql(sql: string) {
   const root = await mkdtemp(join(tmpdir(), "pgd-levelup-"));
@@ -39,7 +39,7 @@ describe("audit report", () => {
 
     expect(report.supported).toBe(false);
     const codes = report.findings.map((finding) => finding.code);
-    expect(codes).toContain("PD_EXTRACT_SIDE_EFFECT_UNSUPPORTED");
+    expect(codes).toContain("SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED");
     expect(report.findings[0]?.samples[0]).toContain("DO $$");
   });
 });
@@ -77,7 +77,7 @@ describe("foreign data wrapper tier", () => {
     const plan = planSchemaDiff(from, to);
 
     expect(plan.diagnostics.map((item) => item.code)).toContain(
-      "PD_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+      "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
     );
   });
 });
@@ -125,7 +125,7 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
         to: `dir:${root.replaceAll("\\", "/")}`,
       });
 
-      expect(diagnostics.map((item) => item.code)).toContain("PD_VERIFY_ROLE_CAPABILITY");
+      expect(diagnostics.map((item) => item.code)).toContain("SUPA_VERIFY_ROLE_CAPABILITY");
     } finally {
       await admin.query(`DROP ROLE IF EXISTS ${role}`);
       await admin.end();

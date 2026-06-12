@@ -1,4 +1,4 @@
-import type { Diagnostic, PgDivergeConfig, SchemaObject } from "../core.js";
+import type { Diagnostic, SchemaObject, SupaschemaConfig } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 import type { AstNode } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readString, stringList } from "./ast.js";
@@ -118,7 +118,7 @@ export function extensionSchemaOption(options: unknown): string | undefined {
 export function withManagedSchemaDiagnostics(
   objects: SchemaObject[],
   statement: string,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   file: string | undefined,
 ): ParseStatementResult {
   const diagnostics: Diagnostic[] = [];
@@ -130,7 +130,7 @@ export function withManagedSchemaDiagnostics(
 
 export function supabaseViewSecurityDiagnostics(
   objects: SchemaObject[],
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): Diagnostic[] {
   if (config.adapter !== "supabase-auto") {
     return [];
@@ -145,7 +145,7 @@ export function supabaseViewSecurityDiagnostics(
     }
     diagnostics.push(
       diagnostic(
-        "PD_SUPABASE_VIEW_SECURITY_INVOKER",
+        "SUPA_SUPABASE_VIEW_SECURITY_INVOKER",
         "warning",
         `view "public"."${object.ref.name}" in an exposed schema does not set security_invoker`,
         {
@@ -162,7 +162,7 @@ export function supabaseViewSecurityDiagnostics(
 function managedSchemaDiagnostics(
   object: SchemaObject,
   statement: string,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   file?: string,
 ): Diagnostic[] {
   if (config.adapter !== "supabase-auto") {
@@ -179,7 +179,7 @@ function managedSchemaDiagnostics(
   }
   return [
     diagnostic(
-      "PD_SUPABASE_MANAGED_SCHEMA",
+      "SUPA_SUPABASE_MANAGED_SCHEMA",
       "error",
       `schema "${schema}" is managed by Supabase and is not a declarative source owner`,
       {

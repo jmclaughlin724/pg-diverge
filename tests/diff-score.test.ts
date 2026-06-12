@@ -95,7 +95,7 @@ CREATE MATERIALIZED VIEW app.entity_stats AS SELECT 1 AS n;`,
 
   it("classifies guard DO blocks whose identifiers contain keyword substrings", async () => {
     const score = await scoreDiffOutput(
-      `DO $pg_diverge$
+      `DO $supaschema$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conname = 'audit_then_events_check'
@@ -103,7 +103,7 @@ BEGIN
     ALTER TABLE ONLY app.audit_events ADD CONSTRAINT audit_then_events_check CHECK (id > 0);
   END IF;
 END
-$pg_diverge$;`,
+$supaschema$;`,
       [{ change: "create", key: "constraint:app.audit_then_events_check:audit_events" }],
     );
 
@@ -125,9 +125,9 @@ $$;`,
     expect(score.f1).toBe(1);
   });
 
-  it("classifies statements inside pg-diverge guard DO blocks", async () => {
+  it("classifies statements inside supaschema guard DO blocks", async () => {
     const score = await scoreDiffOutput(
-      `DO $pg_diverge$
+      `DO $supaschema$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conname = 'audit_events_tenant_id_fkey'
@@ -135,7 +135,7 @@ BEGIN
     ALTER TABLE ONLY app.audit_events ADD CONSTRAINT audit_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES app.tenants (id);
   END IF;
 END
-$pg_diverge$;`,
+$supaschema$;`,
       [{ change: "create", key: "constraint:app.audit_events_tenant_id_fkey:audit_events" }],
     );
 

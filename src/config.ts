@@ -28,7 +28,7 @@ const environmentSchema = z.strictObject({
   databaseUrl: z.string(),
 });
 
-export const pgDivergeConfigSchema = z.strictObject({
+export const supaschemaConfigSchema = z.strictObject({
   $schema: z.string().optional(),
   adapter: z.enum(["supabase-auto", "postgres"]).default("supabase-auto"),
   cascade: z.literal("never").default("never"),
@@ -63,25 +63,25 @@ export const pgDivergeConfigSchema = z.strictObject({
   validators: z.array(z.string()).default(["internal-parser"]),
 });
 
-export type PgDivergeConfig = z.infer<typeof pgDivergeConfigSchema>;
+export type SupaschemaConfig = z.infer<typeof supaschemaConfigSchema>;
 
-export const defaultConfig: PgDivergeConfig = pgDivergeConfigSchema.parse({});
+export const defaultConfig: SupaschemaConfig = supaschemaConfigSchema.parse({});
 
-export function resolveConfig(config?: Partial<PgDivergeConfig>): PgDivergeConfig {
-  return pgDivergeConfigSchema.parse(config ?? {});
+export function resolveConfig(config?: Partial<SupaschemaConfig>): SupaschemaConfig {
+  return supaschemaConfigSchema.parse(config ?? {});
 }
 
-const moduleConfigFiles = ["pg-diverge.config.mjs", "pg-diverge.config.js"];
+const moduleConfigFiles = ["supaschema.config.mjs", "supaschema.config.js"];
 
 export async function loadConfig(
   cwd: string = process.cwd(),
   explicitPath?: string,
-): Promise<PgDivergeConfig> {
+): Promise<SupaschemaConfig> {
   if (explicitPath) {
     const path = isAbsolute(explicitPath) ? explicitPath : resolve(cwd, explicitPath);
     return loadConfigFile(path);
   }
-  const fromJson = await tryLoadJsonConfig(resolve(cwd, "pg-diverge.config.json"));
+  const fromJson = await tryLoadJsonConfig(resolve(cwd, "supaschema.config.json"));
   if (fromJson) {
     return fromJson;
   }
@@ -94,7 +94,7 @@ export async function loadConfig(
   return defaultConfig;
 }
 
-async function loadConfigFile(path: string): Promise<PgDivergeConfig> {
+async function loadConfigFile(path: string): Promise<SupaschemaConfig> {
   if (path.endsWith(".mjs") || path.endsWith(".js")) {
     const loaded = await tryLoadModuleConfig(path);
     if (!loaded) {
@@ -103,13 +103,13 @@ async function loadConfigFile(path: string): Promise<PgDivergeConfig> {
     return loaded;
   }
   const raw = await readFile(path, "utf8");
-  return resolveConfig(JSON.parse(raw) as Partial<PgDivergeConfig>);
+  return resolveConfig(JSON.parse(raw) as Partial<SupaschemaConfig>);
 }
 
-async function tryLoadJsonConfig(path: string): Promise<PgDivergeConfig | undefined> {
+async function tryLoadJsonConfig(path: string): Promise<SupaschemaConfig | undefined> {
   try {
     const raw = await readFile(path, "utf8");
-    return resolveConfig(JSON.parse(raw) as Partial<PgDivergeConfig>);
+    return resolveConfig(JSON.parse(raw) as Partial<SupaschemaConfig>);
   } catch (error) {
     if (isFileMissing(error)) {
       return undefined;
@@ -118,10 +118,10 @@ async function tryLoadJsonConfig(path: string): Promise<PgDivergeConfig | undefi
   }
 }
 
-async function tryLoadModuleConfig(path: string): Promise<PgDivergeConfig | undefined> {
+async function tryLoadModuleConfig(path: string): Promise<SupaschemaConfig | undefined> {
   try {
     const module = (await import(pathToFileURL(path).href)) as {
-      default?: Partial<PgDivergeConfig>;
+      default?: Partial<SupaschemaConfig>;
     };
     return resolveConfig(module.default ?? {});
   } catch (error) {
@@ -141,7 +141,7 @@ function isModuleMissing(error: unknown): boolean {
 }
 
 const scaffoldConfig = {
-  $schema: "./node_modules/pg-diverge/config-schema.json",
+  $schema: "./node_modules/supaschema/config-schema.json",
   ...defaultConfig,
 };
 delete (scaffoldConfig as { environments?: unknown }).environments;
@@ -149,5 +149,5 @@ delete (scaffoldConfig as { environments?: unknown }).environments;
 export const defaultConfigFile = `${JSON.stringify(scaffoldConfig, null, 2)}\n`;
 
 export function configJsonSchema(): Record<string, unknown> {
-  return z.toJSONSchema(pgDivergeConfigSchema, { io: "input" }) as Record<string, unknown>;
+  return z.toJSONSchema(supaschemaConfigSchema, { io: "input" }) as Record<string, unknown>;
 }

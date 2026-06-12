@@ -11,7 +11,7 @@ export interface CreateTemporaryDatabasesOptions {
 
 export function tempDatabaseName(purpose: string, index = 0): string {
   const suffix = `${process.pid}_${Date.now()}_${index}_${Math.random().toString(16).slice(2)}`;
-  return `pg_diverge_${purpose}_${suffix}`.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 60);
+  return `supaschema_${purpose}_${suffix}`.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 60);
 }
 
 export function databaseUrlWithDatabase(databaseUrl: string, databaseName: string): string {
@@ -168,7 +168,7 @@ export async function catalogFingerprint(databaseUrl: string, source = "catalog"
 
 export function assertLocalDatabaseUrl(
   value: string,
-  allowRemoteEnv = "PG_DIVERGE_COMPARE_ALLOW_REMOTE",
+  allowRemoteEnv = "SUPASCHEMA_COMPARE_ALLOW_REMOTE",
 ): void {
   if (process.env[allowRemoteEnv] === "1") {
     return;

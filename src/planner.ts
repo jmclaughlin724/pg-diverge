@@ -6,10 +6,10 @@ import type {
   MigrationPlan,
   ObjectKind,
   ObjectRef,
-  PgDivergeConfig,
   RenderOptions,
   SchemaModel,
   SchemaObject,
+  SupaschemaConfig,
 } from "./core.js";
 import { diagnostic } from "./diagnostics.js";
 import { sha256, stableJson } from "./hash.js";
@@ -38,7 +38,7 @@ export function planSchemaDiff(
       if (!before || !after) {
         diagnostics.push(
           diagnostic(
-            "PD_PLAN_RENAME_HINT_UNMATCHED",
+            "SUPA_PLAN_RENAME_HINT_UNMATCHED",
             "error",
             "rename hint does not match both source and target objects",
             {
@@ -129,7 +129,7 @@ const relationDependentKinds = new Set<ObjectKind>([
 function appendReplacedRelationDependents(
   operations: MigrationOperation[],
   to: SchemaModel,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): void {
   const replacedRelations = operations
     .filter(
@@ -194,7 +194,7 @@ function emptyPlanDriftDiagnostic(
   }
   const sample = differing.slice(0, 12).join("; ");
   return diagnostic(
-    "PD_PLAN_EMPTY_WITH_DRIFT",
+    "SUPA_PLAN_EMPTY_WITH_DRIFT",
     "error",
     "plan contains no operations but the model fingerprints differ",
     {
@@ -211,7 +211,7 @@ function makeOperation(
   key: string,
   before: SchemaObject | undefined,
   after: SchemaObject | undefined,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): MigrationOperation {
   const object = after ?? before;
   if (!object) {
@@ -225,7 +225,7 @@ function makeOperation(
     const difference = kind === "replace" ? describeReplaceDifference(before, after) : undefined;
     diagnostics.push(
       diagnostic(
-        "PD_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+        "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
         "error",
         `${kind} of ${object.ref.kind} requires an explicit destructive-change hint${difference ? ` — ${difference}` : ""}`,
         {
@@ -238,11 +238,11 @@ function makeOperation(
   if (kind === "replace" && object.ref.kind === "view") {
     diagnostics.push(
       diagnostic(
-        "PD_PLAN_VIEW_REPLACE_VERIFY_REQUIRED",
+        "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED",
         "warning",
         "PostgreSQL only permits CREATE OR REPLACE VIEW when the replacement shape is compatible",
         {
-          hint: "Run pg-diverge verify against a disposable PostgreSQL database before release.",
+          hint: "Run supaschema verify against a disposable PostgreSQL database before release.",
           ref: object.ref,
         },
       ),
@@ -257,7 +257,7 @@ function makeOperation(
     blocked = true;
     diagnostics.push(
       diagnostic(
-        "PD_PLAN_CONCURRENT_INDEX_UNSUPPORTED",
+        "SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED",
         "error",
         "CREATE INDEX CONCURRENTLY cannot run inside the transaction Supabase db push uses",
         {
@@ -290,7 +290,7 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
   if (before.ref.kind !== after.ref.kind) {
     blocked = true;
     diagnostics.push(
-      diagnostic("PD_PLAN_RENAME_KIND_MISMATCH", "error", "rename hint changes object kind", {
+      diagnostic("SUPA_PLAN_RENAME_KIND_MISMATCH", "error", "rename hint changes object kind", {
         hint: `${before.key} -> ${after.key}`,
         ref: after.ref,
       }),
@@ -300,7 +300,7 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
     blocked = true;
     diagnostics.push(
       diagnostic(
-        "PD_PLAN_RENAME_UNSUPPORTED",
+        "SUPA_PLAN_RENAME_UNSUPPORTED",
         "error",
         `${after.ref.kind} renames are not yet rendered safely`,
         {
@@ -314,7 +314,7 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
     blocked = true;
     diagnostics.push(
       diagnostic(
-        "PD_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED",
+        "SUPA_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED",
         "error",
         "rename hints cannot move an object between schemas",
         {
@@ -326,7 +326,7 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
   }
   diagnostics.push(
     diagnostic(
-      "PD_PLAN_RENAME_VERIFY_REQUIRED",
+      "SUPA_PLAN_RENAME_VERIFY_REQUIRED",
       "warning",
       "explicit rename hints must be verified against a disposable PostgreSQL database",
       {

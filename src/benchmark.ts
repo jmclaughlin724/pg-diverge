@@ -14,28 +14,28 @@ import { extractSourceModel } from "./source.js";
 import { extractObjectsFromSql } from "./sql/extract.js";
 import { verifyMigration } from "./verify.js";
 
-const fastIterations = Number(process.env.PG_DIVERGE_BENCHMARK_ITERATIONS ?? "5");
-const databaseIterations = Number(process.env.PG_DIVERGE_DATABASE_BENCHMARK_ITERATIONS ?? "3");
+const fastIterations = Number(process.env.SUPASCHEMA_BENCHMARK_ITERATIONS ?? "5");
+const databaseIterations = Number(process.env.SUPASCHEMA_DATABASE_BENCHMARK_ITERATIONS ?? "3");
 
-const xlTables = numberEnv("PG_DIVERGE_XL_TABLES", 1000);
-const xxlTables = numberEnv("PG_DIVERGE_XXL_TABLES", 2500);
+const xlTables = numberEnv("SUPASCHEMA_XL_TABLES", 1000);
+const xxlTables = numberEnv("SUPASCHEMA_XXL_TABLES", 2500);
 
 const thresholds = {
-  catalogSnapshotDiff: numberEnv("PG_DIVERGE_CATALOG_BENCHMARK_MS", 2000),
-  dumpDiff: numberEnv("PG_DIVERGE_DUMP_BENCHMARK_MS", 2000),
-  endToEndMigration: numberEnv("PG_DIVERGE_END_TO_END_BENCHMARK_MS", 10000),
-  endToEndMigrationLarge: numberEnv("PG_DIVERGE_END_TO_END_LARGE_BENCHMARK_MS", 60000),
-  endToEndMigrationXl: numberEnv("PG_DIVERGE_END_TO_END_XL_BENCHMARK_MS", 120000),
-  endToEndMigrationXxl: numberEnv("PG_DIVERGE_END_TO_END_XXL_BENCHMARK_MS", 300000),
-  largeInMemoryDiff: numberEnv("PG_DIVERGE_LARGE_BENCHMARK_MS", 10000),
-  liveCatalogDiff: numberEnv("PG_DIVERGE_LIVE_CATALOG_BENCHMARK_MS", 10000),
-  liveCatalogDiffXl: numberEnv("PG_DIVERGE_LIVE_CATALOG_XL_BENCHMARK_MS", 60000),
-  liveCatalogDiffXxl: numberEnv("PG_DIVERGE_LIVE_CATALOG_XXL_BENCHMARK_MS", 120000),
-  noDriftDiff: numberEnv("PG_DIVERGE_NO_DRIFT_BENCHMARK_MS", 10000),
-  realisticTreeDiff: numberEnv("PG_DIVERGE_REALISTIC_BENCHMARK_MS", 10000),
-  replayVerification: numberEnv("PG_DIVERGE_VERIFY_BENCHMARK_MS", 30000),
-  shadowRoundTripDiff: numberEnv("PG_DIVERGE_SHADOW_BENCHMARK_MS", 30000),
-  sourceTreeDiff: numberEnv("PG_DIVERGE_BENCHMARK_MS", 2000),
+  catalogSnapshotDiff: numberEnv("SUPASCHEMA_CATALOG_BENCHMARK_MS", 2000),
+  dumpDiff: numberEnv("SUPASCHEMA_DUMP_BENCHMARK_MS", 2000),
+  endToEndMigration: numberEnv("SUPASCHEMA_END_TO_END_BENCHMARK_MS", 10000),
+  endToEndMigrationLarge: numberEnv("SUPASCHEMA_END_TO_END_LARGE_BENCHMARK_MS", 60000),
+  endToEndMigrationXl: numberEnv("SUPASCHEMA_END_TO_END_XL_BENCHMARK_MS", 120000),
+  endToEndMigrationXxl: numberEnv("SUPASCHEMA_END_TO_END_XXL_BENCHMARK_MS", 300000),
+  largeInMemoryDiff: numberEnv("SUPASCHEMA_LARGE_BENCHMARK_MS", 10000),
+  liveCatalogDiff: numberEnv("SUPASCHEMA_LIVE_CATALOG_BENCHMARK_MS", 10000),
+  liveCatalogDiffXl: numberEnv("SUPASCHEMA_LIVE_CATALOG_XL_BENCHMARK_MS", 60000),
+  liveCatalogDiffXxl: numberEnv("SUPASCHEMA_LIVE_CATALOG_XXL_BENCHMARK_MS", 120000),
+  noDriftDiff: numberEnv("SUPASCHEMA_NO_DRIFT_BENCHMARK_MS", 10000),
+  realisticTreeDiff: numberEnv("SUPASCHEMA_REALISTIC_BENCHMARK_MS", 10000),
+  replayVerification: numberEnv("SUPASCHEMA_VERIFY_BENCHMARK_MS", 30000),
+  shadowRoundTripDiff: numberEnv("SUPASCHEMA_SHADOW_BENCHMARK_MS", 30000),
+  sourceTreeDiff: numberEnv("SUPASCHEMA_BENCHMARK_MS", 2000),
 };
 
 type BenchmarkResult =
@@ -51,7 +51,7 @@ type BenchmarkResult =
       thresholdMs: number;
     };
 
-const tempRoot = await mkdtemp(join(tmpdir(), "pg-diverge-benchmark-"));
+const tempRoot = await mkdtemp(join(tmpdir(), "supaschema-benchmark-"));
 try {
   const basicSources = {
     from: "dir:tests/fixtures/basic/from",
@@ -79,7 +79,7 @@ try {
   const largeTreeSources = await writeTreeSources("large", largeSql);
   const xlTreeSources = await writeTreeSources("xl", xlSql);
   const xxlTreeSources = await writeTreeSources("xxl", xxlSql);
-  const databaseUrl = process.env.PG_DIVERGE_BENCHMARK_DATABASE_URL ?? resolveDatabaseUrl();
+  const databaseUrl = process.env.SUPASCHEMA_BENCHMARK_DATABASE_URL ?? resolveDatabaseUrl();
 
   const results = {
     catalogSnapshotDiff: await benchmarkDiffSources(
@@ -457,7 +457,7 @@ function assertNoErrors(name: string, diagnostics: Diagnostic[]): void {
 
 function skippedDatabaseBenchmark(thresholdMs: number): BenchmarkResult {
   return {
-    reason: "set PG_DIVERGE_BENCHMARK_DATABASE_URL to a disposable PostgreSQL admin URL",
+    reason: "set SUPASCHEMA_BENCHMARK_DATABASE_URL to a disposable PostgreSQL admin URL",
     status: "skipped",
     thresholdMs,
   };

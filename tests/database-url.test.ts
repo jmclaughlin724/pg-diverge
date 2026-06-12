@@ -53,12 +53,12 @@ describe("supabase database URL discovery", () => {
 });
 
 describe("install-time config scaffold", () => {
-  it("creates pg-diverge.config.json in the consumer root and never overwrites", async () => {
+  it("creates supaschema.config.json in the consumer root and never overwrites", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "pgd-postinstall-"));
     const env = { ...process.env, INIT_CWD: consumer };
 
     await run("node", ["bin/postinstall.mjs"], { env });
-    const configPath = join(consumer, "pg-diverge.config.json");
+    const configPath = join(consumer, "supaschema.config.json");
     expect(existsSync(configPath)).toBe(true);
     const written = await readFile(configPath, "utf8");
     expect(JSON.parse(written)).toHaveProperty("adapter", "supabase-auto");
@@ -68,12 +68,12 @@ describe("install-time config scaffold", () => {
     expect(await readFile(configPath, "utf8")).toBe('{"adapter":"postgres"}\n');
   });
 
-  it("does nothing inside pg-diverge's own checkout", async () => {
+  it("does nothing inside supaschema's own checkout", async () => {
     const env = { ...process.env, INIT_CWD: process.cwd() };
 
     const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
 
     expect(stdout).toBe("");
-    expect(existsSync(join(process.cwd(), "pg-diverge.config.json"))).toBe(false);
+    expect(existsSync(join(process.cwd(), "supaschema.config.json"))).toBe(false);
   });
 });

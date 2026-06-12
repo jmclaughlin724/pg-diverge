@@ -1,8 +1,8 @@
 import type {
   Diagnostic,
   MigrationOperation,
-  PgDivergeConfig,
   SchemaObject,
+  SupaschemaConfig,
   TableColumn,
 } from "./core.js";
 import { diagnostic } from "./diagnostics.js";
@@ -23,7 +23,7 @@ type CanonicalColumnEntry = Record<string, unknown> & { name: string };
 export function makeTableAlterOperation(
   before: SchemaObject,
   after: SchemaObject,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): MigrationOperation | undefined {
   if (before.ref.kind !== "table" || after.ref.kind !== "table") {
     return undefined;
@@ -74,7 +74,7 @@ export function makeTableAlterOperation(
     }
     blocked = true;
     diagnostics.push(
-      diagnostic("PD_PLAN_ADD_COLUMN_UNSAFE", "error", unsafeReason, {
+      diagnostic("SUPA_PLAN_ADD_COLUMN_UNSAFE", "error", unsafeReason, {
         hint: "Use an explicit reviewed migration for column rewrites, backfills, constraints, or table scans.",
         ref: after.ref,
       }),
@@ -86,7 +86,7 @@ export function makeTableAlterOperation(
     blocked = true;
     diagnostics.push(
       diagnostic(
-        "PD_PLAN_COLUMN_ALTER_HINT_REQUIRED",
+        "SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED",
         "error",
         "column drops and type changes require an explicit destructive-change hint",
         {

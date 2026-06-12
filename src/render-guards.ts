@@ -25,9 +25,9 @@ export function renderRename(operation: MigrationOperation): string {
   const newExists = existsExpression(after);
   const renameSql = renderRenameStatement(before.ref, after.ref);
   const conflict = quoteLiteral(
-    `pg-diverge rename conflict: both ${before.key} and ${after.key} exist`,
+    `supaschema rename conflict: both ${before.key} and ${after.key} exist`,
   );
-  return `DO $pg_diverge$
+  return `DO $supaschema$
 BEGIN
   IF ${oldExists} AND ${newExists} THEN
     RAISE EXCEPTION ${conflict};
@@ -35,7 +35,7 @@ BEGIN
     ${renameSql}
   END IF;
 END
-$pg_diverge$;`;
+$supaschema$;`;
 }
 
 function renderRenameStatement(before: ObjectRef, after: ObjectRef): string {
@@ -78,33 +78,33 @@ export function renderTypeGuard(object: SchemaObject): string {
   const schema = object.ref.schema ?? "public";
   const name = object.ref.name;
   const catalogCheck = `SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = ${quoteLiteral(schema)} AND t.typname = ${quoteLiteral(name)}`;
-  return `DO $pg_diverge$
+  return `DO $supaschema$
 BEGIN
   IF NOT EXISTS (${catalogCheck}) THEN
     ${ensureSemicolon(object.sql)}
   END IF;
 END
-$pg_diverge$;`;
+$supaschema$;`;
 }
 
 // CREATE FOREIGN DATA WRAPPER has no IF NOT EXISTS form, so replay safety
 // comes from a catalog-guarded DO block like types use.
 export function renderFdwGuard(object: SchemaObject): string {
   const catalogCheck = `SELECT 1 FROM pg_catalog.pg_foreign_data_wrapper WHERE fdwname = ${quoteLiteral(object.ref.name)}`;
-  return `DO $pg_diverge$
+  return `DO $supaschema$
 BEGIN
   IF NOT EXISTS (${catalogCheck}) THEN
     ${ensureSemicolon(object.sql)}
   END IF;
 END
-$pg_diverge$;`;
+$supaschema$;`;
 }
 
 export function renderConstraintGuard(object: SchemaObject): string {
   const schema = object.ref.schema ?? "public";
   const table = object.ref.table ?? object.ref.name;
   const name = object.ref.name;
-  return `DO $pg_diverge$
+  return `DO $supaschema$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -118,7 +118,7 @@ BEGIN
     ${ensureSemicolon(object.sql)}
   END IF;
 END
-$pg_diverge$;`;
+$supaschema$;`;
 }
 
 export function renderGrantDrop(object: SchemaObject): string {

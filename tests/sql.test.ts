@@ -95,9 +95,9 @@ describe("diff rendering", () => {
     });
     const plan = planSchemaDiff(from, to);
 
-    expect(plan.diagnostics.some((item) => item.code === "PD_PLAN_DESTRUCTIVE_HINT_REQUIRED")).toBe(
-      true,
-    );
+    expect(
+      plan.diagnostics.some((item) => item.code === "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED"),
+    ).toBe(true);
   });
 
   it("orders same-kind dependencies even when source files are reversed", async () => {
@@ -148,7 +148,7 @@ describe("diff rendering", () => {
     };
     const plan = planSchemaDiff(from, to);
 
-    expect(plan.diagnostics.map((item) => item.code)).toContain("PD_PLAN_DEPENDENCY_CYCLE");
+    expect(plan.diagnostics.map((item) => item.code)).toContain("SUPA_PLAN_DEPENDENCY_CYCLE");
   });
 
   it("renders safe additive table column changes as guarded alters", async () => {
@@ -193,7 +193,7 @@ describe("diff rendering", () => {
       { diagnostics: after.diagnostics, fingerprint: "", objects: after.objects, source: "to" },
     );
 
-    expect(plan.diagnostics.map((item) => item.code)).toContain("PD_PLAN_ADD_COLUMN_UNSAFE");
+    expect(plan.diagnostics.map((item) => item.code)).toContain("SUPA_PLAN_ADD_COLUMN_UNSAFE");
   });
 
   it("renders guarded renames only from explicit hints", async () => {
@@ -238,7 +238,7 @@ describe("diff rendering", () => {
 describe("migration checks", () => {
   it("redacts common secrets from diagnostics", () => {
     const formatted = formatDiagnostics([
-      diagnostic("PD_TEST", "error", "failed postgresql://postgres:super-secret@localhost/db", {
+      diagnostic("SUPA_TEST", "error", "failed postgresql://postgres:super-secret@localhost/db", {
         hint: "service_role_key=eyJabc.def.ghi token='sb_secret_123456'",
         statement: "select 'password=plain-text'",
       }),
@@ -257,9 +257,9 @@ describe("migration checks", () => {
       DROP TABLE app.accounts CASCADE;
     `);
 
-    expect(diagnostics.map((item) => item.code)).toContain("PD_CHECK_CASCADE");
-    expect(diagnostics.map((item) => item.code)).toContain("PD_CHECK_DROP_IF_EXISTS");
-    expect(diagnostics.map((item) => item.code)).toContain("PD_CHECK_SEARCH_PATH");
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_CASCADE");
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_DROP_IF_EXISTS");
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_SEARCH_PATH");
   });
 
   it("rejects unguarded create statements that are not replay-safe", async () => {
@@ -274,12 +274,12 @@ describe("migration checks", () => {
 
     expect(diagnostics.map((item) => item.code)).toEqual(
       expect.arrayContaining([
-        "PD_CHECK_CREATE_SCHEMA_GUARD",
-        "PD_CHECK_CREATE_TABLE_GUARD",
-        "PD_CHECK_CREATE_VIEW_REPLACE",
-        "PD_CHECK_CREATE_ROUTINE_REPLACE",
-        "PD_CHECK_CREATE_TYPE_GUARD",
-        "PD_CHECK_ADD_CONSTRAINT_GUARD",
+        "SUPA_CHECK_CREATE_SCHEMA_GUARD",
+        "SUPA_CHECK_CREATE_TABLE_GUARD",
+        "SUPA_CHECK_CREATE_VIEW_REPLACE",
+        "SUPA_CHECK_CREATE_ROUTINE_REPLACE",
+        "SUPA_CHECK_CREATE_TYPE_GUARD",
+        "SUPA_CHECK_ADD_CONSTRAINT_GUARD",
       ]),
     );
   });
@@ -301,8 +301,8 @@ describe("migration checks", () => {
       AS $$ SELECT 1 $$;
     `);
 
-    expect(unsafe.map((item) => item.code)).toContain("PD_CHECK_SECURITY_DEFINER_SEARCH_PATH");
-    expect(safe.map((item) => item.code)).not.toContain("PD_CHECK_SECURITY_DEFINER_SEARCH_PATH");
+    expect(unsafe.map((item) => item.code)).toContain("SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH");
+    expect(safe.map((item) => item.code)).not.toContain("SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH");
   });
 
   it("reports unknown configured validators", async () => {
@@ -310,7 +310,7 @@ describe("migration checks", () => {
       config: { validators: ["internal-parser", "definitely-not-real"] },
     });
 
-    expect(diagnostics.map((item) => item.code)).toContain("PD_VALIDATOR_UNKNOWN");
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_VALIDATOR_UNKNOWN");
   });
 });
 
@@ -322,9 +322,11 @@ describe("managed Supabase schemas", () => {
       "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;",
     );
 
-    expect(schema.diagnostics.map((item) => item.code)).toContain("PD_SUPABASE_MANAGED_SCHEMA");
-    expect(table.diagnostics.map((item) => item.code)).toContain("PD_SUPABASE_MANAGED_SCHEMA");
-    expect(extension.diagnostics.map((item) => item.code)).toContain("PD_SUPABASE_MANAGED_SCHEMA");
+    expect(schema.diagnostics.map((item) => item.code)).toContain("SUPA_SUPABASE_MANAGED_SCHEMA");
+    expect(table.diagnostics.map((item) => item.code)).toContain("SUPA_SUPABASE_MANAGED_SCHEMA");
+    expect(extension.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_SUPABASE_MANAGED_SCHEMA",
+    );
   });
 });
 
@@ -336,7 +338,7 @@ describe("unsupported source statements", () => {
     `);
 
     expect(extracted.diagnostics.map((item) => item.code)).toContain(
-      "PD_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
+      "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
     );
   });
 });
@@ -379,7 +381,7 @@ describe("enum widening", () => {
     );
 
     expect(plan.diagnostics.map((item) => item.code)).toContain(
-      "PD_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+      "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
     );
   });
 });
@@ -449,21 +451,21 @@ describe("AST migration checks", () => {
     `);
     const codes = diagnostics.map((item) => item.code);
 
-    expect(codes).toContain("PD_CHECK_ALTER_COLUMN_TYPE_REWRITE");
-    expect(codes).toContain("PD_CHECK_SET_NOT_NULL_SCAN");
-    expect(codes).toContain("PD_CHECK_INSERT_ON_CONFLICT");
-    expect(codes).toContain("PD_CHECK_DML_REVIEW");
+    expect(codes).toContain("SUPA_CHECK_ALTER_COLUMN_TYPE_REWRITE");
+    expect(codes).toContain("SUPA_CHECK_SET_NOT_NULL_SCAN");
+    expect(codes).toContain("SUPA_CHECK_INSERT_ON_CONFLICT");
+    expect(codes).toContain("SUPA_CHECK_DML_REVIEW");
   });
 
   it("accepts guarded DO-block DDL without false positives", async () => {
     const diagnostics = await checkMigrationSql(`
-      DO $pg_diverge$
+      DO $supaschema$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'mood') THEN
           CREATE TYPE app.mood AS ENUM ('ok');
         END IF;
       END
-      $pg_diverge$;
+      $supaschema$;
     `);
 
     expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);

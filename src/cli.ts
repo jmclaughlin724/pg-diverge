@@ -14,7 +14,7 @@ import {
 import { filterModel, registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
-import type { PgDivergeConfig } from "./config.js";
+import type { SupaschemaConfig } from "./config.js";
 import { defaultConfigFile, loadConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl } from "./database-url.js";
@@ -39,7 +39,7 @@ type VerifyOptions = {
 const cliVersion = await readPackageVersion();
 const program = new Command();
 program
-  .name("pg-diverge")
+  .name("supaschema")
   .description("Generate deterministic, replay-safe PostgreSQL/Supabase migrations from SQL trees.")
   .option("--config <path>", "explicit config file path (.json, .mjs, or .js)")
   .option("--env <name>", "named environment from config.environments for the database URL")
@@ -58,15 +58,15 @@ Exit codes:
 
 program
   .command("init")
-  .description("Create pg-diverge.config.json in the current directory.")
+  .description("Create supaschema.config.json in the current directory.")
   .action(async () => {
-    const path = resolve(process.cwd(), "pg-diverge.config.json");
+    const path = resolve(process.cwd(), "supaschema.config.json");
     try {
       await writeFile(path, defaultConfigFile, { flag: "wx" });
       process.stdout.write(`${path}\n`);
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "EEXIST") {
-        process.stderr.write("pg-diverge.config.json already exists\n");
+        process.stderr.write("supaschema.config.json already exists\n");
         process.exitCode = 1;
         return;
       }
@@ -149,7 +149,7 @@ program
   .option("--migrations-dir <dir>", "migrations directory (default: config.migrationsDir)")
   .option(
     "--database-url <url>",
-    "PostgreSQL URL whose role can create temporary databases (default: PG_DIVERGE_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
+    "PostgreSQL URL whose role can create temporary databases (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
   )
   .option(
     "--ensure-roles",
@@ -169,7 +169,7 @@ program
     const databaseUrl = await resolveCliDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
       process.stderr.write(
-        "no database URL: pass --database-url, --env, set PG_DIVERGE_DATABASE_URL, or run inside a project with supabase/config.toml\n",
+        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n",
       );
       process.exitCode = 1;
       return;
@@ -213,14 +213,14 @@ program
   .command("selfcheck")
   .option(
     "--database-url <url>",
-    "PostgreSQL URL to extract (default: PG_DIVERGE_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
+    "PostgreSQL URL to extract (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
   )
   .description("Re-extract the live catalog's rendered SQL and report identity normalization gaps.")
   .action(async (options: { databaseUrl?: string }) => {
     const databaseUrl = await resolveCliDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
       process.stderr.write(
-        "no database URL: pass --database-url, --env, set PG_DIVERGE_DATABASE_URL, or run inside a project with supabase/config.toml\n",
+        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n",
       );
       process.exitCode = 1;
       return;
@@ -237,8 +237,8 @@ program
 
 program
   .command("explain")
-  .argument("<code>", "diagnostic code, e.g. PD_PLAN_DESTRUCTIVE_HINT_REQUIRED")
-  .description("Explain a pg-diverge diagnostic code.")
+  .argument("<code>", "diagnostic code, e.g. SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED")
+  .description("Explain a supaschema diagnostic code.")
   .action((code: string) => {
     const summary = diagnosticCatalog[code.toUpperCase()];
     if (!summary) {
@@ -254,14 +254,14 @@ program.parseAsync(process.argv).catch((error: unknown) => {
   process.exitCode = 1;
 });
 
-async function loadCliConfig(): Promise<PgDivergeConfig> {
+async function loadCliConfig(): Promise<SupaschemaConfig> {
   const globals = program.opts<GlobalOptions>();
   return loadConfig(process.cwd(), globals.config);
 }
 
 /**
  * Database URL precedence: explicit flag, then the named --env entry from
- * config.environments, then the shared resolver (PG_DIVERGE_DATABASE_URL,
+ * config.environments, then the shared resolver (SUPASCHEMA_DATABASE_URL,
  * then supabase/config.toml discovery). Environment values support the same
  * $ENV_NAME indirection as the flag.
  */

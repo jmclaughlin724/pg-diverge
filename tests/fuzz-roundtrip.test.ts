@@ -7,7 +7,7 @@ import { planSchemaDiff } from "../src/planner.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { splitSqlStatements } from "../src/sql/split.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 function mulberry32(seed: number): () => number {
   let state = seed;
@@ -141,7 +141,7 @@ describe.skipIf(!databaseUrl)("seeded round-trip fuzz", () => {
     };
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
-    const databaseName = `pg_diverge_fuzz_${seed}_${process.pid}`;
+    const databaseName = `supaschema_fuzz_${seed}_${process.pid}`;
     try {
       await admin.query(`CREATE DATABASE "${databaseName}"`);
       const url = new URL(databaseUrl);

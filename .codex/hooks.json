@@ -5,9 +5,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/pg-diverge-tool-gate.mjs\"",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-tool-gate.mjs\"",
             "timeout": 10,
-            "statusMessage": "Checking pg-diverge generated-migration policy"
+            "statusMessage": "Checking supaschema generated-migration policy"
           }
         ]
       }

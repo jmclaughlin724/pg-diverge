@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MigrationPlan, PgDivergeConfig, SchemaModel } from "../src/core.js";
+import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../src/core.js";
 import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
@@ -13,7 +13,7 @@ async function model(sql: string, source: string): Promise<SchemaModel> {
 async function diff(
   fromSql: string,
   toSql: string,
-  config?: Partial<PgDivergeConfig>,
+  config?: Partial<SupaschemaConfig>,
 ): Promise<MigrationPlan> {
   const from = await model(fromSql, "test:from");
   const to = await model(toSql, "test:to");
@@ -33,7 +33,7 @@ describe("routine replace compatibility", () => {
     expect(operation?.blocked).toBe(true);
     expect(operation?.destructive).toBe(true);
     expect(
-      operation?.diagnostics.some((item) => item.code === "PD_PLAN_ROUTINE_RETURN_TYPE_CHANGED"),
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED"),
     ).toBe(true);
   });
 
@@ -98,7 +98,7 @@ describe("view replace compatibility", () => {
     const operation = plan.operations.find((item) => item.key === "view:app.v");
     expect(operation?.blocked).toBe(true);
     expect(
-      operation?.diagnostics.some((item) => item.code === "PD_PLAN_VIEW_REPLACE_INCOMPATIBLE"),
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE"),
     ).toBe(true);
   });
 
@@ -120,7 +120,7 @@ describe("view replace compatibility", () => {
 
     const operation = plan.operations.find((item) => item.key === "view:app.v2");
     expect(
-      operation?.diagnostics.some((item) => item.code === "PD_PLAN_VIEW_REPLACE_VERIFY_REQUIRED"),
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED"),
     ).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkMigrationSql } from "./check.js";
 import { resolveConfig } from "./config.js";
-import type { Diagnostic, PgDivergeConfig } from "./core.js";
+import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import {
   applyMigrationSql,
   applySql,
@@ -51,7 +51,7 @@ export async function runCorpus(
     stages: [],
   };
   const config = await loadCorpusConfig(options.corpusDir);
-  assertLocalDatabaseUrl(options.databaseUrl, "PG_DIVERGE_CORPUS_ALLOW_REMOTE");
+  assertLocalDatabaseUrl(options.databaseUrl, "SUPASCHEMA_CORPUS_ALLOW_REMOTE");
   const [corpusUrl] = await createTemporaryDatabases(options.databaseUrl, 1, {
     purpose: "corpus",
   });
@@ -110,7 +110,7 @@ export async function runCorpus(
     if (!report.idempotent) {
       diagnostics.push(
         diagnostic(
-          "PD_CORPUS_RECONVERGENCE",
+          "SUPA_CORPUS_RECONVERGENCE",
           "error",
           "the second apply changed the catalog; the rendered migration is not idempotent on the corpus state",
         ),
@@ -128,7 +128,7 @@ export async function runCorpus(
     if (report.reconvergenceResidual.length > 0) {
       diagnostics.push(
         diagnostic(
-          "PD_CORPUS_RECONVERGENCE",
+          "SUPA_CORPUS_RECONVERGENCE",
           "error",
           `${report.reconvergenceResidual.length} operation(s) remain after applying the reconciliation; the diff does not converge`,
           { hint: `residual: ${report.reconvergenceResidual.slice(0, 6).join(", ")}` },
@@ -142,7 +142,7 @@ export async function runCorpus(
   } catch (error) {
     diagnostics.push(
       diagnostic(
-        "PD_CORPUS_RECONVERGENCE",
+        "SUPA_CORPUS_RECONVERGENCE",
         "error",
         `corpus pipeline failed: ${error instanceof Error ? error.message : String(error)}`,
         { hint: "A replay or reconciliation apply failed against the corpus database." },
@@ -163,7 +163,7 @@ export function renderCorpusReport(report: CorpusReport): string {
   return `${lines.join("\n")}\n`;
 }
 
-async function loadCorpusConfig(corpusDir: string): Promise<PgDivergeConfig> {
+async function loadCorpusConfig(corpusDir: string): Promise<SupaschemaConfig> {
   const raw = await readFile(join(corpusDir, "corpus.json"), "utf8");
-  return resolveConfig(JSON.parse(raw) as Partial<PgDivergeConfig>);
+  return resolveConfig(JSON.parse(raw) as Partial<SupaschemaConfig>);
 }

@@ -9,12 +9,12 @@ const cliPath = resolve(import.meta.dirname, "../dist/cli.js");
 
 const sampleDiagnostics: Diagnostic[] = [
   {
-    code: "PD_CHECK_DROP_IF_EXISTS",
+    code: "SUPA_CHECK_DROP_IF_EXISTS",
     message: "DROP statements must use IF EXISTS",
     severity: "error",
   },
   {
-    code: "PD_CHECK_ALTER_COLUMN_TYPE_REWRITE",
+    code: "SUPA_CHECK_ALTER_COLUMN_TYPE_REWRITE",
     hint: "lock review",
     message: "type change can rewrite",
     severity: "warning",
@@ -23,7 +23,7 @@ const sampleDiagnostics: Diagnostic[] = [
 
 describe("config DX", () => {
   it("tolerates $schema and scaffolds it into the default config file", () => {
-    const config = resolveConfig({ $schema: "./node_modules/pg-diverge/config-schema.json" });
+    const config = resolveConfig({ $schema: "./node_modules/supaschema/config-schema.json" });
     expect(config.adapter).toBe("supabase-auto");
     expect(defaultConfigFile).toContain('"$schema"');
   });
@@ -50,7 +50,7 @@ describe("check reporters", () => {
 
   it("renders github workflow commands with file and severity", () => {
     const output = renderCheckReport("github", files);
-    expect(output).toContain("::error file=migrations/x.sql,title=PD_CHECK_DROP_IF_EXISTS::");
+    expect(output).toContain("::error file=migrations/x.sql,title=SUPA_CHECK_DROP_IF_EXISTS::");
     expect(output).toContain("::warning file=");
   });
 
@@ -61,7 +61,7 @@ describe("check reporters", () => {
     };
     expect(sarif.version).toBe("2.1.0");
     expect(sarif.runs[0]?.results.map((result) => result.ruleId)).toContain(
-      "PD_CHECK_DROP_IF_EXISTS",
+      "SUPA_CHECK_DROP_IF_EXISTS",
     );
   });
 
@@ -82,7 +82,7 @@ describe("stdin sources", () => {
       input: "CREATE TABLE app.t (id bigint);\n",
     });
     expect(result.status).toBe(2);
-    expect(`${result.stdout}${result.stderr}`).toContain("PD_CHECK_CREATE_TABLE_GUARD");
+    expect(`${result.stdout}${result.stderr}`).toContain("SUPA_CHECK_CREATE_TABLE_GUARD");
   });
 
   it("accepts replay-safe SQL from stdin", () => {

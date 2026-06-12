@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const lineageMarker = "-- pg-diverge: lineage ";
+const lineageMarker = "-- supaschema: lineage ";
 const updateHeader = "*** Update File: ";
 const deleteHeader = "*** Delete File: ";
 const addHeader = "*** Add File: ";
@@ -63,11 +63,11 @@ try {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: `${blocked} is a pg-diverge-generated migration (lineage marker present). Do not hand-edit it: change the declarative schema tree, delete this file if it is stale, and regenerate with \`pg-diverge diff\`. See .claude/rules/pg-diverge.md.`,
+      permissionDecisionReason: `${blocked} is a supaschema-generated migration (lineage marker present). Do not hand-edit it: change the declarative schema tree, delete this file if it is stale, and regenerate with \`supaschema diff\`. See .claude/rules/supaschema.md.`,
     },
   });
 } catch (error) {
   emit({
-    systemMessage: `pg-diverge-tool-gate hook error (fail-open): ${error instanceof Error ? error.message : String(error)}`,
+    systemMessage: `supaschema-tool-gate hook error (fail-open): ${error instanceof Error ? error.message : String(error)}`,
   });
 }

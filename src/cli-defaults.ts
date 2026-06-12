@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { PgDivergeConfig } from "./config.js";
+import type { SupaschemaConfig } from "./config.js";
 import type { MigrationPlan } from "./core.js";
 import { redactSecrets } from "./diagnostics.js";
 
@@ -10,13 +10,13 @@ export interface ResolvedSources {
   to: string;
 }
 
-export function defaultTreeSource(config: PgDivergeConfig): string {
+export function defaultTreeSource(config: SupaschemaConfig): string {
   return `dir:${config.schemaPaths[0] ?? "supabase/schemas"}`;
 }
 
 export function resolveMigrationsDir(
   flagValue: string | undefined,
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
 ): string {
   return flagValue ?? config.migrationsDir;
 }
@@ -29,7 +29,7 @@ export function resolveMigrationsDir(
  */
 export async function resolveSourceDefaults(
   options: { from?: string; to?: string },
-  config: PgDivergeConfig,
+  config: SupaschemaConfig,
   resolveDbUrl: () => Promise<string | undefined>,
 ): Promise<ResolvedSources> {
   const defaulted: string[] = [];

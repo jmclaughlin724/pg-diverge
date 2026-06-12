@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { auditModel, renderAuditReport } from "./audit.js";
-import type { Diagnostic, PgDivergeConfig } from "./core.js";
+import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { renderCorpusReport, runCorpus } from "./corpus.js";
 import { hasErrors } from "./diagnostics.js";
 import { migrationsStatus, renderMigrationsStatus } from "./migrations-status.js";
@@ -9,7 +9,7 @@ import { extractSourceModel } from "./source.js";
 import { syncMigrations } from "./sync.js";
 
 export interface ReportCommandContext {
-  loadCliConfig: () => Promise<PgDivergeConfig>;
+  loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
   resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
 }
@@ -39,7 +39,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--migrations-dir <dir>", "migration files directory", "supabase/migrations")
     .option(
       "--database-url <url>",
-      "target whose applied history to compare (default: PG_DIVERGE_DATABASE_URL, then the local Supabase stack); run once per target to compare local and remote",
+      "target whose applied history to compare (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack); run once per target to compare local and remote",
     )
     .option("--history-table <schema.table>", "migration history table", undefined)
     .option("--json", "print the report as JSON")
@@ -74,7 +74,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--corpus-dir <dir>", "corpus directory", "corpus/supabase-style")
     .option(
       "--database-url <url>",
-      "admin URL for disposable corpus databases (default: PG_DIVERGE_DATABASE_URL, then the local Supabase stack)",
+      "admin URL for disposable corpus databases (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)",
     )
     .option("--json", "print the report as JSON")
     .description(
@@ -104,7 +104,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--migrations-dir <dir>", "migration files directory", "supabase/migrations")
     .option(
       "--database-url <url>",
-      "target whose applied history gates the sync (default: PG_DIVERGE_DATABASE_URL, then the local Supabase stack)",
+      "target whose applied history gates the sync (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)",
     )
     .option("--local", "apply pending migrations to the target via `supabase migration up`")
     .option("--remote", "push pending migrations to the linked project via `supabase db push`")

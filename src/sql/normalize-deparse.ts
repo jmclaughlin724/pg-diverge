@@ -14,7 +14,7 @@ export interface NormalizeResult {
 }
 
 /**
- * Canonical-output normalization: the parse tree pg-diverge already computed
+ * Canonical-output normalization: the parse tree supaschema already computed
  * is deparsed back to SQL through PostgreSQL's grammar (pgsql-deparser, the
  * pure-TypeScript companion of the installed libpg-query binding). The
  * normalized text is accepted only when reparsing it yields a
@@ -33,7 +33,7 @@ export async function normalizeObjectSql(
     return {
       diagnostics: [
         diagnostic(
-          "PD_NORMALIZE_UNSUPPORTED",
+          "SUPA_NORMALIZE_UNSUPPORTED",
           "warning",
           `deparser cannot render ${object.key}; keeping the source text (${errorMessage(error)})`,
           { file: object.file, ref: object.ref },
@@ -47,7 +47,7 @@ export async function normalizeObjectSql(
     return {
       diagnostics: [
         diagnostic(
-          "PD_NORMALIZE_FIDELITY",
+          "SUPA_NORMALIZE_FIDELITY",
           "warning",
           `deparsed SQL for ${object.key} does not reparse to the same parse tree; keeping the source text`,
           { file: object.file, ref: object.ref },
@@ -80,7 +80,7 @@ export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnosti
     } catch (error) {
       diagnostics.push(
         diagnostic(
-          "PD_CHECK_DEPARSE_UNSUPPORTED",
+          "SUPA_CHECK_DEPARSE_UNSUPPORTED",
           "warning",
           `statement cannot be deparsed for round-trip proof (${errorMessage(error)})`,
           { statement: statement.text },
@@ -93,7 +93,7 @@ export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnosti
     if (second.length !== 1 || !nodeEquals(statement.node, second[0]?.node)) {
       diagnostics.push(
         diagnostic(
-          "PD_CHECK_DEPARSE_MISMATCH",
+          "SUPA_CHECK_DEPARSE_MISMATCH",
           "warning",
           "statement does not round-trip through the deparser to an identical parse tree",
           { statement: statement.text },

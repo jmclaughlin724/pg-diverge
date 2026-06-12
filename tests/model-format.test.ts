@@ -25,7 +25,7 @@ describe("model format versioning", () => {
 
     const model = await extractSourceModel(`catalog:${snapshotPath}`);
 
-    expect(model.diagnostics.some((item) => item.code === "PD_CATALOG_SNAPSHOT_VERSION")).toBe(
+    expect(model.diagnostics.some((item) => item.code === "SUPA_CATALOG_SNAPSHOT_VERSION")).toBe(
       true,
     );
   });

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 import { syncMigrations } from "../src/sync.js";
 
-const databaseUrl = process.env.PG_DIVERGE_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 describe("sync (no target)", () => {
   it("dry-runs pending files after the replay-safety gate", async () => {

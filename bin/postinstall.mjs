@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Install-time setup: scaffold pg-diverge.config.json in the consuming
+// Install-time setup: scaffold supaschema.config.json in the consuming
 // project so `init` is not a required extra step. Never overwrites an
-// existing config, never touches pg-diverge's own checkout, and never fails
+// existing config, never touches supaschema's own checkout, and never fails
 // the install.
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -15,15 +15,15 @@ try {
   if (target === packageRoot || target.startsWith(packageRoot + sep)) {
     process.exit(0);
   }
-  const existing = ["pg-diverge.config.json", "pg-diverge.config.mjs", "pg-diverge.config.js"];
+  const existing = ["supaschema.config.json", "supaschema.config.mjs", "supaschema.config.js"];
   if (existing.some((name) => existsSync(join(target, name)))) {
     process.exit(0);
   }
   const { defaultConfigFile } = await import(
     pathToFileURL(join(packageRoot, "dist", "config.js")).href
   );
-  await writeFile(join(target, "pg-diverge.config.json"), defaultConfigFile, { flag: "wx" });
-  process.stdout.write("pg-diverge: created pg-diverge.config.json with the defaults\n");
+  await writeFile(join(target, "supaschema.config.json"), defaultConfigFile, { flag: "wx" });
+  process.stdout.write("supaschema: created supaschema.config.json with the defaults\n");
 } catch {
   // Setup is a convenience; an install must never fail because of it.
   process.exit(0);

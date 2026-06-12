@@ -22,7 +22,7 @@ async function cli(args: string[]): Promise<CliResult> {
 
 describe("lineage parsing", () => {
   it("parses the embedded lineage marker", () => {
-    const lineage = parseLineage("-- header\n-- pg-diverge: lineage from=abc123 to=def456\nSET x;");
+    const lineage = parseLineage("-- header\n-- supaschema: lineage from=abc123 to=def456\nSET x;");
 
     expect(lineage).toEqual({ from: "abc123", to: "def456" });
   });
@@ -35,11 +35,11 @@ describe("lineage parsing", () => {
     const directory = await mkdtemp(join(tmpdir(), "pgd-lineage-"));
     await writeFile(
       join(directory, "0001_old.sql"),
-      "-- pg-diverge: lineage from=a to=b\nSELECT 1;",
+      "-- supaschema: lineage from=a to=b\nSELECT 1;",
     );
     await writeFile(
       join(directory, "0002_new.sql"),
-      "-- pg-diverge: lineage from=b to=c\nSELECT 1;",
+      "-- supaschema: lineage from=b to=c\nSELECT 1;",
     );
     await writeFile(join(directory, "0003_hand.sql"), "-- hand-authored\nSELECT 1;");
 
@@ -82,7 +82,7 @@ describe("diff lineage chain gate", () => {
       join(directory, "0002_dup.sql"),
     ]);
     expect(duplicate.code).toBe(2);
-    expect(duplicate.stderr).toContain("PD_DIFF_LINEAGE_DUPLICATE");
+    expect(duplicate.stderr).toContain("SUPA_DIFF_LINEAGE_DUPLICATE");
 
     const broken = await cli([
       "diff",
@@ -94,7 +94,7 @@ describe("diff lineage chain gate", () => {
       join(directory, "0003_broken.sql"),
     ]);
     expect(broken.code).toBe(2);
-    expect(broken.stderr).toContain("PD_DIFF_LINEAGE_BROKEN");
+    expect(broken.stderr).toContain("SUPA_DIFF_LINEAGE_BROKEN");
 
     const continued = await cli([
       "diff",
@@ -130,7 +130,7 @@ describe("diff lineage chain gate", () => {
       first,
     ]);
     expect(clobber.code).toBe(2);
-    expect(clobber.stderr).toContain("PD_DIFF_OUTPUT_EXISTS");
+    expect(clobber.stderr).toContain("SUPA_DIFF_OUTPUT_EXISTS");
     expect(parseLineage(await readFile(first, "utf8"))).toBeDefined();
   });
 });
