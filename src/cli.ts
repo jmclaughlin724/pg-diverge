@@ -161,7 +161,7 @@ program
   )
   .option(
     "--no-ensure-environment",
-    "disable the Supabase environment stub even under adapter supabase-auto (verify against a real Supabase database)",
+    "disable the Supabase environment stub even under adapter supabase-auto (for servers whose new databases already provision the managed surface)",
   )
   .option(
     "--keep-databases",

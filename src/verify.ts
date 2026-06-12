@@ -160,7 +160,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
           "warning",
           `verify failed while referencing the "${stubbedSchema}" managed schema, which --ensure-environment provisions only as a minimal stub`,
           {
-            hint: `--ensure-environment stubs auth.users (the GoTrue column set), the auth.uid/role/jwt/email helpers, and the cron tables; other ${stubbedSchema} objects are absent. This may be a stub limitation rather than a real migration defect — re-run verify against a real Supabase database with --no-ensure-environment to confirm.`,
+            hint: `--ensure-environment stubs auth.users (the GoTrue column set), the auth.uid/role/jwt/email helpers, and the cron tables; other ${stubbedSchema} objects are absent. This may be a stub limitation rather than a real migration defect — confirm by applying the migration to a real disposable Supabase database (a local stack via supabase db push, or a preview branch). Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.`,
           },
         ),
       );
