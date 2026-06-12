@@ -4,7 +4,7 @@ supaschema was built while developing a production multi-tenant SaaS on Supabase
 
 All numbers below are reproducible. Object names are kept generic; the measurements are from the real tree.
 
-## Speed: the whole tree, no database, in about a second
+## Speed: the whole tree, no database, in under two seconds
 
 Extracting and planning the entire declarative tree (8,271 modeled objects) runs on the parser alone — no Docker, no shadow database, no introspection:
 
@@ -12,7 +12,7 @@ Extracting and planning the entire declarative tree (8,271 modeled objects) runs
 extract-from 1012ms · extract-to 876ms · plan 5ms
 ```
 
-A full diff is two extractions plus a plan — **~1 second over the entire production tree.** The equivalent Supabase CLI diff replays all 8,300 objects into a fresh Docker shadow database on every run, which is minutes at this scale (see the [scaling benchmark](../README.md#speed)).
+A full diff is two extractions plus a plan — **~1.9 seconds over the entire production tree.** The equivalent Supabase CLI diff replays all 8,300 objects into a fresh Docker shadow database on every run, which is minutes at this scale (see the [scaling benchmark](../README.md#speed)).
 
 The 8,271 figure is what supaschema models; the tree also produced 91 expected fail-closed diagnostics, concentrated in the bootstrap layer (managed-schema declarations for `extensions`/`vault`/roles, which a real adoption excludes via `schemas.exclude`) plus normalize-fidelity warnings. None are engine errors.
 

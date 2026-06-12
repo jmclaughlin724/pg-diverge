@@ -2,9 +2,17 @@
 
 [![CI](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml/badge.svg)](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/supaschema)](https://www.npmjs.com/package/supaschema) [![npm downloads](https://img.shields.io/npm/dm/supaschema)](https://www.npmjs.com/package/supaschema) [![node](https://img.shields.io/node/v/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/package.json) [![license](https://img.shields.io/npm/l/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/LICENSE) [![codecov](https://codecov.io/gh/jmclaughlin724/supaschema/branch/main/graph/badge.svg)](https://codecov.io/gh/jmclaughlin724/supaschema) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jmclaughlin724/supaschema/badge)](https://scorecard.dev/viewer/?uri=github.com/jmclaughlin724/supaschema) [![install size](https://packagephobia.com/badge?p=supaschema)](https://packagephobia.com/result?p=supaschema)
 
-**From declarative schema to fully synced database in milliseconds with one command.** No ORM, no Docker, and no shadow database needed.
+**Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, and regenerates your TypeScript + Zod types in a single command — without standing up a database to do it.
 
-**And it catches the tenant-isolation regression other diff tools ship.** An RLS policy's `USING` predicate _is_ the tenant boundary, and every Supabase CLI diff engine compares policies by name — so a tightened predicate is silently dropped from the migration. supaschema compares policy bodies structurally, so that isolation hole is caught before it merges. Speed is the felt pain; the dropped policy is the dangerous one, and the same parser-based, no-database design delivers both.
+- **Fast at any scale.** It parses instead of replaying: a full diff of an 8,300-object production schema runs in under two seconds, where the Supabase CLI's shadow-database engines take minutes. The gap widens from ~20× to ~70× as your schema grows.
+- **Catches the tenant-isolation regression other tools ship.** An RLS policy's `USING` predicate _is_ the tenant boundary. Every Supabase CLI engine diffs policies by name and silently drops a tightened predicate; supaschema compares policy bodies structurally and catches it before it merges.
+- **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, catalog-checked `DO` blocks), so a crashed or retried deploy just re-runs the file — where the CLI's unguarded `CREATE TABLE` / `CREATE INDEX` fail on the second apply.
+
+```bash
+npx supaschema diff   # writes the migration AND refreshes database.types.ts + database.zod.ts
+```
+
+![Diff latency vs schema size — supaschema stays in seconds where shadow-database engines climb into minutes](docs/benchmarks/scaling-latency.svg)
 
 The promise of declarative schema management sounds great: keep your schema in SQL files, edit them in your editor, diff against your database to produce a type-safe, idempotent migration, and get regenerated types back in your repo.
 
@@ -94,11 +102,7 @@ All numbers are reproducible from this repo (`npm run benchmark`; harness in [be
 
 ### Speed
 
-**The diff alone:**
-
-![Diff latency vs schema size](docs/benchmarks/scaling-latency.svg)
-
-supaschema's cost is parsing and planning, so it stays in seconds at every scale: **0.2s** at one table, **1.4s** at 1,000 tables, **3.2s** at 2,500 tables (~17,500 objects). Every shadow-database engine pays for a full schema replay into a fresh Docker database on every diff: **~4 seconds at a single table**, **~39 seconds** at 1,000 tables, and **~3.5 minutes** at 2,500 — a gap that widens from ~20x to ~70x as your schema grows.
+**The diff alone** (charted at the top): supaschema's cost is parsing and planning, so it stays in seconds at every scale — **0.2s** at one table, **1.4s** at 1,000 tables, **3.2s** at 2,500 tables (~17,500 objects). Every shadow-database engine pays for a full schema replay into a fresh Docker database on every diff: **~4 seconds at a single table**, **~39 seconds** at 1,000 tables, and **~3.5 minutes** at 2,500 — a gap that widens from ~20x to ~70x as your schema grows.
 
 **The full real-world step — migration plus regenerated types:**
 
