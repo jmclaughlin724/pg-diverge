@@ -152,7 +152,7 @@ Either side of a diff can be any of these — generating a diff never creates a 
 
 ## Safety
 
-- Destructive changes require the exact object key in `hints.destructive`; column changes then render as data-preserving `ALTER`s, never table rewrites.
+- Destructive changes require the exact object key in `hints.destructive`; column changes then render as per-column `ALTER`s instead of dropping and recreating the table. Type changes that can rewrite the heap under an `ACCESS EXCLUSIVE` lock are flagged (`PD_CHECK_ALTER_COLUMN_TYPE_REWRITE`).
 - Renames come only from `hints.renames`. `CASCADE` is never emitted. Idempotency is required, not optional.
 - Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) are never treated as schema changes, and unsupported DDL produces a blocking diagnostic instead of passing through.
 - Diagnostics redact credentials (URL passwords, JWTs, secrets).
@@ -167,7 +167,7 @@ The package ships a governance bundle so coding agents generate migrations throu
 - `.claude/skills/pg-diverge/` — the step-by-step workflow skill, with recovery steps for every blocking `PD_*` code.
 - `.claude/hooks/` and `.codex/hooks/` — wired PreToolUse hooks that **block any edit to a generated migration** (identified by its lineage marker) in both runtimes.
 
-Copy the surfaces into your repo, or point agents at `node_modules/pg-diverge/`. `pg-diverge explain <PD_CODE>` decodes every diagnostic offline.
+Copy the surfaces into your repo root to get the write-time enforcement — the hooks only run where `.claude/settings.json` and `.codex/hooks.json` are wired. Pointing agents at `node_modules/pg-diverge/` gives them the guidance without the hooks. `pg-diverge explain <PD_CODE>` decodes every diagnostic offline.
 
 ## Library
 

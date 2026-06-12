@@ -119,4 +119,18 @@ describe("codex generated-migration tool gate", () => {
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({});
   });
+
+  it("denies delete-and-rewrite patches that replace a generated migration in place", async () => {
+    const { generated } = await fixtures();
+    const patch = `*** Begin Patch\n*** Delete File: ${generated}\n*** Add File: ${generated}\n+-- hand-written replacement\n*** End Patch`;
+    const result = await runHook(script, {
+      tool_input: { patch },
+      tool_name: "apply_patch",
+    });
+
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    };
+    expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
 });

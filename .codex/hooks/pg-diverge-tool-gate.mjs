@@ -2,18 +2,25 @@
 import { readFileSync } from "node:fs";
 
 const lineageMarker = "-- pg-diverge: lineage ";
-const patchFileHeaders = ["*** Update File: "];
+const updateHeader = "*** Update File: ";
+const deleteHeader = "*** Delete File: ";
+const addHeader = "*** Add File: ";
 
 function patchTargets(patchText) {
-  const targets = [];
+  const updates = [];
+  const deletes = [];
+  const adds = new Set();
   for (const line of patchText.split("\n")) {
-    for (const header of patchFileHeaders) {
-      if (line.startsWith(header)) {
-        targets.push(line.slice(header.length).trim());
-      }
+    if (line.startsWith(updateHeader)) {
+      updates.push(line.slice(updateHeader.length).trim());
+    } else if (line.startsWith(deleteHeader)) {
+      deletes.push(line.slice(deleteHeader.length).trim());
+    } else if (line.startsWith(addHeader)) {
+      adds.add(line.slice(addHeader.length).trim());
     }
   }
-  return targets;
+  const rewrites = deletes.filter((path) => adds.has(path));
+  return [...updates, ...rewrites];
 }
 
 function editTargets(payload) {
