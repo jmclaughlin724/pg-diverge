@@ -39,7 +39,7 @@ export const supaschemaConfigSchema = z.strictObject({
   idempotency: z.literal("required").default("required"),
   lockTimeout: z.string().default("5s"),
   migrationsDir: z.string().default("supabase/migrations"),
-  normalize: z.enum(["off", "deparse"]).default("off"),
+  normalize: z.enum(["off", "deparse"]).default("deparse"),
   managedSchemas: z
     .array(z.string())
     .default([

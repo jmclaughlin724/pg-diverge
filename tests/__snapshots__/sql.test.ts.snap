@@ -29,27 +29,28 @@ BEGIN
       AND r.relname = 'audit_events'
       AND c.conname = 'audit_events_pkey'
   ) THEN
-    ALTER TABLE ONLY "app"."audit_events" ADD CONSTRAINT "audit_events_pkey" PRIMARY KEY ("id");
+    ALTER TABLE ONLY app.audit_events
+  ADD CONSTRAINT audit_events_pkey PRIMARY KEY (id);
   END IF;
 END
 $supaschema$;
 
-CREATE OR REPLACE FUNCTION app.greeting()
-RETURNS text
-LANGUAGE sql
-STABLE
-AS $$
+CREATE OR REPLACE FUNCTION app.greeting() RETURNS text LANGUAGE sql STABLE AS $$
   SELECT 'hi'::text
 $$;
 
-CREATE OR REPLACE VIEW app.account_names AS
-SELECT upper(name) AS name FROM app.accounts;
+CREATE OR REPLACE VIEW app.account_names AS SELECT upper(name) AS name
+FROM app.accounts;
 
 DROP POLICY IF EXISTS "accounts_select" ON "app"."accounts";
-CREATE POLICY accounts_select ON app.accounts
+CREATE POLICY accounts_select
+  ON app.accounts
+  AS PERMISSIVE
   FOR SELECT
-  TO public
-  USING (name IS NOT NULL);
+  TO PUBLIC
+  USING (
+    name IS NOT NULL
+  );
 
 COMMENT ON TABLE app.accounts IS NULL;
 COMMENT ON TABLE app.accounts IS 'Customer accounts';

@@ -1,5 +1,5 @@
 import type { SchemaObject } from "./core.js";
-import { formatQualifiedName, quoteIdent } from "./sql/identifiers.js";
+import { formatQualifiedName, quoteIdent, stripOuterDoubleQuotes } from "./sql/identifiers.js";
 import {
   buildDefaultPrivilegeObject,
   buildGrantObject,
@@ -461,7 +461,7 @@ function textArray(value: unknown): string[] {
     return raw
       .slice(1, -1)
       .split(",")
-      .map((item) => item.trim().replace(/^"|"$/g, ""))
+      .map((item) => stripOuterDoubleQuotes(item.trim()))
       .filter(Boolean);
   }
   return raw.length > 0 ? [raw] : [];

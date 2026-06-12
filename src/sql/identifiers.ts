@@ -55,6 +55,10 @@ export function normalizeIdentifier(input: string): string {
 export function quoteIdent(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`;
 }
+export function stripOuterDoubleQuotes(value: string): string {
+  const withoutLeading = value.startsWith('"') ? value.slice(1) : value;
+  return withoutLeading.endsWith('"') ? withoutLeading.slice(0, -1) : withoutLeading;
+}
 export function formatQualifiedName(schema: string | undefined, name: string): string {
   return schema ? `${quoteIdent(schema)}.${quoteIdent(name)}` : quoteIdent(name);
 }
@@ -65,11 +69,20 @@ export function objectKey(ref: ObjectRef): string {
   return `${ref.kind}:${schema}${ref.name}${signature}${table}`;
 }
 export function normalizeSql(sql: string): string {
-  return sql
-    .replaceAll("\r\n", "\n")
-    .replace(/[ \t]+$/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .replace(/;+$/u, "")
-    .trim();
+  const lines = sql.replaceAll("\r\n", "\n").split("\n");
+  const collapsed: string[] = [];
+  let blankRun = 0;
+  for (const line of lines) {
+    const trimmedEnd = line.trimEnd();
+    blankRun = trimmedEnd.length === 0 ? blankRun + 1 : 0;
+    if (blankRun <= 1) {
+      collapsed.push(trimmedEnd);
+    }
+  }
+  const text = collapsed.join("\n").trim();
+  let end = text.length;
+  while (end > 0 && text[end - 1] === ";") {
+    end -= 1;
+  }
+  return text.slice(0, end).trimEnd();
 }

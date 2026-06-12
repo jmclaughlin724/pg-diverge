@@ -66,7 +66,8 @@ describe("routine replace compatibility", () => {
     const sql = renderMigration(plan, { includeHeader: false });
 
     expect(sql).toContain('DROP FUNCTION IF EXISTS "app"."f"(integer);');
-    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.f(a integer) RETURNS text");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.f(");
+    expect(sql).toContain(") RETURNS text");
   });
 
   it("keeps body-only changes on the clean OR REPLACE path", async () => {

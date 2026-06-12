@@ -3,8 +3,11 @@ import type { SchemaObject } from "../src/core.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import type { RenderGuardFacts } from "../src/sql/facts.js";
 
-async function singleObject(sql: string): Promise<SchemaObject> {
-  const result = await extractObjectsFromSql(sql);
+async function singleObject(
+  sql: string,
+  config?: { normalize?: "off" | "deparse" },
+): Promise<SchemaObject> {
+  const result = await extractObjectsFromSql(sql, config ? { config } : {});
   expect(result.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
   expect(result.objects).toHaveLength(1);
   const object = result.objects[0];
@@ -63,7 +66,9 @@ describe("AST object identity", () => {
 
 describe("render guard facts", () => {
   it("locates the splice offset after table prefix keywords", async () => {
-    const table = await singleObject("CREATE UNLOGGED TABLE app.t (id integer);");
+    const table = await singleObject("CREATE UNLOGGED TABLE app.t (id integer);", {
+      normalize: "off",
+    });
 
     expect(renderFacts(table).guard).toBe("ifNotExists");
     expect(splicedGuard(table, "IF NOT EXISTS ")).toBe(
@@ -91,7 +96,9 @@ describe("render guard facts", () => {
   });
 
   it("skips leading comments when locating splice offsets", async () => {
-    const table = await singleObject("-- owner comment\nCREATE TABLE app.t2 (id integer);");
+    const table = await singleObject("-- owner comment\nCREATE TABLE app.t2 (id integer);", {
+      normalize: "off",
+    });
 
     expect(splicedGuard(table, "IF NOT EXISTS ")).toBe(
       "-- owner comment\nCREATE TABLE IF NOT EXISTS app.t2 (id integer)",

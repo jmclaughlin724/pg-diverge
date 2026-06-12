@@ -68,7 +68,7 @@ No flags are needed day to day: sources, output paths, and names all have sensib
 
 - **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, `DROP ... IF EXISTS`, catalog-checked `DO` blocks). A crashed deploy can simply run the file again.
 - **Fails closed on ambiguity.** Drops, renames, and type changes stay blocked until you approve the exact object in `hints`. Nothing is inferred from name similarity.
-- **Pre-normalized output.** Optional normalization rewrites every migration into one canonical SQL style (`normalize: "deparse"`).
+- **Normalized output.** Every migration is written in one canonical SQL style, so formatting never shows up as a change.
 - **No git ceremony.** Schema files are diffed straight from disk — no staging or committing before you can generate.
 - **Everything stays in sync.** Your editor validates the config via JSON Schema and `--watch` re-diffs on save; named `environments` point commands at local, staging, or production; `migrations` reconciles files against each database's applied history; `--fail-on-diff` gates drift in CI.
 - **Accuracy is measured, not assumed.** Diff output is scored against ground-truth change manifests ([benchmarks](#accuracy)).

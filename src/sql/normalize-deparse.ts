@@ -4,6 +4,7 @@ import { diagnostic } from "../diagnostics.js";
 import { sha256, stableJson } from "../hash.js";
 import type { AstStatement } from "./ast.js";
 import { astStatements } from "./ast.js";
+import { normalizeSql } from "./identifiers.js";
 import { stripLocations } from "./object-hash.js";
 import { parseSqlAst } from "./parser.js";
 
@@ -41,8 +42,9 @@ export async function normalizeObjectSql(
       ],
     };
   }
-  const reparsed = await parseSqlAst(text, object.file);
-  const statements = reparsed.ast === undefined ? [] : astStatements(reparsed.ast, text);
+  const cleaned = normalizeSql(text);
+  const reparsed = await parseSqlAst(cleaned, object.file);
+  const statements = reparsed.ast === undefined ? [] : astStatements(reparsed.ast, cleaned);
   if (statements.length === 0 || !astEquals(ast, reparsed.ast)) {
     return {
       diagnostics: [
@@ -55,7 +57,7 @@ export async function normalizeObjectSql(
       ],
     };
   }
-  return { diagnostics: [], sql: text, statements };
+  return { diagnostics: [], sql: cleaned, statements };
 }
 
 /**

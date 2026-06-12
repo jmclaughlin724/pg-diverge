@@ -36,7 +36,9 @@ describe("deparse normalization (tier 2, opt-in)", () => {
 
   it("does not change object hashes relative to normalize: off", async () => {
     const root = await treeDir(messyTree);
-    const off = await extractSourceModel(`dir:${root}`);
+    const off = await extractSourceModel(`dir:${root}`, {
+      config: { normalize: "off" },
+    });
     const on = await extractSourceModel(`dir:${root}`, {
       config: { normalize: "deparse" },
     });

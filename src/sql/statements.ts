@@ -214,8 +214,21 @@ function stripLeadingIdentifier(text: string): string {
     }
     return text.slice(index).trim();
   }
-  const match = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(text);
-  return match ? text.slice(match[0].length).trim() : text;
+  let length = 0;
+  while (length < text.length) {
+    const char = text[length] ?? "";
+    const isWordChar =
+      (char >= "a" && char <= "z") ||
+      (char >= "A" && char <= "Z") ||
+      (char >= "0" && char <= "9" && length > 0) ||
+      char === "_" ||
+      (char === "$" && length > 0);
+    if (!isWordChar) {
+      break;
+    }
+    length += 1;
+  }
+  return length > 0 ? text.slice(length).trim() : text;
 }
 
 export function findCharOutsideQuotes(input: string, target: string, from: number): number {
