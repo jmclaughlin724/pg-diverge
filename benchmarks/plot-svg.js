@@ -55,7 +55,7 @@ export function renderHeadToHeadSvg(rows, fixture, environments, options = {}) {
   const plotBottom = top + groups.length * rowHeight - 12;
   const height = plotBottom + 76;
 
-  const domainMax = niceCeil(Math.max(...groups.map((group) => group.p95)));
+  const domainMax = Math.max(...groups.map((group) => group.p95)) * 1.04;
   const xFor = (value) => x0 + (Math.max(0, value) / domainMax) * chartWidth;
   const tablesNote = fixtureScale[fixture]?.tables;
   const supaMedians = groups.filter((g) => isSupaschema(g.label)).map((g) => g.median);
@@ -63,7 +63,7 @@ export function renderHeadToHeadSvg(rows, fixture, environments, options = {}) {
   const slowestSupa = supaMedians.length > 0 ? Math.max(...supaMedians) : undefined;
   const speedup =
     slowestSupa !== undefined && engineMedians.length > 0
-      ? Math.floor(Math.min(...engineMedians) / slowestSupa)
+      ? Math.floor(Math.max(...engineMedians) / slowestSupa)
       : 0;
 
   const title =
@@ -84,17 +84,7 @@ export function renderHeadToHeadSvg(rows, fixture, environments, options = {}) {
     parts.push(text(labelX, 80 + index * 19, line, { fill: theme.subtitle, size: 12.5 }));
   }
   if (speedup >= 2) {
-    const chipWidth = 234;
-    const chipX = width - margin - chipWidth;
-    parts.push(
-      `<rect x="${chipX}" y="${30}" width="${chipWidth}" height="40" rx="10" fill="rgba(16,185,129,0.12)" stroke="${theme.passStroke}" stroke-opacity="0.55" />`,
-      text(chipX + chipWidth / 2, 56, `supaschema ≥ ${speedup}× faster`, {
-        anchor: "middle",
-        fill: theme.accent,
-        size: 16.5,
-        weight: "700",
-      }),
-    );
+    parts.push(speedupChip(width - margin, `up to ${speedup}× faster`, 16.5));
   }
 
   for (const [header, columnX, anchor] of [
@@ -142,6 +132,7 @@ export function renderHeadToHeadSvg(rows, fixture, environments, options = {}) {
         weight: supa ? "650" : "450",
       }),
       `<rect x="${x0}" y="${y}" width="${Math.max(3, barEnd - x0).toFixed(1)}" height="20" rx="5" fill="${barFill}" />`,
+      `<line x1="${barEnd.toFixed(1)}" y1="${y + 10}" x2="${p95X.toFixed(1)}" y2="${y + 10}" stroke="${theme.title}" stroke-opacity="0.18" stroke-width="1.5" />`,
       `<line x1="${p95X.toFixed(1)}" y1="${y - 3}" x2="${p95X.toFixed(1)}" y2="${y + 23}" stroke="${theme.title}" stroke-opacity="0.45" stroke-width="2" />`,
       insideBar
         ? text(barEnd - 8, y + 14.5, valueLabel, {
@@ -171,6 +162,20 @@ export function renderHeadToHeadSvg(rows, fixture, environments, options = {}) {
   return parts.join("\n");
 }
 
+function speedupChip(rightEdge, label, size) {
+  const chipWidth = Math.max(170, Math.round(label.length * size * 0.52) + 34);
+  const chipX = rightEdge - chipWidth;
+  return [
+    `<rect x="${chipX}" y="30" width="${chipWidth}" height="40" rx="10" fill="rgba(16,185,129,0.12)" stroke="${theme.passStroke}" stroke-opacity="0.55" />`,
+    text(chipX + chipWidth / 2, 56, label, {
+      anchor: "middle",
+      fill: theme.accent,
+      size,
+      weight: "700",
+    }),
+  ].join("\n");
+}
+
 function splitSubtitle(subtitle, maxChars) {
   if (subtitle.length <= maxChars) {
     return [subtitle];
@@ -193,31 +198,18 @@ function splitSubtitle(subtitle, maxChars) {
   return lines.slice(0, 2);
 }
 
-function niceCeil(value) {
-  const steps = [
-    5000, 10_000, 15_000, 20_000, 25_000, 30_000, 40_000, 50_000, 60_000, 80_000, 100_000, 150_000,
-    200_000, 250_000,
-  ];
-  for (const step of steps) {
-    if (value <= step) {
-      return step;
-    }
-  }
-  return Math.ceil(value / 50_000) * 50_000;
-}
-
 export function renderLatencySvg(rows, fixture, environments) {
   const groups = groupedStats(rows);
   const width = 1000;
   const margin = 36;
   const labelX = margin;
   const x0 = 232;
-  const chartWidth = 600;
+  const chartWidth = width - margin - x0;
   const rowHeight = 44;
   const top = 130;
   const plotBottom = top + groups.length * rowHeight - 12;
   const height = plotBottom + 76;
-  const domainMax = niceCeil(Math.max(...groups.map((group) => group.p95)));
+  const domainMax = Math.max(...groups.map((group) => group.p95)) * 1.04;
   const xFor = (value) => x0 + (Math.max(0, value) / domainMax) * chartWidth;
   const tablesNote = fixtureScale[fixture]?.tables;
   const supaMedians = groups.filter((g) => isSupaschema(g.label)).map((g) => g.median);
@@ -225,33 +217,30 @@ export function renderLatencySvg(rows, fixture, environments) {
   const slowestSupa = supaMedians.length > 0 ? Math.max(...supaMedians) : undefined;
   const speedup =
     slowestSupa !== undefined && engineMedians.length > 0
-      ? Math.floor(Math.min(...engineMedians) / slowestSupa)
+      ? Math.floor(Math.max(...engineMedians) / slowestSupa)
       : 0;
+  const title = tablesNote
+    ? tablesNote.replace(/\btables?\b/u, (word) => (word === "table" ? "Table" : "Tables"))
+    : `${fixture} fixture`;
   const parts = [
     svgHeader(width, height),
     defs(),
     `<rect width="100%" height="100%" rx="14" fill="${theme.bg}" />`,
-    text(labelX, 52, `Diff latency — ${fixture} fixture${tablesNote ? ` (${tablesNote})` : ""}`, {
-      fill: theme.title,
-      size: 22,
-      weight: "700",
-    }),
-    text(labelX, 80, "Median seconds per diff (linear, lower is better) · whisker marks p95", {
-      fill: theme.subtitle,
-      size: 12.5,
-    }),
+    text(labelX, 52, title, { fill: theme.title, size: 22, weight: "700" }),
+    text(
+      labelX,
+      80,
+      `${fixture} fixture · median diff seconds (linear, lower is better) · whisker marks p95`,
+      { fill: theme.subtitle, size: 12.5 },
+    ),
   ];
   if (speedup >= 2) {
-    const chipWidth = 234;
-    const chipX = width - margin - chipWidth;
     parts.push(
-      `<rect x="${chipX}" y="${30}" width="${chipWidth}" height="40" rx="10" fill="rgba(16,185,129,0.12)" stroke="${theme.passStroke}" stroke-opacity="0.55" />`,
-      text(chipX + chipWidth / 2, 56, `supaschema ≥ ${speedup}× faster`, {
-        anchor: "middle",
-        fill: theme.accent,
-        size: 16.5,
-        weight: "700",
-      }),
+      speedupChip(
+        width - margin,
+        `supaschema is up to ${speedup}× faster than legacy diff engines`,
+        15,
+      ),
     );
   }
   const tickStep = domainMax <= 10_000 ? 2000 : domainMax <= 60_000 ? 10_000 : 50_000;
@@ -288,6 +277,7 @@ export function renderLatencySvg(rows, fixture, environments) {
         weight: supa ? "650" : "450",
       }),
       `<rect x="${x0}" y="${y}" width="${Math.max(3, barEnd - x0).toFixed(1)}" height="20" rx="5" fill="${barFill}" />`,
+      `<line x1="${barEnd.toFixed(1)}" y1="${y + 10}" x2="${p95X.toFixed(1)}" y2="${y + 10}" stroke="${theme.title}" stroke-opacity="0.18" stroke-width="1.5" />`,
       `<line x1="${p95X.toFixed(1)}" y1="${y - 3}" x2="${p95X.toFixed(1)}" y2="${y + 23}" stroke="${theme.title}" stroke-opacity="0.45" stroke-width="2" />`,
       insideBar
         ? text(barEnd - 8, y + 14.5, valueLabel, {

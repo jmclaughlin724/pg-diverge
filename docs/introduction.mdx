@@ -19,7 +19,7 @@ supaschema takes a different approach. It parses your declarative schema files u
 
 * **No infrastructure required.** supaschema never touches a real database during migration generation. No Docker, no shadow DB, no network calls.
 * **Built on PostgreSQL's own parser.** supaschema uses the official PostgreSQL parser compiled to WebAssembly, so it understands your SQL the same way the database does.
-* **16–68× faster than alternative engines.** supaschema's diff engine consistently outperforms competing tools in benchmarks across schema sizes.
+* **18–68× faster than alternative engines.** supaschema's diff engine consistently outperforms competing tools in [benchmarks](/benchmarks) across schema sizes.
 * **Perfect F1 accuracy (1.000).** Independent accuracy benchmarks show supaschema produces zero false positives and zero false negatives in migration output.
 * **Replay-safe migrations.** Every generated migration is idempotent and safe to re-run, so you can integrate it into CI/CD pipelines without fear of destructive side effects.
 
@@ -33,7 +33,7 @@ The table below shows median diff time across schema sizes and F1 accuracy score
 | Supabase CLI engines | 4.0–4.5 s  | 39–43 s      | \~3.5 min    | 0.982–0.999 |
 
 <Note>
-  Benchmark figures come from a reference run on Apple Silicon, Node 24, PostgreSQL 17.6, and Supabase CLI 2.106.0. The 16–68× speedup range reflects the spread from small to large schemas — the gap widens as your schema grows because shadow-database engines pay for a full schema replay into a fresh Docker database on every diff. The Supabase CLI accuracy gap is always the same miss: each engine silently drops an RLS policy change.
+  Benchmark figures come from a reference run on Apple Silicon, Node 24, PostgreSQL 17.6, and Supabase CLI 2.106.0. The 18–68× speedup range reflects the spread from small to large schemas — the gap widens as your schema grows because shadow-database engines pay for a full schema replay into a fresh Docker database on every diff. The Supabase CLI accuracy gap is always the same miss: each engine silently drops an RLS policy change.
 </Note>
 
 ## Two Ways to Use supaschema
@@ -105,5 +105,17 @@ supaschema is dual-licensed:
 
   <Card title="Type Generation" icon="code" href="/commands/types">
     Generate TypeScript types directly from your declarative schema files.
+  </Card>
+
+  <Card title="Supabase CLI comparison" icon="git-compare" href="/comparisons/supaschema-vs-supabase-cli">
+    Compare `supaschema` with Supabase CLI `db diff` for speed, safety, and workflow fit.
+  </Card>
+
+  <Card title="FAQ" icon="circle-help" href="/faq">
+    Get direct answers about Docker-free diffs, replay safety, RLS policies, and type generation.
+  </Card>
+
+  <Card title="Benchmarks" icon="chart-line" href="/benchmarks">
+    Review reproducible latency, accuracy, and replay-safety results.
   </Card>
 </CardGroup>
