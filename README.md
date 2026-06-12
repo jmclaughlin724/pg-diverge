@@ -115,10 +115,14 @@ Every engine's migration applies once and reaches the target catalog. Only supas
 
 ## How It Works
 
-1. **Extract** — statements are classified through the real PostgreSQL parser (`libpg-query`), never regex; live databases are read with read-only `pg_catalog` queries.
-2. **Compare** — objects match by a location-stripped parse-tree hash, so the same definition in a file and a live catalog hash identically across keyword case, type aliases, and guard spellings. Privileges are modeled as deltas, so catalog ACL noise never reads as drift.
-3. **Plan** — operations are ordered along AST-collected dependency edges; column changes become per-column `ALTER`s; destructive operations are hint-gated.
-4. **Render** — guarded SQL with a lock-timeout preamble and a lineage marker; `CREATE INDEX CONCURRENTLY` splits into a `.concurrent.sql` companion under the `postgres` adapter.
+The engine is built on PostgreSQL's own parser. `libpg-query` compiles the server's actual C parser — the same grammar PostgreSQL itself runs — to WebAssembly, so every statement from every source is parsed in-process into the server's native parse tree. That is what replaces the shadow database: the component that would have validated and interpreted your SQL inside a Docker container is embedded in the library. SQL is never classified, compared, or rewritten with regex anywhere in the engine.
+
+Everything downstream operates on those parse trees:
+
+1. **Extract** — every statement is parsed and classified into a typed object model; live databases are read with read-only `pg_catalog` queries and reconstructed through the same parser.
+2. **Compare** — objects match by a SHA-256 hash of the location-stripped parse tree, so the same definition in a SQL file and a live catalog hashes identically across keyword case, type aliases, identifier quoting, and guard spellings. Version-specific catalog quirks (such as PostgreSQL 15 qualifying view columns) are canonicalized at the tree level, and privileges are modeled as deltas so catalog ACL noise never reads as drift.
+3. **Plan** — operations are ordered along dependency edges collected from the trees; column changes become per-column `ALTER`s; destructive operations are hint-gated.
+4. **Render** — guard clauses are spliced at parser-reported statement offsets, producing guarded SQL with a lock-timeout preamble and a lineage marker; `normalize: "deparse"` rewrites output through `pgsql-deparser` (the parser's TypeScript companion), fidelity-gated so the canonical text must re-parse to the identical tree; `CREATE INDEX CONCURRENTLY` splits into a `.concurrent.sql` companion under the `postgres` adapter.
 5. **Gate** — migration writes never overwrite, and the lineage chain refuses a migration that doesn't continue the newest pending one.
 6. **Verify** — the migration runs twice in disposable databases, one transaction per file (exactly how `supabase db push` runs it); the catalog must match the target and a re-diff must come back empty.
 
