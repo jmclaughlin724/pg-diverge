@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const lineageMarker = "-- pg-diverge: lineage ";
 const updateHeader = "*** Update File: ";
@@ -12,11 +13,11 @@ function patchTargets(patchText) {
   const adds = new Set();
   for (const line of patchText.split("\n")) {
     if (line.startsWith(updateHeader)) {
-      updates.push(line.slice(updateHeader.length).trim());
+      updates.push(resolve(line.slice(updateHeader.length).trim()));
     } else if (line.startsWith(deleteHeader)) {
-      deletes.push(line.slice(deleteHeader.length).trim());
+      deletes.push(resolve(line.slice(deleteHeader.length).trim()));
     } else if (line.startsWith(addHeader)) {
-      adds.add(line.slice(addHeader.length).trim());
+      adds.add(resolve(line.slice(addHeader.length).trim()));
     }
   }
   const rewrites = deletes.filter((path) => adds.has(path));

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative as relativePath } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -123,6 +123,21 @@ describe("codex generated-migration tool gate", () => {
   it("denies delete-and-rewrite patches that replace a generated migration in place", async () => {
     const { generated } = await fixtures();
     const patch = `*** Begin Patch\n*** Delete File: ${generated}\n*** Add File: ${generated}\n+-- hand-written replacement\n*** End Patch`;
+    const result = await runHook(script, {
+      tool_input: { patch },
+      tool_name: "apply_patch",
+    });
+
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    };
+    expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+
+  it("denies delete-and-rewrite patches even when the two headers spell the path differently", async () => {
+    const { generated } = await fixtures();
+    const relative = relativePath(process.cwd(), generated);
+    const patch = `*** Begin Patch\n*** Delete File: ./${relative}\n*** Add File: ${relative}\n+-- hand-written replacement\n*** End Patch`;
     const result = await runHook(script, {
       tool_input: { patch },
       tool_name: "apply_patch",
