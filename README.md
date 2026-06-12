@@ -2,9 +2,17 @@
 
 [![CI](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml/badge.svg)](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/supaschema)](https://www.npmjs.com/package/supaschema) [![npm downloads](https://img.shields.io/npm/dm/supaschema)](https://www.npmjs.com/package/supaschema) [![node](https://img.shields.io/node/v/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/package.json) [![license](https://img.shields.io/npm/l/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/LICENSE) [![codecov](https://codecov.io/gh/jmclaughlin724/supaschema/branch/main/graph/badge.svg)](https://codecov.io/gh/jmclaughlin724/supaschema) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jmclaughlin724/supaschema/badge)](https://scorecard.dev/viewer/?uri=github.com/jmclaughlin724/supaschema) [![install size](https://packagephobia.com/badge?p=supaschema)](https://packagephobia.com/result?p=supaschema)
 
-**From declarative schema to fully synced database in milliseconds with one command.** No ORM, no Docker, and no shadow database needed. supaschema diffs the schema your SQL files declare against the schema your PostgreSQL or Supabase database actually has, and writes a migration that is safe to run twice.
+**From declarative schema to fully synced database in milliseconds with one command.** No ORM, no Docker, and no shadow database needed.
 
-Existing diff engines replay your entire schema into a throwaway Docker database, guess at ambiguous changes, and emit SQL that fails on re-run. Measured head-to-head on identical fixtures ([benchmarks](#benchmarks)):
+The promise of declarative schema management sounds great: keep your schema in SQL files, edit them in your editor, diff against your database to produce a type-safe, idempotent migration, and get regenerated types back in your repo.
+
+In practice, the existing tooling needs a running database at every step. Diff engines replay your schema into a throwaway Docker database just to read it, and type generators introspect only what your database has already applied — so an unapplied change sitting in your editor can't produce a migration or its types until the database catches up. That's a backlog, a time sink, and a constant drain on CPU.
+
+supaschema knows every table, column, type, and enum without a database because it's built on PostgreSQL's own parser. The same system that would normally interpret your SQL inside a Docker container ships inside the package, embedded in your repo.
+
+Migrations diff and Zod-validated types generate without a database, without an ORM, without Docker, without a shadow database, without introspection, and without applying anything to your local or remote database. All within milliseconds.
+
+Measured head-to-head against the Supabase CLI's diff engines on identical fixtures ([benchmarks](#benchmarks)):
 
 |  | supaschema | Supabase CLI engines (all five) |
 | --- | --- | --- |
