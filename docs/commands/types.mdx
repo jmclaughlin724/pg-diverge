@@ -22,7 +22,7 @@ The `types` command reads your declarative schema tree and emits two output file
 
 ## Auto-run with `diff`
 
-You don't have to invoke `types` manually after every schema change. The `diff` command refreshes the configured `typesFile` and `zodFile` after it successfully writes a new migration file. Use `--dry-run` or `--out stdout` when you want to preview a diff without writing a migration or refreshing generated type files.
+You don't have to invoke `types` manually after every schema change once the output files exist. The `diff` command refreshes the configured `typesFile` and `zodFile` after it successfully writes a new migration file, but it skips missing files instead of creating them. Use `--dry-run` or `--out stdout` when you want to preview a diff without writing a migration or refreshing generated type files.
 
 ## Configuration
 
@@ -33,7 +33,7 @@ Two config keys control where the output files land:
 | `typesFile` | `database.types.ts` | Output path for the TypeScript types file |
 | `zodFile`   | `database.zod.ts`   | Output path for the Zod validators file   |
 
-Both paths are resolved relative to the directory that contains your `supaschema.config.json`.
+Both paths are resolved relative to the process working directory where you run the command.
 
 ## Flags
 

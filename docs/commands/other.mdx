@@ -18,10 +18,10 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 
   # Pipe the output to jq to inspect only table changes
   npx supaschema plan --from git:HEAD --to dir:supabase/schemas \
-    | jq '[.objects[] | select(.type == "table")]'
+    | jq '[.operations[] | select(.ref.kind == "table")]'
   ```
 
-  The JSON output is an object with a top-level `objects` array. Each element describes a single DDL object, the operation (`create`, `alter`, `drop`), and the ordered list of SQL statements that would be emitted.
+  The JSON output is a `MigrationPlan` object with a top-level `operations` array. Each operation describes the planned change, object reference, stable object key, destructive/blocking flags, and diagnostics. Use `diff` when you need rendered SQL.
 
   Flags: `--from <source>`, `--to <target>`, `--schema <names>`, `--timing`.
 

@@ -36,7 +36,7 @@ npx supaschema verify
 supabase db push
 ```
 
-`diff` writes the migration and refreshes types. `check` catches replay-safety and lock hazards. `verify` applies the migration twice in disposable databases and confirms the result matches the declared target. `supabase db push` remains the apply step.
+`diff` writes the migration and refreshes existing type outputs. `check` catches replay-safety and lock hazards. `verify` applies the migration twice in disposable databases and confirms the result matches the declared target. `supabase db push` remains the apply step.
 
 ## RLS policy safety
 
@@ -46,7 +46,7 @@ Row Level Security policies are tenant boundaries in many Supabase applications.
 
 ## Benchmark results
 
-The repository benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. On the 1,000-table fixture, `supaschema` generates the migration and refreshed types in one command, while database-backed workflows need multiple steps and a database that has already caught up.
+The repository benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. On the 1,000-table fixture with type outputs present, `supaschema` generates the migration and refreshes types in one command, while database-backed workflows need multiple steps and a database that has already caught up.
 
 See [benchmarks](/benchmarks) for latency, accuracy, and replay-safety charts, and see the [anilize case study](/case-study-anilize) for a production Supabase schema with thousands of objects.
 
@@ -77,4 +77,3 @@ supabase db push
 ```
 
 Add `npx supaschema verify` before merge when CI can reach a disposable PostgreSQL database.
-

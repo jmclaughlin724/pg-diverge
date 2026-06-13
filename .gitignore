@@ -9,3 +9,4 @@ benchmarks/results
 .DS_Store
 .envrc
 .mcp.json
+.gitnexus

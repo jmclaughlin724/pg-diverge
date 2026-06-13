@@ -15,55 +15,56 @@ try {
   const projectDir = resolve(
     (typeof payload?.cwd === "string" && payload.cwd) || process.env.CODEX_PROJECT_DIR || ".",
   );
-  const schemaPaths = await readSchemaPaths(projectDir);
-  const changed = editTargets(payload, projectDir).filter(
-    (path) =>
-      path.endsWith(".sql") &&
-      schemaPaths.some((dir) => isInside(resolve(projectDir, dir), path)) &&
-      !isGeneratedMigration(path),
-  );
+  const schemaRoots = (await readSchemaPaths(projectDir)).map((path) => ({
+    display: rel(projectDir, resolve(projectDir, path)),
+    root: resolve(projectDir, path),
+  }));
+  const { changed, groups } = changedSchemaTargets(editTargets(payload, projectDir), schemaRoots);
   if (changed.length === 0) {
     emit({});
   }
   const bin = resolveBinary(projectDir);
-  const diff = run(bin, ["diff"], projectDir);
-  if (diff.code === 0) {
-    const written = diff.stdout
-      .trim()
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.endsWith(".sql"));
-    if (written.length === 0) {
+  const written = [];
+  for (const group of groups) {
+    const diff = run(bin, ["diff", "--to", `dir:${group.display}`], projectDir);
+    if (diff.code !== 0) {
       emit(
         context(
-          `supaschema: ${rel(projectDir, changed[0])} changed but produces no net schema change versus the current state — no migration written.`,
+          `supaschema auto-diff for ${group.changed
+            .map((path) => rel(projectDir, path))
+            .join(", ")} did not complete (exit ${diff.code}):\n${head(
+            diff.stderr || diff.stdout,
+          )}\nResolve per the supaschema skill — e.g. add the exact object key to hints.destructive for a destructive change, or diff from the post-migration state when the lineage chain is broken — then re-run \`supaschema diff --to dir:${group.display}\`.`,
         ),
       );
     }
-    const check = run(bin, ["check"], projectDir);
-    const checkLine =
-      check.code === 0
-        ? "supaschema check passed (replay-safe)"
-        : `supaschema check reported diagnostics:\n${head(check.stderr || check.stdout)}`;
+    written.push(...migrationOutputs(diff.stdout));
+  }
+  if (written.length === 0) {
     emit(
       context(
-        `supaschema auto-diff completed for ${changed
-          .map((path) => rel(projectDir, path))
-          .join(", ")}: generated ${written
+        `supaschema: ${changed
           .map((path) => rel(projectDir, path))
           .join(
             ", ",
-          )} and refreshed the generated types. ${checkLine}. Commit the tree change, the migration, and the types together — the migration runner (e.g. \`supabase db push\`) applies it; supaschema never touches your database.`,
+          )} changed but produces no net schema change versus the current state — no migration written.`,
       ),
     );
   }
+  const check = run(bin, ["check"], projectDir);
+  const checkLine =
+    check.code === 0
+      ? "supaschema check passed (replay-safe)"
+      : `supaschema check reported diagnostics:\n${head(check.stderr || check.stdout)}`;
   emit(
     context(
-      `supaschema auto-diff for ${changed
+      `supaschema auto-diff completed for ${changed
         .map((path) => rel(projectDir, path))
-        .join(", ")} did not complete (exit ${diff.code}):\n${head(
-        diff.stderr || diff.stdout,
-      )}\nResolve per the supaschema skill — e.g. add the exact object key to hints.destructive for a destructive change, or diff from the post-migration state when the lineage chain is broken — then re-run \`supaschema diff\`.`,
+        .join(", ")}: generated ${written
+        .map((path) => rel(projectDir, path))
+        .join(
+          ", ",
+        )} and refreshed configured type files that already exist. ${checkLine}. Commit the tree change, the migration, and any refreshed types together — the migration runner (e.g. \`supabase db push\`) applies it; supaschema never touches your database.`,
     ),
   );
 } catch (error) {
@@ -112,6 +113,38 @@ function editTargets(payload, projectDir) {
     return [isAbsolute(input.file_path) ? input.file_path : resolve(projectDir, input.file_path)];
   }
   return [];
+}
+
+function changedSchemaTargets(paths, schemaRoots) {
+  const groups = new Map();
+  const changed = [];
+  for (const path of paths) {
+    if (!path.endsWith(".sql") || isGeneratedMigration(path)) {
+      continue;
+    }
+    const matched = matchedSchemaRoot(path, schemaRoots);
+    if (!matched) {
+      continue;
+    }
+    changed.push(path);
+    const group = groups.get(matched.root) ?? { changed: [], display: matched.display };
+    group.changed.push(path);
+    groups.set(matched.root, group);
+  }
+  return { changed, groups: Array.from(groups.values()) };
+}
+
+function matchedSchemaRoot(path, schemaRoots) {
+  const matches = schemaRoots.filter((entry) => isInside(entry.root, path));
+  return matches.sort((left, right) => right.root.length - left.root.length)[0];
+}
+
+function migrationOutputs(stdout) {
+  return stdout
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.endsWith(".sql"));
 }
 
 function isGeneratedMigration(path) {

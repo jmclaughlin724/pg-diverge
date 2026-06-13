@@ -4,14 +4,14 @@
 
 [Documentation](https://supaschema.com) · [Quickstart](https://supaschema.com/quickstart) · [Benchmarks](https://supaschema.com/benchmarks) · [Supabase CLI comparison](https://supaschema.com/comparisons/supaschema-vs-supabase-cli) · [FAQ](https://supaschema.com/faq)
 
-**Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, and regenerates your TypeScript + Zod types in a single command — without standing up a database to do it.
+**Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, and refreshes existing TypeScript + Zod outputs in the same command — without standing up a database to do it.
 
 - **Fast at any scale.** It parses instead of replaying: a full diff of an 8,300-object production schema runs in under two seconds, where the Supabase CLI's shadow-database engines take minutes. The gap widens from ~18× on a single-table change to ~68× at 2,500 tables.
 - **Catches the tenant-isolation regression other tools ship.** An RLS policy's `USING` predicate _is_ the tenant boundary. Every Supabase CLI engine diffs policies by name and silently drops a tightened predicate; supaschema compares policy bodies structurally and catches it before it merges.
 - **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, catalog-checked `DO` blocks), so a crashed or retried deploy just re-runs the file — where the CLI's unguarded `CREATE TABLE` / `CREATE INDEX` fail on the second apply.
 
 ```bash
-npx supaschema diff   # writes the migration AND refreshes database.types.ts + database.zod.ts
+npx supaschema diff   # writes the migration; refreshes existing type outputs if present
 ```
 
 ![supaschema vs every Supabase CLI engine at 1,000 tables — median diff latency, accuracy F1, and replay-safety side by side](docs/benchmarks/head-to-head-xl.svg)
@@ -44,9 +44,9 @@ Requires Node 22+ and PostgreSQL 15+. Run `npx supaschema init` to scaffold `sup
 
 ## Quick Start
 
-You edit one thing: your schema files (`supabase/schemas/` by default). Everything downstream — the migration, the replay-safety check, and the regenerated types — comes from that edit.
+You edit one thing: your schema files (`supabase/schemas/` by default). Everything downstream — the migration, the replay-safety check, and refreshed type outputs once initialized — comes from that edit.
 
-**With the agent bundle installed** ([AI agents](#ai-agents)), saving a schema file _is_ the workflow. The PostToolUse hook senses the change, runs the diff and the replay-safety check to completion, writes the timestamped migration and refreshed types, and reports the result back to the agent — there is no command to type.
+**With the agent bundle installed** ([AI agents](#ai-agents)), saving a schema file _is_ the workflow. The PostToolUse hook senses the change, runs the diff and the replay-safety check to completion, writes the timestamped migration, refreshes existing type outputs, and reports the result back to the agent — there is no command to type.
 
 **By hand or in CI**, run the diff yourself:
 
@@ -95,7 +95,7 @@ No flags are needed day to day: sources, output paths, and names all have sensib
 - **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, `DROP ... IF EXISTS`, catalog-checked `DO` blocks). A crashed deploy can simply run the file again.
 - **Fails closed on ambiguity.** Drops, renames, and type changes stay blocked until you approve the exact object in `hints`. Nothing is inferred from name similarity.
 - **Normalized output.** Migrations are written in one canonical SQL style, so formatting never shows up as a change. An object the deparser can't faithfully reproduce keeps your original spelling and says so with a warning.
-- **Types and validators without a database.** `supaschema types` writes Supabase-compatible TypeScript types plus runtime Zod validators straight from your schema files, and `diff` refreshes both automatically with every migration. No introspection, no running database, no applying migrations first — the parser already knows your schema, so you never stop mid-workflow to deploy before types can regenerate.
+- **Types and validators without a database.** `supaschema types` writes Supabase-compatible TypeScript types plus runtime Zod validators straight from your schema files; after those files exist, `diff` refreshes both automatically with every migration. No introspection, no running database, no applying migrations first — the parser already knows your schema, so you never stop mid-workflow to deploy before types can regenerate.
 - **No git ceremony.** Schema files are diffed straight from disk — no staging or committing before you can generate.
 - **Everything stays in sync.** Your editor validates the config via JSON Schema and `--watch` re-diffs on save; named `environments` point commands at local, staging, or production; `migrations` reconciles files against each database's applied history; `--fail-on-diff` gates drift in CI.
 - **Accuracy is measured, not assumed.** Diff output is scored against ground-truth change manifests ([benchmarks](#accuracy)).
@@ -116,9 +116,9 @@ The gap widens with scale. At 2,500 tables (~17,500 objects) the engines cross t
 
 ![supaschema vs every Supabase CLI engine at 2,500 tables — latency bars, F1 accuracy, and replay-safety](docs/benchmarks/head-to-head-xxl.svg)
 
-The diff is only half the loop. Getting a migration **and** regenerated types is one `supaschema diff` — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
+The diff is only half the loop. Once type outputs exist, getting a migration **and** refreshed types is one `supaschema diff` — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
 
-![Full workflow at 1,000 tables — supaschema's migration + regenerated types in one command vs db diff + apply + gen types per engine](docs/benchmarks/head-to-head-workflow-xl.svg)
+![Full workflow at 1,000 tables — supaschema's migration plus refreshed existing type outputs in one command vs db diff, apply, and gen types per engine](docs/benchmarks/head-to-head-workflow-xl.svg)
 
 Per-fixture latency bar charts at every scale: [additive](docs/benchmarks/additive-latency.svg) · [functions-policies](docs/benchmarks/functions-policies-latency.svg) · [realistic](docs/benchmarks/realistic-latency.svg) · [xl](docs/benchmarks/xl-latency.svg) · [xxl](docs/benchmarks/xxl-latency.svg).
 
@@ -193,7 +193,7 @@ The package ships a governance bundle so coding agents generate migrations throu
   - a **PreToolUse** hook that blocks any edit to a generated migration (identified by its lineage marker), and
   - a **PostToolUse** hook that senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, and returns the generated migration name — or the blocking `SUPA_*` diagnostic — straight back to the agent as context.
 
-So when an agent (or anyone) edits the declarative tree, the migration and refreshed types are written automatically and the agent is told what happened, with no command to remember. Copy the surfaces into your repo root to get the write-time enforcement — the hooks only run where `.claude/settings.json` and `.codex/hooks.json` are wired. Pointing agents at `node_modules/supaschema/` gives them the guidance without the hooks. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
+So when an agent (or anyone) edits the declarative tree, the migration and any existing type outputs are refreshed automatically and the agent is told what happened, with no command to remember. Copy the surfaces into your repo root to get the write-time enforcement — the hooks only run where `.claude/settings.json` and `.codex/hooks.json` are wired. Pointing agents at `node_modules/supaschema/` gives them the guidance without the hooks. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
 
 ## Library
 

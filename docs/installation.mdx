@@ -7,7 +7,7 @@ description: "Install supaschema from npm as a dev dependency, initialize your p
 
 > Install supaschema from npm as a dev dependency, initialize your project configuration, and use the doctor command to verify your environment is ready.
 
-supaschema is distributed as a standard npm package and works with any Node.js project. This page covers installing the package, understanding what the postinstall step does, initialising your configuration, and using the `doctor` command to verify that your environment is ready.
+supaschema is distributed as a standard npm package and works with any Node.js project. This page covers installing the package, understanding the install-time notice, initialising your configuration, and using the `doctor` command to verify that your environment is ready.
 
 ## Requirements
 
@@ -38,7 +38,13 @@ supaschema uses the official PostgreSQL parser compiled to WebAssembly, which is
 
 ### What the postinstall step does
 
-After the package installs, a `postinstall` script runs automatically. It checks whether a `supaschema.config.json` file already exists in your project root. If it does not, it creates one with sensible defaults:
+After the package installs, a `postinstall` script runs automatically. It never writes files into your project; if no supported config file exists, it prints a notice telling you to run `npx supaschema init`:
+
+```text theme={null}
+supaschema: run `npx supaschema init` to scaffold supaschema.config.json
+```
+
+Run `init` when you want to create `supaschema.config.json` with sensible defaults:
 
 ```json theme={null}
 {
@@ -47,10 +53,10 @@ After the package installs, a `postinstall` script runs automatically. It checks
 }
 ```
 
-This means you can run `npx supaschema diff` immediately after install without any manual configuration for a standard Supabase project layout.
+This keeps package installation side-effect-light while making setup explicit. In a standard Supabase project layout, you can run `npx supaschema diff` after creating the config with `npx supaschema init`.
 
 <Note>
-  If you commit `supaschema.config.json` to version control (recommended), the postinstall script will detect the existing file and skip scaffolding on subsequent `npm install` runs across your team.
+  If you commit `supaschema.config.json` to version control (recommended), the postinstall script will detect the existing file and print nothing on subsequent `npm install` runs across your team.
 </Note>
 
 ## Initialise Configuration
@@ -61,7 +67,7 @@ If you need to create or regenerate `supaschema.config.json` at any time — for
 npx supaschema init
 ```
 
-This is the same scaffolding that `postinstall` performs, but invoked explicitly. It writes `supaschema.config.json` to your current working directory with the default configuration values.
+This writes `supaschema.config.json` to your current working directory with the default configuration values.
 
 ## Diagnose Your Environment with `doctor`
 

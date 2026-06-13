@@ -7,7 +7,7 @@ description: "diff compares two schema sources and emits a replay-safe SQL migra
 
 > diff compares two schema sources and emits a replay-safe SQL migration. Supports --from, --to, --out, --watch, --fail-on-diff, and more.
 
-The `diff` command is the primary workflow entry point in supaschema. It compares a **before-state** (your live database or a git ref) against an **after-state** (your declarative schema directory) and renders an idempotent, replay-safe SQL migration. By default it writes the migration to `supabase/migrations/TIMESTAMP_name.sql` and then refreshes your TypeScript types automatically. You can redirect output to stdout, preview without writing, or run continuously in watch mode.
+The `diff` command is the primary workflow entry point in supaschema. It compares a **before-state** (your live database or a git ref) against an **after-state** (your declarative schema directory) and renders an idempotent, replay-safe SQL migration. By default it writes the migration to `supabase/migrations/TIMESTAMP_name.sql` and then refreshes configured TypeScript and Zod output files that already exist. You can redirect output to stdout, preview without writing, or run continuously in watch mode.
 
 ## Default Behavior
 
@@ -16,12 +16,12 @@ When you run `npx supaschema diff` with no flags, supaschema:
 1. Reads `--from` from your live local database (or `git:HEAD` when no database connection is configured).
 2. Reads `--to` from `dir:supabase/schemas`.
 3. Writes the resulting migration to `supabase/migrations/<TIMESTAMP>_migration.sql`.
-4. Refreshes TypeScript types from the updated schema.
+4. Refreshes existing configured type output files from the updated schema.
 
 If there is nothing to migrate, the command exits with code `0` and writes no file.
 
 <Note>
-  TypeScript type generation runs automatically after every successful migration write. Pass `--dry-run` or `--out stdout` to skip the write step and suppress type generation.
+  Type output refresh runs automatically after every successful migration write, but only for configured files that already exist. Run `npx supaschema types` once to create them. Pass `--dry-run` or `--out stdout` to skip the write step and suppress type refresh.
 </Note>
 
 ## Examples
@@ -106,7 +106,7 @@ npx supaschema diff --dry-run --summary
 </ParamField>
 
 <ParamField path="--config" type="path">
-  Path to a supaschema config file. Defaults to `supaschema.config.ts` (or `.js` / `.json`) in the current working directory.
+  Path to a supaschema config file. Defaults to `supaschema.config.json`, then `supaschema.config.mjs`, then `supaschema.config.js` in the current working directory.
 </ParamField>
 
 <ParamField path="--env" type="string">

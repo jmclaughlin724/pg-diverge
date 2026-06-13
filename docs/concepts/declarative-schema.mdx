@@ -69,7 +69,7 @@ supaschema extracts every recognisable database object from these files, includi
 * **Indexes** — including partial and expression indexes
 * **Row-level security policies**
 * **Grants** and **privileges**
-* **Triggers** and **rules**
+* **Triggers**
 * **Extensions** (within managed schemas)
 
 <Note>
@@ -127,7 +127,7 @@ Idempotency matters for several practical reasons:
 3. **Partial rollouts stay consistent.** In multi-region setups where the same migration file is applied to several database instances, each application is guaranteed to converge to the same final state regardless of order or repetition.
 
 <Warning>
-  Not all SQL is idempotent by default. Statements like `INSERT INTO` or raw `ALTER TABLE … ADD COLUMN` (without `IF NOT EXISTS`) will fail on re-application. supaschema's renderer handles this automatically for the objects it manages, but any custom SQL you inject via `--before` or `--after` hooks must be idempotency-safe on its own.
+  Not all SQL is idempotent by default. Statements like `INSERT INTO` or raw `ALTER TABLE … ADD COLUMN` (without `IF NOT EXISTS`) will fail on re-application. supaschema's renderer handles this automatically for the objects it manages; hand-authored migration SQL should still be reviewed with `supaschema check` and, when a database is available, `supaschema verify`.
 </Warning>
 
 ## Managed Schemas in Supabase

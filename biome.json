@@ -11,7 +11,8 @@
       "!*.tgz",
       "!config-schema.json",
       "!api-docs",
-      "!benchmarks/results"
+      "!benchmarks/results",
+      "!.gitnexus"
     ]
   },
   "formatter": {
