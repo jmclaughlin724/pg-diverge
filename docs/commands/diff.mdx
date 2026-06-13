@@ -46,11 +46,11 @@ npx supaschema diff --dry-run --summary
 ## Flags
 
 <ParamField path="--from" type="source">
-  The **before-state** source to diff against. Accepts a database URL, a `git:<ref>` specifier (e.g. `git:HEAD`, `git:origin/main`), or a `dir:<path>` pointing to a schema directory. Defaults to your live local database, falling back to `git:HEAD` when no database is reachable.
+  The **before-state** source to diff against. Accepts a `database:<url>` live connection (including `database:$ENV_VAR`), a `git:<ref>` specifier (e.g. `git:HEAD`, `git:origin/main`), or a `dir:<path>` pointing to a schema directory. Defaults to your live local database, falling back to `git:HEAD` when no database is reachable.
 </ParamField>
 
 <ParamField path="--to" type="source">
-  The **after-state** source representing the desired schema. Accepts the same specifiers as `--from`. Defaults to `dir:supabase/schemas`.
+  The **after-state** source representing the desired schema. Accepts the same specifiers as `--from`, including `database:<url>` for live database sources. Defaults to `dir:supabase/schemas`.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">

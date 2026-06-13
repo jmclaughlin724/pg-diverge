@@ -47,7 +47,7 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
   npx supaschema inspect --from dir:supabase/schemas --schema public,auth
   ```
 
-  The output includes every table, view, enum, function, trigger, index, and constraint that supaschema's parser supports. Objects that fall outside the supported surface area are listed in a separate `unsupported` array.
+  The output includes every table, view, enum, function, trigger, index, and constraint that supaschema's parser supports. Objects that fall outside the supported surface area are reported in the `diagnostics` array as `SUPA_EXTRACT_UNSUPPORTED`; unsupported input exits with code `2`.
 
   Flags: `--from <source>` (defaults to the config schema tree), `--schema <names>` (comma-separated filter).
 </Accordion>

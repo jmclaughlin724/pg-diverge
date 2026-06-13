@@ -180,7 +180,7 @@ pg_dump --schema-only $PROD_URL | supaschema diff --from dump:- --to dir:supabas
 * **Offline workflows** — you have a dump but no live connection to the source database.
 
 <Note>
-  `dump:` sources accept the full `pg_dump --schema-only` output format, including `SET` statements and `pg_catalog` preambles. supaschema filters these automatically and focuses on user-defined objects.
+  `dump:` sources are parsed through the same fail-closed extraction path as schema-tree SQL. Use a cleaned schema-only dump that omits `SET` statements, ownership comments, and other `pg_dump` preamble statements, or filter the dump before passing it to supaschema.
 </Note>
 
 ***

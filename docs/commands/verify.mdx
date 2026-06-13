@@ -61,7 +61,7 @@ npx supaschema verify \
 ## Flags
 
 <ParamField path="--from" type="source">
-  The **before-state** source. supaschema applies this state to both temp databases before applying any migration or model SQL. Accepts a database URL, `git:<ref>`, or `dir:<path>`. This should match the `--from` value you used when generating the migration with `diff`.
+  The **before-state** source. supaschema applies this state to both temp databases before applying any migration or model SQL. Accepts `database:<url>` (including `database:$ENV_VAR`), `git:<ref>`, or `dir:<path>`. This should match the `--from` value you used when generating the migration with `diff`.
 </ParamField>
 
 <ParamField path="--to" type="source">
@@ -86,6 +86,10 @@ npx supaschema verify \
 
 <ParamField path="--ensure-environment" type="boolean">
   Stubs the minimal Supabase-managed surfaces that common schema trees reference: `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`, `auth.email()`, `cron.job`, and `cron.job_run_details`. It does not create storage, realtime, vault, identities, sessions, or extension-owned objects. Enabled automatically when the `supabase-auto` adapter is active.
+</ParamField>
+
+<ParamField path="--no-ensure-environment" type="boolean">
+  Disables the Supabase environment stub even when the `supabase-auto` adapter would enable it. Use this only when the verification server provisions managed schemas in newly-created databases.
 </ParamField>
 
 <ParamField path="--keep-databases" type="boolean">

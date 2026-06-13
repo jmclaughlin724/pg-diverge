@@ -92,7 +92,7 @@ When you run `supaschema diff`, a lot happens between reading your SQL files and
   * **`rename`** — supaschema detected a rename from an explicit hint. Produces `ALTER TABLE … RENAME` rather than a drop-and-create pair.
 
   <Warning>
-    Operations with `destructive: true` are blocked by default. supaschema will refuse to render SQL for them unless you provide an explicit hint (via the `hints.destructive` list in your config or an inline `-- @supaschema allow-drop` comment in your schema file). This prevents accidental data loss during automated deployments.
+    Operations with `destructive: true` are blocked by default. supaschema will refuse to render SQL for them unless you add the exact object key to the `hints.destructive` list in your config after review. This prevents accidental data loss during automated deployments.
   </Warning>
 
   ### Stage 3 — Render
