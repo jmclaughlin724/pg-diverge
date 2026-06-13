@@ -1,0 +1,319 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "luma",
+  "name": "supaschema",
+  "description": "From declarative schema to fully synced database in milliseconds. No ORM, no Docker, no shadow database.",
+  "colors": {
+    "primary": "#1D4ED8",
+    "light": "#60A5FA",
+    "dark": "#3B82F6"
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "metadata": {
+    "timestamp": true
+  },
+  "seo": {
+    "metatags": {
+      "canonical": "https://supaschema.com"
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/jmclaughlin724/supaschema"
+      },
+      {
+        "label": "npm",
+        "href": "https://www.npmjs.com/package/supaschema"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Install",
+      "href": "https://www.npmjs.com/package/supaschema"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/jmclaughlin724/supaschema"
+    },
+    "links": [
+      {
+        "header": "Product",
+        "items": [
+          {
+            "label": "Quickstart",
+            "href": "/docs/quickstart"
+          },
+          {
+            "label": "Commands",
+            "href": "/docs/commands/diff"
+          },
+          {
+            "label": "Configuration",
+            "href": "/docs/configuration/config-file"
+          }
+        ]
+      },
+      {
+        "header": "Project",
+        "items": [
+          {
+            "label": "GitHub",
+            "href": "https://github.com/jmclaughlin724/supaschema"
+          },
+          {
+            "label": "npm",
+            "href": "https://www.npmjs.com/package/supaschema"
+          },
+          {
+            "label": "Issues",
+            "href": "https://github.com/jmclaughlin724/supaschema/issues"
+          }
+        ]
+      }
+    ]
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "icon": "rocket",
+        "pages": ["docs/introduction", "docs/installation", "docs/quickstart"]
+      },
+      {
+        "group": "Core Concepts",
+        "icon": "book-open",
+        "pages": [
+          "docs/concepts/declarative-schema",
+          "docs/concepts/migration-pipeline",
+          "docs/concepts/sources"
+        ]
+      },
+      {
+        "group": "Commands",
+        "icon": "terminal",
+        "pages": [
+          "docs/commands",
+          "docs/commands/diff",
+          "docs/commands/check",
+          "docs/commands/verify",
+          "docs/commands/types",
+          "docs/commands/migrations",
+          "docs/commands/sync",
+          "docs/commands/other"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "icon": "settings",
+        "pages": [
+          "docs/configuration/config-file",
+          "docs/configuration/environments",
+          "docs/configuration/hints"
+        ]
+      },
+      {
+        "group": "Guides",
+        "icon": "shield-check",
+        "pages": [
+          "docs/guides/supabase-integration",
+          "docs/guides/ci-github-actions",
+          "docs/guides/ci-gate",
+          "docs/guides/corpus-oracle"
+        ]
+      },
+      {
+        "group": "Benchmarks",
+        "icon": "chart-line",
+        "pages": ["docs/benchmarks", "docs/case-study-anilize"]
+      },
+      {
+        "group": "Reference",
+        "icon": "library",
+        "pages": [
+          "docs/reference/diagnostics",
+          "docs/reference/library-api",
+          "docs/reference/support-matrix"
+        ]
+      },
+      {
+        "group": "Operations",
+        "icon": "wrench",
+        "pages": ["docs/release", "docs/mintlify"]
+      }
+    ]
+  },
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/docs/introduction"
+    },
+    {
+      "source": "/introduction",
+      "destination": "/docs/introduction"
+    },
+    {
+      "source": "/installation",
+      "destination": "/docs/installation"
+    },
+    {
+      "source": "/quickstart",
+      "destination": "/docs/quickstart"
+    },
+    {
+      "source": "/concepts/declarative-schema",
+      "destination": "/docs/concepts/declarative-schema"
+    },
+    {
+      "source": "/concepts/migration-pipeline",
+      "destination": "/docs/concepts/migration-pipeline"
+    },
+    {
+      "source": "/concepts/sources",
+      "destination": "/docs/concepts/sources"
+    },
+    {
+      "source": "/commands",
+      "destination": "/docs/commands"
+    },
+    {
+      "source": "/commands/diff",
+      "destination": "/docs/commands/diff"
+    },
+    {
+      "source": "/commands/check",
+      "destination": "/docs/commands/check"
+    },
+    {
+      "source": "/commands/verify",
+      "destination": "/docs/commands/verify"
+    },
+    {
+      "source": "/commands/types",
+      "destination": "/docs/commands/types"
+    },
+    {
+      "source": "/commands/migrations",
+      "destination": "/docs/commands/migrations"
+    },
+    {
+      "source": "/commands/sync",
+      "destination": "/docs/commands/sync"
+    },
+    {
+      "source": "/commands/other",
+      "destination": "/docs/commands/other"
+    },
+    {
+      "source": "/configuration/config-file",
+      "destination": "/docs/configuration/config-file"
+    },
+    {
+      "source": "/configuration/environments",
+      "destination": "/docs/configuration/environments"
+    },
+    {
+      "source": "/configuration/hints",
+      "destination": "/docs/configuration/hints"
+    },
+    {
+      "source": "/guides/supabase-integration",
+      "destination": "/docs/guides/supabase-integration"
+    },
+    {
+      "source": "/guides/ci-github-actions",
+      "destination": "/docs/guides/ci-github-actions"
+    },
+    {
+      "source": "/guides/ci-gate",
+      "destination": "/docs/guides/ci-gate"
+    },
+    {
+      "source": "/guides/corpus-oracle",
+      "destination": "/docs/guides/corpus-oracle"
+    },
+    {
+      "source": "/benchmarks",
+      "destination": "/docs/benchmarks"
+    },
+    {
+      "source": "/case-study-anilize",
+      "destination": "/docs/case-study-anilize"
+    },
+    {
+      "source": "/reference/diagnostics",
+      "destination": "/docs/reference/diagnostics"
+    },
+    {
+      "source": "/reference/library-api",
+      "destination": "/docs/reference/library-api"
+    },
+    {
+      "source": "/reference/support-matrix",
+      "destination": "/docs/reference/support-matrix"
+    },
+    {
+      "source": "/release",
+      "destination": "/docs/release"
+    },
+    {
+      "source": "/mintlify",
+      "destination": "/docs/mintlify"
+    },
+    {
+      "source": "/docs",
+      "destination": "/docs/introduction"
+    },
+    {
+      "source": "/docs/config",
+      "destination": "/docs/configuration/config-file"
+    },
+    {
+      "source": "/docs/hints",
+      "destination": "/docs/configuration/hints"
+    },
+    {
+      "source": "/docs/diagnostics",
+      "destination": "/docs/reference/diagnostics"
+    },
+    {
+      "source": "/docs/support-matrix",
+      "destination": "/docs/reference/support-matrix"
+    },
+    {
+      "source": "/docs/ci",
+      "destination": "/docs/guides/ci-github-actions"
+    },
+    {
+      "source": "/docs/ci-gate",
+      "destination": "/docs/guides/ci-gate"
+    },
+    {
+      "source": "/docs/corpus",
+      "destination": "/docs/guides/corpus-oracle"
+    },
+    {
+      "source": "/index",
+      "destination": "/docs/introduction"
+    },
+    {
+      "source": "/concepts",
+      "destination": "/docs/concepts/declarative-schema"
+    },
+    {
+      "source": "/guides/type-generation",
+      "destination": "/docs/commands/types"
+    },
+    {
+      "source": "/guides/destructive-changes",
+      "destination": "/docs/configuration/hints"
+    }
+  ]
+}
