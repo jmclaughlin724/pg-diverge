@@ -11,7 +11,7 @@ The `types` command reads your declarative schema tree and emits two output file
 
 ## How it works
 
-`supaschema types` walks the schema source you point it at (by default the directories listed under `schemaPaths` in your config), builds an in-memory model of every table, view, enum, and composite type, then writes two files:
+`supaschema types` walks the schema source you point it at (by default the first directory listed under `schemaPaths` in your config; pass `--from` to read a different source or to combine multiple roots), builds an in-memory model of every table, view, enum, and composite type, then writes two files:
 
 * **`database.types.ts`** — the same shape that the Supabase CLI's `gen types typescript` command produces, so it drops in as a direct replacement. It exports a `Database` interface you pass directly to `createClient<Database>`.
 * **`database.zod.ts`** — a matching set of Zod schemas derived from the same model, one schema per table row type, ready to use in API handlers and form validation.

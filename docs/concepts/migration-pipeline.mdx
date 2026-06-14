@@ -7,10 +7,10 @@ description: "How supaschema extracts, diffs, renders, checks, and verifies a mi
 
 > How supaschema extracts, diffs, renders, checks, and verifies a migration from schema files to production-ready SQL, without ever touching your database.
 
-When you run `supaschema diff`, a lot happens between reading your SQL files and producing a finished migration. supaschema works through a structured pipeline of six stages — Extract, Plan, Render, Check, Verify, and Apply — before the finished SQL reaches your deployment runner. Understanding each stage helps you interpret error messages, tune safety settings, and trust the output. This page walks through every stage in detail.
+supaschema's model is a structured pipeline of six stages — Extract, Plan, Render, Check, Verify, and Apply. `supaschema diff` performs the first three (Extract, Plan, Render) and writes the migration file; **Check, Verify, and Apply are separate, explicit steps** you run on the result (`supaschema check`, `supaschema verify`, and your deployment runner). Understanding each stage helps you interpret error messages, tune safety settings, and trust the output. This page walks through every stage in detail.
 
 <Note>
-  supaschema **never connects to or modifies your production database**. The pipeline is a pure SQL generation process. Applying the migration is always a separate, explicit step owned by your runner (such as the Supabase CLI or a custom script).
+  supaschema **never modifies your database**. Generating a migration from `dir:` files or a `git:` ref needs no database at all; a `database:` source opens a **read-only** catalog connection to read the current schema. Applying the migration is always a separate, explicit step owned by your runner (such as the Supabase CLI or a custom script).
 </Note>
 
 ***
@@ -125,7 +125,7 @@ When you run `supaschema diff`, a lot happens between reading your SQL files and
 
   ### Stage 4 — Check
 
-  Before the migration SQL leaves supaschema, it passes through a **static analysis** phase: the `check` stage. This stage runs more than 20 replay-safety rules against the rendered SQL without executing it.
+  Check is a **separate, explicit step** — `diff` writes the migration (and validates the lineage chain), but it does not run the replay-safety rules. You run them with `supaschema check` (the bundled agent hook and `supaschema sync` invoke it for you). This stage runs more than 20 replay-safety rules against the rendered SQL without executing it.
 
   **Replay-safe** means: the migration can be applied to a database that is already at the target state without raising an error or changing any data. In other words, applying it twice produces the same result as applying it once.
 
@@ -138,7 +138,7 @@ When you run `supaschema diff`, a lot happens between reading your SQL files and
   | Constraint safety | Adding a `NOT NULL` constraint to an existing column with no default is flagged |
   | Index safety      | `CREATE INDEX` without `CONCURRENTLY` on a large table triggers a warning       |
   | Enum safety       | Adding a value to an enum in a transaction block is flagged                     |
-  | Policy safety     | Enabling RLS without at least one permissive policy is flagged                  |
+  | Policy safety     | A `CREATE POLICY` not preceded by `DROP POLICY IF EXISTS` is flagged (`SUPA_CHECK_POLICY_REPLACEMENT`) — `CREATE POLICY` has no `OR REPLACE` form |
   | Sequence safety   | Changing a sequence `owned by` a column that no longer exists is flagged        |
 
   ```bash theme={null}

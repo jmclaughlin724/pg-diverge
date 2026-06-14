@@ -9,6 +9,7 @@ const lineageMarker = "-- supaschema: lineage ";
 const addHeader = "*** Add File: ";
 const deleteHeader = "*** Delete File: ";
 const updateHeader = "*** Update File: ";
+const moveHeader = "*** Move to: ";
 const redactSecrets = await loadRedactSecrets();
 
 try {
@@ -100,6 +101,11 @@ function editTargets(payload, projectDir) {
         out.push(resolve(projectDir, line.slice(deleteHeader.length).trim()));
       } else if (line.startsWith(updateHeader)) {
         out.push(resolve(projectDir, line.slice(updateHeader.length).trim()));
+      } else if (line.startsWith(moveHeader)) {
+        // `*** Update File:` carries the old path; a following `*** Move to:`
+        // carries the new path. Record the destination too so a schema file
+        // moved into the tree from outside still triggers diff/check.
+        out.push(resolve(projectDir, line.slice(moveHeader.length).trim()));
       }
     }
     return out;

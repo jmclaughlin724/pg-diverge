@@ -7,7 +7,7 @@ description: "check statically validates SQL migration files for replay-safety, 
 
 > check statically validates SQL migration files for replay-safety, lock hazards, and parser issues. Supports --reporter text, github, sarif, and json.
 
-The `check` command runs static analysis over one or more SQL migration files without touching a database. It enforces 20+ rules that together guarantee your migrations are safe to replay, free of lock hazards, and suitable for production deployment. Diagnostics are written to `stderr` so they compose cleanly with shell pipelines. `check` is fast enough to run on every commit in CI and as a pre-commit hook locally.
+The `check` command runs static analysis over one or more SQL migration files without touching a database. It enforces 20+ rules that together guarantee your migrations are safe to replay, free of lock hazards, and suitable for production deployment. The diagnostics report is written to `stdout` so a reporter's output composes cleanly with pipelines and redirects; only operational notices such as "no migrations found" go to `stderr`. `check` is fast enough to run on every commit in CI and as a pre-commit hook locally.
 
 ## Input
 
