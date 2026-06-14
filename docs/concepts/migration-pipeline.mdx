@@ -10,7 +10,7 @@ description: "How supaschema extracts, diffs, renders, checks, and verifies a mi
 supaschema's model is a structured pipeline of six stages — Extract, Plan, Render, Check, Verify, and Apply. `supaschema diff` performs the first three (Extract, Plan, Render) and writes the migration file; **Check, Verify, and Apply are separate, explicit steps** you run on the result (`supaschema check`, `supaschema verify`, and your deployment runner). Understanding each stage helps you interpret error messages, tune safety settings, and trust the output. This page walks through every stage in detail.
 
 <Note>
-  supaschema **never modifies your database**. Generating a migration from `dir:` files or a `git:` ref needs no database at all; a `database:` source opens a **read-only** catalog connection to read the current schema. Applying the migration is always a separate, explicit step owned by your runner (such as the Supabase CLI or a custom script).
+  supaschema **never writes to your target database**. Generating a migration from `dir:` files or a `git:` ref needs no database at all; a `database:` source connects only to **read** the current catalog (it issues read queries and makes no changes — though it does not set the session `READ ONLY`). The Verify stage (below) is the one step that needs a server, and it creates and drops its own **disposable** databases — never your target. Applying the migration is always a separate, explicit step owned by your runner (such as the Supabase CLI or a custom script).
 </Note>
 
 ***
@@ -223,8 +223,11 @@ vim supabase/schemas/orders.sql
 # 2. Preview the planned migration (dry-run: Extract + Plan + Render, no writes)
 supaschema diff --from database:$LOCAL_URL --to dir:supabase/schemas --dry-run
 
-# 3. Generate the migration file (Extract + Plan + Render + Check)
+# 3. Generate the migration file (Extract + Plan + Render; diff does not run Check)
 supaschema diff --from database:$LOCAL_URL --to dir:supabase/schemas
+
+# 4. Run the replay-safety checks on the generated migration (separate step)
+supaschema check
 
 # 4. Prove the migration is idempotent (Verify stage)
 supaschema verify
