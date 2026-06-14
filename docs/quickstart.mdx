@@ -1,17 +1,17 @@
 ---
 title: "supaschema Quickstart: Generate Your First Migration"
-description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration, and validate it — all without a running database."
+description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from explicit offline sources, and validate it."
 ---
 
 # supaschema Quickstart: Generate Your First Migration
 
-> Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration, and validate it — all without a running database.
+> Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from explicit offline sources, and validate it.
 
-supaschema integrates directly into a standard Supabase project layout. This guide walks you through installing the package, writing a declarative schema file, generating a migration, and validating it — all without touching a running database. You'll be ready to push your first supaschema-generated migration in under five minutes.
+supaschema integrates directly into a standard Supabase project layout. This guide walks you through installing the package, writing a declarative schema file, generating a migration from your git baseline to your working tree, and validating it. You'll be ready to push your first supaschema-generated migration in under five minutes.
 
 <Steps>
   <Step title="Install supaschema">
-    supaschema requires **Node.js 22 or later** and targets **PostgreSQL 15 or later**. Install it as a dev dependency in your project:
+    supaschema requires **Node.js 22.12 or later** and targets **PostgreSQL 15 or later**. Install it as a dev dependency in your project:
 
     ```bash theme={null}
     npm install --save-dev supaschema
@@ -66,10 +66,10 @@ supaschema integrates directly into a standard Supabase project layout. This gui
     With your schema file in place, run `diff` to generate a migration:
 
     ```bash theme={null}
-    npx supaschema diff
+    npx supaschema diff --from git:HEAD --to dir:supabase/schemas
     ```
 
-    supaschema compares your declarative schema files (`--to`, defaulting to `supabase/schemas`) against the current applied database state (`--from`, defaulting to your configured database, then falling back to `git:HEAD`) and writes a new timestamped migration file to `supabase/migrations`.
+    supaschema compares the schema files committed at `HEAD` against your edited declarative schema files in `supabase/schemas` and writes a new timestamped migration file to `supabase/migrations`.
 
     You will see output similar to:
 
@@ -160,7 +160,7 @@ supaschema integrates directly into a standard Supabase project layout. This gui
     This keeps your existing deployment workflow intact. supaschema slots in as the migration *generation* step; the Supabase CLI handles the *application* step.
 
     <Note>
-      supaschema never modifies your database, reads from a live connection during `diff`, or requires a shadow database at any point. Migration generation is entirely offline.
+      supaschema never applies migrations to your database or requires a shadow database. When you pass file, git, dump, or catalog sources as shown above, migration generation is entirely offline; omit `--from` only when you intentionally want the configured live database to be the applied-state source.
     </Note>
   </Step>
 

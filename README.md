@@ -40,7 +40,7 @@ supaschema ships PostgreSQL's own parser inside the package. It reads your SQL i
 npm install --save-dev supaschema
 ```
 
-Requires Node 22+ and PostgreSQL 15+. Run `npx supaschema init` to scaffold `supaschema.config.json`. In a Supabase project the database URL is discovered from `supabase/config.toml` automatically; anywhere else, set `SUPASCHEMA_DATABASE_URL` or define named `environments` in the config. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
+Requires Node 22.12+ and PostgreSQL 15+. Run `npx supaschema init` to scaffold `supaschema.config.json`. In a Supabase project the database URL is discovered from `supabase/config.toml` automatically; anywhere else, set `SUPASCHEMA_DATABASE_URL` or define named `environments` in the config. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
 
 ## Quick Start
 

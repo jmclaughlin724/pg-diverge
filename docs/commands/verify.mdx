@@ -151,7 +151,9 @@ jobs:
         ports:
           - 54322:5432
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Verify latest migration
         run: |
           migration=$(ls supabase/migrations/*.sql | sort | tail -n 1)

@@ -80,7 +80,7 @@ npx supaschema doctor
 Example output from a healthy environment:
 
 ```
-PASS  node version: running 22.4.0, requires >=22
+PASS  node version: running 22.12.0, requires >=22.12.0
 PASS  sql parser: libpg-query WASM parser loaded
 PASS  config: supaschema.config.json
 PASS  database url: resolved via SUPASCHEMA_DATABASE_URL
@@ -95,7 +95,7 @@ doctor: healthy
 
 | Check                   | What It Verifies                                                                                     |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| **node version**        | Your Node.js runtime meets the >=22 requirement                                                      |
+| **node version**        | Your Node.js runtime meets the >=22.12.0 requirement                                                 |
 | **sql parser**          | The bundled WASM parser (`libpg-query`) loads without error                                          |
 | **config**              | `supaschema.config.json` is found and valid                                                          |
 | **database url**        | A database URL resolves (via `--database-url`, `SUPASCHEMA_DATABASE_URL`, or `supabase/config.toml`) |

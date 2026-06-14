@@ -74,7 +74,7 @@ npx supaschema diff --dry-run --summary
 </ParamField>
 
 <ParamField path="--json" type="boolean">
-  Outputs a structured JSON payload instead of raw SQL. The payload includes the rendered SQL, the operation list, and any diagnostics. Useful for programmatic consumption in custom CI scripts.
+  Outputs a structured JSON payload instead of raw SQL. The payload includes the rendered SQL, output path, concurrent migration path when applicable, target fingerprint, and operation list. Diagnostics are still printed through the normal diagnostic channel before any error exit.
 </ParamField>
 
 <ParamField path="--fail-on-diff" type="boolean">

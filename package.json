@@ -27,6 +27,7 @@
     ".claude",
     ".codex",
     "AGENTS.md",
+    "CLAUDE.md",
     "benchmarks/README.md",
     "benchmarks/compare.js",
     "benchmarks/fixtures",
@@ -47,7 +48,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "benchmark": "npm run build && node dist/benchmark.js",
@@ -95,7 +96,7 @@
     "zod"
   ],
   "dependencies": {
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "libpg-query": "^17.7.3",
     "pg": "^8.21.0",
     "pgsql-deparser": "^17.18.3",

@@ -4,7 +4,7 @@
 
 This file is the root operator brief for AI agents working in this repository and for the agent guidance bundled with the `supaschema` package. Apply it to all files in this repo unless a closer `AGENTS.md` overrides it.
 
-supaschema is a Node 22+ TypeScript CLI and library that generates deterministic, replay-safe PostgreSQL/Supabase migrations from declarative SQL tree diffs. The default workflow is generator, checker, and verifier only: it does not stage, commit, or apply migrations. The explicit `supaschema sync --local|--remote` lane is an operator-invoked handoff to the Supabase CLI after status and replay-safety gates; do not use apply flags without an explicit human request.
+supaschema is a Node 22.12+ TypeScript CLI and library that generates deterministic, replay-safe PostgreSQL/Supabase migrations from declarative SQL tree diffs. The default workflow is generator, checker, and verifier only: it does not stage, commit, or apply migrations. The explicit `supaschema sync --local|--remote` lane is an operator-invoked handoff to the Supabase CLI after status and replay-safety gates; do not use apply flags without an explicit human request.
 
 Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable migration workflow lives in `.claude/skills/supaschema/SKILL.md` and its `.agents/skills/supaschema/SKILL.md` mirror. Write-time enforcement lives in `.claude/hooks/**`, `.claude/settings.json`, `.codex/hooks/**`, and `.codex/hooks.json`.
 
@@ -93,7 +93,7 @@ npm run docs:check      # Mintlify validation, links, accessibility
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **supaschema** (3455 symbols, 6310 relationships, 299 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **supaschema** (3465 symbols, 6323 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

@@ -136,7 +136,7 @@ supaschema diff \
 
 **When to use it:**
 
-* **Initial onboarding** — you have an existing database and want to generate your first declarative schema files.
+* **Applied-state reconciliation** — you have an existing database and want a migration from what is deployed to your declarative files.
 * **Drift detection** — check whether someone has made out-of-band changes directly on the server.
 * **Generating a migration from scratch** — when you have no prior snapshot, the live database is the most authoritative "from" state.
 
@@ -233,7 +233,7 @@ The table below summarises the most useful source pairings and the workflow each
 | PR safety check (CI)    | `git:origin/main`        | `dir:supabase/schemas`               | Diff the branch against the base without a database            |
 | Deploy to production    | `database:$PROD_URL`     | `dir:supabase/schemas`               | Generate a migration targeting the live production database    |
 | Drift detection         | `database:$PROD_URL`     | `catalog:snapshots/last-deploy.json` | Detect out-of-band changes on the server                       |
-| Onboarding existing DB  | `database:$DATABASE_URL` | `dir:supabase/schemas`               | Bootstrap declarative files from a live database               |
+| Reconciling existing DB | `database:$DATABASE_URL` | `dir:supabase/schemas`               | Generate a migration from the deployed catalog to your files   |
 | Cross-branch comparison | `git:origin/main`        | `git:feature/my-branch`              | Preview the migration a merge would produce                    |
 | Analyse a legacy dump   | `dump:legacy-schema.sql` | `dir:supabase/schemas`               | Diff a dump file against your current schema                   |
 

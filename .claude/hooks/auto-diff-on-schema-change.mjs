@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const editTools = new Set(["Edit", "MultiEdit", "Write", "apply_patch"]);
+const editTools = new Set(["Edit", "MultiEdit", "Write", "edit_file", "apply_patch"]);
 const lineageMarker = "-- supaschema: lineage ";
 const addHeader = "*** Add File: ";
 const deleteHeader = "*** Delete File: ";
@@ -22,6 +22,17 @@ try {
   const { changed, groups } = changedSchemaTargets(editTargets(payload, projectDir), schemaRoots);
   if (changed.length === 0) {
     process.exit(0);
+  }
+  if (groups.length > 1) {
+    emit(
+      `supaschema auto-diff skipped for ${changed
+        .map((path) => rel(projectDir, path))
+        .join(", ")} because the edit touched multiple configured schema roots (${groups
+        .map((group) => group.display)
+        .join(
+          ", ",
+        )}). Run one reviewed \`supaschema diff\` from the intended current state, then run \`supaschema check\`; the hook avoids chaining partial migrations for multi-root edits.`,
+    );
   }
   const bin = resolveBinary(projectDir);
   const written = [];

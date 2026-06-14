@@ -17,7 +17,7 @@ import { registerToolCommands } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
 import { defaultConfigFile, loadConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
-import { resolveDatabaseUrl } from "./database-url.js";
+import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors } from "./diagnostics.js";
 import { selfCheckCatalog } from "./selfcheck.js";
 import { extractSourceModel } from "./source.js";
@@ -97,7 +97,12 @@ registerDiffCommands(program, {
   resolveCliDatabaseUrl,
 });
 registerReportCommands(program, { loadCliConfig, printDiagnostics, resolveCliDatabaseUrl });
-registerToolCommands(program, { loadCliConfig, printDiagnostics, resolveCliDatabaseUrl });
+registerToolCommands(program, {
+  loadCliConfig,
+  printDiagnostics,
+  resolveCliDatabaseUrl,
+  resolveCliDatabaseUrlInfo,
+});
 
 program
   .command("check")
@@ -272,8 +277,14 @@ async function loadCliConfig(): Promise<SupaschemaConfig> {
  * $ENV_NAME indirection as the flag.
  */
 async function resolveCliDatabaseUrl(explicit?: string): Promise<string | undefined> {
+  return (await resolveCliDatabaseUrlInfo(explicit)).url;
+}
+
+async function resolveCliDatabaseUrlInfo(
+  explicit?: string,
+): Promise<{ lane: string; url: string | undefined }> {
   if (explicit) {
-    return resolveDatabaseUrl(explicit);
+    return { lane: "explicit --database-url", url: resolveDatabaseUrl(explicit) };
   }
   const globals = program.opts<GlobalOptions>();
   if (globals.env) {
@@ -284,9 +295,15 @@ async function resolveCliDatabaseUrl(explicit?: string): Promise<string | undefi
         `--env "${globals.env}" is not defined in config.environments (known: ${Object.keys(config.environments).join(", ") || "none"})`,
       );
     }
-    return resolveDatabaseUrl(entry.databaseUrl);
+    return { lane: `--env ${globals.env}`, url: resolveDatabaseUrl(entry.databaseUrl) };
   }
-  return resolveDatabaseUrl();
+  const url = resolveDatabaseUrl();
+  const lane = process.env.SUPASCHEMA_DATABASE_URL
+    ? "SUPASCHEMA_DATABASE_URL"
+    : resolveSupabaseLocalDatabaseUrl()
+      ? "supabase/config.toml auto-discovery"
+      : "none";
+  return { lane, url };
 }
 
 async function readStdin(): Promise<string> {

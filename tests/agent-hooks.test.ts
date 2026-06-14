@@ -78,7 +78,13 @@ process.exit(1);
 }
 
 async function readFakeCalls(log: string): Promise<string[][]> {
-  return (await readFile(log, "utf8"))
+  const content = await readFile(log, "utf8").catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  });
+  return content
     .trim()
     .split("\n")
     .filter(Boolean)
@@ -245,7 +251,27 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
     expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:schemas/two"], ["check"]]);
   });
 
-  runAutoDiffTest("runs one diff per touched schema path and one final check", async () => {
+  runAutoDiffTest("runs auto-diff for direct edit_file schema edits", async () => {
+    const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+    await writeFile(
+      join(project, "supabase", "schemas", "accounts.sql"),
+      "CREATE TABLE app.t (id int);",
+    );
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+        tool_name: "edit_file",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
+  });
+
+  runAutoDiffTest("skips auto-diff when one edit touches multiple schema paths", async () => {
     const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
     await writeFile(join(project, "schemas", "one", "one.sql"), "CREATE TABLE app.one (id int);");
     await writeFile(join(project, "schemas", "two", "two.sql"), "CREATE TABLE app.two (id int);");
@@ -268,10 +294,7 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
     );
 
     expect(result.code).toBe(0);
-    expect(await readFakeCalls(log)).toEqual([
-      ["diff", "--to", "dir:schemas/one"],
-      ["diff", "--to", "dir:schemas/two"],
-      ["check"],
-    ]);
+    expect(result.stdout).toContain("multiple configured schema roots");
+    expect(await readFakeCalls(log)).toEqual([]);
   });
 });

@@ -17,20 +17,25 @@ export interface DoctorReport {
   healthy: boolean;
 }
 
-const minimumNodeMajor = 22;
+const minimumNodeVersion = "22.12.0";
 
 export async function runDoctor(
   config: SupaschemaConfig,
-  options: { configPath?: string; cwd?: string; databaseUrl?: string } = {},
+  options: {
+    configPath?: string;
+    cwd?: string;
+    databaseUrl?: string;
+    databaseUrlLane?: string;
+    resolvedDatabaseUrl?: string;
+  } = {},
 ): Promise<DoctorReport> {
   const cwd = options.cwd ?? process.cwd();
   const checks: DoctorCheck[] = [];
 
-  const nodeMajor = Number(process.versions.node.split(".")[0]);
   checks.push({
-    detail: `running ${process.versions.node}, requires >=${minimumNodeMajor}`,
+    detail: `running ${process.versions.node}, requires >=${minimumNodeVersion}`,
     name: "node version",
-    status: nodeMajor >= minimumNodeMajor ? "pass" : "fail",
+    status: nodeMeetsMinimum(process.versions.node) ? "pass" : "fail",
   });
 
   try {
@@ -52,14 +57,16 @@ export async function runDoctor(
   });
 
   const explicit = options.databaseUrl;
-  const resolved = resolveDatabaseUrl(explicit);
-  const lane = explicit
-    ? "explicit --database-url"
-    : process.env.SUPASCHEMA_DATABASE_URL
-      ? "SUPASCHEMA_DATABASE_URL"
-      : resolveSupabaseLocalDatabaseUrl()
-        ? "supabase/config.toml auto-discovery"
-        : "none";
+  const resolved = options.resolvedDatabaseUrl ?? resolveDatabaseUrl(explicit);
+  const lane =
+    options.databaseUrlLane ??
+    (explicit
+      ? "explicit --database-url"
+      : process.env.SUPASCHEMA_DATABASE_URL
+        ? "SUPASCHEMA_DATABASE_URL"
+        : resolveSupabaseLocalDatabaseUrl()
+          ? "supabase/config.toml auto-discovery"
+          : "none");
   checks.push({
     detail: resolved ? `resolved via ${lane}` : "no URL resolves; database commands will skip",
     name: "database url",
@@ -133,4 +140,22 @@ export function renderDoctorReport(report: DoctorReport): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function nodeMeetsMinimum(version: string): boolean {
+  const current = versionParts(version);
+  const minimum = versionParts(minimumNodeVersion);
+  for (let index = 0; index < minimum.length; index += 1) {
+    if ((current[index] ?? 0) > (minimum[index] ?? 0)) {
+      return true;
+    }
+    if ((current[index] ?? 0) < (minimum[index] ?? 0)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function versionParts(version: string): number[] {
+  return version.split(".").map((part) => Number.parseInt(part, 10) || 0);
 }
