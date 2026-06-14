@@ -39,7 +39,10 @@ async function fixtures(): Promise<{ generated: string; handAuthored: string }> 
   return { generated, handAuthored };
 }
 
-async function autoDiffFixture(schemaPaths: string[]): Promise<{
+async function autoDiffFixture(
+  schemaPaths: string[],
+  fakeSupaschema?: string,
+): Promise<{
   bin: string;
   env: NodeJS.ProcessEnv;
   log: string;
@@ -54,7 +57,8 @@ async function autoDiffFixture(schemaPaths: string[]): Promise<{
   const bin = join(project, "fake-supaschema.mjs");
   await writeFile(
     bin,
-    `#!/usr/bin/env node
+    fakeSupaschema ??
+      `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 
 appendFileSync(process.env.SUPASCHEMA_FAKE_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");
@@ -296,5 +300,47 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("multiple configured schema roots");
     expect(await readFakeCalls(log)).toEqual([]);
+  });
+
+  runAutoDiffTest("redacts secrets from raw supaschema output", async () => {
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature";
+    const { env, project } = await autoDiffFixture(
+      ["supabase/schemas"],
+      `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+appendFileSync(process.env.SUPASCHEMA_FAKE_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");
+if (process.argv[2] === "diff") {
+  process.stderr.write("failed postgresql://postgres:super-secret@localhost/db token=abc123 ${jwt}\\n");
+  process.exit(1);
+}
+process.exit(0);
+`,
+    );
+    await writeFile(
+      join(project, "supabase", "schemas", "accounts.sql"),
+      "CREATE TABLE app.t (id int);",
+    );
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+        tool_name: "Edit",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput?: { additionalContext?: string };
+    };
+    const context = output.hookSpecificOutput?.additionalContext ?? "";
+    expect(context).toContain("postgresql://postgres:[redacted]@localhost/db");
+    expect(context).toContain("token=[redacted]");
+    expect(context).toContain("[redacted-jwt]");
+    expect(context).not.toContain("super-secret");
+    expect(context).not.toContain("abc123");
+    expect(context).not.toContain("eyJhbGci");
   });
 });

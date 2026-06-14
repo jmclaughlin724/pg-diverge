@@ -9,6 +9,7 @@ const lineageMarker = "-- supaschema: lineage ";
 const addHeader = "*** Add File: ";
 const deleteHeader = "*** Delete File: ";
 const updateHeader = "*** Update File: ";
+const redactSecrets = await loadRedactSecrets();
 
 try {
   const payload = JSON.parse(readFileSync(0, "utf8"));
@@ -82,7 +83,7 @@ try {
   );
 } catch (error) {
   emit({
-    systemMessage: `supaschema auto-diff hook error (fail-open): ${error instanceof Error ? error.message : String(error)}`,
+    systemMessage: `supaschema auto-diff hook error (fail-open): ${redactSecrets(error instanceof Error ? error.message : String(error))}`,
   });
 }
 
@@ -232,5 +233,66 @@ function rel(projectDir, path) {
 }
 
 function head(text) {
-  return (text || "").trim().split("\n").slice(0, 12).join("\n");
+  return redactSecrets(text || "")
+    .trim()
+    .split("\n")
+    .slice(0, 12)
+    .join("\n");
+}
+
+async function loadRedactSecrets() {
+  try {
+    const loaded = await import(new URL("../../dist/diagnostics.js", import.meta.url).href);
+    if (typeof loaded.redactSecrets === "function") {
+      return loaded.redactSecrets;
+    }
+  } catch {
+    // Hooks are fail-open and may run before the generated dist exists in a source checkout.
+  }
+  return fallbackRedactSecrets;
+}
+
+function fallbackRedactSecrets(value) {
+  return redactUrlCredentials(value)
+    .replace(
+      /\b(password|pass|pwd|token|secret|api[_-]?key|service[_-]?role[_-]?key)(\s*[:=]\s*)(["']?)[^"'\s,;)]+/giu,
+      "$1$2$3[redacted]",
+    )
+    .replace(/\b(sb_secret_)[A-Za-z0-9_-]+/g, "$1[redacted]")
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]");
+}
+
+function isUserinfoEnd(char) {
+  return (
+    char === "@" || char === "/" || char === " " || char === "\t" || char === "\n" || char === "\r"
+  );
+}
+
+function redactUrlCredentials(value) {
+  let result = "";
+  let index = 0;
+  while (index < value.length) {
+    const marker = value.indexOf("://", index);
+    if (marker === -1) {
+      result += value.slice(index);
+      break;
+    }
+    const afterScheme = marker + 3;
+    result += value.slice(index, afterScheme);
+    let cursor = afterScheme;
+    let colon = -1;
+    while (cursor < value.length && !isUserinfoEnd(value[cursor] ?? "")) {
+      if (value[cursor] === ":" && colon === -1) {
+        colon = cursor;
+      }
+      cursor += 1;
+    }
+    if (value[cursor] === "@" && colon > afterScheme && cursor > colon + 1) {
+      result += `${value.slice(afterScheme, colon + 1)}[redacted]`;
+      index = cursor;
+    } else {
+      index = afterScheme;
+    }
+  }
+  return result;
 }

@@ -13,7 +13,7 @@ import type { SummaryTone } from "./cli-tools.js";
 import { colorizeSummaryLine } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
 import type { Diagnostic, MigrationPlan, SchemaModel } from "./core.js";
-import { diagnostic, hasErrors } from "./diagnostics.js";
+import { diagnostic, hasErrors, redactSecrets } from "./diagnostics.js";
 import { latestLineage } from "./lineage.js";
 import { planSchemaDiff } from "./planner.js";
 import { renderMigrationSplit } from "./render.js";
@@ -319,7 +319,9 @@ async function watchDiff(
       await runDiff(watchedOptions, config, context);
       process.exitCode = 0;
     } catch (error) {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.stderr.write(
+        `${redactSecrets(error instanceof Error ? error.message : String(error))}\n`,
+      );
     } finally {
       running = false;
       if (queued) {

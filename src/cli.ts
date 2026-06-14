@@ -18,7 +18,7 @@ import type { SupaschemaConfig } from "./config.js";
 import { defaultConfigFile, loadConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
-import { diagnosticCatalog, formatDiagnostics, hasErrors } from "./diagnostics.js";
+import { diagnosticCatalog, formatDiagnostics, hasErrors, redactSecrets } from "./diagnostics.js";
 import { selfCheckCatalog } from "./selfcheck.js";
 import { extractSourceModel } from "./source.js";
 import { verifyMigration } from "./verify.js";
@@ -261,7 +261,7 @@ program
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`${redactRawError(error)}\n`);
   process.exitCode = 1;
 });
 
@@ -320,6 +320,10 @@ function printDiagnostics(diagnostics: Diagnostic[]): void {
     return;
   }
   process.stderr.write(`${formatDiagnostics(diagnostics)}\n`);
+}
+
+function redactRawError(error: unknown): string {
+  return redactSecrets(error instanceof Error ? error.message : String(error));
 }
 
 async function readPackageVersion(): Promise<string> {

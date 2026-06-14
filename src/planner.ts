@@ -79,7 +79,7 @@ export function planSchemaDiff(
       operations.push(makeOperation("create", key, undefined, after, config));
     }
   }
-  appendReplacedRelationDependents(operations, to, config);
+  appendReplacedRelationDependents(operations, from, to, config);
   const sortedOperations = sortOperations(operations, diagnostics);
   for (const operation of operations) {
     diagnostics.push(...operation.diagnostics);
@@ -118,16 +118,19 @@ const relationDependentKinds = new Set<ObjectKind>([
   "policy",
   "trigger",
 ]);
+const blockingRelationDependentKinds = new Set<ObjectKind>(["view", "materialized-view"]);
 
 /**
  * A relation replace renders DROP + CREATE, which destroys every dependent
  * object in the target database even when that dependent is unchanged
  * between the two models (equal hashes produce no operation). Re-create the
  * to-state dependents alongside the replace so the rebuilt relation keeps
- * its constraints, indexes, RLS state, policies, triggers, and grants.
+ * its constraints, indexes, RLS state, policies, triggers, grants, blocking
+ * views/materialized views, and comments.
  */
 function appendReplacedRelationDependents(
   operations: MigrationOperation[],
+  from: SchemaModel,
   to: SchemaModel,
   config: SupaschemaConfig,
 ): void {
@@ -139,32 +142,142 @@ function appendReplacedRelationDependents(
   if (replacedRelations.length === 0) {
     return;
   }
+  // Only objects that already exist get collaterally dropped by the relation
+  // replace, so a pre-drop is needed only for them. A dependent that is new in
+  // the target (created in this same plan) must not be pre-dropped — that would
+  // emit a destructive DROP for an object that does not exist yet.
+  const fromKeys = new Set(from.objects.map((object) => object.key));
   const operationKeys = new Set(operations.map((operation) => operation.key));
+  const affectedRefs = new Map<string, ObjectRef>();
+  const relationIdentities = new Set<string>();
   for (const relation of replacedRelations) {
+    rememberAffectedRef(affectedRefs, relation);
+    relationIdentities.add(refIdentity(relation));
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
     for (const object of to.objects) {
-      if (operationKeys.has(object.key) || !isRelationDependent(object, relation)) {
+      if (!isRelationDependent(object, relationIdentities)) {
         continue;
       }
-      operations.push(makeOperation("create", object.key, undefined, object, config));
-      operationKeys.add(object.key);
+      rememberAffectedRef(affectedRefs, object.ref);
+      if (blockingRelationDependentKinds.has(object.ref.kind) && fromKeys.has(object.key)) {
+        const identity = refIdentity(object.ref);
+        if (!relationIdentities.has(identity)) {
+          relationIdentities.add(identity);
+          changed = true;
+        }
+        const key = preDropKey(object.key);
+        if (!operationKeys.has(key)) {
+          operations.push(makePreDropOperation(object, config));
+          operationKeys.add(key);
+          changed = true;
+        }
+      }
+      if (!operationKeys.has(object.key)) {
+        operations.push(makeOperation("create", object.key, undefined, object, config));
+        operationKeys.add(object.key);
+        changed = true;
+      }
     }
+  }
+  for (const object of to.objects) {
+    if (operationKeys.has(object.key) || !isCommentDependent(object, affectedRefs)) {
+      continue;
+    }
+    operations.push(makeOperation("create", object.key, undefined, object, config));
+    operationKeys.add(object.key);
   }
 }
 
-function isRelationDependent(object: SchemaObject, relation: ObjectRef): boolean {
-  const schema = relation.schema ?? "public";
+function isRelationDependent(object: SchemaObject, relationIdentities: Set<string>): boolean {
+  const tableIdentity = tableRefIdentity(object.ref);
   if (
     relationDependentKinds.has(object.ref.kind) &&
-    object.ref.table === relation.name &&
-    (object.ref.schema ?? "public") === schema
+    tableIdentity !== undefined &&
+    relationIdentities.has(tableIdentity)
+  ) {
+    return true;
+  }
+  if (
+    blockingRelationDependentKinds.has(object.ref.kind) &&
+    object.dependencies.some((dependency) => relationIdentities.has(dependency))
   ) {
     return true;
   }
   return (
     object.ref.kind === "grant" &&
     typeof object.metadata.targetIdentity === "string" &&
-    object.metadata.targetIdentity === `${schema}.${relation.name}`
+    relationIdentities.has(object.metadata.targetIdentity)
   );
+}
+
+function isCommentDependent(
+  object: SchemaObject,
+  affectedRefs: ReadonlyMap<string, ObjectRef>,
+): boolean {
+  if (object.ref.kind !== "comment" || typeof object.metadata.descriptor !== "string") {
+    return false;
+  }
+  for (const ref of affectedRefs.values()) {
+    if (commentTargetsRef(object.metadata.descriptor, ref)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function commentTargetsRef(descriptor: string, ref: ObjectRef): boolean {
+  const schema = ref.schema ?? "public";
+  const identity = `${schema}.${ref.name}`;
+  switch (ref.kind) {
+    case "table":
+      return descriptor === `table ${identity}` || descriptor.startsWith(`column ${identity}.`);
+    case "view":
+      return descriptor === `view ${identity}` || descriptor.startsWith(`column ${identity}.`);
+    case "materialized-view":
+      return (
+        descriptor === `materialized view ${identity}` ||
+        descriptor.startsWith(`column ${identity}.`)
+      );
+    case "constraint":
+      return descriptor === `constraint ${tableRefIdentity(ref)}.${ref.name}`;
+    case "index":
+      return descriptor === `index ${identity}`;
+    case "policy":
+      return descriptor === `policy ${tableRefIdentity(ref)}.${ref.name}`;
+    case "trigger":
+      return descriptor === `trigger ${tableRefIdentity(ref)}.${ref.name}`;
+    default:
+      return false;
+  }
+}
+
+function refIdentity(ref: ObjectRef): string {
+  if (ref.kind === "schema") {
+    return ref.name;
+  }
+  return `${ref.schema ?? "public"}.${ref.name}`;
+}
+
+function tableRefIdentity(ref: ObjectRef): string | undefined {
+  return ref.table ? `${ref.schema ?? "public"}.${ref.table}` : undefined;
+}
+
+function preDropKey(key: string): string {
+  return `pre-drop:${key}`;
+}
+
+function makePreDropOperation(object: SchemaObject, config: SupaschemaConfig): MigrationOperation {
+  return {
+    ...makeOperation("drop", object.key, object, undefined, config),
+    key: preDropKey(object.key),
+  };
+}
+
+function rememberAffectedRef(affectedRefs: Map<string, ObjectRef>, ref: ObjectRef): void {
+  affectedRefs.set(`${ref.kind}:${ref.schema ?? ""}:${ref.table ?? ""}:${ref.name}`, ref);
 }
 
 /**

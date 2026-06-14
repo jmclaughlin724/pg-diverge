@@ -8,9 +8,9 @@ inputs:
     description: Arguments passed to supaschema (e.g. "diff --from database:$DATABASE_URL --to dir:supabase/schemas --fail-on-diff --quiet").
     required: true
   version:
-    description: supaschema version to run (npm dist-tag or exact version).
+    description: Exact supaschema npm version to run.
     required: false
-    default: latest
+    default: "0.1.1"
 runs:
   using: composite
   steps:
@@ -20,8 +20,8 @@ runs:
         SUPASCHEMA_ACTION_VERSION: ${{ inputs.version }}
         SUPASCHEMA_ACTION_ARGS: ${{ inputs.args }}
       run: |
-        case "$SUPASCHEMA_ACTION_VERSION" in
-          latest|next|[0-9]*.[0-9]*.[0-9]*|[0-9]*.[0-9]*.[0-9]*-*) ;;
-          *) echo "invalid supaschema version: $SUPASCHEMA_ACTION_VERSION" >&2; exit 1 ;;
-        esac
+        if [[ ! "$SUPASCHEMA_ACTION_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+          echo "invalid supaschema version: $SUPASCHEMA_ACTION_VERSION (use an exact npm version, e.g. 0.1.1)" >&2
+          exit 1
+        fi
         npx --yes "supaschema@${SUPASCHEMA_ACTION_VERSION}" $SUPASCHEMA_ACTION_ARGS

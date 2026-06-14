@@ -97,6 +97,30 @@ describe("stdin sources", () => {
   });
 });
 
+describe("raw CLI errors", () => {
+  it("redacts secrets before printing uncaught errors", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-cli-redact-"));
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature";
+    writeFileSync(
+      join(cwd, "supaschema.config.mjs"),
+      `throw new Error("failed postgresql://postgres:super-secret@localhost/db token=abc123 ${jwt}");\n`,
+    );
+
+    const result = spawnSync(process.execPath, [cliPath, "inspect"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("postgresql://postgres:[redacted]@localhost/db");
+    expect(result.stderr).toContain("token=[redacted]");
+    expect(result.stderr).toContain("[redacted-jwt]");
+    expect(result.stderr).not.toContain("super-secret");
+    expect(result.stderr).not.toContain("abc123");
+    expect(result.stderr).not.toContain("eyJhbGci");
+  });
+});
+
 describe("verify environment flags", () => {
   it("exposes --no-ensure-environment so the supabase-auto stub default can be disabled", () => {
     const result = spawnSync(process.execPath, [cliPath, "verify", "--help"], {

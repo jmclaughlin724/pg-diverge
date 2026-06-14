@@ -3,9 +3,10 @@ export function splitSqlStatements(sql: string): string[] {
   let start = 0;
   let dollarTag = "";
   let inSingleQuote = false;
+  let inEscapeString = false;
   let inDoubleQuote = false;
   let inLineComment = false;
-  let inBlockComment = false;
+  let blockCommentDepth = 0;
   for (let index = 0; index < sql.length; index += 1) {
     const char = sql[index] ?? "";
     const next = sql[index + 1] ?? "";
@@ -15,9 +16,14 @@ export function splitSqlStatements(sql: string): string[] {
       }
       continue;
     }
-    if (inBlockComment) {
+    if (blockCommentDepth > 0) {
+      if (char === "/" && next === "*") {
+        blockCommentDepth += 1;
+        index += 1;
+        continue;
+      }
       if (char === "*" && next === "/") {
-        inBlockComment = false;
+        blockCommentDepth -= 1;
         index += 1;
       }
       continue;
@@ -30,12 +36,17 @@ export function splitSqlStatements(sql: string): string[] {
       continue;
     }
     if (inSingleQuote) {
+      if (inEscapeString && char === "\\") {
+        index += 1;
+        continue;
+      }
       if (char === "'" && next === "'") {
         index += 1;
         continue;
       }
       if (char === "'") {
         inSingleQuote = false;
+        inEscapeString = false;
       }
       continue;
     }
@@ -55,12 +66,13 @@ export function splitSqlStatements(sql: string): string[] {
       continue;
     }
     if (char === "/" && next === "*") {
-      inBlockComment = true;
+      blockCommentDepth = 1;
       index += 1;
       continue;
     }
     if (char === "'") {
       inSingleQuote = true;
+      inEscapeString = isEscapeStringQuote(sql, index);
       continue;
     }
     if (char === '"') {
@@ -87,6 +99,21 @@ export function splitSqlStatements(sql: string): string[] {
   }
   return statements;
 }
+
+function isEscapeStringQuote(sql: string, index: number): boolean {
+  const markerIndex = index - 1;
+  const marker = sql[markerIndex] ?? "";
+  if (marker !== "E" && marker !== "e") {
+    return false;
+  }
+  const beforeMarker = sql[markerIndex - 1] ?? "";
+  return !isIdentifierChar(beforeMarker);
+}
+
+function isIdentifierChar(char: string): boolean {
+  return isTagChar(char) || char === "$";
+}
+
 function isTagStartChar(char: string): boolean {
   return (char >= "a" && char <= "z") || (char >= "A" && char <= "Z") || char === "_";
 }
