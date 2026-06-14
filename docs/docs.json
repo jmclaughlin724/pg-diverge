@@ -19,7 +19,7 @@
   },
   "seo": {
     "metatags": {
-      "canonical": "https://supaschema.com",
+      "canonical": "https://supaschema.com/docs",
       "application-name": "supaschema",
       "og:site_name": "supaschema",
       "og:type": "website",
