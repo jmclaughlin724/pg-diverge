@@ -1,21 +1,17 @@
 ---
-title: "supaschema Quickstart: Generate Your First Migration"
+title: "Quickstart"
 description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from explicit offline sources, and validate it."
 ---
 
-supaschema integrates directly into a standard Supabase project layout. This guide walks you through installing the package, writing a declarative schema file, generating a migration from your git baseline to your working tree, and validating it. You'll be ready to push your first supaschema-generated migration in under five minutes.
+supaschema integrates directly into a standard Supabase project layout. This guide is the shortest useful path: install, write SQL, generate a migration, and check it.
 
 <Steps>
-  <Step title="Install supaschema">
+  <Step title="Install">
     supaschema requires **Node.js 22.12 or later** and targets **PostgreSQL 15 or later**. Install it as a dev dependency in your project:
 
     ```bash
     npm install --save-dev supaschema
     ```
-
-    <Note>
-      After installation, a `postinstall` script runs automatically and prints a setup notice if no config exists. Create `supaschema.config.json` explicitly by running `npx supaschema init`.
-    </Note>
 
     Verify the installation:
 
@@ -24,8 +20,8 @@ supaschema integrates directly into a standard Supabase project layout. This gui
     ```
   </Step>
 
-  <Step title="Write your declarative schema">
-    supaschema reads schema files from the path(s) configured in `supaschema.config.json`. By default it looks in `supabase/schemas/`. Create your first schema file:
+  <Step title="Write schema">
+    Create your first schema file:
 
     ```bash
     mkdir -p supabase/schemas
@@ -58,7 +54,7 @@ supaschema integrates directly into a standard Supabase project layout. This gui
     Your schema files are the single source of truth. You edit them directly — you never write migration SQL by hand.
   </Step>
 
-  <Step title="Generate a migration with diff">
+  <Step title="Generate">
     With your schema file in place, run `diff` to generate a migration:
 
     ```bash
@@ -114,19 +110,15 @@ supaschema integrates directly into a standard Supabase project layout. This gui
     ```
 
     <Tip>
-      Pass `--from` and `--to` explicitly to override defaults. Sources use prefixes to declare their type:
+    Use explicit sources when you want the whole run to stay offline:
 
       ```bash
-      # Diff against a specific git commit instead of the live database
       npx supaschema diff --from git:HEAD --to dir:supabase/schemas
-
-      # Diff against a specific database URL
-      npx supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas
       ```
     </Tip>
   </Step>
 
-  <Step title="Validate the migration with check">
+  <Step title="Check">
     Before applying the migration, use `check` to validate it:
 
     ```bash
@@ -148,7 +140,7 @@ supaschema integrates directly into a standard Supabase project layout. This gui
     </Warning>
   </Step>
 
-  <Step title="Apply the migration with Supabase CLI">
+  <Step title="Apply">
     supaschema generates migrations but never applies them to a database directly. Use the Supabase CLI to push your migration as you normally would:
 
     ```bash
@@ -162,7 +154,7 @@ supaschema integrates directly into a standard Supabase project layout. This gui
     </Note>
   </Step>
 
-  <Step title="(Optional) Generate TypeScript types">
+  <Step title="Generate types">
     Once your schema is defined, you can generate TypeScript types from it:
 
     ```bash
@@ -186,19 +178,19 @@ supaschema integrates directly into a standard Supabase project layout. This gui
 You've installed supaschema, written a declarative schema, generated and validated a migration, and seen how to push it. From here you can:
 
 <CardGroup cols={2}>
-  <Card title="Installation & Configuration" icon="gear" href="/installation">
-    Explore all configuration options, shell completions, and the `doctor` command.
+  <Card title="Setup" icon="gear" href="/setup">
+    Review install-time setup and config defaults.
   </Card>
 
-  <Card title="Commands Reference" icon="terminal" href="/commands">
+  <Card title="Commands" icon="terminal" href="/commands">
     Deep-dive into `diff`, `check`, `verify`, and all other supaschema commands.
   </Card>
 
-  <Card title="Type Generation" icon="code" href="/commands/types">
+  <Card title="Types" icon="code" href="/commands/types">
     Learn how to configure and customise TypeScript type output.
   </Card>
 
-  <Card title="CI/CD Integration" icon="circle-check" href="/guides/ci-github-actions">
+  <Card title="CI" icon="circle-check" href="/guides/ci-github-actions">
     Add supaschema to your GitHub Actions or other CI pipeline.
   </Card>
 </CardGroup>

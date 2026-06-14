@@ -1,5 +1,5 @@
 ---
-title: "Supabase db diff without Docker"
+title: "Docker-free diff"
 description: "Generate Supabase-compatible PostgreSQL migrations from declarative SQL files without Docker, a local Supabase stack, or a shadow database."
 ---
 
@@ -15,7 +15,6 @@ Database-backed diff workflows often need a local database, a Docker daemon, or 
 
 ```bash
 npm install --save-dev supaschema
-npx supaschema init
 ```
 
 In a standard Supabase project, put declarative SQL files under `supabase/schemas/`.

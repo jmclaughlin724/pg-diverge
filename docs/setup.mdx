@@ -1,0 +1,80 @@
+---
+title: "Setup"
+description: "Review install-time setup, verify the environment, and find detailed configuration options."
+---
+
+Setup is completed by the normal package install. `npm install --save-dev supaschema` prepares the project, scans for existing schema and migrations folders, and leaves schema and migration generation untouched until `diff` runs.
+
+## What install prepares
+
+| Area | Install behavior |
+| --- | --- |
+| Schema files | Uses a detected schema folder, or `supabase/schemas` when none exists |
+| Migration output | Uses a detected migrations folder, or `supabase/migrations` when none exists |
+| Type output | `database.types.ts` when opted in |
+| Zod output | `database.zod.ts` when opted in |
+| Database URL | flag, named environment, `SUPASCHEMA_DATABASE_URL`, then local Supabase config |
+| Agent guidance | Adds a managed supaschema block to `AGENTS.md` and `CLAUDE.md` |
+| Agent enforcement | Installs Claude/Codex rules, skills, hooks, and hook wiring |
+
+For every config key and advanced option, see [Configuration](/configuration/config-file).
+
+## Path selection
+
+Install scans the repository before writing config:
+
+- one detected schema folder and one detected migrations folder are used automatically;
+- if the standard Supabase paths exist, they are preferred;
+- if multiple non-standard candidates exist, install records them in `.supaschema/install.json` and the managed agent addendum tells the agent to ask which paths to use before the first diff;
+- in an interactive terminal, install can prompt for the paths immediately.
+
+When no existing folders are found, install creates the standard Supabase layout:
+
+```json
+{
+  "$schema": "./node_modules/supaschema/config-schema.json",
+  "schemaPaths": ["supabase/schemas"],
+  "migrationsDir": "supabase/migrations"
+}
+```
+
+Commit this file so every developer, CI job, and coding agent uses the same paths. If the config is deleted later, run `npx supaschema init` to recreate it.
+
+## Agent addendum
+
+Install updates `AGENTS.md` and `CLAUDE.md` by replacing only the managed block between these markers:
+
+```text
+<!-- supaschema:agent-guidance:start -->
+<!-- supaschema:agent-guidance:end -->
+```
+
+Existing content outside the markers is preserved.
+
+## Check setup
+
+Run `doctor` when you want a one-page environment check:
+
+```bash
+npx supaschema doctor
+```
+
+`doctor` checks the Node version, parser load, config validity, database URL resolution, database reachability when a URL is available, `CREATEDB` capability for verification, migration history, and the declarative schema tree.
+
+## Configuration
+
+Use the detailed configuration pages when setup needs more than the defaults:
+
+<CardGroup cols={3}>
+  <Card title="Config file" icon="file-json" href="/configuration/config-file">
+    Review schema paths, migrations, type outputs, validators, and planner policies.
+  </Card>
+
+  <Card title="Environments" icon="database" href="/configuration/environments">
+    Configure named targets and database URL resolution.
+  </Card>
+
+  <Card title="Hints" icon="shield-alert" href="/configuration/hints">
+    Approve reviewed destructive changes and renames.
+  </Card>
+</CardGroup>

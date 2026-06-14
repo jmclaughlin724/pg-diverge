@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-tool-gate.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-tool-gate.mjs\"",
             "timeout": 10,
             "statusMessage": "Checking supaschema generated-migration policy"
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/auto-diff-on-schema-change.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/auto-diff-on-schema-change.mjs\"",
             "timeout": 130,
             "statusMessage": "Running supaschema auto-diff on schema change"
           }

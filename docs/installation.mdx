@@ -1,156 +1,43 @@
 ---
-title: "supaschema: Installation, Setup, and Configuration"
-description: "Install supaschema from npm as a dev dependency, initialize your project configuration, and use the doctor command to verify your environment is ready."
+title: "Installation"
+description: "Install supaschema from npm and confirm the minimum runtime requirements."
 ---
 
-supaschema is distributed as a standard npm package and works with any Node.js project. This page covers installing the package, understanding the install-time notice, initialising your configuration, and using the `doctor` command to verify that your environment is ready.
+supaschema is distributed as an npm package and works in Node.js projects that target PostgreSQL or Supabase.
 
 ## Requirements
 
-Before installing, confirm your environment meets these minimum requirements:
+| Requirement | Minimum |
+| --- | --- |
+| Node.js | 22.12.0 |
+| PostgreSQL target | 15 |
 
-| Requirement         | Minimum Version |
-| ------------------- | --------------- |
-| Node.js             | 22.12.0 or later |
-| PostgreSQL (target) | 15 or later     |
-
-supaschema uses the official PostgreSQL parser compiled to WebAssembly, which is bundled with the package — you do not need a local PostgreSQL installation to *generate* migrations. PostgreSQL 15+ is the minimum version of the *target database* that supaschema's output is written for.
+The PostgreSQL parser is bundled with the package through `libpg-query`, so you do not need a local PostgreSQL server to generate migrations from SQL files or Git refs.
 
 ## Install
 
-<CodeGroup>
-  ```bash npm
-  npm install --save-dev supaschema
-  ```
-
-  ```bash pnpm
-  pnpm add --save-dev supaschema
-  ```
-
-  ```bash yarn
-  yarn add --dev supaschema
-  ```
-</CodeGroup>
-
-### What the postinstall step does
-
-After the package installs, a `postinstall` script runs automatically. It never writes files into your project; if no supported config file exists, it prints a notice telling you to run `npx supaschema init`:
-
-```text
-supaschema: run `npx supaschema init` to scaffold supaschema.config.json
-```
-
-Run `init` when you want to create `supaschema.config.json` with sensible defaults:
-
-```json
-{
-  "schemaPaths": ["supabase/schemas"],
-  "migrationsDir": "supabase/migrations"
-}
-```
-
-This keeps package installation side-effect-light while making setup explicit. In a standard Supabase project layout, you can run `npx supaschema diff` after creating the config with `npx supaschema init`.
-
-<Note>
-  If you commit `supaschema.config.json` to version control (recommended), the postinstall script will detect the existing file and print nothing on subsequent `npm install` runs across your team.
-</Note>
-
-## Initialise Configuration
-
-If you need to create or regenerate `supaschema.config.json` at any time — for example, after deleting it or when setting up a new environment — run:
+Use npm in this repository and in projects that follow the supaschema package guidance:
 
 ```bash
-npx supaschema init
+npm install --save-dev supaschema
 ```
 
-This writes `supaschema.config.json` to your current working directory with the default configuration values.
+Other package managers can install the package, but this repository uses npm and `package-lock.json`.
 
-## Diagnose Your Environment with `doctor`
-
-The `doctor` command runs a series of environment checks and reports any issues that would prevent supaschema from working correctly. Run it after installation to confirm everything is set up properly:
+## Verify the binary
 
 ```bash
-npx supaschema doctor
+npx supaschema --version
 ```
 
-Example output from a healthy environment:
+## Next steps
 
-```
-PASS  node version: running 22.12.0, requires >=22.12.0
-PASS  sql parser: libpg-query WASM parser loaded
-PASS  config: supaschema.config.json
-PASS  database url: resolved via SUPASCHEMA_DATABASE_URL
-PASS  database reachable: SELECT 1 succeeded
-PASS  createdb capability: role can CREATE DATABASE (verify/corpus will work)
-PASS  migrations history: 12 applied, 0 pending, 0 ghosts, 0 out-of-order
-PASS  declarative tree: supabase/schemas exists
-doctor: healthy
-```
+<CardGroup cols={2}>
+  <Card title="Setup" icon="settings" href="/setup">
+    Review install-time setup and check the environment.
+  </Card>
 
-`doctor` checks the following:
-
-| Check                   | What It Verifies                                                                                     |
-| ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| **node version**        | Your Node.js runtime meets the >=22.12.0 requirement                                                 |
-| **sql parser**          | The bundled WASM parser (`libpg-query`) loads without error                                          |
-| **config**              | `supaschema.config.json` is found and valid                                                          |
-| **database url**        | A database URL resolves (via `--database-url`, `SUPASCHEMA_DATABASE_URL`, or `supabase/config.toml`) |
-| **database reachable**  | The resolved database can be reached (skipped if no URL resolves)                                    |
-| **createdb capability** | The database role has `CREATEDB` (required for `verify` and `corpus`)                                |
-| **migrations history**  | Applied, pending, ghost, and out-of-order migration counts from the configured `migrationsDir`       |
-| **declarative tree**    | The configured `schemaPaths` directory exists and contains `.sql` files                              |
-
-<Tip>
-  Run `npx supaschema doctor` in CI as a preflight step before running `diff` or `check`. Any failed check will be surfaced clearly before it causes a more cryptic failure downstream.
-</Tip>
-
-## Exit Codes
-
-supaschema uses structured exit codes so you can integrate it reliably into scripts and CI pipelines:
-
-| Exit Code | Meaning                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------- |
-| `0`       | Success — the command completed without errors                                                    |
-| `1`       | Runtime error — an unexpected error occurred during execution                                     |
-| `2`       | Diagnostics error — one or more `doctor` checks failed                                            |
-| `3`       | Diff found operations — returned by `diff` when `--fail-on-diff` is set and the diff is non-empty |
-
-<Warning>
-  Exit code `3` is only returned when you pass the `--fail-on-diff` flag to `diff`. This is useful in CI to assert that your schema files and migrations directory are already in sync (i.e. no uncommitted schema changes exist).
-</Warning>
-
-## Shell Completions
-
-supaschema can generate shell completion scripts for bash, zsh, and fish. Add completions to your shell so you can tab-complete commands and flags.
-
-<CodeGroup>
-  ```bash bash
-  npx supaschema completion bash
-  ```
-
-  ```bash zsh
-  npx supaschema completion zsh
-  ```
-
-  ```bash fish
-  npx supaschema completion fish
-  ```
-</CodeGroup>
-
-Each command prints the completion script to stdout. To install it, source the output in your shell profile. For example, for bash:
-
-```bash
-npx supaschema completion bash >> ~/.bashrc
-source ~/.bashrc
-```
-
-For zsh:
-
-```bash
-npx supaschema completion zsh >> ~/.zshrc
-source ~/.zshrc
-```
-
-<Note>
-  Shell completion scripts are generated dynamically from the supaschema command tree, so they stay up to date automatically as you upgrade the package.
-</Note>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Generate and check your first migration.
+  </Card>
+</CardGroup>

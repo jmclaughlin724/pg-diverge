@@ -1,120 +1,83 @@
 ---
-title: "supaschema: Declarative PostgreSQL Schema Management"
-description: "supaschema generates replay-safe PostgreSQL migrations from declarative SQL files — no Docker, no shadow database, no ORM, and no live database required."
+title: "Introduction"
+description: "What supaschema is, why it exists, and where to start."
 ---
 
-supaschema is a CLI tool and Node.js library that generates type-safe, idempotent PostgreSQL migrations directly from declarative SQL schema files. You describe what your database schema *should* look like, and supaschema figures out exactly which SQL statements are needed to get there — without ever connecting to a running database, spinning up Docker, or relying on an ORM.
+supaschema is a Node.js CLI and library for generating deterministic PostgreSQL and Supabase migrations from declarative SQL schema files. You keep the desired schema in SQL, run `supaschema diff`, and review the generated replay-safe migration before your usual migration runner applies it.
 
-## What Problem Does It Solve?
+## What is supaschema?
 
-Traditional schema migration workflows require a live or shadow database to diff your desired state against your current state. This creates friction: you need Docker running locally, a shadow database provisioned in CI, or a full Supabase stack just to generate a migration file. If the diff engine is slow or inaccurate, you lose trust in the output and end up editing generated SQL by hand.
+supaschema is a generator, checker, and verifier:
 
-supaschema takes a different approach. It parses your declarative schema files using **PostgreSQL's own WASM parser** — the same parser the database uses — so the analysis is both fast and structurally correct. The result is a migration you can apply with confidence.
+- `diff` compares schema sources and writes a migration.
+- `check` statically validates migration SQL for replay safety and lock hazards.
+- `verify` applies a migration twice in disposable databases and checks convergence.
+- `types` emits Supabase-compatible TypeScript types and Zod validators from the declarative tree.
 
-## Key Differentiators
+It can read schema state from SQL files, Git refs, live databases, SQL dumps, or saved catalog snapshots. Generation from files or Git refs does not require Docker, a shadow database, or a live PostgreSQL connection.
 
-* **No infrastructure required.** supaschema never touches a real database during migration generation. No Docker, no shadow DB, no network calls.
-* **Built on PostgreSQL's own parser.** supaschema uses the official PostgreSQL parser compiled to WebAssembly, so it understands your SQL the same way the database does.
-* **18–68× faster than alternative engines.** supaschema's diff engine consistently outperforms competing tools in [benchmarks](/benchmarks) across schema sizes.
-* **Perfect F1 accuracy (1.000).** Independent accuracy benchmarks show supaschema produces zero false positives and zero false negatives in migration output.
-* **Replay-safe migrations.** Every generated migration is idempotent and safe to re-run, so you can integrate it into CI/CD pipelines without fear of destructive side effects.
+## What gets installed?
 
-## Benchmark
+Installing `supaschema` gives a project everything a human or coding agent needs to start generating migrations. It creates config when no config exists, scans for existing schema and migrations folders, and installs the bundled Claude/Codex-compatible agent rule, skill, and hooks. It does not edit schema files, generate migrations, or connect to a database.
 
-The table below shows median diff time across schema sizes and F1 accuracy scores from head-to-head benchmarks against the Supabase CLI's diff engines. All numbers are reproducible from the project repository.
+The package includes:
 
-| Tool                 | 1 table    | 1,000 tables | 2,500 tables | F1 Accuracy |
-| -------------------- | ---------- | ------------ | ------------ | ----------- |
-| **supaschema**       | **0.21 s** | **1.41 s**   | **3.17 s**   | **1.000**   |
-| Supabase CLI engines | 4.0–4.5 s  | 39–43 s      | \~3.5 min    | 0.982–0.999 |
+- the `supaschema` CLI for setup, diff generation, checks, verification, and type generation;
+- typed ESM library exports for scripts, tests, and custom tooling;
+- the PostgreSQL parser and SQL deparser dependencies needed for AST-based schema reads;
+- the JSON Schema for editor validation of `supaschema.config.json`;
+- a `supaschema.config.json` when the project does not already define config;
+- the bundled coding-agent instructions, rules, skills, and hooks for Claude and Codex-compatible agents.
 
-<Note>
-  Benchmark figures come from a reference run on Apple Silicon, Node 24, PostgreSQL 17.6, and Supabase CLI 2.106.0. The 18–68× speedup range reflects the spread from small to large schemas — the gap widens as your schema grows because shadow-database engines pay for a full schema replay into a fresh Docker database on every diff. The Supabase CLI accuracy gap is always the same miss: each engine silently drops an RLS policy change.
-</Note>
+After install, an agent can follow the same loop a human would: edit declarative SQL, run `diff`, run `check`, and only apply through your normal migration runner when asked.
 
-## Two Ways to Use supaschema
+## Why supaschema?
 
-### CLI
+Database-backed diff workflows are slow and easy to mistrust when schemas grow. They also miss classes of changes that matter in Supabase projects, especially Row Level Security policy body changes.
 
-The `supaschema` binary is the primary interface for most projects. You run it from your project root, and it reads your configuration from `supaschema.config.json`.
+supaschema uses PostgreSQL parse trees through `libpg-query` and structured schema models instead. That design gives you:
 
-```bash
-# Generate a migration from your declarative schema files
-npx supaschema diff
+- **Offline migration generation** from committed SQL files or Git refs.
+- **Replay-safe SQL** with guarded creates and catalog-checked operations.
+- **Structural policy comparison** for RLS policies, not name-only matching.
+- **Fast type generation** from the declarative tree, without waiting for a deployed database.
+- **CI-friendly proofs** through `check`, `verify`, drift gates, and diagnostics.
 
-# Validate a migration file before applying it
-npx supaschema check supabase/migrations/20240101000000_migration.sql
+## How it fits
 
-# Diagnose your environment
-npx supaschema doctor
-```
+supaschema does not replace your migration runner. In a Supabase project, the normal flow is:
 
-The CLI is designed to slot into existing Supabase projects without changing your deploy workflow — you still apply migrations with `supabase db push`.
+1. Edit the declarative schema files.
+2. Generate a migration with `supaschema diff`.
+3. Validate it with `supaschema check` and, when possible, `supaschema verify`.
+4. Apply it with your runner, such as `supabase db push`.
 
-### Node.js Library API
+The optional `supaschema sync` command is an explicit apply gate: without `--local` or `--remote` it is a dry run, and with an apply flag it delegates to the Supabase CLI after status and replay-safety checks.
 
-supaschema also exposes a programmatic API for use inside build scripts, test harnesses, or custom tooling. Install the package and import the functions you need directly in your Node.js code.
+## Start here
 
-```typescript
-import { checkMigrationSql, extractSourceModel, planSchemaDiff, renderMigration } from "supaschema";
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the package and confirm runtime requirements.
+  </Card>
 
-const from = await extractSourceModel("git:HEAD");
-const to = await extractSourceModel("dir:supabase/schemas");
-const plan = planSchemaDiff(from, to);
-const sql = renderMigration(plan);
-const diagnostics = await checkMigrationSql(sql);
-```
+  <Card title="Setup" icon="settings" href="/setup">
+    Review what install prepares and how to check the environment.
+  </Card>
 
-## Available Commands
-
-| Command       | Description                                                                 |
-| ------------- | --------------------------------------------------------------------------- |
-| `diff`        | Generate a migration by diffing schema files against the migrations history |
-| `check`       | Validate a migration file for correctness and safety                        |
-| `verify`      | Verify that applied migrations match your declarative schema                |
-| `types`       | Generate TypeScript types from your schema                                  |
-| `plan`        | Preview the operations a migration will perform                             |
-| `inspect`     | Inspect the current schema tree                                             |
-| `fingerprint` | Compute a deterministic fingerprint of a schema                             |
-| `migrations`  | List and manage migration history                                           |
-| `sync`        | Sync migrations directory with schema state                                 |
-| `audit`       | Audit migration files for common issues                                     |
-| `doctor`      | Diagnose your environment and configuration                                 |
-| `init`        | Scaffold a `supaschema.config.json` in your project                         |
-| `completion`  | Print shell completion scripts (bash, zsh, fish)                            |
-| `explain`     | Explain what a migration file does in plain language                        |
-| `corpus`      | Manage the internal test corpus                                             |
-| `selfcheck`   | Run supaschema's internal integrity checks                                  |
-
-## Licensing
-
-supaschema is dual-licensed:
-
-* **AGPL-3.0** for open-source projects. You can use supaschema freely as long as your project is also open source under a compatible license.
-* **Commercial license** for proprietary use. If you are building closed-source software, contact the supaschema team for a commercial license.
-
-<CardGroup cols={3}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Install supaschema and generate your first migration in under 5 minutes.
+    Generate and check your first migration.
   </Card>
 
-  <Card title="Commands: diff, check, verify" icon="terminal" href="/commands/diff">
-    Learn the core commands you'll use every day with supaschema.
+  <Card title="Commands" icon="terminal" href="/commands">
+    Find the CLI reference for `diff`, `check`, `verify`, and `types`.
   </Card>
 
-  <Card title="Type Generation" icon="code" href="/commands/types">
-    Generate TypeScript types directly from your declarative schema files.
+  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
+    Review detailed config keys, environments, hints, and validators.
   </Card>
 
-  <Card title="Supabase CLI comparison" icon="git-compare" href="/comparisons/supaschema-vs-supabase-cli">
-    Compare `supaschema` with Supabase CLI `db diff` for speed, safety, and workflow fit.
-  </Card>
-
-  <Card title="FAQ" icon="circle-help" href="/faq">
-    Get direct answers about Docker-free diffs, replay safety, RLS policies, and type generation.
-  </Card>
-
-  <Card title="Benchmarks" icon="chart-line" href="/benchmarks">
-    Review reproducible latency, accuracy, and replay-safety results.
+  <Card title="Coding Agents" icon="bot" href="/coding-agents">
+    See how the bundled agent instructions, rules, skills, and hooks work.
   </Card>
 </CardGroup>

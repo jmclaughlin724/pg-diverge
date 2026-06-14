@@ -1,5 +1,5 @@
 ---
-title: "supaschema Utility Commands: plan, audit, and corpus"
+title: "Utility commands"
 description: "Reference for supaschema utility commands: plan, inspect, fingerprint, audit, corpus, doctor, init, completion, explain, and selfcheck."
 ---
 
@@ -119,7 +119,7 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 </Accordion>
 
 <Accordion title="doctor — Diagnose your environment">
-  `doctor` checks every component of your supaschema setup and reports a pass/fail result for each. Run it first whenever you set up supaschema in a new environment, or whenever something behaves unexpectedly.
+  `doctor` checks every component of your supaschema setup and reports a pass/fail result for each. Run it whenever something behaves unexpectedly or before adding supaschema to CI.
 
   ```bash
   # Check everything except database connectivity
@@ -149,8 +149,8 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
   Each failed check prints a plain-English explanation and a suggested remediation.
 </Accordion>
 
-<Accordion title="init — Write a default config file">
-  `init` writes a `supaschema.config.json` file with sensible defaults into the current working directory. If a config file already exists, the command exits with an error rather than overwriting it.
+<Accordion title="init — Write a config file">
+  `init` recreates the small `supaschema.config.json` scaffold when needed. Normal package installation already writes this file when no config exists. If a config file already exists, the command exits with an error rather than overwriting it.
 
   ```bash
   # Write supaschema.config.json in the current directory
@@ -161,15 +161,13 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 
   ```json
   {
+    "$schema": "./node_modules/supaschema/config-schema.json",
     "schemaPaths": ["supabase/schemas"],
-    "migrationsDir": "supabase/migrations",
-    "typesFile": "database.types.ts",
-    "zodFile": "database.zod.ts",
-    "environments": {}
+    "migrationsDir": "supabase/migrations"
   }
   ```
 
-  Edit the file to add named environments, change output paths, or adjust any other setting before running your first `diff`.
+  Edit the file only when you need named environments, custom schema paths, or different output paths.
 </Accordion>
 
 <Accordion title="completion — Print shell completion script">

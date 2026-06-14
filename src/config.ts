@@ -144,9 +144,9 @@ function isModuleMissing(error: unknown): boolean {
 
 const scaffoldConfig = {
   $schema: "./node_modules/supaschema/config-schema.json",
-  ...defaultConfig,
+  schemaPaths: defaultConfig.schemaPaths,
+  migrationsDir: defaultConfig.migrationsDir,
 };
-delete (scaffoldConfig as { environments?: unknown }).environments;
 
 export const defaultConfigFile = `${JSON.stringify(scaffoldConfig, null, 2)}\n`;
 

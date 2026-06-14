@@ -1,0 +1,70 @@
+---
+title: "Coding Agents"
+description: "How supaschema guides Claude, Codex, and other coding agents through safe migration generation."
+---
+
+supaschema ships an agent bundle so coding agents follow the same migration contract as humans: edit the declarative schema tree, generate migrations with `diff`, check replay safety, and never hand-edit generated migration files.
+
+## Start
+
+After installing the package in a project, give the agent this instruction:
+
+```text
+Use supaschema for schema changes. Read the project-installed supaschema guidance in `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file. Edit declarative SQL files, run `npx supaschema diff`, then run `npx supaschema check`. Do not hand-edit generated migrations. Do not apply migrations unless explicitly asked.
+```
+
+For a new project, the human or agent only needs the normal package install:
+
+```bash
+npm install --save-dev supaschema
+```
+
+The install creates missing config, installs the supaschema skill/rule/hook files, merges hook wiring, and adds a tagged supaschema addendum to `AGENTS.md` and `CLAUDE.md`. If install records multiple possible schema or migration paths in `.supaschema/install.json`, ask which paths to use before the first diff.
+
+## llms.txt
+
+The published Mintlify docs expose LLM-readable documentation through `llms.txt` and the full-document export. Use these URLs when an assistant needs product documentation context without scraping the rendered site:
+
+```text
+https://supaschema.com/docs/llms.txt
+https://supaschema.com/docs/llms-full.txt
+```
+
+These files describe the public docs. They do not replace the repository agent files, which carry write-time migration policy for agents operating inside a codebase.
+
+## CLAUDE.md / AGENTS.md
+
+`AGENTS.md` is the root operator brief. It tells agents where source code, docs, tests, generated output, config, and migration policy live. It also defines the repository's durable rules: generated migrations are artifacts, destructive changes require exact hints, and `sync --local` or `sync --remote` needs explicit human intent.
+
+`CLAUDE.md` is a compatibility stub that points to `AGENTS.md`. Keep it as the bridge for tools that read Claude-specific instruction files.
+
+## Rule
+
+The rule surface carries durable migration policy:
+
+- Claude reads `.claude/rules/supaschema.md`.
+- Codex reads `.codex/rules/supaschema.rules`.
+
+Both surfaces describe the same contract: schema intent belongs in the declarative tree, generated migrations with lineage markers are not hand-edited, destructive operations are hint-gated, and database URLs must resolve through the documented lanes instead of hard-coded credentials.
+
+## Skill
+
+The skill is the repeatable workflow an agent follows when a schema change is requested:
+
+- Edit the schema tree.
+- Run `supaschema diff`.
+- Run `supaschema check`.
+- Run `supaschema verify` when a disposable database is reachable.
+- Commit the tree change, generated migration, and refreshed type files together.
+
+The Claude skill lives at `.claude/skills/supaschema/SKILL.md`. The `.agents/skills/supaschema/SKILL.md` mirror carries the same workflow for Codex-compatible agent surfaces.
+
+## Hook
+
+The hooks enforce the workflow while an agent edits files:
+
+- A pre-tool hook blocks edits to generated migration SQL when the lineage marker is present.
+- A post-tool hook watches schema-tree SQL writes, runs `supaschema diff`, then runs `supaschema check`.
+- Hook output reports the generated migration or the blocking `SUPA_*` diagnostic back to the agent.
+
+Claude and Codex use separate native hook implementations, but they enforce the same policy. The hooks generate and prove migrations; they do not apply migrations to any database.

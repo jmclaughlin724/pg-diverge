@@ -1,5 +1,5 @@
 ---
-title: "Declarative Schema Management with supaschema"
+title: "Declarative schema"
 description: "Learn how supaschema's declarative approach keeps your PostgreSQL schema in SQL files and auto-generates safe, idempotent migrations on every change."
 ---
 
@@ -31,7 +31,7 @@ supaschema ships PostgreSQL's own parser inside the package, so the same loop ne
 
 ![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](/concepts/supaschema-flow.svg)
 
-## Schema Sources: SQL Files on Disk
+## SQL files on disk
 
 A **schema source** is any collection of SQL files that supaschema can parse into a complete picture of your database objects. The most common source is a directory of `.sql` files referenced by the `schemaPaths` configuration key (or the `dir:` source prefix on the CLI).
 

@@ -24,10 +24,14 @@ const sampleDiagnostics: Diagnostic[] = [
 ];
 
 describe("config DX", () => {
-  it("tolerates $schema and scaffolds it into the default config file", () => {
+  it("tolerates $schema and keeps the scaffold small", () => {
     const config = resolveConfig({ $schema: "./node_modules/supaschema/config-schema.json" });
     expect(config.adapter).toBe("supabase-auto");
-    expect(defaultConfigFile).toContain('"$schema"');
+    expect(JSON.parse(defaultConfigFile)).toEqual({
+      $schema: "./node_modules/supaschema/config-schema.json",
+      schemaPaths: ["supabase/schemas"],
+      migrationsDir: "supabase/migrations",
+    });
   });
 
   it("parses named environments and rejects unknown keys inside them", () => {

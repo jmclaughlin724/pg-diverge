@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml/badge.svg)](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/supaschema)](https://www.npmjs.com/package/supaschema) [![npm downloads](https://img.shields.io/npm/dm/supaschema)](https://www.npmjs.com/package/supaschema) [![node](https://img.shields.io/node/v/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/package.json) [![license](https://img.shields.io/npm/l/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/LICENSE) [![codecov](https://codecov.io/gh/jmclaughlin724/supaschema/branch/main/graph/badge.svg)](https://codecov.io/gh/jmclaughlin724/supaschema) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jmclaughlin724/supaschema/badge)](https://scorecard.dev/viewer/?uri=github.com/jmclaughlin724/supaschema) [![install size](https://packagephobia.com/badge?p=supaschema)](https://packagephobia.com/result?p=supaschema)
 
-[Documentation](https://supaschema.com/docs) · [Quickstart](https://supaschema.com/docs/quickstart) · [Benchmarks](https://supaschema.com/docs/benchmarks) · [Supabase CLI comparison](https://supaschema.com/docs/comparisons/supaschema-vs-supabase-cli) · [FAQ](https://supaschema.com/docs/faq)
+[Documentation](https://supaschema.com/docs) · [Setup](https://supaschema.com/docs/setup) · [Quickstart](https://supaschema.com/docs/quickstart) · [Benchmarks](https://supaschema.com/docs/benchmarks) · [Supabase CLI comparison](https://supaschema.com/docs/comparisons/supaschema-vs-supabase-cli) · [FAQ](https://supaschema.com/docs/faq)
 
 **Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, and refreshes existing TypeScript + Zod outputs in the same command — without standing up a database to do it.
 
@@ -40,13 +40,13 @@ supaschema ships PostgreSQL's own parser inside the package. It reads your SQL i
 npm install --save-dev supaschema
 ```
 
-Requires Node 22.12+ and PostgreSQL 15+. Run `npx supaschema init` to scaffold `supaschema.config.json`. In a Supabase project the database URL is discovered from `supabase/config.toml` automatically; anywhere else, set `SUPASCHEMA_DATABASE_URL` or define named `environments` in the config. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
+Requires Node 22.12+ and PostgreSQL 15+. Install creates `supaschema.config.json` when missing, scans for schema/migration paths, and wires the bundled Claude/Codex-compatible rule, skill, and hooks. In a Supabase project the database URL is discovered from `supabase/config.toml` automatically; anywhere else, set `SUPASCHEMA_DATABASE_URL` or define named `environments` in the config. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
 
 ## Quick Start
 
 You edit one thing: your schema files (`supabase/schemas/` by default). Everything downstream — the migration, the replay-safety check, and refreshed type outputs once initialized — comes from that edit.
 
-**With the agent bundle installed** ([AI agents](#ai-agents)), saving a schema file _is_ the workflow. The PostToolUse hook senses the change, runs the diff and the replay-safety check to completion, writes the timestamped migration, refreshes existing type outputs, and reports the result back to the agent — there is no command to type.
+**For agent-managed projects** ([AI agents](#ai-agents)), give the agent the bundled supaschema instructions after install. When hooks are wired, saving a schema file _is_ the workflow: the PostToolUse hook senses the change, runs the diff and replay-safety check to completion, writes the timestamped migration, refreshes existing type outputs, and reports the result back to the agent.
 
 **By hand or in CI**, run the diff yourself:
 
@@ -222,7 +222,7 @@ Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes,
 
 ## Documentation
 
-[commands](https://supaschema.com/docs/commands) · [config](https://supaschema.com/docs/configuration/config-file) · [hints & recovery](https://supaschema.com/docs/configuration/hints) · [CI recipes](https://supaschema.com/docs/guides/ci-github-actions) · [CI gate & paid tier](https://supaschema.com/docs/guides/ci-gate) · [diagnostics](https://supaschema.com/docs/reference/diagnostics) · [support matrix](https://supaschema.com/docs/reference/support-matrix) · [corpus oracle](https://supaschema.com/docs/guides/corpus-oracle) · [case study](https://supaschema.com/docs/case-study-anilize) · [benchmark harness](benchmarks/README.md)
+[setup](https://supaschema.com/docs/setup) · [quickstart](https://supaschema.com/docs/quickstart) · [coding agents](https://supaschema.com/docs/coding-agents) · [commands](https://supaschema.com/docs/commands) · [config](https://supaschema.com/docs/configuration/config-file) · [hints & recovery](https://supaschema.com/docs/configuration/hints) · [CI recipes](https://supaschema.com/docs/guides/ci-github-actions) · [CI gate & paid tier](https://supaschema.com/docs/guides/ci-gate) · [diagnostics](https://supaschema.com/docs/reference/diagnostics) · [support matrix](https://supaschema.com/docs/reference/support-matrix) · [corpus oracle](https://supaschema.com/docs/guides/corpus-oracle) · [case study](https://supaschema.com/docs/case-study-anilize) · [benchmark harness](benchmarks/README.md)
 
 ## Development
 

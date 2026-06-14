@@ -56,6 +56,10 @@
             "href": "/quickstart"
           },
           {
+            "label": "Setup",
+            "href": "/setup"
+          },
+          {
             "label": "Commands",
             "href": "/commands/diff"
           },
@@ -101,7 +105,7 @@
       {
         "group": "Get Started",
         "icon": "rocket",
-        "pages": ["introduction", "installation", "quickstart", "faq"]
+        "pages": ["introduction", "installation", "setup", "quickstart", "coding-agents", "faq"]
       },
       {
         "group": "Core Concepts",
@@ -217,6 +221,14 @@
     {
       "source": "/index",
       "destination": "/introduction"
+    },
+    {
+      "source": "/agents",
+      "destination": "/coding-agents"
+    },
+    {
+      "source": "/ai-agents",
+      "destination": "/coding-agents"
     },
     {
       "source": "/compare",

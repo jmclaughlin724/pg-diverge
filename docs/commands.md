@@ -31,7 +31,7 @@ Exit codes: `0` success · `1` runtime error · `2` diagnostics contained at lea
 
 ## Setup and tooling
 
-- `supaschema init` writes `supaschema.config.json` with the defaults (including the `$schema` pointer for editor autocomplete).
+- `supaschema init` recreates the small `supaschema.config.json` scaffold when needed. Normal package installation already writes it when no config exists.
 - `supaschema audit --from <source> [--json]` reports support-matrix coverage: objects modeled by kind/schema plus every statement outside the contract grouped by diagnostic code (exit 2 when any exist) — the adoption question answered from the same extraction the diff engine uses.
 - `supaschema doctor [--database-url <url>] [--json]` diagnoses the environment in one paste-able report: Node version, parser load, config, which URL-resolution lane fired, database reachability, `CREATEDB` capability, migrations-history health, and the declarative tree.
 - `supaschema completion <bash|zsh|fish>` prints a shell completion script.
