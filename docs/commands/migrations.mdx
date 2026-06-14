@@ -3,10 +3,6 @@ title: "supaschema migrations: Reconcile Migration Files and History"
 description: "migrations compares SQL files on disk against a database's applied history to surface ghost versions, out-of-order files, and pending migrations."
 ---
 
-# supaschema migrations: Reconcile Migration Files and History
-
-> migrations compares SQL files on disk against a database's applied history to surface ghost versions, out-of-order files, and pending migrations.
-
 The `migrations` command gives you a clear picture of the relationship between the SQL files sitting on disk and the migration history recorded in your target database. It reads every numbered file in your migrations directory, queries the database's history table (if you supply a connection URL), and prints a reconciled status table so you can see at a glance what is applied, what is pending, and whether anything looks suspicious.
 
 ## What it does
@@ -59,7 +55,7 @@ If you omit `--database-url` and no `SUPASCHEMA_DATABASE_URL` environment variab
 
 ## Usage
 
-```bash theme={null}
+```bash
 # Show all migration status using config defaults
 npx supaschema migrations
 

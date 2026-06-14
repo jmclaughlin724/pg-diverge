@@ -3,10 +3,6 @@ title: "supaschema: Installation, Setup, and Configuration"
 description: "Install supaschema from npm as a dev dependency, initialize your project configuration, and use the doctor command to verify your environment is ready."
 ---
 
-# supaschema: Installation, Setup, and Configuration
-
-> Install supaschema from npm as a dev dependency, initialize your project configuration, and use the doctor command to verify your environment is ready.
-
 supaschema is distributed as a standard npm package and works with any Node.js project. This page covers installing the package, understanding the install-time notice, initialising your configuration, and using the `doctor` command to verify that your environment is ready.
 
 ## Requirements
@@ -23,15 +19,15 @@ supaschema uses the official PostgreSQL parser compiled to WebAssembly, which is
 ## Install
 
 <CodeGroup>
-  ```bash npm theme={null}
+  ```bash npm
   npm install --save-dev supaschema
   ```
 
-  ```bash pnpm theme={null}
+  ```bash pnpm
   pnpm add --save-dev supaschema
   ```
 
-  ```bash yarn theme={null}
+  ```bash yarn
   yarn add --dev supaschema
   ```
 </CodeGroup>
@@ -40,13 +36,13 @@ supaschema uses the official PostgreSQL parser compiled to WebAssembly, which is
 
 After the package installs, a `postinstall` script runs automatically. It never writes files into your project; if no supported config file exists, it prints a notice telling you to run `npx supaschema init`:
 
-```text theme={null}
+```text
 supaschema: run `npx supaschema init` to scaffold supaschema.config.json
 ```
 
 Run `init` when you want to create `supaschema.config.json` with sensible defaults:
 
-```json theme={null}
+```json
 {
   "schemaPaths": ["supabase/schemas"],
   "migrationsDir": "supabase/migrations"
@@ -63,7 +59,7 @@ This keeps package installation side-effect-light while making setup explicit. I
 
 If you need to create or regenerate `supaschema.config.json` at any time — for example, after deleting it or when setting up a new environment — run:
 
-```bash theme={null}
+```bash
 npx supaschema init
 ```
 
@@ -73,7 +69,7 @@ This writes `supaschema.config.json` to your current working directory with the 
 
 The `doctor` command runs a series of environment checks and reports any issues that would prevent supaschema from working correctly. Run it after installation to confirm everything is set up properly:
 
-```bash theme={null}
+```bash
 npx supaschema doctor
 ```
 
@@ -128,29 +124,29 @@ supaschema uses structured exit codes so you can integrate it reliably into scri
 supaschema can generate shell completion scripts for bash, zsh, and fish. Add completions to your shell so you can tab-complete commands and flags.
 
 <CodeGroup>
-  ```bash bash theme={null}
+  ```bash bash
   npx supaschema completion bash
   ```
 
-  ```bash zsh theme={null}
+  ```bash zsh
   npx supaschema completion zsh
   ```
 
-  ```bash fish theme={null}
+  ```bash fish
   npx supaschema completion fish
   ```
 </CodeGroup>
 
 Each command prints the completion script to stdout. To install it, source the output in your shell profile. For example, for bash:
 
-```bash theme={null}
+```bash
 npx supaschema completion bash >> ~/.bashrc
 source ~/.bashrc
 ```
 
 For zsh:
 
-```bash theme={null}
+```bash
 npx supaschema completion zsh >> ~/.zshrc
 source ~/.zshrc
 ```

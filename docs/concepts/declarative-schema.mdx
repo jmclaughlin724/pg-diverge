@@ -3,10 +3,6 @@ title: "Declarative Schema Management with supaschema"
 description: "Learn how supaschema's declarative approach keeps your PostgreSQL schema in SQL files and auto-generates safe, idempotent migrations on every change."
 ---
 
-# Declarative Schema Management with supaschema
-
-> Learn how supaschema's declarative approach keeps your PostgreSQL schema in SQL files and auto-generates safe, idempotent migrations on every change.
-
 Declarative schema management flips the traditional migration workflow on its head. Instead of writing every `ALTER TABLE`, `CREATE INDEX`, or `DROP COLUMN` by hand, you describe the schema you *want* — the end state — in plain SQL `CREATE` statements. supaschema reads those files, compares them against what already exists, and generates the precise SQL needed to close the gap. You own the intent; supaschema owns the diff.
 
 ## Imperative vs. Declarative Migrations
@@ -39,14 +35,14 @@ supaschema ships PostgreSQL's own parser inside the package, so the same loop ne
 
 A **schema source** is any collection of SQL files that supaschema can parse into a complete picture of your database objects. The most common source is a directory of `.sql` files referenced by the `schemaPaths` configuration key (or the `dir:` source prefix on the CLI).
 
-```bash theme={null}
+```bash
 # Point supaschema at a directory of SQL files
 supaschema diff --to dir:supabase/schemas
 ```
 
 Inside that directory, you write ordinary PostgreSQL `CREATE` statements — one file per table, one file per domain, or however you prefer to organise them. supaschema does not impose a file-naming convention.
 
-```sql theme={null}
+```sql
 -- supabase/schemas/orders.sql
 CREATE TABLE public.orders (
   id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -80,7 +76,7 @@ supaschema extracts every recognisable database object from these files, includi
 
 After parsing all source files, supaschema builds a **SchemaModel** — an in-memory, structured representation of every object it found. Think of it as a catalogue snapshot: each object carries its type, qualified name, normalised definition, and a deterministic content hash.
 
-```typescript theme={null}
+```typescript
 // SchemaModel interface
 interface SchemaModel {
   source:        string;         // the source URI this model was built from
@@ -97,12 +93,12 @@ The SchemaModel is the common currency inside supaschema's pipeline. Both the **
 
 Every SchemaModel carries a **fingerprint** — a single deterministic hash derived from the hashes of all its constituent objects. If anything in the schema changes — a column type, a function body, a policy expression — the fingerprint changes.
 
-```bash theme={null}
+```bash
 # Inspect the current fingerprint of your schema files
 supaschema fingerprint --from dir:supabase/schemas
 ```
 
-```json theme={null}
+```json
 {
   "fingerprint": "e7b4a1d3f2c9...",
   "objectCount": 42,
@@ -142,7 +138,7 @@ This protection exists because:
 * Dropping or altering a platform-managed function (such as `auth.uid()`) can break authentication across your entire project.
 * Your schema files should express only the objects *you* own.
 
-```sql theme={null}
+```sql
 -- ✅ Allowed — you own the public schema
 CREATE TABLE public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users (id)

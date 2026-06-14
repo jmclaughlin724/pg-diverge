@@ -3,8 +3,6 @@ title: "CI recipe"
 description: "GitHub Actions examples for drift checks, replay-safety checks, and apply-twice verification."
 ---
 
-# CI Recipe
-
 A minimal GitHub Actions job that diffs a pull request's declarative tree against the base branch, checks the rendered migration, and proves it against a disposable PostgreSQL service:
 
 ```yaml

@@ -3,8 +3,6 @@ title: "Diagnostics"
 description: "SUPA diagnostic codes, severities, meanings, and recovery entry points."
 ---
 
-# Diagnostics
-
 Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `statement`, and `hint` fields.
 
 | Code | Severity | Meaning |

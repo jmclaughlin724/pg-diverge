@@ -3,10 +3,6 @@ title: "supaschema: Declarative PostgreSQL Schema Management"
 description: "supaschema generates replay-safe PostgreSQL migrations from declarative SQL files — no Docker, no shadow database, no ORM, and no live database required."
 ---
 
-# supaschema: Declarative PostgreSQL Schema Management
-
-> supaschema generates replay-safe PostgreSQL migrations from declarative SQL files — no Docker, no shadow database, no ORM, and no live database required.
-
 supaschema is a CLI tool and Node.js library that generates type-safe, idempotent PostgreSQL migrations directly from declarative SQL schema files. You describe what your database schema *should* look like, and supaschema figures out exactly which SQL statements are needed to get there — without ever connecting to a running database, spinning up Docker, or relying on an ORM.
 
 ## What Problem Does It Solve?
@@ -42,7 +38,7 @@ The table below shows median diff time across schema sizes and F1 accuracy score
 
 The `supaschema` binary is the primary interface for most projects. You run it from your project root, and it reads your configuration from `supaschema.config.json`.
 
-```bash theme={null}
+```bash
 # Generate a migration from your declarative schema files
 npx supaschema diff
 
@@ -59,7 +55,7 @@ The CLI is designed to slot into existing Supabase projects without changing you
 
 supaschema also exposes a programmatic API for use inside build scripts, test harnesses, or custom tooling. Install the package and import the functions you need directly in your Node.js code.
 
-```typescript theme={null}
+```typescript
 import { checkMigrationSql, extractSourceModel, planSchemaDiff, renderMigration } from "supaschema";
 
 const from = await extractSourceModel("git:HEAD");

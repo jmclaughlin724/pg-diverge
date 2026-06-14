@@ -3,8 +3,6 @@ title: "Idempotent PostgreSQL migrations"
 description: "Generate and check replay-safe PostgreSQL migrations that can run more than once without failing on existing tables, indexes, constraints, or policies."
 ---
 
-# Idempotent PostgreSQL migrations
-
 An idempotent PostgreSQL migration can be retried safely. If a deploy crashes after part of the file ran, the runner can execute the file again without failing on objects that already exist.
 
 `supaschema` generates replay-safe migrations by construction and verifies that migration files stay safe before they are applied.
@@ -80,4 +78,3 @@ npx supaschema verify
 Do not use broad destructive hints to make a diff pass. Drops and type rewrites require explicit review because replay-safe SQL can still be logically unsafe when it deletes data or weakens constraints.
 
 Use [destructive hints](/configuration/hints) only for exact reviewed object keys.
-

@@ -3,10 +3,6 @@ title: "The supaschema Migration Pipeline: All Six Stages"
 description: "How supaschema extracts, diffs, renders, checks, and verifies a migration from schema files to production-ready SQL, without ever touching your database."
 ---
 
-# The supaschema Migration Pipeline: All Six Stages
-
-> How supaschema extracts, diffs, renders, checks, and verifies a migration from schema files to production-ready SQL, without ever touching your database.
-
 supaschema's model is a structured pipeline of six stages — Extract, Plan, Render, Check, Verify, and Apply. `supaschema diff` performs the first three (Extract, Plan, Render) and writes the migration file; **Check, Verify, and Apply are separate, explicit steps** you run on the result (`supaschema check`, `supaschema verify`, and your deployment runner). Understanding each stage helps you interpret error messages, tune safety settings, and trust the output. This page walks through every stage in detail.
 
 <Note>
@@ -47,13 +43,13 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
   After extraction you have two models: the **current state** (from) and the **desired state** (to). Every subsequent stage works from these two models — no source is read again.
 
-  ```bash theme={null}
+  ```bash
   # You can inspect what supaschema extracted from any source
   supaschema inspect --from dir:supabase/schemas
   supaschema inspect --from database:$DATABASE_URL
   ```
 
-  ```json theme={null}
+  ```json
   // Abbreviated inspect output
   {
     "fingerprint": "e7b4a1d3f2c9...",
@@ -72,7 +68,7 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
   Each operation in the plan carries:
 
-  ```typescript theme={null}
+  ```typescript
   interface MigrationOperation {
     kind:        "create" | "alter" | "replace" | "drop" | "rename";
     ref:         ObjectRef;   // { kind: ObjectKind, schema, name, ... }
@@ -108,7 +104,7 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
   The renderer also applies **idempotency wrappers** where needed:
 
-  ```sql theme={null}
+  ```sql
   -- Rendered output (idempotent)
   ALTER TABLE public.orders
     ADD COLUMN IF NOT EXISTS fulfilled_at timestamptz;
@@ -141,7 +137,7 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
   | Policy safety     | A `CREATE POLICY` not preceded by `DROP POLICY IF EXISTS` is flagged (`SUPA_CHECK_POLICY_REPLACEMENT`) — `CREATE POLICY` has no `OR REPLACE` form |
   | Sequence safety   | Changing a sequence `owned by` a column that no longer exists is flagged        |
 
-  ```bash theme={null}
+  ```bash
   # Run only static checks against your migrations directory (no database needed)
   supaschema check
   ```
@@ -156,7 +152,7 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
   2. The second application also succeeds without error (idempotency proof).
   3. After the second application, the schema fingerprint matches the expected "to" state.
 
-  ```bash theme={null}
+  ```bash
   # Run the verify stage against the newest pending migration
   supaschema verify
   ```
@@ -176,7 +172,7 @@ supaschema stops at the end of the Verify stage. It outputs the finished migrati
 
 Applying that SQL to a real database is the responsibility of **your deployment runner**:
 
-```bash theme={null}
+```bash
 # Apply with the Supabase CLI
 supabase db push
 
@@ -203,7 +199,7 @@ supaschema uses consistent exit codes across all commands so you can rely on the
 | `2`  | Diagnostic errors — at least one check rule or validation error was found |
 | `3`  | Drift found — `--fail-on-diff` detected operations in the plan            |
 
-```bash theme={null}
+```bash
 supaschema diff --from git:origin/main --to dir:supabase/schemas --fail-on-diff
 if [ $? -eq 3 ]; then
   echo "Schema has pending changes — a migration needs to be generated and reviewed"
@@ -216,7 +212,7 @@ fi
 
 A typical end-to-end developer workflow looks like this:
 
-```bash theme={null}
+```bash
 # 1. Edit your schema files
 vim supabase/schemas/orders.sql
 

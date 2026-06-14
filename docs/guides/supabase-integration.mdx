@@ -3,10 +3,6 @@ title: "Supabase Integration"
 description: "How supaschema fits a Supabase project — config.toml discovery, managed schemas, the supabase-auto adapter, sync with the Supabase CLI, and verify's environment stubs."
 ---
 
-# Supabase Integration
-
-> supaschema is built for Supabase projects out of the box: the local stack is discovered automatically, platform-owned schemas are protected, and your migrations still apply through `supabase db push`.
-
 supaschema generates and proves migrations; it never applies them. In a Supabase project the Supabase CLI stays the runner and keeps sole ownership of the migration history table — supaschema slots in before it.
 
 ## Zero-config defaults

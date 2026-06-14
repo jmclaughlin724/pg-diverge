@@ -3,8 +3,6 @@ title: "Support matrix"
 description: "The PostgreSQL object types supaschema extracts, renders, checks, and intentionally blocks."
 ---
 
-# Support Matrix
-
 `supaschema` is fail-closed: unsupported DDL blocks migration generation instead of guessing. Extraction and checking are AST-only — every statement is classified through the PostgreSQL parser, never regex.
 
 | Object | Extract | Render | Notes |

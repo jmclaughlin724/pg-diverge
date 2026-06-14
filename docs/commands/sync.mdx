@@ -3,10 +3,6 @@ title: "supaschema sync: Gate and Apply Pending Migrations"
 description: "sync checks pending migrations pass static validation, then optionally drives the Supabase CLI to apply them locally or push them remotely."
 ---
 
-# supaschema sync: Gate and Apply Pending Migrations
-
-> sync checks pending migrations pass static validation, then optionally drives the Supabase CLI to apply them locally or push them remotely.
-
 The `sync` command is the bridge between your migration files on disk and a running database. It first runs the same static validation gate as the `check` command against every pending migration, and only if all checks pass does it hand off to the Supabase CLI to do the actual work. With no flags, `sync` runs in dry-run mode — it tells you what it would do without touching anything.
 
 ## What it does
@@ -75,7 +71,7 @@ These gates exist because applying migrations in the presence of history inconsi
 
 ## Usage
 
-```bash theme={null}
+```bash
 # Dry run: show what would be applied, gate checks included
 npx supaschema sync
 
