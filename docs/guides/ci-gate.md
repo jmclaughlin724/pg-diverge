@@ -3,8 +3,6 @@ title: "CI gate"
 description: "The drift, replay-safety, and policy-isolation CI gate: the free layer that exists today and the paid layer it is designed to become."
 ---
 
-# CI gate: drift, replay-safety, and the policy-isolation check
-
 supaschema already ships the pieces of a CI gate. This document describes the free layer that exists today and the paid layer it is designed to become.
 
 ## Free: the GitHub Action and reporters

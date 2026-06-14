@@ -3,10 +3,6 @@ title: "supaschema diff: Generate SQL Migrations from Schema"
 description: "diff compares two schema sources and emits a replay-safe SQL migration. Supports --from, --to, --out, --watch, --fail-on-diff, and more."
 ---
 
-# supaschema diff: Generate SQL Migrations from Schema
-
-> diff compares two schema sources and emits a replay-safe SQL migration. Supports --from, --to, --out, --watch, --fail-on-diff, and more.
-
 The `diff` command is the primary workflow entry point in supaschema. It compares a **before-state** (your live database or a git ref) against an **after-state** (your declarative schema directory) and renders an idempotent, replay-safe SQL migration. By default it writes the migration to `supabase/migrations/TIMESTAMP_name.sql` and then refreshes configured TypeScript and Zod output files that already exist. You can redirect output to stdout, preview without writing, or run continuously in watch mode.
 
 ## Default Behavior
@@ -26,7 +22,7 @@ If there is nothing to migrate, the command exits with code `0` and writes no fi
 
 ## Examples
 
-```bash theme={null}
+```bash
 # Basic: diff against your live local Supabase
 npx supaschema diff
 
@@ -144,7 +140,7 @@ The `--from` and `--to` flags accept the following source formats:
 
 Use `--fail-on-diff` to gate merges on schema drift:
 
-```yaml theme={null}
+```yaml
 # .github/workflows/drift-check.yml
 - name: Check for schema drift
   run: npx supaschema diff --fail-on-diff --quiet
@@ -154,7 +150,7 @@ Use `--fail-on-diff` to gate merges on schema drift:
 
 Use `--json` to consume the plan in downstream pipeline steps:
 
-```bash theme={null}
+```bash
 plan=$(npx supaschema diff --dry-run --json)
 echo "$plan" | jq '.operations | length'
 ```

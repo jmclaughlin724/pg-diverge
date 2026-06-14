@@ -48,6 +48,16 @@ Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable 
 - Diagnostics must be actionable and must redact secrets, including URL passwords, JWTs, and tokens.
 - Keep behavior available as both CLI and typed library API when the capability is reusable.
 
+## Documentation Authoring Standard
+
+The `docs/**` tree is a Mintlify docs-as-code site (monorepo mode, served at `supaschema.com/docs`). Author pages to the Mintlify standard; the deterministic `npm run docs:lint` gate (part of `docs:check` and CI) blocks regressions.
+
+- The frontmatter `title` and `description` own the page header. Never add a body `# ` H1 (it duplicates the title and breaks heading hierarchy); start in-page headings at `##`.
+- Use Mintlify components, not flattened markdown, for the content they exist for: `<ParamField>` for every command flag/parameter, `<ResponseField>`/`<Expandable>` for response shapes, `<Card>`/`<CardGroup>` for navigation, `<Steps>` for procedures, `<Accordion>`/`<AccordionGroup>` for progressive disclosure, and `<Note>`/`<Warning>`/`<Tip>`/`<Info>` for callouts. Command reference pages with a Flags/Options section must document flags with `<ParamField>`.
+- Never carry `theme={null}` (a copy-paste artifact from Mintlify's rendered output) on a code fence.
+- Internal links are root-relative and extensionless (`/configuration/hints`), never `.md`/`.mdx` paths, repo-relative `docs/...` paths, or the absolute `supaschema.com/docs/...` URL. README and other repo-root markdown are not Mintlify pages and link to the published `supaschema.com/docs/...` URLs instead.
+- Enforcement layers: `docs:lint` (the rules above, deterministic) then `mint validate` (strict build), `mint broken-links --check-anchors`, and `mint a11y` — all run by `npm run docs:check` and the `Docs` CI workflow on every docs change.
+
 ## Common Commands
 
 Supaschema CLI workflow:

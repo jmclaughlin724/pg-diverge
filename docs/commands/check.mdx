@@ -3,17 +3,13 @@ title: "supaschema check: Validate Migration Replay Safety"
 description: "check statically validates SQL migration files for replay-safety, lock hazards, and parser issues. Supports --reporter text, github, sarif, and json."
 ---
 
-# supaschema check: Validate Migration Replay Safety
-
-> check statically validates SQL migration files for replay-safety, lock hazards, and parser issues. Supports --reporter text, github, sarif, and json.
-
 The `check` command runs static analysis over one or more SQL migration files without touching a database. It enforces 20+ rules that together guarantee your migrations are safe to replay, free of lock hazards, and suitable for production deployment. The diagnostics report is written to `stdout` so a reporter's output composes cleanly with pipelines and redirects; only operational notices such as "no migrations found" go to `stderr`. `check` is fast enough to run on every commit in CI and as a pre-commit hook locally.
 
 ## Input
 
 You can pass files, a shell-expanded glob, or `-` for stdin:
 
-```bash theme={null}
+```bash
 # Single file
 npx supaschema check supabase/migrations/20240101000000_add_accounts.sql
 
@@ -30,7 +26,7 @@ cat migration.sql | npx supaschema check -
 
 ## Examples
 
-```bash theme={null}
+```bash
 # Check the latest migration
 npx supaschema check supabase/migrations/20240101000000_add_accounts.sql
 
@@ -152,7 +148,7 @@ The default human-readable format. Prints file names, line numbers, rule codes, 
 
 Use this reporter inside a GitHub Actions job to surface violations as inline comments on the diff view of a pull request:
 
-```yaml theme={null}
+```yaml
 # .github/workflows/check.yml
 - name: Check migrations
   run: npx supaschema check supabase/migrations/*.sql --reporter github
@@ -164,7 +160,7 @@ No extra upload step is required — GitHub Actions picks up the `::error` comma
 
 Use this reporter to upload results to GitHub's code scanning dashboard, where they persist as security alerts:
 
-```yaml theme={null}
+```yaml
 - name: Check migrations (SARIF)
   run: npx supaschema check supabase/migrations/*.sql --reporter sarif > results.sarif
 
@@ -178,7 +174,7 @@ Use this reporter to upload results to GitHub's code scanning dashboard, where t
 
 Catch violations before they ever reach CI by adding a Husky pre-commit hook:
 
-```sh theme={null}
+```sh
 # .husky/pre-commit
 staged=$(git diff --cached --name-only --diff-filter=ACM -- 'supabase/migrations/*.sql')
 [ -z "$staged" ] || npx supaschema check $staged

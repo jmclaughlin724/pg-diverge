@@ -3,8 +3,6 @@ title: "Configuration"
 description: "Configuration options, defaults, environments, validators, and examples for supaschema."
 ---
 
-# Configuration Reference
-
 `supaschema` looks for config in this order:
 
 1. `--config <path>` (`.json`, `.mjs`, or `.js` with a default export)

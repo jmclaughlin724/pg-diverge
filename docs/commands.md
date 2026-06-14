@@ -3,8 +3,6 @@ title: "Commands"
 description: "Complete CLI reference for generating, validating, verifying, inspecting, and syncing schemas."
 ---
 
-# Command reference
-
 Every command, with full flags. Global options on every command: `--config <path>` (explicit `.json`/`.mjs`/`.js` config file), `--env <name>` (database URL from a named `environments` entry in the config), `--quiet` (suppress stderr diagnostics).
 
 Zero-flag defaults, applied wherever a flag is omitted and printed to stderr when used: `--from` resolves to `database:<resolved URL>` (the applied state) and falls back to `git:HEAD`; `--to` resolves to `dir:<config.schemaPaths[0]>` (`supabase/schemas`); migrations write to `config.migrationsDir` (`supabase/migrations`) as `<UTC timestamp>_<name>.sql` with the name derived from the planned operations; `check` with no arguments gates every `.sql` in the migrations directory; `verify --migration` defaults to the newest pending file there.

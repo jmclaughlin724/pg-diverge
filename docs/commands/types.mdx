@@ -3,10 +3,6 @@ title: "supaschema types: Generate TypeScript Types from Schema"
 description: "types generates Supabase-compatible TypeScript interfaces and Zod validators directly from your schema files — no database connection required."
 ---
 
-# supaschema types: Generate TypeScript Types from Schema
-
-> types generates Supabase-compatible TypeScript interfaces and Zod validators directly from your schema files — no database connection required.
-
 The `types` command reads your declarative schema tree and emits two output files: a `database.types.ts` file containing Supabase-compatible TypeScript interfaces, and a `database.zod.ts` file containing matching Zod validators. Because supaschema parses your schema files directly, you never need a live database connection to regenerate your types — your schema files are the source of truth.
 
 ## How it works
@@ -51,7 +47,7 @@ Both paths are resolved relative to the process working directory where you run 
 
 ## Usage
 
-```bash theme={null}
+```bash
 # Generate types from the schema source in your config
 npx supaschema types
 
@@ -72,7 +68,7 @@ npx supaschema types --config config/supaschema.config.json
 
 Given a `profiles` table and an `order_status` enum in your schema, the generated `database.types.ts` looks like this:
 
-```typescript theme={null}
+```typescript
 export type Json =
   | string
   | number
@@ -118,7 +114,7 @@ export type Database = {
 
 The companion `database.zod.ts` exports a matching Zod schema for each row type:
 
-```typescript theme={null}
+```typescript
 import { z } from "zod"
 
 export const ProfileRowSchema = z.object({
@@ -143,7 +139,7 @@ export const OrderStatusSchema = z.enum([
 
 Pass the generated `Database` type to `createClient` and every query you write becomes fully type-checked:
 
-```typescript theme={null}
+```typescript
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "./database.types"
 
@@ -168,7 +164,7 @@ const { data, error } = await supabase
 
 Add a `types` step after your schema lint step and before your build:
 
-```yaml theme={null}
+```yaml
 # Example GitHub Actions step
 - name: Generate types
   run: npx supaschema types

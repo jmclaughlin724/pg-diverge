@@ -3,8 +3,6 @@ title: "Case study"
 description: "supaschema measured against a production multi-tenant Supabase platform: ~30 schemas, ~8,300 objects, hundreds of RLS policies."
 ---
 
-# Case study: a production multi-tenant Supabase platform
-
 supaschema was built while developing a production multi-tenant SaaS on Supabase: roughly **30 schemas, ~8,300 schema objects, and hundreds of RLS policies** (tenant isolation is enforced in the database, so almost every table carries policies). The pain that motivated the project was concrete: every schema edit meant waiting on the Supabase CLI's shadow-database diff before a migration — and its generated types — could catch up. That wait is a tax on every change, and it grows with the schema.
 
 All numbers below are reproducible. Object names are kept generic; the measurements are from the real tree.

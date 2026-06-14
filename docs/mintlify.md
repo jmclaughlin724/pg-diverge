@@ -3,8 +3,6 @@ title: "Docs site"
 description: "How to preview, validate, and publish the Mintlify documentation site for supaschema."
 ---
 
-# Docs site
-
 This repository is configured as a Mintlify docs-as-code site in monorepo mode: the documentation content root is the `docs/` directory, with site configuration in `docs/docs.json`. Everything inside `docs/` is a page or an asset.
 
 The site is served under the `/docs` subpath of the custom domain, so a page file maps to a URL by dropping the `.mdx` and prefixing `/docs` — `docs/commands/diff.mdx` serves at `https://supaschema.com/docs/commands/diff`. Inside the docs, link with root-relative paths (`/commands/diff`); Mintlify applies the `/docs` host prefix automatically.

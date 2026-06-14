@@ -3,8 +3,6 @@ title: "Declarative PostgreSQL schema management"
 description: "Manage PostgreSQL schemas declaratively with SQL files, deterministic diffs, replay-safe migrations, explicit destructive hints, and CI drift checks."
 ---
 
-# Declarative PostgreSQL schema management
-
 Declarative PostgreSQL schema management means the desired database schema lives in versioned SQL files. Developers edit the target state, and a tool generates the migration required to move from the current state to that target.
 
 `supaschema` implements this workflow for PostgreSQL and Supabase without requiring an ORM, Docker, or a shadow database during migration generation.
@@ -66,4 +64,3 @@ npx supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas
 - [Configuration file](/configuration/config-file)
 - [Destructive change hints](/configuration/hints)
 - [Support matrix](/reference/support-matrix)
-

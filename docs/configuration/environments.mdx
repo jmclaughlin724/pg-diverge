@@ -3,10 +3,6 @@ title: "Environments and Database URLs"
 description: "How supaschema resolves database URLs — named environments, $ENV indirection, SUPASCHEMA_DATABASE_URL, and supabase/config.toml discovery."
 ---
 
-# Environments and Database URLs
-
-> Every command resolves its database URL the same way: explicit flag, then a named `environments` entry, then `SUPASCHEMA_DATABASE_URL`, then the local Supabase stack discovered from `supabase/config.toml`.
-
 Commands that read a live catalog (`diff --from database:...`, `verify`, `migrations`, `sync`, `doctor`) need a database URL. You rarely have to spell one out: supaschema resolves it from the most explicit source available.
 
 ## Resolution order

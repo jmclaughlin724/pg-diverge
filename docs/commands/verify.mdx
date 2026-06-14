@@ -3,10 +3,6 @@ title: "supaschema verify: Prove Idempotency and Convergence"
 description: "verify applies your migration twice in throwaway databases and compares catalog fingerprints to prove idempotency and convergence to the declared schema."
 ---
 
-# supaschema verify: Prove Idempotency and Convergence
-
-> verify applies your migration twice in throwaway databases and compares catalog fingerprints to prove idempotency and convergence to the declared schema.
-
 The `verify` command gives you a cryptographic proof that your migration is both **idempotent** and **convergent**. It creates two throwaway databases, applies the migration twice to the first, applies your target schema model directly to the second, then compares catalog fingerprints across both. If the fingerprints match, your migration is proven safe. If they diverge, supaschema tells you exactly which catalog objects differ. Temp databases are always cleaned up on success — you only retain them on failure when you need to inspect what went wrong.
 
 <Note>
@@ -35,7 +31,7 @@ A match proves two things simultaneously:
 
 ## Examples
 
-```bash theme={null}
+```bash
 # Verify against local Supabase stack
 npx supaschema verify \
   --from "git:HEAD" \
@@ -133,7 +129,7 @@ When `verify` fails, it emits one or more of the following structured diagnostic
 
 Run `verify` as a required check on every pull request that touches `supabase/migrations`:
 
-```yaml theme={null}
+```yaml
 # .github/workflows/verify.yml
 on:
   pull_request:
@@ -173,7 +169,7 @@ jobs:
 
 When `verify` returns `SUPA_VERIFY_FINGERPRINT_MISMATCH` or `SUPA_VERIFY_RECONVERGENCE`, re-run with `--keep-databases` and connect to each temp database to compare them directly:
 
-```bash theme={null}
+```bash
 npx supaschema verify \
   --from "git:HEAD" --to dir:supabase/schemas \
   --migration migration.sql \
