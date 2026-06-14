@@ -87,6 +87,8 @@ function tsType(shapes: SchemaShapes, schemaName: string, sqlType: string): stri
   let mapped: string;
   if (resolved.kind === "enum" && resolved.enumRef) {
     mapped = `Database["${resolved.enumRef.schema}"]["Enums"]["${resolved.enumRef.name}"]`;
+  } else if (resolved.kind === "composite" && resolved.compositeRef) {
+    mapped = `Database["${resolved.compositeRef.schema}"]["CompositeTypes"]["${resolved.compositeRef.name}"]`;
   } else if (resolved.kind === "json") {
     mapped = "Json";
   } else if (resolved.kind === "unknown") {
@@ -147,6 +149,13 @@ function renderFunctionArgs(fn: FunctionShape, typeOf: (sqlType: string) => stri
 }
 
 function renderFunctionReturns(fn: FunctionShape, typeOf: (sqlType: string) => string): string {
+  if (fn.returns?.columns && fn.returns.columns.length > 0) {
+    const row = fn.returns.columns
+      .map((column) => `${quoteKey(column.name)}: ${typeOf(column.type)}`)
+      .join("; ");
+    const shape = `{ ${row} }`;
+    return fn.returns.setof ? `${shape}[]` : shape;
+  }
   const base = fn.returns ? typeOf(fn.returns.type) : "unknown";
   return fn.returns?.setof ? `${base}[]` : base;
 }

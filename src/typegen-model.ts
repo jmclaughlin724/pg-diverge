@@ -25,7 +25,7 @@ export interface RelationshipShape {
 export interface FunctionShape {
   args: { name: string; optional: boolean; type: string }[];
   name: string;
-  returns: { setof: boolean; type: string } | undefined;
+  returns: { columns?: { name: string; type: string }[]; setof: boolean; type: string } | undefined;
 }
 
 export interface TableShape {
@@ -45,6 +45,8 @@ export interface SchemaEntry {
 }
 
 export interface SchemaShapes {
+  compositesByBareName: Map<string, { name: string; schema: string }[]>;
+  compositesByQualifiedName: Map<string, { name: string; schema: string }>;
   domains: Map<string, string>;
   enumsByBareName: Map<string, { name: string; schema: string }[]>;
   enumsByQualifiedName: Map<string, { name: string; schema: string }>;
@@ -53,12 +55,15 @@ export interface SchemaShapes {
 
 export interface ResolvedColumnType {
   arrayDepth: number;
+  compositeRef?: { name: string; schema: string };
   enumRef?: { name: string; schema: string };
-  kind: "boolean" | "enum" | "json" | "number" | "string" | "unknown";
+  kind: "boolean" | "composite" | "enum" | "json" | "number" | "string" | "unknown";
 }
 
 export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaShapes> {
   const shapes: SchemaShapes = {
+    compositesByBareName: new Map(),
+    compositesByQualifiedName: new Map(),
     domains: new Map(),
     enumsByBareName: new Map(),
     enumsByQualifiedName: new Map(),
@@ -121,10 +126,21 @@ export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaSha
         name: object.ref.name,
       });
     } else if (object.ref.kind === "type") {
-      schemaOf(object).composites.push({
-        columns: await compositeColumns(object),
-        name: object.ref.name,
-      });
+      // CompositeTypeStmt and CreateRangeStmt both extract to kind "type".
+      // Only composites have a column list; range types must not emit an
+      // (empty) CompositeTypes entry or get registered as a resolvable type.
+      const columns = await compositeColumns(object);
+      if (columns === undefined) {
+        continue;
+      }
+      const schema = object.ref.schema ?? "public";
+      const name = object.ref.name;
+      schemaOf(object).composites.push({ columns, name });
+      const entry = { name, schema };
+      shapes.compositesByQualifiedName.set(`${schema}.${name}`, entry);
+      const bare = shapes.compositesByBareName.get(name) ?? [];
+      bare.push(entry);
+      shapes.compositesByBareName.set(name, bare);
     }
   }
 
@@ -176,27 +192,56 @@ export function resolveColumnType(
   if (lowered === "json" || lowered === "jsonb") {
     return { arrayDepth, kind: "json" };
   }
-  const enumRef = resolveEnum(shapes, schemaName, base);
-  if (enumRef) {
-    return { arrayDepth, enumRef, kind: "enum" };
+  const userType = resolveUserType(shapes, schemaName, base);
+  if (userType?.kind === "enum") {
+    return { arrayDepth, enumRef: userType.ref, kind: "enum" };
+  }
+  if (userType?.kind === "composite") {
+    return { arrayDepth, compositeRef: userType.ref, kind: "composite" };
   }
   return { arrayDepth, kind: "unknown" };
 }
 
-function resolveEnum(
+// Resolve a user-defined type name to a single enum or composite. A schema-local
+// match (qualified by the current schema) wins across all kinds before falling
+// back to a globally unique bare name — so a local composite is not shadowed by
+// a same-named enum in another schema, and vice versa.
+function resolveUserType(
   shapes: SchemaShapes,
   schemaName: string,
   base: string,
-): { name: string; schema: string } | undefined {
+): { kind: "composite" | "enum"; ref: { name: string; schema: string } } | undefined {
   if (base.includes(".")) {
-    return shapes.enumsByQualifiedName.get(base);
+    const qualifiedEnum = shapes.enumsByQualifiedName.get(base);
+    if (qualifiedEnum) {
+      return { kind: "enum", ref: qualifiedEnum };
+    }
+    const qualifiedComposite = shapes.compositesByQualifiedName.get(base);
+    return qualifiedComposite ? { kind: "composite", ref: qualifiedComposite } : undefined;
   }
-  const local = shapes.enumsByQualifiedName.get(`${schemaName}.${base}`);
-  if (local) {
-    return local;
+  const localEnum = shapes.enumsByQualifiedName.get(`${schemaName}.${base}`);
+  if (localEnum) {
+    return { kind: "enum", ref: localEnum };
   }
-  const candidates = shapes.enumsByBareName.get(base);
-  return candidates && candidates.length === 1 ? candidates[0] : undefined;
+  const localComposite = shapes.compositesByQualifiedName.get(`${schemaName}.${base}`);
+  if (localComposite) {
+    return { kind: "composite", ref: localComposite };
+  }
+  const enumCandidate =
+    shapes.enumsByBareName.get(base)?.length === 1
+      ? shapes.enumsByBareName.get(base)?.[0]
+      : undefined;
+  if (enumCandidate) {
+    return { kind: "enum", ref: enumCandidate };
+  }
+  const compositeCandidate =
+    shapes.compositesByBareName.get(base)?.length === 1
+      ? shapes.compositesByBareName.get(base)?.[0]
+      : undefined;
+  if (compositeCandidate) {
+    return { kind: "composite", ref: compositeCandidate };
+  }
+  return undefined;
 }
 
 function schemaEntry(shapes: SchemaShapes, name: string): SchemaEntry {
@@ -247,10 +292,14 @@ async function foreignTableColumns(object: SchemaObject): Promise<ColumnShape[]>
   });
 }
 
-async function compositeColumns(object: SchemaObject): Promise<ColumnShape[]> {
+async function compositeColumns(object: SchemaObject): Promise<ColumnShape[] | undefined> {
   const parsed = await parseSqlAst(object.sql, object.file);
   const statements = readArray(asRecord(parsed.ast)?.stmts);
   const composite = asRecord(asRecord(asRecord(statements[0])?.stmt)?.CompositeTypeStmt);
+  if (!composite) {
+    // Not a composite (e.g. CREATE TYPE ... AS RANGE / AS ENUM handled elsewhere).
+    return undefined;
+  }
   return readArray(composite?.coldeflist).flatMap((item) => {
     const columnDef = asRecord(asRecord(item)?.ColumnDef);
     const name = readString(columnDef?.colname);
@@ -276,12 +325,25 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
     return undefined;
   }
   const args: FunctionShape["args"] = [];
+  const returnColumns: { name: string; type: string }[] = [];
+  let hasTableParam = false;
   for (const item of readArray(fn.parameters)) {
     const parameter = asRecord(asRecord(item)?.FunctionParameter);
     if (!parameter) {
       continue;
     }
     const mode = readString(parameter.mode) ?? "FUNC_PARAM_DEFAULT";
+    // OUT/INOUT/TABLE params define the returned row shape; TABLE additionally
+    // means the function is set-returning.
+    if (mode === "FUNC_PARAM_OUT" || mode === "FUNC_PARAM_INOUT" || mode === "FUNC_PARAM_TABLE") {
+      const columnName = readString(parameter.name);
+      if (columnName) {
+        returnColumns.push({ name: columnName, type: typeNameToSql(parameter.argType) });
+      }
+      if (mode === "FUNC_PARAM_TABLE") {
+        hasTableParam = true;
+      }
+    }
     if (mode !== "FUNC_PARAM_DEFAULT" && mode !== "FUNC_PARAM_IN" && mode !== "FUNC_PARAM_INOUT") {
       continue;
     }
@@ -296,13 +358,21 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
     });
   }
   const returns = asRecord(object.metadata.returns);
+  const scalarType = typeof returns?.type === "string" ? returns.type : undefined;
+  const setof = returns?.setof === true || hasTableParam;
+  if (returnColumns.length > 0) {
+    // OUT/INOUT/TABLE params define the row; an OUT-only function reports no
+    // explicit RETURNS type, so default to "record".
+    return {
+      args,
+      name: object.ref.name,
+      returns: { columns: returnColumns, setof, type: scalarType ?? "record" },
+    };
+  }
   return {
     args,
     name: object.ref.name,
-    returns:
-      returns && typeof returns.type === "string"
-        ? { setof: returns.setof === true, type: returns.type }
-        : undefined,
+    returns: scalarType !== undefined ? { setof, type: scalarType } : undefined,
   };
 }
 
