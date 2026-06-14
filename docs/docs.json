@@ -253,6 +253,10 @@
     {
       "source": "/guides/destructive-changes",
       "destination": "/configuration/hints"
+    },
+    {
+      "source": "/docs/:slug*",
+      "destination": "/:slug*"
     }
   ]
 }
