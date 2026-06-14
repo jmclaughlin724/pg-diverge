@@ -200,11 +200,27 @@ CREATE TABLE app.people (id bigint, home address);
     expect(types).toContain('home: Database["app"]["CompositeTypes"]["address"] | null;');
     expect(types).not.toContain('home: Database["public"]["Enums"]["address"] | null;');
   });
+
+  it("treats a bare name shared by an enum and a composite as ambiguous (unknown)", async () => {
+    const types = await typesFor(
+      `CREATE SCHEMA app;
+CREATE SCHEMA a;
+CREATE SCHEMA b;
+CREATE TYPE a.thing AS ENUM ('x');
+CREATE TYPE b.thing AS (n int);
+CREATE TABLE app.t (id bigint, v thing);
+`,
+    );
+
+    expect(types).toContain("v: unknown | null;");
+    expect(types).not.toContain('Database["a"]["Enums"]["thing"]');
+  });
 });
 
 const returnShapeSql = `CREATE SCHEMA app;
 CREATE FUNCTION app.list_people() RETURNS TABLE (id bigint, label text) LANGUAGE sql AS $$ SELECT 1::bigint, 'x'::text $$;
 CREATE FUNCTION app.one_row(OUT a int, OUT b text) LANGUAGE sql AS $$ SELECT 1, 'y' $$;
+CREATE FUNCTION app.single_out(OUT x int) LANGUAGE sql AS $$ SELECT 1 $$;
 `;
 
 describe("function return row typegen", () => {
@@ -217,6 +233,13 @@ describe("function return row typegen", () => {
     expect(types).toContain(
       "one_row: { Args: Record<PropertyKey, never>; Returns: { a: number; b: string } };",
     );
+  });
+
+  it("keeps a single OUT parameter scalar instead of a one-field record", async () => {
+    const types = await typesFor(returnShapeSql);
+
+    expect(types).toContain("single_out: { Args: Record<PropertyKey, never>; Returns: number };");
+    expect(types).not.toContain("single_out: { Args: Record<PropertyKey, never>; Returns: { x:");
   });
 });
 
