@@ -167,6 +167,46 @@ describe("overloaded function typegen", () => {
   });
 });
 
+const compositeSql = `CREATE SCHEMA app;
+CREATE TYPE app.address AS (street text, zip int);
+CREATE TYPE app.intrange AS RANGE (subtype = int4);
+CREATE TABLE app.people (id bigint, home app.address);
+`;
+
+describe("composite and range type typegen", () => {
+  it("resolves a column of a declared composite type to its CompositeTypes entry", async () => {
+    const types = await typesFor(compositeSql);
+
+    expect(types).toContain('home: Database["app"]["CompositeTypes"]["address"] | null;');
+    expect(types).toContain("CompositeTypes: {");
+    expect(types).toMatch(/address:\s*\{\s*street:\s*string \| null;\s*zip:\s*number \| null;/);
+  });
+
+  it("does not emit a range type as an empty composite", async () => {
+    const types = await typesFor(compositeSql);
+
+    expect(types).not.toMatch(/intrange:\s*\{\s*\}/);
+  });
+});
+
+const returnShapeSql = `CREATE SCHEMA app;
+CREATE FUNCTION app.list_people() RETURNS TABLE (id bigint, label text) LANGUAGE sql AS $$ SELECT 1::bigint, 'x'::text $$;
+CREATE FUNCTION app.one_row(OUT a int, OUT b text) LANGUAGE sql AS $$ SELECT 1, 'y' $$;
+`;
+
+describe("function return row typegen", () => {
+  it("preserves RETURNS TABLE and OUT-parameter row shapes", async () => {
+    const types = await typesFor(returnShapeSql);
+
+    expect(types).toContain(
+      "list_people: { Args: Record<PropertyKey, never>; Returns: { id: number; label: string }[] };",
+    );
+    expect(types).toContain(
+      "one_row: { Args: Record<PropertyKey, never>; Returns: { a: number; b: string } };",
+    );
+  });
+});
+
 describe("zod schema generation", () => {
   async function zodFor(sql: string): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "supa-zodgen-"));
