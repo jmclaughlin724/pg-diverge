@@ -102,4 +102,35 @@ describe("replaced relation dependents", () => {
     expect(constraintOps).toHaveLength(1);
     expect(constraintOps[0]?.kind).toBe("replace");
   });
+
+  it("orders nested dependent-view pre-drops by dependency, not source order", async () => {
+    // v_outer depends on v_inner depends on t, but is declared BEFORE v_inner so
+    // its source ordinal is lower. The pre-drops must still drop the dependent
+    // (v_outer) before its dependency (v_inner), independent of ordinals.
+    const views =
+      "CREATE VIEW app.v_outer AS SELECT id FROM app.v_inner;\n" +
+      "CREATE VIEW app.v_inner AS SELECT id, value FROM app.t;";
+    const from = await modelFromSql(
+      `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n${views}\n`,
+    );
+    const to = await modelFromSql(
+      `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\n${views}\n`,
+    );
+
+    const plan = planSchemaDiff(from, to, { config: { hints: { destructive: ["table:app.t"] } } });
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropOuter = sql.indexOf('DROP VIEW IF EXISTS "app"."v_outer";');
+    const dropInner = sql.indexOf('DROP VIEW IF EXISTS "app"."v_inner";');
+    const dropTable = sql.indexOf('DROP TABLE IF EXISTS "app"."t";');
+    expect(dropOuter).toBeGreaterThanOrEqual(0);
+    expect(dropInner).toBeGreaterThan(dropOuter);
+    expect(dropTable).toBeGreaterThan(dropInner);
+    // Re-created in dependency order: inner before outer.
+    const createInner = sql.indexOf("CREATE OR REPLACE VIEW app.v_inner AS SELECT");
+    const createOuter = sql.indexOf("CREATE OR REPLACE VIEW app.v_outer AS SELECT");
+    expect(createInner).toBeGreaterThan(0);
+    expect(createOuter).toBeGreaterThan(createInner);
+  });
 });

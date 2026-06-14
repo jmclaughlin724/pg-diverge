@@ -36,7 +36,13 @@ export function sortOperations(
 ): MigrationOperation[] {
   const base = [...operations].sort(compareOperations);
   const operationByKey = new Map(base.map((operation) => [operation.key, operation]));
-  const operationKeyByIdentity = identityIndex(base);
+  // A relation replace can emit both a pre-drop `drop` and a later `create` for
+  // the same object identity (e.g. a dependent view rebuilt around the replace).
+  // Resolve drop dependencies against drop operations so a dependent's drop
+  // orders before its dependency's drop (independent of source ordinals), and
+  // create/replace dependencies against the surviving create operation.
+  const dropKeyByIdentity = identityIndex(base.filter((operation) => operation.kind === "drop"));
+  const upsertKeyByIdentity = identityIndex(base.filter((operation) => operation.kind !== "drop"));
   const outgoing = new Map<string, Set<string>>();
   const incomingCount = new Map<string, number>();
   for (const operation of base) {
@@ -44,7 +50,8 @@ export function sortOperations(
     incomingCount.set(operation.key, 0);
   }
   for (const operation of base) {
-    for (const dependencyKey of operationDependencyKeys(operation, operationKeyByIdentity)) {
+    const index = operation.kind === "drop" ? dropKeyByIdentity : upsertKeyByIdentity;
+    for (const dependencyKey of operationDependencyKeys(operation, index)) {
       if (dependencyKey === operation.key || !operationByKey.has(dependencyKey)) {
         continue;
       }
