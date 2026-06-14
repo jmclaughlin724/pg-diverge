@@ -79,7 +79,7 @@ export function planSchemaDiff(
       operations.push(makeOperation("create", key, undefined, after, config));
     }
   }
-  appendReplacedRelationDependents(operations, to, config);
+  appendReplacedRelationDependents(operations, from, to, config);
   const sortedOperations = sortOperations(operations, diagnostics);
   for (const operation of operations) {
     diagnostics.push(...operation.diagnostics);
@@ -130,6 +130,7 @@ const blockingRelationDependentKinds = new Set<ObjectKind>(["view", "materialize
  */
 function appendReplacedRelationDependents(
   operations: MigrationOperation[],
+  from: SchemaModel,
   to: SchemaModel,
   config: SupaschemaConfig,
 ): void {
@@ -141,6 +142,11 @@ function appendReplacedRelationDependents(
   if (replacedRelations.length === 0) {
     return;
   }
+  // Only objects that already exist get collaterally dropped by the relation
+  // replace, so a pre-drop is needed only for them. A dependent that is new in
+  // the target (created in this same plan) must not be pre-dropped — that would
+  // emit a destructive DROP for an object that does not exist yet.
+  const fromKeys = new Set(from.objects.map((object) => object.key));
   const operationKeys = new Set(operations.map((operation) => operation.key));
   const affectedRefs = new Map<string, ObjectRef>();
   const relationIdentities = new Set<string>();
@@ -156,7 +162,7 @@ function appendReplacedRelationDependents(
         continue;
       }
       rememberAffectedRef(affectedRefs, object.ref);
-      if (blockingRelationDependentKinds.has(object.ref.kind)) {
+      if (blockingRelationDependentKinds.has(object.ref.kind) && fromKeys.has(object.key)) {
         const identity = refIdentity(object.ref);
         if (!relationIdentities.has(identity)) {
           relationIdentities.add(identity);

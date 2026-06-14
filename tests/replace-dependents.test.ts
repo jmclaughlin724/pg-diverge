@@ -103,6 +103,47 @@ describe("replaced relation dependents", () => {
     expect(constraintOps[0]?.kind).toBe("replace");
   });
 
+  it("does not pre-drop a dependent view/materialized view that is new in the target", async () => {
+    // A materialized view that does not exist yet must not be pre-dropped by the
+    // table replace — that would emit a destructive DROP for a non-existent object.
+    const from = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n",
+    );
+    const to = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\nCREATE MATERIALIZED VIEW app.m AS SELECT id FROM app.t;\n",
+    );
+
+    const plan = planSchemaDiff(from, to, { config: { hints: { destructive: ["table:app.t"] } } });
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(plan.operations.some((operation) => operation.kind === "drop")).toBe(false);
+    const matview = plan.operations.find((operation) => operation.ref.kind === "materialized-view");
+    expect(matview?.kind).toBe("create");
+    expect(matview?.blocked).toBe(false);
+  });
+
+  it("drops a dependent view before the materialized view it depends on", async () => {
+    const base =
+      "CREATE MATERIALIZED VIEW app.m AS SELECT id, value FROM app.t;\nCREATE VIEW app.v AS SELECT id FROM app.m;";
+    const from = await modelFromSql(
+      `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n${base}\n`,
+    );
+    const to = await modelFromSql(
+      `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\n${base}\n`,
+    );
+
+    const plan = planSchemaDiff(from, to, {
+      config: { hints: { destructive: ["table:app.t", "materialized-view:app.m"] } },
+    });
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropView = sql.indexOf('DROP VIEW IF EXISTS "app"."v";');
+    const dropMatview = sql.indexOf('DROP MATERIALIZED VIEW IF EXISTS "app"."m";');
+    expect(dropView).toBeGreaterThanOrEqual(0);
+    expect(dropMatview).toBeGreaterThan(dropView);
+  });
+
   it("orders nested dependent-view pre-drops by dependency, not source order", async () => {
     // v_outer depends on v_inner depends on t, but is declared BEFORE v_inner so
     // its source ordinal is lower. The pre-drops must still drop the dependent

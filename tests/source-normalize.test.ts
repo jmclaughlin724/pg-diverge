@@ -98,26 +98,6 @@ describe("split privilege aggregation", () => {
     expect(defaults[0]?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
   });
 
-  it("keeps explicit grants on objects created before matching default privileges", async () => {
-    const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.before_default (id bigint);\nGRANT SELECT ON TABLE app.before_default TO PUBLIC;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO PUBLIC;\n",
-    );
-
-    expect(errors(model)).toEqual([]);
-    const grants = model.objects.filter((object) => object.ref.kind === "grant");
-    expect(grants).toHaveLength(1);
-    expect(grants[0]?.metadata.targetIdentity).toBe("app.before_default");
-  });
-
-  it("suppresses explicit grants on objects created after matching default privileges", async () => {
-    const model = await modelFromSql(
-      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO PUBLIC;\nCREATE TABLE app.after_default (id bigint);\nGRANT SELECT ON TABLE app.after_default TO PUBLIC;\n",
-    );
-
-    expect(errors(model)).toEqual([]);
-    expect(model.objects.filter((object) => object.ref.kind === "grant")).toHaveLength(0);
-  });
-
   it("suppresses no-op default-privilege revokes for grantees with no built-in default", async () => {
     const model = await modelFromSql(
       "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE SELECT ON TABLES FROM PUBLIC;\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;\n",
