@@ -23,8 +23,11 @@ export async function normalizeSourceObjects(
   const afterDefaults = applyColumnDefaultAmendments(objects, diagnostics);
   const afterOwnedBy = applySequenceOwnedByAmendments(afterDefaults, diagnostics);
   const afterRls = await mergeRlsFacets(afterOwnedBy, options);
-  const merged = await mergeSplitPrivileges(afterRls, options);
-  return suppressDefaultAclImpliedGrants(suppressDefaultEqualPrivileges(merged));
+  const afterDefaultAcl = suppressDefaultAclImpliedGrants(afterRls, {
+    respectObjectCreationOrder: true,
+  });
+  const merged = await mergeSplitPrivileges(afterDefaultAcl, options);
+  return suppressDefaultEqualPrivileges(merged);
 }
 
 const kindPhraseToDefaultObjectType = new Map([
@@ -37,15 +40,27 @@ const kindPhraseToDefaultObjectType = new Map([
   ["TYPE", "TYPES"],
 ]);
 
+interface SuppressDefaultAclOptions {
+  respectObjectCreationOrder?: boolean;
+}
+
+interface DefaultAclGrant {
+  ordinal: number;
+  privileges: Set<string>;
+}
+
 /**
  * Postgres applies in-model ALTER DEFAULT PRIVILEGES to every later object,
  * and the resulting ACL entry is indistinguishable from an explicit GRANT.
- * A grant fully implied by an in-model default-privilege entry is therefore
- * suppressed on BOTH lanes (catalog models route through this too): trees
- * declare the default once, catalogs materialize it per object.
+ * Source trees must respect creation order so earlier objects keep explicit
+ * grants; catalog models have no creation history, so callers can keep the
+ * default all-implied behavior.
  */
-export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): SchemaObject[] {
-  const defaults = new Map<string, Set<string>>();
+export function suppressDefaultAclImpliedGrants(
+  objects: SchemaObject[],
+  options: SuppressDefaultAclOptions = {},
+): SchemaObject[] {
+  const defaults = new Map<string, DefaultAclGrant[]>();
   for (const object of objects) {
     if (object.ref.kind !== "default-privilege" || object.metadata.verb !== "GRANT") {
       continue;
@@ -55,17 +70,22 @@ export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): Schema
       String(object.metadata.schema ?? ""),
       String(object.metadata.grantee ?? ""),
     ].join("|");
-    const privileges = defaults.get(key) ?? new Set<string>();
-    for (const privilege of Array.isArray(object.metadata.privileges)
+    const privileges = Array.isArray(object.metadata.privileges)
       ? (object.metadata.privileges as string[])
-      : []) {
-      privileges.add(privilege);
+      : [];
+    if (privileges.length === 0) {
+      continue;
     }
-    defaults.set(key, privileges);
+    const group = defaults.get(key) ?? [];
+    group.push({ ordinal: object.ordinal, privileges: new Set(privileges) });
+    defaults.set(key, group);
   }
   if (defaults.size === 0) {
     return objects;
   }
+  const creationOrdinals = options.respectObjectCreationOrder
+    ? defaultAclTargetCreationOrdinals(objects)
+    : undefined;
   return objects.filter((object) => {
     if (object.ref.kind !== "grant" || object.metadata.verb !== "GRANT") {
       return true;
@@ -79,14 +99,98 @@ export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): Schema
         "|",
       ),
     );
-    if (!implied) {
+    if (!implied || implied.length === 0) {
+      return true;
+    }
+    const targetOrdinal =
+      creationOrdinals === undefined
+        ? undefined
+        : grantTargetCreationOrdinal(object, objectType, creationOrdinals);
+    if (creationOrdinals !== undefined && targetOrdinal === undefined) {
       return true;
     }
     const privileges = Array.isArray(object.metadata.privileges)
       ? (object.metadata.privileges as string[])
       : [];
-    return !privileges.every((privilege) => implied.has(privilege) || implied.has("ALL"));
+    return !privileges.every((privilege) =>
+      defaultAclPrivilegeImplied(privilege, implied, targetOrdinal),
+    );
   });
+}
+
+function defaultAclPrivilegeImplied(
+  privilege: string,
+  defaults: DefaultAclGrant[],
+  targetOrdinal: number | undefined,
+): boolean {
+  return defaults.some((entry) => {
+    if (targetOrdinal !== undefined && entry.ordinal >= targetOrdinal) {
+      return false;
+    }
+    return entry.privileges.has(privilege) || entry.privileges.has("ALL");
+  });
+}
+
+function defaultAclTargetCreationOrdinals(objects: SchemaObject[]): Map<string, number> {
+  const ordinals = new Map<string, number>();
+  for (const object of objects) {
+    for (const key of defaultAclTargetKeys(object)) {
+      const current = ordinals.get(key);
+      if (current === undefined || object.ordinal < current) {
+        ordinals.set(key, object.ordinal);
+      }
+    }
+  }
+  return ordinals;
+}
+
+function defaultAclTargetKeys(object: SchemaObject): string[] {
+  const schema = object.ref.schema ?? "public";
+  const qualifiedName = `${schema}.${object.ref.name}`;
+  switch (object.ref.kind) {
+    case "domain":
+    case "enum":
+    case "type":
+      return [`TYPES|${qualifiedName}`];
+    case "function":
+      return routineDefaultAclTargetKeys("FUNCTIONS", "ROUTINES", object, qualifiedName);
+    case "procedure":
+      return routineDefaultAclTargetKeys("FUNCTIONS", "ROUTINES", object, qualifiedName);
+    case "foreign-table":
+    case "materialized-view":
+    case "table":
+    case "view":
+      return [`TABLES|${qualifiedName}`];
+    case "schema":
+      return [`SCHEMAS|${object.ref.name}`];
+    case "sequence":
+      return [`SEQUENCES|${qualifiedName}`];
+    default:
+      return [];
+  }
+}
+
+function routineDefaultAclTargetKeys(
+  primaryType: string,
+  secondaryType: string,
+  object: SchemaObject,
+  qualifiedName: string,
+): string[] {
+  if (object.ref.signature === undefined) {
+    return [];
+  }
+  const identity = `${qualifiedName}(${object.ref.signature})`;
+  return [`${primaryType}|${identity}`, `${secondaryType}|${identity}`];
+}
+
+function grantTargetCreationOrdinal(
+  grant: SchemaObject,
+  objectType: string,
+  creationOrdinals: Map<string, number>,
+): number | undefined {
+  return typeof grant.metadata.targetIdentity === "string"
+    ? creationOrdinals.get(`${objectType}|${grant.metadata.targetIdentity}`)
+    : undefined;
 }
 
 /**

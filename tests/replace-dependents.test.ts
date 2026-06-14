@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { planSchemaDiff } from "../src/planner.js";
+import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
 
 const dependents = [
@@ -11,6 +12,11 @@ const dependents = [
   "ALTER TABLE app.t ENABLE ROW LEVEL SECURITY;",
   "CREATE POLICY t_read ON app.t FOR SELECT TO authenticated USING (true);",
   "GRANT SELECT ON TABLE app.t TO authenticated;",
+  "CREATE VIEW app.t_values AS SELECT id, value FROM app.t;",
+  "GRANT SELECT ON TABLE app.t_values TO authenticated;",
+  "COMMENT ON TABLE app.t IS 'table comment';",
+  "COMMENT ON COLUMN app.t.value IS 'value comment';",
+  "COMMENT ON VIEW app.t_values IS 'view comment';",
 ].join("\n");
 
 async function modelFromSql(sql: string) {
@@ -20,7 +26,7 @@ async function modelFromSql(sql: string) {
 }
 
 describe("replaced relation dependents", () => {
-  it("re-creates unchanged dependents alongside a table replace", async () => {
+  it("re-creates unchanged dependents and comments alongside a hinted table replace", async () => {
     const from = await modelFromSql(
       `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n${dependents}\n`,
     );
@@ -28,8 +34,9 @@ describe("replaced relation dependents", () => {
       `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\n${dependents}\n`,
     );
 
-    const plan = planSchemaDiff(from, to, { config: { destructiveChanges: "allow" } });
+    const plan = planSchemaDiff(from, to, { config: { hints: { destructive: ["table:app.t"] } } });
 
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
     const tableReplace = plan.operations.find(
       (operation) => operation.kind === "replace" && operation.ref.kind === "table",
     );
@@ -42,6 +49,31 @@ describe("replaced relation dependents", () => {
     expect(injectedKinds).toContain("rls");
     expect(injectedKinds).toContain("policy");
     expect(injectedKinds).toContain("grant");
+    expect(injectedKinds).toContain("view");
+    expect(injectedKinds.filter((kind) => kind === "comment")).toHaveLength(3);
+
+    expect(
+      plan.operations.some(
+        (operation) =>
+          operation.kind === "drop" &&
+          operation.ref.kind === "view" &&
+          operation.ref.name === "t_values",
+      ),
+    ).toBe(true);
+
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropView = sql.indexOf('DROP VIEW IF EXISTS "app"."t_values";');
+    const dropTable = sql.indexOf('DROP TABLE IF EXISTS "app"."t";');
+    const createTable = sql.indexOf("CREATE TABLE IF NOT EXISTS app.t");
+    const createView = sql.indexOf("CREATE OR REPLACE VIEW app.t_values AS SELECT");
+    expect(dropView).toBeGreaterThanOrEqual(0);
+    expect(dropTable).toBeGreaterThan(dropView);
+    expect(createTable).toBeGreaterThan(dropTable);
+    expect(createView).toBeGreaterThan(createTable);
+    expect(sql).toContain("COMMENT ON TABLE app.t IS 'table comment';");
+    expect(sql).toContain("COMMENT ON COLUMN app.t.value IS 'value comment';");
+    expect(sql).toContain("COMMENT ON VIEW app.t_values IS 'view comment';");
+    expect(sql).toContain("GRANT SELECT ON app.t_values TO authenticated;");
   });
 
   it("adds no dependent operations when nothing is replaced", async () => {

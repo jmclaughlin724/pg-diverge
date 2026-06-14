@@ -25,6 +25,32 @@ describe("sql splitting", () => {
     expect(statements[0]).toContain("RETURN 'a;b'");
   });
 
+  it("does not split semicolons inside PostgreSQL escape strings", () => {
+    const statements = splitSqlStatements(`
+      SELECT E'a;b\\';c' AS value;
+      SELECT 2;
+    `);
+
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toContain("E'a;b\\';c' AS value");
+    expect(statements[1]).toBe("SELECT 2");
+  });
+
+  it("does not split semicolons inside nested block comments", () => {
+    const statements = splitSqlStatements(`
+      /* outer comment ;
+         /* nested comment ; */
+         still outer comment ;
+      */
+      CREATE TABLE app.items (id bigint);
+      SELECT 1;
+    `);
+
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toContain("CREATE TABLE app.items");
+    expect(statements[1]).toBe("SELECT 1");
+  });
+
   it("keeps statement boundaries intact after multi-byte characters", async () => {
     const extracted = await extractObjectsFromSql(
       `CREATE SCHEMA app;
