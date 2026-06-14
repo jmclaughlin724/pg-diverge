@@ -187,6 +187,19 @@ describe("composite and range type typegen", () => {
 
     expect(types).not.toMatch(/intrange:\s*\{\s*\}/);
   });
+
+  it("prefers a schema-local composite over a same-named enum in another schema", async () => {
+    const types = await typesFor(
+      `CREATE SCHEMA app;
+CREATE TYPE app.address AS (street text, zip int);
+CREATE TYPE public.address AS ENUM ('home', 'work');
+CREATE TABLE app.people (id bigint, home address);
+`,
+    );
+
+    expect(types).toContain('home: Database["app"]["CompositeTypes"]["address"] | null;');
+    expect(types).not.toContain('home: Database["public"]["Enums"]["address"] | null;');
+  });
 });
 
 const returnShapeSql = `CREATE SCHEMA app;
@@ -227,6 +240,18 @@ describe("zod schema generation", () => {
     expect(zod).toContain("tags: z.array(z.string()),");
     expect(zod).toContain("payload: jsonSchema.nullable(),");
     expect(zod).toContain("state: app_status,");
+  });
+
+  it("validates composite-typed columns as unknown, not z.composite()", async () => {
+    const zod = await zodFor(
+      `CREATE SCHEMA app;
+CREATE TYPE app.address AS (street text, zip int);
+CREATE TABLE app.people (id bigint, home app.address);
+`,
+    );
+
+    expect(zod).not.toContain("z.composite()");
+    expect(zod).toContain("home: z.unknown().nullable(),");
   });
 
   it("derives insert optionality and omits generated columns from writes", async () => {

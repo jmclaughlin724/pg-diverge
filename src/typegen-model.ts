@@ -192,45 +192,56 @@ export function resolveColumnType(
   if (lowered === "json" || lowered === "jsonb") {
     return { arrayDepth, kind: "json" };
   }
-  const enumRef = resolveEnum(shapes, schemaName, base);
-  if (enumRef) {
-    return { arrayDepth, enumRef, kind: "enum" };
+  const userType = resolveUserType(shapes, schemaName, base);
+  if (userType?.kind === "enum") {
+    return { arrayDepth, enumRef: userType.ref, kind: "enum" };
   }
-  const compositeRef = resolveNamedType(
-    shapes.compositesByQualifiedName,
-    shapes.compositesByBareName,
-    schemaName,
-    base,
-  );
-  if (compositeRef) {
-    return { arrayDepth, compositeRef, kind: "composite" };
+  if (userType?.kind === "composite") {
+    return { arrayDepth, compositeRef: userType.ref, kind: "composite" };
   }
   return { arrayDepth, kind: "unknown" };
 }
 
-function resolveEnum(
+// Resolve a user-defined type name to a single enum or composite. A schema-local
+// match (qualified by the current schema) wins across all kinds before falling
+// back to a globally unique bare name — so a local composite is not shadowed by
+// a same-named enum in another schema, and vice versa.
+function resolveUserType(
   shapes: SchemaShapes,
   schemaName: string,
   base: string,
-): { name: string; schema: string } | undefined {
-  return resolveNamedType(shapes.enumsByQualifiedName, shapes.enumsByBareName, schemaName, base);
-}
-
-function resolveNamedType(
-  byQualifiedName: Map<string, { name: string; schema: string }>,
-  byBareName: Map<string, { name: string; schema: string }[]>,
-  schemaName: string,
-  base: string,
-): { name: string; schema: string } | undefined {
+): { kind: "composite" | "enum"; ref: { name: string; schema: string } } | undefined {
   if (base.includes(".")) {
-    return byQualifiedName.get(base);
+    const qualifiedEnum = shapes.enumsByQualifiedName.get(base);
+    if (qualifiedEnum) {
+      return { kind: "enum", ref: qualifiedEnum };
+    }
+    const qualifiedComposite = shapes.compositesByQualifiedName.get(base);
+    return qualifiedComposite ? { kind: "composite", ref: qualifiedComposite } : undefined;
   }
-  const local = byQualifiedName.get(`${schemaName}.${base}`);
-  if (local) {
-    return local;
+  const localEnum = shapes.enumsByQualifiedName.get(`${schemaName}.${base}`);
+  if (localEnum) {
+    return { kind: "enum", ref: localEnum };
   }
-  const candidates = byBareName.get(base);
-  return candidates && candidates.length === 1 ? candidates[0] : undefined;
+  const localComposite = shapes.compositesByQualifiedName.get(`${schemaName}.${base}`);
+  if (localComposite) {
+    return { kind: "composite", ref: localComposite };
+  }
+  const enumCandidate =
+    shapes.enumsByBareName.get(base)?.length === 1
+      ? shapes.enumsByBareName.get(base)?.[0]
+      : undefined;
+  if (enumCandidate) {
+    return { kind: "enum", ref: enumCandidate };
+  }
+  const compositeCandidate =
+    shapes.compositesByBareName.get(base)?.length === 1
+      ? shapes.compositesByBareName.get(base)?.[0]
+      : undefined;
+  if (compositeCandidate) {
+    return { kind: "composite", ref: compositeCandidate };
+  }
+  return undefined;
 }
 
 function schemaEntry(shapes: SchemaShapes, name: string): SchemaEntry {
