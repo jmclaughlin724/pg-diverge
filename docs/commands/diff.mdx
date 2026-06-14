@@ -110,7 +110,7 @@ npx supaschema diff --dry-run --summary
 </ParamField>
 
 <ParamField path="--env" type="string">
-  Selects a named environment block from your config file (e.g. `--env staging`). Named environments let you store per-environment database URLs and schema paths in one config without repeating flags.
+  Selects a named environment block from your config file (e.g. `--env staging`). Named environments let you store a per-environment `databaseUrl` (the only field an environment block accepts) in one config without repeating the connection string on each command.
 </ParamField>
 
 ## Source Specifiers

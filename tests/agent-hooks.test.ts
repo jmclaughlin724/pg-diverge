@@ -235,6 +235,27 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
     expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
   });
 
+  runAutoDiffTest("runs auto-diff for apply_patch moves into the schema tree", async () => {
+    const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: {
+          // The old path is outside the schema root; only the `*** Move to:`
+          // destination lands inside it. The hook must still fire on the move.
+          patch:
+            "*** Begin Patch\n*** Update File: drafts/accounts.sql\n*** Move to: supabase/schemas/accounts.sql\n@@\n-CREATE TABLE app.t (id int);\n+CREATE TABLE app.t (id bigint);\n*** End Patch",
+        },
+        tool_name: "apply_patch",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
+  });
+
   runAutoDiffTest("diffs the schema path that contains the changed file", async () => {
     const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
     await writeFile(

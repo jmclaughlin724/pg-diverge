@@ -109,6 +109,8 @@ supaschema integrates directly into a standard Supabase project layout. This gui
 
     ALTER TABLE app.accounts ENABLE ROW LEVEL SECURITY;
 
+    DROP POLICY IF EXISTS accounts_select ON app.accounts;
+
     CREATE POLICY accounts_select ON app.accounts
         FOR SELECT
         TO public
