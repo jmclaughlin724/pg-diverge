@@ -163,8 +163,12 @@
   },
   "redirects": [
     {
+      "source": "/",
+      "destination": "/introduction"
+    },
+    {
       "source": "/docs",
-      "destination": "/"
+      "destination": "/introduction"
     },
     {
       "source": "/docs/commands",
@@ -253,6 +257,10 @@
     {
       "source": "/guides/destructive-changes",
       "destination": "/configuration/hints"
+    },
+    {
+      "source": "/docs/:slug*",
+      "destination": "/:slug*"
     }
   ]
 }
