@@ -30,7 +30,6 @@
     ".claude/skills/supaschema",
     ".codex",
     "AGENTS.md",
-    "CLAUDE.md",
     "benchmarks/README.md",
     "benchmarks/compare.js",
     "benchmarks/fixtures",
