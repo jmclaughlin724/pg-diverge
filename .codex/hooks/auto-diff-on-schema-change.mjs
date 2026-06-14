@@ -17,11 +17,23 @@ try {
   const projectDir = resolve(
     (typeof payload?.cwd === "string" && payload.cwd) || process.env.CODEX_PROJECT_DIR || ".",
   );
-  const schemaRoots = (await readSchemaPaths(projectDir)).map((path) => ({
+  const targets = editTargets(payload, projectDir);
+  const pathState = await readPathState(projectDir);
+  if (pathState.pathConfirmationNeeded) {
+    const pendingRoots = pathState.confirmationSchemaPaths.map((path) => ({
+      display: rel(projectDir, resolve(projectDir, path)),
+      root: resolve(projectDir, path),
+    }));
+    const pending = changedSchemaTargets(targets, pendingRoots);
+    if (pending.changed.length > 0) {
+      emit(context(pathConfirmationMessage(projectDir, pending.changed, pathState)));
+    }
+  }
+  const schemaRoots = pathState.schemaPaths.map((path) => ({
     display: rel(projectDir, resolve(projectDir, path)),
     root: resolve(projectDir, path),
   }));
-  const { changed, groups } = changedSchemaTargets(editTargets(payload, projectDir), schemaRoots);
+  const { changed, groups } = changedSchemaTargets(targets, schemaRoots);
   if (changed.length === 0) {
     emit({});
   }
@@ -192,11 +204,66 @@ async function readSchemaPaths(projectDir) {
   return ["supabase/schemas"];
 }
 
+async function readPathState(projectDir) {
+  const schemaPaths = await readSchemaPaths(projectDir);
+  const manifest = readInstallManifest(projectDir);
+  if (manifest?.pathConfirmationNeeded === true) {
+    const candidateSchemaPaths = strings(manifest?.candidates?.schemaPaths);
+    const candidateMigrationsDirs = strings(manifest?.candidates?.migrationsDirs);
+    return {
+      candidateMigrationsDirs,
+      candidateSchemaPaths,
+      confirmationSchemaPaths: uniqueStrings([...candidateSchemaPaths, ...schemaPaths]),
+      pathConfirmationNeeded: true,
+      schemaPaths,
+    };
+  }
+  return {
+    candidateMigrationsDirs: [],
+    candidateSchemaPaths: [],
+    confirmationSchemaPaths: schemaPaths,
+    pathConfirmationNeeded: false,
+    schemaPaths,
+  };
+}
+
+function readInstallManifest(projectDir) {
+  const path = join(projectDir, ".supaschema", "install.json");
+  if (!existsSync(path)) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
 function schemaPathsFromConfig(config) {
   if (Array.isArray(config?.schemaPaths) && config.schemaPaths.length > 0) {
     return config.schemaPaths.map(String);
   }
   return undefined;
+}
+
+function pathConfirmationMessage(projectDir, changed, state) {
+  const schemaCandidates =
+    state.candidateSchemaPaths.length > 0 ? state.candidateSchemaPaths.join(", ") : "(none)";
+  const migrationCandidates =
+    state.candidateMigrationsDirs.length > 0 ? state.candidateMigrationsDirs.join(", ") : "(none)";
+  return `supaschema auto-diff skipped for ${changed
+    .map((path) => rel(projectDir, path))
+    .join(
+      ", ",
+    )} because path confirmation is pending from install. Inspect .supaschema/install.json, ask the user which schemaPaths and migrationsDir to use, update supaschema.config.json, then run \`supaschema diff\` and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
+}
+
+function strings(value) {
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set(values));
 }
 
 function resolveBinary(projectDir) {

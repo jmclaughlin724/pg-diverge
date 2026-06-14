@@ -11,9 +11,17 @@ This skill is a direct execution contract for producing schema migrations with s
 
 When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`), a write to a schema-tree `.sql` file auto-runs steps 2–3 — `diff` then `check` — and returns the generated migration name, or the blocking `SUPA_*` diagnostic, as context. Read that context as the diff result and act on any reported code. The commands below are the same workflow for CI, hand runs, `verify`, and any step the hook reports as blocked; the hook never applies to a database.
 
+## Installed Setup
+
+The normal consumer setup is one package install: `npm install --save-dev supaschema`. Install creates missing config, schema and migrations directories, Claude/Codex rule and skill files, hook scripts, hook wiring, and a tagged supaschema addendum in `AGENTS.md` / `CLAUDE.md`.
+
+Before the first schema edit, check `.supaschema/install.json` if it exists. If it says `"pathConfirmationNeeded": true`, inspect its candidate `schemaPaths` and `migrationsDirs`, ask the user which paths to use, update `supaschema.config.json`, then run the workflow. Do not generate a migration from a guessed path; the bundled hooks also skip auto-diff while confirmation is pending.
+
+Use the configured `schemaPaths` and `migrationsDir` as the source of truth. Do not create a parallel schema tree, a second migrations directory, or a new config unless the user explicitly asks to change project layout.
+
 ## Workflow
 
-1. **Edit the declarative tree** (`supabase/schemas/**` or the project's configured tree) to express the desired end state. Use schema-qualified object names.
+1. **Edit the declarative tree** (`config.schemaPaths`, often `supabase/schemas/**`) to express the desired end state. Use schema-qualified object names.
 2. **Generate the migration:**
 
    ```bash
@@ -58,6 +66,12 @@ When drift is large or blocked, triage before editing:
 - `supaschema audit --from <source> [--json]` — modeled coverage by kind/schema plus every statement outside the contract grouped by diagnostic code.
 - `supaschema selfcheck` — re-extracts a live catalog's rendered SQL and reports any object whose identity diverges (`SUPA_SELFCHECK_*`); zero mismatches proves cross-lane identity parity.
 - `supaschema migrations` — classifies on-disk migrations against a target's applied history: applied, pending, ghost, or out-of-order.
+
+## SQL Understanding
+
+- Treat SQL semantics as an AST/model problem. For supaschema implementation work, classify, compare, or mutate DDL through PostgreSQL parse trees (`libpg-query`) and the structured model helpers, not ad hoc regular expressions.
+- Regex is acceptable for outer transport concerns such as finding file markers, parsing hook payload headers, or redacting raw text, but not for deciding whether SQL is safe, equivalent, destructive, or replayable.
+- Unsupported or ambiguous DDL fails closed with a `SUPA_*` diagnostic. Do not silently pass through statements the model cannot prove safe.
 
 ## Boundaries
 

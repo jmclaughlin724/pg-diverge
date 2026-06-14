@@ -109,6 +109,29 @@ describe("claude generated-migration edit hook", () => {
     expect(result.stderr).toContain("supaschema diff");
   });
 
+  it("blocks apply_patch updates to migrations carrying the lineage marker", async () => {
+    const { generated } = await fixtures();
+    const patch = `*** Begin Patch\n*** Update File: ${generated}\n@@\n-SET lock_timeout = '5s';\n+SET lock_timeout = '1s';\n*** End Patch`;
+    const result = await runHook(script, {
+      tool_input: { patch },
+      tool_name: "apply_patch",
+    });
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("supaschema diff");
+  });
+
+  it("allows deleting a stale generated migration", async () => {
+    const { generated } = await fixtures();
+    const patch = `*** Begin Patch\n*** Delete File: ${generated}\n*** End Patch`;
+    const result = await runHook(script, {
+      tool_input: { patch },
+      tool_name: "apply_patch",
+    });
+
+    expect(result.code).toBe(0);
+  });
+
   it("allows hand-authored migrations, new files, and non-sql edits", async () => {
     const { handAuthored } = await fixtures();
     for (const payload of [
@@ -160,6 +183,34 @@ describe("codex generated-migration tool gate", () => {
       tool_input: { file_path: generated },
       tool_name: "edit_file",
     });
+
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    };
+    expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+
+  it("resolves relative patch targets from the payload cwd", async () => {
+    const project = await mkdtemp(join(tmpdir(), "supa-codex-relative-hook-"));
+    const generated = join(project, "supabase", "migrations", "20260611000000_generated.sql");
+    await mkdir(dirname(generated), { recursive: true });
+    await writeFile(generated, lineageSql);
+    const patch =
+      "*** Begin Patch\n" +
+      "*** Update File: supabase/migrations/20260611000000_generated.sql\n" +
+      "@@\n" +
+      "-SET lock_timeout = '5s';\n" +
+      "+SET lock_timeout = '1s';\n" +
+      "*** End Patch";
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { patch },
+        tool_name: "apply_patch",
+      },
+      { cwd: tmpdir() },
+    );
 
     const output = JSON.parse(result.stdout) as {
       hookSpecificOutput?: { permissionDecision?: string };
@@ -320,6 +371,42 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("multiple configured schema roots");
+    expect(await readFakeCalls(log)).toEqual([]);
+  });
+
+  runAutoDiffTest("skips auto-diff while install path confirmation is pending", async () => {
+    const { env, log, project } = await autoDiffFixture(["apps/api/schemas"]);
+    await mkdir(join(project, ".supaschema"), { recursive: true });
+    await mkdir(join(project, "packages", "db", "schemas"), { recursive: true });
+    await writeFile(
+      join(project, ".supaschema", "install.json"),
+      JSON.stringify({
+        candidates: {
+          migrationsDirs: ["apps/api/migrations", "packages/db/migrations"],
+          schemaPaths: ["apps/api/schemas", "packages/db/schemas"],
+        },
+        migrationsDir: "apps/api/migrations",
+        pathConfirmationNeeded: true,
+        schemaPaths: ["apps/api/schemas"],
+      }),
+    );
+    await writeFile(
+      join(project, "apps", "api", "schemas", "accounts.sql"),
+      "CREATE TABLE app.t (id int);",
+    );
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { file_path: join(project, "apps", "api", "schemas", "accounts.sql") },
+        tool_name: "Edit",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("path confirmation is pending");
+    expect(result.stdout).toContain(".supaschema/install.json");
     expect(await readFakeCalls(log)).toEqual([]);
   });
 
