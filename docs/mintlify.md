@@ -47,12 +47,14 @@ Because the content root is `docs/`, the rest of the repository (source code, te
 
 ## Cloudflare custom domain
 
-The repository includes a Cloudflare Worker that proxies `https://supaschema.com/docs/*` to the Mintlify-hosted origin at `https://supaschema.mintlify.dev/docs/*` while preserving the public custom host (so the docs live at `supaschema.com/docs` and the apex can serve other content):
+The repository includes a Cloudflare Worker (`cloudflare/mintlify-docs-worker.js`) that proxies the whole custom domain to the Mintlify-hosted origin at `https://supaschema.mintlify.dev`, preserving the request path and rewriting redirect `Location` headers from the origin back to the custom host:
 
 ```js
 const DOCS_URL = "supaschema.mintlify.dev";
 const CUSTOM_URL = "supaschema.com";
 ```
+
+Every request is proxied to the origin except `/.well-known/*` (passed through for domain verification), and `www.supaschema.com` is permanently redirected to the apex. The `/docs` subpath itself comes from Mintlify's **Host at `/docs`** setting, not from the Worker: Mintlify serves pages under `/docs` and redirects the apex (`/`) to `/docs/introduction`, so `supaschema.com` lands on `supaschema.com/docs/introduction`.
 
 Deploy it with Wrangler after authenticating Cloudflare:
 
@@ -60,4 +62,4 @@ Deploy it with Wrangler after authenticating Cloudflare:
 npx wrangler deploy
 ```
 
-The Worker is configured by `wrangler.toml` as the Cloudflare Custom Domain target for both `supaschema.com` and `www.supaschema.com`; `www` redirects permanently to the apex domain. Keep the Mintlify dashboard in monorepo mode with `/docs` as the documentation path so GitHub preview/deployment checks read the same content root that local validation uses.
+The Worker is configured by `wrangler.toml` as the Cloudflare Custom Domain target for both `supaschema.com` and `www.supaschema.com`. Keep the Mintlify dashboard in monorepo mode (the **`docs.json` is in a subdirectory** toggle, path `/docs`) with **Host at `/docs`** enabled, so the live site and the GitHub preview/deployment checks read the same content root that local validation uses.
