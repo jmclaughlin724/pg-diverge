@@ -2,17 +2,19 @@
 
 [![CI](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml/badge.svg)](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/supaschema)](https://www.npmjs.com/package/supaschema) [![npm downloads](https://img.shields.io/npm/dm/supaschema)](https://www.npmjs.com/package/supaschema) [![node](https://img.shields.io/node/v/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/package.json) [![license](https://img.shields.io/npm/l/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/LICENSE) [![codecov](https://codecov.io/gh/jmclaughlin724/supaschema/branch/main/graph/badge.svg)](https://codecov.io/gh/jmclaughlin724/supaschema) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jmclaughlin724/supaschema/badge)](https://scorecard.dev/viewer/?uri=github.com/jmclaughlin724/supaschema) [![install size](https://packagephobia.com/badge?p=supaschema)](https://packagephobia.com/result?p=supaschema)
 
-**Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, and regenerates your TypeScript + Zod types in a single command — without standing up a database to do it.
+[Documentation](https://supaschema.com) · [Quickstart](https://supaschema.com/quickstart) · [Benchmarks](https://supaschema.com/benchmarks) · [Supabase CLI comparison](https://supaschema.com/comparisons/supaschema-vs-supabase-cli) · [FAQ](https://supaschema.com/faq)
 
-- **Fast at any scale.** It parses instead of replaying: a full diff of an 8,300-object production schema runs in under two seconds, where the Supabase CLI's shadow-database engines take minutes. The gap widens from ~20× to ~70× as your schema grows.
+**Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, and refreshes existing TypeScript + Zod outputs in the same command — without standing up a database to do it.
+
+- **Fast at any scale.** It parses instead of replaying: a full diff of an 8,300-object production schema runs in under two seconds, where the Supabase CLI's shadow-database engines take minutes. The gap widens from ~18× on a single-table change to ~68× at 2,500 tables.
 - **Catches the tenant-isolation regression other tools ship.** An RLS policy's `USING` predicate _is_ the tenant boundary. Every Supabase CLI engine diffs policies by name and silently drops a tightened predicate; supaschema compares policy bodies structurally and catches it before it merges.
 - **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, catalog-checked `DO` blocks), so a crashed or retried deploy just re-runs the file — where the CLI's unguarded `CREATE TABLE` / `CREATE INDEX` fail on the second apply.
 
 ```bash
-npx supaschema diff   # writes the migration AND refreshes database.types.ts + database.zod.ts
+npx supaschema diff   # writes the migration; refreshes existing type outputs if present
 ```
 
-![Diff latency vs schema size — supaschema stays in seconds where shadow-database engines climb into minutes](docs/benchmarks/scaling-latency.svg)
+![supaschema vs every Supabase CLI engine at 1,000 tables — median diff latency, accuracy F1, and replay-safety side by side](docs/benchmarks/head-to-head-xl.svg)
 
 The promise of declarative schema management sounds great: keep your schema in SQL files, edit them in your editor, diff against your database to produce a type-safe, idempotent migration, and get regenerated types back in your repo.
 
@@ -22,15 +24,15 @@ supaschema knows every table, column, type, and enum without a database because 
 
 Migrations diff without an ORM, without Docker, without a shadow database, and without introspection — reading your live catalog directly and read-only, or your schema files and git refs with no database at all. Zod-validated types generate with no database whatsoever. Nothing is applied to your local or remote database. All within milliseconds.
 
-Measured head-to-head against the Supabase CLI's diff engines on identical fixtures ([benchmarks](#benchmarks)):
+## Core Concepts
 
-|  | supaschema | Supabase CLI engines (all five) |
-| --- | --- | --- |
-| Diff latency, 1 → 2,500 tables (~17,500 objects) | 0.2s → 3.2s | 3.6–4.6s → ~3.5 minutes |
-| Generated SQL survives a second apply | every fixture | fails on column/index changes |
-| Diff content vs intended change (F1) | 1.000 on every scored fixture | 0.982–0.999 (every engine missed the same policy change) |
-| Infrastructure per diff | none — pure TypeScript + WASM | Docker shadow database |
-| Ambiguous change (rename, drop, type change) | blocked until explicitly hinted | inferred or dropped silently |
+Declarative schema management promises a simple loop: edit your SQL files, diff them, and get a replay-safe migration and fresh types back. The catch is that every tool in that loop needs a database that already has your change — so a diff spins up a Docker shadow database and replays your whole schema, and types can't regenerate until the migration is applied. The change sitting in your editor is stuck behind infrastructure, and the diff itself is only as careful as a name-by-name comparison.
+
+![The declarative workflow today: spin up a shadow database, replay the schema, diff, apply, then introspect for types — every step needs a running PostgreSQL, and policies are diffed by name](docs/concepts/legacy-flow.svg)
+
+supaschema ships PostgreSQL's own parser inside the package. It reads your SQL into an AST, compares object definitions structurally — policy bodies included, not just their names — and renders a guarded, replay-safe migration, all without a database. Types and Zod validators come from the same parse, in the same command, so they never wait on a deploy.
+
+![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](docs/concepts/supaschema-flow.svg)
 
 ## Install
 
@@ -38,20 +40,24 @@ Measured head-to-head against the Supabase CLI's diff engines on identical fixtu
 npm install --save-dev supaschema
 ```
 
-Requires Node 22+ and PostgreSQL 15+. Run `npx supaschema init` to scaffold `supaschema.config.json`. In a Supabase project the database URL is discovered from `supabase/config.toml` automatically; anywhere else, set `SUPASCHEMA_DATABASE_URL` or define named `environments` in the config. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
+Requires Node 22.12+ and PostgreSQL 15+. Run `npx supaschema init` to scaffold `supaschema.config.json`. In a Supabase project the database URL is discovered from `supabase/config.toml` automatically; anywhere else, set `SUPASCHEMA_DATABASE_URL` or define named `environments` in the config. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
 
 ## Quick Start
 
-Edit your schema files (`supabase/schemas/` by default), then generate the migration:
+You edit one thing: your schema files (`supabase/schemas/` by default). Everything downstream — the migration, the replay-safety check, and refreshed type outputs once initialized — comes from that edit.
+
+**With the agent bundle installed** ([AI agents](#ai-agents)), saving a schema file _is_ the workflow. The PostToolUse hook senses the change, runs the diff and the replay-safety check to completion, writes the timestamped migration, refreshes existing type outputs, and reports the result back to the agent — there is no command to type.
+
+**By hand or in CI**, run the diff yourself:
 
 ```bash
 npx supaschema diff
 ```
 
-supaschema compares the schema you declared with the schema your database has, and writes the difference to `supabase/migrations/<timestamp>_<name>.sql`:
+Either way, supaschema compares the schema you declared with the schema your database has, and writes the difference to a timestamped migration like `supabase/migrations/20260605205117_add_audit_events.sql`:
 
 ```sql
--- Generated by supaschema 0.1.0.
+-- Generated by supaschema x.y.z.
 -- Operations: 1 create constraint, 1 create table, 1 drop function, ...
 -- supaschema: lineage from=a145201bcaa397f6... to=4db806bc9b786ea2...
 SET lock_timeout = '5s';
@@ -89,51 +95,38 @@ No flags are needed day to day: sources, output paths, and names all have sensib
 - **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, `DROP ... IF EXISTS`, catalog-checked `DO` blocks). A crashed deploy can simply run the file again.
 - **Fails closed on ambiguity.** Drops, renames, and type changes stay blocked until you approve the exact object in `hints`. Nothing is inferred from name similarity.
 - **Normalized output.** Migrations are written in one canonical SQL style, so formatting never shows up as a change. An object the deparser can't faithfully reproduce keeps your original spelling and says so with a warning.
-- **Types and validators without a database.** `supaschema types` writes Supabase-compatible TypeScript types plus runtime Zod validators straight from your schema files, and `diff` refreshes both automatically with every migration. No introspection, no running database, no applying migrations first — the parser already knows your schema, so you never stop mid-workflow to deploy before types can regenerate.
+- **Types and validators without a database.** `supaschema types` writes Supabase-compatible TypeScript types plus runtime Zod validators straight from your schema files; after those files exist, `diff` refreshes both automatically with every migration. No introspection, no running database, no applying migrations first — the parser already knows your schema, so you never stop mid-workflow to deploy before types can regenerate.
 - **No git ceremony.** Schema files are diffed straight from disk — no staging or committing before you can generate.
 - **Everything stays in sync.** Your editor validates the config via JSON Schema and `--watch` re-diffs on save; named `environments` point commands at local, staging, or production; `migrations` reconciles files against each database's applied history; `--fail-on-diff` gates drift in CI.
 - **Accuracy is measured, not assumed.** Diff output is scored against ground-truth change manifests ([benchmarks](#accuracy)).
-- **AI agents are governed.** A bundled Claude Code + Codex rule, skill, and hook set blocks hand-edits to generated migrations ([AI agents](#ai-agents)).
+- **AI agents are governed, and the diff runs itself.** A bundled Claude Code + Codex rule, skill, and hook set blocks hand-edits to generated migrations and auto-runs `diff` + `check` whenever a schema file changes, handing the result back to the agent ([AI agents](#ai-agents)).
 - **Usable as a library.** Every CLI capability is an exported, typed function ([library](#library)).
 
 ## Benchmarks
 
 All numbers are reproducible from this repo (`npm run benchmark`; harness in [benchmarks/README.md](benchmarks/README.md)) and verified, not just timed: every generated migration is applied in one transaction, applied a second time, and the resulting catalog is compared against the target. Reference run 2026-06-12: Apple Silicon, Node 24, PostgreSQL 17.6, Supabase CLI 2.106.0.
 
-### Speed
+### Speed and accuracy, head to head
 
-**The diff alone** (charted at the top): supaschema's cost is parsing and planning, so it stays in seconds at every scale — **0.2s** at one table, **1.4s** at 1,000 tables, **3.2s** at 2,500 tables (~17,500 objects). Every shadow-database engine pays for a full schema replay into a fresh Docker database on every diff: **~4 seconds at a single table**, **~39 seconds** at 1,000 tables, and **~3.5 minutes** at 2,500 — a gap that widens from ~20x to ~70x as your schema grows.
+At 1,000 tables (~7,000 objects), supaschema against each of the five Supabase CLI engines — median diff latency, accuracy (F1 vs a ground-truth change manifest), and whether the migration survives a second apply:
 
-**The full real-world step — migration plus regenerated types:**
+![supaschema vs every Supabase CLI engine at 1,000 tables — latency bars, F1 accuracy, and replay-safety](docs/benchmarks/head-to-head-xl.svg)
 
-![Full workflow: migration + regenerated types](docs/benchmarks/workflow-latency.svg)
+The gap widens with scale. At 2,500 tables (~17,500 objects) the engines cross three minutes while supaschema stays around three seconds — and every engine still drops the same policy and still fails the second apply:
 
-In the real workflow you don't stop at the diff: you need the migration _and_ your regenerated types. For supaschema that's still one command — `diff` writes the migration and refreshes `database.types.ts` and `database.zod.ts` in the same invocation — so the full step costs **0.23s** at one table and **5.2s** at 2,500. The engines can't regenerate types from unapplied SQL, so their full step is `db diff`, then apply the migration, then `supabase gen types`: **~6 seconds** at a single table, **~45 seconds** at 1,000 tables, **~3.7 minutes** at 2,500 — and what comes back is TypeScript only, with no runtime validators.
+![supaschema vs every Supabase CLI engine at 2,500 tables — latency bars, F1 accuracy, and replay-safety](docs/benchmarks/head-to-head-xxl.svg)
 
-| Median, full workflow | 1 table | 50 tables | 1,000 tables | 2,500 tables |
-| --- | --- | --- | --- | --- |
-| supaschema (migration + TS types + Zod) | 0.24s | 0.26s | 2.25s | 5.22s |
-| supabase engines (diff + apply + gen types) | 5.7–8.1s | 6.4–7.6s | 44.8–50.4s | 212.6–229.7s |
+The diff is only half the loop. Once type outputs exist, getting a migration **and** refreshed types is one `supaschema diff` — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
 
-![Realistic fixture latency](docs/benchmarks/realistic-latency.svg)
+![Full workflow at 1,000 tables — supaschema's migration plus refreshed existing type outputs in one command vs db diff, apply, and gen types per engine](docs/benchmarks/head-to-head-workflow-xl.svg)
 
-| Median diff time     | 1 table | 50 tables | 1,000 tables | 2,500 tables |
-| -------------------- | ------- | --------- | ------------ | ------------ |
-| supaschema (files)   | 0.19s   | 0.19s     | 1.38s        | 3.23s        |
-| supaschema (live db) | 0.21s   | 0.23s     | 1.25s        | 2.78s        |
-| supabase default     | 3.86s   | 4.11s     | 39.12s       | 208.48s      |
-| supabase migra       | 3.81s   | 4.43s     | 38.74s       | 204.54s      |
-| supabase pg-delta    | 3.58s   | 4.15s     | 38.52s       | 207.47s      |
-| supabase pg-schema   | 4.61s   | 3.98s     | 38.57s       | 205.59s      |
-| supabase pgadmin     | 3.73s   | 4.01s     | 38.74s       | 209.98s      |
-
-Per-fixture latency charts: [additive](docs/benchmarks/additive-latency.svg) · [functions-policies](docs/benchmarks/functions-policies-latency.svg) · [xl](docs/benchmarks/xl-latency.svg) · [xxl](docs/benchmarks/xxl-latency.svg).
+Per-fixture latency bar charts at every scale: [additive](docs/benchmarks/additive-latency.svg) · [functions-policies](docs/benchmarks/functions-policies-latency.svg) · [realistic](docs/benchmarks/realistic-latency.svg) · [xl](docs/benchmarks/xl-latency.svg) · [xxl](docs/benchmarks/xxl-latency.svg).
 
 ### Accuracy
 
 Two independent measures back every run. **F1** scores the emitted statements against a ground-truth change manifest by object identity — recall is "did you touch every object that changed", precision penalizes operations beyond the intent and destructive drop+create of data-bearing objects. The **catalog fingerprint** is the objective oracle that needs no manifest: the generated migration is applied to a throwaway database and the resulting catalog is compared to the target. F1 says you named the right objects; the fingerprint says the SQL is actually correct.
 
-Every fixture is scored — the generated `realistic`/`xl`/`xxl` set and the hand-authored `additive`/`functions-policies` fixtures all carry manifests. supaschema scores **F1 1.000** on each, in both file and live-database modes. Every Supabase engine scores **0.982–0.999, and the gap is always the same miss: each silently dropped an RLS policy change** — and on that fixture each engine's migration also fails the fingerprint check, so the miss is confirmed objectively, not just by the rubric.
+Every manifest-carrying fixture — the generated `realistic`/`xl`/`xxl` set — is F1-scored. supaschema scores **F1 1.000** on each, in file, live-database, and full-workflow modes. Every Supabase engine scores **0.982–0.999, and the gap is always the same miss: each silently dropped an RLS policy change** — and on that fixture each engine's migration also fails the fingerprint check, so the miss is confirmed objectively, not just by the rubric.
 
 That miss matters more than speed. A slow diff costs seconds and an unreplayable diff costs a deploy, but a silently dropped policy change ships a tenant-isolation hole that review, CI, and the migration runner all wave through. The same comparison run against a real ~8,300-object production Supabase tree is written up in the [anilize case study](docs/case-study-anilize.md).
 
@@ -144,8 +137,6 @@ That miss matters more than speed. A slow diff costs seconds and an unreplayable
 Every engine's migration applies once and reaches the target catalog. Only supaschema's also applies **twice**: the others emit unguarded `ADD COLUMN` and `CREATE INDEX`, which fail on re-run for every fixture containing column or index changes. Per-fixture charts: [additive](docs/benchmarks/additive-correctness.svg) · [functions-policies](docs/benchmarks/functions-policies-correctness.svg) · [realistic](docs/benchmarks/realistic-correctness.svg) · [xxl](docs/benchmarks/xxl-correctness.svg).
 
 ## How It Works
-
-supaschema reads SQL with PostgreSQL's own parser, shipped inside the package. The part of Postgres that understands SQL runs in the library itself — that's why no Docker and no shadow database are needed, and why the engine never touches SQL with regex.
 
 1. **Parse** — every statement, from your files or a live database, becomes a parse tree.
 2. **Compare** — two definitions are equal when their parse trees are equal. Formatting, keyword case, and type spellings can never show up as fake changes.
@@ -166,7 +157,7 @@ supaschema reads SQL with PostgreSQL's own parser, shipped inside the package. T
 | `migrations` | Files on disk vs a database's applied history: applied, pending, ghosts, out-of-order |
 | `sync` | Gate pending migrations, then optionally drive the Supabase CLI (`--local` / `--remote`) |
 | `audit` | Coverage report for adopting an existing schema |
-| `corpus` / `selfcheck` | The engine's own correctness oracles ([docs/corpus.md](docs/corpus.md)) |
+| `corpus` / `selfcheck` | The engine's own correctness oracles ([docs/guides/corpus-oracle.md](docs/guides/corpus-oracle.md)) |
 | `doctor` / `init` / `completion` / `explain` | Setup diagnosis · config scaffold · shell completions · offline diagnostic decoder |
 
 Defaults: `--from` is the database (falling back to `git:HEAD`), `--to` is the schema tree, and output lands in the migrations directory — paths set by `schemaPaths` and `migrationsDir` in the config. Full flags: [docs/commands.md](docs/commands.md). Exit codes: `0` ok · `1` runtime error · `2` diagnostic errors · `3` drift found.
@@ -189,18 +180,20 @@ Either side of a diff can be any of these — generating a diff never creates a 
 - Renames come only from `hints.renames`. `CASCADE` is never emitted. Idempotency is required, not optional.
 - Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) are never treated as schema changes, and unsupported DDL produces a blocking diagnostic instead of passing through.
 - Diagnostics redact credentials (URL passwords, JWTs, secrets).
-- Recovery steps for blocked plans: [docs/hints.md](docs/hints.md) · config reference: [docs/config.md](docs/config.md).
+- Recovery steps for blocked plans: [docs/configuration/hints.md](docs/configuration/hints.md) · config reference: [docs/configuration/config-file.md](docs/configuration/config-file.md).
 
 ## AI Agents
 
-The package ships a governance bundle so coding agents generate migrations through the diff instead of hand-writing SQL:
+The package ships a governance bundle so coding agents generate migrations through the diff instead of hand-writing SQL — and so the diff runs itself the moment a schema file changes:
 
 - `AGENTS.md` — operator brief: invariants, commands, recovery codes.
 - `.claude/rules/` and `.codex/rules/` — the migration policy for Claude Code and Codex.
 - `.claude/skills/supaschema/` — the step-by-step workflow skill, with recovery steps for every blocking `SUPA_*` code.
-- `.claude/hooks/` and `.codex/hooks/` — wired PreToolUse hooks that **block any edit to a generated migration** (identified by its lineage marker) in both runtimes.
+- `.claude/hooks/` and `.codex/hooks/` — two wired hooks in each runtime:
+  - a **PreToolUse** hook that blocks any edit to a generated migration (identified by its lineage marker), and
+  - a **PostToolUse** hook that senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, and returns the generated migration name — or the blocking `SUPA_*` diagnostic — straight back to the agent as context.
 
-Copy the surfaces into your repo root to get the write-time enforcement — the hooks only run where `.claude/settings.json` and `.codex/hooks.json` are wired. Pointing agents at `node_modules/supaschema/` gives them the guidance without the hooks. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
+So when an agent (or anyone) edits the declarative tree, the migration and any existing type outputs are refreshed automatically and the agent is told what happened, with no command to remember. Copy the surfaces into your repo root to get the write-time enforcement — the hooks only run where `.claude/settings.json` and `.codex/hooks.json` are wired. Pointing agents at `node_modules/supaschema/` gives them the guidance without the hooks. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
 
 ## Library
 
@@ -225,11 +218,11 @@ import {
 
 ## Scope and Stability
 
-Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes, sequences, functions/procedures, views/materialized views, triggers, RLS, policies, grants/default privileges, foreign data wrappers, comments. Deliberate non-goals (partitioning, publications, event triggers, collations) fail closed with diagnostics ([support matrix](docs/support-matrix.md)). Pre-1.0: pin an exact version in CI. Worked Supabase and plain-PostgreSQL setups live in `examples/`.
+Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes, sequences, functions/procedures, views/materialized views, triggers, RLS, policies, grants/default privileges, foreign data wrappers, comments. Deliberate non-goals (partitioning, publications, event triggers, collations) fail closed with diagnostics ([support matrix](docs/reference/support-matrix.md)). Pre-1.0: pin an exact version in CI. Worked Supabase and plain-PostgreSQL setups live in `examples/`.
 
 ## Documentation
 
-[commands](docs/commands.md) · [config](docs/config.md) · [hints & recovery](docs/hints.md) · [CI recipes](docs/ci.md) · [CI gate & paid tier](docs/ci-gate.md) · [diagnostics](docs/diagnostics.md) · [support matrix](docs/support-matrix.md) · [corpus oracle](docs/corpus.md) · [case study](docs/case-study-anilize.md) · [benchmark harness](benchmarks/README.md)
+[commands](docs/commands.md) · [config](docs/configuration/config-file.md) · [hints & recovery](docs/configuration/hints.md) · [CI recipes](docs/guides/ci-github-actions.md) · [CI gate & paid tier](docs/guides/ci-gate.md) · [diagnostics](docs/reference/diagnostics.md) · [support matrix](docs/reference/support-matrix.md) · [corpus oracle](docs/guides/corpus-oracle.md) · [case study](docs/case-study-anilize.md) · [benchmark harness](benchmarks/README.md)
 
 ## Development
 

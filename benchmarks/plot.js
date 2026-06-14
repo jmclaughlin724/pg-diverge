@@ -2,14 +2,18 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fixtureScale, formatSeconds, groupedStats, isWorkflow, percentile } from "./plot-lib.js";
-import { renderCorrectnessSvg, renderLatencySvg, renderScalingSvg } from "./plot-svg.js";
+import { renderCorrectnessSvg, renderLatencySvg } from "./plot-svg.js";
 
-const jsonInputs = process.argv.slice(2).filter((arg) => arg.endsWith(".json"));
-const dirArgs = process.argv.slice(2).filter((arg) => !arg.endsWith(".json"));
+const args = process.argv.slice(2);
+const chartsFlagIndex = args.indexOf("--charts-dir");
+const chartsFlagValue = chartsFlagIndex >= 0 ? args.splice(chartsFlagIndex, 2)[1] : undefined;
+const jsonInputs = args.filter((arg) => arg.endsWith(".json"));
+const dirArgs = args.filter((arg) => !arg.endsWith(".json"));
 const inputs = (jsonInputs.length > 0 ? jsonInputs : ["benchmarks/results/comparison.json"]).map(
   (path) => resolve(path),
 );
 const outputDir = resolve(dirArgs[0] ?? "benchmarks/results");
+const chartsDir = chartsFlagValue !== undefined ? resolve(chartsFlagValue) : outputDir;
 const allResults = [];
 const environments = [];
 for (const input of inputs) {
@@ -32,15 +36,15 @@ const fixtures = [...new Set(allResults.map((item) => item.fixture))].sort(
     left.localeCompare(right),
 );
 await mkdir(outputDir, { recursive: true });
+await mkdir(chartsDir, { recursive: true });
 const written = [];
 const diffResults = allResults.filter((item) => !isWorkflow(item.adapter));
-const workflowResults = allResults.filter((item) => isWorkflow(item.adapter));
 for (const fixture of fixtures) {
   const rows = allResults.filter((item) => item.fixture === fixture);
   const diffRows = diffResults.filter((item) => item.fixture === fixture);
   const measuredRows = diffRows.filter((item) => !item.skipped && !item.unsupported);
-  const latencyPath = join(outputDir, `${fixture}-latency.svg`);
-  const correctnessPath = join(outputDir, `${fixture}-correctness.svg`);
+  const latencyPath = join(chartsDir, `${fixture}-latency.svg`);
+  const correctnessPath = join(chartsDir, `${fixture}-correctness.svg`);
   const resultsPath = join(outputDir, `${fixture}-results.json`);
   if (measuredRows.length > 0) {
     await writeFile(latencyPath, renderLatencySvg(measuredRows, fixture, environments), "utf8");
@@ -53,28 +57,6 @@ for (const fixture of fixtures) {
     "utf8",
   );
   written.push(resultsPath);
-}
-const measuredDiffResults = diffResults.filter((item) => !item.skipped && !item.unsupported);
-if (fixtures.length > 1 && measuredDiffResults.length > 0) {
-  const scalingPath = join(outputDir, "scaling-latency.svg");
-  await writeFile(scalingPath, renderScalingSvg(diffResults, fixtures, environments), "utf8");
-  written.push(scalingPath);
-}
-const measuredWorkflowResults = workflowResults.filter(
-  (item) => !item.skipped && !item.unsupported,
-);
-if (fixtures.length > 1 && measuredWorkflowResults.length > 0) {
-  const workflowPath = join(outputDir, "workflow-latency.svg");
-  await writeFile(
-    workflowPath,
-    renderScalingSvg(workflowResults, fixtures, environments, {
-      subtitle:
-        "supaschema: one diff = migration + TS types + Zod · Supabase engines: db diff + apply + gen types · log scale",
-      title: "Full workflow: migration + regenerated types",
-    }),
-    "utf8",
-  );
-  written.push(workflowPath);
 }
 const summaryPath = join(outputDir, "summary.md");
 await writeFile(summaryPath, renderSummaryMarkdown(), "utf8");

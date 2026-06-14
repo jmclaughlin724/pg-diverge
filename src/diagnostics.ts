@@ -210,7 +210,7 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_VERIFY_ROLE_CAPABILITY:
     "The verification role cannot CREATE DATABASE; verify needs a role with CREATEDB (on local Supabase stacks prefer supabase_admin).",
   SUPA_VERIFY_STUB_REFERENCE:
-    "Verify failed referencing a Supabase-managed schema that --ensure-environment only stubs minimally; the failure may be a stub limitation, not a real migration defect. Re-run against a real Supabase database to confirm.",
+    "Verify failed referencing a Supabase-managed schema that --ensure-environment only stubs minimally; the failure may be a stub limitation, not a real migration defect. Confirm by applying the migration to a real disposable Supabase database (a local stack via supabase db push, or a preview branch). Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.",
   SUPA_VERIFY_FINGERPRINT_MISMATCH:
     "Catalog after from+migration+migration differs from the target catalog.",
   SUPA_VERIFY_RECONVERGENCE:

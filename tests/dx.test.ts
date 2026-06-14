@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderCheckReport } from "../src/check-reporters.js";
 import { configJsonSchema, defaultConfigFile, resolveConfig } from "../src/config.js";
@@ -92,5 +94,38 @@ describe("stdin sources", () => {
     });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("ok");
+  });
+});
+
+describe("verify environment flags", () => {
+  it("exposes --no-ensure-environment so the supabase-auto stub default can be disabled", () => {
+    const result = spawnSync(process.execPath, [cliPath, "verify", "--help"], {
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("--ensure-environment");
+    expect(result.stdout).toContain("--no-ensure-environment");
+  });
+});
+
+describe("doctor environment resolution", () => {
+  it("honors the global --env database URL lane", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-doctor-env-"));
+    writeFileSync(
+      join(cwd, "supaschema.config.json"),
+      `${JSON.stringify({ environments: { staging: { databaseUrl: "$STAGING_DB" } } })}\n`,
+    );
+
+    const result = spawnSync(process.execPath, [cliPath, "--env", "staging", "doctor"], {
+      cwd,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        STAGING_DB: "postgresql://postgres:postgres@127.0.0.1:1/postgres",
+      },
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toContain("database url: resolved via --env staging");
   });
 });

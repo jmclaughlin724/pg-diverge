@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 (2026-06-12)
+
+- Documentation site at supaschema.com: the Mintlify site moves to monorepo mode with the content root at `docs/`, an expanded information architecture (per-command reference pages, concept deep-dives, environments/database-URL resolution, Supabase integration guide, library API reference), and redirects from every legacy `/docs/*` URL.
+- Agent auto-run diff hooks: a PostToolUse hook for Claude Code and Codex senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, and returns the generated migration name — or the blocking `SUPA_*` diagnostic — back to the agent as context. Wired in `.claude/settings.json` and `.codex/hooks.json`; the rules, skills, and `AGENTS.md` bundle describes the behavior.
+- Benchmarks refreshed from the 2026-06-12 reference run (Supabase CLI 2.106.0, 13 adapters): head-to-head bar charts (median latency, accuracy F1, replay-safe chips) replace the scaling and workflow line charts, including a new full-workflow head-to-head — migration plus regenerated types in one command vs `db diff` + apply + `gen types` per engine.
+- Example schemas drop the migration-style `001_` prefix (`examples/**/schemas/app.sql`) to read as declarative trees.
+
 ## 0.1.0 (2026-06-12)
 
 Initial release.

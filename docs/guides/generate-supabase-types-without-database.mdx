@@ -1,0 +1,76 @@
+---
+title: "Generate Supabase types without a database"
+description: "Generate Supabase-compatible TypeScript types and Zod validators from declarative SQL files before applying a migration."
+---
+
+# Generate Supabase types without a database
+
+You can generate Supabase-compatible TypeScript types without connecting to a database by running `supaschema types`. The command reads declarative SQL files and emits `database.types.ts` plus runtime Zod validators from the same schema model used for migrations.
+
+## Why generate types from files?
+
+Database introspection only sees what has already been applied. During a pull request, the schema change often lives in SQL files before any database has caught up. File-based type generation lets the migration and application code move together in the same review.
+
+## Generate types
+
+```bash
+npx supaschema types
+```
+
+By default, the command reads the schema paths in `supaschema.config.json` and writes:
+
+```text
+database.types.ts
+database.zod.ts
+```
+
+To point at a specific schema directory:
+
+```bash
+npx supaschema types --from dir:supabase/schemas
+```
+
+To write the TypeScript file somewhere else:
+
+```bash
+npx supaschema types --out src/lib/database.types.ts
+```
+
+## `diff` keeps types in sync
+
+After `supaschema types` has created the output files, `supaschema diff` refreshes them after writing a migration, so a normal schema edit keeps the migration and matching application types together:
+
+```bash
+npx supaschema diff
+```
+
+That means reviewers can inspect:
+
+- the declarative SQL change,
+- the generated migration,
+- `database.types.ts` when it already exists,
+- `database.zod.ts` when it already exists.
+
+## Use with Supabase client
+
+```typescript
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "./database.types";
+
+const supabase = createClient<Database>(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
+```
+
+## Use Zod validators at runtime
+
+`database.zod.ts` gives API handlers and background jobs runtime validation from the same schema source:
+
+```typescript
+import { ProfileRowSchema } from "./database.zod";
+
+const profile = ProfileRowSchema.parse(payload);
+```
+
+See the [`types` command reference](/commands/types) for flags and output details.

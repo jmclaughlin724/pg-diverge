@@ -1,0 +1,10 @@
+name = "supaschema-docs"
+main = "cloudflare/mintlify-docs-worker.js"
+compatibility_date = "2026-06-12"
+workers_dev = false
+preview_urls = false
+
+routes = [
+  { pattern = "supaschema.com", custom_domain = true },
+  { pattern = "www.supaschema.com", custom_domain = true }
+]

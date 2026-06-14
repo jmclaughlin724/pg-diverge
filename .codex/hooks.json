@@ -11,6 +11,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/auto-diff-on-schema-change.mjs\"",
+            "timeout": 130,
+            "statusMessage": "Running supaschema auto-diff on schema change"
+          }
+        ]
+      }
     ]
   }
 }

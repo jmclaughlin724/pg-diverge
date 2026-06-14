@@ -9,6 +9,8 @@ description: Generate, check, and verify replay-safe PostgreSQL/Supabase migrati
 
 This skill is a direct execution contract for producing schema migrations with supaschema. Follow the workflow in order; do not hand-author migration SQL for changes the declarative tree can express, and never edit a generated migration (the `-- supaschema: lineage` marker) by hand.
 
+When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`), a write to a schema-tree `.sql` file auto-runs steps 2–3 — `diff` then `check` — and returns the generated migration name, or the blocking `SUPA_*` diagnostic, as context. Read that context as the diff result and act on any reported code. The commands below are the same workflow for CI, hand runs, `verify`, and any step the hook reports as blocked; the hook never applies to a database.
+
 ## Workflow
 
 1. **Edit the declarative tree** (`supabase/schemas/**` or the project's configured tree) to express the desired end state. Use schema-qualified object names.
@@ -25,7 +27,7 @@ This skill is a direct execution contract for producing schema migrations with s
    - Renames: declare `{ "from": "<key>", "to": "<key>" }` in `hints.renames`; renames are never inferred.
 
 3. **Check replay safety:** `supaschema check` gates every `.sql` in the migrations directory (or name specific files) — must exit 0 for generated and hand-authored migrations alike.
-4. **Verify execution** (when any database is resolvable — the URL auto-resolves from `SUPASCHEMA_DATABASE_URL` or the nearest `supabase/config.toml`):
+4. **Verify execution** (when any database is resolvable — URL precedence is `--database-url` (`$ENV` supported), named `config.environments` via global `--env`, `SUPASCHEMA_DATABASE_URL`, then the nearest `supabase/config.toml`):
 
    ```bash
    supaschema verify
@@ -33,9 +35,13 @@ This skill is a direct execution contract for producing schema migrations with s
 
    Defaults to the newest pending migration in the migrations directory with the same from/to defaults as `diff`; pass `--migration <file>` to verify a specific one.
 
-   Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
+   Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). Use `--ensure-environment` when a plain PostgreSQL verification server needs Supabase-provisioned surfaces; it is the default under `adapter: "supabase-auto"`. A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
 
-5. **Commit** the tree change, the generated migration, and the refreshed types file together. supaschema never stages or applies; the migration runner (e.g. `supabase db push`) owns the database. TypeScript types come from the tree (`supaschema types` creates `database.types.ts`; every later `diff` refreshes it) — never wait for a deploy or run introspection-based typegen to get correct types.
+5. **Commit** the tree change, the generated migration, and the refreshed types file together. The diff/check/verify workflow never stages or applies; the migration runner (e.g. `supabase db push`) owns the database. TypeScript types come from the tree (`supaschema types` creates `database.types.ts`; every later `diff` refreshes it) — never wait for a deploy or run introspection-based typegen to get correct types.
+
+## Operational Sync
+
+`supaschema sync` is the optional apply gate, not the default generation workflow. With no `--local` or `--remote` flag it is a dry run that reconciles migration status and checks pending files. With `--local` or `--remote`, it runs the same gates and then delegates the actual apply/deploy to the Supabase CLI. Do not run apply flags unless the human explicitly requested that operational action.
 
 ## Drift Detection
 
@@ -43,7 +49,7 @@ This skill is a direct execution contract for producing schema migrations with s
 supaschema diff --fail-on-diff --quiet
 ```
 
-Exit 3 means the live database and the tree have diverged; exit 0 means parity. Use this as a CI gate (`docs/ci.md` has the full pipeline recipe).
+Exit 3 means the live database and the tree have diverged; exit 0 means parity. Use this as a CI gate (`docs/guides/ci-github-actions.md` has the full pipeline recipe).
 
 When drift is large or blocked, triage before editing:
 
@@ -56,6 +62,7 @@ When drift is large or blocked, triage before editing:
 ## Boundaries
 
 - Sources for either side of a diff: `dir:<tree>`, `git:<ref>`, `database:<url|$ENV>`, `dump:<file.sql>`, `catalog:<snapshot.json>`.
-- Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) and enum reordering/removal are hand-authored migrations — validate them with `check` and `verify`; the enum recipe is in `docs/hints.md`.
+- Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) and enum reordering/removal are hand-authored migrations — validate them with `check` and `verify`; the enum recipe is in `docs/configuration/hints.md`.
 - Keep `transactionMode: "per-migration"` for transactional runners; `CREATE INDEX CONCURRENTLY` is blocked under `supabase-auto` and splits to a `.concurrent.sql` companion under `adapter: "postgres"`.
+- Database URL resolution for CLI commands is flag (`$ENV` supported) > named `config.environments` via global `--env` > `SUPASCHEMA_DATABASE_URL` > nearest `supabase/config.toml`.
 - `supaschema explain <SUPA_CODE>` decodes any diagnostic offline.

@@ -14,6 +14,10 @@ export interface ToolCommandContext {
   loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
   resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
+  resolveCliDatabaseUrlInfo: (explicit?: string) => Promise<{
+    lane: string;
+    url: string | undefined;
+  }>;
 }
 
 export function registerToolCommands(program: Command, context: ToolCommandContext): void {
@@ -26,8 +30,11 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     )
     .action(async (options: { databaseUrl?: string; json?: boolean }) => {
       const config = await context.loadCliConfig();
+      const database = await context.resolveCliDatabaseUrlInfo(options.databaseUrl);
       const report = await runDoctor(config, {
         ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
+        databaseUrlLane: database.lane,
+        ...(database.url === undefined ? {} : { resolvedDatabaseUrl: database.url }),
       });
       process.stdout.write(
         options.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderDoctorReport(report),

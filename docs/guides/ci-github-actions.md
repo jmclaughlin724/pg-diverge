@@ -1,3 +1,8 @@
+---
+title: "CI recipe"
+description: "GitHub Actions examples for drift checks, replay-safety checks, and apply-twice verification."
+---
+
 # CI Recipe
 
 A minimal GitHub Actions job that diffs a pull request's declarative tree against the base branch, checks the rendered migration, and proves it against a disposable PostgreSQL service:
@@ -21,10 +26,10 @@ jobs:
 
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npm install --no-save supaschema
@@ -65,4 +70,4 @@ Notes:
   [ -z "$staged" ] || npx supaschema check $staged
   ```
 
-- `npm run corpus:check` runs the corpus oracle (replay a dirty-real migrations corpus, diff against its tree, apply twice, require reconvergence to zero) against the same service container; it prints a skip notice and exits 0 when no database URL resolves. Background and the regression-corpus discipline live in `docs/corpus.md`.
+- `npm run corpus:check` runs the corpus oracle (replay a dirty-real migrations corpus, diff against its tree, apply twice, require reconvergence to zero) against the same service container; it prints a skip notice and exits 0 when no database URL resolves. Background and the regression-corpus discipline live in `docs/guides/corpus-oracle.md`.

@@ -1,0 +1,159 @@
+---
+title: "Declarative Schema Management with supaschema"
+description: "Learn how supaschema's declarative approach keeps your PostgreSQL schema in SQL files and auto-generates safe, idempotent migrations on every change."
+---
+
+# Declarative Schema Management with supaschema
+
+> Learn how supaschema's declarative approach keeps your PostgreSQL schema in SQL files and auto-generates safe, idempotent migrations on every change.
+
+Declarative schema management flips the traditional migration workflow on its head. Instead of writing every `ALTER TABLE`, `CREATE INDEX`, or `DROP COLUMN` by hand, you describe the schema you *want* — the end state — in plain SQL `CREATE` statements. supaschema reads those files, compares them against what already exists, and generates the precise SQL needed to close the gap. You own the intent; supaschema owns the diff.
+
+## Imperative vs. Declarative Migrations
+
+Most teams start with **imperative migrations**: a numbered sequence of hand-authored SQL files that each describe a *change*. This works well at first, but the sequence accumulates quickly. Reviewing migration number 0187 requires understanding all 186 that came before it to know what the schema actually looks like today.
+
+**Declarative schema management** inverts this model.
+
+<CardGroup cols={2}>
+  <Card title="Imperative (traditional)" icon="list-ol">
+    You write `ALTER TABLE orders ADD COLUMN status text`. You track every change as a new file. The current schema is implicit — spread across hundreds of migration files.
+  </Card>
+
+  <Card title="Declarative (supaschema)" icon="file-code">
+    You write `CREATE TABLE orders (id bigint, status text)`. The current schema is explicit — always visible in your source files. supaschema generates the `ALTER TABLE` for you.
+  </Card>
+</CardGroup>
+
+With the declarative model, your schema source files are the single source of truth. A new engineer can read one directory and understand the full database structure without replaying history.
+
+Declarative tooling existed before supaschema — the difference is what the loop costs. Today's declarative workflow replays your schema into a Docker shadow database just to read it, and types can't regenerate until the migration is applied:
+
+![The declarative workflow today: spin up a shadow database, replay the schema, diff, apply, then introspect for types — every step needs a running PostgreSQL, and policies are diffed by name](/concepts/legacy-flow.svg)
+
+supaschema ships PostgreSQL's own parser inside the package, so the same loop needs no database at any step — and policy bodies are compared structurally, not by name:
+
+![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](/concepts/supaschema-flow.svg)
+
+## Schema Sources: SQL Files on Disk
+
+A **schema source** is any collection of SQL files that supaschema can parse into a complete picture of your database objects. The most common source is a directory of `.sql` files referenced by the `schemaPaths` configuration key (or the `dir:` source prefix on the CLI).
+
+```bash theme={null}
+# Point supaschema at a directory of SQL files
+supaschema diff --to dir:supabase/schemas
+```
+
+Inside that directory, you write ordinary PostgreSQL `CREATE` statements — one file per table, one file per domain, or however you prefer to organise them. supaschema does not impose a file-naming convention.
+
+```sql theme={null}
+-- supabase/schemas/orders.sql
+CREATE TABLE public.orders (
+  id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id   uuid        NOT NULL REFERENCES public.users (id),
+  status    text        NOT NULL DEFAULT 'pending',
+  total     numeric(12, 2) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX orders_user_id_idx ON public.orders (user_id);
+```
+
+supaschema extracts every recognisable database object from these files, including:
+
+* **Tables** — columns, constraints, defaults, identity columns
+* **Views** and **materialised views**
+* **Functions** and **procedures**
+* **Types** — composite types, domains, ranges
+* **Enums**
+* **Indexes** — including partial and expression indexes
+* **Row-level security policies**
+* **Grants** and **privileges**
+* **Triggers**
+* **Extensions** (within managed schemas)
+
+<Note>
+  supaschema uses PostgreSQL's own parser compiled to WebAssembly (WASM) to tokenise and validate your SQL files. This means your schema is parsed with 100 % PostgreSQL fidelity — no regex shortcuts, no home-grown grammar — and it works without a running database instance.
+</Note>
+
+## The SchemaModel: A Parsed Snapshot
+
+After parsing all source files, supaschema builds a **SchemaModel** — an in-memory, structured representation of every object it found. Think of it as a catalogue snapshot: each object carries its type, qualified name, normalised definition, and a deterministic content hash.
+
+```typescript theme={null}
+// SchemaModel interface
+interface SchemaModel {
+  source:        string;         // the source URI this model was built from
+  objects:       SchemaObject[]; // every extracted database object
+  diagnostics:   Diagnostic[];   // parse warnings and errors
+  fingerprint:   string;         // deterministic hash of all objects
+  formatVersion?: number;        // snapshot schema version
+}
+```
+
+The SchemaModel is the common currency inside supaschema's pipeline. Both the **from** source (what the database currently looks like) and the **to** source (what you want it to look like) are each resolved into a SchemaModel before any diffing begins. Comparing two SchemaModels is what produces the migration plan.
+
+## Fingerprinting and Drift Detection
+
+Every SchemaModel carries a **fingerprint** — a single deterministic hash derived from the hashes of all its constituent objects. If anything in the schema changes — a column type, a function body, a policy expression — the fingerprint changes.
+
+```bash theme={null}
+# Inspect the current fingerprint of your schema files
+supaschema fingerprint --from dir:supabase/schemas
+```
+
+```json theme={null}
+{
+  "fingerprint": "e7b4a1d3f2c9...",
+  "objectCount": 42,
+  "schemas": ["public", "app"]
+}
+```
+
+The fingerprint is used for **drift detection**: if the fingerprint of your schema files does not match the fingerprint recorded from the live database, someone has made an out-of-band change directly on the server. supaschema can surface this mismatch before you apply a migration, preventing you from silently overwriting manual hotfixes.
+
+<Tip>
+  Store the fingerprint output of `supaschema fingerprint --from database:$DATABASE_URL` in your CI pipeline after every successful deployment. A diverging fingerprint on the next run is an early warning that the live database has drifted from your declared schema.
+</Tip>
+
+## Why Idempotency Matters
+
+A migration is **idempotent** when it can be applied more than once without error and without changing state after the first application. supaschema generates idempotent SQL by default — using constructs like `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, and `DO $$ … $$` blocks where necessary.
+
+Idempotency matters for several practical reasons:
+
+1. **Retries are safe.** If a deployment fails halfway through and the runner re-applies the migration file, it will not produce duplicate-object errors or corrupt data.
+2. **CI verification is straightforward.** The `verify` command applies the migration twice against a throwaway database to confirm idempotency. If the second application changes any state, the verification fails.
+3. **Partial rollouts stay consistent.** In multi-region setups where the same migration file is applied to several database instances, each application is guaranteed to converge to the same final state regardless of order or repetition.
+
+<Warning>
+  Not all SQL is idempotent by default. Statements like `INSERT INTO` or raw `ALTER TABLE … ADD COLUMN` (without `IF NOT EXISTS`) will fail on re-application. supaschema's renderer handles this automatically for the objects it manages; hand-authored migration SQL should still be reviewed with `supaschema check` and, when a database is available, `supaschema verify`.
+</Warning>
+
+## Managed Schemas in Supabase
+
+When you deploy on Supabase, several schemas are owned and managed by the platform itself. supaschema **blocks declarative ownership** of objects in all of these schemas:
+
+`auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, `graphql_public`
+
+This protection exists because:
+
+* The platform migrates these schemas on your behalf during Supabase version upgrades.
+* Dropping or altering a platform-managed function (such as `auth.uid()`) can break authentication across your entire project.
+* Your schema files should express only the objects *you* own.
+
+```sql theme={null}
+-- ✅ Allowed — you own the public schema
+CREATE TABLE public.profiles (
+  id uuid PRIMARY KEY REFERENCES auth.users (id)
+);
+
+-- ❌ Blocked — auth schema is platform-managed
+CREATE FUNCTION auth.custom_hook() ...
+```
+
+<Note>
+  You can still *reference* managed schema objects (foreign keys to `auth.users`, calls to `auth.uid()` in policies, etc.). supaschema only prevents you from declaring *ownership* of objects inside those schemas.
+</Note>
+
+Managed schema protection is enforced at the **plan** stage: if a diff would create or replace an object inside a blocked schema, supaschema emits an error before rendering any SQL. This keeps your declarative model safely scoped to the schemas you actually control.

@@ -1,0 +1,81 @@
+---
+title: "Supabase db diff without Docker"
+description: "Generate Supabase-compatible PostgreSQL migrations from declarative SQL files without Docker, a local Supabase stack, or a shadow database."
+---
+
+# Supabase db diff without Docker
+
+You can generate a Supabase-compatible PostgreSQL migration without Docker by using `supaschema diff`. `supaschema` reads the declarative SQL files in your repo, compares them to the configured source state, and writes a replay-safe migration file that your normal Supabase runner can apply.
+
+## The problem
+
+Database-backed diff workflows often need a local database, a Docker daemon, or a shadow database to replay the schema before they can compare states. That is slow in large projects and brittle in CI environments where Docker is unavailable or expensive.
+
+`supaschema` avoids that replay step. It parses the schema tree directly with PostgreSQL's parser and renders the migration from the structural difference.
+
+## Install
+
+```bash
+npm install --save-dev supaschema
+npx supaschema init
+```
+
+In a standard Supabase project, put declarative SQL files under `supabase/schemas/`.
+
+```bash
+mkdir -p supabase/schemas
+```
+
+## Generate the migration
+
+Run:
+
+```bash
+npx supaschema diff
+```
+
+By default, `diff` uses the configured database state when available and falls back to `git:HEAD`, then compares that source to the schema tree in `supabase/schemas/`. It writes a timestamped migration under `supabase/migrations/`.
+
+To be explicit:
+
+```bash
+npx supaschema diff --from git:HEAD --to dir:supabase/schemas
+```
+
+## Check the migration before applying it
+
+```bash
+npx supaschema check
+```
+
+`check` verifies that generated SQL is parseable, replay-safe, and free of blocked hazards such as unapproved destructive operations or unsafe `CASCADE`.
+
+When a disposable database is reachable, also run:
+
+```bash
+npx supaschema verify
+```
+
+`verify` applies the pending migration twice and compares the resulting catalog to the declared schema.
+
+## Apply with Supabase CLI
+
+`supaschema` does not apply migrations to your tracked database. After review and checks pass, keep using:
+
+```bash
+supabase db push
+```
+
+This keeps ownership clear: `supaschema` generates and proves the migration, while the Supabase CLI applies it.
+
+## CI drift gate
+
+Use `--fail-on-diff` to fail CI when the database and schema tree disagree:
+
+```bash
+npx supaschema diff --fail-on-diff --quiet
+npx supaschema check
+```
+
+See [GitHub Actions CI](/guides/ci-github-actions) for a complete workflow.
+

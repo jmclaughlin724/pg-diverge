@@ -1,0 +1,238 @@
+---
+title: "supaschema Utility Commands: plan, audit, and corpus"
+description: "Reference for supaschema utility commands: plan, inspect, fingerprint, audit, corpus, doctor, init, completion, explain, and selfcheck."
+---
+
+# supaschema Utility Commands: plan, audit, and corpus
+
+> Reference for supaschema utility commands: plan, inspect, fingerprint, audit, corpus, doctor, init, completion, explain, and selfcheck.
+
+Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, supaschema ships a set of utility commands for scripting, introspection, diagnostics, and shell integration. Each command is documented below. All of them accept `--config <path>` to point at a non-default config file.
+
+<Accordion title="plan — Print the diff plan as JSON">
+  `plan` runs the same schema comparison logic as `diff` but instead of writing a migration file it prints the full object-level diff plan to stdout as JSON. Use it to drive custom tooling, feed a review script, or inspect exactly what supaschema intends to generate before you commit to a migration.
+
+  ```bash theme={null}
+  # Print the plan between HEAD and the current schema directory
+  npx supaschema plan --from git:HEAD --to dir:supabase/schemas
+
+  # Pipe the output to jq to inspect only table changes
+  npx supaschema plan --from git:HEAD --to dir:supabase/schemas \
+    | jq '[.operations[] | select(.ref.kind == "table")]'
+  ```
+
+  The JSON output is a `MigrationPlan` object with a top-level `operations` array. Each operation describes the planned change, object reference, stable object key, destructive/blocking flags, and diagnostics. Use `diff` when you need rendered SQL.
+
+  Flags: `--from <source>`, `--to <target>`, `--schema <names>`, `--timing`.
+
+  <Tip>
+    Use `plan` in a pull-request automation script to post a human-readable diff summary as a comment, so reviewers see the schema impact without running any commands locally.
+  </Tip>
+</Accordion>
+
+<Accordion title="inspect — Print the schema model as JSON">
+  `inspect` extracts the full in-memory schema model for any supported source and prints it as formatted JSON. The model is the same intermediate representation that every other supaschema command operates on, so this is the fastest way to understand what supaschema sees when it reads a given source.
+
+  ```bash theme={null}
+  # Inspect a schema directory
+  npx supaschema inspect --from dir:supabase/schemas
+
+  # Inspect a live database
+  npx supaschema inspect --from "database:$DATABASE_URL"
+
+  # Inspect the schema as it was at a specific Git commit
+  npx supaschema inspect --from git:HEAD~1
+
+  # Filter to specific schemas
+  npx supaschema inspect --from dir:supabase/schemas --schema public,auth
+  ```
+
+  The output includes every table, view, enum, function, trigger, index, and constraint that supaschema's parser supports. Objects that fall outside the supported surface area are reported in the `diagnostics` array as `SUPA_EXTRACT_UNSUPPORTED`; unsupported input exits with code `2`.
+
+  Flags: `--from <source>` (defaults to the config schema tree), `--schema <names>` (comma-separated filter).
+</Accordion>
+
+<Accordion title="fingerprint — Print the model equality hash">
+  `fingerprint` computes the canonical hash of a source's schema model and prints it to stdout. Two sources with identical fingerprints have identical schemas from supaschema's perspective, regardless of formatting or comment differences in the underlying SQL files.
+
+  ```bash theme={null}
+  # Fingerprint a schema directory
+  npx supaschema fingerprint --from dir:supabase/schemas
+
+  # Fingerprint a live database
+  npx supaschema fingerprint --from "database:$DATABASE_URL"
+
+  # Detect drift: compare directory fingerprint against the database
+  [ "$(npx supaschema fingerprint --from dir:supabase/schemas)" = \
+    "$(npx supaschema fingerprint --from "database:$DATABASE_URL")" ] \
+    && echo "in sync" || echo "drift detected"
+  ```
+
+  Flags: `--from <source>` (required).
+
+  <Tip>
+    Store the fingerprint of your schema directory in CI and compare it against the live database fingerprint as a post-deploy verification step. A mismatch means the database doesn't match what was declared — a signal that an unapplied migration exists or that an out-of-band change was made directly on the database.
+  </Tip>
+</Accordion>
+
+<Accordion title="audit — Report schema coverage">
+  `audit` reads a schema source and produces a coverage report showing which DDL objects supaschema's diff engine fully supports, partially supports, or does not yet support. Use it to understand which parts of your schema will be managed by supaschema and which parts you must continue to manage manually.
+
+  ```bash theme={null}
+  # Audit your schema directory
+  npx supaschema audit --from dir:supabase/schemas
+
+  # Audit a live database to see how much of it supaschema can represent
+  npx supaschema audit --from "database:$DATABASE_URL"
+
+  # Output as JSON
+  npx supaschema audit --from dir:supabase/schemas --json
+  ```
+
+  The output is a table grouped by object type (tables, views, functions, triggers, policies, indexes, …) with counts and a supported/unsupported breakdown. Unsupported DDL is fail-closed: `diff` reports `SUPA_EXTRACT_UNSUPPORTED` and stops instead of copying unsupported statements into generated migrations.
+
+  Flags: `--from <source>` (required), `--json`.
+</Accordion>
+
+<Accordion title="corpus — Run the corpus oracle">
+  `corpus` replays a directory of real-world migration files (the corpus), diffs each against its declared schema tree, applies the rendered reconciliation migration twice, and requires the re-diff to converge to zero operations. It is the regression oracle that proves supaschema's diff engine handles complex, real-world schemas correctly.
+
+  ```bash theme={null}
+  # Run against the default corpus directory
+  npx supaschema corpus \
+    --database-url postgresql://postgres:postgres@localhost:54322/postgres
+
+  # Point at a custom corpus directory
+  npx supaschema corpus \
+    --corpus-dir path/to/corpus \
+    --database-url postgresql://postgres:postgres@localhost:54322/postgres
+
+  # Output as JSON
+  npx supaschema corpus \
+    --database-url postgresql://postgres:postgres@localhost:54322/postgres \
+    --json
+  ```
+
+  The command skips gracefully (exits 0 with a notice) when no database URL resolves, so it is safe to include in CI pipelines where the database is optional.
+
+  Flags: `--corpus-dir <dir>` (default: `corpus/supabase-style`), `--database-url <url>`, `--json`.
+
+  <Note>
+    `corpus` creates and drops databases on the target server. The role must have `CREATEDB` privileges, and the target should be a local or intentionally disposable instance.
+  </Note>
+</Accordion>
+
+<Accordion title="doctor — Diagnose your environment">
+  `doctor` checks every component of your supaschema setup and reports a pass/fail result for each. Run it first whenever you set up supaschema in a new environment, or whenever something behaves unexpectedly.
+
+  ```bash theme={null}
+  # Check everything except database connectivity
+  npx supaschema doctor
+
+  # Include database connectivity and capability checks
+  npx supaschema doctor --database-url postgresql://postgres:postgres@localhost:54322/postgres
+
+  # Output as JSON
+  npx supaschema doctor --json
+  ```
+
+  `doctor` checks the following, in order:
+
+  | Check              | What it verifies                                                              |
+  | ------------------ | ----------------------------------------------------------------------------- |
+  | Node version       | Your Node.js version meets the minimum requirement                            |
+  | Parser             | The SQL parser module loaded correctly                                        |
+  | Config file        | `supaschema.config.json` is present, valid JSON, and passes schema validation |
+  | Database URL       | A URL is resolvable from flags, environment variables, or config              |
+  | Reachability       | The database accepts TCP connections                                          |
+  | Auth               | The supplied credentials authenticate successfully                            |
+  | `CREATEDB`         | The connecting role has `CREATEDB` (required for some operations)             |
+  | Migrations history | The history table exists and is queryable                                     |
+  | Declarative tree   | The `schemaPaths` directories exist and contain parseable SQL files           |
+
+  Each failed check prints a plain-English explanation and a suggested remediation.
+</Accordion>
+
+<Accordion title="init — Write a default config file">
+  `init` writes a `supaschema.config.json` file with sensible defaults into the current working directory. If a config file already exists, the command exits with an error rather than overwriting it.
+
+  ```bash theme={null}
+  # Write supaschema.config.json in the current directory
+  npx supaschema init
+  ```
+
+  The generated file looks like this:
+
+  ```json theme={null}
+  {
+    "schemaPaths": ["supabase/schemas"],
+    "migrationsDir": "supabase/migrations",
+    "typesFile": "database.types.ts",
+    "zodFile": "database.zod.ts",
+    "environments": {}
+  }
+  ```
+
+  Edit the file to add named environments, change output paths, or adjust any other setting before running your first `diff`.
+</Accordion>
+
+<Accordion title="completion — Print shell completion script">
+  `completion` prints a shell completion script for the shell you specify. Source it or append it to your shell's startup file to get tab-completion for all supaschema commands, flags, and source specifiers.
+
+  ```bash theme={null}
+  # Bash
+  npx supaschema completion bash >> ~/.bashrc
+
+  # Zsh
+  npx supaschema completion zsh >> ~/.zshrc
+
+  # Fish
+  npx supaschema completion fish > ~/.config/fish/completions/supaschema.fish
+  ```
+
+  After adding the script, reload your shell (`source ~/.bashrc`, `exec zsh`, or open a new terminal) for completions to take effect. Supported shells: `bash`, `zsh`, `fish`.
+
+  <Note>
+    If you install supaschema globally (`npm install -g supaschema`) rather than via `npx`, replace `npx supaschema completion` with `supaschema completion` in the commands above.
+  </Note>
+</Accordion>
+
+<Accordion title="explain — Look up a diagnostic code">
+  `explain` prints a full offline description of any `SUPA_*` diagnostic code: what it means, what conditions trigger it, and how to resolve it. You never need a network connection or a browser to look up an error.
+
+  ```bash theme={null}
+  # Explain a specific diagnostic code
+  npx supaschema explain SUPA_CHECK_CASCADE
+
+  # Explain another code
+  npx supaschema explain SUPA_VERIFY_FINGERPRINT_MISMATCH
+  ```
+
+  Each explanation includes:
+
+  * A plain-English description of the condition
+  * The command(s) that can emit the code
+  * Common causes
+  * Recommended remediation steps
+  * Links to relevant sections of this documentation (printed as URLs for offline use)
+
+  <Tip>
+    If you see a `SUPA_*` code in CI output and want to understand it immediately, run `npx supaschema explain <code>` locally — no internet access required.
+  </Tip>
+</Accordion>
+
+<Accordion title="selfcheck — Engine parity check">
+  `selfcheck` connects to a live database, re-extracts the catalog using supaschema's extraction pipeline, then reports any object whose round-trip SQL representation doesn't match what the engine would produce. It reveals normalization gaps — places where supaschema's model of an object differs from the live catalog.
+
+  ```bash theme={null}
+  npx supaschema selfcheck --database-url postgresql://postgres:postgres@localhost:54322/postgres
+  ```
+
+  `selfcheck` is primarily useful when you are evaluating supaschema against an existing database that was not created with supaschema, or when you want to verify that upgrading supaschema hasn't changed how it models any of your existing objects.
+
+  Flags: `--database-url <url>` (defaults to `SUPASCHEMA_DATABASE_URL` or the local Supabase stack).
+
+  <Warning>
+    `selfcheck` is a diagnostic tool, not a deployment gate. Normalization gaps it reports do not necessarily mean your migrations are incorrect — they mean supaschema's representation of a given object differs from the live catalog in some way. Review the output before deciding whether a gap matters for your use case.
+  </Warning>
+</Accordion>

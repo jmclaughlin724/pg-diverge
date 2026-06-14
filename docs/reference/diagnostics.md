@@ -1,3 +1,8 @@
+---
+title: "Diagnostics"
+description: "SUPA diagnostic codes, severities, meanings, and recovery entry points."
+---
+
 # Diagnostics
 
 Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `statement`, and `hint` fields.
@@ -57,7 +62,7 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_CHECK_DEPARSE_UNSUPPORTED` | warning | A statement cannot be deparsed for the round-trip proof. |
 | `SUPA_NORMALIZE_FIDELITY` | warning | Deparsed SQL did not reparse to the identical parse tree; the object kept its source text under `normalize: "deparse"`. |
 | `SUPA_NORMALIZE_UNSUPPORTED` | warning | The deparser cannot render this object; it kept its source text under `normalize: "deparse"`. |
-| `SUPA_CORPUS_RECONVERGENCE` | error | The corpus oracle did not converge: residual operations remain after applying the rendered reconciliation to the dirty corpus database, the second apply changed the catalog, or a pipeline stage failed (see `docs/corpus.md`). |
+| `SUPA_CORPUS_RECONVERGENCE` | error | The corpus oracle did not converge: residual operations remain after applying the rendered reconciliation to the dirty corpus database, the second apply changed the catalog, or a pipeline stage failed (see `docs/guides/corpus-oracle.md`). |
 | `SUPA_CHECK_VOLATILE_DEFAULT_REWRITE` | warning | `ADD COLUMN` with a volatile default rewrites the whole table. |
 | `SUPA_CHECK_INSERT_ON_CONFLICT` | error | `INSERT` statements in migrations must use `ON CONFLICT` for replay safety. |
 | `SUPA_CHECK_DML_REVIEW` | warning | `UPDATE`/`DELETE` statements need explicit idempotency review. |
@@ -72,3 +77,6 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` hints | — | The mismatch hint names the differing objects: missing from the migration result, not present in the target, and definition differs. |
 | `SUPA_VERIFY_FAILED` | error | Temporary database verification failed. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` | error | Applying the migration twice did not produce the target catalog fingerprint. |
+| `SUPA_VERIFY_ROLE_CAPABILITY` | error | The verification role cannot `CREATE DATABASE`; use a role with `CREATEDB` (on local Supabase stacks prefer `supabase_admin`). |
+| `SUPA_VERIFY_STUB_REFERENCE` | warning | A `verify` failure under `--ensure-environment` references a Supabase-managed schema that the environment stub only provisions minimally; the failure may be a stub limitation rather than a real migration defect. Confirm by applying the migration to a real disposable Supabase database (local `supabase db push` or a preview branch). |
+| `SUPA_VERIFY_RECONVERGENCE` | error | The migrated catalog cross-lane diffed against the target model is not empty; the model declares state the catalog cannot reproduce (false drift), or lane parity is broken. |

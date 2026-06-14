@@ -1,3 +1,8 @@
+---
+title: "Corpus oracle"
+description: "Dirty-real catalog regression testing for cross-lane schema diff correctness."
+---
+
 # The corpus oracle
 
 `supaschema corpus` exists because of the oracle problem: every other gate in this package compares supaschema to itself. `verify` builds both temporary databases from the engine's own models, so a modeling error that is symmetric in the models produces two identically-wrong databases — fingerprints match and the bug ships. Fixtures only contain constructs their author thought of, while real catalogs carry state no tree ever declares: materialized default ACL entries, `pg_init_privs` baselines, executor-role-attributed default privileges, statement-order grant churn.

@@ -1,12 +1,19 @@
 # supaschema migration policy (Codex rules surface).
 # Enforcement: write-time denial of hand-edits to generated migrations is
-# owned by .codex/hooks/supaschema-tool-gate.mjs (PreToolUse). This file
+# owned by .codex/hooks/supaschema-tool-gate.mjs (PreToolUse), and automatic
+# diff+check on a schema-tree write is owned by
+# .codex/hooks/auto-diff-on-schema-change.mjs (PostToolUse). This file
 # carries the policy text for review and prompting.
 #
 # - Schema intent changes only in the declarative SQL tree; render migrations
 #   with `supaschema diff`, never hand-author SQL the tree can express.
 # - A .sql file containing the `-- supaschema: lineage` marker is a generated
 #   artifact: change the tree and regenerate; never hand-edit it.
+# - When the PostToolUse auto-diff hook is wired, writing a schema-tree .sql
+#   file auto-runs `supaschema diff` then `supaschema check` and returns the
+#   generated migration name or the blocking SUPA_* code as context; treat that
+#   as the diff result, resolve any reported code, and do not re-run diff to
+#   confirm a clean result. The hook never applies to a database.
 # - Migration writes are no-clobber, and the lineage chain gate must not be
 #   bypassed with --no-check-chain without explicit human approval.
 # - Destructive changes (drops, column type changes, incompatible view or
@@ -15,8 +22,12 @@
 # - Run `supaschema check` on every migration; run `supaschema verify` before
 #   merge when a database is reachable. Keep transactionMode per-migration
 #   for transactional runners such as `supabase db push`.
-# - Database URLs resolve flag > named config.environments entry via --env >
-#   SUPASCHEMA_DATABASE_URL > the nearest supabase/config.toml; do not
-#   hard-code connection strings.
+# - `supaschema sync` is an explicit operational handoff. With no apply flag it
+#   is a dry run; with --local or --remote it gates status and replay safety,
+#   then delegates apply/deploy to the Supabase CLI. Do not use apply flags
+#   without an explicit human request.
+# - Database URLs resolve flag ($ENV indirection supported) > named
+#   config.environments entry via --env > SUPASCHEMA_DATABASE_URL > the nearest
+#   supabase/config.toml; do not hard-code connection strings.
 # - Decode any SUPA_* diagnostic with `supaschema explain <CODE>`; recovery
-#   steps live in docs/hints.md.
+#   steps live in docs/configuration/hints.md.

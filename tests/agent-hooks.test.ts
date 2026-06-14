@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const lineageSql =
@@ -11,15 +11,21 @@ const handAuthoredSql = "-- reviewed migration\nINSERT INTO t VALUES (1) ON CONF
 async function runHook(
   script: string,
   payload: unknown,
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ code: number; stderr: string; stdout: string }> {
   return await new Promise((resolvePromise) => {
-    const child = execFile("node", [script], (error, stdout, stderr) => {
-      const code =
-        error && typeof (error as { code?: unknown }).code === "number"
-          ? ((error as { code: number }).code ?? 1)
-          : 0;
-      resolvePromise({ code, stderr, stdout });
-    });
+    const child = execFile(
+      "node",
+      [resolve(script)],
+      { cwd: options.cwd, env: options.env },
+      (error, stdout, stderr) => {
+        const code =
+          error && typeof (error as { code?: unknown }).code === "number"
+            ? ((error as { code: number }).code ?? 1)
+            : 0;
+        resolvePromise({ code, stderr, stdout });
+      },
+    );
     child.stdin?.end(JSON.stringify(payload));
   });
 }
@@ -31,6 +37,58 @@ async function fixtures(): Promise<{ generated: string; handAuthored: string }> 
   await writeFile(generated, lineageSql);
   await writeFile(handAuthored, handAuthoredSql);
   return { generated, handAuthored };
+}
+
+async function autoDiffFixture(schemaPaths: string[]): Promise<{
+  bin: string;
+  env: NodeJS.ProcessEnv;
+  log: string;
+  project: string;
+}> {
+  const project = await mkdtemp(join(tmpdir(), "supa-auto-diff-hook-"));
+  for (const schemaPath of schemaPaths) {
+    await mkdir(join(project, schemaPath), { recursive: true });
+  }
+  await writeFile(join(project, "supaschema.config.json"), JSON.stringify({ schemaPaths }));
+  const log = join(project, "calls.log");
+  const bin = join(project, "fake-supaschema.mjs");
+  await writeFile(
+    bin,
+    `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+appendFileSync(process.env.SUPASCHEMA_FAKE_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");
+if (process.argv[2] === "diff") {
+  process.stdout.write("supabase/migrations/20260613000000_fake.sql\\n");
+  process.exit(0);
+}
+if (process.argv[2] === "check") {
+  process.exit(0);
+}
+process.exit(1);
+`,
+  );
+  await chmod(bin, 0o755);
+  return {
+    bin,
+    env: { ...process.env, SUPASCHEMA_FAKE_LOG: log, SUPASCHEMA_HOOK_BIN: bin },
+    log,
+    project,
+  };
+}
+
+async function readFakeCalls(log: string): Promise<string[][]> {
+  const content = await readFile(log, "utf8").catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  });
+  return content
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as string[]);
 }
 
 describe("claude generated-migration edit hook", () => {
@@ -144,5 +202,99 @@ describe("codex generated-migration tool gate", () => {
       hookSpecificOutput?: { permissionDecision?: string };
     };
     expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+});
+
+const autoDiffCases = [
+  { name: "codex", script: ".codex/hooks/auto-diff-on-schema-change.mjs" },
+  { name: "claude", script: ".claude/hooks/auto-diff-on-schema-change.mjs" },
+];
+
+describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) => {
+  const runAutoDiffTest = process.platform === "win32" ? it.skip : it;
+
+  runAutoDiffTest("runs auto-diff for apply_patch schema deletes", async () => {
+    const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: {
+          patch: "*** Begin Patch\n*** Delete File: supabase/schemas/accounts.sql\n*** End Patch",
+        },
+        tool_name: "apply_patch",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
+  });
+
+  runAutoDiffTest("diffs the schema path that contains the changed file", async () => {
+    const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
+    await writeFile(
+      join(project, "schemas", "two", "accounts.sql"),
+      "CREATE TABLE app.t (id int);",
+    );
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { file_path: join(project, "schemas", "two", "accounts.sql") },
+        tool_name: "Edit",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:schemas/two"], ["check"]]);
+  });
+
+  runAutoDiffTest("runs auto-diff for direct edit_file schema edits", async () => {
+    const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+    await writeFile(
+      join(project, "supabase", "schemas", "accounts.sql"),
+      "CREATE TABLE app.t (id int);",
+    );
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+        tool_name: "edit_file",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
+  });
+
+  runAutoDiffTest("skips auto-diff when one edit touches multiple schema paths", async () => {
+    const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
+    await writeFile(join(project, "schemas", "one", "one.sql"), "CREATE TABLE app.one (id int);");
+    await writeFile(join(project, "schemas", "two", "two.sql"), "CREATE TABLE app.two (id int);");
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: {
+          patch:
+            "*** Begin Patch\n" +
+            "*** Update File: schemas/one/one.sql\n" +
+            "@@\n-old\n+new\n" +
+            "*** Update File: schemas/two/two.sql\n" +
+            "@@\n-old\n+new\n" +
+            "*** End Patch",
+        },
+        tool_name: "apply_patch",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("multiple configured schema roots");
+    expect(await readFakeCalls(log)).toEqual([]);
   });
 });
