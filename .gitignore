@@ -10,3 +10,5 @@ benchmarks/results
 .envrc
 .mcp.json
 .gitnexus
+.claude/scheduled_tasks.lock
+.claude/plans
