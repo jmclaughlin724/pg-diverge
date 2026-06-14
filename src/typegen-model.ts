@@ -227,21 +227,20 @@ function resolveUserType(
   if (localComposite) {
     return { kind: "composite", ref: localComposite };
   }
-  const enumCandidate =
-    shapes.enumsByBareName.get(base)?.length === 1
-      ? shapes.enumsByBareName.get(base)?.[0]
-      : undefined;
-  if (enumCandidate) {
-    return { kind: "enum", ref: enumCandidate };
+  // Fall back to a bare name only when it is unique across ALL user-defined
+  // types (enums and composites combined). A bare name shared by an enum and a
+  // composite in different schemas is ambiguous and resolves to unknown.
+  const enumMatches = shapes.enumsByBareName.get(base) ?? [];
+  const compositeMatches = shapes.compositesByBareName.get(base) ?? [];
+  if (enumMatches.length + compositeMatches.length !== 1) {
+    return undefined;
   }
-  const compositeCandidate =
-    shapes.compositesByBareName.get(base)?.length === 1
-      ? shapes.compositesByBareName.get(base)?.[0]
-      : undefined;
-  if (compositeCandidate) {
-    return { kind: "composite", ref: compositeCandidate };
+  const enumMatch = enumMatches[0];
+  if (enumMatch) {
+    return { kind: "enum", ref: enumMatch };
   }
-  return undefined;
+  const compositeMatch = compositeMatches[0];
+  return compositeMatch ? { kind: "composite", ref: compositeMatch } : undefined;
 }
 
 function schemaEntry(shapes: SchemaShapes, name: string): SchemaEntry {
@@ -360,19 +359,23 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
   const returns = asRecord(object.metadata.returns);
   const scalarType = typeof returns?.type === "string" ? returns.type : undefined;
   const setof = returns?.setof === true || hasTableParam;
-  if (returnColumns.length > 0) {
-    // OUT/INOUT/TABLE params define the row; an OUT-only function reports no
-    // explicit RETURNS type, so default to "record".
+  // A single OUT/INOUT parameter (without RETURNS TABLE) yields that parameter's
+  // scalar type — PostgreSQL only produces a RECORD for multiple output columns
+  // or RETURNS TABLE. Only then is a row shape correct.
+  const isRowShape = hasTableParam || returnColumns.length > 1;
+  if (returnColumns.length > 0 && isRowShape) {
     return {
       args,
       name: object.ref.name,
       returns: { columns: returnColumns, setof, type: scalarType ?? "record" },
     };
   }
+  const singleOut = !hasTableParam && returnColumns.length === 1 ? returnColumns[0] : undefined;
+  const effectiveType = singleOut?.type ?? scalarType;
   return {
     args,
     name: object.ref.name,
-    returns: scalarType !== undefined ? { setof, type: scalarType } : undefined,
+    returns: effectiveType !== undefined ? { setof, type: effectiveType } : undefined,
   };
 }
 
