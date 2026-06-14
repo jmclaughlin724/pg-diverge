@@ -5,8 +5,7 @@
 // recommended `<ParamField>` component in favor of plain markdown.
 //
 // Run: npm run docs:lint   (also runs as the first step of `docs:check`)
-import { readFileSync } from "node:fs";
-import { globSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 
 const DOCS_GLOB = "docs/**/*.{md,mdx}";
 const violations = [];
@@ -22,7 +21,7 @@ for (const file of files) {
     add(file, 1, "frontmatter", "page must open with a YAML frontmatter block (---)");
     continue;
   }
-  let fmEnd = lines.indexOf("---", 1);
+  const fmEnd = lines.indexOf("---", 1);
   if (fmEnd === -1) {
     add(file, 1, "frontmatter", "frontmatter block is not closed");
     continue;
@@ -48,19 +47,33 @@ for (const file of files) {
 
     // Any single-`#` heading in the body is a duplicate of the frontmatter title H1
     if (/^#\s+\S/.test(line)) {
-      add(file, ln, "body-h1", "drop the body `# ` heading — the frontmatter `title` is the page H1; start in-page headings at `##`");
+      add(
+        file,
+        ln,
+        "body-h1",
+        "drop the body `# ` heading — the frontmatter `title` is the page H1; start in-page headings at `##`",
+      );
     }
 
     // Internal links must be root-relative + extensionless (no .md/.mdx, no `docs/` paths, no absolute site URL)
     const linkRe = /\]\(([^)]+)\)/g;
-    let m;
-    while ((m = linkRe.exec(line))) {
+    for (let m = linkRe.exec(line); m !== null; m = linkRe.exec(line)) {
       const target = m[1].trim();
       if (/^(https?:\/\/(?!(www\.)?supaschema\.com\/docs)|mailto:|#)/.test(target)) continue; // external/anchor ok
       if (/^https?:\/\/(www\.)?supaschema\.com\/docs/.test(target)) {
-        add(file, ln, "internal-link", `link "${target}" — use a root-relative path (e.g. /commands/diff), not the absolute docs URL`);
+        add(
+          file,
+          ln,
+          "internal-link",
+          `link "${target}" — use a root-relative path (e.g. /commands/diff), not the absolute docs URL`,
+        );
       } else if (/\.mdx?($|#)/.test(target) || /(^|\/)docs\//.test(target)) {
-        add(file, ln, "internal-link", `link "${target}" — use a root-relative, extensionless path (e.g. /configuration/hints)`);
+        add(
+          file,
+          ln,
+          "internal-link",
+          `link "${target}" — use a root-relative, extensionless path (e.g. /configuration/hints)`,
+        );
       }
     }
   }
@@ -68,7 +81,12 @@ for (const file of files) {
   // --- Command reference pages must use <ParamField> for flags ---
   if (/^docs\/commands\/[^/]+\.mdx$/.test(file) && /^##\s+(Flags|Options)\b/m.test(text)) {
     if (!/<ParamField\b/.test(text)) {
-      add(file, 1, "component", "command page has a Flags/Options section but no <ParamField> — document each flag with <ParamField> (Mintlify standard)");
+      add(
+        file,
+        1,
+        "component",
+        "command page has a Flags/Options section but no <ParamField> — document each flag with <ParamField> (Mintlify standard)",
+      );
     }
   }
 }
@@ -77,7 +95,9 @@ if (violations.length === 0) {
   console.log(`docs-standard: ${files.length} pages OK`);
   process.exit(0);
 }
-console.error(`docs-standard: ${violations.length} violation(s) across ${new Set(violations.map((v) => v.file)).size} file(s):\n`);
+console.error(
+  `docs-standard: ${violations.length} violation(s) across ${new Set(violations.map((v) => v.file)).size} file(s):\n`,
+);
 for (const v of violations) {
   console.error(`  ${v.file}:${v.line}  [${v.rule}] ${v.msg}`);
 }
