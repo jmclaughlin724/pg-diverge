@@ -136,9 +136,7 @@ async def test_upstream_docs_capabilities_match_mcp_json() -> None:
     configured = _mcp_configured_servers()
 
     async with Client(transport=mcp) as client:
-        result = await client.call_tool(
-            "upstream_mcp_capabilities", {"capability": "docs"}
-        )
+        result = await client.call_tool("upstream_mcp_capabilities", {"capability": "docs"})
     payload = result.data
 
     # Every returned entry is family=docs and carries a correct configured flag.

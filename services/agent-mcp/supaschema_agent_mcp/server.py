@@ -173,9 +173,7 @@ def code_atlas_query(
     """Run one fixed Code Atlas query, never a generic command runner."""
     v = (value or "").strip()
     if v and (
-        v.startswith("-")
-        or any(c in v for c in "\x00\n\r")
-        or ".." in PurePosixPath(v).parts
+        v.startswith("-") or any(c in v for c in "\x00\n\r") or ".." in PurePosixPath(v).parts
     ):
         raise ValueError("unsafe query value")
     args = ["node", "scripts/code-atlas/query.mjs", kind] + ([v] if v else []) + ["--json"]

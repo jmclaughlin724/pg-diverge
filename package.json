@@ -96,7 +96,7 @@
     "lint:fix": "ultracite fix .",
     "pack:dry": "npm pack --dry-run",
     "postinstall": "node bin/postinstall.mjs",
-    "prepare": "npm run build && (lefthook install || true)",
+    "prepare": "npm run build && node scripts/install-hooks.mjs",
     "changeset": "changeset",
     "release:version": "changeset version",
     "py:lint": "uv run --package supaschema-agent-mcp ruff check services/agent-mcp",

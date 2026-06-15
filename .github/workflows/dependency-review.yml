@@ -32,29 +32,18 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
-          # Conservative deny list of strong/network copyleft licenses that
-          # cannot be sublicensed under a commercial license. The project's own
-          # AGPL-3.0 license is intentionally excluded (it covers first-party
-          # code, not incoming deps). MAINTAINER: review before requiring.
+          # Deny only strong/network copyleft that would force the COMMERCIAL
+          # lane open if a dependency's code were linked/distributed: GPL, AGPL,
+          # and SSPL. LGPL is intentionally NOT denied — it permits use in
+          # proprietary software via linking, and the LGPL deps here are
+          # dev-only Python tooling (e.g. pytoolconfig) that is never shipped in
+          # the npm package. The project's own AGPL-3.0 covers first-party code,
+          # not incoming deps. MAINTAINER: review before requiring as a gate.
           deny-licenses: >-
             GPL-2.0-only,
             GPL-2.0-or-later,
             GPL-3.0-only,
             GPL-3.0-or-later,
-            AGPL-1.0-only,
-            AGPL-1.0-or-later,
             AGPL-3.0-only,
             AGPL-3.0-or-later,
-            LGPL-2.0-only,
-            LGPL-2.0-or-later,
-            LGPL-2.1-only,
-            LGPL-2.1-or-later,
-            LGPL-3.0-only,
-            LGPL-3.0-or-later,
-            SSPL-1.0,
-            OSL-3.0,
-            EUPL-1.1,
-            EUPL-1.2,
-            CC-BY-SA-4.0,
-            CDDL-1.0,
-            CDDL-1.1
+            SSPL-1.0

@@ -3,7 +3,12 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 const run = promisify(execFile);
-const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmExec = (args: string[]): { file: string; args: string[] } => {
+  const execpath = process.env.npm_execpath;
+  return execpath
+    ? { file: process.execPath, args: [execpath, ...args] }
+    : { file: process.platform === "win32" ? "npm.cmd" : "npm", args };
+};
 
 // Locks the npm publish boundary (package.json `files`) described in
 // docs/reference/package-boundary.mdx. The dry-run tarball is the authoritative
@@ -16,9 +21,8 @@ describe("npm package contents", () => {
   it("ships the necessary surface and no build-cache, source, or tooling leaks", {
     timeout: 60_000,
   }, async () => {
-    const { stdout } = await run(npmBin, ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-      maxBuffer: 32 * 1024 * 1024,
-    });
+    const { file, args } = npmExec(["pack", "--dry-run", "--json", "--ignore-scripts"]);
+    const { stdout } = await run(file, args, { maxBuffer: 32 * 1024 * 1024 });
     const [packed] = JSON.parse(stdout) as { files: { path: string }[] }[];
     const paths = packed.files.map((file) => file.path);
 
