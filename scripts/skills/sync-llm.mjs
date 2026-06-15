@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -457,16 +458,37 @@ function readExistingFile(file, encoding) {
 
 function writeFileAtomic(file, content) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tempFile = path.join(
-    path.dirname(file),
-    `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`
-  );
-  fs.writeFileSync(tempFile, content);
-  fs.renameSync(tempFile, file);
+  const tempFile = createExclusiveTempFile(path.dirname(file), path.basename(file), content);
+  try {
+    fs.renameSync(tempFile, file);
+  } catch (error) {
+    fs.rmSync(tempFile, { force: true });
+    throw error;
+  }
+}
+
+function createExclusiveTempFile(dir, basename, content) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const tempFile = path.join(dir, `.${basename}.${process.pid}.${randomUUID()}.tmp`);
+    try {
+      fs.writeFileSync(tempFile, content, { flag: "wx" });
+      return tempFile;
+    } catch (error) {
+      if (isAlreadyExistsError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`unable to create exclusive temp file for ${path.join(dir, basename)}`);
 }
 
 function isNotFoundError(error) {
   return Boolean(error && typeof error === "object" && error.code === "ENOENT");
+}
+
+function isAlreadyExistsError(error) {
+  return Boolean(error && typeof error === "object" && error.code === "EEXIST");
 }
 
 function removeUnmanagedFiles(targetRootPath, expectedFiles) {
