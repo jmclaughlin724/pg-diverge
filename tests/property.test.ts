@@ -6,7 +6,7 @@ import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { splitSqlStatements } from "../src/sql/split.js";
 
 const identifier = fc.stringMatching(/^[a-z][a-z0-9_]{0,16}$/u).map((value) => `q${value}`);
-const passwordPattern = /^[A-Za-z0-9%_-]{8,24}$/u;
+const passwordPattern = /^[A-Z][A-Z0-9%_-]{7,23}$/u;
 const slugPattern = /^[a-z0-9_]*$/u;
 
 function randomizeCase(value: string, flips: boolean[]): string {

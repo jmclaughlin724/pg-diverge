@@ -16,8 +16,7 @@ from typing import Any
 try:
     import strictyaml
 except ImportError:
-    print("Error: strictyaml is required. Install with: pip install -r scripts/requirements.txt")
-    sys.exit(1)
+    strictyaml = None
 
 
 MAX_NAME_LENGTH = 64
@@ -70,6 +69,13 @@ def split_frontmatter(content: str) -> tuple[str, str] | None:
 
 
 def load_frontmatter(skill_md: Path) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    if strictyaml is None:
+        return (
+            None,
+            None,
+            "strictyaml is required. Install with: pip install -r scripts/requirements.txt",
+        )
+
     content = skill_md.read_text(encoding="utf-8")
     split = split_frontmatter(content)
     if split is None:

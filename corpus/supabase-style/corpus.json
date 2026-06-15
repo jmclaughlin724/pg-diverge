@@ -1,5 +1,5 @@
 {
-  "adapter": "postgres",
+  "adapter": "auto",
   "schemas": { "exclude": [], "include": ["app"] },
   "excludedGrantRoles": [],
   "hints": { "destructive": [], "renames": [] }

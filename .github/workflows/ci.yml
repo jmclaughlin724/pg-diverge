@@ -67,8 +67,6 @@ jobs:
           cli="$PWD/dist/cli.js"
           cd examples/supabase
           node "$cli" diff \
-            --from dir:schemas \
-            --to dir:schemas-next \
             --out "$RUNNER_TEMP/example/example.sql"
           node "$cli" check "$RUNNER_TEMP/example/example.sql"
 

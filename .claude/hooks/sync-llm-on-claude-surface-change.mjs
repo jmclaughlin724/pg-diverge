@@ -201,7 +201,8 @@ function hasSyncScript(projectDir) {
 
 function runSync(projectDir) {
   try {
-    return execFileSync("npm", ["run", "sync:llm"], {
+    const npm = npmInvocation(["run", "sync:llm"]);
+    return execFileSync(npm.command, npm.args, {
       cwd: projectDir,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -216,6 +217,13 @@ function runSync(projectDir) {
           : String(error);
     throw new Error(`npm run sync:llm failed: ${detail.trim()}`);
   }
+}
+
+function npmInvocation(args) {
+  const execpath = process.env.npm_execpath;
+  return execpath
+    ? { command: process.execPath, args: [execpath, ...args] }
+    : { command: process.platform === "win32" ? "npm.cmd" : "npm", args };
 }
 
 function readSyncedDigest(projectDir) {

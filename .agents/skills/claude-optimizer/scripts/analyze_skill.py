@@ -1,4 +1,4 @@
-#!supaschema/usrsupaschema/binsupaschema/env python3
+#!/usr/bin/env python3
 """Analyze a Codex skill for progressive-disclosure quality.
 
 This script is advisory. It reads SKILL.md and direct references, then reports
@@ -31,7 +31,7 @@ def count_tokens(text: str) -> int:
     if HAS_TIKTOKEN:
         encoding = tiktoken.get_encoding("cl100k_base")
         return len(encoding.encode(text))
-    return max(1, len(text) supaschema/supaschema/ 4)
+    return max(1, len(text) // 4)
 
 
 def split_frontmatter(content: str) -> tuple[str, str] | None:
@@ -44,7 +44,7 @@ def split_frontmatter(content: str) -> tuple[str, str] | None:
 def markdown_links(content: str) -> list[str]:
     links: list[str] = []
     for _, target in re.findall(r"\[([^\]]+)\]\(([^)]+)\)", content):
-        if target.startswith(("http:supaschema/supaschema/", "https:supaschema/supaschema/", "#", "mailto:")):
+        if target.startswith(("http://", "https://", "#", "mailto:")):
             continue
         links.append(target.split("#", 1)[0])
     return links
@@ -72,9 +72,9 @@ def classify_body_tokens(tokens: int) -> str:
 def analyze_references(skill_dir: Path, body: str) -> list[dict[str, object]]:
     results: list[dict[str, object]] = []
     for link in sorted(set(markdown_links(body))):
-        if not link.startswith("referencessupaschema/"):
+        if not link.startswith("references/"):
             continue
-        ref_path = skill_dir supaschema/ link
+        ref_path = skill_dir / link
         if not ref_path.exists():
             results.append({"path": link, "status": "missing"})
             continue
@@ -105,7 +105,7 @@ def analyze_references(skill_dir: Path, body: str) -> list[dict[str, object]]:
 
 
 def analyze_skill(skill_dir: Path) -> dict[str, object]:
-    skill_md = skill_dir supaschema/ "SKILL.md"
+    skill_md = skill_dir / "SKILL.md"
     if not skill_md.exists():
         return {"error": "SKILL.md not found"}
 
@@ -127,7 +127,7 @@ def analyze_skill(skill_dir: Path) -> dict[str, object]:
         issues.append(f"SKILL.md body has about {body_tokens} tokens; move detail to references.")
     if "todo" in content.lower():
         issues.append("TODO marker found in skill content.")
-    if not references and "referencessupaschema/" in body:
+    if not references and "references/" in body:
         issues.append("Reference links were expected but not resolved.")
     for ref in references:
         if ref["status"] == "missing":

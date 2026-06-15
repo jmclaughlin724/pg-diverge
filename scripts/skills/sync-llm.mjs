@@ -412,12 +412,11 @@ function assertMarkdownFile(root, file, kind) {
 }
 
 function writeFileIfChanged(file, text) {
-  const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : undefined;
+  const current = readExistingFile(file, "utf8");
   if (current === text) {
     return;
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, text);
+  writeFileAtomic(file, text);
 }
 
 function syncCopiedFiles(sourceRootPath, targetRootPath, sourceFiles) {
@@ -438,12 +437,36 @@ function syncTextFiles(targetRootPath, filesToText) {
 
 function copyFileIfChanged(sourceFile, targetFile) {
   const sourceBytes = fs.readFileSync(sourceFile);
-  const currentBytes = fs.existsSync(targetFile) ? fs.readFileSync(targetFile) : undefined;
+  const currentBytes = readExistingFile(targetFile);
   if (currentBytes?.equals(sourceBytes)) {
     return;
   }
-  fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-  fs.copyFileSync(sourceFile, targetFile);
+  writeFileAtomic(targetFile, sourceBytes);
+}
+
+function readExistingFile(file, encoding) {
+  try {
+    return encoding ? fs.readFileSync(file, encoding) : fs.readFileSync(file);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+function writeFileAtomic(file, content) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tempFile = path.join(
+    path.dirname(file),
+    `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`
+  );
+  fs.writeFileSync(tempFile, content);
+  fs.renameSync(tempFile, file);
+}
+
+function isNotFoundError(error) {
+  return Boolean(error && typeof error === "object" && error.code === "ENOENT");
 }
 
 function removeUnmanagedFiles(targetRootPath, expectedFiles) {
