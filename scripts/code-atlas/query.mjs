@@ -2,10 +2,10 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { buildCodeAtlas } from "./build.mjs";
+import { fileId, OUTPUT_PATH, ROOT } from "./lib/config.mjs";
+import { atomicWriteJson, readCachedAtlas, readText, safeJson } from "./lib/files.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const ATLAS_PATH = path.join(ROOT, ".tmp", "code-atlas", "atlas.json");
 const ENTRYPOINT_KINDS = new Set([
   "next_route",
   "api_router",
@@ -14,9 +14,30 @@ const ENTRYPOINT_KINDS = new Set([
   "render_service",
   "worker_job",
 ]);
+const CONSUMER_EDGE_TYPES = new Set(["imports_file", "references_file", "runs_file"]);
+const OWNER_RULES = [
+  {
+    prefix: "scripts/code-atlas/",
+    owners: [
+      ".claude/rules/10-code-atlas.md",
+      ".claude/skills/code-atlas/SKILL.md",
+      ".claude/skills/code-atlas/references/query-contract.md",
+      ".claude/skills/code-atlas/references/mcp-tool-map.md",
+    ],
+  },
+  {
+    prefix: "services/agent-mcp/",
+    owners: [".claude/rules/11-agent-mcp-fastmcp.md", ".claude/skills/fastmcp/SKILL.md"],
+  },
+  {
+    prefix: "docs/",
+    owners: [".claude/rules/13-npm-package-boundary.md"],
+  },
+];
 
 const args = process.argv.slice(2);
 const json = takeFlag(args, "--json");
+const noRebuild = takeFlag(args, "--no-rebuild");
 const help = takeFlag(args, "--help") || args.length === 0;
 
 if (help) {
@@ -25,19 +46,36 @@ if (help) {
 }
 
 const [kind, value] = args;
-const optionalValueKinds = new Set(["entrypoints", "health", "mcp-status"]);
+const optionalValueKinds = new Set(["entrypoints", "health", "mcp-status", "validate-coverage"]);
 if (!(kind && (value || optionalValueKinds.has(kind)))) {
   printUsage();
   process.exit(1);
 }
 
-const atlas = loadAtlas();
-const indexes = buildIndexes(atlas);
-const result = runQuery(kind, value ?? "", atlas, indexes);
-if (json) {
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-} else {
-  printHuman(result);
+try {
+  const atlas = await loadAtlas({ noRebuild });
+  const indexes = buildIndexes(atlas);
+  const result = runQuery(kind, value ?? "", atlas, indexes);
+  if (json) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.error) {
+      process.exit(1);
+    }
+  } else {
+    printHuman(result);
+  }
+} catch (error) {
+  const payload = {
+    kind,
+    value: value ?? "",
+    error: error instanceof Error ? error.message : String(error),
+  };
+  if (json) {
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  } else {
+    process.stderr.write(`${payload.error}\n`);
+  }
+  process.exit(1);
 }
 
 function runQuery(kind, value, sourceAtlas, indexes) {
@@ -65,6 +103,12 @@ function runQuery(kind, value, sourceAtlas, indexes) {
       return impact(value, sourceAtlas, indexes);
     case "pre-edit":
       return preEdit(value, sourceAtlas, indexes);
+    case "trace-change":
+      return traceChange(value, sourceAtlas, indexes);
+    case "file-owners":
+      return fileOwners(value, sourceAtlas, indexes);
+    case "validate-coverage":
+      return validateCoverage(sourceAtlas, indexes);
     case "health":
       return health(value, sourceAtlas, indexes);
     case "mcp-status":
@@ -85,7 +129,7 @@ function consumers(value, sourceAtlas, indexes) {
   for (const file of files) {
     const fileNodeId = file.id;
     for (const edge of indexes.incoming.get(fileNodeId) ?? []) {
-      if (edge.type === "imports_file") {
+      if (CONSUMER_EDGE_TYPES.has(edge.type)) {
         importerIds.add(edge.from);
       }
       if (edge.type === "resolves_to_file") {
@@ -110,6 +154,17 @@ function consumers(value, sourceAtlas, indexes) {
 
 function impact(value, sourceAtlas, indexes) {
   const targets = resolveTarget(value, sourceAtlas);
+  if (targets.length === 0) {
+    return {
+      kind: "impact",
+      value,
+      error: `target not found: ${value}`,
+      targets: [],
+      ownerFiles: [],
+      impactedFiles: [],
+      affected: emptyImpact(),
+    };
+  }
   const ownerFiles = ownerFileIds(targets, indexes);
   const impactedFiles = bfsImporters(ownerFiles, indexes, 3);
   const rolledUp = rollupImpact(impactedFiles, indexes);
@@ -131,6 +186,9 @@ function impact(value, sourceAtlas, indexes) {
 
 function preEdit(value, sourceAtlas, indexes) {
   const base = impact(value, sourceAtlas, indexes);
+  if (base.error) {
+    return { ...base, kind: "pre-edit" };
+  }
   const targetIds = new Set(base.targets.map((node) => node.id));
   const incoming = [];
   const outgoing = [];
@@ -145,6 +203,156 @@ function preEdit(value, sourceAtlas, indexes) {
       incoming: incoming.slice(0, 40),
       outgoing: outgoing.slice(0, 40),
     },
+  };
+}
+
+function traceChange(value, sourceAtlas, indexes) {
+  const base = preEdit(value, sourceAtlas, indexes);
+  if (base.error) {
+    return { ...base, kind: "trace-change" };
+  }
+  return {
+    ...base,
+    kind: "trace-change",
+    consumers: consumers(value, sourceAtlas, indexes).nodes,
+    owners: fileOwners(value, sourceAtlas, indexes).owners,
+    verification: verificationPlan(value, base),
+  };
+}
+
+function fileOwners(value, sourceAtlas, indexes) {
+  const directFiles = resolveNodes("file", value, sourceAtlas);
+  const files =
+    directFiles.length > 0
+      ? directFiles
+      : [...ownerFileIds(resolveTarget(value, sourceAtlas), indexes)]
+          .map((id) => indexes.nodes.get(id))
+          .filter(Boolean);
+  const owners = [];
+  for (const file of files) {
+    owners.push({
+      file,
+      instructions: ownerFilesForPath(file.path, sourceAtlas),
+    });
+  }
+  return {
+    kind: "file-owners",
+    value,
+    nodes: files.sort(sortById),
+    owners,
+  };
+}
+
+function validateCoverage(sourceAtlas) {
+  const issues = [];
+  if (sourceAtlas.schemaVersion !== 2) {
+    issues.push({ type: "schema_version", message: "atlas schemaVersion must be 2" });
+  }
+  if (sourceAtlas.cacheFormat !== "supaschema-code-atlas@2") {
+    issues.push({ type: "cache_format", message: "atlas cacheFormat drifted" });
+  }
+  if (!sourceAtlas.metadata?.inputDigest) {
+    issues.push({ type: "freshness", message: "atlas missing metadata.inputDigest" });
+  }
+  if (!sourceAtlas.summary?.byEdgeType) {
+    issues.push({ type: "summary", message: "atlas missing summary.byEdgeType" });
+  }
+  const packageJson = safeJson(readText("package.json"));
+  for (const item of packageJson?.files ?? []) {
+    if (item.startsWith("scripts/code-atlas") || item === ".mcp.json") {
+      issues.push({
+        type: "package_boundary",
+        message: `${item} is maintainer-only and must not be in package files`,
+      });
+    }
+  }
+  const mcp = safeJson(readText(".mcp.json"));
+  if (mcp?.mcpServers?.codeatlas) {
+    issues.push({
+      type: "mcp_boundary",
+      message: ".mcp.json must not expose standalone codeatlas",
+    });
+  }
+  const codexConfig = readText(".codex/config.toml");
+  if (codexConfig.includes("[mcp_servers.codeatlas]")) {
+    issues.push({
+      type: "mcp_boundary",
+      message: ".codex/config.toml must not expose standalone codeatlas",
+    });
+  }
+  const rule10 = readText(".claude/rules/10-code-atlas.md");
+  if (rule10.includes("scripts/code-atlas/AGENTS.md")) {
+    issues.push({
+      type: "stale_guidance",
+      message: "Rule 10 references missing scripts/code-atlas/AGENTS.md",
+    });
+  }
+  return {
+    kind: "validate-coverage",
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function ownerFilesForPath(filePath, sourceAtlas) {
+  const owners = new Map();
+  for (const ownerPath of nearestAgentFiles(filePath)) {
+    addOwner(owners, ownerPath, "nearest AGENTS.md");
+  }
+  for (const rule of OWNER_RULES) {
+    if (!filePath.startsWith(rule.prefix)) {
+      continue;
+    }
+    for (const ownerPath of rule.owners) {
+      addOwner(owners, ownerPath, `owner rule for ${rule.prefix}`);
+    }
+  }
+  return [...owners.values()]
+    .map((owner) => ({
+      ...owner,
+      node: sourceAtlas.nodes.find((node) => node.id === fileId(owner.path)) ?? null,
+    }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function nearestAgentFiles(filePath) {
+  const out = [];
+  let current = path.posix.dirname(filePath);
+  while (true) {
+    const candidate = current === "." ? "AGENTS.md" : `${current}/AGENTS.md`;
+    if (fs.existsSync(path.join(ROOT, candidate))) {
+      out.push(candidate);
+    }
+    if (current === "." || current === "") {
+      break;
+    }
+    current = path.posix.dirname(current);
+  }
+  return out;
+}
+
+function addOwner(owners, ownerPath, reason) {
+  if (!fs.existsSync(path.join(ROOT, ownerPath))) {
+    return;
+  }
+  owners.set(ownerPath, { path: ownerPath, reason });
+}
+
+function verificationPlan(value, impactResult) {
+  const commands = [
+    `npm run code-atlas:query -- trace-change ${value} --json`,
+    "npm run guard:code-atlas",
+  ];
+  if (impactResult.affected.apis.length > 0 || impactResult.affected.workers.length > 0) {
+    commands.push("npm run guard:fastmcp");
+  }
+  return {
+    commands,
+    proof: [
+      "Use Code Atlas for owner and blast-radius navigation.",
+      "Use cclsp for exact symbols on owner files.",
+      "Read source before final behavioral claims.",
+    ],
   };
 }
 
@@ -321,7 +529,12 @@ function bfsImporters(startIds, indexes, maxDepth) {
     const next = [];
     for (const fileId of frontier) {
       for (const edge of indexes.incoming.get(fileId) ?? []) {
-        if (edge.type !== "imports_file" || visited.has(edge.from)) {
+        const source = indexes.nodes.get(edge.from);
+        if (
+          !CONSUMER_EDGE_TYPES.has(edge.type) ||
+          source?.kind !== "file" ||
+          visited.has(edge.from)
+        ) {
           continue;
         }
         visited.add(edge.from);
@@ -334,6 +547,16 @@ function bfsImporters(startIds, indexes, maxDepth) {
     }
   }
   return visited;
+}
+
+function emptyImpact() {
+  return {
+    routes: [],
+    apis: [],
+    workers: [],
+    db: [],
+    packages: [],
+  };
 }
 
 function rollupImpact(fileIds, indexes) {
@@ -407,19 +630,20 @@ function buildIndexes(sourceAtlas) {
   return { nodes, incoming, outgoing };
 }
 
-function loadAtlas() {
-  if (!fs.existsSync(ATLAS_PATH)) {
-    const result = spawnSync("node", ["scripts/code-atlas/build.mjs"], {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status !== 0) {
-      process.stderr.write(result.stderr || result.stdout || "code atlas build failed");
-      process.exit(result.status ?? 1);
+async function loadAtlas({ noRebuild: useCacheOnly }) {
+  if (useCacheOnly) {
+    const cached = readCachedAtlas(OUTPUT_PATH);
+    if (!cached) {
+      throw new Error("Code Atlas cache missing; run npm run code-atlas:build first");
     }
+    return cached;
   }
-  return JSON.parse(fs.readFileSync(ATLAS_PATH, "utf8"));
+  const fresh = await buildCodeAtlas({ write: false });
+  const cached = readCachedAtlas(OUTPUT_PATH);
+  if (cached?.metadata?.inputDigest !== fresh.metadata?.inputDigest) {
+    atomicWriteJson(OUTPUT_PATH, fresh);
+  }
+  return fresh;
 }
 
 function takeFlag(targetArgs, flag) {
@@ -429,14 +653,6 @@ function takeFlag(targetArgs, flag) {
   }
   targetArgs.splice(index, 1);
   return true;
-}
-
-function safeJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return;
-  }
 }
 
 function sortById(left, right) {
@@ -469,7 +685,7 @@ function printUsage() {
 }
 
 function usageText() {
-  return `Usage: node scripts/code-atlas/query.mjs <kind> [value] [--json]
+  return `Usage: node scripts/code-atlas/query.mjs <kind> [value] [--json] [--no-rebuild]
 
 Kinds:
   route <value>       Find Next route nodes.
@@ -485,6 +701,11 @@ Kinds:
   entrypoints [value] List routes, APIs, workers, and deploy services.
   impact <target>     Resolve owner files and importer impact to depth 3.
   pre-edit <target>   Impact plus immediate incoming/outgoing edges.
+  trace-change <target>
+                       Agent work pack: impact, consumers, owners, verification commands.
+  file-owners <target>
+                       Nearest AGENTS.md plus atlas/rule/skill owners for files.
+  validate-coverage   Guardable coverage and package/MCP boundary checks.
   health [value]      Report atlas consistency risks.
   mcp-status [value]  Report optional live Code Atlas MCP status.`;
 }

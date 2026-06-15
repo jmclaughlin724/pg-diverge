@@ -253,20 +253,9 @@ describe("agent hook configuration", () => {
     const postToolUseText = JSON.stringify(config.hooks?.PostToolUse ?? []);
     const stopEntries = config.hooks?.Stop ?? [];
     expect(postToolUseText).not.toContain("sync-llm-on-claude-surface-change.mjs");
+    expect(JSON.stringify(config)).not.toContain("context-");
     expect(stopEntries).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          hooks: [
-            expect.objectContaining({
-              command: [
-                'node "$',
-                "{CODEX_PROJECT_DIR:-$PWD}",
-                '/.codex/hooks/context-stop.mjs"',
-              ].join(""),
-              type: "command",
-            }),
-          ],
-        }),
         expect.objectContaining({
           hooks: [
             expect.objectContaining({

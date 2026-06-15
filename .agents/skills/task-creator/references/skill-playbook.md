@@ -99,7 +99,7 @@ If no subagent or delegation tool is exposed after the correct tool-discovery pa
 5. Build the change inventory before locking tasks. Every planned add, update, removal, and explicit non-change must be itemized for files, routes, consumers, dependencies, tests/checks, generated outputs, and external rollout surfaces. A summarized bucket such as "affected files when known" is not enough.
 6. If the plan establishes or standardizes behavior, build an enforcement-surface ledger before locking tasks. Identify the canonical policy owner and every runtime check that must make the standard real: rules, skills, hooks, guards, package scripts, generated mirrors, CI checks, and rollout/state surfaces. A standard without an enforcement owner is not plan-complete.
 7. Run the required repo trace workflow before making architecture or execution claims:
-   - Code Atlas entrypoint, impact, pre-edit, or health queries first for repo-wide code ownership, route, dependency, consumer, DB, API, worker, generated-surface, and deploy evidence
+   - Code Atlas `trace-change`, `pre-edit`, `impact`, `consumers`, `file-owners`, `entrypoints`, or `health` queries first for repo-wide code ownership, route, dependency, consumer, DB, API, worker, generated-surface, and deploy evidence
    - repo owners, workspace graph, and AST/LSP source inspection next for exact code ownership, route, and consumer evidence
    - workspace and package graph next
    - request/runtime entry after that
@@ -137,7 +137,7 @@ If no subagent or delegation tool is exposed after the correct tool-discovery pa
 
 1. Double-check the emerging plan against the applicable repo skills before creating task records or locking task order.
 2. Use the relevant MCP server whenever it can validate a planning claim better than memory.
-   - For code-map MCP context, follow Rule 10's local `supaschema.code_atlas_query` policy; still reproduce plan-owned inventory with `pnpm code-atlas:query` because it is guardable in this repo.
+   - For code-map MCP context, follow Rule 10's local `supaschema.code_atlas_query` policy; still reproduce plan-owned inventory with `npm run code-atlas:query -- trace-change <target> --json` because it is guardable in this repo.
 3. For Next.js work:
    - call `mcp__next_devtools__init`
    - read `nextjs-docs://llms-index`, then fetch the exact `mcp__next_devtools__nextjs_docs` page for any Next.js behavior you rely on

@@ -19,7 +19,7 @@ const claudeHooks = [
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/hooks/pre_tool_guard.sh",
 ];
-const codexHookPaths = [
+const codexMirrorHookPaths = [
   ".codex/hooks/context-session-start.mjs",
   ".codex/hooks/context-user-prompt-submit.mjs",
   ".codex/hooks/context-pre-tool-use.mjs",
@@ -27,16 +27,30 @@ const codexHookPaths = [
   ".codex/hooks/context-subagent-start.mjs",
   ".codex/hooks/context-subagent-stop.mjs",
   ".codex/hooks/context-stop.mjs",
+  ".codex/hooks/context-task-completed.mjs",
+  ".codex/hooks/context-permission-denied.mjs",
+  ".codex/hooks/context-session-end.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
 ];
+const codexRegisteredHookPaths = [
+  ".codex/hooks/block-generated-migration-edits.mjs",
+  ".codex/hooks/auto-diff-on-schema-change.mjs",
+  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+];
+const skillMatcherText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/skills.mjs"), "utf8");
+const claudeSkillFiles = fs
+  .readdirSync(path.join(ROOT, ".claude/skills"), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => path.join(ROOT, ".claude/skills", entry.name, "SKILL.md"))
+  .filter((file) => fs.existsSync(file));
 const legacyClaudeNodeWrappers = [
   ['node "', "$CLAUDE_PROJECT_DIR", '"'].join(""),
   ['node "', "${", "CLAUDE_PROJECT_DIR", "}"].join(""),
 ];
 
-for (const hook of [...claudeHooks, ...codexHookPaths]) {
+for (const hook of [...claudeHooks, ...codexMirrorHookPaths]) {
   assert(exists(hook), `missing hook ${hook}`);
 }
 for (const hook of claudeHooks.filter((item) => item.endsWith(".sh"))) {
@@ -111,12 +125,16 @@ for (const entry of claudePostToolBatch) {
 
 const codexConfig = readJson(".codex/hooks.json");
 const codexHooksJson = JSON.stringify(codexConfig);
-for (const hook of codexHookPaths) {
+for (const hook of codexRegisteredHookPaths) {
   assert(
     codexHooksJson.includes(path.basename(hook)),
     `.codex/hooks.json does not register ${hook}`
   );
 }
+assert(
+  !(codexHooksJson.includes("context-") || codexHooksJson.includes("scripts/agent-hooks")),
+  ".codex/hooks.json must stay consumer-only and must not register repo context enforcement"
+);
 for (const eventName of ["PreToolUse", "PostToolUse"]) {
   const entries = codexConfig.hooks?.[eventName];
   assert(Array.isArray(entries), `.codex/hooks.json missing ${eventName} entries`);
@@ -135,15 +153,30 @@ assert(
   ".codex/hooks.json must not run sync:llm from per-tool PostToolUse"
 );
 assert(
-  JSON.stringify(codexStop).includes("context-stop.mjs"),
-  ".codex/hooks.json must run response-shape checks from Stop"
-);
-assert(
   JSON.stringify(codexStop).includes("sync-llm-on-claude-surface-change.mjs"),
   ".codex/hooks.json must run sync:llm from Stop"
 );
 for (const entry of codexStop) {
   assert(!("matcher" in entry), ".codex/hooks.json Stop entries must not use matchers");
+}
+for (const forbidden of [
+  "new RegExp",
+  "RegExp(",
+  ".matchAll(",
+  "metadata.intent-patterns",
+  "intent-patterns",
+]) {
+  assert(
+    !skillMatcherText.includes(forbidden),
+    `scripts/agent-hooks/skills.mjs must not use ${forbidden} for skill matching`
+  );
+}
+for (const file of claudeSkillFiles) {
+  const text = fs.readFileSync(file, "utf8");
+  assert(
+    !text.includes("intent-patterns:"),
+    `${path.relative(ROOT, file)} must use literal metadata.keywords, not intent-patterns`
+  );
 }
 
 ok("AGENT_HOOKS_OK");

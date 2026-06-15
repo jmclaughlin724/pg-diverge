@@ -17,14 +17,6 @@ metadata:
     - "elegant"
     - "next devtools"
     - "turbopack trace"
-  intent-patterns:
-    - "create.*task list"
-    - "build.*task list"
-    - "make.*plan"
-    - "execution.*plan"
-    - "orchestrate.*subagents"
-    - "parallel.*subagents"
-    - "plan.*before.*implement"
 ---
 
 # Tasks

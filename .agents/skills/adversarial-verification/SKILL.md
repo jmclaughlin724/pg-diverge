@@ -12,12 +12,6 @@ metadata:
     - "break it"
     - "stress test"
     - "edge cases"
-  intent-patterns:
-    - "(?:try|attempt).*break"
-    - "verify.*(?:implementation|change|work)"
-    - "(?:adversarial|thorough).*(?:test|verify|check)"
-    - "(?:prove|confirm).*(?:works|correct)"
-    - "(?:stress|edge.case|boundary).*test"
 ---
 
 # Adversarial Verification

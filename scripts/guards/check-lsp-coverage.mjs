@@ -19,6 +19,7 @@ const nonCode = new Set([
   "mintignore",
   "nvmrc",
   "prettierignore",
+  "png",
   "snap",
   "svg",
   "tgz",

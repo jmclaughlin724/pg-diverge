@@ -14,9 +14,6 @@ metadata:
     - "PostToolUse"
     - "Stop hook"
     - "UserPromptSubmit"
-  intent-patterns:
-    - "hook.*(enforc|matcher|gate|policy|wiring|fire|trigger|load|block)"
-    - "(pre|post)tooluse"
   file-triggers:
     - ".claude/hooks/**"
     - ".claude/settings.json"
@@ -52,10 +49,10 @@ Use this skill for Claude Code configuration work. Read official platform docs b
 
 ## Subagent + Skill Runtime Contract
 
-Agent definitions in `.claude/agents/*.md` interact with the path-trigger skill-matcher hook in two non-obvious ways:
+Agent definitions in `.claude/agents/*.md` interact with the path-trigger agent hook gate in two non-obvious ways:
 
 1. **`skills:`** preloads full `SKILL.md` content at subagent startup (deterministic, front-loads context cost).
-2. **`tools:`** controls runtime invocation of non-preloaded skills. If `tools:` is an explicit allowlist that omits `Skill`, the subagent cannot resolve `skill-matcher.ts gate-pre` blocks at runtime. In parallel orchestration where workers span multiple path-trigger globs, that produces "blocked: Skill tool unavailable" exits.
+2. **`tools:`** controls runtime invocation of non-preloaded skills. If `tools:` is an explicit allowlist that omits `Skill` and usable skill reads, the subagent cannot resolve path-trigger skill gates at runtime. In parallel orchestration where workers span multiple path-trigger globs, that produces blocked-tool exits.
 
 When designing or auditing an agent that may receive work via `/team` / `/batch`-style fan-out, verify either `Skill` is in the `tools:` list or `tools:` is omitted entirely (inherits all). See [`references/subagent-skill-runtime.md`](references/subagent-skill-runtime.md) for the full contract, two compliant configurations, and the "report findings, orchestrator applies" fallback.
 

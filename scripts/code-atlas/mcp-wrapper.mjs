@@ -17,6 +17,7 @@ if (status) {
         source: resolution?.source ?? "none",
         binary: resolution?.binary ?? null,
         version: resolution?.version ?? null,
+        npxFallbackEnabled: process.env.CODEATLAS_MCP_ALLOW_NPX === "1",
         workspace,
         wrapper: path.relative(workspace, new URL(import.meta.url).pathname),
       },
@@ -29,7 +30,7 @@ if (status) {
 
 if (!resolution) {
   process.stderr.write(
-    "Code Atlas live MCP is not available. Set CODEATLAS_MCP_BIN, install the editor extension, or allow npx fallback with CODEATLAS_MCP_ALLOW_NPX=1.\n"
+    "Code Atlas live MCP is not available. Set CODEATLAS_MCP_BIN, install the editor extension, or explicitly allow npx fallback with CODEATLAS_MCP_ALLOW_NPX=1.\n"
   );
   process.exit(1);
 }
@@ -65,7 +66,7 @@ function resolveMcp() {
   if (extension) {
     return extension;
   }
-  if (process.env.CODEATLAS_MCP_ALLOW_NPX !== "0") {
+  if (process.env.CODEATLAS_MCP_ALLOW_NPX === "1") {
     return {
       source: "npx",
       binary: "npx -y @codeatlas/mcp@latest",

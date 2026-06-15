@@ -11,7 +11,7 @@ def main() -> None:
     # Active-file selection is owned by build.mjs; this helper only enriches
     # the Python files that the JS atlas builder passes through.
     files = sorted(payload.get("files", []))
-    file_set = set(files)
+    file_set = set(payload.get("allFiles", files))
     nodes = []
     edges = []
     diagnostics = []
@@ -27,6 +27,7 @@ def main() -> None:
         collect_imports(nodes, edges, file, tree, file_set)
         collect_fastapi(nodes, edges, file, tree)
         collect_typer(nodes, edges, file, tree)
+        collect_file_references(edges, file, tree, file_set)
     print(json.dumps({"nodes": nodes, "edges": edges, "diagnostics": diagnostics}))
 
 
@@ -145,6 +146,19 @@ def collect_typer(nodes: list[dict], edges: list[dict], file: str, tree: ast.Mod
                         "evidence": name or "add_typer",
                     }
                 )
+
+
+def collect_file_references(edges: list[dict], file: str, tree: ast.Module, file_set: set[str]) -> None:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in file_set:
+            edges.append(
+                {
+                    "from": file_id(file),
+                    "to": file_id(node.value),
+                    "type": "references_file",
+                    "evidence": "string literal",
+                }
+            )
 
 
 def fastapi_method(node: ast.AST) -> str | None:

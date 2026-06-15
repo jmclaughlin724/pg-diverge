@@ -1,72 +1,57 @@
 # Skill Matcher Signal Budget
 
-When authoring or consolidating a skill, the merged total of `metadata.keywords`, `metadata.intent-patterns`, `metadata.file-triggers`, and the implicit skill-name keyword forms a fixed `totalSignals` count. Per-prompt hits are divided by `totalSignals` to form the confidence percentage the matcher gates on. Inflated signal counts dilute single-hit prompts below the threshold even when an intent regex fires correctly.
+Current owner: `scripts/agent-hooks/skills.mjs`.
 
-## Threshold contract
+The current deterministic matcher does not use weighted confidence math. A skill is selected when at least one high-confidence signal matches, then the result list is deduped and capped. The practical budget is therefore about noise control, not score dilution.
 
-`scripts/llm-sync` defaults inherited by `.claude/hooks/skill-matcher/skill-matcher.ts`:
+## Prompt Budget
 
-| Setting | Value | Effect |
-| --- | --- | --- |
-| `MIN_CONFIDENCE` (default) | 0.10 | Minimum `hits / totalSignals` for skills without the discount |
-| `MIN_CONFIDENCE_LOW` | 0.03 | Minimum for skills with `metadata.skipMetaAnalysisDiscount` |
-| `threshold` (default) | 50% | Required share of the top-scoring skill's hit count |
-| `thresholdLow` | 20% | Required share with the discount |
-| File-trigger contribution | +2 | A matched glob doubles its weight in `hits` |
-| File-trigger `totalSignals` cost | +1 | Each glob still adds one to the denominator |
+Keep `metadata.keywords` small and specific.
 
-Single-hit prompts (one keyword OR one intent-pattern fires) require:
+| Signal | Guidance |
+| --- | --- |
+| Explicit skill token | Prefer `$skill-name` or `/skill-name` when the user intentionally requests a skill. |
+| Skill directory name | Works only when the name is not a low-signal term. |
+| `metadata.keywords` | Use narrow domain phrases that a user would actually type. |
+| Low-signal words | Avoid `task`, `plan`, `verify`, `update`, `fix`, `test`, `work`, `this`, and similar generic terms. |
 
-```
-hits / totalSignals >= 0.03
-=> totalSignals <= 33
-```
+Target 3-8 prompt keywords per skill. More is only useful when each term names a distinct, high-confidence domain concept.
 
-Cross the boundary and the prompt drops out silently — the matcher returns `pending-skills: []` even though the regex matched, with no diagnostic.
+## Tool Budget
 
-## Authoring rule of thumb
+Use `metadata.file-triggers` for tool-scoped matching.
 
-Keep `totalSignals <= 30` for any skill that expects single-hit prompts to fire it. Combined budget across `keywords + intent-patterns + file-triggers + skill-name`:
+| Signal | Guidance |
+| --- | --- |
+| Owner paths | Prefer concrete paths such as `.claude/hooks/**`, `.codex/hooks.json`, `scripts/agent-hooks/**`, or `docs/**`. |
+| Patch headers | The matcher reads patch file headers, not patch body prose. |
+| Nested payload paths | MCP and structured payload path fields are supported. |
+| Command text | Not scored. Put durable tool routing in file triggers instead. |
 
-| Surface area    | Recommended cap |
-| --------------- | --------------- |
-| keywords        | ≤ 12            |
-| intent-patterns | ≤ 14            |
-| file-triggers   | ≤ 5             |
-| skill name      | 1 (auto-added)  |
+Target 2-6 file triggers per skill. Add a trigger only when touching that path genuinely requires the skill before governed work.
 
-Prefer intent-pattern regex over per-phrase keyword variants — `(?:trace|find)\s+(?:where\s+)?(?:this\s+|the\s+)?(?:error|bug|failure|exception)` is one signal that covers six redundant keyword phrases.
+## Load Budget
 
-## When consolidating multiple skills
+Do not broaden matching just to compensate for missed loads. A pending skill clears only after an observable load:
 
-Naive union of N skills' frontmatter routinely produces 100+ totalSignals. Symptom: keyword/intent matches verifiably exist but the matcher returns empty pending-skills. Fix by collapsing redundant keywords into intent regexes and dropping descriptive nouns ("knowledge graph", "call graph", "code intelligence") that do not anchor a unique semantic surface.
+- `Skill` tool call naming the skill.
+- `Read` of a `SKILL.md` path.
+- MCP payload containing a `SKILL.md` path.
+- Shell reader command that reads a `SKILL.md` path.
 
-## Verifying the budget
+If a skill is frequently pending but not loaded, fix the prompt text or the explicit skill request. Do not add broad keywords.
 
-After authoring, run a probe per-prompt that should match:
-
-```sh
-SID=test-$$
-echo '{"hook_event_name":"UserPromptSubmit","prompt":"<probe>","session_id":"'$SID'"}' \
-  | bun .claude/hooks/skill-matcher/skill-matcher.ts prompt
-cat .claude/state/sessions/$SID/pending-skills
-rm -rf .claude/state/sessions/$SID
-```
-
-`{"skills":[]}` with intent matches in the prompt = signal-budget overrun. Check `totalSignals = keywords.length + intent-patterns.length + file-triggers.length + 1` and trim until 1 / totalSignals >= 0.034 with margin.
-
-For consolidated skills, write a focused verifier script that probes every retired skill's canonical prompt and asserts the new consolidated skill matches each.
-
-## Common authoring pitfalls
+## Common Pitfalls
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Verifier probes pass the keyword check but `pending-skills` is empty | `totalSignals` over the dilution threshold | Trim redundant keywords; rely on intent-pattern coverage |
-| File-trigger probes fire but prompt probes do not | Globs add to `totalSignals` while not firing on prompts | Reduce keywords/intent-patterns to compensate; file-triggers contribute +2 weight |
-| Adding a synonym keyword reduces match rate | New keyword raises denominator without firing | Replace with intent-pattern regex covering the synonym |
+| Many unrelated skills become pending | Generic keywords or descriptions were treated as routing signals | Keep deterministic routing in `metadata.keywords`; descriptions are native-model context only. |
+| Hook optimizers re-announce on every patch | Command or patch body prose was used as a tool signal | Use file triggers only for tool matching. |
+| A user named a skill but it stayed pending | Slash or `$skill` token is only a request signal | Load the skill through the `Skill` tool or read its `SKILL.md`. |
+| A file edit needs a skill but no context appears | Missing `metadata.file-triggers` entry | Add the narrow owner path to the relevant skill. |
 
 ## Related
 
-- `.claude/hooks/skill-matcher/skill-matcher.ts` — `scoreSkill()` (line 423), `selectTopMatches()` (line ~917), `MIN_CONFIDENCE_LOW` constant
-- `.claude/skills/claude-optimizer/references/skill-frontmatter-schema.md` — full frontmatter contract
-- `.claude/skills/claude-optimizer/references/skill-matcher-patterns.md` — matcher behavior reference
+- `scripts/agent-hooks/skills.mjs` - matcher and observable-load owner.
+- `.claude/skills/claude-optimizer/references/skill-matcher-patterns.md` - runtime behavior reference.
+- `.claude/skills/claude-optimizer/references/frontmatter-reference.md` - frontmatter field reference.

@@ -3,10 +3,16 @@
   "theme": "luma",
   "name": "supaschema",
   "description": "From declarative schema to fully synced database in milliseconds. No ORM, no Docker, no shadow database.",
+  "logo": {
+    "light": "/images/brand/supaschema-logo-light.png",
+    "dark": "/images/brand/supaschema-logo-dark.png",
+    "href": "https://supaschema.com/docs"
+  },
+  "favicon": "/images/brand/favicon.png",
   "colors": {
-    "primary": "#1D4ED8",
-    "light": "#60A5FA",
-    "dark": "#3B82F6"
+    "primary": "#A91616",
+    "light": "#FACC15",
+    "dark": "#C2410C"
   },
   "appearance": {
     "default": "system"
@@ -16,6 +22,10 @@
   },
   "metadata": {
     "timestamp": true
+  },
+  "thumbnails": {
+    "appearance": "dark",
+    "background": "/images/brand/mintlify-og-background.png"
   },
   "contextual": {
     "options": [
@@ -185,6 +195,7 @@
         "pages": [
           "benchmarks",
           "case-study-anilize",
+          "reference/branding",
           "reference/diagnostics",
           "reference/library-api",
           "reference/package-boundary",

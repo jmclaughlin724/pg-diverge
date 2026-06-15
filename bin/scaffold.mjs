@@ -44,10 +44,6 @@ const manifestPath = ".supaschema/install.json";
 const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
-const codexGateCommand = `node "${codexProjectDir}/.codex/hooks/block-generated-migration-edits.mjs"`;
-const codexAutoDiffCommand = `node "${codexProjectDir}/.codex/hooks/auto-diff-on-schema-change.mjs"`;
-const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
 const hookScriptPathPattern = /\.(mjs|sh)$/;
 
 const agentFiles = [
@@ -112,48 +108,7 @@ const hookConfigs = [
   },
   {
     path: ".codex/hooks.json",
-    config: {
-      hooks: {
-        PreToolUse: [
-          {
-            matcher: "^(apply_patch|Edit|Write|edit_file)$",
-            hooks: [
-              {
-                type: "command",
-                command: codexGateCommand,
-                timeout: 10,
-                statusMessage: "Checking supaschema generated-migration policy",
-              },
-            ],
-          },
-        ],
-        PostToolUse: [
-          {
-            matcher: "^(apply_patch|Edit|Write|edit_file)$",
-            hooks: [
-              {
-                type: "command",
-                command: codexAutoDiffCommand,
-                timeout: 130,
-                statusMessage: "Running supaschema auto-diff on schema change",
-              },
-            ],
-          },
-        ],
-        Stop: [
-          {
-            hooks: [
-              {
-                type: "command",
-                command: codexLlmSyncCommand,
-                timeout: 130,
-                statusMessage: "Syncing supaschema Claude agent surfaces",
-              },
-            ],
-          },
-        ],
-      },
-    },
+    configFile: ".codex/hooks.json",
   },
 ];
 
@@ -205,7 +160,7 @@ export async function scaffoldProject({
 
   for (const config of hookConfigs) {
     if (!dryRun) {
-      mergeHookConfig(targetDir, config, skipped);
+      mergeHookConfig(packageRoot, targetDir, config, skipped);
     }
   }
   installed.push("hook wiring");
@@ -704,8 +659,11 @@ function copyProjectFile(packageRoot, target, relativePath, skipped) {
   copyFileSync(source, destination);
 }
 
-function mergeHookConfig(target, hookConfig, skipped) {
-  const source = hookConfig.config;
+function mergeHookConfig(packageRoot, target, hookConfig, skipped) {
+  const source =
+    typeof hookConfig.configFile === "string"
+      ? readJson(join(packageRoot, hookConfig.configFile))
+      : hookConfig.config;
   const destination = join(target, hookConfig.path);
   const existing = readJsonIfPresent(destination);
   if (!source || existing === undefined) {

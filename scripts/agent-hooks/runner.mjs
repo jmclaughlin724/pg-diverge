@@ -9,7 +9,15 @@ import {
   updatePromptSkills,
   updateToolSkills,
 } from "./skills.mjs";
-import { clearSessionState, readSessionState, writeSessionState } from "./state.mjs";
+import {
+  beginTurnState,
+  clearSessionState,
+  currentTurnState,
+  readSessionState,
+  selectTurnState,
+  sessionStartState,
+  writeSessionState,
+} from "./state.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -33,23 +41,29 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
   let result = {};
 
   if (eventName === "SessionStart") {
-    clearSessionState(payload);
-    state = readSessionState(payload);
+    state = sessionStartState(payload, state);
     context.state = state;
     result = runChecks(eventName, payload, [standingContext], context);
   } else if (eventName === "UserPromptSubmit") {
+    beginTurnState(payload, state);
     result = runChecks(eventName, payload, [promptSkills], context);
   } else if (eventName === "PreToolUse") {
+    selectTurnState(payload, state);
     result = runChecks(eventName, payload, [toolSkills, evidenceGate], context);
   } else if (eventName === "PostToolUse") {
+    selectTurnState(payload, state);
     result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
   } else if (eventName === "SubagentStart") {
+    selectTurnState(payload, state);
     result = runChecks(eventName, payload, [subagentContext], context);
   } else if (eventName === "Stop" || eventName === "SubagentStop") {
+    selectTurnState(payload, state);
     result = runChecks(eventName, payload, [responseShape], context);
   } else if (eventName === "TaskCompleted") {
+    selectTurnState(payload, state);
     result = runChecks(eventName, payload, [taskCompletionGate], context);
   } else if (eventName === "PermissionDenied") {
+    selectTurnState(payload, state);
     result = runChecks(eventName, payload, [permissionDeniedContext], context);
   } else if (eventName === "SessionEnd") {
     clearSessionState(payload);
@@ -121,14 +135,15 @@ function responseShape(payload, context) {
 
 function taskCompletionGate(_payload, context) {
   const pending = unresolvedPending(context.state);
-  if (pending.length === 0 && context.state.corrections.length === 0) {
+  const corrections = currentTurnState(context.state).corrections;
+  if (pending.length === 0 && corrections.length === 0) {
     return {};
   }
   return {
     block: [
       "Task completion blocked by deterministic agent hook state.",
       ...pending.map((item) => `- Pending skill: ${item.name}: ${item.reason}`),
-      ...context.state.corrections.map((item) => `- Pending response correction: ${item.message}`),
+      ...corrections.map((item) => `- Pending response correction: ${item.message}`),
     ].join("\n"),
   };
 }

@@ -4,11 +4,11 @@
 
 This skill is a direct execution contract. Use it only when the trigger matches, load the minimum referenced context needed, and follow the workflow and closeout exactly.
 
-Maintenance pass across existing repo documentation and context surfaces: rules, skills, commands, agents, hooks, scripts, `AGENTS.md`, runtime config, and generated mirrors.
+Maintenance pass across existing repo documentation and context surfaces: rules, skills, commands, agents, hooks, scripts, `AGENTS.md`, runtime config, consumer/package surfaces, dependency references, tests/guards, and generated mirrors. The job is impact closure: after a code, architecture, workflow, lesson, or research change, identify every stale or missing follow-through surface and either update it or record the explicit owner-scoped reason it does not apply.
 
 ## Scope
 
-`.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/rules/**`, `.claude/hooks/**`, `.claude/settings*.json`, `.codex/skills/**`, `.codex/hooks/**`, `.codex/rules/**`, `.codex/config.toml`, `.agents/skills/**`, root `AGENTS.md`, the `services/agent-mcp` FastMCP side-service surface, `scripts/**` docs/guards/hooks/operators, root path-keyed configs (`package.json#scripts`, `biome.jsonc`/`ultracite` `overrides[]`), and `docs/**` when repo docs are the canonical owner.
+`.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/rules/**`, `.claude/hooks/**`, `.claude/settings*.json`, `.codex/skills/**`, `.codex/hooks/**`, `.codex/rules/**`, `.codex/config.toml`, `.agents/skills/**`, root `AGENTS.md`, the `services/agent-mcp` FastMCP side-service surface, `scripts/**` docs/guards/hooks/operators, `tests/**` when tests lock public behavior or package contracts, `examples/**`, root path-keyed configs (`package.json#scripts`, `package.json#files`, dependency/catalog config, `biome.jsonc`/`ultracite` `overrides[]`), generated contract artifacts, installer/scaffold outputs, published package surfaces, and `docs/**` when repo docs are the canonical owner.
 
 Rules are the default prevention owner. Every `/update` pass must inspect `.claude/rules/**` first for the underlying lesson, then either update/create the applicable rule or record why the finding is not rule-level before any skill, AGENTS, docs, or hook-only update can count as complete.
 
@@ -20,18 +20,19 @@ External-technology instructions must be sourced from upstream MCP/docs first, o
 
 ### Phase 1: Audit
 
-1. **Inventory session lessons.** List corrections the user made, errors resolved (root cause, not symptom), non-obvious behaviors discovered, and patterns confirmed or rejected. Name the underlying `.claude/rules/**` owner for each lesson. If no rule owner fits, write the no-rule reason before considering another surface; a lesson with no stateable rule or no-rule reason is not ready to codify.
-2. **Map related docs.** Read the rule owner first, then every related skill, agent, hook, script, command, `AGENTS.md`, generated-target owner, and docs surface in Scope. Use fixed-string search for prose evidence and AST/structured inspection for source, hook, script, import, SQL, or mutation classification.
-3. **Delegate documentation review.** This `$update` workflow authorizes bounded read-only documentation review when the runtime exposes subagent tooling; it does not authorize implementation writes. If subagents are unavailable, audit directly and report that tooling blocker. Send self-contained prompts:
+1. **Inventory session lessons.** List corrections the user made, errors resolved (root cause, not symptom), non-obvious behaviors discovered, patterns confirmed or rejected, and research facts that change repo behavior. Name the underlying `.claude/rules/**` owner for each lesson. If no rule owner fits, write the no-rule reason before considering another surface; a lesson with no stateable rule or no-rule reason is not ready to codify.
+2. **Map impacted surfaces.** For each lesson or change, build an impact map before editing: canonical rule or no-rule reason; source owners; public docs; command references; scripts/guards; tests; package `files` and tarball consumers; installer/scaffold outputs; generated artifacts; examples/fixtures; dependency or external-doc references; Claude/Codex/.agents mirrors. Do not stop at the named file or the first stale doc.
+3. **Read related owners.** Read the rule owner first, then every mapped skill, agent, hook, script, command, `AGENTS.md`, generated-target owner, test/guard, consumer package surface, dependency reference, and docs surface in Scope. Use fixed-string search for prose evidence and AST/structured inspection for source, hook, script, import, SQL, or mutation classification.
+4. **Delegate documentation review.** This `$update` workflow authorizes bounded read-only documentation review when the runtime exposes subagent tooling; it does not authorize implementation writes. If subagents are unavailable, audit directly and report that tooling blocker. Send self-contained prompts:
    - `docs-auditor`: duplicate owners, redundant instructions, stale references, and consolidation candidates across repo docs.
    - `upstream` lane: external-tech instructions checked against upstream sources via the `$upstream` skill.
-   - `explorer`: owner, sync, and validation path when the surface is ambiguous.
-4. **Validate findings.** Parent thread reconciles subagent results, reads each target file in full, and manually verifies HIGH/MEDIUM findings before edits. Flag files that contradict the lesson, teach the resolved error as correct, omit the lesson where it belongs, or restate it in stale/conflicting terms. Record path, line span, and required fix: update, correct, add, consolidate, or remove.
-5. **Classify** confirmed gaps:
-   - HIGH: route trees missing; guidance actively teaching the resolved error; off-policy memory writes recommended as canonical
-   - MEDIUM: convention gaps, stale cross-references, lessons absent from the right owner
+   - `explorer`: owner, consumer/package impact, dependency impact, sync, and validation path when the surface is ambiguous.
+5. **Validate findings.** Parent thread reconciles subagent results, reads each target file in full, and manually verifies HIGH/MEDIUM findings before edits. Flag files that contradict the lesson, teach the resolved error as correct, omit the lesson where it belongs, restate it in stale/conflicting terms, or lack a guard/test for a public behavior claim. Record path, line span, impacted consumer or dependency if any, and required fix: update, correct, add, consolidate, remove, or explicitly no-change.
+6. **Classify** confirmed gaps:
+   - HIGH: route trees missing; guidance actively teaching the resolved error; package/consumer contract drift; stale safety guard; off-policy memory writes recommended as canonical
+   - MEDIUM: convention gaps, stale cross-references, lessons absent from the right owner, docs/scripts/tests/guards missing for changed public workflow, generated mirrors or examples not synced from the canonical owner
    - LOW: cosmetic or wording improvements
-6. **Name the prevention owner** for each HIGH/MEDIUM finding: which existing `.claude/rules/**` file failed to prevent it, which rule file now codifies it, and which supporting skill, hook, command, script, or AGENTS brief also needs alignment. If no rule changes, state the no-rule reason and the non-rule owner. For hook findings, audit `.claude/hooks/**` plus `.claude/settings*.json` as canonical sources and `.codex/hooks/**` as the synced mirror.
+7. **Name the prevention owner** for each HIGH/MEDIUM finding: which existing `.claude/rules/**` file failed to prevent it, which rule file now codifies it, and which supporting skill, hook, command, script, guard, test, package boundary, docs page, or AGENTS brief also needs alignment. If no rule changes, state the no-rule reason and the non-rule owner. For hook findings, audit `.claude/hooks/**` plus `.claude/settings*.json` as canonical sources and `.codex/hooks/**` as the synced mirror.
 
 ### Phase 2: Plan
 
@@ -55,9 +56,21 @@ Memory is never a valid owner in this repo. If no rule/hook/skill/script/AGENTS 
 
 Cross-reference instead of restating. For architecture or shared-surface changes, review boundary owners together: root `package.json` guard/test script wiring, `scripts/guards/**`, `.claude/hooks/**`, `.claude/settings*.json`, and relevant skill references.
 
+For each accepted finding, keep an impact closure matrix while planning:
+
+- canonical owner and generated mirrors
+- docs and command references
+- scripts, guards, package scripts, and CI jobs
+- tests/fixtures/examples that prove or demonstrate the behavior
+- package `files`, installer/scaffold outputs, and published consumer surfaces
+- dependencies or upstream docs that need version/source alignment
+- exact validation command for each touched owner
+
+If a mapped surface is not updated, record the reason. "Not originally requested" is not a valid reason for an impacted surface.
+
 For package/service boundary lessons, verify both layers before selecting the owner:
 
-- `npm run code-atlas:query -- entrypoints`, `npm run code-atlas:query -- impact <target>`, or `npm run code-atlas:query -- health <filter>` for repo-wide CLI surface, source, consumer, generated-surface, and package-boundary evidence. If MCP access is available, follow Rule 10's local `supaschema.code_atlas_query` policy for supplementary evidence.
+- `npm run code-atlas:query -- trace-change <target> --json`, `npm run code-atlas:query -- file-owners <target> --json`, or `npm run code-atlas:query -- validate-coverage --json` for repo-wide CLI surface, source, consumer, generated-surface, and package-boundary evidence. If MCP access is available, follow Rule 10's local `supaschema.code_atlas_query` policy for supplementary evidence.
 - `npm run check:package` or `npm pack --dry-run` for npm package-boundary and published-tarball evidence when Rule 13 (`13-npm-package-boundary.md`) is the owner.
 - the Python uv workspace at `services/agent-mcp` for FastMCP side-service evidence; verify with `npm run py:typecheck`, `npm run py:test`, and `npm run guard:fastmcp` when Rule 11 (`11-agent-mcp-fastmcp.md`) is the owner.
 - `npm run guard:code-atlas` and `npm run guard` are the active local backstops for graph and cross-surface policy drift.
@@ -72,7 +85,7 @@ When moving Markdown bodies into `references/**`, update relative links for the 
 
 For hook work, correct every affected native hook surface in the same pass. Claude hook changes update `.claude/hooks/**` and `.claude/settings*.json` with the exact event surface and matcher. Repo-local Codex hook parity is the mirrored `.codex/hooks/**` surface enforced by `npm run sync:llm` and `npm run guard:agent`; do not hand-edit generated mirrors. Skill changes also regenerate `.agents/skills/**` from `.claude/skills/**`.
 
-Update adjacent surfaces made inaccurate by the change: root `AGENTS.md`, skill reference READMEs, rule cross-references. Remove any `.claude/memory/**` files surfaced during the pass and replant their content into `.claude/rules/**` first, then AGENTS, skills, hooks, or settings only as supporting surfaces.
+Update adjacent surfaces made inaccurate by the change: root `AGENTS.md`, public docs, command references, package-boundary docs/tests, scripts/guards, examples/fixtures, skill reference READMEs, rule cross-references, generated schemas/contracts, and installer/scaffold guidance. Do not treat a docs-only patch as complete when the changed behavior also needs a script, guard, package test, generated mirror, or consumer-facing install update. Remove any `.claude/memory/**` files surfaced during the pass and replant their content into `.claude/rules/**` first, then AGENTS, skills, hooks, or settings only as supporting surfaces.
 
 Repo-managed skill sources are editable source, not immutable artifacts. If `.claude/skills/**` or synced `.agents/skills/**` entries are missing owner read/write permissions, repair the permissions before sync instead of preserving chmod drift.
 
@@ -98,12 +111,14 @@ Use `npm run sync:llm` to regenerate managed mirrors when a single canonical sur
 - Every HIGH/MEDIUM finding is fixed in the right owner or explicitly mapped to one.
 - `$update` was treated as an implementation skill, not an audit-only report, unless the user explicitly requested report-only output.
 - Every HIGH/MEDIUM finding has a `.claude/rules/**` update or an explicit no-rule reason before any non-rule owner is accepted as complete.
+- Every impacted file, folder, consumer surface, dependency reference, package boundary, script, guard, docs page, test/fixture/example, and generated mirror from the impact map is updated or has an explicit owner-scoped no-change reason.
 - Root `AGENTS.md` entries invalidated by the pass are corrected in the same pass.
+- Fixed-string stale-reference searches for the resolved lesson or renamed surface have been run across the mapped owners.
 - No off-policy memory surface remains (`.claude/memory/**`, `memory:` agent frontmatter, or command/skill prose that treats memory writes as guidance).
 - Repo-managed skill sources and synced mirrors are owner-writable; repair permission drift before sync.
 - Hook enhancements document the event surface, matcher, payload contract, and output contract in the runtime-specific owner.
 - Synced compatibility surfaces refreshed from `.claude/**` sources before handoff.
-- Related documentation was reviewed for duplicate owners, redundancies, stale references, upstream-source drift, and consolidation opportunities.
+- Related documentation, scripts, guards, package boundaries, generated outputs, examples, tests, dependency references, and consumer surfaces were reviewed for duplicate owners, redundancies, stale references, upstream-source drift, and consolidation opportunities.
 
 ## Subagent Review
 

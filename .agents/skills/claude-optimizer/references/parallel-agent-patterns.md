@@ -302,7 +302,7 @@ Each subagent maintains its own context window and compacts independently:
 
 ## Path-Trigger Skill Gate Friction
 
-When parallel workers are dispatched against slices spanning multiple subdirectories, each worker may touch files matching multiple `.claude/skills/*/file-triggers:` globs. The `skill-matcher.ts gate-pre` hook fires on every `Edit`/`Write`/`Bash` that hits a triggering path, demanding `Skill({ skill: "X" })` be called first. Subagents whose agent definition uses an explicit `tools:` allowlist that omits `Skill` cannot resolve this gate at runtime — they exit with "blocked: Skill tool unavailable" and the orchestrator must apply the work directly.
+When parallel workers are dispatched against slices spanning multiple subdirectories, each worker may touch files matching multiple `.claude/skills/*/file-triggers:` globs. The shared agent hook gate fires on governed tool calls that hit a triggering path, requiring a `Skill({ skill: "X" })` call or observable `SKILL.md` read first. Subagents whose agent definition uses an explicit `tools:` allowlist that omits both `Skill` and a usable read path cannot resolve this gate at runtime; they exit with a blocked-tool message and the orchestrator must apply the work directly.
 
 The structural fix lives in agent definitions, not in orchestration prompts. See [subagent-skill-runtime.md](subagent-skill-runtime.md) for:
 

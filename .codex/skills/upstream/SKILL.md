@@ -8,10 +8,6 @@ metadata:
     - upstream best practice
     - official docs
     - verified upstream source
-  intent-patterns:
-    - "upstream.*(?:best.practice|source|docs|standard)"
-    - "(?:verify|audit|check).*upstream.*(?:docs|source|best.practice)"
-    - "\\$upstream"
 ---
 
 # Upstream — source-standard architecture audit

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -69,6 +70,7 @@ describe("npm package contents", () => {
       ".codex/hooks/auto-diff-on-schema-change.mjs",
       ".codex/hooks/block-generated-migration-edits.mjs",
       ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+      ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
       ".codex/skills/supaschema/SKILL.md",
       "README.md",
@@ -83,16 +85,24 @@ describe("npm package contents", () => {
       ".codex/hooks/context-",
       "scripts/agent-hooks/",
     ];
-    const forbiddenInternalAgentFiles = [".codex/hooks.json"];
-    const internalAgentLeaks = paths.filter(
-      (path) =>
-        forbiddenInternalAgentFiles.includes(path) ||
-        forbiddenInternalAgentPrefixes.some((prefix) => path.startsWith(prefix))
+    const internalAgentLeaks = paths.filter((path) =>
+      forbiddenInternalAgentPrefixes.some((prefix) => path.startsWith(prefix))
     );
     expect(
       internalAgentLeaks,
       `internal repo-only agent files reached npm tarball: ${internalAgentLeaks.join(", ")}`
     ).toEqual([]);
+    expect(paths, "pack should include consumer Codex hook registration").toContain(
+      ".codex/hooks.json"
+    );
+    const codexHookContents = readFileSync(
+      resolve(import.meta.dirname, "../.codex/hooks.json"),
+      "utf8"
+    );
+    expect(codexHookContents).not.toContain("context-");
+    expect(codexHookContents).not.toContain("scripts/agent-hooks");
+    expect(codexHookContents).toContain("block-generated-migration-edits.mjs");
+    expect(codexHookContents).toContain("auto-diff-on-schema-change.mjs");
     expect(paths, "legacy config-schema.json must not ship").not.toContain("config-schema.json");
 
     const isLeak = (path: string): boolean =>

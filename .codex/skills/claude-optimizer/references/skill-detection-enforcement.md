@@ -21,15 +21,15 @@ This project uses a **dual-layer** discovery system. The two layers are additive
 
 ### Layer 1: Hook-Based Matching (Primary, Enforced)
 
-The `skill-matcher.ts` hook intercepts every user prompt at the `UserPromptSubmit` event and scores skills against it using structured metadata fields:
+The shared agent hook layer intercepts every user prompt at the `UserPromptSubmit` event and records deterministic skill requests using explicit skill tokens and curated metadata:
 
 | Metadata Field | Signal Type |
 | --- | --- |
-| `keywords` | Exact and substring matches against the user prompt |
-| `intent-patterns` | Regex patterns that capture higher-level user intent |
-| `file-triggers` | Glob patterns matched against prompt files + `git diff --name-only HEAD` |
+| Explicit skill name | `$skill`, `/skill`, and non-generic skill directory names in prompt text |
+| `keywords` | Delimiter-aware matches against user prompt text |
+| `file-triggers` | Structured tool payload paths and patch headers matched during `PreToolUse` |
 
-When the hook finds a match, it prepends `/skill-name` to the prompt and injects a forced-eval checkpoint, achieving ~84% invocation rates. See [skill-matcher-patterns.md](skill-matcher-patterns.md) for scoring details, cache behavior, and deduplication.
+When the hook finds a prompt match, it records the skill as pending and injects model-facing context. `PreToolUse` then allows an observable skill load and blocks governed work only when the tool call is not a skill load. See [skill-matcher-patterns.md](skill-matcher-patterns.md) for scoring details and state behavior.
 
 ### Layer 2: Claude's Native Matching (Secondary, Advisory)
 
@@ -44,7 +44,7 @@ Claude also reads skill metadata (name + description) at startup and may invoke 
 
 ### What This Means for Skill Authors
 
-1. **Optimize metadata for the hook first** — `keywords`, `intent-patterns`, and `file-triggers` are the enforced discovery path
+1. **Optimize metadata for the hook first** — `keywords` and `file-triggers` are the enforced discovery path
 2. **Descriptions still matter** — They're Claude's native signal and catch intent the hook misses
 3. **Trigger phrases matter** — Include words users actually say in both `keywords` and `description`
 4. **Capabilities must be stated** — Claude can't infer unstated abilities from either layer

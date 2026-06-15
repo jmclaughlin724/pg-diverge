@@ -11,13 +11,6 @@ metadata:
     - tech debt
     - roadmap
     - audit findings
-  intent-patterns:
-    - "audit.*codebase"
-    - "find.*improvement"
-    - "improvement.*plan"
-    - "implementation.*plan"
-    - "where.*take.*project"
-    - "roadmap|next.*features"
   version: "1.0.0"
 ---
 

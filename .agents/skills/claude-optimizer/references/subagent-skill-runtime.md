@@ -1,6 +1,6 @@
 # Subagent Skill Runtime Contract
 
-How subagents load skills at startup vs. runtime, and how this interacts with the repo's path-trigger `skill-matcher.ts` gate during parallel orchestration. Reference detail extracted from [subagent-configuration.md § skills](subagent-configuration.md) and [agents-patterns.md § Agent Frontmatter Reference](agents-patterns.md). The parent docs link here; this file holds the canonical runtime contract.
+How subagents load skills at startup vs. runtime, and how this interacts with the repo's path-trigger agent hook gate during parallel orchestration. Reference detail extracted from [subagent-configuration.md § skills](subagent-configuration.md) and [agents-patterns.md § Agent Frontmatter Reference](agents-patterns.md). The parent docs link here; this file holds the canonical runtime contract.
 
 > **Sources:** [Claude Code Sub-Agents § Preload skills](https:supaschema/supaschema/code.claude.comsupaschema/docssupaschema/ensupaschema/sub-agents#preload-skills-into-subagents), [Claude Code Skills § Run skills in a subagent](https:supaschema/supaschema/code.claude.comsupaschema/docssupaschema/ensupaschema/skills#run-skills-in-a-subagent), and verified repo behavior (2026-06-03).
 
@@ -39,11 +39,11 @@ A subagent can call `Skill({ skill: "..." })` only when at least one of:
 
 When `tools:` is set to an explicit allowlist that does NOT include `Skill`, the subagent has no way to load a skill at runtime. The framework filters the tool inventory by the listed names before exposing it to the subagent.
 
-If violated, any hook that demands `Skill({ skill: "X" })` as a precondition (e.g., `skill-matcher.ts gate-pre` blocking on a path trigger) deadlocks the subagent: the gate fires on every `Edit`supaschema/`Write`supaschema/`Bash` call, the `Skill` tool is unreachable, and the subagent exits with a "blocked: Skill tool unavailable" message. The orchestrator must then re-do the work in the parent session (where `Skill` is available).
+If violated, any hook that demands `Skill({ skill: "X" })` or an observable `SKILL.md` read as a precondition can deadlock the subagent: the gate fires on governed tool calls, the `Skill` tool or readable skill path is unreachable, and the subagent exits with a blocked-tool message. The orchestrator must then re-do the work in the parent session.
 
 ## Parallel-orchestration friction
 
-Path-trigger skill matching (the repo's `.claudesupaschema/hookssupaschema/skill-matchersupaschema/skill-matcher.ts`) does not distinguish parent sessions from subagents. Both fire the same gate when an `Edit`supaschema/`Write`supaschema/`Bash` call touches a file path that matches a skill's `file-triggers:` glob. In a parallel orchestration pattern (e.g., `supaschema/team` dispatching N workers each on a different slice of the repo):
+Path-trigger skill matching in `scripts/agent-hooks/skills.mjs` does not distinguish parent sessions from subagents. Both fire the same gate when a governed tool call touches a file path that matches a skill's `file-triggers:` glob. In a parallel orchestration pattern (e.g., `supaschema/team` dispatching N workers each on a different slice of the repo):
 
 - Each worker may touch files spanning multiple path-trigger globs (e.g., a worker editing both `appssupaschema/portalsupaschema/componentssupaschema/**supaschema/*.tsx` and `appssupaschema/portalsupaschema/libsupaschema/**supaschema/*.ts` triggers `react-composition` AND `tanstack-query` AND `supaschema-data`).
 - Predicting every trigger the worker will hit is brittle — the slice spans many subdirectories.
@@ -100,16 +100,14 @@ As of 2026-06-03, every agent definition in `.claudesupaschema/agentssupaschema/
 
 When adding a new agent, keep both `Skill` and `Read` in `tools:` unless there is a concrete reason to deny them (then use the opt-out marker the guard recognizes). Agents launched by `supaschema/team` or `supaschema/batch` must have `Skill` available — the path-trigger matcher fires on every Editsupaschema/Writesupaschema/Bash, and a missing `Skill` tool blocks the worker indefinitely.
 
-## Cascading skill gates
+## Cascading path-trigger gates
 
-A subagent that satisfies one path-trigger gate by calling `Skill({ skill: "X" })` may immediately face a second gate: skill X's body, once loaded into context, can keyword-match the skill matcher and pre-fire additional pending skills. The matcher rescores the prompt + tool input on every PreToolUse, so a freshly loaded skill body counts as fresh prompt content.
+A subagent that satisfies one path-trigger gate by calling `Skill({ skill: "X" })` may still face later gates when subsequent tool payload paths match other skills' `metadata.file-triggers`. The current matcher does not rescore loaded skill bodies, command prose, or arbitrary tool-input text as prompt evidence; only explicit prompt tokens, curated `metadata.keywords`, and structured file paths participate in deterministic enforcement.
 
-Observed in the 2026-05-09 `supaschema/team supaschema/simplify` orchestration: the `elegant` agent loaded `simplify` to pass the orchestration prompt's path triggers, then editing `appssupaschema/portalsupaschema/componentssupaschema/**supaschema/*.tsx` triggered `react-composition`, then editing `appssupaschema/portalsupaschema/libsupaschema/**supaschema/*.ts` triggered `tanstack-query` and `supaschema-data`. Each Edit blocked until the matched skill loaded.
-
-This is not a bug — it is the cascading-load contract. Each skill body adds context the agent should respect. Two operational notes:
+This is not a bug — it is the path-trigger contract. Each newly matched owner path can require its own skill before governed work continues. Two operational notes:
 
 - The agent must have `Skill` in `tools:` (or omit `tools:` entirely) to satisfy each gate. The same precondition as the runtime contract above.
-- The cascade can produce many small Skill loads in succession. If startup context is tight, prefer preloading the agent's known-required skills via `skills:` so the cascade only fires for unanticipated path triggers.
+- The cascade can produce many small Skill loads in succession. If startup context is tight, prefer preloading the agent's known-required skills via `skills:` so the cascade only fires for unanticipated path-triggered owners.
 
 ## `disable-model-invocation` interaction
 

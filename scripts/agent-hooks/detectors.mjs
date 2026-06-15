@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { addEvidence, setCorrections } from "./state.mjs";
+import { addEvidence, currentTurnState, setCorrections } from "./state.mjs";
 
 const verificationWords = ["verified", "tested", "passed", "green", "clean"];
 const completionWords = ["completed", "finished", "done", "implemented", "fixed"];
@@ -8,18 +8,23 @@ const deferralTerms = ["if you want", "would you like", "i can ", "i could ", "l
 const menuTerms = ["option 1", "option a", "choose", "which approach", "pick one"];
 const directTerms = ["execute", "implement", "fix", "update", "do it", "make the change"];
 const whitespacePattern = /\s+/;
+const exitedWithCodePattern = /(?:process\s+)?exited?\s+with\s+(?:exit\s+)?code\s+(-?\d+)/i;
+const exitCodePattern = /exit\s+code[:=]?\s*(-?\d+)/i;
 
 export function recordToolEvidence(payload, state) {
   const name = toolName(payload);
-  if (name !== "Bash") {
+  const command = toolCommand(payload);
+  if (!(isCommandTool(name) && command)) {
     return {};
   }
-  const command =
-    typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
   const success = toolSucceeded(payload);
+  if (success === undefined) {
+    return {};
+  }
   addEvidence(state, {
     command,
     kind: success ? "verified-command" : "failed-command",
+    outcome: success ? "success" : "failure",
     summary: success ? "verification command succeeded" : "tool command failed",
   });
   return {};
@@ -52,7 +57,7 @@ export function runResponseDetectors(payload, state) {
 }
 
 export function preToolEvidenceGate(payload, state) {
-  const pending = state.corrections.filter((item) =>
+  const pending = currentTurnState(state).corrections.filter((item) =>
     ["claim-without-evidence", "tool-failure-without-retry"].includes(item.id)
   );
   if (pending.length === 0 || toolName(payload) === "Bash") {
@@ -92,7 +97,7 @@ export function hedgeDensity(message) {
 export function completionClaimWithOpenItems(message, payload, state) {
   const hasCompletion = completionWords.some((term) => lower(message).includes(term));
   const openTasks = Array.isArray(payload?.background_tasks) && payload.background_tasks.length > 0;
-  const pendingSkills = Object.keys(state.pendingSkills).some(
+  const pendingSkills = Object.keys(currentTurnState(state).pendingSkills).some(
     (skill) => !state.invokedSkills[skill]
   );
   return hasCompletion && (openTasks || pendingSkills)
@@ -106,8 +111,8 @@ export function completionClaimWithOpenItems(message, payload, state) {
 
 export function claimWithoutEvidence(message, state, transcript = []) {
   const claimsVerification = verificationWords.some((term) => lower(message).includes(term));
-  const evidence = [...state.evidence, ...transcript].some(
-    (item) => item.kind === "verified-command"
+  const evidence = [...currentTurnState(state).evidence, ...transcript].some(
+    (item) => item.kind === "verified-command" || item.kind === "successful-command"
   );
   return claimsVerification && !evidence
     ? {
@@ -119,7 +124,9 @@ export function claimWithoutEvidence(message, state, transcript = []) {
 }
 
 export function decisionMenuAfterDirective(message, state) {
-  const direct = directTerms.some((term) => lower(state.lastPrompt).includes(term));
+  const direct = directTerms.some((term) =>
+    lower(currentTurnState(state).lastPrompt).includes(term)
+  );
   const menu = menuTerms.some((term) => lower(message).includes(term));
   return direct && menu
     ? {
@@ -139,12 +146,15 @@ export function deferralLanguage(message) {
 }
 
 export function toolFailureWithoutRetry(state) {
-  const lastFailure = [...state.evidence].reverse().find((item) => item.kind === "failed-command");
+  const evidence = currentTurnState(state).evidence;
+  const lastFailure = [...evidence].reverse().find(isActionableFailure);
   if (!lastFailure) {
     return;
   }
-  const laterSuccess = state.evidence.some(
-    (item) => item.kind === "verified-command" && item.at > lastFailure.at
+  const laterSuccess = evidence.some(
+    (item) =>
+      (item.kind === "verified-command" || item.kind === "successful-command") &&
+      item.at > lastFailure.at
   );
   return laterSuccess
     ? undefined
@@ -153,6 +163,10 @@ export function toolFailureWithoutRetry(state) {
         message:
           "A verification command failed and no later successful verification evidence is recorded.",
       };
+}
+
+function isActionableFailure(item) {
+  return item.kind === "failed-command" && item.outcome === "failure";
 }
 
 function transcriptEvidence(payload) {
@@ -177,18 +191,99 @@ function transcriptEvidence(payload) {
 }
 
 function toolSucceeded(payload) {
-  const response = payload?.tool_response ?? payload?.tool_output ?? {};
-  if (typeof response?.exit_code === "number") {
-    return response.exit_code === 0;
+  const response =
+    payload?.tool_response ?? payload?.tool_output ?? payload?.tool_result ?? payload?.response;
+  return toolOutcome(response);
+}
+
+function isCommandTool(name) {
+  return ["Bash", "functions.exec_command", "exec_command"].includes(name);
+}
+
+function toolCommand(payload) {
+  const input = payload?.tool_input ?? {};
+  for (const key of ["command", "cmd"]) {
+    if (typeof input[key] === "string") {
+      return input[key];
+    }
   }
-  if (typeof response?.status === "string") {
-    return response.status === "success" || response.status === "ok";
-  }
-  return false;
+  return "";
 }
 
 function finalMessage(payload) {
   return typeof payload?.last_assistant_message === "string" ? payload.last_assistant_message : "";
+}
+
+function toolOutcome(value) {
+  if (value === null || value === undefined) {
+    return;
+  }
+  if (typeof value === "string") {
+    return stringOutcome(value);
+  }
+  if (typeof value !== "object") {
+    return;
+  }
+  const direct = directOutcome(value);
+  if (direct !== undefined) {
+    return direct;
+  }
+  for (const child of childValues(value)) {
+    const outcome = toolOutcome(child);
+    if (outcome !== undefined) {
+      return outcome;
+    }
+  }
+}
+
+function directOutcome(value) {
+  for (const key of ["exit_code", "exitCode", "exit_code_or_signal", "code"]) {
+    if (typeof value?.[key] === "number") {
+      return value[key] === 0;
+    }
+  }
+  for (const key of ["success", "ok"]) {
+    if (typeof value?.[key] === "boolean") {
+      return value[key];
+    }
+  }
+  if (typeof value?.is_error === "boolean") {
+    return !value.is_error;
+  }
+  if (typeof value?.interrupted === "boolean" && value.interrupted) {
+    return false;
+  }
+  if (typeof value?.status === "string") {
+    return statusOutcome(value.status);
+  }
+  if (typeof value?.outcome === "string") {
+    return statusOutcome(value.outcome);
+  }
+}
+
+function statusOutcome(status) {
+  const normalized = lower(status);
+  if (["success", "ok", "completed", "complete"].includes(normalized)) {
+    return true;
+  }
+  if (["error", "failed", "failure", "cancelled", "canceled"].includes(normalized)) {
+    return false;
+  }
+}
+
+function stringOutcome(text) {
+  const exitMatch = text.match(exitedWithCodePattern) ?? text.match(exitCodePattern);
+  if (exitMatch?.[1]) {
+    return Number(exitMatch[1]) === 0;
+  }
+  return statusOutcome(text.trim());
+}
+
+function childValues(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return Object.values(value);
 }
 
 function toolName(payload) {

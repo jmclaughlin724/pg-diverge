@@ -1,5 +1,9 @@
 # supaschema
 
+<p align="center">
+  <img src="docs/images/brand/supaschema-logo-readme.png" alt="supaschema logo" width="720">
+</p>
+
 [![CI](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml/badge.svg)](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/supaschema)](https://www.npmjs.com/package/supaschema) [![npm downloads](https://img.shields.io/npm/dm/supaschema)](https://www.npmjs.com/package/supaschema) [![node](https://img.shields.io/node/v/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/package.json) [![license](https://img.shields.io/npm/l/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/LICENSE) [![codecov](https://codecov.io/gh/jmclaughlin724/supaschema/branch/main/graph/badge.svg)](https://codecov.io/gh/jmclaughlin724/supaschema) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jmclaughlin724/supaschema/badge)](https://scorecard.dev/viewer/?uri=github.com/jmclaughlin724/supaschema) [![install size](https://packagephobia.com/badge?p=supaschema)](https://packagephobia.com/result?p=supaschema)
 
 [Documentation](https://supaschema.com/docs) · [Setup](https://supaschema.com/docs/setup) · [Quickstart](https://supaschema.com/docs/quickstart) · [Benchmarks](https://supaschema.com/docs/benchmarks) · [Supabase CLI comparison](https://supaschema.com/docs/comparisons/supaschema-vs-supabase-cli) · [FAQ](https://supaschema.com/docs/faq)

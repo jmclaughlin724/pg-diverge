@@ -28,8 +28,6 @@ description: "Use when [specific trigger]. Delivers [outcome] by [approach] whil
 metadata:
   keywords:
     - "{name}"
-  intent-patterns:
-    - "[verb].*{name.replace('-', '.*')}"
 ---
 
 # {title}

@@ -1,0 +1,73 @@
+---
+title: "Brand assets"
+description: "Where supaschema logo and brand images live, and how to use them across Mintlify, GitHub, README, and generated visuals."
+keywords: ["brand assets","logo","favicon","social preview","Mintlify","GitHub"]
+---
+
+Use this page when adding, replacing, or wiring supaschema logo and brand assets.
+
+## Asset locations
+
+Committed public brand assets live under `docs/images/brand/`.
+
+| Asset | Use |
+| --- | --- |
+| `supaschema-logo-light.png` | Mintlify logo for light mode. |
+| `supaschema-logo-dark.png` | Mintlify logo for dark mode. |
+| `supaschema-logo-readme.png` | GitHub README logo with a solid background for light and dark GitHub themes. |
+| `supaschema-mark.png` | Square 1:1 emblem for icon and favicon derivatives. |
+| `favicon.png` | Mintlify favicon. |
+| `github-social-preview.png` | Repository social preview uploaded in GitHub settings. |
+| `mintlify-og-background.png` | Mintlify social thumbnail background. |
+
+<Warning>
+  Do not commit Photoshop source files or oversized source PNGs under `docs/`.
+  The `docs` directory is part of the npm package allowlist.
+</Warning>
+
+## Mintlify usage
+
+Mintlify branding is configured in `docs/docs.json`.
+
+Use root-relative paths for docs assets:
+
+- `logo.light` points to `/images/brand/supaschema-logo-light.png`.
+- `logo.dark` points to `/images/brand/supaschema-logo-dark.png`.
+- `favicon` points to `/images/brand/favicon.png`.
+- `thumbnails.background` points to `/images/brand/mintlify-og-background.png`.
+
+Prefer `thumbnails.background` for social previews. It keeps Mintlify's generated page title and description overlays. Use a global `seo.metatags["og:image"]` only when every page should use the exact same static image.
+
+<Color variant="table">
+  <Color.Row title="Brand">
+    <Color.Item name="primary" value="#A91616" />
+    <Color.Item name="dark" value="#C2410C" />
+    <Color.Item name="light" value="#FACC15" />
+  </Color.Row>
+</Color>
+
+## GitHub usage
+
+The root README uses `docs/images/brand/supaschema-logo-readme.png` with a repo-relative path. GitHub rewrites relative image paths for the active branch, so keep README images repo-relative instead of using docs-root `/images/**` paths.
+
+Upload `docs/images/brand/github-social-preview.png` manually in the repository's **Settings** page under **Social preview**. GitHub does not automatically read that file from the repository.
+
+<Frame caption="GitHub social preview">
+  <img src="/images/brand/github-social-preview.png" alt="supaschema logo centered on a dark social preview background" />
+</Frame>
+
+## Generated visuals
+
+Generated benchmark and concept images stay in their existing directories:
+
+- `docs/images/benchmarks/**`
+- `docs/images/concepts/**`
+
+Do not hand-edit those SVGs. Update the generator source, then regenerate:
+
+```bash
+npm run diagrams
+npm run bench:plot:docs
+```
+
+Brand colors for generated charts and concept diagrams are centralized in `benchmarks/plot-lib.js`.

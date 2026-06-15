@@ -10,6 +10,8 @@ __pycache__
 .tmp
 api-docs
 benchmarks/results
+/database.types.ts
+/database.zod.ts
 .DS_Store
 .envrc
 .codeatlas/

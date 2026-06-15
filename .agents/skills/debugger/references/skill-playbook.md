@@ -35,7 +35,7 @@ Stop on a high-confidence root cause (a specific error, a missing env var, a dec
 
 ## Code Failure Workflow
 
-1. **Scope before choosing commands.** Use Code Atlas first for repo-wide owner/impact/consumer/generated-surface evidence: `npm run code-atlas:query pre-edit <file>`, `npm run code-atlas:query impact <file>`, `npm run code-atlas:query entrypoints <filter>`, `npm run code-atlas:query health <filter>`; when MCP access is available, follow Rule 10's local `supaschema.code_atlas_query` policy before broad source reads.
+1. **Scope before choosing commands.** Use Code Atlas first for repo-wide owner/impact/consumer/generated-surface evidence: `npm run code-atlas:query -- trace-change <target> --json`, `npm run code-atlas:query -- pre-edit <file> --json`, `npm run code-atlas:query -- consumers <file> --json`, or `npm run code-atlas:query -- health <filter> --json`; when MCP access is available, follow Rule 10's local `supaschema.code_atlas_query` policy before broad source reads.
 2. **Capture the full error surface** with the real gates:
    - `npm run typecheck` (`tsc` over `tsconfig.src.json` + `tsconfig.tools.json`) for TS errors; route by code — `TS1484`/`TS1485` (type-only import needed under `verbatimModuleSyntax` → add `import type`), `TS2305`/`TS2724` (missing export from `dist/` — rebuild before editing consumers), `TS2345`/`TS2339` (shape mismatch — check the source model / generated types).
    - `npm run lint` (`ultracite check .`) / `npm run lint:ci` (`biome ci .`) for lint/format; chain to the `ultracite` skill for rule specifics.

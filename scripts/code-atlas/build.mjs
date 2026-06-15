@@ -1,99 +1,43 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { forEachNode, parseScript, ts } from "../guards/lib/ast-utils.js";
 import { dottedName, parseSql, relName, stmtKind } from "../guards/lib/sql-ast.js";
+import {
+  CACHE_FORMAT,
+  CODE_EXTENSIONS,
+  createAtlasEnvelope,
+  dbObjectId,
+  extensionFor,
+  fileId,
+  languageFor,
+  OUTPUT_PATH,
+  ROOT,
+  ROUTE_OWNERS,
+  SCHEMA_VERSION,
+  trimExtension,
+} from "./lib/config.mjs";
+import {
+  atomicWriteJson,
+  contentDigest,
+  existsRel,
+  gitFiles,
+  gitHead,
+  inputFingerprint,
+  readText,
+  safeJson,
+} from "./lib/files.mjs";
+import { createAtlasGraph, finalizeAtlas as finalizeGraph } from "./lib/graph.mjs";
+import { commandFileTargets, packageNameFromSpecifier, resolveImport } from "./lib/resolve.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const OUTPUT_PATH = path.join(ROOT, ".tmp", "code-atlas", "atlas.json");
+let atlas;
+let graph;
 
-const ACTIVE_PREFIXES = [
-  "src/",
-  "tests/",
-  "scripts/",
-  "docs/",
-  "examples/",
-  "corpus/",
-  "benchmarks/",
-  "bin/",
-  "cloudflare/",
-  "services/",
-  ".github/workflows/",
-  ".claude/rules/",
-  ".claude/skills/code-atlas/",
-  ".claude/skills/fastmcp/",
-  ".claude/skills/fastmcp-client-cli/",
-  ".claude/skills/supaschema/",
-  ".claude/skills/upstream/",
-  ".claude/hooks/",
-  ".codex/rules/",
-  ".codex/skills/code-atlas/",
-  ".codex/skills/fastmcp/",
-  ".codex/skills/fastmcp-client-cli/",
-  ".codex/skills/supaschema/",
-  ".codex/skills/upstream/",
-  ".codex/hooks/",
-  ".agents/skills/code-atlas/",
-  ".agents/skills/fastmcp/",
-  ".agents/skills/fastmcp-client-cli/",
-  ".agents/skills/supaschema/",
-  ".agents/skills/upstream/",
-];
-const ACTIVE_FILES = [
-  "package.json",
-  "package-lock.json",
-  "pyproject.toml",
-  "uv.lock",
-  "fastmcp.json",
-  "tsconfig.json",
-  "tsconfig.src.json",
-  "tsconfig.tools.json",
-  "biome.jsonc",
-  "supaschema.config.json",
-  "wrangler.toml",
-  "action.yml",
-  "AGENTS.md",
-  "CLAUDE.md",
-  ".mcp.json",
-  ".claude/cclsp.json",
-  ".claude/settings.json",
-  ".codex/config.toml",
-  ".codex/hooks.json",
-  "lefthook.yml",
-];
-const DENY_SEGMENTS = new Set([
-  ".git",
-  "node_modules",
-  ".next",
-  ".turbo",
-  ".venv",
-  "__pycache__",
-  "dist",
-  "build",
-  "coverage",
-  ".tmp",
-  "plans",
-]);
-const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
-const ROUTE_OWNERS = new Set(["page", "route"]);
-
-const atlas = {
-  version: 1,
-  generatedAt: new Date().toISOString(),
-  root: ROOT,
-  nodes: [],
-  edges: [],
-  diagnostics: [],
-  summary: {},
-};
-
-const nodeIndex = new Map();
-const edgeKeys = new Set();
-
-async function main() {
+export async function buildCodeAtlas({ write = true } = {}) {
+  atlas = createAtlasEnvelope();
+  graph = createAtlasGraph(atlas);
   const files = gitFiles();
   for (const file of files) {
     addFileNode(atlas, file);
@@ -107,81 +51,25 @@ async function main() {
   mergePython(atlas, files);
   collectManifests(atlas, files);
   finalizeAtlas(atlas);
-  fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
-  fs.writeFileSync(OUTPUT_PATH, `${JSON.stringify(atlas, null, 2)}\n`);
+  if (write) {
+    atomicWriteJson(OUTPUT_PATH, atlas);
+  }
+  return atlas;
+}
+
+async function main() {
+  const built = await buildCodeAtlas({ write: true });
   process.stdout.write(
-    `CODE_ATLAS_BUILT nodes=${atlas.nodes.length} edges=${atlas.edges.length}\n`
+    `CODE_ATLAS_BUILT nodes=${built.nodes.length} edges=${built.edges.length}\n`
   );
 }
 
-function gitFiles() {
-  const result = spawnSync(
-    "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    {
-      cwd: ROOT,
-      encoding: "utf8",
-    }
-  );
-  if (result.status !== 0) {
-    throw new Error(result.stderr || "git ls-files failed");
-  }
-  return result.stdout.split("\0").filter(Boolean).filter(isActivePath).filter(existsRel).sort();
+function addNode(_targetAtlas, node) {
+  return graph.addNode(node);
 }
 
-function existsRel(file) {
-  return fs.existsSync(path.join(ROOT, file));
-}
-
-function isActivePath(file) {
-  if (ACTIVE_FILES.includes(file)) {
-    return true;
-  }
-  if (!ACTIVE_PREFIXES.some((prefix) => file.startsWith(prefix))) {
-    return false;
-  }
-  return !file.split("/").some((segment) => DENY_SEGMENTS.has(segment));
-}
-
-function addNode(targetAtlas, node) {
-  const id = node.id;
-  if (!id) {
-    throw new Error("atlas node missing id");
-  }
-  const existing = nodeIndex.get(id);
-  if (!existing) {
-    const next = { ...node };
-    nodeIndex.set(id, next);
-    targetAtlas.nodes.push(next);
-    return next;
-  }
-  for (const [key, value] of Object.entries(node)) {
-    if (value === undefined || value === null || value === "") {
-      continue;
-    }
-    if (Array.isArray(value)) {
-      const merged = new Set([...(Array.isArray(existing[key]) ? existing[key] : []), ...value]);
-      existing[key] = [...merged].sort();
-    } else if (typeof value === "object") {
-      existing[key] = { ...(existing[key] ?? {}), ...value };
-    } else if (existing[key] === undefined || existing[key] === null || existing[key] === "") {
-      existing[key] = value;
-    }
-  }
-  return existing;
-}
-
-function addEdge(targetAtlas, edge) {
-  if (!(edge.from && edge.to && edge.type)) {
-    throw new Error("atlas edge missing from, to, or type");
-  }
-  const evidence = edge.evidence ?? "";
-  const key = `${edge.from}\0${edge.to}\0${edge.type}\0${evidence}`;
-  if (edgeKeys.has(key)) {
-    return;
-  }
-  edgeKeys.add(key);
-  targetAtlas.edges.push({ ...edge, evidence });
+function addEdge(_targetAtlas, edge) {
+  graph.addEdge(edge);
 }
 
 function addFileNode(targetAtlas, file) {
@@ -191,10 +79,13 @@ function addFileNode(targetAtlas, file) {
     name: path.basename(file),
     path: file,
     extension: extensionFor(file),
+    language: languageFor(file),
+    contentDigest: contentDigest(file),
   });
 }
 
 function scanPackageJsons(targetAtlas, files) {
+  const fileSet = new Set(files);
   for (const file of files.filter((candidate) => candidate.endsWith("package.json"))) {
     const parsed = readJson(file);
     if (!parsed?.name) {
@@ -237,6 +128,34 @@ function scanPackageJsons(targetAtlas, files) {
         });
       }
     }
+    for (const [name, command] of Object.entries(parsed.scripts ?? {})) {
+      if (typeof command !== "string") {
+        continue;
+      }
+      const scriptId = `package_script:${parsed.name}#${name}`;
+      addNode(targetAtlas, {
+        id: scriptId,
+        kind: "package_script",
+        name,
+        package: parsed.name,
+        path: file,
+        command,
+      });
+      addEdge(targetAtlas, {
+        from: packageId,
+        to: scriptId,
+        type: "defines_script",
+        evidence: `${file}#scripts.${name}`,
+      });
+      for (const target of commandFileTargets(command, fileSet)) {
+        addEdge(targetAtlas, {
+          from: scriptId,
+          to: fileId(target),
+          type: "runs_file",
+          evidence: `${file}#scripts.${name}`,
+        });
+      }
+    }
   }
 }
 
@@ -263,7 +182,7 @@ function addPythonPackages(targetAtlas, files) {
 }
 
 function runTurboQuery(targetAtlas) {
-  if (!fs.existsSync(path.join(ROOT, "turbo.json"))) {
+  if (!existsRel("turbo.json")) {
     return;
   }
   const result = spawnSync("npx", ["--no", "turbo", "query", "ls", "--output=json"], {
@@ -322,6 +241,7 @@ function collectTs(targetAtlas, files) {
     collectImports(targetAtlas, file, sourceFile, fileSet);
     collectExports(targetAtlas, file, sourceFile);
     collectDbUsage(targetAtlas, file, sourceFile);
+    collectFileReferences(targetAtlas, file, sourceFile, fileSet);
   }
 }
 
@@ -464,7 +384,7 @@ function collectDbUsage(targetAtlas, file, sourceFile) {
 
 function addDbUsage(targetAtlas, file, dbKind, schema, name, evidence) {
   const id = dbObjectId(dbKind, schema, name);
-  addNode(atlas, {
+  addNode(targetAtlas, {
     id,
     kind: "db_object",
     dbKind,
@@ -476,6 +396,20 @@ function addDbUsage(targetAtlas, file, dbKind, schema, name, evidence) {
     to: id,
     type: "uses_db_object",
     evidence,
+  });
+}
+
+function collectFileReferences(targetAtlas, file, sourceFile, fileSet) {
+  forEachNode(sourceFile, (node) => {
+    if (!(isStringLike(node) && fileSet.has(node.text))) {
+      return;
+    }
+    addEdge(targetAtlas, {
+      from: fileId(file),
+      to: fileId(node.text),
+      type: "references_file",
+      evidence: "string literal",
+    });
   });
 }
 
@@ -596,7 +530,7 @@ function mergePython(targetAtlas, files) {
   const python = process.env.PYTHON ?? "python3";
   const result = spawnSync(python, ["scripts/code-atlas/build-python.py"], {
     cwd: ROOT,
-    input: JSON.stringify({ files: pythonFiles }),
+    input: JSON.stringify({ files: pythonFiles, allFiles: files }),
     encoding: "utf8",
   });
   if (result.status !== 0) {
@@ -681,17 +615,27 @@ function collectManifests(targetAtlas, files) {
 }
 
 function finalizeAtlas(targetAtlas) {
-  targetAtlas.nodes.sort((left, right) => left.id.localeCompare(right.id));
-  targetAtlas.edges.sort(edgeSortKey);
-  const byKind = {};
-  for (const node of targetAtlas.nodes) {
-    byKind[node.kind] = (byKind[node.kind] ?? 0) + 1;
-  }
-  targetAtlas.summary = {
-    nodes: targetAtlas.nodes.length,
-    edges: targetAtlas.edges.length,
-    byKind,
+  const files = targetAtlas.nodes
+    .filter((node) => node.kind === "file")
+    .map((node) => node.path)
+    .sort();
+  targetAtlas.metadata = {
+    cacheFormat: CACHE_FORMAT,
+    schemaVersion: SCHEMA_VERSION,
+    inputDigest: inputFingerprint(files),
+    inputCount: files.length,
+    gitHead: gitHead(),
+    sources: {
+      files:
+        "git ls-files --cached --others --exclude-standard filtered by scripts/code-atlas/lib/config.mjs",
+      typescript: "TypeScript compiler AST via scripts/guards/lib/ast-utils.js",
+      sql: "Postgres parse tree via scripts/guards/lib/sql-ast.js",
+      python: "Python ast sidecar at scripts/code-atlas/build-python.py",
+      manifests:
+        "package.json, pyproject.toml, wrangler.toml, GitHub Actions, repo MCP/config files",
+    },
   };
+  finalizeGraph(targetAtlas);
 }
 
 const sqlObjectHandlers = {
@@ -740,18 +684,6 @@ function readJson(file) {
       file,
       message: error instanceof Error ? error.message : String(error),
     });
-    return;
-  }
-}
-
-function readText(file) {
-  return fs.readFileSync(path.join(ROOT, file), "utf8");
-}
-
-function safeJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
     return;
   }
 }
@@ -862,30 +794,6 @@ function bindingNames(name) {
   return out;
 }
 
-function resolveImport(fromFile, specifier, fileSet) {
-  if (!specifier.startsWith(".")) {
-    return;
-  }
-  const base = path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), specifier));
-  const parsed = path.posix.parse(base);
-  const sourceEquivalent =
-    parsed.ext === ".js" || parsed.ext === ".jsx" || parsed.ext === ".mjs" || parsed.ext === ".cjs"
-      ? path.posix.join(parsed.dir, parsed.name)
-      : undefined;
-  const candidates = [
-    base,
-    ...(sourceEquivalent ? [`${sourceEquivalent}.ts`, `${sourceEquivalent}.tsx`] : []),
-    ...[...CODE_EXTENSIONS, ".json"].map((extension) => `${base}${extension}`),
-    ...[...CODE_EXTENSIONS].map((extension) => path.posix.join(base, `index${extension}`)),
-  ];
-  return candidates.find((candidate) => fileSet.has(candidate));
-}
-
-function packageNameFromSpecifier(specifier) {
-  const parts = specifier.split("/");
-  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
-}
-
 function isStringLike(node) {
   return Boolean(node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)));
 }
@@ -985,35 +893,9 @@ function routeSegment(segment) {
   return [segment];
 }
 
-function fileId(file) {
-  return `file:${file}`;
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+    process.exit(1);
+  });
 }
-
-function dbObjectId(dbKind, schema, name) {
-  return `db_object:${dbKind}:${schema}.${name}`;
-}
-
-function extensionFor(file) {
-  const extension = path.extname(file).slice(1).toLowerCase();
-  if (extension) {
-    return extension;
-  }
-  const basename = path.basename(file).toLowerCase();
-  return basename === "dockerfile" ? "dockerfile" : "";
-}
-
-function trimExtension(file) {
-  const extension = path.extname(file);
-  return extension ? file.slice(0, -extension.length) : file;
-}
-
-function edgeSortKey(left, right) {
-  return `${left.from}\0${left.to}\0${left.type}\0${left.evidence}`.localeCompare(
-    `${right.from}\0${right.to}\0${right.type}\0${right.evidence}`
-  );
-}
-
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
-  process.exit(1);
-});

@@ -146,6 +146,20 @@ async def test_code_atlas_query_exposes_local_graph() -> None:
     )
 
 
+async def test_code_atlas_query_exposes_trace_change() -> None:
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool(
+            "code_atlas_query",
+            {"kind": "trace-change", "value": "services/agent-mcp/supaschema_agent_mcp/server.py"},
+        )
+    payload = result.data
+
+    assert payload["ok"] is True
+    assert payload["stdout"]["kind"] == "trace-change"
+    assert payload["stdout"]["owners"]
+    assert payload["stdout"]["verification"]["commands"]
+
+
 async def test_repo_context_query_searches_allowlisted_repo_files() -> None:
     async with Client(transport=mcp) as client:
         result = await client.call_tool(

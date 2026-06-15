@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { currentTurnState } from "./state.mjs";
 
 const defaultRoot = path.resolve(".");
-const frontmatterLinePattern = /\r?\n/;
 const toolGateSet = new Set([
   "Agent",
   "Bash",
@@ -18,11 +18,30 @@ const toolGateSet = new Set([
   "Write",
   "apply_patch",
   "edit_file",
+  "exec_command",
+  "functions.exec_command",
 ]);
-const observableLoadTools = new Set(["Read", "Skill"]);
 const patchPrefixes = ["*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "];
-const quoteEdgePattern = /^["']|["']$/g;
-const wordSplitPattern = /[^a-z0-9_.-]+/;
+const lowSignalPromptTerms = new Set([
+  "change",
+  "check",
+  "correct",
+  "done",
+  "fix",
+  "implement",
+  "issue",
+  "plan",
+  "task",
+  "test",
+  "that",
+  "this",
+  "update",
+  "use",
+  "verify",
+  "with",
+  "without",
+  "work",
+]);
 
 export function discoverSkills(root = defaultRoot, runtime = "claude") {
   const skillRoot = path.join(root, runtime === "codex" ? ".codex" : ".claude", "skills");
@@ -49,11 +68,12 @@ export function discoverSkills(root = defaultRoot, runtime = "claude") {
 
 export function updatePromptSkills(payload, state, options = {}) {
   const prompt = promptText(payload);
-  state.lastPrompt = prompt;
+  const turn = currentTurnState(state);
+  turn.lastPrompt = prompt;
   const matched = scorePrompt(prompt, discoverSkills(options.root, options.runtime));
   for (const skill of matched) {
     if (!state.invokedSkills[skill.name]) {
-      state.pendingSkills[skill.name] = {
+      turn.pendingSkills[skill.name] = {
         reason: skill.reason,
         source: "UserPromptSubmit",
       };
@@ -65,19 +85,24 @@ export function updatePromptSkills(payload, state, options = {}) {
   return {
     contextParts: [
       [
-        "Deterministic skill loading required before governed work.",
+        "Deterministic skill loading requested before governed work.",
         ...matched.map((skill) => `- Load ${skill.name}: ${skill.reason}`),
-        "A slash command or inline token is only a request signal. The pending skill clears only after the Skill tool loads it or a SKILL.md file is read.",
+        "A slash command or inline token is only a request signal. The next governed tool call may load the skill; otherwise the pending skill clears only after the Skill tool loads it or a SKILL.md file is read.",
       ].join("\n"),
     ],
   };
 }
 
 export function updateToolSkills(payload, state, options = {}) {
+  const turn = currentTurnState(state);
   const matched = scoreTool(payload, discoverSkills(options.root, options.runtime), options.root);
+  const newlyPending = [];
   for (const skill of matched) {
     if (!state.invokedSkills[skill.name]) {
-      state.pendingSkills[skill.name] = {
+      if (!turn.pendingSkills[skill.name]) {
+        newlyPending.push(skill);
+      }
+      turn.pendingSkills[skill.name] = {
         reason: skill.reason,
         source: "PreToolUse",
       };
@@ -85,9 +110,9 @@ export function updateToolSkills(payload, state, options = {}) {
   }
   const pending = unresolvedPending(state);
   if (pending.length === 0 || !toolGateSet.has(toolName(payload)) || isObservableLoad(payload)) {
-    return matched.length > 0
+    return newlyPending.length > 0
       ? {
-          contextParts: matched.map(
+          contextParts: newlyPending.map(
             (skill) => `Skill ${skill.name} applies to this tool use: ${skill.reason}`
           ),
         }
@@ -95,7 +120,7 @@ export function updateToolSkills(payload, state, options = {}) {
   }
   return {
     deny: [
-      "Required skills are pending and have not been observably loaded.",
+      "Required skills are pending, and this governed tool call was not an observable skill load.",
       ...pending.map((item) => `- ${item.name}: ${item.reason}`),
       "Load each skill with the Skill tool or read its SKILL.md file, then retry the blocked tool.",
     ].join("\n"),
@@ -104,12 +129,14 @@ export function updateToolSkills(payload, state, options = {}) {
 
 export function recordObservableSkillLoad(payload, state, options = {}) {
   const loaded = observedLoadedSkills(payload, options.root);
+  const turn = currentTurnState(state);
   for (const skill of loaded) {
     state.invokedSkills[skill] = {
       at: new Date().toISOString(),
+      contextEpoch: state.contextEpoch,
       source: toolName(payload),
     };
-    delete state.pendingSkills[skill];
+    delete turn.pendingSkills[skill];
   }
   return loaded.length > 0
     ? {
@@ -119,7 +146,7 @@ export function recordObservableSkillLoad(payload, state, options = {}) {
 }
 
 export function unresolvedPending(state) {
-  return Object.entries(state.pendingSkills)
+  return Object.entries(currentTurnState(state).pendingSkills)
     .filter(([name]) => !state.invokedSkills[name])
     .map(([name, value]) => ({
       name,
@@ -138,15 +165,19 @@ export function observedLoadedSkills(payload, root = defaultRoot) {
     return typeof value === "string" && value.length > 0 ? [cleanSkillToken(value)] : [];
   }
   if (name === "Read") {
-    const file = payload?.tool_input?.file_path ?? payload?.tool_input?.path;
-    const skill = skillFromSkillPath(typeof file === "string" ? file : "", root);
-    return skill ? [skill] : [];
+    return skillsFromPayloadPaths(payload, root);
+  }
+  if (name.startsWith("mcp__")) {
+    return skillsFromPayloadPaths(payload, root);
+  }
+  if (isCommandTool(name)) {
+    return skillsFromCommand(payload, root);
   }
   return [];
 }
 
 export function isObservableLoad(payload) {
-  return observableLoadTools.has(toolName(payload)) && observedLoadedSkills(payload).length > 0;
+  return observedLoadedSkills(payload).length > 0;
 }
 
 export function promptText(payload) {
@@ -169,16 +200,11 @@ function scorePrompt(prompt, skills) {
   const normalized = prompt.toLowerCase();
   const out = [];
   for (const skill of skills) {
-    const terms = [
-      skill.name,
-      ...skill.keywords,
-      ...words(skill.description),
-      ...words(skill.whenToUse),
-    ].filter((term) => term.length >= 4);
-    const hits = unique(terms).filter((term) => normalized.includes(term.toLowerCase()));
-    if (normalized.startsWith(`/${skill.name}`) || normalized.includes(`$${skill.name}`)) {
+    const hits = [];
+    if (promptNamesSkill(normalized, skill.name)) {
       hits.push(skill.name);
     }
+    hits.push(...matchingKeywords(normalized, skill.keywords));
     if (hits.length > 0) {
       out.push({
         name: skill.name,
@@ -189,22 +215,62 @@ function scorePrompt(prompt, skills) {
   return uniqueByName(out).slice(0, 5);
 }
 
+function promptNamesSkill(prompt, name) {
+  const normalizedName = name.toLowerCase();
+  if (promptHasDelimitedTerm(prompt, `$${normalizedName}`)) {
+    return true;
+  }
+  if (promptHasDelimitedTerm(prompt, `/${normalizedName}`)) {
+    return true;
+  }
+  return (
+    !lowSignalPromptTerms.has(normalizedName) && promptHasDelimitedTerm(prompt, normalizedName)
+  );
+}
+
+function matchingKeywords(prompt, keywords) {
+  return unique(
+    keywords
+      .map((keyword) => keyword.toLowerCase().trim())
+      .filter((keyword) => keyword.length >= 3)
+      .filter((keyword) => !lowSignalPromptTerms.has(keyword))
+      .filter((keyword) => promptHasDelimitedTerm(prompt, keyword))
+  );
+}
+
+function promptHasDelimitedTerm(prompt, term) {
+  const normalizedTerm = term.toLowerCase().trim();
+  if (!normalizedTerm) {
+    return false;
+  }
+  let offset = 0;
+  while (offset < prompt.length) {
+    const index = prompt.indexOf(normalizedTerm, offset);
+    if (index === -1) {
+      return false;
+    }
+    const before = index === 0 ? "" : prompt[index - 1];
+    const afterIndex = index + normalizedTerm.length;
+    const after = afterIndex >= prompt.length ? "" : prompt[afterIndex];
+    if (isTermBoundary(before) && isTermBoundary(after)) {
+      return true;
+    }
+    offset = index + 1;
+  }
+  return false;
+}
+
 function scoreTool(payload, skills, root = defaultRoot) {
   const paths = payloadPaths(payload, root);
-  const command =
-    typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
   const out = [];
   for (const skill of skills) {
     const pathHits = skill.fileTriggers.filter((trigger) =>
       paths.some((candidate) => pathMatches(trigger, candidate))
     );
-    const keywordHits = skill.keywords.filter((keyword) =>
-      command.toLowerCase().includes(keyword.toLowerCase())
-    );
-    if (pathHits.length > 0 || keywordHits.length > 0) {
+    if (pathHits.length > 0) {
       out.push({
         name: skill.name,
-        reason: `matched tool signal: ${[...pathHits, ...keywordHits].slice(0, 4).join(", ")}`,
+        reason: `matched file trigger: ${pathHits.slice(0, 4).join(", ")}`,
       });
     }
   }
@@ -214,7 +280,7 @@ function scoreTool(payload, skills, root = defaultRoot) {
 function payloadPaths(payload, root = defaultRoot) {
   const input = payload?.tool_input ?? {};
   const out = [];
-  for (const key of ["file_path", "notebook_path", "path"]) {
+  for (const key of ["file_path", "notebook_path", "path", "target", "uri"]) {
     if (typeof input[key] === "string") {
       out.push(repoRelative(input[key], root));
     }
@@ -223,7 +289,87 @@ function payloadPaths(payload, root = defaultRoot) {
   if (typeof patch === "string") {
     out.push(...patchPaths(patch, root));
   }
-  return out.filter(Boolean);
+  out.push(...deepPathStrings(input, root));
+  return unique(out.filter(Boolean));
+}
+
+function skillsFromPayloadPaths(payload, root) {
+  return unique(
+    payloadPaths(payload, root)
+      .map((file) => skillFromSkillPath(file, root))
+      .filter(Boolean)
+  );
+}
+
+function skillsFromCommand(payload, root) {
+  const command = commandText(payload);
+  if (!commandReadsFiles(command)) {
+    return [];
+  }
+  return unique(
+    commandSkillPaths(command)
+      .map((file) => skillFromSkillPath(file, root))
+      .filter(Boolean)
+  );
+}
+
+function commandText(payload) {
+  const input = payload?.tool_input ?? {};
+  if (typeof input.command === "string") {
+    return input.command;
+  }
+  return typeof input.cmd === "string" ? input.cmd : "";
+}
+
+function commandReadsFiles(command) {
+  const first = firstCommandToken(command);
+  return ["bat", "cat", "head", "less", "more", "nl", "sed", "tail"].includes(first);
+}
+
+function commandSkillPaths(command) {
+  const paths = [];
+  for (const token of shellTokens(command)) {
+    if (token.includes("/skills/") && token.endsWith("/SKILL.md")) {
+      paths.push(token);
+    }
+  }
+  return paths;
+}
+
+function firstCommandToken(command) {
+  return shellTokens(command)[0] ?? "";
+}
+
+function shellTokens(command) {
+  const tokens = [];
+  let token = "";
+  let quote = "";
+  for (const char of command.trim()) {
+    if (quote) {
+      if (char === quote) {
+        quote = "";
+      } else {
+        token += char;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (isWhitespace(char)) {
+      if (token) {
+        tokens.push(token);
+        token = "";
+      }
+      continue;
+    }
+    token += char;
+  }
+  if (token) {
+    tokens.push(token);
+  }
+  return tokens;
 }
 
 function patchPaths(text, root) {
@@ -248,6 +394,32 @@ function skillFromSkillPath(value, root) {
   return parts[index + 1];
 }
 
+function deepPathStrings(value, root) {
+  const out = [];
+  const visit = (item, key = "") => {
+    if (typeof item === "string") {
+      if (key.includes("path") || key === "target" || key === "uri" || item.endsWith("SKILL.md")) {
+        out.push(repoRelative(item, root));
+      }
+      return;
+    }
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    if (Array.isArray(item)) {
+      for (const entry of item) {
+        visit(entry, key);
+      }
+      return;
+    }
+    for (const [nextKey, nextValue] of Object.entries(item)) {
+      visit(nextValue, nextKey.toLowerCase());
+    }
+  };
+  visit(value);
+  return out;
+}
+
 function repoRelative(value, root) {
   const normalized = value.split(path.sep).join("/");
   if (!path.isAbsolute(value)) {
@@ -263,8 +435,12 @@ function pathMatches(trigger, candidate) {
   return trigger === candidate;
 }
 
+function isCommandTool(name) {
+  return ["Bash", "functions.exec_command", "exec_command"].includes(name);
+}
+
 function parseFrontmatter(text) {
-  const lines = text.split(frontmatterLinePattern);
+  const lines = text.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
   if (lines[0] !== "---") {
     return {};
   }
@@ -332,15 +508,14 @@ function listSkillFiles(root) {
   return out.sort();
 }
 
-function words(value) {
-  return String(value ?? "")
-    .toLowerCase()
-    .split(wordSplitPattern)
-    .filter(Boolean);
-}
-
 function unquote(value) {
-  return value.trim().replace(quoteEdgePattern, "");
+  const trimmed = value.trim();
+  const first = trimmed[0];
+  const last = trimmed.at(-1);
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
 }
 
 function stringValue(value) {
@@ -354,6 +529,19 @@ function stringArray(value) {
 function cleanSkillToken(value) {
   const cleaned = value.startsWith("$") || value.startsWith("@") ? value.slice(1) : value;
   return cleaned.split("/").filter(Boolean).at(-1) ?? cleaned;
+}
+
+function isTermBoundary(char) {
+  return !(char && isAsciiLetterOrDigit(char));
+}
+
+function isAsciiLetterOrDigit(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+}
+
+function isWhitespace(char) {
+  return char === " " || char === "\n" || char === "\r" || char === "\t";
 }
 
 function unique(values) {

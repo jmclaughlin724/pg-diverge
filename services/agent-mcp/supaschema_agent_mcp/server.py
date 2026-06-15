@@ -142,6 +142,9 @@ CodeAtlasQueryKind = Literal[
     "entrypoints",
     "impact",
     "pre-edit",
+    "trace-change",
+    "file-owners",
+    "validate-coverage",
     "health",
     "mcp-status",
 ]

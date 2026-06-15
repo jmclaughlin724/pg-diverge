@@ -56,17 +56,15 @@ skill-namesupaschema/
 | Field | Guidance |
 | --- | --- |
 | `description` | strongest signal for Claude's **native** matching (the harness layer); the repo's enforced hook matcher scores the `metadata.*` fields below, not `description` — see [skill-matcher-patterns.md](skill-matcher-patterns.md) |
-| `metadata.keywords` | domain terms for keyword matching (1x per hit) |
-| `metadata.intent-patterns` | regex patterns for multi-word intent matching (1x per hit) |
-| `metadata.file-triggers` | glob patterns for file-path matching (2x per hit) |
-| `metadata.bash-triggers` | regex patterns for bash command matching (planned, not yet implemented in hook) |
-| `metadata.priority` | numeric display priority when multiple skills match equally |
+| `metadata.keywords` | narrow domain terms for prompt matching |
+| `metadata.file-triggers` | concrete owner paths for tool-scope matching |
+| `metadata.priority` | authoring/display context; not read by the current matcher |
 | `metadata.docs` | URLs to external documentation for the skill's domain |
 | `disable-model-invocation` | context-only: matches keywords but loads via Read, not Skill tool |
 | `user-invocable` | hide backgroundsupaschema/supporting skills from `supaschema/` when needed |
-| `validate` | anti-pattern rules — detect wrong patterns in file content and warnsupaschema/error |
-| `chainTo` | skill chaining — after invocation, queue a companion skill when a pattern matches |
-| `retrieval` | aliases, intents, entities — folded into keyword pool for richer discovery |
+| `validate` | inactive documentation-only notes; use guards/tests for enforcement |
+| `chainTo` | inactive documentation-only notes; not read by the current matcher |
+| `retrieval` | aliases, intents, entities for authoring context; not scored by the current hook matcher |
 | `context: fork` | use when the skill should run in an isolated subagent context |
 | `agent` | required partner when `context: fork` is set |
 
@@ -131,63 +129,13 @@ Bad descriptions:
 - preloading a `context: fork` skill when a normal skill would do
 - using a weak description and compensating with a verbose body
 
-## Advanced Frontmatter: validate, chainTo, retrieval
+## Optional Authoring Metadata
 
-These three top-level fields extend skill discovery and cross-skill intelligence. All are optional and parsed by the skill-matcher hook.
+The current hook matcher reads only explicit skill names, `metadata.keywords`, and `metadata.file-triggers`. It does not parse custom `validate` or `chainTo` blocks. Do not add regex-style skill metadata as enforcement; add a guard or test instead, and use structured parsing or AST helpers for code structure.
 
-### validate — Detect anti-patterns in file content
+### retrieval — Enrich authoring context
 
-Use `validate` when a skill's domain has common mistakes that should surface as warnings or errors when the model reads affected files.
-
-```yaml
-validate:
-  - pattern: '"pipeline"\s*:'
-    message: 'turbo.json "pipeline" was renamed to "tasks" in v2'
-    severity: error
-    skipIfFileContains: '"tasks"\s*:'
-    upgradeToSkill: turborepo
-    upgradeWhy: "Reload Turborepo skill for v2 migration guidance"
-```
-
-| Field | Required | Description |
-| --- | --- | --- |
-| `pattern` | Yes | Regex matched against file content |
-| `message` | Yes | Human-readable explanation |
-| `severity` | No | `error`, `warn` (default), or `recommended` |
-| `skipIfFileContains` | No | Regex — skip if file also matches this |
-| `upgradeToSkill` | No | Suggest loading this skill instead |
-| `upgradeWhy` | No | Reason for the skill upgrade |
-
-**When to add:** When you've seen the same mistake twice and it's detectable by regex. Don't add validate rules for things better caught by lint or typecheck.
-
-### chainTo — Automatically queue companion skills
-
-Use `chainTo` when invoking one skill often requires loading another. After Phase 3 removes the invoked skill from pending state, `evaluateChainTo()` tests the skill's chainTo patterns against the skill's own SKILL.md body text + the user's original prompt. Matched targets are queued into pending-skills, re-engaging the Phase 2 gate.
-
-```yaml
-chainTo:
-  - pattern: "@vercelsupaschema/analytics|@vercelsupaschema/speed-insights|instrumentation\\.(ts|js)"
-    targetSkill: observability
-    message: "Observability instrumentation detected — loading monitoring setup guidance."
-    skipIfFileContains: "packagessupaschema/observability|@supaschemasupaschema/observability"
-```
-
-| Field | Required | Description |
-| --- | --- | --- |
-| `pattern` | Yes | Regex matched against skill body + user prompt |
-| `targetSkill` | Yes | Skill directory name to queue |
-| `message` | No | Explanation shown when chaining |
-| `skipIfFileContains` | No | Regex — skip if the user prompt also matches this |
-
-`skipIfFileContains` is tested against the user prompt only, not the skill body. This prevents the skill's own prose references from triggering skip conditions.
-
-**When to add:** When domain A regularly crosses into domain B and the two domains stay distinct. Real examples in the repo: `debugger → observability`, `turbopack → next`, `prompt-creator → openai-docs`. Verify `targetSkill` matches a real skill directory name.
-
-**When NOT to add (consolidate instead):** If A's chainTo to B fires almost every time A loads — i.e., the two skills cover one library or domain split by surface (serversupaschema/clientsupaschema/test, frontendsupaschema/backend) — they are one skill. Merge them into a single skill with surface-prefixed references and let `file-triggers` + `intent-patterns` route within the consolidated body. Mirrors the progressive-disclosure rule for reference files: if two siblings load together every time, they should not be split.
-
-### retrieval — Enrich keyword discovery surface
-
-Use `retrieval` to add semantic signals that don't fit naturally into `keywords` or `intent-patterns`. All three arrays fold into the same scoring pool (1x per hit, identical to keywords).
+Use `retrieval` to document semantic signals that do not belong in deterministic prompt keywords. Retrieval is authoring context only in the current hook matcher.
 
 ```yaml
 retrieval:
@@ -213,7 +161,7 @@ retrieval:
 
 **keywords vs retrieval:** Use `keywords` for raw signal terms that don't need categorization. Use `retrieval` when the semantic grouping (alias supaschema/ intent supaschema/ entity) helps a skill author understand why each term is there.
 
-### Complete example with all three
+### Complete example
 
 ```yaml
 ---
@@ -226,21 +174,9 @@ metadata:
     - "stuck"
     - "frozen"
     - "timeout"
-  intent-patterns:
-    - "why.*(?:fail|broken|error)"
-    - "(?:it'?s|seems?).*(?:stuck|hung|frozen)"
   file-triggers:
     - "**supaschema/error.{tsx,ts}"
     - "**supaschema/instrumentation.{ts,js}"
-validate:
-  - pattern: "console\\.log\\(['\"]error"
-    message: "Console.log-only error handling — consider structured logging or Sentry"
-    severity: recommended
-    skipIfFileContains: "captureException|@sentrysupaschema/"
-chainTo:
-  - pattern: "@sentrysupaschema/|captureException"
-    targetSkill: sentry
-    message: "Sentry usage detected — loading production issue triage workflow."
 retrieval:
   aliases:
     - "troubleshooter"

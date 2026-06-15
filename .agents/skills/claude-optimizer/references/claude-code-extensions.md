@@ -40,7 +40,7 @@ Claude Code extends the Agent Skills specification with additional frontmatter f
 
 **⚠️ Claude Code Only**
 
-Context-only mode. The skill still participates in keyword/file-trigger matching via the `skill-matcher.ts` hook, but loads via `Read` of its SKILL.md instead of the `Skill` tool. Claude cannot auto-invoke the skill through its native description matching.
+Context-only mode. The skill still participates in keyword/file-trigger matching via the shared agent hook matcher, but loads via `Read` of its SKILL.md instead of the `Skill` tool. Claude cannot auto-invoke the skill through its native description matching.
 
 **Type:** `boolean` **Default:** `false`
 
@@ -346,7 +346,7 @@ Skills integrate via `<available_skills>` XML block in agent system prompts:
 | Activation | Full SKILL.md body | <5000 tokens | When Claude determines relevance |
 | On-demand | Reference files | Variable | When explicitly accessed |
 
-Skills with `disable-model-invocation: true` still participate in keyword/file-trigger matching via the `skill-matcher.ts` hook but load via `Read` of their SKILL.md instead of the `Skill` tool. Claude's native description matching does not auto-invoke them.
+Skills with `disable-model-invocation: true` still participate in keyword/file-trigger matching via the shared agent hook matcher but load via `Read` of their SKILL.md instead of the `Skill` tool. Claude's native description matching does not auto-invoke them.
 
 ### MCP Tool References
 

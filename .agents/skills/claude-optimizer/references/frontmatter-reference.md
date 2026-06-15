@@ -2,7 +2,7 @@
 
 Complete YAML frontmatter validation rules for Skills, Agents, and Commands as of April 2026.
 
-> **Source of truth:** <https://code.claude.com/docs/en/skills>. When that page contradicts this file, the official docs win — open a PR updating this reference. Fields flagged "Custom" are repo-only extensions parsed by `.claude/hooks/skill-matcher/skill-matcher.ts` and `scripts/llm-sync/sync-skill-targets.mjs`, not by Claude Code itself.
+> **Source of truth:** <https://code.claude.com/docs/en/skills>. When that page contradicts this file, the official docs win — open a PR updating this reference. Fields flagged "Custom" are repo-only extensions used by local authoring tools and the shared hook matcher where explicitly documented, not by Claude Code itself.
 
 ## Contents
 
@@ -84,15 +84,13 @@ Determines when Claude invokes the configuration. This is the most critical fiel
 | `model` | No | string | inherit | Model to use when this skill is active | Official |
 | `hooks` | No | object | - | Hooks scoped to this skill's lifecycle | Official |
 | `keywords` | No | array | - | (Inside `metadata`) Literal keyword terms for matching | Custom |
-| `intent-patterns` | No | array | - | (Inside `metadata`) Regex patterns for multi-word intent matching | Custom |
-| `file-triggers` | No | array | - | (Inside `metadata`) Glob patterns for file-path matching (2x weight) | Custom |
-| `bash-triggers` | No | array | - | (Inside `metadata`) Regex for bash commands (planned, not yet in hook) | Custom |
-| `priority` | No | number | - | (Inside `metadata`) Display priority for ordering | Custom |
+| `file-triggers` | No | array | - | (Inside `metadata`) File-path patterns for tool-scope matching | Custom |
+| `priority` | No | number | - | (Inside `metadata`) Authoring/display context; not read by the current matcher | Custom |
 | `docs` | No | array | - | (Inside `metadata`) URLs to external documentation | Custom |
 | `relatedSkills` | No | array | - | Skills that may be invoked alongside this one | Custom |
 | `category` | No | string | - | Primary category for smart categorization | Custom |
-| `validate` | No | array | - | File-content validation rules with regex patterns | Custom |
-| `chainTo` | No | array | - | Skill chaining rules — queue companion skills after invocation | Custom |
+| `validate` | No | array | - | Inactive repo-extension notes; use guards/tests for enforced validation | Custom |
+| `chainTo` | No | array | - | Inactive repo-extension notes; not read by the current hook matcher | Custom |
 | `retrieval` | No | object | - | Enhanced discovery metadata (aliases, intents, entities) | Custom |
 
 > **Note:** Fields marked "Custom" are project-specific additions not in official Anthropic documentation. Fields marked "Official" are from the [Skills documentation](https://code.claude.com/docs/en/skills).
@@ -154,9 +152,9 @@ allowed-tools: Bash(vercel *) Read Glob
 
 ### Repo-Custom Extensions — `validate`, `chainTo`, `retrieval`, `metadata.*`
 
-These are **not** part of the official Claude Code skill schema. They are parsed by `.claude/hooks/skill-matcher/skill-matcher.ts` and validated only when the explicit skill validator is requested.
+These are **not** part of the official Claude Code skill schema. The current shared hook matcher reads only `metadata.keywords` and `metadata.file-triggers`; other custom fields are validated only when the explicit skill validator is requested.
 
-See [skill-frontmatter-schema.md](skill-frontmatter-schema.md) for the formal validate / chainTo / retrieval spec, failure modes, and copy-paste templates. Future Anthropic field additions may collide with these names — treat them as project scoped until Anthropic documents equivalents.
+See [skill-frontmatter-schema.md](skill-frontmatter-schema.md) for the historical validate / chainTo / retrieval notes and the active retrieval template. Future Anthropic field additions may collide with these names — treat them as project scoped until Anthropic documents equivalents.
 
 ### Example
 
@@ -357,8 +355,7 @@ Preprocessing runs at **render time**, not via the Bash tool — `allowed-tools`
 - [ ] description lists specific capabilities; avoid XML tags so listings render cleanly
 - [ ] `paths` globs match at least one real source file if used
 - [ ] `allowed-tools` uses space-separated string OR YAML list (both accepted)
-- [ ] validate rules have valid regex in `pattern` and optional `skipIfFileContains`
-- [ ] chainTo rules reference real skill names in `targetSkill`
+- [ ] `validate` and `chainTo` are absent unless a task explicitly needs documentation-only historical notes
 - [ ] retrieval aliases, intents, and entities are string arrays (not nested objects)
 
 ### Agents
@@ -463,7 +460,7 @@ model: opus
 ### Related repo references
 
 - [dynamic-context-and-runtime.md](dynamic-context-and-runtime.md) — runtime features not covered by frontmatter alone
-- [skill-frontmatter-schema.md](skill-frontmatter-schema.md) — repo-custom `validate` / `chainTo` / `retrieval` formal schema
+- [skill-frontmatter-schema.md](skill-frontmatter-schema.md) — repo-custom retrieval template and historical `validate` / `chainTo` notes
 
 ### Validation
 

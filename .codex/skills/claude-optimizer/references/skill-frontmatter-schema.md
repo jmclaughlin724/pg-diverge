@@ -1,6 +1,6 @@
 # Skill Frontmatter Schema
 
-Formal schema for three optional authoring blocks a skill may carry in its frontmatter: `validate`, `chainTo`, and `retrieval`. These are documentation-only extensions to the official Claude Code skill frontmatter — they describe authoring intent and travel with the skill. In supaschema the skill router (`scripts/skills/skill-router.mjs`, invoked through `.claude/hooks/skill-*.mjs`) matches and gates skills by their official `description`/keywords; it does not currently parse these custom blocks. Treat the rules below as the schema to honor when an explicit skill validator is requested, and keep entries accurate so a future runtime can fold them in without rework.
+Formal schema for historical optional authoring blocks a skill may carry in its frontmatter: `validate`, `chainTo`, and `retrieval`. These are documentation-only extensions to the official Claude Code skill frontmatter — they describe authoring intent and travel with the skill. In supaschema the shared agent hook matcher (`scripts/agent-hooks/skills.mjs`) scores explicit skill names, `metadata.keywords`, and `metadata.file-triggers`; it does not parse these custom blocks. Do not add `validate` or `chainTo` to repo-managed skills as enforcement. Add a guard or test instead, and use structured parsing or AST helpers for code structure.
 
 Generated mirrors are produced by `scripts/skills/sync-llm.mjs` (`npm run sync:llm`), which owns the mapping from `.claude/**` source surfaces into Codex and `.agents` targets. It byte-copies the full `.claude/skills/**` tree into `.agents/skills/**` and `.codex/skills/**`, byte-copies `.claude/hooks/**` into `.codex/hooks/**`, renders `.claude/agents/**/*.md` into Codex-native `.codex/agents/**/*.toml`, and renders `.claude/rules/**/*.md` into comment-only `.codex/rules/**/*.rules` files.
 
@@ -8,14 +8,14 @@ Generated mirrors are produced by `scripts/skills/sync-llm.mjs` (`npm run sync:l
 
 ## `validate` — Anti-Pattern Detection
 
-Top-level array. Each entry detects a code anti-pattern in file content and warns or errors.
+Top-level array. Historical documentation-only notes for anti-patterns. The current runtime does not evaluate these entries.
 
 ```yaml
 validate:
-  - pattern: string # Required. Regex tested against file content (case-insensitive)
+  - pattern: string # Historical note only; not evaluated by the current runtime
     message: string # Required. Human-readable explanation
     severity: string # Optional. "error" | "warn" | "recommended". Default: "warn"
-    skipIfFileContains: string # Optional. Regex — skip rule if file also matches this
+    skipIfFileContains: string # Historical note only; not evaluated by the current runtime
     upgradeToSkill: string # Optional. Skill name to suggest instead. Must exist.
     upgradeWhy: string # Optional. Explanation for the upgrade suggestion
 ```
@@ -24,68 +24,43 @@ validate:
 
 | Field | Check | Failure Mode |
 | --- | --- | --- |
-| `pattern` | Must be a valid regex | Explicit validator errors; runtime silently drops |
+| `pattern` | String only | Current runtime ignores this field |
 | `message` | Must be present | Explicit validator errors |
 | `severity` | Must be `error`, `warn`, or `recommended` | Explicit validator errors; runtime defaults to `warn` |
-| `skipIfFileContains` | If present, must be a valid regex | Explicit validator errors; runtime silently drops |
+| `skipIfFileContains` | String only | Current runtime ignores this field |
 | `upgradeToSkill` | If present, must match a real skill directory name | Explicit validator errors |
 
-### Example
-
-```yaml
-validate:
-  - pattern: "pnpm |yarn "
-    message: "supaschema is single-package npm only; never introduce pnpm or yarn"
-    severity: error
-    upgradeToSkill: ultracite
-    upgradeWhy: "Load the repo lint/format/test runner conventions (ultracite over Biome, npm scripts)"
-  - pattern: "biome (check|ci|format)"
-    message: "Invoke Biome through Ultracite (npm run lint / lint:ci / format), not the raw biome CLI"
-    severity: warn
-    skipIfFileContains: "ultracite (check|fix|ci)"
-    upgradeToSkill: ultracite
-    upgradeWhy: "Reload the Ultracite policy for the correct wrapper commands"
-```
+Do not copy this block into new repo-managed skills. If a mistake should be prevented, add or extend a guard/test owned by the relevant rule.
 
 ---
 
 ## `chainTo` — Skill Chaining
 
-Top-level array. After a skill is invoked, the chain evaluator can compare its `chainTo` rules against the skill's own SKILL.md body text plus the user's original prompt. When a pattern matches, the target skill is added to the pending-skills queue so the gate re-engages, blocking further work until the chained skill is also invoked.
+Top-level array. Historical documentation-only notes for companion skills. The current runtime does not evaluate these entries or enqueue companion skills from skill body text.
 
 ```yaml
 chainTo:
-  - pattern: string # Required. Regex tested against skill body + prompt (case-insensitive)
+  - pattern: string # Historical note only; not evaluated by the current runtime
     targetSkill: string # Required. Skill name to chain to. Must exist in catalog.
     message: string # Optional. Explanation shown when chaining
-    skipIfFileContains: string # Optional. Regex — skip chain if text also matches this
+    skipIfFileContains: string # Historical note only; not evaluated by the current runtime
 ```
 
 ### Validation Rules
 
 | Field | Check | Failure Mode |
 | --- | --- | --- |
-| `pattern` | Must be a valid regex | Explicit validator errors; runtime silently drops |
-| `targetSkill` | Must be present and match a real skill directory | Explicit validator errors; runtime drops entry |
-| `skipIfFileContains` | If present, must be a valid regex | Explicit validator errors; runtime silently drops |
+| `pattern` | String only | Current runtime ignores this field |
+| `targetSkill` | String only | Current runtime ignores this field |
+| `skipIfFileContains` | String only | Current runtime ignores this field |
 
-### Example
-
-```yaml
-chainTo:
-  - pattern: "SUPA_[A-Z_]+|schema (diff|tree)|migration"
-    targetSkill: supaschema
-    message: "Schema/migration intent — loading supaschema for the diff/check/verify workflow"
-  - pattern: "\\bruff\\b|\\bmypy\\b|\\bpytest\\b|services/agent-mcp"
-    targetSkill: python
-    message: "Python toolchain detected — loading the uv/ruff/mypy/pytest guidance"
-```
+Do not copy this block into new repo-managed skills. If two skills should load together regularly, consolidate the guidance or add explicit prompt keywords/file triggers to the correct owner.
 
 ---
 
 ## `retrieval` — Discovery Metadata
 
-Top-level object. Provides additional keyword signals intended to be folded into the scoring pool alongside `metadata.keywords` and `metadata.intent-patterns`. All three arrays score identically at 1x per hit.
+Top-level object. Provides authoring context for aliases, intents, and entities. The current hook matcher does not score retrieval entries; put deterministic prompt terms in `metadata.keywords`.
 
 ```yaml
 retrieval:
@@ -125,7 +100,7 @@ retrieval:
 
 ## Quick Copy Template
 
-Minimal template with all three fields for new skills:
+Minimal template for new skills. Keep deterministic routing in active `metadata.*` fields; add guards or tests for enforcement.
 
 ```yaml
 ---
@@ -135,18 +110,8 @@ metadata:
   keywords:
     - term1
     - term2
-  intent-patterns:
-    - "do.*something.*specific"
   file-triggers:
     - "src/**"
-validate:
-  - pattern: "some-antipattern"
-    message: "Explanation of why this is wrong"
-    severity: warn
-chainTo:
-  - pattern: "related-pattern"
-    targetSkill: other-skill
-    message: "Loading related guidance"
 retrieval:
   aliases:
     - alternative name
@@ -163,8 +128,8 @@ retrieval:
 
 | Layer | What It Checks |
 | --- | --- |
-| Explicit skill validator | Schema validation: types, required fields, regex validity, skill name existence |
-| `skill-router.mjs` runtime | Skill discovery and gate/inject enforcement via the `.claude/hooks/skill-*.mjs` wrappers; custom `validate`/`chainTo`/`retrieval` blocks are not read by the current router |
+| Explicit skill validator | Optional authoring check only; enforcement belongs in guards/tests |
+| `scripts/agent-hooks/skills.mjs` runtime | Skill discovery and gate/inject enforcement via shared Claude/Codex hook wrappers; custom `validate`/`chainTo`/`retrieval` blocks are not read by the current matcher |
 | `npm run sync:llm` | Mapped Claude-to-Codex sync owned by `scripts/skills/sync-llm.mjs`; skill and hook directories are byte-copied, Claude agent frontmatter/body is rendered into Codex TOML, and Claude Markdown rules are rendered into comment-only Codex `.rules` files |
 
 Run `npm run sync:llm` as the closeout for any edit under `.claude/skills/**`, `.claude/hooks/**`, `.claude/agents/**`, or `.claude/rules/**` so generated Codex and `.agents` mirrors stay aligned to the canonical source.

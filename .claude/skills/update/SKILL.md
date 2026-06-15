@@ -1,6 +1,6 @@
 ---
 name: update
-description: "Audit and update existing repo documentation and context surfaces after code, architecture, or workflow changes: AGENTS, rules, skills, agents, hooks, scripts, commands, and generated-mirror sync. Consolidate duplicate guidance into one upstream-sourced owner."
+description: "Audit and update all impacted repo documentation, context, script, guard, consumer, dependency, and generated-mirror surfaces after code, architecture, workflow, lesson, or research changes. Consolidate duplicate guidance into one upstream-sourced owner."
 disable-model-invocation: false
 metadata:
   disable-model-invocation: false
@@ -19,10 +19,6 @@ metadata:
     - "context surfaces"
     - "upstream best practices"
     - "session lessons"
-  intent-patterns:
-    - "(?:audit|update|maintain|review).{0,30}(?:AGENTS|CLAUDE|\\.claude|claude config|codex config|context surface|repo docs|repo documentation)"
-    - "(?:codify|capture|prevent).{0,30}(?:lesson|gap|finding)"
-    - "(?:rule|skill|agent|hook|script|command).{0,30}(?:follow[- ]?through|prevention|documentation|guidance)"
 ---
 
 # Update
@@ -34,16 +30,17 @@ This skill is a direct execution contract. Use it only when the trigger matches,
 ## Use When
 
 - Audit and update existing repo documentation and context surfaces after code, architecture, or workflow changes: AGENTS, rules, skills, agents, hooks, scripts, commands, and generated-mirror sync.
+- Identify and correct every impacted file, folder, consumer surface, dependency reference, package boundary, script, guard, command, docs page, and generated mirror affected by a change, lesson learned, or research result.
 - Consolidate duplicate or redundant guidance into one upstream-sourced canonical owner, with rules as the default prevention owner.
 - Use this skill only for its named job; load a narrower owner skill when one exists.
 
 ## Direct Workflow
 
-1. Confirm the task matches the skill description and identify the owner files or external docs needed.
+1. Confirm the task matches the skill description and identify the canonical owner plus every impacted file, folder, consumer, dependency, docs, script, guard, package, and generated-surface owner that may need follow-through.
 2. Read [skill-playbook.md](references/skill-playbook.md) only for the sections needed by the current task.
-3. Execute the requested change or analysis in the canonical owner; do not patch generated mirrors by hand.
-4. Run the validation named by the playbook or the touched owner surface.
-5. Report only the owner changed, sync or validation run, and concrete blockers inside scope.
+3. Execute the requested change or analysis in the canonical owner and every confirmed impacted supporting owner; do not patch generated mirrors by hand.
+4. Run the validation named by the playbook or each touched owner surface.
+5. Report only the owners changed, sync or validation run, and concrete blockers inside scope.
 
 ## Detail Index
 
@@ -63,3 +60,4 @@ This skill is a direct execution contract. Use it only when the trigger matches,
 - Keep transient findings, incident notes, and task-local state out of `SKILL.md`.
 - Put bulky examples, provider variants, API specifics, and edge cases in `references/**`.
 - Add scripts only for deterministic repeat work that is safer to run than to retype.
+- Do not stop at the originally named file when the change invalidates related docs, scripts, guards, package consumers, generated mirrors, or dependency references.

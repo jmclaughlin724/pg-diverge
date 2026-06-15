@@ -4,6 +4,10 @@ import { assert, ok, readText } from "./lib/guard-utils.js";
 
 const guarded = [
   "scripts/code-atlas/build.mjs",
+  "scripts/code-atlas/lib/config.mjs",
+  "scripts/code-atlas/lib/files.mjs",
+  "scripts/code-atlas/lib/graph.mjs",
+  "scripts/code-atlas/lib/resolve.mjs",
   "scripts/code-atlas/query.mjs",
   "scripts/guards/lib/ast-utils.js",
   "scripts/guards/lib/sql-ast.js",

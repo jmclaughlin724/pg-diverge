@@ -129,6 +129,7 @@ describe("editor and language-server surfaces", () => {
         ".codex/hooks/auto-diff-on-schema-change.mjs",
         ".codex/hooks/block-generated-migration-edits.mjs",
         ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+        ".codex/hooks.json",
         ".codex/rules/supaschema.rules",
         ".codex/skills/supaschema",
       ])

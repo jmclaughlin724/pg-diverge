@@ -18,14 +18,6 @@ metadata:
     - "seems dead"
     - "stalled"
     - "supa diagnostic"
-  intent-patterns:
-    - "why.*(?:fail|broken|error)"
-    - "debug.*(?:ci|build|test|typecheck|guard|migration)"
-    - "(?:it'?s|seems?|process|server|cli).*(?:stuck|hung|frozen|dead)"
-    - "(?:still|keeps?).*(?:running|waiting|spinning|timing)"
-    - "nothing.*(?:happened|happening|responding)"
-    - "(?:check|where).*(?:logs?|error)"
-    - "SUPA_[A-Z_]+"
 chainTo:
   - pattern: '"source":\\s*"biome"|biomejs\\.dev|lint/(correctness|a11y|style|performance|nursery|suspicious|complexity)'
     targetSkill: ultracite

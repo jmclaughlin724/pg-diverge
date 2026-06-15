@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { assert, edgeKey, ok, readJson, readText, run } from "./lib/guard-utils.js";
 
 run("node", ["scripts/code-atlas/build.mjs"]);
@@ -7,15 +8,39 @@ const atlas = readJson(".tmp/code-atlas/atlas.json");
 const nodes = new Map(atlas.nodes.map((node) => [node.id, node]));
 const edges = new Set(atlas.edges.map(edgeKey));
 
+assert(atlas.schemaVersion === 2, "atlas schemaVersion must be 2");
+assert(atlas.cacheFormat === "supaschema-code-atlas@2", "atlas cacheFormat drifted");
+assert(atlas.metadata?.inputDigest, "atlas missing inputDigest");
+assert(atlas.metadata?.gitHead, "atlas missing gitHead");
+assert(atlas.summary?.byEdgeType?.imports_file > 0, "atlas summary missing byEdgeType");
+
 hasNode("file:src/cli.ts");
 hasNode("file:tsconfig.json");
 hasNode("file:tsconfig.src.json");
 hasNode("file:tsconfig.tools.json");
 hasNode("package:supaschema");
+hasNode("package_script:supaschema#code-atlas:query");
 hasNode("external_package:commander");
 hasNode("file:biome.jsonc");
+hasNode("file:scripts/code-atlas/lib/config.mjs");
+hasNode("file:scripts/code-atlas/lib/files.mjs");
+hasNode("file:scripts/code-atlas/lib/graph.mjs");
+hasNode("file:scripts/code-atlas/lib/resolve.mjs");
+assert(nodes.get("file:src/cli.ts").language === "typescript", "file nodes must include language");
+assert(nodes.get("file:src/cli.ts").contentDigest, "file nodes must include contentDigest");
 hasEdge("package:supaschema", "external_package:commander", "depends_on");
+hasEdge("package:supaschema", "package_script:supaschema#code-atlas:query", "defines_script");
+hasEdge(
+  "package_script:supaschema#code-atlas:query",
+  "file:scripts/code-atlas/query.mjs",
+  "runs_file"
+);
 hasEdge("file:src/cli.ts", "file:src/cli-diff.ts", "imports_file");
+hasEdge(
+  "file:services/agent-mcp/supaschema_agent_mcp/server.py",
+  "file:scripts/code-atlas/query.mjs",
+  "references_file"
+);
 hasNode("db_object:table:app.accounts");
 hasNode("db_policy:app.accounts.accounts_select");
 hasNode("worker_job:supaschema-docs");
@@ -74,9 +99,39 @@ assert(
 );
 const health = query("health");
 assert(Array.isArray(health.issues), "health query must return issues array");
+const coverage = query("validate-coverage");
+assert(coverage.ok === true, "validate-coverage query must pass");
+const traceChange = query("trace-change", "scripts/code-atlas/build.mjs");
+assert(
+  traceChange.consumers.some((node) => node.id === "package_script:supaschema#code-atlas:build"),
+  "trace-change must include package-script consumers"
+);
+assert(
+  traceChange.owners.some((owner) => owner.instructions.length > 0),
+  "trace-change missing owners"
+);
+const fileOwners = query("file-owners", "scripts/code-atlas/query.mjs");
+assert(fileOwners.owners.length > 0, "file-owners query missing owners");
+const queryConsumers = query("consumers", "scripts/code-atlas/query.mjs");
+assert(
+  queryConsumers.nodes.some(
+    (node) => node.id === "file:services/agent-mcp/supaschema_agent_mcp/server.py"
+  ),
+  "consumers query must include FastMCP bridge"
+);
+assert(
+  queryConsumers.nodes.some((node) => node.id === "package_script:supaschema#code-atlas:query"),
+  "consumers query must include package script"
+);
 const mcpStatus = query("mcp-status");
 assert(mcpStatus.localAtlas?.nodes > 0, "mcp-status must report local atlas nodes");
 assert(mcpStatus.liveMcp?.wrapper === "scripts/code-atlas/mcp-wrapper.mjs", "mcp wrapper drifted");
+assert(mcpStatus.liveMcp?.source !== "npx", "mcp-status must not use npx fallback by default");
+assert(
+  mcpStatus.liveMcp?.npxFallbackEnabled === false,
+  "mcp-status must report npx fallback disabled by default"
+);
+assertUnknownTargetFails();
 
 ok("CODE_ATLAS_OK");
 
@@ -98,4 +153,18 @@ function query(kind, value) {
   }
   args.push("--json");
   return JSON.parse(run("node", args).stdout);
+}
+
+function assertUnknownTargetFails() {
+  const result = spawnSync(
+    "node",
+    ["scripts/code-atlas/query.mjs", "impact", "definitely-not-a-real-target", "--json"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    }
+  );
+  assert(result.status !== 0, "unknown impact target must fail");
+  const payload = JSON.parse(result.stdout);
+  assert(payload.error?.includes("target not found"), "unknown target failure must be actionable");
 }

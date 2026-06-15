@@ -11,8 +11,6 @@ description: "Use when [specific trigger]. Delivers [outcome] by [approach] whil
 metadata:
   keywords:
     - "[domain-term]"
-  intent-patterns:
-    - "[verb].*[domain]"
   file-triggers:
     - "[owned/path/**]"
 ---

@@ -22,21 +22,6 @@ metadata:
     - delete shims
     - dead code
     - unused dependency
-  intent-patterns:
-    - "rethink.*design"
-    - "redesign.*without"
-    - "start.*fresh"
-    - "clean.*slate"
-    - "no.*backwards.*compat"
-    - "from.*scratch"
-    - "ideal.*end.?state"
-    - "if.*no.*legacy"
-    - "pretend.*no.*existing"
-    - "greenfield.*approach"
-    - "simplify.*code"
-    - "rewrite.*clean"
-    - "remove.*duplication"
-    - "consolidat.*(?:files|folders|dependencies|owners|consumers)"
 ---
 
 # Elegant
@@ -62,7 +47,7 @@ If the user explicitly requires backwards compatibility, a minimal patch, or pre
 ## Direct Workflow
 
 1. Restate the task as if there were no existing consumers. Name the controlling objective, invariants, and compatibility constraints.
-2. Map concepts by meaning before reading current structure as guidance. Start with Code Atlas `pre-edit`, `impact`, `entrypoints`, or `health` queries, and use the `code-atlas` skill's MCP tool map when CodeAtlas-Live MCP is exposed. Include target files, neighboring files and folders, direct and transitive consumers, exports, tests, docs, generated surfaces, owner briefs, `package.json` dependencies, and imports.
+2. Map concepts by meaning before reading current structure as guidance. Start with Code Atlas `trace-change`, `pre-edit`, `impact`, `consumers`, `file-owners`, `entrypoints`, or `health` queries, and use the `code-atlas` skill's MCP tool map when CodeAtlas-Live MCP is exposed. Include target files, neighboring files and folders, direct and transitive consumers, exports, tests, docs, generated surfaces, owner briefs, `package.json` dependencies, and imports.
 3. Choose the canonical owner and smallest architecture. Preserve a separate surface only for a distinct runtime, storage, compliance, lifecycle, or external-contract boundary.
 4. Implement through the owner and its neighbors. Merge, move, rename, or delete overlapping surfaces; remove pass-through layers, re-exports, wrappers, local parallel types, redundant schemas, unused branches, orphan tests, stale docs, and declared-but-unused dependencies.
 5. Before deleting or privatizing a function, module, export, public subpath, model, schema, enum, owner surface, file, or folder, run Code Atlas `impact` / `consumers` plus AST/LSP import-export-symbol inspection over `src/`, `services/`, `scripts/`, `tests/`, and `docs/`. Use fixed-string `rg -F` only for non-code prose references. If consumers exist, make them the same-change rewrite or deletion worklist.

@@ -8,12 +8,10 @@ metadata:
     - "npm run lint"
     - "npm run lint:fix"
     - "biome.jsonc"
-    - "lint.*fix"
-    - "format.*code"
-  intent-patterns:
-    - '"source":\\s*"biome"'
-    - "lint/(correctness|a11y|style|performance|nursery|suspicious|complexity)"
-    - "biome.*(?:error|warn|lint|diagnostic)"
+    - "lint fix"
+    - "format code"
+    - "biome diagnostic"
+    - "biome error"
   file-triggers:
     - "biome.jsonc"
     - "vitest.config.ts"
