@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/supaschema/config-schema.json",
+  "adapter": "postgres",
+  "schemaPaths": ["examples/postgres/schemas"],
+  "migrationsDir": "database/migrations"
+}

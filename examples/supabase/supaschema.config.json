@@ -1,5 +1,5 @@
 {
-  "adapter": "supabase-auto",
+  "adapter": "auto",
   "destructiveChanges": "hint-required",
   "excludedGrantRoles": [
     "supabase_admin",
