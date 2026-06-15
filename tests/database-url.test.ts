@@ -8,8 +8,10 @@ import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database-url.js";
 
 const run = promisify(execFile);
-const codexGateCommand =
-  'node "$' + '{CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-tool-gate.mjs"';
+const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
+const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
+const codexGateCommand = `node "${codexProjectDir}/.codex/hooks/supaschema-tool-gate.mjs"`;
+const claudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
 const managedSchemas = [
   "auth",
   "storage",
@@ -23,9 +25,13 @@ const managedSchemas = [
   "graphql_public",
 ];
 
+function shellParameter(expression: string): string {
+  return ["$", "{", expression, "}"].join("");
+}
+
 function expectedInstalledConfig(
   schemaPath: string,
-  migrationsDir: string,
+  migrationsDir: string
 ): Record<string, unknown> {
   return {
     $schema: "./node_modules/supaschema/config-schema.json",
@@ -64,13 +70,13 @@ describe("supabase database URL discovery", () => {
     await mkdir(join(root, "supabase"), { recursive: true });
     await writeFile(
       join(root, "supabase", "config.toml"),
-      "[api]\nport = 64321\n\n[db]\nport = 64322 # local db\nshadow_port = 64320\nmajor_version = 17\n\n[studio]\nport = 64323\n",
+      "[api]\nport = 64321\n\n[db]\nport = 64322 # local db\nshadow_port = 64320\nmajor_version = 17\n\n[studio]\nport = 64323\n"
     );
     const nested = join(root, "apps", "web");
     await mkdir(nested, { recursive: true });
 
     expect(resolveSupabaseLocalDatabaseUrl(nested)).toBe(
-      "postgresql://postgres:postgres@127.0.0.1:64322/postgres",
+      "postgresql://postgres:postgres@127.0.0.1:64322/postgres"
     );
   });
 
@@ -86,7 +92,7 @@ describe("supabase database URL discovery", () => {
     await writeFile(join(root, "supabase", "config.toml"), "[db]\nmajor_version = 17\n");
 
     expect(resolveSupabaseLocalDatabaseUrl(root)).toBe(
-      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
     );
   });
 
@@ -131,6 +137,18 @@ describe("install-time project setup", () => {
       expect(existsSync(join(consumer, file)), file).toBe(true);
     }
     expect(existsSync(join(consumer, ".claude/skills/gitnexus"))).toBe(false);
+    for (const file of [
+      ".vscode/settings.json",
+      ".vscode/extensions.json",
+      ".mcp.json",
+      ".claude/cclsp.json",
+      "components.json",
+      "postgres-language-server.jsonc",
+      "pyproject.toml",
+      "styles/globals.css",
+    ]) {
+      expect(existsSync(join(consumer, file)), file).toBe(false);
+    }
 
     const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
     const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
@@ -140,14 +158,16 @@ describe("install-time project setup", () => {
 
     await run("node", ["bin/postinstall.mjs"], { env });
     const claudeSettings = JSON.parse(
-      await readFile(join(consumer, ".claude/settings.json"), "utf8"),
+      await readFile(join(consumer, ".claude/settings.json"), "utf8")
     );
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    expect(claudeSettings.enabledMcpjsonServers).toBeUndefined();
+    expect(commandCount(claudeSettings, claudeSkillGateCommand)).toBe(0);
     expect(
       commandCount(
         claudeSettings,
-        'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/block-generated-migration-edits.mjs',
-      ),
+        'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/block-generated-migration-edits.mjs'
+      )
     ).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
@@ -244,14 +264,14 @@ describe("install-time project setup", () => {
             },
           ],
         },
-      })}\n`,
+      })}\n`
     );
     const env = { ...process.env, INIT_CWD: consumer };
 
     const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
     expect(stdout).toContain("installed directories, agent files, hook wiring");
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
-      '{"adapter":"postgres"}\n',
+      '{"adapter":"postgres"}\n'
     );
 
     const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
@@ -273,7 +293,7 @@ describe("install-time project setup", () => {
     await writeFile(join(consumer, "database", "schema", "schema.sql"), "create schema app;\n");
     await writeFile(
       join(consumer, "database", "migrations", "20260101000000_init.sql"),
-      "select 1;\n",
+      "select 1;\n"
     );
 
     await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
@@ -297,15 +317,15 @@ describe("install-time project setup", () => {
     await writeFile(join(consumer, "apps", "api", "schemas", "schema.sql"), "create schema app;\n");
     await writeFile(
       join(consumer, "packages", "db", "schemas", "schema.sql"),
-      "create schema app;\n",
+      "create schema app;\n"
     );
     await writeFile(
       join(consumer, "apps", "api", "migrations", "20260101000000_init.sql"),
-      "select 1;\n",
+      "select 1;\n"
     );
     await writeFile(
       join(consumer, "packages", "db", "migrations", "20260101000000_init.sql"),
-      "select 1;\n",
+      "select 1;\n"
     );
 
     const { stdout } = await run("node", ["bin/postinstall.mjs"], {
@@ -334,6 +354,18 @@ describe("install-time project setup", () => {
     const tarball = join(packDir, packed.filename);
 
     await run("tar", ["-xzf", tarball, "-C", extractDir]);
+    for (const file of [
+      ".vscode/settings.json",
+      ".mcp.json",
+      ".claude/settings.json",
+      ".claude/cclsp.json",
+      "components.json",
+      "postgres-language-server.jsonc",
+      "pyproject.toml",
+      "styles/globals.css",
+    ]) {
+      expect(existsSync(join(extractDir, "package", file)), file).toBe(false);
+    }
     await run("node", [join(extractDir, "package", "bin", "postinstall.mjs")], {
       env: { ...process.env, INIT_CWD: consumer },
     });
@@ -342,8 +374,14 @@ describe("install-time project setup", () => {
     expect(existsSync(join(consumer, ".agents/skills/supaschema/SKILL.md"))).toBe(true);
     expect(existsSync(join(consumer, ".claude/rules/supaschema.md"))).toBe(true);
     expect(existsSync(join(consumer, ".codex/hooks.json"))).toBe(true);
+    expect(existsSync(join(consumer, ".vscode/settings.json"))).toBe(false);
+    expect(existsSync(join(consumer, ".mcp.json"))).toBe(false);
+    expect(existsSync(join(consumer, ".claude/cclsp.json"))).toBe(false);
+    expect(existsSync(join(consumer, "postgres-language-server.jsonc"))).toBe(false);
+    expect(existsSync(join(consumer, "pyproject.toml"))).toBe(false);
+    expect(existsSync(join(consumer, "components.json"))).toBe(false);
     expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
-      "<!-- supaschema:agent-guidance:start -->",
+      "<!-- supaschema:agent-guidance:start -->"
     );
   });
 
@@ -372,7 +410,7 @@ function commandCount(value: unknown, command: string): number {
     return Object.entries(value).reduce(
       (count, [key, item]) =>
         count + (key === "command" && item === command ? 1 : commandCount(item, command)),
-      0,
+      0
     );
   }
   return 0;

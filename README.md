@@ -14,7 +14,7 @@
 npx supaschema diff   # writes the migration; refreshes existing type outputs if present
 ```
 
-![supaschema vs every Supabase CLI engine at 1,000 tables — median diff latency, accuracy F1, and replay-safety side by side](docs/benchmarks/head-to-head-xl.svg)
+![supaschema vs every Supabase CLI engine at 1,000 tables — median diff latency, accuracy F1, and replay-safety side by side](docs/images/benchmarks/head-to-head-xl.svg)
 
 The promise of declarative schema management sounds great: keep your schema in SQL files, edit them in your editor, diff against your database to produce a type-safe, idempotent migration, and get regenerated types back in your repo.
 
@@ -28,11 +28,11 @@ Migrations diff without an ORM, without Docker, without a shadow database, and w
 
 Declarative schema management promises a simple loop: edit your SQL files, diff them, and get a replay-safe migration and fresh types back. The catch is that every tool in that loop needs a database that already has your change — so a diff spins up a Docker shadow database and replays your whole schema, and types can't regenerate until the migration is applied. The change sitting in your editor is stuck behind infrastructure, and the diff itself is only as careful as a name-by-name comparison.
 
-![The declarative workflow today: spin up a shadow database, replay the schema, diff, apply, then introspect for types — every step needs a running PostgreSQL, and policies are diffed by name](docs/concepts/legacy-flow.svg)
+![The declarative workflow today: spin up a shadow database, replay the schema, diff, apply, then introspect for types — every step needs a running PostgreSQL, and policies are diffed by name](docs/images/concepts/legacy-flow.svg)
 
 supaschema ships PostgreSQL's own parser inside the package. It reads your SQL into an AST, compares object definitions structurally — policy bodies included, not just their names — and renders a guarded, replay-safe migration, all without a database. Types and Zod validators come from the same parse, in the same command, so they never wait on a deploy.
 
-![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](docs/concepts/supaschema-flow.svg)
+![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](docs/images/concepts/supaschema-flow.svg)
 
 ## Install
 
@@ -112,17 +112,17 @@ All numbers are reproducible from this repo (`npm run benchmark`; harness in [be
 
 At 1,000 tables (~7,000 objects), supaschema against each of the five Supabase CLI engines — median diff latency, accuracy (F1 vs a ground-truth change manifest), and whether the migration survives a second apply:
 
-![supaschema vs every Supabase CLI engine at 1,000 tables — latency bars, F1 accuracy, and replay-safety](docs/benchmarks/head-to-head-xl.svg)
+![supaschema vs every Supabase CLI engine at 1,000 tables — latency bars, F1 accuracy, and replay-safety](docs/images/benchmarks/head-to-head-xl.svg)
 
 The gap widens with scale. At 2,500 tables (~17,500 objects) the engines cross three minutes while supaschema stays around three seconds — and every engine still drops the same policy and still fails the second apply:
 
-![supaschema vs every Supabase CLI engine at 2,500 tables — latency bars, F1 accuracy, and replay-safety](docs/benchmarks/head-to-head-xxl.svg)
+![supaschema vs every Supabase CLI engine at 2,500 tables — latency bars, F1 accuracy, and replay-safety](docs/images/benchmarks/head-to-head-xxl.svg)
 
 The diff is only half the loop. Once type outputs exist, getting a migration **and** refreshed types is one `supaschema diff` — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
 
-![Full workflow at 1,000 tables — supaschema's migration plus refreshed existing type outputs in one command vs db diff, apply, and gen types per engine](docs/benchmarks/head-to-head-workflow-xl.svg)
+![Full workflow at 1,000 tables — supaschema's migration plus refreshed existing type outputs in one command vs db diff, apply, and gen types per engine](docs/images/benchmarks/head-to-head-workflow-xl.svg)
 
-Per-fixture latency bar charts at every scale: [additive](docs/benchmarks/additive-latency.svg) · [functions-policies](docs/benchmarks/functions-policies-latency.svg) · [realistic](docs/benchmarks/realistic-latency.svg) · [xl](docs/benchmarks/xl-latency.svg) · [xxl](docs/benchmarks/xxl-latency.svg).
+Per-fixture latency bar charts at every scale: [additive](docs/images/benchmarks/additive-latency.svg) · [functions-policies](docs/images/benchmarks/functions-policies-latency.svg) · [realistic](docs/images/benchmarks/realistic-latency.svg) · [xl](docs/images/benchmarks/xl-latency.svg) · [xxl](docs/images/benchmarks/xxl-latency.svg).
 
 ### Accuracy
 
@@ -134,9 +134,9 @@ That miss matters more than speed. A slow diff costs seconds and an unreplayable
 
 ### Replay safety
 
-![XL fixture correctness](docs/benchmarks/xl-correctness.svg)
+![XL fixture correctness](docs/images/benchmarks/xl-correctness.svg)
 
-Every engine's migration applies once and reaches the target catalog. Only supaschema's also applies **twice**: the others emit unguarded `ADD COLUMN` and `CREATE INDEX`, which fail on re-run for every fixture containing column or index changes. Per-fixture charts: [additive](docs/benchmarks/additive-correctness.svg) · [functions-policies](docs/benchmarks/functions-policies-correctness.svg) · [realistic](docs/benchmarks/realistic-correctness.svg) · [xxl](docs/benchmarks/xxl-correctness.svg).
+Every engine's migration applies once and reaches the target catalog. Only supaschema's also applies **twice**: the others emit unguarded `ADD COLUMN` and `CREATE INDEX`, which fail on re-run for every fixture containing column or index changes. Per-fixture charts: [additive](docs/images/benchmarks/additive-correctness.svg) · [functions-policies](docs/images/benchmarks/functions-policies-correctness.svg) · [realistic](docs/images/benchmarks/realistic-correctness.svg) · [xxl](docs/images/benchmarks/xxl-correctness.svg).
 
 ## How It Works
 
@@ -159,10 +159,10 @@ Every engine's migration applies once and reaches the target catalog. Only supas
 | `migrations` | Files on disk vs a database's applied history: applied, pending, ghosts, out-of-order |
 | `sync` | Gate pending migrations, then optionally drive the Supabase CLI (`--local` / `--remote`) |
 | `audit` | Coverage report for adopting an existing schema |
-| `corpus` / `selfcheck` | The engine's own correctness oracles ([docs/guides/corpus-oracle.md](https://supaschema.com/docs/guides/corpus-oracle)) |
+| `corpus` / `selfcheck` | The engine's own correctness oracles ([Corpus oracle](https://supaschema.com/docs/guides/corpus-oracle)) |
 | `doctor` / `init` / `completion` / `explain` | Setup diagnosis · config scaffold · shell completions · offline diagnostic decoder |
 
-Defaults: `--from` is the database (falling back to `git:HEAD`), `--to` is the schema tree, and output lands in the migrations directory — paths set by `schemaPaths` and `migrationsDir` in the config. Full flags: [docs/commands.md](https://supaschema.com/docs/commands). Exit codes: `0` ok · `1` runtime error · `2` diagnostic errors · `3` drift found.
+Defaults: `--from` is the database (falling back to `git:HEAD`), `--to` is the schema tree, and output lands in the migrations directory — paths set by `schemaPaths` and `migrationsDir` in the config. Full flags: [Commands reference](https://supaschema.com/docs/commands). Exit codes: `0` ok · `1` runtime error · `2` diagnostic errors · `3` drift found.
 
 ## Sources
 
@@ -182,7 +182,7 @@ Either side of a diff can be any of these — generating a diff never creates a 
 - Renames come only from `hints.renames`. `CASCADE` is never emitted. Idempotency is required, not optional.
 - Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) are never treated as schema changes, and unsupported DDL produces a blocking diagnostic instead of passing through.
 - Diagnostics redact credentials (URL passwords, JWTs, secrets).
-- Recovery steps for blocked plans: [docs/configuration/hints.md](https://supaschema.com/docs/configuration/hints) · config reference: [docs/configuration/config-file.md](https://supaschema.com/docs/configuration/config-file).
+- Recovery steps for blocked plans: [Hints](https://supaschema.com/docs/configuration/hints) · config reference: [Configuration](https://supaschema.com/docs/configuration/config-file).
 
 ## AI Agents
 
@@ -190,12 +190,12 @@ The package ships a governance bundle so coding agents generate migrations throu
 
 - `AGENTS.md` — operator brief: invariants, commands, recovery codes.
 - `.claude/rules/` and `.codex/rules/` — the migration policy for Claude Code and Codex.
-- `.claude/skills/supaschema/` — the step-by-step workflow skill, with recovery steps for every blocking `SUPA_*` code.
+- `.agents/skills/supaschema/`, `.claude/skills/supaschema/`, and `.codex/skills/supaschema/` — the step-by-step workflow skill, with recovery steps for every blocking `SUPA_*` code.
 - `.claude/hooks/` and `.codex/hooks/` — two wired hooks in each runtime:
   - a **PreToolUse** hook that blocks any edit to a generated migration (identified by its lineage marker), and
   - a **PostToolUse** hook that senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, and returns the generated migration name — or the blocking `SUPA_*` diagnostic — straight back to the agent as context.
 
-So when an agent (or anyone) edits the declarative tree, the migration and any existing type outputs are refreshed automatically and the agent is told what happened, with no command to remember. Copy the surfaces into your repo root to get the write-time enforcement — the hooks only run where `.claude/settings.json` and `.codex/hooks.json` are wired. Pointing agents at `node_modules/supaschema/` gives them the guidance without the hooks. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
+So when an agent (or anyone) edits the declarative tree, the migration and any existing type outputs are refreshed automatically and the agent is told what happened, with no command to remember. `npm install supaschema` installs the config, agent addenda, rule/skill files, hook scripts, and minimal hook wiring in one step. Pointing agents only at `node_modules/supaschema/` gives them package guidance without project hook wiring. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
 
 ## Library
 

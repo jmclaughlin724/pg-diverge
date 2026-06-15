@@ -5,6 +5,17 @@
 # .codex/hooks/auto-diff-on-schema-change.mjs (PostToolUse). This file
 # carries the policy text for review and prompting.
 #
+# - Before any broad owner, route, consumer, dependency, DB, API, worker,
+#   generated-surface, or deploy claim, or any delete/rename/move, build and
+#   query Code Atlas first. Then use cclsp for exact symbol behavior on the
+#   owner files it returns. Then read the source before making a behavioral
+#   claim. For external framework or library facts, consult the configured
+#   docs MCP research servers; never guess. Live MCP output supplements, but
+#   never replaces, the local atlas plus cclsp plus source as proof. The graph
+#   under .tmp is scratch and must not be committed. Any change to atlas
+#   sources of truth updates scripts/code-atlas/build.mjs,
+#   scripts/code-atlas/build-python.py, and scripts/guards/check-code-atlas.mjs
+#   in the same commit.
 # - Consumer setup is one package install. The installed config, schema and
 #   migration directories, rule files, skill files, hook scripts, hook wiring,
 #   and tagged AGENTS.md / CLAUDE.md addendum are part of the package surface.
@@ -60,4 +71,4 @@
 #   config.environments entry via --env > SUPASCHEMA_DATABASE_URL > the nearest
 #   supabase/config.toml; do not hard-code connection strings.
 # - Decode any SUPA_* diagnostic with `supaschema explain <CODE>`; recovery
-#   steps live in docs/configuration/hints.md.
+#   steps live in docs/configuration/hints.mdx.

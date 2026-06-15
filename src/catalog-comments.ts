@@ -3,12 +3,12 @@ import { sha256 } from "./hash.js";
 import { formatQualifiedName, quoteIdent } from "./sql/identifiers.js";
 import { makeObject } from "./sql/statements.js";
 
-type CatalogQuery = {
+interface CatalogQuery {
   query: <Row extends Record<string, unknown>>(
     text: string,
-    values?: unknown[],
+    values?: unknown[]
   ) => Promise<{ rows: Row[] }>;
-};
+}
 
 const managedSchemaFilter = `
   n.nspname !~ '^pg_'
@@ -90,7 +90,7 @@ async function collectFunctionComments(pool: CatalogQuery): Promise<SchemaObject
       `function ${schema}.${name}(${args})`,
       `FUNCTION ${formatQualifiedName(schema, name)}(${args})`,
       schema,
-      text(row.description),
+      text(row.description)
     );
   });
 }
@@ -129,7 +129,7 @@ async function collectTypeComments(pool: CatalogQuery): Promise<SchemaObject[]> 
       `${word} ${schema}.${name}`,
       `${word.toUpperCase()} ${formatQualifiedName(schema, name)}`,
       schema,
-      text(row.description),
+      text(row.description)
     );
   });
 }
@@ -153,7 +153,7 @@ async function collectPolicyComments(pool: CatalogQuery): Promise<SchemaObject[]
       `policy ${schema}.${table}.${name}`,
       `POLICY ${quoteIdent(name)} ON ${formatQualifiedName(schema, table)}`,
       schema,
-      text(row.description),
+      text(row.description)
     );
   });
 }
@@ -179,7 +179,7 @@ async function collectTriggerComments(pool: CatalogQuery): Promise<SchemaObject[
       `trigger ${schema}.${table}.${name}`,
       `TRIGGER ${quoteIdent(name)} ON ${formatQualifiedName(schema, table)}`,
       schema,
-      text(row.description),
+      text(row.description)
     );
   });
 }
@@ -203,7 +203,7 @@ async function collectConstraintComments(pool: CatalogQuery): Promise<SchemaObje
       `constraint ${schema}.${table}.${name}`,
       `CONSTRAINT ${quoteIdent(name)} ON ${formatQualifiedName(schema, table)}`,
       schema,
-      text(row.description),
+      text(row.description)
     );
   });
 }
@@ -223,7 +223,7 @@ async function collectExtensionComments(pool: CatalogQuery): Promise<SchemaObjec
       `extension ${name}`,
       `EXTENSION ${quoteIdent(name)}`,
       undefined,
-      text(row.description),
+      text(row.description)
     );
   });
 }
@@ -232,7 +232,7 @@ function commentObject(
   descriptor: string,
   targetSql: string,
   schema: string | undefined,
-  description: string,
+  description: string
 ): SchemaObject {
   const sql = `COMMENT ON ${targetSql} IS '${description.replaceAll("'", "''")}'`;
   const ref: { kind: "comment"; name: string; schema?: string } = {

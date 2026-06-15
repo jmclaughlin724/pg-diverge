@@ -31,7 +31,7 @@ describe("source defaults", () => {
     const resolved = await resolveSourceDefaults(
       { from: "git:HEAD", to: "dir:custom" },
       config,
-      async () => "postgresql://ignored",
+      async () => "postgresql://ignored"
     );
 
     expect(resolved).toEqual({ from: "git:HEAD", notice: undefined, to: "dir:custom" });
@@ -41,9 +41,11 @@ describe("source defaults", () => {
     const custom = resolveConfig({ schemaPaths: ["db/schemas"] });
 
     expect(defaultTreeSource(custom)).toBe("dir:db/schemas");
-    const resolved = await resolveSourceDefaults({ from: "git:HEAD" }, custom, async () => {
-      return undefined;
-    });
+    const resolved = await resolveSourceDefaults(
+      { from: "git:HEAD" },
+      custom,
+      async () => undefined
+    );
     expect(resolved.to).toBe("dir:db/schemas");
     expect(resolved.notice).toContain("--to dir:db/schemas");
   });
@@ -52,7 +54,7 @@ describe("source defaults", () => {
     const resolved = await resolveSourceDefaults(
       {},
       config,
-      async () => "postgresql://postgres:secret@127.0.0.1:5432/postgres",
+      async () => "postgresql://postgres:secret@127.0.0.1:5432/postgres"
     );
 
     expect(resolved.from).toBe("database:postgresql://postgres:secret@127.0.0.1:5432/postgres");

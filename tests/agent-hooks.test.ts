@@ -11,7 +11,7 @@ const handAuthoredSql = "-- reviewed migration\nINSERT INTO t VALUES (1) ON CONF
 async function runHook(
   script: string,
   payload: unknown,
-  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}
 ): Promise<{ code: number; stderr: string; stdout: string }> {
   return await new Promise((resolvePromise) => {
     const child = execFile(
@@ -24,7 +24,7 @@ async function runHook(
             ? ((error as { code: number }).code ?? 1)
             : 0;
         resolvePromise({ code, stderr, stdout });
-      },
+      }
     );
     child.stdin?.end(JSON.stringify(payload));
   });
@@ -42,7 +42,7 @@ async function fixtures(): Promise<{ generated: string; handAuthored: string }> 
 async function autoDiffFixture(
   schemaPaths: string[],
   fakeSupaschema?: string,
-  options: { writeConfig?: boolean } = {},
+  options: { writeConfig?: boolean } = {}
 ): Promise<{
   bin: string;
   env: NodeJS.ProcessEnv;
@@ -73,7 +73,7 @@ if (process.argv[2] === "check") {
   process.exit(0);
 }
 process.exit(1);
-`,
+`
   );
   await chmod(bin, 0o755);
   return {
@@ -212,7 +212,7 @@ describe("codex generated-migration tool gate", () => {
         tool_input: { patch },
         tool_name: "apply_patch",
       },
-      { cwd: tmpdir() },
+      { cwd: tmpdir() }
     );
 
     const output = JSON.parse(result.stdout) as {
@@ -269,88 +269,107 @@ const autoDiffCases = [
 ];
 
 describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) => {
-  const runAutoDiffTest = process.platform === "win32" ? it.skip : it;
-
-  runAutoDiffTest("runs auto-diff for apply_patch schema deletes", async () => {
-    const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
-    const result = await runHook(
-      script,
-      {
-        cwd: project,
-        tool_input: {
-          patch: "*** Begin Patch\n*** Delete File: supabase/schemas/accounts.sql\n*** End Patch",
+  it.skipIf(process.platform === "win32")(
+    "runs auto-diff for apply_patch schema deletes",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: {
+            patch: "*** Begin Patch\n*** Delete File: supabase/schemas/accounts.sql\n*** End Patch",
+          },
+          tool_name: "apply_patch",
         },
-        tool_name: "apply_patch",
-      },
-      { cwd: project, env },
-    );
+        { cwd: project, env }
+      );
 
-    expect(result.code).toBe(0);
-    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
-  });
+      expect(result.code).toBe(0);
+      expect(await readFakeCalls(log)).toEqual([
+        ["diff", "--to", "dir:supabase/schemas"],
+        ["check"],
+      ]);
+    }
+  );
 
-  runAutoDiffTest("runs auto-diff for apply_patch moves into the schema tree", async () => {
-    const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
-    const result = await runHook(
-      script,
-      {
-        cwd: project,
-        tool_input: {
-          // The old path is outside the schema root; only the `*** Move to:`
-          // destination lands inside it. The hook must still fire on the move.
-          patch:
-            "*** Begin Patch\n*** Update File: drafts/accounts.sql\n*** Move to: supabase/schemas/accounts.sql\n@@\n-CREATE TABLE app.t (id int);\n+CREATE TABLE app.t (id bigint);\n*** End Patch",
+  it.skipIf(process.platform === "win32")(
+    "runs auto-diff for apply_patch moves into the schema tree",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: {
+            // The old path is outside the schema root; only the `*** Move to:`
+            // destination lands inside it. The hook must still fire on the move.
+            patch:
+              "*** Begin Patch\n*** Update File: drafts/accounts.sql\n*** Move to: supabase/schemas/accounts.sql\n@@\n-CREATE TABLE app.t (id int);\n+CREATE TABLE app.t (id bigint);\n*** End Patch",
+          },
+          tool_name: "apply_patch",
         },
-        tool_name: "apply_patch",
-      },
-      { cwd: project, env },
-    );
+        { cwd: project, env }
+      );
 
-    expect(result.code).toBe(0);
-    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
-  });
+      expect(result.code).toBe(0);
+      expect(await readFakeCalls(log)).toEqual([
+        ["diff", "--to", "dir:supabase/schemas"],
+        ["check"],
+      ]);
+    }
+  );
 
-  runAutoDiffTest("diffs the schema path that contains the changed file", async () => {
-    const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
-    await writeFile(
-      join(project, "schemas", "two", "accounts.sql"),
-      "CREATE TABLE app.t (id int);",
-    );
-    const result = await runHook(
-      script,
-      {
-        cwd: project,
-        tool_input: { file_path: join(project, "schemas", "two", "accounts.sql") },
-        tool_name: "Edit",
-      },
-      { cwd: project, env },
-    );
+  it.skipIf(process.platform === "win32")(
+    "diffs the schema path that contains the changed file",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
+      await writeFile(
+        join(project, "schemas", "two", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "schemas", "two", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env }
+      );
 
-    expect(result.code).toBe(0);
-    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:schemas/two"], ["check"]]);
-  });
+      expect(result.code).toBe(0);
+      expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:schemas/two"], ["check"]]);
+    }
+  );
 
-  runAutoDiffTest("runs auto-diff for direct edit_file schema edits", async () => {
-    const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
-    await writeFile(
-      join(project, "supabase", "schemas", "accounts.sql"),
-      "CREATE TABLE app.t (id int);",
-    );
-    const result = await runHook(
-      script,
-      {
-        cwd: project,
-        tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
-        tool_name: "edit_file",
-      },
-      { cwd: project, env },
-    );
+  it.skipIf(process.platform === "win32")(
+    "runs auto-diff for direct edit_file schema edits",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+      await writeFile(
+        join(project, "supabase", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+          tool_name: "edit_file",
+        },
+        { cwd: project, env }
+      );
 
-    expect(result.code).toBe(0);
-    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
-  });
+      expect(result.code).toBe(0);
+      expect(await readFakeCalls(log)).toEqual([
+        ["diff", "--to", "dir:supabase/schemas"],
+        ["check"],
+      ]);
+    }
+  );
 
-  runAutoDiffTest(
+  it.skipIf(process.platform === "win32")(
     "defaults to the generic PostgreSQL schema path when no config exists",
     async () => {
       const { env, log, project } = await autoDiffFixture(["database/schemas"], undefined, {
@@ -358,7 +377,7 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
       });
       await writeFile(
         join(project, "database", "schemas", "accounts.sql"),
-        "CREATE TABLE app.t (id int);",
+        "CREATE TABLE app.t (id int);"
       );
       const result = await runHook(
         script,
@@ -367,7 +386,7 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
           tool_input: { file_path: join(project, "database", "schemas", "accounts.sql") },
           tool_name: "Edit",
         },
-        { cwd: project, env },
+        { cwd: project, env }
       );
 
       expect(result.code).toBe(0);
@@ -375,100 +394,111 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
         ["diff", "--to", "dir:database/schemas"],
         ["check"],
       ]);
-    },
+    }
   );
 
-  runAutoDiffTest("defaults to a detected provider schema path when no config exists", async () => {
-    const { env, log, project } = await autoDiffFixture(["neon/schemas"], undefined, {
-      writeConfig: false,
-    });
-    await writeFile(join(project, "neon.toml"), "project_id = 'quiet-waterfall-123456'\n");
-    await writeFile(
-      join(project, "neon", "schemas", "accounts.sql"),
-      "CREATE TABLE app.t (id int);",
-    );
-    const result = await runHook(
-      script,
-      {
-        cwd: project,
-        tool_input: { file_path: join(project, "neon", "schemas", "accounts.sql") },
-        tool_name: "Edit",
-      },
-      { cwd: project, env },
-    );
-
-    expect(result.code).toBe(0);
-    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:neon/schemas"], ["check"]]);
-  });
-
-  runAutoDiffTest("skips auto-diff when one edit touches multiple schema paths", async () => {
-    const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
-    await writeFile(join(project, "schemas", "one", "one.sql"), "CREATE TABLE app.one (id int);");
-    await writeFile(join(project, "schemas", "two", "two.sql"), "CREATE TABLE app.two (id int);");
-    const result = await runHook(
-      script,
-      {
-        cwd: project,
-        tool_input: {
-          patch:
-            "*** Begin Patch\n" +
-            "*** Update File: schemas/one/one.sql\n" +
-            "@@\n-old\n+new\n" +
-            "*** Update File: schemas/two/two.sql\n" +
-            "@@\n-old\n+new\n" +
-            "*** End Patch",
+  it.skipIf(process.platform === "win32")(
+    "defaults to a detected provider schema path when no config exists",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["neon/schemas"], undefined, {
+        writeConfig: false,
+      });
+      await writeFile(join(project, "neon.toml"), "project_id = 'quiet-waterfall-123456'\n");
+      await writeFile(
+        join(project, "neon", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "neon", "schemas", "accounts.sql") },
+          tool_name: "Edit",
         },
-        tool_name: "apply_patch",
-      },
-      { cwd: project, env },
-    );
+        { cwd: project, env }
+      );
 
-    expect(result.code).toBe(0);
-    expect(result.stdout).toContain("multiple configured schema roots");
-    expect(await readFakeCalls(log)).toEqual([]);
-  });
+      expect(result.code).toBe(0);
+      expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:neon/schemas"], ["check"]]);
+    }
+  );
 
-  runAutoDiffTest("skips auto-diff while install path confirmation is pending", async () => {
-    const { env, log, project } = await autoDiffFixture(["apps/api/schemas"]);
-    await mkdir(join(project, ".supaschema"), { recursive: true });
-    await mkdir(join(project, "packages", "db", "schemas"), { recursive: true });
-    await writeFile(
-      join(project, ".supaschema", "install.json"),
-      JSON.stringify({
-        candidates: {
-          migrationsDirs: ["apps/api/migrations", "packages/db/migrations"],
-          schemaPaths: ["apps/api/schemas", "packages/db/schemas"],
+  it.skipIf(process.platform === "win32")(
+    "skips auto-diff when one edit touches multiple schema paths",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
+      await writeFile(join(project, "schemas", "one", "one.sql"), "CREATE TABLE app.one (id int);");
+      await writeFile(join(project, "schemas", "two", "two.sql"), "CREATE TABLE app.two (id int);");
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: {
+            patch:
+              "*** Begin Patch\n" +
+              "*** Update File: schemas/one/one.sql\n" +
+              "@@\n-old\n+new\n" +
+              "*** Update File: schemas/two/two.sql\n" +
+              "@@\n-old\n+new\n" +
+              "*** End Patch",
+          },
+          tool_name: "apply_patch",
         },
-        migrationsDir: "apps/api/migrations",
-        pathConfirmationNeeded: true,
-        schemaPaths: ["apps/api/schemas"],
-      }),
-    );
-    await writeFile(
-      join(project, "apps", "api", "schemas", "accounts.sql"),
-      "CREATE TABLE app.t (id int);",
-    );
-    const result = await runHook(
-      script,
-      {
-        cwd: project,
-        tool_input: { file_path: join(project, "apps", "api", "schemas", "accounts.sql") },
-        tool_name: "Edit",
-      },
-      { cwd: project, env },
-    );
+        { cwd: project, env }
+      );
 
-    expect(result.code).toBe(0);
-    expect(result.stdout).toContain("path confirmation is pending");
-    expect(result.stdout).toContain(".supaschema/install.json");
-    expect(await readFakeCalls(log)).toEqual([]);
-  });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("multiple configured schema roots");
+      expect(await readFakeCalls(log)).toEqual([]);
+    }
+  );
 
-  runAutoDiffTest("redacts secrets from raw supaschema output", async () => {
-    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature";
-    const { env, project } = await autoDiffFixture(
-      ["supabase/schemas"],
-      `#!/usr/bin/env node
+  it.skipIf(process.platform === "win32")(
+    "skips auto-diff while install path confirmation is pending",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["apps/api/schemas"]);
+      await mkdir(join(project, ".supaschema"), { recursive: true });
+      await mkdir(join(project, "packages", "db", "schemas"), { recursive: true });
+      await writeFile(
+        join(project, ".supaschema", "install.json"),
+        JSON.stringify({
+          candidates: {
+            migrationsDirs: ["apps/api/migrations", "packages/db/migrations"],
+            schemaPaths: ["apps/api/schemas", "packages/db/schemas"],
+          },
+          migrationsDir: "apps/api/migrations",
+          pathConfirmationNeeded: true,
+          schemaPaths: ["apps/api/schemas"],
+        })
+      );
+      await writeFile(
+        join(project, "apps", "api", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "apps", "api", "schemas", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env }
+      );
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("path confirmation is pending");
+      expect(result.stdout).toContain(".supaschema/install.json");
+      expect(await readFakeCalls(log)).toEqual([]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "redacts secrets from raw supaschema output",
+    async () => {
+      const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature";
+      const { env, project } = await autoDiffFixture(
+        ["supabase/schemas"],
+        `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 
 appendFileSync(process.env.SUPASCHEMA_FAKE_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");
@@ -477,32 +507,33 @@ if (process.argv[2] === "diff") {
   process.exit(1);
 }
 process.exit(0);
-`,
-    );
-    await writeFile(
-      join(project, "supabase", "schemas", "accounts.sql"),
-      "CREATE TABLE app.t (id int);",
-    );
-    const result = await runHook(
-      script,
-      {
-        cwd: project,
-        tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
-        tool_name: "Edit",
-      },
-      { cwd: project, env },
-    );
+`
+      );
+      await writeFile(
+        join(project, "supabase", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env }
+      );
 
-    expect(result.code).toBe(0);
-    const output = JSON.parse(result.stdout) as {
-      hookSpecificOutput?: { additionalContext?: string };
-    };
-    const context = output.hookSpecificOutput?.additionalContext ?? "";
-    expect(context).toContain("postgresql://postgres:[redacted]@localhost/db");
-    expect(context).toContain("token=[redacted]");
-    expect(context).toContain("[redacted-jwt]");
-    expect(context).not.toContain("super-secret");
-    expect(context).not.toContain("abc123");
-    expect(context).not.toContain("eyJhbGci");
-  });
+      expect(result.code).toBe(0);
+      const output = JSON.parse(result.stdout) as {
+        hookSpecificOutput?: { additionalContext?: string };
+      };
+      const context = output.hookSpecificOutput?.additionalContext ?? "";
+      expect(context).toContain("postgresql://postgres:[redacted]@localhost/db");
+      expect(context).toContain("token=[redacted]");
+      expect(context).toContain("[redacted-jwt]");
+      expect(context).not.toContain("super-secret");
+      expect(context).not.toContain("abc123");
+      expect(context).not.toContain("eyJhbGci");
+    }
+  );
 });

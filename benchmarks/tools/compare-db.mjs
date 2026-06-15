@@ -15,14 +15,14 @@ export const {
   dropTemporaryDatabases,
 } = dbAdmin;
 
-export async function createTemporaryDatabases(adminUrl, count, templateName) {
+export function createTemporaryDatabases(adminUrl, count, templateName) {
   return dbAdmin.createTemporaryDatabases(adminUrl, count, {
     purpose: "compare",
     ...(templateName ? { templateName } : {}),
   });
 }
 
-export async function catalogFingerprint(url) {
+export function catalogFingerprint(url) {
   return dbAdmin.catalogFingerprint(url, "bench:catalog");
 }
 
@@ -36,7 +36,7 @@ export async function transferOwnership(url, role) {
   try {
     await client.connect();
     const schemas = await client.query(
-      "select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'extensions', 'vault') order by nspname",
+      "select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'extensions', 'vault') order by nspname"
     );
     for (const { nspname } of schemas.rows) {
       await client.query(`ALTER SCHEMA ${quoteIdent(nspname)} OWNER TO ${owner}`);
@@ -61,7 +61,7 @@ export async function transferOwnership(url, role) {
     for (const row of relations.rows) {
       const kind = relationKinds.get(row.relkind);
       await client.query(
-        `ALTER ${kind} ${quoteIdent(row.nspname)}.${quoteIdent(row.relname)} OWNER TO ${owner}`,
+        `ALTER ${kind} ${quoteIdent(row.nspname)}.${quoteIdent(row.relname)} OWNER TO ${owner}`
       );
     }
     const routines = await client.query(`
@@ -77,7 +77,7 @@ export async function transferOwnership(url, role) {
     for (const row of routines.rows) {
       const kind = row.prokind === "p" ? "PROCEDURE" : "FUNCTION";
       await client.query(
-        `ALTER ${kind} ${quoteIdent(row.nspname)}.${quoteIdent(row.proname)}(${row.args}) OWNER TO ${owner}`,
+        `ALTER ${kind} ${quoteIdent(row.nspname)}.${quoteIdent(row.proname)}(${row.args}) OWNER TO ${owner}`
       );
     }
     const types = await client.query(`
@@ -92,7 +92,7 @@ export async function transferOwnership(url, role) {
     for (const row of types.rows) {
       const kind = row.typtype === "d" ? "DOMAIN" : "TYPE";
       await client.query(
-        `ALTER ${kind} ${quoteIdent(row.nspname)}.${quoteIdent(row.typname)} OWNER TO ${owner}`,
+        `ALTER ${kind} ${quoteIdent(row.nspname)}.${quoteIdent(row.typname)} OWNER TO ${owner}`
       );
     }
   } finally {

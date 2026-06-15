@@ -1,18 +1,18 @@
 import type { Diagnostic, DiagnosticSeverity, ObjectRef } from "./core.js";
 
-type DiagnosticExtras = {
+interface DiagnosticExtras {
   file?: string | undefined;
   hint?: string | undefined;
   ref?: ObjectRef | undefined;
   schemas?: string[] | undefined;
   statement?: string | undefined;
-};
+}
 
 export function diagnostic(
   code: string,
   severity: DiagnosticSeverity,
   message: string,
-  extras: DiagnosticExtras = {},
+  extras: DiagnosticExtras = {}
 ): Diagnostic {
   const output: Diagnostic = {
     code,
@@ -55,7 +55,7 @@ export function redactSecrets(value: string): string {
   return redactUrlCredentials(value)
     .replace(
       /\b(password|pass|pwd|token|secret|api[_-]?key|service[_-]?role[_-]?key)(\s*[:=]\s*)(["']?)[^"'\s,;)]+/giu,
-      "$1$2$3[redacted]",
+      "$1$2$3[redacted]"
     )
     .replace(/\b(sb_secret_)[A-Za-z0-9_-]+/g, "$1[redacted]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]");
@@ -104,6 +104,8 @@ function formatRef(ref: ObjectRef): string {
 }
 
 export const diagnosticCatalog: Record<string, string> = {
+  SUPA_CONFIG_INVALID:
+    "supaschema.config.json failed schema validation; fix the reported fields against config-schema.json.",
   SUPA_CATALOG_EXTRACT_FAILED: "Live catalog extraction failed; check the database URL and role.",
   SUPA_CATALOG_SNAPSHOT_VERSION:
     "The catalog snapshot was produced by a different supaschema model version; hashes may not be comparable.",

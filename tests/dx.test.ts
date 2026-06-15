@@ -101,7 +101,7 @@ describe("check reporters", () => {
     };
     expect(sarif.version).toBe("2.1.0");
     expect(sarif.runs[0]?.results.map((result) => result.ruleId)).toContain(
-      "SUPA_CHECK_DROP_IF_EXISTS",
+      "SUPA_CHECK_DROP_IF_EXISTS"
     );
   });
 
@@ -141,7 +141,7 @@ describe("raw CLI errors", () => {
     const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature";
     writeFileSync(
       join(cwd, "supaschema.config.mjs"),
-      `throw new Error("failed postgresql://postgres:super-secret@localhost/db token=abc123 ${jwt}");\n`,
+      `throw new Error("failed postgresql://postgres:super-secret@localhost/db token=abc123 ${jwt}");\n`
     );
 
     const result = spawnSync(process.execPath, [cliPath, "inspect"], {
@@ -175,7 +175,7 @@ describe("doctor environment resolution", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-doctor-env-"));
     writeFileSync(
       join(cwd, "supaschema.config.json"),
-      `${JSON.stringify({ environments: { staging: { databaseUrl: "$STAGING_DB" } } })}\n`,
+      `${JSON.stringify({ environments: { staging: { databaseUrl: "$STAGING_DB" } } })}\n`
     );
 
     const result = spawnSync(process.execPath, [cliPath, "--env", "staging", "doctor"], {

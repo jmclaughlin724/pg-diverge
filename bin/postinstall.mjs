@@ -35,6 +35,9 @@ const defaultZodFile = "database.zod.ts";
 const manifestPath = ".supaschema/install.json";
 const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
+const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
+const codexGateCommand = `node "${codexProjectDir}/.codex/hooks/supaschema-tool-gate.mjs"`;
+const codexAutoDiffCommand = `node "${codexProjectDir}/.codex/hooks/auto-diff-on-schema-change.mjs"`;
 
 const agentFiles = [
   ".agents/skills/supaschema/SKILL.md",
@@ -45,9 +48,74 @@ const agentFiles = [
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/supaschema-tool-gate.mjs",
   ".codex/rules/supaschema.rules",
+  ".codex/skills/supaschema/SKILL.md",
 ];
 
-const hookConfigs = [".claude/settings.json", ".codex/hooks.json"];
+const hookConfigs = [
+  {
+    path: ".claude/settings.json",
+    config: {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "Write|Edit|MultiEdit|apply_patch",
+            hooks: [
+              {
+                type: "command",
+                command:
+                  'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/block-generated-migration-edits.mjs',
+                timeout: 10,
+              },
+            ],
+          },
+        ],
+        PostToolUse: [
+          {
+            matcher: "Write|Edit|MultiEdit|apply_patch",
+            hooks: [
+              {
+                type: "command",
+                command: 'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/auto-diff-on-schema-change.mjs',
+                timeout: 130,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  },
+  {
+    path: ".codex/hooks.json",
+    config: {
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: codexGateCommand,
+                timeout: 10,
+                statusMessage: "Checking supaschema generated-migration policy",
+              },
+            ],
+          },
+        ],
+        PostToolUse: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: codexAutoDiffCommand,
+                timeout: 130,
+                statusMessage: "Running supaschema auto-diff on schema change",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  },
+];
 
 const genericPreset = {
   adapter: "auto",
@@ -169,6 +237,10 @@ const providerMigrationsDirs = providerPresets.map((preset) => preset.migrations
 
 await main();
 
+function shellParameter(expression) {
+  return ["$", "{", expression, "}"].join("");
+}
+
 async function main() {
   try {
     if (target === packageRoot || target.startsWith(packageRoot + sep)) {
@@ -194,8 +266,8 @@ async function main() {
     }
     installed.push("agent files");
 
-    for (const file of hookConfigs) {
-      mergeHookConfig(file, skipped);
+    for (const config of hookConfigs) {
+      mergeHookConfig(config, skipped);
     }
     installed.push("hook wiring");
 
@@ -207,12 +279,12 @@ async function main() {
 
     const suffix = skipped.length > 0 ? `; skipped ${skipped.join(", ")}` : "";
     process.stdout.write(
-      `supaschema: installed ${installed.join(", ")} for Claude/Codex agents${suffix}\n`,
+      `supaschema: installed ${installed.join(", ")} for Claude/Codex agents${suffix}\n`
     );
 
     if (selection.pathConfirmationNeeded) {
       process.stdout.write(
-        "supaschema: confirm detected schema/migration paths in .supaschema/install.json before the first diff\n",
+        "supaschema: confirm detected schema/migration paths in .supaschema/install.json before the first diff\n"
       );
     }
   } catch (error) {
@@ -252,7 +324,7 @@ function normalizeAdapter(value) {
   ) {
     return "auto";
   }
-  return undefined;
+  return;
 }
 
 async function resolvePathSelection(scan, existingConfig) {
@@ -282,11 +354,7 @@ async function resolvePathSelection(scan, existingConfig) {
     pathConfirmationNeeded: schema.needsConfirmation || migrations.needsConfirmation,
     provider: defaults.provider,
     schemaPaths: [schema.path],
-    source: existingConfig.exists
-      ? "existing-config-scan"
-      : schema.source === "default" && migrations.source === "default"
-        ? defaults.source
-        : "scan",
+    source: selectionSource(existingConfig, schema, migrations, defaults),
   };
 
   if (selection.pathConfirmationNeeded && canPrompt()) {
@@ -296,6 +364,16 @@ async function resolvePathSelection(scan, existingConfig) {
   return selection;
 }
 
+function selectionSource(existingConfig, schema, migrations, defaults) {
+  if (existingConfig.exists) {
+    return "existing-config-scan";
+  }
+  if (schema.source === "default" && migrations.source === "default") {
+    return defaults.source;
+  }
+  return "scan";
+}
+
 async function promptForSelection(selection) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -303,13 +381,13 @@ async function promptForSelection(selection) {
       rl,
       "schema path",
       selection.candidates.schemaPaths,
-      selection.schemaPaths[0] ?? projectDefaults(target).schemaPath,
+      selection.schemaPaths[0] ?? projectDefaults(target).schemaPath
     );
     const migrationsDir = await promptPathChoice(
       rl,
       "migrations directory",
       selection.candidates.migrationsDirs,
-      selection.migrationsDir,
+      selection.migrationsDir
     );
     return {
       ...selection,
@@ -380,7 +458,7 @@ function detectProviderPreset(projectDir) {
       return { markers, preset };
     }
   }
-  return undefined;
+  return;
 }
 
 function matchingProviderMarkers(projectDir, files, marker) {
@@ -439,7 +517,7 @@ function scanProject(projectDir) {
         genericMigrationsDir,
         "migrations",
         "db/migrations",
-      ],
+      ]
     ),
     schemaPaths: rankCandidates(
       dirs.filter((dir) => isSchemaCandidate(projectDir, dir)).map((dir) => rel(projectDir, dir)),
@@ -451,7 +529,7 @@ function scanProject(projectDir) {
         "schema",
         "db/schemas",
         "db/schema",
-      ],
+      ]
     ),
   };
 }
@@ -673,8 +751,8 @@ function writeInstallManifest(scan, selection) {
         source: selection.source,
       },
       null,
-      2,
-    )}\n`,
+      2
+    )}\n`
   );
 }
 
@@ -694,18 +772,12 @@ function copyProjectFile(relativePath, skipped) {
   copyFileSync(source, destination);
 }
 
-function mergeHookConfig(relativePath, skipped) {
-  const sourcePath = join(packageRoot, relativePath);
-  if (!existsSync(sourcePath)) {
-    skipped.push(relativePath);
-    return;
-  }
-
-  const source = readJson(sourcePath);
-  const destination = join(target, relativePath);
+function mergeHookConfig(hookConfig, skipped) {
+  const source = hookConfig.config;
+  const destination = join(target, hookConfig.path);
   const existing = readJsonIfPresent(destination);
   if (!source || existing === undefined) {
-    skipped.push(relativePath);
+    skipped.push(hookConfig.path);
     return;
   }
 
@@ -717,7 +789,7 @@ function readText(path) {
   try {
     return readFileSync(path, "utf8");
   } catch {
-    return undefined;
+    return;
   }
 }
 
@@ -733,7 +805,7 @@ function readJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    return undefined;
+    return;
   }
 }
 
@@ -746,7 +818,7 @@ function writeFileAtomic(destination, contents) {
   mkdirSync(directory, { recursive: true });
   const temp = join(
     directory,
-    `.supaschema-write-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`,
+    `.supaschema-write-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`
   );
   try {
     writeFileSync(temp, contents, { flag: "wx" });
@@ -785,13 +857,13 @@ function mergeHooks(existing, source) {
 function withoutHookCommands(entries, commands) {
   const kept = [];
   for (const entry of entries) {
-    if (!isRecord(entry) || !Array.isArray(entry.hooks)) {
+    if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
       kept.push(entry);
       continue;
     }
     const hooks = entry.hooks.filter(
       (hook) =>
-        !commands.has(isRecord(hook) && typeof hook.command === "string" ? hook.command : ""),
+        !commands.has(isRecord(hook) && typeof hook.command === "string" ? hook.command : "")
     );
     if (hooks.length > 0) {
       kept.push({ ...entry, hooks });
@@ -801,7 +873,7 @@ function withoutHookCommands(entries, commands) {
 }
 
 function hookCommands(entry) {
-  if (!isRecord(entry) || !Array.isArray(entry.hooks)) {
+  if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
     return [];
   }
   return entry.hooks

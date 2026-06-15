@@ -1,0 +1,109 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
+  "root": true,
+  "extends": [
+    "ultracite/biome/core",
+    "ultracite/biome/type-aware",
+    "ultracite/biome/vitest"
+  ],
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "!dist",
+      "!node_modules",
+      "!.venv",
+      "!coverage",
+      "!.tmp",
+      "!.codeatlas",
+      "!.codeatlas-sa",
+      "!.wrangler",
+      "!*.tgz",
+      "!config-schema.json",
+      "!api-docs",
+      "!benchmarks/results",
+      "!.gitnexus",
+      "!.agents",
+      "!.claude",
+      ".claude/hooks/*.mjs",
+      ".claude/rules/supaschema.md",
+      ".claude/skills/supaschema/**",
+      "!.codex",
+      ".codex/hooks/*.mjs",
+      ".codex/hooks.json",
+      ".codex/rules/supaschema.rules",
+      ".codex/skills/supaschema/**"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "correctness": {
+        "useImportExtensions": {
+          "level": "error",
+          "options": {
+            "extensionMappings": {
+              "ts": "js",
+              "tsx": "js"
+            }
+          }
+        }
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "benchmarks/compare.js",
+        "benchmarks/plot-svg.js",
+        "scripts/check-docs-standard.mjs",
+        "scripts/code-atlas/build.mjs",
+        "scripts/code-atlas/query.mjs",
+        "src/catalog-foreign.ts",
+        "src/check.ts",
+        "src/cli-diff.ts",
+        "src/diff-score.ts",
+        "src/doctor.ts",
+        "src/plan-order.ts",
+        "src/planner-table.ts",
+        "src/planner.ts",
+        "src/source-normalize.ts",
+        "src/sql/extract.ts",
+        "src/sql/facts.ts",
+        "src/sql/split.ts",
+        "src/sql/statements.ts",
+        "src/typegen-model.ts",
+        "src/typegen-zod.ts",
+        "src/typegen.ts",
+        "src/verify.ts"
+      ],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": {
+              "level": "error",
+              "options": {
+                "maxAllowedComplexity": 65
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+[mcp_servers.cloudflare-api]
+type = "http"
+url = "https://mcp.cloudflare.com/mcp"
+
+[mcp_servers.cloudflare-api.headers]
+Authorization = "Bearer ${CLOUDFLARE_API_TOKEN}"
+
+[mcp_servers.cloudflare-docs]
+type = "http"
+url = "https://docs.mcp.cloudflare.com/mcp"
+
+[mcp_servers.cclsp]
+command = "npx"
+args = ["cclsp@0.7.0"]
+
+[mcp_servers.cclsp.env]
+CCLSP_CONFIG_PATH = ".claude/cclsp.json"
+
+[mcp_servers.codeatlas]
+command = "node"
+args = ["scripts/code-atlas/mcp-wrapper.mjs", "."]
+
+[mcp_servers.codeatlas.env]
+CODEATLAS_MCP_ALLOW_NPX = "1"
+CODEATLAS_BROWSER = "0"
+
+[mcp_servers.repo_context]
+command = "uv"
+args = ["run", "--package", "supaschema-agent-mcp", "fastmcp", "run", "fastmcp.json", "--skip-env"]
+
+[mcp_servers.context7]
+type = "http"
+url = "https://mcp.context7.com/mcp"
+
+[mcp_servers.mintlify]
+type = "http"
+url = "https://mintlify.com/docs/mcp"
+
+[mcp_servers.next-devtools]
+command = "npx"
+args = ["-y", "next-devtools-mcp@latest"]
+
+[mcp_servers.openaiDeveloperDocs]
+type = "http"
+url = "https://developers.openai.com/mcp"
+
+[mcp_servers.sentry]
+type = "http"
+url = "https://mcp.sentry.dev/mcp/anilize/anilize"
+
+[mcp_servers.ultracite]
+type = "http"
+url = "https://docs.ultracite.ai/mcp"
+
+[mcp_servers.zod]
+type = "http"
+url = "https://mcp.inkeep.com/zod/mcp"
+
+[mcp_servers.supaschema-docs]
+type = "http"
+url = "https://supaschema.com/mcp"

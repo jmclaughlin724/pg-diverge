@@ -13,7 +13,7 @@ export const adapters = [
     mode: "source-file diff",
     output: "sql",
     requiresDatabase: false,
-    async command(context) {
+    command(context) {
       return {
         args: [
           resolve(root, "dist/cli.js"),
@@ -37,7 +37,7 @@ export const adapters = [
     mode: "live-catalog diff",
     output: "sql",
     requiresDatabase: true,
-    async command(context) {
+    command(context) {
       return {
         args: [
           resolve(root, "dist/cli.js"),
@@ -74,7 +74,7 @@ export const adapters = [
           typesFile,
           zodFile,
         })}\n`,
-        "utf8",
+        "utf8"
       );
       const spec = {
         diff: {
@@ -149,7 +149,7 @@ async function findOnPath(binary) {
       // Continue scanning PATH.
     }
   }
-  return undefined;
+  return;
 }
 
 async function resolveSupabaseBinary() {
@@ -170,7 +170,7 @@ function supabaseWorkflowAdapter(id, engineFlag) {
     output: "sql",
     requiresDatabase: true,
     resolveBinary: resolveSupabaseBinary,
-    retryDelayMs: 2_000,
+    retryDelayMs: 2000,
     retryOnFailure(execution) {
       return (
         execution.stderr.includes("Address already in use") &&
@@ -235,7 +235,7 @@ function supabaseAdapter(id, engineFlag) {
     output: "sql",
     requiresDatabase: true,
     resolveBinary: resolveSupabaseBinary,
-    retryDelayMs: 2_000,
+    retryDelayMs: 2000,
     retryOnFailure(execution) {
       return execution.stderr.includes("Address already in use");
     },

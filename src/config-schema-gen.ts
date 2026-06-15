@@ -12,5 +12,5 @@ const schema = {
 await writeFile(
   resolve(packageRoot, "config-schema.json"),
   `${JSON.stringify(schema, null, 2)}\n`,
-  "utf8",
+  "utf8"
 );

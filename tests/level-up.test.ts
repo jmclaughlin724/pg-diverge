@@ -33,7 +33,7 @@ describe("audit report", () => {
 
   it("itemizes statements outside the contract", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nDO $$ BEGIN RAISE NOTICE 'side effect'; END $$;\n",
+      "CREATE SCHEMA app;\nDO $$ BEGIN RAISE NOTICE 'side effect'; END $$;\n"
     );
     const report = auditModel(model);
 
@@ -67,7 +67,7 @@ describe("foreign data wrapper tier", () => {
     expect(rendered).toContain("CREATE SERVER IF NOT EXISTS files_server");
     expect(rendered).toContain("CREATE FOREIGN TABLE IF NOT EXISTS app.events");
     expect(rendered.indexOf("CREATE SERVER")).toBeLessThan(
-      rendered.indexOf("CREATE FOREIGN TABLE"),
+      rendered.indexOf("CREATE FOREIGN TABLE")
     );
   });
 
@@ -77,7 +77,7 @@ describe("foreign data wrapper tier", () => {
     const plan = planSchemaDiff(from, to);
 
     expect(plan.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+      "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED"
     );
   });
 });

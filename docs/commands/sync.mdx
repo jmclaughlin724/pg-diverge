@@ -1,6 +1,7 @@
 ---
 title: "sync"
 description: "sync checks pending migrations pass static validation, then optionally drives the Supabase CLI to apply them locally or push them remotely."
+keywords: ["sync command","Supabase CLI","apply gate","migrations"]
 ---
 
 Use `sync` when you want a gated Supabase CLI handoff.
@@ -29,7 +30,7 @@ With `--local` or `--remote`, it checks pending migrations first, then delegates
 
 Run `supaschema sync` without apply flags to preview the handoff:
 
-```
+```text
 Pending migrations (2):
 
   20240401090000_add_order_status.sql     ✓ check passed

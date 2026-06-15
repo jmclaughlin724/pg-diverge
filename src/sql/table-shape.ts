@@ -66,7 +66,7 @@ export function canonicalTableShape(node: AstNode): Record<string, unknown> {
   const primaryColumns = new Set(
     constraints
       .filter((constraint) => constraint.type === "CONSTR_PRIMARY")
-      .flatMap((constraint) => constraint.columns),
+      .flatMap((constraint) => constraint.columns)
   );
   for (const column of columns) {
     if (primaryColumns.has(column.name)) {
@@ -99,7 +99,7 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
   for (const item of readArray(columnDef.constraints)) {
     const constraint = asRecord(asRecord(item)?.Constraint);
     const contype = readString(constraint?.contype);
-    if (!constraint || !contype) {
+    if (!(constraint && contype)) {
       continue;
     }
     switch (contype) {
@@ -110,7 +110,7 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
         break;
       case "CONSTR_DEFAULT":
         column.default = canonicalizeRegclassLiterals(
-          stripLocations(unwrapColumnTypeCast(constraint.raw_expr, columnDef.typeName)),
+          stripLocations(unwrapColumnTypeCast(constraint.raw_expr, columnDef.typeName))
         );
         break;
       case "CONSTR_IDENTITY":
@@ -268,7 +268,7 @@ export function canonicalSequenceShape(node: AstNode): Record<string, unknown> {
 
 function sequenceOptionValue(arg: unknown): string | undefined {
   if (arg === undefined || arg === null) {
-    return undefined;
+    return;
   }
   const integer = asRecord(asRecord(arg)?.Integer);
   if (integer) {
@@ -296,7 +296,7 @@ const constraintIdentityKeys = new Set(["conname", "contype", "fk_attrs", "keys"
 export function canonicalConstraintShape(
   constraint: AstNode,
   table: { name: string; schema: string },
-  impliedColumns: string[] = [],
+  impliedColumns: string[] = []
 ): Record<string, unknown> {
   return {
     constraint: canonicalConstraint(constraint, impliedColumns),
@@ -307,7 +307,7 @@ export function canonicalConstraintShape(
 function canonicalConstraint(constraint: AstNode, impliedColumns: string[]): CanonicalConstraint {
   const keys = stringList(constraint.keys);
   const fkAttrs = stringList(constraint.fk_attrs);
-  const columns = fkAttrs.length > 0 ? fkAttrs : keys.length > 0 ? keys : impliedColumns;
+  const columns = constraintColumns(fkAttrs, keys, impliedColumns);
   const payload: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(constraint)) {
     if (constraintIdentityKeys.has(key)) {
@@ -320,4 +320,14 @@ function canonicalConstraint(constraint: AstNode, impliedColumns: string[]): Can
     payload,
     type: readString(constraint.contype) ?? "",
   };
+}
+
+function constraintColumns(fkAttrs: string[], keys: string[], impliedColumns: string[]): string[] {
+  if (fkAttrs.length > 0) {
+    return fkAttrs;
+  }
+  if (keys.length > 0) {
+    return keys;
+  }
+  return impliedColumns;
 }

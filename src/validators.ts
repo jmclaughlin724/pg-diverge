@@ -9,10 +9,10 @@ import { diagnostic } from "./diagnostics.js";
 
 const execFileAsync = promisify(execFile);
 
-type ValidatorSpec = {
+interface ValidatorSpec {
   args: string[];
   command: string;
-};
+}
 
 type CommandError = Error & {
   code?: unknown;
@@ -22,11 +22,11 @@ type CommandError = Error & {
 
 export async function runConfiguredValidators(
   sql: string,
-  options: CheckOptions = {},
+  options: CheckOptions = {}
 ): Promise<Diagnostic[]> {
   const config = resolveConfig(options.config);
   const externalValidators = config.validators.filter(
-    (validator) => validator !== "internal-parser",
+    (validator) => validator !== "internal-parser"
   );
   if (externalValidators.length === 0) {
     return [];
@@ -42,7 +42,7 @@ export async function runConfiguredValidators(
         diagnostics.push(
           diagnostic("SUPA_VALIDATOR_UNKNOWN", "error", `unknown validator "${validator}"`, {
             hint: "Supported validators: internal-parser, squawk, squawk-cli, pgls, postgres-language-server, sqlfluff, pg-formatter.",
-          }),
+          })
         );
         continue;
       }
@@ -77,14 +77,14 @@ function validatorSpec(name: string): ValidatorSpec | undefined {
     case "pgformatter":
       return { args: ["--check"], command: "pg-formatter" };
     default:
-      return undefined;
+      return;
   }
 }
 async function runValidator(
   name: string,
   spec: ValidatorSpec,
   path: string,
-  cwd = process.cwd(),
+  cwd = process.cwd()
 ): Promise<Diagnostic[]> {
   try {
     await execFileAsync(spec.command, [...spec.args, path], {

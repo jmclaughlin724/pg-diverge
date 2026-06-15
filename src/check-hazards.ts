@@ -9,7 +9,7 @@ export function newEnumAdditionState(): Map<string, Set<string>> {
 
 export function recordEnumAdditions(
   statement: AstStatement,
-  state: Map<string, Set<string>>,
+  state: Map<string, Set<string>>
 ): void {
   if (statement.tag !== "AlterEnumStmt") {
     return;
@@ -30,7 +30,7 @@ export function recordEnumAdditions(
 export function enumValueUseDiagnostics(
   statement: AstStatement,
   state: Map<string, Set<string>>,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): Diagnostic[] {
   if (state.size === 0 || statement.tag === "AlterEnumStmt") {
     return [];
@@ -49,15 +49,15 @@ export function enumValueUseDiagnostics(
       {
         hint: "Move the usage to a follow-up migration, or run the runner without transaction wrapping and set transactionMode to per-statement.",
         statement: statement.text,
-      },
-    ),
+      }
+    )
   );
 }
 
 function collectEnumValueUses(
   value: unknown,
   state: Map<string, Set<string>>,
-  uses: string[],
+  uses: string[]
 ): void {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -97,7 +97,7 @@ function castStringLiteral(arg: unknown): string | undefined {
 
 export function escalateNontransactional(
   diagnostics: Diagnostic[],
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): Diagnostic[] {
   const escalate = config.transactionMode === "per-migration";
   if (!escalate) {

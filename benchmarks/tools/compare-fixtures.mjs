@@ -8,6 +8,8 @@ const { makeRealisticSqlFixture, realisticFixtureManifest } = await import(
   join(packageRoot, "dist/benchmark-fixtures.js")
 );
 
+const fixtureDirsSeparatorPattern = /[,:]/;
+
 export async function discoverFixtures(fixtureRoot) {
   const entries = await readdir(fixtureRoot, { withFileTypes: true });
   const fixtures = [];
@@ -19,7 +21,7 @@ export async function discoverFixtures(fixtureRoot) {
   }
 
   const extraDirs = (process.env.SUPASCHEMA_COMPARE_FIXTURE_DIRS ?? "")
-    .split(/[,:]/)
+    .split(fixtureDirsSeparatorPattern)
     .map((value) => value.trim())
     .filter(Boolean);
   for (const directory of extraDirs) {
@@ -44,13 +46,17 @@ async function fixtureFromDirectory(directory, name) {
     if (typeof config.supaschemaAdapter === "string") {
       fixture.supaschemaAdapter = config.supaschemaAdapter;
     }
-  } catch {}
+  } catch {
+    // Optional fixture metadata is allowed to be absent.
+  }
   try {
     const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
     if (Array.isArray(manifest)) {
       fixture.manifest = manifest;
     }
-  } catch {}
+  } catch {
+    // Optional benchmark manifests are generated only for selected fixtures.
+  }
   return fixture;
 }
 

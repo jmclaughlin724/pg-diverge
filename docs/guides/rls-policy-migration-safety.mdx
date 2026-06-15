@@ -1,6 +1,7 @@
 ---
 title: "RLS policy safety"
 description: "Detect PostgreSQL and Supabase Row Level Security policy changes by comparing policy expressions, not just policy names."
+keywords: ["RLS policy safety","policy diff","Supabase","PostgreSQL"]
 ---
 
 Row Level Security policy predicates are access-control logic. A migration generator must detect changes to `USING` and `WITH CHECK` expressions, because the policy name can stay the same while tenant isolation changes.

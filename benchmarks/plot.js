@@ -10,10 +10,10 @@ const chartsFlagValue = chartsFlagIndex >= 0 ? args.splice(chartsFlagIndex, 2)[1
 const jsonInputs = args.filter((arg) => arg.endsWith(".json"));
 const dirArgs = args.filter((arg) => !arg.endsWith(".json"));
 const inputs = (jsonInputs.length > 0 ? jsonInputs : ["benchmarks/results/comparison.json"]).map(
-  (path) => resolve(path),
+  (path) => resolve(path)
 );
 const outputDir = resolve(dirArgs[0] ?? "benchmarks/results");
-const chartsDir = chartsFlagValue !== undefined ? resolve(chartsFlagValue) : outputDir;
+const chartsDir = chartsFlagValue === undefined ? outputDir : resolve(chartsFlagValue);
 const allResults = [];
 const environments = [];
 for (const input of inputs) {
@@ -33,7 +33,7 @@ for (const input of inputs) {
 const fixtures = [...new Set(allResults.map((item) => item.fixture))].sort(
   (left, right) =>
     (fixtureScale[left]?.order ?? 99) - (fixtureScale[right]?.order ?? 99) ||
-    left.localeCompare(right),
+    left.localeCompare(right)
 );
 await mkdir(outputDir, { recursive: true });
 await mkdir(chartsDir, { recursive: true });
@@ -42,7 +42,7 @@ const diffResults = allResults.filter((item) => !isWorkflow(item.adapter));
 for (const fixture of fixtures) {
   const rows = allResults.filter((item) => item.fixture === fixture);
   const diffRows = diffResults.filter((item) => item.fixture === fixture);
-  const measuredRows = diffRows.filter((item) => !item.skipped && !item.unsupported);
+  const measuredRows = diffRows.filter((item) => !(item.skipped || item.unsupported));
   const latencyPath = join(chartsDir, `${fixture}-latency.svg`);
   const correctnessPath = join(chartsDir, `${fixture}-correctness.svg`);
   const resultsPath = join(outputDir, `${fixture}-results.json`);
@@ -54,7 +54,7 @@ for (const fixture of fixtures) {
   await writeFile(
     resultsPath,
     `${JSON.stringify({ environments, fixture, results: rows }, null, 2)}\n`,
-    "utf8",
+    "utf8"
   );
   written.push(resultsPath);
 }
@@ -76,17 +76,17 @@ function renderSummaryMarkdown() {
   ];
   for (const env of environments) {
     lines.push(
-      `- \`${env.source}\`: fixtures ${env.fixtures.join(", ")}; ${env.iterations} iterations; supabase ${env.toolVersions?.supabase ?? "n/a"}; completed ${env.completedAt}`,
+      `- \`${env.source}\`: fixtures ${env.fixtures.join(", ")}; ${env.iterations} iterations; supabase ${env.toolVersions?.supabase ?? "n/a"}; completed ${env.completedAt}`
     );
   }
   for (const fixture of fixtures) {
     const rows = allResults.filter(
-      (item) => item.fixture === fixture && !item.skipped && !item.unsupported,
+      (item) => item.fixture === fixture && !item.skipped && !item.unsupported
     );
     lines.push("", `## Fixture: ${fixture}`, "");
     lines.push(
       "| Tool | Mode | Runs | Median | p95 | Applies once | Applies twice | Fully verified | Output F1 |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     );
     for (const group of groupedStats(rows)) {
       const groupRows = rows.filter((item) => item.adapter === group.label);
@@ -100,7 +100,7 @@ function renderSummaryMarkdown() {
           ? (scored.reduce((sum, item) => sum + item.outputF1, 0) / scored.length).toFixed(3)
           : "—";
       lines.push(
-        `| ${group.label} | ${mode} | ${groupRows.length} | ${formatSeconds(group.median)} | ${formatSeconds(group.p95)} | ${once}/${groupRows.length} | ${twice}/${groupRows.length} | ${verified}/${groupRows.length} | ${f1} |`,
+        `| ${group.label} | ${mode} | ${groupRows.length} | ${formatSeconds(group.median)} | ${formatSeconds(group.p95)} | ${once}/${groupRows.length} | ${twice}/${groupRows.length} | ${verified}/${groupRows.length} | ${f1} |`
       );
     }
   }
@@ -115,7 +115,7 @@ function renderSummaryMarkdown() {
             item.adapter === adapter &&
             item.fixture === fixture &&
             !item.skipped &&
-            !item.unsupported,
+            !item.unsupported
         )
         .map((item) => item.elapsedMs);
       return values.length > 0 ? percentile(values, 0.5) : undefined;

@@ -8,9 +8,63 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 jobs:
-  check:
+  quality:
+    # DB-independent gates: run once, no postgres service. Exercises the
+    # publish runtime (node 22 floor + 24 release major) without the matrix.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm audit signatures
+      - run: npm run lint:ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Guard suite
+        run: npm run guard
+      - run: npm run check:schema
+      - run: npm run check:package
+      - run: npm run benchmark
+      - name: Pack package
+        run: |
+          tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
+          echo "SUPASCHEMA_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
+      - name: Smoke npx from tarball
+        run: |
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
+            --from dir:tests/fixtures/basic/from \
+            --to dir:tests/fixtures/basic/to \
+            --out "$RUNNER_TEMP/smoke.sql"
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke.sql"
+      - name: Examples smoke (shipped examples render + check clean)
+        run: |
+          node dist/cli.js diff \
+            --from dir:examples/supabase/schemas \
+            --to dir:examples/supabase/schemas-next \
+            --out "$RUNNER_TEMP/example.sql"
+          node dist/cli.js check "$RUNNER_TEMP/example.sql"
+
+  check:
+    # DB-dependent gates only: the postgres matrix proves replay safety and
+    # corpus/fixture reconvergence against each supported major.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -26,18 +80,18 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
-
-
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm audit signatures
-      - run: npm run check
-      - run: npm run check:package
+      - run: npm run build
+      - name: DB-gated tests
+        run: npm test
       - name: Coverage
         if: matrix.postgres == 17
         run: npm run test:coverage
@@ -46,38 +100,30 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: coverage/lcov.info
-      - run: npm run benchmark
       - run: npm run fixture:diff
       - name: Verify fixture migration
         run: npm run fixture:verify
       - name: Corpus oracle (dirty-real reconvergence)
         run: npm run corpus:check
-      - name: Pack package
-        run: |
-          tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
-          echo "SUPASCHEMA_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
-      - name: Smoke npx from tarball
-        run: |
-          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
-          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
-            --from dir:tests/fixtures/basic/from \
-            --to dir:tests/fixtures/basic/to \
-            --out "$RUNNER_TEMP/smoke.sql"
-          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke.sql"
 
   check-os:
     # Path handling and git: sources without a database; DB-gated tests skip.
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run check
+      - run: npm run build
+      - name: DB-gated tests (DB-gated cases skip without a database)
+        run: npm test
       - run: npm run fixture:diff

@@ -18,8 +18,8 @@ import { makeObject } from "./sql/statements.js";
 
 export interface ExtractCatalogOptions {
   databaseUrl: string;
-  source?: string;
   normalize?: boolean;
+  source?: string;
 }
 
 type CatalogPool = Pick<Pool, "query">;
@@ -34,7 +34,9 @@ export async function extractCatalogModel(options: ExtractCatalogOptions): Promi
     max: 4,
     options: "-c search_path=",
   });
-  pool.on("error", () => {});
+  pool.on("error", () => {
+    // The main extraction path reports query failures through diagnostics.
+  });
   try {
     const sections = await Promise.all([
       collectSection((objects) => appendSchemas(pool, objects, 0)),
@@ -83,7 +85,7 @@ export async function extractCatalogModel(options: ExtractCatalogOptions): Promi
 }
 
 async function collectSection(
-  section: (objects: SchemaObject[]) => Promise<number>,
+  section: (objects: SchemaObject[]) => Promise<number>
 ): Promise<SchemaObject[]> {
   const objects: SchemaObject[] = [];
   await section(objects);
@@ -93,8 +95,9 @@ async function collectSection(
 async function appendSchemas(
   pool: CatalogPool,
   objects: SchemaObject[],
-  ordinal: number,
+  ordinal: number
 ): Promise<number> {
+  let nextOrdinal = ordinal;
   // `public` is created by initdb in every database; modeling it as a
   // droppable object would let a tree that never declares it render
   // DROP SCHEMA public.
@@ -108,18 +111,19 @@ async function appendSchemas(
   for (const row of result.rows) {
     const name = stringValue(row.name);
     objects.push(
-      makeObject({ kind: "schema", name }, `CREATE SCHEMA ${quoteIdent(name)}`, ordinal),
+      makeObject({ kind: "schema", name }, `CREATE SCHEMA ${quoteIdent(name)}`, nextOrdinal)
     );
-    ordinal += 1;
+    nextOrdinal += 1;
   }
-  return ordinal;
+  return nextOrdinal;
 }
 
 async function appendExtensions(
   pool: CatalogPool,
   objects: SchemaObject[],
-  ordinal: number,
+  ordinal: number
 ): Promise<number> {
+  let nextOrdinal = ordinal;
   // plpgsql is installed by initdb in every database (same class as the
   // public schema); modeling it would render DROP EXTENSION plpgsql for any
   // tree that never declares it.
@@ -137,21 +141,22 @@ async function appendExtensions(
       makeObject(
         { kind: "extension", name },
         `CREATE EXTENSION ${quoteIdent(name)} WITH SCHEMA ${quoteIdent(schema)}`,
-        ordinal,
+        nextOrdinal,
         undefined,
-        { schema },
-      ),
+        { schema }
+      )
     );
-    ordinal += 1;
+    nextOrdinal += 1;
   }
-  return ordinal;
+  return nextOrdinal;
 }
 
 async function appendFunctions(
   pool: CatalogPool,
   objects: SchemaObject[],
-  ordinal: number,
+  ordinal: number
 ): Promise<number> {
+  let nextOrdinal = ordinal;
   const result = await pool.query<Record<string, unknown>>(`
     select
       n.nspname as schema,
@@ -180,12 +185,12 @@ async function appendFunctions(
           signature: functionSignature(stringValue(row.args), row.variadic === true),
         },
         stringValue(row.definition),
-        ordinal,
-      ),
+        nextOrdinal
+      )
     );
-    ordinal += 1;
+    nextOrdinal += 1;
   }
-  return ordinal;
+  return nextOrdinal;
 }
 
 // oidvectortypes joins input argument types with ", "; type names contain no
@@ -202,8 +207,9 @@ function functionSignature(args: string, variadic: boolean): string {
 async function appendViews(
   pool: CatalogPool,
   objects: SchemaObject[],
-  ordinal: number,
+  ordinal: number
 ): Promise<number> {
+  let nextOrdinal = ordinal;
   const result = await pool.query<Record<string, unknown>>(`
     select
       n.nspname as schema,
@@ -231,12 +237,12 @@ async function appendViews(
       makeObject(
         { kind, name, schema },
         `${prefix} ${formatQualifiedName(schema, name)}${withClause} AS\n${stringValue(row.definition)}`,
-        ordinal,
-      ),
+        nextOrdinal
+      )
     );
-    ordinal += 1;
+    nextOrdinal += 1;
   }
-  return ordinal;
+  return nextOrdinal;
 }
 
 function reloptionEnabled(reloptions: unknown, option: string): boolean {
@@ -265,8 +271,9 @@ function reloptionEnabled(reloptions: unknown, option: string): boolean {
 async function appendIndexes(
   pool: CatalogPool,
   objects: SchemaObject[],
-  ordinal: number,
+  ordinal: number
 ): Promise<number> {
+  let nextOrdinal = ordinal;
   // Constraint-backed indexes (PK/UNIQUE/EXCLUDE) are owned by their
   // constraint object; emitting them as index objects would double-own them
   // and plan false index drops against trees that declare the constraint.
@@ -294,19 +301,20 @@ async function appendIndexes(
           table: stringValue(row.tablename),
         },
         stringValue(row.indexdef),
-        ordinal,
-      ),
+        nextOrdinal
+      )
     );
-    ordinal += 1;
+    nextOrdinal += 1;
   }
-  return ordinal;
+  return nextOrdinal;
 }
 
 async function appendTriggers(
   pool: CatalogPool,
   objects: SchemaObject[],
-  ordinal: number,
+  ordinal: number
 ): Promise<number> {
+  let nextOrdinal = ordinal;
   const result = await pool.query<Record<string, unknown>>(`
     select
       n.nspname as schema,
@@ -331,19 +339,20 @@ async function appendTriggers(
           table: stringValue(row.table_name),
         },
         stringValue(row.definition),
-        ordinal,
-      ),
+        nextOrdinal
+      )
     );
-    ordinal += 1;
+    nextOrdinal += 1;
   }
-  return ordinal;
+  return nextOrdinal;
 }
 
 async function appendPoliciesAndRls(
   pool: CatalogPool,
   objects: SchemaObject[],
-  ordinal: number,
+  ordinal: number
 ): Promise<number> {
+  let nextOrdinal = ordinal;
   const rls = await pool.query<Record<string, unknown>>(`
     select n.nspname as schema, c.relname as name, c.relrowsecurity as rls, c.relforcerowsecurity as force
     from pg_class c
@@ -368,9 +377,9 @@ async function appendPoliciesAndRls(
       statements.push(`ALTER TABLE ${formatQualifiedName(schema, name)} FORCE ROW LEVEL SECURITY`);
     }
     objects.push(
-      makeObject({ kind: "rls", name, schema, table: name }, statements.join(";\n"), ordinal),
+      makeObject({ kind: "rls", name, schema, table: name }, statements.join(";\n"), nextOrdinal)
     );
-    ordinal += 1;
+    nextOrdinal += 1;
   }
   const policies = await pool.query<Record<string, unknown>>(`
     select
@@ -406,10 +415,12 @@ async function appendPoliciesAndRls(
     if (row.with_check) {
       clauses.push(`WITH CHECK (${stringValue(row.with_check)})`);
     }
-    objects.push(makeObject({ kind: "policy", name, schema, table }, clauses.join(" "), ordinal));
-    ordinal += 1;
+    objects.push(
+      makeObject({ kind: "policy", name, schema, table }, clauses.join(" "), nextOrdinal)
+    );
+    nextOrdinal += 1;
   }
-  return ordinal;
+  return nextOrdinal;
 }
 
 function normalizePolicyRoles(value: unknown): string[] {

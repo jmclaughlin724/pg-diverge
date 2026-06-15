@@ -1,6 +1,7 @@
 ---
 title: "Quickstart"
 description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from explicit offline sources, and validate it."
+keywords: ["quickstart","first migration","diff","check","types"]
 ---
 
 This guide generates one replay-safe migration from one schema file.
@@ -76,7 +77,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
 
     You will see output similar to:
 
-    ```
+    ```text
     ✔ Parsed schema tree (3 objects)
     ✔ Resolved migrations history (0 migrations)
     ✔ Computed diff (4 operations)
@@ -138,7 +139,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
 
     A passing check looks like:
 
-    ```
+    ```text
     ✔ Parsed 4 statements
     ✔ No destructive operations detected
     ✔ Migration is replay-safe
@@ -182,7 +183,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
 
     The output comes from your schema files. It does not require a live database.
 
-    ```
+    ```text
     ✔ Parsed schema tree (3 objects)
     ✔ Generated TypeScript types
 

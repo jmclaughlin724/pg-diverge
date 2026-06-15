@@ -1,0 +1,375 @@
+<svg height="380" role="img" viewBox="0 0 1200 380" width="1200" xmlns="http://www.w3.org/2000/svg">
+  <title>The declarative workflow today</title>
+  <rect fill="#0b1220" height="100%" rx="14" width="100%" />
+  <text
+    fill="#f8fafc"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="22"
+    font-weight="700"
+    x="40.0"
+    y="52.0"
+  >
+    The declarative workflow today
+  </text>
+  <text
+    fill="#94a3b8"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="13"
+    font-weight="400"
+    x="40.0"
+    y="78.0"
+  >
+    Diff engines and type generators both need a database that already has your change.
+  </text>
+  <line stroke="#64748b" stroke-width="2" x1="192" x2="225" y1="162" y2="162" />
+  <path d="M225,157 L232,162 L225,167 Z" fill="#64748b" />
+  <line stroke="#64748b" stroke-width="2" x1="386" x2="419" y1="162" y2="162" />
+  <path d="M419,157 L426,162 L419,167 Z" fill="#64748b" />
+  <line stroke="#64748b" stroke-width="2" x1="580" x2="613" y1="162" y2="162" />
+  <path d="M613,157 L620,162 L613,167 Z" fill="#64748b" />
+  <line stroke="#64748b" stroke-width="2" x1="774" x2="807" y1="162" y2="162" />
+  <path d="M807,157 L814,162 L807,167 Z" fill="#64748b" />
+  <line stroke="#64748b" stroke-width="2" x1="968" x2="1001" y1="162" y2="162" />
+  <path d="M1001,157 L1008,162 L1001,167 Z" fill="#64748b" />
+  <rect
+    fill="rgba(82,96,121,0.16)"
+    height="60"
+    rx="12"
+    stroke="#526079"
+    stroke-opacity="0.7"
+    stroke-width="1.5"
+    width="150"
+    x="40"
+    y="132"
+  />
+  <text
+    fill="#e2e8f0"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="15"
+    font-weight="650"
+    text-anchor="middle"
+    x="115.0"
+    y="160.0"
+  >
+    Edit schema
+  </text>
+  <text
+    fill="#94a3b8"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11.5"
+    font-weight="400"
+    text-anchor="middle"
+    x="115.0"
+    y="179.0"
+  >
+    SQL files
+  </text>
+  <rect
+    fill="rgba(248,113,113,0.10)"
+    height="60"
+    rx="12"
+    stroke="#ef4444"
+    stroke-opacity="0.7"
+    stroke-width="1.5"
+    width="150"
+    x="234"
+    y="132"
+  />
+  <text
+    fill="#fca5a5"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="15"
+    font-weight="650"
+    text-anchor="middle"
+    x="309.0"
+    y="160.0"
+  >
+    Spin up
+  </text>
+  <text
+    fill="#94a3b8"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11.5"
+    font-weight="400"
+    text-anchor="middle"
+    x="309.0"
+    y="179.0"
+  >
+    shadow database
+  </text>
+  <rect
+    fill="rgba(239,68,68,0.12)"
+    height="22"
+    rx="11"
+    stroke="#f87171"
+    stroke-opacity="0.5"
+    width="51.6"
+    x="283.2"
+    y="202"
+  />
+  <text
+    fill="#f87171"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11"
+    font-weight="600"
+    text-anchor="middle"
+    x="309.0"
+    y="217.0"
+  >
+    Docker
+  </text>
+  <rect
+    fill="rgba(248,113,113,0.10)"
+    height="60"
+    rx="12"
+    stroke="#ef4444"
+    stroke-opacity="0.7"
+    stroke-width="1.5"
+    width="150"
+    x="428"
+    y="132"
+  />
+  <text
+    fill="#fca5a5"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="15"
+    font-weight="650"
+    text-anchor="middle"
+    x="503.0"
+    y="160.0"
+  >
+    Replay schema
+  </text>
+  <text
+    fill="#94a3b8"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11.5"
+    font-weight="400"
+    text-anchor="middle"
+    x="503.0"
+    y="179.0"
+  >
+    into the shadow DB
+  </text>
+  <rect
+    fill="rgba(239,68,68,0.12)"
+    height="22"
+    rx="11"
+    stroke="#f87171"
+    stroke-opacity="0.5"
+    width="117.6"
+    x="444.2"
+    y="202"
+  />
+  <text
+    fill="#f87171"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11"
+    font-weight="600"
+    text-anchor="middle"
+    x="503.0"
+    y="217.0"
+  >
+    minutes at scale
+  </text>
+  <rect
+    fill="rgba(82,96,121,0.16)"
+    height="60"
+    rx="12"
+    stroke="#526079"
+    stroke-opacity="0.7"
+    stroke-width="1.5"
+    width="150"
+    x="622"
+    y="132"
+  />
+  <text
+    fill="#e2e8f0"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="15"
+    font-weight="650"
+    text-anchor="middle"
+    x="697.0"
+    y="160.0"
+  >
+    Diff
+  </text>
+  <text
+    fill="#94a3b8"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11.5"
+    font-weight="400"
+    text-anchor="middle"
+    x="697.0"
+    y="179.0"
+  >
+    → migration
+  </text>
+  <rect
+    fill="rgba(248,113,113,0.10)"
+    height="60"
+    rx="12"
+    stroke="#ef4444"
+    stroke-opacity="0.7"
+    stroke-width="1.5"
+    width="150"
+    x="816"
+    y="132"
+  />
+  <text
+    fill="#fca5a5"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="15"
+    font-weight="650"
+    text-anchor="middle"
+    x="891.0"
+    y="160.0"
+  >
+    Apply
+  </text>
+  <text
+    fill="#94a3b8"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11.5"
+    font-weight="400"
+    text-anchor="middle"
+    x="891.0"
+    y="179.0"
+  >
+    to the database
+  </text>
+  <rect
+    fill="rgba(239,68,68,0.12)"
+    height="22"
+    rx="11"
+    stroke="#f87171"
+    stroke-opacity="0.5"
+    width="91.2"
+    x="845.4"
+    y="202"
+  />
+  <text
+    fill="#f87171"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11"
+    font-weight="600"
+    text-anchor="middle"
+    x="891.0"
+    y="217.0"
+  >
+    before types
+  </text>
+  <rect
+    fill="rgba(248,113,113,0.10)"
+    height="60"
+    rx="12"
+    stroke="#ef4444"
+    stroke-opacity="0.7"
+    stroke-width="1.5"
+    width="150"
+    x="1010"
+    y="132"
+  />
+  <text
+    fill="#fca5a5"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="15"
+    font-weight="650"
+    text-anchor="middle"
+    x="1085.0"
+    y="160.0"
+  >
+    Introspect
+  </text>
+  <text
+    fill="#94a3b8"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11.5"
+    font-weight="400"
+    text-anchor="middle"
+    x="1085.0"
+    y="179.0"
+  >
+    → TypeScript
+  </text>
+  <rect
+    fill="rgba(239,68,68,0.12)"
+    height="22"
+    rx="11"
+    stroke="#f87171"
+    stroke-opacity="0.5"
+    width="144.0"
+    x="1013.0"
+    y="202"
+  />
+  <text
+    fill="#f87171"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11"
+    font-weight="600"
+    text-anchor="middle"
+    x="1085.0"
+    y="217.0"
+  >
+    types lag the editor
+  </text>
+  <path
+    d="M234,236 L234,246 L1160,246 L1160,236"
+    fill="none"
+    stroke="#ef4444"
+    stroke-opacity="0.6"
+    stroke-width="1.5"
+  />
+  <line
+    stroke="#ef4444"
+    stroke-opacity="0.6"
+    stroke-width="1.5"
+    x1="697"
+    x2="697"
+    y1="246"
+    y2="254"
+  />
+  <text
+    fill="#ef4444"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="12.5"
+    font-weight="600"
+    text-anchor="middle"
+    x="697.0"
+    y="270.0"
+  >
+    Needs a running PostgreSQL at every step
+  </text>
+  <rect
+    fill="rgba(248,113,113,0.08)"
+    height="48"
+    rx="10"
+    stroke="#ef4444"
+    stroke-opacity="0.45"
+    width="1120"
+    x="40"
+    y="292"
+  />
+  <rect fill="#ef4444" height="48" rx="2.5" width="5" x="40" y="292" />
+  <text
+    fill="#e2e8f0"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="13.5"
+    font-weight="500"
+    x="62.0"
+    y="321.0"
+  >
+    RLS policies are diffed by name — a tightened USING predicate can be dropped silently, shipping
+    a tenant-isolation hole.
+  </text>
+  <text
+    fill="#64748b"
+    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="11"
+    font-weight="400"
+    x="40.0"
+    y="362.0"
+  >
+    The declarative promise, today: every step pays for database infrastructure.
+  </text>
+</svg>

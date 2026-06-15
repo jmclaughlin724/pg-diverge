@@ -19,7 +19,7 @@ export interface SynthesizedConstraint {
 export function tableConstraintSyntheses(
   createStmt: AstNode,
   sql: string,
-  byteOffset = 0,
+  byteOffset = 0
 ): SynthesizedConstraint[] {
   const relation = rangeVarName(createStmt.relation);
   if (!relation) {
@@ -31,7 +31,7 @@ export function tableConstraintSyntheses(
   for (const element of tableElements(createStmt, bytes, byteOffset)) {
     if (element.isColumn) {
       syntheses.push(
-        ...inlineConstraintSyntheses(element, bytes, byteOffset, relation.name, qualified),
+        ...inlineConstraintSyntheses(element, bytes, byteOffset, relation.name, qualified)
       );
       continue;
     }
@@ -58,13 +58,13 @@ export function tableConstraintSyntheses(
 export function stripDeclaredConstraints(
   createStmt: AstNode,
   sql: string,
-  byteOffset = 0,
+  byteOffset = 0
 ): string | undefined {
   const relation = asRecord(createStmt.relation);
   const bytes = toByteString(sql);
   const elements = tableElements(createStmt, bytes, byteOffset);
   if (elements.length === 0) {
-    return undefined;
+    return;
   }
   let strippedAny = false;
   const pieces: string[] = [];
@@ -93,16 +93,16 @@ export function stripDeclaredConstraints(
     pieces.push(piece);
   }
   if (!strippedAny || pieces.length === 0) {
-    return undefined;
+    return;
   }
   const relationLocation = (readNumber(relation?.location) ?? 0) - byteOffset;
   const open = findCharOutsideQuotes(bytes, "(", Math.max(relationLocation, 0));
   if (open === -1) {
-    return undefined;
+    return;
   }
   const close = findMatchingParen(bytes, open);
   if (close === -1) {
-    return undefined;
+    return;
   }
   const head = bytes.slice(0, open + 1);
   const tail = bytes.slice(close);
@@ -115,7 +115,7 @@ function primaryKeyColumns(elements: TableElement[]): Set<string> {
     if (element.isColumn) {
       const name = readString(element.node.colname);
       const hasPrimary = readArray(element.node.constraints).some(
-        (item) => readString(asRecord(asRecord(item)?.Constraint)?.contype) === "CONSTR_PRIMARY",
+        (item) => readString(asRecord(asRecord(item)?.Constraint)?.contype) === "CONSTR_PRIMARY"
       );
       if (name && hasPrimary) {
         columns.add(name);
@@ -133,14 +133,14 @@ function primaryKeyColumns(elements: TableElement[]): Set<string> {
 
 function hasExplicitNotNull(columnDef: AstNode): boolean {
   return readArray(columnDef.constraints).some(
-    (item) => readString(asRecord(asRecord(item)?.Constraint)?.contype) === "CONSTR_NOTNULL",
+    (item) => readString(asRecord(asRecord(item)?.Constraint)?.contype) === "CONSTR_NOTNULL"
   );
 }
 
 function columnPieceWithoutHoisted(
   element: TableElement,
   bytes: string,
-  byteOffset: number,
+  byteOffset: number
 ): { piece: string; stripped: boolean } {
   const located = locatedInlineConstraints(element, byteOffset);
   let piece = "";
@@ -168,7 +168,7 @@ function inlineConstraintSyntheses(
   bytes: string,
   byteOffset: number,
   table: string,
-  qualified: string,
+  qualified: string
 ): SynthesizedConstraint[] {
   const column = readString(element.node.colname);
   if (!column) {
@@ -178,7 +178,7 @@ function inlineConstraintSyntheses(
   const syntheses: SynthesizedConstraint[] = [];
   for (const [index, item] of located.entries()) {
     const contype = readString(item.constraint.contype);
-    if (!contype || !inlineConstraintTypes.has(contype)) {
+    if (!(contype && inlineConstraintTypes.has(contype))) {
       continue;
     }
     const end = located[index + 1]?.location ?? element.end;
@@ -267,7 +267,7 @@ function skipSqlWhitespace(text: string, start: number): number {
 
 function locatedInlineConstraints(
   element: TableElement,
-  byteOffset: number,
+  byteOffset: number
 ): { constraint: AstNode; location: number }[] {
   return readArray(element.node.constraints)
     .map((item) => asRecord(asRecord(item)?.Constraint))
@@ -298,19 +298,19 @@ function inlineConstraintBody(contype: string, column: string, text: string): st
     case "CONSTR_FOREIGN":
       return `FOREIGN KEY (${quoteIdent(column)}) ${text}`;
     default:
-      return undefined;
+      return;
   }
 }
 
 function defaultConstraintName(
   table: string,
   constraint: AstNode,
-  impliedColumns: string[],
+  impliedColumns: string[]
 ): string | undefined {
   const contype = readString(constraint.contype);
   const keys = stringList(constraint.keys);
   const fkAttrs = stringList(constraint.fk_attrs);
-  const columns = fkAttrs.length > 0 ? fkAttrs : keys.length > 0 ? keys : impliedColumns;
+  const columns = constraintColumns(fkAttrs, keys, impliedColumns);
   const joined = columns.join("_");
   switch (contype) {
     case "CONSTR_PRIMARY":
@@ -328,8 +328,18 @@ function defaultConstraintName(
     case "CONSTR_EXCLUSION":
       return joined ? `${table}_${joined}_excl` : undefined;
     default:
-      return undefined;
+      return;
   }
+}
+
+function constraintColumns(fkAttrs: string[], keys: string[], impliedColumns: string[]): string[] {
+  if (fkAttrs.length > 0) {
+    return fkAttrs;
+  }
+  if (keys.length > 0) {
+    return keys;
+  }
+  return impliedColumns;
 }
 
 function expressionColumns(expression: unknown): string[] {

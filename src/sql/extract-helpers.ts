@@ -4,20 +4,20 @@ import type { AstNode } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readString, stringList } from "./ast.js";
 import { makeObject } from "./statements.js";
 
-export type ParseStatementResult = {
+export interface ParseStatementResult {
   diagnostics: Diagnostic[];
   objects: SchemaObject[];
-};
+}
 
 export function alterTableObjects(
   node: AstNode,
   statement: string,
   ordinal: number,
-  file: string | undefined,
+  file: string | undefined
 ): SchemaObject[] | undefined {
   const table = rangeVarName(node.relation);
   if (!table) {
-    return undefined;
+    return;
   }
   const command = readArray(node.cmds)
     .map((item) => asRecord(asRecord(item)?.AlterTableCmd))
@@ -27,7 +27,7 @@ export function alterTableObjects(
     const constraint = asRecord(asRecord(command?.def)?.Constraint);
     const name = readString(constraint?.conname);
     if (!name) {
-      return undefined;
+      return;
     }
     return [
       makeObject(
@@ -39,7 +39,7 @@ export function alterTableObjects(
         },
         statement,
         ordinal,
-        file,
+        file
       ),
     ];
   }
@@ -55,14 +55,14 @@ export function alterTableObjects(
         statement,
         ordinal,
         file,
-        { rlsSubtype: subtype },
+        { rlsSubtype: subtype }
       ),
     ];
   }
   if (subtype === "AT_ColumnDefault") {
     const column = readString(command?.name);
     if (!column) {
-      return undefined;
+      return;
     }
 
     return [
@@ -73,11 +73,11 @@ export function alterTableObjects(
         file,
         {
           columnDefaultAmendment: { column, expression: command?.def ?? null },
-        },
+        }
       ),
     ];
   }
-  return undefined;
+  return;
 }
 
 /**
@@ -94,11 +94,11 @@ export function sequenceOwnedByOption(options: unknown): string | null | undefin
     }
     const parts = stringList(defElem?.arg);
     if (parts.length === 0) {
-      return undefined;
+      return;
     }
     return parts.at(-1) === "none" ? null : parts.join(".");
   }
-  return undefined;
+  return;
 }
 
 export function extensionSchemaOption(options: unknown): string | undefined {
@@ -112,14 +112,14 @@ export function extensionSchemaOption(options: unknown): string | undefined {
       return value;
     }
   }
-  return undefined;
+  return;
 }
 
 export function withManagedSchemaDiagnostics(
   objects: SchemaObject[],
   statement: string,
   config: SupaschemaConfig,
-  file: string | undefined,
+  file: string | undefined
 ): ParseStatementResult {
   const diagnostics: Diagnostic[] = [];
   for (const object of objects) {
@@ -130,7 +130,7 @@ export function withManagedSchemaDiagnostics(
 
 export function supabaseViewSecurityDiagnostics(
   objects: SchemaObject[],
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): Diagnostic[] {
   if (!hasSupabaseManagedSurface(config)) {
     return [];
@@ -152,8 +152,8 @@ export function supabaseViewSecurityDiagnostics(
           file: object.file,
           hint: "Add WITH (security_invoker = true) so row level security applies to the querying role.",
           ref: object.ref,
-        },
-      ),
+        }
+      )
     );
   }
   return diagnostics;
@@ -163,7 +163,7 @@ function managedSchemaDiagnostics(
   object: SchemaObject,
   statement: string,
   config: SupaschemaConfig,
-  file?: string,
+  file?: string
 ): Diagnostic[] {
   if (config.managedSchemas.length === 0) {
     return [];
@@ -172,7 +172,7 @@ function managedSchemaDiagnostics(
   const metadataSchema =
     typeof object.metadata.schema === "string" ? object.metadata.schema : undefined;
   const schema = [refSchema, metadataSchema].find(
-    (candidate) => candidate !== undefined && config.managedSchemas.includes(candidate),
+    (candidate) => candidate !== undefined && config.managedSchemas.includes(candidate)
   );
   if (!schema) {
     return [];
@@ -187,7 +187,7 @@ function managedSchemaDiagnostics(
         hint: `Move this statement out of the declarative tree, or remove "${schema}" from managedSchemas only if this project owns it.`,
         ref: object.ref,
         statement,
-      },
+      }
     ),
   ];
 }

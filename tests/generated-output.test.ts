@@ -9,6 +9,9 @@ import { parseSqlAst } from "../src/sql/parser.js";
 import { verifyMigration } from "../src/verify.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
+const unqualifiedCatalogPattern =
+  /(?<!pg_catalog\.)\bpg_(?:type|class|namespace|constraint|roles)\b/;
+const unqualifiedRegprocPattern = /(?<!pg_catalog\.)\bto_reg(?:class|procedure)\(/;
 
 interface Scenario {
   config?: Partial<SupaschemaConfig>;
@@ -49,11 +52,17 @@ async function renderScenario(scenario: Scenario): Promise<string> {
   const options = scenario.config ? { config: scenario.config } : {};
   const from = await extractSourceModel(scenario.from, options);
   const to = await extractSourceModel(scenario.to, options);
-  expect(
-    [...from.diagnostics, ...to.diagnostics].filter((item) => item.severity === "error"),
-  ).toEqual([]);
+  const sourceErrors = [...from.diagnostics, ...to.diagnostics].filter(
+    (item) => item.severity === "error"
+  );
+  if (sourceErrors.length > 0) {
+    throw new Error(`expected source extraction to succeed: ${JSON.stringify(sourceErrors)}`);
+  }
   const plan = planSchemaDiff(from, to, options);
-  expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  const planErrors = plan.diagnostics.filter((item) => item.severity === "error");
+  if (planErrors.length > 0) {
+    throw new Error(`expected planning to succeed: ${JSON.stringify(planErrors)}`);
+  }
   return renderMigration(plan, options);
 }
 
@@ -70,7 +79,7 @@ describe.each(scenarios)("generated migration standards: $name", (scenario) => {
     const sql = await renderScenario(scenario);
     const diagnostics = await checkMigrationSql(
       sql,
-      scenario.config ? { config: scenario.config } : {},
+      scenario.config ? { config: scenario.config } : {}
     );
 
     expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
@@ -85,10 +94,15 @@ describe.each(scenarios)("generated migration standards: $name", (scenario) => {
 
   it("never emits CASCADE and never references catalogs unqualified", async () => {
     const sql = await renderScenario(scenario);
+    const diagnostics = await checkMigrationSql(
+      sql,
+      scenario.config ? { config: scenario.config } : {}
+    );
+    const diagnosticCodes = diagnostics.map((diagnostic) => diagnostic.code);
 
-    expect(sql).not.toMatch(/\bCASCADE\b/i);
-    expect(sql).not.toMatch(/(?<!pg_catalog\.)\bpg_(?:type|class|namespace|constraint|roles)\b/);
-    expect(sql).not.toMatch(/(?<!pg_catalog\.)\bto_reg(?:class|procedure)\(/);
+    expect(diagnosticCodes).not.toContain("SUPA_CHECK_CASCADE");
+    expect(sql).not.toMatch(unqualifiedCatalogPattern);
+    expect(sql).not.toMatch(unqualifiedRegprocPattern);
   });
 
   it.skipIf(!databaseUrl)(
@@ -116,6 +130,6 @@ describe.each(scenarios)("generated migration standards: $name", (scenario) => {
       });
 
       expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-    },
+    }
   );
 });

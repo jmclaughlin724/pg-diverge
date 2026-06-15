@@ -8,7 +8,11 @@ import { latestLineage, parseLineage } from "../src/lineage.js";
 
 const run = promisify(execFile);
 
-type CliResult = { code: number; stderr: string; stdout: string };
+interface CliResult {
+  code: number;
+  stderr: string;
+  stdout: string;
+}
 
 async function cli(args: string[]): Promise<CliResult> {
   try {
@@ -35,11 +39,11 @@ describe("lineage parsing", () => {
     const directory = await mkdtemp(join(tmpdir(), "supa-lineage-"));
     await writeFile(
       join(directory, "0001_old.sql"),
-      "-- supaschema: lineage from=a to=b\nSELECT 1;",
+      "-- supaschema: lineage from=a to=b\nSELECT 1;"
     );
     await writeFile(
       join(directory, "0002_new.sql"),
-      "-- supaschema: lineage from=b to=c\nSELECT 1;",
+      "-- supaschema: lineage from=b to=c\nSELECT 1;"
     );
     await writeFile(join(directory, "0003_hand.sql"), "-- hand-authored\nSELECT 1;");
 

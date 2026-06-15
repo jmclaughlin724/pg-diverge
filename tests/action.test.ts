@@ -34,10 +34,10 @@ describe("composite action", () => {
     expect(action.on).toBeUndefined();
     expect(action.jobs).toBeUndefined();
     expect(settings["yaml.schemas"]?.["https://www.schemastore.org/github-action.json"]).toContain(
-      "action.yml",
+      "action.yml"
     );
     expect(
-      settings["yaml.schemas"]?.["https://www.schemastore.org/github-workflow.json"],
+      settings["yaml.schemas"]?.["https://www.schemastore.org/github-workflow.json"]
     ).toContain(".github/workflows/*.yml");
   });
 });

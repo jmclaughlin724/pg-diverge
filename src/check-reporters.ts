@@ -18,7 +18,7 @@ export function renderCheckReport(reporter: CheckReporter, files: FileDiagnostic
       return `${JSON.stringify(
         files.map((entry) => ({ diagnostics: entry.diagnostics, file: entry.file })),
         null,
-        2,
+        2
       )}\n`;
     default:
       return renderText(files);
@@ -45,10 +45,10 @@ function renderGithub(files: FileDiagnostics[]): string {
     for (const item of entry.diagnostics) {
       const level = item.severity === "error" ? "error" : "warning";
       const message = escapeGithubData(
-        `${item.code}: ${item.message}${item.hint ? ` (${item.hint})` : ""}`,
+        `${item.code}: ${item.message}${item.hint ? ` (${item.hint})` : ""}`
       );
       lines.push(
-        `::${level} file=${escapeGithubProperty(entry.file)},title=${item.code}::${message}`,
+        `::${level} file=${escapeGithubProperty(entry.file)},title=${item.code}::${message}`
       );
     }
   }
@@ -68,7 +68,7 @@ function renderSarif(files: FileDiagnostics[]): string {
       ],
       message: { text: `${item.message}${item.hint ? ` (${item.hint})` : ""}` },
       ruleId: item.code,
-    })),
+    }))
   );
   const sarif = {
     $schema: "https://json.schemastore.org/sarif-2.1.0.json",

@@ -27,14 +27,35 @@ const createOrder = new Map<ObjectKind, number>([
 ]);
 
 const dropOrder = new Map<ObjectKind, number>(
-  [...createOrder.entries()].map(([kind, rank]) => [kind, 1000 - rank]),
+  [...createOrder.entries()].map(([kind, rank]) => [kind, 1000 - rank])
 );
 
 export function sortOperations(
   operations: MigrationOperation[],
-  diagnostics: Diagnostic[],
+  diagnostics: Diagnostic[]
 ): MigrationOperation[] {
   const base = [...operations].sort(compareOperations);
+  const graph = buildDependencyGraph(base);
+  const result = topoSortOperations(base, graph);
+  if (result.sorted.length !== base.length) {
+    const leftover = cyclicOperationKeys(base, result.remainingIncoming);
+    diagnostics.push(
+      diagnostic("SUPA_PLAN_DEPENDENCY_CYCLE", "error", "dependency ordering has a cycle", {
+        hint: traceCycle(leftover, graph.outgoing) ?? [...leftover].join(", "),
+      })
+    );
+    return base;
+  }
+  return result.sorted;
+}
+
+interface DependencyGraph {
+  incomingCount: Map<string, number>;
+  operationByKey: Map<string, MigrationOperation>;
+  outgoing: Map<string, Set<string>>;
+}
+
+function buildDependencyGraph(base: MigrationOperation[]): DependencyGraph {
   const operationByKey = new Map(base.map((operation) => [operation.key, operation]));
   // A relation replace can emit both a pre-drop `drop` and a later `create` for
   // the same object identity (e.g. a dependent view rebuilt around the replace).
@@ -45,24 +66,47 @@ export function sortOperations(
   const upsertKeyByIdentity = identityIndex(base.filter((operation) => operation.kind !== "drop"));
   const outgoing = new Map<string, Set<string>>();
   const incomingCount = new Map<string, number>();
+  initializeDependencyGraph(base, outgoing, incomingCount);
   for (const operation of base) {
+    const index = operation.kind === "drop" ? dropKeyByIdentity : upsertKeyByIdentity;
+    addOperationDependencies(operation, index, operationByKey, outgoing, incomingCount);
+  }
+  return { incomingCount, operationByKey, outgoing };
+}
+
+function initializeDependencyGraph(
+  operations: MigrationOperation[],
+  outgoing: Map<string, Set<string>>,
+  incomingCount: Map<string, number>
+): void {
+  for (const operation of operations) {
     outgoing.set(operation.key, new Set());
     incomingCount.set(operation.key, 0);
   }
-  for (const operation of base) {
-    const index = operation.kind === "drop" ? dropKeyByIdentity : upsertKeyByIdentity;
-    for (const dependencyKey of operationDependencyKeys(operation, index)) {
-      if (dependencyKey === operation.key || !operationByKey.has(dependencyKey)) {
-        continue;
-      }
-      if (operation.kind === "drop") {
-        addEdge(operation.key, dependencyKey, outgoing, incomingCount);
-      } else {
-        addEdge(dependencyKey, operation.key, outgoing, incomingCount);
-      }
+}
+
+function addOperationDependencies(
+  operation: MigrationOperation,
+  index: Map<string, string>,
+  operationByKey: Map<string, MigrationOperation>,
+  outgoing: Map<string, Set<string>>,
+  incomingCount: Map<string, number>
+): void {
+  for (const dependencyKey of operationDependencyKeys(operation, index)) {
+    if (dependencyKey === operation.key || !operationByKey.has(dependencyKey)) {
+      continue;
     }
+    const [from, to] =
+      operation.kind === "drop" ? [operation.key, dependencyKey] : [dependencyKey, operation.key];
+    addEdge(from, to, outgoing, incomingCount);
   }
-  const remainingIncoming = new Map(incomingCount);
+}
+
+function topoSortOperations(
+  base: MigrationOperation[],
+  graph: DependencyGraph
+): { remainingIncoming: Map<string, number>; sorted: MigrationOperation[] } {
+  const remainingIncoming = new Map(graph.incomingCount);
   const ready = base.filter((operation) => remainingIncoming.get(operation.key) === 0);
   const sorted: MigrationOperation[] = [];
   while (ready.length > 0) {
@@ -72,31 +116,29 @@ export function sortOperations(
       break;
     }
     sorted.push(operation);
-    for (const target of outgoing.get(operation.key) ?? []) {
+    for (const target of graph.outgoing.get(operation.key) ?? []) {
       const nextCount = (remainingIncoming.get(target) ?? 0) - 1;
       remainingIncoming.set(target, nextCount);
       if (nextCount === 0) {
-        const targetOperation = operationByKey.get(target);
+        const targetOperation = graph.operationByKey.get(target);
         if (targetOperation) {
           ready.push(targetOperation);
         }
       }
     }
   }
-  if (sorted.length !== base.length) {
-    const leftover = new Set(
-      base
-        .filter((operation) => (remainingIncoming.get(operation.key) ?? 0) > 0)
-        .map((operation) => operation.key),
-    );
-    diagnostics.push(
-      diagnostic("SUPA_PLAN_DEPENDENCY_CYCLE", "error", "dependency ordering has a cycle", {
-        hint: traceCycle(leftover, outgoing) ?? [...leftover].join(", "),
-      }),
-    );
-    return base;
-  }
-  return sorted;
+  return { remainingIncoming, sorted };
+}
+
+function cyclicOperationKeys(
+  operations: MigrationOperation[],
+  incomingCount: Map<string, number>
+): Set<string> {
+  return new Set(
+    operations
+      .filter((operation) => (incomingCount.get(operation.key) ?? 0) > 0)
+      .map((operation) => operation.key)
+  );
 }
 
 function identityIndex(operations: MigrationOperation[]): Map<string, string> {
@@ -121,7 +163,7 @@ function refIdentity(ref: ObjectRef): string {
 
 function operationDependencyKeys(
   operation: MigrationOperation,
-  operationKeyByIdentity: Map<string, string>,
+  operationKeyByIdentity: Map<string, string>
 ): string[] {
   const source =
     operation.kind === "drop" ? operation.before : (operation.after ?? operation.before);
@@ -153,7 +195,7 @@ function addEdge(
   from: string,
   to: string,
   outgoing: Map<string, Set<string>>,
-  incomingCount: Map<string, number>,
+  incomingCount: Map<string, number>
 ): void {
   const targets = outgoing.get(from);
   if (!targets || targets.has(to)) {
@@ -178,7 +220,7 @@ function traceCycle(leftover: Set<string>, outgoing: Map<string, Set<string>>): 
       return [...path.slice(cycleStart), current].join(" -> ");
     }
   }
-  return undefined;
+  return;
 }
 
 export function compareOperations(left: MigrationOperation, right: MigrationOperation): number {

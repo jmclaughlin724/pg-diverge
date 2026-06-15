@@ -23,18 +23,25 @@ import { selfCheckCatalog } from "./selfcheck.js";
 import { extractSourceModel } from "./source.js";
 import { verifyMigration } from "./verify.js";
 
-type GlobalOptions = { config?: string; env?: string; quiet?: boolean };
-type InspectOptions = { from?: string; schema?: string };
-type VerifyOptions = {
+interface GlobalOptions {
+  config?: string;
+  env?: string;
+  quiet?: boolean;
+}
+interface InspectOptions {
   from?: string;
-  to?: string;
+  schema?: string;
+}
+interface VerifyOptions {
   databaseUrl?: string;
-  ensureRoles?: boolean;
   ensureEnvironment?: boolean;
+  ensureRoles?: boolean;
+  from?: string;
   keepDatabases?: boolean;
   migration?: string;
   migrationsDir?: string;
-};
+  to?: string;
+}
 
 const cliVersion = await readPackageVersion();
 const program = new Command();
@@ -53,7 +60,7 @@ Exit codes:
   1  runtime error (bad arguments, unreadable input, crash)
   2  diagnostics contained at least one error
   3  --fail-on-diff was set and the plan contained operations
-`,
+`
   );
 
 program
@@ -109,7 +116,7 @@ program
   .argument("[migrations...]", "migration files (default: every .sql in config.migrationsDir)")
   .option("--reporter <name>", "text | github | sarif | json", "text")
   .description(
-    "Validate replay-safety and parser diagnostics for migration files (shell globs expand to a directory gate; `-` reads stdin; zero args checks the migrations directory).",
+    "Validate replay-safety and parser diagnostics for migration files (shell globs expand to a directory gate; `-` reads stdin; zero args checks the migrations directory)."
   )
   .action(async (migrationArgs: string[], options: { reporter: string }) => {
     const config = await loadCliConfig();
@@ -138,7 +145,7 @@ program
     }
     if (reporter === "text") {
       process.stdout.write(
-        migrationPaths.length > 1 ? `ok (${migrationPaths.length} files)\n` : "ok\n",
+        migrationPaths.length > 1 ? `ok (${migrationPaths.length} files)\n` : "ok\n"
       );
     }
   });
@@ -149,28 +156,28 @@ program
   .option("--to <target>", "source model after the change (default: the config schema tree)")
   .option(
     "--migration <file>",
-    "migration SQL file to apply twice (default: newest .sql in config.migrationsDir)",
+    "migration SQL file to apply twice (default: newest .sql in config.migrationsDir)"
   )
   .option("--migrations-dir <dir>", "migrations directory (default: config.migrationsDir)")
   .option(
     "--database-url <url>",
-    "PostgreSQL URL whose role can create temporary databases (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
+    "PostgreSQL URL whose role can create temporary databases (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)"
   )
   .option(
     "--ensure-roles",
-    "create missing NOLOGIN roles referenced by grants/policies on the verification server (cluster-level; never dropped)",
+    "create missing NOLOGIN roles referenced by grants/policies on the verification server (cluster-level; never dropped)"
   )
   .option(
     "--ensure-environment",
-    "stub Supabase-provisioned surfaces (auth helpers, cron schema) in the temporary databases",
+    "stub Supabase-provisioned surfaces (auth helpers, cron schema) in the temporary databases"
   )
   .option(
     "--no-ensure-environment",
-    "disable the Supabase environment stub when a wrapper or config enables it",
+    "disable the Supabase environment stub when a wrapper or config enables it"
   )
   .option(
     "--keep-databases",
-    "keep the temporary databases after the run and print their names (debugging failed verifies)",
+    "keep the temporary databases after the run and print their names (debugging failed verifies)"
   )
   .description("Apply from + migration twice and compare against target in temporary databases.")
   .action(async (options: VerifyOptions) => {
@@ -178,7 +185,7 @@ program
     const databaseUrl = await resolveCliDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
       process.stderr.write(
-        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n",
+        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n"
       );
       process.exitCode = 1;
       return;
@@ -192,7 +199,7 @@ program
       return;
     }
     const sources = await resolveSourceDefaults(options, config, () =>
-      resolveCliDatabaseUrl(options.databaseUrl),
+      resolveCliDatabaseUrl(options.databaseUrl)
     );
     if (sources.notice !== undefined) {
       process.stderr.write(sources.notice);
@@ -224,14 +231,14 @@ program
   .command("selfcheck")
   .option(
     "--database-url <url>",
-    "PostgreSQL URL to extract (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
+    "PostgreSQL URL to extract (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)"
   )
   .description("Re-extract the live catalog's rendered SQL and report identity normalization gaps.")
   .action(async (options: { databaseUrl?: string }) => {
     const databaseUrl = await resolveCliDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
       process.stderr.write(
-        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n",
+        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n"
       );
       process.exitCode = 1;
       return;
@@ -239,7 +246,7 @@ program
     const result = await selfCheckCatalog({ databaseUrl });
     printDiagnostics(result.diagnostics);
     process.stdout.write(
-      `selfcheck: ${result.checkedObjects} objects, ${result.mismatches} parity mismatches\n`,
+      `selfcheck: ${result.checkedObjects} objects, ${result.mismatches} parity mismatches\n`
     );
     if (hasErrors(result.diagnostics)) {
       process.exitCode = 2;
@@ -265,7 +272,7 @@ program.parseAsync(process.argv).catch((error: unknown) => {
   process.exitCode = 1;
 });
 
-async function loadCliConfig(): Promise<SupaschemaConfig> {
+function loadCliConfig(): Promise<SupaschemaConfig> {
   const globals = program.opts<GlobalOptions>();
   return loadConfig(process.cwd(), globals.config);
 }
@@ -281,7 +288,7 @@ async function resolveCliDatabaseUrl(explicit?: string): Promise<string | undefi
 }
 
 async function resolveCliDatabaseUrlInfo(
-  explicit?: string,
+  explicit?: string
 ): Promise<{ lane: string; url: string | undefined }> {
   if (explicit) {
     return { lane: "explicit --database-url", url: resolveDatabaseUrl(explicit) };
@@ -292,18 +299,24 @@ async function resolveCliDatabaseUrlInfo(
     const entry = config.environments[globals.env];
     if (!entry) {
       throw new Error(
-        `--env "${globals.env}" is not defined in config.environments (known: ${Object.keys(config.environments).join(", ") || "none"})`,
+        `--env "${globals.env}" is not defined in config.environments (known: ${Object.keys(config.environments).join(", ") || "none"})`
       );
     }
     return { lane: `--env ${globals.env}`, url: resolveDatabaseUrl(entry.databaseUrl) };
   }
   const url = resolveDatabaseUrl();
-  const lane = process.env.SUPASCHEMA_DATABASE_URL
-    ? "SUPASCHEMA_DATABASE_URL"
-    : resolveSupabaseLocalDatabaseUrl()
-      ? "supabase/config.toml auto-discovery"
-      : "none";
+  const lane = resolvedDatabaseUrlLane();
   return { lane, url };
+}
+
+function resolvedDatabaseUrlLane(): string {
+  if (process.env.SUPASCHEMA_DATABASE_URL) {
+    return "SUPASCHEMA_DATABASE_URL";
+  }
+  if (resolveSupabaseLocalDatabaseUrl()) {
+    return "supabase/config.toml auto-discovery";
+  }
+  return "none";
 }
 
 async function readStdin(): Promise<string> {

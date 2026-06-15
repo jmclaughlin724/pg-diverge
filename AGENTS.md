@@ -16,6 +16,7 @@ Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable 
 - Config semantics are owned by `src/config.ts` and the generated `config-schema.json`. Keep docs, examples, and JSON Schema aligned when config changes.
 - Tests live in `tests/**`; fixtures under `tests/fixtures/**` and `corpus/**` are behavioral evidence. Update snapshots only when the rendered SQL change is intentional and explained by source changes.
 - The package manager is npm. Preserve `package-lock.json`; do not introduce pnpm, yarn, or alternate lockfiles.
+- The npm package boundary is the `package.json` `files` allowlist. Do not add a root `.npmignore` while this allowlist owns publishing; use `npm pack --dry-run --json` to inspect the exact tarball.
 
 ## Migration Policy
 
@@ -27,7 +28,7 @@ Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable 
 - Keep `transactionMode: "per-migration"` for transactional runners such as `supabase db push`. `adapter: "auto"` is the default automated supaschema workflow and is not a Supabase switch. `CREATE INDEX CONCURRENTLY` is blocked when `transactionMode` is `per-migration`; split concurrent companions belong only in an explicit `per-statement` operational lane.
 - `supaschema sync` is a gated operational command, not the default generation workflow. With no apply flag it is a dry run; with `--local` or `--remote` it runs status reconciliation and `check`, then delegates the actual apply/deploy to the Supabase CLI.
 - Database URLs resolve by flag (`$ENV` supported), then named `config.environments` via `--env`, then `SUPASCHEMA_DATABASE_URL`, then nearest `supabase/config.toml`. Never hard-code credentials or connection strings.
-- Decode blocking diagnostics with `supaschema explain <SUPA_CODE>`; recovery procedures live in `docs/configuration/hints.md`.
+- Decode blocking diagnostics with `supaschema explain <SUPA_CODE>`; recovery procedures live in `docs/configuration/hints.mdx`.
 
 ## Agent Bundle Surfaces
 
@@ -36,10 +37,12 @@ Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable 
 - The Claude skill and `.agents` skill mirror must stay identical. If the migration workflow changes, update both surfaces or run the owning sync path if one exists.
 - The Claude rule and Codex rule are platform-specific surfaces for the same migration policy. Keep `.claude/rules/supaschema.md` and `.codex/rules/supaschema.rules` semantically aligned.
 - Claude hooks and Codex hooks are separate native implementations. When changing generated-migration protection or auto-diff behavior, update and verify both runtimes.
-- `package.json` includes the agent bundle in published files. When adding, moving, or deleting an agent surface, verify the packaged tarball still contains the intended files.
+- `package.json` includes the consumer agent bundle in published files, including `.agents/skills/supaschema`, the Claude rule/skill/hooks, and the Codex rule/skill/hooks. When adding, moving, or deleting an agent surface, verify the packaged tarball still contains the intended files.
+- Keep consumer install surfaces separate from maintainer workspace tooling. `postinstall` installs config, schema/migration directories, `AGENTS.md`/`CLAUDE.md` addenda, and the supaschema rule/skill/hook bundle. Repo-local `.vscode`, Postgres Language Server, Python, MCP, Code Atlas, FastMCP, and UI scaffolding belong to supaschema development unless a change explicitly adds them to the consumer installer and package tests.
 
 ## Implementation Discipline
 
+- Before any broad owner, route, consumer, dependency, DB, API, worker, generated-surface, or deploy claim, or any delete/rename/move, build and query Code Atlas first. Then use cclsp for exact symbol behavior on the owner files it returns. Then read the source before making a behavioral claim. For external framework or library facts, consult the configured docs MCP research servers; never guess. Live MCP output supplements, but never replaces, the local atlas plus cclsp plus source as proof. The graph under `.tmp/` is scratch and must not be committed. Any change to the atlas sources of truth updates `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, and `scripts/guards/check-code-atlas.mjs` in the same commit.
 - SQL understanding must come from PostgreSQL parse trees through `libpg-query` and structured model helpers. Do not classify, diff, or mutate SQL with ad hoc regex when an AST/model path exists.
 - Unsupported or ambiguous DDL fails closed with a diagnostic. Do not silently pass through statements that the model cannot prove safe.
 - Generated migrations must be idempotent and replay-safe. Guard creates, avoid `CASCADE`, and preserve lock-safety checks.
@@ -52,10 +55,16 @@ Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable 
 
 The `docs/**` tree is a Mintlify docs-as-code site (monorepo mode, served at `supaschema.com/docs`). Author pages to the Mintlify standard; the deterministic `npm run docs:lint` gate (part of `docs:check` and CI) blocks regressions.
 
-- The frontmatter `title` and `description` own the page header. Never add a body `# ` H1 (it duplicates the title and breaks heading hierarchy); start in-page headings at `##`.
+- The frontmatter `title`, `description`, and `keywords` own page metadata. Never add a body `# ` H1 (it duplicates the title and breaks heading hierarchy); start in-page headings at `##`.
+- Code fences must include a language tag. Use `text` for terminal output, ASCII diagrams, object keys, and other plain output.
 - Use Mintlify components, not flattened markdown, for the content they exist for: `<ParamField>` for every command flag/parameter, `<ResponseField>`/`<Expandable>` for response shapes, `<Card>`/`<CardGroup>` for navigation, `<Steps>` for procedures, `<Accordion>`/`<AccordionGroup>` for progressive disclosure, and `<Note>`/`<Warning>`/`<Tip>`/`<Info>` for callouts. Command reference pages with a Flags/Options section must document flags with `<ParamField>`.
+- Keep `docs/docs.json` aligned with Mintlify's config model: include the schema URL, `theme`, `name`, `colors.primary`, a single supported icon library, and navigation entries for every public page. Pages intentionally omitted from navigation must set `hidden: true`.
+- Keep Mintlify's agent-readiness surfaces enabled: `contextual.options` should include page-copy, Markdown view, MCP install/connect actions, and the main AI chat targets; reverse proxies must forward `/mcp`, `/skill.md`, `/.well-known/mcp*`, `/.well-known/skills/*`, and `/.well-known/agent-skills/*` to Mintlify.
+- Navigation labels and tab titles must be short enough for compact sidebar or top-nav rendering. Use `sidebarTitle` when the full page title is too long for navigation.
+- Docs pages must use `.mdx`. Local docs images, including generated benchmark and concept SVGs, belong under `docs/images/**`, use root-relative `/images/**` paths, include descriptive alt text, and must be wrapped in `<Frame>`.
+- Do not add snippets, custom CSS, custom JS, or API playground config without updating `docs/docs.json` and the Mintlify rule surface in the same change.
 - Never carry `theme={null}` (a copy-paste artifact from Mintlify's rendered output) on a code fence.
-- Internal links are root-relative and extensionless (`/configuration/hints`), never `.md`/`.mdx` paths, repo-relative `docs/...` paths, or the absolute `supaschema.com/docs/...` URL. README and other repo-root markdown are not Mintlify pages and link to the published `supaschema.com/docs/...` URLs instead.
+- Internal links are root-relative and extensionless (`/configuration/hints`), never `.md`/`.mdx` paths, repo-relative `docs/...` paths, absolute `supaschema.com/docs/...` URLs, or generic text like "here" and "read more". README and other repo-root markdown are not Mintlify pages and link to the published `supaschema.com/docs/...` URLs instead.
 - Enforcement layers: `docs:lint` (the rules above, deterministic) then `mint validate` (strict build), `mint broken-links --check-anchors`, and `mint a11y` — all run by `npm run docs:check` and the `Docs` CI workflow on every docs change.
 
 ## Common Commands
@@ -81,11 +90,12 @@ Repository development:
 
 ```bash
 npm run check           # lint + typecheck + tests + build
-npm run lint            # biome check
+npm run lint            # ultracite check (wraps Biome)
 npm run typecheck       # TypeScript no-emit check
 npm test                # vitest suite
 npm run build           # dist + config-schema.json
 npm run check:package   # publint + arethetypeswrong package checks
+npm run pack:dry        # inspect npm tarball contents before release
 npm run fixture:verify  # render a fixture migration, apply twice, compare catalogs
 npm run corpus:check    # dirty-real corpus reconvergence oracle
 npm run benchmark       # benchmark and threshold lane

@@ -33,122 +33,154 @@ const unclassified: ClassifiedStatement = { destructive: false, keys: [] };
 
 export async function scoreDiffOutput(
   sql: string,
-  manifest: FixtureManifestEntry[],
+  manifest: FixtureManifestEntry[]
 ): Promise<DiffOutputScore> {
-  const emittedKeys = new Set<string>();
-  const destructiveKeys = new Set<string>();
-  let classifiedStatements = 0;
-  const classify = async (text: string): Promise<void> => {
-    const parsed = await parseSqlAst(text, "diff-score");
-    if (parsed.ast === undefined) {
-      return;
-    }
-    for (const statement of astStatements(parsed.ast, text)) {
-      const classified = statementKeys(statement.tag, statement.node);
-      if (classified === "do-block") {
-        for (const segment of doBlockStatements(statement.node)) {
-          await classify(segment);
-        }
-        continue;
-      }
-      if (classified.keys.length === 0) {
-        continue;
-      }
-      classifiedStatements += 1;
-      for (const key of classified.keys) {
-        emittedKeys.add(key);
-        if (classified.destructive) {
-          destructiveKeys.add(key);
-        }
-      }
-    }
-  };
-  await classify(sql);
+  const collected = await collectDiffOutputKeys(sql);
   const manifestKeys = new Set(manifest.map((entry) => entry.key));
-  const missed = [...manifestKeys].filter((key) => !emittedKeys.has(key)).sort();
-  const excess = [...emittedKeys]
-    .filter((key) => !manifestKeys.has(key) || destructiveKeys.has(key))
+  const missed = [...manifestKeys].filter((key) => !collected.emittedKeys.has(key)).sort();
+  const excess = [...collected.emittedKeys]
+    .filter((key) => !manifestKeys.has(key) || collected.destructiveKeys.has(key))
     .sort();
   const matched = manifestKeys.size - missed.length;
   const recall = manifestKeys.size === 0 ? 1 : matched / manifestKeys.size;
   const precision =
-    emittedKeys.size === 0 ? 1 : (emittedKeys.size - excess.length) / emittedKeys.size;
+    collected.emittedKeys.size === 0
+      ? 1
+      : (collected.emittedKeys.size - excess.length) / collected.emittedKeys.size;
   const f1 = recall + precision === 0 ? 0 : (2 * recall * precision) / (recall + precision);
-  return { classifiedStatements, excess, f1, matched, missed, precision, recall };
+  return {
+    classifiedStatements: collected.classifiedStatements,
+    excess,
+    f1,
+    matched,
+    missed,
+    precision,
+    recall,
+  };
+}
+
+interface CollectedDiffKeys {
+  classifiedStatements: number;
+  destructiveKeys: Set<string>;
+  emittedKeys: Set<string>;
+}
+
+async function collectDiffOutputKeys(sql: string): Promise<CollectedDiffKeys> {
+  const emittedKeys = new Set<string>();
+  const destructiveKeys = new Set<string>();
+  let classifiedStatements = 0;
+  const recordClassified = (classified: ClassifiedStatement): void => {
+    classifiedStatements += 1;
+    for (const key of classified.keys) {
+      emittedKeys.add(key);
+      if (classified.destructive) {
+        destructiveKeys.add(key);
+      }
+    }
+  };
+  await classifySqlStatements(sql, recordClassified);
+  return { classifiedStatements, destructiveKeys, emittedKeys };
+}
+
+async function classifySqlStatements(
+  sql: string,
+  recordClassified: (classified: ClassifiedStatement) => void
+): Promise<void> {
+  const parsed = await parseSqlAst(sql, "diff-score");
+  if (parsed.ast === undefined) {
+    return;
+  }
+  for (const statement of astStatements(parsed.ast, sql)) {
+    const classified = statementKeys(statement.tag, statement.node);
+    if (classified === "do-block") {
+      for (const segment of doBlockStatements(statement.node)) {
+        await classifySqlStatements(segment, recordClassified);
+      }
+      continue;
+    }
+    if (classified.keys.length > 0) {
+      recordClassified(classified);
+    }
+  }
 }
 
 function keysOf(keys: string[], destructive = false): ClassifiedStatement {
   return { destructive, keys };
 }
 
+type StatementKeyReader = (node: AstNode) => ClassifiedStatement | "do-block";
+
+const statementKeyReaders: Partial<Record<string, StatementKeyReader>> = {
+  AlterEnumStmt: (node) => keyFromQualifiedName("enum", node.typeName),
+  AlterTableStmt: (node) => keysOf(alterTableKeys(node)),
+  CreateEnumStmt: (node) => keyFromQualifiedName("enum", node.typeName),
+  CreateFunctionStmt: createFunctionKey,
+  CreatePolicyStmt: createPolicyKey,
+  CreateStmt: (node) => keyFromRangeVar("table", node.relation),
+  CreateTableAsStmt: createTableAsKey,
+  CreateTrigStmt: createTriggerKey,
+  DoStmt: () => "do-block",
+  DropStmt: dropStatementKey,
+  IndexStmt: createIndexKey,
+  RefreshMatViewStmt: (node) => keyFromRangeVar("materialized-view", node.relation),
+  ViewStmt: (node) => keyFromRangeVar("view", node.view),
+};
+
 function statementKeys(tag: string, statementNode: AstNode): ClassifiedStatement | "do-block" {
   const node = asRecord(statementNode[tag]) ?? {};
-  switch (tag) {
-    case "DoStmt":
-      return "do-block";
-    case "CreateStmt": {
-      const name = rangeVarName(node.relation);
-      return name ? keysOf([objectKey({ kind: "table", ...name })]) : unclassified;
-    }
-    case "CreateTableAsStmt": {
-      const name = rangeVarName(asRecord(node.into)?.rel);
-      const kind = readString(node.objtype) === "OBJECT_MATVIEW" ? "materialized-view" : "table";
-      return name ? keysOf([objectKey({ kind, ...name })]) : unclassified;
-    }
-    case "RefreshMatViewStmt": {
-      const name = rangeVarName(node.relation);
-      return name ? keysOf([objectKey({ kind: "materialized-view", ...name })]) : unclassified;
-    }
-    case "AlterTableStmt":
-      return keysOf(alterTableKeys(node));
-    case "IndexStmt": {
-      const table = rangeVarName(node.relation);
-      const index = readString(node.idxname);
-      return table && index
-        ? keysOf([
-            objectKey({ kind: "index", name: index, schema: table.schema, table: table.name }),
-          ])
-        : unclassified;
-    }
-    case "CreateFunctionStmt": {
-      const identity = functionIdentity(node.funcname, node.parameters);
-      return identity ? keysOf([objectKey({ kind: "function", ...identity })]) : unclassified;
-    }
-    case "ViewStmt": {
-      const name = rangeVarName(node.view);
-      return name ? keysOf([objectKey({ kind: "view", ...name })]) : unclassified;
-    }
-    case "CreatePolicyStmt": {
-      const table = rangeVarName(node.table);
-      const policy = readString(node.policy_name);
-      return table && policy
-        ? keysOf([
-            objectKey({ kind: "policy", name: policy, schema: table.schema, table: table.name }),
-          ])
-        : unclassified;
-    }
-    case "AlterEnumStmt": {
-      const name = qualifiedName(node.typeName);
-      return name ? keysOf([objectKey({ kind: "enum", ...name })]) : unclassified;
-    }
-    case "CreateEnumStmt": {
-      const name = qualifiedName(node.typeName);
-      return name ? keysOf([objectKey({ kind: "enum", ...name })]) : unclassified;
-    }
-    case "CreateTrigStmt": {
-      const table = rangeVarName(node.relation);
-      const trigger = readString(node.trigname);
-      return table && trigger
-        ? keysOf([
-            objectKey({ kind: "trigger", name: trigger, schema: table.schema, table: table.name }),
-          ])
-        : unclassified;
-    }
-    case "DropStmt":
-      return keysOf(dropKeys(node), dataBearingDropTypes.has(readString(node.removeType) ?? ""));
-    default:
-      return unclassified;
-  }
+  return statementKeyReaders[tag]?.(node) ?? unclassified;
+}
+
+function keyFromRangeVar(kind: ObjectKind, value: unknown): ClassifiedStatement {
+  const name = rangeVarName(value);
+  return name ? keysOf([objectKey({ kind, ...name })]) : unclassified;
+}
+
+function keyFromQualifiedName(kind: ObjectKind, value: unknown): ClassifiedStatement {
+  const name = qualifiedName(value);
+  return name ? keysOf([objectKey({ kind, ...name })]) : unclassified;
+}
+
+function createTableAsKey(node: AstNode): ClassifiedStatement {
+  const name = rangeVarName(asRecord(node.into)?.rel);
+  const kind = readString(node.objtype) === "OBJECT_MATVIEW" ? "materialized-view" : "table";
+  return name ? keysOf([objectKey({ kind, ...name })]) : unclassified;
+}
+
+function createIndexKey(node: AstNode): ClassifiedStatement {
+  const table = rangeVarName(node.relation);
+  const index = readString(node.idxname);
+  return table && index
+    ? keysOf([objectKey({ kind: "index", name: index, schema: table.schema, table: table.name })])
+    : unclassified;
+}
+
+function createFunctionKey(node: AstNode): ClassifiedStatement {
+  const identity = functionIdentity(node.funcname, node.parameters);
+  return identity ? keysOf([objectKey({ kind: "function", ...identity })]) : unclassified;
+}
+
+function createPolicyKey(node: AstNode): ClassifiedStatement {
+  const table = rangeVarName(node.table);
+  const policy = readString(node.policy_name);
+  return table && policy
+    ? keysOf([objectKey({ kind: "policy", name: policy, schema: table.schema, table: table.name })])
+    : unclassified;
+}
+
+function createTriggerKey(node: AstNode): ClassifiedStatement {
+  const table = rangeVarName(node.relation);
+  const trigger = readString(node.trigname);
+  return table && trigger
+    ? keysOf([
+        objectKey({ kind: "trigger", name: trigger, schema: table.schema, table: table.name }),
+      ])
+    : unclassified;
+}
+
+function dropStatementKey(node: AstNode): ClassifiedStatement {
+  const removeType = readString(node.removeType) ?? "";
+  return keysOf(dropKeys(node), dataBearingDropTypes.has(removeType));
 }
 
 function alterTableKeys(node: AstNode): string[] {
@@ -169,7 +201,7 @@ function alterTableKeys(node: AstNode): string[] {
     }
     if (subtype === "AT_EnableRowSecurity" || subtype === "AT_DisableRowSecurity") {
       keys.push(
-        objectKey({ kind: "rls", name: table.name, schema: table.schema, table: table.name }),
+        objectKey({ kind: "rls", name: table.name, schema: table.schema, table: table.name })
       );
       continue;
     }
@@ -208,53 +240,66 @@ const typeDropKinds = new Map<string, ObjectKind>([
 
 function dropKeys(node: AstNode): string[] {
   const removeType = readString(node.removeType) ?? "";
-  const keys: string[] = [];
-  for (const object of readArray(node.objects)) {
-    const plainKind = plainDropKinds.get(removeType);
-    if (plainKind) {
-      const parts = objectNameParts(object);
-      const name = parts.at(-1);
-      if (name && removeType === "OBJECT_SCHEMA") {
-        keys.push(objectKey({ kind: plainKind, name }));
-      } else if (name) {
-        const schema = parts.length > 1 ? (parts.at(-2) ?? "public") : "public";
-        keys.push(objectKey({ kind: plainKind, name, schema }));
-      }
-      continue;
-    }
-    const tableScopedKind = tableScopedDropKinds.get(removeType);
-    if (tableScopedKind) {
-      const parts = objectNameParts(object);
-      const name = parts.at(-1);
-      const table = parts.at(-2);
-      if (name && table) {
-        keys.push(
-          objectKey({
-            kind: tableScopedKind,
-            name,
-            schema: parts.length > 2 ? (parts.at(-3) ?? "public") : "public",
-            table,
-          }),
-        );
-      }
-      continue;
-    }
-    const typeKind = typeDropKinds.get(removeType);
-    if (typeKind) {
-      const name = qualifiedName(asRecord(asRecord(object)?.TypeName)?.names);
-      if (name) {
-        keys.push(objectKey({ kind: typeKind, ...name }));
-      }
-      continue;
-    }
-    if (removeType === "OBJECT_FUNCTION" || removeType === "OBJECT_PROCEDURE") {
-      const name = qualifiedName(asRecord(asRecord(object)?.ObjectWithArgs)?.objname);
-      if (name) {
-        keys.push(objectKey({ kind: "function", ...name }));
-      }
-    }
+  return readArray(node.objects).flatMap((object) => dropObjectKey(removeType, object));
+}
+
+function dropObjectKey(removeType: string, object: unknown): string[] {
+  const plainKind = plainDropKinds.get(removeType);
+  if (plainKind) {
+    return plainDropKey(plainKind, removeType, object);
   }
-  return keys;
+  const tableScopedKind = tableScopedDropKinds.get(removeType);
+  if (tableScopedKind) {
+    return tableScopedDropKey(tableScopedKind, object);
+  }
+  const typeKind = typeDropKinds.get(removeType);
+  if (typeKind) {
+    return typeDropKey(typeKind, object);
+  }
+  return functionDropKey(removeType, object);
+}
+
+function plainDropKey(kind: ObjectKind, removeType: string, object: unknown): string[] {
+  const parts = objectNameParts(object);
+  const name = parts.at(-1);
+  if (!name) {
+    return [];
+  }
+  if (removeType === "OBJECT_SCHEMA") {
+    return [objectKey({ kind, name })];
+  }
+  const schema = parts.length > 1 ? (parts.at(-2) ?? "public") : "public";
+  return [objectKey({ kind, name, schema })];
+}
+
+function tableScopedDropKey(kind: ObjectKind, object: unknown): string[] {
+  const parts = objectNameParts(object);
+  const name = parts.at(-1);
+  const table = parts.at(-2);
+  if (!(name && table)) {
+    return [];
+  }
+  return [
+    objectKey({
+      kind,
+      name,
+      schema: parts.length > 2 ? (parts.at(-3) ?? "public") : "public",
+      table,
+    }),
+  ];
+}
+
+function typeDropKey(kind: ObjectKind, object: unknown): string[] {
+  const name = qualifiedName(asRecord(asRecord(object)?.TypeName)?.names);
+  return name ? [objectKey({ kind, ...name })] : [];
+}
+
+function functionDropKey(removeType: string, object: unknown): string[] {
+  if (removeType !== "OBJECT_FUNCTION" && removeType !== "OBJECT_PROCEDURE") {
+    return [];
+  }
+  const name = qualifiedName(asRecord(asRecord(object)?.ObjectWithArgs)?.objname);
+  return name ? [objectKey({ kind: "function", ...name })] : [];
 }
 
 function objectNameParts(object: unknown): string[] {
@@ -279,7 +324,7 @@ function doBlockStatements(statementNode: AstNode): string[] {
 function guardedBodySegments(body: string): string[] {
   const thenOffsets = keywordOffsets(body, "then");
   const endIfOffsets = keywordOffsets(body, "end").filter((offset) =>
-    nextKeywordIs(body, offset + "end".length, "if"),
+    nextKeywordIs(body, offset + "end".length, "if")
   );
   const segments: string[] = [];
   let cursor = -1;
@@ -335,28 +380,10 @@ function keywordOffsets(text: string, word: string): number[] {
   const offsets: number[] = [];
   let index = 0;
   while (index < text.length) {
-    const char = text[index] ?? "";
-    const next = text[index + 1] ?? "";
-    if (char === "-" && next === "-") {
-      const lineEnd = text.indexOf("\n", index);
-      index = lineEnd === -1 ? text.length : lineEnd + 1;
+    const skipped = skippedNonCodeOffset(text, index);
+    if (skipped !== undefined) {
+      index = skipped;
       continue;
-    }
-    if (char === "/" && next === "*") {
-      const blockEnd = text.indexOf("*/", index + 2);
-      index = blockEnd === -1 ? text.length : blockEnd + 2;
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      index = skipQuoted(text, index, char);
-      continue;
-    }
-    if (char === "$") {
-      const skipped = skipDollarQuoted(text, index);
-      if (skipped > index) {
-        index = skipped;
-        continue;
-      }
     }
     if (isKeywordAt(text, index, word)) {
       offsets.push(index);
@@ -366,6 +393,27 @@ function keywordOffsets(text: string, word: string): number[] {
     index += 1;
   }
   return offsets;
+}
+
+function skippedNonCodeOffset(text: string, index: number): number | undefined {
+  const char = text[index] ?? "";
+  const next = text[index + 1] ?? "";
+  if (char === "-" && next === "-") {
+    const lineEnd = text.indexOf("\n", index);
+    return lineEnd === -1 ? text.length : lineEnd + 1;
+  }
+  if (char === "/" && next === "*") {
+    const blockEnd = text.indexOf("*/", index + 2);
+    return blockEnd === -1 ? text.length : blockEnd + 2;
+  }
+  if (char === "'" || char === '"') {
+    return skipQuoted(text, index, char);
+  }
+  if (char !== "$") {
+    return;
+  }
+  const skipped = skipDollarQuoted(text, index);
+  return skipped > index ? skipped : undefined;
 }
 
 function skipQuoted(text: string, from: number, quote: string): number {

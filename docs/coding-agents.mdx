@@ -1,6 +1,7 @@
 ---
 title: "Coding Agents"
 description: "How supaschema guides Claude, Codex, and other coding agents through safe migration generation."
+keywords: ["coding agents","AI agents","AGENTS.md","CLAUDE.md","llms.txt","MCP"]
 ---
 
 supaschema ships an agent bundle so coding agents follow the same migration contract as humans: edit the declarative schema tree, generate migrations with `diff`, check replay safety, and never hand-edit generated migration files.
@@ -37,6 +38,30 @@ https://supaschema.com/docs/llms-full.txt
 ```
 
 These files describe the public docs. They do not replace the repository agent files, which carry write-time migration policy for agents operating inside a codebase.
+
+## Mintlify MCP
+
+Mintlify hosts a read-only search MCP server for the public docs. Use it when an agent needs current supaschema documentation inside an MCP-aware tool:
+
+```text
+https://supaschema.com/docs/mcp
+```
+
+The MCP server exposes search and docs-filesystem tools over the indexed public docs. It gives agents source-backed context, while the installed rule, skill, and hook bundle tells agents what to do inside a project.
+
+## Hosted skill.md
+
+Mintlify also hosts the docs-derived agent skill for tools that understand `skill.md`:
+
+```text
+https://supaschema.com/docs/skill.md
+```
+
+Agents can install it manually when they need documentation context outside a repository that already has the npm package installed:
+
+```bash
+npx skills add https://supaschema.com/docs
+```
 
 ## CLAUDE.md / AGENTS.md
 

@@ -1,0 +1,49 @@
+name: Python
+
+on:
+  pull_request:
+    paths:
+      - "services/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  python:
+    # Single un-matrixed Ubuntu lane for the FastMCP side-service: lock
+    # freshness, ruff lint+format, mypy types, pytest, and a pip-audit scan.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6.7.0
+        with:
+          enable-cache: true
+      - name: Lock freshness (fails on uv.lock drift)
+        run: uv sync --locked
+      - name: Ruff lint
+        run: uv run ruff check services/agent-mcp
+      - name: Ruff format check
+        run: uv run ruff format --check services/agent-mcp
+      - name: Mypy type check
+        run: uv run mypy services/agent-mcp/supaschema_agent_mcp
+      - name: Pytest
+        run: uv run pytest services/agent-mcp/tests
+      - name: pip-audit (vuln scan)
+        run: uvx pip-audit

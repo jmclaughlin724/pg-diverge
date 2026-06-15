@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": ".tmp/tsc-tools",
+    "rootDir": ".",
+    "strict": true,
+    "target": "ES2023",
+    "tsBuildInfoFile": ".tmp/tsc-tools/tsconfig.tools.tsbuildinfo"
+  },
+  "exclude": [
+    ".git",
+    ".tmp",
+    "api-docs",
+    "benchmarks/results",
+    "coverage",
+    "dist",
+    "node_modules"
+  ],
+  "include": [
+    "benchmarks/**/*.js",
+    "benchmarks/**/*.mjs",
+    "bin/**/*.mjs",
+    "cloudflare/**/*.js",
+    "scripts/**/*.js",
+    "scripts/**/*.mjs"
+  ]
+}

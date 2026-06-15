@@ -1,6 +1,7 @@
 ---
 title: "verify"
 description: "verify applies your migration twice in throwaway databases and compares catalog fingerprints to prove idempotency and convergence to the declared schema."
+keywords: ["verify command","apply twice","idempotency","catalog fingerprint"]
 ---
 
 Use `verify` when a database is available and you want the strongest proof before merge.
@@ -20,7 +21,7 @@ If they match, the migration is idempotent and converges to the declared schema.
 
 ## How It Works
 
-```
+```text
 ┌──────────────────────────────┐   ┌──────────────────────────────┐
 │  Migration database          │   │  Target (model) database     │
 │                              │   │                              │

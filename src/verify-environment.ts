@@ -4,10 +4,10 @@ import { diagnostic } from "./diagnostics.js";
 
 export async function preflightCapability(admin: Client): Promise<Diagnostic | undefined> {
   const result = await admin.query<{ can_create: boolean | null }>(
-    "SELECT (rolcreatedb OR rolsuper) AS can_create FROM pg_catalog.pg_roles WHERE rolname = current_user",
+    "SELECT (rolcreatedb OR rolsuper) AS can_create FROM pg_catalog.pg_roles WHERE rolname = current_user"
   );
   if (result.rows[0]?.can_create === true) {
-    return undefined;
+    return;
   }
   return diagnostic(
     "SUPA_VERIFY_ROLE_CAPABILITY",
@@ -15,7 +15,7 @@ export async function preflightCapability(admin: Client): Promise<Diagnostic | u
     "the verification role cannot CREATE DATABASE",
     {
       hint: "Use a role with CREATEDB. On a local Supabase stack, `postgres` lacks superuser for many extensions too — prefer `supabase_admin` (postgresql://supabase_admin:postgres@127.0.0.1:<db.port>/postgres).",
-    },
+    }
   );
 }
 

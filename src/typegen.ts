@@ -3,6 +3,7 @@ import type {
   ColumnShape,
   FunctionShape,
   RelationshipShape,
+  SchemaEntry,
   SchemaShapes,
 } from "./typegen-model.js";
 import { collectSchemaShapes, resolveColumnType } from "./typegen-model.js";
@@ -15,64 +16,10 @@ export async function generateDatabaseTypes(model: SchemaModel): Promise<string>
     "export type Database = {",
   ];
   const sortedSchemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
-    left.localeCompare(right),
+    left.localeCompare(right)
   );
   for (const [schemaName, entry] of sortedSchemas) {
-    const typeOf = (sqlType: string) => tsType(shapes, schemaName, sqlType);
-    lines.push(`  ${quoteKey(schemaName)}: {`);
-    lines.push("    Tables: {");
-    for (const table of [...entry.tables].sort((a, b) => a.name.localeCompare(b.name))) {
-      lines.push(`      ${quoteKey(table.name)}: {`);
-      lines.push("        Row: {");
-      for (const column of table.columns) {
-        const base = typeOf(column.type);
-        lines.push(
-          `          ${quoteKey(column.name)}: ${column.notNull ? base : `${base} | null`};`,
-        );
-      }
-      lines.push("        };");
-      lines.push("        Insert: {");
-      for (const column of table.columns) {
-        lines.push(`          ${insertField(column, typeOf)}`);
-      }
-      lines.push("        };");
-      lines.push("        Update: {");
-      for (const column of table.columns) {
-        lines.push(`          ${updateField(column, typeOf)}`);
-      }
-      lines.push("        };");
-      lines.push(`        Relationships: ${renderRelationships(table.relationships)};`);
-      lines.push("      };");
-    }
-    lines.push("    };");
-    lines.push("    Views: {");
-    for (const view of [...entry.views].sort((a, b) => a.name.localeCompare(b.name))) {
-      lines.push(`      ${quoteKey(view.name)}: {`);
-      lines.push("        Row: {");
-      for (const column of view.columns) {
-        lines.push(`          ${quoteKey(column.name)}: ${typeOf(column.type)} | null;`);
-      }
-      lines.push("        };");
-      lines.push("      };");
-    }
-    lines.push("    };");
-    lines.push("    Enums: {");
-    for (const item of [...entry.enums].sort((a, b) => a.name.localeCompare(b.name))) {
-      const union = item.values.map((value) => JSON.stringify(value)).join(" | ");
-      lines.push(`      ${quoteKey(item.name)}: ${union.length > 0 ? union : "never"};`);
-    }
-    lines.push("    };");
-    lines.push("    CompositeTypes: {");
-    for (const composite of [...entry.composites].sort((a, b) => a.name.localeCompare(b.name))) {
-      lines.push(`      ${quoteKey(composite.name)}: {`);
-      for (const column of composite.columns) {
-        lines.push(`        ${quoteKey(column.name)}: ${typeOf(column.type)} | null;`);
-      }
-      lines.push("      };");
-    }
-    lines.push("    };");
-    lines.push(...functionsBlock(entry.functions, typeOf));
-    lines.push("  };");
+    emitDatabaseSchema(lines, schemaName, entry, shapes);
   }
   lines.push("};");
   lines.push("");
@@ -80,6 +27,103 @@ export async function generateDatabaseTypes(model: SchemaModel): Promise<string>
   lines.push("");
   lines.push(...constantsBlock(sortedSchemas));
   return `${lines.join("\n")}\n`;
+}
+
+function emitDatabaseSchema(
+  lines: string[],
+  schemaName: string,
+  entry: SchemaEntry,
+  shapes: SchemaShapes
+): void {
+  const typeOf = (sqlType: string) => tsType(shapes, schemaName, sqlType);
+  lines.push(`  ${quoteKey(schemaName)}: {`);
+  emitTableTypes(lines, entry, typeOf);
+  emitViewTypes(lines, entry, typeOf);
+  emitEnumTypes(lines, entry);
+  emitCompositeTypes(lines, entry, typeOf);
+  lines.push(...functionsBlock(entry.functions, typeOf));
+  lines.push("  };");
+}
+
+function emitTableTypes(
+  lines: string[],
+  entry: SchemaEntry,
+  typeOf: (sqlType: string) => string
+): void {
+  lines.push("    Tables: {");
+  for (const table of sortedByName(entry.tables)) {
+    lines.push(`      ${quoteKey(table.name)}: {`);
+    emitColumnTypeBlock(lines, "Row", table.columns, (column) => {
+      const base = typeOf(column.type);
+      return `${quoteKey(column.name)}: ${column.notNull ? base : `${base} | null`};`;
+    });
+    emitColumnTypeBlock(lines, "Insert", table.columns, (column) => insertField(column, typeOf));
+    emitColumnTypeBlock(lines, "Update", table.columns, (column) => updateField(column, typeOf));
+    lines.push(`        Relationships: ${renderRelationships(table.relationships)};`);
+    lines.push("      };");
+  }
+  lines.push("    };");
+}
+
+function emitViewTypes(
+  lines: string[],
+  entry: SchemaEntry,
+  typeOf: (sqlType: string) => string
+): void {
+  lines.push("    Views: {");
+  for (const view of sortedByName(entry.views)) {
+    lines.push(`      ${quoteKey(view.name)}: {`);
+    emitColumnTypeBlock(
+      lines,
+      "Row",
+      view.columns,
+      (column) => `${quoteKey(column.name)}: ${typeOf(column.type)} | null;`
+    );
+    lines.push("      };");
+  }
+  lines.push("    };");
+}
+
+function emitEnumTypes(lines: string[], entry: SchemaEntry): void {
+  lines.push("    Enums: {");
+  for (const item of sortedByName(entry.enums)) {
+    const union = item.values.map((value) => JSON.stringify(value)).join(" | ");
+    lines.push(`      ${quoteKey(item.name)}: ${union.length > 0 ? union : "never"};`);
+  }
+  lines.push("    };");
+}
+
+function emitCompositeTypes(
+  lines: string[],
+  entry: SchemaEntry,
+  typeOf: (sqlType: string) => string
+): void {
+  lines.push("    CompositeTypes: {");
+  for (const composite of sortedByName(entry.composites)) {
+    lines.push(`      ${quoteKey(composite.name)}: {`);
+    for (const column of composite.columns) {
+      lines.push(`        ${quoteKey(column.name)}: ${typeOf(column.type)} | null;`);
+    }
+    lines.push("      };");
+  }
+  lines.push("    };");
+}
+
+function emitColumnTypeBlock(
+  lines: string[],
+  name: string,
+  columns: ColumnShape[],
+  renderColumn: (column: ColumnShape) => string
+): void {
+  lines.push(`        ${name}: {`);
+  for (const column of columns) {
+    lines.push(`          ${renderColumn(column)}`);
+  }
+  lines.push("        };");
+}
+
+function sortedByName<T extends { name: string }>(items: T[]): T[] {
+  return [...items].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function tsType(shapes: SchemaShapes, schemaName: string, sqlType: string): string {
@@ -129,12 +173,12 @@ function functionsBlock(functions: FunctionShape[], typeOf: (sqlType: string) =>
   }
   const lines = ["    Functions: {"];
   for (const [name, overloads] of [...grouped.entries()].sort(([left], [right]) =>
-    left.localeCompare(right),
+    left.localeCompare(right)
   )) {
     const argVariants = sortedUnique(overloads.map((fn) => renderFunctionArgs(fn, typeOf)));
     const returnVariants = sortedUnique(overloads.map((fn) => renderFunctionReturns(fn, typeOf)));
     lines.push(
-      `      ${quoteKey(name)}: { Args: ${argVariants.join(" | ")}; Returns: ${returnVariants.join(" | ")} };`,
+      `      ${quoteKey(name)}: { Args: ${argVariants.join(" | ")}; Returns: ${returnVariants.join(" | ")} };`
     );
   }
   lines.push("    };");
@@ -170,7 +214,7 @@ function renderRelationships(relationships: RelationshipShape[]): string {
   }
   const items = relationships.map(
     (item) =>
-      `{ foreignKeyName: ${JSON.stringify(item.foreignKeyName)}; columns: ${tupleType(item.columns)}; isOneToOne: ${item.isOneToOne}; referencedRelation: ${JSON.stringify(item.referencedRelation)}; referencedColumns: ${tupleType(item.referencedColumns)} }`,
+      `{ foreignKeyName: ${JSON.stringify(item.foreignKeyName)}; columns: ${tupleType(item.columns)}; isOneToOne: ${item.isOneToOne}; referencedRelation: ${JSON.stringify(item.referencedRelation)}; referencedColumns: ${tupleType(item.referencedColumns)} }`
   );
   return `[${items.join(", ")}]`;
 }
@@ -207,7 +251,7 @@ function helperBlock(): string[] {
 }
 
 function constantsBlock(
-  schemas: [string, { enums: { name: string; values: string[] }[] }][],
+  schemas: [string, { enums: { name: string; values: string[] }[] }][]
 ): string[] {
   const lines = ["export const Constants = {"];
   for (const [schemaName, entry] of schemas) {
@@ -215,7 +259,7 @@ function constantsBlock(
     lines.push("    Enums: {");
     for (const item of [...entry.enums].sort((a, b) => a.name.localeCompare(b.name))) {
       lines.push(
-        `      ${quoteKey(item.name)}: [${item.values.map((value) => JSON.stringify(value)).join(", ")}],`,
+        `      ${quoteKey(item.name)}: [${item.values.map((value) => JSON.stringify(value)).join(", ")}],`
       );
     }
     lines.push("    },");

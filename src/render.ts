@@ -25,13 +25,13 @@ import { quoteIdent } from "./sql/identifiers.js";
 
 export function renderMigrationSplit(
   plan: MigrationPlan,
-  options: RenderOptions = {},
+  options: RenderOptions = {}
 ): { concurrentSql?: string; sql: string } {
   const concurrent = plan.operations.filter(
     (operation) =>
       !operation.blocked &&
       operation.ref.kind === "index" &&
-      (operation.after ?? operation.before)?.metadata.concurrent === true,
+      (operation.after ?? operation.before)?.metadata.concurrent === true
   );
   if (concurrent.length === 0) {
     return { sql: renderMigration(plan, options) };
@@ -63,7 +63,7 @@ function renderHeader(plan: MigrationPlan, config: SupaschemaConfig, version?: s
   const hasConcurrentIndex = plan.operations.some(
     (operation) =>
       operation.ref.kind === "index" &&
-      (operation.after ?? operation.before)?.metadata.concurrent === true,
+      (operation.after ?? operation.before)?.metadata.concurrent === true
   );
   const transaction = hasConcurrentIndex
     ? "-- supaschema: transaction=false required for concurrent index statements\n"
@@ -127,7 +127,7 @@ function renderAlter(operation: MigrationOperation): string {
     return addEnumValues
       .map(
         (value) =>
-          `ALTER TYPE ${qualifiedRef(after.ref)} ADD VALUE IF NOT EXISTS ${quoteLiteral(String(value))};`,
+          `ALTER TYPE ${qualifiedRef(after.ref)} ADD VALUE IF NOT EXISTS ${quoteLiteral(String(value))};`
       )
       .join("\n");
   }
@@ -152,7 +152,7 @@ function renderAlter(operation: MigrationOperation): string {
     : [];
   for (const column of dropColumns) {
     statements.push(
-      `ALTER TABLE ${qualifiedRef(after.ref)} DROP COLUMN IF EXISTS ${quoteIdent(String(column))};`,
+      `ALTER TABLE ${qualifiedRef(after.ref)} DROP COLUMN IF EXISTS ${quoteIdent(String(column))};`
     );
   }
   if (statements.length === 0) {
@@ -227,8 +227,9 @@ function renderReplace(operation: MigrationOperation): string {
     case "grant":
     case "default-privilege":
       return renderCreate(after);
+    default:
+      throw new Error(`unsupported replace operation for ${after.ref.kind}`);
   }
-  throw new Error(`unsupported replace operation for ${after.ref.kind}`);
 }
 
 function renderAddColumn(table: SchemaObject, column: TableColumn): string {
@@ -265,8 +266,9 @@ function renderCreate(object: SchemaObject): string {
     case "default-privilege":
     case "comment":
       return ensureSemicolon(object.sql);
+    default:
+      throw new Error(`unsupported create operation for ${object.ref.kind}`);
   }
-  throw new Error(`unsupported create operation for ${object.ref.kind}`);
 }
 
 const guardInserts = {
@@ -283,7 +285,7 @@ function spliceGuard(object: SchemaObject): string {
   const facts = object.metadata.render;
   if (!facts || typeof facts !== "object") {
     throw new Error(
-      `object ${object.key} has no render guard facts; re-extract the source model with this supaschema version`,
+      `object ${object.key} has no render guard facts; re-extract the source model with this supaschema version`
     );
   }
   const record = facts as Record<string, unknown>;
@@ -297,11 +299,11 @@ function spliceGuard(object: SchemaObject): string {
   const offset = record.offset;
   if (typeof offset !== "number" || offset < 0 || offset > object.sql.length) {
     throw new Error(
-      `object ${object.key} has no render guard offset; re-extract the source model with this supaschema version`,
+      `object ${object.key} has no render guard offset; re-extract the source model with this supaschema version`
     );
   }
   return ensureSemicolon(
-    `${object.sql.slice(0, offset)}${guardInserts[guard]}${object.sql.slice(offset)}`,
+    `${object.sql.slice(0, offset)}${guardInserts[guard]}${object.sql.slice(offset)}`
   );
 }
 
@@ -353,8 +355,9 @@ function renderDrop(object: SchemaObject): string {
       return renderGrantDrop(object);
     case "default-privilege":
       return renderDefaultPrivilegeDrop(object);
+    default:
+      throw new Error(`unsupported drop operation for ${ref.kind}`);
   }
-  throw new Error(`unsupported drop operation for ${ref.kind}`);
 }
 
 function columnFromMetadata(value: unknown): TableColumn {
@@ -364,7 +367,7 @@ function columnFromMetadata(value: unknown): TableColumn {
   const name = "name" in value && typeof value.name === "string" ? value.name : undefined;
   const definition =
     "definition" in value && typeof value.definition === "string" ? value.definition : undefined;
-  if (!name || !definition) {
+  if (!(name && definition)) {
     throw new Error("invalid add-column metadata");
   }
   return { definition, name };

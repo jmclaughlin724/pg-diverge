@@ -1,6 +1,7 @@
 ---
 title: "migrations"
 description: "migrations compares SQL files on disk against a database's applied history to surface ghost versions, out-of-order files, and pending migrations."
+keywords: ["migrations command","migration status","ghost migrations","pending migrations"]
 ---
 
 Use `migrations` when you need to know what has been applied and what is still pending.
@@ -84,7 +85,7 @@ npx supaschema migrations --json
 
 ## Example output
 
-```
+```text
  Version          File                                    Status
  ───────────────  ──────────────────────────────────────  ───────────────
  20240101120000   20240101120000_create_profiles.sql      applied

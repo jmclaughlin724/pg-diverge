@@ -20,13 +20,13 @@ describe("model format versioning", () => {
     const snapshotPath = join(directory, "catalog.json");
     await writeFile(
       snapshotPath,
-      JSON.stringify({ diagnostics: [], fingerprint: "stale", objects: [] }),
+      JSON.stringify({ diagnostics: [], fingerprint: "stale", objects: [] })
     );
 
     const model = await extractSourceModel(`catalog:${snapshotPath}`);
 
     expect(model.diagnostics.some((item) => item.code === "SUPA_CATALOG_SNAPSHOT_VERSION")).toBe(
-      true,
+      true
     );
   });
 
@@ -40,7 +40,7 @@ describe("model format versioning", () => {
         fingerprint: "current",
         formatVersion: MODEL_FORMAT_VERSION,
         objects: [],
-      }),
+      })
     );
 
     const model = await extractSourceModel(`catalog:${snapshotPath}`);

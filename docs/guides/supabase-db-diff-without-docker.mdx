@@ -1,6 +1,7 @@
 ---
 title: "Docker-free diff"
 description: "Generate Supabase-compatible PostgreSQL migrations from declarative SQL files without Docker, a local Supabase stack, or a shadow database."
+keywords: ["Docker-free diff","Supabase db diff","schema diff","PostgreSQL"]
 ---
 
 You can generate a Supabase-compatible PostgreSQL migration without Docker by using `supaschema diff`. `supaschema` reads the declarative SQL files in your repo, compares them to the configured source state, and writes a replay-safe migration file that your normal Supabase runner can apply.

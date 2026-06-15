@@ -75,7 +75,7 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   }
   if (planned.length === 0) {
     lines.push(
-      `dry run: pass --local to apply ${status.report.pending.length} pending migration(s) via \`supabase migration up\`, --remote to push via \`supabase db push\``,
+      `dry run: pass --local to apply ${status.report.pending.length} pending migration(s) via \`supabase migration up\`, --remote to push via \`supabase db push\``
     );
     return { applied: false, diagnostics, pending: status.report.pending, report: render(lines) };
   }
@@ -88,8 +88,8 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
           "SUPA_SYNC_RUNNER_FAILED",
           "error",
           `\`${command} ${args.join(" ")}\` exited with code ${exitCode}`,
-          { hint: "The migration runner owns apply/deploy; inspect its output above." },
-        ),
+          { hint: "The migration runner owns apply/deploy; inspect its output above." }
+        )
       );
       return {
         applied: false,

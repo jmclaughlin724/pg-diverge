@@ -20,14 +20,14 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .requiredOption("--from <source>", "source to audit against the support matrix")
     .option("--json", "print the report as JSON")
     .description(
-      "Report support-matrix coverage: modeled objects and statements outside the contract.",
+      "Report support-matrix coverage: modeled objects and statements outside the contract."
     )
     .action(async (options: { from: string; json?: boolean }) => {
       const config = await context.loadCliConfig();
       const model = await extractSourceModel(options.from, { config });
       const report = auditModel(model);
       process.stdout.write(
-        options.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderAuditReport(report),
+        options.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderAuditReport(report)
       );
       if (!report.supported) {
         process.exitCode = 2;
@@ -39,7 +39,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--migrations-dir <dir>", "migration files directory")
     .option(
       "--database-url <url>",
-      "target whose applied history to compare (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack); run once per target to compare local and remote",
+      "target whose applied history to compare (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack); run once per target to compare local and remote"
     )
     .option("--history-table <schema.table>", "migration history table", undefined)
     .option("--json", "print the report as JSON")
@@ -62,12 +62,12 @@ export function registerReportCommands(program: Command, context: ReportCommandC
         process.stdout.write(
           options.json === true
             ? `${JSON.stringify(report, null, 2)}\n`
-            : renderMigrationsStatus(report),
+            : renderMigrationsStatus(report)
         );
         if (hasErrors(diagnostics)) {
           process.exitCode = 2;
         }
-      },
+      }
     );
 
   program
@@ -75,11 +75,11 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--corpus-dir <dir>", "corpus directory", "corpus/supabase-style")
     .option(
       "--database-url <url>",
-      "admin URL for disposable corpus databases (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)",
+      "admin URL for disposable corpus databases (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)"
     )
     .option("--json", "print the report as JSON")
     .description(
-      "Run the corpus oracle: replay the dirty-real migrations corpus, diff against its tree, apply the reconciliation twice, and require reconvergence to zero.",
+      "Run the corpus oracle: replay the dirty-real migrations corpus, diff against its tree, apply the reconciliation twice, and require reconvergence to zero."
     )
     .action(async (options: { corpusDir: string; databaseUrl?: string; json?: boolean }) => {
       const databaseUrl = await context.resolveCliDatabaseUrl(options.databaseUrl);
@@ -93,7 +93,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
       });
       context.printDiagnostics(diagnostics);
       process.stdout.write(
-        options.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderCorpusReport(report),
+        options.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderCorpusReport(report)
       );
       if (hasErrors(diagnostics)) {
         process.exitCode = 2;
@@ -105,12 +105,12 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--migrations-dir <dir>", "migration files directory")
     .option(
       "--database-url <url>",
-      "target whose applied history gates the sync (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)",
+      "target whose applied history gates the sync (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)"
     )
     .option("--local", "apply pending migrations to the target via `supabase migration up`")
     .option("--remote", "push pending migrations to the linked project via `supabase db push`")
     .description(
-      "Gate and apply pending migrations: status + replay-safety checks, then the Supabase CLI runs the actual apply/deploy. Dry run without --local/--remote.",
+      "Gate and apply pending migrations: status + replay-safety checks, then the Supabase CLI runs the actual apply/deploy. Dry run without --local/--remote."
     )
     .action(
       async (options: {
@@ -133,6 +133,6 @@ export function registerReportCommands(program: Command, context: ReportCommandC
         if (hasErrors(result.diagnostics)) {
           process.exitCode = 2;
         }
-      },
+      }
     );
 }

@@ -19,7 +19,7 @@ describe("enum value same-transaction hazard", () => {
     const diagnostics = await checkMigrationSql(enumHazardMigration);
 
     const hazard = diagnostics.find(
-      (item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION",
+      (item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION"
     );
     expect(hazard?.severity).toBe("error");
   });
@@ -30,18 +30,18 @@ describe("enum value same-transaction hazard", () => {
     });
 
     const hazard = diagnostics.find(
-      (item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION",
+      (item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION"
     );
     expect(hazard?.severity).toBe("warning");
   });
 
   it("does not flag migrations that only add the value", async () => {
     const diagnostics = await checkMigrationSql(
-      "ALTER TYPE app.mood ADD VALUE IF NOT EXISTS 'curious';",
+      "ALTER TYPE app.mood ADD VALUE IF NOT EXISTS 'curious';"
     );
 
     expect(
-      diagnostics.some((item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION"),
+      diagnostics.some((item) => item.code === "SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION")
     ).toBe(false);
   });
 });
@@ -49,7 +49,7 @@ describe("enum value same-transaction hazard", () => {
 describe("nontransactional statement escalation", () => {
   it("escalates CREATE INDEX CONCURRENTLY to an error under the default config", async () => {
     const diagnostics = await checkMigrationSql(
-      "CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON app.items (id);",
+      "CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON app.items (id);"
     );
 
     const finding = diagnostics.find((item) => item.code === "SUPA_CHECK_NONTRANSACTIONAL_INDEX");
@@ -59,7 +59,7 @@ describe("nontransactional statement escalation", () => {
   it("keeps the warning severity for per-statement runners", async () => {
     const diagnostics = await checkMigrationSql(
       "CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON app.items (id);",
-      { config: { transactionMode: "per-statement" } },
+      { config: { transactionMode: "per-statement" } }
     );
 
     const finding = diagnostics.find((item) => item.code === "SUPA_CHECK_NONTRANSACTIONAL_INDEX");
@@ -79,7 +79,7 @@ describe("config model filters", () => {
         "CREATE TABLE reporting.rollups (id integer);",
         "GRANT SELECT ON TABLE app.accounts TO supabase_admin;",
         "GRANT SELECT ON TABLE app.accounts TO app_user;",
-      ].join("\n"),
+      ].join("\n")
     );
     const model = await extractSourceModel(`dir:${directory}`, {
       config: {
@@ -104,14 +104,14 @@ describe("Supabase view security_invoker policy", () => {
       [
         "CREATE VIEW public.exposed AS SELECT 1 AS one;",
         "CREATE VIEW public.safe WITH (security_invoker = true) AS SELECT 1 AS one;",
-      ].join("\n"),
+      ].join("\n")
     );
     const checked = await extractSourceModel(`dir:${directory}`, {
       config: { managedSchemas: ["auth", "storage"] },
     });
 
     const warnings = checked.diagnostics.filter(
-      (item) => item.code === "SUPA_SUPABASE_VIEW_SECURITY_INVOKER",
+      (item) => item.code === "SUPA_SUPABASE_VIEW_SECURITY_INVOKER"
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.ref?.name).toBe("exposed");
@@ -141,7 +141,7 @@ describe.skipIf(!databaseUrl)("transactional verify fidelity", () => {
     const migrationPath = join(directory, "migration.sql");
     await writeFile(
       migrationPath,
-      "ALTER TYPE app.mood ADD VALUE IF NOT EXISTS 'curious';\nINSERT INTO app.entries (id, current) VALUES (1, 'curious'::app.mood) ON CONFLICT DO NOTHING;\n",
+      "ALTER TYPE app.mood ADD VALUE IF NOT EXISTS 'curious';\nINSERT INTO app.entries (id, current) VALUES (1, 'curious'::app.mood) ON CONFLICT DO NOTHING;\n"
     );
 
     const perMigration = await verifyMigration({

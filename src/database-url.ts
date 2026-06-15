@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-const supabaseDefaultDbPort = 54322;
+const supabaseDefaultDbPort = 54_322;
 
 export function resolveSupabaseLocalDatabaseUrl(cwd: string = process.cwd()): string | undefined {
   let current = resolve(cwd);
@@ -13,7 +13,7 @@ export function resolveSupabaseLocalDatabaseUrl(cwd: string = process.cwd()): st
     }
     const parent = dirname(current);
     if (parent === current) {
-      return undefined;
+      return;
     }
     current = parent;
   }
@@ -26,7 +26,7 @@ export function resolveSupabaseLocalDatabaseUrl(cwd: string = process.cwd()): st
  */
 export function resolveDatabaseUrl(
   explicit?: string,
-  cwd: string = process.cwd(),
+  cwd: string = process.cwd()
 ): string | undefined {
   if (explicit !== undefined && explicit.length > 0) {
     if (explicit.startsWith("$")) {
@@ -63,7 +63,7 @@ function readTomlDbPort(content: string): number | undefined {
     const value = Number.parseInt(line.slice(separator + 1).trim(), 10);
     return Number.isInteger(value) && value > 0 ? value : undefined;
   }
-  return undefined;
+  return;
 }
 
 function stripTomlComment(line: string): string {

@@ -22,7 +22,7 @@ type DiffOptions = Pick<RenderOptions, "config">;
 export function planSchemaDiff(
   from: SchemaModel,
   to: SchemaModel,
-  options: DiffOptions = {},
+  options: DiffOptions = {}
 ): MigrationPlan {
   const config = resolveConfig(options.config);
   const operations: MigrationOperation[] = [];
@@ -31,59 +31,12 @@ export function planSchemaDiff(
   const toMap = objectMap(to.objects);
   const consumedFrom = new Set<string>();
   const consumedTo = new Set<string>();
-  if (config.renameDetection === "hints-only") {
-    for (const hint of config.hints.renames ?? []) {
-      const before = fromMap.get(hint.from);
-      const after = toMap.get(hint.to);
-      if (!before || !after) {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_PLAN_RENAME_HINT_UNMATCHED",
-            "error",
-            "rename hint does not match both source and target objects",
-            {
-              hint: `from=${hint.from} to=${hint.to}`,
-            },
-          ),
-        );
-        continue;
-      }
-      const operation = makeRenameOperation(before, after);
-      operations.push(operation);
-      consumedFrom.add(before.key);
-      consumedTo.add(after.key);
-    }
-  }
-  for (const [key, before] of fromMap) {
-    if (consumedFrom.has(key)) {
-      continue;
-    }
-    const after = toMap.get(key);
-    if (!after) {
-      operations.push(makeOperation("drop", key, before, undefined, config));
-      continue;
-    }
-    if (before.hash !== after.hash) {
-      operations.push(
-        makeEnumAddValuesOperation(before, after) ??
-          makeTableAlterOperation(before, after, config) ??
-          refineReplaceOperation(makeOperation("replace", key, before, after, config), config),
-      );
-    }
-  }
-  for (const [key, after] of toMap) {
-    if (consumedTo.has(key)) {
-      continue;
-    }
-    if (!fromMap.has(key)) {
-      operations.push(makeOperation("create", key, undefined, after, config));
-    }
-  }
+  applyRenameHints(fromMap, toMap, consumedFrom, consumedTo, operations, diagnostics, config);
+  appendChangedAndDroppedOperations(fromMap, toMap, consumedFrom, operations, config);
+  appendCreatedOperations(fromMap, toMap, consumedTo, operations, config);
   appendReplacedRelationDependents(operations, from, to, config);
   const sortedOperations = sortOperations(operations, diagnostics);
-  for (const operation of operations) {
-    diagnostics.push(...operation.diagnostics);
-  }
+  appendOperationDiagnostics(diagnostics, operations);
   if (sortedOperations.length === 0 && from.fingerprint !== to.fingerprint) {
     diagnostics.push(emptyPlanDriftDiagnostic(fromMap, toMap, from, to));
   }
@@ -97,7 +50,7 @@ export function planSchemaDiff(
           kind: operation.kind,
         })),
         to: to.fingerprint,
-      }),
+      })
     ),
     from: from.source,
     fromFingerprint: from.fingerprint,
@@ -105,6 +58,98 @@ export function planSchemaDiff(
     to: to.source,
     toFingerprint: to.fingerprint,
   };
+}
+
+function applyRenameHints(
+  fromMap: Map<string, SchemaObject>,
+  toMap: Map<string, SchemaObject>,
+  consumedFrom: Set<string>,
+  consumedTo: Set<string>,
+  operations: MigrationOperation[],
+  diagnostics: Diagnostic[],
+  config: SupaschemaConfig
+): void {
+  if (config.renameDetection !== "hints-only") {
+    return;
+  }
+  for (const hint of config.hints.renames ?? []) {
+    const before = fromMap.get(hint.from);
+    const after = toMap.get(hint.to);
+    if (!(before && after)) {
+      diagnostics.push(renameHintUnmatchedDiagnostic(hint.from, hint.to));
+      continue;
+    }
+    operations.push(makeRenameOperation(before, after));
+    consumedFrom.add(before.key);
+    consumedTo.add(after.key);
+  }
+}
+
+function renameHintUnmatchedDiagnostic(from: string, to: string): Diagnostic {
+  return diagnostic(
+    "SUPA_PLAN_RENAME_HINT_UNMATCHED",
+    "error",
+    "rename hint does not match both source and target objects",
+    {
+      hint: `from=${from} to=${to}`,
+    }
+  );
+}
+
+function appendChangedAndDroppedOperations(
+  fromMap: Map<string, SchemaObject>,
+  toMap: Map<string, SchemaObject>,
+  consumedFrom: Set<string>,
+  operations: MigrationOperation[],
+  config: SupaschemaConfig
+): void {
+  for (const [key, before] of fromMap) {
+    if (consumedFrom.has(key)) {
+      continue;
+    }
+    const after = toMap.get(key);
+    if (!after) {
+      operations.push(makeOperation("drop", key, before, undefined, config));
+    } else if (before.hash !== after.hash) {
+      operations.push(makeChangedOperation(key, before, after, config));
+    }
+  }
+}
+
+function makeChangedOperation(
+  key: string,
+  before: SchemaObject,
+  after: SchemaObject,
+  config: SupaschemaConfig
+): MigrationOperation {
+  return (
+    makeEnumAddValuesOperation(before, after) ??
+    makeTableAlterOperation(before, after, config) ??
+    refineReplaceOperation(makeOperation("replace", key, before, after, config), config)
+  );
+}
+
+function appendCreatedOperations(
+  fromMap: Map<string, SchemaObject>,
+  toMap: Map<string, SchemaObject>,
+  consumedTo: Set<string>,
+  operations: MigrationOperation[],
+  config: SupaschemaConfig
+): void {
+  for (const [key, after] of toMap) {
+    if (!(consumedTo.has(key) || fromMap.has(key))) {
+      operations.push(makeOperation("create", key, undefined, after, config));
+    }
+  }
+}
+
+function appendOperationDiagnostics(
+  diagnostics: Diagnostic[],
+  operations: MigrationOperation[]
+): void {
+  for (const operation of operations) {
+    diagnostics.push(...operation.diagnostics);
+  }
 }
 function objectMap(objects: SchemaObject[]): Map<string, SchemaObject> {
   return new Map(objects.map((object) => [object.key, object]));
@@ -132,13 +177,9 @@ function appendReplacedRelationDependents(
   operations: MigrationOperation[],
   from: SchemaModel,
   to: SchemaModel,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): void {
-  const replacedRelations = operations
-    .filter(
-      (operation) => operation.kind === "replace" && replacedRelationKinds.has(operation.ref.kind),
-    )
-    .map((operation) => operation.ref);
+  const replacedRelations = replacedRelationRefs(operations);
   if (replacedRelations.length === 0) {
     return;
   }
@@ -146,48 +187,126 @@ function appendReplacedRelationDependents(
   // replace, so a pre-drop is needed only for them. A dependent that is new in
   // the target (created in this same plan) must not be pre-dropped — that would
   // emit a destructive DROP for an object that does not exist yet.
-  const fromKeys = new Set(from.objects.map((object) => object.key));
-  const operationKeys = new Set(operations.map((operation) => operation.key));
-  const affectedRefs = new Map<string, ObjectRef>();
-  const relationIdentities = new Set<string>();
+  const context = replacedDependentContext(from, operations, replacedRelations);
+  expandAffectedRelationDependents(to.objects, operations, context, config);
+  appendAffectedComments(to.objects, operations, context, config);
+}
+
+interface ReplacedDependentContext {
+  affectedRefs: Map<string, ObjectRef>;
+  fromKeys: Set<string>;
+  operationKeys: Set<string>;
+  relationIdentities: Set<string>;
+}
+
+function replacedRelationRefs(operations: MigrationOperation[]): ObjectRef[] {
+  return operations
+    .filter(
+      (operation) => operation.kind === "replace" && replacedRelationKinds.has(operation.ref.kind)
+    )
+    .map((operation) => operation.ref);
+}
+
+function replacedDependentContext(
+  from: SchemaModel,
+  operations: MigrationOperation[],
+  replacedRelations: ObjectRef[]
+): ReplacedDependentContext {
+  const context: ReplacedDependentContext = {
+    affectedRefs: new Map(),
+    fromKeys: new Set(from.objects.map((object) => object.key)),
+    operationKeys: new Set(operations.map((operation) => operation.key)),
+    relationIdentities: new Set(),
+  };
   for (const relation of replacedRelations) {
-    rememberAffectedRef(affectedRefs, relation);
-    relationIdentities.add(refIdentity(relation));
+    rememberAffectedRef(context.affectedRefs, relation);
+    context.relationIdentities.add(refIdentity(relation));
   }
+  return context;
+}
+
+function expandAffectedRelationDependents(
+  objects: SchemaObject[],
+  operations: MigrationOperation[],
+  context: ReplacedDependentContext,
+  config: SupaschemaConfig
+): void {
   let changed = true;
   while (changed) {
     changed = false;
-    for (const object of to.objects) {
-      if (!isRelationDependent(object, relationIdentities)) {
-        continue;
-      }
-      rememberAffectedRef(affectedRefs, object.ref);
-      if (blockingRelationDependentKinds.has(object.ref.kind) && fromKeys.has(object.key)) {
-        const identity = refIdentity(object.ref);
-        if (!relationIdentities.has(identity)) {
-          relationIdentities.add(identity);
-          changed = true;
-        }
-        const key = preDropKey(object.key);
-        if (!operationKeys.has(key)) {
-          operations.push(makePreDropOperation(object, config));
-          operationKeys.add(key);
-          changed = true;
-        }
-      }
-      if (!operationKeys.has(object.key)) {
-        operations.push(makeOperation("create", object.key, undefined, object, config));
-        operationKeys.add(object.key);
+    for (const object of objects) {
+      if (appendAffectedRelationDependent(object, operations, context, config)) {
         changed = true;
       }
     }
   }
-  for (const object of to.objects) {
-    if (operationKeys.has(object.key) || !isCommentDependent(object, affectedRefs)) {
+}
+
+function appendAffectedRelationDependent(
+  object: SchemaObject,
+  operations: MigrationOperation[],
+  context: ReplacedDependentContext,
+  config: SupaschemaConfig
+): boolean {
+  if (!isRelationDependent(object, context.relationIdentities)) {
+    return false;
+  }
+  let changed = false;
+  rememberAffectedRef(context.affectedRefs, object.ref);
+  if (appendBlockingDependentPreDrop(object, operations, context, config)) {
+    changed = true;
+  }
+  if (!context.operationKeys.has(object.key)) {
+    operations.push(makeOperation("create", object.key, undefined, object, config));
+    context.operationKeys.add(object.key);
+    changed = true;
+  }
+  return changed;
+}
+
+function appendBlockingDependentPreDrop(
+  object: SchemaObject,
+  operations: MigrationOperation[],
+  context: ReplacedDependentContext,
+  config: SupaschemaConfig
+): boolean {
+  if (!(blockingRelationDependentKinds.has(object.ref.kind) && context.fromKeys.has(object.key))) {
+    return false;
+  }
+  let changed = rememberRelationIdentity(context.relationIdentities, object.ref);
+  const key = preDropKey(object.key);
+  if (!context.operationKeys.has(key)) {
+    operations.push(makePreDropOperation(object, config));
+    context.operationKeys.add(key);
+    changed = true;
+  }
+  return changed;
+}
+
+function rememberRelationIdentity(identities: Set<string>, ref: ObjectRef): boolean {
+  const identity = refIdentity(ref);
+  if (identities.has(identity)) {
+    return false;
+  }
+  identities.add(identity);
+  return true;
+}
+
+function appendAffectedComments(
+  objects: SchemaObject[],
+  operations: MigrationOperation[],
+  context: ReplacedDependentContext,
+  config: SupaschemaConfig
+): void {
+  for (const object of objects) {
+    if (
+      context.operationKeys.has(object.key) ||
+      !isCommentDependent(object, context.affectedRefs)
+    ) {
       continue;
     }
     operations.push(makeOperation("create", object.key, undefined, object, config));
-    operationKeys.add(object.key);
+    context.operationKeys.add(object.key);
   }
 }
 
@@ -215,7 +334,7 @@ function isRelationDependent(object: SchemaObject, relationIdentities: Set<strin
 
 function isCommentDependent(
   object: SchemaObject,
-  affectedRefs: ReadonlyMap<string, ObjectRef>,
+  affectedRefs: ReadonlyMap<string, ObjectRef>
 ): boolean {
   if (object.ref.kind !== "comment" || typeof object.metadata.descriptor !== "string") {
     return false;
@@ -289,7 +408,7 @@ function emptyPlanDriftDiagnostic(
   fromMap: Map<string, SchemaObject>,
   toMap: Map<string, SchemaObject>,
   from: SchemaModel,
-  to: SchemaModel,
+  to: SchemaModel
 ): Diagnostic {
   const differing: string[] = [];
   for (const [key, before] of fromMap) {
@@ -315,7 +434,7 @@ function emptyPlanDriftDiagnostic(
         differing.length > 0
           ? `${differing.length} differing object(s): ${sample}`
           : `object sets are identical; fingerprint basis differs (from=${from.fingerprint} to=${to.fingerprint}) — check model format versions`,
-    },
+    }
   );
 }
 
@@ -324,7 +443,7 @@ function makeOperation(
   key: string,
   before: SchemaObject | undefined,
   after: SchemaObject | undefined,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): MigrationOperation {
   const object = after ?? before;
   if (!object) {
@@ -344,8 +463,8 @@ function makeOperation(
         {
           hint: `Add "${key}" to hints.destructive only after reviewing the migration.`,
           ref: object.ref,
-        },
-      ),
+        }
+      )
     );
   }
   if (kind === "replace" && object.ref.kind === "view") {
@@ -357,8 +476,8 @@ function makeOperation(
         {
           hint: "Run supaschema verify against a disposable PostgreSQL database before release.",
           ref: object.ref,
-        },
-      ),
+        }
+      )
     );
   }
   if (
@@ -376,8 +495,8 @@ function makeOperation(
         {
           hint: "Create the index without CONCURRENTLY, or set transactionMode to per-statement and run the concurrent companion through an explicit out-of-transaction operational lane.",
           ref: object.ref,
-        },
-      ),
+        }
+      )
     );
   }
   const operation: MigrationOperation = {
@@ -406,7 +525,7 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
       diagnostic("SUPA_PLAN_RENAME_KIND_MISMATCH", "error", "rename hint changes object kind", {
         hint: `${before.key} -> ${after.key}`,
         ref: after.ref,
-      }),
+      })
     );
   }
   if (!isSupportedRenameKind(after.ref.kind)) {
@@ -419,8 +538,8 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
         {
           hint: "Keep this change hand-authored or model it as an explicit create/drop with hints.",
           ref: after.ref,
-        },
-      ),
+        }
+      )
     );
   }
   if (!sameRenameNamespace(before.ref, after.ref)) {
@@ -433,8 +552,8 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
         {
           hint: `${before.key} -> ${after.key}`,
           ref: after.ref,
-        },
-      ),
+        }
+      )
     );
   }
   diagnostics.push(
@@ -445,8 +564,8 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
       {
         hint: `${before.key} -> ${after.key}`,
         ref: after.ref,
-      },
-    ),
+      }
+    )
   );
   return {
     after,
@@ -462,19 +581,19 @@ function makeRenameOperation(before: SchemaObject, after: SchemaObject): Migrati
 }
 function makeEnumAddValuesOperation(
   before: SchemaObject,
-  after: SchemaObject,
+  after: SchemaObject
 ): MigrationOperation | undefined {
   if (before.ref.kind !== "enum" || after.ref.kind !== "enum") {
-    return undefined;
+    return;
   }
   const beforeValues = enumValues(before);
   const afterValues = enumValues(after);
-  if (!beforeValues || !afterValues || afterValues.length <= beforeValues.length) {
-    return undefined;
+  if (!(beforeValues && afterValues) || afterValues.length <= beforeValues.length) {
+    return;
   }
   const isPrefix = beforeValues.every((value, index) => afterValues[index] === value);
   if (!isPrefix) {
-    return undefined;
+    return;
   }
   return {
     after,
@@ -491,7 +610,7 @@ function makeEnumAddValuesOperation(
 function enumValues(object: SchemaObject): string[] | undefined {
   const values = object.metadata.values;
   if (!Array.isArray(values)) {
-    return undefined;
+    return;
   }
   const strings = values.filter((value): value is string => typeof value === "string");
   return strings.length === values.length ? strings : undefined;
@@ -503,14 +622,14 @@ function enumValues(object: SchemaObject): string[] | undefined {
  */
 function describeReplaceDifference(
   before: SchemaObject | undefined,
-  after: SchemaObject | undefined,
+  after: SchemaObject | undefined
 ): string | undefined {
-  if (!before || !after) {
-    return undefined;
+  if (!(before && after)) {
+    return;
   }
   const beforeShape = asShape(before.metadata.canonicalShape);
   const afterShape = asShape(after.metadata.canonicalShape);
-  if (!beforeShape || !afterShape) {
+  if (!(beforeShape && afterShape)) {
     return "definition differs";
   }
   const parts: string[] = [];
@@ -524,7 +643,7 @@ function describeReplaceDifference(
     }
     if (stableJson(column) !== stableJson(other)) {
       const changed = Object.keys({ ...column, ...other }).filter(
-        (field) => stableJson(column[field]) !== stableJson(other[field]),
+        (field) => stableJson(column[field]) !== stableJson(other[field])
       );
       parts.push(`column "${name}" differs (${changed.join(", ")})`);
     }
@@ -540,7 +659,7 @@ function describeReplaceDifference(
     const keys = new Set([...Object.keys(beforeShape), ...Object.keys(afterShape)]);
     keys.delete("columns");
     const changed = [...keys].filter(
-      (field) => stableJson(beforeShape[field]) !== stableJson(afterShape[field]),
+      (field) => stableJson(beforeShape[field]) !== stableJson(afterShape[field])
     );
     parts.push(`table options differ (${changed.join(", ")})`);
   }

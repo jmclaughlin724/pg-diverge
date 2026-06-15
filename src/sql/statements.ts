@@ -9,7 +9,7 @@ export function makeObject(
   statement: string,
   ordinal: number,
   file?: string,
-  metadata: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {}
 ): SchemaObject {
   const normalizedSql = normalizeSql(statement);
   const key = objectKey(ref);
@@ -47,7 +47,7 @@ export function fromByteString(bytes: string): string {
 export function tableMetadataFromAst(
   createStmt: AstNode,
   sql: string,
-  byteOffset = 0,
+  byteOffset = 0
 ): Record<string, unknown> {
   const bytes = toByteString(sql);
   const elements = tableElements(createStmt, bytes, byteOffset);
@@ -125,7 +125,7 @@ export function tableElements(createStmt: AstNode, sql: string, byteOffset = 0):
 function columnDefaultExpression(
   element: TableElement,
   sql: string,
-  byteOffset = 0,
+  byteOffset = 0
 ): string | undefined {
   const constraints = readArray(element.node.constraints)
     .map((item) => asRecord(asRecord(item)?.Constraint))
@@ -143,7 +143,7 @@ function columnDefaultExpression(
     }
     const expressionStart = expressionLocation(item.constraint.raw_expr);
     if (expressionStart === undefined) {
-      return undefined;
+      return;
     }
     const end = located[index + 1]?.location ?? element.end;
     let text = sql.slice(expressionStart - byteOffset, end).trim();
@@ -152,13 +152,13 @@ function columnDefaultExpression(
     }
     return text.length > 0 ? text : undefined;
   }
-  return undefined;
+  return;
 }
 
 function expressionLocation(expression: unknown): number | undefined {
   const record = asRecord(expression);
   if (!record) {
-    return undefined;
+    return;
   }
   let earliest: number | undefined;
   const visit = (value: unknown): void => {
@@ -232,79 +232,28 @@ function stripLeadingIdentifier(text: string): string {
 }
 
 export function findCharOutsideQuotes(input: string, target: string, from: number): number {
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  for (let index = from; index < input.length; index += 1) {
+  let index = from;
+  while (index < input.length) {
     const char = input[index] ?? "";
-    const next = input[index + 1] ?? "";
-    if (inSingleQuote) {
-      if (char === "'" && next === "'") {
-        index += 1;
-        continue;
-      }
-      if (char === "'") {
-        inSingleQuote = false;
-      }
-      continue;
-    }
-    if (inDoubleQuote) {
-      if (char === '"' && next === '"') {
-        index += 1;
-        continue;
-      }
-      if (char === '"') {
-        inDoubleQuote = false;
-      }
-      continue;
-    }
-    if (char === "'") {
-      inSingleQuote = true;
-      continue;
-    }
-    if (char === '"') {
-      inDoubleQuote = true;
+    if (isSqlQuote(char)) {
+      index = skipSqlQuoted(input, index, char);
       continue;
     }
     if (char === target) {
       return index;
     }
+    index += 1;
   }
   return -1;
 }
 
 export function findMatchingParen(input: string, openIndex: number): number {
   let depth = 0;
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  for (let index = openIndex; index < input.length; index += 1) {
+  let index = openIndex;
+  while (index < input.length) {
     const char = input[index] ?? "";
-    const next = input[index + 1] ?? "";
-    if (inSingleQuote) {
-      if (char === "'" && next === "'") {
-        index += 1;
-        continue;
-      }
-      if (char === "'") {
-        inSingleQuote = false;
-      }
-      continue;
-    }
-    if (inDoubleQuote) {
-      if (char === '"' && next === '"') {
-        index += 1;
-        continue;
-      }
-      if (char === '"') {
-        inDoubleQuote = false;
-      }
-      continue;
-    }
-    if (char === "'") {
-      inSingleQuote = true;
-      continue;
-    }
-    if (char === '"') {
-      inDoubleQuote = true;
+    if (isSqlQuote(char)) {
+      index = skipSqlQuoted(input, index, char);
       continue;
     }
     if (char === "(") {
@@ -316,6 +265,28 @@ export function findMatchingParen(input: string, openIndex: number): number {
         return index;
       }
     }
+    index += 1;
   }
   return -1;
+}
+
+function isSqlQuote(char: string): char is "'" | '"' {
+  return char === "'" || char === '"';
+}
+
+function skipSqlQuoted(input: string, start: number, quote: "'" | '"'): number {
+  let index = start + 1;
+  while (index < input.length) {
+    const char = input[index];
+    const next = input[index + 1];
+    if (char === quote && next === quote) {
+      index += 2;
+      continue;
+    }
+    if (char === quote) {
+      return index + 1;
+    }
+    index += 1;
+  }
+  return input.length;
 }

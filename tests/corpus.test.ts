@@ -27,17 +27,17 @@ describe.skipIf(!databaseUrl)("corpus oracle", () => {
     await mkdir(join(root, "tree"));
     await writeFile(
       join(root, "corpus.json"),
-      JSON.stringify({ adapter: "auto", schemas: { exclude: [], include: ["app"] } }),
+      JSON.stringify({ adapter: "auto", schemas: { exclude: [], include: ["app"] } })
     );
     await writeFile(
       join(root, "migrations", "20260101000000_init.sql"),
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint PRIMARY KEY);\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint PRIMARY KEY);\n"
     );
     // The tree comments on a column the migrations never create; the rendered
     // reconciliation cannot apply it, or applying leaves residual drift.
     await writeFile(
       join(root, "tree", "tables.sql"),
-      "create schema app;\ncreate table app.t (id bigint primary key);\ncomment on column app.missing.col is 'ghost';\n",
+      "create schema app;\ncreate table app.t (id bigint primary key);\ncomment on column app.missing.col is 'ghost';\n"
     );
 
     const { diagnostics } = await runCorpus({

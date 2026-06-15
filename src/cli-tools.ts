@@ -26,7 +26,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .option("--database-url <url>", "database URL to probe (default: normal resolution order)")
     .option("--json", "print the report as JSON")
     .description(
-      "Diagnose the environment: Node version, parser, config, URL resolution, database reachability, CREATEDB capability, migrations history, and the declarative tree.",
+      "Diagnose the environment: Node version, parser, config, URL resolution, database reachability, CREATEDB capability, migrations history, and the declarative tree."
     )
     .action(async (options: { databaseUrl?: string; json?: boolean }) => {
       const config = await context.loadCliConfig();
@@ -37,7 +37,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
         ...(database.url === undefined ? {} : { resolvedDatabaseUrl: database.url }),
       });
       process.stdout.write(
-        options.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderDoctorReport(report),
+        options.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderDoctorReport(report)
       );
       if (!report.healthy) {
         process.exitCode = 2;
@@ -49,7 +49,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .option("--from <source>", "source to type (default: the config schema tree)")
     .option("--out <file|stdout>", "TypeScript output path (default: config.typesFile)")
     .description(
-      "Generate Supabase-compatible TypeScript types and Zod validators straight from the schema tree — no database, no introspection, no applied migrations required.",
+      "Generate Supabase-compatible TypeScript types and Zod validators straight from the schema tree — no database, no introspection, no applied migrations required."
     )
     .action(async (options: { from?: string; out?: string }) => {
       const config = await context.loadCliConfig();
@@ -79,7 +79,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .command("fingerprint")
     .requiredOption("--from <source>", "source to fingerprint")
     .description(
-      "Print only the model fingerprint for a source — two sources with equal fingerprints have identical schemas.",
+      "Print only the model fingerprint for a source — two sources with equal fingerprints have identical schemas."
     )
     .action(async (options: { from: string }) => {
       const config = await context.loadCliConfig();
@@ -96,7 +96,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .command("completion")
     .argument("<shell>", "bash, zsh, or fish")
     .description(
-      "Print a shell completion script (eval or save it into your shell's completion path).",
+      "Print a shell completion script (eval or save it into your shell's completion path)."
     )
     .action((shell: string) => {
       const script = completionScript(shell, program);
@@ -141,7 +141,7 @@ function completionScript(shell: string, program: Command): string | undefined {
         .map((name) => `complete -c supaschema -n "__fish_use_subcommand" -a ${name}`)
         .join("\n")}\n`;
     default:
-      return undefined;
+      return;
   }
 }
 
@@ -167,6 +167,16 @@ export function colorizeSummaryLine(line: string, tone: SummaryTone): string {
   if (!colorEnabled() || tone === "plain") {
     return line;
   }
-  const color = tone === "blocked" ? ansi.yellow : tone === "drop" ? ansi.red : ansi.green;
+  const color = summaryColor(tone);
   return `${color}${line}${ansi.reset}`;
+}
+
+function summaryColor(tone: Exclude<SummaryTone, "plain">): string {
+  if (tone === "blocked") {
+    return ansi.yellow;
+  }
+  if (tone === "drop") {
+    return ansi.red;
+  }
+  return ansi.green;
 }

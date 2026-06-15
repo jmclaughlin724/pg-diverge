@@ -60,7 +60,7 @@ export function combineExecutions(executions) {
     ...latest,
     stderr: executions
       .map((item, index) =>
-        index === 0 ? item.stderr : `--- retry ${index + 1} ---\n${item.stderr}`,
+        index === 0 ? item.stderr : `--- retry ${index + 1} ---\n${item.stderr}`
       )
       .filter(Boolean)
       .join("\n"),
@@ -78,7 +78,7 @@ export function redactSecrets(value) {
 }
 
 export function summary(payload) {
-  const runnable = payload.results.filter((item) => !item.skipped && !item.unsupported);
+  const runnable = payload.results.filter((item) => !(item.skipped || item.unsupported));
   const skipped = payload.results.filter((item) => item.skipped);
   const unsupported = payload.results.filter((item) => item.unsupported);
   const failed = runnable.filter((item) => item.commandFailed ?? item.exitCode !== 0);

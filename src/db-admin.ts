@@ -4,6 +4,8 @@ import { fingerprintObjects } from "./hash.js";
 import { quoteIdent } from "./sql/identifiers.js";
 import { splitSqlStatements } from "./sql/split.js";
 
+const leadingSlashPattern = /^\//;
+
 export interface CreateTemporaryDatabasesOptions {
   purpose?: string;
   templateName?: string;
@@ -29,7 +31,7 @@ export function databaseUrlWithDatabase(databaseUrl: string, databaseName: strin
 export async function createDatabaseWithRetry(
   admin: Pick<Client, "query">,
   statement: string,
-  attempts = 6,
+  attempts = 6
 ): Promise<void> {
   for (let attempt = 1; ; attempt += 1) {
     try {
@@ -42,7 +44,7 @@ export async function createDatabaseWithRetry(
         throw error;
       }
       process.stderr.write(
-        `create database busy (template in use); retry ${attempt}/${attempts - 1}\n`,
+        `create database busy (template in use); retry ${attempt}/${attempts - 1}\n`
       );
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 200 * attempt));
     }
@@ -52,7 +54,7 @@ export async function createDatabaseWithRetry(
 export async function createTemporaryDatabases(
   adminUrl: string,
   count: number,
-  options: CreateTemporaryDatabasesOptions = {},
+  options: CreateTemporaryDatabasesOptions = {}
 ): Promise<string[]> {
   const admin = new Client({ connectionString: adminUrl });
   const names: string[] = [];
@@ -65,7 +67,7 @@ export async function createTemporaryDatabases(
         : "";
       await createDatabaseWithRetry(
         admin,
-        `CREATE DATABASE ${quoteIdent(databaseName)}${templateClause}`,
+        `CREATE DATABASE ${quoteIdent(databaseName)}${templateClause}`
       );
       names.push(databaseName);
     }
@@ -90,11 +92,11 @@ export async function dropTemporaryDatabases(adminUrl: string, urls: string[]): 
   try {
     await admin.connect();
     for (const url of [...urls].reverse()) {
-      const databaseName = new URL(url).pathname.replace(/^\//, "");
+      const databaseName = new URL(url).pathname.replace(leadingSlashPattern, "");
       await admin
         .query(
-          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-          [databaseName],
+          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
+          [databaseName]
         )
         .catch(() => undefined);
       await admin
@@ -110,7 +112,7 @@ export async function withTemporaryDatabases<T>(
   adminUrl: string,
   count: number,
   callback: (databaseUrls: string[]) => Promise<T>,
-  options: CreateTemporaryDatabasesOptions = {},
+  options: CreateTemporaryDatabasesOptions = {}
 ): Promise<T> {
   const urls = await createTemporaryDatabases(adminUrl, count, options);
   try {
@@ -122,7 +124,7 @@ export async function withTemporaryDatabases<T>(
 
 export function databasePair(databaseUrls: string[]): [string, string] {
   const [fromUrl, toUrl] = databaseUrls;
-  if (!fromUrl || !toUrl) {
+  if (!(fromUrl && toUrl)) {
     throw new Error("expected two temporary databases");
   }
   return [fromUrl, toUrl];
@@ -168,7 +170,7 @@ export async function catalogFingerprint(databaseUrl: string, source = "catalog"
 
 export function assertLocalDatabaseUrl(
   value: string,
-  allowRemoteEnv = "SUPASCHEMA_COMPARE_ALLOW_REMOTE",
+  allowRemoteEnv = "SUPASCHEMA_COMPARE_ALLOW_REMOTE"
 ): void {
   if (process.env[allowRemoteEnv] === "1") {
     return;
@@ -177,7 +179,7 @@ export function assertLocalDatabaseUrl(
   const allowedHosts = new Set(["localhost", "127.0.0.1", "::1"]);
   if (!allowedHosts.has(host)) {
     throw new Error(
-      `Refusing to create/drop databases on non-local host "${host}". Set ${allowRemoteEnv}=1 to override.`,
+      `Refusing to create/drop databases on non-local host "${host}". Set ${allowRemoteEnv}=1 to override.`
     );
   }
 }

@@ -2,12 +2,12 @@ import type { SchemaObject, TableColumn } from "./core.js";
 import { formatQualifiedName, quoteIdent } from "./sql/identifiers.js";
 import { makeObject } from "./sql/statements.js";
 
-type CatalogQuery = {
+interface CatalogQuery {
   query: <Row extends Record<string, unknown>>(
     text: string,
-    values?: unknown[],
+    values?: unknown[]
   ) => Promise<{ rows: Row[] }>;
-};
+}
 
 export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]> {
   const tables = await pool.query<Record<string, unknown>>(`
@@ -42,7 +42,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
           and not a.attisdropped
         order by a.attrelid, a.attnum
       `,
-      [oids],
+      [oids]
     ),
     pool.query<Record<string, unknown>>(
       `
@@ -52,7 +52,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
           and contype in ('p', 'u', 'f', 'c', 'x')
         order by conrelid, conname
       `,
-      [oids],
+      [oids]
     ),
   ]);
   const columnsByOid = groupByOid(columns.rows);
@@ -62,7 +62,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
     const oid = stringValue(table.oid);
     const columnDefinitions = (columnsByOid.get(oid) ?? []).map(columnFromRow);
     const lines = columnDefinitions.map(
-      (column) => `  ${quoteIdent(column.name)} ${column.definition}`,
+      (column) => `  ${quoteIdent(column.name)} ${column.definition}`
     );
     const schema = stringValue(table.schema);
     const name = stringValue(table.name);
@@ -70,7 +70,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
     objects.push(
       makeObject({ kind: "table", name, schema }, sql, 0, undefined, {
         columns: columnDefinitions,
-      }),
+      })
     );
     // Constraints are separate identity owners on every lane, so a constraint
     // declared inline in a source tree and the same constraint read from
@@ -81,7 +81,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
         { kind: "constraint", name: constraintName, schema, table: name },
         `ALTER TABLE ONLY ${formatQualifiedName(schema, name)} ADD CONSTRAINT ${quoteIdent(constraintName)} ${stringValue(constraint.definition)}`,
         0,
-        undefined,
+        undefined
       );
       constraintObject.dependencies.push(`${schema}.${name}`);
       objects.push(constraintObject);

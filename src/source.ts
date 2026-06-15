@@ -18,21 +18,21 @@ import { extractObjectsFromSql } from "./sql/extract.js";
 
 const execFileAsync = promisify(execFile);
 
-type SqlFile = {
+interface SqlFile {
   path: string;
   sql: string;
-};
+}
 
-type CatalogSnapshot = {
+interface CatalogSnapshot {
   diagnostics?: Diagnostic[];
   fingerprint?: string;
   formatVersion?: number;
   objects?: SchemaObject[];
-};
+}
 
 export async function extractSourceModel(
   source: string,
-  options: ExtractOptions = {},
+  options: ExtractOptions = {}
 ): Promise<SchemaModel> {
   const cwd = options.cwd ?? process.cwd();
   const config = resolveConfig(options.config);
@@ -42,7 +42,7 @@ export async function extractSourceModel(
 async function extractRawModel(
   source: string,
   cwd: string,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): Promise<SchemaModel> {
   if (source.startsWith("catalog:")) {
     return readCatalogSource(source.slice("catalog:".length), cwd, source);
@@ -92,14 +92,14 @@ export function filterModelBySchemas(model: SchemaModel, schemas: Set<string>): 
   // out-of-contract partition wiring) must not block in-scope diffs.
   const filtered = withObjects(
     model,
-    model.objects.filter((object) => schemas.has(objectSchema(object))),
+    model.objects.filter((object) => schemas.has(objectSchema(object)))
   );
   return {
     ...filtered,
     diagnostics: filtered.diagnostics.filter(
       (item) =>
         !schemaScopedDiagnosticCodes.has(item.code) ||
-        (item.schemas ?? []).some((schema) => schemas.has(schema)),
+        (item.schemas ?? []).some((schema) => schemas.has(schema))
     ),
   };
 }
@@ -113,7 +113,7 @@ function applyConfigModelFilters(model: SchemaModel, config: SupaschemaConfig): 
     const excluded = new Set(config.schemas.exclude);
     current = withObjects(
       current,
-      current.objects.filter((object) => !excluded.has(objectSchema(object))),
+      current.objects.filter((object) => !excluded.has(objectSchema(object)))
     );
     current = {
       ...current,
@@ -121,7 +121,7 @@ function applyConfigModelFilters(model: SchemaModel, config: SupaschemaConfig): 
         (item) =>
           !schemaScopedDiagnosticCodes.has(item.code) ||
           (item.schemas ?? []).length === 0 ||
-          (item.schemas ?? []).some((schema) => !excluded.has(schema)),
+          (item.schemas ?? []).some((schema) => !excluded.has(schema))
       ),
     };
   }
@@ -129,7 +129,7 @@ function applyConfigModelFilters(model: SchemaModel, config: SupaschemaConfig): 
     const roles = new Set(config.excludedGrantRoles);
     current = withObjects(
       current,
-      current.objects.filter((object) => !isExcludedGrant(object, roles)),
+      current.objects.filter((object) => !isExcludedGrant(object, roles))
     );
   }
   return current;
@@ -176,8 +176,8 @@ async function readCatalogSource(path: string, cwd: string, source: string): Pro
         {
           file: fullPath,
           hint: "Object hashes are version-specific; regenerate the snapshot with `supaschema inspect` to avoid false replacements.",
-        },
-      ),
+        }
+      )
     );
   }
   const model: SchemaModel = {
@@ -194,7 +194,7 @@ async function readCatalogSource(path: string, cwd: string, source: string): Pro
 async function modelFromSqlFiles(
   files: SqlFile[],
   source: string,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): Promise<SchemaModel> {
   const extractedObjects: SchemaObject[] = [];
   const diagnostics: Diagnostic[] = [];
@@ -253,14 +253,14 @@ async function readSqlFiles(root: string): Promise<SqlFile[]> {
 async function readGitSqlFiles(
   ref: string,
   cwd: string,
-  schemaPaths: string[],
+  schemaPaths: string[]
 ): Promise<SqlFile[]> {
   const files: SqlFile[] = [];
   for (const schemaPath of schemaPaths) {
     const { stdout } = await execFileAsync(
       "git",
       ["-C", cwd, "ls-tree", "-r", "--name-only", ref, "--", schemaPath],
-      { maxBuffer: 1024 * 1024 * 10 },
+      { maxBuffer: 1024 * 1024 * 10 }
     );
     const paths = stdout
       .split("\n")
@@ -297,7 +297,7 @@ function duplicateKeyDiagnostics(objects: SchemaObject[]): Diagnostic[] {
           file: object.file,
           hint: `first seen in ${previous.file ?? "unknown source"}`,
           ref: object.ref,
-        }),
+        })
       );
       continue;
     }

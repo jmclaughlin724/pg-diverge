@@ -18,7 +18,7 @@ export interface SourceNormalizeOptions {
 export async function normalizeSourceObjects(
   objects: SchemaObject[],
   diagnostics: Diagnostic[],
-  options: SourceNormalizeOptions = {},
+  options: SourceNormalizeOptions = {}
 ): Promise<SchemaObject[]> {
   const afterDefaults = applyColumnDefaultAmendments(objects, diagnostics);
   const afterOwnedBy = applySequenceOwnedByAmendments(afterDefaults, diagnostics);
@@ -75,9 +75,7 @@ export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): Schema
       return true;
     }
     const implied = defaults.get(
-      [objectType, String(object.ref.schema ?? ""), String(object.metadata.grantee ?? "")].join(
-        "|",
-      ),
+      [objectType, String(object.ref.schema ?? ""), String(object.metadata.grantee ?? "")].join("|")
     );
     if (!implied) {
       return true;
@@ -98,79 +96,103 @@ export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): Schema
  * false drift.
  */
 function suppressDefaultEqualPrivileges(objects: SchemaObject[]): SchemaObject[] {
+  const grantsByTarget = collectGrantsByTarget(objects);
+  const nettedAway = defaultEqualPrivilegesToSuppress(objects, grantsByTarget);
+  return objects.filter((object) => keepDefaultEqualPrivilege(object, nettedAway));
+}
+
+function collectGrantsByTarget(objects: SchemaObject[]): Map<string, SchemaObject[]> {
   const grantsByTarget = new Map<string, SchemaObject[]>();
   for (const object of objects) {
-    if (
-      (object.ref.kind === "grant" || object.ref.kind === "default-privilege") &&
-      object.metadata.verb === "GRANT"
-    ) {
+    if (isPrivilegeObject(object) && object.metadata.verb === "GRANT") {
       const key = privilegeTargetKey(object);
       const group = grantsByTarget.get(key) ?? [];
       group.push(object);
       grantsByTarget.set(key, group);
     }
   }
+  return grantsByTarget;
+}
+
+function defaultEqualPrivilegesToSuppress(
+  objects: SchemaObject[],
+  grantsByTarget: Map<string, SchemaObject[]>
+): Set<SchemaObject> {
   // Statement order decides the net ACL: a revoke superseded by a later grant
   // vanishes, and a trailing full-coverage revoke nets the pair to nothing.
   // Two passes — netting decisions must complete before any object is kept.
   const nettedAway = new Set<SchemaObject>();
   for (const object of objects) {
-    if (
-      (object.ref.kind !== "grant" && object.ref.kind !== "default-privilege") ||
-      object.metadata.verb !== "REVOKE"
-    ) {
-      continue;
-    }
-    const meta = object.metadata;
-    const kindPhrase =
-      typeof meta.kindPhrase === "string"
-        ? meta.kindPhrase
-        : typeof meta.objectType === "string"
-          ? meta.objectType
-          : "";
-    const grantee = typeof meta.grantee === "string" ? meta.grantee : "";
-    if (builtinPublicDefault(kindPhrase) !== undefined && grantee === "PUBLIC") {
-      continue;
-    }
-    const privileges = Array.isArray(meta.privileges) ? (meta.privileges as string[]) : [];
-    const counterparts = grantsByTarget.get(privilegeTargetKey(object)) ?? [];
-    if (counterparts.length === 0) {
-      nettedAway.add(object);
-      continue;
-    }
-    const latestGrant = Math.max(...counterparts.map((item) => item.ordinal));
-    if (object.ordinal < latestGrant) {
-      nettedAway.add(object);
-      continue;
-    }
-    if (privileges.includes("ALL") || coversAllGrants(privileges, counterparts)) {
-      nettedAway.add(object);
-      for (const counterpart of counterparts) {
-        nettedAway.add(counterpart);
-      }
+    markDefaultEqualPrivilege(object, grantsByTarget, nettedAway);
+  }
+  return nettedAway;
+}
+
+function markDefaultEqualPrivilege(
+  object: SchemaObject,
+  grantsByTarget: Map<string, SchemaObject[]>,
+  nettedAway: Set<SchemaObject>
+): void {
+  if (!isRevokedPrivilegeObject(object) || isBuiltinPublicRevoke(object)) {
+    return;
+  }
+  const counterparts = grantsByTarget.get(privilegeTargetKey(object)) ?? [];
+  if (counterparts.length === 0 || object.ordinal < latestOrdinal(counterparts)) {
+    nettedAway.add(object);
+    return;
+  }
+  const privileges = metadataPrivileges(object.metadata);
+  if (privileges.includes("ALL") || coversAllGrants(privileges, counterparts)) {
+    nettedAway.add(object);
+    for (const counterpart of counterparts) {
+      nettedAway.add(counterpart);
     }
   }
-  return objects.filter((object) => {
-    if (nettedAway.has(object)) {
-      return false;
-    }
-    if (object.ref.kind !== "grant" && object.ref.kind !== "default-privilege") {
-      return true;
-    }
-    const meta = object.metadata;
-    const kindPhrase =
-      typeof meta.kindPhrase === "string"
-        ? meta.kindPhrase
-        : typeof meta.objectType === "string"
-          ? meta.objectType
-          : "";
-    const grantee = typeof meta.grantee === "string" ? meta.grantee : "";
-    const privileges = Array.isArray(meta.privileges) ? (meta.privileges as string[]) : [];
-    if (meta.verb === "GRANT") {
-      return !isBuiltinDefaultGrant(kindPhrase, grantee, privileges);
-    }
+}
+
+function keepDefaultEqualPrivilege(object: SchemaObject, nettedAway: Set<SchemaObject>): boolean {
+  if (nettedAway.has(object)) {
+    return false;
+  }
+  if (!isPrivilegeObject(object) || object.metadata.verb !== "GRANT") {
     return true;
-  });
+  }
+  const meta = object.metadata;
+  const grantee = typeof meta.grantee === "string" ? meta.grantee : "";
+  return !isBuiltinDefaultGrant(metadataKindPhrase(meta), grantee, metadataPrivileges(meta));
+}
+
+function isPrivilegeObject(object: SchemaObject): boolean {
+  return object.ref.kind === "grant" || object.ref.kind === "default-privilege";
+}
+
+function isRevokedPrivilegeObject(object: SchemaObject): boolean {
+  return isPrivilegeObject(object) && object.metadata.verb === "REVOKE";
+}
+
+function isBuiltinPublicRevoke(object: SchemaObject): boolean {
+  const grantee = typeof object.metadata.grantee === "string" ? object.metadata.grantee : "";
+  return (
+    builtinPublicDefault(metadataKindPhrase(object.metadata)) !== undefined && grantee === "PUBLIC"
+  );
+}
+
+function metadataPrivileges(meta: Record<string, unknown>): string[] {
+  return Array.isArray(meta.privileges) ? (meta.privileges as string[]) : [];
+}
+
+function latestOrdinal(objects: SchemaObject[]): number {
+  return Math.max(...objects.map((item) => item.ordinal));
+}
+
+function metadataKindPhrase(meta: Record<string, unknown>): string {
+  if (typeof meta.kindPhrase === "string") {
+    return meta.kindPhrase;
+  }
+  if (typeof meta.objectType === "string") {
+    return meta.objectType;
+  }
+  return "";
 }
 
 function coversAllGrants(revoked: string[], grants: SchemaObject[]): boolean {
@@ -194,26 +216,26 @@ function privilegeTargetKey(object: SchemaObject): string {
   ].join("|");
 }
 
-type ColumnDefaultAmendment = {
+interface ColumnDefaultAmendment {
   column: string;
   expression: unknown;
-};
+}
 
 function columnDefaultAmendment(object: SchemaObject): ColumnDefaultAmendment | undefined {
   const raw = object.metadata.columnDefaultAmendment;
   if (typeof raw !== "object" || raw === null) {
-    return undefined;
+    return;
   }
   const column = (raw as Record<string, unknown>).column;
   if (typeof column !== "string" || column.length === 0) {
-    return undefined;
+    return;
   }
   return { column, expression: (raw as Record<string, unknown>).expression ?? null };
 }
 
 function applyColumnDefaultAmendments(
   objects: SchemaObject[],
-  diagnostics: Diagnostic[],
+  diagnostics: Diagnostic[]
 ): SchemaObject[] {
   const markers = objects.filter((object) => columnDefaultAmendment(object) !== undefined);
   if (markers.length === 0) {
@@ -231,49 +253,61 @@ function applyColumnDefaultAmendments(
     const shape = table?.metadata.canonicalShape as
       | { columns?: { default?: unknown; name: string }[] }
       | undefined;
-    const column = shape?.columns?.find((item) => item.name === amendment?.column);
-    if (!(table && shape && column && amendment)) {
+    const columns = shape?.columns;
+    const columnIndex = columns?.findIndex((item) => item.name === amendment?.column) ?? -1;
+    if (!(table && shape && columns && columnIndex >= 0 && amendment)) {
       diagnostics.push(
         diagnostic(
           "SUPA_EXTRACT_UNSUPPORTED",
           "error",
           "ALTER COLUMN DEFAULT targets a table or column not present in the source model",
-          { file: marker.file, ref: marker.ref, statement: marker.sql },
-        ),
+          { file: marker.file, ref: marker.ref, statement: marker.sql }
+        )
       );
       continue;
     }
-    if (amendment.expression === null) {
-      delete column.default;
-    } else {
-      column.default = canonicalizeRegclassLiterals(stripLocations(amendment.expression));
+    const column = columns[columnIndex] as { default?: unknown; name: string };
+    if (column === undefined) {
+      continue;
     }
-    table.hash = shapeHash(shape as Record<string, unknown>, table.key, table.ref);
+    const nextColumns = [...columns];
+    if (amendment.expression === null) {
+      const { default: _default, ...withoutDefault } = column;
+      nextColumns[columnIndex] = withoutDefault;
+    } else {
+      nextColumns[columnIndex] = {
+        ...column,
+        default: canonicalizeRegclassLiterals(stripLocations(amendment.expression)),
+      };
+    }
+    const nextShape = { ...shape, columns: nextColumns };
+    table.metadata = { ...table.metadata, canonicalShape: nextShape };
+    table.hash = shapeHash(nextShape as Record<string, unknown>, table.key, table.ref);
     table.sql = `${table.sql};\n${marker.sql}`;
     table.dependencies = mergedDependencies([table, marker]);
   }
   return objects.filter((object) => columnDefaultAmendment(object) === undefined);
 }
 
-type SequenceOwnedByAmendment = {
+interface SequenceOwnedByAmendment {
   ownedBy: string | null;
-};
+}
 
 function sequenceOwnedByAmendment(object: SchemaObject): SequenceOwnedByAmendment | undefined {
   const raw = object.metadata.sequenceOwnedByAmendment;
   if (typeof raw !== "object" || raw === null) {
-    return undefined;
+    return;
   }
   const ownedBy = (raw as Record<string, unknown>).ownedBy;
   if (ownedBy !== null && typeof ownedBy !== "string") {
-    return undefined;
+    return;
   }
   return { ownedBy };
 }
 
 function applySequenceOwnedByAmendments(
   objects: SchemaObject[],
-  diagnostics: Diagnostic[],
+  diagnostics: Diagnostic[]
 ): SchemaObject[] {
   const markers = objects.filter((object) => sequenceOwnedByAmendment(object) !== undefined);
   if (markers.length === 0) {
@@ -295,21 +329,26 @@ function applySequenceOwnedByAmendments(
           "SUPA_EXTRACT_UNSUPPORTED",
           "error",
           "ALTER SEQUENCE ... OWNED BY targets a sequence not present in the source model",
-          { file: marker.file, ref: marker.ref, statement: marker.sql },
-        ),
+          { file: marker.file, ref: marker.ref, statement: marker.sql }
+        )
       );
       continue;
     }
-    if (amendment.ownedBy === null) {
-      delete shape.ownedBy;
-    } else {
-      shape.ownedBy = amendment.ownedBy;
-    }
-    sequence.hash = shapeHash(shape as Record<string, unknown>, sequence.key, sequence.ref);
+    const nextShape =
+      amendment.ownedBy === null
+        ? sequenceShapeWithoutOwner(shape)
+        : { ...shape, ownedBy: amendment.ownedBy };
+    sequence.metadata = { ...sequence.metadata, canonicalShape: nextShape };
+    sequence.hash = shapeHash(nextShape as Record<string, unknown>, sequence.key, sequence.ref);
     sequence.sql = `${sequence.sql};\n${marker.sql}`;
     sequence.dependencies = mergedDependencies([sequence, marker]);
   }
   return objects.filter((object) => sequenceOwnedByAmendment(object) === undefined);
+}
+
+function sequenceShapeWithoutOwner(shape: { ownedBy?: string }): Record<string, unknown> {
+  const { ownedBy: _ownedBy, ...rest } = shape;
+  return rest;
 }
 
 const rlsSubtypeOrder = new Map([
@@ -326,7 +365,7 @@ const rlsSubtypeOrder = new Map([
  */
 async function mergeRlsFacets(
   objects: SchemaObject[],
-  options: SourceNormalizeOptions,
+  options: SourceNormalizeOptions
 ): Promise<SchemaObject[]> {
   const groups = new Map<string, SchemaObject[]>();
   for (const object of objects) {
@@ -346,7 +385,7 @@ async function mergeRlsFacets(
     const ordered = [...group].sort(
       (left, right) =>
         (rlsSubtypeOrder.get(String(left.metadata.rlsSubtype)) ?? 9) -
-        (rlsSubtypeOrder.get(String(right.metadata.rlsSubtype)) ?? 9),
+        (rlsSubtypeOrder.get(String(right.metadata.rlsSubtype)) ?? 9)
     );
     const first = ordered[0];
     if (!first) {
@@ -356,7 +395,7 @@ async function mergeRlsFacets(
       first.ref,
       ordered.map((member) => member.sql).join(";\n"),
       first.ordinal,
-      first.file,
+      first.file
     );
     merged.dependencies = mergedDependencies(ordered);
     await finalizeObject(merged, { normalize: options.normalize === true });
@@ -371,7 +410,7 @@ async function mergeRlsFacets(
 function replaceMembers(
   objects: SchemaObject[],
   removed: Set<SchemaObject>,
-  replacements: Map<string, SchemaObject>,
+  replacements: Map<string, SchemaObject>
 ): SchemaObject[] {
   if (replacements.size === 0) {
     return objects;
@@ -393,7 +432,7 @@ function replaceMembers(
 
 async function mergeSplitPrivileges(
   objects: SchemaObject[],
-  options: SourceNormalizeOptions,
+  options: SourceNormalizeOptions
 ): Promise<SchemaObject[]> {
   const groups = new Map<string, SchemaObject[]>();
   for (const object of objects) {
@@ -424,22 +463,22 @@ async function mergeSplitPrivileges(
 
 async function mergePrivilegeGroup(
   group: SchemaObject[],
-  options: SourceNormalizeOptions,
+  options: SourceNormalizeOptions
 ): Promise<SchemaObject | undefined> {
   const first = group[0];
   if (!first) {
-    return undefined;
+    return;
   }
   const privileges = unionPrivileges(group);
   if (!privileges) {
-    return undefined;
+    return;
   }
   const meta = first.metadata;
   let merged: SchemaObject | undefined;
   if (first.ref.kind === "grant") {
     const grantOptions = new Set(group.map((item) => item.metadata.withGrantOption === true));
     if (grantOptions.size > 1) {
-      return undefined;
+      return;
     }
     if (
       typeof meta.grantee !== "string" ||
@@ -448,7 +487,7 @@ async function mergePrivilegeGroup(
       typeof meta.targetIdentity !== "string" ||
       (meta.verb !== "GRANT" && meta.verb !== "REVOKE")
     ) {
-      return undefined;
+      return;
     }
     merged = buildGrantObject({
       file: first.file,
@@ -468,7 +507,7 @@ async function mergePrivilegeGroup(
       typeof meta.objectType !== "string" ||
       (meta.verb !== "GRANT" && meta.verb !== "REVOKE")
     ) {
-      return undefined;
+      return;
     }
     merged = buildDefaultPrivilegeObject({
       file: first.file,
@@ -491,7 +530,7 @@ function unionPrivileges(group: SchemaObject[]): string[] | undefined {
   for (const member of group) {
     const privileges = member.metadata.privileges;
     if (!Array.isArray(privileges) || privileges.some((item) => typeof item !== "string")) {
-      return undefined;
+      return;
     }
     for (const privilege of privileges as string[]) {
       if (privilege === "ALL") {

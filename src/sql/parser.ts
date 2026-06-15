@@ -4,17 +4,17 @@ import { sha256 } from "../hash.js";
 
 type PgParser = (sql: string) => unknown | Promise<unknown>;
 
-type PgParserModule = {
+interface PgParserModule {
   default?: PgParserModule;
   parse?: PgParser;
   parseQuery?: PgParser;
   parseSync?: PgParser;
-};
+}
 
-export type ParsedSqlAst = {
+export interface ParsedSqlAst {
   ast?: unknown;
   diagnostics: Diagnostic[];
-};
+}
 
 const parseCacheLimit = 2000;
 const parseCache = new Map<string, ParsedSqlAst>();
@@ -48,7 +48,7 @@ async function parseUncached(sql: string): Promise<ParsedSqlAst> {
             "SUPA_PARSE_UNAVAILABLE",
             "warning",
             "libpg-query did not expose a parser",
-            {},
+            {}
           ),
         ],
       };
@@ -73,7 +73,7 @@ async function loadParser(): Promise<PgParser | undefined> {
     return cachedParser;
   }
   if (cachedParser === null) {
-    return undefined;
+    return;
   }
   const module = (await import("libpg-query")) as PgParserModule;
   const parser = findParser(module);
@@ -105,7 +105,7 @@ function findParser(module: PgParserModule): PgParser | undefined {
       return candidate;
     }
   }
-  return undefined;
+  return;
 }
 
 function errorMessage(error: unknown): string {

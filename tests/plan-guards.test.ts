@@ -13,7 +13,7 @@ const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseU
 async function model(
   sql: string,
   source: string,
-  config?: Partial<SupaschemaConfig>,
+  config?: Partial<SupaschemaConfig>
 ): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql, config ? { config } : {});
   return {
@@ -27,7 +27,7 @@ async function model(
 async function diff(
   fromSql: string,
   toSql: string,
-  config?: Partial<SupaschemaConfig>,
+  config?: Partial<SupaschemaConfig>
 ): Promise<MigrationPlan> {
   const from = await model(fromSql, "test:from", config);
   const to = await model(toSql, "test:to", config);
@@ -43,7 +43,7 @@ describe("rename hint guards", () => {
     });
 
     expect(plan.diagnostics.some((item) => item.code === "SUPA_PLAN_RENAME_KIND_MISMATCH")).toBe(
-      true,
+      true
     );
   });
 
@@ -56,11 +56,11 @@ describe("rename hint guards", () => {
           destructive: [],
           renames: [{ from: "table:app.accounts", to: "table:archive.accounts" }],
         },
-      },
+      }
     );
 
     expect(
-      plan.diagnostics.some((item) => item.code === "SUPA_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED"),
+      plan.diagnostics.some((item) => item.code === "SUPA_PLAN_RENAME_SET_SCHEMA_UNSUPPORTED")
     ).toBe(true);
   });
 
@@ -70,7 +70,7 @@ describe("rename hint guards", () => {
     });
 
     expect(plan.diagnostics.some((item) => item.code === "SUPA_PLAN_RENAME_HINT_UNMATCHED")).toBe(
-      true,
+      true
     );
   });
 });
@@ -84,16 +84,16 @@ describe("cross-schema dependency ordering", () => {
         "CREATE SCHEMA reporting;",
         "CREATE VIEW reporting.account_rollup AS SELECT id FROM app.accounts;",
         "CREATE TABLE app.accounts (id integer);",
-      ].join("\n"),
+      ].join("\n")
     );
 
     const order = plan.operations.map((operation) => operation.key);
     expect(order.indexOf("schema:app")).toBeLessThan(order.indexOf("table:app.accounts"));
     expect(order.indexOf("table:app.accounts")).toBeLessThan(
-      order.indexOf("view:reporting.account_rollup"),
+      order.indexOf("view:reporting.account_rollup")
     );
     expect(order.indexOf("schema:reporting")).toBeLessThan(
-      order.indexOf("view:reporting.account_rollup"),
+      order.indexOf("view:reporting.account_rollup")
     );
   });
 });
@@ -107,7 +107,7 @@ describe("managed schema policy", () => {
     });
 
     expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(
-      true,
+      true
     );
   });
 
@@ -122,7 +122,7 @@ describe("managed schema policy", () => {
     });
 
     expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(
-      false,
+      false
     );
   });
 
@@ -132,7 +132,7 @@ describe("managed schema policy", () => {
     });
 
     expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(
-      true,
+      true
     );
   });
 });
@@ -148,7 +148,7 @@ describe.skipIf(!databaseUrl)("non-idempotent migration detection", () => {
     await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
     await writeFile(
       join(directory, "to.sql"),
-      "CREATE SCHEMA app;\nCREATE TABLE app.expected (id integer);",
+      "CREATE SCHEMA app;\nCREATE TABLE app.expected (id integer);"
     );
     const migrationPath = join(directory, "migration.sql");
     await writeFile(migrationPath, "CREATE TABLE IF NOT EXISTS app.unexpected (id integer);\n");

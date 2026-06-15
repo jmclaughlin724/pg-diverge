@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://supaschema.com/docs
+    about: Setup, quickstart, CLI reference, configuration, and SUPA_* hint recovery.
+  - name: Security vulnerability
+    url: https://github.com/jmclaughlin724/supaschema/security/advisories/new
+    about: Report a security issue privately. Do not open a public issue — see SECURITY.md.
+  - name: Questions & discussion
+    url: https://github.com/jmclaughlin724/supaschema/discussions
+    about: Ask usage questions or discuss ideas before filing a feature request.

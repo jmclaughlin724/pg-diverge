@@ -1,6 +1,73 @@
 {
+  "enabledMcpjsonServers": [
+    "cloudflare-api",
+    "cloudflare-docs",
+    "cclsp",
+    "codeatlas",
+    "repo_context",
+    "context7",
+    "mintlify",
+    "next-devtools",
+    "openaiDeveloperDocs",
+    "sentry",
+    "ultracite",
+    "zod",
+    "supaschema-docs"
+  ],
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/skill_session_init.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/skill_inject.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/skill_gate.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/skill_subagent_gate.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre_tool_guard.sh",
+            "timeout": 10
+          }
+        ]
+      },
       {
         "matcher": "Write|Edit|MultiEdit|apply_patch",
         "hooks": [
@@ -13,6 +80,16 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Skill|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/skill_record.sh",
+            "timeout": 10
+          }
+        ]
+      },
       {
         "matcher": "Write|Edit|MultiEdit|apply_patch",
         "hooks": [

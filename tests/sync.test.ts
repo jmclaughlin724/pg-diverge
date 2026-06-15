@@ -13,7 +13,7 @@ describe("sync (no target)", () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-"));
     await writeFile(
       join(root, "20260101000000_safe.sql"),
-      "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n",
+      "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n"
     );
 
     const result = await syncMigrations({ directory: root });
@@ -50,16 +50,16 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       await target.connect();
       await target.query("CREATE SCHEMA supabase_migrations");
       await target.query(
-        "CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY)",
+        "CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY)"
       );
       await target.query(
-        "INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20250101000000')",
+        "INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20250101000000')"
       );
       await target.end();
       const root = await mkdtemp(join(tmpdir(), "supa-sync-ghost-"));
       await writeFile(
         join(root, "20260101000000_one.sql"),
-        "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n",
+        "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n"
       );
 
       const result = await syncMigrations({

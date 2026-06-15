@@ -28,7 +28,7 @@ const strictKinds = new Set([
 async function collectFalseChanges(
   treeDir: string,
   prepare: string[] = [],
-  cleanup: string[] = [],
+  cleanup: string[] = []
 ): Promise<string[]> {
   if (!databaseUrl) {
     throw new Error("a test database URL is required");
@@ -44,7 +44,10 @@ async function collectFalseChanges(
     const url = new URL(databaseUrl);
     url.pathname = `/${databaseName}`;
     const dir = await extractSourceModel(`dir:${treeDir}`);
-    expect(dir.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    const dirErrors = dir.diagnostics.filter((item) => item.severity === "error");
+    if (dirErrors.length > 0) {
+      throw new Error(`expected dir extraction to succeed: ${JSON.stringify(dirErrors)}`);
+    }
     const client = new Client({ connectionString: url.toString() });
     await client.connect();
     try {
@@ -58,7 +61,10 @@ async function collectFalseChanges(
       await client.end();
     }
     const live = await extractSourceModel(`database:${url.toString()}`);
-    expect(live.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    const liveErrors = live.diagnostics.filter((item) => item.severity === "error");
+    if (liveErrors.length > 0) {
+      throw new Error(`expected live extraction to succeed: ${JSON.stringify(liveErrors)}`);
+    }
     const plan = planSchemaDiff(live, dir);
     // Live-only environment objects (e.g. the default public schema) diff as
     // drops; parity asserts the dir tree itself produces no creates,
@@ -95,7 +101,7 @@ describe.skipIf(!databaseUrl)("cross-lane identity parity", () => {
       [
         `DO $supa$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_parity_role') THEN CREATE ROLE app_parity_role NOLOGIN; END IF; END $supa$;`,
       ],
-      ["DROP ROLE IF EXISTS app_parity_role;"],
+      ["DROP ROLE IF EXISTS app_parity_role;"]
     );
     expect(falseChanges).toEqual([]);
   });

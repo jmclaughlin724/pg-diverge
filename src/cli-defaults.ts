@@ -16,7 +16,7 @@ export function defaultTreeSource(config: SupaschemaConfig): string {
 
 export function resolveMigrationsDir(
   flagValue: string | undefined,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): string {
   return flagValue ?? config.migrationsDir;
 }
@@ -30,7 +30,7 @@ export function resolveMigrationsDir(
 export async function resolveSourceDefaults(
   options: { from?: string; to?: string },
   config: SupaschemaConfig,
-  resolveDbUrl: () => Promise<string | undefined>,
+  resolveDbUrl: () => Promise<string | undefined>
 ): Promise<ResolvedSources> {
   const defaulted: string[] = [];
   const to = options.to ?? defaultTreeSource(config);

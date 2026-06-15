@@ -15,7 +15,7 @@ describe("diff output accuracy scoring", () => {
 CREATE TABLE IF NOT EXISTS app.audit_events (id bigint NOT NULL);
 ALTER TABLE app.entity_001 ADD COLUMN IF NOT EXISTS external_ref text DEFAULT ''::text NOT NULL;
 ALTER TYPE app.entity_status ADD VALUE IF NOT EXISTS 'archived';`,
-      manifest,
+      manifest
     );
 
     expect(score.missed).toEqual([]);
@@ -30,7 +30,7 @@ ALTER TABLE app.entity_001 ADD COLUMN external_ref text;
 ALTER TYPE app.entity_status ADD VALUE 'archived';
 DROP TABLE IF EXISTS app.entity_004;
 CREATE TABLE app.entity_004 (id bigint NOT NULL);`,
-      manifest,
+      manifest
     );
 
     expect(score.recall).toBe(1);
@@ -41,7 +41,7 @@ CREATE TABLE app.entity_004 (id bigint NOT NULL);`,
   it("drops recall when an intended change is missing", async () => {
     const score = await scoreDiffOutput(
       "CREATE TABLE IF NOT EXISTS app.audit_events (id bigint NOT NULL);",
-      manifest,
+      manifest
     );
 
     expect(score.missed).toEqual(["enum:app.entity_status", "table:app.entity_001"]);
@@ -54,7 +54,7 @@ CREATE TABLE app.entity_004 (id bigint NOT NULL);`,
 DROP TABLE app.entity_001;
 CREATE TABLE app.entity_001 (id bigint NOT NULL, external_ref text);
 ALTER TYPE app.entity_status ADD VALUE IF NOT EXISTS 'archived';`,
-      manifest,
+      manifest
     );
 
     expect(score.recall).toBe(1);
@@ -72,7 +72,7 @@ DROP POLICY entity_004_select ON app.entity_004;
 DROP FUNCTION app.touch_updated_at();
 DROP MATERIALIZED VIEW app.entity_stats;
 CREATE MATERIALIZED VIEW app.entity_stats AS SELECT 1 AS n;`,
-      manifest,
+      manifest
     );
 
     expect(score.recall).toBe(1);
@@ -104,7 +104,7 @@ BEGIN
   END IF;
 END
 $supaschema$;`,
-      [{ change: "create", key: "constraint:app.audit_then_events_check:audit_events" }],
+      [{ change: "create", key: "constraint:app.audit_then_events_check:audit_events" }]
     );
 
     expect(score.missed).toEqual([]);
@@ -118,7 +118,7 @@ BEGIN
   ALTER TABLE app.entity_001 ADD COLUMN external_ref text;
 END
 $$;`,
-      [{ change: "change", key: "table:app.entity_001" }],
+      [{ change: "change", key: "table:app.entity_001" }]
     );
 
     expect(score.missed).toEqual([]);
@@ -136,7 +136,7 @@ BEGIN
   END IF;
 END
 $supaschema$;`,
-      [{ change: "create", key: "constraint:app.audit_events_tenant_id_fkey:audit_events" }],
+      [{ change: "create", key: "constraint:app.audit_events_tenant_id_fkey:audit_events" }]
     );
 
     expect(score.missed).toEqual([]);

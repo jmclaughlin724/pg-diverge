@@ -1,6 +1,7 @@
 ---
 title: "Declarative schema"
 description: "Learn how supaschema's declarative approach keeps your PostgreSQL schema in SQL files and auto-generates safe, idempotent migrations on every change."
+keywords: ["declarative schema","PostgreSQL","schema files","AST diff"]
 ---
 
 Declarative schema management means you write the schema you want.
@@ -39,13 +40,17 @@ Declarative tooling existed before supaschema. The difference is loop cost.
 
 Many workflows replay your schema into a Docker shadow database just to read it. Types often cannot regenerate until after apply:
 
-![The declarative workflow today: spin up a shadow database, replay the schema, diff, apply, then introspect for types — every step needs a running PostgreSQL, and policies are diffed by name](/concepts/legacy-flow.svg)
+<Frame>
+  <img src="/images/concepts/legacy-flow.svg" alt="Traditional declarative workflow using a shadow database, schema replay, diff, apply, and type introspection" />
+</Frame>
 
 supaschema ships PostgreSQL's parser inside the package.
 
 The loop can run without a database. Policy bodies are compared structurally, not by name:
 
-![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](/concepts/supaschema-flow.svg)
+<Frame>
+  <img src="/images/concepts/supaschema-flow.svg" alt="supaschema workflow using embedded PostgreSQL parsing, AST comparison, guarded migration rendering, and offline type generation" />
+</Frame>
 
 ## SQL files on disk
 

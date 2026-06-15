@@ -68,7 +68,7 @@ export function canonicalViewNode(node: unknown, scopes: Scope[]): unknown {
 
 function canonicalColumnRef(
   columnRef: Record<string, unknown>,
-  scopes: Scope[],
+  scopes: Scope[]
 ): Record<string, unknown> {
   const fields = columnRef.fields;
   if (!Array.isArray(fields) || fields.length !== 2) {
@@ -100,7 +100,7 @@ function soleFromRelation(selectStmt: Record<string, unknown>): Scope {
 
 function canonicalChildren(
   record: Record<string, unknown>,
-  scopes: Scope[],
+  scopes: Scope[]
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(record)) {

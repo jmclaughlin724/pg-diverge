@@ -1,0 +1,27 @@
+# Code owners for supaschema.
+#
+# These globs protect publish-critical and cross-runtime configuration:
+# any PR touching them requires review from the listed owner. This is
+# defense-in-depth layered with the `release` GitHub Environment gate on
+# the publish job, not a substitute for it. Enable "Require review from
+# Code Owners" in branch protection for this file to take effect.
+
+# Default owner for everything not matched below.
+*                       @jmclaughlin724
+
+# CI/CD, workflows, issue/PR templates, this file, dependabot.
+/.github/               @jmclaughlin724
+
+# npm package manifest and publish metadata.
+/package.json           @jmclaughlin724
+
+# Python side-service (FastMCP agent) packaging and source.
+/pyproject.toml         @jmclaughlin724
+/services/agent-mcp/    @jmclaughlin724
+
+# Cloudflare Worker and FastMCP server config.
+/wrangler.toml          @jmclaughlin724
+/fastmcp.json           @jmclaughlin724
+
+# Release workflow.
+/release.yml            @jmclaughlin724

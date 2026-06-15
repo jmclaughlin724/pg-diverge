@@ -64,8 +64,8 @@ describe("deparse round-trip proof (tier 1, always on)", () => {
       diagnostics.filter(
         (item) =>
           item.code === "SUPA_CHECK_DEPARSE_MISMATCH" ||
-          item.code === "SUPA_CHECK_DEPARSE_UNSUPPORTED",
-      ),
+          item.code === "SUPA_CHECK_DEPARSE_UNSUPPORTED"
+      )
     ).toEqual([]);
     expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
   });

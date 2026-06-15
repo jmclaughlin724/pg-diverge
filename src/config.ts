@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { diagnostic, diagnosticCatalog, formatDiagnostic, redactSecrets } from "./diagnostics.js";
 
 const hintsSchema = z
   .object({
@@ -11,7 +12,7 @@ const hintsSchema = z
         z.strictObject({
           from: z.string(),
           to: z.string(),
-        }),
+        })
       )
       .default([]),
   })
@@ -76,11 +77,34 @@ export function resolveConfig(config?: Partial<SupaschemaConfig>): SupaschemaCon
   return supaschemaConfigSchema.parse(normalizeConfigInput(config ?? {}));
 }
 
+/**
+ * Parse a user-authored config file (e.g. supaschema.config.json) at the trust
+ * boundary. On failure this throws a redacted SUPA_CONFIG_INVALID diagnostic so
+ * library consumers of loadConfig() get a coded, secret-safe error instead of a
+ * raw ZodError. The typed Partial path stays on resolveConfig()/.parse().
+ */
+function parseUserConfigFile(input: unknown, path: string): SupaschemaConfig {
+  const result = supaschemaConfigSchema.safeParse(
+    normalizeConfigInput((input ?? {}) as Partial<SupaschemaConfig>)
+  );
+  if (result.success) {
+    return result.data;
+  }
+  const detail = redactSecrets(z.prettifyError(result.error));
+  const message =
+    diagnosticCatalog.SUPA_CONFIG_INVALID ?? "supaschema.config.json failed schema validation.";
+  const item = diagnostic("SUPA_CONFIG_INVALID", "error", message, {
+    file: path,
+    hint: detail,
+  });
+  throw new Error(formatDiagnostic(item));
+}
+
 const moduleConfigFiles = ["supaschema.config.mjs", "supaschema.config.js"];
 
 export async function loadConfig(
   cwd: string = process.cwd(),
-  explicitPath?: string,
+  explicitPath?: string
 ): Promise<SupaschemaConfig> {
   if (explicitPath) {
     const path = isAbsolute(explicitPath) ? explicitPath : resolve(cwd, explicitPath);
@@ -108,16 +132,16 @@ async function loadConfigFile(path: string): Promise<SupaschemaConfig> {
     return loaded;
   }
   const raw = await readFile(path, "utf8");
-  return resolveConfig(JSON.parse(raw) as Partial<SupaschemaConfig>);
+  return parseUserConfigFile(JSON.parse(raw), path);
 }
 
 async function tryLoadJsonConfig(path: string): Promise<SupaschemaConfig | undefined> {
   try {
     const raw = await readFile(path, "utf8");
-    return resolveConfig(JSON.parse(raw) as Partial<SupaschemaConfig>);
+    return parseUserConfigFile(JSON.parse(raw), path);
   } catch (error) {
     if (isFileMissing(error)) {
-      return undefined;
+      return;
     }
     throw error;
   }
@@ -131,7 +155,7 @@ async function tryLoadModuleConfig(path: string): Promise<SupaschemaConfig | und
     return resolveConfig(module.default ?? {});
   } catch (error) {
     if (isFileMissing(error) || isModuleMissing(error)) {
-      return undefined;
+      return;
     }
     throw error;
   }
@@ -172,7 +196,10 @@ const scaffoldConfig = {
 export const defaultConfigFile = `${JSON.stringify(scaffoldConfig, null, 2)}\n`;
 
 export function configJsonSchema(): Record<string, unknown> {
-  return z.toJSONSchema(supaschemaConfigSchema, { io: "input" }) as Record<string, unknown>;
+  return z.toJSONSchema(supaschemaConfigSchema, {
+    io: "input",
+    target: "draft-2020-12",
+  }) as Record<string, unknown>;
 }
 
 function normalizeConfigInput(config: Partial<SupaschemaConfig>): Partial<SupaschemaConfig> {

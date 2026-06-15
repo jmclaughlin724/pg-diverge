@@ -17,6 +17,19 @@
   "metadata": {
     "timestamp": true
   },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "add-mcp",
+      "cursor",
+      "vscode"
+    ]
+  },
   "seo": {
     "metatags": {
       "canonical": "https://supaschema.com/docs",
@@ -105,7 +118,14 @@
       {
         "group": "Start",
         "icon": "rocket",
-        "pages": ["introduction", "installation", "setup", "quickstart", "coding-agents", "faq"]
+        "pages": [
+          "introduction",
+          "installation",
+          "setup",
+          "quickstart",
+          "coding-agents",
+          "faq"
+        ]
       },
       {
         "group": "Understand",
@@ -146,12 +166,20 @@
       {
         "group": "Configuration",
         "icon": "settings",
-        "pages": ["configuration/config-file", "configuration/environments", "configuration/hints"]
+        "pages": [
+          "configuration/config-file",
+          "configuration/environments",
+          "configuration/hints"
+        ]
       },
       {
         "group": "Ship",
         "icon": "shield-check",
-        "pages": ["guides/ci-github-actions", "guides/ci-gate", "guides/corpus-oracle"]
+        "pages": [
+          "guides/ci-github-actions",
+          "guides/ci-gate",
+          "guides/corpus-oracle"
+        ]
       },
       {
         "group": "Reference",
@@ -161,6 +189,7 @@
           "case-study-anilize",
           "reference/diagnostics",
           "reference/library-api",
+          "reference/package-boundary",
           "reference/support-matrix"
         ]
       }

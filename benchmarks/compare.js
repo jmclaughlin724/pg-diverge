@@ -33,7 +33,7 @@ const { scoreDiffOutput } = await import(join(packageRoot, "dist/diff-score.js")
 const fixtureRoot = resolve(here, "fixtures");
 const outputPath = resolve(
   packageRoot,
-  process.env.SUPASCHEMA_COMPARE_OUT ?? "benchmarks/results/comparison.json",
+  process.env.SUPASCHEMA_COMPARE_OUT ?? "benchmarks/results/comparison.json"
 );
 const selectedTools = csvSet(process.env.SUPASCHEMA_COMPARE_TOOLS);
 const selectedFixtures = csvSet(process.env.SUPASCHEMA_COMPARE_FIXTURES);
@@ -53,7 +53,7 @@ const fixtures = [
   ...(await materializeGeneratedFixtures(
     tempRoot,
     numberEnv("SUPASCHEMA_COMPARE_XL_TABLES", 0),
-    numberEnv("SUPASCHEMA_COMPARE_XXL_TABLES", 0),
+    numberEnv("SUPASCHEMA_COMPARE_XXL_TABLES", 0)
   )),
 ].sort((left, right) => left.name.localeCompare(right.name));
 const results = [];
@@ -81,34 +81,49 @@ async function runFixtureAdapters(contextBase, fixture) {
     if (selectedTools && !selectedTools.has(adapter.id)) {
       continue;
     }
-    const reason = await adapterSkipReason(adapter, contextBase);
-    if (reason) {
-      results.push(skippedResult(adapter, fixture, reason));
+    const unavailable = await adapterUnavailableResult(adapter, fixture, contextBase);
+    if (unavailable) {
+      results.push(unavailable);
       continue;
     }
-    const unsupportedReason = adapter.unsupported?.(contextBase);
-    if (unsupportedReason) {
-      results.push(unsupportedResult(adapter, fixture, unsupportedReason));
-      continue;
+    await runAdapterIterations(adapter, fixture, contextBase);
+  }
+}
+
+async function adapterUnavailableResult(adapter, fixture, contextBase) {
+  const reason = await adapterSkipReason(adapter, contextBase);
+  if (reason) {
+    return skippedResult(adapter, fixture, reason);
+  }
+  const unsupportedReason = adapter.unsupported?.(contextBase);
+  if (unsupportedReason) {
+    return unsupportedResult(adapter, fixture, unsupportedReason);
+  }
+  return;
+}
+
+async function runAdapterIterations(adapter, fixture, contextBase) {
+  for (let index = -warmups; index < iterations; index += 1) {
+    await runAdapterIteration(adapter, fixture, contextBase, index);
+  }
+}
+
+async function runAdapterIteration(adapter, fixture, contextBase, index) {
+  const warmup = index < 0;
+  let context;
+  try {
+    context = await prepareRunContext(adapter, contextBase, index);
+    const result = await runAdapter(adapter, fixture, context, warmup, index);
+    if (!warmup) {
+      results.push(result);
     }
-    for (let index = -warmups; index < iterations; index += 1) {
-      const warmup = index < 0;
-      let context;
-      try {
-        context = await prepareRunContext(adapter, contextBase, index);
-        const result = await runAdapter(adapter, fixture, context, warmup, index);
-        if (!warmup) {
-          results.push(result);
-        }
-      } catch (error) {
-        if (!warmup) {
-          results.push(failedResult(adapter, fixture, warmup, index, error));
-        }
-      } finally {
-        if (context) {
-          await cleanupRunContext(context);
-        }
-      }
+  } catch (error) {
+    if (!warmup) {
+      results.push(failedResult(adapter, fixture, warmup, index, error));
+    }
+  } finally {
+    if (context) {
+      await cleanupRunContext(context);
     }
   }
 }
@@ -193,7 +208,7 @@ async function prepareRunContext(adapter, base, iteration) {
       await writeFile(
         context.supaschemaConfigPath,
         `${JSON.stringify({ adapter: base.supaschemaAdapter })}\n`,
-        "utf8",
+        "utf8"
       );
     }
     if (adapter.requiresDatabase) {
@@ -392,7 +407,7 @@ function exec({ args, command, stdin }) {
     const timeout = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 2_000).unref();
+      setTimeout(() => child.kill("SIGKILL"), 2000).unref();
     }, commandTimeoutMs);
     timeout.unref();
     function finish(result) {
@@ -453,13 +468,13 @@ async function commandOutput(context, execution) {
 
 function csvSet(value) {
   if (!value) {
-    return undefined;
+    return;
   }
   return new Set(
     value
       .split(",")
       .map((item) => item.trim())
-      .filter(Boolean),
+      .filter(Boolean)
   );
 }
 
@@ -483,7 +498,7 @@ async function collectToolVersions() {
 async function commandVersion(command, args) {
   const result = await exec({ args, command });
   if (result.exitCode !== 0) {
-    return undefined;
+    return;
   }
   return result.stdout.trim() || result.stderr.trim() || undefined;
 }

@@ -1,0 +1,91 @@
+---
+title: "Commands"
+description: "Complete CLI reference for generating, validating, verifying, inspecting, and syncing schemas."
+keywords: ["CLI reference","commands","diff","check","verify"]
+---
+
+Use this page to pick the right command.
+
+For exact flags, open the command page linked in each card.
+
+## Daily loop
+
+<CardGroup cols={2}>
+  <Card title="diff" icon="file-diff" href="/commands/diff">
+    Generate a migration from the current state to your schema files.
+  </Card>
+
+  <Card title="check" icon="shield-check" href="/commands/check">
+    Validate migration SQL for replay safety and lock hazards.
+  </Card>
+
+  <Card title="verify" icon="badge-check" href="/commands/verify">
+    Apply a migration twice in disposable databases and compare catalogs.
+  </Card>
+
+  <Card title="types" icon="braces" href="/commands/types">
+    Generate TypeScript and Zod output from schema files.
+  </Card>
+</CardGroup>
+
+## Operations
+
+<CardGroup cols={2}>
+  <Card title="migrations" icon="list-checks" href="/commands/migrations">
+    Compare files on disk with a target database's applied history.
+  </Card>
+
+  <Card title="sync" icon="refresh-cw" href="/commands/sync">
+    Dry-run or hand off pending Supabase migrations after safety checks.
+  </Card>
+
+  <Card title="other tools" icon="wrench" href="/commands/other">
+    Use `plan`, `inspect`, `fingerprint`, `audit`, `doctor`, `completion`, and `explain`.
+  </Card>
+</CardGroup>
+
+## Defaults
+
+When you omit flags, supaschema uses your config.
+
+| Command area | Default |
+| --- | --- |
+| `--from` | Resolved database URL, then `git:HEAD` |
+| `--to` | `dir:<config.schemaPaths[0]>` |
+| Migration output | `config.migrationsDir` |
+| `check` input | every `.sql` file in `config.migrationsDir` |
+| `verify --migration` | newest pending migration |
+
+Global flags work on every command:
+
+<ParamField path="--config" type="path">
+  Use an explicit `.json`, `.mjs`, or `.js` config file.
+</ParamField>
+
+<ParamField path="--env" type="string">
+  Read the database URL from a named `environments` entry in `supaschema.config.json`.
+</ParamField>
+
+<ParamField path="--quiet" type="boolean">
+  Suppress non-essential output.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success |
+| `1` | Runtime error |
+| `2` | One or more diagnostics contained an error |
+| `3` | `--fail-on-diff` found operations |
+
+## Common choices
+
+| Goal | Command |
+| --- | --- |
+| Generate a migration | `npx supaschema diff` |
+| Check generated SQL | `npx supaschema check` |
+| Prove apply-twice safety | `npx supaschema verify` |
+| Detect drift in CI | `npx supaschema diff --fail-on-diff --quiet` |
+| List pending migrations | `npx supaschema migrations` |
+| Explain a diagnostic | `npx supaschema explain SUPA_CODE` |

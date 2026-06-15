@@ -32,7 +32,7 @@ function sortJson(value: unknown): JsonLike {
     return Object.fromEntries(
       Object.entries(value)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, child]) => [key, sortJson(child)]),
+        .map(([key, child]) => [key, sortJson(child)])
     ) as { [key: string]: JsonLike };
   }
   if (
