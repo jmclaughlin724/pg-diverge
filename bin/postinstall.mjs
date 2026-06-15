@@ -28,6 +28,8 @@ const genericSchemaPath = "database/schemas";
 const genericMigrationsDir = "database/migrations";
 const supabaseSchemaPath = "supabase/schemas";
 const supabaseMigrationsDir = "supabase/migrations";
+const defaultTypesFile = "database.types.ts";
+const defaultZodFile = "database.zod.ts";
 const manifestPath = ".supaschema/install.json";
 const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
@@ -46,7 +48,7 @@ const agentFiles = [
 const hookConfigs = [".claude/settings.json", ".codex/hooks.json"];
 
 const genericPreset = {
-  adapter: undefined,
+  adapter: "auto",
   id: "postgres",
   label: "PostgreSQL",
   migrationsDir: genericMigrationsDir,
@@ -63,7 +65,7 @@ const providerPresets = [
     schemaPath: supabaseSchemaPath,
   },
   {
-    adapter: undefined,
+    adapter: "auto",
     id: "neon",
     label: "Neon",
     markers: [
@@ -79,7 +81,7 @@ const providerPresets = [
     schemaPath: "neon/schemas",
   },
   {
-    adapter: undefined,
+    adapter: "auto",
     id: "aws-postgresql",
     label: "RDS/Aurora PostgreSQL",
     markers: [
@@ -107,7 +109,7 @@ const providerPresets = [
     schemaPath: "aws-postgresql/schemas",
   },
   {
-    adapter: undefined,
+    adapter: "auto",
     id: "alloydb",
     label: "AlloyDB",
     markers: [
@@ -121,7 +123,7 @@ const providerPresets = [
     schemaPath: "alloydb/schemas",
   },
   {
-    adapter: undefined,
+    adapter: "auto",
     id: "cloud-sql",
     label: "Cloud SQL for PostgreSQL",
     markers: [
@@ -138,7 +140,7 @@ const providerPresets = [
     schemaPath: "cloud-sql/schemas",
   },
   {
-    adapter: undefined,
+    adapter: "auto",
     id: "azure-postgresql",
     label: "Azure PostgreSQL",
     markers: [
@@ -240,11 +242,13 @@ function readExistingConfig(projectDir) {
 }
 
 function normalizeAdapter(value) {
-  if (value === "auto" || value === "supabase-auto") {
+  if (
+    value === "auto" ||
+    value === "supabase-auto" ||
+    value === "postgres" ||
+    value === "supabase"
+  ) {
     return "auto";
-  }
-  if (value === "postgres") {
-    return "postgres";
   }
   return undefined;
 }
@@ -563,9 +567,43 @@ function rank(candidate, preferredOrder) {
 function scaffoldConfig(selection) {
   const config = {
     $schema: "./node_modules/supaschema/config-schema.json",
-    ...(selection.adapter === undefined ? {} : { adapter: selection.adapter }),
-    schemaPaths: selection.schemaPaths,
+    adapter: selection.adapter ?? "auto",
+    cascade: "never",
+    destructiveChanges: "hint-required",
+    environments: {},
+    excludedGrantRoles: [],
+    hints: {
+      destructive: [],
+      renames: [],
+    },
+    idempotency: "required",
+    lockTimeout: "5s",
     migrationsDir: selection.migrationsDir,
+    typesFile: defaultTypesFile,
+    zodFile: defaultZodFile,
+    normalize: "deparse",
+    managedSchemas: [
+      "auth",
+      "storage",
+      "realtime",
+      "vault",
+      "extensions",
+      "cron",
+      "net",
+      "supabase_functions",
+      "graphql",
+      "graphql_public",
+    ],
+    postgresVersion: "15+",
+    renameDetection: "hints-only",
+    schemaPaths: selection.schemaPaths,
+    schemas: {
+      exclude: [],
+      include: [],
+    },
+    statementTimeout: "60s",
+    transactionMode: "per-migration",
+    validators: ["internal-parser"],
   };
   return `${JSON.stringify(config, null, 2)}\n`;
 }
@@ -594,7 +632,8 @@ This project uses supaschema for declarative PostgreSQL migrations. The configur
 
 - Schema intent belongs in \`${selection.schemaPaths.join("`, `")}\`.
 - Generated migrations write to \`${selection.migrationsDir}\`; files containing \`-- supaschema: lineage\` must not be hand-edited.
-- Edit \`supaschema.config.json\` to change \`schemaPaths\`, \`migrationsDir\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
+- Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config.
+- Edit \`supaschema.config.json\` to change \`adapter\`, \`schemaPaths\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
 ${confirm}- For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, run \`npx supaschema diff\`, then run \`npx supaschema check\`.
 - Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes; they never apply migrations.
 - Do not run \`npx supaschema sync --local\` or \`npx supaschema sync --remote\` unless explicitly asked to apply migrations.
@@ -621,7 +660,7 @@ function writeInstallManifest(scan, selection) {
     manifestPath,
     `${JSON.stringify(
       {
-        adapter: selection.adapter ?? "postgres",
+        adapter: selection.adapter ?? "auto",
         candidates: scan,
         installedAt: new Date().toISOString(),
         migrationsDir: selection.migrationsDir,

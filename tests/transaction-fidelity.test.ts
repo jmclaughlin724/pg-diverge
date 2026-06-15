@@ -56,10 +56,10 @@ describe("nontransactional statement escalation", () => {
     expect(finding?.severity).toBe("error");
   });
 
-  it("keeps the warning severity for per-statement postgres runners", async () => {
+  it("keeps the warning severity for per-statement runners", async () => {
     const diagnostics = await checkMigrationSql(
       "CREATE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON app.items (id);",
-      { config: { adapter: "postgres", transactionMode: "per-statement" } },
+      { config: { transactionMode: "per-statement" } },
     );
 
     const finding = diagnostics.find((item) => item.code === "SUPA_CHECK_NONTRANSACTIONAL_INDEX");
@@ -96,8 +96,8 @@ describe("config model filters", () => {
   });
 });
 
-describe("supabase view security_invoker", () => {
-  it("warns for public views without security_invoker under auto", async () => {
+describe("Supabase view security_invoker policy", () => {
+  it("warns for public views without security_invoker when Supabase-managed surfaces are configured", async () => {
     const directory = await mkdtemp(join(tmpdir(), "supa-secinv-"));
     await writeFile(
       join(directory, "views.sql"),
@@ -107,7 +107,7 @@ describe("supabase view security_invoker", () => {
       ].join("\n"),
     );
     const checked = await extractSourceModel(`dir:${directory}`, {
-      config: { adapter: "auto" },
+      config: { managedSchemas: ["auth", "storage"] },
     });
 
     const warnings = checked.diagnostics.filter(

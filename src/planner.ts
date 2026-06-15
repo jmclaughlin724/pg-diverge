@@ -365,16 +365,16 @@ function makeOperation(
     (kind === "create" || kind === "replace") &&
     object.ref.kind === "index" &&
     object.metadata.concurrent === true &&
-    config.adapter === "auto"
+    config.transactionMode === "per-migration"
   ) {
     blocked = true;
     diagnostics.push(
       diagnostic(
         "SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED",
         "error",
-        "CREATE INDEX CONCURRENTLY cannot run inside the transaction Supabase db push uses",
+        "CREATE INDEX CONCURRENTLY cannot run inside a per-migration transaction",
         {
-          hint: "Create the index without CONCURRENTLY, or run it through an explicit out-of-transaction operational lane.",
+          hint: "Create the index without CONCURRENTLY, or set transactionMode to per-statement and run the concurrent companion through an explicit out-of-transaction operational lane.",
           ref: object.ref,
         },
       ),

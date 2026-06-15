@@ -90,11 +90,11 @@ npx supaschema verify \
 </ParamField>
 
 <ParamField path="--ensure-environment" type="boolean">
-  Stubs the minimal Supabase-managed surfaces that common schema trees reference: `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`, `auth.email()`, `cron.job`, and `cron.job_run_details`. It does not create storage, realtime, vault, identities, sessions, or extension-owned objects. Enabled automatically when the `auto` adapter is active.
+  Stubs the minimal Supabase-managed surfaces that common schema trees reference: `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`, `auth.email()`, `cron.job`, and `cron.job_run_details`. It does not create storage, realtime, vault, identities, sessions, or extension-owned objects. Enable it explicitly when a bare PostgreSQL verification server needs those surfaces.
 </ParamField>
 
 <ParamField path="--no-ensure-environment" type="boolean">
-  Disables the Supabase environment stub even when the `auto` adapter would enable it. Use this only when the verification server provisions managed schemas in newly-created databases.
+  Disables the Supabase environment stub when a wrapper or config already enabled it. Use this only when the verification server provisions managed schemas in newly-created databases.
 </ParamField>
 
 <ParamField path="--keep-databases" type="boolean">

@@ -10,6 +10,53 @@ import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/data
 const run = promisify(execFile);
 const codexGateCommand =
   'node "$' + '{CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-tool-gate.mjs"';
+const managedSchemas = [
+  "auth",
+  "storage",
+  "realtime",
+  "vault",
+  "extensions",
+  "cron",
+  "net",
+  "supabase_functions",
+  "graphql",
+  "graphql_public",
+];
+
+function expectedInstalledConfig(
+  schemaPath: string,
+  migrationsDir: string,
+): Record<string, unknown> {
+  return {
+    $schema: "./node_modules/supaschema/config-schema.json",
+    adapter: "auto",
+    cascade: "never",
+    destructiveChanges: "hint-required",
+    environments: {},
+    excludedGrantRoles: [],
+    hints: {
+      destructive: [],
+      renames: [],
+    },
+    idempotency: "required",
+    lockTimeout: "5s",
+    migrationsDir,
+    typesFile: "database.types.ts",
+    zodFile: "database.zod.ts",
+    normalize: "deparse",
+    managedSchemas,
+    postgresVersion: "15+",
+    renameDetection: "hints-only",
+    schemaPaths: [schemaPath],
+    schemas: {
+      exclude: [],
+      include: [],
+    },
+    statementTimeout: "60s",
+    transactionMode: "per-migration",
+    validators: ["internal-parser"],
+  };
+}
 
 describe("supabase database URL discovery", () => {
   it("reads [db] port from the nearest supabase/config.toml, walking upward", async () => {
@@ -63,15 +110,11 @@ describe("install-time project setup", () => {
     expect(stdout).toContain("installed config, directories, agent files, hook wiring");
 
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
-    expect(config).toEqual({
-      $schema: "./node_modules/supaschema/config-schema.json",
-      schemaPaths: ["database/schemas"],
-      migrationsDir: "database/migrations",
-    });
+    expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
     expect(existsSync(join(consumer, "database/schemas"))).toBe(true);
     expect(existsSync(join(consumer, "database/migrations"))).toBe(true);
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.adapter).toBe("postgres");
+    expect(manifest.adapter).toBe("auto");
 
     for (const file of [
       ".agents/skills/supaschema/SKILL.md",
@@ -118,9 +161,7 @@ describe("install-time project setup", () => {
     await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
 
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
-    expect(config.adapter).toBe("auto");
-    expect(config.schemaPaths).toEqual(["supabase/schemas"]);
-    expect(config.migrationsDir).toBe("supabase/migrations");
+    expect(config).toEqual(expectedInstalledConfig("supabase/schemas", "supabase/migrations"));
     expect(existsSync(join(consumer, "supabase/schemas"))).toBe(true);
     expect(existsSync(join(consumer, "supabase/migrations"))).toBe(true);
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
@@ -177,16 +218,12 @@ describe("install-time project setup", () => {
     await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
 
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
-    expect(config).toEqual({
-      $schema: "./node_modules/supaschema/config-schema.json",
-      schemaPaths: [schemaPath],
-      migrationsDir,
-    });
+    expect(config).toEqual(expectedInstalledConfig(schemaPath, migrationsDir));
     expect(existsSync(join(consumer, schemaPath))).toBe(true);
     expect(existsSync(join(consumer, migrationsDir))).toBe(true);
 
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.adapter).toBe("postgres");
+    expect(manifest.adapter).toBe("auto");
     expect(manifest.provider.id).toBe(id);
     expect(manifest.provider.markers).toContain(marker);
   });

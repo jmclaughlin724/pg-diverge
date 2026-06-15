@@ -132,7 +132,7 @@ export function supabaseViewSecurityDiagnostics(
   objects: SchemaObject[],
   config: SupaschemaConfig,
 ): Diagnostic[] {
-  if (config.adapter !== "auto") {
+  if (!hasSupabaseManagedSurface(config)) {
     return [];
   }
   const diagnostics: Diagnostic[] = [];
@@ -165,7 +165,7 @@ function managedSchemaDiagnostics(
   config: SupaschemaConfig,
   file?: string,
 ): Diagnostic[] {
-  if (config.adapter !== "auto") {
+  if (config.managedSchemas.length === 0) {
     return [];
   }
   const refSchema = object.ref.kind === "schema" ? object.ref.name : object.ref.schema;
@@ -181,13 +181,18 @@ function managedSchemaDiagnostics(
     diagnostic(
       "SUPA_SUPABASE_MANAGED_SCHEMA",
       "error",
-      `schema "${schema}" is managed by Supabase and is not a declarative source owner`,
+      `schema "${schema}" is configured as managed and is not a declarative source owner`,
       {
         file,
-        hint: `Move this statement out of the declarative tree, or exclude the schema with config schemas.exclude: ["${schema}"].`,
+        hint: `Move this statement out of the declarative tree, or remove "${schema}" from managedSchemas only if this project owns it.`,
         ref: object.ref,
         statement,
       },
     ),
   ];
+}
+
+function hasSupabaseManagedSurface(config: SupaschemaConfig): boolean {
+  const managed = new Set(config.managedSchemas);
+  return managed.has("auth") && managed.has("storage");
 }

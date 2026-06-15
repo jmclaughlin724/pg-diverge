@@ -185,24 +185,16 @@ All utility commands accept `--config <path>`.
 </Accordion>
 
 <Accordion title="init — Write a config file">
-  `init` recreates the small `supaschema.config.json` scaffold when needed. Normal package installation already writes this file when no config exists. If a config file already exists, the command exits with an error rather than overwriting it.
+  `init` recreates `supaschema.config.json` when needed. Normal package installation already writes this file when no config exists. If a config file already exists, the command exits with an error rather than overwriting it.
 
   ```bash
   # Write supaschema.config.json in the current directory
   npx supaschema init
   ```
 
-  The generated file looks like this:
+  The generated file uses the same full config shape documented in [Configuration](/configuration/config-file#generated-config).
 
-  ```json
-  {
-    "$schema": "./node_modules/supaschema/config-schema.json",
-    "schemaPaths": ["database/schemas"],
-    "migrationsDir": "database/migrations"
-  }
-  ```
-
-  Edit the file only when you need named environments, custom schema paths, or different output paths.
+  Edit the file when you need named environments, custom schema paths, different output paths, managed schema changes, transaction behavior, or validators.
 </Accordion>
 
 <Accordion title="completion — Print shell completion script">

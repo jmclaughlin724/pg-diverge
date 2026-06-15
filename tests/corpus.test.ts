@@ -27,7 +27,7 @@ describe.skipIf(!databaseUrl)("corpus oracle", () => {
     await mkdir(join(root, "tree"));
     await writeFile(
       join(root, "corpus.json"),
-      JSON.stringify({ adapter: "postgres", schemas: { exclude: [], include: ["app"] } }),
+      JSON.stringify({ adapter: "auto", schemas: { exclude: [], include: ["app"] } }),
     );
     await writeFile(
       join(root, "migrations", "20260101000000_init.sql"),

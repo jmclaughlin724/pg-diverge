@@ -31,14 +31,14 @@ const scenarios: Scenario[] = [
     to: "dir:tests/fixtures/dependent-views/to",
   },
   {
-    config: { adapter: "postgres" },
+    config: { managedSchemas: [] },
     ensureRoles: true,
     from: "dir:tests/fixtures/dependent-views/from",
     name: "parity-tree",
     to: "dir:tests/fixtures/parity/tree",
   },
   {
-    config: { adapter: "postgres" },
+    config: { managedSchemas: [] },
     from: "dir:tests/fixtures/dependent-views/from",
     name: "hostile",
     to: "dir:tests/fixtures/parity/hostile",

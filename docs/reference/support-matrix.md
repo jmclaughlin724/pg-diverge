@@ -11,7 +11,7 @@ Extraction and checking are AST-only. Statements are classified through the Post
 
 | Object | Extract | Render | Notes |
 | --- | --- | --- | --- |
-| Schemas | Yes | `CREATE SCHEMA IF NOT EXISTS` / `DROP SCHEMA IF EXISTS` | Supabase-managed schemas are blocked in `auto`. |
+| Schemas | Yes | `CREATE SCHEMA IF NOT EXISTS` / `DROP SCHEMA IF EXISTS` | Schemas listed in `managedSchemas` are blocked as declarative source ownership. |
 | Extensions | Yes | `CREATE EXTENSION IF NOT EXISTS` | Extension schema is fingerprint metadata. |
 | Types/enums | Yes | `DO` catalog guard / `DROP TYPE IF EXISTS`; appended enum values render as `ALTER TYPE ... ADD VALUE IF NOT EXISTS` | Enum narrowing, removal, or reordering is destructive. |
 | Domains | Yes | `DO` catalog guard / `DROP DOMAIN IF EXISTS` | Domain replacement is destructive. |
@@ -32,13 +32,13 @@ Extraction and checking are AST-only. Statements are classified through the Post
 | Comments | Yes (keyed by structured descriptor) | `COMMENT ON ...`; removal renders `COMMENT ON ... IS NULL` | Live catalogs extract relation, column, function, and schema comments. |
 | Side-effect statements | Blocks | No | `INSERT`, `UPDATE`, `DELETE`, `DO`, and control-plane `SELECT` statements belong in explicit reviewed migrations. |
 
-## Supabase Adapter
+## Managed Schemas
 
-With `adapter: "auto"`, objects in these platform-owned schemas are blocked: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
+Objects in configured `managedSchemas` are blocked before rendering. The default list protects common Supabase-provisioned schemas: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
 
 ## Verify Environment Stub
 
-`verify --ensure-environment` (the default under `adapter: "auto"`) provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that *references* managed schemas can apply against bare PostgreSQL:
+`verify --ensure-environment` provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that *references* managed schemas can apply against bare PostgreSQL:
 
 - `auth.users` with the stable GoTrue column set (`id`, `aud`, `role`, `email`, `phone`, `raw_app_meta_data`, `raw_user_meta_data`, `last_sign_in_at`, `is_anonymous`, …).
 - The `auth.uid()`, `auth.role()`, `auth.jwt()`, and `auth.email()` helper functions.
@@ -50,7 +50,7 @@ The stub is an approximation. It does not create every managed object, such as `
 
 If a migration references an un-stubbed managed object, `verify` can fail with `SUPA_VERIFY_FAILED` plus `SUPA_VERIFY_STUB_REFERENCE`.
 
-That failure may be a stub limitation. Confirm by applying the migration to a real disposable Supabase database, such as a local stack or preview branch.
+That failure may be a stub limitation. Confirm by applying the migration to a disposable database that provisions the managed surface, such as a local Supabase stack or preview branch for Supabase projects.
 
 ## Examples
 

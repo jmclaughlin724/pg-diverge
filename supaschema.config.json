@@ -1,6 +1,40 @@
 {
   "$schema": "./node_modules/supaschema/config-schema.json",
-  "adapter": "postgres",
+  "adapter": "auto",
+  "cascade": "never",
+  "destructiveChanges": "hint-required",
+  "environments": {},
+  "excludedGrantRoles": [],
+  "hints": {
+    "destructive": [],
+    "renames": []
+  },
+  "idempotency": "required",
+  "lockTimeout": "5s",
+  "migrationsDir": "database/migrations",
+  "typesFile": "database.types.ts",
+  "zodFile": "database.zod.ts",
+  "normalize": "deparse",
+  "managedSchemas": [
+    "auth",
+    "storage",
+    "realtime",
+    "vault",
+    "extensions",
+    "cron",
+    "net",
+    "supabase_functions",
+    "graphql",
+    "graphql_public"
+  ],
+  "postgresVersion": "15+",
+  "renameDetection": "hints-only",
   "schemaPaths": ["examples/postgres/schemas"],
-  "migrationsDir": "database/migrations"
+  "schemas": {
+    "exclude": [],
+    "include": []
+  },
+  "statementTimeout": "60s",
+  "transactionMode": "per-migration",
+  "validators": ["internal-parser"]
 }

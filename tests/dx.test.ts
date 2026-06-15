@@ -24,19 +24,31 @@ const sampleDiagnostics: Diagnostic[] = [
 ];
 
 describe("config DX", () => {
-  it("tolerates $schema and keeps the scaffold small", () => {
+  it("tolerates $schema and keeps the scaffold explicit", () => {
     const config = resolveConfig({ $schema: "./node_modules/supaschema/config-schema.json" });
-    expect(config.adapter).toBe("postgres");
+    expect(config.adapter).toBe("auto");
     expect(JSON.parse(defaultConfigFile)).toEqual({
       $schema: "./node_modules/supaschema/config-schema.json",
-      schemaPaths: ["database/schemas"],
-      migrationsDir: "database/migrations",
+      ...resolveConfig(),
     });
   });
 
-  it("normalizes the legacy supabase-auto adapter value to auto", () => {
-    const config = resolveConfig({ adapter: "supabase-auto" } as never);
+  it("normalizes legacy adapter values to auto", () => {
+    const legacySupabase = resolveConfig({ adapter: "supabase-auto" } as never);
+    const legacyPostgres = resolveConfig({ adapter: "postgres" } as never);
+    const accidentalSupabase = resolveConfig({ adapter: "supabase" } as never);
 
+    expect(legacySupabase.adapter).toBe("auto");
+    expect(legacyPostgres.adapter).toBe("auto");
+    expect(accidentalSupabase.adapter).toBe("auto");
+  });
+
+  it("keeps auto provider-neutral even when paths are Supabase-shaped", () => {
+    const config = resolveConfig({
+      adapter: "auto",
+      migrationsDir: "supabase/migrations",
+      schemaPaths: ["supabase/schemas"],
+    });
     expect(config.adapter).toBe("auto");
   });
 
@@ -51,9 +63,25 @@ describe("config DX", () => {
   it("generates a JSON schema documenting every config key", () => {
     const schema = configJsonSchema() as { properties?: Record<string, unknown> };
     expect(schema.properties).toBeDefined();
-    for (const key of ["adapter", "environments", "hints", "normalize", "transactionMode"]) {
+    for (const key of [
+      "adapter",
+      "destructiveChanges",
+      "environments",
+      "excludedGrantRoles",
+      "hints",
+      "managedSchemas",
+      "migrationsDir",
+      "normalize",
+      "schemaPaths",
+      "schemas",
+      "transactionMode",
+      "typesFile",
+      "validators",
+      "zodFile",
+    ]) {
       expect(schema.properties?.[key], key).toBeDefined();
     }
+    expect(schema.properties?.adapter).toMatchObject({ const: "auto", default: "auto" });
   });
 });
 
@@ -132,7 +160,7 @@ describe("raw CLI errors", () => {
 });
 
 describe("verify environment flags", () => {
-  it("exposes --no-ensure-environment so the auto stub default can be disabled", () => {
+  it("exposes both enable and disable flags for the Supabase environment stub", () => {
     const result = spawnSync(process.execPath, [cliPath, "verify", "--help"], {
       encoding: "utf8",
     });

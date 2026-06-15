@@ -131,7 +131,7 @@ describe.skipIf(!databaseUrl)("seeded round-trip fuzz", () => {
       return;
     }
     const sql = generateTree(seed);
-    const extracted = await extractObjectsFromSql(sql, { config: { adapter: "postgres" } });
+    const extracted = await extractObjectsFromSql(sql, { config: { managedSchemas: [] } });
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
     const dir: SchemaModel = {
       diagnostics: [],
@@ -157,7 +157,7 @@ describe.skipIf(!databaseUrl)("seeded round-trip fuzz", () => {
       }
       const live = await extractCatalogModel({ databaseUrl: url.toString() });
       expect(live.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-      const plan = planSchemaDiff(live, dir, { config: { adapter: "postgres" } });
+      const plan = planSchemaDiff(live, dir, { config: { managedSchemas: [] } });
       const falseChanges = plan.operations
         .filter((operation) => operation.kind !== "drop")
         .filter((operation) => strictKinds.has(operation.ref.kind))

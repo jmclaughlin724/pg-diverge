@@ -7,12 +7,9 @@
       "type": "string"
     },
     "adapter": {
-      "default": "postgres",
+      "default": "auto",
       "type": "string",
-      "enum": [
-        "auto",
-        "postgres"
-      ]
+      "const": "auto"
     },
     "cascade": {
       "default": "never",

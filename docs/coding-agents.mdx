@@ -23,7 +23,9 @@ Install includes the agent bundle described in [Introduction](/introduction#what
 
 If install records multiple possible schema or migration paths in `.supaschema/install.json`, ask which paths to use before the first diff.
 
-Agents should treat `supaschema.config.json` as the source of truth for `schemaPaths`, `migrationsDir`, and named database URL references. Do not assume `supabase/schemas` or `supabase/migrations` unless those paths are configured.
+Agents should treat `supaschema.config.json` as the source of truth for `adapter`, `schemaPaths`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, and named database URL references. Do not assume `supabase/schemas` or `supabase/migrations` unless those paths are configured.
+
+`adapter: "auto"` is the default automated supaschema workflow. It is not a Supabase switch. Provider-specific behavior is expressed through paths, managed schemas, transaction mode, excluded grant roles, and explicit verify flags.
 
 ## llms.txt
 

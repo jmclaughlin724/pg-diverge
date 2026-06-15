@@ -199,7 +199,7 @@ export const diagnosticCatalog: Record<string, string> = {
     "A catalog object hashes differently after its rendered SQL is re-extracted; cross-lane diffs would report a false change.",
   SUPA_SELFCHECK_MISSING: "A catalog object disappeared when its rendered SQL was re-extracted.",
   SUPA_SELFCHECK_UNEXPECTED: "Re-extraction produced an object the catalog model does not contain.",
-  SUPA_SUPABASE_MANAGED_SCHEMA: "Supabase-managed schemas are not declarative source owners.",
+  SUPA_SUPABASE_MANAGED_SCHEMA: "Configured managed schemas are not declarative source owners.",
   SUPA_SUPABASE_VIEW_SECURITY_INVOKER:
     "Views in exposed schemas should set security_invoker so RLS applies to the querying role.",
   SUPA_VALIDATOR_FAILED: "A configured external validator reported diagnostics.",
@@ -210,7 +210,7 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_VERIFY_ROLE_CAPABILITY:
     "The verification role cannot CREATE DATABASE; verify needs a role with CREATEDB (on local Supabase stacks prefer supabase_admin).",
   SUPA_VERIFY_STUB_REFERENCE:
-    "Verify failed referencing a Supabase-managed schema that --ensure-environment only stubs minimally; the failure may be a stub limitation, not a real migration defect. Confirm by applying the migration to a real disposable Supabase database (a local stack via supabase db push, or a preview branch). Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.",
+    "Verify failed referencing a managed schema that --ensure-environment only stubs minimally; the failure may be a stub limitation, not a real migration defect. Confirm by applying the migration to a real disposable database that provisions the managed surface. Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.",
   SUPA_VERIFY_FINGERPRINT_MISMATCH:
     "Catalog after from+migration+migration differs from the target catalog.",
   SUPA_VERIFY_RECONVERGENCE:

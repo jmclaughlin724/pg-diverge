@@ -11,7 +11,7 @@ describe("in-CREATE constraint decomposition", () => {
   score integer CHECK (score >= 0),
   CONSTRAINT accounts_named_check CHECK (score < 100)
 );`,
-      { config: { adapter: "postgres" }, file: "t.sql" },
+      { file: "t.sql" },
     );
 
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
@@ -32,7 +32,7 @@ describe("in-CREATE constraint decomposition", () => {
   id bigint CONSTRAINT "accounts pk" PRIMARY KEY,
   score integer CONSTRAINT score_positive CHECK (score >= 0)
 );`,
-      { config: { adapter: "postgres", normalize: "off" }, file: "t.sql" },
+      { config: { normalize: "off" }, file: "t.sql" },
     );
 
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
@@ -49,7 +49,7 @@ describe("in-CREATE constraint decomposition", () => {
   it("rebuilds columns-only table SQL with PK-implied NOT NULL preserved", async () => {
     const extracted = await extractObjectsFromSql(
       "CREATE TABLE app.accounts (id bigint PRIMARY KEY, name text NOT NULL);",
-      { config: { adapter: "postgres" }, file: "t.sql" },
+      { file: "t.sql" },
     );
 
     const table = extracted.objects.find((object) => object.key === "table:app.accounts");
@@ -60,12 +60,12 @@ describe("in-CREATE constraint decomposition", () => {
   it("hashes a declared constraint equal to its ALTER-declared spelling", async () => {
     const inline = await extractObjectsFromSql(
       "CREATE TABLE app.a (id bigint, CONSTRAINT a_pkey PRIMARY KEY (id));",
-      { config: { adapter: "postgres" }, file: "inline.sql" },
+      { file: "inline.sql" },
     );
     const altered = await extractObjectsFromSql(
       `CREATE TABLE app.a (id bigint NOT NULL);
 ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
-      { config: { adapter: "postgres" }, file: "alter.sql" },
+      { file: "alter.sql" },
     );
 
     const inlineConstraint = inline.objects.find((object) => object.key.startsWith("constraint:"));

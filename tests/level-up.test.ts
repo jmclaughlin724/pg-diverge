@@ -92,8 +92,9 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
     await writeFile(migration, "SET lock_timeout = '5s';\n");
 
     const diagnostics = await verifyMigration({
-      config: { adapter: "auto" },
+      config: { managedSchemas: ["auth", "storage", "cron"] },
       databaseUrl: databaseUrl as string,
+      ensureEnvironment: true,
       ensureRoles: true,
       from: `dir:${root.replaceAll("\\", "/")}`,
       migrationPath: migration,

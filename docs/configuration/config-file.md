@@ -7,10 +7,11 @@ description: "Configuration options, defaults, environments, validators, and exa
 
 Most teams edit only these fields:
 
+- `adapter` — `auto` for the normal automated workflow.
 - `schemaPaths` — where declarative SQL files live.
 - `migrationsDir` — where generated migrations are written.
+- `typesFile` / `zodFile` — generated TypeScript and Zod output paths.
 - `environments` — named database URL references such as staging or production.
-- `typesFile` / `zodFile` — generated type output paths.
 - `hints` — exact reviewed destructive changes or renames.
 
 ## Load order
@@ -30,12 +31,78 @@ The scaffolded config includes a `$schema` pointer to the shipped `config-schema
   Keep real credentials in environment variables and reference them as `$ENV_NAME`. Provider config files such as `supabase/config.toml`, `neon.toml`, Terraform, Bicep, CloudFormation, or Cloud Build files are used only to seed install-time defaults.
 </Warning>
 
+## Generated config
+
+Generic PostgreSQL installs write this full config shape:
+
+```json
+{
+  "$schema": "./node_modules/supaschema/config-schema.json",
+  "adapter": "auto",
+  "cascade": "never",
+  "destructiveChanges": "hint-required",
+  "environments": {},
+  "excludedGrantRoles": [],
+  "hints": {
+    "destructive": [],
+    "renames": []
+  },
+  "idempotency": "required",
+  "lockTimeout": "5s",
+  "migrationsDir": "database/migrations",
+  "typesFile": "database.types.ts",
+  "zodFile": "database.zod.ts",
+  "normalize": "deparse",
+  "managedSchemas": [
+    "auth",
+    "storage",
+    "realtime",
+    "vault",
+    "extensions",
+    "cron",
+    "net",
+    "supabase_functions",
+    "graphql",
+    "graphql_public"
+  ],
+  "postgresVersion": "15+",
+  "renameDetection": "hints-only",
+  "schemaPaths": ["database/schemas"],
+  "schemas": {
+    "exclude": [],
+    "include": []
+  },
+  "statementTimeout": "60s",
+  "transactionMode": "per-migration",
+  "validators": ["internal-parser"]
+}
+```
+
+Provider detection can change only the initial `schemaPaths` and `migrationsDir` values during install. For example, Supabase projects default to `supabase/schemas` and `supabase/migrations`; Neon projects default to `neon/schemas` and `neon/migrations`.
+
+The config schema is generated from `src/config.ts` into the shipped `config-schema.json`. This page is the public reference for those fields.
+
+## Adapter
+
+`adapter` has one current value: `auto`.
+
+`auto` means supaschema owns the automated workflow:
+
+- `diff` generates migrations from configured schema paths.
+- `check` gates replay safety.
+- `verify` can prove idempotency and convergence.
+- `types` generates TypeScript and Zod outputs from the same parsed model.
+
+It is not a provider switch. Provider-specific setup is expressed through paths, `managedSchemas`, `transactionMode`, `excludedGrantRoles`, and explicit command flags such as `verify --ensure-environment`.
+
+Legacy config values `supabase-auto`, `supabase`, and `postgres` are accepted and normalized to `auto` so older projects keep loading. Do not use them in new config.
+
 ## Options
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `$schema` | scaffolded | JSON Schema pointer for editor tooling; ignored by the loader. |
-| `adapter` | `"postgres"` | `postgres` is the neutral PostgreSQL adapter. Supabase projects detected during install get `"auto"`, which blocks managed Supabase schemas as declarative owners and blocks `CREATE INDEX CONCURRENTLY` plans for Supabase's transactional migration runner. |
+| `adapter` | `"auto"` | Enables the automated supaschema workflow. This is not a provider switch; see [Adapter](#adapter). |
 | `cascade` | `"never"` | `CASCADE` is never emitted. This is not configurable away. |
 | `destructiveChanges` | `"hint-required"` | `hint-required` blocks destructive operations until the object key is listed in `hints.destructive`; `block` always blocks; `allow` permits everything (not recommended). |
 | `environments` | `{}` | Named database targets for the global `--env` flag: `{ "staging": { "databaseUrl": "$STAGING_DB" } }` lets `supaschema --env staging diff ...` resolve the URL (with `$ENV_NAME` indirection) without repeating it per command. |
@@ -44,7 +111,7 @@ The scaffolded config includes a `$schema` pointer to the shipped `config-schema
 | `hints.renames` | `[]` | `{ "from": "<object key>", "to": "<object key>" }` pairs rendered as guarded `ALTER ... RENAME`. |
 | `idempotency` | `"required"` | Rendered SQL is replay-safe by construction. Not configurable away. |
 | `lockTimeout` | `"5s"` | Value for the `SET lock_timeout` migration preamble. |
-| `managedSchemas` | Supabase set | Schemas treated as platform-owned under `adapter: "auto"`. |
+| `managedSchemas` | Supabase platform set | Schemas treated as externally managed. Objects inside these schemas cannot be claimed by the declarative tree unless you remove the schema from this list because the project truly owns it. |
 | `migrationsDir` | `"database/migrations"` | Where zero-flag `diff` writes migrations, zero-arg `check` reads them, and `verify` finds the newest pending file. Install can scaffold provider-specific folders; the canonical path table lives in [Setup](/setup#path-selection). The `--migrations-dir` flag overrides per command. |
 | `typesFile` | `"database.types.ts"` | Where `supaschema types` writes generated TypeScript types. When the file exists, every `diff` that writes a migration regenerates it from the target tree. |
 | `zodFile` | `"database.zod.ts"` | Where `supaschema types` writes generated runtime Zod validators (requires `zod` in the consuming project). Refreshed by `diff` on the same exists-means-opted-in rule as `typesFile`. |

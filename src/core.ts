@@ -143,7 +143,7 @@ export interface VerifyMigrationOptions {
   /**
    * Stub Supabase-provisioned surfaces (auth schema helpers, cron schema) in
    * the temporary databases so real-world trees apply against bare
-   * PostgreSQL. Defaults to true under adapter "auto".
+   * PostgreSQL. Defaults to false; enable explicitly with --ensure-environment.
    */
   ensureEnvironment?: boolean;
   /**

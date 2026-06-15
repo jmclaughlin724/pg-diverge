@@ -23,10 +23,9 @@ export async function selfCheckCatalog(options: SelfCheckOptions): Promise<SelfC
     .sort((left, right) => left.ordinal - right.ordinal)
     .map((object) => `${object.sql};`)
     .join("\n\n");
-  // The reparse uses the plain postgres adapter: managed-schema policy is a
-  // posture concern, not an identity-parity concern.
+  // Managed-schema policy is a posture concern, not an identity-parity concern.
   const reparsed = await extractObjectsFromSql(script, {
-    config: { adapter: "postgres" },
+    config: { managedSchemas: [] },
     file: "selfcheck:rendered",
   });
   diagnostics.push(...reparsed.diagnostics.filter((item) => item.severity === "error"));

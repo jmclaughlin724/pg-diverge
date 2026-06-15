@@ -98,10 +98,10 @@ describe("cross-schema dependency ordering", () => {
   });
 });
 
-describe("managed schema adapter policy", () => {
+describe("managed schema policy", () => {
   const managedSql = "CREATE TABLE auth.mirror (id integer);";
 
-  it("blocks managed Supabase schemas under auto", async () => {
+  it("blocks schemas listed in managedSchemas", async () => {
     const extracted = await extractObjectsFromSql(managedSql, {
       config: { adapter: "auto" },
     });
@@ -111,13 +111,28 @@ describe("managed schema adapter policy", () => {
     );
   });
 
-  it("permits the same schema under the postgres adapter", async () => {
+  it("does not infer managed schemas from provider-shaped paths", async () => {
     const extracted = await extractObjectsFromSql(managedSql, {
-      config: { adapter: "postgres" },
+      config: {
+        adapter: "auto",
+        managedSchemas: [],
+        migrationsDir: "supabase/migrations",
+        schemaPaths: ["supabase/schemas"],
+      },
     });
 
     expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(
       false,
+    );
+  });
+
+  it("supports project-specific managed schema names", async () => {
+    const extracted = await extractObjectsFromSql(managedSql, {
+      config: { adapter: "auto", managedSchemas: ["auth"] },
+    });
+
+    expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(
+      true,
     );
   });
 });

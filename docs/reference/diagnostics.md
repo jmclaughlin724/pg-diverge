@@ -14,7 +14,7 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_EXTRACT_DUPLICATE_OBJECT` | error | Two source statements claim the same object identity. |
 | `SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED` | error | The source contains a data/control-plane side-effect statement that is not a replay-safe schema object. |
 | `SUPA_OBJECT_PARSE_FAILED` | error | Object SQL did not parse, so its identity hash fell back to normalized text. |
-| `SUPA_SUPABASE_MANAGED_SCHEMA` | error | A Supabase-managed schema was edited as declarative source. |
+| `SUPA_SUPABASE_MANAGED_SCHEMA` | error | A schema listed in `managedSchemas` was edited as declarative source. |
 | `SUPA_SUPABASE_VIEW_SECURITY_INVOKER` | warning | A view in an exposed schema does not set `security_invoker`, so RLS applies as the view owner. |
 | `SUPA_CATALOG_EXTRACT_FAILED` | error | Catalog extraction failed against the supplied database. |
 | `SUPA_CATALOG_SNAPSHOT_VERSION` | warning | A `catalog:` snapshot was produced by a different supaschema model version; regenerate it to keep hashes comparable. |
@@ -52,8 +52,8 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_CHECK_SEARCH_PATH` | error | Migration SQL depends on session `search_path`. |
 | `SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH` | warning | A `SECURITY DEFINER` function lacks function-local `SET search_path`. |
 | `SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION` | error/warning | An enum value added in this migration is used later in the same file; transactional runners fail. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
-| `SUPA_CHECK_NONTRANSACTIONAL_INDEX` | error/warning | `CREATE INDEX CONCURRENTLY` needs transaction wrapping disabled. Error under `adapter: "auto"` or `per-migration` mode. |
-| `SUPA_CHECK_NONTRANSACTIONAL_REFRESH` | error/warning | `REFRESH MATERIALIZED VIEW CONCURRENTLY` needs transaction wrapping disabled. Error under `adapter: "auto"` or `per-migration` mode. |
+| `SUPA_CHECK_NONTRANSACTIONAL_INDEX` | error/warning | `CREATE INDEX CONCURRENTLY` needs transaction wrapping disabled. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
+| `SUPA_CHECK_NONTRANSACTIONAL_REFRESH` | error/warning | `REFRESH MATERIALIZED VIEW CONCURRENTLY` needs transaction wrapping disabled. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
 | `SUPA_CHECK_ALTER_COLUMN_TYPE_REWRITE` | warning | `ALTER COLUMN TYPE` can rewrite the table under an `ACCESS EXCLUSIVE` lock. |
 | `SUPA_CHECK_SET_NOT_NULL_SCAN` | warning | `SET NOT NULL` scans the table unless a validated `CHECK` constraint already proves it. |
 | `SUPA_CHECK_DEPARSE_MISMATCH` | warning | A statement does not round-trip through the deparser to an identical parse tree; `normalize: "deparse"` would keep its source text. |
@@ -76,5 +76,5 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_VERIFY_FAILED` | error | Temporary database verification failed. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` | error | Applying the migration twice did not produce the target catalog fingerprint. |
 | `SUPA_VERIFY_ROLE_CAPABILITY` | error | The verification role cannot `CREATE DATABASE`; use a role with `CREATEDB` (on local Supabase stacks prefer `supabase_admin`). |
-| `SUPA_VERIFY_STUB_REFERENCE` | warning | A `verify` failure under `--ensure-environment` references a Supabase-managed schema that the environment stub only provisions minimally; the failure may be a stub limitation rather than a real migration defect. Confirm by applying the migration to a real disposable Supabase database (local `supabase db push` or a preview branch). |
+| `SUPA_VERIFY_STUB_REFERENCE` | warning | A `verify` failure under `--ensure-environment` references a managed schema that the environment stub only provisions minimally; the failure may be a stub limitation rather than a real migration defect. Confirm by applying the migration to a disposable database that provisions the managed surface. |
 | `SUPA_VERIFY_RECONVERGENCE` | error | The migrated catalog cross-lane diffed against the target model is not empty; the model declares state the catalog cannot reproduce (false drift), or lane parity is broken. |

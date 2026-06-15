@@ -40,7 +40,7 @@ supaschema ships PostgreSQL's own parser inside the package. It reads your SQL i
 npm install supaschema
 ```
 
-Requires Node 22.12+ and PostgreSQL 15+. Install runs the one-step setup: config, schema/migration paths, and the bundled Claude/Codex-compatible agent guidance. Use `supaschema.config.json` to edit `schemaPaths`, `migrationsDir`, and named `environments` that reference database URLs via `$ENV_NAME`. Details: [installation](https://supaschema.com/docs/installation) and [setup](https://supaschema.com/docs/setup).
+Requires Node 22.12+ and PostgreSQL 15+. Install runs the one-step setup: config, schema/migration paths, type output paths, and the bundled Claude/Codex-compatible agent guidance. Use `supaschema.config.json` to edit `adapter`, `schemaPaths`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, and named `environments` that reference database URLs via `$ENV_NAME`. Details: [installation](https://supaschema.com/docs/installation) and [setup](https://supaschema.com/docs/setup).
 
 ## Quick Start
 

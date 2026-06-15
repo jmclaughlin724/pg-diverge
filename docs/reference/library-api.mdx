@@ -31,7 +31,7 @@ import {
 | `extractSourceModel` | `inspect` | Parse any source (`dir:`, `git:`, `database:`, `dump:`, `catalog:`) into a `SchemaModel`. |
 | `extractCatalogModel` | `inspect` | Read a live `pg_catalog` (read-only) into a `SchemaModel`. |
 | `planSchemaDiff` | `plan` | Diff two models into a `MigrationPlan` of ordered, dependency-aware operations. |
-| `renderMigration` / `renderMigrationSplit` | `diff` | Render a plan to guarded SQL; the split form separates a `concurrentSql` companion for `CREATE INDEX CONCURRENTLY` under the `postgres` adapter. |
+| `renderMigration` / `renderMigrationSplit` | `diff` | Render a plan to guarded SQL; the split form separates a `concurrentSql` companion for `CREATE INDEX CONCURRENTLY` when `transactionMode` is `per-statement`. |
 | `checkMigrationSql` | `check` | Static replay-safety and lock-hazard diagnostics for any migration SQL. |
 | `verifyMigration` | `verify` | The apply-twice proof in throwaway databases, plus the reconvergence cross-check. |
 

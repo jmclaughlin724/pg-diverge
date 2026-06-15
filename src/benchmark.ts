@@ -368,7 +368,7 @@ function diffModels(name: string, from: SchemaModel, to: SchemaModel) {
 
 async function modelFromSql(source: string, sql: string): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql, {
-    config: { adapter: "postgres" },
+    config: { managedSchemas: [] },
     file: `${source}.sql`,
   });
   return {

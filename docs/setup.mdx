@@ -14,7 +14,7 @@ npm install supaschema
 The installer prepares the project once. It does not generate or apply a migration.
 
 <Info>
-  If you need to change paths later, edit `schemaPaths` and `migrationsDir` in `supaschema.config.json`.
+  If you need to change paths later, edit `schemaPaths`, `migrationsDir`, `typesFile`, or `zodFile` in `supaschema.config.json`.
 </Info>
 
 This page covers path selection, agent addendum behavior, setup checks, and where detailed configuration lives. For the package contents installed in that step, see [What gets installed?](/introduction#what-gets-installed).
@@ -44,17 +44,9 @@ The path decision is:
 | AlloyDB markers in Terraform, Cloud Build, or App Engine config | `alloydb/schemas` | `alloydb/migrations` |
 | Azure PostgreSQL markers in Terraform, Bicep, ARM, or Azure Developer CLI config | `azure-postgresql/schemas` | `azure-postgresql/migrations` |
 
-When no existing folders are found, generic PostgreSQL projects use this layout:
+When no existing folders are found, generic PostgreSQL projects use `database/schemas` and `database/migrations`. The full generated config shape is defined in [Configuration](/configuration/config-file#generated-config).
 
-```json
-{
-  "$schema": "./node_modules/supaschema/config-schema.json",
-  "schemaPaths": ["database/schemas"],
-  "migrationsDir": "database/migrations"
-}
-```
-
-In a Supabase project with `supabase/config.toml`, install also writes `adapter: "auto"` so `supabase db push` can consume generated migrations unchanged while managed Supabase schemas stay protected. Other providers use the neutral `postgres` adapter unless you change it.
+All providers use `adapter: "auto"`. Provider detection only seeds paths; managed schema protection, transaction behavior, type outputs, and environment references are configured with explicit fields in `supaschema.config.json`.
 
 Commit this file. It keeps developers, CI, and coding agents on the same paths.
 

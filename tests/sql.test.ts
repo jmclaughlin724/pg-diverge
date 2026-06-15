@@ -70,7 +70,7 @@ AS $$
   select p_company_id
 $$;
 `,
-      { config: { adapter: "postgres" }, file: "unicode.sql" },
+      { file: "unicode.sql" },
     );
 
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
@@ -342,7 +342,7 @@ describe("migration checks", () => {
 
 describe("managed Supabase schemas", () => {
   it("blocks direct declarative ownership of managed schemas", async () => {
-    const options = { config: { adapter: "auto" as const } };
+    const options = { config: { managedSchemas: ["auth", "extensions"] } };
     const schema = await extractObjectsFromSql("CREATE SCHEMA auth;", options);
     const table = await extractObjectsFromSql(
       "CREATE TABLE auth.users_shadow (id bigint);",

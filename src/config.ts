@@ -28,9 +28,11 @@ const environmentSchema = z.strictObject({
   databaseUrl: z.string(),
 });
 
+const adapterSchema = z.literal("auto").default("auto");
+
 export const supaschemaConfigSchema = z.strictObject({
   $schema: z.string().optional(),
-  adapter: z.enum(["auto", "postgres"]).default("postgres"),
+  adapter: adapterSchema,
   cascade: z.literal("never").default("never"),
   destructiveChanges: z.enum(["hint-required", "block", "allow"]).default("hint-required"),
   environments: z.record(z.string(), environmentSchema).default({}),
@@ -66,6 +68,7 @@ export const supaschemaConfigSchema = z.strictObject({
 });
 
 export type SupaschemaConfig = z.infer<typeof supaschemaConfigSchema>;
+export type SupaschemaAdapter = z.infer<typeof adapterSchema>;
 
 export const defaultConfig: SupaschemaConfig = supaschemaConfigSchema.parse({});
 
@@ -144,8 +147,26 @@ function isModuleMissing(error: unknown): boolean {
 
 const scaffoldConfig = {
   $schema: "./node_modules/supaschema/config-schema.json",
-  schemaPaths: defaultConfig.schemaPaths,
+  adapter: defaultConfig.adapter,
+  cascade: defaultConfig.cascade,
+  destructiveChanges: defaultConfig.destructiveChanges,
+  environments: defaultConfig.environments,
+  excludedGrantRoles: defaultConfig.excludedGrantRoles,
+  hints: defaultConfig.hints,
+  idempotency: defaultConfig.idempotency,
+  lockTimeout: defaultConfig.lockTimeout,
   migrationsDir: defaultConfig.migrationsDir,
+  typesFile: defaultConfig.typesFile,
+  zodFile: defaultConfig.zodFile,
+  normalize: defaultConfig.normalize,
+  managedSchemas: defaultConfig.managedSchemas,
+  postgresVersion: defaultConfig.postgresVersion,
+  renameDetection: defaultConfig.renameDetection,
+  schemaPaths: defaultConfig.schemaPaths,
+  schemas: defaultConfig.schemas,
+  statementTimeout: defaultConfig.statementTimeout,
+  transactionMode: defaultConfig.transactionMode,
+  validators: defaultConfig.validators,
 };
 
 export const defaultConfigFile = `${JSON.stringify(scaffoldConfig, null, 2)}\n`;
@@ -156,7 +177,7 @@ export function configJsonSchema(): Record<string, unknown> {
 
 function normalizeConfigInput(config: Partial<SupaschemaConfig>): Partial<SupaschemaConfig> {
   const adapter = (config as { adapter?: unknown }).adapter;
-  if (adapter !== "supabase-auto") {
+  if (adapter !== "supabase-auto" && adapter !== "supabase" && adapter !== "postgres") {
     return config;
   }
   return { ...config, adapter: "auto" };

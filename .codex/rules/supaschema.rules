@@ -15,6 +15,13 @@
 #   migrationsDir to use, and update supaschema.config.json before the first
 #   diff. Do not generate from the installer's guessed first candidate; the
 #   PostToolUse hook must skip auto-diff until confirmation is resolved.
+# - supaschema.config.json owns adapter, schemaPaths, migrationsDir, typesFile,
+#   zodFile, managedSchemas, transactionMode, and named environments. adapter
+#   "auto" is the default automated supaschema workflow for generating
+#   migrations, checking/verifying them, and refreshing existing type outputs;
+#   it is not a Supabase switch. Provider-specific behavior is expressed through
+#   paths, managed schemas, transaction mode, excluded grant roles, and explicit
+#   verify flags.
 # - Schema intent changes only in the configured declarative SQL tree
 #   (schemaPaths in supaschema.config.json), such as database/schemas,
 #   supabase/schemas, neon/schemas, aws-postgresql/schemas, cloud-sql/schemas,
@@ -42,7 +49,9 @@
 #   after reviewing the rendered SQL; never commit "*".
 # - Run `supaschema check` on every migration; run `supaschema verify` before
 #   merge when a database is reachable. Keep transactionMode per-migration
-#   for transactional runners such as `supabase db push`.
+#   for transactional runners such as `supabase db push`. CREATE INDEX
+#   CONCURRENTLY is blocked in per-migration mode; per-statement lanes produce
+#   an explicit .concurrent.sql companion for out-of-transaction review.
 # - `supaschema sync` is an explicit operational handoff. With no apply flag it
 #   is a dry run; with --local or --remote it gates status and replay safety,
 #   then delegates apply/deploy to the Supabase CLI. Do not use apply flags
