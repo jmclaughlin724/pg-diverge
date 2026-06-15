@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database-url.js";
 
 const run = promisify(execFile);
-const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
 const codexGateCommand =
   'node "$' + '{CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-tool-gate.mjs"';
 const managedSchemas = [
@@ -329,13 +328,8 @@ describe("install-time project setup", () => {
     const packDir = await mkdtemp(join(tmpdir(), "supa-pack-"));
     const consumer = await mkdtemp(join(tmpdir(), "supa-packed-install-"));
     const extractDir = await mkdtemp(join(tmpdir(), "supa-pack-extract-"));
-    const { stdout } = await run(npmBin, [
-      "pack",
-      "--json",
-      "--ignore-scripts",
-      "--pack-destination",
-      packDir,
-    ]);
+    const npm = npmExec(["pack", "--json", "--ignore-scripts", "--pack-destination", packDir]);
+    const { stdout } = await run(npm.file, npm.args);
     const [packed] = JSON.parse(stdout) as { filename: string }[];
     const tarball = join(packDir, packed.filename);
 
@@ -361,6 +355,14 @@ describe("install-time project setup", () => {
     expect(stdout).toBe("");
   });
 });
+
+function npmExec(args: string[]): { args: string[]; file: string } {
+  const npmExecPath = process.env.npm_execpath;
+  if (npmExecPath) {
+    return { args: [npmExecPath, ...args], file: process.execPath };
+  }
+  return { args, file: process.platform === "win32" ? "npm.cmd" : "npm" };
+}
 
 function commandCount(value: unknown, command: string): number {
   if (Array.isArray(value)) {

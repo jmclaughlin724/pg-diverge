@@ -11,7 +11,9 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -643,7 +645,7 @@ ${guidanceEnd}
 
 function upsertManagedBlock(relativePath, block) {
   const path = join(target, relativePath);
-  const current = existsSync(path) ? readFileSync(path, "utf8") : "";
+  const current = readText(path) ?? "";
   const start = current.indexOf(guidanceStart);
   const end = current.indexOf(guidanceEnd);
   let next;
@@ -678,8 +680,7 @@ function writeInstallManifest(scan, selection) {
 
 function writeProjectFile(relativePath, contents) {
   const destination = join(target, relativePath);
-  mkdirSync(dirname(destination), { recursive: true });
-  writeFileSync(destination, contents);
+  writeFileAtomic(destination, contents);
 }
 
 function copyProjectFile(relativePath, skipped) {
@@ -702,15 +703,30 @@ function mergeHookConfig(relativePath, skipped) {
 
   const source = readJson(sourcePath);
   const destination = join(target, relativePath);
-  const existing = existsSync(destination) ? readJson(destination) : {};
-  if (!source || !existing) {
+  const existing = readJsonIfPresent(destination);
+  if (!source || existing === undefined) {
     skipped.push(relativePath);
     return;
   }
 
   const merged = mergeHooks(existing, source);
-  mkdirSync(dirname(destination), { recursive: true });
-  writeFileSync(destination, `${JSON.stringify(merged, null, 2)}\n`);
+  writeFileAtomic(destination, `${JSON.stringify(merged, null, 2)}\n`);
+}
+
+function readText(path) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+function readJsonIfPresent(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    return isMissingFile(error) ? {} : undefined;
+  }
 }
 
 function readJson(path) {
@@ -718,6 +734,30 @@ function readJson(path) {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return undefined;
+  }
+}
+
+function isMissingFile(error) {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function writeFileAtomic(destination, contents) {
+  const directory = dirname(destination);
+  mkdirSync(directory, { recursive: true });
+  const temp = join(
+    directory,
+    `.supaschema-write-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`,
+  );
+  try {
+    writeFileSync(temp, contents, { flag: "wx" });
+    renameSync(temp, destination);
+  } catch (error) {
+    try {
+      unlinkSync(temp);
+    } catch {
+      // Best-effort cleanup. The original write error is more useful.
+    }
+    throw error;
   }
 }
 
