@@ -12,7 +12,7 @@ The committed composite action runs supaschema against a declarative tree on eve
 ```yaml
 - uses: jmclaughlin724/supaschema@<tag>
   with:
-    args: diff --from database:$DATABASE_URL --to dir:supabase/schemas --fail-on-diff --quiet
+    args: diff --from database:$DATABASE_URL --to dir:database/schemas --fail-on-diff --quiet
 ```
 
 Three gates compose from existing commands, no service required:
@@ -30,7 +30,7 @@ The free Action runs in the customer's CI and reports per-run. The paid layer is
 - **PR + Security-tab surface** — SARIF findings posted to every PR and aggregated in the org's code-scanning dashboard, with a dedicated **tenant-isolation policy change** finding class (a policy `USING`/`WITH CHECK` predicate changed, was removed, or weakened) that requires explicit review acknowledgement before merge.
 - **History and drift over time** — per-repo migration lineage, drift trend, and a record of every policy change shipped, so an isolation regression has an audit trail.
 - **Org policy** — required-check enforcement, allowed-hint review (no `hints.destructive: "*"` reaching `main`), and per-environment gates (`staging`/`production`) wired to named `environments`.
-- **No-CI-config onboarding** — install the App, point it at `supabase/schemas`, done; no workflow YAML, no `DATABASE_URL` plumbing in the customer's Actions.
+- **No-CI-config onboarding** — install the App, point it at the configured schema tree (`database/schemas`, `supabase/schemas`, `neon/schemas`, `aws-postgresql/schemas`, `cloud-sql/schemas`, `alloydb/schemas`, `azure-postgresql/schemas`, or another configured path), done; no workflow YAML, no `DATABASE_URL` plumbing in the customer's Actions.
 
 The engine is unchanged; the paid surface is hosting, the Security-tab integration, the policy-change finding class, and org administration. That is a per-repo or per-seat SaaS, not a CLI license — far higher ARPU, and the security framing (a tenant-isolation gate) carries the willingness to pay.
 

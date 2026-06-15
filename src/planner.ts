@@ -365,7 +365,7 @@ function makeOperation(
     (kind === "create" || kind === "replace") &&
     object.ref.kind === "index" &&
     object.metadata.concurrent === true &&
-    config.adapter === "supabase-auto"
+    config.adapter === "auto"
   ) {
     blocked = true;
     diagnostics.push(

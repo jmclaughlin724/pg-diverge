@@ -15,8 +15,11 @@
 #   migrationsDir to use, and update supaschema.config.json before the first
 #   diff. Do not generate from the installer's guessed first candidate; the
 #   PostToolUse hook must skip auto-diff until confirmation is resolved.
-# - Schema intent changes only in the declarative SQL tree; render migrations
-#   with `supaschema diff`, never hand-author SQL the tree can express.
+# - Schema intent changes only in the configured declarative SQL tree
+#   (schemaPaths in supaschema.config.json), such as database/schemas,
+#   supabase/schemas, neon/schemas, aws-postgresql/schemas, cloud-sql/schemas,
+#   alloydb/schemas, or azure-postgresql/schemas. Render migrations with
+#   `supaschema diff`, never hand-author SQL the tree can express.
 # - SQL understanding is AST/model-owned. Classify, compare, or mutate DDL
 #   through PostgreSQL parse trees (libpg-query) and structured model helpers,
 #   not ad hoc regex. Regex is acceptable for outer transport concerns such as

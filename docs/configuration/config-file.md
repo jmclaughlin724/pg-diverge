@@ -12,10 +12,12 @@ description: "Configuration options, defaults, environments, validators, and exa
 
 Unknown keys are rejected (the schema is strict), so typos fail loudly. The scaffolded config carries a `$schema` pointer at the shipped `config-schema.json` (generated from the Zod schema at build time), so editors autocomplete and validate every key.
 
+`supaschema.config.json` is the project-owned place to edit `schemaPaths`, `migrationsDir`, type output paths, planner policy, and named database URL references under `environments`. Keep real credentials in environment variables and reference them as `$ENV_NAME`; provider config files such as `supabase/config.toml`, `neon.toml`, Terraform, Bicep, CloudFormation, or Cloud Build files are used only to seed install-time defaults.
+
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `$schema` | scaffolded | JSON Schema pointer for editor tooling; ignored by the loader. |
-| `adapter` | `"supabase-auto"` | `supabase-auto` blocks managed Supabase schemas as declarative owners and blocks `CREATE INDEX CONCURRENTLY` plans; `postgres` disables those policies. |
+| `adapter` | `"postgres"` | `postgres` is the neutral PostgreSQL adapter. Supabase projects detected during install get `"auto"`, which blocks managed Supabase schemas as declarative owners and blocks `CREATE INDEX CONCURRENTLY` plans for Supabase's transactional migration runner. |
 | `cascade` | `"never"` | `CASCADE` is never emitted. This is not configurable away. |
 | `destructiveChanges` | `"hint-required"` | `hint-required` blocks destructive operations until the object key is listed in `hints.destructive`; `block` always blocks; `allow` permits everything (not recommended). |
 | `environments` | `{}` | Named database targets for the global `--env` flag: `{ "staging": { "databaseUrl": "$STAGING_DB" } }` lets `supaschema --env staging diff ...` resolve the URL (with `$ENV_NAME` indirection) without repeating it per command. |
@@ -24,14 +26,14 @@ Unknown keys are rejected (the schema is strict), so typos fail loudly. The scaf
 | `hints.renames` | `[]` | `{ "from": "<object key>", "to": "<object key>" }` pairs rendered as guarded `ALTER ... RENAME`. |
 | `idempotency` | `"required"` | Rendered SQL is replay-safe by construction. Not configurable away. |
 | `lockTimeout` | `"5s"` | Value for the `SET lock_timeout` migration preamble. |
-| `managedSchemas` | Supabase set | Schemas treated as platform-owned under `supabase-auto`. |
-| `migrationsDir` | `"supabase/migrations"` | Where zero-flag `diff` writes migrations, zero-arg `check` reads them, and `verify` finds the newest pending file. The `--migrations-dir` flag overrides per command. |
+| `managedSchemas` | Supabase set | Schemas treated as platform-owned under `adapter: "auto"`. |
+| `migrationsDir` | `"database/migrations"` | Where zero-flag `diff` writes migrations, zero-arg `check` reads them, and `verify` finds the newest pending file. Install can scaffold provider-specific folders such as `supabase/migrations`, `neon/migrations`, `aws-postgresql/migrations`, `cloud-sql/migrations`, `alloydb/migrations`, or `azure-postgresql/migrations`. The `--migrations-dir` flag overrides per command. |
 | `typesFile` | `"database.types.ts"` | Where `supaschema types` writes generated TypeScript types. When the file exists, every `diff` that writes a migration regenerates it from the target tree. |
 | `zodFile` | `"database.zod.ts"` | Where `supaschema types` writes generated runtime Zod validators (requires `zod` in the consuming project). Refreshed by `diff` on the same exists-means-opted-in rule as `typesFile`. |
 | `normalize` | `"deparse"` | Every object's SQL is rewritten into canonical form via `pgsql-deparser` (the pure-TypeScript companion of the `libpg-query` parser). Fidelity-gated per object: the canonical text is used only when it reparses to the identical location-stripped parse tree, otherwise the source text is kept with a `SUPA_NORMALIZE_*` warning. Hashes never change (identity is AST-based); rendered output is formatting-independent. Set `"off"` to keep source spelling verbatim. `check` always runs the round-trip proof and reports `SUPA_CHECK_DEPARSE_*` findings regardless of this setting. |
 | `postgresVersion` | `"15+"` | Documentation of the supported floor; guards target PostgreSQL 15+ syntax. |
 | `renameDetection` | `"hints-only"` | `hints-only` uses `hints.renames`; `off` disables rename handling entirely. |
-| `schemaPaths` | `["supabase/schemas"]` | Paths read by `git:` sources and the default `--to dir:` target (the first entry). `supabase/config.toml` is read only to discover the local database URL (`[db] port`), never for schema paths; configure paths here. |
+| `schemaPaths` | `["database/schemas"]` | Paths read by `git:` sources and the default `--to dir:` target (the first entry). Install can scaffold provider-specific folders such as `supabase/schemas`, `neon/schemas`, `aws-postgresql/schemas`, `cloud-sql/schemas`, `alloydb/schemas`, or `azure-postgresql/schemas`; configure the final paths here. |
 | `schemas.include` / `schemas.exclude` | `[]` | Persistent schema filters applied to every extracted model (the CLI `--schema` flag composes on top). |
 | `statementTimeout` | `"60s"` | Value for the `SET statement_timeout` migration preamble. |
 | `transactionMode` | `"per-migration"` | How `verify` applies the migration and how transaction hazards are graded. `per-migration` mirrors runners like `supabase db push` (one transaction per file); `per-statement` matches autocommit runners. |

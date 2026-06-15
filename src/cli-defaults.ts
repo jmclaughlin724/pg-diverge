@@ -11,7 +11,7 @@ export interface ResolvedSources {
 }
 
 export function defaultTreeSource(config: SupaschemaConfig): string {
-  return `dir:${config.schemaPaths[0] ?? "supabase/schemas"}`;
+  return `dir:${config.schemaPaths[0] ?? "database/schemas"}`;
 }
 
 export function resolveMigrationsDir(

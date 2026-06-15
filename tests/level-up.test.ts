@@ -92,7 +92,7 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
     await writeFile(migration, "SET lock_timeout = '5s';\n");
 
     const diagnostics = await verifyMigration({
-      config: { adapter: "supabase-auto" },
+      config: { adapter: "auto" },
       databaseUrl: databaseUrl as string,
       ensureRoles: true,
       from: `dir:${root.replaceAll("\\", "/")}`,

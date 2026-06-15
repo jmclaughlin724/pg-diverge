@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -10,6 +10,87 @@ const addHeader = "*** Add File: ";
 const deleteHeader = "*** Delete File: ";
 const updateHeader = "*** Update File: ";
 const moveHeader = "*** Move to: ";
+const genericSchemaPath = "database/schemas";
+const supabaseSchemaPath = "supabase/schemas";
+const providerSchemaMarkers = [
+  { schemaPath: supabaseSchemaPath, markers: [{ path: "supabase/config.toml" }] },
+  {
+    schemaPath: "neon/schemas",
+    markers: [
+      { path: "neon.toml" },
+      { path: ".neon/project.json" },
+      { path: ".neon/config.json" },
+      {
+        fileNames: ["drizzle.config.ts", "drizzle.config.js", "drizzle.config.mjs"],
+        contentTerms: ["neon.tech", "neon.com"],
+      },
+    ],
+  },
+  {
+    schemaPath: "aws-postgresql/schemas",
+    markers: [
+      {
+        fileNames: ["*.tf"],
+        contentTerms: ["aws_db_instance", "aws_rds_cluster", "aws_rds_global_cluster"],
+      },
+      {
+        fileNames: ["template.yaml", "template.yml"],
+        contentTerms: ["AWS::RDS::DBInstance", "AWS::RDS::DBCluster"],
+      },
+      {
+        fileNames: [
+          "cdk.json",
+          "sst.config.ts",
+          "sst.config.js",
+          "sst.config.mjs",
+          "serverless.yml",
+          "serverless.yaml",
+        ],
+        contentTerms: ["Aurora", "DatabaseCluster", "DatabaseInstance", "RDS", "rds"],
+      },
+    ],
+  },
+  {
+    schemaPath: "alloydb/schemas",
+    markers: [
+      { fileNames: ["*.tf"], contentTerms: ["google_alloydb_cluster", "google_alloydb_instance"] },
+      {
+        fileNames: ["cloudbuild.yaml", "cloudbuild.yml", "app.yaml", "app.yml"],
+        contentTerms: ["alloydb", "alloydb.googleapis.com"],
+      },
+    ],
+  },
+  {
+    schemaPath: "cloud-sql/schemas",
+    markers: [
+      {
+        fileNames: ["*.tf"],
+        contentTerms: ["google_sql_database_instance", "google_sql_database"],
+      },
+      {
+        fileNames: ["cloudbuild.yaml", "cloudbuild.yml", "app.yaml", "app.yml"],
+        contentTerms: ["cloud_sql_instances", "CLOUD_SQL_CONNECTION_NAME", "cloudsql"],
+      },
+    ],
+  },
+  {
+    schemaPath: "azure-postgresql/schemas",
+    markers: [
+      {
+        fileNames: ["*.tf"],
+        contentTerms: ["azurerm_postgresql_flexible_server", "azurerm_postgresql_server"],
+      },
+      {
+        fileNames: ["main.bicep", "azuredeploy.json"],
+        contentTerms: ["Microsoft.DBforPostgreSQL/flexibleServers", "Microsoft.DBforPostgreSQL"],
+      },
+      {
+        fileNames: ["azure.yaml"],
+        contentTerms: ["postgres", "PostgreSQL", "DBforPostgreSQL"],
+      },
+    ],
+  },
+];
 const redactSecrets = await loadRedactSecrets();
 
 try {
@@ -191,7 +272,7 @@ async function readSchemaPaths(projectDir) {
   const jsonPath = join(projectDir, "supaschema.config.json");
   if (existsSync(jsonPath)) {
     const parsed = JSON.parse(readFileSync(jsonPath, "utf8"));
-    return schemaPathsFromConfig(parsed) ?? ["supabase/schemas"];
+    return schemaPathsFromConfig(parsed) ?? [defaultSchemaPath(projectDir)];
   }
   for (const file of ["supaschema.config.mjs", "supaschema.config.js"]) {
     const path = join(projectDir, file);
@@ -199,9 +280,9 @@ async function readSchemaPaths(projectDir) {
       continue;
     }
     const loaded = await import(pathToFileURL(path).href);
-    return schemaPathsFromConfig(loaded.default ?? {}) ?? ["supabase/schemas"];
+    return schemaPathsFromConfig(loaded.default ?? {}) ?? [defaultSchemaPath(projectDir)];
   }
-  return ["supabase/schemas"];
+  return [defaultSchemaPath(projectDir)];
 }
 
 async function readPathState(projectDir) {
@@ -244,6 +325,87 @@ function schemaPathsFromConfig(config) {
     return config.schemaPaths.map(String);
   }
   return undefined;
+}
+
+function defaultSchemaPath(projectDir) {
+  const files = walkFiles(projectDir, 5);
+  const matched = providerSchemaMarkers.find((provider) =>
+    provider.markers.some((marker) => providerMarkerMatches(projectDir, files, marker)),
+  );
+  return matched?.schemaPath ?? genericSchemaPath;
+}
+
+function providerMarkerMatches(projectDir, files, marker) {
+  if (typeof marker.path === "string") {
+    const absolute = join(projectDir, marker.path);
+    return (
+      existsSync(absolute) &&
+      (!marker.contentTerms || fileContainsAny(absolute, marker.contentTerms))
+    );
+  }
+  return files.some((file) => {
+    const name = file.split(/[/\\]/).at(-1) ?? "";
+    return (
+      marker.fileNames.some((pattern) => fileNameMatches(pattern, name)) &&
+      (!marker.contentTerms || fileContainsAny(file, marker.contentTerms))
+    );
+  });
+}
+
+function walkFiles(projectDir, maxDepth) {
+  const out = [];
+  const visit = (dir, depth) => {
+    if (depth > maxDepth) {
+      return;
+    }
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!shouldSkipDir(entry.name)) {
+          visit(join(dir, entry.name), depth + 1);
+        }
+      } else if (entry.isFile()) {
+        out.push(join(dir, entry.name));
+      }
+    }
+  };
+  visit(projectDir, 1);
+  return out;
+}
+
+function shouldSkipDir(name) {
+  return new Set([
+    ".git",
+    ".next",
+    ".nuxt",
+    ".supaschema",
+    "coverage",
+    "dist",
+    "node_modules",
+    "out",
+  ]).has(name);
+}
+
+function fileNameMatches(pattern, name) {
+  if (!pattern.includes("*")) {
+    return pattern === name;
+  }
+  const [prefix, suffix] = pattern.split("*");
+  return name.startsWith(prefix) && name.endsWith(suffix);
+}
+
+function fileContainsAny(path, terms) {
+  try {
+    const content = readFileSync(path, "utf8");
+    return terms.some((term) => content.includes(term));
+  } catch {
+    return false;
+  }
 }
 
 function pathConfirmationMessage(projectDir, changed, state) {

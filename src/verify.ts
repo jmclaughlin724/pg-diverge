@@ -55,7 +55,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
   const migrationDb = tempDatabaseName("migration");
   const targetDb = tempDatabaseName("target");
   const created: string[] = [];
-  const environmentEnsured = options.ensureEnvironment ?? config.adapter === "supabase-auto";
+  const environmentEnsured = options.ensureEnvironment ?? config.adapter === "auto";
   try {
     await admin.connect();
     const capability = await preflightCapability(admin);

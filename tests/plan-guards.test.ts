@@ -101,8 +101,10 @@ describe("cross-schema dependency ordering", () => {
 describe("managed schema adapter policy", () => {
   const managedSql = "CREATE TABLE auth.mirror (id integer);";
 
-  it("blocks managed Supabase schemas under supabase-auto", async () => {
-    const extracted = await extractObjectsFromSql(managedSql);
+  it("blocks managed Supabase schemas under auto", async () => {
+    const extracted = await extractObjectsFromSql(managedSql, {
+      config: { adapter: "auto" },
+    });
 
     expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(
       true,

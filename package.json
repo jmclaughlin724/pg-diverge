@@ -1,7 +1,7 @@
 {
   "name": "supaschema",
   "version": "0.1.1",
-  "description": "Declarative Postgres and Supabase schema migrations plus TypeScript and Zod types in milliseconds — built on PostgreSQL's own parser, with no Docker or shadow database.",
+  "description": "Declarative PostgreSQL schema migrations plus TypeScript and Zod types in milliseconds — Supabase-aware, built on PostgreSQL's own parser, with no Docker or shadow database.",
   "type": "module",
   "license": "AGPL-3.0-only",
   "author": "John McLaughlin",

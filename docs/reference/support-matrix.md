@@ -7,7 +7,7 @@ description: "The PostgreSQL object types supaschema extracts, renders, checks, 
 
 | Object | Extract | Render | Notes |
 | --- | --- | --- | --- |
-| Schemas | Yes | `CREATE SCHEMA IF NOT EXISTS` / `DROP SCHEMA IF EXISTS` | Supabase-managed schemas are blocked in `supabase-auto`. |
+| Schemas | Yes | `CREATE SCHEMA IF NOT EXISTS` / `DROP SCHEMA IF EXISTS` | Supabase-managed schemas are blocked in `auto`. |
 | Extensions | Yes | `CREATE EXTENSION IF NOT EXISTS` | Extension schema is fingerprint metadata. |
 | Types/enums | Yes | `DO` catalog guard / `DROP TYPE IF EXISTS`; appended enum values render as `ALTER TYPE ... ADD VALUE IF NOT EXISTS` | Enum narrowing, removal, or reordering is destructive. |
 | Domains | Yes | `DO` catalog guard / `DROP DOMAIN IF EXISTS` | Domain replacement is destructive. |
@@ -30,11 +30,11 @@ description: "The PostgreSQL object types supaschema extracts, renders, checks, 
 
 ## Supabase Adapter
 
-With `adapter: "supabase-auto"`, objects in these platform-owned schemas are blocked: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
+With `adapter: "auto"`, objects in these platform-owned schemas are blocked: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
 
 ## Verify Environment Stub
 
-`verify --ensure-environment` (the default under `adapter: "supabase-auto"`) provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that *references* managed schemas can apply against bare PostgreSQL:
+`verify --ensure-environment` (the default under `adapter: "auto"`) provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that *references* managed schemas can apply against bare PostgreSQL:
 
 - `auth.users` with the stable GoTrue column set (`id`, `aud`, `role`, `email`, `phone`, `raw_app_meta_data`, `raw_user_meta_data`, `last_sign_in_at`, `is_anonymous`, …).
 - The `auth.uid()`, `auth.role()`, `auth.jwt()`, and `auth.email()` helper functions.

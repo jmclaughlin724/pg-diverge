@@ -35,7 +35,7 @@ jobs:
         run: |
           npx supaschema diff \
             --from "git:origin/${{ github.base_ref }}" \
-            --to dir:supabase/schemas \
+            --to dir:database/schemas \
             --out /tmp/migration.sql
       - name: Check replay safety
         run: npx supaschema check /tmp/migration.sql
@@ -43,7 +43,7 @@ jobs:
         run: |
           npx supaschema verify \
             --from "git:origin/${{ github.base_ref }}" \
-            --to dir:supabase/schemas \
+            --to dir:database/schemas \
             --migration /tmp/migration.sql \
             --database-url postgresql://postgres:postgres@localhost:5432/postgres
 ```
@@ -64,7 +64,7 @@ Notes:
 
   ```sh
   # .husky/pre-commit
-  staged=$(git diff --cached --name-only --diff-filter=ACM -- 'supabase/migrations/*.sql')
+  staged=$(git diff --cached --name-only --diff-filter=ACM -- 'database/migrations/*.sql')
   [ -z "$staged" ] || npx supaschema check $staged
   ```
 

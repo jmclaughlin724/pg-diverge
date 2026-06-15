@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database-url.js";
@@ -65,12 +65,13 @@ describe("install-time project setup", () => {
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config).toEqual({
       $schema: "./node_modules/supaschema/config-schema.json",
-      schemaPaths: ["supabase/schemas"],
-      migrationsDir: "supabase/migrations",
+      schemaPaths: ["database/schemas"],
+      migrationsDir: "database/migrations",
     });
-    expect(existsSync(join(consumer, "supabase/schemas"))).toBe(true);
-    expect(existsSync(join(consumer, "supabase/migrations"))).toBe(true);
-    expect(existsSync(join(consumer, ".supaschema/install.json"))).toBe(true);
+    expect(existsSync(join(consumer, "database/schemas"))).toBe(true);
+    expect(existsSync(join(consumer, "database/migrations"))).toBe(true);
+    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
+    expect(manifest.adapter).toBe("postgres");
 
     for (const file of [
       ".agents/skills/supaschema/SKILL.md",
@@ -91,7 +92,7 @@ describe("install-time project setup", () => {
     const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
     const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
     expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
-    expect(agents).toContain("Schema intent belongs in `supabase/schemas`");
+    expect(agents).toContain("Schema intent belongs in `database/schemas`");
     expect(claude).toContain("<!-- supaschema:agent-guidance:start -->");
 
     await run("node", ["bin/postinstall.mjs"], { env });
@@ -107,6 +108,87 @@ describe("install-time project setup", () => {
     ).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
+  });
+
+  it("uses Supabase paths when the project has Supabase local config", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-supabase-"));
+    await mkdir(join(consumer, "supabase"), { recursive: true });
+    await writeFile(join(consumer, "supabase", "config.toml"), "[db]\nport = 54322\n");
+
+    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config.adapter).toBe("auto");
+    expect(config.schemaPaths).toEqual(["supabase/schemas"]);
+    expect(config.migrationsDir).toBe("supabase/migrations");
+    expect(existsSync(join(consumer, "supabase/schemas"))).toBe(true);
+    expect(existsSync(join(consumer, "supabase/migrations"))).toBe(true);
+    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
+    expect(manifest.adapter).toBe("auto");
+  });
+
+  it.each([
+    {
+      id: "neon",
+      marker: "neon.toml",
+      markerContent: "project_id = 'quiet-waterfall-123456'\n",
+      migrationsDir: "neon/migrations",
+      schemaPath: "neon/schemas",
+    },
+    {
+      id: "aws-postgresql",
+      marker: "infra/main.tf",
+      markerContent: 'resource "aws_rds_cluster" "postgres" { engine = "aurora-postgresql" }\n',
+      migrationsDir: "aws-postgresql/migrations",
+      schemaPath: "aws-postgresql/schemas",
+    },
+    {
+      id: "cloud-sql",
+      marker: "infra/main.tf",
+      markerContent: 'resource "google_sql_database_instance" "postgres" {}\n',
+      migrationsDir: "cloud-sql/migrations",
+      schemaPath: "cloud-sql/schemas",
+    },
+    {
+      id: "alloydb",
+      marker: "infra/main.tf",
+      markerContent: 'resource "google_alloydb_cluster" "postgres" {}\n',
+      migrationsDir: "alloydb/migrations",
+      schemaPath: "alloydb/schemas",
+    },
+    {
+      id: "azure-postgresql",
+      marker: "infra/main.tf",
+      markerContent: 'resource "azurerm_postgresql_flexible_server" "postgres" {}\n',
+      migrationsDir: "azure-postgresql/migrations",
+      schemaPath: "azure-postgresql/schemas",
+    },
+  ])("uses $id paths when provider config markers are present", async ({
+    id,
+    marker,
+    markerContent,
+    migrationsDir,
+    schemaPath,
+  }) => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-provider-"));
+    await mkdir(dirname(join(consumer, marker)), { recursive: true });
+    await writeFile(join(consumer, marker), markerContent);
+
+    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config).toEqual({
+      $schema: "./node_modules/supaschema/config-schema.json",
+      schemaPaths: [schemaPath],
+      migrationsDir,
+    });
+    expect(existsSync(join(consumer, schemaPath))).toBe(true);
+    expect(existsSync(join(consumer, migrationsDir))).toBe(true);
+
+    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
+    expect(manifest.adapter).toBe("postgres");
+    expect(manifest.provider.id).toBe(id);
+    expect(manifest.provider.markers).toContain(marker);
   });
 
   it("preserves an existing config and merges hook wiring", async () => {

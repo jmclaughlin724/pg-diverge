@@ -115,7 +115,7 @@ describe("migration name defaults", () => {
 describe("migrations directory defaults", () => {
   it("prefers the flag over config", () => {
     expect(resolveMigrationsDir("custom/migrations", config)).toBe("custom/migrations");
-    expect(resolveMigrationsDir(undefined, config)).toBe("supabase/migrations");
+    expect(resolveMigrationsDir(undefined, config)).toBe("database/migrations");
   });
 
   it("lists and picks the newest migration file", async () => {

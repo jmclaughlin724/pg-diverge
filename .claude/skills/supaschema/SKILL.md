@@ -21,7 +21,7 @@ Use the configured `schemaPaths` and `migrationsDir` as the source of truth. Do 
 
 ## Workflow
 
-1. **Edit the declarative tree** (`config.schemaPaths`, often `supabase/schemas/**`) to express the desired end state. Use schema-qualified object names.
+1. **Edit the declarative tree** (`config.schemaPaths`) to express the desired end state. Typical roots are `database/schemas/**` for neutral PostgreSQL, `supabase/schemas/**` for Supabase, `neon/schemas/**`, `aws-postgresql/schemas/**`, `cloud-sql/schemas/**`, `alloydb/schemas/**`, or `azure-postgresql/schemas/**` for detected managed PostgreSQL providers. Use schema-qualified object names.
 2. **Generate the migration:**
 
    ```bash
@@ -43,7 +43,7 @@ Use the configured `schemaPaths` and `migrationsDir` as the source of truth. Do 
 
    Defaults to the newest pending migration in the migrations directory with the same from/to defaults as `diff`; pass `--migration <file>` to verify a specific one.
 
-   Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). Use `--ensure-environment` when a plain PostgreSQL verification server needs Supabase-provisioned surfaces; it is the default under `adapter: "supabase-auto"`. A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
+   Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). Use `--ensure-environment` when a plain PostgreSQL verification server needs Supabase-provisioned surfaces; it is the default under `adapter: "auto"`. A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
 
 5. **Commit** the tree change, the generated migration, and the refreshed types file together. The diff/check/verify workflow never stages or applies; the migration runner (e.g. `supabase db push`) owns the database. TypeScript types come from the tree (`supaschema types` creates `database.types.ts`; every later `diff` refreshes it) — never wait for a deploy or run introspection-based typegen to get correct types.
 
@@ -77,6 +77,6 @@ When drift is large or blocked, triage before editing:
 
 - Sources for either side of a diff: `dir:<tree>`, `git:<ref>`, `database:<url|$ENV>`, `dump:<file.sql>`, `catalog:<snapshot.json>`.
 - Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) and enum reordering/removal are hand-authored migrations — validate them with `check` and `verify`; the enum recipe is in `docs/configuration/hints.md`.
-- Keep `transactionMode: "per-migration"` for transactional runners; `CREATE INDEX CONCURRENTLY` is blocked under `supabase-auto` and splits to a `.concurrent.sql` companion under `adapter: "postgres"`.
+- Keep `transactionMode: "per-migration"` for transactional runners; `CREATE INDEX CONCURRENTLY` is blocked under `adapter: "auto"` and splits to a `.concurrent.sql` companion under `adapter: "postgres"`.
 - Database URL resolution for CLI commands is flag (`$ENV` supported) > named `config.environments` via global `--env` > `SUPASCHEMA_DATABASE_URL` > nearest `supabase/config.toml`.
 - `supaschema explain <SUPA_CODE>` decodes any diagnostic offline.

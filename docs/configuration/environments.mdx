@@ -13,7 +13,7 @@ Commands that read a live catalog (`diff --from database:...`, `verify`, `migrat
 4. **The local Supabase stack** — the nearest `supabase/config.toml` (searched upward from the working directory) supplies the local URL from its `[db] port`. This is why a plain `npx supaschema diff` works in a Supabase project with the stack running.
 
 <Note>
-  `supabase/config.toml` is read only to discover the local database URL — never for schema paths. Schema locations come from `schemaPaths` in `supaschema.config.json`.
+  `supabase/config.toml` is read only to discover the local Supabase database URL. Other provider config or infrastructure files are install-time markers only. Schema locations and named database URL references come from `supaschema.config.json`.
 </Note>
 
 ## Named environments

@@ -45,7 +45,7 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
   ```bash
   # You can inspect what supaschema extracted from any source
-  supaschema inspect --from dir:supabase/schemas
+  supaschema inspect --from dir:database/schemas
   supaschema inspect --from database:$DATABASE_URL
   ```
 
@@ -168,19 +168,19 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
 ## Stage 6 — Apply (Your Runner)
 
-supaschema stops at the end of the Verify stage. It outputs the finished migration SQL to your migrations directory (by default `supabase/migrations/`) and then steps back.
+supaschema stops at the end of the Verify stage. It outputs the finished migration SQL to your configured migrations directory (`database/migrations` in the neutral scaffold) and then steps back.
 
 Applying that SQL to a real database is the responsibility of **your deployment runner**:
 
 ```bash
-# Apply with the Supabase CLI
+# Apply with psql directly
+psql $DATABASE_URL -f database/migrations/0012_add_order_status.sql
+
+# Apply with the Supabase CLI in a Supabase project
 supabase db push
 
-# Apply with psql directly
-psql $DATABASE_URL -f supabase/migrations/0012_add_order_status.sql
-
 # Generate and pipe to psql in one step
-supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas --out stdout \
+supaschema diff --from database:$DATABASE_URL --to dir:database/schemas --out stdout \
   | psql $DATABASE_URL
 ```
 
@@ -200,7 +200,7 @@ supaschema uses consistent exit codes across all commands so you can rely on the
 | `3`  | Drift found — `--fail-on-diff` detected operations in the plan            |
 
 ```bash
-supaschema diff --from git:origin/main --to dir:supabase/schemas --fail-on-diff
+supaschema diff --from git:origin/main --to dir:database/schemas --fail-on-diff
 if [ $? -eq 3 ]; then
   echo "Schema has pending changes — a migration needs to be generated and reviewed"
 fi
@@ -214,13 +214,13 @@ A typical end-to-end developer workflow looks like this:
 
 ```bash
 # 1. Edit your schema files
-vim supabase/schemas/orders.sql
+vim database/schemas/orders.sql
 
 # 2. Preview the planned migration (dry-run: Extract + Plan + Render, no writes)
-supaschema diff --from database:$LOCAL_URL --to dir:supabase/schemas --dry-run
+supaschema diff --from database:$LOCAL_URL --to dir:database/schemas --dry-run
 
 # 3. Generate the migration file (Extract + Plan + Render; diff does not run Check)
-supaschema diff --from database:$LOCAL_URL --to dir:supabase/schemas
+supaschema diff --from database:$LOCAL_URL --to dir:database/schemas
 
 # 4. Run the replay-safety checks on the generated migration (separate step)
 supaschema check

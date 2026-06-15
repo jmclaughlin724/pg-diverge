@@ -10,7 +10,7 @@ function emptyModel(): SchemaModel {
 
 async function renderCreates(
   sql: string,
-  config?: { adapter?: "supabase-auto" | "postgres" },
+  config?: { adapter?: "auto" | "postgres" },
 ): Promise<string> {
   const spliceConfig = { normalize: "off" as const, ...config };
   const extracted = await extractObjectsFromSql(sql, { config: spliceConfig });
@@ -41,9 +41,10 @@ describe("AST-spliced create guards", () => {
     expect(sql).toContain("CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS items_idx");
   });
 
-  it("blocks concurrent index creation under the supabase-auto adapter", async () => {
+  it("blocks concurrent index creation under the auto adapter", async () => {
     const sql = await renderCreates(
       "CREATE TABLE app.items (id integer);\nCREATE UNIQUE INDEX CONCURRENTLY items_idx ON app.items (id);",
+      { adapter: "auto" },
     );
 
     expect(sql).toContain("SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED");

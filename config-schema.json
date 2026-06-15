@@ -7,10 +7,10 @@
       "type": "string"
     },
     "adapter": {
-      "default": "supabase-auto",
+      "default": "postgres",
       "type": "string",
       "enum": [
-        "supabase-auto",
+        "auto",
         "postgres"
       ]
     },
@@ -100,7 +100,7 @@
       "type": "string"
     },
     "migrationsDir": {
-      "default": "supabase/migrations",
+      "default": "database/migrations",
       "type": "string"
     },
     "typesFile": {
@@ -151,7 +151,7 @@
     },
     "schemaPaths": {
       "default": [
-        "supabase/schemas"
+        "database/schemas"
       ],
       "type": "array",
       "items": {

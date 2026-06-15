@@ -9,8 +9,8 @@ Setup is completed by the normal package install. `npm install --save-dev supasc
 
 | Area | Install behavior |
 | --- | --- |
-| Schema files | Uses a detected schema folder, or `supabase/schemas` when none exists |
-| Migration output | Uses a detected migrations folder, or `supabase/migrations` when none exists |
+| Schema files | Uses a detected schema folder, a provider-aware default folder, or `database/schemas` |
+| Migration output | Uses a detected migrations folder, a provider-aware default folder, or `database/migrations` |
 | Type output | `database.types.ts` when opted in |
 | Zod output | `database.zod.ts` when opted in |
 | Database URL | flag, named environment, `SUPASCHEMA_DATABASE_URL`, then local Supabase config |
@@ -24,19 +24,31 @@ For every config key and advanced option, see [Configuration](/configuration/con
 Install scans the repository before writing config:
 
 - one detected schema folder and one detected migrations folder are used automatically;
-- if the standard Supabase paths exist, they are preferred;
+- if a provider marker is present and no existing schema or migrations folder is found, install uses that provider's default folders;
+- otherwise the neutral PostgreSQL layout is `database/schemas` and `database/migrations`;
 - if multiple non-standard candidates exist, install records them in `.supaschema/install.json` and the managed agent addendum tells the agent to ask which paths to use before the first diff;
 - in an interactive terminal, install can prompt for the paths immediately.
 
-When no existing folders are found, install creates the standard Supabase layout:
+| Provider marker | Schema path | Migrations path |
+| --- | --- | --- |
+| `supabase/config.toml` | `supabase/schemas` | `supabase/migrations` |
+| `neon.toml`, `.neon/project.json`, `.neon/config.json`, or Neon references in `drizzle.config.*` | `neon/schemas` | `neon/migrations` |
+| RDS/Aurora markers in Terraform, CloudFormation/SAM, CDK, SST, or Serverless config | `aws-postgresql/schemas` | `aws-postgresql/migrations` |
+| Cloud SQL markers in Terraform, Cloud Build, or App Engine config | `cloud-sql/schemas` | `cloud-sql/migrations` |
+| AlloyDB markers in Terraform, Cloud Build, or App Engine config | `alloydb/schemas` | `alloydb/migrations` |
+| Azure PostgreSQL markers in Terraform, Bicep, ARM, or Azure Developer CLI config | `azure-postgresql/schemas` | `azure-postgresql/migrations` |
+
+When no existing folders are found in a generic PostgreSQL project, install creates this neutral layout:
 
 ```json
 {
   "$schema": "./node_modules/supaschema/config-schema.json",
-  "schemaPaths": ["supabase/schemas"],
-  "migrationsDir": "supabase/migrations"
+  "schemaPaths": ["database/schemas"],
+  "migrationsDir": "database/migrations"
 }
 ```
+
+In a Supabase project with `supabase/config.toml`, install also writes `adapter: "auto"` so `supabase db push` can consume generated migrations unchanged while managed Supabase schemas stay protected. Other providers use the neutral `postgres` adapter unless you change it.
 
 Commit this file so every developer, CI job, and coding agent uses the same paths. If the config is deleted later, run `npx supaschema init` to recreate it.
 

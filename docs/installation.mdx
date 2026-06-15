@@ -3,7 +3,7 @@ title: "Installation"
 description: "Install supaschema from npm and confirm the minimum runtime requirements."
 ---
 
-supaschema is distributed as an npm package and works in Node.js projects that target PostgreSQL or Supabase.
+supaschema is distributed as an npm package and works in Node.js projects that target PostgreSQL 15+ directly or through managed PostgreSQL platforms such as Supabase, Neon, AWS RDS/Aurora PostgreSQL, Google Cloud SQL/AlloyDB, Azure Database for PostgreSQL, Render, Railway, Heroku Postgres, Timescale, Crunchy Bridge, and EDB.
 
 ## Requirements
 
@@ -13,6 +13,10 @@ supaschema is distributed as an npm package and works in Node.js projects that t
 | PostgreSQL target | 15 |
 
 The PostgreSQL parser is bundled with the package through `libpg-query`, so you do not need a local PostgreSQL server to generate migrations from SQL files or Git refs.
+
+<Note>
+  Supabase is not the only supported target. Install recognizes common project markers for Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, and Azure PostgreSQL, and every PostgreSQL provider can use named `environments` or `SUPASCHEMA_DATABASE_URL` for database URL resolution.
+</Note>
 
 ## Install
 

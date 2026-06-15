@@ -24,8 +24,10 @@ const packageJson = readJson(join(packageRoot, "package.json")) ?? {};
 const packageVersion = typeof packageJson.version === "string" ? packageJson.version : "unknown";
 
 const configFiles = ["supaschema.config.json", "supaschema.config.mjs", "supaschema.config.js"];
-const defaultSchemaPath = "supabase/schemas";
-const defaultMigrationsDir = "supabase/migrations";
+const genericSchemaPath = "database/schemas";
+const genericMigrationsDir = "database/migrations";
+const supabaseSchemaPath = "supabase/schemas";
+const supabaseMigrationsDir = "supabase/migrations";
 const manifestPath = ".supaschema/install.json";
 const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
@@ -42,6 +44,124 @@ const agentFiles = [
 ];
 
 const hookConfigs = [".claude/settings.json", ".codex/hooks.json"];
+
+const genericPreset = {
+  adapter: undefined,
+  id: "postgres",
+  label: "PostgreSQL",
+  migrationsDir: genericMigrationsDir,
+  schemaPath: genericSchemaPath,
+};
+
+const providerPresets = [
+  {
+    adapter: "auto",
+    id: "supabase",
+    label: "Supabase",
+    markers: [{ path: "supabase/config.toml" }],
+    migrationsDir: supabaseMigrationsDir,
+    schemaPath: supabaseSchemaPath,
+  },
+  {
+    adapter: undefined,
+    id: "neon",
+    label: "Neon",
+    markers: [
+      { path: "neon.toml" },
+      { path: ".neon/project.json" },
+      { path: ".neon/config.json" },
+      {
+        fileNames: ["drizzle.config.ts", "drizzle.config.js", "drizzle.config.mjs"],
+        contentTerms: ["neon.tech", "neon.com"],
+      },
+    ],
+    migrationsDir: "neon/migrations",
+    schemaPath: "neon/schemas",
+  },
+  {
+    adapter: undefined,
+    id: "aws-postgresql",
+    label: "RDS/Aurora PostgreSQL",
+    markers: [
+      {
+        fileNames: ["*.tf"],
+        contentTerms: ["aws_db_instance", "aws_rds_cluster", "aws_rds_global_cluster"],
+      },
+      {
+        fileNames: ["template.yaml", "template.yml"],
+        contentTerms: ["AWS::RDS::DBInstance", "AWS::RDS::DBCluster"],
+      },
+      {
+        fileNames: [
+          "cdk.json",
+          "sst.config.ts",
+          "sst.config.js",
+          "sst.config.mjs",
+          "serverless.yml",
+          "serverless.yaml",
+        ],
+        contentTerms: ["Aurora", "DatabaseCluster", "DatabaseInstance", "RDS", "rds"],
+      },
+    ],
+    migrationsDir: "aws-postgresql/migrations",
+    schemaPath: "aws-postgresql/schemas",
+  },
+  {
+    adapter: undefined,
+    id: "alloydb",
+    label: "AlloyDB",
+    markers: [
+      { fileNames: ["*.tf"], contentTerms: ["google_alloydb_cluster", "google_alloydb_instance"] },
+      {
+        fileNames: ["cloudbuild.yaml", "cloudbuild.yml", "app.yaml", "app.yml"],
+        contentTerms: ["alloydb", "alloydb.googleapis.com"],
+      },
+    ],
+    migrationsDir: "alloydb/migrations",
+    schemaPath: "alloydb/schemas",
+  },
+  {
+    adapter: undefined,
+    id: "cloud-sql",
+    label: "Cloud SQL for PostgreSQL",
+    markers: [
+      {
+        fileNames: ["*.tf"],
+        contentTerms: ["google_sql_database_instance", "google_sql_database"],
+      },
+      {
+        fileNames: ["cloudbuild.yaml", "cloudbuild.yml", "app.yaml", "app.yml"],
+        contentTerms: ["cloud_sql_instances", "CLOUD_SQL_CONNECTION_NAME", "cloudsql"],
+      },
+    ],
+    migrationsDir: "cloud-sql/migrations",
+    schemaPath: "cloud-sql/schemas",
+  },
+  {
+    adapter: undefined,
+    id: "azure-postgresql",
+    label: "Azure PostgreSQL",
+    markers: [
+      {
+        fileNames: ["*.tf"],
+        contentTerms: ["azurerm_postgresql_flexible_server", "azurerm_postgresql_server"],
+      },
+      {
+        fileNames: ["main.bicep", "azuredeploy.json"],
+        contentTerms: ["Microsoft.DBforPostgreSQL/flexibleServers", "Microsoft.DBforPostgreSQL"],
+      },
+      {
+        fileNames: ["azure.yaml"],
+        contentTerms: ["postgres", "PostgreSQL", "DBforPostgreSQL"],
+      },
+    ],
+    migrationsDir: "azure-postgresql/migrations",
+    schemaPath: "azure-postgresql/schemas",
+  },
+];
+
+const providerSchemaPaths = providerPresets.map((preset) => preset.schemaPath);
+const providerMigrationsDirs = providerPresets.map((preset) => preset.migrationsDir);
 
 await main();
 
@@ -98,16 +218,19 @@ async function main() {
 }
 
 function readExistingConfig(projectDir) {
+  const defaults = projectDefaults(projectDir);
   const jsonPath = join(projectDir, "supaschema.config.json");
   if (existsSync(jsonPath)) {
     const parsed = readJson(jsonPath);
     const schemaPaths = Array.isArray(parsed?.schemaPaths)
       ? parsed.schemaPaths.map(String)
-      : [defaultSchemaPath];
+      : [defaults.schemaPath];
     return {
+      adapter: normalizeAdapter(parsed?.adapter),
       exists: true,
+      provider: defaults.provider,
       migrationsDir:
-        typeof parsed?.migrationsDir === "string" ? parsed.migrationsDir : defaultMigrationsDir,
+        typeof parsed?.migrationsDir === "string" ? parsed.migrationsDir : defaults.migrationsDir,
       schemaPaths,
     };
   }
@@ -116,32 +239,47 @@ function readExistingConfig(projectDir) {
   };
 }
 
+function normalizeAdapter(value) {
+  if (value === "auto" || value === "supabase-auto") {
+    return "auto";
+  }
+  if (value === "postgres") {
+    return "postgres";
+  }
+  return undefined;
+}
+
 async function resolvePathSelection(scan, existingConfig) {
+  const defaults = projectDefaults(target);
   if (
     existingConfig.exists &&
     Array.isArray(existingConfig.schemaPaths) &&
     typeof existingConfig.migrationsDir === "string"
   ) {
     return {
+      adapter: existingConfig.adapter,
       candidates: scan,
       migrationsDir: existingConfig.migrationsDir,
       pathConfirmationNeeded: false,
+      provider: existingConfig.provider,
       schemaPaths: existingConfig.schemaPaths,
       source: "existing-config",
     };
   }
 
-  const schema = selectCandidate(scan.schemaPaths, defaultSchemaPath);
-  const migrations = selectCandidate(scan.migrationsDirs, defaultMigrationsDir);
+  const schema = selectCandidate(scan.schemaPaths, defaults.schemaPath);
+  const migrations = selectCandidate(scan.migrationsDirs, defaults.migrationsDir);
   let selection = {
+    adapter: defaults.adapter,
     candidates: scan,
     migrationsDir: migrations.path,
     pathConfirmationNeeded: schema.needsConfirmation || migrations.needsConfirmation,
+    provider: defaults.provider,
     schemaPaths: [schema.path],
     source: existingConfig.exists
       ? "existing-config-scan"
       : schema.source === "default" && migrations.source === "default"
-        ? "default"
+        ? defaults.source
         : "scan",
   };
 
@@ -159,7 +297,7 @@ async function promptForSelection(selection) {
       rl,
       "schema path",
       selection.candidates.schemaPaths,
-      selection.schemaPaths[0] ?? defaultSchemaPath,
+      selection.schemaPaths[0] ?? projectDefaults(target).schemaPath,
     );
     const migrationsDir = await promptPathChoice(
       rl,
@@ -207,18 +345,107 @@ function selectCandidate(candidates, fallback) {
   return { needsConfirmation: true, path: candidates[0], source: "ambiguous" };
 }
 
+function projectDefaults(projectDir) {
+  const detected = detectProviderPreset(projectDir);
+  const preset = detected?.preset ?? genericPreset;
+  return {
+    adapter: preset.adapter,
+    migrationsDir: preset.migrationsDir,
+    provider: detected
+      ? {
+          id: preset.id,
+          label: preset.label,
+          markers: detected.markers,
+        }
+      : undefined,
+    schemaPath: preset.schemaPath,
+    source: detected?.preset.id ?? "default",
+  };
+}
+
+function detectProviderPreset(projectDir) {
+  const files = walkFiles(projectDir, 5);
+  for (const preset of providerPresets) {
+    const markers = [];
+    for (const marker of preset.markers) {
+      markers.push(...matchingProviderMarkers(projectDir, files, marker));
+    }
+    if (markers.length > 0) {
+      return { markers, preset };
+    }
+  }
+  return undefined;
+}
+
+function matchingProviderMarkers(projectDir, files, marker) {
+  if (typeof marker.path === "string") {
+    const absolute = join(projectDir, marker.path);
+    if (!existsSync(absolute)) {
+      return [];
+    }
+    if (!marker.contentTerms || fileContainsAny(absolute, marker.contentTerms)) {
+      return [marker.path];
+    }
+    return [];
+  }
+
+  const matched = [];
+  for (const file of files) {
+    const name = file.split(sep).at(-1) ?? "";
+    if (!marker.fileNames.some((pattern) => fileNameMatches(pattern, name))) {
+      continue;
+    }
+    if (!marker.contentTerms || fileContainsAny(file, marker.contentTerms)) {
+      matched.push(rel(projectDir, file));
+    }
+  }
+  return matched;
+}
+
+function fileNameMatches(pattern, name) {
+  if (!pattern.includes("*")) {
+    return pattern === name;
+  }
+  const [prefix, suffix] = pattern.split("*");
+  return name.startsWith(prefix) && name.endsWith(suffix);
+}
+
+function fileContainsAny(path, terms) {
+  try {
+    const content = readFileSync(path, "utf8");
+    return terms.some((term) => content.includes(term));
+  } catch {
+    return false;
+  }
+}
+
 function scanProject(projectDir) {
+  const defaults = projectDefaults(projectDir);
   const dirs = walkDirectories(projectDir, 5);
   return {
     migrationsDirs: rankCandidates(
       dirs
         .filter((dir) => isMigrationsCandidate(projectDir, dir))
         .map((dir) => rel(projectDir, dir)),
-      [defaultMigrationsDir, "migrations", "db/migrations", "database/migrations"],
+      [
+        defaults.migrationsDir,
+        ...providerMigrationsDirs,
+        genericMigrationsDir,
+        "migrations",
+        "db/migrations",
+      ],
     ),
     schemaPaths: rankCandidates(
       dirs.filter((dir) => isSchemaCandidate(projectDir, dir)).map((dir) => rel(projectDir, dir)),
-      [defaultSchemaPath, "schemas", "schema", "db/schemas", "db/schema", "database/schemas"],
+      [
+        defaults.schemaPath,
+        ...providerSchemaPaths,
+        genericSchemaPath,
+        "schemas",
+        "schema",
+        "db/schemas",
+        "db/schema",
+      ],
     ),
   };
 }
@@ -248,6 +475,34 @@ function walkDirectories(projectDir, maxDepth) {
   return out;
 }
 
+function walkFiles(projectDir, maxDepth) {
+  const out = [];
+  const visit = (dir, depth) => {
+    if (depth > maxDepth) {
+      return;
+    }
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!shouldSkipDir(entry.name)) {
+          visit(join(dir, entry.name), depth + 1);
+        }
+        continue;
+      }
+      if (entry.isFile()) {
+        out.push(join(dir, entry.name));
+      }
+    }
+  };
+  visit(projectDir, 1);
+  return out;
+}
+
 function shouldSkipDir(name) {
   return new Set([
     ".git",
@@ -267,13 +522,21 @@ function isSchemaCandidate(projectDir, dir) {
   if (name === "migrations") {
     return false;
   }
-  return path === defaultSchemaPath || name === "schemas" || name === "schema" || hasSqlFiles(dir);
+  return (
+    path === genericSchemaPath ||
+    providerSchemaPaths.includes(path) ||
+    name === "schemas" ||
+    name === "schema" ||
+    hasSqlFiles(dir)
+  );
 }
 
 function isMigrationsCandidate(projectDir, dir) {
   const name = dir.split(sep).at(-1);
   const path = rel(projectDir, dir);
-  return path === defaultMigrationsDir || name === "migrations";
+  return (
+    path === genericMigrationsDir || providerMigrationsDirs.includes(path) || name === "migrations"
+  );
 }
 
 function hasSqlFiles(dir) {
@@ -298,15 +561,13 @@ function rank(candidate, preferredOrder) {
 }
 
 function scaffoldConfig(selection) {
-  return `${JSON.stringify(
-    {
-      $schema: "./node_modules/supaschema/config-schema.json",
-      schemaPaths: selection.schemaPaths,
-      migrationsDir: selection.migrationsDir,
-    },
-    null,
-    2,
-  )}\n`;
+  const config = {
+    $schema: "./node_modules/supaschema/config-schema.json",
+    ...(selection.adapter === undefined ? {} : { adapter: selection.adapter }),
+    schemaPaths: selection.schemaPaths,
+    migrationsDir: selection.migrationsDir,
+  };
+  return `${JSON.stringify(config, null, 2)}\n`;
 }
 
 function createConfiguredDirectories(selection) {
@@ -329,10 +590,11 @@ function agentGuidanceBlock(selection) {
   return `${guidanceStart}
 ## supaschema
 
-This project uses supaschema for declarative PostgreSQL/Supabase migrations.
+This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
 
 - Schema intent belongs in \`${selection.schemaPaths.join("`, `")}\`.
 - Generated migrations write to \`${selection.migrationsDir}\`; files containing \`-- supaschema: lineage\` must not be hand-edited.
+- Edit \`supaschema.config.json\` to change \`schemaPaths\`, \`migrationsDir\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
 ${confirm}- For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, run \`npx supaschema diff\`, then run \`npx supaschema check\`.
 - Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes; they never apply migrations.
 - Do not run \`npx supaschema sync --local\` or \`npx supaschema sync --remote\` unless explicitly asked to apply migrations.
@@ -359,11 +621,13 @@ function writeInstallManifest(scan, selection) {
     manifestPath,
     `${JSON.stringify(
       {
+        adapter: selection.adapter ?? "postgres",
         candidates: scan,
         installedAt: new Date().toISOString(),
         migrationsDir: selection.migrationsDir,
         packageVersion,
         pathConfirmationNeeded: selection.pathConfirmationNeeded,
+        provider: selection.provider,
         schemaPaths: selection.schemaPaths,
         source: selection.source,
       },

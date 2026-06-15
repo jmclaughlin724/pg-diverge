@@ -32,23 +32,23 @@ A match proves two things simultaneously:
 ## Examples
 
 ```bash
-# Verify against local Supabase stack
+# Verify against a local PostgreSQL server
 npx supaschema verify \
   --from "git:HEAD" \
-  --to dir:supabase/schemas \
-  --migration supabase/migrations/20240101000000_add_accounts.sql \
+  --to dir:database/schemas \
+  --migration database/migrations/20240101000000_add_accounts.sql \
   --database-url postgresql://postgres:postgres@localhost:54322/postgres
 
 # Keep databases after failure for inspection
 npx supaschema verify \
-  --from "git:HEAD" --to dir:supabase/schemas \
+  --from "git:HEAD" --to dir:database/schemas \
   --migration /tmp/migration.sql \
   --database-url postgresql://postgres:postgres@localhost:54322/postgres \
   --keep-databases
 
 # With role stubs for Supabase RLS
 npx supaschema verify \
-  --from "git:HEAD" --to dir:supabase/schemas \
+  --from "git:HEAD" --to dir:database/schemas \
   --migration migration.sql \
   --database-url postgresql://... \
   --ensure-roles
@@ -61,7 +61,7 @@ npx supaschema verify \
 </ParamField>
 
 <ParamField path="--to" type="source">
-  The **after-state** (target model) source. Applied directly to the second temp database for the convergence comparison. Accepts the same specifiers as `--from`. Typically `dir:supabase/schemas`.
+  The **after-state** (target model) source. Applied directly to the second temp database for the convergence comparison. Accepts the same specifiers as `--from`. Typically `dir:database/schemas` or your configured schema path.
 </ParamField>
 
 <ParamField path="--migration" type="path">
@@ -69,7 +69,7 @@ npx supaschema verify \
 </ParamField>
 
 <ParamField path="--migrations-dir" type="path">
-  Overrides the directory used when resolving the default `--migration` file. Defaults to `supabase/migrations`.
+  Overrides the directory used when resolving the default `--migration` file. Defaults to `config.migrationsDir`.
 </ParamField>
 
 <ParamField path="--database-url" type="url">
@@ -81,11 +81,11 @@ npx supaschema verify \
 </ParamField>
 
 <ParamField path="--ensure-environment" type="boolean">
-  Stubs the minimal Supabase-managed surfaces that common schema trees reference: `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`, `auth.email()`, `cron.job`, and `cron.job_run_details`. It does not create storage, realtime, vault, identities, sessions, or extension-owned objects. Enabled automatically when the `supabase-auto` adapter is active.
+  Stubs the minimal Supabase-managed surfaces that common schema trees reference: `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`, `auth.email()`, `cron.job`, and `cron.job_run_details`. It does not create storage, realtime, vault, identities, sessions, or extension-owned objects. Enabled automatically when the `auto` adapter is active.
 </ParamField>
 
 <ParamField path="--no-ensure-environment" type="boolean">
-  Disables the Supabase environment stub even when the `supabase-auto` adapter would enable it. Use this only when the verification server provisions managed schemas in newly-created databases.
+  Disables the Supabase environment stub even when the `auto` adapter would enable it. Use this only when the verification server provisions managed schemas in newly-created databases.
 </ParamField>
 
 <ParamField path="--keep-databases" type="boolean">
@@ -127,21 +127,21 @@ When `verify` fails, it emits one or more of the following structured diagnostic
 
 ## CI Integration
 
-Run `verify` as a required check on every pull request that touches `supabase/migrations`:
+Run `verify` as a required check on every pull request that touches your migrations directory:
 
 ```yaml
 # .github/workflows/verify.yml
 on:
   pull_request:
     paths:
-      - 'supabase/migrations/**'
+      - 'database/migrations/**'
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: supabase/postgres:15.1.0.117
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -152,10 +152,10 @@ jobs:
           fetch-depth: 0
       - name: Verify latest migration
         run: |
-          migration=$(ls supabase/migrations/*.sql | sort | tail -n 1)
+          migration=$(ls database/migrations/*.sql | sort | tail -n 1)
           npx supaschema verify \
             --from "git:origin/main" \
-            --to dir:supabase/schemas \
+            --to dir:database/schemas \
             --migration "$migration" \
             --database-url postgresql://postgres:postgres@localhost:54322/postgres \
             --ensure-roles
@@ -171,7 +171,7 @@ When `verify` returns `SUPA_VERIFY_FINGERPRINT_MISMATCH` or `SUPA_VERIFY_RECONVE
 
 ```bash
 npx supaschema verify \
-  --from "git:HEAD" --to dir:supabase/schemas \
+  --from "git:HEAD" --to dir:database/schemas \
   --migration migration.sql \
   --database-url postgresql://postgres:postgres@localhost:54322/postgres \
   --keep-databases

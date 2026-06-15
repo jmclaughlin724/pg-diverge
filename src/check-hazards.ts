@@ -99,7 +99,7 @@ export function escalateNontransactional(
   diagnostics: Diagnostic[],
   config: SupaschemaConfig,
 ): Diagnostic[] {
-  const escalate = config.adapter === "supabase-auto" || config.transactionMode === "per-migration";
+  const escalate = config.adapter === "auto" || config.transactionMode === "per-migration";
   if (!escalate) {
     return diagnostics;
   }

@@ -30,7 +30,7 @@ const environmentSchema = z.strictObject({
 
 export const supaschemaConfigSchema = z.strictObject({
   $schema: z.string().optional(),
-  adapter: z.enum(["supabase-auto", "postgres"]).default("supabase-auto"),
+  adapter: z.enum(["auto", "postgres"]).default("postgres"),
   cascade: z.literal("never").default("never"),
   destructiveChanges: z.enum(["hint-required", "block", "allow"]).default("hint-required"),
   environments: z.record(z.string(), environmentSchema).default({}),
@@ -38,7 +38,7 @@ export const supaschemaConfigSchema = z.strictObject({
   hints: hintsSchema,
   idempotency: z.literal("required").default("required"),
   lockTimeout: z.string().default("5s"),
-  migrationsDir: z.string().default("supabase/migrations"),
+  migrationsDir: z.string().default("database/migrations"),
   typesFile: z.string().default("database.types.ts"),
   zodFile: z.string().default("database.zod.ts"),
   normalize: z.enum(["off", "deparse"]).default("deparse"),
@@ -58,7 +58,7 @@ export const supaschemaConfigSchema = z.strictObject({
     ]),
   postgresVersion: z.string().default("15+"),
   renameDetection: z.enum(["hints-only", "off"]).default("hints-only"),
-  schemaPaths: z.array(z.string()).default(["supabase/schemas"]),
+  schemaPaths: z.array(z.string()).default(["database/schemas"]),
   schemas: schemaFilterSchema,
   statementTimeout: z.string().default("60s"),
   transactionMode: z.enum(["per-migration", "per-statement"]).default("per-migration"),
@@ -70,7 +70,7 @@ export type SupaschemaConfig = z.infer<typeof supaschemaConfigSchema>;
 export const defaultConfig: SupaschemaConfig = supaschemaConfigSchema.parse({});
 
 export function resolveConfig(config?: Partial<SupaschemaConfig>): SupaschemaConfig {
-  return supaschemaConfigSchema.parse(config ?? {});
+  return supaschemaConfigSchema.parse(normalizeConfigInput(config ?? {}));
 }
 
 const moduleConfigFiles = ["supaschema.config.mjs", "supaschema.config.js"];
@@ -152,4 +152,12 @@ export const defaultConfigFile = `${JSON.stringify(scaffoldConfig, null, 2)}\n`;
 
 export function configJsonSchema(): Record<string, unknown> {
   return z.toJSONSchema(supaschemaConfigSchema, { io: "input" }) as Record<string, unknown>;
+}
+
+function normalizeConfigInput(config: Partial<SupaschemaConfig>): Partial<SupaschemaConfig> {
+  const adapter = (config as { adapter?: unknown }).adapter;
+  if (adapter !== "supabase-auto") {
+    return config;
+  }
+  return { ...config, adapter: "auto" };
 }

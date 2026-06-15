@@ -10,10 +10,10 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 
   ```bash
   # Print the plan between HEAD and the current schema directory
-  npx supaschema plan --from git:HEAD --to dir:supabase/schemas
+  npx supaschema plan --from git:HEAD --to dir:database/schemas
 
   # Pipe the output to jq to inspect only table changes
-  npx supaschema plan --from git:HEAD --to dir:supabase/schemas \
+  npx supaschema plan --from git:HEAD --to dir:database/schemas \
     | jq '[.operations[] | select(.ref.kind == "table")]'
   ```
 
@@ -31,7 +31,7 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 
   ```bash
   # Inspect a schema directory
-  npx supaschema inspect --from dir:supabase/schemas
+  npx supaschema inspect --from dir:database/schemas
 
   # Inspect a live database
   npx supaschema inspect --from "database:$DATABASE_URL"
@@ -40,7 +40,7 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
   npx supaschema inspect --from git:HEAD~1
 
   # Filter to specific schemas
-  npx supaschema inspect --from dir:supabase/schemas --schema public,auth
+  npx supaschema inspect --from dir:database/schemas --schema public,auth
   ```
 
   The output includes every table, view, enum, function, trigger, index, and constraint that supaschema's parser supports. Objects that fall outside the supported surface area are reported in the `diagnostics` array as `SUPA_EXTRACT_UNSUPPORTED`; unsupported input exits with code `2`.
@@ -53,13 +53,13 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 
   ```bash
   # Fingerprint a schema directory
-  npx supaschema fingerprint --from dir:supabase/schemas
+  npx supaschema fingerprint --from dir:database/schemas
 
   # Fingerprint a live database
   npx supaschema fingerprint --from "database:$DATABASE_URL"
 
   # Detect drift: compare directory fingerprint against the database
-  [ "$(npx supaschema fingerprint --from dir:supabase/schemas)" = \
+  [ "$(npx supaschema fingerprint --from dir:database/schemas)" = \
     "$(npx supaschema fingerprint --from "database:$DATABASE_URL")" ] \
     && echo "in sync" || echo "drift detected"
   ```
@@ -76,13 +76,13 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 
   ```bash
   # Audit your schema directory
-  npx supaschema audit --from dir:supabase/schemas
+  npx supaschema audit --from dir:database/schemas
 
   # Audit a live database to see how much of it supaschema can represent
   npx supaschema audit --from "database:$DATABASE_URL"
 
   # Output as JSON
-  npx supaschema audit --from dir:supabase/schemas --json
+  npx supaschema audit --from dir:database/schemas --json
   ```
 
   The output is a table grouped by object type (tables, views, functions, triggers, policies, indexes, …) with counts and a supported/unsupported breakdown. Unsupported DDL is fail-closed: `diff` reports `SUPA_EXTRACT_UNSUPPORTED` and stops instead of copying unsupported statements into generated migrations.
@@ -162,8 +162,8 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
   ```json
   {
     "$schema": "./node_modules/supaschema/config-schema.json",
-    "schemaPaths": ["supabase/schemas"],
-    "migrationsDir": "supabase/migrations"
+    "schemaPaths": ["database/schemas"],
+    "migrationsDir": "database/migrations"
   }
   ```
 

@@ -37,13 +37,13 @@ A **schema source** is any collection of SQL files that supaschema can parse int
 
 ```bash
 # Point supaschema at a directory of SQL files
-supaschema diff --to dir:supabase/schemas
+supaschema diff --to dir:database/schemas
 ```
 
 Inside that directory, you write ordinary PostgreSQL `CREATE` statements — one file per table, one file per domain, or however you prefer to organise them. supaschema does not impose a file-naming convention.
 
 ```sql
--- supabase/schemas/orders.sql
+-- database/schemas/orders.sql
 CREATE TABLE public.orders (
   id        bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id   uuid        NOT NULL REFERENCES public.users (id),
@@ -95,7 +95,7 @@ Every SchemaModel carries a **fingerprint** — a single deterministic hash deri
 
 ```bash
 # Inspect the current fingerprint of your schema files
-supaschema fingerprint --from dir:supabase/schemas
+supaschema fingerprint --from dir:database/schemas
 ```
 
 ```json

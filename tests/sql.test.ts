@@ -342,10 +342,15 @@ describe("migration checks", () => {
 
 describe("managed Supabase schemas", () => {
   it("blocks direct declarative ownership of managed schemas", async () => {
-    const schema = await extractObjectsFromSql("CREATE SCHEMA auth;");
-    const table = await extractObjectsFromSql("CREATE TABLE auth.users_shadow (id bigint);");
+    const options = { config: { adapter: "auto" as const } };
+    const schema = await extractObjectsFromSql("CREATE SCHEMA auth;", options);
+    const table = await extractObjectsFromSql(
+      "CREATE TABLE auth.users_shadow (id bigint);",
+      options,
+    );
     const extension = await extractObjectsFromSql(
       "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;",
+      options,
     );
 
     expect(schema.diagnostics.map((item) => item.code)).toContain("SUPA_SUPABASE_MANAGED_SCHEMA");

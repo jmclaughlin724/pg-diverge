@@ -96,7 +96,7 @@ export async function runDoctor(
     }
   }
 
-  const migrationsDir = resolve(cwd, "supabase/migrations");
+  const migrationsDir = resolve(cwd, config.migrationsDir);
   const hasMigrationsDir = await access(migrationsDir)
     .then(() => true)
     .catch(() => false);
@@ -116,7 +116,7 @@ export async function runDoctor(
     });
   }
 
-  const tree = config.schemaPaths[0] ?? "supabase/schemas";
+  const tree = config.schemaPaths[0] ?? "database/schemas";
   const hasTree = await access(resolve(cwd, tree))
     .then(() => true)
     .catch(() => false);

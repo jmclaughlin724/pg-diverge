@@ -26,12 +26,18 @@ const sampleDiagnostics: Diagnostic[] = [
 describe("config DX", () => {
   it("tolerates $schema and keeps the scaffold small", () => {
     const config = resolveConfig({ $schema: "./node_modules/supaschema/config-schema.json" });
-    expect(config.adapter).toBe("supabase-auto");
+    expect(config.adapter).toBe("postgres");
     expect(JSON.parse(defaultConfigFile)).toEqual({
       $schema: "./node_modules/supaschema/config-schema.json",
-      schemaPaths: ["supabase/schemas"],
-      migrationsDir: "supabase/migrations",
+      schemaPaths: ["database/schemas"],
+      migrationsDir: "database/migrations",
     });
+  });
+
+  it("normalizes the legacy supabase-auto adapter value to auto", () => {
+    const config = resolveConfig({ adapter: "supabase-auto" } as never);
+
+    expect(config.adapter).toBe("auto");
   });
 
   it("parses named environments and rejects unknown keys inside them", () => {
@@ -126,7 +132,7 @@ describe("raw CLI errors", () => {
 });
 
 describe("verify environment flags", () => {
-  it("exposes --no-ensure-environment so the supabase-auto stub default can be disabled", () => {
+  it("exposes --no-ensure-environment so the auto stub default can be disabled", () => {
     const result = spawnSync(process.execPath, [cliPath, "verify", "--help"], {
       encoding: "utf8",
     });

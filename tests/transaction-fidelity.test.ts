@@ -97,7 +97,7 @@ describe("config model filters", () => {
 });
 
 describe("supabase view security_invoker", () => {
-  it("warns for public views without security_invoker under supabase-auto", async () => {
+  it("warns for public views without security_invoker under auto", async () => {
     const directory = await mkdtemp(join(tmpdir(), "supa-secinv-"));
     await writeFile(
       join(directory, "views.sql"),
@@ -106,7 +106,9 @@ describe("supabase view security_invoker", () => {
         "CREATE VIEW public.safe WITH (security_invoker = true) AS SELECT 1 AS one;",
       ].join("\n"),
     );
-    const checked = await extractSourceModel(`dir:${directory}`);
+    const checked = await extractSourceModel(`dir:${directory}`, {
+      config: { adapter: "auto" },
+    });
 
     const warnings = checked.diagnostics.filter(
       (item) => item.code === "SUPA_SUPABASE_VIEW_SECURITY_INVOKER",

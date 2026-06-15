@@ -1,6 +1,6 @@
 ---
 title: "Supabase integration"
-description: "How supaschema fits a Supabase project — config.toml discovery, managed schemas, the supabase-auto adapter, sync with the Supabase CLI, and verify's environment stubs."
+description: "How supaschema fits a Supabase project — config.toml discovery, managed schemas, the auto adapter, sync with the Supabase CLI, and verify's environment stubs."
 ---
 
 supaschema generates and proves migrations; it never applies them. In a Supabase project the Supabase CLI stays the runner and keeps sole ownership of the migration history table — supaschema slots in before it.
@@ -14,17 +14,17 @@ In a repository with a `supabase/` directory, the defaults line up with the Supa
 - The local database URL is discovered from the nearest `supabase/config.toml` (`[db] port`) — see [Environments](/configuration/environments) for the full resolution order.
 - Generated types are Supabase-compatible: `database.types.ts` matches `supabase gen types typescript`'s shape, plus runtime Zod validators in `database.zod.ts`.
 
-## Managed schemas and the `supabase-auto` adapter
+## Managed schemas and the `auto` adapter
 
-The default adapter is `supabase-auto`. It treats the platform-provisioned schemas — `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, `graphql_public` — as managed: your declarative tree cannot claim ownership of them, so a diff never tries to recreate or drop what Supabase provisions. The set is configurable via `managedSchemas`.
+The default adapter is `auto`. It treats the platform-provisioned schemas — `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, `graphql_public` — as managed: your declarative tree cannot claim ownership of them, so a diff never tries to recreate or drop what Supabase provisions. The set is configurable via `managedSchemas`.
 
-`supabase-auto` also blocks `CREATE INDEX CONCURRENTLY` plans: transactional runners like `supabase db push` wrap each migration in a transaction, where `CONCURRENTLY` is illegal. Under `adapter: "postgres"`, concurrent index builds land in a `<migration>.concurrent.sql` companion file instead, to be run outside a transaction through an operational lane.
+`auto` also blocks `CREATE INDEX CONCURRENTLY` plans: transactional runners like `supabase db push` wrap each migration in a transaction, where `CONCURRENTLY` is illegal. Under `adapter: "postgres"`, concurrent index builds land in a `<migration>.concurrent.sql` companion file instead, to be run outside a transaction through an operational lane.
 
 Keep `transactionMode: "per-migration"` (the default) — it mirrors how `supabase db push` applies each file in one transaction, so `verify` and the lock-hazard grading match production behavior.
 
 ## Verifying Supabase trees against bare PostgreSQL
 
-`supaschema verify` proves a migration in throwaway databases — plain PostgreSQL, not a full Supabase stack. Under `supabase-auto`, `--ensure-environment` is on by default: it stubs the Supabase-provisioned surfaces a real tree references (`auth.uid()`-family helpers, `auth.users`, the cron schema) so RLS policies and triggers verify without Docker or a Supabase container. `--ensure-roles` pre-creates `NOLOGIN` roles referenced by grants and policies.
+`supaschema verify` proves a migration in throwaway databases — plain PostgreSQL, not a full Supabase stack. Under `auto`, `--ensure-environment` is on by default: it stubs the Supabase-provisioned surfaces a real tree references (`auth.uid()`-family helpers, `auth.users`, the cron schema) so RLS policies and triggers verify without Docker or a Supabase container. `--ensure-roles` pre-creates `NOLOGIN` roles referenced by grants and policies.
 
 Platform-owned grants can be excluded from extracted models with `excludedGrantRoles` (e.g. `supabase_admin`, `authenticator`), so they never show up as drift.
 

@@ -23,10 +23,10 @@ The output is a generated migration file with a lineage marker, plus refreshed T
 
 ## Schema files are the source of truth
 
-By default, `supaschema` reads SQL from `supabase/schemas/`, but the paths are configurable. Split the schema by domain, feature, or dependency order:
+By default, the neutral install scaffold reads SQL from `database/schemas/`; provider-specific installs may use paths such as `supabase/schemas/`, `neon/schemas/`, `aws-postgresql/schemas/`, `cloud-sql/schemas/`, `alloydb/schemas/`, or `azure-postgresql/schemas/`. Split the schema by domain, feature, or dependency order:
 
 ```text
-supabase/schemas/
+database/schemas/
   001_extensions.sql
   010_auth.sql
   020_billing.sql
@@ -49,13 +49,13 @@ This makes schema review focus on intent: the declared target changed, the gener
 
 ## Works with Supabase and plain PostgreSQL
 
-For Supabase projects, `supaschema` fits into the existing `supabase/schemas/` and `supabase/migrations/` layout. For plain PostgreSQL projects, configure `schemaPaths`, `migrationsDir`, and optional named environments in `supaschema.config.json`.
+For Supabase projects, `supaschema` fits into the existing `supabase/schemas/` and `supabase/migrations/` layout. For other PostgreSQL projects, use the paths in `supaschema.config.json`, such as `database/schemas`, `neon/schemas`, `aws-postgresql/schemas`, `cloud-sql/schemas`, `alloydb/schemas`, or `azure-postgresql/schemas`, plus optional named environments.
 
 Sources can be directories, git refs, live read-only catalogs, dumps, or saved catalog JSON:
 
 ```bash
-npx supaschema diff --from git:main --to dir:supabase/schemas
-npx supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas
+npx supaschema diff --from git:main --to dir:database/schemas
+npx supaschema diff --from database:$DATABASE_URL --to dir:database/schemas
 ```
 
 ## Related guides

@@ -9,7 +9,7 @@ Every supaschema command that computes a diff needs two inputs: a **from** sourc
 
 <CardGroup cols={2}>
   <Card title="Directory" icon="folder-open">
-    **Syntax:** `dir:supabase/schemas`
+    **Syntax:** `dir:database/schemas`
 
     SQL files on disk. The default `--to` source for most commands. supaschema recursively reads every `.sql` file in the specified path.
   </Card>
@@ -46,7 +46,7 @@ Every supaschema command that computes a diff needs two inputs: a **from** sourc
 The `dir:` source is the backbone of the declarative workflow. supaschema walks the given directory, parses every `.sql` file it finds, and assembles a SchemaModel from all the `CREATE` statements inside.
 
 ```bash
-supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas
+supaschema diff --from database:$DATABASE_URL --to dir:database/schemas
 ```
 
 **When to use it:**
@@ -61,7 +61,7 @@ supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas
 ### Directory layout example
 
 ```
-supabase/
+database/
 └── schemas/
     ├── tables/
     │   ├── users.sql
@@ -83,7 +83,7 @@ The `git:` source lets supaschema read the `schemaPaths` files as they exist at 
 
 ```bash
 # Compare the current working tree against the main branch
-supaschema diff --from git:origin/main --to dir:supabase/schemas
+supaschema diff --from git:origin/main --to dir:database/schemas
 
 # Compare two branches against each other
 supaschema diff --from git:origin/main --to git:feature/add-subscriptions
@@ -107,7 +107,7 @@ supaschema diff --from git:origin/main --to git:feature/add-subscriptions
   run: |
     supaschema diff \
       --from git:origin/main \
-      --to dir:supabase/schemas \
+      --to dir:database/schemas \
       --dry-run \
       --fail-on-diff
 ```
@@ -122,7 +122,7 @@ The `database:` source connects to a running PostgreSQL instance, queries the sy
 # Generate a migration from live DB to your local schema files
 supaschema diff \
   --from database:$DATABASE_URL \
-  --to dir:supabase/schemas
+  --to dir:database/schemas
 
 # Detect drift: compare live DB against the last saved snapshot
 supaschema diff \
@@ -163,10 +163,10 @@ The `dump:` source treats a single SQL file — such as the output of `pg_dump -
 # Analyse a pg_dump file
 supaschema diff \
   --from dump:backups/prod-schema-2024-06-01.sql \
-  --to dir:supabase/schemas
+  --to dir:database/schemas
 
 # Pipe pg_dump directly
-pg_dump --schema-only $PROD_URL | supaschema diff --from dump:- --to dir:supabase/schemas
+pg_dump --schema-only $PROD_URL | supaschema diff --from dump:- --to dir:database/schemas
 ```
 
 **When to use it:**
@@ -225,20 +225,20 @@ The table below summarises the most useful source pairings and the workflow each
 
 | Scenario                | `--from`                 | `--to`                               | Purpose                                                        |
 | ----------------------- | ------------------------ | ------------------------------------ | -------------------------------------------------------------- |
-| Local development       | `database:$LOCAL_URL`    | `dir:supabase/schemas`               | Generate a migration from your local DB to edited schema files |
-| PR safety check (CI)    | `git:origin/main`        | `dir:supabase/schemas`               | Diff the branch against the base without a database            |
-| Deploy to production    | `database:$PROD_URL`     | `dir:supabase/schemas`               | Generate a migration targeting the live production database    |
+| Local development       | `database:$LOCAL_URL`    | `dir:database/schemas`               | Generate a migration from your local DB to edited schema files |
+| PR safety check (CI)    | `git:origin/main`        | `dir:database/schemas`               | Diff the branch against the base without a database            |
+| Deploy to production    | `database:$PROD_URL`     | `dir:database/schemas`               | Generate a migration targeting the live production database    |
 | Drift detection         | `database:$PROD_URL`     | `catalog:snapshots/last-deploy.json` | Detect out-of-band changes on the server                       |
-| Reconciling existing DB | `database:$DATABASE_URL` | `dir:supabase/schemas`               | Generate a migration from the deployed catalog to your files   |
+| Reconciling existing DB | `database:$DATABASE_URL` | `dir:database/schemas`               | Generate a migration from the deployed catalog to your files   |
 | Cross-branch comparison | `git:origin/main`        | `git:feature/my-branch`              | Preview the migration a merge would produce                    |
-| Analyse a legacy dump   | `dump:legacy-schema.sql` | `dir:supabase/schemas`               | Diff a dump file against your current schema                   |
+| Analyse a legacy dump   | `dump:legacy-schema.sql` | `dir:database/schemas`               | Diff a dump file against your current schema                   |
 
 <Tip>
-  For most teams, the `--from` source defaults to the live database URL (discovered from `supabase/config.toml` in Supabase projects, or set via the `SUPASCHEMA_DATABASE_URL` environment variable), while `--to` defaults to `dir:supabase/schemas`. You can encode both in `supaschema.config.json` using `schemaPaths` so that every `diff` command picks them up automatically:
+  For most teams, the `--from` source defaults to the live database URL (from `SUPASCHEMA_DATABASE_URL`, a named `environments` entry, or local `supabase/config.toml` discovery), while `--to` defaults to the first configured schema path. The neutral scaffold uses `dir:database/schemas`; provider-aware installs may use paths such as `dir:supabase/schemas`, `dir:neon/schemas`, `dir:aws-postgresql/schemas`, `dir:cloud-sql/schemas`, `dir:alloydb/schemas`, or `dir:azure-postgresql/schemas`. You can encode paths in `supaschema.config.json` so that every `diff` command picks them up automatically:
 
   ```json
   {
-    "schemaPaths": ["supabase/schemas"]
+    "schemaPaths": ["database/schemas"]
   }
   ```
 </Tip>

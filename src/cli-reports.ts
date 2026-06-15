@@ -36,7 +36,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
 
   program
     .command("migrations")
-    .option("--migrations-dir <dir>", "migration files directory", "supabase/migrations")
+    .option("--migrations-dir <dir>", "migration files directory")
     .option(
       "--database-url <url>",
       "target whose applied history to compare (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack); run once per target to compare local and remote",
@@ -49,11 +49,12 @@ export function registerReportCommands(program: Command, context: ReportCommandC
         databaseUrl?: string;
         historyTable?: string;
         json?: boolean;
-        migrationsDir: string;
+        migrationsDir?: string;
       }) => {
+        const config = await context.loadCliConfig();
         const databaseUrl = await context.resolveCliDatabaseUrl(options.databaseUrl);
         const { diagnostics, report } = await migrationsStatus({
-          directory: resolve(process.cwd(), options.migrationsDir),
+          directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
           ...(databaseUrl === undefined ? {} : { databaseUrl }),
           ...(options.historyTable === undefined ? {} : { historyTable: options.historyTable }),
         });
@@ -101,7 +102,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
 
   program
     .command("sync")
-    .option("--migrations-dir <dir>", "migration files directory", "supabase/migrations")
+    .option("--migrations-dir <dir>", "migration files directory")
     .option(
       "--database-url <url>",
       "target whose applied history gates the sync (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)",
@@ -115,14 +116,14 @@ export function registerReportCommands(program: Command, context: ReportCommandC
       async (options: {
         databaseUrl?: string;
         local?: boolean;
-        migrationsDir: string;
+        migrationsDir?: string;
         remote?: boolean;
       }) => {
         const config = await context.loadCliConfig();
         const databaseUrl = await context.resolveCliDatabaseUrl(options.databaseUrl);
         const result = await syncMigrations({
           config,
-          directory: resolve(process.cwd(), options.migrationsDir),
+          directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
           ...(databaseUrl === undefined ? {} : { databaseUrl }),
           ...(options.local === true ? { local: true } : {}),
           ...(options.remote === true ? { remote: true } : {}),

@@ -42,6 +42,7 @@ async function fixtures(): Promise<{ generated: string; handAuthored: string }> 
 async function autoDiffFixture(
   schemaPaths: string[],
   fakeSupaschema?: string,
+  options: { writeConfig?: boolean } = {},
 ): Promise<{
   bin: string;
   env: NodeJS.ProcessEnv;
@@ -52,7 +53,9 @@ async function autoDiffFixture(
   for (const schemaPath of schemaPaths) {
     await mkdir(join(project, schemaPath), { recursive: true });
   }
-  await writeFile(join(project, "supaschema.config.json"), JSON.stringify({ schemaPaths }));
+  if (options.writeConfig !== false) {
+    await writeFile(join(project, "supaschema.config.json"), JSON.stringify({ schemaPaths }));
+  }
   const log = join(project, "calls.log");
   const bin = join(project, "fake-supaschema.mjs");
   await writeFile(
@@ -345,6 +348,57 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
 
     expect(result.code).toBe(0);
     expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"], ["check"]]);
+  });
+
+  runAutoDiffTest(
+    "defaults to the generic PostgreSQL schema path when no config exists",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["database/schemas"], undefined, {
+        writeConfig: false,
+      });
+      await writeFile(
+        join(project, "database", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);",
+      );
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "database", "schemas", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env },
+      );
+
+      expect(result.code).toBe(0);
+      expect(await readFakeCalls(log)).toEqual([
+        ["diff", "--to", "dir:database/schemas"],
+        ["check"],
+      ]);
+    },
+  );
+
+  runAutoDiffTest("defaults to a detected provider schema path when no config exists", async () => {
+    const { env, log, project } = await autoDiffFixture(["neon/schemas"], undefined, {
+      writeConfig: false,
+    });
+    await writeFile(join(project, "neon.toml"), "project_id = 'quiet-waterfall-123456'\n");
+    await writeFile(
+      join(project, "neon", "schemas", "accounts.sql"),
+      "CREATE TABLE app.t (id int);",
+    );
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { file_path: join(project, "neon", "schemas", "accounts.sql") },
+        tool_name: "Edit",
+      },
+      { cwd: project, env },
+    );
+
+    expect(result.code).toBe(0);
+    expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:neon/schemas"], ["check"]]);
   });
 
   runAutoDiffTest("skips auto-diff when one edit touches multiple schema paths", async () => {

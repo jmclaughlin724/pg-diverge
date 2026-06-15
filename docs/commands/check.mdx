@@ -11,10 +11,10 @@ You can pass files, a shell-expanded glob, or `-` for stdin:
 
 ```bash
 # Single file
-npx supaschema check supabase/migrations/20240101000000_add_accounts.sql
+npx supaschema check database/migrations/20240101000000_add_accounts.sql
 
 # Glob (all migrations)
-npx supaschema check supabase/migrations/*.sql
+npx supaschema check database/migrations/*.sql
 
 # From stdin
 cat migration.sql | npx supaschema check -
@@ -28,10 +28,10 @@ cat migration.sql | npx supaschema check -
 
 ```bash
 # Check the latest migration
-npx supaschema check supabase/migrations/20240101000000_add_accounts.sql
+npx supaschema check database/migrations/20240101000000_add_accounts.sql
 
 # Check all migrations
-npx supaschema check supabase/migrations/*.sql
+npx supaschema check database/migrations/*.sql
 
 # Check from stdin
 cat migration.sql | npx supaschema check -
@@ -151,7 +151,7 @@ Use this reporter inside a GitHub Actions job to surface violations as inline co
 ```yaml
 # .github/workflows/check.yml
 - name: Check migrations
-  run: npx supaschema check supabase/migrations/*.sql --reporter github
+  run: npx supaschema check database/migrations/*.sql --reporter github
 ```
 
 No extra upload step is required — GitHub Actions picks up the `::error` commands automatically.
@@ -162,7 +162,7 @@ Use this reporter to upload results to GitHub's code scanning dashboard, where t
 
 ```yaml
 - name: Check migrations (SARIF)
-  run: npx supaschema check supabase/migrations/*.sql --reporter sarif > results.sarif
+  run: npx supaschema check database/migrations/*.sql --reporter sarif > results.sarif
 
 - name: Upload SARIF
   uses: github/codeql-action/upload-sarif@v3
@@ -176,7 +176,7 @@ Catch violations before they ever reach CI by adding a Husky pre-commit hook:
 
 ```sh
 # .husky/pre-commit
-staged=$(git diff --cached --name-only --diff-filter=ACM -- 'supabase/migrations/*.sql')
+staged=$(git diff --cached --name-only --diff-filter=ACM -- 'database/migrations/*.sql')
 [ -z "$staged" ] || npx supaschema check $staged
 ```
 

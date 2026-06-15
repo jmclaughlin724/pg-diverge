@@ -162,11 +162,11 @@ program
   )
   .option(
     "--ensure-environment",
-    "stub Supabase-provisioned surfaces (auth helpers, cron schema) in the temporary databases (default under adapter supabase-auto)",
+    "stub Supabase-provisioned surfaces (auth helpers, cron schema) in the temporary databases (default under adapter auto)",
   )
   .option(
     "--no-ensure-environment",
-    "disable the Supabase environment stub even under adapter supabase-auto (for servers whose new databases already provision the managed surface)",
+    "disable the Supabase environment stub even under adapter auto (for servers whose new databases already provision the managed surface)",
   )
   .option(
     "--keep-databases",

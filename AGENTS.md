@@ -19,12 +19,12 @@ Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable 
 
 ## Migration Policy
 
-- Schema intent changes in a consuming project belong in the declarative SQL tree, usually `supabase/schemas/**`. Generated migrations come from `supaschema diff`.
+- Schema intent changes in a consuming project belong in the configured declarative SQL tree, such as `database/schemas/**`, `supabase/schemas/**`, `neon/schemas/**`, `aws-postgresql/schemas/**`, `cloud-sql/schemas/**`, `alloydb/schemas/**`, or `azure-postgresql/schemas/**`. Generated migrations come from `supaschema diff`.
 - Any `.sql` file containing `-- supaschema: lineage` is a generated artifact. Never edit it by hand; change the source tree and regenerate.
 - The bundled PostToolUse hooks auto-run `supaschema diff` then `supaschema check` after writes to schema-tree `.sql` files. Treat the returned migration name or `SUPA_*` diagnostic as the authoritative diff result. The hooks generate and prove; they never apply to a database.
 - Destructive intent must be explicit. Drops, column type changes, incompatible replacements, and other blocked operations require exact object keys in `hints.destructive` after reviewing the rendered SQL. Never commit `"*"`.
 - Preserve the lineage chain gate. For `SUPA_DIFF_LINEAGE_BROKEN`, diff from the post-migration state such as `--from database:<applied db>`. Use `--no-check-chain` only after explicit human approval.
-- Keep `transactionMode: "per-migration"` for transactional runners such as `supabase db push`. `CREATE INDEX CONCURRENTLY` is blocked under `adapter: "supabase-auto"` and belongs in the split concurrent lane only under `adapter: "postgres"`.
+- Keep `transactionMode: "per-migration"` for transactional runners such as `supabase db push`. `CREATE INDEX CONCURRENTLY` is blocked under `adapter: "auto"` and belongs in the split concurrent lane only under `adapter: "postgres"`.
 - `supaschema sync` is a gated operational command, not the default generation workflow. With no apply flag it is a dry run; with `--local` or `--remote` it runs status reconciliation and `check`, then delegates the actual apply/deploy to the Supabase CLI.
 - Database URLs resolve by flag (`$ENV` supported), then named `config.environments` via `--env`, then `SUPASCHEMA_DATABASE_URL`, then nearest `supabase/config.toml`. Never hard-code credentials or connection strings.
 - Decode blocking diagnostics with `supaschema explain <SUPA_CODE>`; recovery procedures live in `docs/configuration/hints.md`.

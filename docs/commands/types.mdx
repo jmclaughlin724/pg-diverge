@@ -34,7 +34,7 @@ Both paths are resolved relative to the process working directory where you run 
 ## Flags
 
 <ParamField path="--from" type="string">
-  The schema source to parse. Accepts the same source specifiers as `diff` and `inspect` — for example `dir:supabase/schemas` or `git:HEAD`. Defaults to the first entry in `schemaPaths` from your config file.
+  The schema source to parse. Accepts the same source specifiers as `diff` and `inspect` — for example `dir:database/schemas` or `git:HEAD`. Defaults to the first entry in `schemaPaths` from your config file.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">
@@ -52,7 +52,7 @@ Both paths are resolved relative to the process working directory where you run 
 npx supaschema types
 
 # Point at a specific schema directory
-npx supaschema types --from dir:supabase/schemas
+npx supaschema types --from dir:database/schemas
 
 # Write the TypeScript types to a custom path
 npx supaschema types --out src/lib/database.types.ts

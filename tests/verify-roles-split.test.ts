@@ -151,7 +151,7 @@ describe.skipIf(!databaseUrl)("verify managed-schema stub", () => {
       ].join("\n"),
     );
     const diagnostics = await verifyMigration({
-      config: { adapter: "supabase-auto" },
+      config: { adapter: "auto" },
       databaseUrl,
       ensureEnvironment: true,
       from: `dump:${join(directory, "from.sql")}`,

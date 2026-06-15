@@ -52,8 +52,8 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_CHECK_SEARCH_PATH` | error | Migration SQL depends on session `search_path`. |
 | `SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH` | warning | A `SECURITY DEFINER` function lacks function-local `SET search_path`. |
 | `SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION` | error/warning | An enum value added in this migration is used later in the same file; transactional runners fail. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
-| `SUPA_CHECK_NONTRANSACTIONAL_INDEX` | error/warning | `CREATE INDEX CONCURRENTLY` needs transaction wrapping disabled. Error under `supabase-auto` or `per-migration` mode. |
-| `SUPA_CHECK_NONTRANSACTIONAL_REFRESH` | error/warning | `REFRESH MATERIALIZED VIEW CONCURRENTLY` needs transaction wrapping disabled. Error under `supabase-auto` or `per-migration` mode. |
+| `SUPA_CHECK_NONTRANSACTIONAL_INDEX` | error/warning | `CREATE INDEX CONCURRENTLY` needs transaction wrapping disabled. Error under `adapter: "auto"` or `per-migration` mode. |
+| `SUPA_CHECK_NONTRANSACTIONAL_REFRESH` | error/warning | `REFRESH MATERIALIZED VIEW CONCURRENTLY` needs transaction wrapping disabled. Error under `adapter: "auto"` or `per-migration` mode. |
 | `SUPA_CHECK_ALTER_COLUMN_TYPE_REWRITE` | warning | `ALTER COLUMN TYPE` can rewrite the table under an `ACCESS EXCLUSIVE` lock. |
 | `SUPA_CHECK_SET_NOT_NULL_SCAN` | warning | `SET NOT NULL` scans the table unless a validated `CHECK` constraint already proves it. |
 | `SUPA_CHECK_DEPARSE_MISMATCH` | warning | A statement does not round-trip through the deparser to an identical parse tree; `normalize: "deparse"` would keep its source text. |

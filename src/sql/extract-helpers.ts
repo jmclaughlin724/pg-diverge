@@ -132,7 +132,7 @@ export function supabaseViewSecurityDiagnostics(
   objects: SchemaObject[],
   config: SupaschemaConfig,
 ): Diagnostic[] {
-  if (config.adapter !== "supabase-auto") {
+  if (config.adapter !== "auto") {
     return [];
   }
   const diagnostics: Diagnostic[] = [];
@@ -165,7 +165,7 @@ function managedSchemaDiagnostics(
   config: SupaschemaConfig,
   file?: string,
 ): Diagnostic[] {
-  if (config.adapter !== "supabase-auto") {
+  if (config.adapter !== "auto") {
     return [];
   }
   const refSchema = object.ref.kind === "schema" ? object.ref.name : object.ref.schema;

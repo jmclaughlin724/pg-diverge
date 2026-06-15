@@ -21,6 +21,8 @@ npm install --save-dev supaschema
 
 The install creates missing config, installs the supaschema skill/rule/hook files, merges hook wiring, and adds a tagged supaschema addendum to `AGENTS.md` and `CLAUDE.md`. If install records multiple possible schema or migration paths in `.supaschema/install.json`, ask which paths to use before the first diff.
 
+Agents should treat `supaschema.config.json` as the source of truth for `schemaPaths`, `migrationsDir`, and named database URL references. Do not assume `supabase/schemas` or `supabase/migrations` unless those paths are configured.
+
 ## llms.txt
 
 The published Mintlify docs expose LLM-readable documentation through `llms.txt` and the full-document export. Use these URLs when an assistant needs product documentation context without scraping the rendered site:
