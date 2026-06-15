@@ -1,7 +1,7 @@
 ---
 title: "Package Boundary"
 description: "How supaschema decides what belongs in the npm package, consumer setup, and maintainer workspace."
-keywords: ["package boundary","npm package","files","consumer setup"]
+keywords: ["package boundary", "npm package", "files", "consumer setup"]
 ---
 
 Use this page when changing release packaging, agent bundle files, or install-time setup.
@@ -26,57 +26,62 @@ There is intentionally no root `.npmignore`.
 | Consumer setup | `postinstall` | Files written or merged into the installing project |
 | Maintainer workspace | git-tracked repo files outside the package allowlist | Tooling for developing supaschema itself |
 
-The npm tarball and consumer setup are not the same thing. The tarball is what
-npm downloads. The installer is the script that uses selected tarball files and
-generated templates to prepare the consuming project.
+The npm tarball and consumer setup are not the same thing. The tarball is what npm downloads. The installer is the script that uses selected tarball files and generated templates to prepare the consuming project.
 
 ## npm package
 
-The package allowlist includes runtime and public-support assets: the built CLI
-and library, config schema, docs, examples, public benchmark/corpus assets, and
-the supaschema agent bundle.
+The package allowlist includes runtime and public-support assets: the built CLI and library, config schema, docs, examples, public benchmark/corpus assets, and the supaschema agent bundle.
 
-Do not add broad repo directories to the allowlist just because a single file is
-needed. Add the narrowest file or directory that matches the consumer contract.
+Do not add broad repo directories to the allowlist just because a single file is needed. Add the narrowest file or directory that matches the consumer contract.
 
-Generated build caches must not live inside an allowlisted directory: a broad
-entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to
-`.tmp/` rather than `dist/`. `tests/package-contents.test.ts` fails if any
-`.tsbuildinfo`, source file, or maintainer tooling reaches the tarball.
+Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package-contents.test.ts` fails if any `.tsbuildinfo`, source file, or maintainer tooling reaches the tarball.
 
 ## Consumer setup
 
-The installer owns one-step setup for consuming projects. The install contents
-list lives in [Introduction](/introduction#what-gets-installed); keep it there
-instead of duplicating it across release and packaging references.
+The installer owns one-step setup for consuming projects. The install contents list lives in [Introduction](/introduction#what-gets-installed); keep it there instead of duplicating it across release and packaging references.
 
-Do not copy maintainer workspace tooling into consumer projects unless the
-consumer contract explicitly changes and package tests are updated at the same
-time.
+`postinstall` and the `supaschema init` command perform this setup through one shared scaffolder, `bin/scaffold.mjs` (a dist-free module that ships in the `bin` allowlist entry). `postinstall` is the lifecycle wrapper; `init` calls the same core directly, so `npx supaschema init` reproduces the identical scaffold when npm does not run install scripts (npm v12 ignores dependency install scripts by default).
+
+Do not copy maintainer workspace tooling into consumer projects unless the consumer contract explicitly changes and package tests are updated at the same time.
 
 ## Maintainer workspace
 
-Repo-local editor, language-server, Python, MCP, Code Atlas, FastMCP, lint,
-test, guard, and release tooling is for developing supaschema itself.
+Repo-local editor, language-server, Python, MCP, Code Atlas, FastMCP, lint, test, guard, and release tooling is for developing supaschema itself.
 
-These files stay out of the package allowlist unless they become runtime product
-assets or consumer install outputs.
+These files stay out of the package allowlist unless they become runtime product assets or consumer install outputs.
 
 ## Why not .npmignore?
 
-npm supports `.npmignore`, but it is a blocklist. Blocklists are fragile in a
-repo that has many development surfaces and only a small, deliberate consumer
-surface.
+npm supports `.npmignore`, but it is a blocklist. Blocklists are fragile in a repo that has many development surfaces and only a small, deliberate consumer surface.
 
-npm also falls back to `.gitignore` when `.npmignore` is missing and no `files`
-allowlist is present. Because supaschema does have a `files` allowlist, the root
-package boundary should stay in `package.json`.
+npm also falls back to `.gitignore` when `.npmignore` is missing and no `files` allowlist is present. Because supaschema does have a `files` allowlist, the root package boundary should stay in `package.json`.
 
 Sources:
 
 - [npm package.json files](https://docs.npmjs.com/cli/v8/configuring-npm/package-json/#files)
 - [npm publish package contents](https://docs.npmjs.com/cli/v8/commands/npm-publish/#files-included-in-package)
 - [npm developer guide](https://docs.npmjs.com/cli/v9/using-npm/developers/#keeping-files-out-of-your-package)
+
+## Consumer lifecycle verification
+
+Three test owners prove the three surfaces, and they move together with this page and the guards (no single test should grow to cover another's surface):
+
+| Phase | Owner | Proves |
+| --- | --- | --- |
+| Download | `tests/package-contents.test.ts` | The shipped file list, plus an `examples/` allowlist and tarball size budget so a sample cannot silently bloat the download. |
+| Install | `tests/database-url.test.ts` | `postinstall` scaffolds the consuming project (config, schema/migration dirs, agent bundle, install manifest). |
+| Use | `tests/consumer-lifecycle.test.ts` | The full chain end to end: pack, `npm install` the tarball into a throwaway project, edit a schema in the scaffolded tree, then run the _installed_ `supaschema` binary and confirm an accurate, replay-safe migration and accurate generated types. |
+
+The "use" proof installs the real tarball rather than extracting it, because a bare extract cannot run the CLI — `dist/cli.js` needs its runtime dependencies. This is the npm-documented "install the tarball, run the installed bin" pattern.
+
+<Note>
+  A local registry (Verdaccio) publish-then-install flow is the optional
+  high-fidelity tier for exercising registry resolution, dist-tags, and the
+  npm-triggered install lifecycle. It is intentionally not used by default: this
+  is a single-package CLI whose `bin` is a two-line loader of `dist`, so a
+  tarball install is hermetic, offline, and cross-platform without the extra
+  service.
+</Note>
 
 ## Verification
 
@@ -86,7 +91,7 @@ Run these checks when packaging or installer behavior changes:
 npm pack --dry-run --json
 npm run check:package
 npm run guard
-npx vitest run tests/editor-surfaces.test.ts tests/database-url.test.ts
+npx vitest run tests/editor-surfaces.test.ts tests/database-url.test.ts tests/package-contents.test.ts tests/consumer-lifecycle.test.ts
 ```
 
 The dry-run tarball is the authoritative preview of what npm will publish.

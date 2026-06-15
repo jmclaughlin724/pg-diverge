@@ -1,5 +1,5 @@
 {
-  "$schema": "https://pg-language-server.com/0.25.3/schema.json",
+  "$schema": "https://pg-language-server.com/latest/schema.json",
   "extends": [],
   "vcs": {
     "enabled": true,

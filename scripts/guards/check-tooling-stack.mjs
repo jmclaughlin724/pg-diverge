@@ -68,8 +68,9 @@ for (const [name, version] of Object.entries(toolPins)) {
 
 assert(packageJson.scripts?.lint === "ultracite check .", "lint must run Ultracite check");
 assert(
-  packageJson.scripts?.format === "ultracite fix . && npm run format:md && npm run format:sql",
-  "format must run Ultracite fix, then Prettier (format:md), then pgformatter (format:sql)"
+  packageJson.scripts?.format ===
+    "npm run format:json && ultracite fix . && npm run format:md && npm run format:sql && npm run format:toml && npm run format:sh && npm run py:fix",
+  "format must be the single write command chaining every writer: sort-package-json (format:json), Ultracite (Biome), Prettier (format:md), pgformatter (format:sql), taplo (format:toml), shfmt (format:sh), ruff (py:fix)"
 );
 assert(
   packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{md,mdx,yml,yaml}"',
@@ -78,6 +79,23 @@ assert(
 assert(
   packageJson.scripts?.["format:sql"] === "node scripts/format-sql.mjs",
   "format:sql must run the pgformatter SQL lane"
+);
+assert(
+  packageJson.scripts?.["format:toml"] === "node scripts/format-toml.mjs",
+  "format:toml must run the taplo TOML lane"
+);
+assert(
+  packageJson.scripts?.["format:sh"] === "node scripts/format-sh.mjs",
+  "format:sh must run the shfmt (sh-syntax) shell lane"
+);
+assert(
+  packageJson.scripts?.["format:json"] === "sort-package-json",
+  "format:json must run sort-package-json for canonical package.json key order"
+);
+assert(
+  packageJson.scripts?.["py:fix"] ===
+    "uv run --package supaschema-agent-mcp ruff check --fix services/agent-mcp && uv run --package supaschema-agent-mcp ruff format services/agent-mcp",
+  "py:fix must run ruff --fix (lint + import sort) then ruff format — the Python write lane"
 );
 assert(packageJson.scripts?.["lint:fix"] === "ultracite fix .", "lint:fix must run Ultracite fix");
 assert(
@@ -147,10 +165,12 @@ function assertAgentPackageSurface(files) {
     ".agents/skills/supaschema",
     ".claude/hooks/auto-diff-on-schema-change.mjs",
     ".claude/hooks/block-generated-migration-edits.mjs",
+    ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
     ".claude/rules/supaschema.md",
     ".claude/skills/supaschema",
     ".codex/hooks/auto-diff-on-schema-change.mjs",
-    ".codex/hooks/supaschema-tool-gate.mjs",
+    ".codex/hooks/block-generated-migration-edits.mjs",
+    ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
     ".codex/hooks.json",
     ".codex/rules/supaschema.rules",
     ".codex/skills/supaschema",

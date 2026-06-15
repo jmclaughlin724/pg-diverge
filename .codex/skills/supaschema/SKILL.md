@@ -17,7 +17,7 @@ The normal consumer setup is one package install: `npm install supaschema`. Trea
 
 Before the first schema edit, check `.supaschema/install.json` if it exists. If it says `"pathConfirmationNeeded": true`, inspect its candidate `schemaPaths` and `migrationsDirs`, ask the user which paths to use, update `supaschema.config.json`, then run the workflow. Do not generate a migration from a guessed path; the bundled hooks also skip auto-diff while confirmation is pending.
 
-Use the configured `schemaPaths` and `migrationsDir` as the source of truth. Do not create a parallel schema tree, a second migrations directory, or a new config unless the user explicitly asks to change project layout.
+Use the configured `schemaPaths`, `sources`, and `migrationsDir` as the source of truth. Do not create a parallel schema tree, a second migrations directory, or a new config unless the user explicitly asks to change project layout.
 
 ## Config Reference
 
@@ -25,6 +25,7 @@ Read `supaschema.config.json` before editing schemas. These keys are the agent-f
 
 - `adapter`: `auto` is the default automated supaschema workflow. It means generate migrations with `diff`, gate them with `check` / `verify`, and refresh existing `typesFile` / `zodFile` outputs from the declarative tree. It is not a Supabase switch.
 - `schemaPaths`: declarative SQL roots to edit and parse. Typical install-selected roots are `database/schemas`, `supabase/schemas`, `neon/schemas`, `aws-postgresql/schemas`, `cloud-sql/schemas`, `alloydb/schemas`, or `azure-postgresql/schemas`.
+- `sources`: default before/after sources for zero-source-flag `diff`, `plan`, and `verify`. Install writes `sources.from: "auto"` and `sources.to: "dir:<schemaPaths[0]>"`; examples or fixture projects can pin `dump:`, `dir:`, `git:`, `database:`, or `catalog:` values when that source is the project contract.
 - `migrationsDir`: where generated migrations are written and where zero-arg `check` / `verify` look for pending migrations.
 - `typesFile` and `zodFile`: generated TypeScript and Zod output paths. `diff` refreshes an output only after the file already exists; run `supaschema types` once to create them.
 - `managedSchemas`: externally owned schemas that the declarative tree cannot claim. The default protects common Supabase-provisioned schemas.
@@ -40,7 +41,7 @@ Read `supaschema.config.json` before editing schemas. These keys are the agent-f
    supaschema diff
    ```
 
-   Zero-flag defaults (printed to stderr; flags override): `--from` resolves to the database (then `git:HEAD`), `--to` to the config schema tree, and the file lands in `config.migrationsDir` as `<UTC timestamp>_<derived name>.sql`. Pass `--name <snake_case>` to control the name. The write is no-clobber and chain-gated. If it exits 2, read the diagnostic:
+   Zero-source-flag defaults come from `config.sources` and are printed to stderr. `sources.from: "auto"` resolves to the database and then `git:HEAD`; `sources.to` points at the configured declarative tree. The file lands in `config.migrationsDir` as `<UTC timestamp>_<derived name>.sql`. Pass `--name <snake_case>` only when the human wants a specific file name. The write is no-clobber and chain-gated. If it exits 2, read the diagnostic:
    - `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` / `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED` / `SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE` / `SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED` — review the rendered `-- BLOCKED` section, then add the exact object key to `hints.destructive` in `supaschema.config.json` and regenerate. Never use `"*"` in committed config.
    - `SUPA_DIFF_LINEAGE_BROKEN` — a pending generated migration exists; diff from the post-migration state instead: `--from database:<db with pending applied>`.
    - `SUPA_DIFF_LINEAGE_DUPLICATE` — the transition is already pending; apply or remove the pending migration instead of regenerating.

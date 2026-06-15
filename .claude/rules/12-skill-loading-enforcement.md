@@ -7,14 +7,15 @@ Relevant project skills are loaded by **deterministic rules**, not model judgmen
 ## How it works
 
 - **Source of truth:** `scripts/skills/skill-routing.json` (`skill-routing-v1`) maps each project skill to triggers — `whenToolEdits`/`whenPathGlob` (file-path globs), `whenBashMatches` (command substrings), `whenPromptMatches` (prompt substrings) — plus `refs` (required reference files) and `enforce` (gate vs advisory). Relevance is matched against the hook's own inputs + an on-disk scan of `.claude/skills/**/SKILL.md`; it never uses the skill `description` matcher or the model's `<system-reminder>` (hooks cannot see it).
-- **Resolver:** `scripts/skills/skill-router.mjs` (shared; no regex / ReDoS-safe — segment glob matcher + substring matching + `YAML`/`JSON.parse`). Subcommands `init|inject|gate|record|subagent`.
-- **Per-session ledger:** `.tmp/skill-gate/<session_id>.json` records loaded skills + read refs. Keyed by `session_id` so concurrent sessions never overlap.
-- **Hooks** (`.claude/hooks/`; the Codex runtime has its own native hooks under `.codex/hooks/` — `npm run sync:llm` mirrors the six enumerated skills to `.codex/skills`/`.agents/skills`, not hooks):
-  - `skill_inject.sh` (UserPromptSubmit) — pushes matched skills' `SKILL.md` + `refs` as `additionalContext` and credits the ledger.
-  - `skill_gate.sh` (PreToolUse `*`) — on **any** tool whose action touches a governed surface, if the required skill (+refs) is not in the ledger it denies once, delivering the skill's full `SKILL.md` + `refs` content in the denial reason and crediting the ledger. No tool is exempt; the gate loads the content itself rather than waiting for a `Skill` call.
-  - `skill_record.sh` (PostToolUse `Skill|Read`) — records a loaded skill / read ref.
-  - `skill_subagent_gate.sh` (PreToolUse `Task`) — denies a governed subagent spawn whose prompt doesn't brief the required skill (subagents start at zero context).
-  - `skill_session_init.sh` (SessionStart) — clears the session ledger.
+- **Resolver:** `scripts/skills/skill-hook-core.mjs` owns routing, ledgers, and hook output formatting. `scripts/skills/skill-router.mjs` is a compatibility CLI over the same core. The resolver uses segment glob matching + substring matching + `JSON.parse`.
+- **Per-session ledger:** `.tmp/skill-gate/<session_id>.json` records loaded skills. Keyed by `session_id` so concurrent sessions do not overlap.
+- **Hooks:** Claude and Codex have separate native hook adapters. `npm run sync:llm` mirrors the six enumerated skills to `.codex/skills`/`.agents/skills`, not hooks.
+  - Claude: `.claude/hooks/skill-session-init.mjs`, `skill-inject.mjs`, `skill-gate.mjs`, `skill-record.mjs`, and `skill-subagent-gate.mjs`.
+  - Codex: `.codex/hooks/skill-session-init.mjs`, `skill-inject.mjs`, `skill-gate.mjs`, and `skill-record.mjs`.
+  - `skill-inject.mjs` (UserPromptSubmit) pushes matched skills' `SKILL.md` + optional `refs` as `additionalContext` and credits the ledger.
+  - `skill-gate.mjs` (PreToolUse) denies once when a governed edit touches an unloaded required skill, delivering the skill's full `SKILL.md` + optional `refs` content in the denial reason and crediting the ledger. The re-run proceeds with the guidance in context.
+  - `skill-record.mjs` (PostToolUse `Skill|Read`) records a loaded skill / read ref.
+  - `skill-session-init.mjs` (SessionStart) clears the session ledger.
 
 ## Modes & posture
 
@@ -26,7 +27,7 @@ Relevant project skills are loaded by **deterministic rules**, not model judgmen
 ## Enforced by
 
 - `scripts/guards/check-agent-hooks.mjs` (`npm run guard:agent`) — the hook files + their settings registration cannot silently disappear.
-- `scripts/guards/check-agent-surface-parity.mjs` — byte-parity of the six mirrored skills across `.claude/skills` ≡ `.codex/skills` ≡ `.agents/skills`, plus the shared Code Atlas doctrine string in `AGENTS.md`, `.claude/rules/supaschema.md`, and `.codex/rules/supaschema.rules`. Codex hooks and numbered rules are separate native implementations kept semantically aligned by hand (`AGENTS.md`), not byte-mirrored.
+- `scripts/guards/check-agent-surface-parity.mjs` — byte-parity of the six mirrored skills across `.claude/skills` ≡ `.codex/skills` ≡ `.agents/skills`, the shared Code Atlas doctrine string in `AGENTS.md` and `.claude/rules/supaschema.md`, and a Codex rule pointer back to the canonical rule. Codex hooks and numbered rules are separate native implementations kept aligned by hand (`AGENTS.md`), not byte-mirrored.
 - `scripts/guards/check-no-regex-in-scripts.mjs` (Rule 07) — the resolver stays regex-free.
 
 STOP if a governed surface is edited without its required skill loaded under `enforce` mode, if the routing manifest names a skill/ref that doesn't exist, if the resolver introduces regex over code structure, if the hooks are unregistered from `.claude/settings.json`, or if managed LLM surfaces drift.

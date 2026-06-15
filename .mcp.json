@@ -26,15 +26,7 @@
         "CCLSP_CONFIG_PATH": ".claude/cclsp.json"
       }
     },
-    "codeatlas": {
-      "command": "node",
-      "args": ["scripts/code-atlas/mcp-wrapper.mjs", "."],
-      "env": {
-        "CODEATLAS_MCP_ALLOW_NPX": "1",
-        "CODEATLAS_BROWSER": "0"
-      }
-    },
-    "repo_context": {
+    "supaschema": {
       "command": "uv",
       "args": [
         "run",
@@ -76,7 +68,7 @@
     },
     "supaschema-docs": {
       "type": "http",
-      "url": "https://supaschema.com/mcp"
+      "url": "https://supaschema.com/docs/mcp"
     }
   }
 }

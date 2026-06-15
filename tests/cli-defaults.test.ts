@@ -50,6 +50,22 @@ describe("source defaults", () => {
     expect(resolved.notice).toContain("--to dir:db/schemas");
   });
 
+  it("uses config-owned source defaults before database/git fallback", async () => {
+    const custom = resolveConfig({
+      schemaPaths: ["ignored/schemas"],
+      sources: { from: "dump:baseline.sql", to: "dir:db/schemas" },
+    });
+
+    const resolved = await resolveSourceDefaults({}, custom, () =>
+      Promise.reject(new Error("database lookup should not run"))
+    );
+
+    expect(resolved.from).toBe("dump:baseline.sql");
+    expect(resolved.to).toBe("dir:db/schemas");
+    expect(resolved.notice).toContain("--from dump:baseline.sql");
+    expect(resolved.notice).toContain("--to dir:db/schemas");
+  });
+
   it("defaults --from to the resolved database and redacts credentials", async () => {
     const resolved = await resolveSourceDefaults(
       {},

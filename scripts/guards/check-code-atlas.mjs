@@ -30,27 +30,26 @@ for (const node of atlas.nodes) {
 }
 
 const mcp = readJson(".mcp.json");
-assert(mcp.mcpServers?.codeatlas?.command === "node", ".mcp.json codeatlas must use node wrapper");
 assert(
-  mcp.mcpServers?.codeatlas?.args?.includes("scripts/code-atlas/mcp-wrapper.mjs"),
-  ".mcp.json codeatlas must point at mcp-wrapper.mjs"
+  !mcp.mcpServers?.codeatlas,
+  ".mcp.json must not expose standalone codeatlas; use supaschema.code_atlas_query"
 );
 assert(
-  mcp.mcpServers?.codeatlas?.env?.CODEATLAS_MCP_ALLOW_NPX === "1",
-  ".mcp.json codeatlas must enable npx fallback"
+  mcp.mcpServers?.supaschema?.command === "uv",
+  ".mcp.json supaschema must use the uv FastMCP server"
+);
+assert(
+  mcp.mcpServers?.supaschema?.args?.includes("fastmcp.json"),
+  ".mcp.json supaschema must run fastmcp.json"
 );
 const codexConfig = readText(".codex/config.toml");
 assert(
-  codexConfig.includes("[mcp_servers.codeatlas]"),
-  ".codex/config.toml missing codeatlas server"
+  !codexConfig.includes("[mcp_servers.codeatlas]"),
+  ".codex/config.toml must not expose standalone codeatlas"
 );
 assert(
-  codexConfig.includes("scripts/code-atlas/mcp-wrapper.mjs"),
-  "Codex codeatlas must use wrapper"
-);
-assert(
-  codexConfig.includes('CODEATLAS_MCP_ALLOW_NPX = "1"'),
-  "Codex codeatlas must enable npx fallback"
+  codexConfig.includes("[mcp_servers.supaschema]"),
+  ".codex/config.toml missing local supaschema server"
 );
 
 const entrypoints = query("entrypoints");
@@ -75,6 +74,9 @@ assert(
 );
 const health = query("health");
 assert(Array.isArray(health.issues), "health query must return issues array");
+const mcpStatus = query("mcp-status");
+assert(mcpStatus.localAtlas?.nodes > 0, "mcp-status must report local atlas nodes");
+assert(mcpStatus.liveMcp?.wrapper === "scripts/code-atlas/mcp-wrapper.mjs", "mcp wrapper drifted");
 
 ok("CODE_ATLAS_OK");
 

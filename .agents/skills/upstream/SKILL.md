@@ -43,7 +43,7 @@ If the needed MCP is unavailable, find the official website reference for that s
 
 ## Generated types
 
-supaschema **generates** `database.types.ts` and `database.zod.ts` from the declarative SQL tree and source model (`supaschema types`), not from live database introspection or a Supabase typed client (Rule 00 and `.claude/rules/supaschema.md`). When the target involves a DB-backed shape, the declarative tree plus `supaschema types` is the source of truth — do not hand-author or mirror generated shapes.
+supaschema **generates** `database.types.ts` and `database.zod.ts` from the declarative SQL tree and source model (`supaschema types`), not from live database introspection or a Supabase typed client (`.claude/rules/supaschema.md`). When the target involves a DB-backed shape, the declarative tree plus `supaschema types` is the source of truth — do not hand-author or mirror generated shapes.
 
 ## Procedure
 

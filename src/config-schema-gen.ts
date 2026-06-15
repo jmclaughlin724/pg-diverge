@@ -10,7 +10,7 @@ const schema = {
   ...configJsonSchema(),
 };
 await writeFile(
-  resolve(packageRoot, "config-schema.json"),
+  resolve(packageRoot, "supaschema-config.schema.json"),
   `${JSON.stringify(schema, null, 2)}\n`,
   "utf8"
 );

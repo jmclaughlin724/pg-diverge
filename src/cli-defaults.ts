@@ -22,10 +22,11 @@ export function resolveMigrationsDir(
 }
 
 /**
- * Zero-flag source resolution: --to defaults to the declarative tree from
- * config.schemaPaths, --from defaults to the resolved database (the applied
- * state) and falls back to git:HEAD when no database URL resolves. The
- * notice names every defaulted lane so the chosen sources are never silent.
+ * Zero-flag source resolution: config.sources owns machine-readable defaults.
+ * sources.from="auto" resolves to the database (the applied state) and falls
+ * back to git:HEAD when no database URL resolves. sources.to falls back to the
+ * declarative tree from config.schemaPaths. The notice names every defaulted
+ * lane so the chosen sources are never silent.
  */
 export async function resolveSourceDefaults(
   options: { from?: string; to?: string },
@@ -33,14 +34,18 @@ export async function resolveSourceDefaults(
   resolveDbUrl: () => Promise<string | undefined>
 ): Promise<ResolvedSources> {
   const defaulted: string[] = [];
-  const to = options.to ?? defaultTreeSource(config);
+  const to = options.to ?? config.sources.to ?? defaultTreeSource(config);
   if (options.to === undefined) {
     defaulted.push(`--to ${to}`);
   }
   let from = options.from;
   if (from === undefined) {
-    const databaseUrl = await resolveDbUrl();
-    from = databaseUrl === undefined ? "git:HEAD" : `database:${databaseUrl}`;
+    if (config.sources.from === "auto") {
+      const databaseUrl = await resolveDbUrl();
+      from = databaseUrl === undefined ? "git:HEAD" : `database:${databaseUrl}`;
+    } else {
+      from = config.sources.from;
+    }
     defaulted.push(`--from ${redactSecrets(from)}`);
   }
   const notice =

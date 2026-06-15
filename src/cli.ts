@@ -1,5 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { checkMigrationSql } from "./check.js";
 import type { CheckReporter, FileDiagnostics } from "./check-reporters.js";
@@ -15,7 +16,7 @@ import { filterModel, registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
-import { defaultConfigFile, loadConfig } from "./config.js";
+import { loadConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors, redactSecrets } from "./diagnostics.js";
@@ -65,19 +66,31 @@ Exit codes:
 
 program
   .command("init")
-  .description("Create supaschema.config.json in the current directory.")
+  .description(
+    "Scaffold the full supaschema setup in the current directory — config, schema/migration directories, agent rules/skills/hooks, and AGENTS/CLAUDE guidance. This is the same setup `postinstall` performs; run it when npm did not run install scripts (npm v12 defaults to ignore-scripts) or to repair setup. It is idempotent: an existing config is left untouched and the managed guidance block is upserted in place."
+  )
   .action(async () => {
-    const path = resolve(process.cwd(), "supaschema.config.json");
-    try {
-      await writeFile(path, defaultConfigFile, { flag: "wx" });
-      process.stdout.write(`${path}\n`);
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "EEXIST") {
-        process.stderr.write("supaschema.config.json already exists\n");
-        process.exitCode = 1;
-        return;
-      }
-      throw error;
+    // Resolve the installed package root from the compiled CLI (dist/cli.js -> ../),
+    // the same anchor readPackageVersion uses, then load the shared scaffolder that
+    // ships at <package>/bin/scaffold.mjs. The dynamic, URL-form import is the
+    // OS-safe convention for a computed path that points out of dist into bin/.
+    const packageRoot = fileURLToPath(new URL("../", import.meta.url));
+    const packageVersion = await readPackageVersion();
+    const { scaffoldProject } = await import(
+      pathToFileURL(join(packageRoot, "bin", "scaffold.mjs")).href
+    );
+    const { installed, skipped, pathConfirmationNeeded } = await scaffoldProject({
+      interactive: true,
+      packageRoot,
+      packageVersion,
+      targetDir: process.cwd(),
+    });
+    const suffix = skipped.length > 0 ? `; skipped ${skipped.join(", ")}` : "";
+    process.stdout.write(`supaschema: installed ${installed.join(", ")}${suffix}\n`);
+    if (pathConfirmationNeeded) {
+      process.stdout.write(
+        "supaschema: confirm detected schema/migration paths in .supaschema/install.json before the first diff\n"
+      );
     }
   });
 
@@ -152,8 +165,8 @@ program
 
 program
   .command("verify")
-  .option("--from <source>", "source model before the change (default: database, then git:HEAD)")
-  .option("--to <target>", "source model after the change (default: the config schema tree)")
+  .option("--from <source>", "source model before the change (default: config.sources.from)")
+  .option("--to <target>", "source model after the change (default: config.sources.to)")
   .option(
     "--migration <file>",
     "migration SQL file to apply twice (default: newest .sql in config.migrationsDir)"

@@ -29,6 +29,13 @@ const environmentSchema = z.strictObject({
   databaseUrl: z.string(),
 });
 
+const sourcesSchema = z
+  .strictObject({
+    from: z.string().default("auto"),
+    to: z.string().optional(),
+  })
+  .default({ from: "auto" });
+
 const adapterSchema = z.literal("auto").default("auto");
 
 export const supaschemaConfigSchema = z.strictObject({
@@ -63,6 +70,7 @@ export const supaschemaConfigSchema = z.strictObject({
   renameDetection: z.enum(["hints-only", "off"]).default("hints-only"),
   schemaPaths: z.array(z.string()).default(["database/schemas"]),
   schemas: schemaFilterSchema,
+  sources: sourcesSchema,
   statementTimeout: z.string().default("60s"),
   transactionMode: z.enum(["per-migration", "per-statement"]).default("per-migration"),
   validators: z.array(z.string()).default(["internal-parser"]),
@@ -170,7 +178,7 @@ function isModuleMissing(error: unknown): boolean {
 }
 
 const scaffoldConfig = {
-  $schema: "./node_modules/supaschema/config-schema.json",
+  $schema: "./node_modules/supaschema/supaschema-config.schema.json",
   adapter: defaultConfig.adapter,
   cascade: defaultConfig.cascade,
   destructiveChanges: defaultConfig.destructiveChanges,
@@ -188,6 +196,7 @@ const scaffoldConfig = {
   renameDetection: defaultConfig.renameDetection,
   schemaPaths: defaultConfig.schemaPaths,
   schemas: defaultConfig.schemas,
+  sources: defaultConfig.sources,
   statementTimeout: defaultConfig.statementTimeout,
   transactionMode: defaultConfig.transactionMode,
   validators: defaultConfig.validators,

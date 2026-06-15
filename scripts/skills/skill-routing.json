@@ -21,7 +21,7 @@
         ".mcp.json",
         ".codex/config.toml"
       ],
-      "reason": "Repo-context MCP changes must preserve read-only path security and fixed Code Atlas access."
+      "reason": "Local supaschema MCP changes must preserve read-only path security and fixed Code Atlas access."
     },
     {
       "skill": "upstream",

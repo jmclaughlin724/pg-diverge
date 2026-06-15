@@ -97,7 +97,10 @@ const redactSecrets = await loadRedactSecrets();
 try {
   const payload = JSON.parse(readFileSync(0, "utf8"));
   const projectDir = resolve(
-    (typeof payload?.cwd === "string" && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || "."
+    (typeof payload?.cwd === "string" && payload.cwd) ||
+      process.env.CLAUDE_PROJECT_DIR ||
+      process.env.CODEX_PROJECT_DIR ||
+      "."
   );
   const targets = editTargets(payload, projectDir);
   const pathState = await readPathState(projectDir);
@@ -437,7 +440,7 @@ function pathConfirmationMessage(projectDir, changed, state) {
     .map((path) => rel(projectDir, path))
     .join(
       ", "
-    )} because path confirmation is pending from install. Inspect .supaschema/install.json, ask the user which schemaPaths and migrationsDir to use, update supaschema.config.json, then run \`supaschema diff\` and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
+    )} because path confirmation is pending from install. Inspect .supaschema/install.json, ask the user which schemaPaths, sources.to, and migrationsDir to use, update supaschema.config.json, then run \`supaschema diff\` and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
 }
 
 function strings(value) {

@@ -25,7 +25,7 @@ What this PR changes and why. Link any related issue (`Closes #123`).
 - [ ] ESM preserved; npm only (no pnpm/yarn, `package-lock.json` intact).
 - [ ] Tests added or updated; snapshot changes are intentional and explained below.
 - [ ] Docs updated for any user-facing flag/config/diagnostic change (`npm run docs:check` if `docs/**` touched).
-- [ ] Config changes keep `config-schema.json`, docs, and examples aligned.
+- [ ] Config changes keep `supaschema-config.schema.json`, docs, and examples aligned.
 - [ ] A `.changeset/` entry is included for any user-facing change (run `npm run changeset`).
 - [ ] **All commits are signed off** (DCO — see below).
 

@@ -20,12 +20,13 @@ maintainer-only tooling for developing supaschema itself. Keep those surfaces se
 - Maintainer workspace surfaces stay repo-only unless the consumer contract explicitly changes. Examples include `.vscode`, `.mcp.json`, `.claude/cclsp.json`, Postgres Language Server config, Python/FastMCP support, Code Atlas, tests, guards, source files, CI support, and lint config.
 - Generated and incremental build artifacts stay out of every allowlisted directory. A broad `files` entry like `dist` sweeps in everything beneath it, so write caches such as a `tsBuildInfoFile` to `.tmp/` (gitignored, not in `files`), never inside `dist/`. A `.tsbuildinfo` must never reach the published tarball.
 - When adding, moving, or deleting a package or consumer install surface, update `docs/reference/package-boundary.mdx`, package tests, and tooling guards in the same change.
+- The download→install→use lifecycle has three test owners that move together with this rule and `docs/reference/package-boundary.mdx`, and none should grow to cover another's surface: `tests/package-contents.test.ts` (shipped tarball file list plus an `examples/` allowlist and size budget so a fixture cannot bloat the download), `tests/database-url.test.ts` (the `postinstall` scaffold), and `tests/consumer-lifecycle.test.ts` (pack, `npm install` the tarball into a throwaway consumer, then run the installed binary to prove an accurate migration and generated types). A bare tarball extract cannot run the CLI (`dist` needs its runtime deps), so the lifecycle proof installs the tarball — the npm-documented "install the tarball, run the installed bin" pattern. A local registry (Verdaccio) flow is the optional high-fidelity tier, not the default.
 
 ## Enforced by
 
 - `npm run guard`.
 - `npm run check:package`.
 - `npm pack --dry-run --json`.
-- `npx vitest run tests/editor-surfaces.test.ts tests/database-url.test.ts tests/package-contents.test.ts`.
+- `npx vitest run tests/editor-surfaces.test.ts tests/database-url.test.ts tests/package-contents.test.ts tests/consumer-lifecycle.test.ts`.
 
 STOP if root `.npmignore` is introduced, a maintainer-only support surface enters `package.json` `files`, a consumer agent surface is removed from the tarball, a `.tsbuildinfo` or other build cache appears in the dry-run tarball, a lifecycle script (`prepare`/`preinstall`/`postinstall`) writes to stdout and breaks `npm pack` tarball-name or `--json` parsing, or `postinstall` writes repo-only tooling into a consuming project without a documented contract change.

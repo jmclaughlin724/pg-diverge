@@ -97,7 +97,10 @@ const redactSecrets = await loadRedactSecrets();
 try {
   const payload = JSON.parse(readFileSync(0, "utf8"));
   const projectDir = resolve(
-    (typeof payload?.cwd === "string" && payload.cwd) || process.env.CODEX_PROJECT_DIR || "."
+    (typeof payload?.cwd === "string" && payload.cwd) ||
+      process.env.CLAUDE_PROJECT_DIR ||
+      process.env.CODEX_PROJECT_DIR ||
+      "."
   );
   const targets = editTargets(payload, projectDir);
   const pathState = await readPathState(projectDir);
@@ -108,7 +111,7 @@ try {
     }));
     const pending = changedSchemaTargets(targets, pendingRoots);
     if (pending.changed.length > 0) {
-      emit(context(pathConfirmationMessage(projectDir, pending.changed, pathState)));
+      emit(pathConfirmationMessage(projectDir, pending.changed, pathState));
     }
   }
   const schemaRoots = pathState.schemaPaths.map((path) => ({
@@ -117,19 +120,17 @@ try {
   }));
   const { changed, groups } = changedSchemaTargets(targets, schemaRoots);
   if (changed.length === 0) {
-    emit({});
+    process.exit(0);
   }
   if (groups.length > 1) {
     emit(
-      context(
-        `supaschema auto-diff skipped for ${changed
-          .map((path) => rel(projectDir, path))
-          .join(", ")} because the edit touched multiple configured schema roots (${groups
-          .map((group) => group.display)
-          .join(
-            ", "
-          )}). Run one reviewed \`supaschema diff\` from the intended current state, then run \`supaschema check\`; the hook avoids chaining partial migrations for multi-root edits.`
-      )
+      `supaschema auto-diff skipped for ${changed
+        .map((path) => rel(projectDir, path))
+        .join(", ")} because the edit touched multiple configured schema roots (${groups
+        .map((group) => group.display)
+        .join(
+          ", "
+        )}). Run one reviewed \`supaschema diff\` from the intended current state, then run \`supaschema check\`; the hook avoids chaining partial migrations for multi-root edits.`
     );
   }
   const bin = resolveBinary(projectDir);
@@ -138,26 +139,22 @@ try {
     const diff = run(bin, ["diff", "--to", `dir:${group.display}`], projectDir);
     if (diff.code !== 0) {
       emit(
-        context(
-          `supaschema auto-diff for ${group.changed
-            .map((path) => rel(projectDir, path))
-            .join(", ")} did not complete (exit ${diff.code}):\n${head(
-            diff.stderr || diff.stdout
-          )}\nResolve per the supaschema skill — e.g. add the exact object key to hints.destructive for a destructive change, or diff from the post-migration state when the lineage chain is broken — then re-run \`supaschema diff --to dir:${group.display}\`.`
-        )
+        `supaschema auto-diff for ${group.changed
+          .map((path) => rel(projectDir, path))
+          .join(", ")} did not complete (exit ${diff.code}):\n${head(
+          diff.stderr || diff.stdout
+        )}\nResolve per the supaschema skill — e.g. add the exact object key to hints.destructive for a destructive change, or diff from the post-migration state when the lineage chain is broken — then re-run \`supaschema diff --to dir:${group.display}\`.`
       );
     }
     written.push(...migrationOutputs(diff.stdout));
   }
   if (written.length === 0) {
     emit(
-      context(
-        `supaschema: ${changed
-          .map((path) => rel(projectDir, path))
-          .join(
-            ", "
-          )} changed but produces no net schema change versus the current state — no migration written.`
-      )
+      `supaschema: ${changed
+        .map((path) => rel(projectDir, path))
+        .join(
+          ", "
+        )} changed but produces no net schema change versus the current state — no migration written.`
     );
   }
   const check = run(bin, ["check"], projectDir);
@@ -166,29 +163,16 @@ try {
       ? "supaschema check passed (replay-safe)"
       : `supaschema check reported diagnostics:\n${head(check.stderr || check.stdout)}`;
   emit(
-    context(
-      `supaschema auto-diff completed for ${changed
-        .map((path) => rel(projectDir, path))
-        .join(", ")}: generated ${written
-        .map((path) => rel(projectDir, path))
-        .join(
-          ", "
-        )} and refreshed configured type files that already exist. ${checkLine}. Commit the tree change, the migration, and any refreshed types together — the migration runner (e.g. \`supabase db push\`) applies it; supaschema never touches your database.`
-    )
+    `supaschema auto-diff completed for ${changed
+      .map((path) => rel(projectDir, path))
+      .join(", ")}: generated ${written
+      .map((path) => rel(projectDir, path))
+      .join(
+        ", "
+      )} and refreshed configured type files that already exist. ${checkLine}. Commit the tree change, the migration, and any refreshed types together — the migration runner (e.g. \`supabase db push\`) applies it; supaschema never touches your database.`
   );
-} catch (error) {
-  emit({
-    systemMessage: `supaschema auto-diff hook error (fail-open): ${redactSecrets(error instanceof Error ? error.message : String(error))}`,
-  });
-}
-
-function emit(result) {
-  process.stdout.write(`${JSON.stringify(result)}\n`);
+} catch {
   process.exit(0);
-}
-
-function context(additionalContext) {
-  return { hookSpecificOutput: { additionalContext, hookEventName: "PostToolUse" } };
 }
 
 function editTargets(payload, projectDir) {
@@ -287,6 +271,15 @@ function isGeneratedMigration(path) {
   } catch {
     return false;
   }
+}
+
+function emit(additionalContext) {
+  process.stdout.write(
+    `${JSON.stringify({
+      hookSpecificOutput: { additionalContext, hookEventName: "PostToolUse" },
+    })}\n`
+  );
+  process.exit(0);
 }
 
 async function readConfigSchemaPaths(projectDir) {
@@ -447,7 +440,7 @@ function pathConfirmationMessage(projectDir, changed, state) {
     .map((path) => rel(projectDir, path))
     .join(
       ", "
-    )} because path confirmation is pending from install. Inspect .supaschema/install.json, ask the user which schemaPaths and migrationsDir to use, update supaschema.config.json, then run \`supaschema diff\` and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
+    )} because path confirmation is pending from install. Inspect .supaschema/install.json, ask the user which schemaPaths, sources.to, and migrationsDir to use, update supaschema.config.json, then run \`supaschema diff\` and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
 }
 
 function strings(value) {

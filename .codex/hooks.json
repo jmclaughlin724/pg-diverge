@@ -1,11 +1,47 @@
 {
   "hooks": {
-    "PreToolUse": [
+    "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-tool-gate.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/skill-session-init.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Resetting supaschema skill gate"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/skill-inject.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking supaschema skill routing"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write|edit_file)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/skill-gate.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking supaschema repo skill gate"
+          }
+        ]
+      },
+      {
+        "matcher": "^(apply_patch|Edit|Write|edit_file)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/block-generated-migration-edits.mjs\"",
             "timeout": 10,
             "statusMessage": "Checking supaschema generated-migration policy"
           }
@@ -14,12 +50,36 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "^(Skill|Read)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/skill-record.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Recording supaschema skill context"
+          }
+        ]
+      },
+      {
+        "matcher": "^(apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/auto-diff-on-schema-change.mjs\"",
             "timeout": 130,
             "statusMessage": "Running supaschema auto-diff on schema change"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
+            "timeout": 130,
+            "statusMessage": "Syncing supaschema Claude agent surfaces"
           }
         ]
       }

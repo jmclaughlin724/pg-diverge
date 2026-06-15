@@ -19,7 +19,9 @@ The composite Action runs supaschema against a declarative tree on every push or
 ```yaml
 - uses: jmclaughlin724/supaschema@<tag>
   with:
-    args: diff --from database:$DATABASE_URL --to dir:database/schemas --fail-on-diff --quiet
+    args: diff --fail-on-diff --quiet
+  env:
+    SUPASCHEMA_DATABASE_URL: ${{ secrets.DATABASE_URL }}
 ```
 
 Three checks compose from existing commands:

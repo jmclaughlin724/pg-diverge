@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debugger"
+  short_description: "CI, build, typecheck, runtime, and operational issue diagnosis"
+  default_prompt: "Use $debugger to investigate this failing build, CI, runtime issue, or stuck/hung behavior."

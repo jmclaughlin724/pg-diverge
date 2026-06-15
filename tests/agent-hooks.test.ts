@@ -84,6 +84,44 @@ process.exit(1);
   };
 }
 
+async function syncHookProject(
+  options: { packageName?: string } = {}
+): Promise<{ log: string; project: string }> {
+  const project = await mkdtemp(join(tmpdir(), "supa-llm-sync-hook-"));
+  const log = join(project, "sync.log");
+  await mkdir(join(project, ".claude/agents"), { recursive: true });
+  await mkdir(join(project, ".claude/hooks"), { recursive: true });
+  await mkdir(join(project, ".claude/rules"), { recursive: true });
+  await mkdir(join(project, ".claude/skills/demo"), { recursive: true });
+  await writeFile(
+    join(project, "package.json"),
+    `${JSON.stringify({
+      name: options.packageName ?? "supaschema",
+      scripts: { "sync:llm": "node sync.mjs" },
+    })}\n`
+  );
+  await writeFile(
+    join(project, "sync.mjs"),
+    `import { appendFileSync } from "node:fs";
+appendFileSync("sync.log", "sync\\n");
+`
+  );
+  await writeFile(
+    join(project, ".claude/agents/demo.md"),
+    `---
+name: demo
+description: Demo agent
+---
+
+# Demo
+`
+  );
+  await writeFile(join(project, ".claude/hooks/example.mjs"), "console.log('hook');\n");
+  await writeFile(join(project, ".claude/rules/supaschema.md"), "# rule\n");
+  await writeFile(join(project, ".claude/skills/demo/SKILL.md"), "# skill\n");
+  return { log, project };
+}
+
 async function readFakeCalls(log: string): Promise<string[][]> {
   const content = await readFile(log, "utf8").catch((error: unknown) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
@@ -97,6 +135,235 @@ async function readFakeCalls(log: string): Promise<string[][]> {
     .filter(Boolean)
     .map((line) => JSON.parse(line) as string[]);
 }
+
+function hookJson(stdout: string): Record<string, unknown> {
+  return stdout.trim().length > 0 ? (JSON.parse(stdout) as Record<string, unknown>) : {};
+}
+
+function hookHandlers(value: unknown): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const visit = (candidate: unknown) => {
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        visit(item);
+      }
+      return;
+    }
+    if (!(candidate && typeof candidate === "object")) {
+      return;
+    }
+    const record = candidate as Record<string, unknown>;
+    if (typeof record.command === "string" && record.type === "command") {
+      out.push(record);
+    }
+    for (const item of Object.values(record)) {
+      visit(item);
+    }
+  };
+  visit(value);
+  return out;
+}
+
+function workspaceVariable(name: string): string {
+  return ["$", "{", name, "}"].join("");
+}
+
+describe("agent hook configuration", () => {
+  it("registers Claude path-bearing Node hooks in exec form", async () => {
+    const settings = JSON.parse(await readFile(".claude/settings.json", "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const text = JSON.stringify(settings);
+    const handlers = hookHandlers(settings);
+    const hooks = settings.hooks as Record<string, Record<string, unknown>[]> | undefined;
+
+    expect(text).not.toContain(['node "', "$CLAUDE_PROJECT_DIR", '"'].join(""));
+    expect(text).not.toContain(`node "${workspaceVariable("CLAUDE_PROJECT_DIR")}`);
+    for (const script of [
+      "skill-session-init.mjs",
+      "skill-inject.mjs",
+      "skill-gate.mjs",
+      "skill-subagent-gate.mjs",
+      "block-generated-migration-edits.mjs",
+      "skill-record.mjs",
+      "auto-diff-on-schema-change.mjs",
+      "sync-llm-on-claude-surface-change.mjs",
+    ]) {
+      expect(handlers).toContainEqual(
+        expect.objectContaining({
+          args: [`${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/${script}`],
+          command: "node",
+          type: "command",
+        })
+      );
+    }
+    expect(handlers).toContainEqual(
+      expect.objectContaining({
+        args: [],
+        command: `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/pre_tool_guard.sh`,
+        type: "command",
+      })
+    );
+    const postToolUseText = JSON.stringify(hooks?.PostToolUse ?? []);
+    const postToolBatch = hooks?.PostToolBatch;
+    expect(postToolUseText).not.toContain("sync-llm-on-claude-surface-change.mjs");
+    expect(postToolBatch).toEqual([
+      expect.objectContaining({
+        hooks: [
+          expect.objectContaining({
+            args: [
+              `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
+            ],
+            command: "node",
+            type: "command",
+          }),
+        ],
+      }),
+    ]);
+    for (const entry of postToolBatch ?? []) {
+      expect(entry).not.toHaveProperty("matcher");
+    }
+  });
+
+  it("uses Codex matchers only on supported tool hook events", async () => {
+    const config = JSON.parse(await readFile(".codex/hooks.json", "utf8")) as {
+      hooks?: Record<string, Record<string, unknown>[]>;
+    };
+
+    for (const eventName of ["PreToolUse", "PostToolUse"]) {
+      const entries = config.hooks?.[eventName] ?? [];
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) {
+        expect(entry.matcher, `${eventName} entry missing matcher`).toEqual(expect.any(String));
+      }
+    }
+    const postToolUseText = JSON.stringify(config.hooks?.PostToolUse ?? []);
+    const stopEntries = config.hooks?.Stop ?? [];
+    expect(postToolUseText).not.toContain("sync-llm-on-claude-surface-change.mjs");
+    expect(stopEntries).toEqual([
+      expect.objectContaining({
+        hooks: [
+          expect.objectContaining({
+            command: [
+              'node "$',
+              "{CODEX_PROJECT_DIR:-$PWD}",
+              '/.codex/hooks/sync-llm-on-claude-surface-change.mjs"',
+            ].join(""),
+            type: "command",
+          }),
+        ],
+      }),
+    ]);
+    for (const entry of stopEntries) {
+      expect(entry).not.toHaveProperty("matcher");
+    }
+  });
+});
+
+describe("llm surface sync hook", () => {
+  const script = ".claude/hooks/sync-llm-on-claude-surface-change.mjs";
+
+  it("runs sync:llm after direct edits to Claude-owned skill surfaces", async () => {
+    const { log, project } = await syncHookProject();
+
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        hook_event_name: "PostToolBatch",
+        tool_calls: [
+          {
+            tool_input: { file_path: ".claude/skills/demo/SKILL.md" },
+            tool_name: "Edit",
+          },
+        ],
+      },
+      { cwd: project }
+    );
+
+    expect(result.code).toBe(0);
+    expect(hookJson(result.stdout)).toMatchObject({
+      hookSpecificOutput: expect.objectContaining({
+        additionalContext: "SYNC_LLM_OK",
+        hookEventName: "PostToolBatch",
+      }),
+    });
+    expect(await readFile(log, "utf8")).toBe("sync\n");
+  });
+
+  it("catches non-file-targeted Claude surface changes through the surface fingerprint", async () => {
+    const { log, project } = await syncHookProject();
+    await runHook(
+      script,
+      {
+        cwd: project,
+        hook_event_name: "PostToolBatch",
+        tool_calls: [{ tool_input: { file_path: "README.md" }, tool_name: "Edit" }],
+      },
+      { cwd: project }
+    );
+    await writeFile(join(project, ".claude/rules/supaschema.md"), "# changed\n");
+
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        hook_event_name: "PostToolBatch",
+        tool_calls: [{ tool_input: { command: "echo done" }, tool_name: "Bash" }],
+      },
+      { cwd: project }
+    );
+
+    expect(result.code).toBe(0);
+    expect(hookJson(result.stdout)).toMatchObject({
+      hookSpecificOutput: expect.objectContaining({
+        additionalContext: "SYNC_LLM_OK",
+        hookEventName: "PostToolBatch",
+      }),
+    });
+    expect(await readFile(log, "utf8")).toBe("sync\n");
+  });
+
+  it("uses Codex Stop JSON output while syncing changed Claude surfaces", async () => {
+    const { log, project } = await syncHookProject();
+    const env = { ...process.env, CODEX_PROJECT_DIR: project };
+    await runHook(script, { cwd: project, hook_event_name: "Stop" }, { cwd: project, env });
+    await writeFile(join(project, ".claude/rules/supaschema.md"), "# codex changed\n");
+
+    const result = await runHook(
+      script,
+      { cwd: project, hook_event_name: "Stop" },
+      { cwd: project, env }
+    );
+
+    expect(result.code).toBe(0);
+    expect(hookJson(result.stdout)).toEqual({});
+    expect(await readFile(log, "utf8")).toBe("sync\n");
+  });
+
+  it("no-ops outside the supaschema repo package", async () => {
+    const { log, project } = await syncHookProject({ packageName: "consumer" });
+
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        hook_event_name: "PostToolBatch",
+        tool_calls: [
+          {
+            tool_input: { file_path: ".claude/hooks/example.mjs" },
+            tool_name: "Write",
+          },
+        ],
+      },
+      { cwd: project }
+    );
+
+    expect(result.code).toBe(0);
+    await expect(readFile(log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
 
 describe("claude generated-migration edit hook", () => {
   const script = ".claude/hooks/block-generated-migration-edits.mjs";
@@ -150,7 +417,7 @@ describe("claude generated-migration edit hook", () => {
 });
 
 describe("codex generated-migration tool gate", () => {
-  const script = ".codex/hooks/supaschema-tool-gate.mjs";
+  const script = ".codex/hooks/block-generated-migration-edits.mjs";
 
   it("denies apply_patch updates to migrations carrying the lineage marker", async () => {
     const { generated } = await fixtures();
@@ -260,6 +527,69 @@ describe("codex generated-migration tool gate", () => {
       hookSpecificOutput?: { permissionDecision?: string };
     };
     expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+});
+
+const skillGateCases = [
+  {
+    gate: ".claude/hooks/skill-gate.mjs",
+    init: ".claude/hooks/skill-session-init.mjs",
+    name: "claude",
+  },
+  {
+    gate: ".codex/hooks/skill-gate.mjs",
+    init: ".codex/hooks/skill-session-init.mjs",
+    name: "codex",
+  },
+];
+
+describe.each(skillGateCases)("repo skill enforcement hook ($name)", ({ gate, init }) => {
+  it("denies a governed edit once, delivers skill context, then allows the re-run", async () => {
+    const ledger = await mkdtemp(join(tmpdir(), "supa-skill-gate-"));
+    const env = {
+      ...process.env,
+      SKILL_GATE_MODE: "enforce",
+      SUPASCHEMA_SKILL_GATE_LEDGER_DIR: ledger,
+    };
+    const payload = {
+      session_id: "skill-gate-test",
+      tool_input: {
+        patch:
+          "*** Begin Patch\n" +
+          "*** Update File: src/render.ts\n" +
+          "@@\n" +
+          "-old\n" +
+          "+new\n" +
+          "*** End Patch",
+      },
+      tool_name: "apply_patch",
+    };
+
+    await runHook(init, { session_id: "skill-gate-test" }, { env });
+    const first = await runHook(gate, payload, { env });
+    const firstOutput = hookJson(first.stdout) as {
+      hookSpecificOutput?: {
+        permissionDecision?: string;
+        permissionDecisionReason?: string;
+      };
+    };
+    expect(first.code).toBe(0);
+    expect(firstOutput.hookSpecificOutput?.permissionDecision).toBe("deny");
+    expect(firstOutput.hookSpecificOutput?.permissionDecisionReason).toContain("code-atlas");
+    expect(firstOutput.hookSpecificOutput?.permissionDecisionReason).toContain(
+      "Code Atlas Workflow"
+    );
+
+    const second = await runHook(gate, payload, { env });
+    expect(second.code).toBe(0);
+    expect(second.stdout.trim()).toBe("");
+
+    await runHook(init, { session_id: "skill-gate-test" }, { env });
+    const afterReset = await runHook(gate, payload, { env });
+    const resetOutput = hookJson(afterReset.stdout) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    };
+    expect(resetOutput.hookSpecificOutput?.permissionDecision).toBe("deny");
   });
 });
 

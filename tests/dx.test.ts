@@ -25,10 +25,12 @@ const sampleDiagnostics: Diagnostic[] = [
 
 describe("config DX", () => {
   it("tolerates $schema and keeps the scaffold explicit", () => {
-    const config = resolveConfig({ $schema: "./node_modules/supaschema/config-schema.json" });
+    const config = resolveConfig({
+      $schema: "./node_modules/supaschema/supaschema-config.schema.json",
+    });
     expect(config.adapter).toBe("auto");
     expect(JSON.parse(defaultConfigFile)).toEqual({
-      $schema: "./node_modules/supaschema/config-schema.json",
+      $schema: "./node_modules/supaschema/supaschema-config.schema.json",
       ...resolveConfig(),
     });
   });

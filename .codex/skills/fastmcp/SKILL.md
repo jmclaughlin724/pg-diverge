@@ -1,20 +1,18 @@
 ---
 name: fastmcp
-description: Maintain the read-only FastMCP repo-context server and its fixed Code Atlas bridge.
+description: Maintain the read-only local supaschema FastMCP server and its fixed Code Atlas bridge.
 user-invocable: true
 ---
 
-# FastMCP Repo Context Server
+# FastMCP Supaschema Server
 
 The server lives in `services/agent-mcp/supaschema_agent_mcp/server.py` and is configured by `fastmcp.json`.
 
 Non-negotiables:
 
-- Read-only tools only.
-- No arbitrary shell, raw SQL, DB/API mutation, credential reads, or external LLM calls.
-- No proxying other MCP servers.
-- Code Atlas access only through `code_atlas_query(kind, value)`, which shells to the fixed query CLI.
-- Path reads must stay repo-relative, traversal-proof, and deny `.env`, secret suffixes, `secrets`, `plans`, `node_modules`, build output, and VCS internals.
+- Rule 11 (`.claude/rules/11-agent-mcp-fastmcp.md`) owns the durable local MCP contract.
+- Keep implementation changes in `services/agent-mcp/supaschema_agent_mcp/server.py` and aligned tests/guards.
+- Refresh generated skill mirrors with `npm run sync:llm`.
 
 Smoke commands:
 

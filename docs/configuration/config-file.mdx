@@ -10,6 +10,7 @@ Most teams edit only these fields:
 
 - `adapter` — `auto` for the normal automated workflow.
 - `schemaPaths` — where declarative SQL files live.
+- `sources` — default before/after sources for zero-source-flag `diff`, `plan`, and `verify`.
 - `migrationsDir` — where generated migrations are written.
 - `typesFile` / `zodFile` — generated TypeScript and Zod output paths.
 - `environments` — named database URL references such as staging or production.
@@ -26,7 +27,7 @@ Most teams edit only these fields:
 
 Unknown keys are rejected, so typos fail loudly.
 
-The scaffolded config includes a `$schema` pointer to the shipped `config-schema.json`, so editors can autocomplete and validate every key.
+The scaffolded config includes a `$schema` pointer to the shipped `supaschema-config.schema.json`, so editors can autocomplete and validate every key.
 
 <Warning>
   Keep real credentials in environment variables and reference them as `$ENV_NAME`. Provider config files such as `supabase/config.toml`, `neon.toml`, Terraform, Bicep, CloudFormation, or Cloud Build files are used only to seed install-time defaults.
@@ -38,7 +39,7 @@ Generic PostgreSQL installs write this full config shape:
 
 ```json
 {
-  "$schema": "./node_modules/supaschema/config-schema.json",
+  "$schema": "./node_modules/supaschema/supaschema-config.schema.json",
   "adapter": "auto",
   "cascade": "never",
   "destructiveChanges": "hint-required",
@@ -73,15 +74,19 @@ Generic PostgreSQL installs write this full config shape:
     "exclude": [],
     "include": []
   },
+  "sources": {
+    "from": "auto",
+    "to": "dir:database/schemas"
+  },
   "statementTimeout": "60s",
   "transactionMode": "per-migration",
   "validators": ["internal-parser"]
 }
 ```
 
-Provider detection can change only the initial `schemaPaths` and `migrationsDir` values during install. For example, Supabase projects default to `supabase/schemas` and `supabase/migrations`; Neon projects default to `neon/schemas` and `neon/migrations`.
+Provider detection can change only the initial `schemaPaths`, `sources.to`, and `migrationsDir` values during install. For example, Supabase projects default to `supabase/schemas`, `dir:supabase/schemas`, and `supabase/migrations`; Neon projects default to `neon/schemas`, `dir:neon/schemas`, and `neon/migrations`.
 
-The config schema is generated from `src/config.ts` into the shipped `config-schema.json`. This page is the public reference for those fields.
+The config schema is generated from `src/config.ts` into the shipped `supaschema-config.schema.json`. This page is the public reference for those fields.
 
 ## Adapter
 
@@ -121,6 +126,8 @@ Legacy config values `supabase-auto`, `supabase`, and `postgres` are accepted an
 | `renameDetection` | `"hints-only"` | `hints-only` uses `hints.renames`; `off` disables rename handling entirely. |
 | `schemaPaths` | `["database/schemas"]` | Paths read by `git:` sources and the default `--to dir:` target (the first entry). Install can scaffold provider-specific folders; the canonical path table lives in [Setup](/setup#path-selection). Configure the final paths here. |
 | `schemas.include` / `schemas.exclude` | `[]` | Persistent schema filters applied to every extracted model (the CLI `--schema` flag composes on top). |
+| `sources.from` | `"auto"` | Default before-state source for zero-source-flag `diff`, `plan`, and `verify`. `"auto"` resolves a database URL, then falls back to `git:HEAD`. Pin `dump:`, `dir:`, `git:`, `database:`, or `catalog:` when the project has a specific baseline source. |
+| `sources.to` | scaffolded to `dir:<schemaPaths[0]>` | Default after-state source for zero-source-flag `diff`, `plan`, and `verify`. If omitted, supaschema falls back to `dir:<config.schemaPaths[0]>`. |
 | `statementTimeout` | `"60s"` | Value for the `SET statement_timeout` migration preamble. |
 | `transactionMode` | `"per-migration"` | How `verify` applies the migration and how transaction hazards are graded. `per-migration` mirrors runners like `supabase db push` (one transaction per file); `per-statement` matches autocommit runners. |
 | `verify --ensure-roles` (CLI) | off | Pre-creates missing `NOLOGIN` roles referenced by grants, default privileges, and policies on the verification server. Roles are cluster-level and are never dropped. |
@@ -155,6 +162,10 @@ A configured validator that is not installed produces `SUPA_VALIDATOR_UNAVAILABL
     "renames": [{ "from": "table:app.accounts", "to": "table:app.customers" }]
   },
   "lockTimeout": "5s",
+  "sources": {
+    "from": "auto",
+    "to": "dir:database/schemas"
+  },
   "schemas": { "exclude": [], "include": ["app", "public"] },
   "statementTimeout": "60s",
   "transactionMode": "per-migration",

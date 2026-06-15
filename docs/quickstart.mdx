@@ -1,6 +1,6 @@
 ---
 title: "Quickstart"
-description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from explicit offline sources, and validate it."
+description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from configured sources, and validate it."
 keywords: ["quickstart","first migration","diff","check","types"]
 ---
 
@@ -70,10 +70,10 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     Generate the migration:
 
     ```bash
-    npx supaschema diff --from git:HEAD --to dir:database/schemas
+    npx supaschema diff
     ```
 
-    supaschema compares `git:HEAD` to your edited schema files. It writes one timestamped migration.
+    supaschema reads `sources.from` and `sources.to` from `supaschema.config.json`. It writes one timestamped migration.
 
     You will see output similar to:
 
@@ -122,10 +122,14 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     ```
 
     <Tip>
-    Use explicit sources when you want the run to stay offline:
+    Pin `sources.from` in `supaschema.config.json` when you want every run to use a specific offline baseline:
 
-      ```bash
-      npx supaschema diff --from git:HEAD --to dir:database/schemas
+      ```json
+      {
+        "sources": {
+          "from": "git:HEAD",
+          "to": "dir:database/schemas"
+        }
       ```
     </Tip>
   </Step>

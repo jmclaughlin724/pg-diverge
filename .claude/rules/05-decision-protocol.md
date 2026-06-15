@@ -9,7 +9,7 @@ Technical and architecture decisions are resolved by **evidence from upstream ca
 - **For every decision where confidence is not 100%, research first.** Consult the authoritative upstream source for the tool in question before deciding. Prefer the docs MCP servers wired into this repo's `.mcp.json` for the stack they own:
   - `ultracite` and `biome` guidance via the `ultracite` MCP for lint/format policy (Rule 08).
   - `zod` MCP for Zod schema/typegen API specifics; `mintlify` MCP for docs-site components and structure (Rules 02/03); `cloudflare-docs` MCP for the docs Worker; `openaiDeveloperDocs` MCP when working on the agent MCP service surface.
-  - `supaschema-docs` MCP and the project's own `docs/**`, `AGENTS.md`, and `.claude/rules/*` for supaschema CLI/library behavior and migration policy (Rule 00).
+  - `supaschema-docs` MCP and the project's own `docs/**`, `AGENTS.md`, and `.claude/rules/supaschema.md` for supaschema CLI/library behavior and migration policy.
   - `context7` (`resolve-library-id` → `query-docs`) as a second-opinion fallback for any other library/framework API when no more specific first-party MCP/docs source is configured.
   - `WebSearch` / `WebFetch` / the `deep-research` skill for current guidance not covered by a configured MCP.
 

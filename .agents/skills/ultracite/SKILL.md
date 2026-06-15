@@ -32,7 +32,7 @@ canonical configuration and already extends the repo-approved Ultracite presets.
 - Package manager: npm only. Preserve `package-lock.json`; do not add pnpm, yarn, or bun lockfiles.
 - Canonical lint config: root `biome.jsonc`.
 - Canonical lint check: `npm run lint`, which runs `ultracite check .`.
-- Canonical auto-fix: `npm run lint:fix` or `npm run format`, both running `ultracite fix .`.
+- Canonical Biome auto-fix: `npm run lint:fix` (`ultracite fix .`). The repo-wide single write command `npm run format` runs `ultracite fix .` as its Biome step, then the other language formatters/sorters (Prettier, pgformatter, taplo, shfmt, sort-package-json, ruff) — see Rule 06.
 - Setup diagnosis: `npm run lint:doctor`.
 - Tool versions are pinned in both `package.json` and `scripts/dependency-catalog.json`; keep them identical.
 - `vitest.config.ts` owns test runner behavior. Keep DB-safe worker limits and V8 coverage reporting.

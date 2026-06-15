@@ -1,4 +1,4 @@
-"""In-memory FastMCP client tests for the read-only repo-context server.
+"""In-memory FastMCP client tests for the read-only local supaschema server.
 
 These tests connect an in-memory `Client` directly to the `mcp` server object
 (no subprocess, no Inspector, no database). They pin the three things that are
@@ -9,8 +9,8 @@ the server's whole reason to exist:
 2. The read-only path guards in ``_resolve``/``_denied`` reject traversal,
    absolute paths, ``.env``, secret-suffixed paths, and ``DENIED_PARTS`` dirs,
    while one allowlisted file (``AGENTS.md``) reads successfully.
-3. ``upstream_mcp_capabilities`` only advertises docs-research MCP servers that
-   are actually configured in ``.mcp.json`` (runtime catalog-drift pin).
+3. ``server_status`` advertises docs-research MCP servers that are actually
+   configured in ``.mcp.json`` (runtime catalog-drift pin).
 """
 
 from __future__ import annotations
@@ -23,12 +23,16 @@ from fastmcp.exceptions import ToolError
 
 from supaschema_agent_mcp.server import REPO_ROOT, mcp
 
-# The six real tools the server exposes. After the BM25 transform removal these
+# The three real tools the server exposes. After the BM25 transform removal these
 # must be the exact catalog returned by list_tools() -- not the Tool Search
 # surface (['call_tool', 'search_tools', 'server_status']).
 EXPECTED_TOOLS = {
     "server_status",
     "code_atlas_query",
+    "repo_context_query",
+}
+
+LEGACY_TOOL_NAMES = {
     "search_repo_context",
     "read_context_file",
     "nearest_agent_instructions",
@@ -57,8 +61,8 @@ def _mcp_configured_servers() -> set[str]:
 
 
 async def _read_context(client: Client, path: str) -> dict:
-    """Call read_context_file and return its structured payload."""
-    result = await client.call_tool("read_context_file", {"path": path})
+    """Call repo_context_query(read) and return its structured payload."""
+    result = await client.call_tool("repo_context_query", {"action": "read", "target": path})
     return result.data
 
 
@@ -69,8 +73,11 @@ async def test_list_tools_exposes_real_catalog_after_bm25_removal() -> None:
     async with Client(transport=mcp) as client:
         names = {tool.name for tool in await client.list_tools()}
 
-    # All six real tools are directly listed (no search_tools round trip).
-    assert EXPECTED_TOOLS <= names, f"missing real tools: {EXPECTED_TOOLS - names}"
+    # All real tools are directly listed (no search_tools round trip).
+    assert names == EXPECTED_TOOLS, f"unexpected tool catalog: {sorted(names)}"
+    assert not (LEGACY_TOOL_NAMES & names), (
+        f"legacy tools still listed: {LEGACY_TOOL_NAMES & names}"
+    )
     # The Tool Search transform surface must be gone.
     assert not (TOOL_SEARCH_ARTIFACTS & names), (
         f"BM25/Tool-Search artifacts still listed: {TOOL_SEARCH_ARTIFACTS & names}"
@@ -124,21 +131,62 @@ async def test_read_context_file_reads_allowlisted_agents_md() -> None:
     assert payload["text"].strip(), "AGENTS.md read returned empty text"
 
 
-# --- (d) upstream_mcp_capabilities docs subset matches .mcp.json ------------
+async def test_code_atlas_query_exposes_local_graph() -> None:
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool(
+            "code_atlas_query",
+            {"kind": "file", "value": "services/agent-mcp/supaschema_agent_mcp/server.py"},
+        )
+    payload = result.data
+
+    assert payload["ok"] is True
+    assert payload["stdout"]["nodes"]
+    assert (
+        payload["stdout"]["nodes"][0]["path"] == "services/agent-mcp/supaschema_agent_mcp/server.py"
+    )
 
 
-async def test_upstream_docs_capabilities_match_mcp_json() -> None:
+async def test_repo_context_query_searches_allowlisted_repo_files() -> None:
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool(
+            "repo_context_query",
+            {"action": "search", "target": "supaschema", "limit": 5},
+        )
+    payload = result.data
+
+    assert payload["matches"], "expected search results for supaschema"
+    assert all("path" in item and "line" in item and "text" in item for item in payload["matches"])
+
+
+async def test_repo_context_query_returns_agent_instruction_chain() -> None:
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool(
+            "repo_context_query",
+            {"action": "agent-instructions", "target": "services/agent-mcp"},
+        )
+    payload = result.data
+
+    assert payload["path"] == "services/agent-mcp"
+    assert payload["instructions"]
+    assert payload["instructions"][0]["path"] == "AGENTS.md"
+
+
+# --- (d) server_status docs MCP subset matches .mcp.json --------------------
+
+
+async def test_status_upstream_docs_capabilities_match_mcp_json() -> None:
     configured = _mcp_configured_servers()
 
     async with Client(transport=mcp) as client:
-        result = await client.call_tool("upstream_mcp_capabilities", {"capability": "docs"})
-    payload = result.data
+        result = await client.call_tool("server_status", {})
+    payload = result.data["upstream_mcp_capabilities"]
 
     # Every returned entry is family=docs and carries a correct configured flag.
-    families = {item["family"] for item in payload["capabilities"]}
+    docs_capabilities = [item for item in payload["capabilities"] if item["family"] == "docs"]
+    families = {item["family"] for item in docs_capabilities}
     assert families == {"docs"}, f"docs filter leaked other families: {families}"
 
-    returned = {item["server"] for item in payload["capabilities"]}
+    returned = {item["server"] for item in docs_capabilities}
     # Shape pin: the advertised docs servers are exactly the docs-research
     # servers present in .mcp.json (no phantom entries, no drift).
     assert returned == {"cloudflare-docs", "mintlify"}
@@ -147,19 +195,22 @@ async def test_upstream_docs_capabilities_match_mcp_json() -> None:
     )
 
     # Each entry's runtime `configured` flag is computed from .mcp.json.
-    for item in payload["capabilities"]:
+    for item in docs_capabilities:
         assert item["configured"] is (item["server"] in configured)
 
     # The non-proxy disclaimer is part of the contract.
     assert "Pointer index only" in payload["note"]
 
 
-async def test_upstream_all_capabilities_only_advertise_configured_servers() -> None:
+async def test_status_upstream_all_capabilities_only_advertise_configured_servers() -> None:
     configured = _mcp_configured_servers()
 
     async with Client(transport=mcp) as client:
-        result = await client.call_tool("upstream_mcp_capabilities", {"capability": "all"})
-    payload = result.data
+        result = await client.call_tool("server_status", {})
+    payload = result.data["upstream_mcp_capabilities"]
+
+    assert result.data["server"] == "supaschema"
+    assert set(result.data["tools"]) == EXPECTED_TOOLS
 
     for item in payload["capabilities"]:
         # The whole index is the docs-research pointer set; every advertised

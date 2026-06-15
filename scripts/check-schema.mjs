@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Drift gate for config-schema.json.
+// Drift gate for supaschema-config.schema.json.
 //
 // The build (`npm run build`) compiles src/** then runs the generator
-// `node dist/config-schema-gen.js`, which writes config-schema.json at the
+// `node dist/config-schema-gen.js`, which writes supaschema-config.schema.json at the
 // package root from the live Zod model in src/config.ts. This check proves the
-// committed config-schema.json matches what the generator produces from current
+// committed supaschema-config.schema.json matches what the generator produces from current
 // source: it rebuilds, regenerates the file in place, and fails if the working
 // tree now differs. Run it in CI and locally before release.
 //
@@ -14,7 +14,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const schemaFile = "config-schema.json";
+const schemaFile = "supaschema-config.schema.json";
 
 // Resolve npm cross-platform: spawnSync("npm", ..., {shell:false}) raises ENOENT
 // on Windows (the executable is npm.cmd, which Node will not resolve without a
@@ -46,7 +46,7 @@ function run(command, args, label) {
   return 0;
 }
 
-// Rebuild + regenerate so config-schema.json reflects current src/config.ts.
+// Rebuild + regenerate so supaschema-config.schema.json reflects current src/config.ts.
 // `npm run build` runs `tsc` then `node dist/config-schema-gen.js`.
 const build = npmInvocation(["run", "build"]);
 const buildStatus = run(build.command, build.args, "npm run build");
@@ -55,7 +55,7 @@ if (buildStatus !== 0) {
   process.exit(buildStatus);
 }
 
-// Fail on drift: the committed config-schema.json must equal the regenerated one.
+// Fail on drift: the committed supaschema-config.schema.json must equal the regenerated one.
 const diffStatus = run(
   "git",
   ["diff", "--exit-code", "--", schemaFile],

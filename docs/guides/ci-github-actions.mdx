@@ -62,7 +62,7 @@ jobs:
 - `fetch-depth: 0` is required so `git:` sources can read the base ref.
 - `verify` creates and drops temporary databases on the service; the role must have `CREATEDB`. Add `--ensure-roles` when migrations grant to roles (e.g. `authenticated`) that a bare PostgreSQL service does not have.
 - `verify` refuses non-local database hosts by default (it creates and force-drops databases). GitHub Actions service containers are `localhost`, so CI recipes work unchanged; set `SUPASCHEMA_VERIFY_ALLOW_REMOTE=1` only when verifying against intentionally disposable remote infrastructure.
-- For a standalone drift gate, `supaschema diff --fail-on-diff --quiet` exits 3 when the live database and the declarative tree have diverged (`--from` defaults to the resolved database and `--to` to the config schema tree; spell them explicitly when the job's defaults are ambiguous).
+- For a standalone drift gate, `supaschema diff --fail-on-diff --quiet` exits 3 when the configured before-state and after-state have diverged (`config.sources.from` / `config.sources.to`; spell flags explicitly only when the job intentionally overrides the project defaults).
 - `SUPASCHEMA_DATABASE_URL` can replace per-command `--database-url` flags; without either, supaschema discovers the local Supabase stack from `supabase/config.toml`.
 - Set `SUPASCHEMA_BENCHMARK_DATABASE_URL` (or rely on `SUPASCHEMA_DATABASE_URL`) when running `npm run benchmark` in package CI so `database:`, shadow-style round trip, replay verification, and end-to-end migration timings are enforced instead of skipped.
 - Exit code `2` means diagnostics contained errors — fail the job and read the stderr output.

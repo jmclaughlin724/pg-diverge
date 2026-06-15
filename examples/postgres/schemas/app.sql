@@ -8,10 +8,14 @@ CREATE TABLE app.accounts (
 
 CREATE INDEX accounts_email_idx ON app.accounts (email);
 
-CREATE OR REPLACE FUNCTION app.account_count()
-RETURNS bigint
-LANGUAGE sql
-STABLE
-AS $$
-  SELECT count(*) FROM app.accounts
+CREATE OR REPLACE FUNCTION app.account_count ()
+  RETURNS bigint
+  LANGUAGE sql
+  STABLE
+  AS $$
+  SELECT
+    count(*)
+  FROM
+    app.accounts
 $$;
+

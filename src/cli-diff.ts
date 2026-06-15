@@ -52,8 +52,8 @@ export interface DiffCommandContext {
 export function registerDiffCommands(program: Command, context: DiffCommandContext): void {
   program
     .command("plan")
-    .option("--from <source>", "source model before the change (default: database, then git:HEAD)")
-    .option("--to <target>", "source model after the change (default: the config schema tree)")
+    .option("--from <source>", "source model before the change (default: config.sources.from)")
+    .option("--to <target>", "source model after the change (default: config.sources.to)")
     .option("--schema <names>", "comma-separated schema filter")
     .option("--timing", "print extract/plan phase timings to stderr")
     .description("Print the planned object-level schema diff as JSON (use `diff` to render SQL).")
@@ -69,8 +69,8 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
 
   program
     .command("diff")
-    .option("--from <source>", "source model before the change (default: database, then git:HEAD)")
-    .option("--to <target>", "source model after the change (default: the config schema tree)")
+    .option("--from <source>", "source model before the change (default: config.sources.from)")
+    .option("--to <target>", "source model after the change (default: config.sources.to)")
     .option(
       "--out <file>",
       "output file path or stdout (default: <migrations-dir>/<UTC timestamp>_<name>.sql)"
@@ -99,7 +99,7 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
       "re-print the drift summary whenever a dir: source changes (editor loop; implies --dry-run --summary)"
     )
     .description(
-      "Render a replay-safe migration from the planned schema diff (zero flags: database/git:HEAD → schema tree → migrations directory)."
+      "Render a replay-safe migration from the configured source diff (zero flags: config.sources -> migrations directory)."
     )
     .action(async (options: DiffOptions) => {
       const config = await context.loadCliConfig();
@@ -205,7 +205,7 @@ function renderDiffOutput(
   }
   const migrationsDir = resolveMigrationsDir(options.migrationsDir, config);
   const defaultedOut = options.name === undefined && options.out === undefined;
-  const outPath = resolveDiffOutPath(options, plan, migrationsDir, defaultedOut);
+  const outPath = resolveDiffOutPath(options, plan, migrationsDir);
   const concurrentPath =
     rendered.concurrentSql !== undefined && outPath !== undefined
       ? `${outPath.replace(sqlExtensionPattern, "")}.concurrent.sql`
@@ -455,20 +455,19 @@ function migrationTimestamp(): string {
 function resolveDiffOutPath(
   options: WithSources<DiffOptions>,
   plan: MigrationPlan,
-  migrationsDir: string,
-  defaultedOut: boolean
+  migrationsDir: string
 ): string | undefined {
-  if (options.name !== undefined || defaultedOut) {
-    return resolve(
-      process.cwd(),
-      migrationsDir,
-      `${migrationTimestamp()}_${options.name ?? defaultMigrationName(plan)}.sql`
-    );
-  }
-  if (options.out === "stdout" || options.out === undefined) {
+  if (options.out === "stdout") {
     return;
   }
-  return resolve(process.cwd(), options.out);
+  if (options.out !== undefined) {
+    return resolve(process.cwd(), options.out);
+  }
+  return resolve(
+    process.cwd(),
+    migrationsDir,
+    `${migrationTimestamp()}_${options.name ?? defaultMigrationName(plan)}.sql`
+  );
 }
 
 function renderDiffPayload(

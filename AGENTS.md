@@ -13,7 +13,7 @@ Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable 
 - Repo facts come from live files and command output. Public product behavior must match `src/**`, `README.md`, and `docs/**`; do not rely on memory for command flags, defaults, diagnostics, or package contents.
 - Source code lives in `src/**`. Build output in `dist/**` is generated from `src/**`; change the source and run the build instead of hand-editing `dist/**`.
 - CLI behavior is owned by `src/cli.ts`, `src/cli-diff.ts`, `src/cli-reports.ts`, `src/cli-tools.ts`, and the helpers they call. Library exports are owned by `src/index.ts`.
-- Config semantics are owned by `src/config.ts` and the generated `config-schema.json`. Keep docs, examples, and JSON Schema aligned when config changes.
+- Config semantics are owned by `src/config.ts` and the generated `supaschema-config.schema.json`. Keep docs, examples, and JSON Schema aligned when config changes.
 - Tests live in `tests/**`; fixtures under `tests/fixtures/**` and `corpus/**` are behavioral evidence. Update snapshots only when the rendered SQL change is intentional and explained by source changes.
 - The package manager is npm. Preserve `package-lock.json`; do not introduce pnpm, yarn, or alternate lockfiles.
 - The npm package boundary is the `package.json` `files` allowlist. Do not add a root `.npmignore` while this allowlist owns publishing; use `npm pack --dry-run --json` to inspect the exact tarball.
@@ -34,11 +34,10 @@ Durable migration policy lives in `.claude/rules/supaschema.md`. The repeatable 
 
 - Keep `AGENTS.md` concise and stable. Put reusable workflow detail in `.claude/skills/supaschema/SKILL.md`; put durable policy in `.claude/rules/supaschema.md`; put deterministic write-time checks in hooks.
 - `CLAUDE.md` is a compatibility stub and should remain `@AGENTS.md` unless Claude-specific instructions are intentionally added.
-- The Claude skill and `.agents` skill mirror must stay identical. If the migration workflow changes, update both surfaces or run the owning sync path if one exists.
-- The Claude rule and Codex rule are platform-specific surfaces for the same migration policy. Keep `.claude/rules/supaschema.md` and `.codex/rules/supaschema.rules` semantically aligned.
-- Claude hooks and Codex hooks are separate native implementations. When changing generated-migration protection or auto-diff behavior, update and verify both runtimes.
+- Claude surfaces are canonical for repo-local agent tooling. `npm run sync:llm` mirrors `.claude/skills/**` into `.agents/skills/**` and `.codex/skills/**`, mirrors `.claude/hooks/**` into `.codex/hooks/**`, renders `.claude/agents/**/*.md` into Codex-native `.codex/agents/**/*.toml`, and renders `.claude/rules/**/*.md` into Codex `.rules` comment mirrors.
+- Hook scripts under `.claude/hooks/**` must be runtime-aware when Claude and Codex payload or output contracts differ. Codex hook registration remains native in `.codex/hooks.json`.
 - `package.json` includes the consumer agent bundle in published files, including `.agents/skills/supaschema`, the Claude rule/skill/hooks, and the Codex rule/skill/hooks. When adding, moving, or deleting an agent surface, verify the packaged tarball still contains the intended files.
-- Keep consumer install surfaces separate from maintainer workspace tooling. `postinstall` installs config, schema/migration directories, `AGENTS.md`/`CLAUDE.md` addenda, and the supaschema rule/skill/hook bundle. Repo-local `.vscode`, Postgres Language Server, Python, MCP, Code Atlas, FastMCP, and UI scaffolding belong to supaschema development unless a change explicitly adds them to the consumer installer and package tests.
+- Keep consumer install surfaces separate from maintainer workspace tooling. `postinstall` installs config, schema/migration directories, `AGENTS.md`/`CLAUDE.md` addenda, and the supaschema rule/skill/hook bundle through the shared `bin/scaffold.mjs` scaffolder; `supaschema init` calls the same core for full parity, the explicit fallback when npm does not run install scripts (npm v12 default). Repo-local `.vscode`, Postgres Language Server, Python, MCP, Code Atlas, FastMCP, and UI scaffolding belong to supaschema development unless a change explicitly adds them to the consumer installer and package tests.
 
 ## Implementation Discipline
 
@@ -91,9 +90,10 @@ Repository development:
 ```bash
 npm run check           # lint + tests + build (build type-checks src via noEmitOnError)
 npm run lint            # ultracite check (wraps Biome)
+npm run format          # single write command: format + lint-fix + import/key-sort every language (Rule 06)
 npm run typecheck       # TypeScript no-emit check
 npm test                # vitest suite
-npm run build           # dist + config-schema.json
+npm run build           # dist + supaschema-config.schema.json
 npm run check:package   # publint + arethetypeswrong package checks
 npm run pack:dry        # inspect npm tarball contents before release
 npm run fixture:verify  # render a fixture migration, apply twice, compare catalogs

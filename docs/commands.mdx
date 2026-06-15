@@ -50,8 +50,8 @@ When you omit flags, supaschema uses your config.
 
 | Command area | Default |
 | --- | --- |
-| `--from` | Resolved database URL, then `git:HEAD` |
-| `--to` | `dir:<config.schemaPaths[0]>` |
+| `--from` | `config.sources.from` (`"auto"` resolves database URL, then `git:HEAD`) |
+| `--to` | `config.sources.to`, then `dir:<config.schemaPaths[0]>` |
 | Migration output | `config.migrationsDir` |
 | `check` input | every `.sql` file in `config.migrationsDir` |
 | `verify --migration` | newest pending migration |

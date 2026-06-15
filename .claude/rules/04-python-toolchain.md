@@ -1,6 +1,6 @@
 # Rule 04 — Python toolchain (uv + ruff + mypy) and pylsp
 
-The Python side of this repo is a single **uv workspace** member: `services/agent-mcp` (`supaschema-agent-mcp`), the read-only FastMCP repo-context side-service. There is no FastAPI, no `services/api`, no `services/workers`, and no web HTTP API here — the server is FastMCP (`fastmcp` + `pydantic`), and its server boundary, capabilities, and wiring are owned by **Rule 11 (Agent MCP FastMCP)**. This rule owns only the Python developer toolchain: format, lint, types, tests, supply-chain, and the pylsp language server. The package manager for the JS/TS repo is **npm** (never pnpm); the Python `py:*` scripts are npm scripts that shell out to `uv`.
+The Python side of this repo is a single **uv workspace** member: `services/agent-mcp` (`supaschema-agent-mcp`), the read-only local supaschema FastMCP side-service. There is no FastAPI, no `services/api`, no `services/workers`, and no web HTTP API here — the server is FastMCP (`fastmcp` + `pydantic`), and its server boundary, capabilities, and wiring are owned by **Rule 11 (Agent MCP FastMCP)**. This rule owns only the Python developer toolchain: format, lint, types, tests, supply-chain, and the pylsp language server. The package manager for the JS/TS repo is **npm** (never pnpm); the Python `py:*` scripts are npm scripts that shell out to `uv`.
 
 ## Layout
 
@@ -35,11 +35,12 @@ Run from the repo root (these are real npm scripts in `package.json`):
 ```bash
 npm run py:format:check   # uv run --package supaschema-agent-mcp ruff format --check services/agent-mcp
 npm run py:lint           # uv run --package supaschema-agent-mcp ruff check services/agent-mcp
+npm run py:fix            # uv run ... ruff check --fix && ruff format — the Python write lane (lint-fix + import sort + format)
 npm run py:typecheck      # uv run --package supaschema-agent-mcp mypy services/agent-mcp/supaschema_agent_mcp
 npm run py:test           # uv run --package supaschema-agent-mcp pytest services/agent-mcp/tests
 ```
 
-Apply formatting locally with `uv run ruff format services/agent-mcp` (and `uv run ruff check --fix services/agent-mcp` for lint autofixes).
+Apply Python fixes locally with `npm run py:fix` (`ruff check --fix` for lint + import sort, then `ruff format`); it is also chained into the repo-wide single write command `npm run format` (Rule 06). The `py:format:check`/`py:lint` variants are the read-only CI gates.
 
 ## Gates
 

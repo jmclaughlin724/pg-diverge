@@ -61,11 +61,11 @@ describe("editor and language-server surfaces", () => {
     );
     expect(settings["json.schemas"]).toContainEqual({
       fileMatch: ["postgres-language-server.jsonc"],
-      url: "https://pg-language-server.com/0.25.3/schema.json",
+      url: "https://pg-language-server.com/latest/schema.json",
     });
     expect(existsSync(resolve(root, "components.json"))).toBe(false);
     expect(existsSync(resolve(root, "styles/globals.css"))).toBe(false);
-    expect(pgls.$schema).toBe("https://pg-language-server.com/0.25.3/schema.json");
+    expect(pgls.$schema).toBe("https://pg-language-server.com/latest/schema.json");
     expect(pgls.files?.include).toEqual(
       expect.arrayContaining([
         "database/migrations/**/*.sql",
@@ -102,8 +102,11 @@ describe("editor and language-server surfaces", () => {
     expect(packageJson.devDependencies?.["@postgres-language-server/cli"]).toBe("0.25.3");
     expect(packageJson.devDependencies?.["@postgrestools/postgrestools"]).toBeUndefined();
     expect(packageJson.devDependencies?.["@tailwindcss/language-server"]).toBeUndefined();
-    expect(catalog.devDependencies?.["@postgres-language-server/cli"]).toBe("0.25.3");
-    expect(catalog.devDependencies?.["@tailwindcss/language-server"]).toBeUndefined();
+    // The dependency catalog is slimmed to cross-surface pins only (packageManager +
+    // mcpTools). Language-server versions are sourced from package.json and echoed
+    // into .claude/cclsp.json (reconciled by check-dependency-catalog.mjs), never
+    // duplicated into the catalog — so the catalog carries no devDependencies.
+    expect(catalog.devDependencies).toBeUndefined();
     expect(commands).toContain(
       "npx --yes --package @postgres-language-server/cli@0.25.3 postgres-language-server lsp-proxy"
     );
@@ -120,10 +123,12 @@ describe("editor and language-server surfaces", () => {
         ".agents/skills/supaschema",
         ".claude/hooks/auto-diff-on-schema-change.mjs",
         ".claude/hooks/block-generated-migration-edits.mjs",
+        ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
         ".claude/rules/supaschema.md",
         ".claude/skills/supaschema",
         ".codex/hooks/auto-diff-on-schema-change.mjs",
-        ".codex/hooks/supaschema-tool-gate.mjs",
+        ".codex/hooks/block-generated-migration-edits.mjs",
+        ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
         ".codex/hooks.json",
         ".codex/rules/supaschema.rules",
         ".codex/skills/supaschema",

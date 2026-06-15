@@ -1,0 +1,6 @@
+# Generated migrations land here (config.migrationsDir) as timestamped
+# `<UTC timestamp>_<name>.sql` files — e.g. 20240101000000_add_account_status.sql —
+# matching the Supabase `supabase/migrations` convention.
+#
+# The sample tests render into an isolated temp directory instead of committing a
+# generated `-- supaschema: lineage` artifact, so this directory stays empty.

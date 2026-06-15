@@ -1,7 +1,8 @@
 ---
 title: "Introduction"
 description: "What supaschema is, why it exists, and where to start."
-keywords: ["Introduction","supaschema","declarative migrations","package contents"]
+keywords:
+  ["Introduction", "supaschema", "declarative migrations", "package contents"]
 ---
 
 supaschema generates PostgreSQL migrations from declarative SQL files.
@@ -9,7 +10,8 @@ supaschema generates PostgreSQL migrations from declarative SQL files.
 You edit the schema you want. supaschema writes the migration, checks that it is replay-safe, and can prove it in disposable databases.
 
 <Info>
-  If you only remember one thing: edit the configured schema tree, then run `supaschema diff` and `supaschema check`.
+  If you only remember one thing: edit the configured schema tree, then run
+  `supaschema diff` and `supaschema check`.
 </Info>
 
 ## What is supaschema?
@@ -27,7 +29,7 @@ File and Git sources do not need Docker, a shadow database, or a live PostgreSQL
 
 ## What gets installed?
 
-Installing `supaschema` prepares the project in one step.
+Installing `supaschema` prepares the project in one step. When npm does not run install scripts (npm v12 ignores dependency install scripts by default), `npx supaschema init` performs the same setup.
 
 It does not edit schema files. It does not generate migrations. It does not connect to a database.
 
@@ -37,7 +39,7 @@ The package includes:
 - typed ESM library exports;
 - PostgreSQL parser and SQL deparser dependencies;
 - JSON Schema validation for `supaschema.config.json`;
-- a config file when the project does not already have one, including `adapter`, `schemaPaths`, `migrationsDir`, `typesFile`, `zodFile`, and `environments`;
+- a config file when the project does not already have one, including `adapter`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, and `environments`;
 - Claude/Codex-compatible rules, skills, hooks, and agent guidance.
 
 Install also scans for existing schema and migration folders. See [Setup](/setup) for the exact path rules.
@@ -70,7 +72,9 @@ The normal flow is:
 Common runners include `psql`, a platform deployment job, and `supabase db push`.
 
 <Note>
-  `supaschema sync` is a Supabase-specific apply gate. With no apply flag, it is a dry run. With `--local` or `--remote`, it delegates to the Supabase CLI after safety checks.
+  `supaschema sync` is a Supabase-specific apply gate. With no apply flag, it is
+  a dry run. With `--local` or `--remote`, it delegates to the Supabase CLI
+  after safety checks.
 </Note>
 
 ## Start here
@@ -80,21 +84,25 @@ Common runners include `psql`, a platform deployment job, and `supabase db push`
     Install the package and confirm runtime requirements.
   </Card>
 
-  <Card title="Setup" icon="settings" href="/setup">
-    Review what install prepares and how to check the environment.
-  </Card>
+<Card title="Setup" icon="settings" href="/setup">
+  Review what install prepares and how to check the environment.
+</Card>
 
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Generate and check your first migration.
-  </Card>
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Generate and check your first migration.
+</Card>
 
-  <Card title="Commands" icon="terminal" href="/commands">
-    Find the CLI reference for `diff`, `check`, `verify`, and `types`.
-  </Card>
+<Card title="Commands" icon="terminal" href="/commands">
+  Find the CLI reference for `diff`, `check`, `verify`, and `types`.
+</Card>
 
-  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
-    Review detailed config keys, environments, hints, and validators.
-  </Card>
+<Card
+  title="Configuration"
+  icon="sliders-horizontal"
+  href="/configuration/config-file"
+>
+  Review detailed config keys, environments, hints, and validators.
+</Card>
 
   <Card title="Coding Agents" icon="bot" href="/coding-agents">
     See how the bundled agent instructions, rules, skills, and hooks work.

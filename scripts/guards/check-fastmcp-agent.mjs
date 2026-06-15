@@ -24,6 +24,7 @@ for (const token of [
   '"plans"',
   "SECRET_SUFFIXES",
   "code_atlas_query",
+  "repo_context_query",
   '["node", "scripts/code-atlas/query.mjs"',
   "upstream_mcp_capabilities",
   "Pointer index only",
@@ -31,10 +32,11 @@ for (const token of [
   "supaschema-docs",
   "from fastmcp.exceptions import ToolError",
   "raise ToolError(",
+  '"server": "supaschema"',
 ]) {
   assert(server.includes(token), `FastMCP server missing marker ${token}`);
 }
-assert(!server.includes("FastMCP.as_proxy"), "repo_context must not proxy other MCP servers");
+assert(!server.includes("FastMCP.as_proxy"), "supaschema must not proxy other MCP servers");
 assert(
   !server.includes("raise ValueError("),
   "FastMCP guards must raise ToolError (not bare ValueError) so messages survive mask_error_details"
@@ -54,8 +56,7 @@ const expectedServers = [
   "cloudflare-api",
   "cloudflare-docs",
   "cclsp",
-  "codeatlas",
-  "repo_context",
+  "supaschema",
   "context7",
   "mintlify",
   "next-devtools",
@@ -68,6 +69,12 @@ const expectedServers = [
 for (const serverName of expectedServers) {
   assert(mcp[serverName], `.mcp.json missing ${serverName}`);
 }
+assert(!mcp.codeatlas, ".mcp.json must not expose standalone codeatlas MCP");
+assert(!mcp.repo_context, ".mcp.json must not expose legacy repo_context MCP");
+assert(
+  mcp["supaschema-docs"]?.url === "https://supaschema.com/docs/mcp",
+  ".mcp.json supaschema-docs must use /docs/mcp"
+);
 const settings = readJson(".claude/settings.json");
 for (const serverName of expectedServers) {
   assert(
@@ -75,6 +82,14 @@ for (const serverName of expectedServers) {
     `.claude/settings.json must enable ${serverName}`
   );
 }
+assert(
+  !settings.enabledMcpjsonServers?.includes("codeatlas"),
+  ".claude/settings.json must not enable standalone codeatlas"
+);
+assert(
+  !settings.enabledMcpjsonServers?.includes("repo_context"),
+  ".claude/settings.json must not enable legacy repo_context"
+);
 const codexConfig = readText(".codex/config.toml");
 for (const serverName of expectedServers) {
   assert(
@@ -82,6 +97,18 @@ for (const serverName of expectedServers) {
     `.codex/config.toml missing ${serverName}`
   );
 }
+assert(
+  !codexConfig.includes("mcp_servers.codeatlas"),
+  ".codex/config.toml must not expose standalone codeatlas"
+);
+assert(
+  !codexConfig.includes("mcp_servers.repo_context"),
+  ".codex/config.toml must not expose legacy repo_context"
+);
+assert(
+  codexConfig.includes('url = "https://supaschema.com/docs/mcp"'),
+  ".codex/config.toml supaschema-docs must use /docs/mcp"
+);
 
 const packageJson = readJson("package.json");
 for (const script of ["fastmcp:inspect", "fastmcp:list", "fastmcp:status", "guard:fastmcp"]) {

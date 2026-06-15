@@ -1,1 +1,1 @@
-"""Read-only supaschema repo context MCP server package."""
+"""Read-only local supaschema MCP server package."""

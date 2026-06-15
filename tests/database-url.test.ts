@@ -10,9 +10,17 @@ import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/data
 const run = promisify(execFile);
 const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const codexGateCommand = `node "${codexProjectDir}/.codex/hooks/supaschema-tool-gate.mjs"`;
+const codexGateCommand = `node "${codexProjectDir}/.codex/hooks/block-generated-migration-edits.mjs"`;
 const codexAutoDiffCommand = `node "${codexProjectDir}/.codex/hooks/auto-diff-on-schema-change.mjs"`;
-const claudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
+const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
+const legacyClaudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
+const claudeGeneratedGateArgs = [
+  `${claudeProjectDir}/.claude/hooks/block-generated-migration-edits.mjs`,
+];
+const claudeAutoDiffArgs = [`${claudeProjectDir}/.claude/hooks/auto-diff-on-schema-change.mjs`];
+const claudeLlmSyncArgs = [
+  `${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
+];
 const managedSchemas = [
   "auth",
   "storage",
@@ -35,7 +43,7 @@ function expectedInstalledConfig(
   migrationsDir: string
 ): Record<string, unknown> {
   return {
-    $schema: "./node_modules/supaschema/config-schema.json",
+    $schema: "./node_modules/supaschema/supaschema-config.schema.json",
     adapter: "auto",
     cascade: "never",
     destructiveChanges: "hint-required",
@@ -58,6 +66,10 @@ function expectedInstalledConfig(
     schemas: {
       exclude: [],
       include: [],
+    },
+    sources: {
+      from: "auto",
+      to: `dir:${schemaPath}`,
     },
     statementTimeout: "60s",
     transactionMode: "per-migration",
@@ -127,11 +139,13 @@ describe("install-time project setup", () => {
       ".agents/skills/supaschema/SKILL.md",
       ".claude/hooks/auto-diff-on-schema-change.mjs",
       ".claude/hooks/block-generated-migration-edits.mjs",
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
       ".claude/rules/supaschema.md",
       ".claude/settings.json",
       ".claude/skills/supaschema/SKILL.md",
       ".codex/hooks/auto-diff-on-schema-change.mjs",
-      ".codex/hooks/supaschema-tool-gate.mjs",
+      ".codex/hooks/block-generated-migration-edits.mjs",
+      ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
       ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
     ]) {
@@ -163,14 +177,12 @@ describe("install-time project setup", () => {
     );
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(claudeSettings.enabledMcpjsonServers).toBeUndefined();
-    expect(commandCount(claudeSettings, claudeSkillGateCommand)).toBe(0);
-    expect(
-      commandCount(
-        claudeSettings,
-        'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/block-generated-migration-edits.mjs'
-      )
-    ).toBe(1);
+    expect(commandCount(claudeSettings, legacyClaudeSkillGateCommand)).toBe(0);
+    expect(hookCount(claudeSettings, "node", claudeGeneratedGateArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "node", claudeAutoDiffArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "node", claudeLlmSyncArgs)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
   });
 
@@ -254,6 +266,19 @@ describe("install-time project setup", () => {
     await writeFile(join(consumer, "supaschema.config.json"), '{"adapter":"postgres"}\n');
     await writeFile(join(consumer, "AGENTS.md"), "# Existing agents\n\nKeep this.\n");
     await writeFile(join(consumer, "CLAUDE.md"), "@AGENTS.md\n");
+    await mkdir(join(consumer, ".claude"), { recursive: true });
+    await writeFile(
+      join(consumer, ".claude/settings.json"),
+      `${JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [{ args: ["scripts/local-policy.mjs"], command: "node", type: "command" }],
+            },
+          ],
+        },
+      })}\n`
+    );
     await mkdir(join(consumer, ".codex"), { recursive: true });
     await writeFile(
       join(consumer, ".codex/hooks.json"),
@@ -282,9 +307,16 @@ describe("install-time project setup", () => {
     expect(claude).toContain("@AGENTS.md");
     expect(claude).toContain("<!-- supaschema:agent-guidance:start -->");
 
+    const claudeSettings = JSON.parse(
+      await readFile(join(consumer, ".claude/settings.json"), "utf8")
+    );
+    expect(hookCount(claudeSettings, "node", ["scripts/local-policy.mjs"])).toBe(1);
+    expect(hookCount(claudeSettings, "node", claudeGeneratedGateArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "node", claudeLlmSyncArgs)).toBe(1);
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(commandCount(codexHooks, "echo existing")).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
   });
 
   it("scans existing schema and migration folders for the generated config", async () => {
@@ -477,12 +509,17 @@ describe("install-time project setup", () => {
     const legacyAutoDiff =
       'node "$(git rev-parse --show-toplevel)/.codex/hooks/auto-diff-on-schema-change.mjs"';
     const legacyGate =
-      'node "$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-tool-gate.mjs"';
+      'node "$(git rev-parse --show-toplevel)/.codex/hooks/block-generated-migration-edits.mjs"';
+    const legacyLlmSync =
+      'node "$(git rev-parse --show-toplevel)/.codex/hooks/sync-llm-on-claude-surface-change.mjs"';
     await writeFile(
       join(consumer, ".codex/hooks.json"),
       `${JSON.stringify({
         hooks: {
-          PostToolUse: [{ hooks: [{ command: legacyAutoDiff, type: "command" }] }],
+          PostToolUse: [
+            { hooks: [{ command: legacyAutoDiff, type: "command" }] },
+            { hooks: [{ command: legacyLlmSync, type: "command" }] },
+          ],
           PreToolUse: [{ hooks: [{ command: legacyGate, type: "command" }] }],
         },
       })}\n`
@@ -495,8 +532,10 @@ describe("install-time project setup", () => {
     // script; only the new entry survives so diff/check do not run twice per edit.
     expect(commandCount(codexHooks, legacyAutoDiff)).toBe(0);
     expect(commandCount(codexHooks, legacyGate)).toBe(0);
+    expect(commandCount(codexHooks, legacyLlmSync)).toBe(0);
     expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
   });
 
   it("skips all scaffolding when SUPASCHEMA_SKIP_POSTINSTALL is set", async () => {
@@ -531,6 +570,26 @@ function commandCount(value: unknown, command: string): number {
       (count, [key, item]) =>
         count + (key === "command" && item === command ? 1 : commandCount(item, command)),
       0
+    );
+  }
+  return 0;
+}
+
+function hookCount(value: unknown, command: string, args: string[]): number {
+  if (Array.isArray(value)) {
+    return value.reduce((count, item) => count + hookCount(item, command, args), 0);
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const own =
+      record.command === command &&
+      Array.isArray(record.args) &&
+      JSON.stringify(record.args) === JSON.stringify(args)
+        ? 1
+        : 0;
+    return Object.values(record).reduce(
+      (count, item) => count + hookCount(item, command, args),
+      own
     );
   }
   return 0;

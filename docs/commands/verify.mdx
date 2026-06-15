@@ -44,21 +44,17 @@ A match proves two things simultaneously:
 ```bash
 # Verify against a local PostgreSQL server
 npx supaschema verify \
-  --from "git:HEAD" \
-  --to dir:database/schemas \
   --migration database/migrations/20240101000000_add_accounts.sql \
   --database-url postgresql://postgres:postgres@localhost:54322/postgres
 
 # Keep databases after failure for inspection
 npx supaschema verify \
-  --from "git:HEAD" --to dir:database/schemas \
   --migration /tmp/supaschema/migration.sql \
   --database-url postgresql://postgres:postgres@localhost:54322/postgres \
   --keep-databases
 
 # With role stubs for Supabase RLS
 npx supaschema verify \
-  --from "git:HEAD" --to dir:database/schemas \
   --migration migration.sql \
   --database-url postgresql://... \
   --ensure-roles
@@ -67,11 +63,11 @@ npx supaschema verify \
 ## Flags
 
 <ParamField path="--from" type="source">
-  The **before-state** source. supaschema applies this state to both temp databases before applying any migration or model SQL. Accepts `database:<url>` (including `database:$ENV_VAR`), `git:<ref>`, or `dir:<path>`. This should match the `--from` value you used when generating the migration with `diff`.
+  The **before-state** source. supaschema applies this state to both temp databases before applying any migration or model SQL. Accepts `database:<url>` (including `database:$ENV_VAR`), `git:<ref>`, or `dir:<path>`. Defaults to `config.sources.from`, so it matches zero-source-flag `diff`.
 </ParamField>
 
 <ParamField path="--to" type="source">
-  The **after-state** (target model) source. Applied directly to the second temp database for the convergence comparison. Accepts the same specifiers as `--from`. Typically `dir:database/schemas` or your configured schema path.
+  The **after-state** (target model) source. Applied directly to the second temp database for the convergence comparison. Accepts the same specifiers as `--from`. Defaults to `config.sources.to`, then `dir:<config.schemaPaths[0]>`.
 </ParamField>
 
 <ParamField path="--migration" type="path">
@@ -164,8 +160,6 @@ jobs:
         run: |
           migration=$(ls database/migrations/*.sql | sort | tail -n 1)
           npx supaschema verify \
-            --from "git:origin/main" \
-            --to dir:database/schemas \
             --migration "$migration" \
             --database-url postgresql://postgres:postgres@localhost:54322/postgres \
             --ensure-roles
@@ -181,7 +175,6 @@ When `verify` returns `SUPA_VERIFY_FINGERPRINT_MISMATCH` or `SUPA_VERIFY_RECONVE
 
 ```bash
 npx supaschema verify \
-  --from "git:HEAD" --to dir:database/schemas \
   --migration migration.sql \
   --database-url postgresql://postgres:postgres@localhost:54322/postgres \
   --keep-databases

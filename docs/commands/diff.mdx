@@ -19,10 +19,12 @@ If configured type files already exist, `diff` refreshes them after a successful
 
 When you run `npx supaschema diff` with no flags, supaschema:
 
-1. Reads `--from` from your live local database (or `git:HEAD` when no database connection is configured).
-2. Reads `--to` from `dir:<config.schemaPaths[0]>`.
+1. Reads the before-state from `config.sources.from`.
+2. Reads the after-state from `config.sources.to`, falling back to `dir:<config.schemaPaths[0]>`.
 3. Writes the resulting migration to `config.migrationsDir/<TIMESTAMP>_migration.sql`.
 4. Refreshes existing configured type output files from the updated schema.
+
+The scaffolded config uses `sources.from: "auto"`, which resolves a database URL first and falls back to `git:HEAD`, and `sources.to: "dir:<schemaPaths[0]>"`.
 
 If there is nothing to migrate, the command exits with code `0` and writes no file.
 
@@ -52,11 +54,11 @@ npx supaschema diff --dry-run --summary
 ## Flags
 
 <ParamField path="--from" type="source">
-  The **before-state** source to diff against. Accepts a `database:<url>` live connection (including `database:$ENV_VAR`), a `git:<ref>` specifier (e.g. `git:HEAD`, `git:origin/main`), or a `dir:<path>` pointing to a schema directory. Defaults to your live local database, falling back to `git:HEAD` when no database is reachable.
+  The **before-state** source to diff against. Accepts a `database:<url>` live connection (including `database:$ENV_VAR`), a `git:<ref>` specifier (e.g. `git:HEAD`, `git:origin/main`), or a `dir:<path>` pointing to a schema directory. Defaults to `config.sources.from`; `"auto"` resolves a database URL first, then falls back to `git:HEAD`.
 </ParamField>
 
 <ParamField path="--to" type="source">
-  The **after-state** source representing the desired schema. Accepts the same specifiers as `--from`, including `database:<url>` for live database sources. Defaults to `dir:<config.schemaPaths[0]>`.
+  The **after-state** source representing the desired schema. Accepts the same specifiers as `--from`, including `database:<url>` for live database sources. Defaults to `config.sources.to`, then `dir:<config.schemaPaths[0]>`.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">

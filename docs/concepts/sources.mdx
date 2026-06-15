@@ -252,11 +252,15 @@ The table below summarises the most useful source pairings and the workflow each
 | Analyse a legacy dump   | `dump:legacy-schema.sql` | `dir:database/schemas`               | Diff a dump file against your current schema                   |
 
 <Tip>
-  Defaults come from `supaschema.config.json`. `--to` uses the first configured schema path. `--from` uses a resolved database URL, then falls back to `git:HEAD`.
+  Defaults come from `supaschema.config.json`. `sources.from` owns the before-state and `sources.to` owns the after-state for zero-source-flag commands. The scaffolded `"auto"` before-state resolves a database URL, then falls back to `git:HEAD`.
 
   ```json
   {
-    "schemaPaths": ["database/schemas"]
+    "schemaPaths": ["database/schemas"],
+    "sources": {
+      "from": "auto",
+      "to": "dir:database/schemas"
+    }
   }
   ```
 </Tip>

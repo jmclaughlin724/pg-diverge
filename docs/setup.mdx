@@ -1,7 +1,7 @@
 ---
 title: "Setup"
 description: "Review install-time setup, verify the environment, and find detailed configuration options."
-keywords: ["setup","configuration","agent bundle","schema paths"]
+keywords: ["setup", "configuration", "agent bundle", "schema paths"]
 ---
 
 Setup is completed by package install.
@@ -14,8 +14,11 @@ npm install supaschema
 
 The installer prepares the project once. It does not generate or apply a migration.
 
+When npm does not run install scripts — npm v12 ignores dependency install scripts by default, or you installed with `--ignore-scripts` — run `npx supaschema init` to perform the same setup explicitly.
+
 <Info>
-  If you need to change paths later, edit `schemaPaths`, `migrationsDir`, `typesFile`, or `zodFile` in `supaschema.config.json`.
+  If you need to change paths later, edit `schemaPaths`, `sources.to`,
+  `migrationsDir`, `typesFile`, or `zodFile` in `supaschema.config.json`.
 </Info>
 
 This page covers path selection, agent addendum behavior, setup checks, and where detailed configuration lives. For the package contents installed in that step, see [What gets installed?](/introduction#what-gets-installed).
@@ -33,7 +36,8 @@ The path decision is:
 - in an interactive terminal, install can ask for the paths immediately.
 
 <Warning>
-  Do not run the first `diff` from a guessed path. If `.supaschema/install.json` says `pathConfirmationNeeded: true`, confirm the intended paths first.
+  Do not run the first `diff` from a guessed path. If `.supaschema/install.json`
+  says `pathConfirmationNeeded: true`, confirm the intended paths first.
 </Warning>
 
 | Provider marker | Schema path | Migrations path |
@@ -47,11 +51,11 @@ The path decision is:
 
 When no existing folders are found, generic PostgreSQL projects use `database/schemas` and `database/migrations`. The full generated config shape is defined in [Configuration](/configuration/config-file#generated-config).
 
-All providers use `adapter: "auto"`. Provider detection only seeds paths; managed schema protection, transaction behavior, type outputs, and environment references are configured with explicit fields in `supaschema.config.json`.
+All providers use `adapter: "auto"`. Provider detection only seeds paths and the default `sources.to`; managed schema protection, transaction behavior, type outputs, source defaults, and environment references are configured with explicit fields in `supaschema.config.json`.
 
 Commit this file. It keeps developers, CI, and coding agents on the same paths.
 
-If the config is deleted later, run `npx supaschema init` to recreate it.
+`npx supaschema init` performs the full setup — config, schema and migration directories, the agent rules/skills/hooks bundle, and the `AGENTS.md` / `CLAUDE.md` guidance — the same scaffold as package install. Run it when install scripts did not run (npm v12 ignores dependency install scripts by default) or to repair setup. It is idempotent: an existing config is left in place and the managed guidance block is updated where it already exists.
 
 ## Agent addendum
 
@@ -92,9 +96,9 @@ Use the detailed configuration pages when setup needs more than the defaults:
     Review schema paths, migrations, type outputs, validators, and planner policies.
   </Card>
 
-  <Card title="Environments" icon="database" href="/configuration/environments">
-    Configure named targets and database URL resolution.
-  </Card>
+<Card title="Environments" icon="database" href="/configuration/environments">
+  Configure named targets and database URL resolution.
+</Card>
 
   <Card title="Hints" icon="shield-alert" href="/configuration/hints">
     Approve reviewed destructive changes and renames.

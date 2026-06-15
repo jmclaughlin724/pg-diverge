@@ -52,12 +52,13 @@ This makes schema review focus on intent: the declared target changed, the gener
 
 For Supabase projects, `supaschema` fits into the existing `supabase/schemas/` and `supabase/migrations/` layout. For other PostgreSQL projects, use the paths in `supaschema.config.json` plus optional named environments.
 
-Sources can be directories, git refs, live read-only catalogs, dumps, or saved catalog JSON:
+Source defaults live in `supaschema.config.json`, so the normal command stays flagless:
 
 ```bash
-npx supaschema diff --from git:main --to dir:database/schemas
-npx supaschema diff --from database:$DATABASE_URL --to dir:database/schemas
+npx supaschema diff
 ```
+
+When you intentionally override config, sources can be directories, git refs, live read-only catalogs, dumps, or saved catalog JSON.
 
 ## Related guides
 

@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../supaschema-config.schema.json",
+  "adapter": "auto",
+  "schemaPaths": ["supabase/schemas"],
+  "migrationsDir": "supabase/migrations",
+  "sources": {
+    "from": "dir:supabase/schemas",
+    "to": "dir:supabase/schemas-next"
+  },
+  "typesFile": "packages/db/src/types/database.types.ts",
+  "zodFile": "packages/db/src/types/database.zod.ts",
+  "transactionMode": "per-migration",
+  "destructiveChanges": "hint-required",
+  "excludedGrantRoles": [
+    "supabase_admin",
+    "supabase_auth_admin",
+    "supabase_storage_admin",
+    "dashboard_user",
+    "pgbouncer",
+    "authenticator"
+  ],
+  "validators": ["internal-parser"]
+}

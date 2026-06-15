@@ -55,11 +55,11 @@ That failure may be a stub limitation. Confirm by applying the migration to a di
 
 ## Examples
 
-- `examples/supabase/schemas` demonstrates Supabase-style declarative schema input with RLS and policies; `examples/supabase/schemas-next` is the evolved tree, so a full diff runs out of the box:
+- `examples/supabase` demonstrates a Supabase-style project layout with one configured declarative tree, `supabase/schemas`, plus a `baseline.sql` before-state so the diff runs without a database:
 
   ```bash
   cd examples/supabase
-  npx supaschema diff --from dir:schemas --to dir:schemas-next --out stdout
+  npx supaschema diff --out stdout
   ```
 
 - `examples/postgres/schemas` demonstrates a generic PostgreSQL schema tree without Supabase-managed schema rules.

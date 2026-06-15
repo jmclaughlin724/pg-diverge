@@ -1,4 +1,5 @@
 {
+  "$schema": "../../supaschema-config.schema.json",
   "adapter": "auto",
   "destructiveChanges": "hint-required",
   "excludedGrantRoles": [
@@ -9,7 +10,12 @@
     "pgbouncer",
     "authenticator"
   ],
-  "schemaPaths": ["schemas"],
+  "migrationsDir": "supabase/migrations",
+  "schemaPaths": ["supabase/schemas"],
+  "sources": {
+    "from": "dump:baseline.sql",
+    "to": "dir:supabase/schemas"
+  },
   "transactionMode": "per-migration",
   "validators": ["internal-parser"]
 }

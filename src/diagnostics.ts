@@ -105,7 +105,7 @@ function formatRef(ref: ObjectRef): string {
 
 export const diagnosticCatalog: Record<string, string> = {
   SUPA_CONFIG_INVALID:
-    "supaschema.config.json failed schema validation; fix the reported fields against config-schema.json.",
+    "supaschema.config.json failed schema validation; fix the reported fields against supaschema-config.schema.json.",
   SUPA_CATALOG_EXTRACT_FAILED: "Live catalog extraction failed; check the database URL and role.",
   SUPA_CATALOG_SNAPSHOT_VERSION:
     "The catalog snapshot was produced by a different supaschema model version; hashes may not be comparable.",

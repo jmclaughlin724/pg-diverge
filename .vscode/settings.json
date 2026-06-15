@@ -18,11 +18,11 @@
   "json.schemas": [
     {
       "fileMatch": ["postgres-language-server.jsonc"],
-      "url": "https://pg-language-server.com/0.25.3/schema.json"
+      "url": "https://pg-language-server.com/latest/schema.json"
     },
     {
       "fileMatch": ["supaschema.config.json"],
-      "url": "./config-schema.json"
+      "url": "./supaschema-config.schema.json"
     }
   ],
   "json.schemaDownload.enable": true,

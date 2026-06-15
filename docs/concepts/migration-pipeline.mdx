@@ -206,7 +206,7 @@ psql $DATABASE_URL -f database/migrations/0012_add_order_status.sql
 supabase db push
 
 # Generate and pipe to psql in one step
-supaschema diff --from database:$DATABASE_URL --to dir:database/schemas --out stdout \
+supaschema diff --out stdout \
   | psql $DATABASE_URL
 ```
 
@@ -243,10 +243,10 @@ A typical end-to-end developer workflow looks like this:
 vim database/schemas/orders.sql
 
 # 2. Preview the planned migration (dry-run: Extract + Plan + Render, no writes)
-supaschema diff --from database:$LOCAL_URL --to dir:database/schemas --dry-run
+supaschema diff --dry-run
 
 # 3. Generate the migration file (Extract + Plan + Render; diff does not run Check)
-supaschema diff --from database:$LOCAL_URL --to dir:database/schemas
+supaschema diff
 
 # 4. Run the replay-safety checks on the generated migration (separate step)
 supaschema check

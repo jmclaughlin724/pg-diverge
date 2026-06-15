@@ -7,7 +7,7 @@ Biome configs.
 
 | Scope | Relaxation | Rationale |
 | --- | --- | --- |
-| `dist/`, `coverage/`, `node_modules/`, `.venv/`, `.tmp/`, `.codeatlas/`, `.codeatlas-sa/`, `.wrangler/`, `api-docs/`, `benchmarks/results/`, `*.tgz`, `config-schema.json` | formatter and linter excluded | Generated output, caches, virtualenvs, packaged archives, or generated contracts. |
+| `dist/`, `coverage/`, `node_modules/`, `.venv/`, `.tmp/`, `.codeatlas/`, `.codeatlas-sa/`, `.wrangler/`, `api-docs/`, `benchmarks/results/`, `*.tgz`, `supaschema-config.schema.json` | formatter and linter excluded | Generated output, caches, virtualenvs, packaged archives, or generated contracts. |
 | `.claude/skills/**` except bundled project skills | excluded, with selected bundled skills re-included | Prevent unrelated local Claude skill content from becoming part of the package lint surface. |
 | Existing parser, planner, source-normalizer, typegen, benchmark, docs-lint, and Code Atlas baseline | `noExcessiveCognitiveComplexity` remains `error` with a 65-point migration cap on an explicit file list | Avoid behavior-changing refactors in mature SQL planning and verification code while still preventing complexity from growing unbounded. |
 | `src/index.ts` | `noBarrelFile` disabled for this file only | This is the published package API entrypoint; consumers import from `supaschema`, not private source modules. |

@@ -57,8 +57,8 @@ The loop can run without a database. Policy bodies are compared structurally, no
 A **schema source** is any collection of SQL files that supaschema can parse into a complete picture of your database objects. The most common source is a directory of `.sql` files referenced by the `schemaPaths` configuration key (or the `dir:` source prefix on the CLI).
 
 ```bash
-# Point supaschema at a directory of SQL files
-supaschema diff --to dir:database/schemas
+# Generate from the configured source defaults
+supaschema diff
 ```
 
 Inside that directory, you write ordinary PostgreSQL `CREATE` statements — one file per table, one file per domain, or however you prefer to organise them. supaschema does not impose a file-naming convention.
