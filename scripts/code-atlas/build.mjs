@@ -76,7 +76,6 @@ const DENY_SEGMENTS = new Set([
   "coverage",
   ".tmp",
   "plans",
-  ".gitnexus",
 ]);
 const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const ROUTE_OWNERS = new Set(["page", "route"]);
