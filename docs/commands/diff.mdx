@@ -3,9 +3,18 @@ title: "diff"
 description: "diff compares two schema sources and emits a replay-safe SQL migration. Supports --from, --to, --out, --watch, --fail-on-diff, and more."
 ---
 
-The `diff` command is the primary workflow entry point in supaschema. It compares a **before-state** (your live database or a git ref) against an **after-state** (your declarative schema directory) and renders an idempotent, replay-safe SQL migration. By default it writes the migration to `config.migrationsDir` (`database/migrations` in the neutral scaffold) and then refreshes configured TypeScript and Zod output files that already exist. You can redirect output to stdout, preview without writing, or run continuously in watch mode.
+Use `diff` when schema files changed and you need a migration.
 
-## Default Behavior
+`diff` compares:
+
+- a **from** source: the current state;
+- a **to** source: the desired state.
+
+It renders replay-safe SQL and writes a migration to `config.migrationsDir`.
+
+If configured type files already exist, `diff` refreshes them after a successful migration write.
+
+## Default behavior
 
 When you run `npx supaschema diff` with no flags, supaschema:
 
@@ -17,7 +26,7 @@ When you run `npx supaschema diff` with no flags, supaschema:
 If there is nothing to migrate, the command exits with code `0` and writes no file.
 
 <Note>
-  Type output refresh runs automatically after every successful migration write, but only for configured files that already exist. Run `npx supaschema types` once to create them. Pass `--dry-run` or `--out stdout` to skip the write step and suppress type refresh.
+  Type refresh only runs for configured files that already exist. Run `npx supaschema types` once to create them.
 </Note>
 
 ## Examples

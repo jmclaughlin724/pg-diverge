@@ -5,6 +5,15 @@ description: "How to approve reviewed destructive changes and renames without we
 
 `supaschema` fails closed when intent cannot be proven from the SQL parse tree. Hints are the explicit, reviewable way to state intent.
 
+Use hints for two cases only:
+
+- a destructive change that a human already reviewed;
+- a rename that would otherwise look like drop plus create.
+
+<Warning>
+  Do not commit broad destructive approval. Use exact object keys, not `"*"`, in shared config.
+</Warning>
+
 ## Destructive changes
 
 A blocked plan looks like this:
@@ -14,7 +23,11 @@ ERROR SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED [table:app.legacy_imports]: drop of ta
   hint: Add "table:app.legacy_imports" to hints.destructive only after reviewing the migration.
 ```
 
-Recovery: review the rendered `-- BLOCKED` section, confirm the drop is intended, then add the exact object key:
+Recovery:
+
+1. Review the rendered `-- BLOCKED` section.
+2. Confirm the drop is intended.
+3. Add the exact object key.
 
 ```json
 {

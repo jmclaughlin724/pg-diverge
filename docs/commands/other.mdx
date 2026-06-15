@@ -3,10 +3,29 @@ title: "Utility commands"
 description: "Reference for supaschema utility commands: plan, inspect, fingerprint, audit, corpus, doctor, init, completion, explain, and selfcheck."
 ---
 
-Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, supaschema ships a set of utility commands for scripting, introspection, diagnostics, and shell integration. Each command is documented below. All of them accept `--config <path>` to point at a non-default config file.
+Use these commands when you need inspection, diagnostics, or shell integration.
+
+Core migration work still starts with `diff`, `check`, `verify`, `types`, `migrations`, and `sync`.
+
+All utility commands accept `--config <path>`.
+
+| Need | Command |
+| --- | --- |
+| See the planned operations before rendering SQL | `plan` |
+| See the extracted schema model | `inspect` |
+| Compare schema equality quickly | `fingerprint` |
+| Check supported and unsupported objects | `audit` |
+| Run the real-world regression oracle | `corpus` |
+| Diagnose local setup | `doctor` |
+| Recreate missing config | `init` |
+| Add shell completions | `completion` |
+| Decode a `SUPA_*` code | `explain` |
+| Compare live-catalog normalization | `selfcheck` |
 
 <Accordion title="plan — Print the diff plan as JSON">
-  `plan` runs the same schema comparison logic as `diff` but instead of writing a migration file it prints the full object-level diff plan to stdout as JSON. Use it to drive custom tooling, feed a review script, or inspect exactly what supaschema intends to generate before you commit to a migration.
+  `plan` runs the same comparison as `diff`, but prints JSON instead of writing SQL.
+
+  Use it to inspect object-level operations before generating a migration.
 
   ```bash
   # Print the plan between HEAD and the current schema directory
@@ -17,7 +36,9 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
     | jq '[.operations[] | select(.ref.kind == "table")]'
   ```
 
-  The JSON output is a `MigrationPlan` object with a top-level `operations` array. Each operation describes the planned change, object reference, stable object key, destructive/blocking flags, and diagnostics. Use `diff` when you need rendered SQL.
+  The JSON output is a `MigrationPlan` with an `operations` array. Each operation includes the change type, object key, diagnostics, and destructive/blocking status.
+
+  Use `diff` when you need rendered SQL.
 
   Flags: `--from <source>`, `--to <target>`, `--schema <names>`, `--timing`.
 
@@ -27,7 +48,9 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 </Accordion>
 
 <Accordion title="inspect — Print the schema model as JSON">
-  `inspect` extracts the full in-memory schema model for any supported source and prints it as formatted JSON. The model is the same intermediate representation that every other supaschema command operates on, so this is the fastest way to understand what supaschema sees when it reads a given source.
+  `inspect` prints the schema model supaschema extracted from a source.
+
+  Use it when a diff result is surprising and you need to see what supaschema actually read.
 
   ```bash
   # Inspect a schema directory
@@ -43,13 +66,17 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
   npx supaschema inspect --from dir:database/schemas --schema public,auth
   ```
 
-  The output includes every table, view, enum, function, trigger, index, and constraint that supaschema's parser supports. Objects that fall outside the supported surface area are reported in the `diagnostics` array as `SUPA_EXTRACT_UNSUPPORTED`; unsupported input exits with code `2`.
+  The output includes supported tables, views, enums, functions, triggers, indexes, and constraints.
+
+  Unsupported input appears in `diagnostics` as `SUPA_EXTRACT_UNSUPPORTED` and exits with code `2`.
 
   Flags: `--from <source>` (defaults to the config schema tree), `--schema <names>` (comma-separated filter).
 </Accordion>
 
 <Accordion title="fingerprint — Print the model equality hash">
-  `fingerprint` computes the canonical hash of a source's schema model and prints it to stdout. Two sources with identical fingerprints have identical schemas from supaschema's perspective, regardless of formatting or comment differences in the underlying SQL files.
+  `fingerprint` prints the canonical hash of a schema source.
+
+  Matching fingerprints mean matching schema models, ignoring formatting and comments.
 
   ```bash
   # Fingerprint a schema directory
@@ -72,7 +99,9 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 </Accordion>
 
 <Accordion title="audit — Report schema coverage">
-  `audit` reads a schema source and produces a coverage report showing which DDL objects supaschema's diff engine fully supports, partially supports, or does not yet support. Use it to understand which parts of your schema will be managed by supaschema and which parts you must continue to manage manually.
+  `audit` reports which objects supaschema can manage.
+
+  Use it before adopting an existing database so unsupported DDL is visible before the first generated migration.
 
   ```bash
   # Audit your schema directory
@@ -85,13 +114,17 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
   npx supaschema audit --from dir:database/schemas --json
   ```
 
-  The output is a table grouped by object type (tables, views, functions, triggers, policies, indexes, …) with counts and a supported/unsupported breakdown. Unsupported DDL is fail-closed: `diff` reports `SUPA_EXTRACT_UNSUPPORTED` and stops instead of copying unsupported statements into generated migrations.
+  Output is grouped by object type, with supported and unsupported counts.
+
+  Unsupported DDL fails closed: `diff` reports `SUPA_EXTRACT_UNSUPPORTED` and stops instead of copying unmodeled SQL into a migration.
 
   Flags: `--from <source>` (required), `--json`.
 </Accordion>
 
 <Accordion title="corpus — Run the corpus oracle">
-  `corpus` replays a directory of real-world migration files (the corpus), diffs each against its declared schema tree, applies the rendered reconciliation migration twice, and requires the re-diff to converge to zero operations. It is the regression oracle that proves supaschema's diff engine handles complex, real-world schemas correctly.
+  `corpus` runs the dirty-real regression oracle.
+
+  It replays migration files, diffs them against declared schemas, applies the reconciliation migration twice, and requires the next diff to converge to zero operations.
 
   ```bash
   # Run against the default corpus directory
@@ -119,7 +152,9 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 </Accordion>
 
 <Accordion title="doctor — Diagnose your environment">
-  `doctor` checks every component of your supaschema setup and reports a pass/fail result for each. Run it whenever something behaves unexpectedly or before adding supaschema to CI.
+  `doctor` checks local setup and prints pass/fail results.
+
+  Run it when setup behaves unexpectedly or before adding supaschema to CI.
 
   ```bash
   # Check everything except database connectivity
@@ -171,7 +206,9 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 </Accordion>
 
 <Accordion title="completion — Print shell completion script">
-  `completion` prints a shell completion script for the shell you specify. Source it or append it to your shell's startup file to get tab-completion for all supaschema commands, flags, and source specifiers.
+  `completion` prints a shell completion script.
+
+  Add it to your shell startup file to autocomplete commands, flags, and source specifiers.
 
   ```bash
   # Bash
@@ -192,7 +229,9 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 </Accordion>
 
 <Accordion title="explain — Look up a diagnostic code">
-  `explain` prints a full offline description of any `SUPA_*` diagnostic code: what it means, what conditions trigger it, and how to resolve it. You never need a network connection or a browser to look up an error.
+  `explain` decodes a `SUPA_*` diagnostic code offline.
+
+  Use it when CI or a hook prints a code and you need the recovery path immediately.
 
   ```bash
   # Explain a specific diagnostic code
@@ -216,13 +255,13 @@ Beyond the core `diff`, `check`, `types`, `migrations`, and `sync` commands, sup
 </Accordion>
 
 <Accordion title="selfcheck — Engine parity check">
-  `selfcheck` connects to a live database, re-extracts the catalog using supaschema's extraction pipeline, then reports any object whose round-trip SQL representation doesn't match what the engine would produce. It reveals normalization gaps — places where supaschema's model of an object differs from the live catalog.
+  `selfcheck` compares supaschema's live-catalog extraction against the database engine's representation.
+
+  Use it when evaluating supaschema against an existing database or after upgrading supaschema.
 
   ```bash
   npx supaschema selfcheck --database-url postgresql://postgres:postgres@localhost:54322/postgres
   ```
-
-  `selfcheck` is primarily useful when you are evaluating supaschema against an existing database that was not created with supaschema, or when you want to verify that upgrading supaschema hasn't changed how it models any of your existing objects.
 
   Flags: `--database-url <url>` (defaults to `SUPASCHEMA_DATABASE_URL` or the local Supabase stack).
 

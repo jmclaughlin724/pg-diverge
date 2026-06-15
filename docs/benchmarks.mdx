@@ -3,9 +3,19 @@ title: "Benchmarks"
 description: "Latency, accuracy, and replay-safety results for supaschema compared with Supabase CLI diff engines."
 ---
 
-The benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. Every generated migration is applied once, applied a second time, and compared against the target catalog.
+The benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures.
+
+Each generated migration is:
+
+1. applied once;
+2. applied again;
+3. compared against the target catalog.
 
 Reference run: 2026-06-12 on Apple Silicon, Node 24, PostgreSQL 17.6, and Supabase CLI 2.106.0.
+
+<Info>
+  Short version: supaschema stays fast at large schema sizes, keeps F1 at `1.000`, and produces migrations that survive a second apply.
+</Info>
 
 ## Speed and accuracy
 
@@ -25,7 +35,14 @@ The diff is only half the loop. Once type outputs exist, getting a migration **a
 
 ## Accuracy
 
-Diff output is scored two ways: **F1** against a ground-truth change manifest by object identity, and the **catalog fingerprint** — the generated migration is applied to a throwaway database and the result is compared to the target. `supaschema` scores F1 `1.000` on every manifest-carrying fixture (the generated `realistic`/`xl`/`xxl` set) in file, live-database, and full-workflow modes. The compared Supabase engines score `0.982-0.999` and miss the same RLS policy change — and on that fixture each engine's migration also fails the fingerprint check, so the miss is confirmed objectively, not just by the rubric.
+Diff output is scored two ways:
+
+- **F1** against a ground-truth change manifest by object identity.
+- **Catalog fingerprint** after applying the generated migration to a throwaway database.
+
+`supaschema` scores F1 `1.000` on every manifest-carrying fixture in file, live-database, and full-workflow modes.
+
+The compared Supabase engines score `0.982-0.999` and miss the same RLS policy change. On that fixture, each generated migration also fails the fingerprint check.
 
 ## Replay safety
 

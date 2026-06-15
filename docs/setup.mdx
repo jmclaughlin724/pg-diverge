@@ -3,7 +3,13 @@ title: "Setup"
 description: "Review install-time setup, verify the environment, and find detailed configuration options."
 ---
 
-Setup is completed by the normal package install. `npm install --save-dev supaschema` prepares the project, scans for existing schema and migrations folders, and leaves schema and migration generation untouched until `diff` runs.
+Setup is completed by package install.
+
+Run `npm install --save-dev supaschema`. The installer prepares files and folders. It does not generate or apply a migration.
+
+<Info>
+  If you need to change paths later, edit `schemaPaths` and `migrationsDir` in `supaschema.config.json`.
+</Info>
 
 ## What install prepares
 
@@ -17,17 +23,23 @@ Setup is completed by the normal package install. `npm install --save-dev supasc
 | Agent guidance | Adds a managed supaschema block to `AGENTS.md` and `CLAUDE.md` |
 | Agent enforcement | Installs Claude/Codex rules, skills, hooks, and hook wiring |
 
-For every config key and advanced option, see [Configuration](/configuration/config-file).
+For advanced options, see [Configuration](/configuration/config-file).
 
 ## Path selection
 
-Install scans the repository before writing config:
+Install scans the repository before writing config.
+
+The path decision is:
 
 - one detected schema folder and one detected migrations folder are used automatically;
 - if a provider marker is present and no existing schema or migrations folder is found, install uses that provider's default folders;
 - otherwise the neutral PostgreSQL layout is `database/schemas` and `database/migrations`;
-- if multiple non-standard candidates exist, install records them in `.supaschema/install.json` and the managed agent addendum tells the agent to ask which paths to use before the first diff;
-- in an interactive terminal, install can prompt for the paths immediately.
+- if multiple candidates exist, install records them in `.supaschema/install.json`;
+- in an interactive terminal, install can ask for the paths immediately.
+
+<Warning>
+  Do not run the first `diff` from a guessed path. If `.supaschema/install.json` says `pathConfirmationNeeded: true`, confirm the intended paths first.
+</Warning>
 
 | Provider marker | Schema path | Migrations path |
 | --- | --- | --- |
@@ -38,7 +50,7 @@ Install scans the repository before writing config:
 | AlloyDB markers in Terraform, Cloud Build, or App Engine config | `alloydb/schemas` | `alloydb/migrations` |
 | Azure PostgreSQL markers in Terraform, Bicep, ARM, or Azure Developer CLI config | `azure-postgresql/schemas` | `azure-postgresql/migrations` |
 
-When no existing folders are found in a generic PostgreSQL project, install creates this neutral layout:
+When no existing folders are found, generic PostgreSQL projects use this layout:
 
 ```json
 {
@@ -50,7 +62,9 @@ When no existing folders are found in a generic PostgreSQL project, install crea
 
 In a Supabase project with `supabase/config.toml`, install also writes `adapter: "auto"` so `supabase db push` can consume generated migrations unchanged while managed Supabase schemas stay protected. Other providers use the neutral `postgres` adapter unless you change it.
 
-Commit this file so every developer, CI job, and coding agent uses the same paths. If the config is deleted later, run `npx supaschema init` to recreate it.
+Commit this file. It keeps developers, CI, and coding agents on the same paths.
+
+If the config is deleted later, run `npx supaschema init` to recreate it.
 
 ## Agent addendum
 
@@ -71,7 +85,16 @@ Run `doctor` when you want a one-page environment check:
 npx supaschema doctor
 ```
 
-`doctor` checks the Node version, parser load, config validity, database URL resolution, database reachability when a URL is available, `CREATEDB` capability for verification, migration history, and the declarative schema tree.
+`doctor` checks:
+
+- Node version;
+- parser load;
+- config validity;
+- database URL resolution;
+- database reachability when a URL is available;
+- `CREATEDB` capability for verification;
+- migration history;
+- declarative schema tree.
 
 ## Configuration
 

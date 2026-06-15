@@ -3,11 +3,22 @@ title: "types"
 description: "types generates Supabase-compatible TypeScript interfaces and Zod validators directly from your schema files — no database connection required."
 ---
 
-The `types` command reads your declarative schema tree and emits two output files: a `database.types.ts` file containing Supabase-compatible TypeScript interfaces, and a `database.zod.ts` file containing matching Zod validators. Because supaschema parses your schema files directly, you never need a live database connection to regenerate your types — your schema files are the source of truth.
+Use `types` when application code needs the latest database shape.
+
+It reads the declarative schema tree and writes:
+
+- `database.types.ts` with Supabase-compatible TypeScript interfaces;
+- `database.zod.ts` with matching Zod validators.
+
+No live database is required.
 
 ## How it works
 
-`supaschema types` walks the schema source you point it at (by default the first directory listed under `schemaPaths` in your config; pass `--from` to read a different single source, such as a `git:` ref or a `database:` catalog), builds an in-memory model of every table, view, enum, and composite type, then writes two files:
+`supaschema types` walks one schema source.
+
+By default, it uses the first directory in `schemaPaths`. Pass `--from` to use a different source.
+
+It models tables, views, enums, and composite types, then writes two files:
 
 * **`database.types.ts`** — the same shape that the Supabase CLI's `gen types typescript` command produces, so it drops in as a direct replacement. It exports a `Database` interface you pass directly to `createClient<Database>`.
 * **`database.zod.ts`** — a matching set of Zod schemas derived from the same model, one schema per table row type, ready to use in API handlers and form validation.
@@ -18,7 +29,11 @@ The `types` command reads your declarative schema tree and emits two output file
 
 ## Auto-run with `diff`
 
-You don't have to invoke `types` manually after every schema change once the output files exist. The `diff` command refreshes the configured `typesFile` and `zodFile` after it successfully writes a new migration file, but it skips missing files instead of creating them. Use `--dry-run` or `--out stdout` when you want to preview a diff without writing a migration or refreshing generated type files.
+Once output files exist, you do not need to run `types` after every schema change.
+
+`diff` refreshes `typesFile` and `zodFile` after it writes a migration. Missing files are skipped.
+
+Use `--dry-run` or `--out stdout` when you want a preview without file writes.
 
 ## Configuration
 

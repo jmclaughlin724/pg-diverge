@@ -3,7 +3,21 @@ title: "check"
 description: "check statically validates SQL migration files for replay-safety, lock hazards, and parser issues. Supports --reporter text, github, sarif, and json."
 ---
 
-The `check` command runs static analysis over one or more SQL migration files without touching a database. It enforces 20+ rules that together guarantee your migrations are safe to replay, free of lock hazards, and suitable for production deployment. The diagnostics report is written to `stdout` so a reporter's output composes cleanly with pipelines and redirects; only operational notices such as "no migrations found" go to `stderr`. `check` is fast enough to run on every commit in CI and as a pre-commit hook locally.
+Use `check` before any migration reaches a database.
+
+It reads migration SQL. It does not connect to a database.
+
+`check` looks for:
+
+- replay-safety problems;
+- lock hazards;
+- parser errors;
+- unsafe `DROP` and `CASCADE` patterns;
+- non-idempotent data changes.
+
+<Info>
+  Run `npx supaschema check` with no arguments to check every `.sql` file in `config.migrationsDir`.
+</Info>
 
 ## Input
 
@@ -49,8 +63,11 @@ npx supaschema check migration.sql --reporter sarif
   Controls the diagnostic output format:
 
   * **`text`** — Human-readable output with file names, line numbers, rule codes, and messages. This is the default when no flag is passed.
+
   * **`github`** — Emits [workflow commands](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions) (`::error file=...`) that GitHub Actions renders as inline PR annotations on the changed files.
+
   * **`sarif`** — Outputs a SARIF 2.1.0 JSON document to stdout. Upload to GitHub's code scanning API with `github/codeql-action/upload-sarif` for persistent security alerts.
+
   * **`json`** — Outputs a JSON array of diagnostic objects. Useful for programmatic consumption or building custom reporters.
 </ParamField>
 

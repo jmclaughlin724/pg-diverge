@@ -3,7 +3,9 @@ title: "Installation"
 description: "Install supaschema from npm and confirm the minimum runtime requirements."
 ---
 
-supaschema is distributed as an npm package and works in Node.js projects that target PostgreSQL 15+ directly or through managed PostgreSQL platforms such as Supabase, Neon, AWS RDS/Aurora PostgreSQL, Google Cloud SQL/AlloyDB, Azure Database for PostgreSQL, Render, Railway, Heroku Postgres, Timescale, Crunchy Bridge, and EDB.
+Install supaschema as a dev dependency in the project that owns your schema files.
+
+The install step also prepares config, schema folders, migration folders, and agent guidance when they are missing.
 
 ## Requirements
 
@@ -12,27 +14,55 @@ supaschema is distributed as an npm package and works in Node.js projects that t
 | Node.js | 22.12.0 |
 | PostgreSQL target | 15 |
 
-The PostgreSQL parser is bundled with the package through `libpg-query`, so you do not need a local PostgreSQL server to generate migrations from SQL files or Git refs.
+supaschema works with PostgreSQL 15+ directly and with managed PostgreSQL providers.
+
+Supported targets include Supabase, Neon, AWS RDS/Aurora PostgreSQL, Google Cloud SQL, AlloyDB, Azure Database for PostgreSQL, Render, Railway, Heroku Postgres, Timescale, Crunchy Bridge, and EDB.
 
 <Note>
-  Supabase is not the only supported target. Install recognizes common project markers for Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, and Azure PostgreSQL, and every PostgreSQL provider can use named `environments` or `SUPASCHEMA_DATABASE_URL` for database URL resolution.
+  The PostgreSQL parser is bundled through `libpg-query`. You do not need a local PostgreSQL server to generate migrations from SQL files or Git refs.
 </Note>
 
 ## Install
 
-Use npm in this repository and in projects that follow the supaschema package guidance:
+Use npm:
 
 ```bash
 npm install --save-dev supaschema
 ```
 
-Other package managers can install the package, but this repository uses npm and `package-lock.json`.
+Other package managers can install the package. This repository uses npm and `package-lock.json`.
+
+## What install adds
+
+Install creates or updates only supaschema-owned setup files:
+
+- `supaschema.config.json`, when missing;
+- schema and migrations folders from the detected project layout;
+- Claude/Codex-compatible rule, skill, and hook files;
+- hook wiring for Claude and Codex-compatible agents;
+- a tagged supaschema addendum in `AGENTS.md` and `CLAUDE.md`.
+
+If the installer finds multiple possible schema or migration folders, it records them in `.supaschema/install.json`. Confirm the paths before the first `diff`.
 
 ## Verify the binary
 
 ```bash
 npx supaschema --version
 ```
+
+## Configure database URLs
+
+Use `supaschema.config.json` for named environments:
+
+```json
+{
+  "environments": {
+    "staging": { "databaseUrl": "$STAGING_DATABASE_URL" }
+  }
+}
+```
+
+Keep real URLs in environment variables. Do not commit credentials.
 
 ## Next steps
 

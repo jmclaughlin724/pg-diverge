@@ -3,15 +3,26 @@ title: "Migration pipeline"
 description: "How supaschema extracts, diffs, renders, checks, and verifies a migration from schema files to production-ready SQL, without ever touching your database."
 ---
 
-supaschema's model is a structured pipeline of six stages — Extract, Plan, Render, Check, Verify, and Apply. `supaschema diff` performs the first three (Extract, Plan, Render) and writes the migration file; **Check, Verify, and Apply are separate, explicit steps** you run on the result (`supaschema check`, `supaschema verify`, and your deployment runner). Understanding each stage helps you interpret error messages, tune safety settings, and trust the output. This page walks through every stage in detail.
+supaschema has six stages:
+
+1. Extract
+2. Plan
+3. Render
+4. Check
+5. Verify
+6. Apply
+
+`supaschema diff` runs the first three and writes the migration.
+
+`check`, `verify`, and apply are separate steps.
 
 <Note>
-  supaschema **never writes to your target database**. Generating a migration from `dir:` files or a `git:` ref needs no database at all; a `database:` source connects only to **read** the current catalog (it issues read queries and makes no changes — though it does not set the session `READ ONLY`). The Verify stage (below) is the one step that needs a server, and it creates and drops its own **disposable** databases — never your target. Applying the migration is always a separate, explicit step owned by your runner (such as the Supabase CLI or a custom script).
+  supaschema never writes to your target database. `dir:` and `git:` sources need no database. `database:` sources read catalog state only. `verify` creates disposable databases. Apply is always owned by your runner.
 </Note>
 
 ***
 
-## Pipeline Overview
+## Pipeline overview
 
 ```
 ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
@@ -29,7 +40,9 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 <Steps>
   ### Stage 1 — Extract
 
-  supaschema resolves both the `--from` and `--to` sources into a **SchemaModel** each. A SchemaModel is a structured, in-memory catalogue of every database object found in that source, with each object carrying a normalised definition and a deterministic content hash.
+  supaschema resolves `--from` and `--to` into SchemaModels.
+
+  A SchemaModel is a structured catalog of database objects. Each object has a normalized definition and deterministic hash.
 
   The extraction process varies by source type:
 
@@ -41,7 +54,7 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
   | `dump:`     | A single SQL file is parsed as if it were a `dir:` with one file                             |
   | `catalog:`  | The JSON snapshot is deserialised directly into a SchemaModel                                |
 
-  After extraction you have two models: the **current state** (from) and the **desired state** (to). Every subsequent stage works from these two models — no source is read again.
+  After extraction, the rest of the pipeline uses only these two models.
 
   ```bash
   # You can inspect what supaschema extracted from any source
@@ -64,7 +77,7 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
   ### Stage 2 — Plan
 
-  Once both SchemaModels exist, supaschema calls `planSchemaDiff()` to compute a **MigrationPlan** — an ordered list of operations describing every change needed to evolve the "from" state into the "to" state.
+  Planning computes the ordered changes from current state to desired state.
 
   Each operation in the plan carries:
 
@@ -82,9 +95,13 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
   **Operation kinds explained:**
 
   * **`create`** — the object exists in "to" but not in "from". Always safe.
+
   * **`alter`** — the object exists in both but the definition changed. Safe for most column and constraint changes.
+
   * **`replace`** — the object must be dropped and recreated (e.g. changing a function's return type or an enum's label). Potentially destructive.
+
   * **`drop`** — the object exists in "from" but not in "to". Always destructive.
+
   * **`rename`** — supaschema detected a rename from an explicit hint. Produces `ALTER TABLE … RENAME` rather than a drop-and-create pair.
 
   <Warning>
@@ -93,7 +110,9 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
   ### Stage 3 — Render
 
-  The planner passes the MigrationPlan to the **renderer**, which turns operations into SQL text. The renderer respects **dependency order** — if creating table B requires table A to exist first, table A's `CREATE TABLE` appears earlier in the output, regardless of which file defined it.
+  Rendering turns the plan into SQL.
+
+  The renderer respects dependency order. If table B needs table A, table A is created first.
 
   Dependency ordering handles:
 
@@ -113,7 +132,7 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
     ON public.orders (user_id);
   ```
 
-  If any operation in the plan is `blocked: true` (i.e. destructive and not explicitly allowed), the render stage emits an error listing every blocked operation and exits before producing any SQL. This is intentional — a partially rendered migration with some operations omitted would leave the schema in an inconsistent state.
+  If an operation is blocked, rendering stops before producing SQL. supaschema never writes a partial migration that omits unsafe operations.
 
   <Tip>
     To allow a specific destructive operation, add the object key to `hints.destructive` in your `supaschema.config.json`. This makes the intent explicit and keeps the approval tracked in version control alongside the schema change.
@@ -121,9 +140,11 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
   ### Stage 4 — Check
 
-  Check is a **separate, explicit step** — `diff` writes the migration (and validates the lineage chain), but it does not run the replay-safety rules. You run them with `supaschema check` (the bundled agent hook and `supaschema sync` invoke it for you). This stage runs more than 20 replay-safety rules against the rendered SQL without executing it.
+  Check is a separate step.
 
-  **Replay-safe** means: the migration can be applied to a database that is already at the target state without raising an error or changing any data. In other words, applying it twice produces the same result as applying it once.
+  `diff` writes the migration. `supaschema check` runs the replay-safety rules without executing SQL.
+
+  Replay-safe means applying the migration twice produces the same result as applying it once.
 
   Rules enforced by the checker include:
 
@@ -146,7 +167,9 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
   ### Stage 5 — Verify
 
-  The `verify` stage is the final and strongest safety layer. It connects to the PostgreSQL server referenced by `--database-url`, creates two temporary databases on that server, applies the migration twice, and confirms that:
+  Verify is the strongest safety layer.
+
+  It creates two temporary databases and confirms:
 
   1. The first application succeeds without error.
   2. The second application also succeeds without error (idempotency proof).
@@ -166,11 +189,13 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 
 ***
 
-## Stage 6 — Apply (Your Runner)
+## Stage 6 — apply
 
-supaschema stops at the end of the Verify stage. It outputs the finished migration SQL to your configured migrations directory (`database/migrations` in the neutral scaffold) and then steps back.
+supaschema stops after verify.
 
-Applying that SQL to a real database is the responsibility of **your deployment runner**:
+It writes migration SQL to your configured migrations directory, then steps back.
+
+Your deployment runner applies the SQL:
 
 ```bash
 # Apply with psql directly
@@ -184,7 +209,7 @@ supaschema diff --from database:$DATABASE_URL --to dir:database/schemas --out st
   | psql $DATABASE_URL
 ```
 
-This separation is intentional. supaschema never holds a connection to your production database, which means it cannot accidentally apply a migration at the wrong moment, and it fits naturally into any existing deployment pipeline.
+This separation is intentional. supaschema cannot apply a production migration at the wrong moment.
 
 ***
 
@@ -208,7 +233,7 @@ fi
 
 ***
 
-## Putting It All Together
+## Putting it together
 
 A typical end-to-end developer workflow looks like this:
 

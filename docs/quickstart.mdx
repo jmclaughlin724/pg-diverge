@@ -3,17 +3,28 @@ title: "Quickstart"
 description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from explicit offline sources, and validate it."
 ---
 
-supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, including Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, and Azure PostgreSQL. This guide uses the neutral PostgreSQL layout created by install: `database/schemas` for declarative SQL and `database/migrations` for generated migrations. If install selected provider-specific paths, use the `schemaPaths` and `migrationsDir` values in `supaschema.config.json` instead.
+This guide generates one replay-safe migration from one schema file.
+
+The examples use the neutral paths:
+
+- schema files: `database/schemas`
+- migrations: `database/migrations`
+
+If install selected provider-specific paths, use the values in `supaschema.config.json` instead.
+
+<Tip>
+  Keep this page open while you work. Each step has one command or one file edit.
+</Tip>
 
 <Steps>
   <Step title="Install">
-    supaschema requires **Node.js 22.12 or later** and targets **PostgreSQL 15 or later**. Install it as a dev dependency in your project:
+    Install supaschema as a dev dependency:
 
     ```bash
     npm install --save-dev supaschema
     ```
 
-    Verify the installation:
+    Check the binary:
 
     ```bash
     npx supaschema --version
@@ -21,13 +32,13 @@ supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, in
   </Step>
 
   <Step title="Write schema">
-    Create your first schema file:
+    Create the schema folder:
 
     ```bash
     mkdir -p database/schemas
     ```
 
-    Then create `database/schemas/001_app.sql` with the following content:
+    Create `database/schemas/001_app.sql`:
 
     ```sql
     -- database/schemas/001_app.sql
@@ -48,20 +59,20 @@ supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, in
     ```
 
     <Tip>
-      You can split your schema across as many files as you like. supaschema processes all `.sql` files in your configured `schemaPaths` in lexicographic order. Prefix filenames with a numeric sequence (e.g. `001_`, `002_`) to control load order explicitly.
+      You can split your schema across multiple files. supaschema reads `.sql` files in lexicographic order. Use prefixes such as `001_` and `002_` when order matters.
     </Tip>
 
-    Your schema files are the single source of truth. You edit them directly — you never write migration SQL by hand.
+    Your schema files are the source of truth. You edit them directly. supaschema writes the migration.
   </Step>
 
   <Step title="Generate">
-    With your schema file in place, run `diff` to generate a migration:
+    Generate the migration:
 
     ```bash
     npx supaschema diff --from git:HEAD --to dir:database/schemas
     ```
 
-    supaschema compares the schema files committed at `HEAD` against your edited declarative schema files in `database/schemas` and writes a new timestamped migration file to `database/migrations`.
+    supaschema compares `git:HEAD` to your edited schema files. It writes one timestamped migration.
 
     You will see output similar to:
 
@@ -73,7 +84,7 @@ supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, in
     Created: database/migrations/20240101120000_migration.sql
     ```
 
-    The generated migration file contains only the SQL needed to move from your current state to your desired state. Every statement is guarded so the migration is safe to re-run. Open it to review the output:
+    Open the generated file and review it. Every generated statement is guarded so the migration is safe to re-run.
 
     ```sql
     -- database/migrations/20240101120000_migration.sql
@@ -110,7 +121,7 @@ supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, in
     ```
 
     <Tip>
-    Use explicit sources when you want the whole run to stay offline:
+    Use explicit sources when you want the run to stay offline:
 
       ```bash
       npx supaschema diff --from git:HEAD --to dir:database/schemas
@@ -119,13 +130,13 @@ supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, in
   </Step>
 
   <Step title="Check">
-    Before applying the migration, use `check` to validate it:
+    Check the migration before applying it:
 
     ```bash
     npx supaschema check database/migrations/20240101120000_migration.sql
     ```
 
-    `check` parses the migration using the PostgreSQL WASM parser and verifies its structural correctness and safety. A passing check looks like:
+    A passing check looks like:
 
     ```
     ✔ Parsed 4 statements
@@ -136,12 +147,14 @@ supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, in
     ```
 
     <Warning>
-      If `check` reports any issues, review the flagged statements before applying the migration. supaschema will never silently suppress warnings that could result in data loss.
+      If `check` reports issues, review the flagged statements before applying the migration. supaschema fails closed when it cannot prove safety.
     </Warning>
   </Step>
 
   <Step title="Apply">
-    supaschema generates migrations but never applies them to a target database directly. Use your normal PostgreSQL migration runner. For a direct `psql` apply:
+    supaschema generates migrations. Your normal runner applies them.
+
+    For a direct `psql` apply:
 
     ```bash
     psql "$DATABASE_URL" -f database/migrations/20240101120000_migration.sql
@@ -153,21 +166,21 @@ supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, in
     supabase db push
     ```
 
-    This keeps your existing deployment workflow intact. supaschema slots in as the migration *generation* step; your runner handles the *application* step.
+    supaschema owns generation and proof. Your runner owns application.
 
     <Note>
-      supaschema never applies migrations to your database or requires a shadow database. When you pass file, git, dump, or catalog sources as shown above, migration generation is entirely offline; omit `--from` only when you intentionally want the configured live database to be the applied-state source.
+      supaschema never applies migrations to your target database. It also does not need a shadow database for file, Git, dump, or catalog sources.
     </Note>
   </Step>
 
   <Step title="Generate types">
-    Once your schema is defined, you can generate TypeScript types from it:
+    Generate TypeScript and Zod output:
 
     ```bash
     npx supaschema types
     ```
 
-    This produces a type file derived from your declarative schema, giving you end-to-end type safety from database schema to application code — no separate `supabase gen types` step required against a live database.
+    The output comes from your schema files. It does not require a live database.
 
     ```
     ✔ Parsed schema tree (3 objects)
@@ -179,9 +192,16 @@ supaschema works with plain PostgreSQL and with managed PostgreSQL platforms, in
   </Step>
 </Steps>
 
-## What's Next?
+## Next
 
-You've installed supaschema, written a declarative schema, generated and validated a migration, and seen how to push it. From here you can:
+You now have the basic loop:
+
+1. Edit schema files.
+2. Run `diff`.
+3. Run `check`.
+4. Apply with your runner.
+
+Go deeper here:
 
 <CardGroup cols={2}>
   <Card title="Setup" icon="gear" href="/setup">

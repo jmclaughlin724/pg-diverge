@@ -3,6 +3,18 @@ title: "Configuration"
 description: "Configuration options, defaults, environments, validators, and examples for supaschema."
 ---
 
+`supaschema.config.json` is the project-owned place for persistent defaults.
+
+Most teams edit only these fields:
+
+- `schemaPaths` — where declarative SQL files live.
+- `migrationsDir` — where generated migrations are written.
+- `environments` — named database URL references such as staging or production.
+- `typesFile` / `zodFile` — generated type output paths.
+- `hints` — exact reviewed destructive changes or renames.
+
+## Load order
+
 `supaschema` looks for config in this order:
 
 1. `--config <path>` (`.json`, `.mjs`, or `.js` with a default export)
@@ -10,9 +22,15 @@ description: "Configuration options, defaults, environments, validators, and exa
 3. `supaschema.config.mjs`, then `supaschema.config.js`
 4. Built-in defaults
 
-Unknown keys are rejected (the schema is strict), so typos fail loudly. The scaffolded config carries a `$schema` pointer at the shipped `config-schema.json` (generated from the Zod schema at build time), so editors autocomplete and validate every key.
+Unknown keys are rejected, so typos fail loudly.
 
-`supaschema.config.json` is the project-owned place to edit `schemaPaths`, `migrationsDir`, type output paths, planner policy, and named database URL references under `environments`. Keep real credentials in environment variables and reference them as `$ENV_NAME`; provider config files such as `supabase/config.toml`, `neon.toml`, Terraform, Bicep, CloudFormation, or Cloud Build files are used only to seed install-time defaults.
+The scaffolded config includes a `$schema` pointer to the shipped `config-schema.json`, so editors can autocomplete and validate every key.
+
+<Warning>
+  Keep real credentials in environment variables and reference them as `$ENV_NAME`. Provider config files such as `supabase/config.toml`, `neon.toml`, Terraform, Bicep, CloudFormation, or Cloud Build files are used only to seed install-time defaults.
+</Warning>
+
+## Options
 
 | Option | Default | Meaning |
 | --- | --- | --- |

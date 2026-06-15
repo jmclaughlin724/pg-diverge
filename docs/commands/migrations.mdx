@@ -3,7 +3,14 @@ title: "migrations"
 description: "migrations compares SQL files on disk against a database's applied history to surface ghost versions, out-of-order files, and pending migrations."
 ---
 
-The `migrations` command gives you a clear picture of the relationship between the SQL files sitting on disk and the migration history recorded in your target database. It reads every numbered file in your migrations directory, queries the database's history table (if you supply a connection URL), and prints a reconciled status table so you can see at a glance what is applied, what is pending, and whether anything looks suspicious.
+Use `migrations` when you need to know what has been applied and what is still pending.
+
+It compares two lists:
+
+- migration files on disk;
+- versions recorded in the target database history table.
+
+If no database URL is available, it still lists disk files.
 
 ## What it does
 

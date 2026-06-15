@@ -3,7 +3,9 @@ title: "Library API"
 description: "Every CLI capability as an exported, typed function — the supaschema Node.js library surface."
 ---
 
-Everything the CLI does is available as an exported, typed function. Import from `supaschema` to embed extraction, planning, rendering, checking, and verification in your own tooling.
+Use the library API when you want supaschema behavior inside your own script, test, or tool.
+
+Everything the CLI does is available as typed ESM exports.
 
 ```ts
 import {
@@ -52,4 +54,6 @@ import {
 | `parseLineage` / `latestLineage` / `lineageLine` | Read and produce the `-- supaschema: lineage` markers that chain migrations. |
 | `runConfiguredValidators` | Run the configured external validators (`squawk`, `sqlfluff`, …) against SQL. |
 
-All exports ship TypeScript types (`SchemaModel`, `MigrationPlan`, `SyncOptions`, `CorpusReport`, …). For the full generated signature reference, run `npm run docs:api` in the repository — it builds a TypeDoc site from `src/index.ts`.
+All exports ship TypeScript types, including `SchemaModel`, `MigrationPlan`, `SyncOptions`, and `CorpusReport`.
+
+For generated signatures, run `npm run docs:api` in the repository.

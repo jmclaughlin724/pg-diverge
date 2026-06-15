@@ -3,7 +3,15 @@ title: "Case study"
 description: "supaschema measured against a production multi-tenant Supabase platform: ~30 schemas, ~8,300 objects, hundreds of RLS policies."
 ---
 
-supaschema was built while developing a production multi-tenant SaaS on Supabase: roughly **30 schemas, ~8,300 schema objects, and hundreds of RLS policies** (tenant isolation is enforced in the database, so almost every table carries policies). The pain that motivated the project was concrete: every schema edit meant waiting on the Supabase CLI's shadow-database diff before a migration — and its generated types — could catch up. That wait is a tax on every change, and it grows with the schema.
+supaschema was built while developing a production multi-tenant SaaS on Supabase.
+
+The schema had:
+
+- roughly 30 schemas;
+- about 8,300 schema objects;
+- hundreds of Row Level Security policies.
+
+Every schema edit meant waiting for a shadow-database diff before migrations and generated types could catch up.
 
 All numbers below are reproducible. Object names are kept generic; the measurements are from the real tree.
 
@@ -45,9 +53,19 @@ node benchmarks/compare.js
 
 ## Security: the miss that speed hides
 
-Speed is the felt pain; the more dangerous gap is correctness on RLS. On a multi-tenant platform, a policy's `USING` predicate **is** the tenant boundary. Tightening `USING (true)` to `USING (tenant_id = current_tenant())` is a one-line change that closes an isolation hole — and every Supabase CLI diff engine measured here silently drops that policy change (it diffs policies by name, not by body). See the [accuracy results](/benchmarks#accuracy) for the manifest-carrying fixtures, where each engine scores F1 0.982–0.999 on exactly that miss while supaschema scores 1.000, and the missed-policy migration provably fails to reach the target catalog.
+Speed is the visible pain. RLS correctness is the bigger risk.
 
-A slow diff costs seconds. An unreplayable diff costs a deploy. A silently dropped policy change ships a tenant-isolation hole that review, CI, and the migration runner all wave through — which on this platform's hundreds of policies is the failure mode that actually matters.
+On a multi-tenant platform, a policy's `USING` predicate is the tenant boundary.
+
+Changing `USING (true)` to `USING (tenant_id = current_tenant())` can close an isolation hole. Every Supabase CLI diff engine measured here silently drops that policy-body change because it diffs policies by name, not by body.
+
+See the [accuracy results](/benchmarks#accuracy). supaschema scores F1 `1.000`; the compared engines score `0.982-0.999` on the same missed-policy fixture.
+
+A slow diff costs time.
+
+An unreplayable diff costs a deploy.
+
+A silently dropped policy change can ship a tenant-isolation bug.
 
 ## Why both speed and security
 

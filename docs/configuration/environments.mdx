@@ -3,14 +3,26 @@ title: "Environments"
 description: "How supaschema resolves database URLs — named environments, $ENV indirection, SUPASCHEMA_DATABASE_URL, and supabase/config.toml discovery."
 ---
 
-Commands that read a live catalog (`diff --from database:...`, `verify`, `migrations`, `sync`, `doctor`) need a database URL. You rarely have to spell one out: supaschema resolves it from the most explicit source available.
+Commands that read a live catalog need a database URL.
+
+This includes:
+
+- `diff --from database:...`;
+- `verify`;
+- `migrations`;
+- `sync`;
+- `doctor`.
+
+You usually do not need to repeat the URL on every command. Configure it once, then select it with `--env`.
 
 ## Resolution order
 
-1. **An explicit value** — the `--database-url` flag or a `database:<url>` source. The value supports `$ENV_NAME` indirection: pass `$STAGING_DB` and supaschema reads the URL from that environment variable, failing loudly if it is unset.
-2. **A named environment** — the global `--env <name>` flag looks up `environments.<name>.databaseUrl` in the config. These values support the same `$ENV_NAME` indirection.
+1. **An explicit value** — the `--database-url` flag or a `database:<url>` source.
+2. **A named environment** — the global `--env <name>` flag reads `environments.<name>.databaseUrl` from config.
 3. **`SUPASCHEMA_DATABASE_URL`** — the environment variable, when set.
 4. **The local Supabase stack** — the nearest `supabase/config.toml` (searched upward from the working directory) supplies the local URL from its `[db] port`. This is why a plain `npx supaschema diff` works in a Supabase project with the stack running.
+
+Explicit values and named environments support `$ENV_NAME` indirection. If the environment variable is missing, supaschema fails loudly.
 
 <Note>
   `supabase/config.toml` is read only to discover the local Supabase database URL. Other provider config or infrastructure files are install-time markers only. Schema locations and named database URL references come from `supaschema.config.json`.

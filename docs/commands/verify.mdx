@@ -3,7 +3,16 @@ title: "verify"
 description: "verify applies your migration twice in throwaway databases and compares catalog fingerprints to prove idempotency and convergence to the declared schema."
 ---
 
-The `verify` command gives you a cryptographic proof that your migration is both **idempotent** and **convergent**. It creates two throwaway databases, applies the migration twice to the first, applies your target schema model directly to the second, then compares catalog fingerprints across both. If the fingerprints match, your migration is proven safe. If they diverge, supaschema tells you exactly which catalog objects differ. Temp databases are always cleaned up on success — you only retain them on failure when you need to inspect what went wrong.
+Use `verify` when a database is available and you want the strongest proof before merge.
+
+`verify` creates two throwaway databases:
+
+- one database gets the migration twice;
+- the other database gets the target schema model directly.
+
+Then supaschema compares catalog fingerprints.
+
+If they match, the migration is idempotent and converges to the declared schema.
 
 <Note>
   `verify` requires a local database URL for a PostgreSQL instance where your user has `CREATEDB` privileges. It refuses remote databases by default to protect production data from accidental writes.

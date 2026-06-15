@@ -3,7 +3,15 @@ title: "CI recipe"
 description: "GitHub Actions examples for drift checks, replay-safety checks, and apply-twice verification."
 ---
 
-A minimal GitHub Actions job that diffs a pull request's declarative tree against the base branch, checks the rendered migration, and proves it against a disposable PostgreSQL service:
+Use this recipe when a pull request changes schema files.
+
+The job does three things:
+
+1. renders the migration from the PR diff;
+2. checks replay safety;
+3. verifies the migration against a disposable PostgreSQL service.
+
+## Workflow
 
 ```yaml
 name: schema-diff
@@ -48,7 +56,7 @@ jobs:
             --database-url postgresql://postgres:postgres@localhost:5432/postgres
 ```
 
-Notes:
+## Notes
 
 - `fetch-depth: 0` is required so `git:` sources can read the base ref.
 - `verify` creates and drops temporary databases on the service; the role must have `CREATEDB`. Add `--ensure-roles` when migrations grant to roles (e.g. `authenticated`) that a bare PostgreSQL service does not have.
@@ -68,4 +76,4 @@ Notes:
   [ -z "$staged" ] || npx supaschema check $staged
   ```
 
-- `npm run corpus:check` runs the corpus oracle (replay a dirty-real migrations corpus, diff against its tree, apply twice, require reconvergence to zero) against the same service container; it prints a skip notice and exits 0 when no database URL resolves. Background and the regression-corpus discipline live in `docs/guides/corpus-oracle.md`.
+- `npm run corpus:check` runs the corpus oracle against the same service container. It prints a skip notice and exits 0 when no database URL resolves. See [Corpus oracle](/guides/corpus-oracle).

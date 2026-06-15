@@ -3,56 +3,72 @@ title: "Introduction"
 description: "What supaschema is, why it exists, and where to start."
 ---
 
-supaschema is a Node.js CLI and library for generating deterministic PostgreSQL migrations from declarative SQL schema files. It is PostgreSQL-first and Supabase-aware: generic PostgreSQL projects use normal Postgres URLs and migration runners, while Supabase projects get managed-schema protections, local URL discovery, and optional Supabase CLI handoff.
+supaschema generates PostgreSQL migrations from declarative SQL files.
+
+You edit the schema you want. supaschema writes the migration, checks that it is replay-safe, and can prove it in disposable databases.
+
+<Info>
+  If you only remember one thing: edit the configured schema tree, then run `supaschema diff` and `supaschema check`.
+</Info>
 
 ## What is supaschema?
 
-supaschema is a generator, checker, and verifier:
+supaschema is a Node.js CLI and library with four core jobs:
 
 - `diff` compares schema sources and writes a migration.
-- `check` statically validates migration SQL for replay safety and lock hazards.
+- `check` validates migration SQL for replay safety and lock hazards.
 - `verify` applies a migration twice in disposable databases and checks convergence.
-- `types` emits Supabase-compatible TypeScript types and Zod validators from the declarative tree.
+- `types` emits TypeScript types and Zod validators from the schema tree.
 
-It can read schema state from SQL files, Git refs, live databases, SQL dumps, or saved catalog snapshots. Generation from files or Git refs does not require Docker, a shadow database, or a live PostgreSQL connection.
+It can read state from SQL files, Git refs, live databases, SQL dumps, or saved catalog snapshots.
+
+File and Git sources do not need Docker, a shadow database, or a live PostgreSQL connection.
 
 ## What gets installed?
 
-Installing `supaschema` gives a project everything a human or coding agent needs to start generating migrations. It creates config when no config exists, scans for existing schema and migrations folders, detects common PostgreSQL provider project markers, and installs the bundled Claude/Codex-compatible agent rule, skill, and hooks. Install does not edit schema files, generate migrations, or connect to a database.
+Installing `supaschema` prepares the project in one step.
+
+It does not edit schema files. It does not generate migrations. It does not connect to a database.
 
 The package includes:
 
-- the `supaschema` CLI for setup, diff generation, checks, verification, and type generation;
-- typed ESM library exports for scripts, tests, and custom tooling;
-- the PostgreSQL parser and SQL deparser dependencies needed for AST-based schema reads;
-- the JSON Schema for editor validation of `supaschema.config.json`;
-- a `supaschema.config.json` when the project does not already define config, including `schemaPaths`, `migrationsDir`, and optional named `environments`;
-- the bundled coding-agent instructions, rules, skills, and hooks for Claude and Codex-compatible agents.
+- the `supaschema` CLI;
+- typed ESM library exports;
+- PostgreSQL parser and SQL deparser dependencies;
+- JSON Schema validation for `supaschema.config.json`;
+- a config file when the project does not already have one;
+- Claude/Codex-compatible rules, skills, hooks, and agent guidance.
 
-After install, an agent can follow the same loop a human would: edit declarative SQL, run `diff`, run `check`, and only apply through your normal migration runner when asked.
+Install also scans for existing schema and migration folders. See [Setup](/setup) for the exact path rules.
 
 ## Why supaschema?
 
-Database-backed diff workflows are slow and easy to mistrust when schemas grow. They also miss classes of changes that matter in Supabase projects, especially Row Level Security policy body changes.
+Database-backed diff workflows slow down as schemas grow. They also make it easy to miss changes that matter, such as Row Level Security policy body changes.
 
-supaschema uses PostgreSQL parse trees through `libpg-query` and structured schema models instead. That design gives you:
+supaschema uses PostgreSQL parse trees through `libpg-query` and structured schema models. That gives you:
 
-- **Offline migration generation** from committed SQL files or Git refs.
-- **Replay-safe SQL** with guarded creates and catalog-checked operations.
-- **Structural policy comparison** for RLS policies, not name-only matching.
-- **Fast type generation** from the declarative tree, without waiting for a deployed database.
-- **CI-friendly proofs** through `check`, `verify`, drift gates, and diagnostics.
+- offline migration generation from SQL files or Git refs;
+- replay-safe SQL with guarded creates;
+- structural RLS policy comparison;
+- type generation before deploy;
+- CI gates through `check`, `verify`, drift detection, and diagnostics.
 
 ## How it fits
 
-supaschema does not replace your migration runner. The normal flow is:
+supaschema does not replace your migration runner.
+
+The normal flow is:
 
 1. Edit the declarative schema files.
 2. Generate a migration with `supaschema diff`.
 3. Validate it with `supaschema check` and, when possible, `supaschema verify`.
-4. Apply it with your runner, such as `psql`, a platform deployment job, or `supabase db push`.
+4. Apply it with your runner.
 
-The optional `supaschema sync` command is a Supabase-specific apply gate: without `--local` or `--remote` it is a dry run, and with an apply flag it delegates to the Supabase CLI after status and replay-safety checks.
+Common runners include `psql`, a platform deployment job, and `supabase db push`.
+
+<Note>
+  `supaschema sync` is a Supabase-specific apply gate. With no apply flag, it is a dry run. With `--local` or `--remote`, it delegates to the Supabase CLI after safety checks.
+</Note>
 
 ## Start here
 

@@ -3,15 +3,23 @@ title: "sync"
 description: "sync checks pending migrations pass static validation, then optionally drives the Supabase CLI to apply them locally or push them remotely."
 ---
 
-The `sync` command is the bridge between your migration files on disk and a running database. It first runs the same static validation gate as the `check` command against every pending migration, and only if all checks pass does it hand off to the Supabase CLI to do the actual work. With no flags, `sync` runs in dry-run mode — it tells you what it would do without touching anything.
+Use `sync` when you want a gated Supabase CLI handoff.
+
+With no flags, `sync` is a dry run. It reports pending migrations and runs the gate without touching a database.
+
+With `--local` or `--remote`, it checks pending migrations first, then delegates the apply step to the Supabase CLI.
+
+<Info>
+  `sync` is not the default supaschema workflow. The default loop is `diff`, `check`, and optionally `verify`; the runner still applies reviewed SQL.
+</Info>
 
 ## What it does
 
-`supaschema sync` follows these steps in order:
+`supaschema sync` does three things:
 
-1. **Reconcile** — calls the same logic as `supaschema migrations` to identify pending files and detect any ghost versions or out-of-order history.
-2. **Gate** — runs static validation (`check`) against each pending migration. If any file fails, the command stops and reports the diagnostics without applying anything.
-3. **Apply** (only with `--local` or `--remote`) — invokes the Supabase CLI to apply or push the pending migrations.
+1. **Reconcile** — finds pending files, ghost versions, and out-of-order history.
+2. **Gate** — runs `check` on each pending migration and stops on diagnostics.
+3. **Apply** — only with `--local` or `--remote`; invokes the Supabase CLI.
 
 <Note>
   supaschema never writes to the migrations history table itself. It delegates all application to the Supabase CLI (`supabase migration up` for local, `supabase db push` for remote), which owns the history record. This means your history table stays consistent with what the Supabase toolchain expects.
@@ -19,7 +27,7 @@ The `sync` command is the bridge between your migration files on disk and a runn
 
 ## Dry-run mode
 
-Running `supaschema sync` without `--local` or `--remote` prints a plan of what would be applied but executes nothing. Use this to verify the gate logic in CI without needing a live database, or to preview what a deployment will do before you approve it.
+Run `supaschema sync` without apply flags to preview the handoff:
 
 ```
 Pending migrations (2):
@@ -37,7 +45,7 @@ No runner flag provided — dry run only. Pass --local or --remote to apply.
 * **Ghost versions** — a version is in the history table but the file is missing on disk (`SUPA_MIGRATIONS_GHOST_VERSIONS`).
 * **Out-of-order files** — a file has a lower version number than the highest applied version but is not itself applied (`SUPA_MIGRATIONS_OUT_OF_ORDER`).
 
-These gates exist because applying migrations in the presence of history inconsistencies can silently corrupt your schema state. Fix the underlying issue first, then re-run `sync`.
+Fix history problems first. Then re-run `sync`.
 
 <Warning>
   Never use `--remote` against a production database without first reviewing the output of a dry run and confirming the pending migrations are exactly what you expect. The Supabase CLI's `db push` is not transactional across multiple migration files.
@@ -90,11 +98,11 @@ npx supaschema sync --local --migrations-dir db/migrations
 
 ## Exit codes
 
-| Code | Meaning                                                                                                                                                                                                    |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | Success. All pending migrations passed the gate and (if a runner flag was provided) were applied successfully. Also returned when there are no pending migrations.                                         |
-| `1`  | Unexpected error — a runtime failure such as a configuration problem, a missing Supabase CLI binary, or a network error.                                                                                   |
-| `2`  | Gate failure — one or more pending migrations failed static validation, or ghost/out-of-order history was detected. No migrations were applied. Check the diagnostic output to identify the failing files. |
+| Code | Meaning |
+| ---- | --- |
+| `0` | Success. All pending migrations passed, or there were no pending migrations. |
+| `1` | Runtime failure such as bad config, missing Supabase CLI, or network failure. |
+| `2` | Gate failure. A pending migration failed `check`, or migration history was inconsistent. |
 
 ## Diagnostic codes
 

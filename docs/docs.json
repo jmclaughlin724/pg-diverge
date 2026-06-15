@@ -103,25 +103,30 @@
   "navigation": {
     "groups": [
       {
-        "group": "Get Started",
+        "group": "Start",
         "icon": "rocket",
         "pages": ["introduction", "installation", "setup", "quickstart", "coding-agents", "faq"]
       },
       {
-        "group": "Core Concepts",
+        "group": "Understand",
         "icon": "book-open",
-        "pages": ["concepts/declarative-schema", "concepts/migration-pipeline", "concepts/sources"]
+        "pages": [
+          "concepts/declarative-schema",
+          "concepts/migration-pipeline",
+          "concepts/sources",
+          "comparisons/supaschema-vs-supabase-cli"
+        ]
       },
       {
-        "group": "Use Cases",
-        "icon": "search",
+        "group": "Generate",
+        "icon": "wand-sparkles",
         "pages": [
-          "comparisons/supaschema-vs-supabase-cli",
-          "guides/supabase-db-diff-without-docker",
           "guides/declarative-postgres-schema-management",
+          "guides/supabase-db-diff-without-docker",
           "guides/idempotent-postgres-migrations",
           "guides/rls-policy-migration-safety",
-          "guides/generate-supabase-types-without-database"
+          "guides/generate-supabase-types-without-database",
+          "guides/supabase-integration"
         ]
       },
       {
@@ -144,24 +149,20 @@
         "pages": ["configuration/config-file", "configuration/environments", "configuration/hints"]
       },
       {
-        "group": "Guides",
+        "group": "Ship",
         "icon": "shield-check",
-        "pages": [
-          "guides/supabase-integration",
-          "guides/ci-github-actions",
-          "guides/ci-gate",
-          "guides/corpus-oracle"
-        ]
-      },
-      {
-        "group": "Benchmarks",
-        "icon": "chart-line",
-        "pages": ["benchmarks", "case-study-anilize"]
+        "pages": ["guides/ci-github-actions", "guides/ci-gate", "guides/corpus-oracle"]
       },
       {
         "group": "Reference",
         "icon": "library",
-        "pages": ["reference/diagnostics", "reference/library-api", "reference/support-matrix"]
+        "pages": [
+          "benchmarks",
+          "case-study-anilize",
+          "reference/diagnostics",
+          "reference/library-api",
+          "reference/support-matrix"
+        ]
       }
     ]
   },

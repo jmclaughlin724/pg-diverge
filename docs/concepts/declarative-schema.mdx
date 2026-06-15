@@ -3,11 +3,21 @@ title: "Declarative schema"
 description: "Learn how supaschema's declarative approach keeps your PostgreSQL schema in SQL files and auto-generates safe, idempotent migrations on every change."
 ---
 
-Declarative schema management flips the traditional migration workflow on its head. Instead of writing every `ALTER TABLE`, `CREATE INDEX`, or `DROP COLUMN` by hand, you describe the schema you *want* — the end state — in plain SQL `CREATE` statements. supaschema reads those files, compares them against what already exists, and generates the precise SQL needed to close the gap. You own the intent; supaschema owns the diff.
+Declarative schema management means you write the schema you want.
 
-## Imperative vs. Declarative Migrations
+You do not hand-write every `ALTER TABLE`, `CREATE INDEX`, or `DROP COLUMN`.
 
-Most teams start with **imperative migrations**: a numbered sequence of hand-authored SQL files that each describe a *change*. This works well at first, but the sequence accumulates quickly. Reviewing migration number 0187 requires understanding all 186 that came before it to know what the schema actually looks like today.
+supaschema reads your SQL files, compares them with the current state, and generates the migration.
+
+<Info>
+  You own the schema intent. supaschema owns the diff.
+</Info>
+
+## Imperative vs. declarative
+
+Most teams start with imperative migrations.
+
+Each file describes a change. Over time, the current schema gets harder to see because it is spread across many files.
 
 **Declarative schema management** inverts this model.
 
@@ -21,13 +31,19 @@ Most teams start with **imperative migrations**: a numbered sequence of hand-aut
   </Card>
 </CardGroup>
 
-With the declarative model, your schema source files are the single source of truth. A new engineer can read one directory and understand the full database structure without replaying history.
+With the declarative model, schema source files are the source of truth.
 
-Declarative tooling existed before supaschema — the difference is what the loop costs. Today's declarative workflow replays your schema into a Docker shadow database just to read it, and types can't regenerate until the migration is applied:
+A new engineer can read the schema tree without replaying migration history.
+
+Declarative tooling existed before supaschema. The difference is loop cost.
+
+Many workflows replay your schema into a Docker shadow database just to read it. Types often cannot regenerate until after apply:
 
 ![The declarative workflow today: spin up a shadow database, replay the schema, diff, apply, then introspect for types — every step needs a running PostgreSQL, and policies are diffed by name](/concepts/legacy-flow.svg)
 
-supaschema ships PostgreSQL's own parser inside the package, so the same loop needs no database at any step — and policy bodies are compared structurally, not by name:
+supaschema ships PostgreSQL's parser inside the package.
+
+The loop can run without a database. Policy bodies are compared structurally, not by name:
 
 ![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](/concepts/supaschema-flow.svg)
 
@@ -72,9 +88,11 @@ supaschema extracts every recognisable database object from these files, includi
   supaschema uses PostgreSQL's own parser compiled to WebAssembly (WASM) to tokenise and validate your SQL files. This means your schema is parsed with 100 % PostgreSQL fidelity — no regex shortcuts, no home-grown grammar — and it works without a running database instance.
 </Note>
 
-## The SchemaModel: A Parsed Snapshot
+## SchemaModel snapshot
 
-After parsing all source files, supaschema builds a **SchemaModel** — an in-memory, structured representation of every object it found. Think of it as a catalogue snapshot: each object carries its type, qualified name, normalised definition, and a deterministic content hash.
+After parsing source files, supaschema builds a **SchemaModel**.
+
+Think of it as a catalog snapshot. Each object has a type, qualified name, normalized definition, and deterministic content hash.
 
 ```typescript
 // SchemaModel interface
@@ -87,11 +105,18 @@ interface SchemaModel {
 }
 ```
 
-The SchemaModel is the common currency inside supaschema's pipeline. Both the **from** source (what the database currently looks like) and the **to** source (what you want it to look like) are each resolved into a SchemaModel before any diffing begins. Comparing two SchemaModels is what produces the migration plan.
+Both sides of a diff become SchemaModels:
 
-## Fingerprinting and Drift Detection
+- **from** is the current state;
+- **to** is the desired state.
 
-Every SchemaModel carries a **fingerprint** — a single deterministic hash derived from the hashes of all its constituent objects. If anything in the schema changes — a column type, a function body, a policy expression — the fingerprint changes.
+Comparing the two models produces the migration plan.
+
+## Fingerprints and drift
+
+Every SchemaModel has a fingerprint.
+
+The fingerprint changes when any modeled object changes, including a column type, function body, or policy expression.
 
 ```bash
 # Inspect the current fingerprint of your schema files
@@ -106,17 +131,21 @@ supaschema fingerprint --from dir:database/schemas
 }
 ```
 
-The fingerprint is used for **drift detection**: if the fingerprint of your schema files does not match the fingerprint recorded from the live database, someone has made an out-of-band change directly on the server. supaschema can surface this mismatch before you apply a migration, preventing you from silently overwriting manual hotfixes.
+Fingerprints make drift visible.
+
+If the live database fingerprint differs from your schema files, someone changed the database outside the normal workflow.
 
 <Tip>
   Store the fingerprint output of `supaschema fingerprint --from database:$DATABASE_URL` in your CI pipeline after every successful deployment. A diverging fingerprint on the next run is an early warning that the live database has drifted from your declared schema.
 </Tip>
 
-## Why Idempotency Matters
+## Why idempotency matters
 
-A migration is **idempotent** when it can be applied more than once without error and without changing state after the first application. supaschema generates idempotent SQL by default — using constructs like `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, and `DO $$ … $$` blocks where necessary.
+A migration is **idempotent** when it can run more than once without failing or changing state after the first run.
 
-Idempotency matters for several practical reasons:
+supaschema generates idempotent SQL by default.
+
+Idempotency matters because:
 
 1. **Retries are safe.** If a deployment fails halfway through and the runner re-applies the migration file, it will not produce duplicate-object errors or corrupt data.
 2. **CI verification is straightforward.** The `verify` command applies the migration twice against a throwaway database to confirm idempotency. If the second application changes any state, the verification fails.
@@ -126,7 +155,7 @@ Idempotency matters for several practical reasons:
   Not all SQL is idempotent by default. Statements like `INSERT INTO` or raw `ALTER TABLE … ADD COLUMN` (without `IF NOT EXISTS`) will fail on re-application. supaschema's renderer handles this automatically for the objects it manages; hand-authored migration SQL should still be reviewed with `supaschema check` and, when a database is available, `supaschema verify`.
 </Warning>
 
-## Managed Schemas in Supabase
+## Managed schemas in Supabase
 
 When you deploy on Supabase, several schemas are owned and managed by the platform itself. supaschema **blocks declarative ownership** of objects in all of these schemas:
 
