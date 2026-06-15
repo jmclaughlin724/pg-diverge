@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -80,6 +80,33 @@ describe("agent surface sync", () => {
     expect(existsSync(join(root, ".codex/agents"))).toBe(true);
     expect(existsSync(join(root, ".codex/rules"))).toBe(true);
     expect(checkAgentSurfaces({ root })).toEqual([]);
+  });
+
+  it("does not follow pre-existing temp-file symlinks while syncing mirrors", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const targetDir = join(root, ".agents/skills/supaschema");
+    await mkdir(targetDir, { recursive: true });
+    const sentinel = join(root, "sentinel.txt");
+    await writeFile(sentinel, "keep\n");
+
+    const timestamp = 1_234_567_890;
+    const tempCandidate = join(targetDir, `.SKILL.md.${process.pid}.${timestamp}.tmp`);
+    await symlink(sentinel, tempCandidate);
+
+    const originalNow = Date.now;
+    Date.now = () => timestamp;
+    try {
+      syncAgentSurfaces({ root });
+    } finally {
+      Date.now = originalNow;
+    }
+
+    expect(await readFile(sentinel, "utf8")).toBe("keep\n");
+    expect(await readFile(join(targetDir, "SKILL.md"), "utf8")).toBe("supaschema skill\n");
   });
 
   it("renders Claude agents as Codex custom-agent TOML", () => {
