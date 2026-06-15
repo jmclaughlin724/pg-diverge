@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database-url.js";
 
 const run = promisify(execFile);
+const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
 const codexGateCommand =
   'node "$' + '{CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-tool-gate.mjs"';
 const managedSchemas = [
@@ -322,11 +323,13 @@ describe("install-time project setup", () => {
     expect(agents).toContain(".supaschema/install.json");
   });
 
-  it("runs from the packed npm tarball with all required installer inputs", async () => {
+  it("runs from the packed npm tarball with all required installer inputs", {
+    timeout: 30_000,
+  }, async () => {
     const packDir = await mkdtemp(join(tmpdir(), "supa-pack-"));
     const consumer = await mkdtemp(join(tmpdir(), "supa-packed-install-"));
     const extractDir = await mkdtemp(join(tmpdir(), "supa-pack-extract-"));
-    const { stdout } = await run("npm", [
+    const { stdout } = await run(npmBin, [
       "pack",
       "--json",
       "--ignore-scripts",
