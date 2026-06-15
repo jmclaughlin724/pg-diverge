@@ -37,13 +37,20 @@ jobs:
           enable-cache: true
       - name: Lock freshness (fails on uv.lock drift)
         run: uv sync --locked
+      # These mirror the canonical `py:*` npm scripts in package.json. The
+      # `--package supaschema-agent-mcp` flag is required: the workspace root
+      # has no runtime deps (dependencies = [], package = false) and does not
+      # depend on the member, so a bare `uv run` resolves in the root env that
+      # lacks fastmcp/mcp/pydantic. Ruff resolves no imports so it would pass
+      # either way, but mypy and pytest need the member env; keep all four
+      # aligned so the lane can't silently drift from the npm contract.
       - name: Ruff lint
-        run: uv run ruff check services/agent-mcp
+        run: uv run --package supaschema-agent-mcp ruff check services/agent-mcp
       - name: Ruff format check
-        run: uv run ruff format --check services/agent-mcp
+        run: uv run --package supaschema-agent-mcp ruff format --check services/agent-mcp
       - name: Mypy type check
-        run: uv run mypy services/agent-mcp/supaschema_agent_mcp
+        run: uv run --package supaschema-agent-mcp mypy services/agent-mcp/supaschema_agent_mcp
       - name: Pytest
-        run: uv run pytest services/agent-mcp/tests
+        run: uv run --package supaschema-agent-mcp pytest services/agent-mcp/tests
       - name: pip-audit (vuln scan)
         run: uvx pip-audit
