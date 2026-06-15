@@ -44,21 +44,27 @@ jobs:
         run: |
           tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
           echo "SUPASCHEMA_TARBALL=$RUNNER_TEMP/$tarball" >> "$GITHUB_ENV"
+      # Each render writes to its OWN output subdirectory. supaschema treats the
+      # `--out` file's parent directory as the migrations dir for the lineage
+      # chain gate, so two renders sharing one dir make the first render's
+      # migration look like a pending migration the second render must continue
+      # — a false SUPA_DIFF_LINEAGE_BROKEN. Isolated dirs keep each gate scoped
+      # to its own migration.
       - name: Smoke npx from tarball
         run: |
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
             --from dir:tests/fixtures/basic/from \
             --to dir:tests/fixtures/basic/to \
-            --out "$RUNNER_TEMP/smoke.sql"
-          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke.sql"
+            --out "$RUNNER_TEMP/smoke/basic.sql"
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke/basic.sql"
       - name: Examples smoke (shipped examples render + check clean)
         run: |
           node dist/cli.js diff \
             --from dir:examples/supabase/schemas \
             --to dir:examples/supabase/schemas-next \
-            --out "$RUNNER_TEMP/example.sql"
-          node dist/cli.js check "$RUNNER_TEMP/example.sql"
+            --out "$RUNNER_TEMP/example/example.sql"
+          node dist/cli.js check "$RUNNER_TEMP/example/example.sql"
 
   check:
     # DB-dependent gates only: the postgres matrix proves replay safety and
