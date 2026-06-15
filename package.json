@@ -87,6 +87,7 @@
     "guard": "node scripts/guards/check-all.mjs",
     "guard:agent": "node scripts/guards/check-agent-hooks.mjs && node scripts/guards/check-agent-surface-parity.mjs",
     "guard:catalog": "npm run catalog:check",
+    "guard:ci": "node scripts/guards/check-ci-governance.mjs",
     "guard:code-atlas": "npm run code-atlas:check",
     "guard:fastmcp": "node scripts/guards/check-fastmcp-agent.mjs",
     "guard:lsp-coverage": "node scripts/guards/check-lsp-coverage.mjs",

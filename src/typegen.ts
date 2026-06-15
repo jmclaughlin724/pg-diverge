@@ -6,7 +6,13 @@ import type {
   SchemaEntry,
   SchemaShapes,
 } from "./typegen-model.js";
-import { collectSchemaShapes, resolveColumnType } from "./typegen-model.js";
+import {
+  collectSchemaShapes,
+  isNonWritableColumn,
+  isOptionalInsertColumn,
+  resolveColumnType,
+  sortedByName,
+} from "./typegen-model.js";
 
 export async function generateDatabaseTypes(model: SchemaModel): Promise<string> {
   const shapes = await collectSchemaShapes(model);
@@ -122,10 +128,6 @@ function emitColumnTypeBlock(
   lines.push("        };");
 }
 
-function sortedByName<T extends { name: string }>(items: T[]): T[] {
-  return [...items].sort((left, right) => left.name.localeCompare(right.name));
-}
-
 function tsType(shapes: SchemaShapes, schemaName: string, sqlType: string): string {
   const resolved = resolveColumnType(shapes, schemaName, sqlType);
   let mapped: string;
@@ -144,17 +146,17 @@ function tsType(shapes: SchemaShapes, schemaName: string, sqlType: string): stri
 }
 
 function insertField(column: ColumnShape, typeOf: (sqlType: string) => string): string {
-  if (column.generated !== undefined || column.identity === "a") {
+  if (isNonWritableColumn(column)) {
     return `${quoteKey(column.name)}?: never;`;
   }
   const base = typeOf(column.type);
   const type = column.notNull ? base : `${base} | null`;
-  const optional = !column.notNull || column.default !== undefined || column.identity !== undefined;
+  const optional = isOptionalInsertColumn(column);
   return `${quoteKey(column.name)}${optional ? "?" : ""}: ${type};`;
 }
 
 function updateField(column: ColumnShape, typeOf: (sqlType: string) => string): string {
-  if (column.generated !== undefined || column.identity === "a") {
+  if (isNonWritableColumn(column)) {
     return `${quoteKey(column.name)}?: never;`;
   }
   const base = typeOf(column.type);

@@ -340,9 +340,9 @@ Match actions precisely to the scope of what was requested — no more, no less.
 | 19 | Progressive Disclosure | COVERED | `progressive-disclosure.md` |
 | 20 | Content Deduplication | ENFORCED | `12-skill-loading-enforcement.md`, update skill |
 | 21 | Sub-Task Decomposition | COVERED | `parallel-agent-patterns.md`, task-creator |
-| 22 | Tool Preference Hierarchy | COVERED | `tool-patterns.md`, rules 18/24/25 |
-| 23 | Parallel/Sequential Gating | COVERED | `parallel-agent-patterns.md`, rule 23 |
-| 24 | Feature-Gated Sections | ENFORCED | `supaschema.md`, rules 13/16 |
+| 22 | Tool Preference Hierarchy | COVERED | `tool-patterns.md`, rules 07/10/11 |
+| 23 | Parallel/Sequential Gating | COVERED | `parallel-agent-patterns.md`, rule 09 |
+| 24 | Feature-Gated Sections | ENFORCED | `supaschema.md`, rules 04/06 |
 | 25 | User-Type Branching | REFERENCE-ONLY | `01-operating-rules.md` (sync lanes) |
 | 26 | Model-Specific Tuning | REFERENCE-ONLY | `claude-api` reference |
 | 27 | Never Delegate Understanding | COVERED | task-creator, `research-delegation-patterns.md` |

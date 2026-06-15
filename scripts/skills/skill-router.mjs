@@ -42,17 +42,48 @@ if (command === "inject") {
 }
 
 if (command === "gate") {
+  const config = JSON.parse(fs.readFileSync(ROUTING_PATH, "utf8"));
+  const mode = process.env.SKILL_GATE_MODE ?? config.mode ?? "warn";
   const loaded = new Set(readLedger());
   const missing = matched.filter((item) => !loaded.has(item.skill));
-  if (missing.length > 0) {
+  if (mode === "off" || missing.length === 0) {
+    process.exit(0);
+  }
+  // Only file-editing tools are blocked; reads of governed paths stay advisory so
+  // navigating source never hard-stops.
+  const editingTools = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+  if (mode === "enforce" && editingTools.has(payload?.tool_name)) {
+    // Deny once: deliver each required skill's brief into context and credit the
+    // session ledger so the immediate re-run of the same edit finds it loaded and
+    // proceeds (Rule 12). The SessionStart hook clears the ledger each session.
+    const updated = new Set(loaded);
+    for (const item of missing) {
+      updated.add(item.skill);
+    }
+    writeLedger([...updated].sort());
+    const briefs = missing.map((item) => skillBrief(item.skill, item.reason)).join("\n\n---\n\n");
     process.stdout.write(
       JSON.stringify({
-        systemMessage: `Skill routing warn-mode: consider loading ${missing
-          .map((item) => item.skill)
-          .join(", ")}. ${missing.map((item) => item.reason).join(" ")}`,
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: `Required repo skill not yet loaded for this edit: ${missing
+            .map((item) => item.skill)
+            .join(
+              ", "
+            )}. Its guidance is delivered below and the gate is now satisfied for this session — re-run the same tool call to proceed.\n\n${briefs}`,
+        },
       })
     );
+    process.exit(0);
   }
+  process.stdout.write(
+    JSON.stringify({
+      systemMessage: `Skill routing (${mode}): load ${missing
+        .map((item) => item.skill)
+        .join(", ")} before editing. ${missing.map((item) => item.reason).join(" ")}`,
+    })
+  );
   process.exit(0);
 }
 
@@ -122,6 +153,17 @@ function uniqueBySkill(items) {
     seen.add(item.skill);
     return true;
   });
+}
+
+function skillBrief(skill, reason) {
+  const skillFile = path.join(ROOT, ".claude", "skills", skill, "SKILL.md");
+  let body = "(SKILL.md not found)";
+  try {
+    body = fs.readFileSync(skillFile, "utf8");
+  } catch {
+    // Missing SKILL.md still yields an actionable denial via the reason line.
+  }
+  return `# Required skill: ${skill}\nWhy this path is gated: ${reason}\n\n${body}`;
 }
 
 function repoRelative(value) {

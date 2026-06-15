@@ -19,6 +19,7 @@ import json
 
 import pytest
 from fastmcp.client import Client
+from fastmcp.exceptions import ToolError
 
 from supaschema_agent_mcp.server import REPO_ROOT, mcp
 
@@ -64,7 +65,6 @@ async def _read_context(client: Client, path: str) -> dict:
 # --- (a) BM25 removal: the real tools are directly listable -----------------
 
 
-@pytest.mark.asyncio
 async def test_list_tools_exposes_real_catalog_after_bm25_removal() -> None:
     async with Client(transport=mcp) as client:
         names = {tool.name for tool in await client.list_tools()}
@@ -80,15 +80,13 @@ async def test_list_tools_exposes_real_catalog_after_bm25_removal() -> None:
 # --- (b) read-only path guards reject unsafe paths --------------------------
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("bad_path", REJECTED_PATHS)
 async def test_read_context_file_rejects_unsafe_paths(bad_path: str) -> None:
     async with Client(transport=mcp) as client:
-        with pytest.raises(Exception):  # noqa: B017,PT011 - guard rejection
+        with pytest.raises(ToolError, match=r"repo-relative paths only|path is denied"):
             await _read_context(client, bad_path)
 
 
-@pytest.mark.asyncio
 async def test_secret_suffix_variants_are_all_rejected() -> None:
     # Every SECRET_SUFFIXES extension must be blocked, not just .key.
     secret_paths = [
@@ -99,23 +97,21 @@ async def test_secret_suffix_variants_are_all_rejected() -> None:
     ]
     async with Client(transport=mcp) as client:
         for path in secret_paths:
-            with pytest.raises(Exception):  # noqa: B017,PT011 - guard rejection
+            with pytest.raises(ToolError, match="path is denied"):
                 await _read_context(client, path)
 
 
-@pytest.mark.asyncio
 async def test_dotenv_family_is_rejected() -> None:
     # Both ".env" and ".env.<suffix>" must be blocked.
     async with Client(transport=mcp) as client:
         for path in (".env", ".env.local", ".env.production"):
-            with pytest.raises(Exception):  # noqa: B017,PT011 - guard rejection
+            with pytest.raises(ToolError, match="path is denied"):
                 await _read_context(client, path)
 
 
 # --- (c) one allowlisted file reads successfully ----------------------------
 
 
-@pytest.mark.asyncio
 async def test_read_context_file_reads_allowlisted_agents_md() -> None:
     # Guard against a stale fixture: AGENTS.md must really exist at the root.
     assert (REPO_ROOT / "AGENTS.md").is_file()
@@ -131,7 +127,6 @@ async def test_read_context_file_reads_allowlisted_agents_md() -> None:
 # --- (d) upstream_mcp_capabilities docs subset matches .mcp.json ------------
 
 
-@pytest.mark.asyncio
 async def test_upstream_docs_capabilities_match_mcp_json() -> None:
     configured = _mcp_configured_servers()
 
@@ -159,7 +154,6 @@ async def test_upstream_docs_capabilities_match_mcp_json() -> None:
     assert "Pointer index only" in payload["note"]
 
 
-@pytest.mark.asyncio
 async def test_upstream_all_capabilities_only_advertise_configured_servers() -> None:
     configured = _mcp_configured_servers()
 

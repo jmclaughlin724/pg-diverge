@@ -11,6 +11,7 @@ const run = promisify(execFile);
 const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const codexGateCommand = `node "${codexProjectDir}/.codex/hooks/supaschema-tool-gate.mjs"`;
+const codexAutoDiffCommand = `node "${codexProjectDir}/.codex/hooks/auto-diff-on-schema-change.mjs"`;
 const claudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
 const managedSchemas = [
   "auth",
@@ -391,6 +392,125 @@ describe("install-time project setup", () => {
     const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
 
     expect(stdout).toBe("");
+  });
+
+  it("keeps the install manifest byte-identical on a no-op re-install", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-idempotent-"));
+    const env = { ...process.env, INIT_CWD: consumer };
+
+    await run("node", ["bin/postinstall.mjs"], { env });
+    const first = await readFile(join(consumer, ".supaschema/install.json"), "utf8");
+    await run("node", ["bin/postinstall.mjs"], { env });
+    const second = await readFile(join(consumer, ".supaschema/install.json"), "utf8");
+
+    expect(second).toBe(first);
+  });
+
+  it("resolves a sparse existing config through the CLI defaults, not provider detection", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-sparse-"));
+    await mkdir(join(consumer, "supabase"), { recursive: true });
+    await writeFile(join(consumer, "supabase", "config.toml"), "[db]\nport = 54322\n");
+    await writeFile(join(consumer, "supaschema.config.json"), '{"adapter":"supabase-auto"}\n');
+
+    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+
+    // The CLI loads this sparse config with its static defaults; the installer must
+    // agree so guidance, directories, and the manifest do not point at supabase/schemas
+    // while the CLI actually diffs database/schemas.
+    expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
+      '{"adapter":"supabase-auto"}\n'
+    );
+    expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
+      "Schema intent belongs in `database/schemas`"
+    );
+    expect(existsSync(join(consumer, "database/schemas"))).toBe(true);
+    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
+    expect(manifest.schemaPaths).toEqual(["database/schemas"]);
+    expect(manifest.migrationsDir).toBe("database/migrations");
+  });
+
+  it("reads schema and migration paths from a module config", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-module-"));
+    await writeFile(
+      join(consumer, "supaschema.config.mjs"),
+      'export default { schemaPaths: ["db/sql"], migrationsDir: "db/changes" };\n'
+    );
+
+    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+
+    expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
+      "Schema intent belongs in `db/sql`"
+    );
+    expect(existsSync(join(consumer, "db/sql"))).toBe(true);
+    expect(existsSync(join(consumer, "db/changes"))).toBe(true);
+    // The module config stays the source of truth; no JSON config is scaffolded over it.
+    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
+    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
+    expect(manifest.schemaPaths).toEqual(["db/sql"]);
+    expect(manifest.migrationsDir).toBe("db/changes");
+  });
+
+  it("does not scaffold a guessed config while path confirmation is pending", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-pending-"));
+    await mkdir(join(consumer, "apps", "api", "schemas"), { recursive: true });
+    await mkdir(join(consumer, "packages", "db", "schemas"), { recursive: true });
+    await writeFile(join(consumer, "apps", "api", "schemas", "schema.sql"), "create schema app;\n");
+    await writeFile(
+      join(consumer, "packages", "db", "schemas", "schema.sql"),
+      "create schema app;\n"
+    );
+
+    await run("node", ["bin/postinstall.mjs"], {
+      env: { ...process.env, INIT_CWD: consumer, CI: "1" },
+    });
+
+    // Ambiguous detection must not pin a guessed config; "config explicitly defines
+    // schemaPaths" then cleanly means a human confirmed, which the auto-diff hook relies on.
+    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
+    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
+    expect(manifest.pathConfirmationNeeded).toBe(true);
+  });
+
+  it("de-dupes a legacy-format codex hook command on upgrade", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-upgrade-"));
+    await mkdir(join(consumer, ".codex"), { recursive: true });
+    const legacyAutoDiff =
+      'node "$(git rev-parse --show-toplevel)/.codex/hooks/auto-diff-on-schema-change.mjs"';
+    const legacyGate =
+      'node "$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-tool-gate.mjs"';
+    await writeFile(
+      join(consumer, ".codex/hooks.json"),
+      `${JSON.stringify({
+        hooks: {
+          PostToolUse: [{ hooks: [{ command: legacyAutoDiff, type: "command" }] }],
+          PreToolUse: [{ hooks: [{ command: legacyGate, type: "command" }] }],
+        },
+      })}\n`
+    );
+
+    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    // The old wrapper and the new ${CODEX_PROJECT_DIR} form target the same managed
+    // script; only the new entry survives so diff/check do not run twice per edit.
+    expect(commandCount(codexHooks, legacyAutoDiff)).toBe(0);
+    expect(commandCount(codexHooks, legacyGate)).toBe(0);
+    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
+  });
+
+  it("skips all scaffolding when SUPASCHEMA_SKIP_POSTINSTALL is set", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-skip-"));
+
+    const { stdout } = await run("node", ["bin/postinstall.mjs"], {
+      env: { ...process.env, INIT_CWD: consumer, SUPASCHEMA_SKIP_POSTINSTALL: "1" },
+    });
+
+    expect(stdout).toBe("");
+    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(consumer, ".supaschema/install.json"))).toBe(false);
+    expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
+    expect(existsSync(join(consumer, ".codex"))).toBe(false);
   });
 });
 

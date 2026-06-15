@@ -1,5 +1,5 @@
 {
-  "mode": "warn",
+  "mode": "enforce",
   "rules": [
     {
       "skill": "code-atlas",

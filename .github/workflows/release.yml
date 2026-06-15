@@ -10,6 +10,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: release
     permissions:
       contents: write
@@ -31,8 +32,7 @@ jobs:
     steps:
       # Egress monitoring on the privileged publish job (holds id-token:write).
       # Start in "audit": review the run's harden-runner insights, then switch to
-      # egress-policy: block with the verified allowed-endpoints below. Note
-      # setup-node check-latest:true fetches Node from nodejs.org.
+      # egress-policy: block with the verified allowed-endpoints below.
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
@@ -43,17 +43,18 @@ jobs:
           #   github.com:443
           #   api.github.com:443
           #   objects.githubusercontent.com:443
-          #   nodejs.org:443
           #   fulcio.sigstore.dev:443
           #   rekor.sigstore.dev:443
           #   tuf-repo-cdn.sigstore.dev:443
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
+      # No check-latest: use the runner's cached Node 24 toolcache (deterministic
+      # patch, no nodejs.org fetch on the OIDC publish job). The npm-version
+      # preflight below fails loudly if the cached npm predates 11.5.1.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-          check-latest: true
           cache: npm
           registry-url: https://registry.npmjs.org
       - name: Confirm npm supports OIDC trusted publishing
@@ -77,14 +78,18 @@ jobs:
           tarball_path="$RUNNER_TEMP/$tarball"
           echo "SUPASCHEMA_TARBALL=$tarball_path" >> "$GITHUB_ENV"
           echo "tarball_path=$tarball_path" >> "$GITHUB_OUTPUT"
+      # Render into an isolated subdir, matching ci.yml: supaschema treats the
+      # --out parent directory as the migrations dir for the lineage chain gate,
+      # so the smoke render must not share $RUNNER_TEMP with the packed tarball,
+      # the sigstore bundle, or any future second render.
       - name: Smoke npx from tarball
         run: |
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
             --from dir:tests/fixtures/basic/from \
             --to dir:tests/fixtures/basic/to \
-            --out "$RUNNER_TEMP/smoke.sql"
-          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke.sql"
+            --out "$RUNNER_TEMP/smoke/basic.sql"
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke/basic.sql"
       - run: npm publish --access public --provenance
       - name: Attest tarball provenance
         id: attest

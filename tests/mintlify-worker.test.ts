@@ -54,4 +54,41 @@ describe("Mintlify docs worker", () => {
 
     expect(response.headers.get("Location")).toBe("https://supaschema.com/docs/quickstart");
   });
+
+  it("redirects the www apex to the bare custom domain with a 308", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const response = await worker.fetch(new Request("https://www.supaschema.com/docs/quickstart"));
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("Location")).toBe("https://supaschema.com/docs/quickstart");
+    // The apex redirect short-circuits before any origin fetch.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("forwards the CF-Connecting-IP header to the origin", async () => {
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await worker.fetch(
+      new Request("https://supaschema.com/docs", {
+        headers: { "CF-Connecting-IP": "203.0.113.7" },
+      })
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [request] = fetchMock.mock.calls[0] as [Request];
+    expect(request.headers.get("CF-Connecting-IP")).toBe("203.0.113.7");
+  });
+
+  it("returns a 502 when the origin fetch fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error("origin down"))) as typeof fetch;
+
+    const response = await worker.fetch(new Request("https://supaschema.com/docs"));
+
+    expect(response.status).toBe(502);
+    expect(await response.text()).toBe("Bad Gateway");
+  });
 });

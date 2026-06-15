@@ -24,4 +24,4 @@
 /fastmcp.json           @jmclaughlin724
 
 # Release workflow.
-/release.yml            @jmclaughlin724
+/.github/workflows/release.yml  @jmclaughlin724

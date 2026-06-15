@@ -105,7 +105,15 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
 function run(command: string, args: string[]): Promise<number> {
   return new Promise((resolvePromise) => {
     // Inherit stdio so the runner's own confirmation prompts reach the user.
-    const child = spawn(command, args, { stdio: "inherit" });
+    // shell:true on Windows so the Supabase CLI's `.cmd`/`.ps1` shim is
+    // spawnable — since Node's CVE-2024-27980 fix, spawn refuses to run a
+    // `.cmd` without a shell, which otherwise fails the apply lane with a
+    // confusing exit-127. The args are static literals ("migration"/"up",
+    // "db"/"push"), never user input, so there is no shell-quoting hazard.
+    const child = spawn(command, args, {
+      shell: process.platform === "win32",
+      stdio: "inherit",
+    });
     child.on("error", () => resolvePromise(127));
     child.on("close", (code) => resolvePromise(code ?? 1));
   });

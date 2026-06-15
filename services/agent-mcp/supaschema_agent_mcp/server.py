@@ -4,6 +4,7 @@ from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Literal
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -12,8 +13,6 @@ MAX_READ_BYTES = 120_000
 
 DENIED_PARTS = {
     ".git",
-    ".next",
-    ".turbo",
     ".venv",
     "__pycache__",
     "dist",
@@ -66,22 +65,22 @@ def _denied(p: Path) -> bool:
 def _resolve(raw: str) -> Path:
     pp = PurePosixPath(raw.strip())
     if pp.is_absolute() or any(s in {"", ".", ".."} for s in pp.parts):
-        raise ValueError("repo-relative paths only, no traversal")
+        raise ToolError("repo-relative paths only, no traversal")
     rel = (REPO_ROOT / Path(*pp.parts)).resolve()
     if not rel.is_relative_to(REPO_ROOT):
-        raise ValueError("outside repo root")
+        raise ToolError("outside repo root")
     repo_relative = rel.relative_to(REPO_ROOT)
     if _denied(repo_relative):
-        raise ValueError("path is denied")
+        raise ToolError("path is denied")
     return repo_relative
 
 
 def _read_text(rel: Path, max_bytes: int = MAX_READ_BYTES) -> str:
     full = REPO_ROOT / rel
     if not full.is_file():
-        raise ValueError("not a file")
+        raise ToolError("not a file")
     if full.stat().st_size > max_bytes:
-        raise ValueError("file is too large for context read")
+        raise ToolError("file is too large for context read")
     return full.read_text(encoding="utf8", errors="replace")
 
 
@@ -175,7 +174,7 @@ def code_atlas_query(
     if v and (
         v.startswith("-") or any(c in v for c in "\x00\n\r") or ".." in PurePosixPath(v).parts
     ):
-        raise ValueError("unsafe query value")
+        raise ToolError("unsafe query value")
     args = ["node", "scripts/code-atlas/query.mjs", kind] + ([v] if v else []) + ["--json"]
     r = subprocess.run(args, cwd=REPO_ROOT, capture_output=True, text=True, timeout=45, check=False)
     stdout: Any
@@ -198,7 +197,7 @@ def search_repo_context(
         rel = _resolve(file)
         try:
             text = _read_text(rel)
-        except ValueError:
+        except ToolError:
             continue
         for number, line in enumerate(text.splitlines(), start=1):
             if needle in line.lower():

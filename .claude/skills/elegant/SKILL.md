@@ -49,7 +49,7 @@ The elegant end state is one canonical owner per concept, the smallest public AP
 
 Treat current consumers as evidence and a worklist, not as a veto. Work through neighboring consumers, sibling files, containing folders, package exports, declared dependencies, tests, docs, generated surfaces, and owner briefs until avoidable complexity in the touched scope is gone.
 
-Use upstream docs or the owning MCP lane for external technology behavior before encoding framework or library assumptions. In this repo, follow the `upstream` skill and the package-boundary owner (rule 27) before encoding stack assumptions, and respect the Python toolchain and multi-language toolchain owners (rules 13 and 16) when touching the `services/agent-mcp` side-service.
+Use upstream docs or the owning MCP lane for external technology behavior before encoding framework or library assumptions. In this repo, follow the `upstream` skill and the package-boundary owner (rule 13) before encoding stack assumptions, and respect the Python toolchain and multi-language toolchain owners (rules 04 and 06) when touching the `services/agent-mcp` side-service.
 
 ## Use When
 
@@ -90,4 +90,4 @@ For implementation closeout, report only what changed, what was verified, and co
 - Do not keep backwards-compatibility shims unless the user explicitly requires them.
 - Do not preserve a surface because it is internally consistent or locally referenced; preserve it only when it satisfies the target without duplicating another owner.
 - Add an abstraction only when it removes real complexity or matches an established owner pattern.
-- Do not hand-author or hand-edit generated artifacts. Migration SQL, TypeScript/Zod type outputs, and other lineage-tagged or generated surfaces are owned by the declarative tree and the supaschema CLI (rule `supaschema.md` and rule 00-supaschema); change the source and regenerate with `supaschema diff` / `supaschema types`, never by restating generated fields inline. Classify and compare DDL through PostgreSQL parse trees and model helpers, not ad hoc regex (rule 18).
+- Do not hand-author or hand-edit generated artifacts. Migration SQL, TypeScript/Zod type outputs, and other lineage-tagged or generated surfaces are owned by the declarative tree and the supaschema CLI (rule `supaschema.md` and rule 00-supaschema); change the source and regenerate with `supaschema diff` / `supaschema types`, never by restating generated fields inline. Classify and compare DDL through PostgreSQL parse trees and model helpers, not ad hoc regex (rule 07).

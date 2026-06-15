@@ -18,14 +18,14 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const target = resolve(process.env.INIT_CWD ?? process.cwd());
 const packageJson = readJson(join(packageRoot, "package.json")) ?? {};
 const packageVersion = typeof packageJson.version === "string" ? packageJson.version : "unknown";
 
-const configFiles = ["supaschema.config.json", "supaschema.config.mjs", "supaschema.config.js"];
+const moduleConfigFiles = ["supaschema.config.mjs", "supaschema.config.js"];
 const genericSchemaPath = "database/schemas";
 const genericMigrationsDir = "database/migrations";
 const supabaseSchemaPath = "supabase/schemas";
@@ -241,25 +241,39 @@ function shellParameter(expression) {
   return ["$", "{", expression, "}"].join("");
 }
 
+// Opt-out used by the composite GitHub Action (action.yml): the action only runs
+// the supaschema CLI as a gate, so the consumer-scaffolding postinstall must not
+// write config/agent/hook/manifest files into the user's checkout.
+function shouldSkipInstall() {
+  const flag = (process.env.SUPASCHEMA_SKIP_POSTINSTALL ?? "").trim().toLowerCase();
+  return flag !== "" && flag !== "0" && flag !== "false";
+}
+
 async function main() {
   try {
-    if (target === packageRoot || target.startsWith(packageRoot + sep)) {
+    if (shouldSkipInstall() || target === packageRoot || target.startsWith(packageRoot + sep)) {
       process.exit(0);
     }
 
     const installed = [];
     const skipped = [];
     const scan = scanProject(target);
-    const existingConfig = readExistingConfig(target);
+    const existingConfig = await readExistingConfig(target);
     const selection = await resolvePathSelection(scan, existingConfig);
 
-    if (!existingConfig.exists) {
+    // When the detected paths are ambiguous (pathConfirmationNeeded), do not pin a
+    // guessed config or create guessed directories. Leaving the config absent keeps
+    // "config explicitly defines schemaPaths" an unambiguous signal that a human has
+    // confirmed the paths, which the auto-diff hook uses to resume safely.
+    if (!(existingConfig.exists || selection.pathConfirmationNeeded)) {
       writeProjectFile("supaschema.config.json", scaffoldConfig(selection));
       installed.push("config");
     }
 
-    createConfiguredDirectories(selection);
-    installed.push("directories");
+    if (!selection.pathConfirmationNeeded) {
+      createConfiguredDirectories(selection);
+      installed.push("directories");
+    }
 
     for (const file of agentFiles) {
       copyProjectFile(file, skipped);
@@ -293,26 +307,51 @@ async function main() {
   }
 }
 
-function readExistingConfig(projectDir) {
-  const defaults = projectDefaults(projectDir);
+async function readExistingConfig(projectDir) {
   const jsonPath = join(projectDir, "supaschema.config.json");
   if (existsSync(jsonPath)) {
-    const parsed = readJson(jsonPath);
-    const schemaPaths = Array.isArray(parsed?.schemaPaths)
-      ? parsed.schemaPaths.map(String)
-      : [defaults.schemaPath];
-    return {
-      adapter: normalizeAdapter(parsed?.adapter),
-      exists: true,
-      provider: defaults.provider,
-      migrationsDir:
-        typeof parsed?.migrationsDir === "string" ? parsed.migrationsDir : defaults.migrationsDir,
-      schemaPaths,
-    };
+    return effectiveExistingConfig(readJson(jsonPath));
   }
+  for (const file of moduleConfigFiles) {
+    if (existsSync(join(projectDir, file))) {
+      return effectiveExistingConfig(await importModuleConfig(join(projectDir, file)));
+    }
+  }
+  return { exists: false };
+}
+
+// Resolve the same effective paths the CLI (`loadConfig` in src/config.ts) uses for
+// an existing config: explicit values win, otherwise fall back to the CLI's static
+// defaults — never provider detection, which only seeds brand-new configs. This keeps
+// the installed guidance, directories, and manifest aligned with what the CLI loads,
+// for sparse JSON and module configs (supaschema.config.mjs/.js) alike.
+function effectiveExistingConfig(parsed) {
+  const schemaPaths =
+    Array.isArray(parsed?.schemaPaths) && parsed.schemaPaths.length > 0
+      ? parsed.schemaPaths.map(String)
+      : [genericSchemaPath];
+  const migrationsDir =
+    typeof parsed?.migrationsDir === "string" && parsed.migrationsDir.length > 0
+      ? parsed.migrationsDir
+      : genericMigrationsDir;
   return {
-    exists: configFiles.some((file) => existsSync(join(projectDir, file))),
+    adapter: normalizeAdapter(parsed?.adapter),
+    exists: true,
+    migrationsDir,
+    provider: undefined,
+    schemaPaths,
   };
+}
+
+async function importModuleConfig(modulePath) {
+  try {
+    const module = await import(pathToFileURL(modulePath).href);
+    return module?.default ?? {};
+  } catch {
+    // Fail open: an unreadable module config is treated as sparse, so guidance and
+    // directories fall back to the same CLI defaults the loader will use.
+    return {};
+  }
 }
 
 function normalizeAdapter(value) {
@@ -329,11 +368,7 @@ function normalizeAdapter(value) {
 
 async function resolvePathSelection(scan, existingConfig) {
   const defaults = projectDefaults(target);
-  if (
-    existingConfig.exists &&
-    Array.isArray(existingConfig.schemaPaths) &&
-    typeof existingConfig.migrationsDir === "string"
-  ) {
+  if (existingConfig.exists) {
     return {
       adapter: existingConfig.adapter,
       candidates: scan,
@@ -354,7 +389,7 @@ async function resolvePathSelection(scan, existingConfig) {
     pathConfirmationNeeded: schema.needsConfirmation || migrations.needsConfirmation,
     provider: defaults.provider,
     schemaPaths: [schema.path],
-    source: selectionSource(existingConfig, schema, migrations, defaults),
+    source: selectionSource(schema, migrations, defaults),
   };
 
   if (selection.pathConfirmationNeeded && canPrompt()) {
@@ -364,10 +399,7 @@ async function resolvePathSelection(scan, existingConfig) {
   return selection;
 }
 
-function selectionSource(existingConfig, schema, migrations, defaults) {
-  if (existingConfig.exists) {
-    return "existing-config-scan";
-  }
+function selectionSource(schema, migrations, defaults) {
   if (schema.source === "default" && migrations.source === "default") {
     return defaults.source;
   }
@@ -702,19 +734,20 @@ function installAgentGuidance(selection) {
 }
 
 function agentGuidanceBlock(selection) {
-  const confirm = selection.pathConfirmationNeeded
-    ? "- Path confirmation is pending: inspect `.supaschema/install.json`, ask the user which detected schema and migrations paths to use, then update `supaschema.config.json` before running the first diff.\n"
-    : "";
+  const pathLines = selection.pathConfirmationNeeded
+    ? `- Path confirmation is pending: multiple schema/migration path candidates were detected. Inspect \`${manifestPath}\`, ask the user which detected schema and migrations paths to use, then set \`schemaPaths\` and \`migrationsDir\` in \`supaschema.config.json\` before the first diff.
+- Generated migrations and \`-- supaschema: lineage\` files must not be hand-edited; regenerate from the declarative tree once the paths are confirmed.`
+    : `- Schema intent belongs in \`${selection.schemaPaths.join("`, `")}\`.
+- Generated migrations write to \`${selection.migrationsDir}\`; files containing \`-- supaschema: lineage\` must not be hand-edited.`;
   return `${guidanceStart}
 ## supaschema
 
 This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
 
-- Schema intent belongs in \`${selection.schemaPaths.join("`, `")}\`.
-- Generated migrations write to \`${selection.migrationsDir}\`; files containing \`-- supaschema: lineage\` must not be hand-edited.
+${pathLines}
 - Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config.
 - Edit \`supaschema.config.json\` to change \`adapter\`, \`schemaPaths\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
-${confirm}- For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, run \`npx supaschema diff\`, then run \`npx supaschema check\`.
+- For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, run \`npx supaschema diff\`, then run \`npx supaschema check\`.
 - Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes; they never apply migrations.
 - Do not run \`npx supaschema sync --local\` or \`npx supaschema sync --remote\` unless explicitly asked to apply migrations.
 ${guidanceEnd}
@@ -736,23 +769,34 @@ function upsertManagedBlock(relativePath, block) {
 }
 
 function writeInstallManifest(scan, selection) {
-  writeProjectFile(
-    manifestPath,
-    `${JSON.stringify(
-      {
-        adapter: selection.adapter ?? "auto",
-        candidates: scan,
-        installedAt: new Date().toISOString(),
-        migrationsDir: selection.migrationsDir,
-        packageVersion,
-        pathConfirmationNeeded: selection.pathConfirmationNeeded,
-        provider: selection.provider,
-        schemaPaths: selection.schemaPaths,
-        source: selection.source,
-      },
-      null,
-      2
-    )}\n`
+  const manifest = {
+    adapter: selection.adapter ?? "auto",
+    candidates: scan,
+    installedAt: new Date().toISOString(),
+    migrationsDir: selection.migrationsDir,
+    packageVersion,
+    pathConfirmationNeeded: selection.pathConfirmationNeeded,
+    provider: selection.provider,
+    schemaPaths: selection.schemaPaths,
+    source: selection.source,
+  };
+  const existing = readJson(join(target, manifestPath));
+  if (existing && manifestSelectionUnchanged(existing, manifest)) {
+    // No setup choice changed: keep the committed manifest byte-for-byte so a
+    // re-install in a clean checkout stays idempotent. The volatile installedAt
+    // timestamp and rescanned candidates (the directories the first run created)
+    // would otherwise dirty the tree on every npm install.
+    return;
+  }
+  writeProjectFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function manifestSelectionUnchanged(existing, next) {
+  return (
+    existing.adapter === next.adapter &&
+    existing.migrationsDir === next.migrationsDir &&
+    existing.pathConfirmationNeeded === next.pathConfirmationNeeded &&
+    JSON.stringify(existing.schemaPaths) === JSON.stringify(next.schemaPaths)
   );
 }
 
@@ -843,10 +887,14 @@ function mergeHooks(existing, source) {
     if (!Array.isArray(sourceEntries)) {
       continue;
     }
-    const sourceCommands = new Set(sourceEntries.flatMap(hookCommands));
+    const sourceCommands = sourceEntries.flatMap(hookCommands);
+    const commandSet = new Set(sourceCommands);
+    const managedScripts = new Set(
+      sourceCommands.map(managedHookScript).filter((name) => name !== undefined)
+    );
     const existingEntries = Array.isArray(mergedHooks[eventName]) ? mergedHooks[eventName] : [];
     mergedHooks[eventName] = [
-      ...withoutHookCommands(existingEntries, sourceCommands),
+      ...withoutManagedHooks(existingEntries, commandSet, managedScripts),
       ...structuredClone(sourceEntries),
     ];
   }
@@ -854,22 +902,54 @@ function mergeHooks(existing, source) {
   return merged;
 }
 
-function withoutHookCommands(entries, commands) {
+function withoutManagedHooks(entries, commands, managedScripts) {
   const kept = [];
   for (const entry of entries) {
     if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
       kept.push(entry);
       continue;
     }
-    const hooks = entry.hooks.filter(
-      (hook) =>
-        !commands.has(isRecord(hook) && typeof hook.command === "string" ? hook.command : "")
-    );
+    const hooks = entry.hooks.filter((hook) => !isSupersededHook(hook, commands, managedScripts));
     if (hooks.length > 0) {
       kept.push({ ...entry, hooks });
     }
   }
   return kept;
+}
+
+// A previously-installed managed hook is superseded by the incoming source when its
+// command matches exactly (a same-version re-install) OR only by managed script
+// identity — an upgrade where the old command wrapped the same script in a different
+// path prefix (e.g. an older `$(git rev-parse --show-toplevel)/...` form). De-duping
+// by identity stops the old and new entries from both running diff/check on one edit.
+function isSupersededHook(hook, commands, managedScripts) {
+  const command = isRecord(hook) && typeof hook.command === "string" ? hook.command : "";
+  if (commands.has(command)) {
+    return true;
+  }
+  const script = managedHookScript(command);
+  return script !== undefined && managedScripts.has(script);
+}
+
+function managedHookScript(command) {
+  if (typeof command !== "string") {
+    return;
+  }
+  const lastSlash = command.lastIndexOf("/");
+  if (lastSlash === -1) {
+    return;
+  }
+  let end = command.length;
+  while (end > 0) {
+    const char = command[end - 1];
+    if (char === '"' || char === "'" || char === " " || char === "\t") {
+      end -= 1;
+      continue;
+    }
+    break;
+  }
+  const name = command.slice(lastSlash + 1, end);
+  return name.endsWith(".mjs") || name.endsWith(".sh") ? name : undefined;
 }
 
 function hookCommands(entry) {

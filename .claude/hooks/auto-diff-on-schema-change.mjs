@@ -279,11 +279,10 @@ function emit(additionalContext) {
   process.exit(0);
 }
 
-async function readSchemaPaths(projectDir) {
+async function readConfigSchemaPaths(projectDir) {
   const jsonPath = join(projectDir, "supaschema.config.json");
   if (existsSync(jsonPath)) {
-    const parsed = JSON.parse(readFileSync(jsonPath, "utf8"));
-    return schemaPathsFromConfig(parsed) ?? [defaultSchemaPath(projectDir)];
+    return resolveConfigSchemaPaths(JSON.parse(readFileSync(jsonPath, "utf8")), projectDir);
   }
   for (const file of ["supaschema.config.mjs", "supaschema.config.js"]) {
     const path = join(projectDir, file);
@@ -291,15 +290,25 @@ async function readSchemaPaths(projectDir) {
       continue;
     }
     const loaded = await import(pathToFileURL(path).href);
-    return schemaPathsFromConfig(loaded.default ?? {}) ?? [defaultSchemaPath(projectDir)];
+    return resolveConfigSchemaPaths(loaded.default ?? {}, projectDir);
   }
-  return [defaultSchemaPath(projectDir)];
+  return { explicit: false, schemaPaths: [defaultSchemaPath(projectDir)] };
+}
+
+function resolveConfigSchemaPaths(config, projectDir) {
+  const explicit = schemaPathsFromConfig(config);
+  return explicit
+    ? { explicit: true, schemaPaths: explicit }
+    : { explicit: false, schemaPaths: [defaultSchemaPath(projectDir)] };
 }
 
 async function readPathState(projectDir) {
-  const schemaPaths = await readSchemaPaths(projectDir);
+  const { explicit, schemaPaths } = await readConfigSchemaPaths(projectDir);
   const manifest = readInstallManifest(projectDir);
-  if (manifest?.pathConfirmationNeeded === true) {
+  // The install-time `pathConfirmationNeeded` flag is stale once the config
+  // explicitly defines schemaPaths — that is the documented way to confirm the
+  // detected paths — so auto-diff resumes without a manual manifest edit.
+  if (manifest?.pathConfirmationNeeded === true && !explicit) {
     const candidateSchemaPaths = strings(manifest?.candidates?.schemaPaths);
     const candidateMigrationsDirs = strings(manifest?.candidates?.migrationsDirs);
     return {

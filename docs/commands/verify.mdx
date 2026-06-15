@@ -52,7 +52,7 @@ npx supaschema verify \
 # Keep databases after failure for inspection
 npx supaschema verify \
   --from "git:HEAD" --to dir:database/schemas \
-  --migration /tmp/migration.sql \
+  --migration /tmp/supaschema/migration.sql \
   --database-url postgresql://postgres:postgres@localhost:54322/postgres \
   --keep-databases
 
@@ -172,7 +172,7 @@ jobs:
 ```
 
 <Tip>
-  Pair `verify` with `diff` in the same CI job: run `diff --out /tmp/migration.sql` first to write the candidate migration, then pass that file to `verify --migration /tmp/migration.sql`. For a no-write preview, use `diff --out stdout > /tmp/migration.sql`.
+  Pair `verify` with `diff` in the same CI job: run `diff --out /tmp/supaschema/migration.sql` first to write the candidate migration, then pass that file to `verify --migration /tmp/supaschema/migration.sql`. For a no-write preview, use `diff --out stdout > /tmp/supaschema/migration.sql`.
 </Tip>
 
 ## Inspecting Failures

@@ -456,7 +456,11 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
   it.skipIf(process.platform === "win32")(
     "skips auto-diff while install path confirmation is pending",
     async () => {
-      const { env, log, project } = await autoDiffFixture(["apps/api/schemas"]);
+      // No confirmed config yet: the installer leaves the config absent in the
+      // ambiguous case, so the manifest's pending flag is the only path signal.
+      const { env, log, project } = await autoDiffFixture(["apps/api/schemas"], undefined, {
+        writeConfig: false,
+      });
       await mkdir(join(project, ".supaschema"), { recursive: true });
       await mkdir(join(project, "packages", "db", "schemas"), { recursive: true });
       await writeFile(
@@ -489,6 +493,50 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
       expect(result.stdout).toContain("path confirmation is pending");
       expect(result.stdout).toContain(".supaschema/install.json");
       expect(await readFakeCalls(log)).toEqual([]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "resumes auto-diff once the config confirms schemaPaths despite a stale pending flag",
+    async () => {
+      // The installer recorded pathConfirmationNeeded, then a human confirmed by
+      // setting schemaPaths in supaschema.config.json. The stale manifest flag must
+      // no longer block auto-diff — the documented confirmation step re-enables it
+      // without anyone hand-editing or deleting .supaschema/install.json.
+      const { env, log, project } = await autoDiffFixture(["apps/api/schemas"]);
+      await mkdir(join(project, ".supaschema"), { recursive: true });
+      await writeFile(
+        join(project, ".supaschema", "install.json"),
+        JSON.stringify({
+          candidates: {
+            migrationsDirs: ["apps/api/migrations", "packages/db/migrations"],
+            schemaPaths: ["apps/api/schemas", "packages/db/schemas"],
+          },
+          migrationsDir: "apps/api/migrations",
+          pathConfirmationNeeded: true,
+          schemaPaths: ["apps/api/schemas"],
+        })
+      );
+      await writeFile(
+        join(project, "apps", "api", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "apps", "api", "schemas", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env }
+      );
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).not.toContain("path confirmation is pending");
+      expect(await readFakeCalls(log)).toEqual([
+        ["diff", "--to", "dir:apps/api/schemas"],
+        ["check"],
+      ]);
     }
   );
 

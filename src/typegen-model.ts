@@ -14,6 +14,23 @@ export interface ColumnShape {
   type: string;
 }
 
+export function sortedByName<T extends { name: string }>(items: T[]): T[] {
+  return [...items].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+// GENERATED columns and GENERATED ALWAYS AS IDENTITY (`identity === "a"`) columns
+// cannot be supplied on Insert or Update: the TS emitter renders them `?: never`
+// and the Zod emitter omits them. Shared so both emitters stay in lockstep.
+export function isNonWritableColumn(column: ColumnShape): boolean {
+  return column.generated !== undefined || column.identity === "a";
+}
+
+// A column is optional on Insert when it is nullable, has a default, or is any
+// identity column (the database supplies the value).
+export function isOptionalInsertColumn(column: ColumnShape): boolean {
+  return !column.notNull || column.default !== undefined || column.identity !== undefined;
+}
+
 export interface RelationshipShape {
   columns: string[];
   foreignKeyName: string;

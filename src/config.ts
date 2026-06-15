@@ -207,5 +207,15 @@ function normalizeConfigInput(config: Partial<SupaschemaConfig>): Partial<Supasc
   if (adapter !== "supabase-auto" && adapter !== "supabase" && adapter !== "postgres") {
     return config;
   }
-  return { ...config, adapter: "auto" };
+  const normalized: Partial<SupaschemaConfig> = { ...config, adapter: "auto" };
+  // Legacy `adapter: "postgres"` was the opt-out from Supabase managed-schema
+  // enforcement: before adapters were unified, those checks ran only when the
+  // adapter was "auto", and "postgres" was the default. Preserve that
+  // provider-neutral posture on upgrade unless the project pins `managedSchemas`,
+  // so plain-PostgreSQL trees that own schemas like `auth`/`storage` do not start
+  // failing with SUPA_SUPABASE_MANAGED_SCHEMA after the adapter is normalized.
+  if (adapter === "postgres" && normalized.managedSchemas === undefined) {
+    normalized.managedSchemas = [];
+  }
+  return normalized;
 }

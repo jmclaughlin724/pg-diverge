@@ -45,15 +45,15 @@ jobs:
           npx supaschema diff \
             --from "git:origin/${{ github.base_ref }}" \
             --to dir:database/schemas \
-            --out /tmp/migration.sql
+            --out /tmp/supaschema/migration.sql
       - name: Check replay safety
-        run: npx supaschema check /tmp/migration.sql
+        run: npx supaschema check /tmp/supaschema/migration.sql
       - name: Verify apply-twice and catalog parity
         run: |
           npx supaschema verify \
             --from "git:origin/${{ github.base_ref }}" \
             --to dir:database/schemas \
-            --migration /tmp/migration.sql \
+            --migration /tmp/supaschema/migration.sql \
             --database-url postgresql://postgres:postgres@localhost:5432/postgres
 ```
 

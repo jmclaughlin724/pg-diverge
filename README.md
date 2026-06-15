@@ -229,7 +229,7 @@ Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes,
 ## Development
 
 ```bash
-npm run check           # lint + typecheck + tests + build
+npm run check           # lint + tests + build (typecheck runs in pre-push + CI)
 npm run fixture:verify  # render a fixture migration, apply twice, compare catalogs
 npm run corpus:check    # replay a dirty-real corpus and require reconvergence to zero
 npm run benchmark       # threshold-enforced benchmarks
@@ -237,7 +237,7 @@ npm run benchmark       # threshold-enforced benchmarks
 
 ## Contributing and License
 
-Bug reports and feature requests: [GitHub issues](https://github.com/jmclaughlin724/supaschema/issues). Run `npm run check` before opening a pull request.
+Bug reports and feature requests: [GitHub issues](https://github.com/jmclaughlin724/supaschema/issues). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — run `npm run check`, sign off your commits (DCO), and add a changeset before opening a pull request.
 
 supaschema is an independent open-source project and is not affiliated with or endorsed by Supabase.
 

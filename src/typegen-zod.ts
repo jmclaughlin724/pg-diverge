@@ -1,7 +1,13 @@
 import type { SchemaModel } from "./core.js";
 import { quoteKey } from "./typegen.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes } from "./typegen-model.js";
-import { collectSchemaShapes, resolveColumnType } from "./typegen-model.js";
+import {
+  collectSchemaShapes,
+  isNonWritableColumn,
+  isOptionalInsertColumn,
+  resolveColumnType,
+  sortedByName,
+} from "./typegen-model.js";
 
 export async function generateZodSchemas(model: SchemaModel): Promise<string> {
   const shapes = await collectSchemaShapes(model);
@@ -143,7 +149,7 @@ function emitZodUpdate(
 ): void {
   lines.push("        Update: z.object({");
   for (const column of columns) {
-    if (column.generated !== undefined || column.identity === "a") {
+    if (isNonWritableColumn(column)) {
       continue;
     }
     const base = zodFor(column.type);
@@ -169,10 +175,6 @@ function emitZodViews(
     lines.push("      },");
   }
   lines.push("    },");
-}
-
-function sortedByName<T extends { name: string }>(items: T[]): T[] {
-  return [...items].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function buildEnumIdentifiers(
@@ -238,11 +240,11 @@ function zodInsertField(
   column: ColumnShape,
   zodFor: (sqlType: string) => string
 ): string | undefined {
-  if (column.generated !== undefined || column.identity === "a") {
+  if (isNonWritableColumn(column)) {
     return;
   }
   const base = zodFor(column.type);
   const value = column.notNull ? base : `${base}.nullable()`;
-  const optional = !column.notNull || column.default !== undefined || column.identity !== undefined;
+  const optional = isOptionalInsertColumn(column);
   return `${quoteKey(column.name)}: ${optional ? `${value}.optional()` : value},`;
 }

@@ -19,7 +19,7 @@ Verification begins when you execute the change directly. Convergent investigati
 
 ## Mandatory Baseline
 
-1. Read the local build and verification conventions: root `AGENTS.md`, the relevant `.claude/rules/*`, and `Rule 01` (the operating-rules gate/no-skip matrix). The canonical commands are `npm run check` (lint + typecheck + test + build), `npm run typecheck`, `npm run lint`, `npm run build`, `npm run test`, `npm run guard`, and the targeted `npm run guard:*` checks (`guard:agent`, `guard:catalog`, `guard:code-atlas`, `guard:fastmcp`, `guard:lsp-coverage`).
+1. Read the local build and verification conventions: root `AGENTS.md`, the relevant `.claude/rules/*`, and `Rule 01` (the operating-rules gate/no-skip matrix). The canonical commands are `npm run check` (lint + test + build; `build` type-checks `src` via `noEmitOnError`), `npm run typecheck` (separate full src + tools type gate), `npm run lint`, `npm run build`, `npm run test`, `npm run guard`, and the targeted `npm run guard:*` checks (`guard:agent`, `guard:catalog`, `guard:code-atlas`, `guard:fastmcp`, `guard:lsp-coverage`).
 2. Run the build / typecheck if applicable (`npm run build`, `npm run typecheck`).
 3. Run the owning test or guard if applicable (`npm run test`, the specific `npm run guard:*`, or for the Python side-service `npm run py:test`).
 4. Run linters / formatters if configured (`npm run lint`, and for Python `npm run py:lint` / `npm run py:format:check`).

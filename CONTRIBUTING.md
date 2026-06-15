@@ -96,7 +96,7 @@ supaschema does not author migration SQL by hand and neither should you.
   SQL. `"*"` never lands in committed config.
 - **Renames** are declared in `hints.renames`, never inferred.
 - Decode any `SUPA_*` code with `supaschema explain <CODE>`; recovery procedures
-  are in `docs/configuration/hints.md`.
+  are at the [hints reference](https://supaschema.com/docs/configuration/hints).
 - `transactionMode: "per-migration"` is the default for transactional runners
   (e.g. `supabase db push`); `CREATE INDEX CONCURRENTLY` is blocked there and
   belongs only in an explicit `per-statement` operational lane.

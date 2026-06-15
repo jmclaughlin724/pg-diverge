@@ -16,6 +16,20 @@ import { fileURLToPath } from "node:url";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const schemaFile = "config-schema.json";
 
+// Resolve npm cross-platform: spawnSync("npm", ..., {shell:false}) raises ENOENT
+// on Windows (the executable is npm.cmd, which Node will not resolve without a
+// shell or explicit extension). Prefer the exact npm that launched this script
+// (npm_execpath) run through node; fall back to npm.cmd on Windows. This is the
+// same pattern the package-boundary tests use (tests/package-contents.test.ts,
+// tests/database-url.test.ts). git resolves fine with shell:false, so only the
+// npm call needs this.
+function npmInvocation(args) {
+  const execpath = process.env.npm_execpath;
+  return execpath
+    ? { command: process.execPath, args: [execpath, ...args] }
+    : { command: process.platform === "win32" ? "npm.cmd" : "npm", args };
+}
+
 function run(command, args, label) {
   const result = spawnSync(command, args, {
     cwd: packageRoot,
@@ -34,7 +48,8 @@ function run(command, args, label) {
 
 // Rebuild + regenerate so config-schema.json reflects current src/config.ts.
 // `npm run build` runs `tsc` then `node dist/config-schema-gen.js`.
-const buildStatus = run("npm", ["run", "build"], "npm run build");
+const build = npmInvocation(["run", "build"]);
+const buildStatus = run(build.command, build.args, "npm run build");
 if (buildStatus !== 0) {
   console.error("check:schema: build failed; cannot regenerate config schema.");
   process.exit(buildStatus);

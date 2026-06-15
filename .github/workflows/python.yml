@@ -52,5 +52,10 @@ jobs:
         run: uv run --package supaschema-agent-mcp mypy services/agent-mcp/supaschema_agent_mcp
       - name: Pytest
         run: uv run --package supaschema-agent-mcp pytest services/agent-mcp/tests
+      # Audit the SYNCED workspace member env (fastmcp/pydantic + transitives),
+      # not an ephemeral env: bare `uvx pip-audit` runs in an isolated tool env
+      # that contains only pip-audit, so it never scans the project's locked
+      # deps. `--with pip-audit` inside the member env audits what is actually
+      # installed/locked. The local first-party package (not on PyPI) is skipped.
       - name: pip-audit (vuln scan)
-        run: uvx pip-audit
+        run: uv run --package supaschema-agent-mcp --with pip-audit pip-audit

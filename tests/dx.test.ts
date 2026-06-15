@@ -43,6 +43,22 @@ describe("config DX", () => {
     expect(accidentalSupabase.adapter).toBe("auto");
   });
 
+  it("preserves the provider-neutral posture of legacy adapter: postgres", () => {
+    // Before adapters were unified, `postgres` was the default adapter and disabled
+    // Supabase managed-schema enforcement. Upgrading such a config must not start
+    // flagging owned schemas, so the normalizer carries forward managedSchemas: [].
+    expect(resolveConfig({ adapter: "postgres" } as never).managedSchemas).toEqual([]);
+
+    // An explicit managedSchemas list still wins over the back-compat default.
+    expect(
+      resolveConfig({ adapter: "postgres", managedSchemas: ["auth"] } as never).managedSchemas
+    ).toEqual(["auth"]);
+
+    // Other legacy values and the modern default keep the Supabase managed list.
+    expect(resolveConfig({ adapter: "supabase-auto" } as never).managedSchemas).toContain("auth");
+    expect(resolveConfig({}).managedSchemas).toContain("auth");
+  });
+
   it("keeps auto provider-neutral even when paths are Supabase-shaped", () => {
     const config = resolveConfig({
       adapter: "auto",

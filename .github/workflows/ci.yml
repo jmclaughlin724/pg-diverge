@@ -59,12 +59,18 @@ jobs:
             --out "$RUNNER_TEMP/smoke/basic.sql"
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke/basic.sql"
       - name: Examples smoke (shipped examples render + check clean)
+        # Run from INSIDE the example so supaschema resolves the example's own
+        # supaschema.config.json (managed schemas, grant roles, transaction
+        # mode) — exactly how a consumer runs it — not the repo-root config.
+        # $RUNNER_TEMP is absolute, so the isolated --out dir survives the cd.
         run: |
-          node dist/cli.js diff \
-            --from dir:examples/supabase/schemas \
-            --to dir:examples/supabase/schemas-next \
+          cli="$PWD/dist/cli.js"
+          cd examples/supabase
+          node "$cli" diff \
+            --from dir:schemas \
+            --to dir:schemas-next \
             --out "$RUNNER_TEMP/example/example.sql"
-          node dist/cli.js check "$RUNNER_TEMP/example/example.sql"
+          node "$cli" check "$RUNNER_TEMP/example/example.sql"
 
   check:
     # DB-dependent gates only: the postgres matrix proves replay safety and
@@ -97,8 +103,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: DB-gated tests
+        if: matrix.postgres != 17
         run: npm test
-      - name: Coverage
+      - name: Coverage (pg17 runs the suite once, with coverage)
         if: matrix.postgres == 17
         run: npm run test:coverage
       - name: Upload coverage to Codecov

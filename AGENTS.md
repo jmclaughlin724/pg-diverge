@@ -89,7 +89,7 @@ supaschema corpus                        # dirty-real corpus oracle when a datab
 Repository development:
 
 ```bash
-npm run check           # lint + typecheck + tests + build
+npm run check           # lint + tests + build (build type-checks src via noEmitOnError)
 npm run lint            # ultracite check (wraps Biome)
 npm run typecheck       # TypeScript no-emit check
 npm test                # vitest suite

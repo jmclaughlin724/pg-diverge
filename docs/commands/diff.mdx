@@ -37,7 +37,7 @@ If there is nothing to migrate, the command exits with code `0` and writes no fi
 npx supaschema diff
 
 # PR diff: compare branch against base
-npx supaschema diff --from "git:origin/main" --to dir:database/schemas --out /tmp/migration.sql
+npx supaschema diff --from "git:origin/main" --to dir:database/schemas --out /tmp/supaschema/migration.sql
 
 # Drift detection: exit 3 if live DB is behind the schema
 npx supaschema diff --fail-on-diff --quiet

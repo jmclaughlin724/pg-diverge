@@ -29,10 +29,16 @@ for (const token of [
   "Pointer index only",
   "cloudflare-docs",
   "supaschema-docs",
+  "from fastmcp.exceptions import ToolError",
+  "raise ToolError(",
 ]) {
   assert(server.includes(token), `FastMCP server missing marker ${token}`);
 }
 assert(!server.includes("FastMCP.as_proxy"), "repo_context must not proxy other MCP servers");
+assert(
+  !server.includes("raise ValueError("),
+  "FastMCP guards must raise ToolError (not bare ValueError) so messages survive mask_error_details"
+);
 
 const fastmcp = readJson("fastmcp.json");
 assert(

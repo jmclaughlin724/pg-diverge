@@ -96,7 +96,7 @@ The config schema is generated from `src/config.ts` into the shipped `config-sch
 
 It is not a provider switch. Provider-specific setup is expressed through paths, `managedSchemas`, `transactionMode`, `excludedGrantRoles`, and explicit command flags such as `verify --ensure-environment`.
 
-Legacy config values `supabase-auto`, `supabase`, and `postgres` are accepted and normalized to `auto` so older projects keep loading. Do not use them in new config.
+Legacy config values `supabase-auto`, `supabase`, and `postgres` are accepted and normalized to `auto` so older projects keep loading. For backward compatibility, a legacy `adapter: "postgres"` that does not set `managedSchemas` keeps the provider-neutral posture it had before adapters were unified — managed-schema enforcement stays off, equivalent to `managedSchemas: []` — so a plain-PostgreSQL tree that owns schemas like `auth` or `storage` does not start failing after the upgrade. Set `managedSchemas` explicitly to opt into the Supabase defaults. Do not use these legacy values in new config.
 
 ## Options
 
