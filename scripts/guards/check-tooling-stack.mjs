@@ -57,19 +57,28 @@ const toolPins = {
   vitest: "4.1.8",
 };
 
+// package.json is the single source of truth for the pinned tooling versions;
+// the dependency catalog no longer mirrors npm deps (see check-dependency-catalog.mjs).
 for (const [name, version] of Object.entries(toolPins)) {
   assert(
     packageJson.devDependencies?.[name] === version,
     `package.json must pin ${name}@${version}`
   );
-  assert(
-    catalog.devDependencies?.[name] === version,
-    `dependency catalog must pin ${name}@${version}`
-  );
 }
 
 assert(packageJson.scripts?.lint === "ultracite check .", "lint must run Ultracite check");
-assert(packageJson.scripts?.format === "ultracite fix .", "format must run Ultracite fix");
+assert(
+  packageJson.scripts?.format === "ultracite fix . && npm run format:md && npm run format:sql",
+  "format must run Ultracite fix, then Prettier (format:md), then pgformatter (format:sql)"
+);
+assert(
+  packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{md,mdx,yml,yaml}"',
+  "format:md must run Prettier write over MDX/Markdown/YAML"
+);
+assert(
+  packageJson.scripts?.["format:sql"] === "node scripts/format-sql.mjs",
+  "format:sql must run the pgformatter SQL lane"
+);
 assert(packageJson.scripts?.["lint:fix"] === "ultracite fix .", "lint:fix must run Ultracite fix");
 assert(
   packageJson.scripts?.["lint:doctor"] === "ultracite doctor",
