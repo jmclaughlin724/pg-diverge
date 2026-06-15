@@ -23,14 +23,14 @@ The output is a generated migration file with a lineage marker, plus refreshed T
 
 ## Schema files are the source of truth
 
-By default, the neutral install scaffold reads SQL from `database/schemas/`; provider-specific installs may use paths such as `supabase/schemas/`, `neon/schemas/`, `aws-postgresql/schemas/`, `cloud-sql/schemas/`, `alloydb/schemas/`, or `azure-postgresql/schemas/`. Split the schema by domain, feature, or dependency order:
+By default, the neutral install scaffold reads SQL from `database/schemas/`. Provider-specific defaults are listed in [Setup](/setup#path-selection). Split the schema by domain, feature, or dependency order:
 
 ```text
 database/schemas/
-  001_extensions.sql
-  010_auth.sql
-  020_billing.sql
-  030_policies.sql
+  extensions.sql
+  auth.sql
+  billing.sql
+  policies.sql
 ```
 
 The migration is generated from these files. If the migration contains a `-- supaschema: lineage` marker, do not hand-edit it; change the schema tree and regenerate.
@@ -49,7 +49,7 @@ This makes schema review focus on intent: the declared target changed, the gener
 
 ## Works with Supabase and plain PostgreSQL
 
-For Supabase projects, `supaschema` fits into the existing `supabase/schemas/` and `supabase/migrations/` layout. For other PostgreSQL projects, use the paths in `supaschema.config.json`, such as `database/schemas`, `neon/schemas`, `aws-postgresql/schemas`, `cloud-sql/schemas`, `alloydb/schemas`, or `azure-postgresql/schemas`, plus optional named environments.
+For Supabase projects, `supaschema` fits into the existing `supabase/schemas/` and `supabase/migrations/` layout. For other PostgreSQL projects, use the paths in `supaschema.config.json` plus optional named environments.
 
 Sources can be directories, git refs, live read-only catalogs, dumps, or saved catalog JSON:
 

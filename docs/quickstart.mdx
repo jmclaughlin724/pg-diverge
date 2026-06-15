@@ -21,7 +21,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     Install supaschema as a dev dependency:
 
     ```bash
-    npm install --save-dev supaschema
+    npm install supaschema
     ```
 
     Check the binary:
@@ -38,10 +38,10 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     mkdir -p database/schemas
     ```
 
-    Create `database/schemas/001_app.sql`:
+    Create `database/schemas/app.sql`:
 
     ```sql
-    -- database/schemas/001_app.sql
+    -- database/schemas/app.sql
 
     CREATE SCHEMA app;
 
@@ -59,7 +59,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     ```
 
     <Tip>
-      You can split your schema across multiple files. supaschema reads `.sql` files in lexicographic order. Use prefixes such as `001_` and `002_` when order matters.
+      You can split your schema across multiple files. supaschema reads `.sql` files in lexicographic order, so keep dependencies earlier by file name.
     </Tip>
 
     Your schema files are the source of truth. You edit them directly. supaschema writes the migration.

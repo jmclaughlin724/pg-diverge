@@ -16,10 +16,12 @@ Use supaschema for schema changes. Read the project-installed supaschema guidanc
 For a new project, the human or agent only needs the normal package install:
 
 ```bash
-npm install --save-dev supaschema
+npm install supaschema
 ```
 
-The install creates missing config, installs the supaschema skill/rule/hook files, merges hook wiring, and adds a tagged supaschema addendum to `AGENTS.md` and `CLAUDE.md`. If install records multiple possible schema or migration paths in `.supaschema/install.json`, ask which paths to use before the first diff.
+Install includes the agent bundle described in [Introduction](/introduction#what-gets-installed).
+
+If install records multiple possible schema or migration paths in `.supaschema/install.json`, ask which paths to use before the first diff.
 
 Agents should treat `supaschema.config.json` as the source of truth for `schemaPaths`, `migrationsDir`, and named database URL references. Do not assume `supabase/schemas` or `supabase/migrations` unless those paths are configured.
 

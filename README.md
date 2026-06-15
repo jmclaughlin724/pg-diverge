@@ -37,10 +37,10 @@ supaschema ships PostgreSQL's own parser inside the package. It reads your SQL i
 ## Install
 
 ```bash
-npm install --save-dev supaschema
+npm install supaschema
 ```
 
-Requires Node 22.12+ and PostgreSQL 15+. Install creates `supaschema.config.json` when missing, scans for schema/migration paths, and wires the bundled Claude/Codex-compatible rule, skill, and hooks. Path defaults are provider-aware: Supabase uses `supabase/schemas` and `supabase/migrations`; Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, and Azure PostgreSQL use their own provider folders when matching project markers are present; otherwise the neutral PostgreSQL layout is `database/schemas` and `database/migrations`. Use `supaschema.config.json` to edit `schemaPaths`, `migrationsDir`, and named `environments` that reference database URLs via `$ENV_NAME`. If setup misbehaves, `npx supaschema doctor` prints a one-page diagnosis.
+Requires Node 22.12+ and PostgreSQL 15+. Install runs the one-step setup: config, schema/migration paths, and the bundled Claude/Codex-compatible agent guidance. Use `supaschema.config.json` to edit `schemaPaths`, `migrationsDir`, and named `environments` that reference database URLs via `$ENV_NAME`. Details: [installation](https://supaschema.com/docs/installation) and [setup](https://supaschema.com/docs/setup).
 
 ## Quick Start
 

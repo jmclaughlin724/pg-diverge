@@ -38,7 +38,7 @@ It would keep the same engine, but add organization-level enforcement:
 - **PR + Security-tab surface** — SARIF findings posted to every PR and aggregated in the org's code-scanning dashboard, with a dedicated **tenant-isolation policy change** finding class (a policy `USING`/`WITH CHECK` predicate changed, was removed, or weakened) that requires explicit review acknowledgement before merge.
 - **History and drift over time** — per-repo migration lineage, drift trend, and a record of every policy change shipped, so an isolation regression has an audit trail.
 - **Org policy** — required-check enforcement, allowed-hint review (no `hints.destructive: "*"` reaching `main`), and per-environment gates (`staging`/`production`) wired to named `environments`.
-- **No-CI-config onboarding** — install the App, point it at the configured schema tree (`database/schemas`, `supabase/schemas`, `neon/schemas`, `aws-postgresql/schemas`, `cloud-sql/schemas`, `alloydb/schemas`, `azure-postgresql/schemas`, or another configured path), and skip workflow YAML.
+- **No-CI-config onboarding** — install the App, point it at the configured schema tree, and skip workflow YAML.
 
 The paid surface is hosting, Security-tab integration, policy-change findings, and org administration.
 

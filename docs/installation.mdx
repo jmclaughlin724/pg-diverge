@@ -3,9 +3,9 @@ title: "Installation"
 description: "Install supaschema from npm and confirm the minimum runtime requirements."
 ---
 
-Install supaschema as a dev dependency in the project that owns your schema files.
+Install supaschema in the project that owns your schema files.
 
-The install step also prepares config, schema folders, migration folders, and agent guidance when they are missing.
+The install step runs the one-step project setup described in [Introduction](/introduction#what-gets-installed).
 
 ## Requirements
 
@@ -27,22 +27,12 @@ Supported targets include Supabase, Neon, AWS RDS/Aurora PostgreSQL, Google Clou
 Use npm:
 
 ```bash
-npm install --save-dev supaschema
+npm install supaschema
 ```
 
+Use `--save-dev` only when every environment that runs supaschema installs dev dependencies.
+
 Other package managers can install the package. This repository uses npm and `package-lock.json`.
-
-## What install adds
-
-Install creates or updates only supaschema-owned setup files:
-
-- `supaschema.config.json`, when missing;
-- schema and migrations folders from the detected project layout;
-- Claude/Codex-compatible rule, skill, and hook files;
-- hook wiring for Claude and Codex-compatible agents;
-- a tagged supaschema addendum in `AGENTS.md` and `CLAUDE.md`.
-
-If the installer finds multiple possible schema or migration folders, it records them in `.supaschema/install.json`. Confirm the paths before the first `diff`.
 
 ## Verify the binary
 

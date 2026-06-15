@@ -13,7 +13,7 @@ When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/ho
 
 ## Installed Setup
 
-The normal consumer setup is one package install: `npm install --save-dev supaschema`. Install creates missing config, schema and migrations directories, Claude/Codex rule and skill files, hook scripts, hook wiring, and a tagged supaschema addendum in `AGENTS.md` / `CLAUDE.md`.
+The normal consumer setup is one package install: `npm install supaschema`. Treat `supaschema.config.json`, installed schema/migration directories, Claude/Codex rule and skill files, hook wiring, and tagged `AGENTS.md` / `CLAUDE.md` addenda as the package-owned setup surface.
 
 Before the first schema edit, check `.supaschema/install.json` if it exists. If it says `"pathConfirmationNeeded": true`, inspect its candidate `schemaPaths` and `migrationsDirs`, ask the user which paths to use, update `supaschema.config.json`, then run the workflow. Do not generate a migration from a guessed path; the bundled hooks also skip auto-diff while confirmation is pending.
 
