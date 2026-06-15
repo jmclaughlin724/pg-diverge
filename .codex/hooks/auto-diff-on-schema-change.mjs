@@ -2,7 +2,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 const editTools = new Set(["Edit", "MultiEdit", "Write", "edit_file", "apply_patch"]);
 const lineageMarker = "-- supaschema: lineage ";
@@ -12,6 +11,15 @@ const updateHeader = "*** Update File: ";
 const moveHeader = "*** Move to: ";
 const genericSchemaPath = "database/schemas";
 const supabaseSchemaPath = "supabase/schemas";
+const defaultWorkflow = {
+  schema_diff: "on_schema_write",
+  migration_check: "after_schema_diff",
+  migration_verify: "suggest_after_check",
+  migration_sync: "explicit_request_only",
+  type_generation: "create_or_refresh",
+  zod_generation: "create_or_refresh",
+  type_usage: "zod_validated",
+};
 const pathSeparatorPattern = /[/\\]/;
 const providerSchemaMarkers = [
   { schemaPath: supabaseSchemaPath, markers: [{ path: "supabase/config.toml" }] },
@@ -122,6 +130,13 @@ try {
   if (changed.length === 0) {
     process.exit(0);
   }
+  if (pathState.workflow.schema_diff !== "on_schema_write") {
+    emit(
+      `supaschema auto-diff skipped for ${changed
+        .map((path) => rel(projectDir, path))
+        .join(", ")} because workflow.schema_diff is "${pathState.workflow.schema_diff}". Run \`supaschema diff\` manually when this schema change should produce a migration.`
+    );
+  }
   if (groups.length > 1) {
     emit(
       `supaschema auto-diff skipped for ${changed
@@ -157,11 +172,13 @@ try {
         )} changed but produces no net schema change versus the current state — no migration written.`
     );
   }
-  const check = run(bin, ["check"], projectDir);
-  const checkLine =
-    check.code === 0
-      ? "supaschema check passed (replay-safe)"
-      : `supaschema check reported diagnostics:\n${head(check.stderr || check.stdout)}`;
+  const checkResult = runConfiguredCheck(bin, projectDir, pathState.workflow);
+  const verifyLine = runConfiguredVerify(
+    bin,
+    projectDir,
+    pathState.workflow,
+    checkResult.passed
+  );
   emit(
     `supaschema auto-diff completed for ${changed
       .map((path) => rel(projectDir, path))
@@ -169,7 +186,9 @@ try {
       .map((path) => rel(projectDir, path))
       .join(
         ", "
-      )} and refreshed configured type files that already exist. ${checkLine}. Commit the tree change, the migration, and any refreshed types together — the migration runner (e.g. \`supabase db push\`) applies it; supaschema never touches your database.`
+      )}. ${generatedOutputLine(
+      pathState.workflow
+    )}. ${checkResult.line}${verifyLine === "" ? "" : `. ${verifyLine}`}. Commit the tree change, the migration, and any refreshed generated outputs together — the migration runner (e.g. \`supabase db push\`) applies it; supaschema never touches your database.`
   );
 } catch {
   process.exit(0);
@@ -282,35 +301,47 @@ function emit(additionalContext) {
   process.exit(0);
 }
 
-async function readConfigSchemaPaths(projectDir) {
+async function readConfigPathFields(projectDir) {
   const jsonPath = join(projectDir, "supaschema.config.json");
   if (existsSync(jsonPath)) {
-    return resolveConfigSchemaPaths(JSON.parse(readFileSync(jsonPath, "utf8")), projectDir);
+    return resolveConfigPathFields(JSON.parse(readFileSync(jsonPath, "utf8")), projectDir);
   }
-  for (const file of ["supaschema.config.mjs", "supaschema.config.js"]) {
-    const path = join(projectDir, file);
-    if (!existsSync(path)) {
-      continue;
-    }
-    const loaded = await import(pathToFileURL(path).href);
-    return resolveConfigSchemaPaths(loaded.default ?? {}, projectDir);
-  }
-  return { explicit: false, schemaPaths: [defaultSchemaPath(projectDir)] };
+  return {
+    explicit: false,
+    migrationsDir: undefined,
+    schemaPaths: [defaultSchemaPath(projectDir)],
+    sourcesTo: undefined,
+    workflow: defaultWorkflow,
+  };
 }
 
-function resolveConfigSchemaPaths(config, projectDir) {
-  const explicit = schemaPathsFromConfig(config);
-  return explicit
-    ? { explicit: true, schemaPaths: explicit }
-    : { explicit: false, schemaPaths: [defaultSchemaPath(projectDir)] };
+function resolveConfigPathFields(config, projectDir) {
+  const explicitSchemaPaths = schemaPathsFromConfig(config);
+  const migrationsDir =
+    typeof config?.migrationsDir === "string" && config.migrationsDir.length > 0
+      ? config.migrationsDir
+      : undefined;
+  const sourcesTo =
+    typeof config?.sources?.to === "string" && config.sources.to.length > 0
+      ? config.sources.to
+      : undefined;
+  return {
+    explicit: explicitSchemaPaths !== undefined && migrationsDir !== undefined && sourcesTo !== undefined,
+    migrationsDir,
+    schemaPaths: explicitSchemaPaths ?? [defaultSchemaPath(projectDir)],
+    sourcesTo,
+    workflow: workflowFromConfig(config),
+  };
 }
 
 async function readPathState(projectDir) {
-  const { explicit, schemaPaths } = await readConfigSchemaPaths(projectDir);
+  const { explicit, migrationsDir, schemaPaths, sourcesTo, workflow } =
+    await readConfigPathFields(projectDir);
   const manifest = readInstallManifest(projectDir);
   // The install-time `pathConfirmationNeeded` flag is stale once the config
-  // explicitly defines schemaPaths — that is the documented way to confirm the
-  // detected paths — so auto-diff resumes without a manual manifest edit.
+  // explicitly defines schemaPaths, sources.to, and migrationsDir — that is the
+  // documented way to confirm the detected paths — so auto-diff resumes without
+  // a manual manifest edit.
   if (manifest?.pathConfirmationNeeded === true && !explicit) {
     const candidateSchemaPaths = strings(manifest?.candidates?.schemaPaths);
     const candidateMigrationsDirs = strings(manifest?.candidates?.migrationsDirs);
@@ -318,16 +349,22 @@ async function readPathState(projectDir) {
       candidateMigrationsDirs,
       candidateSchemaPaths,
       confirmationSchemaPaths: uniqueStrings([...candidateSchemaPaths, ...schemaPaths]),
+      migrationsDir,
       pathConfirmationNeeded: true,
       schemaPaths,
+      sourcesTo,
+      workflow,
     };
   }
   return {
     candidateMigrationsDirs: [],
     candidateSchemaPaths: [],
     confirmationSchemaPaths: schemaPaths,
+    migrationsDir,
     pathConfirmationNeeded: false,
     schemaPaths,
+    sourcesTo,
+    workflow,
   };
 }
 
@@ -348,6 +385,89 @@ function schemaPathsFromConfig(config) {
     return config.schemaPaths.map(String);
   }
   return;
+}
+
+function workflowFromConfig(config) {
+  const workflow = isPlainObject(config?.workflow) ? config.workflow : {};
+  return {
+    schema_diff: enumValue(workflow.schema_diff, [
+      "disabled",
+      "manual",
+      "on_schema_write",
+    ], defaultWorkflow.schema_diff),
+    migration_check: enumValue(workflow.migration_check, [
+      "manual",
+      "after_schema_diff",
+      "required_before_complete",
+    ], defaultWorkflow.migration_check),
+    migration_verify: enumValue(workflow.migration_verify, [
+      "manual",
+      "suggest_after_check",
+      "after_schema_diff",
+    ], defaultWorkflow.migration_verify),
+    migration_sync: enumValue(workflow.migration_sync, [
+      "disabled",
+      "explicit_request_only",
+    ], defaultWorkflow.migration_sync),
+    type_generation: enumValue(workflow.type_generation, [
+      "disabled",
+      "refresh_existing",
+      "create_or_refresh",
+    ], defaultWorkflow.type_generation),
+    zod_generation: enumValue(workflow.zod_generation, [
+      "disabled",
+      "refresh_existing",
+      "create_or_refresh",
+    ], defaultWorkflow.zod_generation),
+    type_usage: enumValue(workflow.type_usage, [
+      "typescript_only",
+      "zod_validated",
+    ], defaultWorkflow.type_usage),
+  };
+}
+
+function enumValue(value, allowed, fallback) {
+  return typeof value === "string" && allowed.includes(value) ? value : fallback;
+}
+
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function runConfiguredCheck(bin, projectDir, workflow) {
+  if (
+    workflow.migration_check !== "after_schema_diff" &&
+    workflow.migration_check !== "required_before_complete"
+  ) {
+    return {
+      line: `supaschema check skipped because workflow.migration_check is "${workflow.migration_check}"`,
+      passed: true,
+    };
+  }
+  const check = run(bin, ["check"], projectDir);
+  return check.code === 0
+    ? { line: "supaschema check passed (replay-safe)", passed: true }
+    : {
+        line: `supaschema check reported diagnostics:\n${head(check.stderr || check.stdout)}`,
+        passed: false,
+      };
+}
+
+function runConfiguredVerify(bin, projectDir, workflow, checkPassed) {
+  if (workflow.migration_verify !== "after_schema_diff") {
+    return "";
+  }
+  if (!checkPassed) {
+    return "supaschema verify skipped because check did not pass";
+  }
+  const verify = run(bin, ["verify"], projectDir);
+  return verify.code === 0
+    ? "supaschema verify passed"
+    : `supaschema verify reported diagnostics:\n${head(verify.stderr || verify.stdout)}`;
+}
+
+function generatedOutputLine(workflow) {
+  return `Generated output policy: workflow.type_generation=${workflow.type_generation}, workflow.zod_generation=${workflow.zod_generation}, workflow.type_usage=${workflow.type_usage}`;
 }
 
 function defaultSchemaPath(projectDir) {

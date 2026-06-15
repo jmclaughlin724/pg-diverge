@@ -13,7 +13,7 @@ Use `diff` when schema files changed and you need a migration.
 
 It renders replay-safe SQL and writes a migration to `config.migrationsDir`.
 
-If configured type files already exist, `diff` refreshes them after a successful migration write.
+After a successful migration write, `diff` refreshes generated TypeScript and Zod outputs according to `workflow.type_generation` and `workflow.zod_generation`.
 
 ## Default behavior
 
@@ -22,14 +22,14 @@ When you run `npx supaschema diff` with no flags, supaschema:
 1. Reads the before-state from `config.sources.from`.
 2. Reads the after-state from `config.sources.to`, falling back to `dir:<config.schemaPaths[0]>`.
 3. Writes the resulting migration to `config.migrationsDir/<TIMESTAMP>_migration.sql`.
-4. Refreshes existing configured type output files from the updated schema.
+4. Refreshes configured generated outputs from the updated schema according to the workflow policy.
 
 The scaffolded config uses `sources.from: "auto"`, which resolves a database URL first and falls back to `git:HEAD`, and `sources.to: "dir:<schemaPaths[0]>"`.
 
 If there is nothing to migrate, the command exits with code `0` and writes no file.
 
 <Note>
-  Type refresh only runs for configured files that already exist. Run `npx supaschema types` once to create them.
+  The default `create_or_refresh` output policy creates or updates the configured TypeScript and Zod files after a migration is written. Use `refresh_existing` only when missing generated outputs should be skipped.
 </Note>
 
 ## Examples
@@ -54,15 +54,15 @@ npx supaschema diff --dry-run --summary
 ## Flags
 
 <ParamField path="--from" type="source">
-  The **before-state** source to diff against. Accepts a `database:<url>` live connection (including `database:$ENV_VAR`), a `git:<ref>` specifier (e.g. `git:HEAD`, `git:origin/main`), or a `dir:<path>` pointing to a schema directory. Defaults to `config.sources.from`; `"auto"` resolves a database URL first, then falls back to `git:HEAD`.
+  The **before-state** source to diff against. Accepts `database:<url>` (including `database:$ENV_VAR`), `git:<ref>`, `dir:<path>`, `dump:<path>`, or `catalog:<path>`. Defaults to `config.sources.from`; `"auto"` resolves a database URL first, then falls back to `git:HEAD`.
 </ParamField>
 
 <ParamField path="--to" type="source">
-  The **after-state** source representing the desired schema. Accepts the same specifiers as `--from`, including `database:<url>` for live database sources. Defaults to `config.sources.to`, then `dir:<config.schemaPaths[0]>`.
+  The **after-state** source representing the desired schema. Accepts the same explicit source specifiers as `--from`. Defaults to `config.sources.to`, then `dir:<config.schemaPaths[0]>`.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">
-  Where to write the rendered SQL. Pass a file path to override the default timestamped filename, or pass `stdout` to print directly to standard output without touching the filesystem. Using `--out stdout` skips TypeScript type generation.
+  Where to write the rendered SQL. Pass a file path to override the default timestamped filename, or pass `stdout` to print directly to standard output without touching the filesystem. Using `--out stdout` skips generated TypeScript and Zod output refresh.
 </ParamField>
 
 <ParamField path="--name" type="string">
@@ -114,7 +114,7 @@ npx supaschema diff --dry-run --summary
 </ParamField>
 
 <ParamField path="--config" type="path">
-  Path to a supaschema config file. Defaults to `supaschema.config.json`, then `supaschema.config.mjs`, then `supaschema.config.js` in the current working directory.
+  Path to a supaschema JSON config file. Defaults to `supaschema.config.json` in the current working directory.
 </ParamField>
 
 <ParamField path="--env" type="string">
@@ -127,9 +127,11 @@ The `--from` and `--to` flags accept the following source formats:
 
 | Format       | Example                          | Description                 |
 | ------------ | -------------------------------- | --------------------------- |
-| Database URL | `postgresql://user:pass@host/db` | Live database introspection |
+| `database:<url>` | `database:$STAGING_DB`       | Live database introspection |
 | `git:<ref>`  | `git:HEAD`, `git:origin/main`    | Schema files at a git ref   |
 | `dir:<path>` | `dir:database/schemas`           | Schema files on disk        |
+| `dump:<path>` | `dump:baseline.sql`, `dump:-`   | SQL dump file or stdin      |
+| `catalog:<path>` | `catalog:snapshot.json`      | supaschema catalog snapshot |
 
 <Tip>
   In pull-request workflows, set `--from "git:origin/main"` and `--to dir:database/schemas` (or your configured schema path) to produce a migration that captures exactly what changed on your branch — no live database required.

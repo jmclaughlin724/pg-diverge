@@ -1,7 +1,7 @@
 ---
 title: "Release"
 description: "Release and trusted publishing checklist for the supaschema npm package."
-keywords: ["release","trusted publishing","npm","checklist"]
+keywords: ["release", "trusted publishing", "npm", "checklist"]
 hidden: true
 ---
 
@@ -35,7 +35,7 @@ The GitHub release creates the tag. Do not let `npm version` create it.
 
 Package contents are allowlisted with `package.json` `files`. Do not add a root `.npmignore`; the package boundary is explicit by design.
 
-Use [Package Boundary](/reference/package-boundary) before adding, moving, or deleting any published file, consumer installer output, or agent bundle surface.
+Use [Package Boundary](/reference/package-boundary) before adding, moving, or deleting any published file or consumer installer output. Use [Agent bundle](/coding-agents/agent-bundle) before changing shipped agent surfaces or hook behavior.
 
 Before publishing, inspect the dry-run tarball and confirm it contains only the npm package surface:
 

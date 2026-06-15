@@ -9,13 +9,13 @@ description: Generate, check, and verify replay-safe PostgreSQL/Supabase migrati
 
 This skill is a direct execution contract for producing schema migrations with supaschema. Follow the workflow in order; do not hand-author migration SQL for changes the declarative tree can express, and never edit a generated migration (the `-- supaschema: lineage` marker) by hand.
 
-When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`), a write to a schema-tree `.sql` file auto-runs steps 2–3 — `diff` then `check` — and returns the generated migration name, or the blocking `SUPA_*` diagnostic, as context. Read that context as the diff result and act on any reported code. The commands below are the same workflow for CI, hand runs, `verify`, and any step the hook reports as blocked; the hook never applies to a database.
+When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`) and `workflow.schema_diff` / `workflow.migration_check` keep their defaults, a write to a schema-tree `.sql` file auto-runs steps 2–3 — `diff` then `check` — and returns the generated migration name, or the blocking `SUPA_*` diagnostic, as context. Read that context as the diff result and act on any reported code. The commands below are the same workflow for CI, hand runs, `verify`, and any step the hook reports as blocked; the hook never applies to a database.
 
 ## Installed Setup
 
 The normal consumer setup is one package install: `npm install supaschema`. Treat `supaschema.config.json`, installed schema/migration directories, Claude/Codex rule and skill files, hook wiring, and tagged `AGENTS.md` / `CLAUDE.md` addenda as the package-owned setup surface.
 
-Before the first schema edit, check `.supaschema/install.json` if it exists. If it says `"pathConfirmationNeeded": true`, inspect its candidate `schemaPaths` and `migrationsDirs`, ask the user which paths to use, update `supaschema.config.json`, then run the workflow. Do not generate a migration from a guessed path; the bundled hooks also skip auto-diff while confirmation is pending.
+Before the first schema edit, check `.supaschema/install.json` if it exists. If it says `"pathConfirmationNeeded": true`, inspect its candidate `schemaPaths` and `migrationsDirs`, ask the user which `schemaPaths`, `sources.to`, and `migrationsDir` to use, update `supaschema.config.json`, then run the workflow. Do not generate a migration from a guessed path; the bundled hooks also skip auto-diff until all three fields are explicit.
 
 Use the configured `schemaPaths`, `sources`, and `migrationsDir` as the source of truth. Do not create a parallel schema tree, a second migrations directory, or a new config unless the user explicitly asks to change project layout.
 
@@ -23,12 +23,13 @@ Use the configured `schemaPaths`, `sources`, and `migrationsDir` as the source o
 
 Read `supaschema.config.json` before editing schemas. These keys are the agent-facing source of truth:
 
-- `adapter`: `auto` is the default automated supaschema workflow. It means generate migrations with `diff`, gate them with `check` / `verify`, and refresh existing `typesFile` / `zodFile` outputs from the declarative tree. It is not a Supabase switch.
+- `adapter`: `auto` is the provider-neutral adapter sentinel. It is not a Supabase switch and does not grant workflow consent.
+- `workflow`: agent/hook automation policy. `schema_diff: "on_schema_write"` runs hook diff after schema SQL writes; `migration_check: "after_schema_diff"` runs hook check after generated migrations; `migration_verify: "suggest_after_check"` tells agents to suggest verify when a database is reachable; `migration_sync: "explicit_request_only"` allows sync apply handoff only when explicitly invoked; `type_generation: "create_or_refresh"` and `zod_generation: "create_or_refresh"` create or update generated outputs after `diff`; `type_usage: "zod_validated"` means use generated Zod validators for runtime boundaries and derived validated types.
 - `schemaPaths`: declarative SQL roots to edit and parse. Typical install-selected roots are `database/schemas`, `supabase/schemas`, `neon/schemas`, `aws-postgresql/schemas`, `cloud-sql/schemas`, `alloydb/schemas`, or `azure-postgresql/schemas`.
 - `sources`: default before/after sources for zero-source-flag `diff`, `plan`, and `verify`. Install writes `sources.from: "auto"` and `sources.to: "dir:<schemaPaths[0]>"`; examples or fixture projects can pin `dump:`, `dir:`, `git:`, `database:`, or `catalog:` values when that source is the project contract.
 - `migrationsDir`: where generated migrations are written and where zero-arg `check` / `verify` look for pending migrations.
-- `typesFile` and `zodFile`: generated TypeScript and Zod output paths. `diff` refreshes an output only after the file already exists; run `supaschema types` once to create them.
-- `managedSchemas`: externally owned schemas that the declarative tree cannot claim. The default protects common Supabase-provisioned schemas.
+- `typesFile` and `zodFile`: generated TypeScript and Zod output paths. `diff` follows `workflow.type_generation` and `workflow.zod_generation`; the default `create_or_refresh` policy creates missing outputs and updates existing outputs.
+- `managedSchemas`: externally owned schemas that the declarative tree cannot claim. Generic PostgreSQL installs use `[]`; Supabase installs seed the common Supabase-provisioned schemas.
 - `transactionMode`: runner behavior. Use `per-migration` for transactional runners; use `per-statement` only for explicit out-of-transaction operational lanes.
 - `environments`: named database URL references for `--env`; use `$ENV_NAME` indirection and never commit credentials.
 
@@ -58,11 +59,11 @@ Read `supaschema.config.json` before editing schemas. These keys are the agent-f
 
    Add `--ensure-roles` when the migration grants to roles a bare PostgreSQL server lacks (e.g. `authenticated`). Use `--ensure-environment` when a plain PostgreSQL verification server needs Supabase-provisioned surfaces. A fingerprint mismatch itemizes the differing objects in the diagnostic hint.
 
-5. **Commit** the tree change, the generated migration, and the refreshed types file together. The diff/check/verify workflow never stages or applies; the migration runner (e.g. `supabase db push`) owns the database. TypeScript types come from the tree (`supaschema types` creates `database.types.ts`; every later `diff` refreshes it) — never wait for a deploy or run introspection-based typegen to get correct types.
+5. **Commit** the tree change, the generated migration, and refreshed generated outputs together. The diff/check/verify workflow never stages or applies; the migration runner (e.g. `supabase db push`) owns the database. TypeScript and Zod outputs come from the tree (`diff` creates or refreshes `database.types.ts` / `database.zod.ts` by default). When `workflow.type_usage` is `zod_validated`, use generated Zod validators for runtime parsing/validation instead of hand-authored database-shape validators — never wait for a deploy or run introspection-based typegen to get correct types.
 
 ## Operational Sync
 
-`supaschema sync` is the optional apply gate, not the default generation workflow. With no `--local` or `--remote` flag it is a dry run that reconciles migration status and checks pending files. With `--local` or `--remote`, it runs the same gates and then delegates the actual apply/deploy to the Supabase CLI. Do not run apply flags unless the human explicitly requested that operational action.
+`supaschema sync` is the optional apply gate, not the default generation workflow. With no `--local` or `--remote` flag it is a dry run that reconciles migration status and checks pending files. With `--local` or `--remote`, it runs the same gates and then delegates the actual apply/deploy to the Supabase CLI only when `workflow.migration_sync` is `explicit_request_only`. Do not run apply flags unless the human explicitly requested that operational action.
 
 ## Drift Detection
 

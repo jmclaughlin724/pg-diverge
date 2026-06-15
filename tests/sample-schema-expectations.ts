@@ -24,4 +24,7 @@ export const expectedTypesFragments = [
 export const expectedZodFragments = [
   'const app_account_status = z.enum(["active", "suspended"]);',
   "status: app_account_status,",
+  "export type TableRow<",
+  "export type TableInsert<",
+  "export type EnumValue<",
 ] as const;

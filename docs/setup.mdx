@@ -19,6 +19,8 @@ When npm does not run install scripts — npm v12 ignores dependency install scr
 <Info>
   If you need to change paths later, edit `schemaPaths`, `sources.to`,
   `migrationsDir`, `typesFile`, or `zodFile` in `supaschema.config.json`.
+  Edit `workflow` when you need to change agent hook automation, migration sync
+  handoff, or generated output refresh policy.
 </Info>
 
 This page covers path selection, agent addendum behavior, setup checks, and where detailed configuration lives. For the package contents installed in that step, see [What gets installed?](/introduction#what-gets-installed).
@@ -51,11 +53,11 @@ The path decision is:
 
 When no existing folders are found, generic PostgreSQL projects use `database/schemas` and `database/migrations`. The full generated config shape is defined in [Configuration](/configuration/config-file#generated-config).
 
-All providers use `adapter: "auto"`. Provider detection only seeds paths and the default `sources.to`; managed schema protection, transaction behavior, type outputs, source defaults, and environment references are configured with explicit fields in `supaschema.config.json`.
+All providers use `adapter: "auto"`. Provider detection seeds paths and the default `sources.to`; Supabase detection also seeds Supabase managed-schema protection. Transaction behavior, workflow automation, type outputs, source defaults, and environment references are configured with explicit fields in `supaschema.config.json`.
 
 Commit this file. It keeps developers, CI, and coding agents on the same paths.
 
-`npx supaschema init` performs the full setup — config, schema and migration directories, the agent rules/skills/hooks bundle, and the `AGENTS.md` / `CLAUDE.md` guidance — the same scaffold as package install. Run it when install scripts did not run (npm v12 ignores dependency install scripts by default) or to repair setup. It is idempotent: an existing config is left in place and the managed guidance block is updated where it already exists.
+`npx supaschema init` performs the full setup — config, schema and migration directories, the agent rules/skills/hooks bundle, and the `AGENTS.md` / `CLAUDE.md` guidance — the same scaffold as package install. Run it when install scripts did not run (npm v12 ignores dependency install scripts by default) or to repair setup. It is idempotent: existing JSON config files are left untouched unless `--repair` is passed, and the managed guidance block is updated where it already exists.
 
 ## Agent addendum
 

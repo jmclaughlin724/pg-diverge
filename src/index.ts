@@ -2,7 +2,24 @@ export type { AuditFinding, AuditReport } from "./audit.js";
 export { auditModel, renderAuditReport } from "./audit.js";
 export { extractCatalogModel } from "./catalog.js";
 export { checkMigrationSql } from "./check.js";
-export { defaultConfig, loadConfig, resolveConfig, supaschemaConfigSchema } from "./config.js";
+export type {
+  ConfigValidationDiagnostic,
+  GeneratedOutputPolicy,
+  MigrationCheckPolicy,
+  MigrationSyncPolicy,
+  MigrationVerifyPolicy,
+  SchemaDiffPolicy,
+  SupaschemaWorkflow,
+  TypeUsagePolicy,
+} from "./config.js";
+export {
+  configJsonSchema,
+  defaultConfig,
+  loadConfig,
+  resolveConfig,
+  supaschemaConfigSchema,
+  validateConfig,
+} from "./config.js";
 export type {
   CheckOptions,
   Diagnostic,

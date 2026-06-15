@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkMigrationSql } from "./check.js";
+import { resolveConfig } from "./config.js";
 import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
 import { migrationsStatus, renderMigrationsStatus } from "./migrations-status.js";
@@ -33,7 +34,30 @@ export interface SyncResult {
  * supabase_migrations.schema_migrations itself.
  */
 export async function syncMigrations(options: SyncOptions): Promise<SyncResult> {
+  const config = resolveConfig(options.config);
   const diagnostics: Diagnostic[] = [];
+  if (
+    (options.local === true || options.remote === true) &&
+    config.workflow.migration_sync === "disabled"
+  ) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_SYNC_DISABLED",
+        "error",
+        'workflow.migration_sync is "disabled"; remove the apply flag or change it to "explicit_request_only".',
+        {
+          hint: "supaschema sync without --local/--remote still runs the dry-run status and replay-safety gates.",
+        }
+      )
+    );
+    return {
+      applied: false,
+      diagnostics,
+      pending: [],
+      report:
+        'refusing to sync: workflow.migration_sync is "disabled"; no apply handoff was attempted\n',
+    };
+  }
   const status = await migrationsStatus({
     directory: options.directory,
     ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
@@ -51,7 +75,7 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   for (const file of status.report.pending) {
     const sql = await readFile(join(options.directory, file), "utf8");
     const checkDiagnostics = await checkMigrationSql(sql, {
-      ...(options.config === undefined ? {} : { config: options.config }),
+      config,
     });
     const errors = checkDiagnostics.filter((item) => item.severity === "error");
     diagnostics.push(...errors);

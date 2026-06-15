@@ -11,7 +11,7 @@ With no flags, `sync` is a dry run. It reports pending migrations and runs the g
 With `--local` or `--remote`, it checks pending migrations first, then delegates the apply step to the Supabase CLI.
 
 <Info>
-  `sync` is not the default supaschema workflow. The default loop is `diff`, `check`, and optionally `verify`; the runner still applies reviewed SQL.
+  `sync` is not the default supaschema workflow. `workflow.migration_sync: "explicit_request_only"` allows an apply handoff only when a user invokes `sync --local` or `sync --remote`; `"disabled"` refuses those flags. No value enables automatic apply.
 </Info>
 
 ## What it does
@@ -55,11 +55,11 @@ Fix history problems first. Then re-run `sync`.
 ## Flags
 
 <ParamField path="--local" type="boolean">
-  Apply pending migrations to the local Supabase stack by invoking `supabase migration up`. Requires the Supabase CLI to be installed and a local stack to be running (`supabase start`).
+  Apply pending migrations to the local Supabase stack by invoking `supabase migration up`. Requires `workflow.migration_sync: "explicit_request_only"`, the Supabase CLI to be installed, and a local stack to be running (`supabase start`).
 </ParamField>
 
 <ParamField path="--remote" type="boolean">
-  Push pending migrations to the linked remote Supabase project by invoking `supabase db push`. Requires the Supabase CLI to be installed and a project to be linked (`supabase link`).
+  Push pending migrations to the linked remote Supabase project by invoking `supabase db push`. Requires `workflow.migration_sync: "explicit_request_only"`, the Supabase CLI to be installed, and a project to be linked (`supabase link`).
 </ParamField>
 
 <ParamField path="--database-url" type="string">

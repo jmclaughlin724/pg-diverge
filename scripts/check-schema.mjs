@@ -1,28 +1,26 @@
 #!/usr/bin/env node
-// Drift gate for supaschema-config.schema.json.
+// Drift gate for the generated config contract artifacts.
 //
 // The build (`npm run build`) compiles src/** then runs the generator
-// `node dist/config-schema-gen.js`, which writes supaschema-config.schema.json at the
-// package root from the live Zod model in src/config.ts. This check proves the
-// committed supaschema-config.schema.json matches what the generator produces from current
-// source: it rebuilds, regenerates the file in place, and fails if the working
-// tree now differs. Run it in CI and locally before release.
+// `node dist/config-schema-gen.js`, which writes supaschema-config.schema.json
+// and bin/config-contract.mjs from src/config.ts + src/config-contract.ts. This
+// check proves the working-tree generated files already match current source.
 //
 // Usage: node scripts/check-schema.mjs   (or `npm run check:schema`)
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const schemaFile = "supaschema-config.schema.json";
+const generatedFiles = ["supaschema-config.schema.json", "bin/config-contract.mjs"];
 
 // Resolve npm cross-platform: spawnSync("npm", ..., {shell:false}) raises ENOENT
 // on Windows (the executable is npm.cmd, which Node will not resolve without a
 // shell or explicit extension). Prefer the exact npm that launched this script
 // (npm_execpath) run through node; fall back to npm.cmd on Windows. This is the
 // same pattern the package-boundary tests use (tests/package-contents.test.ts,
-// tests/database-url.test.ts). git resolves fine with shell:false, so only the
-// npm call needs this.
+// tests/database-url.test.ts).
 function npmInvocation(args) {
   const execpath = process.env.npm_execpath;
   return execpath
@@ -46,8 +44,18 @@ function run(command, args, label) {
   return 0;
 }
 
-// Rebuild + regenerate so supaschema-config.schema.json reflects current src/config.ts.
+function readGeneratedFiles() {
+  return new Map(
+    generatedFiles.map((file) => {
+      const path = resolve(packageRoot, file);
+      return [file, existsSync(path) ? readFileSync(path, "utf8") : undefined];
+    })
+  );
+}
+
+// Rebuild + regenerate so generated config contract files reflect current source.
 // `npm run build` runs `tsc` then `node dist/config-schema-gen.js`.
+const before = readGeneratedFiles();
 const build = npmInvocation(["run", "build"]);
 const buildStatus = run(build.command, build.args, "npm run build");
 if (buildStatus !== 0) {
@@ -55,17 +63,13 @@ if (buildStatus !== 0) {
   process.exit(buildStatus);
 }
 
-// Fail on drift: the committed supaschema-config.schema.json must equal the regenerated one.
-const diffStatus = run(
-  "git",
-  ["diff", "--exit-code", "--", schemaFile],
-  `git diff --exit-code ${schemaFile}`
-);
-if (diffStatus !== 0) {
+const after = readGeneratedFiles();
+const drifted = generatedFiles.filter((file) => before.get(file) !== after.get(file));
+if (drifted.length > 0) {
   console.error(
-    `\ncheck:schema: ${schemaFile} is out of date. Run \`npm run build\` and commit the regenerated ${schemaFile}.`
+    `\ncheck:schema: generated config contract files are out of date. Run \`npm run build\` and commit ${drifted.join(", ")}.`
   );
-  process.exit(diffStatus);
+  process.exit(1);
 }
 
-console.log(`check:schema: ${schemaFile} is up to date.`);
+console.log(`check:schema: ${generatedFiles.join(", ")} are up to date.`);

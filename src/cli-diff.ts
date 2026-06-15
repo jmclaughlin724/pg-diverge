@@ -309,34 +309,85 @@ async function refreshTypesFile(
   config: SupaschemaConfig,
   schemaFilter: string | undefined
 ): Promise<void> {
-  const targets: { generate: (model: SchemaModel) => Promise<string>; relative: string }[] = [
-    { generate: generateDatabaseTypes, relative: config.typesFile },
-    { generate: generateZodSchemas, relative: config.zodFile },
+  const targets: {
+    generate: (model: SchemaModel) => Promise<string>;
+    policy: SupaschemaConfig["workflow"]["type_generation"];
+    relative: string;
+  }[] = [
+    {
+      generate: generateDatabaseTypes,
+      policy: config.workflow.type_generation,
+      relative: config.typesFile,
+    },
+    {
+      generate: generateZodSchemas,
+      policy: config.workflow.zod_generation,
+      relative: config.zodFile,
+    },
   ];
   let model: SchemaModel | undefined;
   for (const target of targets) {
-    let handle: FileHandle;
+    if (target.policy === "disabled") {
+      continue;
+    }
     try {
-      handle = await open(resolve(process.cwd(), target.relative), "r+");
+      if (target.policy === "refresh_existing") {
+        await refreshExistingGeneratedOutput(target, getModel);
+      } else {
+        await createOrRefreshGeneratedOutput(target, getModel);
+      }
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") {
         continue;
       }
       throw error;
     }
-    try {
-      model = model ?? filterModel(await extractSourceModel(toSource, { config }), schemaFilter);
-      if (hasErrors(model.diagnostics)) {
-        return;
-      }
-      const generated = await target.generate(model);
-      await handle.truncate(0);
-      await handle.write(generated, 0);
-      process.stderr.write(`types: ${target.relative} refreshed from ${toSource}\n`);
-    } finally {
-      await handle.close();
-    }
   }
+
+  async function getModel(): Promise<SchemaModel | undefined> {
+    model = model ?? filterModel(await extractSourceModel(toSource, { config }), schemaFilter);
+    return hasErrors(model.diagnostics) ? undefined : model;
+  }
+}
+
+async function refreshExistingGeneratedOutput(
+  target: {
+    generate: (model: SchemaModel) => Promise<string>;
+    relative: string;
+  },
+  getModel: () => Promise<SchemaModel | undefined>
+): Promise<void> {
+  let handle: FileHandle;
+  handle = await open(resolve(process.cwd(), target.relative), "r+");
+  try {
+    const model = await getModel();
+    if (model === undefined) {
+      return;
+    }
+    const generated = await target.generate(model);
+    await handle.truncate(0);
+    await handle.write(generated, 0);
+    process.stderr.write(`types: ${target.relative} refreshed from configured workflow\n`);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function createOrRefreshGeneratedOutput(
+  target: {
+    generate: (model: SchemaModel) => Promise<string>;
+    relative: string;
+  },
+  getModel: () => Promise<SchemaModel | undefined>
+): Promise<void> {
+  const model = await getModel();
+  if (model === undefined) {
+    return;
+  }
+  const outPath = resolve(process.cwd(), target.relative);
+  await mkdir(dirname(outPath), { recursive: true });
+  await writeFile(outPath, await target.generate(model));
+  process.stderr.write(`types: ${target.relative} created or refreshed from configured workflow\n`);
 }
 
 /**

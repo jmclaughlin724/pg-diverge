@@ -18,6 +18,7 @@ const nonCode = new Set([
   "license",
   "mintignore",
   "nvmrc",
+  "prettierignore",
   "snap",
   "svg",
   "tgz",

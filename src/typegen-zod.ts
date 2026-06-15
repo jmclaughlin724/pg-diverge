@@ -22,6 +22,7 @@ export async function generateZodSchemas(model: SchemaModel): Promise<string> {
     emitSchemaZod(lines, schemaName, entry, shapes, enumIdents);
   }
   lines.push("} as const;");
+  emitValidatedTypeHelpers(lines);
   return `${lines.join("\n")}\n`;
 }
 
@@ -45,6 +46,44 @@ function zodHeader(): string[] {
     ");",
     "",
   ];
+}
+
+function emitValidatedTypeHelpers(lines: string[]): void {
+  lines.push(
+    "",
+    "export type TableRow<",
+    "  S extends keyof typeof schemas,",
+    '  T extends keyof (typeof schemas)[S]["Tables"],',
+    '> = (typeof schemas)[S]["Tables"][T] extends { Row: infer R extends z.ZodType }',
+    "  ? z.infer<R>",
+    "  : never;",
+    "",
+    "export type TableInsert<",
+    "  S extends keyof typeof schemas,",
+    '  T extends keyof (typeof schemas)[S]["Tables"],',
+    '> = (typeof schemas)[S]["Tables"][T] extends { Insert: infer R extends z.ZodType }',
+    "  ? z.infer<R>",
+    "  : never;",
+    "",
+    "export type TableUpdate<",
+    "  S extends keyof typeof schemas,",
+    '  T extends keyof (typeof schemas)[S]["Tables"],',
+    '> = (typeof schemas)[S]["Tables"][T] extends { Update: infer R extends z.ZodType }',
+    "  ? z.infer<R>",
+    "  : never;",
+    "",
+    "export type ViewRow<",
+    "  S extends keyof typeof schemas,",
+    '  V extends keyof (typeof schemas)[S]["Views"],',
+    '> = (typeof schemas)[S]["Views"][V] extends { Row: infer R extends z.ZodType }',
+    "  ? z.infer<R>",
+    "  : never;",
+    "",
+    "export type EnumValue<",
+    "  S extends keyof typeof schemas,",
+    '  E extends keyof (typeof schemas)[S]["Enums"],',
+    '> = (typeof schemas)[S]["Enums"][E] extends infer R extends z.ZodType ? z.infer<R> : never;'
+  );
 }
 
 function emitEnumDefinitions(

@@ -4,21 +4,29 @@ import path from "node:path";
 import { assert, exists, ok, ROOT, readJson } from "./lib/guard-utils.js";
 
 const claudeHooks = [
+  ".claude/hooks/context-session-start.mjs",
+  ".claude/hooks/context-user-prompt-submit.mjs",
+  ".claude/hooks/context-pre-tool-use.mjs",
+  ".claude/hooks/context-post-tool-use.mjs",
+  ".claude/hooks/context-subagent-start.mjs",
+  ".claude/hooks/context-subagent-stop.mjs",
+  ".claude/hooks/context-stop.mjs",
+  ".claude/hooks/context-task-completed.mjs",
+  ".claude/hooks/context-permission-denied.mjs",
+  ".claude/hooks/context-session-end.mjs",
   ".claude/hooks/block-generated-migration-edits.mjs",
   ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".claude/hooks/skill-session-init.mjs",
-  ".claude/hooks/skill-inject.mjs",
-  ".claude/hooks/skill-gate.mjs",
-  ".claude/hooks/skill-subagent-gate.mjs",
-  ".claude/hooks/skill-record.mjs",
   ".claude/hooks/pre_tool_guard.sh",
 ];
 const codexHookPaths = [
-  ".codex/hooks/skill-session-init.mjs",
-  ".codex/hooks/skill-inject.mjs",
-  ".codex/hooks/skill-gate.mjs",
-  ".codex/hooks/skill-record.mjs",
+  ".codex/hooks/context-session-start.mjs",
+  ".codex/hooks/context-user-prompt-submit.mjs",
+  ".codex/hooks/context-pre-tool-use.mjs",
+  ".codex/hooks/context-post-tool-use.mjs",
+  ".codex/hooks/context-subagent-start.mjs",
+  ".codex/hooks/context-subagent-stop.mjs",
+  ".codex/hooks/context-stop.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
@@ -125,6 +133,10 @@ assert(Array.isArray(codexStop), ".codex/hooks.json missing Stop entries");
 assert(
   !codexPostToolUseText.includes("sync-llm-on-claude-surface-change.mjs"),
   ".codex/hooks.json must not run sync:llm from per-tool PostToolUse"
+);
+assert(
+  JSON.stringify(codexStop).includes("context-stop.mjs"),
+  ".codex/hooks.json must run response-shape checks from Stop"
 );
 assert(
   JSON.stringify(codexStop).includes("sync-llm-on-claude-surface-change.mjs"),

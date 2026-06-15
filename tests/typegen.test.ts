@@ -273,6 +273,9 @@ describe("zod schema generation", () => {
     expect(zod).toContain("tags: z.array(z.string()),");
     expect(zod).toContain("payload: jsonSchema.nullable(),");
     expect(zod).toContain("state: app_status,");
+    expect(zod).toContain("export type TableRow<");
+    expect(zod).toContain("export type TableInsert<");
+    expect(zod).toContain("export type EnumValue<");
   });
 
   it("validates composite-typed columns as unknown, not z.composite()", async () => {

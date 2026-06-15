@@ -20,7 +20,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-session-init.mjs"],
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-start.mjs"],
             "timeout": 10
           }
         ]
@@ -32,7 +32,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-inject.mjs"],
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-user-prompt-submit.mjs"],
             "timeout": 10
           }
         ]
@@ -40,23 +40,12 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit|apply_patch",
+        "matcher": "Agent|Bash|Edit|Glob|Grep|MultiEdit|NotebookEdit|Read|Skill|Task|WebFetch|WebSearch|Write|apply_patch",
         "hooks": [
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-gate.mjs"],
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Agent|Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-subagent-gate.mjs"],
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-pre-tool-use.mjs"],
             "timeout": 10
           }
         ]
@@ -86,12 +75,12 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Skill|Read",
+        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch",
         "hooks": [
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-record.mjs"],
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-post-tool-use.mjs"],
             "timeout": 10
           }
         ]
@@ -104,6 +93,79 @@
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/auto-diff-on-schema-change.mjs"],
             "timeout": 130
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-start.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-stop.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-stop.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-task-completed.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-permission-denied.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-end.mjs"],
+            "timeout": 2
           }
         ]
       }

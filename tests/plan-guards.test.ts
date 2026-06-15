@@ -103,7 +103,7 @@ describe("managed schema policy", () => {
 
   it("blocks schemas listed in managedSchemas", async () => {
     const extracted = await extractObjectsFromSql(managedSql, {
-      config: { adapter: "auto" },
+      config: { adapter: "auto", managedSchemas: ["auth"] },
     });
 
     expect(extracted.diagnostics.some((item) => item.code === "SUPA_SUPABASE_MANAGED_SCHEMA")).toBe(

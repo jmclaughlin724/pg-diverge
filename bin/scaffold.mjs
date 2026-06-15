@@ -28,15 +28,18 @@ import {
 } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { pathToFileURL } from "node:url";
+import {
+  defaultTypesFile,
+  defaultZodFile,
+  genericMigrationsDir,
+  genericProviderPreset,
+  genericSchemaPath,
+  mergeInstalledConfig,
+  providerMigrationsDirs,
+  providerPresets,
+  providerSchemaPaths,
+} from "./config-contract.mjs";
 
-const moduleConfigFiles = ["supaschema.config.mjs", "supaschema.config.js"];
-const genericSchemaPath = "database/schemas";
-const genericMigrationsDir = "database/migrations";
-const supabaseSchemaPath = "supabase/schemas";
-const supabaseMigrationsDir = "supabase/migrations";
-const defaultTypesFile = "database.types.ts";
-const defaultZodFile = "database.zod.ts";
 const manifestPath = ".supaschema/install.json";
 const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
@@ -91,8 +94,9 @@ const hookConfigs = [
               },
             ],
           },
+        ],
+        PostToolBatch: [
           {
-            matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
             hooks: [
               {
                 type: "command",
@@ -135,8 +139,9 @@ const hookConfigs = [
               },
             ],
           },
+        ],
+        Stop: [
           {
-            matcher: "^(Bash|apply_patch|Edit|Write|edit_file)$",
             hooks: [
               {
                 type: "command",
@@ -152,124 +157,6 @@ const hookConfigs = [
   },
 ];
 
-const genericPreset = {
-  adapter: "auto",
-  id: "postgres",
-  label: "PostgreSQL",
-  migrationsDir: genericMigrationsDir,
-  schemaPath: genericSchemaPath,
-};
-
-const providerPresets = [
-  {
-    adapter: "auto",
-    id: "supabase",
-    label: "Supabase",
-    markers: [{ path: "supabase/config.toml" }],
-    migrationsDir: supabaseMigrationsDir,
-    schemaPath: supabaseSchemaPath,
-  },
-  {
-    adapter: "auto",
-    id: "neon",
-    label: "Neon",
-    markers: [
-      { path: "neon.toml" },
-      { path: ".neon/project.json" },
-      { path: ".neon/config.json" },
-      {
-        fileNames: ["drizzle.config.ts", "drizzle.config.js", "drizzle.config.mjs"],
-        contentTerms: ["neon.tech", "neon.com"],
-      },
-    ],
-    migrationsDir: "neon/migrations",
-    schemaPath: "neon/schemas",
-  },
-  {
-    adapter: "auto",
-    id: "aws-postgresql",
-    label: "RDS/Aurora PostgreSQL",
-    markers: [
-      {
-        fileNames: ["*.tf"],
-        contentTerms: ["aws_db_instance", "aws_rds_cluster", "aws_rds_global_cluster"],
-      },
-      {
-        fileNames: ["template.yaml", "template.yml"],
-        contentTerms: ["AWS::RDS::DBInstance", "AWS::RDS::DBCluster"],
-      },
-      {
-        fileNames: [
-          "cdk.json",
-          "sst.config.ts",
-          "sst.config.js",
-          "sst.config.mjs",
-          "serverless.yml",
-          "serverless.yaml",
-        ],
-        contentTerms: ["Aurora", "DatabaseCluster", "DatabaseInstance", "RDS", "rds"],
-      },
-    ],
-    migrationsDir: "aws-postgresql/migrations",
-    schemaPath: "aws-postgresql/schemas",
-  },
-  {
-    adapter: "auto",
-    id: "alloydb",
-    label: "AlloyDB",
-    markers: [
-      { fileNames: ["*.tf"], contentTerms: ["google_alloydb_cluster", "google_alloydb_instance"] },
-      {
-        fileNames: ["cloudbuild.yaml", "cloudbuild.yml", "app.yaml", "app.yml"],
-        contentTerms: ["alloydb", "alloydb.googleapis.com"],
-      },
-    ],
-    migrationsDir: "alloydb/migrations",
-    schemaPath: "alloydb/schemas",
-  },
-  {
-    adapter: "auto",
-    id: "cloud-sql",
-    label: "Cloud SQL for PostgreSQL",
-    markers: [
-      {
-        fileNames: ["*.tf"],
-        contentTerms: ["google_sql_database_instance", "google_sql_database"],
-      },
-      {
-        fileNames: ["cloudbuild.yaml", "cloudbuild.yml", "app.yaml", "app.yml"],
-        contentTerms: ["cloud_sql_instances", "CLOUD_SQL_CONNECTION_NAME", "cloudsql"],
-      },
-    ],
-    migrationsDir: "cloud-sql/migrations",
-    schemaPath: "cloud-sql/schemas",
-  },
-  {
-    adapter: "auto",
-    id: "azure-postgresql",
-    label: "Azure PostgreSQL",
-    markers: [
-      {
-        fileNames: ["*.tf"],
-        contentTerms: ["azurerm_postgresql_flexible_server", "azurerm_postgresql_server"],
-      },
-      {
-        fileNames: ["main.bicep", "azuredeploy.json"],
-        contentTerms: ["Microsoft.DBforPostgreSQL/flexibleServers", "Microsoft.DBforPostgreSQL"],
-      },
-      {
-        fileNames: ["azure.yaml"],
-        contentTerms: ["postgres", "PostgreSQL", "DBforPostgreSQL"],
-      },
-    ],
-    migrationsDir: "azure-postgresql/migrations",
-    schemaPath: "azure-postgresql/schemas",
-  },
-];
-
-const providerSchemaPaths = providerPresets.map((preset) => preset.schemaPath);
-const providerMigrationsDirs = providerPresets.map((preset) => preset.migrationsDir);
-
 // Scaffold a consuming project at `targetDir`. Returns the result instead of
 // writing stdout; callers print their own summary. `interactive` enables the TTY
 // path-confirmation prompt (still gated by canPrompt()); install and init both
@@ -279,44 +166,64 @@ export async function scaffoldProject({
   packageRoot,
   packageVersion,
   interactive = false,
+  dryRun = false,
+  repair = false,
 }) {
   const installed = [];
   const skipped = [];
   const scan = scanProject(targetDir);
-  const existingConfig = await readExistingConfig(targetDir);
+  const existingConfig = readExistingConfig(targetDir);
   const selection = await resolvePathSelection(targetDir, scan, existingConfig, interactive);
+  const configContents = selection.pathConfirmationNeeded
+    ? undefined
+    : scaffoldConfig(selection, existingConfig.parsed);
 
   // When the detected paths are ambiguous (pathConfirmationNeeded), do not pin a
   // guessed config or create guessed directories. Leaving the config absent keeps
   // "config explicitly defines schemaPaths" an unambiguous signal that a human has
   // confirmed the paths, which the auto-diff hook uses to resume safely.
-  if (!(existingConfig.exists || selection.pathConfirmationNeeded)) {
-    writeProjectFile(targetDir, "supaschema.config.json", scaffoldConfig(selection));
-    installed.push("config");
+  if (configContents !== undefined && shouldWriteConfig(existingConfig, repair)) {
+    if (!dryRun) {
+      writeProjectFile(targetDir, "supaschema.config.json", configContents);
+    }
+    installed.push(existingConfig.exists ? "config repair" : "config");
   }
 
   if (!selection.pathConfirmationNeeded) {
-    createConfiguredDirectories(targetDir, selection);
+    if (!dryRun) {
+      createConfiguredDirectories(targetDir, selection);
+    }
     installed.push("directories");
   }
 
   for (const file of agentFiles) {
-    copyProjectFile(packageRoot, targetDir, file, skipped);
+    if (!dryRun) {
+      copyProjectFile(packageRoot, targetDir, file, skipped);
+    }
   }
   installed.push("agent files");
 
   for (const config of hookConfigs) {
-    mergeHookConfig(targetDir, config, skipped);
+    if (!dryRun) {
+      mergeHookConfig(targetDir, config, skipped);
+    }
   }
   installed.push("hook wiring");
 
-  installAgentGuidance(targetDir, selection);
+  if (!dryRun) {
+    installAgentGuidance(targetDir, selection);
+  }
   installed.push("AGENTS/CLAUDE addendum");
 
-  writeInstallManifest(targetDir, packageVersion, scan, selection);
+  if (!dryRun) {
+    writeInstallManifest(targetDir, packageVersion, scan, selection, existingConfig);
+  }
   installed.push("manifest");
 
   return {
+    config: configContents === undefined ? undefined : JSON.parse(configContents),
+    existingConfig,
+    dryRun,
     installed,
     pathConfirmationNeeded: selection.pathConfirmationNeeded,
     selection,
@@ -328,15 +235,14 @@ function shellParameter(expression) {
   return ["$", "{", expression, "}"].join("");
 }
 
-async function readExistingConfig(projectDir) {
+function readExistingConfig(projectDir) {
   const jsonPath = join(projectDir, "supaschema.config.json");
   if (existsSync(jsonPath)) {
-    return effectiveExistingConfig(readJson(jsonPath));
-  }
-  for (const file of moduleConfigFiles) {
-    if (existsSync(join(projectDir, file))) {
-      return effectiveExistingConfig(await importModuleConfig(join(projectDir, file)));
-    }
+    return effectiveExistingConfig(readJson(jsonPath), {
+      exists: true,
+      kind: "json",
+      path: "supaschema.config.json",
+    });
   }
   return { exists: false };
 }
@@ -344,9 +250,8 @@ async function readExistingConfig(projectDir) {
 // Resolve the same effective paths the CLI (`loadConfig` in src/config.ts) uses for
 // an existing config: explicit values win, otherwise fall back to the CLI's static
 // defaults — never provider detection, which only seeds brand-new configs. This keeps
-// the installed guidance, directories, and manifest aligned with what the CLI loads,
-// for sparse JSON and module configs (supaschema.config.mjs/.js) alike.
-function effectiveExistingConfig(parsed) {
+// the installed guidance, directories, and manifest aligned with what the CLI loads.
+function effectiveExistingConfig(parsed, metadata) {
   const schemaPaths =
     Array.isArray(parsed?.schemaPaths) && parsed.schemaPaths.length > 0
       ? parsed.schemaPaths.map(String)
@@ -356,35 +261,16 @@ function effectiveExistingConfig(parsed) {
       ? parsed.migrationsDir
       : genericMigrationsDir;
   return {
-    adapter: normalizeAdapter(parsed?.adapter),
+    adapter: parsed?.adapter === "auto" ? "auto" : undefined,
+    configConfirmationNeeded: metadata.configConfirmationNeeded === true,
     exists: true,
+    kind: metadata.kind,
     migrationsDir,
+    parsed,
+    path: metadata.path,
     provider: undefined,
     schemaPaths,
   };
-}
-
-async function importModuleConfig(modulePath) {
-  try {
-    const module = await import(pathToFileURL(modulePath).href);
-    return module?.default ?? {};
-  } catch {
-    // Fail open: an unreadable module config is treated as sparse, so guidance and
-    // directories fall back to the same CLI defaults the loader will use.
-    return {};
-  }
-}
-
-function normalizeAdapter(value) {
-  if (
-    value === "auto" ||
-    value === "supabase-auto" ||
-    value === "postgres" ||
-    value === "supabase"
-  ) {
-    return "auto";
-  }
-  return;
 }
 
 async function resolvePathSelection(target, scan, existingConfig, interactive) {
@@ -484,7 +370,7 @@ function selectCandidate(candidates, fallback) {
 
 function projectDefaults(projectDir) {
   const detected = detectProviderPreset(projectDir);
-  const preset = detected?.preset ?? genericPreset;
+  const preset = detected?.preset ?? genericProviderPreset;
   return {
     adapter: preset.adapter,
     migrationsDir: preset.migrationsDir,
@@ -697,51 +583,19 @@ function rank(candidate, preferredOrder) {
   return index === -1 ? preferredOrder.length + candidate.split("/").length : index;
 }
 
-function scaffoldConfig(selection) {
-  const config = {
-    $schema: "./node_modules/supaschema/supaschema-config.schema.json",
-    adapter: selection.adapter ?? "auto",
-    cascade: "never",
-    destructiveChanges: "hint-required",
-    environments: {},
-    excludedGrantRoles: [],
-    hints: {
-      destructive: [],
-      renames: [],
-    },
-    idempotency: "required",
-    lockTimeout: "5s",
+function shouldWriteConfig(existingConfig, repair) {
+  if (!existingConfig.exists || repair) {
+    return true;
+  }
+  return false;
+}
+
+function scaffoldConfig(selection, existing) {
+  const config = mergeInstalledConfig(existing, {
     migrationsDir: selection.migrationsDir,
-    typesFile: defaultTypesFile,
-    zodFile: defaultZodFile,
-    normalize: "deparse",
-    managedSchemas: [
-      "auth",
-      "storage",
-      "realtime",
-      "vault",
-      "extensions",
-      "cron",
-      "net",
-      "supabase_functions",
-      "graphql",
-      "graphql_public",
-    ],
-    postgresVersion: "15+",
-    renameDetection: "hints-only",
+    providerId: selection.provider?.id,
     schemaPaths: selection.schemaPaths,
-    schemas: {
-      exclude: [],
-      include: [],
-    },
-    sources: {
-      from: "auto",
-      to: `dir:${selection.schemaPaths[0] ?? genericSchemaPath}`,
-    },
-    statementTimeout: "60s",
-    transactionMode: "per-migration",
-    validators: ["internal-parser"],
-  };
+  });
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
@@ -770,11 +624,11 @@ function agentGuidanceBlock(selection) {
 This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
 
 ${pathLines}
-- Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config.
-- Edit \`supaschema.config.json\` to change \`adapter\`, \`schemaPaths\`, \`sources\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
+- Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
+- Edit \`supaschema.config.json\` to change \`adapter\`, \`workflow\`, \`schemaPaths\`, \`sources\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
 - For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, run \`npx supaschema diff\`, then run \`npx supaschema check\`.
 - Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes; they never apply migrations.
-- Do not run \`npx supaschema sync --local\` or \`npx supaschema sync --remote\` unless explicitly asked to apply migrations.
+- Do not run \`npx supaschema sync --local\` or \`npx supaschema sync --remote\` unless explicitly asked to apply migrations; \`workflow.migration_sync: "disabled"\` blocks those apply handoff flags.
 ${guidanceEnd}
 `;
 }
@@ -793,10 +647,18 @@ function upsertManagedBlock(target, relativePath, block) {
   writeProjectFile(target, relativePath, next.endsWith("\n") ? next : `${next}\n`);
 }
 
-function writeInstallManifest(target, packageVersion, scan, selection) {
+function writeInstallManifest(target, packageVersion, scan, selection, existingConfig = {}) {
   const manifest = {
     adapter: selection.adapter ?? "auto",
     candidates: scan,
+    configConfirmationNeeded: existingConfig.configConfirmationNeeded === true,
+    existingConfig:
+      existingConfig.exists === true
+        ? {
+            kind: existingConfig.kind,
+            path: existingConfig.path,
+          }
+        : undefined,
     installedAt: new Date().toISOString(),
     migrationsDir: selection.migrationsDir,
     packageVersion,
@@ -819,6 +681,7 @@ function writeInstallManifest(target, packageVersion, scan, selection) {
 function manifestSelectionUnchanged(existing, next) {
   return (
     existing.adapter === next.adapter &&
+    existing.configConfirmationNeeded === next.configConfirmationNeeded &&
     existing.migrationsDir === next.migrationsDir &&
     existing.pathConfirmationNeeded === next.pathConfirmationNeeded &&
     JSON.stringify(existing.schemaPaths) === JSON.stringify(next.schemaPaths)
@@ -907,6 +770,19 @@ function mergeHooks(existing, source) {
   const sourceHooks = isRecord(source.hooks) ? source.hooks : {};
   const mergedHooks = isRecord(merged.hooks) ? merged.hooks : {};
   merged.hooks = mergedHooks;
+  const allManagedScripts = new Set(
+    Object.values(sourceHooks)
+      .filter(Array.isArray)
+      .flatMap((entries) => entries.flatMap(hookDefinitions))
+      .map(managedHookScript)
+      .filter((name) => name !== undefined)
+  );
+
+  for (const [eventName, existingEntries] of Object.entries(mergedHooks)) {
+    if (Array.isArray(existingEntries)) {
+      mergedHooks[eventName] = withoutManagedHooks(existingEntries, new Set(), allManagedScripts);
+    }
+  }
 
   for (const [eventName, sourceEntries] of Object.entries(sourceHooks)) {
     if (!Array.isArray(sourceEntries)) {

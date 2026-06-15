@@ -40,6 +40,7 @@ Use this skill for Claude Code configuration work. Read official platform docs b
 - Keep core files short. Move examples, variants, and long rationale into references.
 - Do not duplicate the same instruction across rules, skills, commands, and AGENTS files.
 - If a repo-specific config pattern changed, update the canonical owner and every discovery surface that routes users there.
+- Claude config work is repo-local unless Rule 13 explicitly promotes a surface into the downloadable consumer package or scaffold. Do not add `.claude/hooks/context-*`, optimizer skills, internal rules, agents, or shared context-enforcement runtime to `package.json` `files` or `bin/scaffold.mjs` just because they are valid repo-local Claude surfaces.
 - Permission rule precedence is `deny → ask → allow`; settings precedence is `managed → CLI args → project local → project shared → user`. A managed deny cannot be overridden anywhere downstream. Six permission modes exist: `default`, `acceptEdits`, `plan`, `auto`, `dontAsk`, `bypassPermissions` — see [`references/permissions-and-settings.md`](references/permissions-and-settings.md).
 
 ## Runtime & Session Surfaces

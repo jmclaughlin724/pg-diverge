@@ -118,14 +118,12 @@
       {
         "group": "Start",
         "icon": "rocket",
-        "pages": [
-          "introduction",
-          "installation",
-          "setup",
-          "quickstart",
-          "coding-agents",
-          "faq"
-        ]
+        "pages": ["introduction", "installation", "setup", "quickstart", "faq"]
+      },
+      {
+        "group": "Coding agents",
+        "icon": "bot",
+        "pages": ["coding-agents", "coding-agents/agent-bundle"]
       },
       {
         "group": "Understand",

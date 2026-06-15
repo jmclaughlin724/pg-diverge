@@ -1,6 +1,6 @@
 ---
 title: "Utility commands"
-description: "Reference for supaschema utility commands: plan, inspect, fingerprint, audit, corpus, doctor, init, completion, explain, and selfcheck."
+description: "Reference for supaschema utility commands: plan, inspect, fingerprint, audit, corpus, doctor, config validate, init, completion, explain, and selfcheck."
 keywords: ["utility commands", "audit", "corpus", "doctor", "selfcheck"]
 ---
 
@@ -18,6 +18,7 @@ All utility commands accept `--config <path>`.
 | Check supported and unsupported objects         | `audit`       |
 | Run the real-world regression oracle            | `corpus`      |
 | Diagnose local setup                            | `doctor`      |
+| Validate config paths and sources               | `config validate` |
 | Scaffold or repair setup                        | `init`        |
 | Add shell completions                           | `completion`  |
 | Decode a `SUPA_*` code                          | `explain`     |
@@ -188,6 +189,23 @@ Each failed check prints a plain-English explanation and a suggested remediation
 
 </Accordion>
 
+<Accordion title="config validate — Validate configuration">
+  `config validate` checks the loaded `supaschema.config.json` for path, source, and credential-reference issues.
+
+Use it before a first migration, after editing path fields, or in an agent workflow that needs structured diagnostics.
+
+```bash
+# Print human-readable diagnostics
+npx supaschema config validate
+
+# Print JSON for agents or CI
+npx supaschema config validate --json
+```
+
+The JSON output contains `{ "ok": boolean, "diagnostics": [...] }`. Diagnostics use `error` for invalid config relationships and `warning` for missing directories, absolute paths, source/default mismatches, or inline database URLs that should move to `$ENV_NAME`.
+
+</Accordion>
+
 <Accordion title="init — Scaffold the full setup">
   `init` scaffolds the full supaschema setup in the current directory — the config file, the schema and migration directories, the Claude/Codex agent rules, skills, and hooks, and the `AGENTS.md` / `CLAUDE.md` guidance block. It performs the same setup as package install, for the [contents listed in the introduction](/introduction#what-gets-installed). Like install, it detects the provider layout from the current directory (Supabase, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, or the neutral PostgreSQL layout).
 
@@ -198,7 +216,15 @@ Run it when npm did not run install scripts — npm v12 ignores dependency insta
 npx supaschema init
 ```
 
-`init` is idempotent: an existing `supaschema.config.json` is left untouched (it neither overwrites nor errors), the agent bundle is refreshed, the managed `AGENTS.md` / `CLAUDE.md` block is updated in place, and hook wiring is merged without duplication. The generated config uses the full shape documented in [Configuration](/configuration/config-file#generated-config).
+`init` is idempotent: existing JSON config files are left untouched unless `--repair` is passed, the agent bundle is refreshed, the managed `AGENTS.md` / `CLAUDE.md` block is updated in place, and hook wiring is merged without duplication. The generated config uses the full shape documented in [Configuration](/configuration/config-file#generated-config).
+
+```bash
+# Inspect the scaffold and repair plan without writing files
+npx supaschema init --dry-run --json
+
+# Rewrite supaschema.config.json from the canonical contract
+npx supaschema init --repair
+```
 
 Edit the file when you need named environments, custom schema paths, different output paths, managed schema changes, transaction behavior, or validators.
 

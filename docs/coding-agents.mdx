@@ -1,7 +1,8 @@
 ---
 title: "Coding Agents"
 description: "How supaschema guides Claude, Codex, and other coding agents through safe migration generation."
-keywords: ["coding agents","AI agents","AGENTS.md","CLAUDE.md","llms.txt","MCP"]
+keywords:
+  ["coding agents", "AI agents", "AGENTS.md", "CLAUDE.md", "llms.txt", "MCP"]
 ---
 
 supaschema ships an agent bundle so coding agents follow the same migration contract as humans: edit the declarative schema tree, generate migrations with `diff`, check replay safety, and never hand-edit generated migration files.
@@ -20,13 +21,27 @@ For a new project, the human or agent only needs the normal package install:
 npm install supaschema
 ```
 
-Install includes the agent bundle described in [Introduction](/introduction#what-gets-installed).
+Install includes the surfaces described in [Agent bundle](/coding-agents/agent-bundle).
 
 If install records multiple possible schema or migration paths in `.supaschema/install.json`, ask which paths to use before the first diff.
 
-Agents should treat `supaschema.config.json` as the source of truth for `adapter`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, and named database URL references. Do not assume `supabase/schemas` or `supabase/migrations` unless those paths are configured.
+Agents should treat `supaschema.config.json` as the source of truth for `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, and named database URL references. Do not assume `supabase/schemas` or `supabase/migrations` unless those paths are configured.
 
-`adapter: "auto"` is the default automated supaschema workflow. It is not a Supabase switch. Provider-specific behavior is expressed through paths, managed schemas, transaction mode, excluded grant roles, and explicit verify flags.
+Run `npx supaschema config validate --json` after confirming paths or repairing config. It reports missing directories, mismatched `sources.to`, and inline database URLs in a format agents can use without guessing.
+
+`adapter: "auto"` is not a Supabase switch and does not grant workflow consent. Provider-specific behavior is expressed through paths, managed schemas, transaction mode, excluded grant roles, and explicit verify flags. Agent automation is controlled by `workflow.schema_diff`, `workflow.migration_check`, `workflow.migration_verify`, `workflow.migration_sync`, `workflow.type_generation`, `workflow.zod_generation`, and `workflow.type_usage`.
+
+## Agent docs
+
+<Columns cols={2}>
+  <Card title="Agent bundle" icon="package" href="/coding-agents/agent-bundle">
+    Review the shipped Claude, Codex, and shared agent surfaces, plus what stays repo-local.
+  </Card>
+
+  <Card title="Setup" icon="settings" href="/setup">
+    Review install-time path selection, generated config, hook wiring, and setup checks.
+  </Card>
+</Columns>
 
 ## llms.txt
 
@@ -92,10 +107,4 @@ The Claude skill lives at `.claude/skills/supaschema/SKILL.md`. The `.agents/ski
 
 ## Hook
 
-The hooks enforce the workflow while an agent edits files:
-
-- A pre-tool hook blocks edits to generated migration SQL when the lineage marker is present.
-- A post-tool hook watches schema-tree SQL writes, runs `supaschema diff`, then runs `supaschema check`.
-- Hook output reports the generated migration or the blocking `SUPA_*` diagnostic back to the agent.
-
-Claude and Codex use separate native hook implementations, but they enforce the same policy. The hooks generate and prove migrations; they do not apply migrations to any database.
+The installed hook files, runtime events, and schema-edit workflow trigger are documented in [Agent bundle](/coding-agents/agent-bundle#hook-behavior).

@@ -1,33 +1,27 @@
-# Rule 12 — Deterministic skill-loading enforcement
+# Rule 12 — Deterministic hook context and skill-loading enforcement
 
-Relevant project skills are loaded by **deterministic rules**, not model judgment. A routing manifest decides relevance from explicit signals; hooks **push** the skill into context and **block** governed tool use until it is loaded — for the main agent and subagents. This removes the "agent forgot to load the skill" failure mode.
+Relevant project skills are selected and enforced by hook state, not by model judgment. Claude Code documents hooks as lifecycle commands that receive JSON on stdin and can add model-facing context with `hookSpecificOutput.additionalContext`; use that field for steering and reserve `systemMessage` for user-facing UI warnings (https://code.claude.com/docs/en/hooks). Claude Code skills expose `description` and `when_to_use` to help the model decide when to invoke a skill, but deterministic load-before-write behavior belongs in `PreToolUse` enforcement, not in skill prose (https://code.claude.com/docs/en/skills).
 
-**No exempt tools.** The gate runs on every tool call. A PreToolUse hook cannot make the model call the `Skill` tool, so the gate itself is the loader: when a governed action is attempted with an unloaded required skill, the gate **delivers that skill's `SKILL.md` + `refs` content inside the denial reason** and credits the ledger, then denies once so nothing runs against the governed surface until the content is in context. The re-run proceeds. Loading is enforcement-driven, never a voluntary `Skill` call.
+## Runtime map
 
-## How it works
+- `SessionStart` clears per-session state and injects standing context. Claude and Codex both document `startup`, `resume`, `clear`, and `compact` as session-start matcher values; `compact` is the post-compaction re-injection point (https://code.claude.com/docs/en/hooks, https://developers.openai.com/codex/hooks).
+- `UserPromptSubmit` scores the prompt against `.claude/skills/**/SKILL.md` frontmatter: `description`, `when_to_use`, `metadata.keywords`, and `metadata.file-triggers`. Matches are recorded as pending and injected as model-facing context.
+- `PreToolUse` hard-blocks content, delegation, and research tools while a matched required skill is pending and unobserved. The denial uses `hookSpecificOutput.permissionDecision = "deny"` on tool events, matching the Claude and Codex hook contracts (https://code.claude.com/docs/en/hooks, https://developers.openai.com/codex/hooks).
+- `PostToolUse` records observable skill loads and structured evidence breadcrumbs. A skill clears only when the `Skill` tool loads it or a `Read` tool reads that skill's `SKILL.md`; slash commands, `$skill` tokens, and inline mentions are only request signals.
+- `SubagentStart` injects pending skill context because non-fork subagents start with fresh isolated context and do not inherit loaded skills or files already read by the parent (https://code.claude.com/docs/en/sub-agents). Use subagent frontmatter `skills:` when a subagent must preload full `SKILL.md` content (https://code.claude.com/docs/en/sub-agents).
+- `Stop` and `SubagentStop` run response-shape detectors and re-inject corrections with `hookSpecificOutput.additionalContext` in Claude. Codex Stop/SubagentStop require JSON stdout and use `decision: "block"` to continue with a correction prompt (https://developers.openai.com/codex/hooks).
+- `TaskCompleted` and `PermissionDenied` are Claude-only enforcement points in this repo. Codex does not currently document those events in its hook matcher table, so `.codex/hooks.json` intentionally omits them (https://developers.openai.com/codex/hooks).
+- `SessionEnd` clears session state. Claude documents SessionEnd as cleanup-only with no decision control (https://code.claude.com/docs/en/hooks).
 
-- **Source of truth:** `scripts/skills/skill-routing.json` (`skill-routing-v1`) maps each project skill to triggers — `whenToolEdits`/`whenPathGlob` (file-path globs), `whenBashMatches` (command substrings), `whenPromptMatches` (prompt substrings) — plus `refs` (required reference files) and `enforce` (gate vs advisory). Relevance is matched against the hook's own inputs + an on-disk scan of `.claude/skills/**/SKILL.md`; it never uses the skill `description` matcher or the model's `<system-reminder>` (hooks cannot see it).
-- **Resolver:** `scripts/skills/skill-hook-core.mjs` owns routing, ledgers, and hook output formatting. `scripts/skills/skill-router.mjs` is a compatibility CLI over the same core. The resolver uses segment glob matching + substring matching + `JSON.parse`.
-- **Per-session ledger:** `.tmp/skill-gate/<session_id>.json` records loaded skills. Keyed by `session_id` so concurrent sessions do not overlap.
-- **Hooks:** Claude and Codex have separate native hook adapters. `npm run sync:llm` mirrors the six enumerated skills to `.codex/skills`/`.agents/skills`, not hooks.
-  - Claude: `.claude/hooks/skill-session-init.mjs`, `skill-inject.mjs`, `skill-gate.mjs`, `skill-record.mjs`, and `skill-subagent-gate.mjs`.
-  - Codex: `.codex/hooks/skill-session-init.mjs`, `skill-inject.mjs`, `skill-gate.mjs`, and `skill-record.mjs`.
-  - `skill-inject.mjs` (UserPromptSubmit) pushes matched skills' `SKILL.md` + optional `refs` as `additionalContext` and credits the ledger.
-  - `skill-gate.mjs` (PreToolUse) denies once when a governed edit touches an unloaded required skill, delivering the skill's full `SKILL.md` + optional `refs` content in the denial reason and crediting the ledger. The re-run proceeds with the guidance in context.
-  - `skill-record.mjs` (PostToolUse `Skill|Read`) records a loaded skill / read ref.
-  - `skill-session-init.mjs` (SessionStart) clears the session ledger.
+## State and ownership
 
-## Modes & posture
+- State lives under `.tmp/agent-hooks` by default and is keyed by a path-safe validated session id. It tracks pending skills, invoked skills, response corrections, evidence breadcrumbs, and the last prompt.
+- Canonical hook source lives in `.claude/hooks/**` and shared logic lives in `scripts/agent-hooks/**`. `npm run sync:llm` mirrors `.claude/hooks/**` into `.codex/hooks/**`; edit the Claude owner and sync instead of hand-editing generated mirrors.
+- `.claude/settings.json` is the Claude hook registration owner. `.codex/hooks.json` is the native Codex registration owner. Codex parity uses the same shared policy helpers but omits unsupported events explicitly.
+- `scripts/guards/check-hook-import-graph.mjs` proves hook runtime modules import only `node:` builtins and relative files, so hooks run without package installation.
 
-- `mode` (`scripts/skills/skill-routing.json`) / `SKILL_GATE_MODE` env: `warn` (emit an advisory `systemMessage`, never block) · `enforce` (deny a file-editing tool once when a routed skill is unloaded, deliver that skill's `SKILL.md` into the denial reason, and credit the session ledger so the immediate re-run proceeds) · `off`. **The repo ships in `enforce`.** Only file-editing tools (`Edit`/`Write`/`MultiEdit`/`NotebookEdit`) are gated; reads of governed paths stay advisory so navigating source never hard-stops.
-- **Fail open** on any resolver/internal error (never brick tools); **fail closed** only on a clean "required skill not loaded" verdict for a governed action.
-- Action triggers (`whenToolEdits`/`whenPathGlob`/`whenBashMatches`) are enforcing; `whenPromptMatches` is **advisory** (inject-only, never hard-block).
-- References force-loaded via `@`-mention are credited on skill load; markdown-link refs require a `Read` the recorder observes.
+## Response-shape policy
 
-## Enforced by
+Stop-time detectors enqueue and auto-resolve session-scoped corrections for hedge density, completion claims with open items, verification claims without evidence breadcrumbs, decision menus after direct directives, deferral language, and tool failure without retry. `PreToolUse` also blocks further edits while evidence-related corrections remain unresolved.
 
-- `scripts/guards/check-agent-hooks.mjs` (`npm run guard:agent`) — the hook files + their settings registration cannot silently disappear.
-- `scripts/guards/check-agent-surface-parity.mjs` — byte-parity of the six mirrored skills across `.claude/skills` ≡ `.codex/skills` ≡ `.agents/skills`, the shared Code Atlas doctrine string in `AGENTS.md` and `.claude/rules/supaschema.md`, and a Codex rule pointer back to the canonical rule. Codex hooks and numbered rules are separate native implementations kept aligned by hand (`AGENTS.md`), not byte-mirrored.
-- `scripts/guards/check-no-regex-in-scripts.mjs` (Rule 07) — the resolver stays regex-free.
-
-STOP if a governed surface is edited without its required skill loaded under `enforce` mode, if the routing manifest names a skill/ref that doesn't exist, if the resolver introduces regex over code structure, if the hooks are unregistered from `.claude/settings.json`, or if managed LLM surfaces drift.
+STOP if a governed surface is edited while a matched required skill is pending, if hook output uses `systemMessage` where model-facing context is required, if a hook failure silently allows a governed action, if a hook imports non-builtin non-relative runtime code, or if generated mirrors drift from their `.claude/**` owner.

@@ -4,6 +4,7 @@ import { extname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { extractCatalogModel } from "./catalog.js";
 import { resolveConfig } from "./config.js";
+import { parseRuntimeSource } from "./config-contract.js";
 import type {
   Diagnostic,
   ExtractOptions,
@@ -44,34 +45,37 @@ async function extractRawModel(
   cwd: string,
   config: SupaschemaConfig
 ): Promise<SchemaModel> {
-  if (source.startsWith("catalog:")) {
-    return readCatalogSource(source.slice("catalog:".length), cwd, source);
+  const parsed = parseRuntimeSource(source);
+  if (!parsed) {
+    throw new Error(`unsupported source "${source}"`);
   }
-  if (source.startsWith("database:")) {
-    const databaseUrl = resolveDatabaseUrl(source.slice("database:".length));
+  if (parsed.kind === "catalog") {
+    return readCatalogSource(parsed.payload, cwd, source);
+  }
+  if (parsed.kind === "database") {
+    const databaseUrl = resolveDatabaseUrl(parsed.payload);
     return extractCatalogModel({
       databaseUrl,
       normalize: config.normalize === "deparse",
       source,
     });
   }
-  if (source.startsWith("dump:")) {
-    const target = source.slice("dump:".length);
-    if (target === "-") {
+  if (parsed.kind === "dump") {
+    if (parsed.payload === "-") {
       const sql = await readAllStdin();
       return modelFromSqlFiles([{ path: "<stdin>", sql }], source, config);
     }
-    const path = resolve(cwd, target);
+    const path = resolve(cwd, parsed.payload);
     const sql = await readFile(path, "utf8");
     return modelFromSqlFiles([{ path, sql }], source, config);
   }
-  if (source.startsWith("dir:")) {
-    const root = resolve(cwd, source.slice("dir:".length));
+  if (parsed.kind === "dir") {
+    const root = resolve(cwd, parsed.payload);
     const files = await readSqlFiles(root);
     return modelFromSqlFiles(files, source, config);
   }
-  if (source.startsWith("git:")) {
-    const ref = source.slice("git:".length) || "HEAD";
+  if (parsed.kind === "git") {
+    const ref = parsed.payload || "HEAD";
     const files = await readGitSqlFiles(ref, cwd, config.schemaPaths);
     return modelFromSqlFiles(files, source, config);
   }

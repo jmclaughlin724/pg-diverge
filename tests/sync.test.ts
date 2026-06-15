@@ -34,6 +34,20 @@ describe("sync (no target)", () => {
     expect(result.report).toContain("refusing to sync");
     expect(result.diagnostics.some((item) => item.severity === "error")).toBe(true);
   });
+
+  it("refuses apply handoff when workflow.migration_sync is disabled", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-disabled-"));
+
+    const result = await syncMigrations({
+      config: { workflow: { migration_sync: "disabled" } },
+      directory: root,
+      local: true,
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.report).toContain('workflow.migration_sync is "disabled"');
+    expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_SYNC_DISABLED");
+  });
 });
 
 describe.skipIf(!databaseUrl)("sync (against a target)", () => {

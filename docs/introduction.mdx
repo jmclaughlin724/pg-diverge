@@ -39,12 +39,12 @@ The package includes:
 - typed ESM library exports;
 - PostgreSQL parser and SQL deparser dependencies;
 - JSON Schema validation for `supaschema.config.json`;
-- a config file when the project does not already have one, including `adapter`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, and `environments`;
-- Claude/Codex-compatible rules, skills, hooks, and agent guidance.
+- a config file when the project does not already have one, including `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, and `environments`;
+- the narrow [supaschema consumer agent bundle](/coding-agents/agent-bundle): Claude/Codex-compatible supaschema rules, skills, migration-policy hooks, sync hooks, and agent guidance.
 
 Install also scans for existing schema and migration folders. See [Setup](/setup) for the exact path rules.
 
-The repository also has maintainer-only workspace tooling for developing supaschema itself, such as VS Code settings, Postgres Language Server config, Python workspace config, MCP research servers, Code Atlas, and FastMCP checks. Those files are not consumer install outputs and are not copied into projects by package install.
+The repository also has maintainer-only workspace tooling for developing supaschema itself, such as VS Code settings, Postgres Language Server config, Python workspace config, MCP research servers, Code Atlas, FastMCP checks, Claude/Codex context-enforcement hooks, and optimizer skills. Those files are not consumer install outputs and are not copied into projects by package install.
 
 ## Why supaschema?
 
@@ -74,7 +74,8 @@ Common runners include `psql`, a platform deployment job, and `supabase db push`
 <Note>
   `supaschema sync` is a Supabase-specific apply gate. With no apply flag, it is
   a dry run. With `--local` or `--remote`, it delegates to the Supabase CLI
-  after safety checks.
+  after safety checks only when `workflow.migration_sync` allows explicit apply
+  handoff.
 </Note>
 
 ## Start here

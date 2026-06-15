@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database-url.js";
+import { expectedInstalledConfig } from "./install-parity-expectations.js";
 
 const run = promisify(execFile);
 const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
@@ -21,60 +22,8 @@ const claudeAutoDiffArgs = [`${claudeProjectDir}/.claude/hooks/auto-diff-on-sche
 const claudeLlmSyncArgs = [
   `${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
 ];
-const managedSchemas = [
-  "auth",
-  "storage",
-  "realtime",
-  "vault",
-  "extensions",
-  "cron",
-  "net",
-  "supabase_functions",
-  "graphql",
-  "graphql_public",
-];
-
 function shellParameter(expression: string): string {
   return ["$", "{", expression, "}"].join("");
-}
-
-function expectedInstalledConfig(
-  schemaPath: string,
-  migrationsDir: string
-): Record<string, unknown> {
-  return {
-    $schema: "./node_modules/supaschema/supaschema-config.schema.json",
-    adapter: "auto",
-    cascade: "never",
-    destructiveChanges: "hint-required",
-    environments: {},
-    excludedGrantRoles: [],
-    hints: {
-      destructive: [],
-      renames: [],
-    },
-    idempotency: "required",
-    lockTimeout: "5s",
-    migrationsDir,
-    typesFile: "database.types.ts",
-    zodFile: "database.zod.ts",
-    normalize: "deparse",
-    managedSchemas,
-    postgresVersion: "15+",
-    renameDetection: "hints-only",
-    schemaPaths: [schemaPath],
-    schemas: {
-      exclude: [],
-      include: [],
-    },
-    sources: {
-      from: "auto",
-      to: `dir:${schemaPath}`,
-    },
-    statementTimeout: "60s",
-    transactionMode: "per-migration",
-    validators: ["internal-parser"],
-  };
 }
 
 describe("supabase database URL discovery", () => {
@@ -148,6 +97,7 @@ describe("install-time project setup", () => {
       ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
       ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
+      ".codex/skills/supaschema/SKILL.md",
     ]) {
       expect(existsSync(join(consumer, file)), file).toBe(true);
     }
@@ -263,7 +213,7 @@ describe("install-time project setup", () => {
 
   it("preserves an existing config and merges hook wiring", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-existing-"));
-    await writeFile(join(consumer, "supaschema.config.json"), '{"adapter":"postgres"}\n');
+    await writeFile(join(consumer, "supaschema.config.json"), '{"adapter":"auto"}\n');
     await writeFile(join(consumer, "AGENTS.md"), "# Existing agents\n\nKeep this.\n");
     await writeFile(join(consumer, "CLAUDE.md"), "@AGENTS.md\n");
     await mkdir(join(consumer, ".claude"), { recursive: true });
@@ -297,7 +247,7 @@ describe("install-time project setup", () => {
     const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
     expect(stdout).toContain("installed directories, agent files, hook wiring");
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
-      '{"adapter":"postgres"}\n'
+      '{"adapter":"auto"}\n'
     );
 
     const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
@@ -442,16 +392,14 @@ describe("install-time project setup", () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-sparse-"));
     await mkdir(join(consumer, "supabase"), { recursive: true });
     await writeFile(join(consumer, "supabase", "config.toml"), "[db]\nport = 54322\n");
-    await writeFile(join(consumer, "supaschema.config.json"), '{"adapter":"supabase-auto"}\n');
+    await writeFile(join(consumer, "supaschema.config.json"), "{}\n");
 
     await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
 
-    // The CLI loads this sparse config with its static defaults; the installer must
-    // agree so guidance, directories, and the manifest do not point at supabase/schemas
-    // while the CLI actually diffs database/schemas.
-    expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
-      '{"adapter":"supabase-auto"}\n'
-    );
+    // The CLI loads this sparse config with its static defaults; normal install preserves
+    // the user-owned JSON while guidance, directories, and manifest stay aligned with
+    // what the CLI actually diffs.
+    expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe("{}\n");
     expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
       "Schema intent belongs in `database/schemas`"
     );
@@ -461,7 +409,7 @@ describe("install-time project setup", () => {
     expect(manifest.migrationsDir).toBe("database/migrations");
   });
 
-  it("reads schema and migration paths from a module config", async () => {
+  it("ignores JavaScript config files and writes the canonical JSON config", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-module-"));
     await writeFile(
       join(consumer, "supaschema.config.mjs"),
@@ -471,15 +419,19 @@ describe("install-time project setup", () => {
     await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
 
     expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
-      "Schema intent belongs in `db/sql`"
+      "Schema intent belongs in `database/schemas`"
     );
-    expect(existsSync(join(consumer, "db/sql"))).toBe(true);
-    expect(existsSync(join(consumer, "db/changes"))).toBe(true);
-    // The module config stays the source of truth; no JSON config is scaffolded over it.
-    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(consumer, "db/sql"))).toBe(false);
+    expect(existsSync(join(consumer, "db/changes"))).toBe(false);
+    expect(existsSync(join(consumer, "database/schemas"))).toBe(true);
+    expect(existsSync(join(consumer, "database/migrations"))).toBe(true);
+    expect(JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"))).toEqual(
+      expectedInstalledConfig("database/schemas", "database/migrations")
+    );
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.schemaPaths).toEqual(["db/sql"]);
-    expect(manifest.migrationsDir).toBe("db/changes");
+    expect(manifest.schemaPaths).toEqual(["database/schemas"]);
+    expect(manifest.migrationsDir).toBe("database/migrations");
+    expect(manifest.existingConfig).toBeUndefined();
   });
 
   it("does not scaffold a guessed config while path confirmation is pending", async () => {

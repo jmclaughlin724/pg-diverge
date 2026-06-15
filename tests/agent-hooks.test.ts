@@ -30,6 +30,13 @@ async function runHook(
   });
 }
 
+function hookAdditionalContext(stdout: string): string {
+  const output = JSON.parse(stdout) as {
+    hookSpecificOutput?: { additionalContext?: string };
+  };
+  return output.hookSpecificOutput?.additionalContext ?? "";
+}
+
 async function fixtures(): Promise<{ generated: string; handAuthored: string }> {
   const directory = await mkdtemp(join(tmpdir(), "supa-agent-hooks-"));
   const generated = join(directory, "20260611000000_generated.sql");
@@ -181,12 +188,17 @@ describe("agent hook configuration", () => {
     expect(text).not.toContain(['node "', "$CLAUDE_PROJECT_DIR", '"'].join(""));
     expect(text).not.toContain(`node "${workspaceVariable("CLAUDE_PROJECT_DIR")}`);
     for (const script of [
-      "skill-session-init.mjs",
-      "skill-inject.mjs",
-      "skill-gate.mjs",
-      "skill-subagent-gate.mjs",
+      "context-session-start.mjs",
+      "context-user-prompt-submit.mjs",
+      "context-pre-tool-use.mjs",
+      "context-post-tool-use.mjs",
+      "context-subagent-start.mjs",
+      "context-subagent-stop.mjs",
+      "context-stop.mjs",
+      "context-task-completed.mjs",
+      "context-permission-denied.mjs",
+      "context-session-end.mjs",
       "block-generated-migration-edits.mjs",
-      "skill-record.mjs",
       "auto-diff-on-schema-change.mjs",
       "sync-llm-on-claude-surface-change.mjs",
     ]) {
@@ -241,20 +253,34 @@ describe("agent hook configuration", () => {
     const postToolUseText = JSON.stringify(config.hooks?.PostToolUse ?? []);
     const stopEntries = config.hooks?.Stop ?? [];
     expect(postToolUseText).not.toContain("sync-llm-on-claude-surface-change.mjs");
-    expect(stopEntries).toEqual([
-      expect.objectContaining({
-        hooks: [
-          expect.objectContaining({
-            command: [
-              'node "$',
-              "{CODEX_PROJECT_DIR:-$PWD}",
-              '/.codex/hooks/sync-llm-on-claude-surface-change.mjs"',
-            ].join(""),
-            type: "command",
-          }),
-        ],
-      }),
-    ]);
+    expect(stopEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          hooks: [
+            expect.objectContaining({
+              command: [
+                'node "$',
+                "{CODEX_PROJECT_DIR:-$PWD}",
+                '/.codex/hooks/context-stop.mjs"',
+              ].join(""),
+              type: "command",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          hooks: [
+            expect.objectContaining({
+              command: [
+                'node "$',
+                "{CODEX_PROJECT_DIR:-$PWD}",
+                '/.codex/hooks/sync-llm-on-claude-surface-change.mjs"',
+              ].join(""),
+              type: "command",
+            }),
+          ],
+        }),
+      ])
+    );
     for (const entry of stopEntries) {
       expect(entry).not.toHaveProperty("matcher");
     }
@@ -616,6 +642,9 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
       );
 
       expect(result.code).toBe(0);
+      expect(hookAdditionalContext(result.stdout)).toContain(
+        "workflow.type_generation=create_or_refresh, workflow.zod_generation=create_or_refresh, workflow.type_usage=zod_validated"
+      );
       expect(await readFakeCalls(log)).toEqual([
         ["diff", "--to", "dir:supabase/schemas"],
         ["check"],
@@ -695,6 +724,123 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
       expect(await readFakeCalls(log)).toEqual([
         ["diff", "--to", "dir:supabase/schemas"],
         ["check"],
+      ]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "skips auto-diff when workflow.schema_diff is manual",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+      await writeFile(
+        join(project, "supaschema.config.json"),
+        JSON.stringify({
+          schemaPaths: ["supabase/schemas"],
+          workflow: { schema_diff: "manual" },
+        })
+      );
+      await writeFile(
+        join(project, "supabase", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env }
+      );
+
+      expect(result.code).toBe(0);
+      expect(hookAdditionalContext(result.stdout)).toContain('workflow.schema_diff is "manual"');
+      expect(await readFakeCalls(log)).toEqual([]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "skips post-diff check when workflow.migration_check is manual",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
+      await writeFile(
+        join(project, "supaschema.config.json"),
+        JSON.stringify({
+          schemaPaths: ["supabase/schemas"],
+          workflow: { migration_check: "manual" },
+        })
+      );
+      await writeFile(
+        join(project, "supabase", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env }
+      );
+
+      expect(result.code).toBe(0);
+      expect(hookAdditionalContext(result.stdout)).toContain(
+        'workflow.migration_check is "manual"'
+      );
+      expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"]]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "runs verify when workflow.migration_verify is after_schema_diff",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(
+        ["supabase/schemas"],
+        `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+appendFileSync(process.env.SUPASCHEMA_FAKE_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");
+if (process.argv[2] === "diff") {
+  process.stdout.write("supabase/migrations/20260613000000_fake.sql\\n");
+  process.exit(0);
+}
+if (process.argv[2] === "check" || process.argv[2] === "verify") {
+  process.exit(0);
+}
+process.exit(1);
+`
+      );
+      await writeFile(
+        join(project, "supaschema.config.json"),
+        JSON.stringify({
+          schemaPaths: ["supabase/schemas"],
+          workflow: { migration_verify: "after_schema_diff" },
+        })
+      );
+      await writeFile(
+        join(project, "supabase", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env }
+      );
+
+      expect(result.code).toBe(0);
+      expect(hookAdditionalContext(result.stdout)).toContain("supaschema verify passed");
+      expect(await readFakeCalls(log)).toEqual([
+        ["diff", "--to", "dir:supabase/schemas"],
+        ["check"],
+        ["verify"],
       ]);
     }
   );
@@ -827,13 +973,22 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
   );
 
   it.skipIf(process.platform === "win32")(
-    "resumes auto-diff once the config confirms schemaPaths despite a stale pending flag",
+    "resumes auto-diff once config confirms all path fields despite a stale pending flag",
     async () => {
       // The installer recorded pathConfirmationNeeded, then a human confirmed by
-      // setting schemaPaths in supaschema.config.json. The stale manifest flag must
-      // no longer block auto-diff — the documented confirmation step re-enables it
-      // without anyone hand-editing or deleting .supaschema/install.json.
+      // setting schemaPaths, sources.to, and migrationsDir in supaschema.config.json.
+      // The stale manifest flag must no longer block auto-diff — the documented
+      // confirmation step re-enables it without anyone hand-editing or deleting
+      // .supaschema/install.json.
       const { env, log, project } = await autoDiffFixture(["apps/api/schemas"]);
+      await writeFile(
+        join(project, "supaschema.config.json"),
+        JSON.stringify({
+          migrationsDir: "apps/api/migrations",
+          schemaPaths: ["apps/api/schemas"],
+          sources: { from: "auto", to: "dir:apps/api/schemas" },
+        })
+      );
       await mkdir(join(project, ".supaschema"), { recursive: true });
       await writeFile(
         join(project, ".supaschema", "install.json"),

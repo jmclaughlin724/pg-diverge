@@ -36,11 +36,15 @@ Do not add broad repo directories to the allowlist just because a single file is
 
 Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package-contents.test.ts` fails if any `.tsbuildinfo`, source file, or maintainer tooling reaches the tarball.
 
+## Agent bundle boundary
+
+The exact Claude, Codex, and shared agent surfaces live in [Agent bundle](/coding-agents/agent-bundle). Keep that page as the reader-facing owner for agent bundle contents. Keep this page focused on package mechanics, tarball inclusion, consumer setup, and maintainer-only exclusions.
+
 ## Consumer setup
 
 The installer owns one-step setup for consuming projects. The install contents list lives in [Introduction](/introduction#what-gets-installed); keep it there instead of duplicating it across release and packaging references.
 
-`postinstall` and the `supaschema init` command perform this setup through one shared scaffolder, `bin/scaffold.mjs` (a dist-free module that ships in the `bin` allowlist entry). `postinstall` is the lifecycle wrapper; `init` calls the same core directly, so `npx supaschema init` reproduces the identical scaffold when npm does not run install scripts (npm v12 ignores dependency install scripts by default).
+`postinstall` and the `supaschema init` command perform this setup through one shared scaffolder, `bin/scaffold.mjs` (a dist-free module that ships in the `bin` allowlist entry). `postinstall` is the lifecycle wrapper; `init` calls the same core directly, so `npx supaschema init` reproduces the identical scaffold when npm does not run install scripts (npm v12 ignores dependency install scripts by default). The shared scaffold creates `supaschema.config.json` from the generated config contract when it is absent, rewrites it only for explicit repair, and records unresolved path confirmation in `.supaschema/install.json`.
 
 Do not copy maintainer workspace tooling into consumer projects unless the consumer contract explicitly changes and package tests are updated at the same time.
 

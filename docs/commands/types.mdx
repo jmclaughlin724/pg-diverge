@@ -32,7 +32,7 @@ It models tables, views, enums, and composite types, then writes two files:
 
 Once output files exist, you do not need to run `types` after every schema change.
 
-`diff` refreshes `typesFile` and `zodFile` after it writes a migration. Missing files are skipped.
+`diff` refreshes `typesFile` and `zodFile` after it writes a migration according to `workflow.type_generation` and `workflow.zod_generation`. The default `create_or_refresh` policy creates missing files and updates existing files.
 
 Use `--dry-run` or `--out stdout` when you want a preview without file writes.
 
@@ -44,6 +44,14 @@ Two config keys control where the output files land:
 | ----------- | ------------------- | ----------------------------------------- |
 | `typesFile` | `database.types.ts` | Output path for the TypeScript types file |
 | `zodFile`   | `database.zod.ts`   | Output path for the Zod validators file   |
+
+Automatic refresh after `diff` is controlled separately from these paths:
+
+| Config field | Default | Meaning |
+| --- | --- | --- |
+| `workflow.type_generation` | `create_or_refresh` | Create or refresh `typesFile` after `diff`. Use `refresh_existing` to skip missing files, or `disabled` to skip. |
+| `workflow.zod_generation` | `create_or_refresh` | Create or refresh `zodFile` after `diff`. Use `refresh_existing` to skip missing files, or `disabled` to skip. |
+| `workflow.type_usage` | `zod_validated` | Agent policy for using generated Zod validators and validated types at runtime boundaries. Use `typescript_only` only when runtime validation is intentionally out of scope. |
 
 Both paths are resolved relative to the process working directory where you run the command.
 
@@ -128,27 +136,37 @@ export type Database = {
 }
 ```
 
-The companion `database.zod.ts` exports a matching Zod schema for each row type:
+The companion `database.zod.ts` exports matching Zod validators plus Zod-derived helper types:
 
 ```typescript
 import { z } from "zod"
 
-export const ProfileRowSchema = z.object({
-  id: z.string().uuid(),
-  username: z.string(),
-  avatar_url: z.string().nullable(),
-  updated_at: z.string().nullable(),
-})
+const public_order_status = z.enum(["pending", "confirmed", "shipped", "delivered", "cancelled"])
 
-export type ProfileRow = z.infer<typeof ProfileRowSchema>
+export const schemas = {
+  public: {
+    Enums: {
+      order_status: public_order_status,
+    },
+    Tables: {
+      profiles: {
+        Row: z.object({
+          id: z.string(),
+          username: z.string(),
+          avatar_url: z.string().nullable(),
+          updated_at: z.string().nullable(),
+        }),
+      },
+    },
+  },
+} as const
 
-export const OrderStatusSchema = z.enum([
-  "pending",
-  "confirmed",
-  "shipped",
-  "delivered",
-  "cancelled",
-])
+export type TableRow<
+  S extends keyof typeof schemas,
+  T extends keyof (typeof schemas)[S]["Tables"],
+> = (typeof schemas)[S]["Tables"][T] extends { Row: infer R extends z.ZodType }
+  ? z.infer<R>
+  : never
 ```
 
 ## Integrating with the Supabase client

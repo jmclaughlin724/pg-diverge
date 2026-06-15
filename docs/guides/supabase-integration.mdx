@@ -42,8 +42,8 @@ supabase db push          # the runner applies; supaschema never touches your re
 
 # Lane 2: gated orchestration
 npx supaschema sync            # dry run: reconcile history, gate pending migrations
-npx supaschema sync --local    # then run `supabase migration up`
-npx supaschema sync --remote   # then run `supabase db push` (runner prompts intact)
+npx supaschema sync --local    # if workflow.migration_sync allows it, then run `supabase migration up`
+npx supaschema sync --remote   # if workflow.migration_sync allows it, then run `supabase db push`
 ```
 
 `sync` refuses on ghost or out-of-order history and runs the replay-safety check on every pending migration before it lets the Supabase CLI act. Use [`supaschema migrations`](/commands/migrations) to see how disk files reconcile against each database's applied history.

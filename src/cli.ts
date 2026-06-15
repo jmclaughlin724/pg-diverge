@@ -16,7 +16,7 @@ import { filterModel, registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, validateConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors, redactSecrets } from "./diagnostics.js";
@@ -28,6 +28,11 @@ interface GlobalOptions {
   config?: string;
   env?: string;
   quiet?: boolean;
+}
+interface InitOptions {
+  dryRun?: boolean;
+  json?: boolean;
+  repair?: boolean;
 }
 interface InspectOptions {
   from?: string;
@@ -49,7 +54,7 @@ const program = new Command();
 program
   .name("supaschema")
   .description("Generate deterministic, replay-safe PostgreSQL/Supabase migrations from SQL trees.")
-  .option("--config <path>", "explicit config file path (.json, .mjs, or .js)")
+  .option("--config <path>", "explicit JSON config file path")
   .option("--env <name>", "named environment from config.environments for the database URL")
   .option("--quiet", "suppress diagnostic output on stderr")
   .version(cliVersion)
@@ -69,7 +74,10 @@ program
   .description(
     "Scaffold the full supaschema setup in the current directory — config, schema/migration directories, agent rules/skills/hooks, and AGENTS/CLAUDE guidance. This is the same setup `postinstall` performs; run it when npm did not run install scripts (npm v12 defaults to ignore-scripts) or to repair setup. It is idempotent: an existing config is left untouched and the managed guidance block is upserted in place."
   )
-  .action(async () => {
+  .option("--dry-run", "print the scaffold/repair plan without writing files")
+  .option("--json", "print the init result as redacted JSON")
+  .option("--repair", "rewrite supaschema.config.json from the canonical contract when needed")
+  .action(async (options: InitOptions) => {
     // Resolve the installed package root from the compiled CLI (dist/cli.js -> ../),
     // the same anchor readPackageVersion uses, then load the shared scaffolder that
     // ships at <package>/bin/scaffold.mjs. The dynamic, URL-form import is the
@@ -79,18 +87,54 @@ program
     const { scaffoldProject } = await import(
       pathToFileURL(join(packageRoot, "bin", "scaffold.mjs")).href
     );
-    const { installed, skipped, pathConfirmationNeeded } = await scaffoldProject({
+    const result = await scaffoldProject({
+      dryRun: options.dryRun === true,
       interactive: true,
       packageRoot,
       packageVersion,
+      repair: options.repair === true,
       targetDir: process.cwd(),
     });
+    if (options.json === true) {
+      process.stdout.write(`${JSON.stringify(redactJson(result), null, 2)}\n`);
+      return;
+    }
+    const { installed, pathConfirmationNeeded, skipped } = result;
+    const verb = options.dryRun === true ? "would install" : "installed";
     const suffix = skipped.length > 0 ? `; skipped ${skipped.join(", ")}` : "";
-    process.stdout.write(`supaschema: installed ${installed.join(", ")}${suffix}\n`);
+    process.stdout.write(`supaschema: ${verb} ${installed.join(", ")}${suffix}\n`);
     if (pathConfirmationNeeded) {
       process.stdout.write(
         "supaschema: confirm detected schema/migration paths in .supaschema/install.json before the first diff\n"
       );
+    }
+  });
+
+const configCommand = program.command("config").description("Inspect and validate configuration.");
+
+configCommand
+  .command("validate")
+  .option("--json", "print validation diagnostics as JSON")
+  .description("Validate supaschema.config.json paths, sources, and credential references.")
+  .action(async (options: { json?: boolean }) => {
+    const config = await loadCliConfig();
+    const diagnostics = await validateConfig(config, process.cwd());
+    const hasErrorDiagnostics = diagnostics.some((item) => item.severity === "error");
+    if (options.json === true) {
+      process.stdout.write(
+        `${JSON.stringify({ diagnostics, ok: !hasErrorDiagnostics }, null, 2)}\n`
+      );
+    } else if (diagnostics.length === 0) {
+      process.stdout.write("config ok\n");
+    } else {
+      for (const item of diagnostics) {
+        process.stdout.write(
+          `${item.severity}: ${item.field}: ${item.message}${item.hint ? ` (${item.hint})` : ""}\n`
+        );
+      }
+    }
+    if (hasErrorDiagnostics) {
+      process.exitCode = 2;
     }
   });
 
@@ -350,6 +394,19 @@ function printDiagnostics(diagnostics: Diagnostic[]): void {
 
 function redactRawError(error: unknown): string {
   return redactSecrets(error instanceof Error ? error.message : String(error));
+}
+
+function redactJson(value: unknown): unknown {
+  if (typeof value === "string") {
+    return redactSecrets(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactJson);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactJson(item)]));
+  }
+  return value;
 }
 
 async function readPackageVersion(): Promise<string> {

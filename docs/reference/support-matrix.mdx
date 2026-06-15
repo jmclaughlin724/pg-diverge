@@ -35,7 +35,7 @@ Extraction and checking are AST-only. Statements are classified through the Post
 
 ## Managed Schemas
 
-Objects in configured `managedSchemas` are blocked before rendering. The default list protects common Supabase-provisioned schemas: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
+Objects in configured `managedSchemas` are blocked before rendering. Generic PostgreSQL installs default to `managedSchemas: []`. Supabase installs seed the common Supabase-provisioned schemas: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
 
 ## Verify Environment Stub
 

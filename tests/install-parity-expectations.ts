@@ -1,9 +1,8 @@
 // Shared oracle for what a fully scaffolded supaschema consumer project looks
 // like, regardless of whether `postinstall` or `supaschema init` produced it
-// (both call the same bin/scaffold.mjs core). The install lane
-// (tests/database-url.test.ts) currently keeps its own copy; the init-parity lane
-// (tests/consumer-lifecycle.test.ts) consumes this so the two prove identical
-// output. Keep this in sync with bin/scaffold.mjs's scaffoldConfig.
+// (both call the same bin/scaffold.mjs core). The install and init-parity lanes
+// consume this so the two prove identical output. Keep this in sync with
+// bin/scaffold.mjs's scaffoldConfig.
 
 export const managedSchemas = [
   "auth",
@@ -17,6 +16,16 @@ export const managedSchemas = [
   "graphql",
   "graphql_public",
 ];
+
+export const defaultWorkflow = {
+  schema_diff: "on_schema_write",
+  migration_check: "after_schema_diff",
+  migration_verify: "suggest_after_check",
+  migration_sync: "explicit_request_only",
+  type_generation: "create_or_refresh",
+  zod_generation: "create_or_refresh",
+  type_usage: "zod_validated",
+};
 
 // The full config bin/scaffold.mjs writes for a fresh project, parameterized by
 // the detected/selected schema + migrations layout.
@@ -37,11 +46,12 @@ export function expectedInstalledConfig(
     },
     idempotency: "required",
     lockTimeout: "5s",
+    workflow: defaultWorkflow,
     migrationsDir,
     typesFile: "database.types.ts",
     zodFile: "database.zod.ts",
     normalize: "deparse",
-    managedSchemas,
+    managedSchemas: schemaPath === "supabase/schemas" ? managedSchemas : [],
     postgresVersion: "15+",
     renameDetection: "hints-only",
     schemaPaths: [schemaPath],
@@ -73,6 +83,7 @@ export const installedAgentFiles = [
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks.json",
   ".codex/rules/supaschema.rules",
+  ".codex/skills/supaschema/SKILL.md",
 ];
 
 // Maintainer-only workspace files that must NOT be scaffolded into a consumer.

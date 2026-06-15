@@ -37,7 +37,7 @@ npx supaschema types --out src/lib/database.types.ts
 
 ## `diff` keeps types in sync
 
-After `supaschema types` has created the output files, `supaschema diff` refreshes them after writing a migration, so a normal schema edit keeps the migration and matching application types together:
+With the default workflow, `supaschema diff` creates or refreshes the generated output files after writing a migration, so a normal schema edit keeps the migration and matching application types together:
 
 ```bash
 npx supaschema diff
@@ -47,8 +47,8 @@ That means reviewers can inspect:
 
 - the declarative SQL change,
 - the generated migration,
-- `database.types.ts` when it already exists,
-- `database.zod.ts` when it already exists.
+- `database.types.ts`,
+- `database.zod.ts`.
 
 ## Use with Supabase client
 
@@ -67,9 +67,10 @@ const supabase = createClient<Database>(
 `database.zod.ts` gives API handlers and background jobs runtime validation from the same schema source:
 
 ```typescript
-import { ProfileRowSchema } from "./database.zod";
+import { schemas, type TableRow } from "./database.zod";
 
-const profile = ProfileRowSchema.parse(payload);
+const profile = schemas.public.Tables.profiles.Row.parse(payload);
+type ProfileRow = TableRow<"public", "profiles">;
 ```
 
 See the [`types` command reference](/commands/types) for flags and output details.

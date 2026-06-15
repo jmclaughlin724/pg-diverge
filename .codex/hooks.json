@@ -5,9 +5,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/skill-session-init.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-session-start.mjs\"",
             "timeout": 10,
-            "statusMessage": "Resetting supaschema skill gate"
+            "statusMessage": "Injecting supaschema session context"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/skill-inject.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-user-prompt-submit.mjs\"",
             "timeout": 10,
             "statusMessage": "Checking supaschema skill routing"
           }
@@ -26,11 +26,11 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(Bash|apply_patch|Edit|Write|edit_file)$",
+        "matcher": "^(Bash|apply_patch|Edit|Write|edit_file|Read|Skill|Agent|Task|Grep|Glob)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/skill-gate.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-pre-tool-use.mjs\"",
             "timeout": 10,
             "statusMessage": "Checking supaschema repo skill gate"
           }
@@ -50,11 +50,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Skill|Read)$",
+        "matcher": "^(Bash|apply_patch|Edit|Write|edit_file|Read|Skill|Agent|Task)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/skill-record.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-post-tool-use.mjs\"",
             "timeout": 10,
             "statusMessage": "Recording supaschema skill context"
           }
@@ -72,7 +72,41 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-subagent-start.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Injecting supaschema subagent context"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-subagent-stop.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking supaschema subagent response shape"
+          }
+        ]
+      }
+    ],
     "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-stop.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking supaschema response shape"
+          }
+        ]
+      },
       {
         "hooks": [
           {
