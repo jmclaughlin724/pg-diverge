@@ -8,7 +8,6 @@ description: Repo-local FastMCP agent server contract, read-only tool surface, d
 
 This rule owns the repo-local FastMCP agent server surface: local stdio, read-only, no credential reads, no shell or mutation authority, and alignment across MCP config, server code, tests, and guards.
 
-
 Repo-local agent MCP servers are governed surfaces, not throwaway helpers.
 
 - `supaschema` is the canonical supaschema FastMCP server (`services/agent-mcp`, package `supaschema-agent-mcp`) for local repo-agent context. It stays read-only and local stdio.

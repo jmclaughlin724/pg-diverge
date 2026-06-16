@@ -38,7 +38,7 @@ Configuration precedence is: CLI flags/overrides, selected profile, trusted proj
 - `.codex/config.toml` is repo-owned runtime config.
 - `.codex/hooks.json` and `.codex/hooks/**` are repo-owned native Codex hook runtime surfaces.
 - `.mcp.json` owns MCP registry data; do not hand-duplicate registry entries in Codex config unless the task is explicitly direct Codex runtime config.
-- `.claude/**` owns durable rule policy, skills, commands, agents, and Claude hooks. `.codex/rules/**` should hold Codex-native command policy or short pointers to canonical rule owners; generated `.codex/skills/**`, `.codex/agents/**`, `.agents/**`, and `.gemini/**` mirrors should come from sync.
+- `.claude/**` owns durable rule policy, skills, commands, agents, and Claude hooks. `.codex/rules/**` should hold Codex-native command policy or short pointers to canonical rule owners; generated `.codex/agents/**`, `.agents/**`, and `.gemini/**` mirrors should come from sync.
 - `npm run sync:llm` must not sync, generate, or validate Claude hook wiring or native Codex hooks.
 
 ## Closeout

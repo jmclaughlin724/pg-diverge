@@ -2,7 +2,7 @@
 
 Formal schema for historical optional authoring blocks a skill may carry in its frontmatter: `validate`, `chainTo`, and `retrieval`. These are documentation-only extensions to the official Claude Code skill frontmatter — they describe authoring intent and travel with the skill. In supaschema the shared agent hook matcher (`scripts/agent-hooks/skills.mjs`) scores explicit skill names, `metadata.keywords`, and `metadata.file-triggers`; it does not parse these custom blocks. Do not add `validate` or `chainTo` to repo-managed skills as enforcement. Add a guard or test instead, and use structured parsing or AST helpers for code structure.
 
-Generated mirrors are produced by `scripts/skills/sync-llm.mjs` (`npm run sync:llm`), which owns the mapping from `.claude/**` source surfaces into Codex and `.agents` targets. It byte-copies the full `.claude/skills/**` tree into `.agents/skills/**` and `.codex/skills/**`, byte-copies `.claude/hooks/**` into `.codex/hooks/**`, renders `.claude/agents/**/*.md` into Codex-native `.codex/agents/**/*.toml`, and renders `.claude/rules/**/*.md` into comment-only `.codex/rules/**/*.rules` files.
+Generated mirrors are produced by `scripts/skills/sync-llm.mjs` (`npm run sync:llm`), which owns the mapping from `.claude/**` source surfaces into Codex and `.agents` targets. It byte-copies the full `.claude/skills/**` tree into `.agents/skills/**`, byte-copies `.claude/hooks/**` into `.codex/hooks/**`, renders `.claude/agents/**/*.md` into Codex-native `.codex/agents/**/*.toml`, and renders `.claude/rules/**/*.md` into comment-only `.codex/rules/**/*.rules` files.
 
 ---
 
@@ -136,6 +136,6 @@ Run `npm run sync:llm` as the closeout for any edit under `.claude/skills/**`, `
 
 ## Skill mirror contract
 
-`scripts/skills/sync-llm.mjs` mirrors the full `.claude/skills/**` directory. Adding, moving, or deleting a file under a Claude skill requires no sync-manifest edit; rerun `npm run sync:llm` and the `.agents/skills/**` and `.codex/skills/**` trees are replaced with the current source tree.
+`scripts/skills/sync-llm.mjs` mirrors the full `.claude/skills/**` directory. Adding, moving, or deleting a file under a Claude skill requires no sync-manifest edit; rerun `npm run sync:llm` and the `.agents/skills/**` tree is replaced with the current source tree.
 
-After changing a mirrored skill's file set, re-run `npm run sync:llm`, then confirm the same file now exists under both `.agents/skills/<skill>/` and `.codex/skills/<skill>/`.
+After changing a mirrored skill's file set, re-run `npm run sync:llm`, then confirm the same file now exists under `.agents/skills/<skill>/`.

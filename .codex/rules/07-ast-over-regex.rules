@@ -12,7 +12,6 @@
 #
 # This rule owns structural analysis policy for repo scripts and hooks: use an AST/parser for code or SQL structure; reserve regex for text patterns with an explicit `regex-ok` reason.
 #
-#
 # Guards and hooks that reason about **code structure** parse it with a real **AST/parser** — never a regex. Regex cannot see structure: quote style, whitespace, type parameters, comments, and string contents all create bypasses (an adversarial pass found ~12 in the regex-era shape detector — single/mixed quotes, `z .enum`, `z.enum (`, a marker smuggled inside a string) and false positives. An AST sees the real tree, so that whole class of holes is gone by construction.
 #
 # Enforced by `scripts/guards/check-no-regex-in-scripts.mjs` (in `npm run guard` via `scripts/guards/check-all.mjs`). Detection is itself AST-based — each script is parsed with the TypeScript compiler API via `scripts/guards/lib/ast-utils.mjs`, so the rule dogfoods.

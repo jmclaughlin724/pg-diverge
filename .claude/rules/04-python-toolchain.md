@@ -8,7 +8,6 @@ description: Python uv workspace, ruff, mypy, pytest, pip-audit, and pylsp stand
 
 This rule owns the Python developer toolchain for `services/agent-mcp`: uv workspace layout, ruff formatting/linting, mypy strict typing, pytest, pip-audit, and pylsp/cclsp integration.
 
-
 The Python side of this repo is a single **uv workspace** member: `services/agent-mcp` (`supaschema-agent-mcp`), the read-only local supaschema FastMCP side-service. There is no FastAPI, no `services/api`, no `services/workers`, and no web HTTP API here — the server is FastMCP (`fastmcp` + `pydantic`), and its server boundary, capabilities, and wiring are owned by **Rule 11 (Agent MCP FastMCP)**. This rule owns only the Python developer toolchain: format, lint, types, tests, supply-chain, and the pylsp language server. The package manager for the JS/TS repo is **npm** (never pnpm); the Python `py:*` scripts are npm scripts that shell out to `uv`.
 
 ## Layout

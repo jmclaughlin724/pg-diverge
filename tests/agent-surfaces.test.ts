@@ -23,7 +23,7 @@ describe("agent surface sync", () => {
     syncAgentSurfaces({ root });
     await rm(join(root, ".agents/skills/supaschema/SKILL.md"));
     await write(root, ".agents/skills/supaschema/extra.md", "extra\n");
-    await write(root, ".codex/skills/supaschema/SKILL.md", "drift\n");
+    await write(root, ".agents/skills/upstream/SKILL.md", "drift\n");
 
     const errors = checkAgentSurfaces({ root });
 
@@ -31,7 +31,7 @@ describe("agent surface sync", () => {
       expect.arrayContaining([
         expect.stringContaining("mirror .agents/skills missing files: supaschema/SKILL.md"),
         expect.stringContaining("mirror .agents/skills has unmanaged files: supaschema/extra.md"),
-        expect.stringContaining("mirror drifted for .codex/skills: supaschema/SKILL.md"),
+        expect.stringContaining("mirror drifted for .agents/skills: upstream/SKILL.md"),
       ])
     );
   });
@@ -40,7 +40,6 @@ describe("agent surface sync", () => {
     const root = await seedSurfaceRoot();
     syncAgentSurfaces({ root });
     await write(root, ".agents/skills/upstream/extra.md", "extra\n");
-    await write(root, ".codex/skills/upstream/SKILL.md", "drift\n");
     await write(root, ".codex/hooks/stale.mjs", "stale\n");
     await write(root, ".codex/agents/stale.toml", 'name = "stale"\n');
     await write(root, ".codex/rules/stale.rules", "# stale\n");
@@ -53,7 +52,7 @@ describe("agent surface sync", () => {
       hooks: 2,
       publicSkills: 2,
       rules: 2,
-      skillTargets: 2,
+      skillTargets: 1,
       skills: 3,
     });
     expect(checkAgentSurfaces({ root })).toEqual([]);
@@ -91,11 +90,11 @@ describe("agent surface sync", () => {
       hooks: 0,
       publicSkills: 0,
       rules: 0,
-      skillTargets: 2,
+      skillTargets: 1,
       skills: 0,
     });
     expect(existsSync(join(root, ".agents/skills"))).toBe(true);
-    expect(existsSync(join(root, ".codex/skills"))).toBe(true);
+    expect(existsSync(join(root, ".codex/skills"))).toBe(false);
     expect(existsSync(join(root, "skills/supaschema"))).toBe(true);
     expect(existsSync(join(root, ".codex/hooks"))).toBe(true);
     expect(existsSync(join(root, ".codex/agents"))).toBe(true);

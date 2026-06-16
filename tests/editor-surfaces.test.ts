@@ -131,7 +131,6 @@ describe("editor and language-server surfaces", () => {
         ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
         ".codex/hooks.json",
         ".codex/rules/supaschema.rules",
-        ".codex/skills/supaschema",
       ])
     );
     expect(files).not.toEqual(expect.arrayContaining([".vscode", ".mcp.json"]));

@@ -8,7 +8,6 @@ description: npm package `files` boundary, consumer agent bundle, postinstall/sc
 
 This rule owns the published npm package boundary: `package.json#files`, tarball contents, consumer agent bundle, scaffold/postinstall behavior, lifecycle-script silence, and package-content tests.
 
-
 Sources:
 
 - npm package `files`: <https://docs.npmjs.com/cli/v8/configuring-npm/package-json/#files>
@@ -25,9 +24,10 @@ The published package is an explicit consumer surface. The repository also conta
 - Do not add a root `.npmignore` while `package.json` `files` owns the package boundary.
 - Treat `npm pack --dry-run --json` as the authoritative preview of the published tarball.
 - `postinstall` owns consumer setup after npm downloads the package. Do not confuse tarball contents with files written into the consuming project.
-- The downloadable consumer agent bundle is deliberately narrow: `.agents/skills/supaschema`, `.claude/skills/supaschema`, `.claude/rules/supaschema.md`, `.claude/hooks/auto-diff-on-schema-change.mjs`, `.claude/hooks/block-generated-migration-edits.mjs`, `.claude/hooks/sync-llm-on-claude-surface-change.mjs`, `.codex/hooks.json`, and the matching Codex rule, skill, and hook script mirrors.
+- The downloadable consumer agent bundle is deliberately narrow: `.agents/skills/supaschema`, `.claude/skills/supaschema`, `.claude/rules/supaschema.md`, `.claude/hooks/auto-diff-on-schema-change.mjs`, `.claude/hooks/block-generated-migration-edits.mjs`, `.claude/hooks/sync-llm-on-claude-surface-change.mjs`, `.codex/hooks.json`, and the matching Codex rule and hook script mirrors.
 - `skills/supaschema` is the only public `npx skills` source in this repository. It is a generated mirror of `.claude/skills/supaschema` and installs portable Agent Skill context only. It must not include hooks, rules, subagents, config scaffolding, or maintainer skills.
-- Do not advertise the repository root as an `npx skills` source. The Skills CLI scans standard agent directories such as `.agents/skills`, `.claude/skills`, and `.codex/skills`; this repository uses those locations for maintainer mirrors while developing supaschema itself.
+- Do not advertise the repository root as an `npx skills` source. The Skills CLI scans standard agent directories such as `.agents/skills` and `.claude/skills`; this repository uses those locations for maintainer mirrors while developing supaschema itself.
+- npm install must not run the Skills CLI or depend on the user's Skills destination choice. `postinstall` and `supaschema init` copy the packaged supaschema skill directories directly into `.agents/skills/supaschema` and `.claude/skills/supaschema`.
 - Rules and hooks ship through the npm package scaffold, not through `npx skills`. `postinstall` and `supaschema init` copy the consumer rule/skill/hook files and merge `.claude/settings.json` / `.codex/hooks.json` because those surfaces require runtime-specific project registration.
 - `docs/coding-agents/agent-bundle.mdx` is the reader-facing owner for consumer agent bundle contents, installed hook names, hook events, and schema-edit workflow trigger behavior such as `auto-diff-on-schema-change.mjs`. `docs/reference/package-boundary.mdx` owns package mechanics only and should link to the agent-bundle page instead of duplicating the hook contract.
 - Consumer setup writes `.claude/settings.json` through `bin/scaffold.mjs` and merges `.codex/hooks.json` from the packaged consumer registration file. The packaged `.codex/hooks.json` must only wire the supaschema generated-migration block, schema auto-diff, and LLM surface sync hooks.

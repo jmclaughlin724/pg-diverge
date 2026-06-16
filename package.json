@@ -39,8 +39,14 @@
       "import": "./dist/index.js"
     }
   },
+  "main": "index.js",
   "bin": {
     "supaschema": "bin/supaschema"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
   },
   "files": [
     ".agents/prompts/supaschema-install.md",
@@ -55,7 +61,6 @@
     ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
     ".codex/hooks.json",
     ".codex/rules/supaschema.rules",
-    ".codex/skills/supaschema",
     "bin",
     "supaschema-config.schema.json",
     "dist",
@@ -109,7 +114,6 @@
     "lint": "ultracite check .",
     "lint:ci": "biome ci .",
     "lint:doctor": "ultracite doctor",
-    "lint:fix": "ultracite fix .",
     "pack:dry": "npm pack --dry-run",
     "prepare": "npm run build && node scripts/install-hooks.mjs",
     "py:fix": "uv run --package supaschema-agent-mcp ruff check --fix services/agent-mcp && uv run --package supaschema-agent-mcp ruff format services/agent-mcp",
@@ -125,7 +129,8 @@
     "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
   "overrides": {
-    "minimatch": "10.2.5"
+    "minimatch": "10.2.5",
+    "read-yaml-file": "2.1.0"
   },
   "dependencies": {
     "commander": "^15.0.0",
@@ -142,7 +147,7 @@
     "@taplo/cli": "0.7.0",
     "@types/node": "^25.9.3",
     "@types/pg": "^8.15.6",
-    "@vitest/coverage-v8": "4.1.8",
+    "@vitest/coverage-v8": "4.1.9",
     "bash-language-server": "5.6.0",
     "dockerfile-language-server-nodejs": "0.15.0",
     "fast-check": "^4.8.0",
@@ -162,7 +167,7 @@
     "ultracite": "7.8.3",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
-    "vitest": "4.1.8",
+    "vitest": "4.1.9",
     "vscode-langservers-extracted": "4.10.0",
     "yaml": "^2.9.0",
     "yaml-language-server": "1.23.0"

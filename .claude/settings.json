@@ -8,7 +8,6 @@
     "mintlify",
     "next-devtools",
     "openaiDeveloperDocs",
-    "sentry",
     "ultracite",
     "zod",
     "supaschema-docs"
@@ -20,7 +19,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-start.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-start.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -32,7 +33,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-user-prompt-submit.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-user-prompt-submit.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -45,7 +48,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-pre-tool-use.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-pre-tool-use.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -67,7 +72,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/block-generated-migration-edits.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-generated-migration-edits.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -80,7 +87,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-post-tool-use.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-post-tool-use.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -91,7 +100,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/auto-diff-on-schema-change.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/auto-diff-on-schema-change.mjs"
+            ],
             "timeout": 130
           }
         ]
@@ -103,7 +114,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-start.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-start.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -115,7 +128,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-stop.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-stop.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -127,7 +142,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-stop.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-stop.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -139,7 +156,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-task-completed.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-task-completed.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -152,7 +171,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-permission-denied.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-permission-denied.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -164,7 +185,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-end.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-end.mjs"
+            ],
             "timeout": 2
           }
         ]
@@ -176,7 +199,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"
+            ],
             "timeout": 130
           }
         ]

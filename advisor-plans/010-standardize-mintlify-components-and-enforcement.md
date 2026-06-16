@@ -23,14 +23,14 @@ The local docs rule already says to use Mintlify components semantically:
 
 ```md
 // .claude/rules/02-mintlify-writing-standards.md
+
 - Use Mintlify components for the structures they own: `<Steps>` for complex procedures, `<ParamField>` for parameters/flags, `<ResponseField>` and `<Expandable>` for response shapes, `<Frame>` for images, and semantic callouts for notes, tips, warnings, and critical cautions.
 ```
 
 The component reference allows `<Card>` / `<CardGroup>` for navigation:
 
 ```md
-// .claude/rules/03-mintlify-component-reference.md
-| Navigation or related resources | `<Card>` / `<CardGroup>` |
+// .claude/rules/03-mintlify-component-reference.md | Navigation or related resources | `<Card>` / `<CardGroup>` |
 ```
 
 The current lint script enforces frontmatter, links, code fences, `ParamField` on command pages, image paths/frames, docs config shape, contextual options, and navigation membership. It does not inspect card grid shape, heading sentence case, adjacent callouts, or card body length.

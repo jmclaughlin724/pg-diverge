@@ -1,7 +1,8 @@
 ---
 title: "corpus"
 description: "Run the dirty-real regression oracle against a disposable PostgreSQL database."
-keywords: ["corpus command", "regression oracle", "catalog parity", "reconvergence"]
+keywords:
+  ["corpus command", "regression oracle", "catalog parity", "reconvergence"]
 ---
 
 Use `corpus` when you need regression coverage for false drift and catalog parity bugs.
@@ -41,11 +42,11 @@ Without a database URL, `corpus` prints a skip notice and exits `0`.
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Corpus converged, or skipped because no database URL resolved |
-| `1` | Runtime failure |
-| `2` | Corpus diagnostics failed |
+| Code | Meaning                                                       |
+| ---- | ------------------------------------------------------------- |
+| `0`  | Corpus converged, or skipped because no database URL resolved |
+| `1`  | Runtime failure                                               |
+| `2`  | Corpus diagnostics failed                                     |
 
 ## Related
 

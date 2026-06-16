@@ -84,7 +84,6 @@ export const installedAgentFiles = [
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks.json",
   ".codex/rules/supaschema.rules",
-  ".codex/skills/supaschema/SKILL.md",
 ];
 
 // Maintainer-only workspace files that must NOT be scaffolded into a consumer.

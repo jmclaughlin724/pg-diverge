@@ -12,7 +12,6 @@
 #
 # This rule owns the deterministic repo-wide Code Atlas graph and proof standard used before broad owner, route, dependency, DB, API, worker, generated-surface, or rollout claims.
 #
-#
 # Code Atlas is the canonical repo-wide graph for agents. Use it to map owners, routes, imports, consumers, package edges, DB objects, DB policies, API routers, worker jobs, generated surfaces, and deploy surfaces before broad source claims or multi-surface edits.
 #
 # The repo uses a two-tier Code Atlas model. `scripts/code-atlas/**` is the deterministic, guard-enforced atlas. CodeAtlas-Live is an optional MCP/editor accelerator for live context packs, impact analysis, health reports, and snapshot queries when installed; use the public docs at `https://www.codeatlas.live/docs`, the VS Code Marketplace listing `codeatlaslive.codeatlas-live`, and the npm package `@codeatlas/mcp` as the upstream reference surfaces. The live tier is never authoritative, and `npx` fallback requires explicit `CODEATLAS_MCP_ALLOW_NPX=1`.

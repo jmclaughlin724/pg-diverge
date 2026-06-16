@@ -52,9 +52,9 @@ const complexityCapIncludes = [
 
 const toolPins = {
   "@biomejs/biome": "2.5.0",
-  "@vitest/coverage-v8": "4.1.8",
+  "@vitest/coverage-v8": "4.1.9",
   ultracite: "7.8.3",
-  vitest: "4.1.8",
+  vitest: "4.1.9",
 };
 
 // package.json is the single source of truth for the pinned tooling versions;
@@ -97,7 +97,7 @@ assert(
     "uv run --package supaschema-agent-mcp ruff check --fix services/agent-mcp && uv run --package supaschema-agent-mcp ruff format services/agent-mcp",
   "py:fix must run ruff --fix (lint + import sort) then ruff format — the Python write lane"
 );
-assert(packageJson.scripts?.["lint:fix"] === "ultracite fix .", "lint:fix must run Ultracite fix");
+assert(!("lint:fix" in packageJson.scripts), "format must be the only repo-wide write/fix script");
 assert(
   packageJson.scripts?.["lint:doctor"] === "ultracite doctor",
   "lint:doctor must run Ultracite doctor"
@@ -175,7 +175,6 @@ function assertAgentPackageSurface(files) {
     ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
     ".codex/hooks.json",
     ".codex/rules/supaschema.rules",
-    ".codex/skills/supaschema",
   ]);
 
   for (const file of files) {

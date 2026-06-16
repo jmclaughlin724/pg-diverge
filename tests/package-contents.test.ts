@@ -77,7 +77,6 @@ describe("npm package contents", () => {
       ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
       ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
-      ".codex/skills/supaschema/SKILL.md",
       "README.md",
       "LICENSE",
       "LICENSE-COMMERCIAL.md",

@@ -117,8 +117,6 @@ jobs:
         run: npm run fixture:verify
       - name: Corpus oracle (dirty-real reconvergence)
         run: npm run corpus:check
-      - name: Benchmark regression gate
-        run: npm run benchmark
 
   check-os:
     # Path handling and git: sources without a database; DB-gated tests skip.

@@ -56,11 +56,11 @@ npx supaschema sync --env staging
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Dry run passed, apply passed, or nothing was pending |
-| `1` | Runtime failure |
-| `2` | Gate failure or inconsistent migration history |
+| Code | Meaning                                              |
+| ---- | ---------------------------------------------------- |
+| `0`  | Dry run passed, apply passed, or nothing was pending |
+| `1`  | Runtime failure                                      |
+| `2`  | Gate failure or inconsistent migration history       |
 
 ## Related
 
@@ -71,10 +71,18 @@ npx supaschema sync --env staging
   <Card title="Check" icon="shield-check" href="/commands/check">
     See the replay-safety gate `sync` runs.
   </Card>
-  <Card title="Supabase integration" icon="database" href="/guides/supabase-integration">
+  <Card
+    title="Supabase integration"
+    icon="database"
+    href="/guides/supabase-integration"
+  >
     Understand the Supabase runner boundary.
   </Card>
-  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
+  <Card
+    title="Configuration"
+    icon="sliders-horizontal"
+    href="/configuration/config-file"
+  >
     Set `workflow.migration_sync`.
   </Card>
 </CardGroup>

@@ -8,7 +8,6 @@ description: Deterministic hook context, skill-loading enforcement, hook state, 
 
 This rule owns deterministic hook context and skill-loading enforcement: hook state selects relevant skills, skill loads are observable-only, and governed work is blocked until required context is loaded.
 
-
 Relevant project skills are selected and enforced by hook state, not by model judgment. Claude Code documents hooks as lifecycle commands that receive JSON on stdin and can add model-facing context with `hookSpecificOutput.additionalContext`; use that field for steering and reserve `systemMessage` for user-facing UI warnings (https://code.claude.com/docs/en/hooks). Claude Code skills expose `description` and `when_to_use` to help the model decide when to invoke a skill, but deterministic load-before-write behavior belongs in `PreToolUse` enforcement, not in skill prose (https://code.claude.com/docs/en/skills).
 
 ## Runtime map

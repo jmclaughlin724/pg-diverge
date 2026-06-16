@@ -137,7 +137,7 @@ assert(
 );
 assert(
   !releaseOn.workflow_run,
-  "release.yml must not wait on workflow_run; release must not be gated on the full CI/benchmark workflow"
+  "release.yml must not wait on workflow_run; release must not be gated on the full CI workflow"
 );
 assert(
   asArray(releaseOn.push?.branches).includes("main"),
@@ -253,7 +253,7 @@ assert(
 );
 assert(
   !release.raw.includes("npm run benchmark"),
-  "release.yml must not run benchmark; benchmarks stay in CI and must not block release publication"
+  "release.yml must not run benchmark; benchmarks are advisory and must not block release publication"
 );
 assert(
   !release.raw.includes("gh release upload"),
@@ -280,8 +280,8 @@ assert(
 );
 const checkRuns = (ci.jobs?.check?.steps ?? []).map((step) => String(step?.run ?? ""));
 assert(
-  checkRuns.some((run) => run.includes("npm run benchmark")),
-  "ci.yml check job must run npm run benchmark with SUPASCHEMA_DATABASE_URL"
+  !checkRuns.some((run) => run.includes("npm run benchmark")),
+  "ci.yml check job must not run npm run benchmark; benchmarks are advisory and must not block CI"
 );
 const oses = jobMatrix(ci, "check-os", "os");
 assert(
@@ -293,8 +293,30 @@ assert(
 // has no runtime deps, so mypy/pytest need --package or they fail import-not-found.
 const python = parsed.get("python.yml")?.doc;
 assert(python, "python.yml must exist");
+const pythonSteps = python.jobs?.python?.steps ?? [];
+const pythonSetupNode = pythonSteps.find((step) => stepActionName(step) === "actions/setup-node");
+assert(
+  pythonSetupNode?.with?.["node-version"] === 22,
+  `python.yml must set up Node 22 for Code Atlas-backed FastMCP tests (got ${JSON.stringify(pythonSetupNode?.with?.["node-version"])})`
+);
+assert(
+  pythonSetupNode?.with?.cache === "npm",
+  "python.yml setup-node step must enable npm caching for Code Atlas dependencies"
+);
 const pythonRunSteps = (python.jobs?.python?.steps ?? []).filter(
   (step) => typeof step?.run === "string"
+);
+const npmInstallIndex = pythonRunSteps.findIndex(
+  (step) => step.run.trim() === "npm ci --ignore-scripts"
+);
+const pytestIndex = pythonRunSteps.findIndex((step) => step.run.includes("pytest"));
+assert(
+  npmInstallIndex >= 0,
+  "python.yml must install npm deps with `npm ci --ignore-scripts` for Code Atlas-backed FastMCP tests"
+);
+assert(
+  pytestIndex >= 0 && npmInstallIndex < pytestIndex,
+  "python.yml must install Code Atlas npm deps before pytest"
 );
 for (const tool of ["mypy", "pytest"]) {
   const steps = pythonRunSteps.filter((step) => step.run.includes(tool));

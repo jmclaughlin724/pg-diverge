@@ -19,7 +19,7 @@ Install scans the repository before writing config:
 - one detected schema folder and one detected migrations folder are used automatically;
 - provider markers seed default folders when no existing folders are found;
 - generic PostgreSQL projects use `database/schemas` and `database/migrations`;
-- multiple candidates are recorded in `.supaschema/install.json`;
+- multiple candidates that still need confirmation are recorded in `.supaschema/install.json`;
 - interactive terminals can confirm paths immediately.
 
 <Warning>
@@ -37,6 +37,8 @@ Install scans the repository before writing config:
 | Azure PostgreSQL markers in Terraform, Bicep, ARM, or Azure Developer CLI config | `azure-postgresql/schemas` | `azure-postgresql/migrations` |
 
 Commit `supaschema.config.json` after confirming paths. It keeps humans, CI, and coding agents on the same schema tree and migration directory.
+
+Resolved installs do not create `.supaschema/`; `supaschema.config.json` is the durable project state.
 
 ## Agent addendum
 

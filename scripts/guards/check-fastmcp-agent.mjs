@@ -61,13 +61,16 @@ const expectedServers = [
   "mintlify",
   "next-devtools",
   "openaiDeveloperDocs",
-  "sentry",
   "ultracite",
   "zod",
   "supaschema-docs",
 ];
+const disallowedServers = ["MCP_DOCKER", "render", "sentry"];
 for (const serverName of expectedServers) {
   assert(mcp[serverName], `.mcp.json missing ${serverName}`);
+}
+for (const serverName of disallowedServers) {
+  assert(!mcp[serverName], `.mcp.json must not expose ${serverName} MCP`);
 }
 assert(!mcp.codeatlas, ".mcp.json must not expose standalone codeatlas MCP");
 assert(!mcp.repo_context, ".mcp.json must not expose legacy repo_context MCP");
@@ -80,6 +83,12 @@ for (const serverName of expectedServers) {
   assert(
     settings.enabledMcpjsonServers?.includes(serverName),
     `.claude/settings.json must enable ${serverName}`
+  );
+}
+for (const serverName of disallowedServers) {
+  assert(
+    !settings.enabledMcpjsonServers?.includes(serverName),
+    `.claude/settings.json must not enable ${serverName}`
   );
 }
 assert(
@@ -95,6 +104,12 @@ for (const serverName of expectedServers) {
   assert(
     codexConfig.includes(`mcp_servers.${serverName}`),
     `.codex/config.toml missing ${serverName}`
+  );
+}
+for (const serverName of disallowedServers) {
+  assert(
+    !codexConfig.includes(`[mcp_servers.${serverName}]`),
+    `.codex/config.toml must not expose ${serverName} MCP`
   );
 }
 assert(

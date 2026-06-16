@@ -28,16 +28,22 @@ database or migration state + declarative SQL tree
 
 <Steps>
   <Step title="Extract">
-    supaschema loads both sides into structured PostgreSQL models. SQL understanding comes from parser-backed models, not raw text comparison.
+    supaschema loads both sides into structured PostgreSQL models. SQL
+    understanding comes from parser-backed models, not raw text comparison.
   </Step>
   <Step title="Plan">
-    The planner compares tables, constraints, indexes, functions, triggers, views, policies, grants, publications, subscriptions, storage objects, and supported extension ownership.
+    The planner compares tables, constraints, indexes, functions, triggers,
+    views, policies, grants, publications, subscriptions, storage objects, and
+    supported extension ownership.
   </Step>
   <Step title="Render">
-    The renderer emits deterministic SQL with idempotent guards, lock and statement timeouts, lineage markers, and destructive-intent checks.
+    The renderer emits deterministic SQL with idempotent guards, lock and
+    statement timeouts, lineage markers, and destructive-intent checks.
   </Step>
   <Step title="Refresh generated outputs">
-    Configured TypeScript and Zod outputs are generated from the same declarative tree as the migration, keeping runtime validators aligned with schema intent.
+    Configured TypeScript and Zod outputs are generated from the same
+    declarative tree as the migration, keeping runtime validators aligned with
+    schema intent.
   </Step>
 </Steps>
 
@@ -50,13 +56,16 @@ database or migration state + declarative SQL tree
     Replays generated migrations and blocks unsafe or out-of-contract SQL.
   </Card>
   <Card title="Verify" icon="repeat-2" href="/commands/verify">
-    Proves the newest pending migration can apply twice against a disposable database.
+    Proves the newest pending migration can apply twice against a disposable
+    database.
   </Card>
   <Card title="CI drift gate" icon="git-branch" href="/guides/ci-gate">
-    Runs `supaschema diff --fail-on-diff --quiet` to fail when the schema tree and migrations drift.
+    Runs `supaschema diff --fail-on-diff --quiet` to fail when the schema tree
+    and migrations drift.
   </Card>
   <Card title="Corpus oracle" icon="database-zap" href="/guides/corpus-oracle">
-    Tests real-world dirty catalogs for reconvergence when a database is reachable.
+    Tests real-world dirty catalogs for reconvergence when a database is
+    reachable.
   </Card>
 </CardGroup>
 
@@ -71,5 +80,7 @@ For plain PostgreSQL and hosted PostgreSQL providers, apply the checked SQL with
 For Supabase projects, `supaschema sync` is the optional explicit handoff lane. With no apply flag it is a dry run. With `--local` or `--remote`, it runs status and replay-safety gates before delegating the apply or deploy step to the Supabase CLI, and only when the configured workflow allows explicit apply handoff.
 
 <Note>
-  The common workflow is still one generation command: `npx supaschema diff`. `check`, `verify`, and `sync` are optional gates for CI, release, and operator-controlled deployment.
+  The common workflow is still one generation command: `npx supaschema diff`.
+  `check`, `verify`, and `sync` are optional gates for CI, release, and
+  operator-controlled deployment.
 </Note>
