@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 (2026-06-16)
+
+- Package boundary and release guidance: the npm allowlist is tightened around runtime code, generated config artifacts, README/license files, and the agent bundle needed by consumers; release/package docs and guards now make that boundary easier to audit before publish.
+- Agent setup clarity: install/scaffold guidance now includes the consumer-facing agent prompt surface, keeps Claude/Codex/.agents mirrors aligned, and expands durable operator rules for worktree safety, security, file-size composition, prompt/context authoring, and context-surface synchronization.
+- ADHD-first Mintlify documentation pass: navigation now follows reader jobs, entry and guide pages lead with the action to take, command reference pages use a shared compact template, and the former utility-command catch-all is split into one page per command.
+- Docs component enforcement: `CardGroup` is the canonical docs card grid, cards must be iconed and short, oversized grids/callout stacks/title-case headings are linted, and the docs-standard test suite now includes adversarial malformed-component fixtures.
+
 ## 0.2.0 (2026-06-15)
 
 - One-step consumer install: package install now prepares missing config, schema and migrations directories, Claude/Codex-compatible rule and skill files, hook scripts, hook wiring, and tagged `AGENTS.md` / `CLAUDE.md` addenda. `supaschema init` remains available as a no-clobber recovery command rather than a required second setup step.

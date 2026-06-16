@@ -72,7 +72,7 @@ Exit codes:
 program
   .command("init")
   .description(
-    "Scaffold the full supaschema setup in the current directory — config, schema/migration directories, agent rules/skills/hooks, and AGENTS/CLAUDE guidance. This is the same setup `postinstall` performs; run it when npm did not run install scripts (npm v12 defaults to ignore-scripts) or to repair setup. It is idempotent: an existing config is left untouched and the managed guidance block is upserted in place."
+    "Scaffold the full supaschema setup in the current directory — config, schema/migration directories, agent rules/skills/hooks, and AGENTS/CLAUDE guidance. This is the same setup `postinstall` performs; run it when dependency lifecycle scripts were blocked or skipped, or to repair setup. It is idempotent: an existing config is left untouched and the managed guidance block is upserted in place."
   )
   .option("--dry-run", "print the scaffold/repair plan without writing files")
   .option("--json", "print the init result as redacted JSON")

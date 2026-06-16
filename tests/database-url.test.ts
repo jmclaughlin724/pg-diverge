@@ -85,6 +85,7 @@ describe("install-time project setup", () => {
     expect(manifest.adapter).toBe("auto");
 
     for (const file of [
+      ".agents/prompts/supaschema-install.md",
       ".agents/skills/supaschema/SKILL.md",
       ".claude/hooks/auto-diff-on-schema-change.mjs",
       ".claude/hooks/block-generated-migration-edits.mjs",
@@ -117,9 +118,15 @@ describe("install-time project setup", () => {
 
     const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
     const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
+    const prompt = await readFile(join(consumer, ".agents/prompts/supaschema-install.md"), "utf8");
     expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
     expect(agents).toContain("Schema intent belongs in `database/schemas`");
+    expect(agents).toContain(".agents/prompts/supaschema-install.md");
     expect(claude).toContain("<!-- supaschema:agent-guidance:start -->");
+    expect(prompt).toContain("Do not clone `jmclaughlin724/supaschema`");
+    expect(prompt).toContain("npm install supaschema");
+    expect(prompt).not.toContain("--save-dev");
+    expect(prompt).toContain("npx supaschema config validate --json");
 
     await run("node", ["bin/postinstall.mjs"], { env });
     const claudeSettings = JSON.parse(
@@ -354,6 +361,7 @@ describe("install-time project setup", () => {
     });
 
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(true);
+    expect(existsSync(join(consumer, ".agents/prompts/supaschema-install.md"))).toBe(true);
     expect(existsSync(join(consumer, ".agents/skills/supaschema/SKILL.md"))).toBe(true);
     expect(existsSync(join(consumer, ".claude/rules/supaschema.md"))).toBe(true);
     expect(existsSync(join(consumer, ".codex/hooks.json"))).toBe(true);

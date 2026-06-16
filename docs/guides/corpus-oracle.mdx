@@ -1,69 +1,58 @@
 ---
 title: "Corpus oracle"
-description: "Dirty-real catalog regression testing for cross-lane schema diff correctness."
+description: "Run dirty-real catalog regression tests for cross-lane schema diff correctness."
 keywords: ["corpus oracle", "dirty-real testing", "reconvergence", "catalog"]
 ---
 
-Use `supaschema corpus` to catch false drift and catalog parity bugs that unit fixtures miss.
+Use this when you need regression coverage for false drift and catalog parity bugs.
 
-The problem is simple: normal verification can compare supaschema to itself.
+The corpus lane applies deliberately messy migrations to a disposable database, reconciles that database against a clean declarative tree, checks the rendered migration, applies it twice, and requires the final diff to converge to zero operations.
 
-If the model is wrong in the same way twice, fingerprints can still match.
+## Use this when
 
-The corpus lane uses a dirty-real database to break that symmetry.
+- A bug involved false drift or catalog mismatch.
+- Unit fixtures were too clean to catch the failure.
+- You want package-level proof across real PostgreSQL catalog noise.
+- A consuming repo needs its own incident-history corpus.
 
-The corpus is an independently-evolved, deliberately dirty database. The lane:
+## Do this
 
-1. Create a disposable database and apply `roles.sql`.
-2. Replay `migrations/*.sql` in version order, one transaction per file.
-3. Cross-lane diff the dirty database against `tree/` (the same end state in clean declarative spelling, plus intended pending work) and render the reconciliation under `corpus.json`.
-4. Static-check the rendered migration, then apply it twice — the second apply must leave the catalog fingerprint unchanged.
-5. Re-diff the database against the tree: the residual must be zero operations (`SUPA_CORPUS_RECONVERGENCE` otherwise). A correct diff engine must converge; false drift cannot.
-
-The migrations deliberately deposit catalog noise: default ACL rows, RLS facet pairs, explicit grants, no-op revokes, and grant-then-revoke churn.
-
-## Running it
-
-```sh
-npm run corpus:check
-# or
-supaschema corpus --corpus-dir corpus/supabase-style [--database-url <url>] [--json]
-```
-
-The database URL resolves like every other command (flag, then `SUPASCHEMA_DATABASE_URL`, then the nearest `supabase/config.toml`). Without a resolvable URL the command prints a skip notice and exits 0, so OS-matrix CI jobs without a database pass through. Non-local hosts are refused unless `SUPASCHEMA_CORPUS_ALLOW_REMOTE=1`.
-
-## Regression-corpus discipline
-
-Every false-drift or parity bug should add one corpus case in the same change that fixes it.
-
-Add:
-
-- the triggering DDL in `corpus/supabase-style/migrations/`;
-- the clean declarative end state in `tree/`;
-- a converging `npm run corpus:check` result.
-
-## Bring your own corpus
-
-`--corpus-dir` accepts any directory with the same four pieces:
-
-- `roles.sql`;
-- `migrations/`;
-- `tree/`;
-- `corpus.json`.
-
-A consuming repository can keep its own corpus for its own incident history. The shipped corpus protects the engine. Your corpus protects your schema's specific shapes.
-
-## Scope
-
-The corpus lane answers: **is the engine right?**
-
-It does not replace repo drift checks.
-
-For a real repository, still run:
+Run the bundled corpus:
 
 ```bash
-supaschema diff --fail-on-diff
-supaschema migrations
+npm run corpus:check
 ```
 
-Those answer: **is this repo in sync with its databases?**
+Or run the CLI directly:
+
+```bash
+npx supaschema corpus --corpus-dir corpus/supabase-style --database-url "$DATABASE_URL"
+```
+
+Without a resolvable database URL, the command prints a skip notice and exits 0.
+
+## Add a case
+
+For every false-drift or parity bug, add the triggering shape in the same change:
+
+- put the dirty migration in `corpus/supabase-style/migrations/`;
+- put the clean end state in `corpus/supabase-style/tree/`;
+- keep expected settings in `corpus/supabase-style/corpus.json`;
+- prove `npm run corpus:check` converges.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Benchmarks" icon="gauge" href="/benchmarks">
+    See timing and correctness evidence.
+  </Card>
+  <Card title="Support matrix" icon="table" href="/reference/support-matrix">
+    Check which PostgreSQL objects are modeled.
+  </Card>
+  <Card title="Check command" icon="shield-check" href="/commands/check">
+    Validate rendered corpus migrations.
+  </Card>
+  <Card title="Verify command" icon="repeat-2" href="/commands/verify">
+    Compare apply-twice behavior against the declarative tree.
+  </Card>
+</CardGroup>

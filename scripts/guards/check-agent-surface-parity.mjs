@@ -15,11 +15,36 @@ for (const surface of [".claude", ".agents", ".codex"]) {
   );
 }
 
+const publicSkillsRoot = path.join(ROOT, "skills");
+const publicSkillDirs = fs
+  .readdirSync(publicSkillsRoot, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
+assert(
+  JSON.stringify(publicSkillDirs) === JSON.stringify(["supaschema"]),
+  `public npx skills package must expose only skills/supaschema; found ${publicSkillDirs.join(", ")}`
+);
+
 const doctrine = "Before any broad owner, route, consumer, dependency, DB, API, worker";
+const agentsText = readText("AGENTS.md");
 const codexRuleText = readText(".codex/rules/supaschema.rules");
+const forbiddenAgentSections = ["## Non-negotiable rules", "## Migration policy"];
 const rule10Text = readText(".claude/rules/10-code-atlas.md");
 const supaschemaRuleText = readText(".claude/rules/supaschema.md");
-assert(readText("AGENTS.md").includes(doctrine), "AGENTS.md missing Code Atlas doctrine");
+assert(
+  !agentsText.includes(doctrine),
+  "AGENTS.md must route to Rule 10 instead of duplicating Code Atlas doctrine"
+);
+assert(
+  !forbiddenAgentSections.some((section) => agentsText.includes(section)),
+  "AGENTS.md must stay a route map instead of owning durable rule sections"
+);
+assert(
+  agentsText.includes(".claude/rules/10-code-atlas.md") &&
+    agentsText.includes(".claude/rules/supaschema.md"),
+  "AGENTS.md route map must point to Code Atlas and migration policy rule owners"
+);
 assert(
   rule10Text.includes("Code Atlas is the canonical repo-wide graph for agents") &&
     rule10Text.includes("Run Code Atlas before:"),

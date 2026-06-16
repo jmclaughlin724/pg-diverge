@@ -2,7 +2,16 @@
 # Do not edit directly; update the Claude rule source and re-run sync.
 # Codex .rules files are command-policy programs, so Claude Markdown policy is mirrored as comments.
 
+# ---
+# description: Code Atlas repo graph ownership, commands, proof standard, and MCP/local atlas split.
+# ---
+#
 # # Rule 10 — Code Atlas repo graph
+#
+# ## Contract
+#
+# This rule owns the deterministic repo-wide Code Atlas graph and proof standard used before broad owner, route, dependency, DB, API, worker, generated-surface, or rollout claims.
+#
 #
 # Code Atlas is the canonical repo-wide graph for agents. Use it to map owners, routes, imports, consumers, package edges, DB objects, DB policies, API routers, worker jobs, generated surfaces, and deploy surfaces before broad source claims or multi-surface edits.
 #
@@ -52,4 +61,16 @@
 # - Changes to Code Atlas behavior must update the same-change owner set: `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, `scripts/code-atlas/lib/**`, `scripts/code-atlas/query.mjs`, `scripts/code-atlas/mcp-wrapper.mjs`, `scripts/guards/check-code-atlas.mjs`, `.claude/skills/code-atlas/**`, and this rule when operator guidance changes.
 #
 # STOP if a broad owner, route, consumer, DB, API, worker, generated-surface, or rollout claim is made without Code Atlas or cclsp/source evidence; if live MCP output is treated as a final replacement for local atlas/source proof; if generated atlas/cache output is committed; if regex/string heuristics are added where AST/model data is available; or if the atlas guard is weakened instead of fixing the graph source. Do not use CodeAtlas-Live AI review/fix tools unless the user explicitly approves external LLM calls, API spend, and data exposure.
+#
+# ## Verification
+#
+# Run `npm run code-atlas:build`, the relevant `npm run code-atlas:query -- <kind> <value>`, and `npm run guard:code-atlas` after graph behavior changes. Use cclsp/direct reads after the atlas narrows the worklist.
+#
+# ## Failure behavior
+#
+# Fix the local atlas builder/query/guard. Do not commit `.tmp/code-atlas` or `.codeatlas`, replace the local atlas with hosted output, or treat live MCP output as final proof.
+#
+# ## Done means
+#
+# Broad claims cite local atlas/cclsp/source evidence, generated graph output remains scratch, and atlas changes include builder, query, guard, skill, and rule updates when guidance changed.
 #

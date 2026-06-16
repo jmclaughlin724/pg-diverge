@@ -134,6 +134,7 @@ assert(
 assertNoDisabledBiomeRules(biome.linter?.rules ?? {});
 assertBiomeOverrides(biome.overrides ?? []);
 assertAgentPackageSurface(packageJson.files ?? []);
+assertRuntimePackageSurface(packageJson.files ?? []);
 assertCclspProxyWiring(readJson(".claude/cclsp.json"));
 
 for (const file of gitFiles().filter((candidate) => candidate.endsWith(".ts"))) {
@@ -162,6 +163,7 @@ function hasRelativeTsImport(text) {
 
 function assertAgentPackageSurface(files) {
   const allowedAgentFiles = new Set([
+    ".agents/prompts/supaschema-install.md",
     ".agents/skills/supaschema",
     ".claude/hooks/auto-diff-on-schema-change.mjs",
     ".claude/hooks/block-generated-migration-edits.mjs",
@@ -192,6 +194,28 @@ function assertAgentPackageSurface(files) {
 
   for (const file of allowedAgentFiles) {
     assert(files.includes(file), `package.json must publish ${file}`);
+  }
+}
+
+function assertRuntimePackageSurface(files) {
+  const forbiddenPackagePrefixes = [
+    "benchmarks",
+    "corpus",
+    "docs",
+    "examples",
+    "scripts",
+    "services",
+    "src",
+    "tests",
+  ];
+
+  for (const file of files) {
+    for (const prefix of forbiddenPackagePrefixes) {
+      assert(
+        file !== prefix && !file.startsWith(`${prefix}/`),
+        `package.json must not publish ${prefix}/ through ${file}; keep it in the public repo/docs surface, not node_modules`
+      );
+    }
   }
 }
 

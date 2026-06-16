@@ -43,7 +43,7 @@ describe("docs authoring standard", () => {
 [bare](commands/diff)
 [dot](./setup)
 [parent](../configuration/hints)
-<Card title="Relative" href="commands/types" />
+<Card title="Relative" icon="terminal" href="commands/types" />
 `)
     );
 
@@ -69,7 +69,7 @@ describe("docs authoring standard", () => {
 [query](?playground=open)
 [mail](mailto:docs@example.com)
 [external](https://example.com/docs)
-<Card title="Root" href="/commands/types" />
+<Card title="Root" icon="terminal" href="/commands/types" />
 `)
     );
 
@@ -254,6 +254,105 @@ noindex: "no"
     );
 
     expect(violations).toEqual([]);
+  });
+
+  it("rejects Columns card grids and malformed cards", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+<Columns cols={2}>
+  <Card title="Missing icon" href="/commands/diff">
+    Read the command reference.
+  </Card>
+</Columns>
+
+<Card icon="terminal" href="/commands/check">
+  Missing title.
+</Card>
+`)
+    );
+
+    expect(violations.map((violation) => violation.rule)).toEqual(["card-grid", "card", "card"]);
+    expect(violations.map((violation) => violation.msg).join("\n")).toContain(
+      "use <CardGroup> for docs card grids"
+    );
+  });
+
+  it("limits CardGroup size by column count", async () => {
+    const twoColumn = await lintOne(
+      "docs/page.mdx",
+      page(`
+<CardGroup cols={2}>
+  <Card title="One" icon="circle">One.</Card>
+  <Card title="Two" icon="circle">Two.</Card>
+  <Card title="Three" icon="circle">Three.</Card>
+  <Card title="Four" icon="circle">Four.</Card>
+  <Card title="Five" icon="circle">Five.</Card>
+</CardGroup>
+`)
+    );
+    const threeColumn = await lintOne(
+      "docs/page.mdx",
+      page(`
+<CardGroup cols={3}>
+  <Card title="One" icon="circle">One.</Card>
+  <Card title="Two" icon="circle">Two.</Card>
+</CardGroup>
+`)
+    );
+
+    expect(twoColumn.map((violation) => violation.rule)).toEqual(["card-grid"]);
+    expect(threeColumn.map((violation) => violation.rule)).toEqual(["card-grid"]);
+  });
+
+  it("rejects long card bodies", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+<Card title="Long" icon="book">
+  This card body is deliberately much too long because cards should be glanceable, not miniature documentation sections with multiple clauses, several details, extra context, repeated caveats, and explanation that belongs in the page body instead of inside a compact card.
+</Card>
+`)
+    );
+
+    expect(violations.map((violation) => violation.rule)).toEqual(["card"]);
+    expect(violations[0]?.msg).toContain("35 words max");
+  });
+
+  it("rejects adjacent callouts without explanatory content", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+<Note>First note.</Note>
+<Tip>Second tip.</Tip>
+`)
+    );
+
+    expect(violations.map((violation) => violation.rule)).toEqual(["callout-spacing"]);
+  });
+
+  it("requires sentence-case body headings while allowing commands, acronyms, and code", async () => {
+    const rejected = await lintOne(
+      "docs/page.mdx",
+      page(`
+## How It Works
+`)
+    );
+    const allowed = await lintOne(
+      "docs/page.mdx",
+      page(`
+## diff
+
+## CI
+
+## \`dir:\` files
+
+## GitHub Actions
+`)
+    );
+
+    expect(rejected.map((violation) => violation.rule)).toEqual(["heading-case"]);
+    expect(allowed).toEqual([]);
   });
 
   it("rejects invalid docs.json config and orphan navigation pages", async () => {

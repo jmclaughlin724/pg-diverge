@@ -2,7 +2,16 @@
 # Do not edit directly; update the Claude rule source and re-run sync.
 # Codex .rules files are command-policy programs, so Claude Markdown policy is mirrored as comments.
 
+# ---
+# description: Deterministic hook context, skill-loading enforcement, hook state, response-shape policy, and Claude/Codex runtime split.
+# ---
+#
 # # Rule 12 — Deterministic hook context and skill-loading enforcement
+#
+# ## Contract
+#
+# This rule owns deterministic hook context and skill-loading enforcement: hook state selects relevant skills, skill loads are observable-only, and governed work is blocked until required context is loaded.
+#
 #
 # Relevant project skills are selected and enforced by hook state, not by model judgment. Claude Code documents hooks as lifecycle commands that receive JSON on stdin and can add model-facing context with `hookSpecificOutput.additionalContext`; use that field for steering and reserve `systemMessage` for user-facing UI warnings (https://code.claude.com/docs/en/hooks). Claude Code skills expose `description` and `when_to_use` to help the model decide when to invoke a skill, but deterministic load-before-write behavior belongs in `PreToolUse` enforcement, not in skill prose (https://code.claude.com/docs/en/skills).
 #
@@ -30,4 +39,25 @@
 # Stop-time detectors enqueue and auto-resolve session-scoped corrections for hedge density, completion claims with open items, verification claims without evidence breadcrumbs, decision menus after direct directives, deferral language, and tool failure without retry. `PreToolUse` also blocks further edits while evidence-related corrections remain unresolved.
 #
 # STOP if a governed surface is edited while a matched required skill is pending, if hook output uses `systemMessage` where model-facing context is required, if a hook failure silently allows a governed action, if a hook imports non-builtin non-relative runtime code, if generated mirrors drift from their `.claude/**` owner, or if `sync-llm` reintroduces predictable temp paths, check-then-write mirror writes, or symlink-following temp-file behavior.
+#
+# ## Verification
+#
+# When hook state, skill matcher, context injection, response-shape detectors, generated mirrors, or runtime adapters change, run:
+#
+# ```bash
+# npm run hooks:check
+# npm run guard:agent
+# npm run sync:llm
+# npm run guard
+# ```
+#
+# Run focused hook/skill-matcher tests for the changed module.
+#
+# ## Failure behavior
+#
+# Fix the canonical `.claude/**` hook or shared `scripts/agent-hooks/**` owner, then sync generated mirrors. Do not patch generated mirrors directly, use user-facing `systemMessage` for model steering, or fail open on governed writes.
+#
+# ## Done means
+#
+# Required skills are detected and loaded before governed work, context epochs reset correctly, mirrors are synced, hook graph imports are safe, and response-shape gates still operate.
 #

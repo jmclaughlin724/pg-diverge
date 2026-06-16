@@ -1,8 +1,8 @@
 ---
 title: "Environments"
-description: "How supaschema resolves database URLs — named environments, $ENV indirection, SUPASCHEMA_DATABASE_URL, and supabase/config.toml discovery."
+description: "How supaschema resolves PostgreSQL database URLs through named environments, $ENV indirection, SUPASCHEMA_DATABASE_URL, and provider-specific fallbacks."
 keywords:
-  ["environments", "database URL", "SUPASCHEMA_DATABASE_URL", "config.toml"]
+  ["environments", "database URL", "SUPASCHEMA_DATABASE_URL", "PostgreSQL"]
 ---
 
 Commands that read a live catalog need a database URL.
@@ -15,14 +15,14 @@ This includes:
 - `sync`;
 - `doctor`.
 
-You usually do not need to repeat the URL on every command. Configure it once, then select it with `--env`.
+You usually do not need to repeat the URL on every command. Configure each local, staging, preview, or production PostgreSQL target once, then select it with `--env`.
 
 ## Resolution order
 
 1. **An explicit value** — the `--database-url` flag or a `database:<url>` source.
 2. **A named environment** — the global `--env <name>` flag reads `environments.<name>.databaseUrl` from config.
 3. **`SUPASCHEMA_DATABASE_URL`** — the environment variable, when set.
-4. **The local Supabase stack** — the nearest `supabase/config.toml` (searched upward from the working directory) supplies the local URL from its `[db] port`. This is why a plain `npx supaschema diff` works in a Supabase project with the stack running.
+4. **The local Supabase stack** — for Supabase projects only, the nearest `supabase/config.toml` (searched upward from the working directory) supplies the local URL from its `[db] port`. Other providers should use named environments or `SUPASCHEMA_DATABASE_URL`.
 
 Explicit values and named environments support `$ENV_NAME` indirection. If the environment variable is missing, supaschema fails loudly.
 

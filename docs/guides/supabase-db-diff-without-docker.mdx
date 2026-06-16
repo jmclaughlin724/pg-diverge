@@ -4,69 +4,67 @@ description: "Generate Supabase-compatible PostgreSQL migrations from declarativ
 keywords: ["Docker-free diff", "Supabase db diff", "schema diff", "PostgreSQL"]
 ---
 
-You can generate a Supabase-compatible PostgreSQL migration without Docker by using `supaschema diff`. `supaschema` reads the declarative SQL files in your repo, compares them to the configured source state, and writes a replay-safe migration file that your normal Supabase runner can apply.
+Use this when a Supabase project needs a migration but Docker or a local stack is not part of the workflow.
 
-## The problem
+`supaschema diff` reads declarative SQL, compares it with the configured source state, and writes a migration that the Supabase CLI can apply.
 
-Database-backed diff workflows often need a local database, a Docker daemon, or a shadow database to replay the schema before they can compare states. That is slow in large projects and brittle in CI environments where Docker is unavailable or expensive.
+## Use this when
 
-`supaschema` avoids that replay step. It parses the schema tree directly with PostgreSQL's parser and renders the migration from the structural difference.
+- CI cannot run Docker reliably.
+- You want schema diffing without a shadow database.
+- Supabase should remain the migration runner.
+- The review should include replay-safety checks before `supabase db push`.
 
-## Install
+## Do this
 
-```bash
-npm install supaschema
-```
-
-In a standard Supabase project, put declarative SQL files under `supabase/schemas/`.
+Put declarative SQL under the configured Supabase schema path:
 
 ```bash
 mkdir -p supabase/schemas
 ```
 
-## Generate the migration
-
-Run:
+Generate and check the migration:
 
 ```bash
 npx supaschema diff
-```
-
-By default, `diff` reads `sources.from` and `sources.to` from `supaschema.config.json`. The scaffolded Supabase config uses `sources.from: "auto"` and `sources.to: "dir:supabase/schemas"`, so it uses the configured database state when available, falls back to `git:HEAD`, and writes a timestamped migration under `supabase/migrations/`.
-
-## Check the migration before applying it
-
-```bash
 npx supaschema check
 ```
 
-`check` verifies that generated SQL is parseable, replay-safe, and free of blocked hazards such as unapproved destructive operations or unsafe `CASCADE`.
-
-When a disposable database is reachable, also run:
-
-```bash
-npx supaschema verify
-```
-
-`verify` applies the pending migration twice and compares the resulting catalog to the declared schema.
-
-## Apply with Supabase CLI
-
-`supaschema` does not apply migrations to your tracked database. After review and checks pass, keep using:
+Then apply with the Supabase CLI:
 
 ```bash
 supabase db push
 ```
 
-This keeps ownership clear: `supaschema` generates and proves the migration, while the Supabase CLI applies it.
+`supaschema` generates and proves the migration. It never applies migrations to your tracked database.
 
-## CI drift gate
+## Verify
 
-Use `--fail-on-diff` to fail CI when the database and schema tree disagree:
+Use a disposable PostgreSQL database for apply-twice proof:
+
+```bash
+npx supaschema verify --ensure-environment --ensure-roles
+```
+
+In pull requests, fail when the configured sources drift:
 
 ```bash
 npx supaschema diff --fail-on-diff --quiet
-npx supaschema check
 ```
 
-See [GitHub Actions CI](/guides/ci-github-actions) for a complete workflow.
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Supabase integration" icon="database" href="/guides/supabase-integration">
+    See the Supabase path and runner model.
+  </Card>
+  <Card title="Diff command" icon="git-compare-arrows" href="/commands/diff">
+    Review source flags and drift behavior.
+  </Card>
+  <Card title="Check command" icon="shield-check" href="/commands/check">
+    Validate replay safety before applying SQL.
+  </Card>
+  <Card title="Supabase comparison" icon="scale" href="/comparisons/supaschema-vs-supabase-cli">
+    Compare this flow with `supabase db diff`.
+  </Card>
+</CardGroup>

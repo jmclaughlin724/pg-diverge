@@ -2,7 +2,16 @@
 # Do not edit directly; update the Claude rule source and re-run sync.
 # Codex .rules files are command-policy programs, so Claude Markdown policy is mirrored as comments.
 
+# ---
+# description: Python uv workspace, ruff, mypy, pytest, pip-audit, and pylsp standards for services/agent-mcp.
+# ---
+#
 # # Rule 04 — Python toolchain (uv + ruff + mypy) and pylsp
+#
+# ## Contract
+#
+# This rule owns the Python developer toolchain for `services/agent-mcp`: uv workspace layout, ruff formatting/linting, mypy strict typing, pytest, pip-audit, and pylsp/cclsp integration.
+#
 #
 # The Python side of this repo is a single **uv workspace** member: `services/agent-mcp` (`supaschema-agent-mcp`), the read-only local supaschema FastMCP side-service. There is no FastAPI, no `services/api`, no `services/workers`, and no web HTTP API here — the server is FastMCP (`fastmcp` + `pydantic`), and its server boundary, capabilities, and wiring are owned by **Rule 11 (Agent MCP FastMCP)**. This rule owns only the Python developer toolchain: format, lint, types, tests, supply-chain, and the pylsp language server. The package manager for the JS/TS repo is **npm** (never pnpm); the Python `py:*` scripts are npm scripts that shell out to `uv`.
 #
@@ -54,4 +63,25 @@
 # - After changing any dev tool or runtime dependency, run `uv lock` and commit `uv.lock`; the `uv sync --locked` step fails the PR on drift.
 #
 # STOP if a Python file ships unformatted (`ruff format --check` fails) or with ruff lint errors; if it fails `mypy` strict; if `uv.lock` drifts from `pyproject.toml` (`uv sync --locked` would fail); if the ruff/black/isort line lengths diverge from `100`; if the `.py`/`.pyi` cclsp mapping or a pylsp plugin is removed; if a `python.yml` step (or any script) runs a bare `uv run <tool>` that needs the member environment (`mypy`/`pytest`) without `--package supaschema-agent-mcp`, diverging from the canonical `py:*` invocations; if a competing Python formatter, linter, or type checker is added to the CLI/CI gate; or if FastAPI, `services/api`, pnpm, or any HTTP-API-only construct is reintroduced into this FastMCP-only Python surface.
+#
+# ## Verification
+#
+# When Python code, Python dependencies, pylsp config, or Python CI changes, run the focused Python lane:
+#
+# ```bash
+# npm run py:format:check
+# npm run py:lint
+# npm run py:typecheck
+# npm run py:test
+# ```
+#
+# After dependency/tool changes, run `uv lock` and verify `uv sync --locked` semantics.
+#
+# ## Failure behavior
+#
+# Fix ruff, mypy, pytest, uv lock drift, and package selector errors in the Python owner. Do not replace ruff/mypy/pytest with competing tools or run bare `uv run` commands that miss the `supaschema-agent-mcp` member environment.
+#
+# ## Done means
+#
+# Python code is formatted, linted, typed, tested, `uv.lock` is current when dependencies changed, and FastMCP-specific behavior still passes Rule 11 checks.
 #

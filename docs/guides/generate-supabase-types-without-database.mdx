@@ -1,76 +1,64 @@
 ---
 title: "Type generation"
-description: "Generate Supabase-compatible TypeScript types and Zod validators from declarative SQL files before applying a migration."
-keywords: ["type generation", "Supabase types", "Zod", "no database"]
+description: "Generate PostgreSQL TypeScript types and Zod validators from declarative SQL files before applying a migration."
+keywords: ["type generation", "PostgreSQL types", "Supabase-compatible types", "Zod", "no database"]
 ---
 
-You can generate Supabase-compatible TypeScript types without connecting to a database by running `supaschema types`. The command reads declarative SQL files and emits `database.types.ts` plus runtime Zod validators from the same schema model used for migrations.
+Use this when application code needs database types before the migration is applied.
 
-## Why generate types from files?
+`supaschema types` reads declarative PostgreSQL files and emits a Supabase-compatible `Database` type plus runtime Zod validators from the same schema model used for migrations.
 
-Database introspection only sees what has already been applied. During a pull request, the schema change often lives in SQL files before any database has caught up. File-based type generation lets the migration and application code move together in the same review.
+## Use this when
 
-## Generate types
+- A pull request changes SQL and TypeScript together.
+- Database introspection cannot see the new schema yet.
+- You want runtime validators generated from the same source as migrations.
+- A non-Supabase app still benefits from the familiar Supabase type shape.
+
+## Do this
+
+Generate types from the configured schema tree:
 
 ```bash
 npx supaschema types
 ```
 
-By default, the command reads the schema paths in `supaschema.config.json` and writes:
-
-```text
-database.types.ts
-database.zod.ts
-```
-
-To point at a specific schema directory:
+Override the source or output when needed:
 
 ```bash
-npx supaschema types --from dir:supabase/schemas
-```
-
-To write the TypeScript file somewhere else:
-
-```bash
+npx supaschema types --from dir:database/schemas
 npx supaschema types --out src/lib/database.types.ts
 ```
 
-## `diff` keeps types in sync
+`supaschema diff` refreshes configured TypeScript and Zod outputs after writing a migration, so the schema, migration, and app types can be reviewed together.
 
-With the default workflow, `supaschema diff` creates or refreshes the generated output files after writing a migration, so a normal schema edit keeps the migration and matching application types together:
+## Verify
+
+Commit generated outputs when your project reviews them:
 
 ```bash
-npx supaschema diff
+git diff --exit-code database.types.ts database.zod.ts
 ```
 
-That means reviewers can inspect:
+Then run your app typecheck:
 
-- the declarative SQL change,
-- the generated migration,
-- `database.types.ts`,
-- `database.zod.ts`.
-
-## Use with Supabase client
-
-```typescript
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./database.types";
-
-const supabase = createClient<Database>(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
+```bash
+npm run typecheck
 ```
 
-## Use Zod validators at runtime
+## Related
 
-`database.zod.ts` gives API handlers and background jobs runtime validation from the same schema source:
-
-```typescript
-import { schemas, type TableRow } from "./database.zod";
-
-const profile = schemas.public.Tables.profiles.Row.parse(payload);
-type ProfileRow = TableRow<"public", "profiles">;
-```
-
-See the [`types` command reference](/commands/types) for flags and output details.
+<CardGroup cols={2}>
+  <Card title="Types command" icon="code" href="/commands/types">
+    See type and Zod output flags.
+  </Card>
+  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
+    Set default output paths in config.
+  </Card>
+  <Card title="Quickstart" icon="terminal" href="/quickstart">
+    Generate a migration and matching outputs.
+  </Card>
+  <Card title="CI recipe" icon="circle-check" href="/guides/ci-github-actions">
+    Keep generated files checked in CI.
+  </Card>
+</CardGroup>

@@ -1,69 +1,79 @@
 ---
 title: "Installation"
-description: "Install supaschema from npm and confirm the minimum runtime requirements."
-keywords: ["installation", "npm install", "package contents", "Node"]
+description: "Install supaschema in a PostgreSQL project and give coding agents the correct setup prompt."
+keywords:
+  - install supaschema
+  - npm install supaschema
+  - PostgreSQL migrations
+  - hosted PostgreSQL
+  - AI coding agents
 ---
 
-Install supaschema in the project that owns your schema files.
+Use this page to add supaschema to a project.
 
-The install step runs the one-step project setup described in [Introduction](/introduction#what-gets-installed).
-
-## Requirements
-
-| Requirement       | Minimum |
-| ----------------- | ------- |
-| Node.js           | 22.12.0 |
-| PostgreSQL target | 15      |
-
-supaschema works with PostgreSQL 15+ directly and with managed PostgreSQL providers.
-
-Supported targets include Supabase, Neon, AWS RDS/Aurora PostgreSQL, Google Cloud SQL, AlloyDB, Azure Database for PostgreSQL, Render, Railway, Heroku Postgres, Timescale, Crunchy Bridge, and EDB.
-
-<Note>
-  The PostgreSQL parser is bundled through `libpg-query`. You do not need a
-  local PostgreSQL server to generate migrations from SQL files or Git refs.
-</Note>
-
-## Install
-
-Use npm:
+Install from the project root, not from a clone of the supaschema source repository:
 
 ```bash
 npm install supaschema
 ```
 
-Use `--save-dev` only when every environment that runs supaschema installs dev dependencies.
+supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, hooks, and coding-agent bundle are part of the consuming repo's migration workflow.
 
-Other package managers can install the package. This repository uses npm and `package-lock.json`.
+## Agent install prompt
 
-## Verify the binary
+Use this prompt when asking an AI coding agent to install supaschema.
+
+<Prompt description="Copy install prompt for a coding agent" actions={["copy"]}>
+Install supaschema in this project. Work from the project root, not from a nested clone of the supaschema source repository.
+
+Run `npm install supaschema`.
+
+After install, read `.agents/prompts/supaschema-install.md` if it exists, inspect `supaschema.config.json` and `.supaschema/install.json`, then run:
+
+`npx supaschema --version`
+`npx supaschema config validate --json`
+
+Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, installed agent bundle surfaces, and whether path confirmation is still pending.
+
+Do not apply migrations to any database unless I explicitly ask for that. For schema changes, edit the declarative schema tree and run `npx supaschema diff`; treat generated migrations as build output.
+</Prompt>
+
+## Verify
 
 ```bash
 npx supaschema --version
+npx supaschema config validate
 ```
 
-## Configure database URLs
+If lifecycle scripts were blocked or no config exists, run the same setup explicitly:
 
-Use `supaschema.config.json` for named environments:
-
-```json
-{
-  "environments": {
-    "staging": { "databaseUrl": "$STAGING_DATABASE_URL" }
-  }
-}
+```bash
+npx supaschema init
 ```
 
-Keep real URLs in environment variables. Do not commit credentials.
+## Database URLs
+
+Database URLs are only needed for commands that inspect or compare a live database.
+
+```bash
+SUPASCHEMA_DATABASE_URL="postgres://..." npx supaschema diff
+```
+
+Use named environments when you need repeatable targets without repeating connection strings.
 
 ## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Setup" icon="settings" href="/setup">
-    Review install-time setup and check the environment.
+  <Card title="Setup" icon="wrench" href="/setup">
+    Confirm detected paths, install output, and environment checks.
   </Card>
-
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Generate and check your first migration.
+  <Card title="Quickstart" icon="terminal" href="/quickstart">
+    Generate and check one migration.
+  </Card>
+  <Card title="Coding agents" icon="bot" href="/coding-agents">
+    See how installed agent context governs schema changes.
+  </Card>
+  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
+    Review persistent paths, sources, workflow, and environments.
   </Card>
 </CardGroup>

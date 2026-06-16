@@ -1,57 +1,73 @@
 ---
 title: "Supabase integration"
-description: "How supaschema fits a Supabase project — config.toml discovery, managed schemas, sync with the Supabase CLI, and verify's environment stubs."
+description: "Use supaschema before the Supabase CLI while keeping config.toml discovery, managed schemas, and runner ownership clear."
 keywords: ["Supabase integration", "config.toml", "managed schemas", "sync"]
 ---
 
-supaschema generates and proves migrations; it never applies them. In a Supabase project the Supabase CLI stays the runner and keeps sole ownership of the migration history table — supaschema slots in before it.
+Use this when a Supabase project should keep `supabase db push` as the runner while `supaschema` generates and proves migrations.
 
-## Zero-config defaults
+In this setup, Supabase owns apply history. `supaschema` owns schema diffing, replay-safety checks, type output, and optional pre-runner orchestration.
 
-In a repository with a `supabase/` directory, the defaults line up with the Supabase CLI's conventions:
+## Use this when
 
-- The declarative tree is read from `supabase/schemas` (`schemaPaths`).
-- Migrations are written to `supabase/migrations` (`migrationsDir`) with the CLI's `<UTC timestamp>_<name>.sql` naming, so `supabase db push` picks them up unchanged.
-- The local database URL is discovered from the nearest `supabase/config.toml` (`[db] port`) — see [Environments](/configuration/environments) for the full resolution order.
-- Generated types are Supabase-compatible: `database.types.ts` matches `supabase gen types typescript`'s shape, plus runtime Zod validators in `database.zod.ts`.
+- The repository already has a `supabase/` directory.
+- Migrations should stay in `supabase/migrations`.
+- Schema files should live in `supabase/schemas`.
+- Platform schemas such as `auth`, `storage`, and `realtime` should stay protected.
 
-## Managed schemas
+## Do this
 
-Supabase projects use `adapter: "auto"`, the same as every PostgreSQL provider. The Supabase-specific protection is the `managedSchemas` list: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public` are treated as platform-owned by default, so your declarative tree cannot claim ownership of them.
+Use the scaffolded Supabase defaults or set the same paths in `supaschema.config.json`:
 
-Keep `transactionMode: "per-migration"` (the default) for `supabase db push`. Transactional runners wrap each migration in a transaction, where `CREATE INDEX CONCURRENTLY` is illegal, so supaschema blocks those plans. If a project uses an explicit out-of-transaction operational lane, set `transactionMode: "per-statement"` for that lane and review the generated `.concurrent.sql` companion file separately.
-
-Remove a schema from `managedSchemas` only when the project truly owns that schema.
-
-## Verifying Supabase trees against bare PostgreSQL
-
-`supaschema verify` proves a migration in throwaway databases — plain PostgreSQL, not a full Supabase stack. Add `--ensure-environment` when the verification database needs Supabase-provisioned surfaces (`auth.uid()`-family helpers, `auth.users`, the cron schema). Add `--ensure-roles` to pre-create `NOLOGIN` roles referenced by grants and policies.
-
-Platform-owned grants can be excluded from extracted models with `excludedGrantRoles` (e.g. `supabase_admin`, `authenticator`), so they never show up as drift.
-
-## Applying with the Supabase CLI
-
-Two lanes, both runner-owned:
-
-```bash
-# Lane 1: generate, prove, and apply by hand
-npx supaschema diff
-npx supaschema check
-npx supaschema verify
-supabase db push          # the runner applies; supaschema never touches your real databases
-
-# Lane 2: gated orchestration
-npx supaschema sync            # dry run: reconcile history, gate pending migrations
-npx supaschema sync --local    # if workflow.migration_sync allows it, then run `supabase migration up`
-npx supaschema sync --remote   # if workflow.migration_sync allows it, then run `supabase db push`
+```json
+{
+  "schemaPaths": ["supabase/schemas"],
+  "migrationsDir": "supabase/migrations"
+}
 ```
 
-`sync` refuses on ghost or out-of-order history and runs the replay-safety check on every pending migration before it lets the Supabase CLI act. Use [`supaschema migrations`](/commands/migrations) to see how disk files reconcile against each database's applied history.
+Generate, check, and apply:
 
-## Adopting an existing Supabase project
+```bash
+npx supaschema diff
+npx supaschema check
+supabase db push
+```
 
-1. Dump your current schema into the tree (`supabase db dump` or your existing `schemas/` files).
-2. Run `supaschema audit --from dir:supabase/schemas` for a support-matrix coverage report of what the contract models.
-3. Run `supaschema diff --from database:$URL --fail-on-diff` to confirm tree and database agree before the first generated migration.
+Use `sync` only when you want a guarded wrapper around the Supabase runner:
 
-The [case study](/case-study-anilize) walks this adoption on a production ~8,300-object Supabase tree.
+```bash
+npx supaschema sync --local
+npx supaschema sync --remote
+```
+
+## Verify
+
+Use bare PostgreSQL plus Supabase stubs for disposable verification:
+
+```bash
+npx supaschema verify --ensure-environment --ensure-roles
+```
+
+Before adopting an existing project, confirm the tree and database agree:
+
+```bash
+npx supaschema diff --from database:$DATABASE_URL --fail-on-diff
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Docker-free diff" icon="container" href="/guides/supabase-db-diff-without-docker">
+    Generate Supabase migrations without a local stack.
+  </Card>
+  <Card title="Sync command" icon="refresh-cw" href="/commands/sync">
+    Gate pending migrations before the Supabase CLI runs.
+  </Card>
+  <Card title="Migrations command" icon="list-tree" href="/commands/migrations">
+    Reconcile disk files with applied history.
+  </Card>
+  <Card title="RLS safety" icon="shield" href="/guides/rls-policy-migration-safety">
+    Review policy predicate changes explicitly.
+  </Card>
+</CardGroup>

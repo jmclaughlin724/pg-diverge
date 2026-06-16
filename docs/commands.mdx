@@ -1,92 +1,120 @@
 ---
 title: "Commands"
-description: "Complete CLI reference for generating, validating, verifying, inspecting, and syncing schemas."
+description: "Choose the supaschema CLI command for migration generation, validation, verification, inspection, configuration, and diagnostics."
 keywords: ["CLI reference", "commands", "diff", "check", "verify"]
 ---
 
-Use this page to pick the right command.
+Use this page to choose the command by job.
 
-For exact flags, open the command page linked in each card.
+Open the command page when you need exact flags or exit codes.
 
-## Daily loop
+## Generate and prove
 
 <CardGroup cols={2}>
   <Card title="diff" icon="file-diff" href="/commands/diff">
-    Generate a migration from the current state to your schema files.
+    Generate a replay-safe migration from two schema sources.
   </Card>
-
-<Card title="check" icon="shield-check" href="/commands/check">
-  Validate migration SQL for replay safety and lock hazards.
-</Card>
-
-<Card title="verify" icon="badge-check" href="/commands/verify">
-  Apply a migration twice in disposable databases and compare catalogs.
-</Card>
-
+  <Card title="check" icon="shield-check" href="/commands/check">
+    Validate migration SQL for replay safety and hazards.
+  </Card>
+  <Card title="verify" icon="repeat-2" href="/commands/verify">
+    Apply a migration twice in disposable databases.
+  </Card>
   <Card title="types" icon="braces" href="/commands/types">
-    Generate TypeScript and Zod output from schema files.
+    Generate TypeScript and Zod outputs from schema files.
   </Card>
 </CardGroup>
 
-## Operations
+## Operate
+
+<CardGroup cols={3}>
+  <Card title="migrations" icon="list-checks" href="/commands/migrations">
+    Reconcile files on disk with applied database history.
+  </Card>
+  <Card title="sync" icon="refresh-cw" href="/commands/sync">
+    Gate pending Supabase migrations before CLI handoff.
+  </Card>
+  <Card title="config validate" icon="settings" href="/commands/config-validate">
+    Check config paths, sources, and credential references.
+  </Card>
+</CardGroup>
+
+## Inspect
 
 <CardGroup cols={2}>
-  <Card title="migrations" icon="list-checks" href="/commands/migrations">
-    Compare files on disk with a target database's applied history.
+  <Card title="plan" icon="list-tree" href="/commands/plan">
+    Print the object-level diff plan as JSON.
   </Card>
+  <Card title="inspect" icon="scan-search" href="/commands/inspect">
+    Print the extracted schema model as JSON.
+  </Card>
+  <Card title="fingerprint" icon="fingerprint" href="/commands/fingerprint">
+    Print the canonical equality hash for a source.
+  </Card>
+  <Card title="audit" icon="clipboard-check" href="/commands/audit">
+    Report modeled and unsupported schema coverage.
+  </Card>
+</CardGroup>
 
-<Card title="sync" icon="refresh-cw" href="/commands/sync">
-  Dry-run or hand off pending Supabase migrations after safety checks.
-</Card>
+## Utilities
 
-  <Card title="other tools" icon="wrench" href="/commands/other">
-    Use `plan`, `inspect`, `fingerprint`, `audit`, `doctor`, `config validate`, `completion`, and `explain`.
+<CardGroup cols={2}>
+  <Card title="corpus" icon="database-zap" href="/commands/corpus">
+    Run the dirty-real regression oracle.
+  </Card>
+  <Card title="doctor" icon="stethoscope" href="/commands/doctor">
+    Diagnose local setup and database capability.
+  </Card>
+  <Card title="init" icon="sparkles" href="/commands/init">
+    Scaffold or repair the project setup bundle.
+  </Card>
+  <Card title="explain" icon="message-circle-question" href="/commands/explain">
+    Decode a `SUPA_*` diagnostic code offline.
+  </Card>
+</CardGroup>
+
+## Shell and engine
+
+<CardGroup cols={2}>
+  <Card title="completion" icon="terminal" href="/commands/completion">
+    Print shell completion scripts for bash, zsh, or fish.
+  </Card>
+  <Card title="selfcheck" icon="badge-check" href="/commands/selfcheck">
+    Compare live-catalog extraction with engine representation.
   </Card>
 </CardGroup>
 
 ## Defaults
 
-When you omit flags, supaschema uses your config.
+When you omit flags, supaschema reads `supaschema.config.json`.
 
-| Command area | Default |
+| Area | Default |
 | --- | --- |
-| `--from` | `config.sources.from` (`"auto"` resolves database URL, then `git:HEAD`) |
+| `--from` | `config.sources.from`; `"auto"` resolves a database URL, then `git:HEAD` |
 | `--to` | `config.sources.to`, then `dir:<config.schemaPaths[0]>` |
 | Migration output | `config.migrationsDir` |
 | `check` input | every `.sql` file in `config.migrationsDir` |
-| `verify --migration` | newest pending migration |
+| `verify --migration` | newest `.sql` file in `config.migrationsDir` |
 
-Global flags work on every command:
+## Global flags
 
 <ParamField path="--config" type="path">
-  Use an explicit `.json` config file.
+  Use an explicit JSON config file instead of `supaschema.config.json`.
 </ParamField>
 
 <ParamField path="--env" type="string">
-  Read the database URL from a named `environments` entry in
-  `supaschema.config.json`.
+  Read the database URL from a named `environments` entry in config.
 </ParamField>
 
 <ParamField path="--quiet" type="boolean">
-  Suppress non-essential output.
+  Suppress non-essential diagnostic output.
 </ParamField>
 
 ## Exit codes
 
-| Code | Meaning                                    |
-| ---- | ------------------------------------------ |
-| `0`  | Success                                    |
-| `1`  | Runtime error                              |
-| `2`  | One or more diagnostics contained an error |
-| `3`  | `--fail-on-diff` found operations          |
-
-## Common choices
-
-| Goal                     | Command                                      |
-| ------------------------ | -------------------------------------------- |
-| Generate a migration     | `npx supaschema diff`                        |
-| Check generated SQL      | `npx supaschema check`                       |
-| Prove apply-twice safety | `npx supaschema verify`                      |
-| Detect drift in CI       | `npx supaschema diff --fail-on-diff --quiet` |
-| List pending migrations  | `npx supaschema migrations`                  |
-| Explain a diagnostic     | `npx supaschema explain SUPA_CODE`           |
+| Code | Meaning |
+| --- | --- |
+| `0` | Success |
+| `1` | Runtime error, bad arguments, unreadable input, or crash |
+| `2` | Diagnostics contained at least one error |
+| `3` | `diff --fail-on-diff` found operations |

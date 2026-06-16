@@ -55,6 +55,15 @@ function asArray(value) {
   return value === undefined ? [] : [value];
 }
 
+function stepActionName(step) {
+  const uses = step?.uses;
+  if (typeof uses !== "string" || uses.startsWith("./")) {
+    return;
+  }
+  const at = uses.lastIndexOf("@");
+  return at > 0 ? uses.slice(0, at) : uses;
+}
+
 const files = fs
   .readdirSync(WORKFLOWS_DIR)
   .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"));
@@ -156,6 +165,10 @@ assert(
 );
 const publishIf = String(publishJob.if ?? "");
 assert(
+  publishJob["runs-on"] === "ubuntu-latest",
+  "release.yml publish job must run on a GitHub-hosted Ubuntu runner for npm trusted publishing"
+);
+assert(
   publishIf.includes("github.event_name == 'workflow_dispatch'") &&
     publishIf.includes("github.ref == 'refs/heads/main'"),
   "release.yml manual dispatch path must be scoped to refs/heads/main"
@@ -188,11 +201,31 @@ assert(
   checkoutStep?.with?.ref === workflowRunHeadShaRef,
   "release.yml checkout must use github.sha so publish and GitHub release target the merged main commit"
 );
+const setupNodeStep = (publishJob.steps ?? []).find(
+  (step) => stepActionName(step) === "actions/setup-node"
+);
+assert(setupNodeStep, "release.yml publish job must set up Node for npm trusted publishing");
+assert(
+  Number(setupNodeStep.with?.["node-version"]) >= 24,
+  `release.yml publish job must use Node 24+ for npm trusted publishing (got ${JSON.stringify(setupNodeStep.with?.["node-version"])})`
+);
+assert(
+  setupNodeStep.with?.["package-manager-cache"] === false,
+  "release.yml publish job must disable package-manager caching on the OIDC publish path"
+);
+assert(
+  setupNodeStep.with?.["registry-url"] === "https://registry.npmjs.org",
+  "release.yml publish job must configure the npm registry URL for trusted publishing"
+);
 assert(
   (publishJob.steps ?? []).some((step) =>
     String(step?.run ?? "").includes("node scripts/release/preflight.mjs")
   ),
   "release.yml must run release version preflight before npm ci"
+);
+assert(
+  release.raw.includes("npm >= 11.5.1"),
+  "release.yml must assert npm >= 11.5.1 for npm trusted publishing"
 );
 assert(
   (publishJob.steps ?? []).some((step) =>
@@ -202,7 +235,7 @@ assert(
 );
 assert(
   release.raw.includes("--provenance"),
-  "release.yml must publish with `npm publish --provenance` (build provenance attestation)"
+  "release.yml must publish with explicit `npm publish --provenance` (repo policy, even though trusted publishing also generates provenance)"
 );
 assert(
   release.raw.includes('npm publish "$SUPASCHEMA_TARBALL"'),
@@ -213,6 +246,10 @@ assert(
     release.raw.includes('--target "$GITHUB_SHA"') &&
     release.raw.includes("--generate-notes"),
   "release.yml must create the GitHub Release/tag for the released package version"
+);
+assert(
+  (publishJob.steps ?? []).some((step) => stepActionName(step) === "actions/attest"),
+  "release.yml must use actions/attest@v4 for tarball provenance attestation"
 );
 assert(
   !release.raw.includes("npm run benchmark"),

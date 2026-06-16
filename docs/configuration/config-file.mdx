@@ -93,6 +93,12 @@ Generic PostgreSQL installs write this full config shape:
 
 Provider detection can change the initial `schemaPaths`, `sources.to`, and `migrationsDir` values during install. Supabase installs also seed `managedSchemas` with the Supabase platform schema list; generic PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, and Azure PostgreSQL installs use `managedSchemas: []` unless you configure otherwise.
 
+<Note>
+  For the object classes, provider surfaces, and unsupported DDL boundaries that
+  determine what belongs in your declarative tree, see the
+  [support matrix](/reference/support-matrix).
+</Note>
+
 The config schema is generated from `src/config.ts` plus the shared contract in `src/config-contract.ts` into the shipped `supaschema-config.schema.json`. The installer consumes the generated `bin/config-contract.mjs` mirror from the same contract. This page is the public reference for those fields.
 
 ## Adapter

@@ -1,0 +1,68 @@
+---
+title: "plan"
+description: "Print the object-level schema diff plan as JSON without rendering SQL."
+keywords: ["plan command", "schema plan", "JSON", "diff"]
+---
+
+Use `plan` when you need to inspect schema operations before SQL is rendered.
+
+`plan` runs the same comparison as `diff`, prints the `MigrationPlan` JSON, and leaves the filesystem untouched.
+
+## Use this when
+
+- Review automation needs operation data.
+- A migration looks surprising and you want the planner view.
+- You want destructive or blocked operations before rendering SQL.
+- Downstream tooling should summarize schema impact.
+
+## Run it
+
+```bash
+npx supaschema plan
+npx supaschema plan --from "git:origin/main" --to dir:database/schemas
+npx supaschema plan --schema public,auth
+npx supaschema plan | jq '.operations'
+```
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Before-state source. Defaults to `config.sources.from`.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  Desired-state source. Defaults to `config.sources.to`.
+</ParamField>
+
+<ParamField path="--schema" type="names">
+  Plan only the comma-separated PostgreSQL schema names.
+</ParamField>
+
+<ParamField path="--timing" type="boolean">
+  Print extract and plan timings to stderr.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Plan printed |
+| `1` | Runtime failure |
+| `2` | Plan diagnostics contained an error |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Diff" icon="file-diff" href="/commands/diff">
+    Render the plan as replay-safe SQL.
+  </Card>
+  <Card title="Inspect" icon="scan-search" href="/commands/inspect">
+    See the extracted model behind a source.
+  </Card>
+  <Card title="Sources" icon="database" href="/concepts/sources">
+    Pick source specifiers for `--from` and `--to`.
+  </Card>
+  <Card title="Hints" icon="triangle-alert" href="/configuration/hints">
+    Approve blocked destructive changes.
+  </Card>
+</CardGroup>

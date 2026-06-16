@@ -1,0 +1,55 @@
+---
+title: "config validate"
+description: "Validate supaschema config paths, sources, and credential references."
+keywords: ["config validate", "configuration", "diagnostics", "JSON"]
+---
+
+Use `config validate` after editing `supaschema.config.json`.
+
+The command loads config, checks path and source relationships, and reports warnings or errors before a migration command depends on it.
+
+## Use this when
+
+- Schema or migration paths changed.
+- Source defaults changed.
+- Named environments were added.
+- Agent or CI automation needs structured config diagnostics.
+
+## Run it
+
+```bash
+npx supaschema config validate
+npx supaschema config validate --json
+npx supaschema --config config/supaschema.config.json config validate
+```
+
+## Flags
+
+<ParamField path="--json" type="boolean">
+  Print `{ "ok": boolean, "diagnostics": [...] }`.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Config is valid, with or without warnings |
+| `1` | Runtime failure |
+| `2` | Config diagnostics contained an error |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
+    Review the config contract and defaults.
+  </Card>
+  <Card title="Environments" icon="server" href="/configuration/environments">
+    Configure named database targets.
+  </Card>
+  <Card title="Doctor" icon="stethoscope" href="/commands/doctor">
+    Diagnose config plus local environment.
+  </Card>
+  <Card title="Init" icon="sparkles" href="/commands/init">
+    Scaffold or repair the generated setup.
+  </Card>
+</CardGroup>

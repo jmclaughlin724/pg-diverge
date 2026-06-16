@@ -1,4 +1,13 @@
+---
+description: GitHub Actions CI/CD efficiency, release governance, supply-chain hardening, and npm trusted publishing.
+---
+
 # Rule 09 — CI/CD efficiency and release governance
+
+## Contract
+
+This rule owns workflow posture for CI, release, docs, Python, supply-chain checks, CodeQL, Scorecard, dependency review, release provenance, and npm trusted publishing.
+
 
 Sources:
 
@@ -6,7 +15,7 @@ Sources:
 - GitHub Actions environments: <https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment>
 - GitHub Actions secure use (security hardening): <https://docs.github.com/en/actions/reference/security/secure-use>
 - GitHub Actions security hardening for OIDC: <https://docs.github.com/en/actions/concepts/security/openid-connect>
-- Artifact attestations / build provenance: <https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds>
+- Artifact attestations / build provenance: <https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations>
 - npm trusted publishing (OIDC): <https://docs.npmjs.com/trusted-publishers>
 - GitHub CLI release creation: <https://cli.github.com/manual/gh_release_create>
 - OpenSSF Scorecard checks: <https://github.com/ossf/scorecard/blob/main/docs/checks.md>
@@ -24,7 +33,7 @@ The complete CI surface is the seven workflows under `.github/workflows/`:
   - `quality` (matrix `node-version: [22, 24]`, no database): `npm ci`, `npm audit signatures`, `npm run lint:ci` (Biome `biome ci .`), `npm run typecheck`, `npm run build`, `npm run guard`, `npm run check:schema`, `npm run check:package`, then packs the tarball and smoke-tests `npx supaschema --version|diff|check` plus the shipped `examples/` render+check.
   - `check` (matrix `postgres: [15, 16, 17]` via a `postgres` service container): `npm test`, coverage + Codecov upload on `postgres == 17`, `npm run fixture:diff`, `npm run fixture:verify`, `npm run corpus:check`, and `npm run benchmark` — the replay-safety / reconvergence / benchmark proofs that need a live database.
   - `check-os` (matrix `os: [macos-latest, windows-latest]`, no database): cross-platform path/git handling; DB-gated test cases skip when no database is present.
-- `release.yml` — triggered directly by `push` to `main`, with a main-only `workflow_dispatch` recovery path. It queues publishes with `concurrency.group: release-npm` + `queue: max`, runs in the `release` environment on a single Node 24 lane with no database service, checks out `github.sha`, runs release preflight before install, builds and package-checks only when npm publish is needed, packs the already-built tarball with lifecycle scripts disabled, smokes that exact tarball, publishes that exact tarball to npm with OIDC provenance, attests the tarball, and creates or repairs the GitHub Release/tag for the same version. It holds `contents: write`, `id-token: write`, and `attestations: write` on the publish job only.
+- `release.yml` — triggered directly by `push` to `main`, with a main-only `workflow_dispatch` recovery path. It queues publishes with `concurrency.group: release-npm` + `queue: max`, runs in the `release` environment on a single GitHub-hosted Ubuntu Node 24 lane with no database service, checks out `github.sha`, runs release preflight before install, builds and package-checks only when npm publish is needed, packs the already-built tarball with lifecycle scripts disabled, smokes that exact tarball, publishes that exact tarball to npm with OIDC provenance, attests the tarball with `actions/attest@v4`, and creates or repairs the GitHub Release/tag for the same version. It holds `contents: write`, `id-token: write`, and `attestations: write` on the publish job only.
 - `python.yml` — path-filtered (`services/**`, `pyproject.toml`, `uv.lock`, the workflow itself) single Ubuntu lane for the FastMCP service: `uv sync --locked` (lock-drift gate), `ruff check`, `ruff format --check`, `mypy`, `pytest`, `pip-audit`.
 - `dependency-review.yml` — pull-request supply-chain gate (`actions/dependency-review-action`): blocks high-severity vulnerable deps and license-incompatible deps (copyleft deny-list keyed to the dual-license model).
 - `codeql.yml` — CodeQL static analysis matrix (`javascript-typescript`, `python`) with the `security-and-quality` query suite, on push/PR to `main` and a weekly schedule.
@@ -38,7 +47,7 @@ The complete CI surface is the seven workflows under `.github/workflows/`:
 - `actions/checkout` uses `persist-credentials: false` on every workflow's checkout (all seven: `ci.yml`, `python.yml`, `dependency-review.yml`, `scorecard.yml`, `release.yml`, `codeql.yml`, `docs.yml`); release re-supplies an explicit `GH_TOKEN`/`registry-url` only where a step needs it.
 - Every job declares a `timeout-minutes` ceiling so no lane can hang at the 360-minute default — least of all the privileged `release.yml` `publish` job (`ci.yml` 20/30/20, `python.yml` 15, `dependency-review.yml` 10, `release.yml` 30, `codeql.yml`/`scorecard.yml` 20, `docs.yml` 15).
 - The privileged `release.yml` `publish` job runs `step-security/harden-runner` for egress monitoring. It ships in `egress-policy: audit` with the candidate `allowed-endpoints` list commented inline; tightening to `egress-policy: block` happens only after reviewing a real run's network insights. Do not remove harden-runner from the OIDC-holding job.
-- Releases publish through npm OIDC trusted publishing, not a stored npm token: the job asserts `npm >= 11.5.1`, sets `registry-url: https://registry.npmjs.org`, and runs `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`. Build provenance is attested with `actions/attest-build-provenance`. Do not reintroduce a long-lived `NPM_TOKEN`/`NODE_AUTH_TOKEN` secret.
+- Releases publish through npm OIDC trusted publishing, not a stored npm token: the job runs on a GitHub-hosted runner with Node 24, asserts `npm >= 11.5.1`, sets `registry-url: https://registry.npmjs.org`, disables package-manager caching on the privileged publish path, and runs `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`. npm trusted publishing already generates provenance; `--provenance` remains explicit repo policy. Tarball provenance is attested with `actions/attest@v4`. Do not reintroduce a long-lived `NPM_TOKEN`/`NODE_AUTH_TOKEN` secret.
 - `main` is the npm and GitHub release source. `release.yml` must not publish from GitHub Release events or `workflow_run` because release must not wait on the full CI/benchmark workflow. It publishes from direct `push` to `main`, with manual dispatch limited to `refs/heads/main`. The preflight script must fail closed when `package.json`, `package-lock.json`, or the lockfile root package version disagree; when a GitHub Release exists but npm is missing; or when an existing GitHub tag points away from the release commit. Same-version reruns are idempotent: if npm exists and the GitHub Release exists, the workflow exits cleanly; if npm exists and the GitHub Release is missing, the workflow repairs the GitHub Release without republishing npm.
 - Runtime matrices match the support contract and must not silently narrow. `ci.yml` `quality` covers Node `[22, 24]` (the engines floor through the release major); `ci.yml` `check` covers PostgreSQL `[15, 16, 17]`; `check-os` covers macOS and Windows. Removing a supported Node major, Postgres major, or OS lane is a STOP condition.
 - DB-independent gates and DB-dependent gates stay split. `quality` runs lint/typecheck/build/guard/package/pack-smoke with no `postgres` service; `check` owns the database-backed replay-safety proofs and benchmark gate (`npm test`, `fixture:verify`, `corpus:check`, `npm run benchmark`) behind the `postgres` service matrix. Do not move database-backed steps into the no-DB lane or vice versa.
@@ -54,12 +63,31 @@ The complete CI surface is the seven workflows under `.github/workflows/`:
 ## Enforced by
 
 - `npm run guard` (`scripts/guards/check-all.mjs`) — repository invariants (tooling stack, agent surfaces, dependency catalog, Code Atlas, LSP coverage, no-regex-in-scripts), run inside `ci.yml`'s `quality` job.
-- `npm run guard:ci` (`scripts/guards/check-ci-governance.mjs`, part of `npm run guard`) — parses every `.github/workflows/*.yml` with the `yaml` dependency (AST/structured walk, Rule 07) and asserts this rule's STOP invariants deterministically: top-level least-privilege permissions, full-SHA action pins, `actions/checkout` `persist-credentials: false`, no stored npm token, the release workflow's direct `push` trigger on `main`, no `workflow_run` release dependency, main-scoped manual dispatch, queued non-canceling publish concurrency, harden-runner + OIDC `id-token: write` + `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`, GitHub Release/tag creation, exact `github.sha` checkout, release preflight, no database service or benchmark on the publish job, the Node/Postgres/OS matrix lanes, and the Python lane's `--package supaschema-agent-mcp` selector (Rule 04).
+- `npm run guard:ci` (`scripts/guards/check-ci-governance.mjs`, part of `npm run guard`) — parses every `.github/workflows/*.yml` with the `yaml` dependency (AST/structured walk, Rule 07) and asserts this rule's STOP invariants deterministically: top-level least-privilege permissions, full-SHA action pins, `actions/checkout` `persist-credentials: false`, no stored npm token, the release workflow's direct `push` trigger on `main`, no `workflow_run` release dependency, main-scoped manual dispatch, queued non-canceling publish concurrency, GitHub-hosted Ubuntu Node 24 trusted-publishing lane, harden-runner + OIDC `id-token: write` + `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`, `actions/attest@v4`, GitHub Release/tag creation, exact `github.sha` checkout, release preflight, no database service or benchmark on the publish job, the Node/Postgres/OS matrix lanes, and the Python lane's `--package supaschema-agent-mcp` selector (Rule 04).
 - `npm run lint:ci` (Biome `biome ci .`), `npm run typecheck`, `npm run build`, `npm run check:schema`, and `npm run check:package` — the static and packaging gates the `quality` matrix runs (lint/format ownership is Rule 08; toolchain is Rule 06; the npm package boundary is Rule 13).
 - `npm test`, `npm run fixture:verify`, and `npm run corpus:check` — the database-backed replay-safety proofs the `check` matrix runs.
 - The seven workflow files themselves under `.github/workflows/`, plus `.github/dependabot.yml`.
 - `lefthook.yml` for local pre-commit hooks that mirror the lint/format gates before code reaches CI.
 
-STOP if a workflow grants top-level write permissions, unpins an action from its full-length commit SHA, drops `persist-credentials: false` on a job that does not need persisted credentials, removes harden-runner from the OIDC publish job, replaces OIDC trusted publishing with a stored npm token, publishes from GitHub Release events or waits for `workflow_run`, lets a non-main manual dispatch publish, drops the release version preflight, publishes anything other than the smoked tarball, drops GitHub Release/tag creation, uploads extra GitHub Release artifacts, runs benchmarks in the release workflow, removes a supported Node/Postgres/OS matrix lane, moves database-backed proofs out of the `postgres`-service `check` job, removes concurrency cancellation from a PR-facing workflow, disables a supply-chain scanner (`npm audit signatures`, dependency-review, `pip-audit`, CodeQL, or Scorecard), moves a bash-only construct into a step or npm script the `check-os` (Windows/macOS) lane runs, or shares one `--out` directory across multiple `supaschema diff` renders in a workflow.
+STOP if a workflow grants top-level write permissions, unpins an action from its full-length commit SHA, drops `persist-credentials: false` on a job that does not need persisted credentials, removes harden-runner from the OIDC publish job, replaces OIDC trusted publishing with a stored npm token, moves the publish job off GitHub-hosted Ubuntu/Node 24 or drops the npm `>=11.5.1` assertion, drops `actions/attest@v4`, publishes from GitHub Release events or waits for `workflow_run`, lets a non-main manual dispatch publish, drops the release version preflight, publishes anything other than the smoked tarball, drops GitHub Release/tag creation, uploads extra GitHub Release artifacts, runs benchmarks in the release workflow, removes a supported Node/Postgres/OS matrix lane, moves database-backed proofs out of the `postgres`-service `check` job, removes concurrency cancellation from a PR-facing workflow, disables a supply-chain scanner (`npm audit signatures`, dependency-review, `pip-audit`, CodeQL, or Scorecard), moves a bash-only construct into a step or npm script the `check-os` (Windows/macOS) lane runs, or shares one `--out` directory across multiple `supaschema diff` renders in a workflow.
 
 STOP if anyone reintroduces Turborepo / remote-cache / `--affected` / pnpm / Vercel / Render deploy machinery into the CI surface or into this rule: none of it exists in this single-package npm repo.
+
+## Verification
+
+After workflow, release, supply-chain, matrix, package, or CI guard changes, run:
+
+```bash
+npm run guard:ci
+npm run guard
+```
+
+For package-release changes, also run `npm run check:package`, `npm run pack:dry`, and the relevant smoke tests.
+
+## Failure behavior
+
+Fix the workflow or guard. Do not remove scanners, narrow required matrices, unpin actions, introduce stored npm tokens, weaken OIDC/provenance, or move benchmark/database proofs into release to make CI faster.
+
+## Done means
+
+Workflow permissions are least-privilege, actions are full-SHA pinned, release remains main/OIDC/provenance based, matrices match support, and CI guards prove the posture.

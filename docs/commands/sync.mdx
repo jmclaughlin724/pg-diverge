@@ -1,163 +1,80 @@
 ---
 title: "sync"
-description: "sync checks pending migrations pass static validation, then optionally drives the Supabase CLI to apply them locally or push them remotely."
+description: "Gate pending Supabase migrations, then optionally delegate apply to the Supabase CLI."
 keywords: ["sync command", "Supabase CLI", "apply gate", "migrations"]
 ---
 
-Use `sync` when you want a gated Supabase CLI handoff.
+Use `sync` when you want a guarded Supabase CLI handoff.
 
-With no flags, `sync` is a dry run. It reports pending migrations and runs the gate without touching a database.
+With no apply flag, `sync` is a dry run. With `--local` or `--remote`, it reconciles history, checks pending migrations, then invokes the Supabase CLI.
 
-With `--local` or `--remote`, it checks pending migrations first, then delegates the apply step to the Supabase CLI.
+## Use this when
 
-<Info>
-  `sync` is not the default supaschema workflow. `workflow.migration_sync:
-  "explicit_request_only"` allows an apply handoff only when a user invokes
-  `sync --local` or `sync --remote`; `"disabled"` refuses those flags. No value
-  enables automatic apply.
-</Info>
+- Supabase remains the migration runner.
+- Pending files need `check` before apply.
+- Ghost or out-of-order history should block deployment.
+- A dry run should preview what the runner would apply.
 
-## What it does
+## Run it
 
-`supaschema sync` does three things:
-
-1. **Reconcile** — finds pending files, ghost versions, and out-of-order history.
-2. **Gate** — runs `check` on each pending migration and stops on diagnostics.
-3. **Apply** — only with `--local` or `--remote`; invokes the Supabase CLI.
-
-<Note>
-  supaschema never writes to the migrations history table itself. It delegates
-  all application to the Supabase CLI (`supabase migration up` for local,
-  `supabase db push` for remote), which owns the history record. This means your
-  history table stays consistent with what the Supabase toolchain expects.
-</Note>
-
-## Dry-run mode
-
-Run `supaschema sync` without apply flags to preview the handoff:
-
-```text
-Pending migrations (2):
-
-  20240401090000_add_order_status.sql     ✓ check passed
-  20240415160000_create_notifications.sql ✓ check passed
-
-No runner flag provided — dry run only. Pass --local or --remote to apply.
+```bash
+npx supaschema sync
+npx supaschema sync --local
+npx supaschema sync --remote
+npx supaschema sync --env staging
 ```
 
-## Safety gates
-
-`sync` refuses to proceed if it detects either of the following conditions:
-
-- **Ghost versions** — a version is in the history table but the file is missing on disk (`SUPA_MIGRATIONS_GHOST_VERSIONS`).
-- **Out-of-order files** — a file has a lower version number than the highest applied version but is not itself applied (`SUPA_MIGRATIONS_OUT_OF_ORDER`).
-
-Fix history problems first. Then re-run `sync`.
-
-<Warning>
-  Never use `--remote` against a production database without first reviewing the
-  output of a dry run and confirming the pending migrations are exactly what you
-  expect. The Supabase CLI's `db push` is not transactional across multiple
-  migration files.
-</Warning>
+`workflow.migration_sync` must allow explicit handoff. No config value makes apply automatic.
 
 ## Flags
 
+<ParamField path="--migrations-dir" type="path">
+  Directory containing migration files.
+</ParamField>
+
+<ParamField path="--database-url" type="url">
+  Target database used for history reconciliation.
+</ParamField>
+
 <ParamField path="--local" type="boolean">
-  Apply pending migrations to the local Supabase stack by invoking `supabase
-  migration up`. Requires `workflow.migration_sync: "explicit_request_only"`,
-  the Supabase CLI to be installed, and a local stack to be running (`supabase
-  start`).
+  Apply pending migrations with `supabase migration up`.
 </ParamField>
 
 <ParamField path="--remote" type="boolean">
-  Push pending migrations to the linked remote Supabase project by invoking
-  `supabase db push`. Requires `workflow.migration_sync:
-  "explicit_request_only"`, the Supabase CLI to be installed, and a project to
-  be linked (`supabase link`).
+  Push pending migrations with `supabase db push`.
 </ParamField>
 
-<ParamField path="--database-url" type="string">
-  Connection URL for the target database, used during the reconciliation step to
-  fetch applied history. Falls back to `SUPASCHEMA_DATABASE_URL` or the active
-  environment config if not provided.
-</ParamField>
+## Refusal cases
 
-<ParamField path="--migrations-dir" type="string">
-  Path to the migrations directory. Defaults to `config.migrationsDir`.
-</ParamField>
+`sync` stops before handoff when:
 
-<ParamField path="--env" type="string">
-  Name of a configured environment from `supaschema.config.json`. Resolves the
-  database URL and any environment-specific settings from that entry. This is a
-  global flag available on all commands.
-</ParamField>
-
-<ParamField path="--config" type="string">
-  Path to a `supaschema.config.json` file. Defaults to `supaschema.config.json`
-  in the current working directory. This is a global flag available on all
-  commands.
-</ParamField>
-
-## Usage
-
-```bash
-# Dry run: show what would be applied, gate checks included
-npx supaschema sync
-
-# Apply pending migrations to the local Supabase stack
-npx supaschema sync --local
-
-# Push pending migrations to the linked remote Supabase project
-npx supaschema sync --remote
-
-# Dry run against a named environment
-npx supaschema sync --env staging
-
-# Apply to local with a custom migrations directory
-npx supaschema sync --local --migrations-dir db/migrations
-```
+- migration history has ghost versions;
+- migration files are out of order;
+- a pending migration fails `check`;
+- the Supabase CLI is unavailable;
+- `workflow.migration_sync` disables apply handoff.
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Success. All pending migrations passed, or there were no pending migrations. |
-| `1` | Runtime failure such as bad config, missing Supabase CLI, or network failure. |
-| `2` | Gate failure. A pending migration failed `check`, or migration history was inconsistent. |
+| `0` | Dry run passed, apply passed, or nothing was pending |
+| `1` | Runtime failure |
+| `2` | Gate failure or inconsistent migration history |
 
-## Diagnostic codes
+## Related
 
-<Accordion title="SUPA_SYNC_RUNNER_FAILED">
-  The Supabase CLI command that `sync` delegated to (`supabase migration up` or
-  `supabase db push`) launched and exited with a non-zero code. The underlying
-  CLI output is inherited from the runner. Check that your local stack is
-  running (for `--local`) and your project is linked (for `--remote`).
-</Accordion>
-
-<Accordion title="SUPA_SYNC_RUNNER_UNAVAILABLE">
-  `sync` could not launch the Supabase CLI. Install the Supabase CLI, make sure
-  `supabase` is on `PATH`, or run `sync` without `--local` / `--remote` for the
-  dry-run gate only.
-</Accordion>
-
-<Accordion title="SUPA_MIGRATIONS_GHOST_VERSIONS">
-  One or more versions appear in the history table but the corresponding SQL
-  files are missing from disk. `sync` will not apply any migrations until you
-  resolve the ghost versions. See the `migrations` command reference for
-  details.
-</Accordion>
-
-<Accordion title="SUPA_MIGRATIONS_OUT_OF_ORDER">
-  One or more SQL files on disk have version numbers lower than the highest
-  applied version, but are not recorded as applied. `sync` refuses to proceed in
-  this state because applying the pending files would leave a gap in the ordered
-  history. Resolve the ordering conflict before retrying.
-</Accordion>
-
-<Tip>
-  In a CI/CD pipeline, run `npx supaschema sync` (dry run) on every pull request
-  to catch gate failures early, then run `npx supaschema sync --remote` in your
-  deployment job after the pull request merges. This gives you a two-stage
-  safety check without any extra configuration.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Migrations" icon="list-checks" href="/commands/migrations">
+    Inspect applied and pending history first.
+  </Card>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    See the replay-safety gate `sync` runs.
+  </Card>
+  <Card title="Supabase integration" icon="database" href="/guides/supabase-integration">
+    Understand the Supabase runner boundary.
+  </Card>
+  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
+    Set `workflow.migration_sync`.
+  </Card>
+</CardGroup>

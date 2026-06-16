@@ -1,207 +1,121 @@
 ---
 title: "diff"
-description: "diff compares two schema sources and emits a replay-safe SQL migration. Supports --from, --to, --out, --watch, --fail-on-diff, and more."
+description: "Compare two schema sources and emit a replay-safe SQL migration."
 keywords: ["diff command", "schema diff", "migration generation", "PostgreSQL"]
 ---
 
 Use `diff` when schema files changed and you need a migration.
 
-`diff` compares:
+`diff` compares a before-state source with a desired-state source, renders replay-safe SQL, and writes it to the configured migrations directory.
 
-- a **from** source: the current state;
-- a **to** source: the desired state.
+## Use this when
 
-It renders replay-safe SQL and writes a migration to `config.migrationsDir`.
+- You edited the schema tree.
+- CI needs to detect drift.
+- A pull request should render a candidate migration without a live database.
+- Generated TypeScript and Zod outputs should refresh with the migration.
 
-After a successful migration write, `diff` refreshes generated TypeScript and Zod outputs according to `workflow.type_generation` and `workflow.zod_generation`.
-
-## Default behavior
-
-When you run `npx supaschema diff` with no flags, supaschema:
-
-1. Reads the before-state from `config.sources.from`.
-2. Reads the after-state from `config.sources.to`, falling back to `dir:<config.schemaPaths[0]>`.
-3. Writes the resulting migration to `config.migrationsDir/<TIMESTAMP>_migration.sql`.
-4. Refreshes configured generated outputs from the updated schema according to the workflow policy.
-
-The scaffolded config uses `sources.from: "auto"`, which resolves a database URL first and falls back to `git:HEAD`, and `sources.to: "dir:<schemaPaths[0]>"`.
-
-If there is nothing to migrate, the command exits with code `0` and writes no file.
-
-<Note>
-  The default `create_or_refresh` output policy creates or updates the
-  configured TypeScript and Zod files after a migration is written. Use
-  `refresh_existing` only when missing generated outputs should be skipped.
-</Note>
-
-## Examples
+## Run it
 
 ```bash
-# Basic: diff against your resolved PostgreSQL target
 npx supaschema diff
-
-# PR diff: compare branch against base
-npx supaschema diff --from "git:origin/main" --to dir:database/schemas --out /tmp/supaschema/migration.sql
-
-# Drift detection: exit 3 if live DB is behind the schema
+npx supaschema diff --summary
 npx supaschema diff --fail-on-diff --quiet
-
-# Watch mode for editor feedback
-npx supaschema diff --watch
-
-# Preview without writing
-npx supaschema diff --dry-run --summary
+npx supaschema diff --from "git:origin/main" --to dir:database/schemas --out /tmp/migration.sql
 ```
+
+If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
 
 ## Flags
 
 <ParamField path="--from" type="source">
-  The **before-state** source to diff against. Accepts `database:<url>` (including `database:$ENV_VAR`), `git:<ref>`, `dir:<path>`, `dump:<path>`, or `catalog:<path>`. Defaults to `config.sources.from`; `"auto"` resolves a database URL first, then falls back to `git:HEAD`.
+  Before-state source. Defaults to `config.sources.from`.
 </ParamField>
 
 <ParamField path="--to" type="source">
-  The **after-state** source representing the desired schema. Accepts the same explicit source specifiers as `--from`. Defaults to `config.sources.to`, then `dir:<config.schemaPaths[0]>`.
+  Desired-state source. Defaults to `config.sources.to`, then the first configured schema path.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">
-  Where to write the rendered SQL. Pass a file path to override the default
-  timestamped filename, or pass `stdout` to print directly to standard output
-  without touching the filesystem. Using `--out stdout` skips generated
-  TypeScript and Zod output refresh.
+  Write SQL to a specific file or print to stdout. `stdout` skips generated output refresh.
 </ParamField>
 
-<ParamField path="--name" type="string">
-  Overrides the descriptive segment of the generated migration filename. For
-  example, `--name add_accounts` produces `20240101000000_add_accounts.sql`. Has
-  no effect when `--out` is set to `stdout` or an explicit path.
+<ParamField path="--name" type="snake_case">
+  Override the descriptive part of the timestamped migration filename.
 </ParamField>
 
 <ParamField path="--migrations-dir" type="path">
-  Overrides the directory where migrations are written. Defaults to
-  `config.migrationsDir`.
+  Override the directory where timestamped migrations are written.
 </ParamField>
 
-<ParamField path="--schema" type="string">
-  A comma-separated list of PostgreSQL schema names to include in the diff. When
-  omitted, all schemas tracked by your configuration are diffed. Example:
-  `--schema public,auth`.
+<ParamField path="--schema" type="names">
+  Diff only the comma-separated PostgreSQL schema names.
 </ParamField>
 
 <ParamField path="--dry-run" type="boolean">
-  Renders the SQL plan and prints it without writing any file. Combine with
-  `--summary` to get a human-readable operation count alongside the SQL.
+  Print the migration and target path without writing files.
 </ParamField>
 
 <ParamField path="--json" type="boolean">
-  Outputs a structured JSON payload instead of raw SQL. The payload includes the
-  rendered SQL, output path, concurrent migration path when applicable, target
-  fingerprint, and operation list. Diagnostics are still printed through the
-  normal diagnostic channel before any error exit.
+  Print a structured payload with fingerprint, operations, and SQL.
 </ParamField>
 
 <ParamField path="--fail-on-diff" type="boolean">
-  Exits with code `3` when the computed plan contains at least one operation.
-  Use this as a **drift gate** in CI: your pipeline fails if the live database
-  has diverged from the declared schema.
+  Exit `3` when the plan contains operations. Use this for drift gates.
 </ParamField>
 
 <ParamField path="--no-check-chain" type="boolean">
-  Skips the migration lineage chain gate. By default, supaschema verifies that
-  the new migration's parent hash matches the tip of the existing chain. Pass
-  this flag when you intentionally operate outside normal linear history (e.g.
-  merging a squashed migration).
+  Skip the lineage-chain gate against pending supaschema migrations.
 </ParamField>
 
 <ParamField path="--summary" type="boolean">
-  Prints a human-readable summary of operations and diagnostics after rendering
-  the SQL. Shows counts of creates, alters, drops, and any warnings.
+  Print operation and diagnostic counts before any error exit.
 </ParamField>
 
 <ParamField path="--write-hints" type="path">
-  Path where supaschema writes the gated destructive object keys as a
-  `hints.destructive` skeleton for review. When the plan contains blocked
-  destructive operations (e.g. a column drop), this file lists each object key
-  so you can explicitly approve them before supaschema will write the real
-  migration. The file is never overwritten if it already exists.
+  Write blocked destructive object keys as a `hints.destructive` skeleton.
 </ParamField>
 
 <ParamField path="--timing" type="boolean">
-  Prints per-phase timing information to `stderr` after the command completes.
-  Useful for profiling slow diffs on large schemas.
+  Print extract, plan, and render timings to stderr.
 </ParamField>
 
 <ParamField path="--watch" type="boolean">
-  Re-runs the diff automatically whenever files in the `dir:` source change.
-  Implies `--dry-run` and `--summary` — watch mode never writes migration files.
-  Press `Ctrl+C` to stop. Intended for tight feedback loops during schema
-  authoring.
+  Re-run on `dir:` source changes. Implies `--dry-run --summary`.
 </ParamField>
 
-<ParamField path="--quiet" type="boolean">
-  Suppresses all non-essential output, including progress spinners and
-  informational messages. Errors and the migration SQL itself are still emitted.
-</ParamField>
+## Source specifiers
 
-<ParamField path="--config" type="path">
-  Path to a supaschema JSON config file. Defaults to `supaschema.config.json` in
-  the current working directory.
-</ParamField>
-
-<ParamField path="--env" type="string">
-  Selects a named environment block from your config file (e.g. `--env
-  staging`). Named environments let you store a per-environment `databaseUrl`
-  (the only field an environment block accepts) in one config without repeating
-  the connection string on each command.
-</ParamField>
-
-## Source Specifiers
-
-The `--from` and `--to` flags accept the following source formats:
-
-| Format | Example | Description |
+| Format | Example | Use |
 | --- | --- | --- |
 | `database:<url>` | `database:$STAGING_DB` | Live database introspection |
-| `git:<ref>` | `git:HEAD`, `git:origin/main` | Schema files at a git ref |
+| `git:<ref>` | `git:origin/main` | Schema files at a git ref |
 | `dir:<path>` | `dir:database/schemas` | Schema files on disk |
-| `dump:<path>` | `dump:baseline.sql`, `dump:-` | SQL dump file or stdin |
-| `catalog:<path>` | `catalog:snapshot.json` | supaschema catalog snapshot |
+| `dump:<path>` | `dump:baseline.sql` | SQL dump file or stdin with `dump:-` |
+| `catalog:<path>` | `catalog:snapshot.json` | Saved supaschema catalog snapshot |
 
-<Tip>
-  In pull-request workflows, set `--from "git:origin/main"` and `--to
-  dir:database/schemas` (or your configured schema path) to produce a migration
-  that captures exactly what changed on your branch — no live database required.
-</Tip>
+## Exit codes
 
-## Exit Codes
+| Code | Meaning |
+| --- | --- |
+| `0` | Success, including no schema changes |
+| `1` | Runtime failure |
+| `2` | Blocking diagnostics |
+| `3` | `--fail-on-diff` saw a non-empty plan |
 
-| Code | Meaning                                                    |
-| ---- | ---------------------------------------------------------- |
-| `0`  | Success — migration written (or nothing to migrate)        |
-| `1`  | Error — command failed to complete                         |
-| `2`  | Diagnostics errors — static analysis found blocking issues |
-| `3`  | `--fail-on-diff` triggered — plan was non-empty            |
+## Related
 
-<Warning>
-  Exit code `3` is only produced when you explicitly pass `--fail-on-diff`. A
-  non-empty migration plan does **not** cause a non-zero exit under normal
-  usage.
-</Warning>
-
-## CI Integration
-
-Use `--fail-on-diff` to gate merges on schema drift:
-
-```yaml
-# .github/workflows/drift-check.yml
-- name: Check for schema drift
-  run: npx supaschema diff --fail-on-diff --quiet
-  env:
-    SUPASCHEMA_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
-```
-
-Use `--json` to consume the plan in downstream pipeline steps:
-
-```bash
-plan=$(npx supaschema diff --dry-run --json)
-echo "$plan" | jq '.operations | length'
-```
+<CardGroup cols={2}>
+  <Card title="Plan" icon="list-tree" href="/commands/plan">
+    Inspect operations before rendering SQL.
+  </Card>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    Validate generated SQL before applying it.
+  </Card>
+  <Card title="Sources" icon="database" href="/concepts/sources">
+    Learn every supported source format.
+  </Card>
+  <Card title="Hints" icon="triangle-alert" href="/configuration/hints">
+    Approve destructive operations explicitly.
+  </Card>
+</CardGroup>

@@ -1,4 +1,13 @@
+---
+description: Repo-local FastMCP agent server contract, read-only tool surface, deny-list, and alignment checks.
+---
+
 # Rule 11 — Agent MCP FastMCP
+
+## Contract
+
+This rule owns the repo-local FastMCP agent server surface: local stdio, read-only, no credential reads, no shell or mutation authority, and alignment across MCP config, server code, tests, and guards.
+
 
 Repo-local agent MCP servers are governed surfaces, not throwaway helpers.
 
@@ -11,3 +20,25 @@ Repo-local agent MCP servers are governed surfaces, not throwaway helpers.
 The detailed implementation and verification owner is `.claude/skills/fastmcp/SKILL.md` and `services/agent-mcp/supaschema_agent_mcp/server.py`.
 
 STOP if `supaschema` gains write authority, raw command execution, secret/credential reads, reads outside the repository root, or unguarded client wiring; if FastMCP surfaces drift without `npm run sync:llm`; or if a FastMCP change ships without `npm run guard:fastmcp`, `npm run guard:agent`, and the relevant Python checks (Rule 04).
+
+## Verification
+
+After FastMCP server, MCP config, capability index, deny-list, or client CLI changes, run:
+
+```bash
+npm run guard:fastmcp
+npm run guard:agent
+npm run py:typecheck
+npm run py:test
+npm run fastmcp:status
+```
+
+Use `npm run fastmcp:list` or `npm run fastmcp:inspect` for smoke checks.
+
+## Failure behavior
+
+Restore read-only, repo-root-contained behavior. Do not expose writes, raw SQL, shell execution, credential reads, external LLM calls, or proxy calls to other MCP servers.
+
+## Done means
+
+FastMCP surfaces, config, capability index, tests, and guards agree; the server remains local, read-only, and non-secret.

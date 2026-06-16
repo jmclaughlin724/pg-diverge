@@ -44,15 +44,27 @@ describe("agent surface sync", () => {
     await write(root, ".codex/hooks/stale.mjs", "stale\n");
     await write(root, ".codex/agents/stale.toml", 'name = "stale"\n');
     await write(root, ".codex/rules/stale.rules", "# stale\n");
+    await write(root, "skills/supaschema/stale.md", "stale\n");
 
     const result = syncAgentSurfaces({ root });
 
-    expect(result).toMatchObject({ agents: 2, hooks: 2, rules: 2, skillTargets: 2, skills: 3 });
+    expect(result).toMatchObject({
+      agents: 2,
+      hooks: 2,
+      publicSkills: 2,
+      rules: 2,
+      skillTargets: 2,
+      skills: 3,
+    });
     expect(checkAgentSurfaces({ root })).toEqual([]);
     expect(existsSync(join(root, ".agents/skills/upstream/extra.md"))).toBe(false);
     expect(existsSync(join(root, ".codex/hooks/stale.mjs"))).toBe(false);
     expect(existsSync(join(root, ".codex/agents/stale.toml"))).toBe(false);
     expect(existsSync(join(root, ".codex/rules/stale.rules"))).toBe(false);
+    expect(existsSync(join(root, "skills/supaschema/stale.md"))).toBe(false);
+    expect(await readFile(join(root, "skills/supaschema/SKILL.md"), "utf8")).toBe(
+      "supaschema skill\n"
+    );
     expect(await readFile(join(root, ".codex/hooks/skill-gate.mjs"), "utf8")).toBe(
       await readFile(join(root, ".claude/hooks/skill-gate.mjs"), "utf8")
     );
@@ -70,12 +82,21 @@ describe("agent surface sync", () => {
     await mkdir(join(root, ".claude/hooks"), { recursive: true });
     await mkdir(join(root, ".claude/agents"), { recursive: true });
     await mkdir(join(root, ".claude/rules"), { recursive: true });
+    await mkdir(join(root, ".claude/skills/supaschema"), { recursive: true });
 
     const result = syncAgentSurfaces({ root });
 
-    expect(result).toMatchObject({ agents: 0, hooks: 0, rules: 0, skillTargets: 2, skills: 0 });
+    expect(result).toMatchObject({
+      agents: 0,
+      hooks: 0,
+      publicSkills: 0,
+      rules: 0,
+      skillTargets: 2,
+      skills: 0,
+    });
     expect(existsSync(join(root, ".agents/skills"))).toBe(true);
     expect(existsSync(join(root, ".codex/skills"))).toBe(true);
+    expect(existsSync(join(root, "skills/supaschema"))).toBe(true);
     expect(existsSync(join(root, ".codex/hooks"))).toBe(true);
     expect(existsSync(join(root, ".codex/agents"))).toBe(true);
     expect(existsSync(join(root, ".codex/rules"))).toBe(true);

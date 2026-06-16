@@ -1,4 +1,13 @@
+---
+description: Technical decision protocol: research upstream canonical sources instead of polling users for implementation choices.
+---
+
 # Rule 05 — Decision protocol: research, don't poll
+
+## Contract
+
+This rule owns how agents make technical, architecture, library, schema, typing, and implementation decisions: research canonical sources, choose the upstream-standard pattern, and escalate only user-owned decisions.
+
 
 Technical and architecture decisions are resolved by **evidence from upstream canonical sources and current best practices**, never by presenting the user a decision menu.
 
@@ -9,7 +18,7 @@ Technical and architecture decisions are resolved by **evidence from upstream ca
 - **For every decision where confidence is not 100%, research first.** Consult the authoritative upstream source for the tool in question before deciding. Prefer the docs MCP servers wired into this repo's `.mcp.json` for the stack they own:
   - `ultracite` and `biome` guidance via the `ultracite` MCP for lint/format policy (Rule 08).
   - `zod` MCP for Zod schema/typegen API specifics; `mintlify` MCP for docs-site components and structure (Rules 02/03); `cloudflare-docs` MCP for the docs Worker; `openaiDeveloperDocs` MCP when working on the agent MCP service surface.
-  - `supaschema-docs` MCP and the project's own `docs/**`, `AGENTS.md`, and `.claude/rules/supaschema.md` for supaschema CLI/library behavior and migration policy.
+  - `supaschema-docs` MCP and the project's own `src/**`, `docs/**`, and `.claude/rules/**` for supaschema CLI/library behavior and migration policy.
   - `context7` (`resolve-library-id` → `query-docs`) as a second-opinion fallback for any other library/framework API when no more specific first-party MCP/docs source is configured.
   - `WebSearch` / `WebFetch` / the `deep-research` skill for current guidance not covered by a configured MCP.
 
@@ -29,3 +38,15 @@ Escalation is reserved for choices that are genuinely the user's and cannot be r
 Everything else: research the upstream best practice and proceed.
 
 STOP if a research/investigation request is answered without upstream canonical sources, if best-practice claims are not verified against current authoritative guidance, or if a technical decision ships on a guess when an authoritative upstream source was available and not consulted.
+
+## Verification
+
+Record the upstream source used for non-trivial technical choices in the work note or final report. Use configured MCP/docs servers first; if unavailable, use official docs, installed package evidence, or source repositories.
+
+## Failure behavior
+
+If a conclusion was made without source evidence, pause implementation, research the authoritative source, and either correct the decision or explain the remaining blocker. Do not present implementation menus for decisions the agent can resolve with research.
+
+## Done means
+
+The technical choice is resolved, the source of truth is named, and only genuinely user-owned product/scope/irreversible/secrets/spend decisions are escalated.

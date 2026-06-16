@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Declarative PostgreSQL schema migrations plus TypeScript and Zod types in milliseconds — Supabase-aware, built on PostgreSQL's own parser, with no Docker or shadow database.",
   "keywords": [
     "database-migrations",
@@ -43,6 +43,7 @@
     "supaschema": "bin/supaschema"
   },
   "files": [
+    ".agents/prompts/supaschema-install.md",
     ".agents/skills/supaschema",
     ".claude/hooks/auto-diff-on-schema-change.mjs",
     ".claude/hooks/block-generated-migration-edits.mjs",
@@ -55,21 +56,9 @@
     ".codex/hooks.json",
     ".codex/rules/supaschema.rules",
     ".codex/skills/supaschema",
-    "benchmarks/AGENTS.md",
-    "benchmarks/compare.js",
-    "benchmarks/fixtures",
-    "benchmarks/plot-concepts.js",
-    "benchmarks/plot-head-to-head.js",
-    "benchmarks/plot-lib.js",
-    "benchmarks/plot-svg.js",
-    "benchmarks/plot.js",
-    "benchmarks/tools",
     "bin",
     "supaschema-config.schema.json",
-    "corpus",
     "dist",
-    "docs",
-    "examples",
     "LICENSE",
     "LICENSE-COMMERCIAL.md",
     "README.md"
