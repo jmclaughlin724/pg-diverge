@@ -28,14 +28,14 @@ Install supaschema in this project. Work from the project root, not from a neste
 
 Run `npm install supaschema`.
 
-After install, read `.agents/prompts/supaschema-install.md` if it exists, inspect `supaschema.config.json` and `.supaschema/install.json`, then run:
+After install, read `.agents/prompts/supaschema-install.md` if it exists, inspect `supaschema.config.json`, and inspect `.supaschema/install.json` only when it exists for pending path confirmation. Then run:
 
-`npx supaschema --version`
-`npx supaschema config validate --json`
+`npx supaschema --version` `npx supaschema config validate --json`
 
 Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, installed agent bundle surfaces, and whether path confirmation is still pending.
 
 Do not apply migrations to any database unless I explicitly ask for that. For schema changes, edit the declarative schema tree and run `npx supaschema diff`; treat generated migrations as build output.
+
 </Prompt>
 
 ## Verify
@@ -73,7 +73,11 @@ Use named environments when you need repeatable targets without repeating connec
   <Card title="Coding agents" icon="bot" href="/coding-agents">
     See how installed agent context governs schema changes.
   </Card>
-  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
+  <Card
+    title="Configuration"
+    icon="sliders-horizontal"
+    href="/configuration/config-file"
+  >
     Review persistent paths, sources, workflow, and environments.
   </Card>
 </CardGroup>

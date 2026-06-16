@@ -39,9 +39,6 @@ args = ["-y", "next-devtools-mcp@latest"]
 [mcp_servers.openaiDeveloperDocs]
 url = "https://developers.openai.com/mcp"
 
-[mcp_servers.sentry]
-url = "https://mcp.sentry.dev/mcp/anilize/anilize"
-
 [mcp_servers.ultracite]
 url = "https://docs.ultracite.ai/mcp"
 

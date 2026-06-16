@@ -181,17 +181,22 @@ try {
     pathState.workflow,
     checkResult.passed
   );
-  emit(
-    `supaschema auto-diff completed for ${changed
-      .map((path) => rel(projectDir, path))
-      .join(", ")}: generated ${written
-      .map((path) => rel(projectDir, path))
-      .join(
-        ", "
-      )}. ${generatedOutputLine(
-      pathState.workflow
-    )}. ${checkResult.line}${verifyLine === "" ? "" : `. ${verifyLine}`}. Commit the tree change, the migration, and any refreshed generated outputs together — the migration runner (e.g. \`supabase db push\`) applies it; supaschema never touches your database.`
-  );
+  const additionalContext = `supaschema auto-diff completed for ${changed
+    .map((path) => rel(projectDir, path))
+    .join(", ")}: generated ${written
+    .map((path) => rel(projectDir, path))
+    .join(
+      ", "
+    )}. ${generatedOutputLine(
+    pathState.workflow
+  )}. ${checkResult.line}${verifyLine === "" ? "" : `. ${verifyLine}`}. Commit the tree change, the migration, and any refreshed generated outputs together — the migration runner (e.g. \`supabase db push\`) applies it; supaschema never touches your database.`;
+  if (!checkResult.passed) {
+    emit(additionalContext, {
+      decision: "block",
+      reason: checkFailureLoopReason(projectDir, changed, checkResult),
+    });
+  }
+  emit(additionalContext);
 } catch {
   process.exit(0);
 }
@@ -294,12 +299,15 @@ function isGeneratedMigration(path) {
   }
 }
 
-function emit(additionalContext) {
-  process.stdout.write(
-    `${JSON.stringify({
-      hookSpecificOutput: { additionalContext, hookEventName: "PostToolUse" },
-    })}\n`
-  );
+function emit(additionalContext, control = {}) {
+  const output = {
+    hookSpecificOutput: { additionalContext, hookEventName: "PostToolUse" },
+  };
+  if (control.decision === "block" && typeof control.reason === "string") {
+    output.decision = "block";
+    output.reason = control.reason;
+  }
+  process.stdout.write(`${JSON.stringify(output)}\n`);
   process.exit(0);
 }
 
@@ -447,10 +455,12 @@ function runConfiguredCheck(bin, projectDir, workflow) {
     };
   }
   const check = run(bin, ["check"], projectDir);
+  const diagnostics = head(check.stderr || check.stdout);
   return check.code === 0
     ? { line: "supaschema check passed (replay-safe)", passed: true }
     : {
-        line: `supaschema check reported diagnostics:\n${head(check.stderr || check.stdout)}`,
+        diagnostics,
+        line: `supaschema check reported diagnostics:\n${diagnostics}`,
         passed: false,
       };
 }
@@ -563,6 +573,15 @@ function pathConfirmationMessage(projectDir, changed, state) {
     .join(
       ", "
     )} because path confirmation is pending from install. Inspect .supaschema/install.json, ask the user which schemaPaths, sources.to, and migrationsDir to use, update supaschema.config.json, then run \`supaschema diff\` and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
+}
+
+function checkFailureLoopReason(projectDir, changed, checkResult) {
+  const changedList = changed.map((path) => rel(projectDir, path)).join(", ");
+  const diagnostics =
+    typeof checkResult.diagnostics === "string" && checkResult.diagnostics.length > 0
+      ? `\n\nDiagnostics:\n${checkResult.diagnostics}`
+      : "";
+  return `supaschema check failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, identify the canonical root source in the declarative schema tree or generated migration chain, search the migrations directory for similar or correlated failures, fix the canonical source instead of hand-editing generated lineage migrations, regenerate with \`supaschema diff\` when the tree changes, rerun \`supaschema check\`, and keep iterating until check passes or report the exact blocker. Do not apply migrations or run \`supaschema sync --local\` / \`supaschema sync --remote\`.${diagnostics}`;
 }
 
 function strings(value) {

@@ -12,7 +12,6 @@
 #
 # This rule owns deterministic hook context and skill-loading enforcement: hook state selects relevant skills, skill loads are observable-only, and governed work is blocked until required context is loaded.
 #
-#
 # Relevant project skills are selected and enforced by hook state, not by model judgment. Claude Code documents hooks as lifecycle commands that receive JSON on stdin and can add model-facing context with `hookSpecificOutput.additionalContext`; use that field for steering and reserve `systemMessage` for user-facing UI warnings (https://code.claude.com/docs/en/hooks). Claude Code skills expose `description` and `when_to_use` to help the model decide when to invoke a skill, but deterministic load-before-write behavior belongs in `PreToolUse` enforcement, not in skill prose (https://code.claude.com/docs/en/skills).
 #
 # ## Runtime map
@@ -30,6 +29,7 @@
 #
 # - State lives under `.tmp/agent-hooks` by default and is keyed by a path-safe validated session id. Enforcement facts that can become stale across prompts — pending skills, response corrections, evidence breadcrumbs, one-shot Code Atlas advisories, and the last prompt — are scoped to the active turn (`turn_id` in Codex, prompt sequence in Claude). Context-loaded skill evidence is scoped to a context epoch and is invalidated on resume/compact.
 # - Canonical hook source lives in `.claude/hooks/**` and shared logic lives in `scripts/agent-hooks/**`. `npm run sync:llm` mirrors `.claude/hooks/**` into `.codex/hooks/**`; edit the Claude owner and sync instead of hand-editing generated mirrors.
+# - Skill authoring standards and templates must route deterministic skill loading through this hook path. New SKILL.md metadata fields are inert until `scripts/agent-hooks/skills.mjs` reads them and `scripts/guards/check-agent-hooks.mjs` validates them; do not document a custom field as active enforcement before both owners exist.
 # - `scripts/skills/sync-llm.mjs` is the only writer for generated agent-surface mirrors. Preserve its atomic write path: generated files are written through unpredictable temp names, exclusive creation, and rename, with symlink/race regression coverage in `tests/agent-surfaces.test.ts`.
 # - `.claude/settings.json` is the maintainer Claude context-hook registration owner. `.codex/hooks.json` is the native Codex consumer hook registration owner and must stay limited to the shipped supaschema consumer hooks. Shared Codex context hook scripts remain generated mirrors of Claude hook sources, but they are not registered in the published `.codex/hooks.json`.
 # - `scripts/guards/check-hook-import-graph.mjs` proves hook runtime modules import only `node:` builtins and relative files, so hooks run without package installation.

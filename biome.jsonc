@@ -31,8 +31,7 @@
       "!.codex",
       ".codex/hooks/*.mjs",
       ".codex/hooks.json",
-      ".codex/rules/supaschema.rules",
-      ".codex/skills/supaschema/**"
+      ".codex/rules/supaschema.rules"
     ]
   },
   "formatter": {

@@ -1,5 +1,9 @@
 {
   "//scope": "Maintainer workspace settings for developing supaschema. These are not copied into consumer projects by postinstall.",
+  "files.associations": {
+    "action.yml": "yaml",
+    "action.yaml": "yaml"
+  },
   "yaml.validate": true,
   "yaml.schemaStore.enable": true,
   "yaml.schemas": {
@@ -73,7 +77,7 @@
     "editor.formatOnSave": true
   },
   "[markdown]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.defaultFormatter": "yzhang.markdown-all-in-one",
     "editor.formatOnSave": true
   },
   "[yaml]": {

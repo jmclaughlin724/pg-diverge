@@ -25,8 +25,11 @@ The entry path currently repeats the same claims across introduction, installati
 
 ```mdx
 // docs/introduction.mdx:22-36
+
 ## The Solution
+
 ...
+
 <Frame caption="supaschema">
 ...
 <Frame caption="supaschema automated schema loop">
@@ -176,9 +179,7 @@ Use this when <specific scenario>.
 
 ## Related
 
-<CardGroup cols={2}>
-  ...
-</CardGroup>
+<CardGroup cols={2}>...</CardGroup>
 ```
 
 Rules:

@@ -7,9 +7,7 @@ metadata:
     - "biome config"
     - "npm run lint"
     - "npm run format"
-    - "npm run lint:fix"
     - "biome.jsonc"
-    - "lint fix"
     - "format code"
     - "biome diagnostic"
     - "biome error"
@@ -23,14 +21,14 @@ metadata:
 
 ## Contract
 
-Use the repo-owned npm scripts. Do not run `ultracite init`; the root `biome.jsonc` is the canonical configuration and already extends the repo-approved Ultracite presets.
+Use the repo-owned npm scripts. Do not run direct `ultracite` or `biome` commands; do not run `ultracite init`; the root `biome.jsonc` is the canonical configuration and already extends the repo-approved Ultracite presets.
 
 ## Repo Contract
 
 - Package manager: npm only. Preserve `package-lock.json`; do not add pnpm, yarn, or bun lockfiles.
 - Canonical lint config: root `biome.jsonc`.
-- Canonical lint check: `npm run lint`, which runs `ultracite check .`.
-- Canonical write/fix command: `npm run format`. It runs `ultracite fix .` as its Biome step, then the other language formatters/sorters (Prettier, pgformatter, taplo, shfmt, sort-package-json, ruff) — see Rule 06. `npm run lint:fix` is only the Biome substep; do not use `npm run lint fix`.
+- Canonical lint check: `npm run lint`.
+- Canonical write/fix command: `npm run format`. It runs the Biome/Ultracite step internally, then the other language formatters/sorters (Prettier, taplo, shfmt, sort-package-json, ruff) — see Rule 06. Do not use direct `ultracite` or `biome` commands, `npm run lint fix`, or formatter aliases such as `npm run lint:fix`.
 - Setup diagnosis: `npm run lint:doctor`.
 - Tool versions are pinned in both `package.json` and `scripts/dependency-catalog.json`; keep them identical.
 - `vitest.config.ts` owns test runner behavior. Keep DB-safe worker limits and V8 coverage reporting.

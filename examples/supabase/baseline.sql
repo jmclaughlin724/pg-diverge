@@ -9,5 +9,4 @@ ALTER TABLE app.accounts ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY accounts_select ON app.accounts
   FOR SELECT TO public
-    USING (true);
-
+    USING (TRUE);

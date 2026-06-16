@@ -33,8 +33,9 @@ The npm package provides:
 - `supaschema-config.schema.json` for editor and config validation;
 - the shared agent prompt at `.agents/prompts/supaschema-install.md`;
 - the supaschema workflow skill at `.agents/skills/supaschema/SKILL.md`;
+- the Claude workflow skill at `.claude/skills/supaschema/SKILL.md`;
 - Claude rule, skill, and hooks under `.claude/`;
-- Codex rule, skill, hook scripts, and hook registration under `.codex/`.
+- Codex rule, hook scripts, and hook registration under `.codex/`.
 
 Public docs and examples are hosted in the supaschema documentation and source repository. They are not part of the normal `node_modules/supaschema` install payload, and you should not clone the source repository just to read them during consumer setup.
 
@@ -42,22 +43,22 @@ The installer or `supaschema init` writes or merges these project files:
 
 - `supaschema.config.json` when the project does not already have one;
 - configured schema and migration directories;
-- `.supaschema/install.json` with detected paths and install metadata;
+- `.supaschema/install.json` only when detected paths need confirmation;
 - `AGENTS.md` and `CLAUDE.md` managed supaschema guidance blocks;
 - `.agents/prompts/supaschema-install.md`;
 - `.agents/skills/supaschema/SKILL.md`;
 - `.claude/rules/supaschema.md`, `.claude/skills/supaschema/SKILL.md`, and the three supaschema Claude hooks;
 - `.claude/settings.json` hook wiring;
-- `.codex/rules/supaschema.rules`, `.codex/skills/supaschema/SKILL.md`, the three supaschema Codex hooks, and `.codex/hooks.json`.
+- `.codex/rules/supaschema.rules`, the three supaschema Codex hooks, and `.codex/hooks.json`.
 
-Install does not edit schema files, generate migrations, connect to a database, apply migrations, install maintainer editor/MCP/FastMCP tooling, or copy supaschema source/test infrastructure into the consumer project.
+Install does not edit schema files, generate migrations, connect to a database, apply migrations, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. The package scaffold installs the supaschema skill directly into `.agents/skills/supaschema` and `.claude/skills/supaschema`; the public `npx skills` source is only for portable skill context without project setup.
 
 ## First Tasks After Install
 
 1. Read the supaschema managed block in `AGENTS.md` or `CLAUDE.md`.
 2. Read `.agents/skills/supaschema/SKILL.md` and the matching rule file for the active agent runtime: `.claude/rules/supaschema.md` or `.codex/rules/supaschema.rules`.
-3. Inspect `supaschema.config.json` and `.supaschema/install.json`.
-4. If `.supaschema/install.json` has `pathConfirmationNeeded: true`, stop before diffing. Ask the user which detected schema and migration paths to use, then update `supaschema.config.json`.
+3. Inspect `supaschema.config.json`.
+4. If `.supaschema/install.json` exists and has `pathConfirmationNeeded: true`, stop before diffing. Ask the user which detected schema and migration paths to use, then update `supaschema.config.json`.
 5. Run `npx supaschema --version`.
 6. Run `npx supaschema config validate --json` after config exists or paths are confirmed.
 

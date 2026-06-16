@@ -21,7 +21,7 @@ export const agentSurfaceManifest = {
   },
   skills: {
     sourceRoot: ".claude/skills",
-    targetRoots: [".agents/skills", ".codex/skills"],
+    targetRoots: [".agents/skills"],
   },
   publicSkills: {
     sourceRoot: ".claude/skills/supaschema",

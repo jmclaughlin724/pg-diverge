@@ -9,6 +9,8 @@ Use this template when creating a Codex-optimized skill. The skill should be an 
 name: example-skill
 description: "Use when [specific trigger]. Delivers [outcome] by [approach] while preserving [key constraint]."
 metadata:
+  # Repo hook-enforcement reads these fields through scripts/agent-hooks/skills.mjs.
+  # Keep prompt terms literal and file triggers narrow; do not add intent-patterns.
   keywords:
     - "[domain-term]"
   file-triggers:

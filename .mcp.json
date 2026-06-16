@@ -54,10 +54,6 @@
       "type": "http",
       "url": "https://developers.openai.com/mcp"
     },
-    "sentry": {
-      "type": "http",
-      "url": "https://mcp.sentry.dev/mcp/anilize/anilize"
-    },
     "ultracite": {
       "type": "http",
       "url": "https://docs.ultracite.ai/mcp"

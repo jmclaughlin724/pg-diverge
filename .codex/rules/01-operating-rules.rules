@@ -12,7 +12,6 @@
 #
 # This rule owns the repo-wide operating discipline that applies every other rule: gates are real, technical decisions are evidence-based, npm is the only package manager, and no standard ships without an executable enforcement path.
 #
-#
 # The non-negotiable working agreement for any agent or contributor in this repo. Standing rules live in the per-concern files under `.claude/rules/`; `AGENTS.md` is the root route map that points agents to those owners.
 #
 # ## Hard rules
@@ -23,7 +22,7 @@
 # - **Generated types come from the declarative tree, never hand-rolled.** supaschema generates `database.types.ts` and `database.zod.ts` from the declarative SQL tree and source model (`supaschema types`), not from live database introspection (`.claude/rules/supaschema.md`).
 # - **Stay inside the governed toolchain** (Rules 04/06/08): navigate and refactor via cclsp; format and lint with the one owner per concern — `ruff` for Python, Biome via Ultracite for JS/TS/JSON/CSS/HTML/GraphQL; analyze code structure with an AST, never ad hoc regex (Rule 07).
 # - **Use Code Atlas for repo-wide graph claims** (Rule 10): build and query the atlas before broad owner, route, consumer, dependency, DB, API, worker, generated-surface, or rollout assertions, then prove exact behavior with cclsp and direct source reads.
-# - **Keep agent surfaces synchronized.** After changing one of the six mirrored skills (`code-atlas`, `fastmcp`, `fastmcp-client-cli`, `supaschema`, `ultracite`, `upstream`), run `npm run sync:llm` so the `.codex/skills` and `.agents/skills` mirrors stay byte-identical to their `.claude/skills` owners (Rule 12). Codex hooks stay native; Codex rule files should hold executable command policy or short pointers to canonical rule owners, not duplicated long-form policy.
+# - **Keep agent surfaces synchronized.** After changing one of the six mirrored skills (`code-atlas`, `fastmcp`, `fastmcp-client-cli`, `supaschema`, `ultracite`, `upstream`), run `npm run sync:llm` so the `.agents/skills` mirror stays byte-identical to its `.claude/skills` owner (Rule 12). Codex hooks stay native; Codex rule files should hold executable command policy or short pointers to canonical rule owners, not duplicated long-form policy.
 # - **Durable operator policy lives in `.claude/rules/`, not `AGENTS.md`.** `AGENTS.md` is a concise repo map and rule index; `README.md` is the npm package landing page and `docs/` is the Mintlify site. The published npm package boundary is the `package.json` `files` allowlist (Rule 13).
 # - **The package manager is npm.** Never introduce pnpm, yarn, or an alternate lockfile; preserve `package-lock.json`. There is no Turborepo, no workspaces, and no `apps/` in this single-package repo.
 # - **Commit only when asked; branch off the default branch first;** let lefthook run (never `--no-verify`).

@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Declarative PostgreSQL schema migrations plus TypeScript and Zod types in milliseconds — Supabase-aware, built on PostgreSQL's own parser, with no Docker or shadow database.",
   "keywords": [
     "database-migrations",
@@ -39,8 +39,15 @@
       "import": "./dist/index.js"
     }
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "supaschema": "bin/supaschema"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
   },
   "files": [
     ".agents/prompts/supaschema-install.md",
@@ -55,7 +62,6 @@
     ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
     ".codex/hooks.json",
     ".codex/rules/supaschema.rules",
-    ".codex/skills/supaschema",
     "bin",
     "supaschema-config.schema.json",
     "dist",
@@ -91,11 +97,10 @@
     "fastmcp:status": "uv run --package supaschema-agent-mcp fastmcp call services/agent-mcp/supaschema_agent_mcp/server.py server_status --json",
     "fixture:diff": "node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out stdout",
     "fixture:verify": "npm run build && out=$(mktemp -d)/basic.sql && node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out \"$out\" && node dist/cli.js verify --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --migration \"$out\"",
-    "format": "npm run format:json && ultracite fix . && npm run format:md && npm run format:sql && npm run format:toml && npm run format:sh && npm run py:fix",
+    "format": "npm run format:json && ultracite fix . && npm run format:md && npm run format:toml && npm run format:sh && npm run py:fix",
     "format:json": "sort-package-json",
     "format:md": "prettier --write \"**/*.{md,mdx,yml,yaml}\"",
     "format:sh": "node scripts/format-sh.mjs",
-    "format:sql": "node scripts/format-sql.mjs",
     "format:toml": "node scripts/format-toml.mjs",
     "guard": "node scripts/guards/check-all.mjs",
     "guard:agent": "node scripts/guards/check-agent-hooks.mjs && node scripts/guards/check-hook-import-graph.mjs && node scripts/guards/check-agent-surface-parity.mjs && node scripts/guards/check-claude-agents.mjs",
@@ -109,7 +114,6 @@
     "lint": "ultracite check .",
     "lint:ci": "biome ci .",
     "lint:doctor": "ultracite doctor",
-    "lint:fix": "ultracite fix .",
     "pack:dry": "npm pack --dry-run",
     "prepare": "npm run build && node scripts/install-hooks.mjs",
     "py:fix": "uv run --package supaschema-agent-mcp ruff check --fix services/agent-mcp && uv run --package supaschema-agent-mcp ruff format services/agent-mcp",
@@ -122,10 +126,14 @@
     "sync:llm:check": "node scripts/skills/sync-llm.mjs --check",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:examples": "vitest run tests/examples.test.ts --maxWorkers=1",
+    "test:matrix": "vitest run --exclude tests/examples.test.ts",
+    "test:matrix:coverage": "vitest run --coverage --exclude tests/examples.test.ts",
     "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
   "overrides": {
-    "minimatch": "10.2.5"
+    "minimatch": "10.2.5",
+    "read-yaml-file": "2.1.0"
   },
   "dependencies": {
     "commander": "^15.0.0",
@@ -142,13 +150,12 @@
     "@taplo/cli": "0.7.0",
     "@types/node": "^25.9.3",
     "@types/pg": "^8.15.6",
-    "@vitest/coverage-v8": "4.1.8",
+    "@vitest/coverage-v8": "4.1.9",
     "bash-language-server": "5.6.0",
     "dockerfile-language-server-nodejs": "0.15.0",
     "fast-check": "^4.8.0",
     "lefthook": "^2.1.9",
     "mdast-util-to-string": "^4.0.0",
-    "pg-formatter": "^2.0.8",
     "prettier": "^3.8.4",
     "publint": "^0.3.21",
     "remark-frontmatter": "^5.0.0",
@@ -162,7 +169,7 @@
     "ultracite": "7.8.3",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
-    "vitest": "4.1.8",
+    "vitest": "4.1.9",
     "vscode-langservers-extracted": "4.10.0",
     "yaml": "^2.9.0",
     "yaml-language-server": "1.23.0"

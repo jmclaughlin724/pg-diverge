@@ -64,6 +64,22 @@ function stepActionName(step) {
   return at > 0 ? uses.slice(0, at) : uses;
 }
 
+function stepIf(step) {
+  return String(step?.if ?? "").trim();
+}
+
+function stepName(step) {
+  return String(step?.name ?? "");
+}
+
+function stepRun(step) {
+  return String(step?.run ?? "").trim();
+}
+
+function findNamedStep(steps, name) {
+  return steps.find((step) => stepName(step) === name);
+}
+
 const files = fs
   .readdirSync(WORKFLOWS_DIR)
   .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"));
@@ -137,7 +153,7 @@ assert(
 );
 assert(
   !releaseOn.workflow_run,
-  "release.yml must not wait on workflow_run; release must not be gated on the full CI/benchmark workflow"
+  "release.yml must not wait on workflow_run; release must not be gated on the full CI workflow"
 );
 assert(
   asArray(releaseOn.push?.branches).includes("main"),
@@ -253,7 +269,7 @@ assert(
 );
 assert(
   !release.raw.includes("npm run benchmark"),
-  "release.yml must not run benchmark; benchmarks stay in CI and must not block release publication"
+  "release.yml must not run benchmark; benchmarks are advisory and must not block release publication"
 );
 assert(
   !release.raw.includes("gh release upload"),
@@ -278,23 +294,92 @@ assert(
   !qualityRuns.some((run) => run.includes("npm run benchmark")),
   "ci.yml quality job must not run npm run benchmark without a database URL"
 );
+const qualitySteps = ci.jobs?.quality?.steps ?? [];
+const examplesSmokeStep = findNamedStep(
+  qualitySteps,
+  "Examples smoke (shipped examples render + check clean)"
+);
+assert(examplesSmokeStep, "ci.yml quality job must keep the examples smoke step");
+assert(
+  stepIf(examplesSmokeStep) === "matrix.node-version == 22",
+  "ci.yml examples smoke must run once on Node 22, not across the full quality matrix"
+);
+const examplesTestsStep = findNamedStep(qualitySteps, "Examples tests");
+assert(examplesTestsStep, "ci.yml quality job must run the examples test lane");
+assert(
+  stepIf(examplesTestsStep) === "matrix.node-version == 22" &&
+    stepRun(examplesTestsStep) === "npm run test:examples",
+  "ci.yml examples tests must run once on Node 22 via npm run test:examples"
+);
 const checkRuns = (ci.jobs?.check?.steps ?? []).map((step) => String(step?.run ?? ""));
 assert(
-  checkRuns.some((run) => run.includes("npm run benchmark")),
-  "ci.yml check job must run npm run benchmark with SUPASCHEMA_DATABASE_URL"
+  !checkRuns.some((run) => run.includes("npm run benchmark")),
+  "ci.yml check job must not run npm run benchmark; benchmarks are advisory and must not block CI"
+);
+assert(
+  !checkRuns.some((run) => ["npm test", "npm run test:coverage"].includes(run.trim())),
+  "ci.yml check job must use matrix-focused test scripts, not the full examples suite"
+);
+const checkSteps = ci.jobs?.check?.steps ?? [];
+const dbTestsStep = findNamedStep(checkSteps, "DB-gated tests");
+assert(
+  dbTestsStep &&
+    stepIf(dbTestsStep) === "matrix.postgres != 17" &&
+    stepRun(dbTestsStep) === "npm run test:matrix",
+  "ci.yml DB-gated tests must use npm run test:matrix for postgres 15/16"
+);
+const coverageStep = findNamedStep(
+  checkSteps,
+  "Coverage (pg17 runs the suite once, with coverage)"
+);
+assert(
+  coverageStep &&
+    stepIf(coverageStep) === "matrix.postgres == 17" &&
+    stepRun(coverageStep) === "npm run test:matrix:coverage",
+  "ci.yml pg17 coverage must use npm run test:matrix:coverage"
 );
 const oses = jobMatrix(ci, "check-os", "os");
 assert(
   ["macos-latest", "windows-latest"].every((value) => oses.includes(value)),
   `ci.yml check-os os matrix must include macos-latest and windows-latest (got ${JSON.stringify(oses)})`
 );
+const osDbTestsStep = findNamedStep(
+  ci.jobs?.["check-os"]?.steps ?? [],
+  "DB-gated tests (DB-gated cases skip without a database)"
+);
+assert(
+  osDbTestsStep && stepRun(osDbTestsStep) === "npm run test:matrix",
+  "ci.yml check-os must use npm run test:matrix so examples failures stay in quality"
+);
 
 // Python lane must keep the workspace-member selector (Rule 04): the root env
 // has no runtime deps, so mypy/pytest need --package or they fail import-not-found.
 const python = parsed.get("python.yml")?.doc;
 assert(python, "python.yml must exist");
+const pythonSteps = python.jobs?.python?.steps ?? [];
+const pythonSetupNode = pythonSteps.find((step) => stepActionName(step) === "actions/setup-node");
+assert(
+  pythonSetupNode?.with?.["node-version"] === 22,
+  `python.yml must set up Node 22 for Code Atlas-backed FastMCP tests (got ${JSON.stringify(pythonSetupNode?.with?.["node-version"])})`
+);
+assert(
+  pythonSetupNode?.with?.cache === "npm",
+  "python.yml setup-node step must enable npm caching for Code Atlas dependencies"
+);
 const pythonRunSteps = (python.jobs?.python?.steps ?? []).filter(
   (step) => typeof step?.run === "string"
+);
+const npmInstallIndex = pythonRunSteps.findIndex(
+  (step) => step.run.trim() === "npm ci --ignore-scripts"
+);
+const pytestIndex = pythonRunSteps.findIndex((step) => step.run.includes("pytest"));
+assert(
+  npmInstallIndex >= 0,
+  "python.yml must install npm deps with `npm ci --ignore-scripts` for Code Atlas-backed FastMCP tests"
+);
+assert(
+  pytestIndex >= 0 && npmInstallIndex < pytestIndex,
+  "python.yml must install Code Atlas npm deps before pytest"
 );
 for (const tool of ["mypy", "pytest"]) {
   const steps = pythonRunSteps.filter((step) => step.run.includes(tool));

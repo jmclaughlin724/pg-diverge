@@ -52,9 +52,9 @@ const complexityCapIncludes = [
 
 const toolPins = {
   "@biomejs/biome": "2.5.0",
-  "@vitest/coverage-v8": "4.1.8",
+  "@vitest/coverage-v8": "4.1.9",
   ultracite: "7.8.3",
-  vitest: "4.1.8",
+  vitest: "4.1.9",
 };
 
 // package.json is the single source of truth for the pinned tooling versions;
@@ -65,21 +65,40 @@ for (const [name, version] of Object.entries(toolPins)) {
     `package.json must pin ${name}@${version}`
   );
 }
+assert(
+  !("pg-formatter" in (packageJson.devDependencies ?? {})),
+  "pg-formatter must not be reintroduced; SQL is governed by supaschema parser/deparser semantics"
+);
 
 assert(packageJson.scripts?.lint === "ultracite check .", "lint must run Ultracite check");
+assert(packageJson.scripts?.test === "vitest run", "test must run the full Vitest suite");
+assert(
+  packageJson.scripts?.["test:coverage"] === "vitest run --coverage",
+  "test:coverage must run the full Vitest suite with coverage"
+);
+assert(
+  packageJson.scripts?.["test:examples"] === "vitest run tests/examples.test.ts --maxWorkers=1",
+  "test:examples must own the examples regression lane"
+);
+assert(
+  packageJson.scripts?.["test:matrix"] === "vitest run --exclude tests/examples.test.ts",
+  "test:matrix must exclude the examples lane from DB and OS matrices"
+);
+assert(
+  packageJson.scripts?.["test:matrix:coverage"] ===
+    "vitest run --coverage --exclude tests/examples.test.ts",
+  "test:matrix:coverage must be the coverage equivalent of test:matrix"
+);
 assert(
   packageJson.scripts?.format ===
-    "npm run format:json && ultracite fix . && npm run format:md && npm run format:sql && npm run format:toml && npm run format:sh && npm run py:fix",
-  "format must be the single write command chaining every writer: sort-package-json (format:json), Ultracite (Biome), Prettier (format:md), pgformatter (format:sql), taplo (format:toml), shfmt (format:sh), ruff (py:fix)"
+    "npm run format:json && ultracite fix . && npm run format:md && npm run format:toml && npm run format:sh && npm run py:fix",
+  "format must be the single write command chaining every writer: sort-package-json (format:json), Ultracite (Biome), Prettier (format:md), taplo (format:toml), shfmt (format:sh), ruff (py:fix)"
 );
 assert(
   packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{md,mdx,yml,yaml}"',
   "format:md must run Prettier write over MDX/Markdown/YAML"
 );
-assert(
-  packageJson.scripts?.["format:sql"] === "node scripts/format-sql.mjs",
-  "format:sql must run the pgformatter SQL lane"
-);
+assert(!("format:sql" in packageJson.scripts), "SQL formatter lane must not be reintroduced");
 assert(
   packageJson.scripts?.["format:toml"] === "node scripts/format-toml.mjs",
   "format:toml must run the taplo TOML lane"
@@ -97,7 +116,7 @@ assert(
     "uv run --package supaschema-agent-mcp ruff check --fix services/agent-mcp && uv run --package supaschema-agent-mcp ruff format services/agent-mcp",
   "py:fix must run ruff --fix (lint + import sort) then ruff format — the Python write lane"
 );
-assert(packageJson.scripts?.["lint:fix"] === "ultracite fix .", "lint:fix must run Ultracite fix");
+assert(!("lint:fix" in packageJson.scripts), "format must be the only repo-wide write/fix script");
 assert(
   packageJson.scripts?.["lint:doctor"] === "ultracite doctor",
   "lint:doctor must run Ultracite doctor"
@@ -175,7 +194,6 @@ function assertAgentPackageSurface(files) {
     ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
     ".codex/hooks.json",
     ".codex/rules/supaschema.rules",
-    ".codex/skills/supaschema",
   ]);
 
   for (const file of files) {

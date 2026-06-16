@@ -34,7 +34,11 @@ Open the command page when you need exact flags or exit codes.
   <Card title="sync" icon="refresh-cw" href="/commands/sync">
     Gate pending Supabase migrations before CLI handoff.
   </Card>
-  <Card title="config validate" icon="settings" href="/commands/config-validate">
+  <Card
+    title="config validate"
+    icon="settings"
+    href="/commands/config-validate"
+  >
     Check config paths, sources, and credential references.
   </Card>
 </CardGroup>
@@ -112,9 +116,9 @@ When you omit flags, supaschema reads `supaschema.config.json`.
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Success |
-| `1` | Runtime error, bad arguments, unreadable input, or crash |
-| `2` | Diagnostics contained at least one error |
-| `3` | `diff --fail-on-diff` found operations |
+| Code | Meaning                                                  |
+| ---- | -------------------------------------------------------- |
+| `0`  | Success                                                  |
+| `1`  | Runtime error, bad arguments, unreadable input, or crash |
+| `2`  | Diagnostics contained at least one error                 |
+| `3`  | `diff --fail-on-diff` found operations                   |

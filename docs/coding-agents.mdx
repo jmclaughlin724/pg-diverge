@@ -17,19 +17,27 @@ For a new project setup, copy the agent prompt from [Installation](/installation
 
 <Steps>
   <Step title="Install the package">
-    Run `npm install supaschema` from the consuming project root. Do not clone the supaschema repository into the project unless you are intentionally developing supaschema itself.
+    Run `npm install supaschema` from the consuming project root. Do not clone
+    the supaschema repository into the project unless you are intentionally
+    developing supaschema itself.
   </Step>
   <Step title="Read installed context">
-    Use `.agents/prompts/supaschema-install.md`, the installed supaschema skill, and the installed rule file as the project-local contract.
+    Use `.agents/prompts/supaschema-install.md`, the installed supaschema skill,
+    and the installed rule file as the project-local contract.
   </Step>
   <Step title="Edit schema intent">
-    Change the configured declarative SQL tree, such as `database/schemas/**`, `neon/schemas/**`, `aws-postgresql/schemas/**`, or `supabase/schemas/**`.
+    Change the configured declarative SQL tree, such as `database/schemas/**`,
+    `neon/schemas/**`, `aws-postgresql/schemas/**`, or `supabase/schemas/**`.
   </Step>
   <Step title="Run one command">
-    Run `npx supaschema diff`. The command extracts both sides, plans the change, renders the migration, and refreshes configured TypeScript and Zod outputs.
+    Run `npx supaschema diff`. The command extracts both sides, plans the
+    change, renders the migration, and refreshes configured TypeScript and Zod
+    outputs.
   </Step>
   <Step title="Report the result">
-    Summarize the generated migration, generated outputs, target runner expectations, and any `SUPA_*` diagnostic. Do not apply migrations unless the human explicitly asks for an apply handoff.
+    Summarize the generated migration, generated outputs, target runner
+    expectations, and any `SUPA_*` diagnostic. Do not apply migrations unless
+    the human explicitly asks for an apply handoff.
   </Step>
 </Steps>
 
@@ -38,17 +46,23 @@ For a new project setup, copy the agent prompt from [Installation](/installation
 The public npm package includes only the consumer-safe surfaces needed for that workflow:
 
 <CardGroup cols={2}>
-  <Card title="Install prompt" icon="clipboard-list" href="/installation#agent-install-prompt">
+  <Card
+    title="Install prompt"
+    icon="clipboard-list"
+    href="/installation#agent-install-prompt"
+  >
     Copyable setup instructions for another coding agent.
   </Card>
   <Card title="Rule" icon="scale-balanced" href="/coding-agents/agent-bundle">
-    Durable migration policy: generated files are not hand-edited, destructive intent must be explicit, and apply is opt-in.
+    Durable migration policy: generated files are not hand-edited, destructive
+    intent must be explicit, and apply is opt-in.
   </Card>
   <Card title="Skill" icon="bot" href="/coding-agents/agent-bundle">
     The repeatable schema-change workflow for agents that support skills.
   </Card>
   <Card title="Hooks" icon="webhook" href="/coding-agents/agent-bundle">
-    Write-time guardrails that block generated migration edits, run diff after schema edits, and sync installed LLM surfaces.
+    Write-time guardrails that block generated migration edits, run diff after
+    schema edits, and sync installed LLM surfaces.
   </Card>
 </CardGroup>
 
@@ -58,19 +72,30 @@ Use these only when the agent or documentation client supports them.
 
 <CardGroup cols={2}>
   <Card title="Hosted skill" icon="sparkles">
-    Public agent skill metadata for clients that can read `https://supaschema.com/docs/skill.md`.
+    Public agent skill metadata for clients that can read
+    `https://supaschema.com/docs/skill.md`.
   </Card>
   <Card title="llms.txt" icon="file-text">
-    Compressed docs context for agents that load `https://supaschema.com/docs/llms.txt`.
+    Compressed docs context for agents that load
+    `https://supaschema.com/docs/llms.txt`.
   </Card>
   <Card title="MCP docs" icon="plug">
-    Mintlify MCP endpoint for documentation-aware clients at `https://supaschema.com/docs/mcp`.
+    Mintlify MCP endpoint for documentation-aware clients at
+    `https://supaschema.com/docs/mcp`.
   </Card>
-  <Card title="npx skills" icon="download" href="https://github.com/vercel-labs/skills">
-    Installs reusable skill context only; project setup still comes from `npm install supaschema`.
+  <Card
+    title="npx skills"
+    icon="download"
+    href="https://github.com/vercel-labs/skills"
+  >
+    Installs reusable skill context only; project setup still comes from `npm
+    install supaschema`.
   </Card>
 </CardGroup>
 
 <Note>
-  The npm package is the project integration path. `npx skills` is useful for reusable agent context, but it cannot replace the project config, hook registration, install manifest, or generated-output workflow installed by `npm install supaschema`.
+  The npm package is the project integration path. `npx skills` is useful for
+  reusable agent context, but it cannot replace the project config, hook
+  registration, install manifest, or generated-output workflow installed by `npm
+  install supaschema`.
 </Note>

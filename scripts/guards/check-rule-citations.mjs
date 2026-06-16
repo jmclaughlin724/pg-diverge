@@ -21,13 +21,7 @@ for (const name of fs.readdirSync(ruleDir)) {
 }
 assert(validNumbers.size > 0, "no numbered .claude/rules/NN-*.md files found");
 
-const scanRoots = [
-  ".claude/rules",
-  ".claude/skills",
-  ".codex/rules",
-  ".codex/skills",
-  ".agents/skills",
-];
+const scanRoots = [".claude/rules", ".claude/skills", ".codex/rules", ".agents/skills"];
 const scanExtensions = [".md", ".rules"];
 const extraFiles = ["AGENTS.md", "CLAUDE.md"];
 

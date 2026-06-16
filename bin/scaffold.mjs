@@ -23,6 +23,8 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmdirSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -47,20 +49,21 @@ const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const hookScriptPathPattern = /\.(mjs|sh)$/;
 
-const agentFiles = [
+const agentPaths = [
   ".agents/prompts/supaschema-install.md",
-  ".agents/skills/supaschema/SKILL.md",
+  ".agents/skills/supaschema",
   ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/block-generated-migration-edits.mjs",
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/rules/supaschema.md",
-  ".claude/skills/supaschema/SKILL.md",
+  ".claude/skills/supaschema",
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/rules/supaschema.rules",
-  ".codex/skills/supaschema/SKILL.md",
 ];
+
+const retiredAgentPaths = [".codex/skills/supaschema"];
 
 const hookConfigs = [
   {
@@ -153,11 +156,8 @@ export async function scaffoldProject({
     installed.push("directories");
   }
 
-  for (const file of agentFiles) {
-    if (!dryRun) {
-      copyProjectFile(packageRoot, targetDir, file, skipped);
-    }
-  }
+  copyAgentBundle({ dryRun, packageRoot, skipped, targetDir });
+  removeRetiredAgentSurfaces({ dryRun, targetDir });
   installed.push("agent files");
 
   for (const config of hookConfigs) {
@@ -172,10 +172,10 @@ export async function scaffoldProject({
   }
   installed.push("AGENTS/CLAUDE addendum");
 
-  if (!dryRun) {
-    writeInstallManifest(targetDir, packageVersion, scan, selection, existingConfig);
+  writeInstallState({ dryRun, existingConfig, packageVersion, scan, selection, targetDir });
+  if (selection.pathConfirmationNeeded) {
+    installed.push("manifest");
   }
-  installed.push("manifest");
 
   return {
     config: configContents === undefined ? undefined : JSON.parse(configContents),
@@ -585,7 +585,7 @@ ${pathLines}
 - Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
 - Edit \`supaschema.config.json\` to change \`adapter\`, \`workflow\`, \`schemaPaths\`, \`sources\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
 - For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, run \`npx supaschema diff\`, then run \`npx supaschema check\`.
-- Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes; they never apply migrations.
+- Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes; check failures trigger agent-loop feedback to investigate the root source and correlated migration failures, and hooks never apply migrations.
 - Do not run \`npx supaschema sync --local\` or \`npx supaschema sync --remote\` unless explicitly asked to apply migrations; \`workflow.migration_sync: "disabled"\` blocks those apply handoff flags.
 ${guidanceEnd}
 `;
@@ -636,6 +636,28 @@ function writeInstallManifest(target, packageVersion, scan, selection, existingC
   writeProjectFile(target, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
+function removeInstallManifest(target) {
+  const path = join(target, manifestPath);
+  try {
+    unlinkSync(path);
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      throw error;
+    }
+  }
+
+  const directory = dirname(path);
+  try {
+    if (readdirSync(directory).length === 0) {
+      rmdirSync(directory);
+    }
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      throw error;
+    }
+  }
+}
+
 function manifestSelectionUnchanged(existing, next) {
   return (
     existing.adapter === next.adapter &&
@@ -651,15 +673,79 @@ function writeProjectFile(target, relativePath, contents) {
   writeFileAtomic(destination, contents);
 }
 
-function copyProjectFile(packageRoot, target, relativePath, skipped) {
+function copyAgentBundle({ dryRun, packageRoot, skipped, targetDir }) {
+  if (dryRun) {
+    return;
+  }
+  for (const file of agentPaths) {
+    copyProjectPath(packageRoot, targetDir, file, skipped);
+  }
+}
+
+function removeRetiredAgentSurfaces({ dryRun, targetDir }) {
+  if (dryRun) {
+    return;
+  }
+  for (const file of retiredAgentPaths) {
+    rmSync(join(targetDir, file), { force: true, recursive: true });
+  }
+  removeEmptyDirectory(join(targetDir, ".codex/skills"));
+}
+
+function copyProjectPath(packageRoot, target, relativePath, skipped) {
   const source = join(packageRoot, relativePath);
   if (!existsSync(source)) {
     skipped.push(relativePath);
     return;
   }
-  const destination = join(target, relativePath);
+  if (statSync(source).isDirectory()) {
+    copyProjectDirectory(source, join(target, relativePath));
+    return;
+  }
+  copyProjectFile(source, join(target, relativePath));
+}
+
+function copyProjectDirectory(source, destination) {
+  mkdirSync(destination, { recursive: true });
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    const sourcePath = join(source, entry.name);
+    const destinationPath = join(destination, entry.name);
+    if (entry.isDirectory()) {
+      copyProjectDirectory(sourcePath, destinationPath);
+      continue;
+    }
+    if (entry.isFile()) {
+      copyProjectFile(sourcePath, destinationPath);
+    }
+  }
+}
+
+function copyProjectFile(source, destination) {
   mkdirSync(dirname(destination), { recursive: true });
   copyFileSync(source, destination);
+}
+
+function removeEmptyDirectory(directory) {
+  try {
+    if (readdirSync(directory).length === 0) {
+      rmdirSync(directory);
+    }
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      throw error;
+    }
+  }
+}
+
+function writeInstallState({ dryRun, existingConfig, packageVersion, scan, selection, targetDir }) {
+  if (dryRun) {
+    return;
+  }
+  if (selection.pathConfirmationNeeded) {
+    writeInstallManifest(targetDir, packageVersion, scan, selection, existingConfig);
+    return;
+  }
+  removeInstallManifest(targetDir);
 }
 
 function mergeHookConfig(packageRoot, target, hookConfig, skipped) {

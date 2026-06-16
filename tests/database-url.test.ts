@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database-url.js";
@@ -81,8 +82,7 @@ describe("install-time project setup", () => {
     expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
     expect(existsSync(join(consumer, "database/schemas"))).toBe(true);
     expect(existsSync(join(consumer, "database/migrations"))).toBe(true);
-    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.adapter).toBe("auto");
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
 
     for (const file of [
       ".agents/prompts/supaschema-install.md",
@@ -98,7 +98,6 @@ describe("install-time project setup", () => {
       ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
       ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
-      ".codex/skills/supaschema/SKILL.md",
     ]) {
       expect(existsSync(join(consumer, file)), file).toBe(true);
     }
@@ -143,6 +142,71 @@ describe("install-time project setup", () => {
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
   });
 
+  it("copies complete packaged skill directories into shared and Claude skill locations", async () => {
+    const packageRoot = await mkdtemp(join(tmpdir(), "supa-package-root-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-skills-"));
+    await writeNestedFile(
+      join(packageRoot, ".agents/prompts/supaschema-install.md"),
+      "install prompt\n"
+    );
+    await writeNestedFile(
+      join(packageRoot, ".agents/skills/supaschema/SKILL.md"),
+      "shared skill\n"
+    );
+    await writeNestedFile(
+      join(packageRoot, ".agents/skills/supaschema/references/workflow.md"),
+      "shared reference\n"
+    );
+    await writeNestedFile(
+      join(packageRoot, ".claude/skills/supaschema/SKILL.md"),
+      "claude skill\n"
+    );
+    await writeNestedFile(
+      join(packageRoot, ".claude/skills/supaschema/references/workflow.md"),
+      "claude reference\n"
+    );
+    await writeNestedFile(
+      join(consumer, ".codex/skills/supaschema/SKILL.md"),
+      "retired codex skill\n"
+    );
+    await writeNestedFile(join(consumer, ".codex/skills/custom/SKILL.md"), "custom skill\n");
+
+    const { scaffoldProject } = (await import(
+      pathToFileURL(join(process.cwd(), "bin/scaffold.mjs")).href
+    )) as {
+      scaffoldProject: (options: {
+        interactive: boolean;
+        packageRoot: string;
+        packageVersion: string;
+        targetDir: string;
+      }) => Promise<unknown>;
+    };
+
+    await scaffoldProject({
+      interactive: false,
+      packageRoot,
+      packageVersion: "test",
+      targetDir: consumer,
+    });
+
+    expect(await readFile(join(consumer, ".agents/skills/supaschema/SKILL.md"), "utf8")).toBe(
+      "shared skill\n"
+    );
+    expect(
+      await readFile(join(consumer, ".agents/skills/supaschema/references/workflow.md"), "utf8")
+    ).toBe("shared reference\n");
+    expect(await readFile(join(consumer, ".claude/skills/supaschema/SKILL.md"), "utf8")).toBe(
+      "claude skill\n"
+    );
+    expect(
+      await readFile(join(consumer, ".claude/skills/supaschema/references/workflow.md"), "utf8")
+    ).toBe("claude reference\n");
+    expect(existsSync(join(consumer, ".codex/skills/supaschema/SKILL.md"))).toBe(false);
+    expect(await readFile(join(consumer, ".codex/skills/custom/SKILL.md"), "utf8")).toBe(
+      "custom skill\n"
+    );
+  });
+
   it("uses Supabase paths when the project has Supabase local config", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-supabase-"));
     await mkdir(join(consumer, "supabase"), { recursive: true });
@@ -154,8 +218,7 @@ describe("install-time project setup", () => {
     expect(config).toEqual(expectedInstalledConfig("supabase/schemas", "supabase/migrations"));
     expect(existsSync(join(consumer, "supabase/schemas"))).toBe(true);
     expect(existsSync(join(consumer, "supabase/migrations"))).toBe(true);
-    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.adapter).toBe("auto");
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
   it.each([
@@ -195,7 +258,6 @@ describe("install-time project setup", () => {
       schemaPath: "azure-postgresql/schemas",
     },
   ])("uses $id paths when provider config markers are present", async ({
-    id,
     marker,
     markerContent,
     migrationsDir,
@@ -211,11 +273,7 @@ describe("install-time project setup", () => {
     expect(config).toEqual(expectedInstalledConfig(schemaPath, migrationsDir));
     expect(existsSync(join(consumer, schemaPath))).toBe(true);
     expect(existsSync(join(consumer, migrationsDir))).toBe(true);
-
-    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.adapter).toBe("auto");
-    expect(manifest.provider.id).toBe(id);
-    expect(manifest.provider.markers).toContain(marker);
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
   it("preserves an existing config and merges hook wiring", async () => {
@@ -291,11 +349,7 @@ describe("install-time project setup", () => {
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config.schemaPaths).toEqual(["database/schema"]);
     expect(config.migrationsDir).toBe("database/migrations");
-
-    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.pathConfirmationNeeded).toBe(false);
-    expect(manifest.candidates.schemaPaths).toContain("database/schema");
-    expect(manifest.candidates.migrationsDirs).toContain("database/migrations");
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
   it("records ambiguous scanned paths for agent confirmation", async () => {
@@ -384,16 +438,20 @@ describe("install-time project setup", () => {
     expect(stdout).toBe("");
   });
 
-  it("keeps the install manifest byte-identical on a no-op re-install", async () => {
+  it("does not create install state on a no-op resolved re-install", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-idempotent-"));
     const env = { ...process.env, INIT_CWD: consumer };
 
     await run("node", ["bin/postinstall.mjs"], { env });
-    const first = await readFile(join(consumer, ".supaschema/install.json"), "utf8");
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
+    await mkdir(join(consumer, ".supaschema"), { recursive: true });
+    await writeFile(
+      join(consumer, ".supaschema", "install.json"),
+      '{"pathConfirmationNeeded":false}\n'
+    );
     await run("node", ["bin/postinstall.mjs"], { env });
-    const second = await readFile(join(consumer, ".supaschema/install.json"), "utf8");
 
-    expect(second).toBe(first);
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
   it("resolves a sparse existing config through the CLI defaults, not provider detection", async () => {
@@ -405,16 +463,13 @@ describe("install-time project setup", () => {
     await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
 
     // The CLI loads this sparse config with its static defaults; normal install preserves
-    // the user-owned JSON while guidance, directories, and manifest stay aligned with
-    // what the CLI actually diffs.
+    // the user-owned JSON while guidance and directories stay aligned with what the CLI diffs.
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe("{}\n");
     expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
       "Schema intent belongs in `database/schemas`"
     );
     expect(existsSync(join(consumer, "database/schemas"))).toBe(true);
-    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.schemaPaths).toEqual(["database/schemas"]);
-    expect(manifest.migrationsDir).toBe("database/migrations");
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
   it("ignores JavaScript config files and writes the canonical JSON config", async () => {
@@ -436,10 +491,7 @@ describe("install-time project setup", () => {
     expect(JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"))).toEqual(
       expectedInstalledConfig("database/schemas", "database/migrations")
     );
-    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.schemaPaths).toEqual(["database/schemas"]);
-    expect(manifest.migrationsDir).toBe("database/migrations");
-    expect(manifest.existingConfig).toBeUndefined();
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
   it("does not scaffold a guessed config while path confirmation is pending", async () => {
@@ -519,6 +571,11 @@ function npmExec(args: string[]): { args: string[]; file: string } {
     return { args: [npmExecPath, ...args], file: process.execPath };
   }
   return { args, file: process.platform === "win32" ? "npm.cmd" : "npm" };
+}
+
+async function writeNestedFile(path: string, contents: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, contents);
 }
 
 function commandCount(value: unknown, command: string): number {

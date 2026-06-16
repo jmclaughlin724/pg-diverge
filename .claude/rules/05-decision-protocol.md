@@ -8,7 +8,6 @@ description: Technical decision protocol: research upstream canonical sources in
 
 This rule owns how agents make technical, architecture, library, schema, typing, and implementation decisions: research canonical sources, choose the upstream-standard pattern, and escalate only user-owned decisions.
 
-
 Technical and architecture decisions are resolved by **evidence from upstream canonical sources and current best practices**, never by presenting the user a decision menu.
 
 ## Hard rules

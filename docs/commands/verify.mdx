@@ -34,11 +34,13 @@ The database URL must point at a PostgreSQL instance where the role can create t
 </ParamField>
 
 <ParamField path="--to" type="source">
-  Target source. Defaults to `config.sources.to`, then the first configured schema path.
+  Target source. Defaults to `config.sources.to`, then the first configured
+  schema path.
 </ParamField>
 
 <ParamField path="--migration" type="path">
-  Migration SQL to apply twice. Defaults to the newest `.sql` file in the migrations directory.
+  Migration SQL to apply twice. Defaults to the newest `.sql` file in the
+  migrations directory.
 </ParamField>
 
 <ParamField path="--migrations-dir" type="path">
@@ -46,7 +48,8 @@ The database URL must point at a PostgreSQL instance where the role can create t
 </ParamField>
 
 <ParamField path="--database-url" type="url">
-  PostgreSQL admin URL. Also resolves from `SUPASCHEMA_DATABASE_URL` or Supabase local discovery.
+  PostgreSQL admin URL. Also resolves from `SUPASCHEMA_DATABASE_URL` or Supabase
+  local discovery.
 </ParamField>
 
 <ParamField path="--ensure-roles" type="boolean">
@@ -74,11 +77,11 @@ The database URL must point at a PostgreSQL instance where the role can create t
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Migration is idempotent and converges |
-| `1` | Runtime failure or missing database URL |
-| `2` | Verification diagnostics failed |
+| Code | Meaning                                 |
+| ---- | --------------------------------------- |
+| `0`  | Migration is idempotent and converges   |
+| `1`  | Runtime failure or missing database URL |
+| `2`  | Verification diagnostics failed         |
 
 ## Related
 
@@ -89,7 +92,11 @@ The database URL must point at a PostgreSQL instance where the role can create t
   <Card title="CI recipe" icon="github" href="/guides/ci-github-actions">
     Add a disposable PostgreSQL service.
   </Card>
-  <Card title="Supabase integration" icon="database" href="/guides/supabase-integration">
+  <Card
+    title="Supabase integration"
+    icon="database"
+    href="/guides/supabase-integration"
+  >
     Use environment and role stubs for Supabase trees.
   </Card>
   <Card title="Fingerprint" icon="fingerprint" href="/commands/fingerprint">

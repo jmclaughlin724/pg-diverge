@@ -248,10 +248,7 @@ describe("consumer lifecycle: ignore-scripts install then supaschema init reache
     for (const file of excludedMaintainerFiles) {
       expect(existsSync(join(consumer2, file)), file).toBe(false);
     }
-    const manifest = JSON.parse(
-      readFileSync(join(consumer2, ".supaschema", "install.json"), "utf8")
-    ) as { adapter?: string };
-    expect(manifest.adapter).toBe("auto");
+    expect(existsSync(join(consumer2, ".supaschema"))).toBe(false);
     const agents = await readFile(join(consumer2, "AGENTS.md"), "utf8");
     expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
     expect(agents).toContain("Schema intent belongs in `database/schemas`");

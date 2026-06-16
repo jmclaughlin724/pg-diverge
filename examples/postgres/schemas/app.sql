@@ -18,4 +18,3 @@ CREATE OR REPLACE FUNCTION app.account_count ()
   FROM
     app.accounts
 $$;
-

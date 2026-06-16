@@ -39,7 +39,6 @@ SEARCH_PREFIXES = (
     ".claude/rules/",
     ".claude/skills/",
     ".codex/rules/",
-    ".codex/skills/",
     ".agents/skills/",
 )
 SEARCH_FILES = {
@@ -190,7 +189,6 @@ def _upstream_mcp_capabilities(
             "use_for": "OpenAI API, Agents SDK, and ChatGPT Apps documentation.",
         },
         {"server": "supaschema-docs", "family": "product", "use_for": "Published supaschema docs."},
-        {"server": "sentry", "family": "product", "use_for": "Sentry product documentation."},
     ]
     filtered = [item for item in index if capability == "all" or item["family"] == capability]
     return {

@@ -77,7 +77,6 @@ describe("npm package contents", () => {
       ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
       ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
-      ".codex/skills/supaschema/SKILL.md",
       "README.md",
       "LICENSE",
       "LICENSE-COMMERCIAL.md",
@@ -108,6 +107,10 @@ describe("npm package contents", () => {
     expect(codexHookContents).not.toContain("scripts/agent-hooks");
     expect(codexHookContents).toContain("block-generated-migration-edits.mjs");
     expect(codexHookContents).toContain("auto-diff-on-schema-change.mjs");
+    expect(
+      paths.filter((path) => path.startsWith(".codex/skills/")),
+      "legacy Codex skills must not ship"
+    ).toEqual([]);
     expect(paths, "legacy config-schema.json must not ship").not.toContain("config-schema.json");
 
     const forbiddenPrefixes = [

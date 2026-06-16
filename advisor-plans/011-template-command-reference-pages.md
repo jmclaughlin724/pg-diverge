@@ -31,9 +31,10 @@ Line counts from the audit:
 
 ```mdx
 // docs/commands/other.mdx:27-50
+
 <Accordion title="plan - Print the diff plan as JSON">
-  `plan` runs the same comparison as `diff`, but prints JSON instead of writing SQL.
-  ...
+  `plan` runs the same comparison as `diff`, but prints JSON instead of writing
+  SQL. ...
 </Accordion>
 ```
 
@@ -61,11 +62,11 @@ Keep long examples in accordions under the section that needs them. Do not make 
 ## Commands you will need
 
 | Purpose | Command | Expected on success |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | Docs lint | `npm run docs:lint` | exit 0 |
 | Docs-standard tests | `npm test -- tests/docs-standard.test.ts` | exit 0 if lint rules changed |
 | Full docs validation | `npm run docs:check` | exit 0 |
-| Search old utility page refs | `rg -n "commands/other|/commands/other" docs README.md` | no public links except redirects or intentional changelog notes |
+| Search old utility page refs | `rg -n "commands/other | /commands/other" docs README.md` | no public links except redirects or intentional changelog notes |
 
 ## Scope
 

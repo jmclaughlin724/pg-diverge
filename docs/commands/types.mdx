@@ -38,20 +38,28 @@ npx supaschema types --out stdout
 
 ## Output paths
 
-| Config key | Default |
-| --- | --- |
+| Config key  | Default             |
+| ----------- | ------------------- |
 | `typesFile` | `database.types.ts` |
-| `zodFile` | `database.zod.ts` |
+| `zodFile`   | `database.zod.ts`   |
 
 Commit generated outputs when reviewers should see app-type impact in the same pull request as schema changes.
 
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Type generation guide" icon="book-open" href="/guides/generate-supabase-types-without-database">
+  <Card
+    title="Type generation guide"
+    icon="book-open"
+    href="/guides/generate-supabase-types-without-database"
+  >
     Generate types before applying migrations.
   </Card>
-  <Card title="Configuration" icon="sliders-horizontal" href="/configuration/config-file">
+  <Card
+    title="Configuration"
+    icon="sliders-horizontal"
+    href="/configuration/config-file"
+  >
     Set output paths and workflow policy.
   </Card>
   <Card title="Diff" icon="file-diff" href="/commands/diff">

@@ -788,6 +788,62 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
   );
 
   it.skipIf(process.platform === "win32")(
+    "continues the agent loop when post-diff check fails",
+    async () => {
+      const { env, log, project } = await autoDiffFixture(
+        ["supabase/schemas"],
+        `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+appendFileSync(process.env.SUPASCHEMA_FAKE_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");
+if (process.argv[2] === "diff") {
+  process.stdout.write("supabase/migrations/20260613000000_fake.sql\\n");
+  process.exit(0);
+}
+if (process.argv[2] === "check") {
+  process.stderr.write("ERROR SUPA_CHECK_CREATE_TABLE_GUARD: TABLE creation must use IF NOT EXISTS or a catalog guard\\n");
+  process.exit(2);
+}
+process.exit(1);
+`
+      );
+      await writeFile(
+        join(project, "supabase", "schemas", "accounts.sql"),
+        "CREATE TABLE app.t (id int);"
+      );
+
+      const result = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+          tool_name: "Edit",
+        },
+        { cwd: project, env }
+      );
+      const output = JSON.parse(result.stdout) as {
+        decision?: string;
+        hookSpecificOutput?: { additionalContext?: string };
+        reason?: string;
+      };
+
+      expect(result.code).toBe(0);
+      expect(output.decision).toBe("block");
+      expect(output.reason).toContain("supaschema check failed");
+      expect(output.reason).toContain("SUPA_CHECK_CREATE_TABLE_GUARD");
+      expect(output.reason).toContain("root source");
+      expect(output.reason).toContain("correlated failures");
+      expect(output.hookSpecificOutput?.additionalContext).toContain(
+        "supaschema check reported diagnostics"
+      );
+      expect(await readFakeCalls(log)).toEqual([
+        ["diff", "--to", "dir:supabase/schemas"],
+        ["check"],
+      ]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
     "runs verify when workflow.migration_verify is after_schema_diff",
     async () => {
       const { env, log, project } = await autoDiffFixture(

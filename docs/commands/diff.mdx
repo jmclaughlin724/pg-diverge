@@ -33,11 +33,13 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
 </ParamField>
 
 <ParamField path="--to" type="source">
-  Desired-state source. Defaults to `config.sources.to`, then the first configured schema path.
+  Desired-state source. Defaults to `config.sources.to`, then the first
+  configured schema path.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">
-  Write SQL to a specific file or print to stdout. `stdout` skips generated output refresh.
+  Write SQL to a specific file or print to stdout. `stdout` skips generated
+  output refresh.
 </ParamField>
 
 <ParamField path="--name" type="snake_case">
@@ -96,12 +98,12 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Success, including no schema changes |
-| `1` | Runtime failure |
-| `2` | Blocking diagnostics |
-| `3` | `--fail-on-diff` saw a non-empty plan |
+| Code | Meaning                               |
+| ---- | ------------------------------------- |
+| `0`  | Success, including no schema changes  |
+| `1`  | Runtime failure                       |
+| `2`  | Blocking diagnostics                  |
+| `3`  | `--fail-on-diff` saw a non-empty plan |
 
 ## Related
 

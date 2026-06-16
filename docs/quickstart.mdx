@@ -16,6 +16,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
     npm install supaschema
     npx supaschema --version
     ```
+
   </Step>
 
   <Step title="Write schema">
@@ -42,6 +43,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
     ```
 
     Your schema files are the source of truth. supaschema writes the migration.
+
   </Step>
 
   <Step title="Generate">
@@ -68,6 +70,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
     CREATE SCHEMA IF NOT EXISTS app;
     CREATE TABLE IF NOT EXISTS app.accounts (...);
     ```
+
   </Step>
 
   <Step title="Check">
@@ -83,6 +86,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
       If `check` reports issues, review the flagged statements before applying
       the migration. supaschema fails closed when it cannot prove safety.
     </Warning>
+
   </Step>
 
   <Step title="Apply">
@@ -101,6 +105,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
     <Note>
       supaschema never applies migrations to your target database.
     </Note>
+
   </Step>
 
   <Step title="Generate types">
@@ -109,6 +114,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
     ```bash
     npx supaschema types
     ```
+
   </Step>
 </Steps>
 

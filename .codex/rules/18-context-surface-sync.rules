@@ -34,7 +34,7 @@
 # | Root route map | `AGENTS.md` | discovered by coding agents | no sync; validate with `npm run guard` |
 # | Claude compatibility | `CLAUDE.md` | Claude Code | keep as `@AGENTS.md` unless Claude-specific guidance is intentional |
 # | Rules | `.claude/rules/**` | Codex rule pointers/mirrors when packaged | `npm run sync:llm`; rule guard if available |
-# | Skills | `.claude/skills/**` | `.agents/skills/**`, `.codex/skills/**` for mirrored skills; `skills/supaschema` for the public `npx skills` source | `npm run sync:llm` |
+# | Skills | `.claude/skills/**` | `.agents/skills/**` for mirrored skills; `skills/supaschema` for the public `npx skills` source | `npm run sync:llm` |
 # | Hooks | `.claude/hooks/**` | `.codex/hooks/**` mirrors or native adapters where supported | edit Claude/shared owner, then sync or update native adapter |
 # | Native Codex hook registration | `.codex/hooks.json` | packaged consumer registration | validate with hook/package guards |
 # | MCP registry | `.mcp.json`, `fastmcp.json` | local MCP clients and package docs | `npm run guard:fastmcp`, `npm run guard:agent` |

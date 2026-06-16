@@ -12,7 +12,6 @@
 #
 # This numbered file exists only to preserve rule-citation compatibility. The canonical migration policy owner is `.claude/rules/supaschema.md`.
 #
-#
 # The canonical owner is `.claude/rules/supaschema.md`.
 #
 # This numbered file exists only for rule-citation compatibility. Do not add migration policy here; update `.claude/rules/supaschema.md` and keep `.codex/rules/supaschema.rules` as a Codex-native pointer to that owner.

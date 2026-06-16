@@ -32,7 +32,6 @@ To bypass a hook in an emergency: `git commit --no-verify` (or `LEFTHOOK=0 git c
 | --- | --- |
 | `npm run check` | lint + test + build — the gate to run before pushing |
 | `npm run lint` | Biome lint (via Ultracite) |
-| `npm run lint:fix` | auto-fix lint/format issues |
 | `npm run format` | single write command: format + lint-fix + import/key-sort across every language |
 | `npm run typecheck` | TypeScript no-emit type check |
 | `npm test` | Vitest suite |

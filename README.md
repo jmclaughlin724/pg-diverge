@@ -197,11 +197,11 @@ The package ships a governance bundle so coding agents generate migrations throu
 - `AGENTS.md` / `CLAUDE.md` managed addenda — point agents to the installed setup prompt before setup or schema work.
 - `.agents/prompts/supaschema-install.md` — the install/setup prompt for agents, including what was installed, what to inspect, what to verify, and how to report completion without cloning the supaschema source repo.
 - `.claude/rules/` and `.codex/rules/` — the migration policy for Claude Code and Codex.
-- `.agents/skills/supaschema/`, `.claude/skills/supaschema/`, and `.codex/skills/supaschema/` — the step-by-step workflow skill, with recovery steps for every blocking `SUPA_*` code.
+- `.agents/skills/supaschema/` and `.claude/skills/supaschema/` — the step-by-step workflow skill, with recovery steps for every blocking `SUPA_*` code.
 - `.claude/hooks/` and `.codex/hooks/` — two wired migration-policy hooks in each runtime:
   - a **PreToolUse** hook that blocks any edit to a generated migration (identified by its lineage marker), and
-  - a **PostToolUse** hook that senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, and returns the generated migration name — or the blocking `SUPA_*` diagnostic — straight back to the agent as context.
-- A sync hook keeps the installed `.agents` and Codex mirrors aligned when the consumer edits the shipped `.claude` supaschema rule or skill.
+  - a **PostToolUse** hook that senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, returns the generated migration name, and emits continuation feedback when a blocking `SUPA_*` diagnostic requires root-cause investigation and a rerun.
+- A sync hook keeps the installed `.agents` skill and Codex rule/hook mirrors aligned when the consumer edits the shipped `.claude` supaschema rule or skill.
 
 So when an agent (or anyone) edits the declarative tree, the migration and configured generated outputs are refreshed according to `workflow.*` and the agent is told what happened, with no command to remember under the default hook policy. `npm install supaschema` installs the config, agent addenda, the narrow supaschema consumer rule/skill/hook bundle, and minimal hook wiring in one step. Pointing agents only at `node_modules/supaschema/` gives them package guidance without project hook wiring. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
 
@@ -211,9 +211,7 @@ For portable Agent Skill context without project setup:
 npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/supaschema
 ```
 
-That `npx skills` lane installs only the `supaschema` workflow skill. Rules,
-hooks, config, and hook registration are installed by `npm install supaschema`
-or, when lifecycle scripts did not run, `npx supaschema init`.
+That `npx skills` lane installs only the `supaschema` workflow skill into the location selected by the Skills CLI. `npm install supaschema` does not run that command; it installs the package-owned skill directly into `.agents/skills` and `.claude/skills`. Rules, hooks, config, and hook registration are installed by `npm install supaschema` or, when lifecycle scripts did not run, `npx supaschema init`.
 
 ## Library
 

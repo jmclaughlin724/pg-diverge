@@ -30,8 +30,6 @@ export const supportedValidators = [
   "postgres-language-server",
   "@postgres-language-server/cli",
   "sqlfluff",
-  "pg-formatter",
-  "pgformatter",
 ] as const;
 
 export const sourceAuto = "auto";
