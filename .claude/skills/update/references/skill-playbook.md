@@ -70,7 +70,7 @@ If a mapped surface is not updated, record the reason. "Not originally requested
 
 For package/service boundary lessons, verify both layers before selecting the owner:
 
-- `npm run code-atlas:query -- trace-change <target> --json`, `npm run code-atlas:query -- file-owners <target> --json`, or `npm run code-atlas:query -- validate-coverage --json` for repo-wide CLI surface, source, consumer, generated-surface, and package-boundary evidence. If MCP access is available, follow Rule 10's local `supaschema.code_atlas_query` policy for supplementary evidence.
+- `npm run code-atlas:query -- pre-edit <target> --json`, `npm run code-atlas:query -- trace-change <target> --json`, `npm run code-atlas:query -- regression-scope --json`, `npm run code-atlas:query -- file-owners <target> --json`, or `npm run code-atlas:query -- validate-coverage --json` for repo-wide CLI surface, source, consumer, generated-surface, changed-file verification, and package-boundary evidence. If MCP access is available, follow Rule 10's local `supaschema.code_atlas_query` policy for supplementary evidence.
 - `npm run check:package` or `npm pack --dry-run` for npm package-boundary and published-tarball evidence when Rule 13 (`13-npm-package-boundary.md`) is the owner.
 - the Python uv workspace at `services/agent-mcp` for FastMCP side-service evidence; verify with `npm run py:typecheck`, `npm run py:test`, and `npm run guard:fastmcp` when Rule 11 (`11-agent-mcp-fastmcp.md`) is the owner.
 - `npm run guard:code-atlas` and `npm run guard` are the active local backstops for graph and cross-surface policy drift.
@@ -96,7 +96,7 @@ Do not close with a findings list. When the user invokes `$update` with words su
 Use the owner matrix in root `AGENTS.md` and Rule 12 (`12-skill-loading-enforcement.md`). After editing canonical `.claude/rules/**`, `.claude/skills/**`, or `.claude/hooks/**` sources, run `npm run sync:llm` to regenerate managed mirrors. For other touched surfaces, run only the matching owner checks:
 
 - `npm run guard:agent` — `.claude/{skills,hooks,rules}`, mirrored `.codex/{skills,hooks,rules}`, or mirrored `.agents/skills` changed.
-- `npm run lint` (Ultracite check) or `npm run lint:ci` (Biome CI) — `biome.jsonc`, `ultracite` config, lint scripts, or root lint-surface paths changed; Rule 08 (`08-biome-ultracite-policy.md`) is the owner.
+- `npm run format` — formatting, import-sort, key-sort, or lint-fix remediation; Rule 06 is the cross-language owner and Rule 08 owns the Biome/Ultracite step. Use `npm run lint` (Ultracite check) or `npm run lint:ci` (Biome CI) only as read-only gates when `biome.jsonc`, `ultracite` config, lint scripts, or root lint-surface paths changed.
 - `npm run guard:code-atlas` — Code Atlas sources, MCP wiring, or atlas-owned claims changed; Rule 10 (`10-code-atlas.md`) is the owner.
 - `npm run guard:fastmcp`, `npm run py:typecheck`, `npm run py:test` — `services/agent-mcp` FastMCP side-service or Python toolchain changed; Rule 04 (`04-python-toolchain.md`) and Rule 11 (`11-agent-mcp-fastmcp.md`) are the owners.
 - `npm run guard` — root `AGENTS.md`, MCP/config references, cross-surface reference integrity, or mixed owner changes.

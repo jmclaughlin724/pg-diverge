@@ -1,7 +1,8 @@
 ---
 title: "Environments"
 description: "How supaschema resolves database URLs — named environments, $ENV indirection, SUPASCHEMA_DATABASE_URL, and supabase/config.toml discovery."
-keywords: ["environments","database URL","SUPASCHEMA_DATABASE_URL","config.toml"]
+keywords:
+  ["environments", "database URL", "SUPASCHEMA_DATABASE_URL", "config.toml"]
 ---
 
 Commands that read a live catalog need a database URL.
@@ -26,7 +27,10 @@ You usually do not need to repeat the URL on every command. Configure it once, t
 Explicit values and named environments support `$ENV_NAME` indirection. If the environment variable is missing, supaschema fails loudly.
 
 <Note>
-  `supabase/config.toml` is read only to discover the local Supabase database URL. Other provider config or infrastructure files are install-time markers only. Schema locations and named database URL references come from `supaschema.config.json`.
+  `supabase/config.toml` is read only to discover the local Supabase database
+  URL. Other provider config or infrastructure files are install-time markers
+  only. Schema locations and named database URL references come from
+  `supaschema.config.json`.
 </Note>
 
 ## Named environments
@@ -50,7 +54,9 @@ supaschema --env staging migrations            # reconcile files vs staging hist
 Keeping the actual URLs in environment variables (`$STAGING_DB`) means the committed config carries no credentials — the recommended pattern for CI and for teams.
 
 <Warning>
-  Do not hard-code connection strings in scripts, config, or CI. Use `$ENV_NAME` indirection or `SUPASCHEMA_DATABASE_URL`, and inject the secret from your CI provider's secret store.
+  Do not hard-code connection strings in scripts, config, or CI. Use `$ENV_NAME`
+  indirection or `SUPASCHEMA_DATABASE_URL`, and inject the secret from your CI
+  provider's secret store.
 </Warning>
 
 ## Remote targets and `verify`

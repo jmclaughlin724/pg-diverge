@@ -18,8 +18,10 @@ import { latestLineage } from "./lineage.js";
 import { planSchemaDiff } from "./planner.js";
 import { renderMigrationSplit } from "./render.js";
 import { extractSourceModel, filterModelBySchemas } from "./source.js";
-import { generateDatabaseTypes } from "./typegen.js";
-import { generateZodSchemas } from "./typegen-zod.js";
+import { generateDatabaseTypesFromShapes } from "./typegen.js";
+import type { SchemaShapes } from "./typegen-model.js";
+import { collectSchemaShapes } from "./typegen-model.js";
+import { generateZodSchemasFromShapes } from "./typegen-zod.js";
 
 const sqlExtensionPattern = /\.sql$/u;
 
@@ -310,31 +312,33 @@ async function refreshTypesFile(
   schemaFilter: string | undefined
 ): Promise<void> {
   const targets: {
-    generate: (model: SchemaModel) => Promise<string>;
+    generate: (shapes: SchemaShapes) => string;
     policy: SupaschemaConfig["workflow"]["type_generation"];
     relative: string;
   }[] = [
     {
-      generate: generateDatabaseTypes,
+      generate: generateDatabaseTypesFromShapes,
       policy: config.workflow.type_generation,
       relative: config.typesFile,
     },
     {
-      generate: generateZodSchemas,
+      generate: generateZodSchemasFromShapes,
       policy: config.workflow.zod_generation,
       relative: config.zodFile,
     },
   ];
   let model: SchemaModel | undefined;
+  let shapes: SchemaShapes | undefined;
+  let shapesComputed = false;
   for (const target of targets) {
     if (target.policy === "disabled") {
       continue;
     }
     try {
       if (target.policy === "refresh_existing") {
-        await refreshExistingGeneratedOutput(target, getModel);
+        await refreshExistingGeneratedOutput(target, getShapes);
       } else {
-        await createOrRefreshGeneratedOutput(target, getModel);
+        await createOrRefreshGeneratedOutput(target, getShapes);
       }
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") {
@@ -348,23 +352,35 @@ async function refreshTypesFile(
     model = model ?? filterModel(await extractSourceModel(toSource, { config }), schemaFilter);
     return hasErrors(model.diagnostics) ? undefined : model;
   }
+
+  // Compute the typegen shapes at most once per refresh and share them across
+  // the TypeScript and Zod targets, instead of re-walking the model per output.
+  async function getShapes(): Promise<SchemaShapes | undefined> {
+    if (shapesComputed) {
+      return shapes;
+    }
+    shapesComputed = true;
+    const resolved = await getModel();
+    shapes = resolved === undefined ? undefined : await collectSchemaShapes(resolved);
+    return shapes;
+  }
 }
 
 async function refreshExistingGeneratedOutput(
   target: {
-    generate: (model: SchemaModel) => Promise<string>;
+    generate: (shapes: SchemaShapes) => string;
     relative: string;
   },
-  getModel: () => Promise<SchemaModel | undefined>
+  getShapes: () => Promise<SchemaShapes | undefined>
 ): Promise<void> {
   let handle: FileHandle;
   handle = await open(resolve(process.cwd(), target.relative), "r+");
   try {
-    const model = await getModel();
-    if (model === undefined) {
+    const shapes = await getShapes();
+    if (shapes === undefined) {
       return;
     }
-    const generated = await target.generate(model);
+    const generated = target.generate(shapes);
     await handle.truncate(0);
     await handle.write(generated, 0);
     process.stderr.write(`types: ${target.relative} refreshed from configured workflow\n`);
@@ -375,18 +391,18 @@ async function refreshExistingGeneratedOutput(
 
 async function createOrRefreshGeneratedOutput(
   target: {
-    generate: (model: SchemaModel) => Promise<string>;
+    generate: (shapes: SchemaShapes) => string;
     relative: string;
   },
-  getModel: () => Promise<SchemaModel | undefined>
+  getShapes: () => Promise<SchemaShapes | undefined>
 ): Promise<void> {
-  const model = await getModel();
-  if (model === undefined) {
+  const shapes = await getShapes();
+  if (shapes === undefined) {
     return;
   }
   const outPath = resolve(process.cwd(), target.relative);
   await mkdir(dirname(outPath), { recursive: true });
-  await writeFile(outPath, await target.generate(model));
+  await writeFile(outPath, target.generate(shapes));
   process.stderr.write(`types: ${target.relative} created or refreshed from configured workflow\n`);
 }
 

@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 import { forEachNode, parse, ts } from "./lib/ast-utils.js";
-import { assert, ok, readText } from "./lib/guard-utils.js";
+import { assert, gitFiles, ok, readText } from "./lib/guard-utils.js";
 
+const alwaysGuarded = ["scripts/guards/lib/ast-utils.js", "scripts/guards/lib/sql-ast.js"];
+const guardedPrefixes = ["scripts/agent-hooks/", "scripts/code-atlas/"];
 const guarded = [
-  "scripts/code-atlas/build.mjs",
-  "scripts/code-atlas/lib/config.mjs",
-  "scripts/code-atlas/lib/files.mjs",
-  "scripts/code-atlas/lib/graph.mjs",
-  "scripts/code-atlas/lib/resolve.mjs",
-  "scripts/code-atlas/query.mjs",
-  "scripts/guards/lib/ast-utils.js",
-  "scripts/guards/lib/sql-ast.js",
-];
+  ...alwaysGuarded,
+  ...gitFiles().filter(
+    (file) =>
+      guardedPrefixes.some((prefix) => file.startsWith(prefix)) &&
+      [".js", ".mjs"].some((suffix) => file.endsWith(suffix))
+  ),
+].sort();
 
 for (const file of guarded) {
   const source = parse(readText(file), { fileName: file });

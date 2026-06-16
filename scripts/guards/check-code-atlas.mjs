@@ -99,8 +99,22 @@ assert(
 );
 const health = query("health");
 assert(Array.isArray(health.issues), "health query must return issues array");
+assert(typeof health.ok === "boolean", "health query must return ok boolean");
+assert(
+  health.issues.every((issue) => ["error", "info", "warning"].includes(issue.severity)),
+  "health issues must include ranked severities"
+);
+const strictHealth = query("health", "", ["--strict"]);
+assert(strictHealth.strict === true, "health --strict must report strict mode");
+assert(typeof strictHealth.ok === "boolean", "health --strict must return ok boolean");
 const coverage = query("validate-coverage");
 assert(coverage.ok === true, "validate-coverage query must pass");
+const regressionScope = query("regression-scope");
+assert(Array.isArray(regressionScope.changedFiles), "regression-scope must return changedFiles");
+assert(
+  regressionScope.verification?.commands?.includes("npm run guard:code-atlas"),
+  "regression-scope must include code-atlas guard verification"
+);
 const traceChange = query("trace-change", "scripts/code-atlas/build.mjs");
 assert(
   traceChange.consumers.some((node) => node.id === "package_script:supaschema#code-atlas:build"),
@@ -146,11 +160,12 @@ function hasEdge(from, to, type) {
   );
 }
 
-function query(kind, value) {
+function query(kind, value, extraArgs = []) {
   const args = ["scripts/code-atlas/query.mjs", kind];
   if (value) {
     args.push(value);
   }
+  args.push(...extraArgs);
   args.push("--json");
   return JSON.parse(run("node", args).stdout);
 }

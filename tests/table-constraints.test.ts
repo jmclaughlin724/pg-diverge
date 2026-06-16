@@ -78,4 +78,27 @@ ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
     const alteredTable = altered.objects.find((object) => object.key === "table:app.a");
     expect(inlineTable?.hash).toBe(alteredTable?.hash);
   });
+
+  it("extracts every supported ALTER TABLE subcommand in one statement", async () => {
+    const extracted = await extractObjectsFromSql(
+      "ALTER TABLE app.accounts ADD CONSTRAINT accounts_pkey PRIMARY KEY (id), ENABLE ROW LEVEL SECURITY;",
+      { file: "alter.sql" }
+    );
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(extracted.objects.map((object) => object.key).sort()).toEqual([
+      "constraint:app.accounts_pkey:accounts",
+      "rls:app.accounts:accounts",
+    ]);
+  });
+
+  it("fails closed instead of partially modeling mixed unsupported ALTER TABLE subcommands", async () => {
+    const extracted = await extractObjectsFromSql(
+      "ALTER TABLE app.accounts ADD CONSTRAINT accounts_pkey PRIMARY KEY (id), ALTER COLUMN id TYPE text;",
+      { file: "alter.sql" }
+    );
+
+    expect(extracted.objects).toEqual([]);
+    expect(extracted.diagnostics.map((item) => item.code)).toContain("SUPA_EXTRACT_UNSUPPORTED");
+  });
 });

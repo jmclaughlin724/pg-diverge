@@ -48,6 +48,61 @@ describe("sync (no target)", () => {
     expect(result.report).toContain('workflow.migration_sync is "disabled"');
     expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_SYNC_DISABLED");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "reports an unavailable runner when the Supabase CLI cannot be launched",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-no-cli-"));
+      await writeFile(
+        join(root, "20260101000000_safe.sql"),
+        "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n"
+      );
+      const oldPath = process.env.PATH;
+      process.env.PATH = await mkdtemp(join(tmpdir(), "supa-empty-path-"));
+      try {
+        const result = await syncMigrations({ directory: root, local: true });
+
+        expect(result.applied).toBe(false);
+        expect(result.diagnostics.map((item) => item.code)).toContain(
+          "SUPA_SYNC_RUNNER_UNAVAILABLE"
+        );
+        expect(result.diagnostics.map((item) => item.code)).not.toContain(
+          "SUPA_SYNC_RUNNER_FAILED"
+        );
+      } finally {
+        process.env.PATH = oldPath;
+      }
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "preserves the generic runner-failed diagnostic for a real nonzero exit",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-exit-"));
+      await writeFile(
+        join(root, "20260101000000_safe.sql"),
+        "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n"
+      );
+      const binDir = await mkdtemp(join(tmpdir(), "supa-sync-bin-"));
+      await writeFile(join(binDir, "supabase"), "#!/bin/sh\nexit 42\n", { mode: 0o755 });
+      const oldPath = process.env.PATH;
+      process.env.PATH = binDir;
+      try {
+        const result = await syncMigrations({ directory: root, local: true });
+
+        expect(result.applied).toBe(false);
+        expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_SYNC_RUNNER_FAILED");
+        expect(result.diagnostics.map((item) => item.code)).not.toContain(
+          "SUPA_SYNC_RUNNER_UNAVAILABLE"
+        );
+        expect(
+          result.diagnostics.find((item) => item.code === "SUPA_SYNC_RUNNER_FAILED")?.message
+        ).toContain("exited with code 42");
+      } finally {
+        process.env.PATH = oldPath;
+      }
+    }
+  );
 });
 
 describe.skipIf(!databaseUrl)("sync (against a target)", () => {

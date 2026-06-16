@@ -1,7 +1,7 @@
 ---
 title: "Quickstart"
 description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from configured sources, and validate it."
-keywords: ["quickstart","first migration","diff","check","types"]
+keywords: ["quickstart", "first migration", "diff", "check", "types"]
 ---
 
 This guide generates one replay-safe migration from one schema file.
@@ -14,7 +14,8 @@ The examples use the neutral paths:
 If install selected provider-specific paths, use the values in `supaschema.config.json` instead.
 
 <Tip>
-  Keep this page open while you work. Each step has one command or one file edit.
+  Keep this page open while you work. Each step has one command or one file
+  edit.
 </Tip>
 
 <Steps>
@@ -30,6 +31,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     ```bash
     npx supaschema --version
     ```
+
   </Step>
 
   <Step title="Write schema">
@@ -64,6 +66,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     </Tip>
 
     Your schema files are the source of truth. You edit them directly. supaschema writes the migration.
+
   </Step>
 
   <Step title="Generate">
@@ -132,6 +135,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
         }
       ```
     </Tip>
+
   </Step>
 
   <Step title="Check">
@@ -154,6 +158,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     <Warning>
       If `check` reports issues, review the flagged statements before applying the migration. supaschema fails closed when it cannot prove safety.
     </Warning>
+
   </Step>
 
   <Step title="Apply">
@@ -176,6 +181,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     <Note>
       supaschema never applies migrations to your target database. It also does not need a shadow database for file, Git, dump, or catalog sources.
     </Note>
+
   </Step>
 
   <Step title="Generate types">
@@ -194,6 +200,7 @@ If install selected provider-specific paths, use the values in `supaschema.confi
     database.types.ts
     database.zod.ts
     ```
+
   </Step>
 </Steps>
 
@@ -213,13 +220,13 @@ Go deeper here:
     Review install-time setup and config defaults.
   </Card>
 
-  <Card title="Commands" icon="terminal" href="/commands">
-    Deep-dive into `diff`, `check`, `verify`, and all other supaschema commands.
-  </Card>
+<Card title="Commands" icon="terminal" href="/commands">
+  Deep-dive into `diff`, `check`, `verify`, and all other supaschema commands.
+</Card>
 
-  <Card title="Types" icon="code" href="/commands/types">
-    Learn how to configure and customise TypeScript type output.
-  </Card>
+<Card title="Types" icon="code" href="/commands/types">
+  Learn how to configure and customise TypeScript type output.
+</Card>
 
   <Card title="CI" icon="circle-check" href="/guides/ci-github-actions">
     Add supaschema to your GitHub Actions or other CI pipeline.

@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractSourceModel } from "../src/source.js";
-import { generateDatabaseTypes } from "../src/typegen.js";
-import { generateZodSchemas } from "../src/typegen-zod.js";
+import { generateDatabaseTypes, generateDatabaseTypesFromShapes } from "../src/typegen.js";
+import { collectSchemaShapes } from "../src/typegen-model.js";
+import { generateZodSchemas, generateZodSchemasFromShapes } from "../src/typegen-zod.js";
 
 const addressCompositePattern =
   /address:\s*\{\s*street:\s*string \| null;\s*zip:\s*number \| null;/;
@@ -32,14 +33,19 @@ CREATE VIEW app.account_all AS SELECT * FROM app.accounts;
 `;
 
 async function typesFor(sql: string): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "supa-typegen-"));
+  const model = await modelFor(sql, "supa-typegen-");
+  return await generateDatabaseTypes(model);
+}
+
+async function modelFor(sql: string, prefix: string) {
+  const root = await mkdtemp(join(tmpdir(), prefix));
   await writeFile(join(root, "001_app.sql"), sql);
   const model = await extractSourceModel(`dir:${root}`);
   const errors = model.diagnostics.filter((item) => item.severity === "error");
   if (errors.length > 0) {
     throw new Error(`expected source extraction to succeed: ${JSON.stringify(errors)}`);
   }
-  return await generateDatabaseTypes(model);
+  return model;
 }
 
 describe("database type generation", () => {
@@ -90,6 +96,14 @@ describe("database type generation", () => {
     expect(types).toContain('status: ["draft", "active"],');
     expect(types).toContain("export type Tables<");
     expect(types).toContain("export type Enums<");
+  });
+
+  it("emits identical TypeScript and Zod output from precomputed shapes", async () => {
+    const model = await modelFor(treeSql, "supa-typegen-shapes-");
+    const shapes = await collectSchemaShapes(model);
+
+    expect(generateDatabaseTypesFromShapes(shapes)).toBe(await generateDatabaseTypes(model));
+    expect(generateZodSchemasFromShapes(shapes)).toBe(await generateZodSchemas(model));
   });
 });
 
@@ -252,13 +266,7 @@ describe("function return row typegen", () => {
 
 describe("zod schema generation", () => {
   async function zodFor(sql: string): Promise<string> {
-    const root = await mkdtemp(join(tmpdir(), "supa-zodgen-"));
-    await writeFile(join(root, "001_app.sql"), sql);
-    const model = await extractSourceModel(`dir:${root}`);
-    const errors = model.diagnostics.filter((item) => item.severity === "error");
-    if (errors.length > 0) {
-      throw new Error(`expected source extraction to succeed: ${JSON.stringify(errors)}`);
-    }
+    const model = await modelFor(sql, "supa-zodgen-");
     return await generateZodSchemas(model);
   }
 

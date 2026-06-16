@@ -89,6 +89,7 @@ export function currentTurnState(state) {
   const hasTurns = state.turns && typeof state.turns === "object" && !Array.isArray(state.turns);
   if (!hasTurns) {
     const legacyTurn = {
+      atlasAdvisories: objectValue(state.atlasAdvisories),
       corrections: Array.isArray(state.corrections) ? state.corrections : [],
       evidence: Array.isArray(state.evidence) ? state.evidence : [],
       lastPrompt: typeof state.lastPrompt === "string" ? state.lastPrompt : "",
@@ -109,6 +110,7 @@ export function currentTurnState(state) {
 
 export function normalizeState(value) {
   const legacyTurn = {
+    atlasAdvisories: objectValue(value?.atlasAdvisories),
     corrections: Array.isArray(value?.corrections) ? value.corrections : [],
     evidence: Array.isArray(value?.evidence) ? value.evidence : [],
     lastPrompt: typeof value?.lastPrompt === "string" ? value.lastPrompt : "",
@@ -125,6 +127,7 @@ export function normalizeState(value) {
   }
   const currentTurn = turns[currentTurnId] ?? emptyTurn();
   return {
+    atlasAdvisories: currentTurn.atlasAdvisories,
     contextEpoch: integerValue(value?.contextEpoch),
     corrections: currentTurn.corrections,
     currentTurnId,
@@ -168,6 +171,7 @@ function normalizeTurns(value) {
   const turns = {};
   for (const [id, turn] of Object.entries(value)) {
     turns[validateStateKey(id)] = {
+      atlasAdvisories: objectValue(turn?.atlasAdvisories),
       corrections: Array.isArray(turn?.corrections) ? turn.corrections : [],
       evidence: Array.isArray(turn?.evidence) ? turn.evidence : [],
       lastPrompt: typeof turn?.lastPrompt === "string" ? turn.lastPrompt : "",
@@ -179,6 +183,7 @@ function normalizeTurns(value) {
 
 function emptyTurn() {
   return {
+    atlasAdvisories: {},
     corrections: [],
     evidence: [],
     lastPrompt: "",
@@ -211,6 +216,7 @@ function hasTurnContent(turn) {
     turn.corrections.length > 0 ||
     turn.evidence.length > 0 ||
     turn.lastPrompt.length > 0 ||
+    Object.keys(turn.atlasAdvisories).length > 0 ||
     Object.keys(turn.pendingSkills).length > 0
   );
 }

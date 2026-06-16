@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { codeAtlasQueryEvidence } from "./atlas.mjs";
 import { addEvidence, currentTurnState, setCorrections } from "./state.mjs";
 
 const verificationWords = ["verified", "tested", "passed", "green", "clean"];
@@ -7,18 +8,26 @@ const hedgeWords = ["maybe", "probably", "possibly", "likely", "might", "could",
 const deferralTerms = ["if you want", "would you like", "i can ", "i could ", "let me know"];
 const menuTerms = ["option 1", "option a", "choose", "which approach", "pick one"];
 const directTerms = ["execute", "implement", "fix", "update", "do it", "make the change"];
-const whitespacePattern = /\s+/;
-const exitedWithCodePattern = /(?:process\s+)?exited?\s+with\s+(?:exit\s+)?code\s+(-?\d+)/i;
-const exitCodePattern = /exit\s+code[:=]?\s*(-?\d+)/i;
 
 export function recordToolEvidence(payload, state) {
   const name = toolName(payload);
   const command = toolCommand(payload);
-  if (!(isCommandTool(name) && command)) {
+  const atlasEvidence = codeAtlasQueryEvidence(payload);
+  if (!((isCommandTool(name) && command) || atlasEvidence)) {
     return {};
   }
   const success = toolSucceeded(payload);
   if (success === undefined) {
+    return {};
+  }
+  if (atlasEvidence) {
+    addEvidence(state, {
+      ...atlasEvidence,
+      outcome: success ? "success" : "failure",
+      summary: success ? "Code Atlas query succeeded" : "Code Atlas query failed",
+    });
+  }
+  if (!(isCommandTool(name) && command)) {
     return {};
   }
   addEvidence(state, {
@@ -111,9 +120,10 @@ export function completionClaimWithOpenItems(message, payload, state) {
 
 export function claimWithoutEvidence(message, state, transcript = []) {
   const claimsVerification = verificationWords.some((term) => lower(message).includes(term));
-  const evidence = [...currentTurnState(state).evidence, ...transcript].some(
-    (item) => item.kind === "verified-command" || item.kind === "successful-command"
-  );
+  const evidenceItems = [...currentTurnState(state).evidence, ...transcript];
+  const evidence =
+    evidenceItems.some(successfulCommandEvidence) ||
+    (mentionsCodeAtlas(message) && evidenceItems.some(successfulAtlasEvidence));
   return claimsVerification && !evidence
     ? {
         id: "claim-without-evidence",
@@ -152,9 +162,7 @@ export function toolFailureWithoutRetry(state) {
     return;
   }
   const laterSuccess = evidence.some(
-    (item) =>
-      (item.kind === "verified-command" || item.kind === "successful-command") &&
-      item.at > lastFailure.at
+    (item) => successfulCommandEvidence(item) && item.at > lastFailure.at
   );
   return laterSuccess
     ? undefined
@@ -272,11 +280,51 @@ function statusOutcome(status) {
 }
 
 function stringOutcome(text) {
-  const exitMatch = text.match(exitedWithCodePattern) ?? text.match(exitCodePattern);
-  if (exitMatch?.[1]) {
-    return Number(exitMatch[1]) === 0;
+  const exitCode = exitCodeFromText(text);
+  if (exitCode !== undefined) {
+    return exitCode === 0;
   }
   return statusOutcome(text.trim());
+}
+
+function exitCodeFromText(text) {
+  const normalized = lower(text);
+  let offset = 0;
+  while (offset < normalized.length) {
+    const index = normalized.indexOf("code", offset);
+    if (index === -1) {
+      return;
+    }
+    const parsed = integerAfter(normalized, index + "code".length);
+    if (parsed !== undefined && textMentionsExit(normalized, index)) {
+      return parsed;
+    }
+    offset = index + 1;
+  }
+}
+
+function textMentionsExit(text, codeIndex) {
+  const windowStart = Math.max(0, codeIndex - 24);
+  const prefix = text.slice(windowStart, codeIndex);
+  return prefix.includes("exit") || prefix.includes("exited");
+}
+
+function integerAfter(text, startIndex) {
+  let index = startIndex;
+  while (index < text.length && isIgnoredBetweenCodeAndNumber(text[index])) {
+    index += 1;
+  }
+  let sign = 1;
+  if (text[index] === "-") {
+    sign = -1;
+    index += 1;
+  }
+  let digits = "";
+  while (index < text.length && isDigit(text[index])) {
+    digits += text[index];
+    index += 1;
+  }
+  return digits ? Number(digits) * sign : undefined;
 }
 
 function childValues(value) {
@@ -295,9 +343,55 @@ function countTerm(message, term) {
 }
 
 function splitWords(message) {
-  return lower(message).split(whitespacePattern).filter(Boolean);
+  const words = [];
+  let current = "";
+  for (const char of lower(message)) {
+    if (isWhitespace(char)) {
+      if (current) {
+        words.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current) {
+    words.push(current);
+  }
+  return words;
 }
 
 function lower(value) {
   return String(value ?? "").toLowerCase();
+}
+
+function successfulCommandEvidence(item) {
+  return item.kind === "verified-command" || item.kind === "successful-command";
+}
+
+function successfulAtlasEvidence(item) {
+  return item.kind === "code-atlas-query" && item.outcome === "success";
+}
+
+function mentionsCodeAtlas(message) {
+  const normalized = lower(message);
+  return (
+    normalized.includes("code atlas") ||
+    normalized.includes("code-atlas") ||
+    normalized.includes("code_atlas")
+  );
+}
+
+function isIgnoredBetweenCodeAndNumber(char) {
+  return (
+    char === " " || char === "\n" || char === "\r" || char === "\t" || char === ":" || char === "="
+  );
+}
+
+function isDigit(char) {
+  return char >= "0" && char <= "9";
+}
+
+function isWhitespace(char) {
+  return char === " " || char === "\n" || char === "\r" || char === "\t";
 }

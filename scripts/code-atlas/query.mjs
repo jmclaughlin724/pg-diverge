@@ -38,6 +38,7 @@ const OWNER_RULES = [
 const args = process.argv.slice(2);
 const json = takeFlag(args, "--json");
 const noRebuild = takeFlag(args, "--no-rebuild");
+const strict = takeFlag(args, "--strict");
 const help = takeFlag(args, "--help") || args.length === 0;
 
 if (help) {
@@ -46,7 +47,13 @@ if (help) {
 }
 
 const [kind, value] = args;
-const optionalValueKinds = new Set(["entrypoints", "health", "mcp-status", "validate-coverage"]);
+const optionalValueKinds = new Set([
+  "entrypoints",
+  "health",
+  "mcp-status",
+  "regression-scope",
+  "validate-coverage",
+]);
 if (!(kind && (value || optionalValueKinds.has(kind)))) {
   printUsage();
   process.exit(1);
@@ -55,7 +62,7 @@ if (!(kind && (value || optionalValueKinds.has(kind)))) {
 try {
   const atlas = await loadAtlas({ noRebuild });
   const indexes = buildIndexes(atlas);
-  const result = runQuery(kind, value ?? "", atlas, indexes);
+  const result = runQuery(kind, value ?? "", atlas, indexes, { strict });
   if (json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     if (result.error) {
@@ -78,7 +85,7 @@ try {
   process.exit(1);
 }
 
-function runQuery(kind, value, sourceAtlas, indexes) {
+function runQuery(kind, value, sourceAtlas, indexes, options = {}) {
   switch (kind) {
     case "route":
     case "file":
@@ -107,10 +114,12 @@ function runQuery(kind, value, sourceAtlas, indexes) {
       return traceChange(value, sourceAtlas, indexes);
     case "file-owners":
       return fileOwners(value, sourceAtlas, indexes);
+    case "regression-scope":
+      return regressionScope(value, sourceAtlas, indexes);
     case "validate-coverage":
       return validateCoverage(sourceAtlas, indexes);
     case "health":
-      return health(value, sourceAtlas, indexes);
+      return health(value, sourceAtlas, indexes, options);
     case "mcp-status":
       return mcpStatus(sourceAtlas);
     default:
@@ -217,6 +226,54 @@ function traceChange(value, sourceAtlas, indexes) {
     consumers: consumers(value, sourceAtlas, indexes).nodes,
     owners: fileOwners(value, sourceAtlas, indexes).owners,
     verification: verificationPlan(value, base),
+  };
+}
+
+function regressionScope(filter, sourceAtlas, indexes) {
+  const changedFiles = changedRepoFiles(filter).map((filePath) => ({
+    node: indexes.nodes.get(fileId(filePath)) ?? null,
+    path: filePath,
+  }));
+  const ownerFileIds = new Set();
+  const impactedFileIds = new Set();
+  const ownerRecords = [];
+  const changedNodeIds = new Set();
+  for (const item of changedFiles) {
+    if (!item.node) {
+      continue;
+    }
+    changedNodeIds.add(item.node.id);
+    const preEditResult = preEdit(item.path, sourceAtlas, indexes);
+    for (const node of preEditResult.ownerFiles ?? []) {
+      ownerFileIds.add(node.id);
+    }
+    for (const node of preEditResult.impactedFiles ?? []) {
+      impactedFileIds.add(node.id);
+    }
+    ownerRecords.push(...fileOwners(item.path, sourceAtlas, indexes).owners);
+  }
+  const changedNodes = [...changedNodeIds]
+    .map((id) => indexes.nodes.get(id))
+    .filter(Boolean)
+    .sort(sortById);
+  const ownerFiles = [...ownerFileIds]
+    .map((id) => indexes.nodes.get(id))
+    .filter(Boolean)
+    .sort(sortById);
+  const impactedFiles = [...impactedFileIds]
+    .map((id) => indexes.nodes.get(id))
+    .filter(Boolean)
+    .sort(sortById);
+  return {
+    affected: rollupImpact(impactedFileIds, indexes),
+    changedFiles,
+    changedNodes,
+    filter,
+    impactedFiles,
+    kind: "regression-scope",
+    ownerFiles,
+    owners: uniqueOwners(ownerRecords),
+    verification: regressionVerificationPlan(changedFiles, impactedFiles),
   };
 }
 
@@ -356,7 +413,7 @@ function verificationPlan(value, impactResult) {
   };
 }
 
-function health(filter, sourceAtlas, indexes) {
+function health(filter, sourceAtlas, indexes, options = {}) {
   const issues = [];
   for (const node of sourceAtlas.nodes.filter((candidate) => candidate.kind === "file")) {
     const importCount = (indexes.outgoing.get(node.id) ?? []).filter((edge) =>
@@ -364,6 +421,7 @@ function health(filter, sourceAtlas, indexes) {
     ).length;
     if (importCount >= 10) {
       issues.push({
+        severity: importCount >= 25 ? "warning" : "info",
         type: "high_coupling_file",
         node,
         importCount,
@@ -375,13 +433,17 @@ function health(filter, sourceAtlas, indexes) {
       ["owns_route", "wraps_route"].includes(edge.type)
     );
     if (owners.length === 0) {
-      issues.push({ type: "route_without_owner", node: route });
+      issues.push({ severity: "error", type: "route_without_owner", node: route });
     }
   }
   for (const router of sourceAtlas.nodes.filter((node) => node.kind === "api_router")) {
     const registrations = indexes.incoming.get(router.id) ?? [];
     if (!registrations.some((edge) => edge.type === "registers_api_router")) {
-      issues.push({ type: "api_router_missing_framework_registration", node: router });
+      issues.push({
+        severity: "error",
+        type: "api_router_missing_framework_registration",
+        node: router,
+      });
     }
   }
   for (const worker of sourceAtlas.nodes.filter((node) => node.kind === "worker_job")) {
@@ -393,18 +455,115 @@ function health(filter, sourceAtlas, indexes) {
         incoming.some((edge) => edge.type === "declares_worker_job")
       )
     ) {
-      issues.push({ type: "worker_job_missing_module", node: worker });
+      issues.push({ severity: "error", type: "worker_job_missing_module", node: worker });
     }
   }
   const filtered = filter
     ? issues.filter((issue) => JSON.stringify(issue).toLowerCase().includes(filter.toLowerCase()))
     : issues;
+  const sorted = filtered.sort(sortHealthIssue);
   return {
     kind: "health",
     value: filter,
-    ok: filtered.length === 0,
-    issues: filtered,
+    ok: healthOk(sorted, options.strict),
+    strict: Boolean(options.strict),
+    issues: sorted,
   };
+}
+
+function changedRepoFiles(filter) {
+  const files = new Set();
+  for (const filePath of gitLines(["diff", "--name-only", "HEAD", "--"])) {
+    files.add(filePath);
+  }
+  for (const filePath of gitLines(["ls-files", "--others", "--exclude-standard"])) {
+    files.add(filePath);
+  }
+  return [...files]
+    .filter((filePath) => !filter || filePath.toLowerCase().includes(filter.toLowerCase()))
+    .sort();
+}
+
+function gitLines(args) {
+  const result = spawnSync("git", args, {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    return [];
+  }
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function uniqueOwners(owners) {
+  const byPathAndReason = new Map();
+  for (const owner of owners) {
+    byPathAndReason.set(`${owner.path}\0${owner.reason}`, owner);
+  }
+  return [...byPathAndReason.values()].sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function regressionVerificationPlan(changedFiles, impactedFiles) {
+  const paths = changedFiles.map((item) => item.path);
+  const commands = [
+    "npm run code-atlas:query -- regression-scope --json",
+    "npm run guard:code-atlas",
+  ];
+  if (
+    paths.some((item) => item.startsWith("scripts/agent-hooks/") || item.startsWith(".claude/"))
+  ) {
+    commands.push("npm run guard:agent");
+  }
+  if (paths.some((item) => item.startsWith("services/agent-mcp/"))) {
+    commands.push("npm run guard:fastmcp");
+  }
+  if (paths.some((item) => item.startsWith("scripts/code-atlas/"))) {
+    commands.push("node scripts/guards/check-no-regex-in-scripts.mjs");
+  }
+  return {
+    commands: uniqueStrings(commands),
+    impactedFileCount: impactedFiles.length,
+    proof: [
+      "Use regression-scope to derive the changed-file owner and impact set.",
+      "Run the target guards for each changed surface before completion.",
+    ],
+  };
+}
+
+function healthOk(issues, strictHealth) {
+  if (issues.some((issue) => issue.severity === "error")) {
+    return false;
+  }
+  return !(strictHealth && issues.some((issue) => issue.severity === "warning"));
+}
+
+function sortHealthIssue(left, right) {
+  const severity = severityRank(right.severity) - severityRank(left.severity);
+  if (severity !== 0) {
+    return severity;
+  }
+  const type = String(left.type ?? "").localeCompare(String(right.type ?? ""));
+  if (type !== 0) {
+    return type;
+  }
+  return String(left.node?.id ?? "").localeCompare(String(right.node?.id ?? ""));
+}
+
+function severityRank(value) {
+  if (value === "error") {
+    return 3;
+  }
+  if (value === "warning") {
+    return 2;
+  }
+  return 1;
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values)];
 }
 
 function entrypoints(filter, sourceAtlas) {
@@ -685,7 +844,7 @@ function printUsage() {
 }
 
 function usageText() {
-  return `Usage: node scripts/code-atlas/query.mjs <kind> [value] [--json] [--no-rebuild]
+  return `Usage: node scripts/code-atlas/query.mjs <kind> [value] [--json] [--no-rebuild] [--strict]
 
 Kinds:
   route <value>       Find Next route nodes.
@@ -705,7 +864,9 @@ Kinds:
                        Agent work pack: impact, consumers, owners, verification commands.
   file-owners <target>
                        Nearest AGENTS.md plus atlas/rule/skill owners for files.
+  regression-scope [value]
+                       Changed-file owner and impact set from git status/diff.
   validate-coverage   Guardable coverage and package/MCP boundary checks.
-  health [value]      Report atlas consistency risks.
+  health [value]      Report ranked atlas consistency risks; --strict fails on warnings.
   mcp-status [value]  Report optional live Code Atlas MCP status.`;
 }

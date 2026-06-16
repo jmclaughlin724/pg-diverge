@@ -14,5 +14,4 @@ Instances of unacceptable behavior may be reported privately to the project main
 
 ## Attribution
 
-This Code of Conduct adopts the Contributor Covenant, version 2.1, available at
-<https://www.contributor-covenant.org/version/2/1/code_of_conduct/>. Community Impact Guidelines were inspired by Mozilla's code of conduct enforcement ladder.
+This Code of Conduct adopts the Contributor Covenant, version 2.1, available at <https://www.contributor-covenant.org/version/2/1/code_of_conduct/>. Community Impact Guidelines were inspired by Mozilla's code of conduct enforcement ladder.

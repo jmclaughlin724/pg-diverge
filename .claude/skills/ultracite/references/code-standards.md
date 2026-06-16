@@ -20,8 +20,7 @@
 - Do not add broad lint suppressions for generated SQL, parser, or guard behavior.
 - Prefer AST/model helpers over ad hoc string matching for SQL-related logic.
 - For generated SVG diagnostics, fix the generator source and regenerate the tracked SVG output.
-- For intentional literal placeholder text containing `${...}`, split or construct the marker so
-  Biome does not confuse it with an accidental template placeholder.
+- For intentional literal placeholder text containing `${...}`, split or construct the marker so Biome does not confuse it with an accidental template placeholder.
 
 ## Security And Correctness
 

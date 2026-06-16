@@ -53,7 +53,6 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
   const environmentEnsured = options.ensureEnvironment ?? false;
   try {
     if (await connectVerificationAdmin(admin, diagnostics)) {
-      await admin.end().catch(() => undefined);
       return diagnostics;
     }
     await createVerificationDatabases(admin, [migrationDb, targetDb], created);

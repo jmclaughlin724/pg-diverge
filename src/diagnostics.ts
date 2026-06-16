@@ -163,6 +163,8 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_MIGRATIONS_TARGET_UNAVAILABLE: "The migrations target database could not be read.",
   SUPA_SYNC_RUNNER_FAILED:
     "The migration runner (supabase CLI) exited nonzero during sync; supaschema gates but the runner owns apply/deploy.",
+  SUPA_SYNC_RUNNER_UNAVAILABLE:
+    "The migration runner (Supabase CLI) could not be launched; it is not installed or not on PATH. supaschema gates and delegates apply to the runner.",
   SUPA_NORMALIZE_FIDELITY:
     "Deparsed SQL did not reparse to the identical parse tree, so the object kept its source text.",
   SUPA_NORMALIZE_UNSUPPORTED:
@@ -179,6 +181,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "Added column needs review: inline constraint, identity/generated, or NOT NULL without default.",
   SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED:
     "Column drops and type changes render data-preserving ALTERs only after a destructive-change hint.",
+  SUPA_PLAN_COLUMN_TYPE_USING_REVIEW:
+    "A column type change renders an identity USING cast; PostgreSQL rejects it unless an assignment cast exists. Review and replace the USING expression for non-trivial conversions.",
   SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED:
     "CREATE INDEX CONCURRENTLY cannot run inside the transaction the migration runner uses.",
   SUPA_PLAN_DEPENDENCY_CYCLE: "Dependency ordering found a reference cycle between objects.",

@@ -160,6 +160,17 @@ async def test_code_atlas_query_exposes_trace_change() -> None:
     assert payload["stdout"]["verification"]["commands"]
 
 
+async def test_code_atlas_query_exposes_regression_scope() -> None:
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool("code_atlas_query", {"kind": "regression-scope"})
+    payload = result.data
+
+    assert payload["ok"] is True
+    assert payload["stdout"]["kind"] == "regression-scope"
+    assert isinstance(payload["stdout"]["changedFiles"], list)
+    assert "npm run guard:code-atlas" in payload["stdout"]["verification"]["commands"]
+
+
 async def test_repo_context_query_searches_allowlisted_repo_files() -> None:
     async with Client(transport=mcp) as client:
         result = await client.call_tool(
@@ -225,6 +236,8 @@ async def test_status_upstream_all_capabilities_only_advertise_configured_server
 
     assert result.data["server"] == "supaschema"
     assert set(result.data["tools"]) == EXPECTED_TOOLS
+    assert "pre-edit" in result.data["code_atlas_hint"]
+    assert "standalone" not in result.data["code_atlas_hint"].lower()
 
     for item in payload["capabilities"]:
         # The whole index is the docs-research pointer set; every advertised

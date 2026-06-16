@@ -1,6 +1,7 @@
 ---
 description: Reference for Mintlify MDX components with syntax examples
 ---
+
 # Mintlify component reference
 
 docs.json schema: https://mintlify.com/docs.json
@@ -8,36 +9,43 @@ docs.json schema: https://mintlify.com/docs.json
 ### Callout components
 
 #### Note - Additional helpful information
+
 <Note>
 Supplementary information that supports the main content without interrupting flow. Use for helpful context, related concepts, or non-critical details.
 </Note>
 
 #### Tip - Best practices and pro tips
+
 <Tip>
 Expert advice, shortcuts, or best practices that enhance user success. Use for optimization suggestions, time-savers, or friendly recommendations.
 </Tip>
 
 #### Warning - Important cautions
+
 <Warning>
 Critical information about potential issues, breaking changes, or destructive actions. Use sparingly and only for genuine risks.
 </Warning>
 
 #### Info - Neutral contextual information
+
 <Info>
 Background information, context, or neutral announcements. Use for prerequisites, permissions, or required setup information.
 </Info>
 
 #### Check - Success confirmations
+
 <Check>
 Positive confirmations, successful completions, or achievement indicators. Use to verify steps were completed correctly.
 </Check>
 
 #### Danger - Critical warnings
+
 <Danger>
 Critical warnings about data loss, irreversible operations, or breaking changes. Use only when a normal warning is not strong enough.
 </Danger>
 
 #### Callout - Custom icon/color callout
+
 <Callout icon="key" color="#FFC107">
 Custom callout with a specific icon and color. Prefer the semantic callout components unless custom styling adds real clarity.
 </Callout>
@@ -45,17 +53,19 @@ Custom callout with a specific icon and color. Prefer the semantic callout compo
 ### Code components
 
 #### Single code block
+
 ```javascript config.js
 const apiConfig = {
-  baseURL: 'https://api.example.com',
+  baseURL: "https://api.example.com",
   timeout: 5000,
   headers: {
-    'Authorization': `Bearer ${process.env.API_TOKEN}`
-  }
+    Authorization: `Bearer ${process.env.API_TOKEN}`,
+  },
 };
 ```
 
 #### Code group with multiple languages
+
 <CodeGroup>
 ```javascript Node.js
 const response = await fetch('/api/endpoint', {
@@ -73,9 +83,11 @@ response = requests.get('/api/endpoint',
 curl -X GET '/api/endpoint' \
   -H 'Authorization: Bearer YOUR_API_KEY'
 ```
+
 </CodeGroup>
 
 #### Request/Response examples
+
 <RequestExample>
 ```bash cURL
 curl -X POST 'https://api.example.com/users' \
@@ -98,6 +110,7 @@ curl -X POST 'https://api.example.com/users' \
 ### Structural components
 
 #### Steps for procedures
+
 <Steps>
 <Step title="Install dependencies">
   Run `npm install` to install required packages.
@@ -110,9 +123,9 @@ curl -X POST 'https://api.example.com/users' \
 <Step title="Configure environment">
   Create a `.env` file with your API credentials.
 
-  ```bash
-  API_KEY=your_api_key_here
-  ```
+```bash
+API_KEY=your_api_key_here
+```
 
   <Warning>
   Never commit API keys to version control.
@@ -121,6 +134,7 @@ curl -X POST 'https://api.example.com/users' \
 </Steps>
 
 #### Tabs for alternative content
+
 <Tabs>
 <Tab title="macOS">
   ```bash
@@ -145,6 +159,7 @@ curl -X POST 'https://api.example.com/users' \
 </Tabs>
 
 #### Accordions for collapsible content
+
 <AccordionGroup>
 <Accordion title="Troubleshooting connection issues">
   - **Firewall blocking**: Ensure ports 80 and 443 are open
@@ -165,6 +180,7 @@ curl -X POST 'https://api.example.com/users' \
 ### API documentation components
 
 #### Parameter fields
+
 <ParamField path="user_id" type="string" required>
 Unique identifier for the user. Must be a valid UUID v4 format.
 </ParamField>
@@ -184,6 +200,7 @@ Bearer token for API authentication. Format: `Bearer YOUR_API_KEY`
 Use `path="path.name"`, `path="query.name"`, `path="body.name"`, or `path="header.Name"`. Do not use legacy-looking `body=`, `query=`, or `header=` attributes.
 
 #### Response fields
+
 <ResponseField name="user_id" type="string" required>
 Unique identifier assigned to the newly created user.
 </ResponseField>
@@ -197,6 +214,7 @@ List of permission strings assigned to this user.
 </ResponseField>
 
 #### Expandable nested fields
+
 <ResponseField name="user" type="object">
 Complete user object with all associated data.
 
@@ -212,6 +230,7 @@ Complete user object with all associated data.
     <ResponseField name="avatar_url" type="string | null">
     URL to user's profile picture. Returns null if no avatar is set.
     </ResponseField>
+
   </Expandable>
   </ResponseField>
 </Expandable>
@@ -220,6 +239,7 @@ Complete user object with all associated data.
 ### Interactive components
 
 #### Cards for navigation
+
 <Card title="Getting started guide" icon="rocket" href="/quickstart">
 Complete walkthrough from installation to your first API call in under 10 minutes.
 </Card>
@@ -243,6 +263,7 @@ Complete walkthrough from installation to your first API call in under 10 minute
 ### Media and advanced components
 
 #### Frames for images
+
 Wrap all images in frames with descriptive alt text.
 
 <Frame>
@@ -254,6 +275,7 @@ Wrap all images in frames with descriptive alt text.
 </Frame>
 
 #### Tooltips and updates
+
 <Tooltip tip="Application Programming Interface - protocols for building software">
 API
 </Tooltip>
@@ -276,9 +298,7 @@ flowchart LR
   Diff --> Check[Check replay safety]
 ```
 
-<Prompt description="Review a migration" actions={["copy"]}>
-Review this SQL migration for destructive changes, replay safety, and lock risk.
-</Prompt>
+<Prompt description="Review a migration" actions={["copy"]}> Review this SQL migration for destructive changes, replay safety, and lock risk. </Prompt>
 
 <Panel>
   <Info>Use sparingly when a page needs custom right-sidebar context instead of the table of contents.</Info>
@@ -290,9 +310,9 @@ Review this SQL migration for destructive changes, replay safety, and lock risk.
 - Improved error messages with actionable suggestions
 
 ## Bug fixes
+
 - Fixed pagination issue with large datasets
-- Resolved authentication timeout problems
-</Update>
+- Resolved authentication timeout problems </Update>
 
 ## Required page structure
 
@@ -308,6 +328,7 @@ description: "Concise description explaining page purpose and value"
 ## Content quality standards
 
 ### Code examples requirements
+
 - Always include complete, runnable examples that users can copy and execute
 - Show proper error handling and edge case management
 - Use realistic data instead of placeholder values (you can use `minty`, `wintergreen`, `spearmint` or similar for Mintlify examples)
@@ -318,6 +339,7 @@ description: "Concise description explaining page purpose and value"
 - Never include real API keys or sensitive credentials
 
 ### API documentation requirements
+
 - Document all parameters including optional ones with clear descriptions
 - Show both success and error response examples with realistic data
 - Include rate limiting information with specific limits
@@ -327,6 +349,7 @@ description: "Concise description explaining page purpose and value"
 - Include pagination details when applicable
 
 ### Accessibility requirements
+
 - Include descriptive alt text for all images and diagrams
 - Use specific, actionable link text instead of "click here"
 - Ensure proper heading hierarchy starting with H2
@@ -338,6 +361,7 @@ description: "Concise description explaining page purpose and value"
 ## Component selection logic
 
 ### When to use each component
+
 - **Steps**: Procedures, tutorials, setup guides, and sequential instructions
 - **Tabs**: Platform-specific content, alternative approaches, or multiple installation methods
 - **CodeGroup**: Same concept demonstrated in multiple programming languages
@@ -350,6 +374,7 @@ description: "Concise description explaining page purpose and value"
 - **ResponseField**: API response documentation with clear descriptions
 
 ### Callout selection guidelines
+
 - **Note**: Extra relevant information that supports main content (not crucial to task completion)
 - **Warning**: Potentially destructive actions, breaking changes, or critical cautions
 - **Info**: Required information, permissions, prerequisites, neutral announcements, background context
@@ -360,12 +385,14 @@ description: "Concise description explaining page purpose and value"
 ## Component selection decision trees
 
 ### For procedures:
+
 - Use ordered lists when: Sequential simple tasks. For example "Navigate to the dashboard" or "Click Configurations"
 - Use <Steps> when: Sequential complex tasks that require subtasks to complete
 - Use <Tabs> when: Platform-specific alternatives
 - Use <AccordionGroup> when: Optional supplementary info
 
 ### For code examples:
+
 - Use single ``` when: One language, simple example
 - Use <CodeGroup> when: Same concept in multiple languages
 - Use <RequestExample>/<ResponseExample> when: API documentation

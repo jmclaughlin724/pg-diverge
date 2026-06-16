@@ -1,6 +1,6 @@
 import type { Diagnostic, SchemaObject, SupaschemaConfig } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
-import type { AstNode } from "./ast.js";
+import type { AstNode, QualifiedName } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readString, stringList } from "./ast.js";
 import { makeObject } from "./statements.js";
 
@@ -19,9 +19,32 @@ export function alterTableObjects(
   if (!table) {
     return;
   }
-  const command = readArray(node.cmds)
+  const commands = readArray(node.cmds)
     .map((item) => asRecord(asRecord(item)?.AlterTableCmd))
-    .find((item) => item !== undefined);
+    .filter((item): item is AstNode => item !== undefined);
+  const objects: SchemaObject[] = [];
+  let sawUnsupported = false;
+  for (const command of commands) {
+    const object = alterTableCommandObject(command, table, statement, ordinal, file);
+    if (object) {
+      objects.push(object);
+    } else {
+      sawUnsupported = true;
+    }
+  }
+  if (objects.length > 0 && !sawUnsupported) {
+    return objects;
+  }
+  return;
+}
+
+function alterTableCommandObject(
+  command: AstNode,
+  table: QualifiedName,
+  statement: string,
+  ordinal: number,
+  file: string | undefined
+): SchemaObject | undefined {
   const subtype = readString(command?.subtype);
   if (subtype === "AT_AddConstraint") {
     const constraint = asRecord(asRecord(command?.def)?.Constraint);
@@ -29,19 +52,17 @@ export function alterTableObjects(
     if (!name) {
       return;
     }
-    return [
-      makeObject(
-        {
-          kind: "constraint",
-          name,
-          schema: table.schema,
-          table: table.name,
-        },
-        statement,
-        ordinal,
-        file
-      ),
-    ];
+    return makeObject(
+      {
+        kind: "constraint",
+        name,
+        schema: table.schema,
+        table: table.name,
+      },
+      statement,
+      ordinal,
+      file
+    );
   }
   if (
     subtype === "AT_EnableRowSecurity" ||
@@ -49,15 +70,13 @@ export function alterTableObjects(
     subtype === "AT_ForceRowSecurity" ||
     subtype === "AT_NoForceRowSecurity"
   ) {
-    return [
-      makeObject(
-        { kind: "rls", name: table.name, schema: table.schema, table: table.name },
-        statement,
-        ordinal,
-        file,
-        { rlsSubtype: subtype }
-      ),
-    ];
+    return makeObject(
+      { kind: "rls", name: table.name, schema: table.schema, table: table.name },
+      statement,
+      ordinal,
+      file,
+      { rlsSubtype: subtype }
+    );
   }
   if (subtype === "AT_ColumnDefault") {
     const column = readString(command?.name);
@@ -65,17 +84,15 @@ export function alterTableObjects(
       return;
     }
 
-    return [
-      makeObject(
-        { kind: "table", name: table.name, schema: table.schema },
-        statement,
-        ordinal,
-        file,
-        {
-          columnDefaultAmendment: { column, expression: command?.def ?? null },
-        }
-      ),
-    ];
+    return makeObject(
+      { kind: "table", name: table.name, schema: table.schema },
+      statement,
+      ordinal,
+      file,
+      {
+        columnDefaultAmendment: { column, expression: command?.def ?? null },
+      }
+    );
   }
   return;
 }

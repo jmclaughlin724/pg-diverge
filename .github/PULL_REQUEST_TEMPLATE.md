@@ -27,23 +27,19 @@ What this PR changes and why. Link any related issue (`Closes #123`).
 - [ ] Docs updated for any user-facing flag/config/diagnostic change (`npm run docs:check` if `docs/**` touched).
 - [ ] Config changes keep `supaschema-config.schema.json`, docs, and examples aligned.
 - [ ] A `.changeset/` entry is included for any user-facing change (run `npm run changeset`).
+- [ ] If this PR is intended to merge to `main`, it carries a package version not already published to npm (`npm run release:version` plus `package.json`, `package-lock.json`, `CHANGELOG.md`, and `action.yml`).
 - [ ] **All commits are signed off** (DCO — see below).
 
 ## Rendered SQL / snapshot changes
 
-If this changes generated migration output, paste a before/after of the
-rendered SQL (or the affected snapshot diff) and explain why it's correct.
+If this changes generated migration output, paste a before/after of the rendered SQL (or the affected snapshot diff) and explain why it's correct.
 
 ## Developer Certificate of Origin (DCO)
 
-This project is dual-licensed (AGPL-3.0-only + a commercial license). By signing
-off your commits you certify the [DCO](https://developercertificate.org/) — that
-you wrote the contribution or have the right to submit it under the project's
-license, **including relicensing under the commercial license**. Sign off with:
+This project is dual-licensed (AGPL-3.0-only + a commercial license). By signing off your commits you certify the [DCO](https://developercertificate.org/) — that you wrote the contribution or have the right to submit it under the project's license, **including relicensing under the commercial license**. Sign off with:
 
 ```bash
 git commit -s -m "your message"
 ```
 
-Every commit must carry a `Signed-off-by: Your Name <you@example.com>` trailer
-matching your author identity.
+Every commit must carry a `Signed-off-by: Your Name <you@example.com>` trailer matching your author identity.

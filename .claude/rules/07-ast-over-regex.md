@@ -30,7 +30,7 @@ Regex is legitimate for matching **text, not code structure**, and is allowed on
 
 ```js
 // regex-ok: banned certainty words, word-boundary match over user-facing prose
-const banned = [/\bguaranteed\b/i, /\block\b/i]
+const banned = [/\bguaranteed\b/i, /\block\b/i];
 ```
 
 The marker must name _why_ regex is right — not merely silence the guard. If the target is code, convert it; do not annotate your way around structural analysis.

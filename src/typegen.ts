@@ -14,8 +14,7 @@ import {
   sortedByName,
 } from "./typegen-model.js";
 
-export async function generateDatabaseTypes(model: SchemaModel): Promise<string> {
-  const shapes = await collectSchemaShapes(model);
+export function generateDatabaseTypesFromShapes(shapes: SchemaShapes): string {
   const lines: string[] = [
     "export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];",
     "",
@@ -33,6 +32,10 @@ export async function generateDatabaseTypes(model: SchemaModel): Promise<string>
   lines.push("");
   lines.push(...constantsBlock(sortedSchemas));
   return `${lines.join("\n")}\n`;
+}
+
+export async function generateDatabaseTypes(model: SchemaModel): Promise<string> {
+  return generateDatabaseTypesFromShapes(await collectSchemaShapes(model));
 }
 
 function emitDatabaseSchema(

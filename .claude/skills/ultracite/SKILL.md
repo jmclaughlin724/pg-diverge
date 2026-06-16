@@ -6,6 +6,7 @@ metadata:
     - "ultracite"
     - "biome config"
     - "npm run lint"
+    - "npm run format"
     - "npm run lint:fix"
     - "biome.jsonc"
     - "lint fix"
@@ -22,15 +23,14 @@ metadata:
 
 ## Contract
 
-Use the repo-owned npm scripts. Do not run `ultracite init`; the root `biome.jsonc` is the
-canonical configuration and already extends the repo-approved Ultracite presets.
+Use the repo-owned npm scripts. Do not run `ultracite init`; the root `biome.jsonc` is the canonical configuration and already extends the repo-approved Ultracite presets.
 
 ## Repo Contract
 
 - Package manager: npm only. Preserve `package-lock.json`; do not add pnpm, yarn, or bun lockfiles.
 - Canonical lint config: root `biome.jsonc`.
 - Canonical lint check: `npm run lint`, which runs `ultracite check .`.
-- Canonical Biome auto-fix: `npm run lint:fix` (`ultracite fix .`). The repo-wide single write command `npm run format` runs `ultracite fix .` as its Biome step, then the other language formatters/sorters (Prettier, pgformatter, taplo, shfmt, sort-package-json, ruff) — see Rule 06.
+- Canonical write/fix command: `npm run format`. It runs `ultracite fix .` as its Biome step, then the other language formatters/sorters (Prettier, pgformatter, taplo, shfmt, sort-package-json, ruff) — see Rule 06. `npm run lint:fix` is only the Biome substep; do not use `npm run lint fix`.
 - Setup diagnosis: `npm run lint:doctor`.
 - Tool versions are pinned in both `package.json` and `scripts/dependency-catalog.json`; keep them identical.
 - `vitest.config.ts` owns test runner behavior. Keep DB-safe worker limits and V8 coverage reporting.
@@ -43,8 +43,7 @@ canonical configuration and already extends the repo-approved Ultracite presets.
 
 ## Required Context
 
-- Read `biome.jsonc`, `package.json`, `scripts/dependency-catalog.json`, and `vitest.config.ts`
-  before changing tooling behavior.
+- Read `biome.jsonc`, `package.json`, `scripts/dependency-catalog.json`, and `vitest.config.ts` before changing tooling behavior.
 - Read `references/override-zones.md` before changing lint include/exclude or rule overrides.
 - Read `references/code-standards.md` when fixing source diagnostics.
 
@@ -52,5 +51,5 @@ canonical configuration and already extends the repo-approved Ultracite presets.
 
 - `npm run lint:doctor` after dependency/config changes.
 - `npm run lint` for lint validation.
-- `npm run lint:fix` when auto-fix is appropriate, then re-run `npm run lint`.
+- `npm run format` when auto-fix is appropriate, then re-run the narrow validation gate.
 - `npm test -- --reporter=dot` after changing test-runner configuration.

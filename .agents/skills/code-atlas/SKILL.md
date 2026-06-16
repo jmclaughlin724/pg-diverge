@@ -2,6 +2,13 @@
 name: code-atlas
 description: Build and query the local Code Atlas before broad ownership, dependency, route, API, DB, worker, generated-surface, deploy, delete, rename, or move claims.
 user-invocable: true
+metadata:
+  keywords:
+    - code atlas
+    - code map
+  file-triggers:
+    - scripts/code-atlas/**
+    - scripts/guards/check-code-atlas.mjs
 ---
 
 # Code Atlas Workflow
@@ -10,8 +17,8 @@ Code Atlas is the local, deterministic repo graph. It is scratch output under `.
 
 Before any broad owner, route, consumer, dependency, database, API, worker, generated-surface, or deploy claim, or before any delete, rename, or move:
 
-1. Query the relevant owner with `npm run code-atlas:query -- <kind> <value> --json` or `node scripts/code-atlas/query.mjs <kind> <value> --json`.
-2. Prefer `trace-change`, `pre-edit`, `impact`, `consumers`, `file-owners`, `entrypoints`, `health`, and `validate-coverage` for agent workflow setup.
+1. Run the cheapest query that answers the next step: `pre-edit <target>` for first-touch edits, `trace-change <target>` for broader work planning, or `regression-scope [filter]` before choosing final regression guards.
+2. Use `impact`, `consumers`, `file-owners`, `entrypoints`, `health`, `health --strict`, and `validate-coverage` as follow-up probes when the first query exposes risk.
 3. Use cclsp for exact symbol behavior on the owner files returned by the atlas.
 4. Read the source files before making a behavioral claim.
 

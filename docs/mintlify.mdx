@@ -1,7 +1,7 @@
 ---
 title: "Docs site"
 description: "How to preview, validate, and publish the Mintlify documentation site for supaschema."
-keywords: ["Mintlify","docs site","documentation","validation"]
+keywords: ["Mintlify", "docs site", "documentation", "validation"]
 hidden: true
 ---
 
@@ -51,7 +51,8 @@ Connect the GitHub repository in the Mintlify dashboard.
 7. Keep the Mintlify GitHub App installed so pushes deploy automatically.
 
 <Warning>
-  Without the monorepo setting, Mintlify looks for `docs.json` at the repository root and the deploy fails.
+  Without the monorepo setting, Mintlify looks for `docs.json` at the repository
+  root and the deploy fails.
 </Warning>
 
 Because the content root is `docs/`, the rest of the repository (source code, tests, fixtures, package metadata, agent instructions) is never scanned; `docs/.mintignore` only needs to exclude stray non-content files.

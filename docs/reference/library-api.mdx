@@ -1,7 +1,7 @@
 ---
 title: "Library API"
 description: "Every CLI capability as an exported, typed function — the supaschema Node.js library surface."
-keywords: ["library API","Node.js","typed functions","CLI capabilities"]
+keywords: ["library API", "Node.js", "typed functions", "CLI capabilities"]
 ---
 
 Use the library API when you want supaschema behavior inside your own script, test, or tool.
@@ -10,15 +10,15 @@ Everything the CLI does is available as typed ESM exports.
 
 ```ts
 import {
-  extractSourceModel,   // any source prefix -> SchemaModel
-  extractCatalogModel,  // live pg_catalog -> SchemaModel
-  planSchemaDiff,       // two models -> MigrationPlan
+  extractSourceModel, // any source prefix -> SchemaModel
+  extractCatalogModel, // live pg_catalog -> SchemaModel
+  planSchemaDiff, // two models -> MigrationPlan
   renderMigrationSplit, // plan -> { sql, concurrentSql? }
-  checkMigrationSql,    // SQL -> replay-safety diagnostics
-  verifyMigration,      // apply-twice + reconvergence proof
-  migrationsStatus,     // disk files vs applied history
-  syncMigrations,       // gate + orchestrate the migration runner
-  runCorpus,            // the corpus oracle
+  checkMigrationSql, // SQL -> replay-safety diagnostics
+  verifyMigration, // apply-twice + reconvergence proof
+  migrationsStatus, // disk files vs applied history
+  syncMigrations, // gate + orchestrate the migration runner
+  runCorpus, // the corpus oracle
   resolveDatabaseUrl,
   parseLineage,
   loadConfig,

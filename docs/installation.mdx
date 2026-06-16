@@ -1,7 +1,7 @@
 ---
 title: "Installation"
 description: "Install supaschema from npm and confirm the minimum runtime requirements."
-keywords: ["installation","npm install","package contents","Node"]
+keywords: ["installation", "npm install", "package contents", "Node"]
 ---
 
 Install supaschema in the project that owns your schema files.
@@ -10,17 +10,18 @@ The install step runs the one-step project setup described in [Introduction](/in
 
 ## Requirements
 
-| Requirement | Minimum |
-| --- | --- |
-| Node.js | 22.12.0 |
-| PostgreSQL target | 15 |
+| Requirement       | Minimum |
+| ----------------- | ------- |
+| Node.js           | 22.12.0 |
+| PostgreSQL target | 15      |
 
 supaschema works with PostgreSQL 15+ directly and with managed PostgreSQL providers.
 
 Supported targets include Supabase, Neon, AWS RDS/Aurora PostgreSQL, Google Cloud SQL, AlloyDB, Azure Database for PostgreSQL, Render, Railway, Heroku Postgres, Timescale, Crunchy Bridge, and EDB.
 
 <Note>
-  The PostgreSQL parser is bundled through `libpg-query`. You do not need a local PostgreSQL server to generate migrations from SQL files or Git refs.
+  The PostgreSQL parser is bundled through `libpg-query`. You do not need a
+  local PostgreSQL server to generate migrations from SQL files or Git refs.
 </Note>
 
 ## Install

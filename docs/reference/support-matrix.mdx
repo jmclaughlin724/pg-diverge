@@ -1,7 +1,8 @@
 ---
 title: "Support matrix"
 description: "The PostgreSQL object types supaschema extracts, renders, checks, and intentionally blocks."
-keywords: ["support matrix","PostgreSQL objects","parser coverage","limitations"]
+keywords:
+  ["support matrix", "PostgreSQL objects", "parser coverage", "limitations"]
 ---
 
 Use this page to check whether supaschema models a PostgreSQL object type.
@@ -39,7 +40,7 @@ Objects in configured `managedSchemas` are blocked before rendering. Generic Pos
 
 ## Verify Environment Stub
 
-`verify --ensure-environment` provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that *references* managed schemas can apply against bare PostgreSQL:
+`verify --ensure-environment` provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that _references_ managed schemas can apply against bare PostgreSQL:
 
 - `auth.users` with the stable GoTrue column set (`id`, `aud`, `role`, `email`, `phone`, `raw_app_meta_data`, `raw_user_meta_data`, `last_sign_in_at`, `is_anonymous`, …).
 - The `auth.uid()`, `auth.role()`, `auth.jwt()`, and `auth.email()` helper functions.

@@ -80,6 +80,20 @@ export function makeTableAlterOperation(
   const destructive =
     delta.dropColumns.length > 0 ||
     delta.alterColumns.some((alteration) => alteration.type !== undefined);
+  const hasTypeChange = delta.alterColumns.some((alteration) => alteration.type !== undefined);
+  if (hasTypeChange) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_PLAN_COLUMN_TYPE_USING_REVIEW",
+        "warning",
+        "column type change renders an identity USING cast; replace the USING expression for non-assignment-cast conversions",
+        {
+          hint: "PostgreSQL rejects ALTER COLUMN TYPE ... USING col::newtype when no assignment cast exists; edit the rendered USING expression after review.",
+          ref: after.ref,
+        }
+      )
+    );
+  }
   if (destructive && !isDestructiveAllowed(after.key, config)) {
     blocked = true;
     diagnostics.push(

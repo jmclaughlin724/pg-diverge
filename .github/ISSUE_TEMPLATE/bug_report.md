@@ -23,9 +23,7 @@ What you expected the migration / check / types output to be.
 
 ## Reproduction
 
-The smallest declarative SQL tree (or fixture) that reproduces it. Inline the
-relevant `.sql` files and your `supaschema.config.json` (`schemaPaths`,
-`adapter`, `managedSchemas`, `transactionMode`).
+The smallest declarative SQL tree (or fixture) that reproduces it. Inline the relevant `.sql` files and your `supaschema.config.json` (`schemaPaths`, `adapter`, `managedSchemas`, `transactionMode`).
 
 ```sql
 -- minimal schema-tree input
@@ -33,8 +31,7 @@ relevant `.sql` files and your `supaschema.config.json` (`schemaPaths`,
 
 ## Output / diagnostic
 
-The full command output. Include any `SUPA_*` code and the rendered migration
-SQL if one was produced. Run with `--debug` / `--summary` where useful.
+The full command output. Include any `SUPA_*` code and the rendered migration SQL if one was produced. Run with `--debug` / `--summary` where useful.
 
 ```
 $ supaschema diff
@@ -51,6 +48,4 @@ $ supaschema diff
 
 ## Additional context
 
-Anything else — was this a `diff`, `check`, `verify`, `types`, `sync`, or hook
-auto-diff path? Is the affected file a generated artifact (contains
-`-- supaschema: lineage`)?
+Anything else — was this a `diff`, `check`, `verify`, `types`, `sync`, or hook auto-diff path? Is the affected file a generated artifact (contains `-- supaschema: lineage`)?

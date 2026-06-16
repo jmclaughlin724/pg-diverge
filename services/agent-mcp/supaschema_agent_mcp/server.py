@@ -144,6 +144,7 @@ CodeAtlasQueryKind = Literal[
     "pre-edit",
     "trace-change",
     "file-owners",
+    "regression-scope",
     "validate-coverage",
     "health",
     "mcp-status",
@@ -245,6 +246,10 @@ def server_status() -> dict[str, Any]:
         "readonly": True,
         "repo_root": str(REPO_ROOT),
         "tools": ["server_status", "code_atlas_query", "repo_context_query"],
+        "code_atlas_hint": (
+            "Use code_atlas_query(kind='pre-edit', value='<target>') for first-touch edits, "
+            "kind='trace-change' for wider plans, and kind='regression-scope' before final guards."
+        ),
         "blocked_capabilities": [
             "raw SQL",
             "arbitrary shell",
@@ -260,6 +265,9 @@ def server_status() -> dict[str, Any]:
 def code_atlas_query(
     kind: Annotated[CodeAtlasQueryKind, Field(description="Fixed Code Atlas query kind")],
     value: Annotated[str | None, Field(description="Optional query value")] = None,
+    strict: Annotated[
+        bool, Field(description="Use strict health semantics when supported")
+    ] = False,
 ) -> dict[str, Any]:
     """Run one fixed Code Atlas query, never a generic command runner."""
     v = (value or "").strip()
@@ -267,7 +275,10 @@ def code_atlas_query(
         v.startswith("-") or any(c in v for c in "\x00\n\r") or ".." in PurePosixPath(v).parts
     ):
         raise ToolError("unsafe query value")
-    args = ["node", "scripts/code-atlas/query.mjs", kind] + ([v] if v else []) + ["--json"]
+    args = ["node", "scripts/code-atlas/query.mjs", kind] + ([v] if v else [])
+    if strict:
+        args.append("--strict")
+    args.append("--json")
     r = subprocess.run(args, cwd=REPO_ROOT, capture_output=True, text=True, timeout=45, check=False)
     stdout: Any
     try:
@@ -323,8 +334,9 @@ def mcp_config_resource() -> str:
 def prepare_repo_change(target: str) -> str:
     return (
         "Before changing broad ownership, route, dependency, DB, API, worker, generated surface, "
-        f"or deploy behavior for {target}, build/query Code Atlas, use cclsp on owner files, "
-        "then read source before making behavioral claims."
+        f"or deploy behavior for {target}, run code_atlas_query(kind='pre-edit', value='{target}') "
+        "or kind='trace-change' for wider scope, use cclsp on owner files, then read source before "
+        "making behavioral claims."
     )
 
 

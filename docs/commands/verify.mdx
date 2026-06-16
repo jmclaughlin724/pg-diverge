@@ -1,7 +1,8 @@
 ---
 title: "verify"
 description: "verify applies your migration twice in throwaway databases and compares catalog fingerprints to prove idempotency and convergence to the declared schema."
-keywords: ["verify command","apply twice","idempotency","catalog fingerprint"]
+keywords:
+  ["verify command", "apply twice", "idempotency", "catalog fingerprint"]
 ---
 
 Use `verify` when a database is available and you want the strongest proof before merge.
@@ -16,7 +17,9 @@ Then supaschema compares catalog fingerprints.
 If they match, the migration is idempotent and converges to the declared schema.
 
 <Note>
-  `verify` requires a local database URL for a PostgreSQL instance where your user has `CREATEDB` privileges. It refuses remote databases by default to protect production data from accidental writes.
+  `verify` requires a local database URL for a PostgreSQL instance where your
+  user has `CREATEDB` privileges. It refuses remote databases by default to
+  protect production data from accidental writes.
 </Note>
 
 ## How It Works
@@ -71,65 +74,88 @@ npx supaschema verify \
 </ParamField>
 
 <ParamField path="--migration" type="path">
-  Path to the `.sql` migration file you want to verify. This file is applied twice to the first temp database (once for functionality, once to prove idempotency). Defaults to the newest `.sql` file in your configured migrations directory.
+  Path to the `.sql` migration file you want to verify. This file is applied
+  twice to the first temp database (once for functionality, once to prove
+  idempotency). Defaults to the newest `.sql` file in your configured migrations
+  directory.
 </ParamField>
 
 <ParamField path="--migrations-dir" type="path">
-  Overrides the directory used when resolving the default `--migration` file. Defaults to `config.migrationsDir`.
+  Overrides the directory used when resolving the default `--migration` file.
+  Defaults to `config.migrationsDir`.
 </ParamField>
 
 <ParamField path="--database-url" type="url">
-  Connection string for a local PostgreSQL instance where your user has `CREATEDB` privileges. supaschema creates and destroys temp databases on this server. You can also set the `SUPASCHEMA_DATABASE_URL` environment variable instead of passing this flag on every invocation.
+  Connection string for a local PostgreSQL instance where your user has
+  `CREATEDB` privileges. supaschema creates and destroys temp databases on this
+  server. You can also set the `SUPASCHEMA_DATABASE_URL` environment variable
+  instead of passing this flag on every invocation.
 </ParamField>
 
 <ParamField path="--ensure-roles" type="boolean">
-  Pre-creates any `NOLOGIN` roles that the migration grants permissions to (for example `authenticated`, `anon`, `service_role` in Supabase projects) before applying migration SQL. Without this flag, `GRANT ... TO authenticated` will fail in a fresh temp database that does not have those roles.
+  Pre-creates any `NOLOGIN` roles that the migration grants permissions to (for
+  example `authenticated`, `anon`, `service_role` in Supabase projects) before
+  applying migration SQL. Without this flag, `GRANT ... TO authenticated` will
+  fail in a fresh temp database that does not have those roles.
 </ParamField>
 
 <ParamField path="--ensure-environment" type="boolean">
-  Stubs the minimal Supabase-managed surfaces that common schema trees reference: `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`, `auth.email()`, `cron.job`, and `cron.job_run_details`. It does not create storage, realtime, vault, identities, sessions, or extension-owned objects. Enable it explicitly when a bare PostgreSQL verification server needs those surfaces.
+  Stubs the minimal Supabase-managed surfaces that common schema trees
+  reference: `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`,
+  `auth.email()`, `cron.job`, and `cron.job_run_details`. It does not create
+  storage, realtime, vault, identities, sessions, or extension-owned objects.
+  Enable it explicitly when a bare PostgreSQL verification server needs those
+  surfaces.
 </ParamField>
 
 <ParamField path="--no-ensure-environment" type="boolean">
-  Disables the Supabase environment stub when a wrapper or config already enabled it. Use this only when the verification server provisions managed schemas in newly-created databases.
+  Disables the Supabase environment stub when a wrapper or config already
+  enabled it. Use this only when the verification server provisions managed
+  schemas in newly-created databases.
 </ParamField>
 
 <ParamField path="--keep-databases" type="boolean">
-  Preserves both temp databases after a failure instead of dropping them. Use this flag when you need to inspect the diverging catalog state with `psql` or a GUI client. Databases are always dropped on success regardless of this flag.
+  Preserves both temp databases after a failure instead of dropping them. Use
+  this flag when you need to inspect the diverging catalog state with `psql` or
+  a GUI client. Databases are always dropped on success regardless of this flag.
 </ParamField>
 
 <ParamField path="--config" type="path">
-  Path to a supaschema JSON config file. Defaults to `supaschema.config.json` in the current working directory.
+  Path to a supaschema JSON config file. Defaults to `supaschema.config.json` in
+  the current working directory.
 </ParamField>
 
 ## Environment Variables
 
-| Variable                         | Description                                                                                                              |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `SUPASCHEMA_DATABASE_URL`        | Default database URL — equivalent to `--database-url`                                                                    |
+| Variable | Description |
+| --- | --- |
+| `SUPASCHEMA_DATABASE_URL` | Default database URL — equivalent to `--database-url` |
 | `SUPASCHEMA_VERIFY_ALLOW_REMOTE` | Set to `1` to allow `verify` against remote databases. Only use this for intentionally disposable remote infrastructure. |
 
 <Warning>
-  `verify` refuses remote database URLs by default. If you set `SUPASCHEMA_VERIFY_ALLOW_REMOTE=1`, make absolutely sure the target server is disposable. The command creates and drops databases automatically, and it cannot distinguish a staging server from a production one.
+  `verify` refuses remote database URLs by default. If you set
+  `SUPASCHEMA_VERIFY_ALLOW_REMOTE=1`, make absolutely sure the target server is
+  disposable. The command creates and drops databases automatically, and it
+  cannot distinguish a staging server from a production one.
 </Warning>
 
 ## Diagnostic Codes
 
 When `verify` fails, it emits one or more of the following structured diagnostic codes:
 
-| Code                               | Meaning                                                                                                                                                |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Code | Meaning |
+| --- | --- |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` | The catalog fingerprints of the migration database and the target model database do not match. The migration does not converge to the declared schema. |
-| `SUPA_VERIFY_RECONVERGENCE`        | The second application of the migration changed the catalog state, proving the migration is not idempotent.                                            |
-| `SUPA_VERIFY_FAILED`               | A general failure during database setup, SQL application, or fingerprint collection. Check the accompanying error message for details.                 |
-| `SUPA_VERIFY_CLEANUP_FAILED`       | The temp databases could not be dropped after a failure. The connection string and database names are printed so you can clean them up manually.       |
+| `SUPA_VERIFY_RECONVERGENCE` | The second application of the migration changed the catalog state, proving the migration is not idempotent. |
+| `SUPA_VERIFY_FAILED` | A general failure during database setup, SQL application, or fingerprint collection. Check the accompanying error message for details. |
+| `SUPA_VERIFY_CLEANUP_FAILED` | The temp databases could not be dropped after a failure. The connection string and database names are printed so you can clean them up manually. |
 
 ## Exit Codes
 
-| Code | Meaning                                                                       |
-| ---- | ----------------------------------------------------------------------------- |
-| `0`  | Both fingerprints match and the migration is proven idempotent and convergent |
-| `2`  | Verification failed — diagnostics contain one or more of the codes above      |
+| Code | Meaning |
+| --- | --- |
+| `0` | Both fingerprints match and the migration is proven idempotent and convergent |
+| `2` | Verification failed — diagnostics contain one or more of the codes above |
 
 ## CI Integration
 
@@ -140,7 +166,7 @@ Run `verify` as a required check on every pull request that touches your migrati
 on:
   pull_request:
     paths:
-      - 'database/migrations/**'
+      - "database/migrations/**"
 
 jobs:
   verify:

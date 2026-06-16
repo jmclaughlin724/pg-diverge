@@ -48,6 +48,13 @@ function permissionsAreReadOnly(perms) {
   return false;
 }
 
+function asArray(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return value === undefined ? [] : [value];
+}
+
 const files = fs
   .readdirSync(WORKFLOWS_DIR)
   .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"));
@@ -114,6 +121,35 @@ assert(
 // Release publish job: OIDC + harden-runner + provenance, no stored token.
 const release = parsed.get("release.yml");
 assert(release, "release.yml must exist");
+const releaseOn = release.doc?.on ?? {};
+assert(
+  !releaseOn.release,
+  "release.yml must not publish from GitHub Release events; npm publishes after CI succeeds on main"
+);
+assert(
+  !releaseOn.push,
+  "release.yml must not publish directly from push; it must publish the exact commit after CI succeeds"
+);
+const workflowRun = releaseOn.workflow_run;
+assert(workflowRun, "release.yml must trigger from workflow_run");
+assert(
+  asArray(workflowRun.workflows).includes("CI"),
+  `release.yml workflow_run must depend on CI (got ${JSON.stringify(workflowRun.workflows)})`
+);
+assert(
+  asArray(workflowRun.types).includes("completed"),
+  `release.yml workflow_run must use completed (got ${JSON.stringify(workflowRun.types)})`
+);
+assert(
+  asArray(workflowRun.branches).includes("main"),
+  `release.yml workflow_run must be scoped to main (got ${JSON.stringify(workflowRun.branches)})`
+);
+assert(
+  release.doc?.concurrency?.group === "release-npm" &&
+    release.doc.concurrency.queue === "max" &&
+    release.doc.concurrency["cancel-in-progress"] !== true,
+  "release.yml must queue npm publishes with concurrency group release-npm and queue: max"
+);
 const publishJob = Object.values(release.doc?.jobs ?? {}).find(
   (job) =>
     job?.permissions &&
@@ -124,15 +160,67 @@ assert(
   publishJob,
   "release.yml must have a publish job with id-token: write (OIDC trusted publishing)"
 );
+const publishIf = String(publishJob.if ?? "");
+assert(
+  publishIf.includes("github.event_name == 'workflow_dispatch'") &&
+    publishIf.includes("github.ref == 'refs/heads/main'"),
+  "release.yml manual dispatch path must be scoped to refs/heads/main"
+);
+assert(
+  publishIf.includes("github.event.workflow_run.conclusion == 'success'") &&
+    publishIf.includes("github.event.workflow_run.event == 'push'"),
+  "release.yml publish job must run only after a successful push-triggered CI workflow_run"
+);
+assert(
+  publishJob.permissions?.contents === "read",
+  "release.yml publish job must keep contents: read; it no longer uploads GitHub release artifacts"
+);
+assert(
+  !publishJob.env?.SUPASCHEMA_DATABASE_URL,
+  "release.yml publish job must not configure a DB URL"
+);
+assert(!publishJob.services, "release.yml publish job must not start database services");
 assert(
   (publishJob.steps ?? []).some(
     (step) => typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
   ),
   "release.yml publish job must run step-security/harden-runner (egress monitoring on the OIDC job)"
 );
+const checkoutStep = (publishJob.steps ?? []).find(
+  (step) => typeof step?.uses === "string" && step.uses.startsWith("actions/checkout")
+);
+const workflowRunHeadShaRef = [
+  "${{",
+  " github.event.workflow_run.head_sha || github.sha ",
+  "}}",
+].join("");
+assert(
+  checkoutStep?.with?.ref === workflowRunHeadShaRef,
+  "release.yml checkout must use github.event.workflow_run.head_sha so publish uses the CI-tested commit"
+);
+assert(
+  (publishJob.steps ?? []).some((step) =>
+    String(step?.run ?? "").includes("node scripts/release/preflight.mjs")
+  ),
+  "release.yml must run release version preflight before npm ci"
+);
+assert(
+  (publishJob.steps ?? []).some((step) =>
+    String(step?.run ?? "").includes("npm pack --ignore-scripts")
+  ),
+  "release.yml must pack the already-built package without rerunning lifecycle scripts"
+);
 assert(
   release.raw.includes("--provenance"),
   "release.yml must publish with `npm publish --provenance` (build provenance attestation)"
+);
+assert(
+  release.raw.includes('npm publish "$SUPASCHEMA_TARBALL"'),
+  "release.yml must publish the exact tarball that was smoked"
+);
+assert(
+  !release.raw.includes("gh release upload"),
+  "release.yml must not upload artifacts to a GitHub Release; npm is released from main after CI"
 );
 
 // Support-contract matrices must not silently narrow.

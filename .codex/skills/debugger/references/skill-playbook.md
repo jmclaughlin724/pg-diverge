@@ -35,10 +35,10 @@ Stop on a high-confidence root cause (a specific error, a missing env var, a dec
 
 ## Code Failure Workflow
 
-1. **Scope before choosing commands.** Use Code Atlas first for repo-wide owner/impact/consumer/generated-surface evidence: `npm run code-atlas:query -- trace-change <target> --json`, `npm run code-atlas:query -- pre-edit <file> --json`, `npm run code-atlas:query -- consumers <file> --json`, or `npm run code-atlas:query -- health <filter> --json`; when MCP access is available, follow Rule 10's local `supaschema.code_atlas_query` policy before broad source reads.
+1. **Scope before choosing commands.** Use Code Atlas first for repo-wide owner/impact/consumer/generated-surface evidence: `npm run code-atlas:query -- pre-edit <file> --json`, `npm run code-atlas:query -- trace-change <target> --json`, `npm run code-atlas:query -- regression-scope --json`, `npm run code-atlas:query -- consumers <file> --json`, or `npm run code-atlas:query -- health <filter> --json`; when MCP access is available, follow Rule 10's local `supaschema.code_atlas_query` policy before broad source reads.
 2. **Capture the full error surface** with the real gates:
    - `npm run typecheck` (`tsc` over `tsconfig.src.json` + `tsconfig.tools.json`) for TS errors; route by code — `TS1484`/`TS1485` (type-only import needed under `verbatimModuleSyntax` → add `import type`), `TS2305`/`TS2724` (missing export from `dist/` — rebuild before editing consumers), `TS2345`/`TS2339` (shape mismatch — check the source model / generated types).
-   - `npm run lint` (`ultracite check .`) / `npm run lint:ci` (`biome ci .`) for lint/format; chain to the `ultracite` skill for rule specifics.
+   - `npm run lint` (`ultracite check .`) / `npm run lint:ci` (`biome ci .`) to capture lint/format diagnostics; use `npm run format` for remediation and chain to the `ultracite` skill for rule specifics.
    - `npm test` (Vitest) for behavior; DB-gated suites need a local Postgres reachable via `SUPASCHEMA_DATABASE_URL` and skip otherwise.
    - `npm run guard` (`scripts/guards/check-all.mjs`) when tooling stack, agent surfaces, dependency catalog, Code Atlas, LSP coverage, or FastMCP surface may be involved.
    - targeted `mcp__cclsp__get_diagnostics` and the cclsp symbol-flow tools for exact behavior.
@@ -63,7 +63,7 @@ Stop on a high-confidence root cause (a specific error, a missing env var, a dec
 
 Run only the affected checks:
 
-- `npm run lint` / `npm run typecheck` when source, imports, or types changed.
+- `npm run format` when source formatting, import sorting, or lint-fix remediation is needed; `npm run lint` / `npm run typecheck` when read-only validation is needed.
 - `npm test` (Vitest) for behavior; coverage-gated and DB-gated cases need a local Postgres.
 - `npm run py:lint` / `npm run py:typecheck` / `npm run py:test` when `services/agent-mcp` changed.
 - `supaschema check` / `supaschema verify` when a migration or the declarative tree changed.

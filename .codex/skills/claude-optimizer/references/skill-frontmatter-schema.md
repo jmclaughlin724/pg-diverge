@@ -48,10 +48,10 @@ chainTo:
 
 ### Validation Rules
 
-| Field | Check | Failure Mode |
-| --- | --- | --- |
-| `pattern` | String only | Current runtime ignores this field |
-| `targetSkill` | String only | Current runtime ignores this field |
+| Field                | Check       | Failure Mode                       |
+| -------------------- | ----------- | ---------------------------------- |
+| `pattern`            | String only | Current runtime ignores this field |
+| `targetSkill`        | String only | Current runtime ignores this field |
 | `skipIfFileContains` | String only | Current runtime ignores this field |
 
 Do not copy this block into new repo-managed skills. If two skills should load together regularly, consolidate the guidance or add explicit prompt keywords/file triggers to the correct owner.

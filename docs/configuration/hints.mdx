@@ -1,7 +1,7 @@
 ---
 title: "Hints"
 description: "How to approve reviewed destructive changes and renames without weakening fail-closed planning."
-keywords: ["hints","destructive changes","renames","recovery"]
+keywords: ["hints", "destructive changes", "renames", "recovery"]
 ---
 
 `supaschema` fails closed when intent cannot be proven from the SQL parse tree. Hints are the explicit, reviewable way to state intent.
@@ -12,7 +12,8 @@ Use hints for two cases only:
 - a rename that would otherwise look like drop plus create.
 
 <Warning>
-  Do not commit broad destructive approval. Use exact object keys, not `"*"`, in shared config.
+  Do not commit broad destructive approval. Use exact object keys, not `"*"`, in
+  shared config.
 </Warning>
 
 ## Destructive changes
@@ -50,11 +51,13 @@ When only columns change, the hinted plan renders data-preserving column ALTERs 
 - type changes render `ALTER COLUMN ... TYPE <type> USING <column>::<type>`,
 - `NOT NULL` and `DEFAULT` changes render without a hint.
 
+Type changes also emit `SUPA_PLAN_COLUMN_TYPE_USING_REVIEW` and add an inline SQL comment because the rendered `USING <column>::<type>` expression is only a default identity cast. Replace it when PostgreSQL needs a custom conversion.
+
 Identity/generated changes and table-constraint changes fall back to the replace lane. A hinted table **replace** drops and recreates the table — it is not data-preserving; prefer the column lane or hand-author the migration.
 
 ## Incompatible view and routine replacements
 
-PostgreSQL rejects `CREATE OR REPLACE` when a view drops/renames/reorders output columns (`SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE`) or a routine changes its return type or OUT parameters (`SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED`). Hinting the object key renders a guarded `DROP ... IF EXISTS` followed by the new definition. Dependent objects (views over views) must be hinted and recreated in the same plan.
+PostgreSQL rejects `CREATE OR REPLACE` when a view drops/renames/reorders output columns, or when supaschema cannot prove the output columns (`SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE`). A routine replacement also blocks when the return type or OUT parameters change (`SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED`). Hinting the object key renders a guarded `DROP ... IF EXISTS` followed by the new definition. Dependent objects (views over views) must be hinted and recreated in the same plan.
 
 ## Renames
 

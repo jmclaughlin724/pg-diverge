@@ -26,7 +26,7 @@
 # - Biome does not own Markdown, MDX, or YAML — **Prettier** does (`npm run format:md`), and SQL is owned by **pgformatter** (`npm run format:sql`). `docs/` MDX is additionally validated by `npm run docs:lint` + `mint validate` (Rules 02/03). See Rule 06 for the full per-language owner map; do not point Biome at these surfaces.
 # - Local Biome suppression comments are forbidden. Investigate the related upstream rule, fix the code, or adjust the shared `biome.jsonc` policy with a repo-wide rationale.
 # - Do not add a second Biome config that drifts from the root policy without first creating a deliberate shared-config design and updating this rule.
-# - When adding a governed root file or expanding the lint surface, run `npm run lint:fix` before broad acceptance so new JSON/MJS/config surfaces are formatted before `npm run lint` reaches them.
+# - When adding a governed root file or expanding the lint surface, run `npm run format` as the write/fix path so new JSON/MJS/config surfaces are formatted before `npm run lint` reaches them. Do not run `npm run lint fix`; npm passes `fix` as an extra argument to the read-only lint script.
 # - Do not reintroduce ESLint as a parallel JS/TS gate.
 #
 # ## Enforced by

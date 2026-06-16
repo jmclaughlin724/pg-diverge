@@ -7,6 +7,7 @@ Run:
 ```bash
 npm run code-atlas:query -- <kind> [value] --json
 node scripts/code-atlas/query.mjs <kind> [value] --json
+npm run code-atlas:query -- health --strict --json
 ```
 
 Kinds:
@@ -26,6 +27,9 @@ Kinds:
 - `pre-edit <target>`: impact plus capped immediate incoming and outgoing edges.
 - `trace-change <target>`: impact, consumers, owners, and verification commands for agent execution.
 - `file-owners <target>`: nearest `AGENTS.md` plus atlas/rule/skill owner files.
+- `regression-scope [filter]`: changed-file owner, impact, and verification command set from git diff/status.
 - `validate-coverage`: graph metadata, package-boundary, MCP-boundary, and stale-guidance checks.
-- `health [filter]`: consistency risks and missing registrations.
+- `health [filter]`: ranked consistency risks and missing registrations.
 - `mcp-status [filter]`: optional live MCP wrapper status.
+
+Use `pre-edit` by default before the first edit to a target. Use `trace-change` when the work needs an execution plan across consumers or owners. Use `regression-scope` near completion to choose focused guards from the actual changed-file set. `health --strict` keeps warning-level coupling from being ignored in review without failing the default exploratory query.

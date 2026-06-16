@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { atlasAdvisoryTarget, isCodeAtlasQuery } from "./atlas.mjs";
 import { currentTurnState } from "./state.mjs";
 
 const defaultRoot = path.resolve(".");
@@ -109,20 +110,24 @@ export function updateToolSkills(payload, state, options = {}) {
     }
   }
   const pending = unresolvedPending(state);
-  if (pending.length === 0 || !toolGateSet.has(toolName(payload)) || isObservableLoad(payload)) {
-    return newlyPending.length > 0
-      ? {
-          contextParts: newlyPending.map(
-            (skill) => `Skill ${skill.name} applies to this tool use: ${skill.reason}`
-          ),
-        }
-      : {};
+  const contextParts = [
+    ...newlyPending.map((skill) => `Skill ${skill.name} applies to this tool use: ${skill.reason}`),
+    ...(pending.length > 0 ? atlasPreEditContext(payload, turn, options.root) : []),
+  ];
+  if (
+    pending.length === 0 ||
+    !toolGateSet.has(toolName(payload)) ||
+    isObservableLoad(payload) ||
+    isCodeAtlasQuery(payload)
+  ) {
+    return contextParts.length > 0 ? { contextParts } : {};
   }
   return {
+    contextParts,
     deny: [
       "Required skills are pending, and this governed tool call was not an observable skill load.",
       ...pending.map((item) => `- ${item.name}: ${item.reason}`),
-      "Load each skill with the Skill tool or read its SKILL.md file, then retry the blocked tool.",
+      "Load each skill with the Skill tool, read its SKILL.md file, or run the relevant Code Atlas query, then retry the blocked tool.",
     ].join("\n"),
   };
 }
@@ -433,6 +438,28 @@ function pathMatches(trigger, candidate) {
     return candidate.startsWith(trigger.slice(0, -3));
   }
   return trigger === candidate;
+}
+
+function atlasPreEditContext(payload, turn, root = defaultRoot) {
+  if (
+    !toolGateSet.has(toolName(payload)) ||
+    isCodeAtlasQuery(payload) ||
+    isObservableLoad(payload)
+  ) {
+    return [];
+  }
+  const target = atlasAdvisoryTarget(payload, root);
+  if (!target || target.includes("/SKILL.md")) {
+    return [];
+  }
+  const key = `pre-edit:${target}`;
+  if (turn.atlasAdvisories[key]) {
+    return [];
+  }
+  turn.atlasAdvisories[key] = true;
+  return [
+    `Code Atlas pre-edit evidence for ${target}: run \`npm run code-atlas:query -- pre-edit ${target} --json\` before broad edits; use \`trace-change\` for wider impact planning.`,
+  ];
 }
 
 function isCommandTool(name) {

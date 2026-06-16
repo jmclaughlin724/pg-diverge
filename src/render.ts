@@ -173,6 +173,9 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
   const prefix = `ALTER TABLE ${qualifiedRef(table.ref)} ALTER COLUMN ${quoteIdent(name)}`;
   const statements: string[] = [];
   if (typeof record.type === "string") {
+    statements.push(
+      `-- review: USING is an identity cast (${quoteIdent(name)}::${record.type}); replace it for non-assignment-cast conversions`
+    );
     statements.push(`${prefix} TYPE ${record.type} USING ${quoteIdent(name)}::${record.type};`);
   }
   if (record.dropDefault === true) {

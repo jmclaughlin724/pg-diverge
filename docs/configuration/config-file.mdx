@@ -1,7 +1,14 @@
 ---
 title: "Configuration"
 description: "Configuration options, defaults, environments, validators, and examples for supaschema."
-keywords: ["configuration","config file","schemaPaths","migrationsDir","database URL"]
+keywords:
+  [
+    "configuration",
+    "config file",
+    "schemaPaths",
+    "migrationsDir",
+    "database URL",
+  ]
 ---
 
 `supaschema.config.json` is the project-owned place for persistent defaults.
@@ -29,7 +36,10 @@ Unknown keys are rejected, so typos fail loudly.
 The scaffolded config includes a `$schema` pointer to the shipped `supaschema-config.schema.json`, so editors can autocomplete and validate every key.
 
 <Warning>
-  Keep real credentials in environment variables and reference them as `$ENV_NAME`. Provider config files such as `supabase/config.toml`, `neon.toml`, Terraform, Bicep, CloudFormation, or Cloud Build files are used only to seed install-time defaults.
+  Keep real credentials in environment variables and reference them as
+  `$ENV_NAME`. Provider config files such as `supabase/config.toml`,
+  `neon.toml`, Terraform, Bicep, CloudFormation, or Cloud Build files are used
+  only to seed install-time defaults.
 </Warning>
 
 ## Generated config

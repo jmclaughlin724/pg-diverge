@@ -1,7 +1,6 @@
 # Ultracite Override Zones
 
-Biome override zones are defined in the root `biome.jsonc`. This repo does not use package-local
-Biome configs.
+Biome override zones are defined in the root `biome.jsonc`. This repo does not use package-local Biome configs.
 
 ## Root Policy
 
@@ -15,17 +14,12 @@ Biome configs.
 | Vitest skipped-test rule | inherited from Ultracite/Vitest, no root disable | DB-gated suites may use `skipIf`; focused tests remain blocked. |
 | Vitest focused-test rule | `noFocusedTests` remains `error` | Focused tests must never be committed. |
 
-Do not add a duplicate `"**"` to `files.includes` while extending `ultracite/biome/core`; the
-Ultracite preset already provides the catch-all and strict Biome flags duplicate first exceptions.
-This is enforced by `npm run guard`.
+Do not add a duplicate `"**"` to `files.includes` while extending `ultracite/biome/core`; the Ultracite preset already provides the catch-all and strict Biome flags duplicate first exceptions. This is enforced by `npm run guard`.
 
 ## Global Project Scanner Scope
 
-`ultracite/biome/type-aware` is enabled repo-wide for high-signal project rules around dependency
-declarations, private imports, JSON import attributes, import cycles, and deprecated imports.
+`ultracite/biome/type-aware` is enabled repo-wide for high-signal project rules around dependency declarations, private imports, JSON import attributes, import cycles, and deprecated imports.
 
 ## Notes
 
-Fix source structurally first. If a rule is intentionally incompatible with a file-level contract,
-add the narrowest root `biome.jsonc` override, update this table, and extend
-`scripts/guards/check-tooling-stack.mjs` so the exception cannot silently expand.
+Fix source structurally first. If a rule is intentionally incompatible with a file-level contract, add the narrowest root `biome.jsonc` override, update this table, and extend `scripts/guards/check-tooling-stack.mjs` so the exception cannot silently expand.

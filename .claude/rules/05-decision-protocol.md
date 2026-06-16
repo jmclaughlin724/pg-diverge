@@ -14,6 +14,7 @@ Technical and architecture decisions are resolved by **evidence from upstream ca
   - `WebSearch` / `WebFetch` / the `deep-research` skill for current guidance not covered by a configured MCP.
 
   Then decide based on that evidence and state the source in the work.
+
 - **Default to the upstream-canonical pattern.** When the stack provides a first-class mechanism, use it rather than a hand-rolled or bespoke alternative — e.g. generate TypeScript and Zod types from supaschema's declarative SQL tree (`supaschema types`) as the single source of truth for DB shapes/enums rather than hand-authoring them, and classify or mutate SQL through the libpg-query parse tree rather than ad hoc regex (Rule 07).
 
 ## The only decisions to escalate to the user

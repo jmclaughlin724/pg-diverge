@@ -2,26 +2,45 @@
   "name": "supaschema",
   "version": "0.2.0",
   "description": "Declarative PostgreSQL schema migrations plus TypeScript and Zod types in milliseconds — Supabase-aware, built on PostgreSQL's own parser, with no Docker or shadow database.",
-  "type": "module",
-  "sideEffects": false,
-  "license": "AGPL-3.0-only",
-  "author": "John McLaughlin",
+  "keywords": [
+    "database-migrations",
+    "declarative-database",
+    "declarative-schema",
+    "idempotent-migrations",
+    "postgres-migrations",
+    "postgres",
+    "postgresql",
+    "rls",
+    "schema-diff",
+    "supabase",
+    "supabase-migrations",
+    "migration",
+    "schema",
+    "diff",
+    "sql",
+    "typescript-types",
+    "zod"
+  ],
+  "homepage": "https://supaschema.com/docs",
+  "bugs": {
+    "url": "https://github.com/jmclaughlin724/supaschema/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jmclaughlin724/supaschema.git"
   },
-  "bugs": {
-    "url": "https://github.com/jmclaughlin724/supaschema/issues"
-  },
-  "homepage": "https://supaschema.com/docs",
-  "bin": {
-    "supaschema": "bin/supaschema"
-  },
+  "license": "AGPL-3.0-only",
+  "author": "John McLaughlin",
+  "sideEffects": false,
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "bin": {
+    "supaschema": "bin/supaschema"
   },
   "files": [
     ".agents/skills/supaschema",
@@ -55,42 +74,40 @@
     "LICENSE-COMMERCIAL.md",
     "README.md"
   ],
-  "engines": {
-    "node": ">=22.12.0"
-  },
   "scripts": {
-    "benchmark": "npm run build && node dist/benchmark.js",
     "bench:compare": "npm run build && node benchmarks/compare.js",
     "bench:plot": "node benchmarks/plot.js",
-    "bench:plot:headtohead": "node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-xl.svg && node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xxl.json docs/images/benchmarks/head-to-head-xxl.svg && node benchmarks/plot-head-to-head.js --workflow benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-workflow-xl.svg",
     "bench:plot:docs": "node benchmarks/plot.js benchmarks/results/comparison.json benchmarks/results/comparison-realistic.json benchmarks/results/comparison-xl.json benchmarks/results/comparison-xxl.json --charts-dir docs/images/benchmarks && npm run bench:plot:headtohead",
-    "diagrams": "node benchmarks/plot-concepts.js",
+    "bench:plot:headtohead": "node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-xl.svg && node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xxl.json docs/images/benchmarks/head-to-head-xxl.svg && node benchmarks/plot-head-to-head.js --workflow benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-workflow-xl.svg",
+    "benchmark": "npm run build && node dist/benchmark.js",
     "build": "tsc -p tsconfig.src.json && node dist/config-schema-gen.js",
+    "catalog:check": "node scripts/guards/check-dependency-catalog.mjs",
+    "changeset": "changeset",
     "check": "npm run lint && npm test && npm run build",
     "check:package": "publint && attw --pack . --profile esm-only",
     "check:schema": "node scripts/check-schema.mjs",
     "clean": "rm -rf dist coverage .tmp api-docs benchmarks/results .wrangler/tmp",
     "code-atlas:build": "node scripts/code-atlas/build.mjs",
-    "code-atlas:query": "node scripts/code-atlas/query.mjs",
     "code-atlas:check": "node scripts/guards/check-code-atlas.mjs",
     "code-atlas:mcp": "node scripts/code-atlas/mcp-wrapper.mjs",
     "code-atlas:mcp:status": "node scripts/code-atlas/mcp-wrapper.mjs --status",
-    "docs:lint": "node scripts/check-docs-standard.mjs",
+    "code-atlas:query": "node scripts/code-atlas/query.mjs",
+    "corpus:check": "npm run build && node dist/cli.js corpus --corpus-dir corpus/supabase-style",
+    "diagrams": "node benchmarks/plot-concepts.js",
     "docs:check": "npm run docs:lint && cd docs && npx --yes mint@4.2.616 validate && npx --yes mint@4.2.616 broken-links --check-anchors && npx --yes mint@4.2.616 a11y",
     "docs:dev": "cd docs && npx --yes mint@4.2.616 dev --no-open",
-    "corpus:check": "npm run build && node dist/cli.js corpus --corpus-dir corpus/supabase-style",
-    "fixture:diff": "node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out stdout",
-    "fixture:verify": "npm run build && out=$(mktemp -d)/basic.sql && node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out \"$out\" && node dist/cli.js verify --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --migration \"$out\"",
-    "format": "npm run format:json && ultracite fix . && npm run format:md && npm run format:sql && npm run format:toml && npm run format:sh && npm run py:fix",
-    "format:md": "prettier --write \"**/*.{md,mdx,yml,yaml}\"",
-    "format:sql": "node scripts/format-sql.mjs",
-    "format:toml": "node scripts/format-toml.mjs",
-    "format:sh": "node scripts/format-sh.mjs",
-    "format:json": "sort-package-json",
-    "catalog:check": "node scripts/guards/check-dependency-catalog.mjs",
+    "docs:lint": "node scripts/check-docs-standard.mjs",
     "fastmcp:inspect": "uv run --package supaschema-agent-mcp fastmcp inspect fastmcp.json",
     "fastmcp:list": "uv run --package supaschema-agent-mcp fastmcp list services/agent-mcp/supaschema_agent_mcp/server.py --resources --prompts",
     "fastmcp:status": "uv run --package supaschema-agent-mcp fastmcp call services/agent-mcp/supaschema_agent_mcp/server.py server_status --json",
+    "fixture:diff": "node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out stdout",
+    "fixture:verify": "npm run build && out=$(mktemp -d)/basic.sql && node dist/cli.js diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out \"$out\" && node dist/cli.js verify --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --migration \"$out\"",
+    "format": "npm run format:json && ultracite fix . && npm run format:md && npm run format:sql && npm run format:toml && npm run format:sh && npm run py:fix",
+    "format:json": "sort-package-json",
+    "format:md": "prettier --write \"**/*.{md,mdx,yml,yaml}\"",
+    "format:sh": "node scripts/format-sh.mjs",
+    "format:sql": "node scripts/format-sql.mjs",
+    "format:toml": "node scripts/format-toml.mjs",
     "guard": "node scripts/guards/check-all.mjs",
     "guard:agent": "node scripts/guards/check-agent-hooks.mjs && node scripts/guards/check-hook-import-graph.mjs && node scripts/guards/check-agent-surface-parity.mjs && node scripts/guards/check-claude-agents.mjs",
     "guard:catalog": "npm run catalog:check",
@@ -98,45 +115,28 @@
     "guard:code-atlas": "npm run code-atlas:check",
     "guard:fastmcp": "node scripts/guards/check-fastmcp-agent.mjs",
     "guard:lsp-coverage": "node scripts/guards/check-lsp-coverage.mjs",
+    "postinstall": "node bin/postinstall.mjs",
     "lint": "ultracite check .",
     "lint:ci": "biome ci .",
     "lint:doctor": "ultracite doctor",
     "lint:fix": "ultracite fix .",
     "pack:dry": "npm pack --dry-run",
-    "postinstall": "node bin/postinstall.mjs",
     "prepare": "npm run build && node scripts/install-hooks.mjs",
-    "changeset": "changeset",
-    "release:version": "changeset version",
-    "py:lint": "uv run --package supaschema-agent-mcp ruff check services/agent-mcp",
-    "py:format:check": "uv run --package supaschema-agent-mcp ruff format --check services/agent-mcp",
     "py:fix": "uv run --package supaschema-agent-mcp ruff check --fix services/agent-mcp && uv run --package supaschema-agent-mcp ruff format services/agent-mcp",
-    "py:typecheck": "uv run --package supaschema-agent-mcp mypy services/agent-mcp/supaschema_agent_mcp",
+    "py:format:check": "uv run --package supaschema-agent-mcp ruff format --check services/agent-mcp",
+    "py:lint": "uv run --package supaschema-agent-mcp ruff check services/agent-mcp",
     "py:test": "uv run --package supaschema-agent-mcp pytest services/agent-mcp/tests",
+    "py:typecheck": "uv run --package supaschema-agent-mcp mypy services/agent-mcp/supaschema_agent_mcp",
+    "release:version": "changeset version",
     "sync:llm": "node scripts/skills/sync-llm.mjs",
     "sync:llm:check": "node scripts/skills/sync-llm.mjs --check",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
-  "keywords": [
-    "database-migrations",
-    "declarative-database",
-    "declarative-schema",
-    "idempotent-migrations",
-    "postgres-migrations",
-    "postgres",
-    "postgresql",
-    "rls",
-    "schema-diff",
-    "supabase",
-    "supabase-migrations",
-    "migration",
-    "schema",
-    "diff",
-    "sql",
-    "typescript-types",
-    "zod"
-  ],
+  "overrides": {
+    "minimatch": "10.2.5"
+  },
   "dependencies": {
     "commander": "^15.0.0",
     "libpg-query": "^17.7.3",
@@ -177,7 +177,7 @@
     "yaml": "^2.9.0",
     "yaml-language-server": "1.23.0"
   },
-  "overrides": {
-    "minimatch": "10.2.5"
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

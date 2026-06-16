@@ -116,15 +116,60 @@ describe("view replace compatibility", () => {
     expect(sql).toContain("CREATE OR REPLACE VIEW app.v AS SELECT 2 AS b;");
   });
 
-  it("keeps the verify-required warning when columns are statically unknowable", async () => {
+  it("blocks replacement when view columns are statically unknowable", async () => {
     const plan = await diff(
       "CREATE TABLE app.rows (id integer);\nCREATE VIEW app.v2 AS SELECT * FROM app.rows;",
       "CREATE TABLE app.rows (id integer);\nCREATE VIEW app.v2 AS SELECT * FROM app.rows WHERE id > 0;"
     );
 
     const operation = plan.operations.find((item) => item.key === "view:app.v2");
+    expect(operation?.blocked).toBe(true);
+    expect(
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE")
+    ).toBe(true);
     expect(
       operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED")
+    ).toBe(false);
+  });
+
+  it("blocks aliasless set-operation view replacement without a hint", async () => {
+    const plan = await diff(
+      "CREATE VIEW app.v AS SELECT 1 AS a UNION SELECT 2 AS a;",
+      "CREATE VIEW app.v AS SELECT 1 AS renamed UNION SELECT 2 AS renamed;"
+    );
+
+    const operation = plan.operations.find((item) => item.key === "view:app.v");
+    expect(operation?.blocked).toBe(true);
+    expect(operation?.destructive).toBe(true);
+    expect(
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE")
     ).toBe(true);
+  });
+
+  it("renders guarded drop + create for aliasless set-operation views when hinted", async () => {
+    const plan = await diff(
+      "CREATE VIEW app.v AS SELECT 1 AS a UNION SELECT 2 AS a;",
+      "CREATE VIEW app.v AS SELECT 1 AS renamed UNION SELECT 2 AS renamed;",
+      { hints: { destructive: ["view:app.v"] } }
+    );
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    const operation = plan.operations.find((item) => item.key === "view:app.v");
+    expect(operation?.blocked).toBe(false);
+    expect(sql).toContain('DROP VIEW IF EXISTS "app"."v";');
+    expect(sql).toContain("CREATE OR REPLACE VIEW app.v AS SELECT 1 AS renamed");
+    expect(sql).toContain("UNION");
+    expect(sql).toContain("SELECT 2 AS renamed;");
+  });
+
+  it("keeps explicit-alias set-operation view replacements on the OR REPLACE path", async () => {
+    const plan = await diff(
+      "CREATE VIEW app.v(a) AS SELECT 1 UNION SELECT 2;",
+      "CREATE VIEW app.v(a) AS SELECT 1 UNION SELECT 3;"
+    );
+
+    const operation = plan.operations.find((item) => item.key === "view:app.v");
+    expect(operation?.blocked).toBe(false);
+    expect(operation?.destructive).toBe(false);
   });
 });

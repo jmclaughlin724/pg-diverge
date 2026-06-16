@@ -33,7 +33,15 @@ function refineViewReplace(
   const before = viewColumns(operation.before);
   const after = viewColumns(operation.after);
   if (!(before && after)) {
-    return operation;
+    operation.diagnostics = operation.diagnostics.filter(
+      (item) => item.code !== "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED"
+    );
+    return markDropRequired(operation, config, "viewDropRequired", {
+      code: "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE",
+      hint: `This view's output columns cannot be verified. Add an explicit column alias list to the view, or add "${operation.key}" to hints.destructive to render a guarded DROP VIEW + CREATE after review.`,
+      message:
+        "view replacement cannot be proven column-compatible; CREATE OR REPLACE VIEW may be rejected by PostgreSQL",
+    });
   }
   operation.diagnostics = operation.diagnostics.filter(
     (item) => item.code !== "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED"

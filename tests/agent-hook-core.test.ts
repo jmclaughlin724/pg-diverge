@@ -191,6 +191,44 @@ describe("agent hook skill matcher state", () => {
     });
   });
 
+  it("allows Code Atlas evidence acquisition while skills are pending", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "use $code-atlas for scripts", session_id: "atlas-first" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    const atlasQuery = {
+      session_id: "atlas-first",
+      tool_input: {
+        cmd: "npm run code-atlas:query -- pre-edit scripts/guards/check-agent-hooks.mjs --json",
+      },
+      tool_name: "functions.exec_command",
+    };
+    const allowed = handleAgentHookEvent("PreToolUse", atlasQuery, { root, runtime: "codex" });
+    expect(allowed.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        ...atlasQuery,
+        tool_response: { exit_code: 0 },
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(payload)).evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "code-atlas-query",
+          outcome: "success",
+          queryKind: "pre-edit",
+          value: "scripts/guards/check-agent-hooks.mjs",
+        }),
+      ])
+    );
+  });
+
   it("does not emit advisory context for already loaded tool-triggered skills", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -434,6 +472,16 @@ describe("agent hook response detectors", () => {
     });
     expect(
       claimWithoutEvidence("Verified and clean.", { evidence: [{ kind: "verified-command" }] }, [])
+    ).toBeUndefined();
+    expect(
+      claimWithoutEvidence("Verified and clean.", {
+        evidence: [{ kind: "code-atlas-query", outcome: "success" }],
+      })
+    ).toMatchObject({ id: "claim-without-evidence" });
+    expect(
+      claimWithoutEvidence("Verified Code Atlas scope.", {
+        evidence: [{ kind: "code-atlas-query", outcome: "success" }],
+      })
     ).toBeUndefined();
   });
 

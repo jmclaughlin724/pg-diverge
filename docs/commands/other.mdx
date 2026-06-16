@@ -10,19 +10,19 @@ Core migration work still starts with `diff`, `check`, `verify`, `types`, `migra
 
 All utility commands accept `--config <path>`.
 
-| Need                                            | Command       |
-| ----------------------------------------------- | ------------- |
-| See the planned operations before rendering SQL | `plan`        |
-| See the extracted schema model                  | `inspect`     |
-| Compare schema equality quickly                 | `fingerprint` |
-| Check supported and unsupported objects         | `audit`       |
-| Run the real-world regression oracle            | `corpus`      |
-| Diagnose local setup                            | `doctor`      |
+| Need                                            | Command           |
+| ----------------------------------------------- | ----------------- |
+| See the planned operations before rendering SQL | `plan`            |
+| See the extracted schema model                  | `inspect`         |
+| Compare schema equality quickly                 | `fingerprint`     |
+| Check supported and unsupported objects         | `audit`           |
+| Run the real-world regression oracle            | `corpus`          |
+| Diagnose local setup                            | `doctor`          |
 | Validate config paths and sources               | `config validate` |
-| Scaffold or repair setup                        | `init`        |
-| Add shell completions                           | `completion`  |
-| Decode a `SUPA_*` code                          | `explain`     |
-| Compare live-catalog normalization              | `selfcheck`   |
+| Scaffold or repair setup                        | `init`            |
+| Add shell completions                           | `completion`      |
+| Decode a `SUPA_*` code                          | `explain`         |
+| Compare live-catalog normalization              | `selfcheck`       |
 
 <Accordion title="plan — Print the diff plan as JSON">
   `plan` runs the same comparison as `diff`, but prints JSON instead of writing SQL.
@@ -274,9 +274,10 @@ Each explanation includes:
 - Recommended remediation steps
 - Links to relevant sections of this documentation (printed as URLs for offline use)
 
-  <Tip>
-    If you see a `SUPA_*` code in CI output and want to understand it immediately, run `npx supaschema explain <code>` locally — no internet access required.
-  </Tip>
+      <Tip>
+      If you see a `SUPA_*` code in CI output and want to understand it immediately, run `npx supaschema explain <code>` locally — no internet access required.
+
+    </Tip>
 </Accordion>
 
 <Accordion title="selfcheck — Engine parity check">

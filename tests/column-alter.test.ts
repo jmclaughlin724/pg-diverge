@@ -61,8 +61,21 @@ describe("column-level alter lane", () => {
       "CREATE TABLE app.accounts (id bigint PRIMARY KEY, label varchar(20) NOT NULL, score integer DEFAULT 0);",
       hinted
     );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
     const sql = renderMigration(plan, { includeHeader: false });
 
+    expect(operation?.blocked).toBe(false);
+    expect(operation?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SUPA_PLAN_COLUMN_TYPE_USING_REVIEW",
+          severity: "warning",
+        }),
+      ])
+    );
+    expect(sql).toContain(
+      '-- review: USING is an identity cast ("label"::character varying(20)); replace it for non-assignment-cast conversions'
+    );
     expect(sql).toContain(
       'ALTER TABLE "app"."accounts" ALTER COLUMN "label" TYPE character varying(20) USING "label"::character varying(20);'
     );
@@ -79,8 +92,12 @@ describe("column-level alter lane", () => {
 
     expect(operation?.blocked).toBe(false);
     expect(operation?.destructive).toBe(false);
+    expect(operation?.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_PLAN_COLUMN_TYPE_USING_REVIEW"
+    );
     expect(sql).toContain('ALTER TABLE "app"."accounts" ALTER COLUMN "label" DROP NOT NULL;');
     expect(sql).toContain('ALTER TABLE "app"."accounts" ALTER COLUMN "score" SET DEFAULT 5;');
+    expect(sql).not.toContain("-- review: USING is an identity cast");
   });
 
   it("renders dropped defaults as DROP DEFAULT", async () => {

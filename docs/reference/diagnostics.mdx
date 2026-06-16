@@ -1,7 +1,7 @@
 ---
 title: "Diagnostics"
 description: "SUPA diagnostic codes, severities, meanings, and recovery entry points."
-keywords: ["diagnostics","SUPA codes","recovery","errors"]
+keywords: ["diagnostics", "SUPA codes", "recovery", "errors"]
 ---
 
 Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `statement`, and `hint` fields.
@@ -19,13 +19,13 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_SUPABASE_VIEW_SECURITY_INVOKER` | warning | A view in an exposed schema does not set `security_invoker`, so RLS applies as the view owner. |
 | `SUPA_CATALOG_EXTRACT_FAILED` | error | Catalog extraction failed against the supplied database. |
 | `SUPA_CATALOG_SNAPSHOT_VERSION` | warning | A `catalog:` snapshot was produced by a different supaschema model version; regenerate it to keep hashes comparable. |
-| `SUPA_OBJECT_PARSE_FAILED` | error | Object SQL did not parse, so its identity hash fell back to normalized text. |
 | `SUPA_DIFF_LINEAGE_BROKEN` | error | The plan's from-state does not continue the newest pending supaschema migration in the output directory. |
 | `SUPA_DIFF_LINEAGE_DUPLICATE` | error | A pending supaschema migration already covers this exact from/to transition. |
 | `SUPA_DIFF_OUTPUT_EXISTS` | error | The output migration file already exists; supaschema never overwrites migrations. |
 | `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` | error | A destructive change lacks an explicit hint. |
 | `SUPA_PLAN_ADD_COLUMN_UNSAFE` | error | An additive column change needs explicit migration review. |
 | `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED` | error | Column drops and type changes render data-preserving ALTERs only after a destructive-change hint. |
+| `SUPA_PLAN_COLUMN_TYPE_USING_REVIEW` | warning | A column type change rendered an identity `USING` cast; review and replace it for non-trivial conversions. |
 | `SUPA_PLAN_DEPENDENCY_CYCLE` | error | Dependency ordering produced a cycle. |
 | `SUPA_PLAN_EMPTY_WITH_DRIFT` | error | The plan has no operations but the model fingerprints differ; an empty migration would silently mask real drift. |
 | `SUPA_PLAN_RENAME_HINT_UNMATCHED` | error | A rename hint did not match both source and target objects. |
@@ -34,7 +34,7 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_PLAN_RENAME_UNSUPPORTED` | error | The object kind cannot yet be renamed safely by the renderer. |
 | `SUPA_PLAN_RENAME_VERIFY_REQUIRED` | warning | Rename output must be verified against PostgreSQL before release. |
 | `SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED` | error | The routine's return type or OUT parameters changed; `CREATE OR REPLACE` cannot apply it without a hinted drop. |
-| `SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE` | error | The view drops, renames, or reorders output columns; `CREATE OR REPLACE VIEW` cannot apply it without a hinted drop. |
+| `SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE` | error | The view drops, renames, reorders, or cannot prove output columns; `CREATE OR REPLACE VIEW` cannot apply it without review. |
 | `SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED` | warning | View output columns are statically unknowable; verify the replacement against PostgreSQL rules. |
 | `SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED` | error | `CREATE INDEX CONCURRENTLY` cannot run inside the transaction the migration runner uses. |
 | `SUPA_CHECK_CASCADE` | error | `CASCADE` appears in migration SQL. |
@@ -72,6 +72,8 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_VALIDATOR_FAILED` | error | A configured external validator reported diagnostics. |
 | `SUPA_VALIDATOR_UNAVAILABLE` | error | A configured external validator binary was not found. |
 | `SUPA_VALIDATOR_UNKNOWN` | error | The config references an unknown validator. |
+| `SUPA_SYNC_RUNNER_FAILED` | error | The Supabase CLI apply runner launched and exited nonzero. |
+| `SUPA_SYNC_RUNNER_UNAVAILABLE` | error | The Supabase CLI apply runner could not be launched because it is not installed or not on `PATH`. |
 | `SUPA_VERIFY_CLEANUP_FAILED` | warning | A temporary verification database could not be dropped and may need manual removal. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` hints | — | The mismatch hint names the differing objects: missing from the migration result, not present in the target, and definition differs. |
 | `SUPA_VERIFY_FAILED` | error | Temporary database verification failed. |

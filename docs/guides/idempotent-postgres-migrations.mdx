@@ -1,7 +1,7 @@
 ---
 title: "Idempotent migrations"
 description: "Generate and check replay-safe PostgreSQL migrations that can run more than once without failing on existing tables, indexes, constraints, or policies."
-keywords: ["idempotent migrations","replay-safe SQL","PostgreSQL","checks"]
+keywords: ["idempotent migrations", "replay-safe SQL", "PostgreSQL", "checks"]
 ---
 
 An idempotent PostgreSQL migration can be retried safely. If a deploy crashes after part of the file ran, the runner can execute the file again without failing on objects that already exist.

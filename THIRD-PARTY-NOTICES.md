@@ -5,14 +5,9 @@ supaschema is **dual-licensed**:
 - **AGPL-3.0-only** — see [`LICENSE`](./LICENSE).
 - **Commercial license** — see [`LICENSE-COMMERCIAL.md`](./LICENSE-COMMERCIAL.md).
 
-Choose the license that fits your use. The AGPL-3.0-only terms apply unless you
-hold a separate commercial license.
+Choose the license that fits your use. The AGPL-3.0-only terms apply unless you hold a separate commercial license.
 
-This file is a concise attribution notice for supaschema's **direct runtime
-dependencies** (the packages shipped to and resolved by consumers at runtime).
-It is not an exhaustive listing of the full transitive dependency tree; each
-dependency carries its own license and may pull in further dependencies under
-their respective terms. Run `npm ls --omit=dev` for the resolved runtime tree.
+This file is a concise attribution notice for supaschema's **direct runtime dependencies** (the packages shipped to and resolved by consumers at runtime). It is not an exhaustive listing of the full transitive dependency tree; each dependency carries its own license and may pull in further dependencies under their respective terms. Run `npm ls --omit=dev` for the resolved runtime tree.
 
 ## Direct runtime dependencies
 
@@ -28,8 +23,7 @@ All direct runtime dependencies are distributed under the **MIT License**.
 
 ### MIT License
 
-Each MIT-licensed dependency above is provided under the following terms (with
-copyright held by the respective package authors and contributors):
+Each MIT-licensed dependency above is provided under the following terms (with copyright held by the respective package authors and contributors):
 
 ```
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -51,6 +45,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-The full license text for each dependency is included in that package's
-distribution under `node_modules/<package>/` (e.g. its `LICENSE` file and the
-`license` field in its `package.json`).
+The full license text for each dependency is included in that package's distribution under `node_modules/<package>/` (e.g. its `LICENSE` file and the `license` field in its `package.json`).

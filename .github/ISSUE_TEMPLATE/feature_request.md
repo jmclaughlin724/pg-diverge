@@ -8,14 +8,11 @@ assignees: ""
 
 ## Problem
 
-The use case or limitation you're hitting. If supaschema currently fails closed
-with a diagnostic (e.g. an unsupported-DDL `SUPA_*` code), include it — that
-tells us exactly which model path needs to grow.
+The use case or limitation you're hitting. If supaschema currently fails closed with a diagnostic (e.g. an unsupported-DDL `SUPA_*` code), include it — that tells us exactly which model path needs to grow.
 
 ## Proposed solution
 
-What you'd like supaschema to do. For new SQL/DDL coverage, give a concrete
-declarative-tree input and the migration SQL you'd expect it to render.
+What you'd like supaschema to do. For new SQL/DDL coverage, give a concrete declarative-tree input and the migration SQL you'd expect it to render.
 
 ```sql
 -- desired input

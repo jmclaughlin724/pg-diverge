@@ -6,7 +6,7 @@ preview_urls = false
 
 routes = [
   { pattern = "supaschema.com", custom_domain = true },
-  { pattern = "www.supaschema.com", custom_domain = true }
+  { pattern = "www.supaschema.com", custom_domain = true },
 ]
 
 [observability]

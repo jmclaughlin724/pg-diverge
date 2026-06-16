@@ -9,8 +9,7 @@ import {
   sortedByName,
 } from "./typegen-model.js";
 
-export async function generateZodSchemas(model: SchemaModel): Promise<string> {
-  const shapes = await collectSchemaShapes(model);
+export function generateZodSchemasFromShapes(shapes: SchemaShapes): string {
   const sortedSchemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
@@ -24,6 +23,10 @@ export async function generateZodSchemas(model: SchemaModel): Promise<string> {
   lines.push("} as const;");
   emitValidatedTypeHelpers(lines);
   return `${lines.join("\n")}\n`;
+}
+
+export async function generateZodSchemas(model: SchemaModel): Promise<string> {
+  return generateZodSchemasFromShapes(await collectSchemaShapes(model));
 }
 
 type SortedSchemas = [string, SchemaEntry][];

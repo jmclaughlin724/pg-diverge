@@ -5,6 +5,7 @@ import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
+import { parseSqlAst } from "../src/sql/parser.js";
 import { splitSqlStatements } from "../src/sql/split.js";
 
 describe("sql splitting", () => {
@@ -79,6 +80,22 @@ $$;
     expect(names).toContain("function:app.after_unicode(uuid)");
     const after = extracted.objects.find((object) => object.key.includes("after_unicode"));
     expect(after?.sql).toContain("select p_company_id");
+  });
+});
+
+describe("parse cache", () => {
+  it("keeps parsing correctly after crossing the cache cap", async () => {
+    const first = await parseSqlAst("SELECT 0;");
+    expect(first.diagnostics).toEqual([]);
+
+    for (let index = 1; index <= 2050; index += 1) {
+      const parsed = await parseSqlAst(`SELECT ${index};`);
+      expect(parsed.diagnostics).toEqual([]);
+    }
+
+    const reparsed = await parseSqlAst("SELECT 0;");
+    expect(reparsed.diagnostics).toEqual([]);
+    expect(reparsed.ast).toBeDefined();
   });
 });
 

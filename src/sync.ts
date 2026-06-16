@@ -105,13 +105,31 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   }
   for (const [command, ...args] of planned) {
     lines.push(`running: ${command} ${args.join(" ")}`);
-    const exitCode = await run(command ?? "", args);
-    if (exitCode !== 0) {
+    const outcome = await run(command ?? "", args);
+    if (outcome.kind === "spawn-error") {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_SYNC_RUNNER_UNAVAILABLE",
+          "error",
+          `could not launch \`${command}\`: the Supabase CLI is not installed or not on PATH`,
+          {
+            hint: "Install the Supabase CLI (https://supabase.com/docs/guides/local-development) and ensure `supabase` is on PATH, or run sync without --local/--remote for the dry-run gate only.",
+          }
+        )
+      );
+      return {
+        applied: false,
+        diagnostics,
+        pending: status.report.pending,
+        report: render(lines),
+      };
+    }
+    if (outcome.code !== 0) {
       diagnostics.push(
         diagnostic(
           "SUPA_SYNC_RUNNER_FAILED",
           "error",
-          `\`${command} ${args.join(" ")}\` exited with code ${exitCode}`,
+          `\`${command} ${args.join(" ")}\` exited with code ${outcome.code}`,
           { hint: "The migration runner owns apply/deploy; inspect its output above." }
         )
       );
@@ -126,7 +144,9 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   return { applied: true, diagnostics, pending: status.report.pending, report: render(lines) };
 }
 
-function run(command: string, args: string[]): Promise<number> {
+type RunOutcome = { code: number; kind: "exit" } | { error: Error; kind: "spawn-error" };
+
+function run(command: string, args: string[]): Promise<RunOutcome> {
   return new Promise((resolvePromise) => {
     // Inherit stdio so the runner's own confirmation prompts reach the user.
     // shell:true on Windows so the Supabase CLI's `.cmd`/`.ps1` shim is
@@ -138,8 +158,8 @@ function run(command: string, args: string[]): Promise<number> {
       shell: process.platform === "win32",
       stdio: "inherit",
     });
-    child.on("error", () => resolvePromise(127));
-    child.on("close", (code) => resolvePromise(code ?? 1));
+    child.on("error", (error) => resolvePromise({ error, kind: "spawn-error" }));
+    child.on("close", (code) => resolvePromise({ code: code ?? 1, kind: "exit" }));
   });
 }
 

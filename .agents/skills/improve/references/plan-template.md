@@ -47,12 +47,12 @@ The facts the executor needs, inlined — never "as discussed" or "see audit":
 
 ## Commands you will need
 
-| Purpose   | Command                       | Expected on success |
-| --------- | ----------------------------- | ------------------- |
-| Install   | `npm install`                 | exit 0              |
-| Typecheck | `npm run typecheck`           | exit 0, no errors   |
-| Tests     | `npm test -- <filter>`        | all pass            |
-| Lint      | `npm run lint`                | exit 0              |
+| Purpose   | Command                | Expected on success |
+| --------- | ---------------------- | ------------------- |
+| Install   | `npm install`          | exit 0              |
+| Typecheck | `npm run typecheck`    | exit 0, no errors   |
+| Tests     | `npm test -- <filter>` | all pass            |
+| Format    | `npm run format`       | exit 0              |
 
 (Exact commands from this repo — verified during recon, not guessed.)
 
