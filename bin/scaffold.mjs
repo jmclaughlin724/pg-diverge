@@ -24,6 +24,7 @@ import {
   readFileSync,
   renameSync,
   rmdirSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -61,6 +62,8 @@ const agentPaths = [
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/rules/supaschema.rules",
 ];
+
+const retiredAgentPaths = [".codex/skills/supaschema"];
 
 const hookConfigs = [
   {
@@ -154,6 +157,7 @@ export async function scaffoldProject({
   }
 
   copyAgentBundle({ dryRun, packageRoot, skipped, targetDir });
+  removeRetiredAgentSurfaces({ dryRun, targetDir });
   installed.push("agent files");
 
   for (const config of hookConfigs) {
@@ -678,6 +682,16 @@ function copyAgentBundle({ dryRun, packageRoot, skipped, targetDir }) {
   }
 }
 
+function removeRetiredAgentSurfaces({ dryRun, targetDir }) {
+  if (dryRun) {
+    return;
+  }
+  for (const file of retiredAgentPaths) {
+    rmSync(join(targetDir, file), { force: true, recursive: true });
+  }
+  removeEmptyDirectory(join(targetDir, ".codex/skills"));
+}
+
 function copyProjectPath(packageRoot, target, relativePath, skipped) {
   const source = join(packageRoot, relativePath);
   if (!existsSync(source)) {
@@ -709,6 +723,18 @@ function copyProjectDirectory(source, destination) {
 function copyProjectFile(source, destination) {
   mkdirSync(dirname(destination), { recursive: true });
   copyFileSync(source, destination);
+}
+
+function removeEmptyDirectory(directory) {
+  try {
+    if (readdirSync(directory).length === 0) {
+      rmdirSync(directory);
+    }
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      throw error;
+    }
+  }
 }
 
 function writeInstallState({ dryRun, existingConfig, packageVersion, scan, selection, targetDir }) {
