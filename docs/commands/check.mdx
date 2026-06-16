@@ -65,16 +65,13 @@ npx supaschema check migration.sql --reporter sarif
 ## Flags
 
 <ParamField path="--reporter" type="text | github | sarif | json">
-  Controls the diagnostic output format:
-
-- **`text`** — Human-readable output with file names, line numbers, rule codes, and messages. This is the default when no flag is passed.
-
-- **`github`** — Emits [workflow commands](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions) (`::error file=...`) that GitHub Actions renders as inline PR annotations on the changed files.
-
-- **`sarif`** — Outputs a SARIF 2.1.0 JSON document to stdout. Upload to GitHub's code scanning API with `github/codeql-action/upload-sarif` for persistent security alerts.
-
-- **`json`** — Outputs a JSON array of diagnostic objects. Useful for programmatic consumption or building custom reporters.
-  </ParamField>
+  Controls the diagnostic output format. Use `text` for human-readable output
+  with file names, line numbers, rule codes, and messages. Use `github` to emit
+  [workflow commands](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions)
+  that GitHub Actions renders as inline PR annotations. Use `sarif` to write a
+  SARIF 2.1.0 document for GitHub code scanning. Use `json` for programmatic
+  consumption or custom reporters.
+</ParamField>
 
 <ParamField path="--quiet" type="boolean">
   Suppresses all output when no errors are found. Only prints diagnostics when

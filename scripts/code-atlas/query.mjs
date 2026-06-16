@@ -117,7 +117,7 @@ function runQuery(kind, value, sourceAtlas, indexes, options = {}) {
     case "regression-scope":
       return regressionScope(value, sourceAtlas, indexes);
     case "validate-coverage":
-      return validateCoverage(sourceAtlas, indexes);
+      return validateCoverage(sourceAtlas);
     case "health":
       return health(value, sourceAtlas, indexes, options);
     case "mcp-status":
