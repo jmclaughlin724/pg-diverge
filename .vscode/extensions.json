@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "aljazerzen.vscode-pylsp",
+    "biomejs.biome",
+    "esbenp.prettier-vscode",
+    "redhat.vscode-yaml",
+    "supabase.postgrestools"
+  ]
+}

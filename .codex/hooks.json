@@ -2,10 +2,11 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "^(apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-tool-gate.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/block-generated-migration-edits.mjs\"",
             "timeout": 10,
             "statusMessage": "Checking supaschema generated-migration policy"
           }
@@ -14,12 +15,25 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "^(apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/auto-diff-on-schema-change.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/auto-diff-on-schema-change.mjs\"",
             "timeout": 130,
             "statusMessage": "Running supaschema auto-diff on schema change"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
+            "timeout": 130,
+            "statusMessage": "Syncing supaschema Claude agent surfaces"
           }
         ]
       }

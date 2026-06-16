@@ -1,0 +1,42 @@
+{
+  "$schema": "./supaschema-config.schema.json",
+  "adapter": "auto",
+  "cascade": "never",
+  "destructiveChanges": "hint-required",
+  "environments": {},
+  "excludedGrantRoles": [],
+  "hints": {
+    "destructive": [],
+    "renames": []
+  },
+  "idempotency": "required",
+  "lockTimeout": "5s",
+  "workflow": {
+    "schema_diff": "on_schema_write",
+    "migration_check": "after_schema_diff",
+    "migration_verify": "suggest_after_check",
+    "migration_sync": "explicit_request_only",
+    "type_generation": "create_or_refresh",
+    "zod_generation": "create_or_refresh",
+    "type_usage": "zod_validated"
+  },
+  "migrationsDir": "database/migrations",
+  "typesFile": "database.types.ts",
+  "zodFile": "database.zod.ts",
+  "normalize": "deparse",
+  "managedSchemas": [],
+  "postgresVersion": "15+",
+  "renameDetection": "hints-only",
+  "schemaPaths": ["examples/postgres/schemas"],
+  "schemas": {
+    "exclude": [],
+    "include": []
+  },
+  "sources": {
+    "from": "auto",
+    "to": "dir:examples/postgres/schemas"
+  },
+  "statementTimeout": "60s",
+  "transactionMode": "per-migration",
+  "validators": ["internal-parser"]
+}

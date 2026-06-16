@@ -40,7 +40,7 @@ const migrationFilePattern = /^\d{8,}.*\.sql$/u;
  * comparison here crosses lanes, so symmetric modeling errors fail loudly.
  */
 export async function runCorpus(
-  options: CorpusOptions,
+  options: CorpusOptions
 ): Promise<{ diagnostics: Diagnostic[]; report: CorpusReport }> {
   const diagnostics: Diagnostic[] = [];
   const report: CorpusReport = {
@@ -60,7 +60,7 @@ export async function runCorpus(
   }
   try {
     const rolesSql = await readFile(join(options.corpusDir, "roles.sql"), "utf8").catch(
-      () => undefined,
+      () => undefined
     );
     if (rolesSql !== undefined) {
       await applySql(corpusUrl, rolesSql);
@@ -112,18 +112,18 @@ export async function runCorpus(
         diagnostic(
           "SUPA_CORPUS_RECONVERGENCE",
           "error",
-          "the second apply changed the catalog; the rendered migration is not idempotent on the corpus state",
-        ),
+          "the second apply changed the catalog; the rendered migration is not idempotent on the corpus state"
+        )
       );
     }
     report.stages.push(
-      report.idempotent ? "apply-twice: idempotent" : "apply-twice: NOT idempotent",
+      report.idempotent ? "apply-twice: idempotent" : "apply-twice: NOT idempotent"
     );
 
     const afterModel = await extractSourceModel(`database:${corpusUrl}`, { config });
     const reconvergence = planSchemaDiff(afterModel, toModel, { config });
     report.reconvergenceResidual = reconvergence.operations.map(
-      (operation) => `${operation.kind} ${operation.key}`,
+      (operation) => `${operation.kind} ${operation.key}`
     );
     if (report.reconvergenceResidual.length > 0) {
       diagnostics.push(
@@ -131,12 +131,12 @@ export async function runCorpus(
           "SUPA_CORPUS_RECONVERGENCE",
           "error",
           `${report.reconvergenceResidual.length} operation(s) remain after applying the reconciliation; the diff does not converge`,
-          { hint: `residual: ${report.reconvergenceResidual.slice(0, 6).join(", ")}` },
-        ),
+          { hint: `residual: ${report.reconvergenceResidual.slice(0, 6).join(", ")}` }
+        )
       );
     }
     report.stages.push(
-      `reconvergence: ${report.reconvergenceResidual.length} residual operation(s)`,
+      `reconvergence: ${report.reconvergenceResidual.length} residual operation(s)`
     );
     return { diagnostics, report };
   } catch (error) {
@@ -145,8 +145,8 @@ export async function runCorpus(
         "SUPA_CORPUS_RECONVERGENCE",
         "error",
         `corpus pipeline failed: ${error instanceof Error ? error.message : String(error)}`,
-        { hint: "A replay or reconciliation apply failed against the corpus database." },
-      ),
+        { hint: "A replay or reconciliation apply failed against the corpus database." }
+      )
     );
     report.stages.push("pipeline: failed");
     return { diagnostics, report };

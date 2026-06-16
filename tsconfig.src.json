@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "exactOptionalPropertyTypes": true,
+    "incremental": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmitOnError": true,
+    "noUncheckedIndexedAccess": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "strictNullChecks": true,
+    "target": "ES2023",
+    "tsBuildInfoFile": ".tmp/tsc-src/tsconfig.src.tsbuildinfo",
+    "verbatimModuleSyntax": true
+  },
+  "exclude": ["dist", "node_modules"],
+  "include": ["src/**/*.ts"]
+}

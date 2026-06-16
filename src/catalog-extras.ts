@@ -7,12 +7,12 @@ import {
 } from "./sql/privileges.js";
 import { makeObject } from "./sql/statements.js";
 
-type CatalogQuery = {
+interface CatalogQuery {
   query: <Row extends Record<string, unknown>>(
     text: string,
-    values?: unknown[],
+    values?: unknown[]
   ) => Promise<{ rows: Row[] }>;
-};
+}
 
 const managedSchemaFilter = `
   n.nspname !~ '^pg_'
@@ -42,8 +42,8 @@ export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> 
         `CREATE TYPE ${formatQualifiedName(schema, name)} AS ENUM (${rendered})`,
         0,
         undefined,
-        { values },
-      ),
+        { values }
+      )
     );
   }
   const domains = await pool.query(`
@@ -93,8 +93,8 @@ export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> 
       makeObject(
         { kind: "type", name, schema },
         `CREATE TYPE ${formatQualifiedName(schema, name)} AS (${text(row.columns)})`,
-        0,
-      ),
+        0
+      )
     );
   }
   return objects;
@@ -156,7 +156,7 @@ export async function collectSequences(pool: CatalogQuery): Promise<SchemaObject
     }
     if (ownedBy) {
       clauses.push(
-        `OWNED BY ${formatQualifiedName(text(row.owned_schema), text(row.owned_table))}.${quoteIdent(text(row.owned_column))}`,
+        `OWNED BY ${formatQualifiedName(text(row.owned_schema), text(row.owned_table))}.${quoteIdent(text(row.owned_column))}`
       );
     }
     objects.push(
@@ -165,8 +165,8 @@ export async function collectSequences(pool: CatalogQuery): Promise<SchemaObject
         clauses.join(" "),
         0,
         undefined,
-        ownedBy ? { ownedBy } : {},
-      ),
+        ownedBy ? { ownedBy } : {}
+      )
     );
   }
   return objects;
@@ -213,7 +213,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
         targetIdentity: `${schema}.${name}`,
         targetRendered: formatQualifiedName(schema, name),
         verb: "GRANT",
-      }),
+      })
     );
   }
   // pg_init_privs records initdb/extension-time ACLs; like pg_dump, only the
@@ -248,7 +248,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
         targetIdentity: name,
         targetRendered: `"${name}"`,
         verb: "GRANT",
-      }),
+      })
     );
   }
   const functionGrants = await pool.query(`
@@ -289,7 +289,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
         targetIdentity: `${schema}.${name}(${args})`,
         targetRendered: `${formatQualifiedName(schema, name)}(${args})`,
         verb: "GRANT",
-      }),
+      })
     );
   }
   // A non-null routine ACL lacking PUBLIC's built-in EXECUTE means it was
@@ -320,7 +320,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
         targetIdentity: `${schema}.${name}(${args})`,
         targetRendered: `${formatQualifiedName(schema, name)}(${args})`,
         verb: "REVOKE",
-      }),
+      })
     );
   }
   const typeGrants = await pool.query(`
@@ -361,7 +361,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
         targetIdentity: `${schema}.${name}`,
         targetRendered: formatQualifiedName(schema, name),
         verb: "GRANT",
-      }),
+      })
     );
   }
   return objects;
@@ -411,7 +411,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
         privileges,
         schema: row.schema === null ? undefined : text(row.schema),
         verb: "GRANT",
-      }),
+      })
     );
   }
   // A default-ACL row for routines whose entries lack PUBLIC EXECUTE records
@@ -442,7 +442,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
         privileges: ["ALL"],
         schema: row.schema === null ? undefined : text(row.schema),
         verb: "REVOKE",
-      }),
+      })
     );
   }
   return objects;

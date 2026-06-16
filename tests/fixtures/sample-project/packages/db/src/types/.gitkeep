@@ -1,0 +1,4 @@
+# Generated TypeScript + Zod destination (config.typesFile / config.zodFile) in a
+# monorepo `packages/db` layout. `supaschema types` mkdir-recursively creates this
+# path and writes database.types.ts + database.zod.ts here; the sample tests prove
+# that generation into a temp consumer to keep the committed tree clean.

@@ -1,0 +1,27 @@
+# Prettier owns MDX, Markdown, and YAML formatting in this repo (run it via
+# `npm run format:md`). Biome owns JS/TS/JSON/JSONC/CSS and pgformatter owns SQL
+# — see .claude/rules/06-multi-language-toolchain.md and 08-biome-ultracite-policy.md.
+# Prettier 3.x also reads .gitignore; these entries keep direct `prettier` runs scoped.
+
+# Dependencies, build output, caches, scratch graph state.
+**/node_modules/**
+dist/**
+coverage/**
+out/
+.tmp/**
+
+# Python (uv workspace) virtualenvs + tool caches — never Prettier's concern.
+**/.venv/**
+**/__pycache__/**
+**/.pytest_cache/**
+**/.ruff_cache/**
+**/.mypy_cache/**
+
+# Generated agent-surface mirrors — format the `.claude` source instead and let
+# `npm run sync:llm` regenerate these; formatting them directly would drift the
+# byte-identical parity that check-agent-surface-parity enforces.
+.agents/**
+.codex/**
+
+# Committed reference tree — never reformatted.
+.claude/plans/**

@@ -1,0 +1,25 @@
+# Local git hooks for supaschema (https://lefthook.dev).
+#
+# Installed by the package.json `prepare` script, which runs
+# `scripts/install-hooks.mjs` after `npm ci`/`npm install`. That script
+# runs `lefthook install`, skips on CI, and no-ops when lefthook is
+# missing. These hooks enforce the existing lint/typecheck/guard suite at
+# the developer boundary so failures are caught before CI.
+#
+# Bypass for an emergency commit with `LEFTHOOK=0 git commit ...` or
+# `git commit --no-verify`.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome
+      # Format + lint only the staged files; no-op when none match.
+      run: npx biome check --staged --no-errors-on-unmatched
+
+pre-push:
+  parallel: false
+  jobs:
+    - name: typecheck
+      run: npm run typecheck
+    - name: guard
+      run: npm run guard

@@ -1,6 +1,7 @@
 ---
-title: "supaschema vs Supabase CLI db diff"
+title: "Supabase CLI comparison"
 description: "Compare supaschema with Supabase CLI db diff for declarative schemas, Docker-free migration generation, RLS policy changes, replay safety, and types."
+keywords: ["Supabase CLI comparison", "db diff", "Docker-free", "replay safety"]
 ---
 
 `supaschema` is best when you want deterministic PostgreSQL or Supabase migrations from declarative SQL files without Docker, a shadow database, or a hand-edited generated migration. The Supabase CLI remains the standard runner for applying migrations to Supabase; `supaschema` is designed to generate and prove the SQL before that apply step.
@@ -34,7 +35,7 @@ npx supaschema verify
 supabase db push
 ```
 
-`diff` writes the migration and refreshes existing type outputs. `check` catches replay-safety and lock hazards. `verify` applies the migration twice in disposable databases and confirms the result matches the declared target. `supabase db push` remains the apply step.
+`diff` writes the migration and refreshes generated outputs according to `workflow.type_generation` and `workflow.zod_generation`. `check` catches replay-safety and lock hazards. `verify` applies the migration twice in disposable databases and confirms the result matches the declared target. `supabase db push` remains the apply step.
 
 ## RLS policy safety
 
@@ -44,7 +45,7 @@ Row Level Security policies are tenant boundaries in many Supabase applications.
 
 ## Benchmark results
 
-The repository benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. On the 1,000-table fixture with type outputs present, `supaschema` generates the migration and refreshes types in one command, while database-backed workflows need multiple steps and a database that has already caught up.
+The repository benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. On the 1,000-table fixture, `supaschema` generates the migration and type outputs in one command, while database-backed workflows need multiple steps and a database that has already caught up.
 
 See [benchmarks](/benchmarks) for latency, accuracy, and replay-safety charts, and see the [anilize case study](/case-study-anilize) for a production Supabase schema with thousands of objects.
 
@@ -67,8 +68,7 @@ Keep using the Supabase CLI for:
 ## Minimal migration pipeline
 
 ```bash
-npm install --save-dev supaschema
-npx supaschema init
+npm install supaschema
 npx supaschema diff
 npx supaschema check
 supabase db push

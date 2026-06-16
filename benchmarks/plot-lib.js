@@ -95,7 +95,7 @@ function iterationsLabel(environments) {
     ...new Set(environments.map((item) => item.iterations).filter((value) => value > 0)),
   ].sort((left, right) => left - right);
   if (counts.length === 0) {
-    return undefined;
+    return;
   }
   if (counts.length === 1) {
     return `${counts[0]} iteration${counts[0] === 1 ? "" : "s"}`;
@@ -137,7 +137,7 @@ export function groupedCorrectness(rows) {
   }
   return [...map.entries()]
     .map(([label, values]) => {
-      const measured = values.filter((item) => !item.skipped && !item.unsupported);
+      const measured = values.filter((item) => !(item.skipped || item.unsupported));
       const scored = measured.filter((item) => typeof item.outputF1 === "number");
       return {
         f1:
@@ -154,7 +154,7 @@ export function groupedCorrectness(rows) {
     .sort(
       (left, right) =>
         Number(isSupaschema(right.label)) - Number(isSupaschema(left.label)) ||
-        left.label.localeCompare(right.label),
+        left.label.localeCompare(right.label)
     );
 }
 
@@ -164,8 +164,11 @@ export function percentile(values, percentileValue) {
   return sorted[index] ?? 0;
 }
 
-export function svgHeader(width, height) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">`;
+export function svgHeader(width, height, title) {
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">`,
+    `<title>${escapeXml(title)}</title>`,
+  ].join("\n");
 }
 
 export function defs() {

@@ -6,14 +6,17 @@ import { extractObjectsFromSql } from "../src/sql/extract.js";
 
 async function model(sql: string, source: string): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql);
-  expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  const errors = extracted.diagnostics.filter((item) => item.severity === "error");
+  if (errors.length > 0) {
+    throw new Error(`expected extraction to succeed: ${JSON.stringify(errors)}`);
+  }
   return { diagnostics: [], fingerprint: source, objects: extracted.objects, source };
 }
 
 async function diff(
   fromSql: string,
   toSql: string,
-  config?: Partial<SupaschemaConfig>,
+  config?: Partial<SupaschemaConfig>
 ): Promise<MigrationPlan> {
   const from = await model(fromSql, "test:from");
   const to = await model(toSql, "test:to");
@@ -26,21 +29,21 @@ describe("routine replace compatibility", () => {
   it("blocks return-type changes that CREATE OR REPLACE cannot apply", async () => {
     const plan = await diff(
       fromFn,
-      "CREATE FUNCTION app.f(a integer) RETURNS text LANGUAGE sql AS $$ SELECT 'x' $$;",
+      "CREATE FUNCTION app.f(a integer) RETURNS text LANGUAGE sql AS $$ SELECT 'x' $$;"
     );
 
     const operation = plan.operations.find((item) => item.key === "function:app.f(integer)");
     expect(operation?.blocked).toBe(true);
     expect(operation?.destructive).toBe(true);
     expect(
-      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED"),
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED")
     ).toBe(true);
   });
 
   it("blocks SETOF flips", async () => {
     const plan = await diff(
       fromFn,
-      "CREATE FUNCTION app.f(a integer) RETURNS SETOF integer LANGUAGE sql AS $$ SELECT 1 $$;",
+      "CREATE FUNCTION app.f(a integer) RETURNS SETOF integer LANGUAGE sql AS $$ SELECT 1 $$;"
     );
 
     const operation = plan.operations.find((item) => item.key === "function:app.f(integer)");
@@ -50,7 +53,7 @@ describe("routine replace compatibility", () => {
   it("blocks OUT parameter renames", async () => {
     const plan = await diff(
       "CREATE FUNCTION app.g(IN a integer, OUT b text) LANGUAGE sql AS $$ SELECT 'x' $$;",
-      "CREATE FUNCTION app.g(IN a integer, OUT renamed text) LANGUAGE sql AS $$ SELECT 'x' $$;",
+      "CREATE FUNCTION app.g(IN a integer, OUT renamed text) LANGUAGE sql AS $$ SELECT 'x' $$;"
     );
 
     const operation = plan.operations.find((item) => item.key === "function:app.g(integer)");
@@ -61,7 +64,7 @@ describe("routine replace compatibility", () => {
     const plan = await diff(
       fromFn,
       "CREATE FUNCTION app.f(a integer) RETURNS text LANGUAGE sql AS $$ SELECT 'x' $$;",
-      { hints: { destructive: ["function:app.f(integer)"] } },
+      { hints: { destructive: ["function:app.f(integer)"] } }
     );
     const sql = renderMigration(plan, { includeHeader: false });
 
@@ -73,7 +76,7 @@ describe("routine replace compatibility", () => {
   it("keeps body-only changes on the clean OR REPLACE path", async () => {
     const plan = await diff(
       fromFn,
-      "CREATE FUNCTION app.f(a integer) RETURNS integer LANGUAGE sql AS $$ SELECT 2 $$;",
+      "CREATE FUNCTION app.f(a integer) RETURNS integer LANGUAGE sql AS $$ SELECT 2 $$;"
     );
 
     const operation = plan.operations.find((item) => item.key === "function:app.f(integer)");
@@ -99,7 +102,7 @@ describe("view replace compatibility", () => {
     const operation = plan.operations.find((item) => item.key === "view:app.v");
     expect(operation?.blocked).toBe(true);
     expect(
-      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE"),
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE")
     ).toBe(true);
   });
 
@@ -113,15 +116,60 @@ describe("view replace compatibility", () => {
     expect(sql).toContain("CREATE OR REPLACE VIEW app.v AS SELECT 2 AS b;");
   });
 
-  it("keeps the verify-required warning when columns are statically unknowable", async () => {
+  it("blocks replacement when view columns are statically unknowable", async () => {
     const plan = await diff(
       "CREATE TABLE app.rows (id integer);\nCREATE VIEW app.v2 AS SELECT * FROM app.rows;",
-      "CREATE TABLE app.rows (id integer);\nCREATE VIEW app.v2 AS SELECT * FROM app.rows WHERE id > 0;",
+      "CREATE TABLE app.rows (id integer);\nCREATE VIEW app.v2 AS SELECT * FROM app.rows WHERE id > 0;"
     );
 
     const operation = plan.operations.find((item) => item.key === "view:app.v2");
+    expect(operation?.blocked).toBe(true);
     expect(
-      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED"),
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE")
     ).toBe(true);
+    expect(
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED")
+    ).toBe(false);
+  });
+
+  it("blocks aliasless set-operation view replacement without a hint", async () => {
+    const plan = await diff(
+      "CREATE VIEW app.v AS SELECT 1 AS a UNION SELECT 2 AS a;",
+      "CREATE VIEW app.v AS SELECT 1 AS renamed UNION SELECT 2 AS renamed;"
+    );
+
+    const operation = plan.operations.find((item) => item.key === "view:app.v");
+    expect(operation?.blocked).toBe(true);
+    expect(operation?.destructive).toBe(true);
+    expect(
+      operation?.diagnostics.some((item) => item.code === "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE")
+    ).toBe(true);
+  });
+
+  it("renders guarded drop + create for aliasless set-operation views when hinted", async () => {
+    const plan = await diff(
+      "CREATE VIEW app.v AS SELECT 1 AS a UNION SELECT 2 AS a;",
+      "CREATE VIEW app.v AS SELECT 1 AS renamed UNION SELECT 2 AS renamed;",
+      { hints: { destructive: ["view:app.v"] } }
+    );
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    const operation = plan.operations.find((item) => item.key === "view:app.v");
+    expect(operation?.blocked).toBe(false);
+    expect(sql).toContain('DROP VIEW IF EXISTS "app"."v";');
+    expect(sql).toContain("CREATE OR REPLACE VIEW app.v AS SELECT 1 AS renamed");
+    expect(sql).toContain("UNION");
+    expect(sql).toContain("SELECT 2 AS renamed;");
+  });
+
+  it("keeps explicit-alias set-operation view replacements on the OR REPLACE path", async () => {
+    const plan = await diff(
+      "CREATE VIEW app.v(a) AS SELECT 1 UNION SELECT 2;",
+      "CREATE VIEW app.v(a) AS SELECT 1 UNION SELECT 3;"
+    );
+
+    const operation = plan.operations.find((item) => item.key === "view:app.v");
+    expect(operation?.blocked).toBe(false);
+    expect(operation?.destructive).toBe(false);
   });
 });

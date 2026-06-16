@@ -1,4 +1,5 @@
 import type { SchemaModel, SchemaObject } from "./core.js";
+import type { AstNode } from "./sql/ast.js";
 import { asRecord, readArray, readString, stringList, typeNameToSql } from "./sql/ast.js";
 import { parseSqlAst } from "./sql/parser.js";
 import { canonicalColumnType, canonicalTableShape } from "./sql/table-shape.js";
@@ -11,6 +12,23 @@ export interface ColumnShape {
   name: string;
   notNull: boolean;
   type: string;
+}
+
+export function sortedByName<T extends { name: string }>(items: T[]): T[] {
+  return [...items].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+// GENERATED columns and GENERATED ALWAYS AS IDENTITY (`identity === "a"`) columns
+// cannot be supplied on Insert or Update: the TS emitter renders them `?: never`
+// and the Zod emitter omits them. Shared so both emitters stay in lockstep.
+export function isNonWritableColumn(column: ColumnShape): boolean {
+  return column.generated !== undefined || column.identity === "a";
+}
+
+// A column is optional on Insert when it is nullable, has a default, or is any
+// identity column (the database supplies the value).
+export function isOptionalInsertColumn(column: ColumnShape): boolean {
+  return !column.notNull || column.default !== undefined || column.identity !== undefined;
 }
 
 export interface RelationshipShape {
@@ -41,7 +59,7 @@ export interface SchemaEntry {
   enums: { name: string; values: string[] }[];
   functions: FunctionShape[];
   tables: TableShape[];
-  views: { columns: { name: string; type: string }[]; name: string }[];
+  views: { columns: ColumnShape[]; name: string }[];
 }
 
 export interface SchemaShapes {
@@ -69,88 +87,139 @@ export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaSha
     enumsByQualifiedName: new Map(),
     schemas: new Map(),
   };
-  const schemaOf = (object: SchemaObject) => schemaEntry(shapes, object.ref.schema ?? "public");
+  await collectEnumAndDomainShapes(model, shapes);
+  const tablesByKey = new Map<string, TableShape>();
+  await collectRelationAndFunctionShapes(model, shapes, tablesByKey);
+  await applyModelConstraints(model, tablesByKey);
+  resolveRelationshipTargets(tablesByKey);
+  await collectViewAndCompositeShapes(model, shapes, tablesByKey);
+  return shapes;
+}
 
+async function collectEnumAndDomainShapes(model: SchemaModel, shapes: SchemaShapes): Promise<void> {
   for (const object of model.objects) {
     if (object.ref.kind === "enum") {
-      const schema = object.ref.schema ?? "public";
-      const entry = { name: object.ref.name, schema };
-      shapes.enumsByQualifiedName.set(`${schema}.${object.ref.name}`, entry);
-      const bare = shapes.enumsByBareName.get(object.ref.name) ?? [];
-      bare.push(entry);
-      shapes.enumsByBareName.set(object.ref.name, bare);
-      const values = Array.isArray(object.metadata.values)
-        ? object.metadata.values.map((value) => String(value))
-        : [];
-      schemaOf(object).enums.push({ name: object.ref.name, values });
-    } else if (object.ref.kind === "domain") {
+      registerEnumShape(shapes, object);
+      continue;
+    }
+    if (object.ref.kind === "domain") {
       const base = await domainBaseType(object);
       if (base !== undefined) {
         shapes.domains.set(`${object.ref.schema ?? "public"}.${object.ref.name}`, base);
       }
     }
   }
+}
 
-  const tablesByKey = new Map<string, TableShape>();
+function registerEnumShape(shapes: SchemaShapes, object: SchemaObject): void {
+  const schema = object.ref.schema ?? "public";
+  const entry = { name: object.ref.name, schema };
+  shapes.enumsByQualifiedName.set(`${schema}.${object.ref.name}`, entry);
+  const bare = shapes.enumsByBareName.get(object.ref.name) ?? [];
+  bare.push(entry);
+  shapes.enumsByBareName.set(object.ref.name, bare);
+  const values = Array.isArray(object.metadata.values)
+    ? object.metadata.values.map((value) => String(value))
+    : [];
+  schemaEntry(shapes, schema).enums.push({ name: object.ref.name, values });
+}
+
+async function collectRelationAndFunctionShapes(
+  model: SchemaModel,
+  shapes: SchemaShapes,
+  tablesByKey: Map<string, TableShape>
+): Promise<void> {
   for (const object of model.objects) {
     if (object.ref.kind === "table" || object.ref.kind === "foreign-table") {
-      const columns =
-        object.ref.kind === "table" ? tableColumns(object) : await foreignTableColumns(object);
-      const table: TableShape = {
-        columns,
-        name: object.ref.name,
-        relationships: [],
-        uniqueColumnSets: [],
-      };
-      tablesByKey.set(`${object.ref.schema ?? "public"}.${object.ref.name}`, table);
-      schemaOf(object).tables.push(table);
-    } else if (object.ref.kind === "function") {
+      await registerTableShape(shapes, tablesByKey, object);
+      continue;
+    }
+    if (object.ref.kind === "function") {
       const shape = await functionShape(object);
       if (shape) {
-        schemaOf(object).functions.push(shape);
+        schemaEntry(shapes, object.ref.schema ?? "public").functions.push(shape);
       }
     }
   }
+}
 
+async function registerTableShape(
+  shapes: SchemaShapes,
+  tablesByKey: Map<string, TableShape>,
+  object: SchemaObject
+): Promise<void> {
+  const columns =
+    object.ref.kind === "table" ? tableColumns(object) : await foreignTableColumns(object);
+  const table: TableShape = {
+    columns,
+    name: object.ref.name,
+    relationships: [],
+    uniqueColumnSets: [],
+  };
+  const schema = object.ref.schema ?? "public";
+  tablesByKey.set(`${schema}.${object.ref.name}`, table);
+  schemaEntry(shapes, schema).tables.push(table);
+}
+
+async function applyModelConstraints(
+  model: SchemaModel,
+  tablesByKey: Map<string, TableShape>
+): Promise<void> {
   for (const object of model.objects) {
     if (object.ref.kind === "constraint") {
       await applyConstraint(object, tablesByKey);
     }
   }
-  resolveRelationshipTargets(tablesByKey);
+}
 
+async function collectViewAndCompositeShapes(
+  model: SchemaModel,
+  shapes: SchemaShapes,
+  tablesByKey: Map<string, TableShape>
+): Promise<void> {
   for (const object of model.objects) {
     if (object.ref.kind === "view" || object.ref.kind === "materialized-view") {
-      schemaOf(object).views.push({
-        columns: await collectViewColumns(object, tablesByKey),
-        name: object.ref.name,
-      });
-    } else if (object.ref.kind === "type") {
-      // CompositeTypeStmt and CreateRangeStmt both extract to kind "type".
-      // Only composites have a column list; range types must not emit an
-      // (empty) CompositeTypes entry or get registered as a resolvable type.
-      const columns = await compositeColumns(object);
-      if (columns === undefined) {
-        continue;
-      }
-      const schema = object.ref.schema ?? "public";
-      const name = object.ref.name;
-      schemaOf(object).composites.push({ columns, name });
-      const entry = { name, schema };
-      shapes.compositesByQualifiedName.set(`${schema}.${name}`, entry);
-      const bare = shapes.compositesByBareName.get(name) ?? [];
-      bare.push(entry);
-      shapes.compositesByBareName.set(name, bare);
+      await registerViewShape(shapes, tablesByKey, object);
+      continue;
+    }
+    if (object.ref.kind === "type") {
+      await registerCompositeShape(shapes, object);
     }
   }
+}
 
-  return shapes;
+async function registerViewShape(
+  shapes: SchemaShapes,
+  tablesByKey: Map<string, TableShape>,
+  object: SchemaObject
+): Promise<void> {
+  schemaEntry(shapes, object.ref.schema ?? "public").views.push({
+    columns: await collectViewColumns(object, tablesByKey),
+    name: object.ref.name,
+  });
+}
+
+async function registerCompositeShape(shapes: SchemaShapes, object: SchemaObject): Promise<void> {
+  // CompositeTypeStmt and CreateRangeStmt both extract to kind "type". Only
+  // composites have a column list; range types must not emit CompositeTypes.
+  const columns = await compositeColumns(object);
+  if (columns === undefined) {
+    return;
+  }
+  const schema = object.ref.schema ?? "public";
+  const name = object.ref.name;
+  schemaEntry(shapes, schema).composites.push({ columns, name });
+  const entry = { name, schema };
+  shapes.compositesByQualifiedName.set(`${schema}.${name}`, entry);
+  const bare = shapes.compositesByBareName.get(name) ?? [];
+  bare.push(entry);
+  shapes.compositesByBareName.set(name, bare);
 }
 
 export function resolveColumnType(
   shapes: SchemaShapes,
   schemaName: string,
-  sqlType: string,
+  sqlType: string
 ): ResolvedColumnType {
   let base = sqlType.trim();
   let arrayDepth = 0;
@@ -209,7 +278,7 @@ export function resolveColumnType(
 function resolveUserType(
   shapes: SchemaShapes,
   schemaName: string,
-  base: string,
+  base: string
 ): { kind: "composite" | "enum"; ref: { name: string; schema: string } } | undefined {
   if (base.includes(".")) {
     const qualifiedEnum = shapes.enumsByQualifiedName.get(base);
@@ -233,7 +302,7 @@ function resolveUserType(
   const enumMatches = shapes.enumsByBareName.get(base) ?? [];
   const compositeMatches = shapes.compositesByBareName.get(base) ?? [];
   if (enumMatches.length + compositeMatches.length !== 1) {
-    return undefined;
+    return;
   }
   const enumMatch = enumMatches[0];
   if (enumMatch) {
@@ -266,8 +335,8 @@ function tableColumns(object: SchemaObject): ColumnShape[] {
         name,
         notNull: column.notNull === true,
         type,
-        ...(column.default !== undefined ? { default: column.default } : {}),
-        ...(column.generated !== undefined ? { generated: column.generated } : {}),
+        ...(column.default === undefined ? {} : { default: column.default }),
+        ...(column.generated === undefined ? {} : { generated: column.generated }),
         ...(typeof column.identity === "string" ? { identity: column.identity } : {}),
       },
     ];
@@ -297,7 +366,7 @@ async function compositeColumns(object: SchemaObject): Promise<ColumnShape[] | u
   const composite = asRecord(asRecord(asRecord(statements[0])?.stmt)?.CompositeTypeStmt);
   if (!composite) {
     // Not a composite (e.g. CREATE TYPE ... AS RANGE / AS ENUM handled elsewhere).
-    return undefined;
+    return;
   }
   return readArray(composite?.coldeflist).flatMap((item) => {
     const columnDef = asRecord(asRecord(item)?.ColumnDef);
@@ -321,40 +390,21 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
   const statements = readArray(asRecord(parsed.ast)?.stmts);
   const fn = asRecord(asRecord(asRecord(statements[0])?.stmt)?.CreateFunctionStmt);
   if (!fn) {
-    return undefined;
+    return;
   }
   const args: FunctionShape["args"] = [];
   const returnColumns: { name: string; type: string }[] = [];
   let hasTableParam = false;
   for (const item of readArray(fn.parameters)) {
     const parameter = asRecord(asRecord(item)?.FunctionParameter);
-    if (!parameter) {
+    const result = applyFunctionParameter(parameter, args, returnColumns);
+    if (result === "skip") {
       continue;
     }
-    const mode = readString(parameter.mode) ?? "FUNC_PARAM_DEFAULT";
-    // OUT/INOUT/TABLE params define the returned row shape; TABLE additionally
-    // means the function is set-returning.
-    if (mode === "FUNC_PARAM_OUT" || mode === "FUNC_PARAM_INOUT" || mode === "FUNC_PARAM_TABLE") {
-      const columnName = readString(parameter.name);
-      if (columnName) {
-        returnColumns.push({ name: columnName, type: typeNameToSql(parameter.argType) });
-      }
-      if (mode === "FUNC_PARAM_TABLE") {
-        hasTableParam = true;
-      }
+    if (result === "abort") {
+      return;
     }
-    if (mode !== "FUNC_PARAM_DEFAULT" && mode !== "FUNC_PARAM_IN" && mode !== "FUNC_PARAM_INOUT") {
-      continue;
-    }
-    const name = readString(parameter.name);
-    if (!name) {
-      return undefined;
-    }
-    args.push({
-      name,
-      optional: parameter.defexpr !== undefined,
-      type: typeNameToSql(parameter.argType),
-    });
+    hasTableParam ||= result === "table";
   }
   const returns = asRecord(object.metadata.returns);
   const scalarType = typeof returns?.type === "string" ? returns.type : undefined;
@@ -375,13 +425,62 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
   return {
     args,
     name: object.ref.name,
-    returns: effectiveType !== undefined ? { setof, type: effectiveType } : undefined,
+    returns: effectiveType === undefined ? undefined : { setof, type: effectiveType },
   };
+}
+
+type FunctionParameterResult = "abort" | "skip" | "table" | "value";
+
+function applyFunctionParameter(
+  parameter: AstNode | undefined,
+  args: FunctionShape["args"],
+  returnColumns: { name: string; type: string }[]
+): FunctionParameterResult {
+  if (!parameter) {
+    return "skip";
+  }
+  const mode = readString(parameter.mode) ?? "FUNC_PARAM_DEFAULT";
+  recordReturnParameter(parameter, mode, returnColumns);
+  if (!isInputParameter(mode)) {
+    return mode === "FUNC_PARAM_TABLE" ? "table" : "skip";
+  }
+  const name = readString(parameter.name);
+  if (!name) {
+    return "abort";
+  }
+  args.push({
+    name,
+    optional: parameter.defexpr !== undefined,
+    type: typeNameToSql(parameter.argType),
+  });
+  return mode === "FUNC_PARAM_TABLE" ? "table" : "value";
+}
+
+function recordReturnParameter(
+  parameter: AstNode,
+  mode: string,
+  returnColumns: { name: string; type: string }[]
+): void {
+  if (!isOutputParameter(mode)) {
+    return;
+  }
+  const columnName = readString(parameter.name);
+  if (columnName) {
+    returnColumns.push({ name: columnName, type: typeNameToSql(parameter.argType) });
+  }
+}
+
+function isOutputParameter(mode: string): boolean {
+  return mode === "FUNC_PARAM_OUT" || mode === "FUNC_PARAM_INOUT" || mode === "FUNC_PARAM_TABLE";
+}
+
+function isInputParameter(mode: string): boolean {
+  return mode === "FUNC_PARAM_DEFAULT" || mode === "FUNC_PARAM_IN" || mode === "FUNC_PARAM_INOUT";
 }
 
 async function applyConstraint(
   object: SchemaObject,
-  tablesByKey: Map<string, TableShape>,
+  tablesByKey: Map<string, TableShape>
 ): Promise<void> {
   const parsed = await parseSqlAst(object.sql, object.file);
   const statements = readArray(asRecord(parsed.ast)?.stmts);
@@ -392,39 +491,65 @@ async function applyConstraint(
     return;
   }
   for (const command of readArray(alter?.cmds)) {
-    const constraint = asRecord(
-      asRecord(asRecord(asRecord(command)?.AlterTableCmd)?.def)?.Constraint,
-    );
-    const contype = readString(constraint?.contype);
-    if (!constraint || !contype) {
-      continue;
-    }
-    if (contype === "CONSTR_PRIMARY") {
-      const keys = stringList(constraint.keys);
-      for (const column of table.columns) {
-        if (keys.includes(column.name)) {
-          column.notNull = true;
-        }
-      }
-      table.primaryKey = keys;
-      table.uniqueColumnSets.push(keys);
-    } else if (contype === "CONSTR_UNIQUE") {
-      table.uniqueColumnSets.push(stringList(constraint.keys));
-    } else if (contype === "CONSTR_FOREIGN") {
-      const pkTable = asRecord(constraint.pktable);
-      if (!pkTable) {
-        continue;
-      }
-      table.relationships.push({
-        columns: stringList(constraint.fk_attrs),
-        foreignKeyName: readString(constraint.conname) ?? object.ref.name,
-        isOneToOne: false,
-        referencedColumns: stringList(constraint.pk_attrs),
-        referencedRelation: readString(pkTable.relname) ?? "",
-        referencedSchema: readString(pkTable.schemaname) ?? schemaName,
-      });
+    applyConstraintCommand(command, table, object, schemaName);
+  }
+}
+
+function applyConstraintCommand(
+  command: unknown,
+  table: TableShape,
+  object: SchemaObject,
+  schemaName: string
+): void {
+  const constraint = asRecord(
+    asRecord(asRecord(asRecord(command)?.AlterTableCmd)?.def)?.Constraint
+  );
+  const contype = readString(constraint?.contype);
+  if (!(constraint && contype)) {
+    return;
+  }
+  if (contype === "CONSTR_PRIMARY") {
+    applyPrimaryKeyConstraint(table, constraint);
+    return;
+  }
+  if (contype === "CONSTR_UNIQUE") {
+    table.uniqueColumnSets.push(stringList(constraint.keys));
+    return;
+  }
+  if (contype === "CONSTR_FOREIGN") {
+    applyForeignKeyConstraint(table, constraint, object, schemaName);
+  }
+}
+
+function applyPrimaryKeyConstraint(table: TableShape, constraint: AstNode): void {
+  const keys = stringList(constraint.keys);
+  for (const column of table.columns) {
+    if (keys.includes(column.name)) {
+      column.notNull = true;
     }
   }
+  table.primaryKey = keys;
+  table.uniqueColumnSets.push(keys);
+}
+
+function applyForeignKeyConstraint(
+  table: TableShape,
+  constraint: AstNode,
+  object: SchemaObject,
+  schemaName: string
+): void {
+  const pkTable = asRecord(constraint.pktable);
+  if (!pkTable) {
+    return;
+  }
+  table.relationships.push({
+    columns: stringList(constraint.fk_attrs),
+    foreignKeyName: readString(constraint.conname) ?? object.ref.name,
+    isOneToOne: false,
+    referencedColumns: stringList(constraint.pk_attrs),
+    referencedRelation: readString(pkTable.relname) ?? "",
+    referencedSchema: readString(pkTable.schemaname) ?? schemaName,
+  });
 }
 
 function resolveRelationshipTargets(tablesByKey: Map<string, TableShape>): void {
@@ -438,7 +563,7 @@ function resolveRelationshipTargets(tablesByKey: Map<string, TableShape>): void 
     for (const relationship of table.relationships) {
       if (relationship.referencedColumns.length === 0) {
         const target = primaryKeys.get(
-          `${relationship.referencedSchema}.${relationship.referencedRelation}`,
+          `${relationship.referencedSchema}.${relationship.referencedRelation}`
         );
         if (target) {
           relationship.referencedColumns = [...target];
@@ -447,7 +572,7 @@ function resolveRelationshipTargets(tablesByKey: Map<string, TableShape>): void 
       relationship.isOneToOne = table.uniqueColumnSets.some(
         (set) =>
           set.length === relationship.columns.length &&
-          relationship.columns.every((column) => set.includes(column)),
+          relationship.columns.every((column) => set.includes(column))
       );
     }
   }

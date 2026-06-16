@@ -1,0 +1,415 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "supaschema configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema pointer for editor autocomplete and validation. The loader ignores it.",
+      "examples": [
+        "./node_modules/supaschema/supaschema-config.schema.json",
+        "./supaschema-config.schema.json"
+      ]
+    },
+    "adapter": {
+      "default": "auto",
+      "type": "string",
+      "enum": [
+        "auto",
+        "postgres",
+        "supabase",
+        "supabase-auto"
+      ],
+      "description": "Provider-neutral adapter sentinel. Legacy adapter strings are accepted at the input boundary and normalized to auto."
+    },
+    "cascade": {
+      "default": "never",
+      "type": "string",
+      "const": "never",
+      "description": "CASCADE is never emitted by generated migrations."
+    },
+    "destructiveChanges": {
+      "default": "hint-required",
+      "type": "string",
+      "enum": [
+        "hint-required",
+        "block",
+        "allow"
+      ],
+      "description": "Controls whether destructive operations require exact hints, always block, or are allowed."
+    },
+    "environments": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "databaseUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "databaseUrl"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Named database URL references used by --env. Store credentials in environment variables.",
+      "examples": [
+        {
+          "staging": {
+            "databaseUrl": "$STAGING_DB"
+          }
+        }
+      ]
+    },
+    "excludedGrantRoles": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Grant/default-privilege roles to remove from extracted models, usually provider platform roles."
+    },
+    "hints": {
+      "default": {
+        "destructive": [],
+        "renames": []
+      },
+      "type": "object",
+      "properties": {
+        "destructive": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "renames": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "description": "Reviewed destructive-change and rename hints using exact object keys."
+    },
+    "idempotency": {
+      "default": "required",
+      "type": "string",
+      "const": "required",
+      "description": "Generated SQL must be replay-safe by construction."
+    },
+    "lockTimeout": {
+      "default": "5s",
+      "type": "string",
+      "description": "Migration preamble SET lock_timeout value."
+    },
+    "workflow": {
+      "default": {
+        "schema_diff": "on_schema_write",
+        "migration_check": "after_schema_diff",
+        "migration_verify": "suggest_after_check",
+        "migration_sync": "explicit_request_only",
+        "type_generation": "create_or_refresh",
+        "zod_generation": "create_or_refresh",
+        "type_usage": "zod_validated"
+      },
+      "type": "object",
+      "properties": {
+        "schema_diff": {
+          "default": "on_schema_write",
+          "type": "string",
+          "enum": [
+            "disabled",
+            "manual",
+            "on_schema_write"
+          ],
+          "description": "Controls whether agent hooks generate a schema migration automatically after configured schema-tree SQL writes."
+        },
+        "migration_check": {
+          "default": "after_schema_diff",
+          "type": "string",
+          "enum": [
+            "manual",
+            "after_schema_diff",
+            "required_before_complete"
+          ],
+          "description": "Controls when replay-safety checks run after a generated migration."
+        },
+        "migration_verify": {
+          "default": "suggest_after_check",
+          "type": "string",
+          "enum": [
+            "manual",
+            "suggest_after_check",
+            "after_schema_diff"
+          ],
+          "description": "Controls whether agents should only suggest verification or run it automatically when a database is available."
+        },
+        "migration_sync": {
+          "default": "explicit_request_only",
+          "type": "string",
+          "enum": [
+            "disabled",
+            "explicit_request_only"
+          ],
+          "description": "Controls whether supaschema sync may hand off pending migrations to the Supabase CLI when an explicit apply flag is used."
+        },
+        "type_generation": {
+          "default": "create_or_refresh",
+          "type": "string",
+          "enum": [
+            "disabled",
+            "refresh_existing",
+            "create_or_refresh"
+          ],
+          "description": "Controls whether diff refreshes the configured TypeScript output after it writes a migration."
+        },
+        "zod_generation": {
+          "default": "create_or_refresh",
+          "type": "string",
+          "enum": [
+            "disabled",
+            "refresh_existing",
+            "create_or_refresh"
+          ],
+          "description": "Controls whether diff refreshes the configured Zod validator output after it writes a migration."
+        },
+        "type_usage": {
+          "default": "zod_validated",
+          "type": "string",
+          "enum": [
+            "typescript_only",
+            "zod_validated"
+          ],
+          "description": "Controls whether agents should prefer generated Zod validators or TypeScript-only generated shapes when wiring application code."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Agent and hook workflow policy for schema diffs, migration checks, verification, explicit migration sync, and generated type/Zod output refresh."
+    },
+    "migrationsDir": {
+      "default": "database/migrations",
+      "type": "string",
+      "description": "Directory where diff writes migrations and zero-arg check/verify read pending migrations.",
+      "examples": [
+        "database/migrations",
+        "supabase/migrations",
+        "neon/migrations",
+        "aws-postgresql/migrations"
+      ],
+      "x-supaschema-path-kind": "directory"
+    },
+    "typesFile": {
+      "default": "database.types.ts",
+      "type": "string",
+      "description": "Output file for TypeScript database types generated by supaschema types.",
+      "x-supaschema-path-kind": "file"
+    },
+    "zodFile": {
+      "default": "database.zod.ts",
+      "type": "string",
+      "description": "Output file for Zod runtime schemas generated by supaschema types.",
+      "x-supaschema-path-kind": "file"
+    },
+    "normalize": {
+      "default": "deparse",
+      "type": "string",
+      "enum": [
+        "off",
+        "deparse"
+      ],
+      "description": "Controls canonical SQL deparse normalization for extracted objects."
+    },
+    "managedSchemas": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Externally owned schemas blocked from declarative ownership. Supabase installs seed the Supabase platform schema list.",
+      "examples": [
+        [],
+        [
+          "auth",
+          "storage",
+          "realtime",
+          "vault",
+          "extensions",
+          "cron",
+          "net",
+          "supabase_functions",
+          "graphql",
+          "graphql_public"
+        ]
+      ]
+    },
+    "postgresVersion": {
+      "default": "15+",
+      "type": "string",
+      "description": "Documented supported PostgreSQL syntax floor."
+    },
+    "renameDetection": {
+      "default": "hints-only",
+      "type": "string",
+      "enum": [
+        "hints-only",
+        "off"
+      ],
+      "description": "Controls whether reviewed hints can render guarded renames."
+    },
+    "schemaPaths": {
+      "default": [
+        "database/schemas"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Declarative SQL tree directories. The first path owns the default sources.to.",
+      "examples": [
+        [
+          "database/schemas"
+        ],
+        [
+          "supabase/schemas"
+        ],
+        [
+          "neon/schemas"
+        ],
+        [
+          "aws-postgresql/schemas"
+        ]
+      ],
+      "x-supaschema-path-kind": "directory-list"
+    },
+    "schemas": {
+      "default": {
+        "exclude": [],
+        "include": []
+      },
+      "type": "object",
+      "properties": {
+        "exclude": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "include": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Persistent schema include/exclude filters applied to extracted models."
+    },
+    "sources": {
+      "default": {
+        "from": "auto",
+        "to": "dir:database/schemas"
+      },
+      "type": "object",
+      "properties": {
+        "from": {
+          "default": "auto",
+          "description": "Default before-state source. Use \"auto\" to resolve a database URL first and fall back to git:HEAD.",
+          "examples": [
+            "auto",
+            "git:HEAD",
+            "dir:baseline/schemas",
+            "database:$DATABASE_URL"
+          ],
+          "oneOf": [
+            {
+              "const": "auto"
+            },
+            {
+              "pattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*)$",
+              "type": "string"
+            }
+          ]
+        },
+        "to": {
+          "default": "dir:database/schemas",
+          "type": "string",
+          "description": "Default after-state source, usually dir:<schemaPaths[0]>.",
+          "examples": [
+            "dir:database/schemas",
+            "dir:supabase/schemas"
+          ],
+          "pattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*)$"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Default before/after sources for zero-source-flag diff, plan, and verify.",
+      "examples": [
+        {
+          "from": "auto",
+          "to": "dir:database/schemas"
+        },
+        {
+          "from": "dir:baseline/schemas",
+          "to": "dir:database/schemas"
+        }
+      ]
+    },
+    "statementTimeout": {
+      "default": "60s",
+      "type": "string",
+      "description": "Migration preamble SET statement_timeout value."
+    },
+    "transactionMode": {
+      "default": "per-migration",
+      "type": "string",
+      "enum": [
+        "per-migration",
+        "per-statement"
+      ],
+      "description": "Transaction model used by verification and transaction-hazard diagnostics."
+    },
+    "validators": {
+      "default": [
+        "internal-parser"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Configured external validator commands. The internal parser always remains the correctness owner.",
+      "examples": [
+        [
+          "internal-parser"
+        ],
+        [
+          "internal-parser",
+          "squawk"
+        ]
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$id": "https://supaschema.com/schemas/supaschema-config.schema.json",
+  "description": "Machine-readable supaschema.config.json contract. The public field reference is docs/configuration/config-file.mdx."
+}

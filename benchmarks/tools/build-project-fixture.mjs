@@ -20,7 +20,7 @@ const outDir = resolve(args.out ?? "benchmarks/fixtures/project");
 const databaseUrl = resolveDatabaseUrl(args["database-url"]);
 if (!databaseUrl) {
   fail(
-    `${usage}\nno database URL: pass --database-url, set SUPASCHEMA_DATABASE_URL, or run near supabase/config.toml`,
+    `${usage}\nno database URL: pass --database-url, set SUPASCHEMA_DATABASE_URL, or run near supabase/config.toml`
   );
 }
 
@@ -80,7 +80,7 @@ process.stdout.write(`statements (with auth stub): ${statements.length}\n`);
 const firstPass = await fixpointApply(statements);
 const dropped = [...firstPass.dropped];
 process.stdout.write(
-  `single-pass ordering: ${firstPass.ordered.length} statements; dropped: ${dropped.length}\n`,
+  `single-pass ordering: ${firstPass.ordered.length} statements; dropped: ${dropped.length}\n`
 );
 
 // Scope the fixture to supaschema's supported DDL surface so every engine in
@@ -118,10 +118,10 @@ if (excluded > 0) {
     ...secondPass.dropped.map((entry) => ({
       error: `orphaned by support-surface filter: ${entry.error}`,
       sql: entry.sql,
-    })),
+    }))
   );
   process.stdout.write(
-    `post-filter ordering: ${ordered.length} statements; orphaned dependents dropped: ${secondPass.dropped.length}\n`,
+    `post-filter ordering: ${ordered.length} statements; orphaned dependents dropped: ${secondPass.dropped.length}\n`
   );
 }
 
@@ -156,7 +156,7 @@ async function fixpointApply(inputStatements) {
         }
         pending = next;
         process.stdout.write(
-          `pass ${pass + 1}: ${applied.length} applied, ${pending.length} pending\n`,
+          `pass ${pass + 1}: ${applied.length} applied, ${pending.length} pending\n`
         );
       }
     } finally {
@@ -184,11 +184,11 @@ writeFileSync(join(outDir, "from.sql"), fromSql);
 writeFileSync(join(outDir, "to.sql"), toSql);
 writeFileSync(
   join(outDir, "fixture.json"),
-  `${JSON.stringify({ supaschemaAdapter: "postgres", schemas: treeSchemas(fromSql) }, null, 2)}\n`,
+  `${JSON.stringify({ supaschemaAdapter: "postgres", schemas: await treeSchemas(fromSql) }, null, 2)}\n`
 );
 writeFileSync(
   join(outDir, "dropped.log"),
-  dropped.map((entry) => `-- ${entry.error}\n${entry.sql};\n`).join("\n"),
+  dropped.map((entry) => `-- ${entry.error}\n${entry.sql};\n`).join("\n")
 );
 process.stdout.write(`fixture written to ${outDir}\n`);
 
@@ -202,26 +202,26 @@ function orderedTreeFiles(root) {
       .sort();
   const bootstrap = list((file) => file.includes("_bootstrap"));
   const phased = phases.flatMap((phase) =>
-    list((file) => !file.includes("_bootstrap") && file.endsWith(`/${phase}.sql`)),
+    list((file) => !file.includes("_bootstrap") && file.endsWith(`/${phase}.sql`))
   );
   const phaseNames = new Set(phases.map((phase) => `${phase}.sql`));
   const remainder = list(
-    (file) => !file.includes("_bootstrap") && !phaseNames.has(file.split("/").at(-1) ?? ""),
+    (file) => !(file.includes("_bootstrap") || phaseNames.has(file.split("/").at(-1) ?? ""))
   );
   return [...bootstrap, ...phased, ...remainder];
 }
 
-function treeSchemas(sql) {
+async function treeSchemas(sql) {
   // `public` always exists and is never CREATE'd, but project objects (and
   // the benchmark change set) live there.
   const names = new Set(["public"]);
-  for (const statement of splitSqlStatements(sql)) {
-    const trimmed = statement.replace(/^CREATE SCHEMA (?:IF NOT EXISTS )?/i, "");
-    if (trimmed !== statement) {
-      const name = trimmed.split(/\s/)[0]?.replaceAll('"', "");
-      if (name && !["auth", "extensions", "vault", "graphql", "graphql_public"].includes(name)) {
-        names.add(name);
-      }
+  const extraction = await extractObjectsFromSql(sql, { config: { adapter: "postgres" } });
+  for (const object of extraction.objects) {
+    if (
+      object.ref.kind === "schema" &&
+      !["auth", "extensions", "vault", "graphql", "graphql_public"].includes(object.ref.name)
+    ) {
+      names.add(object.ref.name);
     }
   }
   return [...names].sort();

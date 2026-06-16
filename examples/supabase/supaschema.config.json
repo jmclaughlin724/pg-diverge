@@ -1,6 +1,9 @@
 {
-  "adapter": "supabase-auto",
+  "$schema": "../../supaschema-config.schema.json",
+  "adapter": "auto",
+  "cascade": "never",
   "destructiveChanges": "hint-required",
+  "environments": {},
   "excludedGrantRoles": [
     "supabase_admin",
     "supabase_auth_admin",
@@ -9,7 +12,49 @@
     "pgbouncer",
     "authenticator"
   ],
-  "schemaPaths": ["schemas"],
+  "hints": {
+    "destructive": [],
+    "renames": []
+  },
+  "idempotency": "required",
+  "lockTimeout": "5s",
+  "workflow": {
+    "schema_diff": "on_schema_write",
+    "migration_check": "after_schema_diff",
+    "migration_verify": "suggest_after_check",
+    "migration_sync": "explicit_request_only",
+    "type_generation": "create_or_refresh",
+    "zod_generation": "create_or_refresh",
+    "type_usage": "zod_validated"
+  },
+  "migrationsDir": "supabase/migrations",
+  "typesFile": "database.types.ts",
+  "zodFile": "database.zod.ts",
+  "normalize": "deparse",
+  "managedSchemas": [
+    "auth",
+    "storage",
+    "realtime",
+    "vault",
+    "extensions",
+    "cron",
+    "net",
+    "supabase_functions",
+    "graphql",
+    "graphql_public"
+  ],
+  "postgresVersion": "15+",
+  "renameDetection": "hints-only",
+  "schemaPaths": ["supabase/schemas"],
+  "schemas": {
+    "exclude": [],
+    "include": []
+  },
+  "sources": {
+    "from": "dump:baseline.sql",
+    "to": "dir:supabase/schemas"
+  },
+  "statementTimeout": "60s",
   "transactionMode": "per-migration",
   "validators": ["internal-parser"]
 }

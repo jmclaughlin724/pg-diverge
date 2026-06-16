@@ -4,7 +4,7 @@
 // fences, and JSX components are classified structurally.
 //
 // Run: npm run docs:lint   (also runs as the first step of `docs:check`)
-import { globSync, readFileSync } from "node:fs";
+import { existsSync, globSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toString as nodeText } from "mdast-util-to-string";
@@ -17,7 +17,46 @@ import { visit } from "unist-util-visit";
 import { parse as parseYaml } from "yaml";
 
 const DOCS_GLOB = "docs/**/*.{md,mdx}";
+const DOCS_CONFIG = "docs/docs.json";
 const DOCS_SITE_HOSTS = new Set(["supaschema.com", "www.supaschema.com"]);
+const MINTLIFY_SCHEMA_URL = "https://mintlify.com/docs.json";
+const MINTLIFY_THEMES = new Set([
+  "mint",
+  "maple",
+  "palm",
+  "willow",
+  "linden",
+  "almond",
+  "aspen",
+  "sequoia",
+  "luma",
+]);
+const MINTLIFY_ICON_LIBRARIES = new Set(["lucide", "fontawesome"]);
+const REQUIRED_CONTEXTUAL_OPTIONS = new Set([
+  "copy",
+  "view",
+  "chatgpt",
+  "claude",
+  "mcp",
+  "add-mcp",
+  "cursor",
+  "vscode",
+]);
+const HTTP_URL_PATTERN = /^https?:\/\//;
+const HEX_COLOR_PATTERN = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i;
+const OPENAPI_OPERATION_PATTERN = /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE)\s+\//;
+const DOCS_ROUTE_PREFIX_PATTERN = /^docs\//;
+const DOCS_PAGE_EXTENSION_PATTERN = /\.mdx?$/;
+const LOCAL_IMAGE_PREFIX = "/images/";
+const FRONTMATTER_MODES = new Set(["default", "wide", "custom", "frame", "center"]);
+const GENERIC_LINK_TEXT = new Set([
+  "click here",
+  "here",
+  "learn more",
+  "read more",
+  "this",
+  "this page",
+]);
 
 const markdownProcessor = unified()
   .use(remarkParse)
@@ -34,7 +73,7 @@ const lineOf = (node) => node.position?.start?.line ?? 1;
 const firstWord = (text) => {
   const trimmed = text.trim();
   const spaceIndex = [...trimmed].findIndex((character) =>
-    [" ", "\t", "\n", "\r", "\f"].includes(character),
+    [" ", "\t", "\n", "\r", "\f"].includes(character)
   );
   return spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex);
 };
@@ -43,6 +82,13 @@ const isMdxJsxNode = (node) =>
   node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
 
 const hasMarkdownExtension = (pathname) => pathname.endsWith(".md") || pathname.endsWith(".mdx");
+
+const routeForDocFile = (file) =>
+  file.replace(DOCS_ROUTE_PREFIX_PATTERN, "").replace(DOCS_PAGE_EXTENSION_PATTERN, "");
+
+const hasDocPageFile = (rootDir, page) =>
+  existsSync(join(rootDir, "docs", `${page}.mdx`)) ||
+  existsSync(join(rootDir, "docs", `${page}.md`));
 
 const isDocsSiteUrl = (url) =>
   (url.protocol === "http:" || url.protocol === "https:") &&
@@ -65,7 +111,7 @@ const classifyInternalLink = (target) => {
     trimmed.startsWith("?") ||
     trimmed.startsWith("mailto:")
   ) {
-    return undefined;
+    return;
   }
 
   try {
@@ -73,7 +119,7 @@ const classifyInternalLink = (target) => {
     if (isDocsSiteUrl(url)) {
       return `link "${trimmed}" - use a root-relative path (e.g. /commands/diff), not the absolute docs URL`;
     }
-    return undefined;
+    return;
   } catch {
     // Relative URLs are handled below.
   }
@@ -86,7 +132,7 @@ const classifyInternalLink = (target) => {
     if (hasMarkdownExtension(pathname)) {
       return `link "${trimmed}" - use a root-relative, extensionless path (e.g. /configuration/hints)`;
     }
-    return undefined;
+    return;
   }
 
   if (pathname === "docs" || pathname.startsWith("docs/")) {
@@ -100,7 +146,9 @@ const classifyInternalLink = (target) => {
 
 const addLinkViolation = (violations, file, line, target) => {
   const msg = classifyInternalLink(target);
-  if (msg) violations.push({ file, line, rule: "internal-link", msg });
+  if (msg) {
+    violations.push({ file, line, rule: "internal-link", msg });
+  }
 };
 
 const readFrontmatter = (tree, file, violations) => {
@@ -143,11 +191,61 @@ const readFrontmatter = (tree, file, violations) => {
   if (typeof data.description !== "string" || data.description.trim().length === 0) {
     violations.push({ file, line: 1, rule: "frontmatter", msg: "missing `description`" });
   }
+  if (
+    !Array.isArray(data.keywords) ||
+    data.keywords.length === 0 ||
+    !data.keywords.every((keyword) => typeof keyword === "string" && keyword.trim().length > 0)
+  ) {
+    violations.push({
+      file,
+      line: 1,
+      rule: "frontmatter",
+      msg: "missing or invalid `keywords` array",
+    });
+  }
+  for (const field of ["sidebarTitle", "icon", "iconType", "tag", "api", "openapi", "url"]) {
+    if (data[field] !== undefined && typeof data[field] !== "string") {
+      violations.push({
+        file,
+        line: 1,
+        rule: "frontmatter",
+        msg: `\`${field}\` must be a string when present`,
+      });
+    }
+  }
+  for (const field of ["noindex", "timestamp"]) {
+    if (data[field] !== undefined && typeof data[field] !== "boolean") {
+      violations.push({
+        file,
+        line: 1,
+        rule: "frontmatter",
+        msg: `\`${field}\` must be a boolean when present`,
+      });
+    }
+  }
+  if (data.hidden !== undefined && data.hidden !== true) {
+    violations.push({
+      file,
+      line: 1,
+      rule: "frontmatter",
+      msg: "`hidden` must be true when present; omit it instead of setting false",
+    });
+  }
+  if (data.mode !== undefined && !FRONTMATTER_MODES.has(data.mode)) {
+    violations.push({
+      file,
+      line: 1,
+      rule: "frontmatter",
+      msg: "`mode` must be one of default, wide, custom, frame, or center",
+    });
+  }
+  return data;
 };
 
 export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
   const relativeFiles = (files ?? globSync(DOCS_GLOB, { cwd: rootDir })).map(toPosix).sort();
   const violations = [];
+  const frontmatterByRoute = new Map();
 
   for (const file of relativeFiles) {
     const absoluteFile = isAbsolute(file) ? file : join(rootDir, file);
@@ -155,6 +253,15 @@ export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
     const text = readFileSync(absoluteFile, "utf8");
     const processor = displayFile.endsWith(".mdx") ? mdxProcessor : markdownProcessor;
     let tree;
+
+    if (displayFile.endsWith(".md")) {
+      violations.push({
+        file: displayFile,
+        line: 1,
+        rule: "page-extension",
+        msg: "docs pages must use .mdx so Mintlify components remain available by default",
+      });
+    }
 
     try {
       tree = processor.parse(text);
@@ -168,63 +275,25 @@ export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
       continue;
     }
 
-    readFrontmatter(tree, displayFile, violations);
+    const frontmatter = readFrontmatter(tree, displayFile, violations);
+    if (frontmatter) {
+      frontmatterByRoute.set(routeForDocFile(displayFile), frontmatter);
+    }
 
-    let hasFlagsOrOptionsHeading = false;
-    let hasParamField = false;
+    const state = { hasFlagsOrOptionsHeading: false, hasParamField: false };
 
     visit(tree, (node) => {
-      if (node.type === "heading") {
-        const headingText = nodeText(node);
-        if (node.depth === 1) {
-          violations.push({
-            file: displayFile,
-            line: lineOf(node),
-            rule: "body-h1",
-            msg: "drop the body `# ` heading - the frontmatter `title` is the page H1; start in-page headings at `##`",
-          });
-        }
-        if (node.depth === 2 && ["Flags", "Options"].includes(firstWord(headingText))) {
-          hasFlagsOrOptionsHeading = true;
-        }
-      }
-
-      if (
-        node.type === "code" &&
-        typeof node.meta === "string" &&
-        node.meta.includes("theme={null}")
-      ) {
-        violations.push({
-          file: displayFile,
-          line: lineOf(node),
-          rule: "fence-artifact",
-          msg: "remove `theme={null}` from the code fence",
-        });
-      }
-
-      if ((node.type === "link" || node.type === "definition") && typeof node.url === "string") {
-        addLinkViolation(violations, displayFile, lineOf(node), node.url);
-      }
-
-      if (isMdxJsxNode(node)) {
-        if (node.name === "ParamField") hasParamField = true;
-        for (const attribute of node.attributes ?? []) {
-          if (
-            attribute.type === "mdxJsxAttribute" &&
-            attribute.name === "href" &&
-            typeof attribute.value === "string"
-          ) {
-            addLinkViolation(violations, displayFile, lineOf(attribute), attribute.value);
-          }
-        }
-      }
+      inspectDocNode(node, displayFile, violations, state);
+    });
+    visitWithParents(tree, (node, ancestors) => {
+      inspectImageFrame(node, ancestors, displayFile, violations);
     });
 
     if (
       displayFile.startsWith("docs/commands/") &&
       displayFile.endsWith(".mdx") &&
-      hasFlagsOrOptionsHeading &&
-      !hasParamField
+      state.hasFlagsOrOptionsHeading &&
+      !state.hasParamField
     ) {
       violations.push({
         file: displayFile,
@@ -235,11 +304,491 @@ export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
     }
   }
 
+  inspectDocsJson(rootDir, relativeFiles, frontmatterByRoute, violations, {
+    requireConfig: files === undefined,
+  });
+
   return violations;
 }
 
+function inspectDocNode(node, displayFile, violations, state) {
+  inspectHeading(node, displayFile, violations, state);
+  inspectCodeFence(node, displayFile, violations);
+  inspectMarkdownLink(node, displayFile, violations);
+  inspectMdxNode(node, displayFile, violations, state);
+}
+
+function inspectHeading(node, displayFile, violations, state) {
+  if (node.type !== "heading") {
+    return;
+  }
+  const headingText = nodeText(node);
+  if (node.depth === 1) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "body-h1",
+      msg: "drop the body `# ` heading - the frontmatter `title` is the page H1; start in-page headings at `##`",
+    });
+  }
+  if (node.depth === 2 && ["Flags", "Options"].includes(firstWord(headingText))) {
+    state.hasFlagsOrOptionsHeading = true;
+  }
+}
+
+function inspectCodeFence(node, displayFile, violations) {
+  if (node.type !== "code") {
+    return;
+  }
+  if (typeof node.lang !== "string" || node.lang.trim().length === 0) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "code-fence-language",
+      msg: "add a code fence language tag (use `text` for terminal output, diagrams, and plain text)",
+    });
+  }
+  if (typeof node.meta === "string" && node.meta.includes("theme={null}")) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "fence-artifact",
+      msg: "remove `theme={null}` from the code fence",
+    });
+  }
+}
+
+function inspectMarkdownLink(node, displayFile, violations) {
+  if ((node.type === "link" || node.type === "definition") && typeof node.url === "string") {
+    addLinkViolation(violations, displayFile, lineOf(node), node.url);
+  }
+  if (node.type === "link") {
+    inspectLinkText(node, displayFile, violations);
+  }
+  if (node.type === "image") {
+    inspectImage(node, displayFile, violations);
+  }
+}
+
+function inspectMdxNode(node, displayFile, violations, state) {
+  if (!isMdxJsxNode(node)) {
+    return;
+  }
+  if (node.name === "ParamField") {
+    state.hasParamField = true;
+  }
+  if (node.name === "img") {
+    inspectImgElement(node, displayFile, violations);
+  }
+  for (const attribute of node.attributes ?? []) {
+    if (
+      attribute.type === "mdxJsxAttribute" &&
+      attribute.name === "href" &&
+      typeof attribute.value === "string"
+    ) {
+      addLinkViolation(violations, displayFile, lineOf(attribute), attribute.value);
+    }
+    if (
+      attribute.type === "mdxJsxAttribute" &&
+      (attribute.name === "src" || attribute.name === "img") &&
+      typeof attribute.value === "string"
+    ) {
+      inspectImageSrc(attribute.value, displayFile, lineOf(attribute), violations);
+    }
+  }
+}
+
+function inspectLinkText(node, displayFile, violations) {
+  const text = nodeText(node).trim().toLowerCase().replace(/\s+/g, " ");
+  if (!GENERIC_LINK_TEXT.has(text)) {
+    return;
+  }
+  violations.push({
+    file: displayFile,
+    line: lineOf(node),
+    rule: "link-text",
+    msg: `link text "${text}" is too generic; use descriptive text that names the destination`,
+  });
+}
+
+function inspectImage(node, displayFile, violations) {
+  if (typeof node.alt !== "string" || node.alt.trim().length === 0) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "image-alt",
+      msg: "images need descriptive alt text",
+    });
+  }
+  inspectImageSrc(node.url, displayFile, lineOf(node), violations);
+}
+
+function inspectImgElement(node, displayFile, violations) {
+  const attributes = new Map(
+    (node.attributes ?? [])
+      .filter((attribute) => attribute.type === "mdxJsxAttribute")
+      .map((attribute) => [attribute.name, attribute.value])
+  );
+  const alt = attributes.get("alt");
+  if (typeof alt !== "string" || alt.trim().length === 0) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "image-alt",
+      msg: "`<img>` elements need descriptive alt text",
+    });
+  }
+  const src = attributes.get("src");
+  if (typeof src === "string") {
+    inspectImageSrc(src, displayFile, lineOf(node), violations);
+  }
+}
+
+function inspectImageSrc(src, displayFile, line, violations) {
+  if (typeof src !== "string" || src.startsWith("#") || HTTP_URL_PATTERN.test(src)) {
+    return;
+  }
+  if (src.startsWith(LOCAL_IMAGE_PREFIX)) {
+    return;
+  }
+  if (src.startsWith("/")) {
+    violations.push({
+      file: displayFile,
+      line,
+      rule: "image-path",
+      msg: `local image source "${src}" must live under ${LOCAL_IMAGE_PREFIX}`,
+    });
+    return;
+  }
+  violations.push({
+    file: displayFile,
+    line,
+    rule: "image-path",
+    msg: `image source "${src}" must be root-relative under ${LOCAL_IMAGE_PREFIX}, e.g. /images/example.png`,
+  });
+}
+
+function inspectImageFrame(node, ancestors, displayFile, violations) {
+  if (node.type === "image") {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "image-frame",
+      msg: 'use <Frame><img src="/images/..." alt="..." /></Frame> instead of markdown image syntax',
+    });
+    return;
+  }
+  if (!isMdxJsxNode(node) || node.name !== "img") {
+    return;
+  }
+  const isInsideFrame = ancestors.some(
+    (ancestor) => isMdxJsxNode(ancestor) && ancestor.name === "Frame"
+  );
+  if (!isInsideFrame) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "image-frame",
+      msg: "`<img>` elements in docs must be wrapped in a Mintlify <Frame>",
+    });
+  }
+}
+
+function visitWithParents(node, visitor, ancestors = []) {
+  visitor(node, ancestors);
+  for (const child of node.children ?? []) {
+    if (child && typeof child === "object") {
+      visitWithParents(child, visitor, [...ancestors, node]);
+    }
+  }
+}
+
+function inspectDocsJson(
+  rootDir,
+  relativeFiles,
+  frontmatterByRoute,
+  violations,
+  { requireConfig }
+) {
+  const absoluteConfig = join(rootDir, DOCS_CONFIG);
+  if (!existsSync(absoluteConfig)) {
+    if (requireConfig && relativeFiles.some((file) => file.startsWith("docs/"))) {
+      violations.push({
+        file: DOCS_CONFIG,
+        line: 1,
+        rule: "docs-json",
+        msg: "`docs/docs.json` is required for the Mintlify site",
+      });
+    }
+    return;
+  }
+
+  let config;
+  try {
+    config = JSON.parse(readFileSync(absoluteConfig, "utf8"));
+  } catch (error) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: `docs.json is not valid JSON: ${error.message}`,
+    });
+    return;
+  }
+
+  inspectDocsJsonShape(config, violations);
+  inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterByRoute, violations);
+}
+
+function inspectDocsJsonShape(config, violations) {
+  if (typeof config !== "object" || config === null || Array.isArray(config)) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: "`docs.json` must be a JSON object",
+    });
+    return;
+  }
+
+  if (config.$schema !== MINTLIFY_SCHEMA_URL) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: `set "$schema" to "${MINTLIFY_SCHEMA_URL}"`,
+    });
+  }
+  if (typeof config.theme !== "string" || !MINTLIFY_THEMES.has(config.theme)) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: "`theme` must be a supported Mintlify theme",
+    });
+  }
+  if (typeof config.name !== "string" || config.name.trim().length === 0) {
+    violations.push({ file: DOCS_CONFIG, line: 1, rule: "docs-json", msg: "missing `name`" });
+  }
+  if (
+    !config.navigation ||
+    typeof config.navigation !== "object" ||
+    Array.isArray(config.navigation)
+  ) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: "missing `navigation` object",
+    });
+  }
+  if (!config.colors || typeof config.colors !== "object" || Array.isArray(config.colors)) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: "missing `colors.primary`",
+    });
+  } else {
+    for (const key of ["primary", "light", "dark"]) {
+      if (key === "primary" || config.colors[key] !== undefined) {
+        inspectHexColor(config.colors[key], `colors.${key}`, violations);
+      }
+    }
+  }
+  const iconLibrary = config.icons?.library;
+  if (iconLibrary !== undefined && !MINTLIFY_ICON_LIBRARIES.has(iconLibrary)) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: '`icons.library` must be either "lucide" or "fontawesome"',
+    });
+  }
+  inspectContextualOptions(config, violations);
+}
+
+function inspectHexColor(value, path, violations) {
+  if (typeof value !== "string" || !HEX_COLOR_PATTERN.test(value)) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: `\`${path}\` must be a hex color starting with #`,
+    });
+  }
+}
+
+function inspectContextualOptions(config, violations) {
+  if (
+    !config.contextual ||
+    typeof config.contextual !== "object" ||
+    Array.isArray(config.contextual)
+  ) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: "`contextual.options` must be configured for Mintlify AI/MCP actions",
+    });
+    return;
+  }
+  if (!Array.isArray(config.contextual.options)) {
+    violations.push({
+      file: DOCS_CONFIG,
+      line: 1,
+      rule: "docs-json",
+      msg: "`contextual.options` must be an array",
+    });
+    return;
+  }
+
+  const configured = new Set(
+    config.contextual.options.filter((option) => typeof option === "string")
+  );
+  for (const option of REQUIRED_CONTEXTUAL_OPTIONS) {
+    if (!configured.has(option)) {
+      violations.push({
+        file: DOCS_CONFIG,
+        line: 1,
+        rule: "docs-json",
+        msg: `contextual.options is missing "${option}" for Mintlify AI/MCP actions`,
+      });
+    }
+  }
+}
+
+function inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterByRoute, violations) {
+  const pageFiles = new Set(relativeFiles.map(routeForDocFile));
+  const navRefs = collectNavigationPageRefs(config.navigation);
+  const navPages = new Set(navRefs.filter((page) => !OPENAPI_OPERATION_PATTERN.test(page)));
+
+  for (const page of navPages) {
+    if (page.startsWith("/") || page.startsWith("docs/") || hasMarkdownExtension(page)) {
+      violations.push({
+        file: DOCS_CONFIG,
+        line: 1,
+        rule: "navigation",
+        msg: `navigation page "${page}" must be extensionless and relative to docs root`,
+      });
+      continue;
+    }
+    if (!hasDocPageFile(rootDir, page)) {
+      violations.push({
+        file: DOCS_CONFIG,
+        line: 1,
+        rule: "navigation",
+        msg: `navigation page "${page}" does not resolve to docs/${page}.md or docs/${page}.mdx`,
+      });
+    }
+  }
+
+  for (const page of pageFiles) {
+    const frontmatter = frontmatterByRoute.get(page);
+    if (frontmatter?.hidden === true || frontmatter?.url) {
+      continue;
+    }
+    if (!navPages.has(page)) {
+      violations.push({
+        file: `docs/${page}`,
+        line: 1,
+        rule: "navigation",
+        msg: "navigable page is missing from docs.json navigation; add it to navigation or set `hidden: true`",
+      });
+    }
+  }
+
+  for (const label of collectNavigationLabels(config.navigation)) {
+    if (label.value.includes("\n") || label.value.length > 48) {
+      violations.push({
+        file: DOCS_CONFIG,
+        line: 1,
+        rule: "navigation-label",
+        msg: `${label.key} label "${label.value}" must be short enough for a one- or two-line navigation item`,
+      });
+    }
+  }
+}
+
+function collectNavigationPageRefs(value, refs = []) {
+  if (typeof value === "string") {
+    refs.push(value);
+    return refs;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectNavigationPageRefs(item, refs);
+    }
+    return refs;
+  }
+  if (!value || typeof value !== "object") {
+    return refs;
+  }
+  if (typeof value.page === "string") {
+    refs.push(value.page);
+  }
+  if (Array.isArray(value.pages)) {
+    collectNavigationPageRefs(value.pages, refs);
+  }
+  for (const key of [
+    "groups",
+    "tabs",
+    "anchors",
+    "dropdowns",
+    "products",
+    "versions",
+    "languages",
+    "menu",
+  ]) {
+    if (value[key] !== undefined) {
+      collectNavigationPageRefs(value[key], refs);
+    }
+  }
+  if (value.global !== undefined) {
+    collectNavigationPageRefs(value.global, refs);
+  }
+  return refs;
+}
+
+function collectNavigationLabels(value, labels = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectNavigationLabels(item, labels);
+    }
+    return labels;
+  }
+  if (!value || typeof value !== "object") {
+    return labels;
+  }
+  for (const key of ["group", "tab", "anchor", "dropdown", "product", "item", "version"]) {
+    if (typeof value[key] === "string") {
+      labels.push({ key, value: value[key] });
+    }
+  }
+  for (const key of [
+    "groups",
+    "tabs",
+    "anchors",
+    "dropdowns",
+    "products",
+    "versions",
+    "languages",
+    "menu",
+  ]) {
+    if (value[key] !== undefined) {
+      collectNavigationLabels(value[key], labels);
+    }
+  }
+  if (value.global !== undefined) {
+    collectNavigationLabels(value.global, labels);
+  }
+  return labels;
+}
+
 export function formatViolations(violations, pageCount) {
-  if (violations.length === 0) return `docs-standard: ${pageCount} pages OK`;
+  if (violations.length === 0) {
+    return `docs-standard: ${pageCount} pages OK`;
+  }
 
   const filesWithViolations = new Set(violations.map((violation) => violation.file)).size;
   const lines = [

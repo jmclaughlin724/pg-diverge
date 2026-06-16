@@ -4,6 +4,7 @@ import { basename, resolve } from "node:path";
 import { fixtureScale } from "./plot-lib.js";
 import { renderHeadToHeadSvg } from "./plot-svg.js";
 
+const workflowSuffixPattern = /-workflow$/;
 const args = process.argv.slice(2);
 const workflow = args.includes("--workflow");
 const positional = args.filter((arg) => arg !== "--workflow");
@@ -12,7 +13,7 @@ const output = resolve(
   positional[1] ??
     (workflow
       ? "docs/benchmarks/head-to-head-workflow-xl.svg"
-      : "docs/benchmarks/head-to-head-xl.svg"),
+      : "docs/benchmarks/head-to-head-xl.svg")
 );
 const payload = JSON.parse(await readFile(input, "utf8"));
 const fixtures = [...new Set(payload.results.map((item) => item.fixture))];
@@ -35,9 +36,11 @@ const rows = payload.results
       item.fixture === fixture &&
       !item.skipped &&
       !item.unsupported &&
-      item.adapter.endsWith("-workflow") === workflow,
+      item.adapter.endsWith("-workflow") === workflow
   )
-  .map((item) => (workflow ? { ...item, adapter: item.adapter.replace(/-workflow$/, "") } : item));
+  .map((item) =>
+    workflow ? { ...item, adapter: item.adapter.replace(workflowSuffixPattern, "") } : item
+  );
 const tablesNote = fixtureScale[fixture]?.tables;
 const options = workflow
   ? {

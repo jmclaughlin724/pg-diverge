@@ -1,6 +1,7 @@
 ---
-title: "Supabase db diff without Docker"
+title: "Docker-free diff"
 description: "Generate Supabase-compatible PostgreSQL migrations from declarative SQL files without Docker, a local Supabase stack, or a shadow database."
+keywords: ["Docker-free diff", "Supabase db diff", "schema diff", "PostgreSQL"]
 ---
 
 You can generate a Supabase-compatible PostgreSQL migration without Docker by using `supaschema diff`. `supaschema` reads the declarative SQL files in your repo, compares them to the configured source state, and writes a replay-safe migration file that your normal Supabase runner can apply.
@@ -14,8 +15,7 @@ Database-backed diff workflows often need a local database, a Docker daemon, or 
 ## Install
 
 ```bash
-npm install --save-dev supaschema
-npx supaschema init
+npm install supaschema
 ```
 
 In a standard Supabase project, put declarative SQL files under `supabase/schemas/`.
@@ -32,13 +32,7 @@ Run:
 npx supaschema diff
 ```
 
-By default, `diff` uses the configured database state when available and falls back to `git:HEAD`, then compares that source to the schema tree in `supabase/schemas/`. It writes a timestamped migration under `supabase/migrations/`.
-
-To be explicit:
-
-```bash
-npx supaschema diff --from git:HEAD --to dir:supabase/schemas
-```
+By default, `diff` reads `sources.from` and `sources.to` from `supaschema.config.json`. The scaffolded Supabase config uses `sources.from: "auto"` and `sources.to: "dir:supabase/schemas"`, so it uses the configured database state when available, falls back to `git:HEAD`, and writes a timestamped migration under `supabase/migrations/`.
 
 ## Check the migration before applying it
 

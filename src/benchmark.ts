@@ -23,18 +23,18 @@ const xxlTables = numberEnv("SUPASCHEMA_XXL_TABLES", 2500);
 const thresholds = {
   catalogSnapshotDiff: numberEnv("SUPASCHEMA_CATALOG_BENCHMARK_MS", 2000),
   dumpDiff: numberEnv("SUPASCHEMA_DUMP_BENCHMARK_MS", 2000),
-  endToEndMigration: numberEnv("SUPASCHEMA_END_TO_END_BENCHMARK_MS", 10000),
-  endToEndMigrationLarge: numberEnv("SUPASCHEMA_END_TO_END_LARGE_BENCHMARK_MS", 60000),
-  endToEndMigrationXl: numberEnv("SUPASCHEMA_END_TO_END_XL_BENCHMARK_MS", 120000),
-  endToEndMigrationXxl: numberEnv("SUPASCHEMA_END_TO_END_XXL_BENCHMARK_MS", 300000),
-  largeInMemoryDiff: numberEnv("SUPASCHEMA_LARGE_BENCHMARK_MS", 10000),
-  liveCatalogDiff: numberEnv("SUPASCHEMA_LIVE_CATALOG_BENCHMARK_MS", 10000),
-  liveCatalogDiffXl: numberEnv("SUPASCHEMA_LIVE_CATALOG_XL_BENCHMARK_MS", 60000),
-  liveCatalogDiffXxl: numberEnv("SUPASCHEMA_LIVE_CATALOG_XXL_BENCHMARK_MS", 120000),
-  noDriftDiff: numberEnv("SUPASCHEMA_NO_DRIFT_BENCHMARK_MS", 10000),
-  realisticTreeDiff: numberEnv("SUPASCHEMA_REALISTIC_BENCHMARK_MS", 10000),
-  replayVerification: numberEnv("SUPASCHEMA_VERIFY_BENCHMARK_MS", 30000),
-  shadowRoundTripDiff: numberEnv("SUPASCHEMA_SHADOW_BENCHMARK_MS", 30000),
+  endToEndMigration: numberEnv("SUPASCHEMA_END_TO_END_BENCHMARK_MS", 10_000),
+  endToEndMigrationLarge: numberEnv("SUPASCHEMA_END_TO_END_LARGE_BENCHMARK_MS", 60_000),
+  endToEndMigrationXl: numberEnv("SUPASCHEMA_END_TO_END_XL_BENCHMARK_MS", 120_000),
+  endToEndMigrationXxl: numberEnv("SUPASCHEMA_END_TO_END_XXL_BENCHMARK_MS", 300_000),
+  largeInMemoryDiff: numberEnv("SUPASCHEMA_LARGE_BENCHMARK_MS", 10_000),
+  liveCatalogDiff: numberEnv("SUPASCHEMA_LIVE_CATALOG_BENCHMARK_MS", 10_000),
+  liveCatalogDiffXl: numberEnv("SUPASCHEMA_LIVE_CATALOG_XL_BENCHMARK_MS", 60_000),
+  liveCatalogDiffXxl: numberEnv("SUPASCHEMA_LIVE_CATALOG_XXL_BENCHMARK_MS", 120_000),
+  noDriftDiff: numberEnv("SUPASCHEMA_NO_DRIFT_BENCHMARK_MS", 10_000),
+  realisticTreeDiff: numberEnv("SUPASCHEMA_REALISTIC_BENCHMARK_MS", 10_000),
+  replayVerification: numberEnv("SUPASCHEMA_VERIFY_BENCHMARK_MS", 30_000),
+  shadowRoundTripDiff: numberEnv("SUPASCHEMA_SHADOW_BENCHMARK_MS", 30_000),
   sourceTreeDiff: numberEnv("SUPASCHEMA_BENCHMARK_MS", 2000),
 };
 
@@ -86,7 +86,7 @@ try {
       "catalogSnapshotDiff",
       thresholds.catalogSnapshotDiff,
       fastIterations,
-      catalogSources,
+      catalogSources
     ),
     database: {
       endToEndMigration: await benchmarkEndToEndMigration(
@@ -94,46 +94,46 @@ try {
         thresholds.endToEndMigration,
         databaseUrl,
         addColumnSources,
-        addColumnSql,
+        addColumnSql
       ),
       endToEndMigrationLarge: await benchmarkEndToEndMigration(
         "endToEndMigrationLarge",
         thresholds.endToEndMigrationLarge,
         databaseUrl,
         largeTreeSources,
-        largeSql,
+        largeSql
       ),
       endToEndMigrationXl: await benchmarkEndToEndMigration(
         "endToEndMigrationXl",
         thresholds.endToEndMigrationXl,
         databaseUrl,
         xlTreeSources,
-        xlSql,
+        xlSql
       ),
       endToEndMigrationXxl: await benchmarkEndToEndMigration(
         "endToEndMigrationXxl",
         thresholds.endToEndMigrationXxl,
         databaseUrl,
         xxlTreeSources,
-        xxlSql,
+        xxlSql
       ),
       liveCatalogDiff: await benchmarkLiveCatalogDiff(
         "liveCatalogDiff",
         thresholds.liveCatalogDiff,
         databaseUrl,
-        realisticSql,
+        realisticSql
       ),
       liveCatalogDiffXl: await benchmarkLiveCatalogDiff(
         "liveCatalogDiffXl",
         thresholds.liveCatalogDiffXl,
         databaseUrl,
-        xlSql,
+        xlSql
       ),
       liveCatalogDiffXxl: await benchmarkLiveCatalogDiff(
         "liveCatalogDiffXxl",
         thresholds.liveCatalogDiffXxl,
         databaseUrl,
-        xxlSql,
+        xxlSql
       ),
       replayVerification: await benchmarkReplayVerification(databaseUrl, addColumnSources),
       shadowRoundTripDiff: await benchmarkShadowRoundTripDiff(databaseUrl, realisticSql),
@@ -142,7 +142,7 @@ try {
       "dumpDiff",
       thresholds.dumpDiff,
       fastIterations,
-      dumpSources,
+      dumpSources
     ),
     largeInMemoryDiff: await runBenchmark(
       "largeInMemoryDiff",
@@ -152,7 +152,7 @@ try {
         const from = await modelFromSql("large:from", largeSql.from);
         const to = await modelFromSql("large:to", largeSql.to);
         diffModels("largeInMemoryDiff", from, to);
-      },
+      }
     ),
     noDriftDiff: await runBenchmark(
       "noDriftDiff",
@@ -164,22 +164,22 @@ try {
         const plan = diffModels("noDriftDiff", from, to);
         if (plan.operations.length > 0) {
           throw new Error(
-            `noDriftDiff expected an empty plan for identical sources, found ${plan.operations.length} operations`,
+            `noDriftDiff expected an empty plan for identical sources, found ${plan.operations.length} operations`
           );
         }
-      },
+      }
     ),
     realisticTreeDiff: await benchmarkDiffSources(
       "realisticTreeDiff",
       thresholds.realisticTreeDiff,
       fastIterations,
-      realisticTreeSources,
+      realisticTreeSources
     ),
     sourceTreeDiff: await benchmarkDiffSources(
       "sourceTreeDiff",
       thresholds.sourceTreeDiff,
       fastIterations,
-      basicSources,
+      basicSources
     ),
   };
 
@@ -189,11 +189,11 @@ try {
   await rm(tempRoot, { force: true, recursive: true });
 }
 
-async function benchmarkDiffSources(
+function benchmarkDiffSources(
   name: string,
   thresholdMs: number,
   iterations: number,
-  sources: { from: string; to: string },
+  sources: { from: string; to: string }
 ): Promise<BenchmarkResult> {
   return runBenchmark(name, thresholdMs, iterations, async () => {
     const from = await extractSourceModel(sources.from);
@@ -202,11 +202,11 @@ async function benchmarkDiffSources(
   });
 }
 
-async function benchmarkLiveCatalogDiff(
+function benchmarkLiveCatalogDiff(
   name: string,
   thresholdMs: number,
   databaseUrl: string | undefined,
-  sql: { from: string; to: string },
+  sql: { from: string; to: string }
 ): Promise<BenchmarkResult> {
   if (!databaseUrl) {
     return skippedDatabaseBenchmark(thresholdMs);
@@ -224,7 +224,7 @@ async function benchmarkLiveCatalogDiff(
 
 async function benchmarkReplayVerification(
   databaseUrl: string | undefined,
-  sources: { from: string; to: string },
+  sources: { from: string; to: string }
 ): Promise<BenchmarkResult> {
   if (!databaseUrl) {
     return skippedDatabaseBenchmark(thresholds.replayVerification);
@@ -246,16 +246,16 @@ async function benchmarkReplayVerification(
         to: sources.to,
       });
       assertNoErrors("replayVerification", diagnostics);
-    },
+    }
   );
 }
 
-async function benchmarkEndToEndMigration(
+function benchmarkEndToEndMigration(
   name: string,
   thresholdMs: number,
   databaseUrl: string | undefined,
   sources: { from: string; to: string },
-  sql: { from: string; to: string },
+  sql: { from: string; to: string }
 ): Promise<BenchmarkResult> {
   if (!databaseUrl) {
     return skippedDatabaseBenchmark(thresholdMs);
@@ -288,18 +288,18 @@ async function benchmarkEndToEndMigration(
         assertNoErrors(`${name}:applied`, applied.diagnostics);
         if (applied.fingerprint !== target.fingerprint) {
           throw new Error(
-            `${name} migrated catalog fingerprint does not match target: migration=${applied.fingerprint} target=${target.fingerprint}`,
+            `${name} migrated catalog fingerprint does not match target: migration=${applied.fingerprint} target=${target.fingerprint}`
           );
         }
         return elapsedMs;
-      }),
+      })
     );
   });
 }
 
-async function benchmarkShadowRoundTripDiff(
+function benchmarkShadowRoundTripDiff(
   databaseUrl: string | undefined,
-  sql: { from: string; to: string },
+  sql: { from: string; to: string }
 ): Promise<BenchmarkResult> {
   if (!databaseUrl) {
     return skippedDatabaseBenchmark(thresholds.shadowRoundTripDiff);
@@ -317,15 +317,15 @@ async function benchmarkShadowRoundTripDiff(
         const to = await extractSourceModel(`database:${toUrl}`);
         diffModels("shadowRoundTripDiff", from, to);
       });
-    },
+    }
   );
 }
 
-async function runBenchmark(
+function runBenchmark(
   name: string,
   thresholdMs: number,
   iterations: number,
-  action: () => Promise<void>,
+  action: () => Promise<void>
 ): Promise<BenchmarkResult> {
   return runMeasuredBenchmark(name, thresholdMs, iterations, async () => {
     const start = performance.now();
@@ -338,7 +338,7 @@ async function runMeasuredBenchmark(
   name: string,
   thresholdMs: number,
   iterations: number,
-  measure: () => Promise<number>,
+  measure: () => Promise<number>
 ): Promise<BenchmarkResult> {
   const timings: number[] = [];
   for (let index = 0; index < iterations; index += 1) {
@@ -368,7 +368,7 @@ function diffModels(name: string, from: SchemaModel, to: SchemaModel) {
 
 async function modelFromSql(source: string, sql: string): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql, {
-    config: { adapter: "postgres" },
+    config: { managedSchemas: [] },
     file: `${source}.sql`,
   });
   return {
@@ -395,7 +395,7 @@ async function writeDumpSources(sql: {
 
 async function writeTreeSources(
   label: string,
-  sql: { from: string; to: string },
+  sql: { from: string; to: string }
 ): Promise<{ from: string; to: string }> {
   const fromDirectory = join(tempRoot, `${label}-from`);
   const toDirectory = join(tempRoot, `${label}-to`);
@@ -441,7 +441,7 @@ async function readSqlDirectory(root: string): Promise<string> {
     }
   }
   await walk(root);
-  const chunks = [];
+  const chunks: string[] = [];
   for (const file of files.sort()) {
     chunks.push(await readFile(file, "utf8"));
   }
@@ -455,12 +455,12 @@ function assertNoErrors(name: string, diagnostics: Diagnostic[]): void {
   }
 }
 
-function skippedDatabaseBenchmark(thresholdMs: number): BenchmarkResult {
-  return {
+function skippedDatabaseBenchmark(thresholdMs: number): Promise<BenchmarkResult> {
+  return Promise.resolve({
     reason: "set SUPASCHEMA_BENCHMARK_DATABASE_URL to a disposable PostgreSQL admin URL",
     status: "skipped",
     thresholdMs,
-  };
+  });
 }
 
 function numberEnv(name: string, fallback: number): number {

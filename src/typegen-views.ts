@@ -12,8 +12,8 @@ interface ViewTarget {
 
 export async function collectViewColumns(
   object: SchemaObject,
-  tablesByKey: Map<string, TableShape>,
-): Promise<{ name: string; type: string }[]> {
+  tablesByKey: Map<string, TableShape>
+): Promise<ColumnShape[]> {
   const aliasNames = Array.isArray(object.metadata.viewColumns)
     ? object.metadata.viewColumns.map((value) => String(value))
     : undefined;
@@ -25,6 +25,7 @@ export async function collectViewColumns(
   if (aliasNames) {
     return aliasNames.map((name, index) => ({
       name,
+      notNull: false,
       type:
         aliasNames.length === expanded.length ? (expanded[index]?.type ?? "unknown") : "unknown",
     }));
@@ -34,9 +35,9 @@ export async function collectViewColumns(
 
 function expandTargets(
   targets: ViewTarget[],
-  fromInfo: { columns: ColumnShape[]; names: Set<string> } | undefined,
-): { name: string; type: string }[] {
-  const output: { name: string; type: string }[] = [];
+  fromInfo: { columns: ColumnShape[]; names: Set<string> } | undefined
+): ColumnShape[] {
+  const output: ColumnShape[] = [];
   for (const target of targets) {
     if (target.isStar) {
       const coversFrom =
@@ -44,7 +45,7 @@ function expandTargets(
         (target.starQualifier === undefined || fromInfo.names.has(target.starQualifier));
       if (coversFrom && fromInfo) {
         for (const column of fromInfo.columns) {
-          output.push({ name: column.name, type: column.type });
+          output.push({ name: column.name, notNull: false, type: column.type });
         }
       }
       continue;
@@ -57,7 +58,7 @@ function expandTargets(
       target.sourceColumn === undefined
         ? undefined
         : fromInfo?.columns.find((column) => column.name === target.sourceColumn);
-    output.push({ name, type: match?.type ?? "unknown" });
+    output.push({ name, notNull: false, type: match?.type ?? "unknown" });
   }
   return output;
 }
@@ -78,8 +79,8 @@ function parseTarget(target: unknown): ViewTarget {
   }
   return {
     isStar: false,
-    ...(alias !== undefined ? { alias } : {}),
-    ...(lastName !== undefined ? { sourceColumn: lastName } : {}),
+    ...(alias === undefined ? {} : { alias }),
+    ...(lastName === undefined ? {} : { sourceColumn: lastName }),
   };
 }
 
@@ -94,21 +95,21 @@ function firstSelect(ast: unknown): Record<string, unknown> | undefined {
 function soleFromTable(
   select: Record<string, unknown> | undefined,
   defaultSchema: string,
-  tablesByKey: Map<string, TableShape>,
+  tablesByKey: Map<string, TableShape>
 ): { columns: ColumnShape[]; names: Set<string> } | undefined {
   const fromClause = readArray(select?.fromClause);
   if (fromClause.length !== 1) {
-    return undefined;
+    return;
   }
   const rangeVar = asRecord(asRecord(fromClause[0])?.RangeVar);
   const relname = readString(rangeVar?.relname);
   if (!(rangeVar && relname)) {
-    return undefined;
+    return;
   }
   const schemaName = readString(rangeVar?.schemaname) ?? defaultSchema;
   const table = tablesByKey.get(`${schemaName}.${relname}`);
   if (!table) {
-    return undefined;
+    return;
   }
   const aliasName = asRecord(rangeVar.alias)?.aliasname;
   const names = new Set([relname]);

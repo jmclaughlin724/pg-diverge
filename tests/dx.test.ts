@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderCheckReport } from "../src/check-reporters.js";
-import { configJsonSchema, defaultConfigFile, resolveConfig } from "../src/config.js";
+import {
+  configJsonSchema,
+  defaultConfigFile,
+  resolveConfig,
+  validateConfig,
+} from "../src/config.js";
+import { sourceSpecPattern } from "../src/config-contract.js";
 import type { Diagnostic } from "../src/core.js";
 
 const cliPath = resolve(import.meta.dirname, "../dist/cli.js");
@@ -24,10 +30,38 @@ const sampleDiagnostics: Diagnostic[] = [
 ];
 
 describe("config DX", () => {
-  it("tolerates $schema and scaffolds it into the default config file", () => {
-    const config = resolveConfig({ $schema: "./node_modules/supaschema/config-schema.json" });
-    expect(config.adapter).toBe("supabase-auto");
-    expect(defaultConfigFile).toContain('"$schema"');
+  it("tolerates $schema and keeps the scaffold explicit", () => {
+    const config = resolveConfig({
+      $schema: "./node_modules/supaschema/supaschema-config.schema.json",
+    });
+    expect(config.adapter).toBe("auto");
+    expect(JSON.parse(defaultConfigFile)).toEqual({
+      $schema: "./node_modules/supaschema/supaschema-config.schema.json",
+      ...resolveConfig(),
+    });
+  });
+
+  it("normalizes legacy adapter values at the input boundary", () => {
+    expect(resolveConfig({ adapter: "supabase-auto" } as never).adapter).toBe("auto");
+    expect(resolveConfig({ adapter: "postgres" } as never).adapter).toBe("auto");
+    expect(resolveConfig({ adapter: "supabase" } as never).adapter).toBe("auto");
+  });
+
+  it("defaults to provider-neutral managed schemas unless configured", () => {
+    expect(resolveConfig({}).managedSchemas).toEqual([]);
+
+    expect(resolveConfig({ adapter: "auto", managedSchemas: ["auth"] }).managedSchemas).toEqual([
+      "auth",
+    ]);
+  });
+
+  it("keeps auto provider-neutral even when paths are Supabase-shaped", () => {
+    const config = resolveConfig({
+      adapter: "auto",
+      migrationsDir: "supabase/migrations",
+      schemaPaths: ["supabase/schemas"],
+    });
+    expect(config.adapter).toBe("auto");
   });
 
   it("parses named environments and rejects unknown keys inside them", () => {
@@ -39,11 +73,86 @@ describe("config DX", () => {
   });
 
   it("generates a JSON schema documenting every config key", () => {
-    const schema = configJsonSchema() as { properties?: Record<string, unknown> };
+    const schema = configJsonSchema() as {
+      $id?: string;
+      properties?: Record<string, unknown>;
+    };
+    expect(schema.$id).toBe("https://supaschema.com/schemas/supaschema-config.schema.json");
     expect(schema.properties).toBeDefined();
-    for (const key of ["adapter", "environments", "hints", "normalize", "transactionMode"]) {
+    for (const key of [
+      "adapter",
+      "destructiveChanges",
+      "environments",
+      "excludedGrantRoles",
+      "hints",
+      "managedSchemas",
+      "migrationsDir",
+      "normalize",
+      "schemaPaths",
+      "schemas",
+      "sources",
+      "transactionMode",
+      "typesFile",
+      "validators",
+      "workflow",
+      "zodFile",
+    ]) {
       expect(schema.properties?.[key], key).toBeDefined();
     }
+    expect(schema.properties?.adapter).toMatchObject({
+      default: "auto",
+      enum: ["auto", "postgres", "supabase", "supabase-auto"],
+    });
+    const workflow = schema.properties?.workflow as {
+      properties?: Record<string, { enum?: string[] }>;
+    };
+    expect(workflow.properties?.migration_sync?.enum).toEqual([
+      "disabled",
+      "explicit_request_only",
+    ]);
+    const sources = schema.properties?.sources as {
+      properties?: Record<string, { oneOf?: unknown[]; pattern?: string }>;
+    };
+    expect(sources.properties?.from?.oneOf).toEqual([
+      { const: "auto" },
+      { pattern: sourceSpecPattern, type: "string" },
+    ]);
+    expect(sources.properties?.to?.pattern).toBe(sourceSpecPattern);
+  });
+
+  it("rejects unknown workflow policy values", () => {
+    expect(() =>
+      resolveConfig({
+        workflow: { migration_sync: "auto_apply" },
+      } as never)
+    ).toThrow();
+    expect(resolveConfig().workflow).toEqual({
+      schema_diff: "on_schema_write",
+      migration_check: "after_schema_diff",
+      migration_verify: "suggest_after_check",
+      migration_sync: "explicit_request_only",
+      type_generation: "create_or_refresh",
+      zod_generation: "create_or_refresh",
+      type_usage: "zod_validated",
+    });
+  });
+
+  it("validates source defaults and redacts inline database URLs", async () => {
+    const diagnostics = await validateConfig(
+      resolveConfig({
+        sources: {
+          from: "postgresql://postgres:secret@example.com/app",
+          to: "auto",
+        },
+      } as never),
+      mkdtempSync(join(tmpdir(), "supa-config-validate-"))
+    );
+
+    expect(diagnostics.some((item) => item.field === "sources.from")).toBe(true);
+    expect(diagnostics.some((item) => item.field === "sources.to")).toBe(true);
+    const text = JSON.stringify(diagnostics);
+    expect(text).toContain("postgresql://postgres:[redacted]@example.com/app");
+    expect(text).not.toContain("secret");
   });
 });
 
@@ -63,7 +172,7 @@ describe("check reporters", () => {
     };
     expect(sarif.version).toBe("2.1.0");
     expect(sarif.runs[0]?.results.map((result) => result.ruleId)).toContain(
-      "SUPA_CHECK_DROP_IF_EXISTS",
+      "SUPA_CHECK_DROP_IF_EXISTS"
     );
   });
 
@@ -98,31 +207,46 @@ describe("stdin sources", () => {
 });
 
 describe("raw CLI errors", () => {
-  it("redacts secrets before printing uncaught errors", () => {
+  it("rejects JavaScript config files", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-cli-redact-"));
-    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature";
     writeFileSync(
       join(cwd, "supaschema.config.mjs"),
-      `throw new Error("failed postgresql://postgres:super-secret@localhost/db token=abc123 ${jwt}");\n`,
+      'export default { schemaPaths: ["db/sql"], migrationsDir: "db/migrations" };\n'
     );
 
-    const result = spawnSync(process.execPath, [cliPath, "inspect"], {
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "--config", "supaschema.config.mjs", "inspect"],
+      {
+        cwd,
+        encoding: "utf8",
+      }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("JavaScript config files are not supported");
+  });
+
+  it("ignores JavaScript config files during default discovery", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-cli-js-default-"));
+    writeFileSync(
+      join(cwd, "supaschema.config.mjs"),
+      'export default { schemaPaths: ["db/sql"], migrationsDir: "db/migrations" };\n'
+    );
+
+    const result = spawnSync(process.execPath, [cliPath, "config", "validate", "--json"], {
       cwd,
       encoding: "utf8",
     });
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("postgresql://postgres:[redacted]@localhost/db");
-    expect(result.stderr).toContain("token=[redacted]");
-    expect(result.stderr).toContain("[redacted-jwt]");
-    expect(result.stderr).not.toContain("super-secret");
-    expect(result.stderr).not.toContain("abc123");
-    expect(result.stderr).not.toContain("eyJhbGci");
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout) as { diagnostics: { field: string }[] };
+    expect(parsed.diagnostics.map((item) => item.field)).toContain("schemaPaths[0]");
   });
 });
 
 describe("verify environment flags", () => {
-  it("exposes --no-ensure-environment so the supabase-auto stub default can be disabled", () => {
+  it("exposes both enable and disable flags for the Supabase environment stub", () => {
     const result = spawnSync(process.execPath, [cliPath, "verify", "--help"], {
       encoding: "utf8",
     });
@@ -137,7 +261,7 @@ describe("doctor environment resolution", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-doctor-env-"));
     writeFileSync(
       join(cwd, "supaschema.config.json"),
-      `${JSON.stringify({ environments: { staging: { databaseUrl: "$STAGING_DB" } } })}\n`,
+      `${JSON.stringify({ environments: { staging: { databaseUrl: "$STAGING_DB" } } })}\n`
     );
 
     const result = spawnSync(process.execPath, [cliPath, "--env", "staging", "doctor"], {

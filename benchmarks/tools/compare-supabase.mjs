@@ -21,7 +21,7 @@ port = ${dbPort}
 shadow_port = ${shadowPort}
 major_version = 17
 `,
-    "utf8",
+    "utf8"
   );
   context.supabaseConfig = {
     dbPort,
@@ -61,7 +61,7 @@ function stableProjectId(fixtureName, adapterId, iteration) {
   const source = `${fixtureName}:${adapterId}:${iteration}:${process.pid}`;
   let hash = 0;
   for (const character of source) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+    hash = (hash * 31 + character.charCodeAt(0)) % 4_294_967_296;
   }
   return `supaschema-${hash.toString(36)}`;
 }

@@ -3,8 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractSourceModel } from "../src/source.js";
-import { generateDatabaseTypes } from "../src/typegen.js";
-import { generateZodSchemas } from "../src/typegen-zod.js";
+import { generateDatabaseTypes, generateDatabaseTypesFromShapes } from "../src/typegen.js";
+import { collectSchemaShapes } from "../src/typegen-model.js";
+import { generateZodSchemas, generateZodSchemasFromShapes } from "../src/typegen-zod.js";
+
+const addressCompositePattern =
+  /address:\s*\{\s*street:\s*string \| null;\s*zip:\s*number \| null;/;
+const emptyIntrangePattern = /intrange:\s*\{\s*\}/;
 
 const treeSql = `CREATE SCHEMA app;
 CREATE TYPE app.status AS ENUM ('draft', 'active');
@@ -28,11 +33,19 @@ CREATE VIEW app.account_all AS SELECT * FROM app.accounts;
 `;
 
 async function typesFor(sql: string): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "supa-typegen-"));
+  const model = await modelFor(sql, "supa-typegen-");
+  return await generateDatabaseTypes(model);
+}
+
+async function modelFor(sql: string, prefix: string) {
+  const root = await mkdtemp(join(tmpdir(), prefix));
   await writeFile(join(root, "001_app.sql"), sql);
   const model = await extractSourceModel(`dir:${root}`);
-  expect(model.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-  return await generateDatabaseTypes(model);
+  const errors = model.diagnostics.filter((item) => item.severity === "error");
+  if (errors.length > 0) {
+    throw new Error(`expected source extraction to succeed: ${JSON.stringify(errors)}`);
+  }
+  return model;
 }
 
 describe("database type generation", () => {
@@ -83,6 +96,14 @@ describe("database type generation", () => {
     expect(types).toContain('status: ["draft", "active"],');
     expect(types).toContain("export type Tables<");
     expect(types).toContain("export type Enums<");
+  });
+
+  it("emits identical TypeScript and Zod output from precomputed shapes", async () => {
+    const model = await modelFor(treeSql, "supa-typegen-shapes-");
+    const shapes = await collectSchemaShapes(model);
+
+    expect(generateDatabaseTypesFromShapes(shapes)).toBe(await generateDatabaseTypes(model));
+    expect(generateZodSchemasFromShapes(shapes)).toBe(await generateZodSchemas(model));
   });
 });
 
@@ -147,7 +168,7 @@ describe("review-hardened typegen", () => {
     const types = await typesFor(hardenedSql);
 
     expect(types).toContain(
-      "get_user: { Args: { uid: number; fallback?: string }; Returns: string[] };",
+      "get_user: { Args: { uid: number; fallback?: string }; Returns: string[] };"
     );
   });
 });
@@ -162,7 +183,7 @@ describe("overloaded function typegen", () => {
     const types = await typesFor(overloadedSql);
 
     expect(types).toContain(
-      "f: { Args: { a: number } | { a: string }; Returns: number | string };",
+      "f: { Args: { a: number } | { a: string }; Returns: number | string };"
     );
   });
 });
@@ -179,13 +200,13 @@ describe("composite and range type typegen", () => {
 
     expect(types).toContain('home: Database["app"]["CompositeTypes"]["address"] | null;');
     expect(types).toContain("CompositeTypes: {");
-    expect(types).toMatch(/address:\s*\{\s*street:\s*string \| null;\s*zip:\s*number \| null;/);
+    expect(types).toMatch(addressCompositePattern);
   });
 
   it("does not emit a range type as an empty composite", async () => {
     const types = await typesFor(compositeSql);
 
-    expect(types).not.toMatch(/intrange:\s*\{\s*\}/);
+    expect(types).not.toMatch(emptyIntrangePattern);
   });
 
   it("prefers a schema-local composite over a same-named enum in another schema", async () => {
@@ -194,7 +215,7 @@ describe("composite and range type typegen", () => {
 CREATE TYPE app.address AS (street text, zip int);
 CREATE TYPE public.address AS ENUM ('home', 'work');
 CREATE TABLE app.people (id bigint, home address);
-`,
+`
     );
 
     expect(types).toContain('home: Database["app"]["CompositeTypes"]["address"] | null;');
@@ -209,7 +230,7 @@ CREATE SCHEMA b;
 CREATE TYPE a.thing AS ENUM ('x');
 CREATE TYPE b.thing AS (n int);
 CREATE TABLE app.t (id bigint, v thing);
-`,
+`
     );
 
     expect(types).toContain("v: unknown | null;");
@@ -228,10 +249,10 @@ describe("function return row typegen", () => {
     const types = await typesFor(returnShapeSql);
 
     expect(types).toContain(
-      "list_people: { Args: Record<PropertyKey, never>; Returns: { id: number; label: string }[] };",
+      "list_people: { Args: Record<PropertyKey, never>; Returns: { id: number; label: string }[] };"
     );
     expect(types).toContain(
-      "one_row: { Args: Record<PropertyKey, never>; Returns: { a: number; b: string } };",
+      "one_row: { Args: Record<PropertyKey, never>; Returns: { a: number; b: string } };"
     );
   });
 
@@ -245,10 +266,7 @@ describe("function return row typegen", () => {
 
 describe("zod schema generation", () => {
   async function zodFor(sql: string): Promise<string> {
-    const root = await mkdtemp(join(tmpdir(), "supa-zodgen-"));
-    await writeFile(join(root, "001_app.sql"), sql);
-    const model = await extractSourceModel(`dir:${root}`);
-    expect(model.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    const model = await modelFor(sql, "supa-zodgen-");
     return await generateZodSchemas(model);
   }
 
@@ -263,6 +281,9 @@ describe("zod schema generation", () => {
     expect(zod).toContain("tags: z.array(z.string()),");
     expect(zod).toContain("payload: jsonSchema.nullable(),");
     expect(zod).toContain("state: app_status,");
+    expect(zod).toContain("export type TableRow<");
+    expect(zod).toContain("export type TableInsert<");
+    expect(zod).toContain("export type EnumValue<");
   });
 
   it("validates composite-typed columns as unknown, not z.composite()", async () => {
@@ -270,7 +291,7 @@ describe("zod schema generation", () => {
       `CREATE SCHEMA app;
 CREATE TYPE app.address AS (street text, zip int);
 CREATE TABLE app.people (id bigint, home app.address);
-`,
+`
     );
 
     expect(zod).not.toContain("z.composite()");

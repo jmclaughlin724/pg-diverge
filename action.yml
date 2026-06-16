@@ -10,7 +10,7 @@ inputs:
   version:
     description: Exact supaschema npm version to run.
     required: false
-    default: "0.1.1"
+    default: "0.2.0"
 runs:
   using: composite
   steps:
@@ -19,9 +19,13 @@ runs:
       env:
         SUPASCHEMA_ACTION_VERSION: ${{ inputs.version }}
         SUPASCHEMA_ACTION_ARGS: ${{ inputs.args }}
+        # The action only runs the supaschema CLI as a gate. Suppress the consumer
+        # bundle scaffolding so `npx supaschema@...` does not write config, agent
+        # files, hook wiring, or .supaschema/install.json into the caller's checkout.
+        SUPASCHEMA_SKIP_POSTINSTALL: "1"
       run: |
         if [[ ! "$SUPASCHEMA_ACTION_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-          echo "invalid supaschema version: $SUPASCHEMA_ACTION_VERSION (use an exact npm version, e.g. 0.1.1)" >&2
+          echo "invalid supaschema version: $SUPASCHEMA_ACTION_VERSION (use an exact npm version, e.g. 0.2.0)" >&2
           exit 1
         fi
         npx --yes "supaschema@${SUPASCHEMA_ACTION_VERSION}" $SUPASCHEMA_ACTION_ARGS

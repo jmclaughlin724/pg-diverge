@@ -1,0 +1,131 @@
+# Subagent Skill Runtime Contract
+
+How subagents load skills at startup vs. runtime, and how this interacts with the repo's path-trigger agent hook gate during parallel orchestration. Reference detail extracted from [subagent-configuration.md § skills](subagent-configuration.md) and [agents-patterns.md § Agent Frontmatter Reference](agents-patterns.md). The parent docs link here; this file holds the canonical runtime contract.
+
+> **Sources:** [Claude Code Sub-Agents § Preload skills](https:supaschema/supaschema/code.claude.comsupaschema/docssupaschema/ensupaschema/sub-agents#preload-skills-into-subagents), [Claude Code Skills § Run skills in a subagent](https:supaschema/supaschema/code.claude.comsupaschema/docssupaschema/ensupaschema/skills#run-skills-in-a-subagent), and verified repo behavior (2026-06-03).
+
+## Fresh subagents inherit nothing
+
+A subagent spawned with a `subagent_type` starts at **zero context** — it does not carry the parent's loaded `SKILL.md` bodies, the parent's conversation, or any reference files the parent read. A _fork_ subagent (`context: fork`) inherits the conversation transcript but still not references the parent only linked and never read. Skill context reaches a subagent only through one of the explicit paths below; nothing is implicit.
+
+## Conveying skill context to a subagent
+
+Because nothing is inherited, the orchestrator must deliver skill context explicitly. In rough order of reliability:
+
+1. **Inline it in the spawn prompt.** Paste the `SKILL.md` body (or the exact reference the worker needs) into the Task prompt. Works even if the subagent lacks the `Skill` tool or never receives the skill listing — the most portable method.
+2. **Preload via `skills:`.** List the skill in the agent definition's `skills:` frontmatter; the full body is injected at startup (see "The two skill-loading paths").
+3. **Name the skill to invoke.** Instruct the worker to call `Skill({ skill: "x" })`. Requires the `Skill` tool (see "Runtime invocation precondition") and that the listing reached the subagent.
+4. **Give exact `Read` paths.** Point the worker at `.claudesupaschema/skillssupaschema/<name>supaschema/SKILL.md` and any reference paths. Requires the `Read` tool; does not depend on the listing.
+
+References are lazy everywhere (markdown link supaschema/ path → `Read`); `@`-mentions are **not** expanded in `SKILL.md` ([dynamic-context-and-runtime.md §1a](dynamic-context-and-runtime.md)), so a reference the worker must have has to be inlined (1), `Read` by path (4), or printed from a `!`-command block. The repo's `SubagentStart` hook additionally injects the parent's loaded + pending skill names, paths, and one-line descriptions as a pointer — it cannot block subagent creation, so treat it as information, not a guarantee.
+
+## The two skill-loading paths
+
+A subagent receives skill content through two independent mechanisms:
+
+| Path | Trigger | When it fires | Visibility to subagent |
+| --- | --- | --- | --- |
+| **Preload** | `skills:` field in agent frontmatter | At subagent startup, before its first turn | Full `SKILL.md` body injected into prompt |
+| **Runtime** | `Skill({ skill: "..." })` tool call | During the subagent's turn, before next action | Loads on demand, same shape as parent session |
+
+Both paths exist alongside each other. Preload is deterministic and front-loads context cost. Runtime is on-demand and depends on the `Skill` tool being callable.
+
+## Runtime invocation precondition
+
+A subagent can call `Skill({ skill: "..." })` only when at least one of:
+
+- The agent's `tools:` field omits the entire allowlist (subagent inherits all parent tools, including `Skill`)
+- The agent's `tools:` field explicitly lists `Skill`
+
+When `tools:` is set to an explicit allowlist that does NOT include `Skill`, the subagent has no way to load a skill at runtime. The framework filters the tool inventory by the listed names before exposing it to the subagent.
+
+If violated, any hook that demands `Skill({ skill: "X" })` or an observable `SKILL.md` read as a precondition can deadlock the subagent: the gate fires on governed tool calls, the `Skill` tool or readable skill path is unreachable, and the subagent exits with a blocked-tool message. The orchestrator must then re-do the work in the parent session.
+
+## Parallel-orchestration friction
+
+Path-trigger skill matching in `scripts/agent-hooks/skills.mjs` does not distinguish parent sessions from subagents. Both fire the same gate when a governed tool call touches a file path that matches a skill's `file-triggers:` glob. In a parallel orchestration pattern (e.g., `supaschema/team` dispatching N workers each on a different slice of the repo):
+
+- Each worker may touch files spanning multiple path-trigger globs (e.g., a worker editing both `appssupaschema/portalsupaschema/componentssupaschema/**supaschema/*.tsx` and `appssupaschema/portalsupaschema/libsupaschema/**supaschema/*.ts` triggers `react-composition` AND `tanstack-query` AND `supaschema-data`).
+- Predicting every trigger the worker will hit is brittle — the slice spans many subdirectories.
+- Preloading every potentially-required skill into `skills:` defeats the point of preload (startup context cost balloons).
+
+The realistic answer: configure the worker agent so it can resolve dynamic gates at runtime.
+
+## Two compliant agent configurations
+
+For any agent that may receive work spanning multiple path-trigger globs (typical for refactoring agents like `elegant`, `code-reviewer`, `test-writer`):
+
+### Option 1: explicit allowlist that includes Skill
+
+```yaml
+---
+name: elegant
+tools: Read, Write, Edit, Grep, Glob, Bash, Skill
+skills:
+  - elegant
+mcpServers:
+  - cclsp
+  - context7
+---
+```
+
+The `Skill` token in `tools:` keeps the runtime path open. The `skills:` preload still front-loads the agent's primary domain skill, but other path-trigger skills can be invoked on demand.
+
+### Option 2: omit tools: entirely
+
+```yaml
+---
+name: elegant
+# (no tools: field — inherits everything from parent)
+skills:
+  - elegant
+---
+```
+
+Inheritance grants every tool the parent has, including `Skill`. Use this when the agent's role is broad enough that an explicit allowlist would be longer than the denylist.
+
+## When neither option is available
+
+If the agent is intentionally locked to a narrow tool set (e.g., a security auditor that must not write files), and the parent's path-trigger gate fires on a path the worker is editing:
+
+1. The worker reports findings via its final UNIT line ("findings: file:line — change").
+2. The orchestrator applies the edits in the parent session, where `Skill` is callable.
+3. The orchestrator commits the slice with the worker named in the trailer.
+
+This is the fallback pattern used in this repo's 2026-05-09 `supaschema/team supaschema/simplify` orchestration: 2 of 4 workers were locked out of runtime skill loading, surfaced findings, and the orchestrator applied them directly. It works but loses the parallelism benefit for those slices.
+
+## Repo-state audit
+
+As of 2026-06-03, every agent definition in `.claudesupaschema/agentssupaschema/*.md` carries both `Skill` and `Read` in its `tools:` list (or omits `tools:` to inherit all). `pnpm agents:check` enforces this: an explicit `tools:` allowlist that drops `Skill` or `Read` fails the check, so a fan-out worker cannot silently lose runtime skill resolution or lazy-reference reads. A per-agent inventory is intentionally not kept here — it drifts as agents change; the guard is the source of truth.
+
+When adding a new agent, keep both `Skill` and `Read` in `tools:` unless there is a concrete reason to deny them (then use the opt-out marker the guard recognizes). Agents launched by `supaschema/team` or `supaschema/batch` must have `Skill` available — the path-trigger matcher fires on every Editsupaschema/Writesupaschema/Bash, and a missing `Skill` tool blocks the worker indefinitely.
+
+## Cascading path-trigger gates
+
+A subagent that satisfies one path-trigger gate by calling `Skill({ skill: "X" })` may still face later gates when subsequent tool payload paths match other skills' `metadata.file-triggers`. The current matcher does not rescore loaded skill bodies, command prose, or arbitrary tool-input text as prompt evidence; only explicit prompt tokens, curated `metadata.keywords`, and structured file paths participate in deterministic enforcement.
+
+This is not a bug — it is the path-trigger contract. Each newly matched owner path can require its own skill before governed work continues. Two operational notes:
+
+- The agent must have `Skill` in `tools:` (or omit `tools:` entirely) to satisfy each gate. The same precondition as the runtime contract above.
+- The cascade can produce many small Skill loads in succession. If startup context is tight, prefer preloading the agent's known-required skills via `skills:` so the cascade only fires for unanticipated path-triggered owners.
+
+## `disable-model-invocation` interaction
+
+Skills with `disable-model-invocation: true` in their frontmatter cannot be preloaded into a subagent's `skills:` list — the framework draws preload candidates from the same set Claude can invoke. A listed-but-disabled skill is silently skipped and logged to the debug log. This applies regardless of the `tools:` allowlist; the disable flag is a property of the skill itself, not the subagent.
+
+The repo's `claude-optimizer` skill itself uses `disable-model-invocation: true`. To preload claude-optimizer guidance into a config-editing agent, either remove the flag from `claude-optimizersupaschema/SKILL.md` (changing its repo-wide invocation contract) or split the preload-safe content into a separate skill.
+
+## Sibling skill orchestration
+
+`supaschema/simplify` and `supaschema/elegant` share the orchestration shape: both can be dispatched via `supaschema/team` to apply per-slice work in parallel. The friction analyzed above applies identically to both. After the structural fix landed (every agent's `tools:` list now carries `Skill`), a follow-up `supaschema/team supaschema/elegant` run over the same slices completed without subagent gate deadlocks — the validation that the prevention works.
+
+`supaschema/elegant` is the more aggressive sibling: it rewrites for the simplest correct end state, deleting backward-compat wrappers and parallel type systems where library or framework alternatives exist. `supaschema/simplify` preserves contracts; `supaschema/elegant` may change them. Choose the matching skill based on whether existing call sites must be respected or can be updated in the same change.
+
+## Review checklist
+
+When creating or auditing an agent definition that may receive work via parallel orchestration:
+
+- Does the agent's `tools:` list include `Skill` (or omit `tools:` entirely)?
+- Does the `skills:` preload list cover the agent's known-required path triggers?
+- For agents spawned by `supaschema/team` or `supaschema/batch`, is the path-trigger gate satisfied at startup, or does the agent need runtime invocation?
+- If the agent is locked out of runtime invocation, does the spawn prompt include a "report findings instead of applying" escape clause?

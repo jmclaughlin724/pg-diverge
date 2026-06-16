@@ -1,18 +1,18 @@
 import type { Diagnostic, DiagnosticSeverity, ObjectRef } from "./core.js";
 
-type DiagnosticExtras = {
+interface DiagnosticExtras {
   file?: string | undefined;
   hint?: string | undefined;
   ref?: ObjectRef | undefined;
   schemas?: string[] | undefined;
   statement?: string | undefined;
-};
+}
 
 export function diagnostic(
   code: string,
   severity: DiagnosticSeverity,
   message: string,
-  extras: DiagnosticExtras = {},
+  extras: DiagnosticExtras = {}
 ): Diagnostic {
   const output: Diagnostic = {
     code,
@@ -55,7 +55,7 @@ export function redactSecrets(value: string): string {
   return redactUrlCredentials(value)
     .replace(
       /\b(password|pass|pwd|token|secret|api[_-]?key|service[_-]?role[_-]?key)(\s*[:=]\s*)(["']?)[^"'\s,;)]+/giu,
-      "$1$2$3[redacted]",
+      "$1$2$3[redacted]"
     )
     .replace(/\b(sb_secret_)[A-Za-z0-9_-]+/g, "$1[redacted]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]");
@@ -104,6 +104,8 @@ function formatRef(ref: ObjectRef): string {
 }
 
 export const diagnosticCatalog: Record<string, string> = {
+  SUPA_CONFIG_INVALID:
+    "supaschema.config.json failed schema validation; fix the reported fields against supaschema-config.schema.json.",
   SUPA_CATALOG_EXTRACT_FAILED: "Live catalog extraction failed; check the database URL and role.",
   SUPA_CATALOG_SNAPSHOT_VERSION:
     "The catalog snapshot was produced by a different supaschema model version; hashes may not be comparable.",
@@ -161,6 +163,8 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_MIGRATIONS_TARGET_UNAVAILABLE: "The migrations target database could not be read.",
   SUPA_SYNC_RUNNER_FAILED:
     "The migration runner (supabase CLI) exited nonzero during sync; supaschema gates but the runner owns apply/deploy.",
+  SUPA_SYNC_RUNNER_UNAVAILABLE:
+    "The migration runner (Supabase CLI) could not be launched; it is not installed or not on PATH. supaschema gates and delegates apply to the runner.",
   SUPA_NORMALIZE_FIDELITY:
     "Deparsed SQL did not reparse to the identical parse tree, so the object kept its source text.",
   SUPA_NORMALIZE_UNSUPPORTED:
@@ -177,6 +181,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "Added column needs review: inline constraint, identity/generated, or NOT NULL without default.",
   SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED:
     "Column drops and type changes render data-preserving ALTERs only after a destructive-change hint.",
+  SUPA_PLAN_COLUMN_TYPE_USING_REVIEW:
+    "A column type change renders an identity USING cast; PostgreSQL rejects it unless an assignment cast exists. Review and replace the USING expression for non-trivial conversions.",
   SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED:
     "CREATE INDEX CONCURRENTLY cannot run inside the transaction the migration runner uses.",
   SUPA_PLAN_DEPENDENCY_CYCLE: "Dependency ordering found a reference cycle between objects.",
@@ -199,7 +205,7 @@ export const diagnosticCatalog: Record<string, string> = {
     "A catalog object hashes differently after its rendered SQL is re-extracted; cross-lane diffs would report a false change.",
   SUPA_SELFCHECK_MISSING: "A catalog object disappeared when its rendered SQL was re-extracted.",
   SUPA_SELFCHECK_UNEXPECTED: "Re-extraction produced an object the catalog model does not contain.",
-  SUPA_SUPABASE_MANAGED_SCHEMA: "Supabase-managed schemas are not declarative source owners.",
+  SUPA_SUPABASE_MANAGED_SCHEMA: "Configured managed schemas are not declarative source owners.",
   SUPA_SUPABASE_VIEW_SECURITY_INVOKER:
     "Views in exposed schemas should set security_invoker so RLS applies to the querying role.",
   SUPA_VALIDATOR_FAILED: "A configured external validator reported diagnostics.",
@@ -210,7 +216,7 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_VERIFY_ROLE_CAPABILITY:
     "The verification role cannot CREATE DATABASE; verify needs a role with CREATEDB (on local Supabase stacks prefer supabase_admin).",
   SUPA_VERIFY_STUB_REFERENCE:
-    "Verify failed referencing a Supabase-managed schema that --ensure-environment only stubs minimally; the failure may be a stub limitation, not a real migration defect. Confirm by applying the migration to a real disposable Supabase database (a local stack via supabase db push, or a preview branch). Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.",
+    "Verify failed referencing a managed schema that --ensure-environment only stubs minimally; the failure may be a stub limitation, not a real migration defect. Confirm by applying the migration to a real disposable database that provisions the managed surface. Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.",
   SUPA_VERIFY_FINGERPRINT_MISMATCH:
     "Catalog after from+migration+migration differs from the target catalog.",
   SUPA_VERIFY_RECONVERGENCE:

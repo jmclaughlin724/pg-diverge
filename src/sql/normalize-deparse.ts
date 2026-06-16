@@ -25,7 +25,7 @@ export interface NormalizeResult {
  */
 export async function normalizeObjectSql(
   object: SchemaObject,
-  ast: unknown,
+  ast: unknown
 ): Promise<NormalizeResult> {
   let text: string;
   try {
@@ -37,7 +37,7 @@ export async function normalizeObjectSql(
           "SUPA_NORMALIZE_UNSUPPORTED",
           "warning",
           `deparser cannot render ${object.key}; keeping the source text (${errorMessage(error)})`,
-          { file: object.file, ref: object.ref },
+          { file: object.file, ref: object.ref }
         ),
       ],
     };
@@ -52,7 +52,7 @@ export async function normalizeObjectSql(
           "SUPA_NORMALIZE_FIDELITY",
           "warning",
           `deparsed SQL for ${object.key} does not reparse to the same parse tree; keeping the source text`,
-          { file: object.file, ref: object.ref },
+          { file: object.file, ref: object.ref }
         ),
       ],
     };
@@ -77,7 +77,7 @@ export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnosti
     try {
       text = deparseSync({
         stmts: [{ stmt: statement.node }],
-        version: 170004,
+        version: 170_004,
       } as unknown as Parameters<typeof deparseSync>[0]);
     } catch (error) {
       diagnostics.push(
@@ -85,8 +85,8 @@ export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnosti
           "SUPA_CHECK_DEPARSE_UNSUPPORTED",
           "warning",
           `statement cannot be deparsed for round-trip proof (${errorMessage(error)})`,
-          { statement: statement.text },
-        ),
+          { statement: statement.text }
+        )
       );
       continue;
     }
@@ -98,8 +98,8 @@ export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnosti
           "SUPA_CHECK_DEPARSE_MISMATCH",
           "warning",
           "statement does not round-trip through the deparser to an identical parse tree",
-          { statement: statement.text },
-        ),
+          { statement: statement.text }
+        )
       );
     }
   }

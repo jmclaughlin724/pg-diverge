@@ -31,7 +31,7 @@ describe("source defaults", () => {
     const resolved = await resolveSourceDefaults(
       { from: "git:HEAD", to: "dir:custom" },
       config,
-      async () => "postgresql://ignored",
+      async () => "postgresql://ignored"
     );
 
     expect(resolved).toEqual({ from: "git:HEAD", notice: undefined, to: "dir:custom" });
@@ -41,10 +41,28 @@ describe("source defaults", () => {
     const custom = resolveConfig({ schemaPaths: ["db/schemas"] });
 
     expect(defaultTreeSource(custom)).toBe("dir:db/schemas");
-    const resolved = await resolveSourceDefaults({ from: "git:HEAD" }, custom, async () => {
-      return undefined;
-    });
+    const resolved = await resolveSourceDefaults(
+      { from: "git:HEAD" },
+      custom,
+      async () => undefined
+    );
     expect(resolved.to).toBe("dir:db/schemas");
+    expect(resolved.notice).toContain("--to dir:db/schemas");
+  });
+
+  it("uses config-owned source defaults before database/git fallback", async () => {
+    const custom = resolveConfig({
+      schemaPaths: ["ignored/schemas"],
+      sources: { from: "dump:baseline.sql", to: "dir:db/schemas" },
+    });
+
+    const resolved = await resolveSourceDefaults({}, custom, () =>
+      Promise.reject(new Error("database lookup should not run"))
+    );
+
+    expect(resolved.from).toBe("dump:baseline.sql");
+    expect(resolved.to).toBe("dir:db/schemas");
+    expect(resolved.notice).toContain("--from dump:baseline.sql");
     expect(resolved.notice).toContain("--to dir:db/schemas");
   });
 
@@ -52,7 +70,7 @@ describe("source defaults", () => {
     const resolved = await resolveSourceDefaults(
       {},
       config,
-      async () => "postgresql://postgres:secret@127.0.0.1:5432/postgres",
+      async () => "postgresql://postgres:secret@127.0.0.1:5432/postgres"
     );
 
     expect(resolved.from).toBe("database:postgresql://postgres:secret@127.0.0.1:5432/postgres");
@@ -115,7 +133,7 @@ describe("migration name defaults", () => {
 describe("migrations directory defaults", () => {
   it("prefers the flag over config", () => {
     expect(resolveMigrationsDir("custom/migrations", config)).toBe("custom/migrations");
-    expect(resolveMigrationsDir(undefined, config)).toBe("supabase/migrations");
+    expect(resolveMigrationsDir(undefined, config)).toBe("database/migrations");
   });
 
   it("lists and picks the newest migration file", async () => {

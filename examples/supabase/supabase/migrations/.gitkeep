@@ -1,0 +1,1 @@
+Generated migrations land here when running `supaschema diff` without `--out stdout`.

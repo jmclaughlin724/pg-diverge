@@ -23,10 +23,9 @@ export async function selfCheckCatalog(options: SelfCheckOptions): Promise<SelfC
     .sort((left, right) => left.ordinal - right.ordinal)
     .map((object) => `${object.sql};`)
     .join("\n\n");
-  // The reparse uses the plain postgres adapter: managed-schema policy is a
-  // posture concern, not an identity-parity concern.
+  // Managed-schema policy is a posture concern, not an identity-parity concern.
   const reparsed = await extractObjectsFromSql(script, {
-    config: { adapter: "postgres" },
+    config: { managedSchemas: [] },
     file: "selfcheck:rendered",
   });
   diagnostics.push(...reparsed.diagnostics.filter((item) => item.severity === "error"));
@@ -42,8 +41,8 @@ export async function selfCheckCatalog(options: SelfCheckOptions): Promise<SelfC
           "SUPA_SELFCHECK_MISSING",
           "error",
           `catalog object ${key} disappeared when its rendered SQL was re-extracted`,
-          { ref: object.ref, statement: object.sql },
-        ),
+          { ref: object.ref, statement: object.sql }
+        )
       );
       continue;
     }
@@ -54,8 +53,8 @@ export async function selfCheckCatalog(options: SelfCheckOptions): Promise<SelfC
           "SUPA_SELFCHECK_HASH_MISMATCH",
           "error",
           `catalog object ${key} hashes differently after re-extraction; cross-lane identity would report a false change`,
-          { ref: object.ref, statement: object.sql },
-        ),
+          { ref: object.ref, statement: object.sql }
+        )
       );
     }
   }
@@ -67,8 +66,8 @@ export async function selfCheckCatalog(options: SelfCheckOptions): Promise<SelfC
           "SUPA_SELFCHECK_UNEXPECTED",
           "error",
           `re-extraction produced ${key}, which the catalog model does not contain`,
-          { ref: object.ref, statement: object.sql },
-        ),
+          { ref: object.ref, statement: object.sql }
+        )
       );
     }
   }

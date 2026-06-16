@@ -27,115 +27,158 @@ export async function runDoctor(
     databaseUrl?: string;
     databaseUrlLane?: string;
     resolvedDatabaseUrl?: string;
-  } = {},
+  } = {}
 ): Promise<DoctorReport> {
   const cwd = options.cwd ?? process.cwd();
   const checks: DoctorCheck[] = [];
 
-  checks.push({
-    detail: `running ${process.versions.node}, requires >=${minimumNodeVersion}`,
-    name: "node version",
-    status: nodeMeetsMinimum(process.versions.node) ? "pass" : "fail",
-  });
-
-  try {
-    const parsed = await parseSqlAst("SELECT 1");
-    checks.push({
-      detail:
-        parsed.ast !== undefined ? "libpg-query WASM parser loaded" : "parser returned no AST",
-      name: "sql parser",
-      status: parsed.ast !== undefined ? "pass" : "fail",
-    });
-  } catch (error) {
-    checks.push({ detail: errorMessage(error), name: "sql parser", status: "fail" });
-  }
-
-  checks.push({
-    detail: options.configPath ?? "defaults (no config file found is fine)",
-    name: "config",
-    status: "pass",
-  });
+  checks.push(nodeVersionCheck(), await sqlParserCheck(), configCheck(options.configPath));
 
   const explicit = options.databaseUrl;
   const resolved = options.resolvedDatabaseUrl ?? resolveDatabaseUrl(explicit);
-  const lane =
-    options.databaseUrlLane ??
-    (explicit
-      ? "explicit --database-url"
-      : process.env.SUPASCHEMA_DATABASE_URL
-        ? "SUPASCHEMA_DATABASE_URL"
-        : resolveSupabaseLocalDatabaseUrl()
-          ? "supabase/config.toml auto-discovery"
-          : "none");
-  checks.push({
+  const lane = options.databaseUrlLane ?? doctorDatabaseUrlLane(explicit);
+  checks.push(databaseUrlCheck(resolved, lane), ...(await databaseChecks(resolved)));
+
+  const migrationsDir = resolve(cwd, config.migrationsDir);
+  const hasMigrationsDir = await access(migrationsDir)
+    .then(() => true)
+    .catch(() => false);
+  checks.push(await migrationsHistoryCheck(migrationsDir, hasMigrationsDir, resolved));
+
+  const tree = config.schemaPaths[0] ?? "database/schemas";
+  const hasTree = await access(resolve(cwd, tree))
+    .then(() => true)
+    .catch(() => false);
+  checks.push(declarativeTreeCheck(tree, hasTree));
+
+  return { checks, healthy: checks.every((item) => item.status !== "fail") };
+}
+
+function nodeVersionCheck(): DoctorCheck {
+  return {
+    detail: `running ${process.versions.node}, requires >=${minimumNodeVersion}`,
+    name: "node version",
+    status: nodeMeetsMinimum(process.versions.node) ? "pass" : "fail",
+  };
+}
+
+async function sqlParserCheck(): Promise<DoctorCheck> {
+  try {
+    const parsed = await parseSqlAst("SELECT 1");
+    return {
+      detail:
+        parsed.ast === undefined ? "parser returned no AST" : "libpg-query WASM parser loaded",
+      name: "sql parser",
+      status: parsed.ast === undefined ? "fail" : "pass",
+    };
+  } catch (error) {
+    return { detail: errorMessage(error), name: "sql parser", status: "fail" };
+  }
+}
+
+function configCheck(configPath: string | undefined): DoctorCheck {
+  return {
+    detail: configPath ?? "defaults (no config file found is fine)",
+    name: "config",
+    status: "pass",
+  };
+}
+
+function databaseUrlCheck(resolved: string | undefined, lane: string): DoctorCheck {
+  return {
     detail: resolved ? `resolved via ${lane}` : "no URL resolves; database commands will skip",
     name: "database url",
     status: resolved ? "pass" : "skip",
-  });
+  };
+}
 
-  if (resolved) {
-    const client = new Client({ connectionString: resolved });
-    try {
-      await client.connect();
-      const capability = await client.query<{ can_create: boolean }>(
-        "SELECT (rolcreatedb OR rolsuper) AS can_create FROM pg_catalog.pg_roles WHERE rolname = current_user",
-      );
-      checks.push({ detail: "SELECT 1 succeeded", name: "database reachable", status: "pass" });
-      const canCreate = capability.rows[0]?.can_create === true;
-      checks.push({
+async function databaseChecks(resolved: string | undefined): Promise<DoctorCheck[]> {
+  if (!resolved) {
+    return [];
+  }
+  const client = new Client({ connectionString: resolved });
+  try {
+    await client.connect();
+    const capability = await client.query<{ can_create: boolean }>(
+      "SELECT (rolcreatedb OR rolsuper) AS can_create FROM pg_catalog.pg_roles WHERE rolname = current_user"
+    );
+    const canCreate = capability.rows[0]?.can_create === true;
+    return [
+      { detail: "SELECT 1 succeeded", name: "database reachable", status: "pass" },
+      {
         detail: canCreate
           ? "role can CREATE DATABASE (verify/corpus will work)"
           : "role lacks CREATEDB; verify/corpus need a stronger role",
         name: "createdb capability",
         status: canCreate ? "pass" : "fail",
-      });
-    } catch (error) {
-      checks.push({ detail: errorMessage(error), name: "database reachable", status: "fail" });
-    } finally {
-      await client.end().catch(() => undefined);
-    }
+      },
+    ];
+  } catch (error) {
+    return [{ detail: errorMessage(error), name: "database reachable", status: "fail" }];
+  } finally {
+    await client.end().catch(() => undefined);
   }
+}
 
-  const migrationsDir = resolve(cwd, "supabase/migrations");
-  const hasMigrationsDir = await access(migrationsDir)
-    .then(() => true)
-    .catch(() => false);
-  if (hasMigrationsDir && resolved) {
-    const { report } = await migrationsStatus({ databaseUrl: resolved, directory: migrationsDir });
-    const broken = report.ghosts.length + report.outOfOrder.length;
-    checks.push({
-      detail: `${report.applied.length} applied, ${report.pending.length} pending, ${report.ghosts.length} ghosts, ${report.outOfOrder.length} out-of-order`,
-      name: "migrations history",
-      status: broken === 0 ? "pass" : "fail",
-    });
-  } else {
-    checks.push({
+async function migrationsHistoryCheck(
+  migrationsDir: string,
+  hasMigrationsDir: boolean,
+  resolved: string | undefined
+): Promise<DoctorCheck> {
+  if (!(hasMigrationsDir && resolved)) {
+    return {
       detail: hasMigrationsDir ? "no database to compare against" : `${migrationsDir} not found`,
       name: "migrations history",
       status: "skip",
-    });
+    };
   }
+  const { report } = await migrationsStatus({ databaseUrl: resolved, directory: migrationsDir });
+  const broken = report.ghosts.length + report.outOfOrder.length;
+  return {
+    detail: `${report.applied.length} applied, ${report.pending.length} pending, ${report.ghosts.length} ghosts, ${report.outOfOrder.length} out-of-order`,
+    name: "migrations history",
+    status: broken === 0 ? "pass" : "fail",
+  };
+}
 
-  const tree = config.schemaPaths[0] ?? "supabase/schemas";
-  const hasTree = await access(resolve(cwd, tree))
-    .then(() => true)
-    .catch(() => false);
-  checks.push({
+function declarativeTreeCheck(tree: string, hasTree: boolean): DoctorCheck {
+  return {
     detail: hasTree ? `${tree} exists` : `${tree} not found (set schemaPaths in config)`,
     name: "declarative tree",
     status: hasTree ? "pass" : "skip",
-  });
-
-  return { checks, healthy: checks.every((item) => item.status !== "fail") };
+  };
 }
 
 export function renderDoctorReport(report: DoctorReport): string {
   const lines = report.checks.map((item) => {
-    const badge = item.status === "pass" ? "PASS" : item.status === "fail" ? "FAIL" : "SKIP";
+    const badge = doctorStatusBadge(item.status);
     return `${badge}  ${item.name}: ${item.detail}`;
   });
   lines.push(report.healthy ? "doctor: healthy" : "doctor: issues found");
   return `${lines.join("\n")}\n`;
+}
+
+function doctorDatabaseUrlLane(explicit: string | undefined): string {
+  if (explicit) {
+    return "explicit --database-url";
+  }
+  if (process.env.SUPASCHEMA_DATABASE_URL) {
+    return "SUPASCHEMA_DATABASE_URL";
+  }
+  if (resolveSupabaseLocalDatabaseUrl()) {
+    return "supabase/config.toml auto-discovery";
+  }
+  return "none";
+}
+
+function doctorStatusBadge(status: DoctorReport["checks"][number]["status"]): string {
+  if (status === "pass") {
+    return "PASS";
+  }
+  if (status === "fail") {
+    return "FAIL";
+  }
+  return "SKIP";
 }
 
 function errorMessage(error: unknown): string {

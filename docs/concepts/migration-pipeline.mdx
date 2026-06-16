@@ -1,19 +1,33 @@
 ---
-title: "The supaschema Migration Pipeline: All Six Stages"
+title: "Migration pipeline"
 description: "How supaschema extracts, diffs, renders, checks, and verifies a migration from schema files to production-ready SQL, without ever touching your database."
+keywords: ["migration pipeline", "parser", "planner", "renderer", "checker"]
 ---
 
-supaschema's model is a structured pipeline of six stages — Extract, Plan, Render, Check, Verify, and Apply. `supaschema diff` performs the first three (Extract, Plan, Render) and writes the migration file; **Check, Verify, and Apply are separate, explicit steps** you run on the result (`supaschema check`, `supaschema verify`, and your deployment runner). Understanding each stage helps you interpret error messages, tune safety settings, and trust the output. This page walks through every stage in detail.
+supaschema has six stages:
+
+1. Extract
+2. Plan
+3. Render
+4. Check
+5. Verify
+6. Apply
+
+`supaschema diff` runs the first three and writes the migration.
+
+`check`, `verify`, and apply are separate steps.
 
 <Note>
-  supaschema **never writes to your target database**. Generating a migration from `dir:` files or a `git:` ref needs no database at all; a `database:` source connects only to **read** the current catalog (it issues read queries and makes no changes — though it does not set the session `READ ONLY`). The Verify stage (below) is the one step that needs a server, and it creates and drops its own **disposable** databases — never your target. Applying the migration is always a separate, explicit step owned by your runner (such as the Supabase CLI or a custom script).
+  supaschema never writes to your target database. `dir:` and `git:` sources
+  need no database. `database:` sources read catalog state only. `verify`
+  creates disposable databases. Apply is always owned by your runner.
 </Note>
 
-***
+---
 
-## Pipeline Overview
+## Pipeline overview
 
-```
+```text
 ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
 │ EXTRACT  │───▶│  PLAN    │───▶│  RENDER  │───▶│  CHECK   │───▶│  VERIFY  │
 │          │    │          │    │          │    │          │    │          │
@@ -29,198 +43,233 @@ supaschema's model is a structured pipeline of six stages — Extract, Plan, Ren
 <Steps>
   ### Stage 1 — Extract
 
-  supaschema resolves both the `--from` and `--to` sources into a **SchemaModel** each. A SchemaModel is a structured, in-memory catalogue of every database object found in that source, with each object carrying a normalised definition and a deterministic content hash.
+supaschema resolves `--from` and `--to` into SchemaModels.
 
-  The extraction process varies by source type:
+A SchemaModel is a structured catalog of database objects. Each object has a normalized definition and deterministic hash.
 
-  | Source type | How extraction works                                                                         |
-  | ----------- | -------------------------------------------------------------------------------------------- |
-  | `dir:`      | SQL files are parsed with PostgreSQL's WASM parser; `CREATE` statements become model entries |
-  | `git:`      | Files at the given ref are checked out in-memory and parsed the same way                     |
-  | `database:` | System catalogs (`pg_class`, `information_schema`, etc.) are queried read-only               |
-  | `dump:`     | A single SQL file is parsed as if it were a `dir:` with one file                             |
-  | `catalog:`  | The JSON snapshot is deserialised directly into a SchemaModel                                |
+The extraction process varies by source type:
 
-  After extraction you have two models: the **current state** (from) and the **desired state** (to). Every subsequent stage works from these two models — no source is read again.
+| Source type | How extraction works |
+| --- | --- |
+| `dir:` | SQL files are parsed with PostgreSQL's WASM parser; `CREATE` statements become model entries |
+| `git:` | Files at the given ref are checked out in-memory and parsed the same way |
+| `database:` | System catalogs (`pg_class`, `information_schema`, etc.) are queried read-only |
+| `dump:` | A single SQL file is parsed as if it were a `dir:` with one file |
+| `catalog:` | The JSON snapshot is deserialised directly into a SchemaModel |
 
-  ```bash
-  # You can inspect what supaschema extracted from any source
-  supaschema inspect --from dir:supabase/schemas
-  supaschema inspect --from database:$DATABASE_URL
-  ```
+After extraction, the rest of the pipeline uses only these two models.
 
-  ```json
-  // Abbreviated inspect output
-  {
-    "fingerprint": "e7b4a1d3f2c9...",
-    "objectCount": 38,
-    "objects": [
-      { "kind": "table",    "schema": "public", "name": "orders",   "hash": "a3f9c2..." },
-      { "kind": "index",    "schema": "public", "name": "orders_user_id_idx", "hash": "b2e811..." },
-      { "kind": "function", "schema": "public", "name": "place_order", "hash": "d4c73f..." }
-    ]
-  }
-  ```
+```bash
+# You can inspect what supaschema extracted from any source
+supaschema inspect --from dir:database/schemas
+supaschema inspect --from database:$DATABASE_URL
+```
 
-  ### Stage 2 — Plan
+```json
+// Abbreviated inspect output
+{
+  "fingerprint": "e7b4a1d3f2c9...",
+  "objectCount": 38,
+  "objects": [
+    {
+      "kind": "table",
+      "schema": "public",
+      "name": "orders",
+      "hash": "a3f9c2..."
+    },
+    {
+      "kind": "index",
+      "schema": "public",
+      "name": "orders_user_id_idx",
+      "hash": "b2e811..."
+    },
+    {
+      "kind": "function",
+      "schema": "public",
+      "name": "place_order",
+      "hash": "d4c73f..."
+    }
+  ]
+}
+```
 
-  Once both SchemaModels exist, supaschema calls `planSchemaDiff()` to compute a **MigrationPlan** — an ordered list of operations describing every change needed to evolve the "from" state into the "to" state.
+### Stage 2 — Plan
 
-  Each operation in the plan carries:
+Planning computes the ordered changes from current state to desired state.
 
-  ```typescript
-  interface MigrationOperation {
-    kind:        "create" | "alter" | "replace" | "drop" | "rename";
-    ref:         ObjectRef;   // { kind: ObjectKind, schema, name, ... }
-    key:         string;      // fully-qualified stable identity string
-    destructive: boolean;     // would this lose data?
-    blocked:     boolean;     // requires an explicit hint to proceed
-    diagnostics: Diagnostic[];
-  }
-  ```
+Each operation in the plan carries:
 
-  **Operation kinds explained:**
+```typescript
+interface MigrationOperation {
+  kind: "create" | "alter" | "replace" | "drop" | "rename";
+  ref: ObjectRef; // { kind: ObjectKind, schema, name, ... }
+  key: string; // fully-qualified stable identity string
+  destructive: boolean; // would this lose data?
+  blocked: boolean; // requires an explicit hint to proceed
+  diagnostics: Diagnostic[];
+}
+```
 
-  * **`create`** — the object exists in "to" but not in "from". Always safe.
-  * **`alter`** — the object exists in both but the definition changed. Safe for most column and constraint changes.
-  * **`replace`** — the object must be dropped and recreated (e.g. changing a function's return type or an enum's label). Potentially destructive.
-  * **`drop`** — the object exists in "from" but not in "to". Always destructive.
-  * **`rename`** — supaschema detected a rename from an explicit hint. Produces `ALTER TABLE … RENAME` rather than a drop-and-create pair.
+**Operation kinds explained:**
 
-  <Warning>
-    Operations with `destructive: true` are blocked by default. supaschema will refuse to render SQL for them unless you add the exact object key to the `hints.destructive` list in your config after review. This prevents accidental data loss during automated deployments.
-  </Warning>
+- **`create`** — the object exists in "to" but not in "from". Always safe.
 
-  ### Stage 3 — Render
+- **`alter`** — the object exists in both but the definition changed. Safe for most column and constraint changes.
 
-  The planner passes the MigrationPlan to the **renderer**, which turns operations into SQL text. The renderer respects **dependency order** — if creating table B requires table A to exist first, table A's `CREATE TABLE` appears earlier in the output, regardless of which file defined it.
+- **`replace`** — the object must be dropped and recreated (e.g. changing a function's return type or an enum's label). Potentially destructive.
 
-  Dependency ordering handles:
+- **`drop`** — the object exists in "from" but not in "to". Always destructive.
 
-  * Foreign key references (referenced table before referencing table)
-  * View dependencies (base tables before views, views before views that query them)
-  * Function dependencies (types before functions that use them)
-  * Policy dependencies (tables and roles before RLS policies)
+- **`rename`** — supaschema detected a rename from an explicit hint. Produces `ALTER TABLE … RENAME` rather than a drop-and-create pair.
 
-  The renderer also applies **idempotency wrappers** where needed:
+<Warning>
+  Operations with `destructive: true` are blocked by default. supaschema will
+  refuse to render SQL for them unless you add the exact object key to the
+  `hints.destructive` list in your config after review. This prevents accidental
+  data loss during automated deployments.
+</Warning>
 
-  ```sql
-  -- Rendered output (idempotent)
-  ALTER TABLE public.orders
-    ADD COLUMN IF NOT EXISTS fulfilled_at timestamptz;
+### Stage 3 — Render
 
-  CREATE INDEX IF NOT EXISTS orders_user_id_idx
-    ON public.orders (user_id);
-  ```
+Rendering turns the plan into SQL.
 
-  If any operation in the plan is `blocked: true` (i.e. destructive and not explicitly allowed), the render stage emits an error listing every blocked operation and exits before producing any SQL. This is intentional — a partially rendered migration with some operations omitted would leave the schema in an inconsistent state.
+The renderer respects dependency order. If table B needs table A, table A is created first.
 
-  <Tip>
-    To allow a specific destructive operation, add the object key to `hints.destructive` in your `supaschema.config.json`. This makes the intent explicit and keeps the approval tracked in version control alongside the schema change.
-  </Tip>
+Dependency ordering handles:
 
-  ### Stage 4 — Check
+- Foreign key references (referenced table before referencing table)
+- View dependencies (base tables before views, views before views that query them)
+- Function dependencies (types before functions that use them)
+- Policy dependencies (tables and roles before RLS policies)
 
-  Check is a **separate, explicit step** — `diff` writes the migration (and validates the lineage chain), but it does not run the replay-safety rules. You run them with `supaschema check` (the bundled agent hook and `supaschema sync` invoke it for you). This stage runs more than 20 replay-safety rules against the rendered SQL without executing it.
+The renderer also applies **idempotency wrappers** where needed:
 
-  **Replay-safe** means: the migration can be applied to a database that is already at the target state without raising an error or changing any data. In other words, applying it twice produces the same result as applying it once.
+```sql
+-- Rendered output (idempotent)
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS fulfilled_at timestamptz;
 
-  Rules enforced by the checker include:
+CREATE INDEX IF NOT EXISTS orders_user_id_idx
+  ON public.orders (user_id);
+```
 
-  | Category          | Example rules                                                                   |
-  | ----------------- | ------------------------------------------------------------------------------- |
-  | Idempotency       | `CREATE TABLE` must use `IF NOT EXISTS`; `ADD COLUMN` must use `IF NOT EXISTS`  |
-  | Destructive ops   | Any `DROP` without an explicit allow hint is a check failure                    |
-  | Constraint safety | Adding a `NOT NULL` constraint to an existing column with no default is flagged |
-  | Index safety      | `CREATE INDEX` without `CONCURRENTLY` on a large table triggers a warning       |
-  | Enum safety       | Adding a value to an enum in a transaction block is flagged                     |
-  | Policy safety     | A `CREATE POLICY` not preceded by `DROP POLICY IF EXISTS` is flagged (`SUPA_CHECK_POLICY_REPLACEMENT`) — `CREATE POLICY` has no `OR REPLACE` form |
-  | Sequence safety   | Changing a sequence `owned by` a column that no longer exists is flagged        |
+If an operation is blocked, rendering stops before producing SQL. supaschema never writes a partial migration that omits unsafe operations.
 
-  ```bash
-  # Run only static checks against your migrations directory (no database needed)
-  supaschema check
-  ```
+<Tip>
+  To allow a specific destructive operation, add the object key to
+  `hints.destructive` in your `supaschema.config.json`. This makes the intent
+  explicit and keeps the approval tracked in version control alongside the
+  schema change.
+</Tip>
 
-  The `check` command exits with code `0` when all rules pass, `2` when any rule fails, and `1` when the pipeline itself encounters a runtime error. This makes it suitable as a standalone CI gate.
+### Stage 4 — Check
 
-  ### Stage 5 — Verify
+Check is a separate step.
 
-  The `verify` stage is the final and strongest safety layer. It connects to the PostgreSQL server referenced by `--database-url`, creates two temporary databases on that server, applies the migration twice, and confirms that:
+`diff` writes the migration. `supaschema check` runs the replay-safety rules without executing SQL.
 
-  1. The first application succeeds without error.
-  2. The second application also succeeds without error (idempotency proof).
-  3. After the second application, the schema fingerprint matches the expected "to" state.
+Replay-safe means applying the migration twice produces the same result as applying it once.
 
-  ```bash
-  # Run the verify stage against the newest pending migration
-  supaschema verify
-  ```
+Rules enforced by the checker include:
 
-  If the second application changes the schema state — for example, because a `CREATE TABLE` was rendered without `IF NOT EXISTS` — the verify stage fails and reports exactly which objects differed between application one and application two.
+| Category | Example rules |
+| --- | --- |
+| Idempotency | `CREATE TABLE` must use `IF NOT EXISTS`; `ADD COLUMN` must use `IF NOT EXISTS` |
+| Destructive ops | Any `DROP` without an explicit allow hint is a check failure |
+| Constraint safety | Adding a `NOT NULL` constraint to an existing column with no default is flagged |
+| Index safety | `CREATE INDEX` without `CONCURRENTLY` on a large table triggers a warning |
+| Enum safety | Adding a value to an enum in a transaction block is flagged |
+| Policy safety | A `CREATE POLICY` not preceded by `DROP POLICY IF EXISTS` is flagged (`SUPA_CHECK_POLICY_REPLACEMENT`) — `CREATE POLICY` has no `OR REPLACE` form |
+| Sequence safety | Changing a sequence `owned by` a column that no longer exists is flagged |
+
+```bash
+# Run only static checks against your migrations directory (no database needed)
+supaschema check
+```
+
+The `check` command exits with code `0` when all rules pass, `2` when any rule fails, and `1` when the pipeline itself encounters a runtime error. This makes it suitable as a standalone CI gate.
+
+### Stage 5 — Verify
+
+Verify is the strongest safety layer.
+
+It creates two temporary databases and confirms:
+
+1. The first application succeeds without error.
+2. The second application also succeeds without error (idempotency proof).
+3. After the second application, the schema fingerprint matches the expected "to" state.
+
+```bash
+# Run the verify stage against the newest pending migration
+supaschema verify
+```
+
+If the second application changes the schema state — for example, because a `CREATE TABLE` was rendered without `IF NOT EXISTS` — the verify stage fails and reports exactly which objects differed between application one and application two.
 
   <Note>
     `verify` needs a disposable PostgreSQL server whose role can `CREATE DATABASE`. A local Supabase stack, local PostgreSQL service, or CI service container works; supaschema creates and drops the temporary databases itself unless `--keep-databases` is set.
   </Note>
 </Steps>
 
-***
+---
 
-## Stage 6 — Apply (Your Runner)
+## Stage 6 — apply
 
-supaschema stops at the end of the Verify stage. It outputs the finished migration SQL to your migrations directory (by default `supabase/migrations/`) and then steps back.
+supaschema stops after verify.
 
-Applying that SQL to a real database is the responsibility of **your deployment runner**:
+It writes migration SQL to your configured migrations directory, then steps back.
+
+Your deployment runner applies the SQL:
 
 ```bash
-# Apply with the Supabase CLI
+# Apply with psql directly
+psql $DATABASE_URL -f database/migrations/0012_add_order_status.sql
+
+# Apply with the Supabase CLI in a Supabase project
 supabase db push
 
-# Apply with psql directly
-psql $DATABASE_URL -f supabase/migrations/0012_add_order_status.sql
-
 # Generate and pipe to psql in one step
-supaschema diff --from database:$DATABASE_URL --to dir:supabase/schemas --out stdout \
+supaschema diff --out stdout \
   | psql $DATABASE_URL
 ```
 
-This separation is intentional. supaschema never holds a connection to your production database, which means it cannot accidentally apply a migration at the wrong moment, and it fits naturally into any existing deployment pipeline.
+This separation is intentional. supaschema cannot apply a production migration at the wrong moment.
 
-***
+---
 
 ## Exit Codes
 
 supaschema uses consistent exit codes across all commands so you can rely on them in CI scripts:
 
-| Code | Meaning                                                                   |
-| ---- | ------------------------------------------------------------------------- |
-| `0`  | Success — pipeline completed, all checks passed                           |
-| `1`  | Runtime error — an unexpected problem (parse failure, missing file, etc.) |
-| `2`  | Diagnostic errors — at least one check rule or validation error was found |
-| `3`  | Drift found — `--fail-on-diff` detected operations in the plan            |
+| Code | Meaning |
+| --- | --- |
+| `0` | Success — pipeline completed, all checks passed |
+| `1` | Runtime error — an unexpected problem (parse failure, missing file, etc.) |
+| `2` | Diagnostic errors — at least one check rule or validation error was found |
+| `3` | Drift found — `--fail-on-diff` detected operations in the plan |
 
 ```bash
-supaschema diff --from git:origin/main --to dir:supabase/schemas --fail-on-diff
+supaschema diff --from git:origin/main --to dir:database/schemas --fail-on-diff
 if [ $? -eq 3 ]; then
   echo "Schema has pending changes — a migration needs to be generated and reviewed"
 fi
 ```
 
-***
+---
 
-## Putting It All Together
+## Putting it together
 
 A typical end-to-end developer workflow looks like this:
 
 ```bash
 # 1. Edit your schema files
-vim supabase/schemas/orders.sql
+vim database/schemas/orders.sql
 
 # 2. Preview the planned migration (dry-run: Extract + Plan + Render, no writes)
-supaschema diff --from database:$LOCAL_URL --to dir:supabase/schemas --dry-run
+supaschema diff --dry-run
 
 # 3. Generate the migration file (Extract + Plan + Render; diff does not run Check)
-supaschema diff --from database:$LOCAL_URL --to dir:supabase/schemas
+supaschema diff
 
 # 4. Run the replay-safety checks on the generated migration (separate step)
 supaschema check

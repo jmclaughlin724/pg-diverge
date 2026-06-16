@@ -1,0 +1,60 @@
+{
+  "$schema": "https://pg-language-server.com/latest/schema.json",
+  "extends": [],
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true,
+    "defaultBranch": "main"
+  },
+  "files": {
+    "include": [
+      "migrations/**/*.sql",
+      "database/migrations/**/*.sql",
+      "supabase/migrations/**/*.sql",
+      "neon/migrations/**/*.sql",
+      "aws-postgresql/migrations/**/*.sql",
+      "cloud-sql/migrations/**/*.sql",
+      "alloydb/migrations/**/*.sql",
+      "azure-postgresql/migrations/**/*.sql"
+    ],
+    "ignore": [
+      "benchmarks/**",
+      "corpus/**",
+      "tests/fixtures/**",
+      "examples/**/schemas/**",
+      "database/schemas/**",
+      "supabase/schemas/**",
+      "neon/schemas/**",
+      "aws-postgresql/schemas/**",
+      "cloud-sql/schemas/**",
+      "alloydb/schemas/**",
+      "azure-postgresql/schemas/**"
+    ],
+    "maxSize": 1048576
+  },
+  "migrations": {
+    "migrationsDir": "database/migrations"
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "splinter": {
+    "enabled": false
+  },
+  "format": {
+    "enabled": false
+  },
+  "pglinter": {
+    "enabled": false
+  },
+  "typecheck": {
+    "enabled": false
+  },
+  "plpgsqlCheck": {
+    "enabled": false
+  }
+}

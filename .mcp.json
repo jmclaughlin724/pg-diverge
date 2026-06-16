@@ -1,0 +1,74 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "cloudflare-api-token",
+      "description": "Cloudflare API token",
+      "password": true
+    }
+  ],
+  "mcpServers": {
+    "cloudflare-api": {
+      "type": "http",
+      "url": "https://mcp.cloudflare.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:cloudflare-api-token}"
+      }
+    },
+    "cloudflare-docs": {
+      "type": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "cclsp": {
+      "command": "npx",
+      "args": ["cclsp@0.7.0"],
+      "env": {
+        "CCLSP_CONFIG_PATH": ".claude/cclsp.json"
+      }
+    },
+    "supaschema": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--package",
+        "supaschema-agent-mcp",
+        "fastmcp",
+        "run",
+        "fastmcp.json",
+        "--skip-env"
+      ]
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "mintlify": {
+      "type": "http",
+      "url": "https://mintlify.com/docs/mcp"
+    },
+    "next-devtools": {
+      "command": "npx",
+      "args": ["-y", "next-devtools-mcp@latest"]
+    },
+    "openaiDeveloperDocs": {
+      "type": "http",
+      "url": "https://developers.openai.com/mcp"
+    },
+    "sentry": {
+      "type": "http",
+      "url": "https://mcp.sentry.dev/mcp/anilize/anilize"
+    },
+    "ultracite": {
+      "type": "http",
+      "url": "https://docs.ultracite.ai/mcp"
+    },
+    "zod": {
+      "type": "http",
+      "url": "https://mcp.inkeep.com/zod/mcp"
+    },
+    "supaschema-docs": {
+      "type": "http",
+      "url": "https://supaschema.com/docs/mcp"
+    }
+  }
+}

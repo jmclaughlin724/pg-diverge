@@ -19,7 +19,7 @@ function errors(model: Awaited<ReturnType<typeof modelFromSql>>) {
 describe("split privilege aggregation", () => {
   it("suppresses no-op schema revokes (no default, nothing granted) without duplicates", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nREVOKE CREATE ON SCHEMA app FROM PUBLIC;\nREVOKE USAGE ON SCHEMA app FROM PUBLIC;\n",
+      "CREATE SCHEMA app;\nREVOKE CREATE ON SCHEMA app FROM PUBLIC;\nREVOKE USAGE ON SCHEMA app FROM PUBLIC;\n"
     );
 
     expect(errors(model)).toEqual([]);
@@ -30,7 +30,7 @@ describe("split privilege aggregation", () => {
 
   it("nets a grant fully undone by a later revoke to nothing", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nGRANT USAGE ON SCHEMA app TO PUBLIC;\nREVOKE USAGE ON SCHEMA app FROM PUBLIC;\n",
+      "CREATE SCHEMA app;\nGRANT USAGE ON SCHEMA app TO PUBLIC;\nREVOKE USAGE ON SCHEMA app FROM PUBLIC;\n"
     );
 
     // The catalog records no ACL entry after grant-then-full-revoke, so the
@@ -40,7 +40,7 @@ describe("split privilege aggregation", () => {
 
   it("drops a revoke superseded by a later grant and keeps the grant", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nREVOKE ALL ON SCHEMA app FROM PUBLIC;\nGRANT USAGE ON SCHEMA app TO PUBLIC;\n",
+      "CREATE SCHEMA app;\nREVOKE ALL ON SCHEMA app FROM PUBLIC;\nGRANT USAGE ON SCHEMA app TO PUBLIC;\n"
     );
 
     const grants = model.objects.filter((object) => object.ref.kind === "grant");
@@ -49,7 +49,7 @@ describe("split privilege aggregation", () => {
 
   it("keeps revokes of built-in PUBLIC defaults and suppresses grants restating them", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE FUNCTION app.f() RETURNS int LANGUAGE sql AS 'SELECT 1';\nREVOKE ALL ON FUNCTION app.f() FROM PUBLIC;\nCREATE FUNCTION app.g() RETURNS int LANGUAGE sql AS 'SELECT 2';\nGRANT EXECUTE ON FUNCTION app.g() TO PUBLIC;\n",
+      "CREATE SCHEMA app;\nCREATE FUNCTION app.f() RETURNS int LANGUAGE sql AS 'SELECT 1';\nREVOKE ALL ON FUNCTION app.f() FROM PUBLIC;\nCREATE FUNCTION app.g() RETURNS int LANGUAGE sql AS 'SELECT 2';\nGRANT EXECUTE ON FUNCTION app.g() TO PUBLIC;\n"
     );
 
     const grants = model.objects.filter((object) => object.ref.kind === "grant");
@@ -59,10 +59,10 @@ describe("split privilege aggregation", () => {
 
   it("hashes a split revoke pair identically to the single-statement form", async () => {
     const split = await modelFromSql(
-      "CREATE SCHEMA app;\nREVOKE CREATE ON SCHEMA app FROM PUBLIC;\nREVOKE USAGE ON SCHEMA app FROM PUBLIC;\n",
+      "CREATE SCHEMA app;\nREVOKE CREATE ON SCHEMA app FROM PUBLIC;\nREVOKE USAGE ON SCHEMA app FROM PUBLIC;\n"
     );
     const single = await modelFromSql(
-      "CREATE SCHEMA app;\nREVOKE ALL ON SCHEMA app FROM PUBLIC;\n",
+      "CREATE SCHEMA app;\nREVOKE ALL ON SCHEMA app FROM PUBLIC;\n"
     );
 
     expect(split.fingerprint).toBe(single.fingerprint);
@@ -70,7 +70,7 @@ describe("split privilege aggregation", () => {
 
   it("merges partial unions without collapsing below the full set", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO PUBLIC;\nGRANT INSERT, UPDATE ON TABLE app.t TO PUBLIC;\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO PUBLIC;\nGRANT INSERT, UPDATE ON TABLE app.t TO PUBLIC;\n"
     );
 
     expect(errors(model)).toEqual([]);
@@ -81,7 +81,7 @@ describe("split privilege aggregation", () => {
 
   it("keeps duplicate diagnostics when grant options conflict", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO PUBLIC;\nGRANT INSERT ON TABLE app.t TO PUBLIC WITH GRANT OPTION;\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO PUBLIC;\nGRANT INSERT ON TABLE app.t TO PUBLIC WITH GRANT OPTION;\n"
     );
 
     expect(errors(model).map((item) => item.code)).toContain("SUPA_EXTRACT_DUPLICATE_OBJECT");
@@ -89,7 +89,7 @@ describe("split privilege aggregation", () => {
 
   it("merges split default-privilege statements with a real default to revoke", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO PUBLIC;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT INSERT ON TABLES TO PUBLIC;\n",
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO PUBLIC;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT INSERT ON TABLES TO PUBLIC;\n"
     );
 
     expect(errors(model)).toEqual([]);
@@ -100,7 +100,7 @@ describe("split privilege aggregation", () => {
 
   it("suppresses no-op default-privilege revokes for grantees with no built-in default", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE SELECT ON TABLES FROM PUBLIC;\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;\n",
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE SELECT ON TABLES FROM PUBLIC;\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;\n"
     );
 
     const defaults = model.objects.filter((object) => object.ref.kind === "default-privilege");
@@ -113,10 +113,10 @@ describe("split privilege aggregation", () => {
 describe("standalone column default amendments", () => {
   it("hashes ALTER COLUMN SET DEFAULT identically to the inline declaration", async () => {
     const altered = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ALTER COLUMN id SET DEFAULT 5;\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ALTER COLUMN id SET DEFAULT 5;\n"
     );
     const inline = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint DEFAULT 5);\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint DEFAULT 5);\n"
     );
 
     expect(errors(altered)).toEqual([]);
@@ -128,7 +128,7 @@ describe("standalone column default amendments", () => {
 
   it("DROP DEFAULT cancels an inline default", async () => {
     const dropped = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint DEFAULT 5);\nALTER TABLE app.t ALTER COLUMN id DROP DEFAULT;\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint DEFAULT 5);\nALTER TABLE app.t ALTER COLUMN id DROP DEFAULT;\n"
     );
     const bare = await modelFromSql("CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\n");
 
@@ -147,7 +147,7 @@ describe("standalone column default amendments", () => {
 describe("rls facet merge", () => {
   it("merges ENABLE and FORCE into one identity without duplicates", async () => {
     const model = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\nALTER TABLE ONLY app.t FORCE ROW LEVEL SECURITY;\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\nALTER TABLE ONLY app.t FORCE ROW LEVEL SECURITY;\n"
     );
 
     expect(errors(model)).toEqual([]);
@@ -161,10 +161,10 @@ describe("rls facet merge", () => {
 describe("sequence OWNED BY amendments", () => {
   it("hashes a standalone ALTER SEQUENCE OWNED BY identically to the inline form", async () => {
     const altered = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nCREATE SEQUENCE app.s;\nALTER SEQUENCE app.s OWNED BY app.t.id;\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nCREATE SEQUENCE app.s;\nALTER SEQUENCE app.s OWNED BY app.t.id;\n"
     );
     const inline = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nCREATE SEQUENCE app.s OWNED BY app.t.id;\n",
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nCREATE SEQUENCE app.s OWNED BY app.t.id;\n"
     );
 
     expect(errors(altered)).toEqual([]);
@@ -222,7 +222,7 @@ describe("rls facet identity", () => {
     const base =
       "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\n";
     const withOnly = await modelFromSql(
-      `${base}ALTER TABLE ONLY app.t FORCE ROW LEVEL SECURITY;\n`,
+      `${base}ALTER TABLE ONLY app.t FORCE ROW LEVEL SECURITY;\n`
     );
     const withoutOnly = await modelFromSql(`${base}ALTER TABLE app.t FORCE ROW LEVEL SECURITY;\n`);
 
@@ -237,7 +237,7 @@ describe("extension namespace filtering", () => {
     const root = await mkdtemp(join(tmpdir(), "supa-ext-exclude-"));
     await writeFile(
       join(root, "001.sql"),
-      "CREATE EXTENSION IF NOT EXISTS pg_graphql WITH SCHEMA graphql;\nCREATE EXTENSION IF NOT EXISTS pgmq;\nCREATE SCHEMA app;\n",
+      "CREATE EXTENSION IF NOT EXISTS pg_graphql WITH SCHEMA graphql;\nCREATE EXTENSION IF NOT EXISTS pgmq;\nCREATE SCHEMA app;\n"
     );
     const model = await extractSourceModel(`dir:${root}`, {
       config: { schemas: { exclude: ["graphql"], include: [] } },
@@ -254,14 +254,14 @@ describe("extension namespace filtering", () => {
     const root = await mkdtemp(join(tmpdir(), "supa-ext-keep-"));
     await writeFile(
       join(root, "001.sql"),
-      "CREATE EXTENSION IF NOT EXISTS pgmq;\nCREATE SCHEMA app;\n",
+      "CREATE EXTENSION IF NOT EXISTS pgmq;\nCREATE SCHEMA app;\n"
     );
     const model = await extractSourceModel(`dir:${root}`, {
       config: { schemas: { exclude: ["graphql", "extensions"], include: [] } },
     });
 
     expect(
-      model.objects.some((object) => object.ref.kind === "extension" && object.ref.name === "pgmq"),
+      model.objects.some((object) => object.ref.kind === "extension" && object.ref.name === "pgmq")
     ).toBe(true);
   });
 });

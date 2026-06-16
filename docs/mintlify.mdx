@@ -1,0 +1,98 @@
+---
+title: "Docs site"
+description: "How to preview, validate, and publish the Mintlify documentation site for supaschema."
+keywords: ["Mintlify", "docs site", "documentation", "validation"]
+hidden: true
+---
+
+This repository uses Mintlify in monorepo mode.
+
+- Content root: `docs/`
+- Site config: `docs/docs.json`
+- Custom domain path: `/docs`
+
+Inside docs pages, use root-relative links such as `/commands/diff`. Mintlify applies the `/docs` host prefix.
+
+## Local preview
+
+Install dependencies and start the local Mintlify preview. The npm scripts use a pinned Mintlify CLI version through `npx`, so a global Mintlify install is optional.
+
+```bash
+npm ci
+npm run docs:dev
+```
+
+The preview runs on port `3000` by default. Pass Mintlify CLI flags through npm when needed:
+
+```bash
+npm run docs:dev -- --port 3333
+```
+
+## Validation
+
+Run the docs validation suite before opening a docs pull request:
+
+```bash
+npm run docs:check
+```
+
+The check validates the Mintlify project, broken links, anchors, and accessibility issues.
+
+## Publishing
+
+Connect the GitHub repository in the Mintlify dashboard.
+
+1. Use production branch `main`.
+2. In **Git settings**, turn on **`docs.json` is in a subdirectory**.
+3. Set **Path to directory containing `docs.json`** to `/docs`.
+4. Save changes.
+5. In **Domain setup**, keep **Host at `/docs`** enabled.
+6. Enable pull request preview deployments.
+7. Keep the Mintlify GitHub App installed so pushes deploy automatically.
+
+<Warning>
+  Without the monorepo setting, Mintlify looks for `docs.json` at the repository
+  root and the deploy fails.
+</Warning>
+
+Because the content root is `docs/`, the rest of the repository (source code, tests, fixtures, package metadata, agent instructions) is never scanned; `docs/.mintignore` only needs to exclude stray non-content files.
+
+## Cloudflare custom domain
+
+The repository includes a Cloudflare Worker (`cloudflare/mintlify-docs-worker.js`) that proxies the whole custom domain to the Mintlify-hosted origin at `https://supaschema.mintlify.dev`, preserving the request path and rewriting redirect `Location` headers from the origin back to the custom host:
+
+```js
+const DOCS_URL = "supaschema.mintlify.dev";
+const CUSTOM_URL = "supaschema.com";
+```
+
+The Worker:
+
+- proxies most requests to Mintlify;
+- proxies Mintlify agent discovery paths such as `/.well-known/mcp`, `/.well-known/skills/*`, and `/.well-known/agent-skills/*`;
+- passes other `/.well-known/*` paths through for domain verification;
+- redirects `www.supaschema.com` to `supaschema.com`.
+
+The `/docs` subpath comes from Mintlify's **Host at `/docs`** setting, not from the Worker.
+
+Preserve the hosted AI paths when changing the Worker or Mintlify domain settings:
+
+```text
+/docs/llms.txt
+/docs/llms-full.txt
+/docs/skill.md
+/docs/mcp
+/.well-known/mcp
+/.well-known/agent-skills/*
+/.well-known/skills/*
+```
+
+Deploy it with Wrangler after authenticating Cloudflare:
+
+```bash
+npx wrangler deploy
+```
+
+The Worker is configured by `wrangler.toml` as the Cloudflare Custom Domain target for both `supaschema.com` and `www.supaschema.com`.
+
+Keep Mintlify in monorepo mode with **Host at `/docs`** enabled. Local validation, GitHub previews, and production deploys should all read the same content root.

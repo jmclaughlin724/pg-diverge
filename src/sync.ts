@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkMigrationSql } from "./check.js";
+import { resolveConfig } from "./config.js";
 import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
 import { migrationsStatus, renderMigrationsStatus } from "./migrations-status.js";
@@ -33,7 +34,30 @@ export interface SyncResult {
  * supabase_migrations.schema_migrations itself.
  */
 export async function syncMigrations(options: SyncOptions): Promise<SyncResult> {
+  const config = resolveConfig(options.config);
   const diagnostics: Diagnostic[] = [];
+  if (
+    (options.local === true || options.remote === true) &&
+    config.workflow.migration_sync === "disabled"
+  ) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_SYNC_DISABLED",
+        "error",
+        'workflow.migration_sync is "disabled"; remove the apply flag or change it to "explicit_request_only".',
+        {
+          hint: "supaschema sync without --local/--remote still runs the dry-run status and replay-safety gates.",
+        }
+      )
+    );
+    return {
+      applied: false,
+      diagnostics,
+      pending: [],
+      report:
+        'refusing to sync: workflow.migration_sync is "disabled"; no apply handoff was attempted\n',
+    };
+  }
   const status = await migrationsStatus({
     directory: options.directory,
     ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
@@ -51,7 +75,7 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   for (const file of status.report.pending) {
     const sql = await readFile(join(options.directory, file), "utf8");
     const checkDiagnostics = await checkMigrationSql(sql, {
-      ...(options.config === undefined ? {} : { config: options.config }),
+      config,
     });
     const errors = checkDiagnostics.filter((item) => item.severity === "error");
     diagnostics.push(...errors);
@@ -75,21 +99,39 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   }
   if (planned.length === 0) {
     lines.push(
-      `dry run: pass --local to apply ${status.report.pending.length} pending migration(s) via \`supabase migration up\`, --remote to push via \`supabase db push\``,
+      `dry run: pass --local to apply ${status.report.pending.length} pending migration(s) via \`supabase migration up\`, --remote to push via \`supabase db push\``
     );
     return { applied: false, diagnostics, pending: status.report.pending, report: render(lines) };
   }
   for (const [command, ...args] of planned) {
     lines.push(`running: ${command} ${args.join(" ")}`);
-    const exitCode = await run(command ?? "", args);
-    if (exitCode !== 0) {
+    const outcome = await run(command ?? "", args);
+    if (outcome.kind === "spawn-error") {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_SYNC_RUNNER_UNAVAILABLE",
+          "error",
+          `could not launch \`${command}\`: the Supabase CLI is not installed or not on PATH`,
+          {
+            hint: "Install the Supabase CLI (https://supabase.com/docs/guides/local-development) and ensure `supabase` is on PATH, or run sync without --local/--remote for the dry-run gate only.",
+          }
+        )
+      );
+      return {
+        applied: false,
+        diagnostics,
+        pending: status.report.pending,
+        report: render(lines),
+      };
+    }
+    if (outcome.code !== 0) {
       diagnostics.push(
         diagnostic(
           "SUPA_SYNC_RUNNER_FAILED",
           "error",
-          `\`${command} ${args.join(" ")}\` exited with code ${exitCode}`,
-          { hint: "The migration runner owns apply/deploy; inspect its output above." },
-        ),
+          `\`${command} ${args.join(" ")}\` exited with code ${outcome.code}`,
+          { hint: "The migration runner owns apply/deploy; inspect its output above." }
+        )
       );
       return {
         applied: false,
@@ -102,12 +144,22 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   return { applied: true, diagnostics, pending: status.report.pending, report: render(lines) };
 }
 
-function run(command: string, args: string[]): Promise<number> {
+type RunOutcome = { code: number; kind: "exit" } | { error: Error; kind: "spawn-error" };
+
+function run(command: string, args: string[]): Promise<RunOutcome> {
   return new Promise((resolvePromise) => {
     // Inherit stdio so the runner's own confirmation prompts reach the user.
-    const child = spawn(command, args, { stdio: "inherit" });
-    child.on("error", () => resolvePromise(127));
-    child.on("close", (code) => resolvePromise(code ?? 1));
+    // shell:true on Windows so the Supabase CLI's `.cmd`/`.ps1` shim is
+    // spawnable — since Node's CVE-2024-27980 fix, spawn refuses to run a
+    // `.cmd` without a shell, which otherwise fails the apply lane with a
+    // confusing exit-127. The args are static literals ("migration"/"up",
+    // "db"/"push"), never user input, so there is no shell-quoting hazard.
+    const child = spawn(command, args, {
+      shell: process.platform === "win32",
+      stdio: "inherit",
+    });
+    child.on("error", (error) => resolvePromise({ error, kind: "spawn-error" }));
+    child.on("close", (code) => resolvePromise({ code: code ?? 1, kind: "exit" }));
   });
 }
 

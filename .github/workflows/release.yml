@@ -1,79 +1,94 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-npm
+  queue: max
+
 jobs:
   publish:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+
+
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
-    env:
-      SUPASCHEMA_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
-
 
     steps:
+      # Egress monitoring on the privileged publish job (holds id-token:write).
+      # Start in "audit": review the run's harden-runner insights, then switch to
+      # egress-policy: block with the verified allowed-endpoints below.
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+          # After one audit run, set `egress-policy: block` and verify this list
+          # against the run's network insights before committing the switch:
+          # allowed-endpoints: >
+          #   registry.npmjs.org:443
+          #   github.com:443
+          #   api.github.com:443
+          #   objects.githubusercontent.com:443
+          #   fulcio.sigstore.dev:443
+          #   rekor.sigstore.dev:443
+          #   tuf-repo-cdn.sigstore.dev:443
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # No check-latest: use the runner's cached Node 24 toolcache (deterministic
+      # patch, no nodejs.org fetch on the OIDC publish job). The npm-version
+      # preflight below fails loudly if the cached npm predates 11.5.1.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-          check-latest: true
+          package-manager-cache: false
           registry-url: https://registry.npmjs.org
       - name: Confirm npm supports OIDC trusted publishing
         run: |
           npm --version
           node -e "const { execFileSync } = require('node:child_process'); const raw = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(); const match = /^(\d+)\.(\d+)\.(\d+)/.exec(raw); if (!match) throw new Error('could not parse npm version: ' + raw); const [major, minor, patch] = match.slice(1).map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) throw new Error('npm >= 11.5.1 is required for trusted publishing, found ' + raw);"
+      - name: Release version preflight
+        run: node scripts/release/preflight.mjs
       - run: npm ci
       - run: npm audit signatures
-      - run: npm run check
+      - run: npm run build
       - run: npm run check:package
-      - run: npm run benchmark
-      - run: npm run fixture:diff
-      - name: Verify fixture migration
-        run: npm run fixture:verify
-      - name: Corpus oracle (dirty-real reconvergence)
-        run: npm run corpus:check
       - name: Pack package
         id: pack
         run: |
-          tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
+          tarball="$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" --silent)"
           tarball_path="$RUNNER_TEMP/$tarball"
           echo "SUPASCHEMA_TARBALL=$tarball_path" >> "$GITHUB_ENV"
           echo "tarball_path=$tarball_path" >> "$GITHUB_OUTPUT"
+      # Render into an isolated subdir, matching ci.yml: supaschema treats the
+      # --out parent directory as the migrations dir for the lineage chain gate,
+      # so the smoke render must not share $RUNNER_TEMP with the packed tarball,
+      # the sigstore bundle, or any future second render.
       - name: Smoke npx from tarball
         run: |
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
             --from dir:tests/fixtures/basic/from \
             --to dir:tests/fixtures/basic/to \
-            --out "$RUNNER_TEMP/smoke.sql"
-          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke.sql"
-      - run: npm publish --access public --provenance
+            --out "$RUNNER_TEMP/smoke/basic.sql"
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke/basic.sql"
+      - run: npm publish "$SUPASCHEMA_TARBALL" --access public --provenance
       - name: Attest tarball provenance
         id: attest
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: ${{ steps.pack.outputs.tarball_path }}
-      - name: Attach signed artifacts to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
-        run: |
-          signed_bundle="$RUNNER_TEMP/$(basename "$SUPASCHEMA_TARBALL").sigstore"
-          cp "$BUNDLE_PATH" "$signed_bundle"
-          gh release upload "$GITHUB_REF_NAME" "$SUPASCHEMA_TARBALL" "$signed_bundle" --repo "$GITHUB_REPOSITORY"

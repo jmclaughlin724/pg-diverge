@@ -5,6 +5,7 @@ import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
+import { parseSqlAst } from "../src/sql/parser.js";
 import { splitSqlStatements } from "../src/sql/split.js";
 
 describe("sql splitting", () => {
@@ -70,7 +71,7 @@ AS $$
   select p_company_id
 $$;
 `,
-      { config: { adapter: "postgres" }, file: "unicode.sql" },
+      { file: "unicode.sql" }
     );
 
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
@@ -79,6 +80,22 @@ $$;
     expect(names).toContain("function:app.after_unicode(uuid)");
     const after = extracted.objects.find((object) => object.key.includes("after_unicode"));
     expect(after?.sql).toContain("select p_company_id");
+  });
+});
+
+describe("parse cache", () => {
+  it("keeps parsing correctly after crossing the cache cap", async () => {
+    const first = await parseSqlAst("SELECT 0;");
+    expect(first.diagnostics).toEqual([]);
+
+    for (let index = 1; index <= 2050; index += 1) {
+      const parsed = await parseSqlAst(`SELECT ${index};`);
+      expect(parsed.diagnostics).toEqual([]);
+    }
+
+    const reparsed = await parseSqlAst("SELECT 0;");
+    expect(reparsed.diagnostics).toEqual([]);
+    expect(reparsed.ast).toBeDefined();
   });
 });
 
@@ -95,7 +112,7 @@ describe("diff rendering", () => {
 
     expect(errors).toEqual([]);
     const operationLabels = plan.operations.map(
-      (operation) => `${operation.kind}:${operation.key}`,
+      (operation) => `${operation.kind}:${operation.key}`
     );
     expect(operationLabels[0]).toBe("drop:function:app.legacy_ping()");
     expect(operationLabels).toContain("create:table:app.audit_events");
@@ -109,7 +126,8 @@ describe("diff rendering", () => {
     expect(sql).toContain('DROP FUNCTION IF EXISTS "app"."legacy_ping"()');
     expect(sql).toContain("CREATE OR REPLACE FUNCTION app.greeting()");
     expect(sql).toContain('DROP POLICY IF EXISTS "accounts_select" ON "app"."accounts"');
-    expect(sql).not.toMatch(/\bCASCADE\b/i);
+    const renderedDiagnostics = await checkMigrationSql(sql);
+    expect(renderedDiagnostics.map((item) => item.code)).not.toContain("SUPA_CHECK_CASCADE");
   });
 
   it("blocks destructive relation drops by default", async () => {
@@ -122,7 +140,7 @@ describe("diff rendering", () => {
     const plan = planSchemaDiff(from, to);
 
     expect(
-      plan.diagnostics.some((item) => item.code === "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED"),
+      plan.diagnostics.some((item) => item.code === "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED")
     ).toBe(true);
   });
 
@@ -146,11 +164,11 @@ describe("diff rendering", () => {
       source: "target",
     };
     const labels = planSchemaDiff(from, to).operations.map(
-      (operation) => `${operation.kind}:${operation.key}`,
+      (operation) => `${operation.kind}:${operation.key}`
     );
 
     expect(labels.indexOf("create:view:app.z_base")).toBeLessThan(
-      labels.indexOf("create:view:app.a_dep"),
+      labels.indexOf("create:view:app.a_dep")
     );
   });
 
@@ -191,14 +209,14 @@ describe("diff rendering", () => {
     `);
     const plan = planSchemaDiff(
       { diagnostics: before.diagnostics, fingerprint: "", objects: before.objects, source: "from" },
-      { diagnostics: after.diagnostics, fingerprint: "", objects: after.objects, source: "to" },
+      { diagnostics: after.diagnostics, fingerprint: "", objects: after.objects, source: "to" }
     );
     const errors = plan.diagnostics.filter((item) => item.severity === "error");
 
     expect(errors).toEqual([]);
     expect(plan.operations.map((operation) => operation.kind)).toContain("alter");
     expect(renderMigration(plan)).toContain(
-      `ALTER TABLE "app"."accounts" ADD COLUMN IF NOT EXISTS "name" text DEFAULT ''::text NOT NULL;`,
+      `ALTER TABLE "app"."accounts" ADD COLUMN IF NOT EXISTS "name" text DEFAULT ''::text NOT NULL;`
     );
   });
 
@@ -216,7 +234,7 @@ describe("diff rendering", () => {
     `);
     const plan = planSchemaDiff(
       { diagnostics: before.diagnostics, fingerprint: "", objects: before.objects, source: "from" },
-      { diagnostics: after.diagnostics, fingerprint: "", objects: after.objects, source: "to" },
+      { diagnostics: after.diagnostics, fingerprint: "", objects: after.objects, source: "to" }
     );
 
     expect(plan.diagnostics.map((item) => item.code)).toContain("SUPA_PLAN_ADD_COLUMN_UNSAFE");
@@ -250,7 +268,7 @@ describe("diff rendering", () => {
             renames: [{ from: "table:app.accounts", to: "table:app.customers" }],
           },
         },
-      },
+      }
     );
     const sql = renderMigration(plan);
 
@@ -306,7 +324,7 @@ describe("migration checks", () => {
         "SUPA_CHECK_CREATE_ROUTINE_REPLACE",
         "SUPA_CHECK_CREATE_TYPE_GUARD",
         "SUPA_CHECK_ADD_CONSTRAINT_GUARD",
-      ]),
+      ])
     );
   });
 
@@ -342,16 +360,21 @@ describe("migration checks", () => {
 
 describe("managed Supabase schemas", () => {
   it("blocks direct declarative ownership of managed schemas", async () => {
-    const schema = await extractObjectsFromSql("CREATE SCHEMA auth;");
-    const table = await extractObjectsFromSql("CREATE TABLE auth.users_shadow (id bigint);");
+    const options = { config: { managedSchemas: ["auth", "extensions"] } };
+    const schema = await extractObjectsFromSql("CREATE SCHEMA auth;", options);
+    const table = await extractObjectsFromSql(
+      "CREATE TABLE auth.users_shadow (id bigint);",
+      options
+    );
     const extension = await extractObjectsFromSql(
       "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;",
+      options
     );
 
     expect(schema.diagnostics.map((item) => item.code)).toContain("SUPA_SUPABASE_MANAGED_SCHEMA");
     expect(table.diagnostics.map((item) => item.code)).toContain("SUPA_SUPABASE_MANAGED_SCHEMA");
     expect(extension.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_SUPABASE_MANAGED_SCHEMA",
+      "SUPA_SUPABASE_MANAGED_SCHEMA"
     );
   });
 });
@@ -364,7 +387,7 @@ describe("unsupported source statements", () => {
     `);
 
     expect(extracted.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
+      "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED"
     );
   });
 });
@@ -381,14 +404,14 @@ describe("enum widening", () => {
     `);
     const plan = planSchemaDiff(
       { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
-      { diagnostics: [], fingerprint: "", objects: after.objects, source: "to" },
+      { diagnostics: [], fingerprint: "", objects: after.objects, source: "to" }
     );
     const errors = plan.diagnostics.filter((item) => item.severity === "error");
 
     expect(errors).toEqual([]);
     expect(plan.operations.map((operation) => operation.kind)).toContain("alter");
     expect(renderMigration(plan)).toContain(
-      `ALTER TYPE "app"."mood" ADD VALUE IF NOT EXISTS 'meh';`,
+      `ALTER TYPE "app"."mood" ADD VALUE IF NOT EXISTS 'meh';`
     );
   });
 
@@ -403,11 +426,11 @@ describe("enum widening", () => {
     `);
     const plan = planSchemaDiff(
       { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
-      { diagnostics: [], fingerprint: "", objects: after.objects, source: "to" },
+      { diagnostics: [], fingerprint: "", objects: after.objects, source: "to" }
     );
 
     expect(plan.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED",
+      "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED"
     );
   });
 });
@@ -415,7 +438,7 @@ describe("enum widening", () => {
 describe("grants and default privileges", () => {
   it("splits multi-role grants into per-grantee objects with structured metadata", async () => {
     const extracted = await extractObjectsFromSql(
-      "GRANT SELECT, INSERT ON TABLE app.accounts TO authenticated, service_role;",
+      "GRANT SELECT, INSERT ON TABLE app.accounts TO authenticated, service_role;"
     );
 
     expect(extracted.objects).toHaveLength(2);
@@ -428,31 +451,31 @@ describe("grants and default privileges", () => {
 
   it("renders dropped grants as REVOKE statements", async () => {
     const before = await extractObjectsFromSql(
-      "GRANT SELECT ON TABLE app.accounts TO authenticated;",
+      "GRANT SELECT ON TABLE app.accounts TO authenticated;"
     );
     const plan = planSchemaDiff(
       { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
       { diagnostics: [], fingerprint: "", objects: [], source: "to" },
-      { config: { hints: { destructive: ["*"] } } },
+      { config: { hints: { destructive: ["*"] } } }
     );
 
     expect(renderMigration(plan)).toContain(
-      `REVOKE SELECT ON TABLE "app"."accounts" FROM "authenticated";`,
+      `REVOKE SELECT ON TABLE "app"."accounts" FROM "authenticated";`
     );
   });
 
   it("renders dropped default privileges as reverse REVOKE statements", async () => {
     const before = await extractObjectsFromSql(
-      "ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO authenticated;",
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO authenticated;"
     );
     const plan = planSchemaDiff(
       { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
       { diagnostics: [], fingerprint: "", objects: [], source: "to" },
-      { config: { hints: { destructive: ["*"] } } },
+      { config: { hints: { destructive: ["*"] } } }
     );
 
     expect(renderMigration(plan)).toContain(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA "app" REVOKE SELECT ON TABLES FROM "authenticated";`,
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA "app" REVOKE SELECT ON TABLES FROM "authenticated";`
     );
   });
 });

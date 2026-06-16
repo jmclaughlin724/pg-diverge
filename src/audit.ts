@@ -69,7 +69,7 @@ export function renderAuditReport(report: AuditReport): string {
   const lines: string[] = [];
   lines.push(`supaschema audit: ${report.source}`);
   lines.push(
-    `objects modeled: ${report.totalObjects} across ${Object.keys(report.objectsBySchema).length} schema(s)`,
+    `objects modeled: ${report.totalObjects} across ${Object.keys(report.objectsBySchema).length} schema(s)`
   );
   const kinds = Object.entries(report.objectsByKind)
     .sort((left, right) => right[1] - left[1])
@@ -81,7 +81,7 @@ export function renderAuditReport(report: AuditReport): string {
     return `${lines.join("\n")}\n`;
   }
   lines.push(
-    `contract coverage: ${report.errorStatements} statement(s) outside the contract, ${report.findings.length} finding class(es)`,
+    `contract coverage: ${report.errorStatements} statement(s) outside the contract, ${report.findings.length} finding class(es)`
   );
   for (const finding of report.findings) {
     lines.push(`  ${finding.severity.toUpperCase()} ${finding.code} ×${finding.count}`);

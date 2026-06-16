@@ -10,6 +10,7 @@ export interface MigrationLineage {
 
 const lineagePrefix = "-- supaschema: lineage ";
 const headerByteLimit = 4096;
+const whitespacePattern = /\s+/;
 
 export function lineageLine(plan: MigrationPlan): string {
   return `${lineagePrefix}from=${plan.fromFingerprint} to=${plan.toFingerprint}`;
@@ -26,7 +27,7 @@ export function parseLineage(content: string): { from: string; to: string } | un
       continue;
     }
     const fields = new Map<string, string>();
-    for (const token of line.slice(lineagePrefix.length).trim().split(/\s+/)) {
+    for (const token of line.slice(lineagePrefix.length).trim().split(whitespacePattern)) {
       const separator = token.indexOf("=");
       if (separator > 0) {
         fields.set(token.slice(0, separator), token.slice(separator + 1));
@@ -38,7 +39,7 @@ export function parseLineage(content: string): { from: string; to: string } | un
       return { from, to };
     }
   }
-  return undefined;
+  return;
 }
 
 /**
@@ -55,7 +56,7 @@ export async function latestLineage(directory: string): Promise<MigrationLineage
       .sort((left, right) => right.localeCompare(left));
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return undefined;
+      return;
     }
     throw error;
   }
@@ -67,5 +68,5 @@ export async function latestLineage(directory: string): Promise<MigrationLineage
       return { file: path, from: lineage.from, to: lineage.to };
     }
   }
-  return undefined;
+  return;
 }

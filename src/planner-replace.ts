@@ -15,7 +15,7 @@ export function isDestructiveAllowed(key: string, config: SupaschemaConfig): boo
 
 export function refineReplaceOperation(
   operation: MigrationOperation,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): MigrationOperation {
   if (operation.ref.kind === "view") {
     return refineViewReplace(operation, config);
@@ -28,15 +28,23 @@ export function refineReplaceOperation(
 
 function refineViewReplace(
   operation: MigrationOperation,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): MigrationOperation {
   const before = viewColumns(operation.before);
   const after = viewColumns(operation.after);
-  if (!before || !after) {
-    return operation;
+  if (!(before && after)) {
+    operation.diagnostics = operation.diagnostics.filter(
+      (item) => item.code !== "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED"
+    );
+    return markDropRequired(operation, config, "viewDropRequired", {
+      code: "SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE",
+      hint: `This view's output columns cannot be verified. Add an explicit column alias list to the view, or add "${operation.key}" to hints.destructive to render a guarded DROP VIEW + CREATE after review.`,
+      message:
+        "view replacement cannot be proven column-compatible; CREATE OR REPLACE VIEW may be rejected by PostgreSQL",
+    });
   }
   operation.diagnostics = operation.diagnostics.filter(
-    (item) => item.code !== "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED",
+    (item) => item.code !== "SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED"
   );
   const prefixCompatible =
     after.length >= before.length && before.every((column, index) => after[index] === column);
@@ -53,7 +61,7 @@ function refineViewReplace(
 
 function refineRoutineReplace(
   operation: MigrationOperation,
-  config: SupaschemaConfig,
+  config: SupaschemaConfig
 ): MigrationOperation {
   const before = routineShape(operation.before);
   const after = routineShape(operation.after);
@@ -72,7 +80,7 @@ function markDropRequired(
   operation: MigrationOperation,
   config: SupaschemaConfig,
   metadataFlag: "routineDropRequired" | "viewDropRequired",
-  failure: { code: string; hint: string; message: string },
+  failure: { code: string; hint: string; message: string }
 ): MigrationOperation {
   operation.metadata[metadataFlag] = true;
   operation.destructive = true;
@@ -82,7 +90,7 @@ function markDropRequired(
       diagnostic(failure.code, "error", failure.message, {
         hint: failure.hint,
         ref: operation.ref,
-      }),
+      })
     );
   }
   return operation;
@@ -91,7 +99,7 @@ function markDropRequired(
 function viewColumns(object: SchemaObject | undefined): string[] | undefined {
   const columns = object?.metadata.viewColumns;
   if (!Array.isArray(columns)) {
-    return undefined;
+    return;
   }
   const names = columns.filter((column): column is string => typeof column === "string");
   return names.length === columns.length ? names : undefined;

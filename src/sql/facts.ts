@@ -40,7 +40,10 @@ export interface RoutineOutParamFacts {
   type: string;
 }
 
-type KeywordStep = { optional?: boolean; words: string[] };
+interface KeywordStep {
+  optional?: boolean;
+  words: string[];
+}
 
 const ifNotExistsSteps: Record<string, KeywordStep[]> = {
   CreateExtensionStmt: [{ words: ["CREATE"] }, { words: ["EXTENSION"] }],
@@ -77,7 +80,7 @@ export interface FinalizeOptions {
 
 export async function finalizeObjects(
   objects: SchemaObject[],
-  options: FinalizeOptions = {},
+  options: FinalizeOptions = {}
 ): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
   for (let start = 0; start < objects.length; start += finalizeConcurrency) {
@@ -92,7 +95,7 @@ export async function finalizeObjects(
 
 export async function finalizeObject(
   object: SchemaObject,
-  options: FinalizeOptions = {},
+  options: FinalizeOptions = {}
 ): Promise<Diagnostic[]> {
   const parsed = await parseSqlAst(object.sql, object.file);
   let statements = parsed.ast === undefined ? [] : astStatements(parsed.ast, object.sql);
@@ -103,7 +106,7 @@ export async function finalizeObject(
         "SUPA_OBJECT_PARSE_FAILED",
         "error",
         `object SQL for ${object.key} did not parse; object identity fell back to text`,
-        { file: object.file, ref: object.ref, statement: object.sql },
+        { file: object.file, ref: object.ref, statement: object.sql }
       ),
     ];
   }
@@ -130,103 +133,151 @@ export async function finalizeObject(
 
 function canonicalHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
   const first = statements[0];
-  if (first?.tag === "CreateStmt") {
-    const createStmt = asRecord(first.node.CreateStmt);
-    if (createStmt) {
-      const shape = canonicalTableShape(createStmt);
-      // Carried so the planner can diff per-column instead of replacing the
-      // whole table when only column facts change.
-      object.metadata.canonicalShape = shape;
-      return shapeHash(shape, object.key, object.ref);
-    }
+  const statementShapeHash = canonicalStatementShapeHash(object, first);
+  if (statementShapeHash !== undefined) {
+    return statementShapeHash;
   }
-  if (first?.tag === "CreateSeqStmt") {
-    const createSeqStmt = asRecord(first.node.CreateSeqStmt);
-    if (createSeqStmt) {
-      const shape = canonicalSequenceShape(createSeqStmt);
-      // Carried so a standalone ALTER SEQUENCE ... OWNED BY (the pg_dump
-      // serial decomposition) can fold into the sequence's identity.
-      object.metadata.canonicalShape = shape;
-      return shapeHash(shape, object.key, object.ref);
-    }
-  }
-  if (object.ref.kind === "constraint" && first?.tag === "AlterTableStmt") {
-    const constraintNode = addConstraintNode(asRecord(first.node.AlterTableStmt));
-    if (constraintNode) {
-      return shapeHash(
-        canonicalConstraintShape(constraintNode, {
-          name: object.ref.table ?? "",
-          schema: object.ref.schema ?? "public",
-        }),
-        object.key,
-        object.ref,
-      );
-    }
-  }
-  if (object.ref.kind === "default-privilege") {
-    // Hash from the builder-normalized shape, not the statement AST: the
-    // FOR ROLE clause names the executing role and must not affect identity
-    // or content equality across lanes.
-    return shapeHash(
-      {
-        grantee: String(object.metadata.grantee ?? ""),
-        objectType: String(object.metadata.objectType ?? ""),
-        privileges: Array.isArray(object.metadata.privileges) ? object.metadata.privileges : [],
-        schema: String(object.metadata.schema ?? ""),
-        verb: String(object.metadata.verb ?? ""),
-      },
-      object.key,
-      object.ref,
-    );
-  }
-  if (object.ref.kind === "rls") {
-    // ALTER TABLE [ONLY] for RLS flags does not recurse to children, so the
-    // ONLY spelling (relation.inh) is semantically inert and must not split
-    // cross-lane identity: catalogs reconstruct without ONLY while trees
-    // often write it.
-    return astObjectHash(
-      statements.map((item) => {
-        const cloned = structuredClone(item.node) as Record<string, unknown>;
-        const alterTable = asRecord(cloned.AlterTableStmt);
-        const relation = asRecord(alterTable?.relation);
-        if (relation) {
-          relation.inh = true;
-        }
-        return cloned as AstNode;
-      }),
-      object.key,
-      object.ref,
-    );
-  }
-  if (object.ref.kind === "policy") {
-    // pg_get_expr renders ANALYZED expressions: subquery targets gain
-    // auto-aliases (`SELECT auth.uid() AS uid`) and constants gain implicit
-    // casts (`(0)::numeric`) that raw declarative text lacks. Both are
-    // semantically inert inside a policy expression, so hashing strips them
-    // on both lanes.
-    return astObjectHash(
-      statements.map((item) => canonicalPolicyNode(item.node) as AstNode),
-      object.key,
-      object.ref,
-    );
-  }
-  if (object.ref.kind === "view" || object.ref.kind === "materialized-view") {
-    // pg_get_viewdef qualifies every column with its relation name on PG 15
-    // (`upper(accounts.name)`) where PG 16+ and declarative sources write the
-    // bare column (`upper(name)`). Stripping the qualifier is provably safe
-    // only when it names the sole plain relation of the innermost SELECT
-    // scope, so both lanes converge to that form and everything else (joins,
-    // correlated outer refs) keeps its written qualification.
-    return astObjectHash(
-      statements.map((item) => canonicalViewNode(item.node, []) as AstNode),
-      object.key,
-      object.ref,
-    );
+  const objectKindHash = canonicalObjectKindHash(object, statements);
+  if (objectKindHash !== undefined) {
+    return objectKindHash;
   }
   return astObjectHash(
     statements.map((item) => item.node),
     object.key,
-    object.ref,
+    object.ref
+  );
+}
+
+function canonicalStatementShapeHash(
+  object: SchemaObject,
+  first: { node: AstNode; tag: string } | undefined
+): string | undefined {
+  if (first?.tag === "CreateStmt") {
+    return tableShapeHash(object, asRecord(first.node.CreateStmt));
+  }
+  if (first?.tag === "CreateSeqStmt") {
+    return sequenceShapeHash(object, asRecord(first.node.CreateSeqStmt));
+  }
+  if (object.ref.kind === "constraint" && first?.tag === "AlterTableStmt") {
+    return constraintShapeHash(object, asRecord(first.node.AlterTableStmt));
+  }
+  return;
+}
+
+function tableShapeHash(object: SchemaObject, createStmt: AstNode | undefined): string | undefined {
+  if (!createStmt) {
+    return;
+  }
+  const shape = canonicalTableShape(createStmt);
+  // Carried so the planner can diff per-column instead of replacing the
+  // whole table when only column facts change.
+  object.metadata.canonicalShape = shape;
+  return shapeHash(shape, object.key, object.ref);
+}
+
+function sequenceShapeHash(
+  object: SchemaObject,
+  createSeqStmt: AstNode | undefined
+): string | undefined {
+  if (!createSeqStmt) {
+    return;
+  }
+  const shape = canonicalSequenceShape(createSeqStmt);
+  // Carried so a standalone ALTER SEQUENCE ... OWNED BY (the pg_dump serial
+  // decomposition) can fold into the sequence's identity.
+  object.metadata.canonicalShape = shape;
+  return shapeHash(shape, object.key, object.ref);
+}
+
+function constraintShapeHash(
+  object: SchemaObject,
+  alterTableStmt: AstNode | undefined
+): string | undefined {
+  const constraintNode = addConstraintNode(alterTableStmt);
+  if (!constraintNode) {
+    return;
+  }
+  return shapeHash(
+    canonicalConstraintShape(constraintNode, {
+      name: object.ref.table ?? "",
+      schema: object.ref.schema ?? "public",
+    }),
+    object.key,
+    object.ref
+  );
+}
+
+function canonicalObjectKindHash(
+  object: SchemaObject,
+  statements: { node: AstNode; tag: string }[]
+): string | undefined {
+  if (object.ref.kind === "default-privilege") {
+    return defaultPrivilegeHash(object);
+  }
+  if (object.ref.kind === "rls") {
+    return rlsHash(object, statements);
+  }
+  if (object.ref.kind === "policy") {
+    return policyHash(object, statements);
+  }
+  if (object.ref.kind === "view" || object.ref.kind === "materialized-view") {
+    return viewHash(object, statements);
+  }
+  return;
+}
+
+function defaultPrivilegeHash(object: SchemaObject): string {
+  // Hash from the builder-normalized shape, not the statement AST: the FOR ROLE
+  // clause names the executing role and must not affect identity or content
+  // equality across lanes.
+  return shapeHash(
+    {
+      grantee: String(object.metadata.grantee ?? ""),
+      objectType: String(object.metadata.objectType ?? ""),
+      privileges: Array.isArray(object.metadata.privileges) ? object.metadata.privileges : [],
+      schema: String(object.metadata.schema ?? ""),
+      verb: String(object.metadata.verb ?? ""),
+    },
+    object.key,
+    object.ref
+  );
+}
+
+function rlsHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
+  // ALTER TABLE [ONLY] for RLS flags does not recurse to children, so ONLY
+  // spelling is semantically inert and must not split cross-lane identity.
+  return astObjectHash(
+    statements.map((item) => {
+      const cloned = structuredClone(item.node) as Record<string, unknown>;
+      const alterTable = asRecord(cloned.AlterTableStmt);
+      const relation = asRecord(alterTable?.relation);
+      if (relation) {
+        relation.inh = true;
+      }
+      return cloned as AstNode;
+    }),
+    object.key,
+    object.ref
+  );
+}
+
+function policyHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
+  // pg_get_expr renders analyzed expressions; canonicalPolicyNode strips
+  // semantically inert aliases/casts on both lanes before hashing.
+  return astObjectHash(
+    statements.map((item) => canonicalPolicyNode(item.node) as AstNode),
+    object.key,
+    object.ref
+  );
+}
+
+function viewHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
+  // pg_get_viewdef can qualify columns with the sole plain relation name.
+  // canonicalViewNode strips only that safe qualifier before hashing.
+  return astObjectHash(
+    statements.map((item) => canonicalViewNode(item.node, []) as AstNode),
+    object.key,
+    object.ref
   );
 }
 
@@ -241,13 +292,13 @@ function addConstraintNode(alterTableStmt: AstNode | undefined): AstNode | undef
       return constraint;
     }
   }
-  return undefined;
+  return;
 }
 
 export function statementFacts(
   tag: string,
   statementNode: AstNode,
-  sql: string,
+  sql: string
 ): Record<string, unknown> {
   const node = asRecord(statementNode[tag]) ?? {};
   const facts: Record<string, unknown> = {};
@@ -278,20 +329,19 @@ export function statementFacts(
  */
 function commentDropSql(node: AstNode): string | undefined {
   try {
-    const stripped = structuredClone(node) as Record<string, unknown>;
-    delete stripped.comment;
+    const { comment: _comment, ...stripped } = structuredClone(node) as Record<string, unknown>;
     return deparseSync({
       stmts: [{ stmt: { CommentStmt: stripped } }],
-      version: 170004,
+      version: 170_004,
     } as unknown as Parameters<typeof deparseSync>[0]);
   } catch {
-    return undefined;
+    return;
   }
 }
 
 function renderGuardFacts(tag: string, node: AstNode, sql: string): RenderGuardFacts | undefined {
   if (tag === "CreateTableAsStmt" && readString(node.objtype) !== "OBJECT_MATVIEW") {
-    return undefined;
+    return;
   }
   const steps = ifNotExistsSteps[tag];
   if (steps) {
@@ -318,7 +368,7 @@ function renderGuardFacts(tag: string, node: AstNode, sql: string): RenderGuardF
     }
     return facts;
   }
-  return undefined;
+  return;
 }
 
 function functionFacts(node: AstNode): Record<string, unknown> {
@@ -370,13 +420,13 @@ function viewFacts(node: AstNode): Record<string, unknown> {
 function viewTargetColumns(query: unknown): string[] | undefined {
   const select = asRecord(asRecord(query)?.SelectStmt);
   if (!select || asRecord(select.larg) || asRecord(select.rarg)) {
-    return undefined;
+    return;
   }
   const columns: string[] = [];
   for (const item of readArray(select.targetList)) {
     const target = asRecord(asRecord(item)?.ResTarget);
     if (!target) {
-      return undefined;
+      return;
     }
     const explicit = readString(target.name);
     if (explicit) {
@@ -386,7 +436,7 @@ function viewTargetColumns(query: unknown): string[] | undefined {
     const fields = readArray(asRecord(asRecord(target.val)?.ColumnRef)?.fields);
     const name = stringValue(fields.at(-1));
     if (!name) {
-      return undefined;
+      return;
     }
     columns.push(name);
   }
@@ -401,7 +451,7 @@ function viewSecurityInvoker(options: unknown): boolean | undefined {
     }
     return defElemBoolean(defElem?.arg);
   }
-  return undefined;
+  return;
 }
 
 function defElemBoolean(arg: unknown): boolean {
@@ -435,7 +485,7 @@ export function keywordOffset(sql: string, steps: KeywordStep[]): number | undef
     if (step.optional) {
       continue;
     }
-    return undefined;
+    return;
   }
   return index;
 }
@@ -458,7 +508,7 @@ function readWord(sql: string, start: number): { end: number; text: string } | u
     end += 1;
   }
   if (end === start) {
-    return undefined;
+    return;
   }
   return { end, text: sql.slice(start, end) };
 }

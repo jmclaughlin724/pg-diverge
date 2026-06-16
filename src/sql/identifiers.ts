@@ -31,7 +31,7 @@ export function splitQualifiedIdentifier(input: string): string[] {
 }
 export function parseQualifiedIdentifier(
   input: string,
-  defaultSchema = "public",
+  defaultSchema = "public"
 ): { name: string; schema: string } {
   const parts = splitQualifiedIdentifier(input);
   if (parts.length === 1) {
@@ -65,7 +65,7 @@ export function formatQualifiedName(schema: string | undefined, name: string): s
 export function objectKey(ref: ObjectRef): string {
   const schema = ref.schema ? `${ref.schema}.` : "";
   const table = ref.table ? `:${ref.table}` : "";
-  const signature = ref.signature !== undefined ? `(${ref.signature})` : "";
+  const signature = ref.signature === undefined ? "" : `(${ref.signature})`;
   return `${ref.kind}:${schema}${ref.name}${signature}${table}`;
 }
 export function normalizeSql(sql: string): string {

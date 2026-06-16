@@ -110,7 +110,7 @@ export function builtinPublicDefault(kindPhrase: string): string[] | undefined {
 export function isBuiltinDefaultGrant(
   kindPhrase: string,
   grantee: string,
-  privileges: string[],
+  privileges: string[]
 ): boolean {
   if (grantee !== "PUBLIC") {
     return false;
@@ -143,6 +143,7 @@ function normalizePrivileges(privileges: string[], kindPhrase: string): string[]
 }
 
 export interface GrantObjectInput {
+  file?: string | undefined;
   grantee: string;
   kindPhrase: string;
   ordinal: number;
@@ -152,7 +153,6 @@ export interface GrantObjectInput {
   targetRendered: string;
   verb: "GRANT" | "REVOKE";
   withGrantOption?: boolean;
-  file?: string | undefined;
 }
 
 export function buildGrantObject(input: GrantObjectInput): SchemaObject {
@@ -179,6 +179,7 @@ export function buildGrantObject(input: GrantObjectInput): SchemaObject {
 }
 
 export interface DefaultPrivilegeObjectInput {
+  file?: string | undefined;
   forRole?: string | undefined;
   grantee: string;
   objectType: string;
@@ -186,7 +187,6 @@ export interface DefaultPrivilegeObjectInput {
   privileges: string[];
   schema?: string | undefined;
   verb: "GRANT" | "REVOKE";
-  file?: string | undefined;
 }
 
 export function buildDefaultPrivilegeObject(input: DefaultPrivilegeObjectInput): SchemaObject {
@@ -224,7 +224,7 @@ export function grantObjectsFromAst(
   node: AstNode,
   statement: string,
   ordinal: number,
-  file?: string,
+  file?: string
 ): SchemaObject[] {
   const isGrant = readBoolean(node.is_grant);
   const verb = isGrant ? "GRANT" : "REVOKE";
@@ -257,7 +257,7 @@ export function grantObjectsFromAst(
           targetRendered: target.rendered,
           verb,
           withGrantOption,
-        }),
+        })
       );
     }
   }
@@ -268,7 +268,7 @@ export function defaultPrivilegesFromAst(
   node: AstNode,
   statement: string,
   ordinal: number,
-  file?: string,
+  file?: string
 ): SchemaObject[] {
   const action = asRecord(node.action);
   if (!action) {
@@ -301,7 +301,7 @@ export function defaultPrivilegesFromAst(
             privileges,
             schema,
             verb,
-          }),
+          })
         );
       }
     }
@@ -332,16 +332,16 @@ export function commentObjectFromAst(
   node: AstNode,
   statement: string,
   ordinal: number,
-  file?: string,
+  file?: string
 ): SchemaObject | undefined {
   const objtype = readString(node.objtype);
   const kindWord = objtype ? commentObjectKinds.get(objtype) : undefined;
   if (!kindWord) {
-    return undefined;
+    return;
   }
   const target = commentTarget(node.object, objtype ?? "");
   if (!target) {
-    return undefined;
+    return;
   }
   const descriptor = `${kindWord} ${target.identity}`;
   const ref: ObjectRef = { kind: "comment", name: sha256(descriptor).slice(0, 16) };
@@ -353,12 +353,12 @@ export function commentObjectFromAst(
 
 function commentTarget(
   object: unknown,
-  objtype: string,
+  objtype: string
 ): { identity: string; schema?: string } | undefined {
   if (objtype === "OBJECT_FUNCTION" || objtype === "OBJECT_PROCEDURE") {
     const identity = objectWithArgsIdentity(object);
     if (!identity) {
-      return undefined;
+      return;
     }
     return {
       identity: `${identity.schema}.${identity.name}(${identity.signature})`,
@@ -402,12 +402,12 @@ function grantPrivileges(value: unknown): string[] {
 function grantTarget(
   value: unknown,
   objtype: string,
-  allInSchema: boolean,
+  allInSchema: boolean
 ): GrantTarget | undefined {
   if (allInSchema || objtype === "OBJECT_SCHEMA") {
     const schema = stringValue(value) ?? readString(asRecord(value)?.sval);
     if (!schema) {
-      return undefined;
+      return;
     }
     return { identity: schema, rendered: quoteIdent(schema), schema };
   }
@@ -418,7 +418,7 @@ function grantTarget(
   ) {
     const identity = objectWithArgsIdentity(value);
     if (!identity) {
-      return undefined;
+      return;
     }
     return {
       identity: `${identity.schema}.${identity.name}(${identity.signature})`,
@@ -442,7 +442,7 @@ function grantTarget(
       schema: named.schema,
     };
   }
-  return undefined;
+  return;
 }
 
 function defaultPrivilegeScope(options: unknown): { forRoles: string[]; schemas: string[] } {
@@ -476,7 +476,7 @@ function fallbackPrivilegeObject(
   kind: "grant" | "default-privilege",
   statement: string,
   ordinal: number,
-  file?: string,
+  file?: string
 ): SchemaObject {
   const name = sha256(normalizeSql(statement)).slice(0, 16);
   return makeObject({ kind, name }, statement, ordinal, file);

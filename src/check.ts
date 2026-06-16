@@ -38,9 +38,37 @@ const volatileDefaultFunctions = new Set([
   "uuid_generate_v4",
 ]);
 
+type StatementCheck = (
+  node: AstNode,
+  statement: AstStatement,
+  previous: AstStatement | undefined
+) => Diagnostic[];
+
+const statementChecks: Partial<Record<string, StatementCheck>> = {
+  AlterTableStmt: (node, statement) => checkAlterTableStatement(node, statement.text),
+  CompositeTypeStmt: (_node, statement) => checkTypeCreationStatement(statement.text),
+  CreateDomainStmt: (_node, statement) => checkTypeCreationStatement(statement.text),
+  CreateEnumStmt: (_node, statement) => checkTypeCreationStatement(statement.text),
+  CreateFunctionStmt: (node, statement) => checkFunctionStatement(node, statement.text),
+  CreatePolicyStmt: (_node, statement, previous) => checkPolicyStatement(previous, statement.text),
+  CreateRangeStmt: (_node, statement) => checkTypeCreationStatement(statement.text),
+  CreateTableAsStmt: (node, statement) => checkMaterializedViewStatement(node, statement.text),
+  CreateTrigStmt: (node, statement, previous) =>
+    checkTriggerStatement(node, previous, statement.text),
+  DeleteStmt: (_node, statement) => checkDmlStatement(statement.text),
+  DropStmt: (node, statement) => checkDropStatement(node, statement.text),
+  IndexStmt: (node, statement) => checkConcurrentStatement(node, statement.text, "index"),
+  InsertStmt: (node, statement) => checkInsertStatement(node, statement.text),
+  RefreshMatViewStmt: (node, statement) =>
+    checkConcurrentStatement(node, statement.text, "refresh"),
+  UpdateStmt: (_node, statement) => checkDmlStatement(statement.text),
+  VariableSetStmt: (node, statement) => checkVariableSetStatement(node, statement.text),
+  ViewStmt: (node, statement) => checkViewStatement(node, statement.text),
+};
+
 export async function checkMigrationSql(
   sql: string,
-  options: CheckOptions = {},
+  options: CheckOptions = {}
 ): Promise<Diagnostic[]> {
   const config = resolveConfig(options.config);
   const diagnostics: Diagnostic[] = [];
@@ -53,7 +81,7 @@ export async function checkMigrationSql(
       for (const [index, statement] of statements.entries()) {
         diagnostics.push(
           ...escalateNontransactional(checkStatement(statement, statements[index - 1]), config),
-          ...enumValueUseDiagnostics(statement, enumAdditions, config),
+          ...enumValueUseDiagnostics(statement, enumAdditions, config)
         );
         recordEnumAdditions(statement, enumAdditions);
       }
@@ -72,172 +100,168 @@ export async function checkMigrationSql(
 }
 
 function checkStatement(statement: AstStatement, previous: AstStatement | undefined): Diagnostic[] {
-  const diagnostics: Diagnostic[] = [];
   const node = asRecord(statement.node[statement.tag]);
   if (!node) {
-    return diagnostics;
+    return [];
   }
-  switch (statement.tag) {
-    case "DropStmt":
-      diagnostics.push(...checkDropStatement(node, statement.text));
-      break;
-    case "VariableSetStmt":
-      if (readString(node.name) === "search_path") {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_CHECK_SEARCH_PATH",
-            "error",
-            "migrations must not depend on session search_path",
-            {
-              hint: "Use schema-qualified object references and function-level SET search_path where needed.",
-              statement: statement.text,
-            },
-          ),
-        );
-      }
-      break;
-    case "ViewStmt":
-      if (!readBoolean(node.replace)) {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_CHECK_CREATE_VIEW_REPLACE",
-            "error",
-            "VIEW creation must use OR REPLACE",
-            {
-              statement: statement.text,
-            },
-          ),
-        );
-      }
-      break;
-    case "CreateFunctionStmt":
-      diagnostics.push(...checkFunctionStatement(node, statement.text));
-      break;
-    case "CreateEnumStmt":
-    case "CompositeTypeStmt":
-    case "CreateRangeStmt":
-    case "CreateDomainStmt":
-      diagnostics.push(
-        diagnostic(
-          "SUPA_CHECK_CREATE_TYPE_GUARD",
-          "error",
-          "TYPE and DOMAIN creation must be wrapped in a catalog guard",
-          { statement: statement.text },
-        ),
-      );
-      break;
-    case "CreateTableAsStmt":
-      if (
-        readString(node.objtype) === "OBJECT_MATVIEW" &&
-        !readBoolean(node.if_not_exists) &&
-        !readBoolean(asRecord(node.into)?.if_not_exists)
-      ) {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_CHECK_CREATE_MATERIALIZED_VIEW_GUARD",
-            "error",
-            "MATERIALIZED VIEW creation must use IF NOT EXISTS or a catalog guard",
-            { statement: statement.text },
-          ),
-        );
-      }
-      break;
-    case "CreatePolicyStmt":
-      if (!previousDrops(previous, "OBJECT_POLICY")) {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_CHECK_POLICY_REPLACEMENT",
-            "error",
-            "CREATE POLICY has no OR REPLACE form and must be preceded by DROP POLICY IF EXISTS",
-            { statement: statement.text },
-          ),
-        );
-      }
-      break;
-    case "CreateTrigStmt":
-      if (!readBoolean(node.replace) && !previousDrops(previous, "OBJECT_TRIGGER")) {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_CHECK_CREATE_TRIGGER_REPLACEMENT",
-            "error",
-            "CREATE TRIGGER must be preceded by DROP TRIGGER IF EXISTS",
-            { statement: statement.text },
-          ),
-        );
-      }
-      break;
-    case "IndexStmt":
-      if (readBoolean(node.concurrent)) {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_CHECK_NONTRANSACTIONAL_INDEX",
-            "warning",
-            "CREATE INDEX CONCURRENTLY cannot run inside a transaction block",
-            {
-              hint: "Run this migration with transaction wrapping disabled.",
-              statement: statement.text,
-            },
-          ),
-        );
-      }
-      break;
-    case "RefreshMatViewStmt":
-      if (readBoolean(node.concurrent)) {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_CHECK_NONTRANSACTIONAL_REFRESH",
-            "warning",
-            "REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction block",
-            {
-              hint: "Run this migration with transaction wrapping disabled.",
-              statement: statement.text,
-            },
-          ),
-        );
-      }
-      break;
-    case "AlterTableStmt":
-      diagnostics.push(...checkAlterTableStatement(node, statement.text));
-      break;
-    case "InsertStmt":
-      if (asRecord(node.onConflictClause) === undefined) {
-        diagnostics.push(
-          diagnostic(
-            "SUPA_CHECK_INSERT_ON_CONFLICT",
-            "error",
-            "INSERT statements in migrations must use ON CONFLICT for replay safety",
-            { statement: statement.text },
-          ),
-        );
-      }
-      break;
-    case "UpdateStmt":
-    case "DeleteStmt":
-      diagnostics.push(
-        diagnostic(
-          "SUPA_CHECK_DML_REVIEW",
-          "warning",
-          "data-modifying statements in migrations require explicit idempotency review",
-          { statement: statement.text },
-        ),
-      );
-      break;
-    default:
-      break;
-  }
+  const diagnostics = statementChecks[statement.tag]?.(node, statement, previous) ?? [];
+  diagnostics.push(...checkGuardedCreateStatement(statement.tag, node, statement.text));
+  return diagnostics;
+}
+
+function checkGuardedCreateStatement(tag: string, node: AstNode, text: string): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
   for (const guarded of guardedCreateChecks) {
-    if (statement.tag === guarded.tag && !readBoolean(node.if_not_exists)) {
+    if (tag === guarded.tag && !readBoolean(node.if_not_exists)) {
       diagnostics.push(
         diagnostic(
           guarded.code,
           "error",
           `${guarded.kind} creation must use IF NOT EXISTS or a catalog guard`,
-          { statement: statement.text },
-        ),
+          { statement: text }
+        )
       );
     }
   }
   return diagnostics;
+}
+
+function checkVariableSetStatement(node: AstNode, text: string): Diagnostic[] {
+  if (readString(node.name) !== "search_path") {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_CHECK_SEARCH_PATH",
+      "error",
+      "migrations must not depend on session search_path",
+      {
+        hint: "Use schema-qualified object references and function-level SET search_path where needed.",
+        statement: text,
+      }
+    ),
+  ];
+}
+
+function checkViewStatement(node: AstNode, text: string): Diagnostic[] {
+  if (readBoolean(node.replace)) {
+    return [];
+  }
+  return [
+    diagnostic("SUPA_CHECK_CREATE_VIEW_REPLACE", "error", "VIEW creation must use OR REPLACE", {
+      statement: text,
+    }),
+  ];
+}
+
+function checkTypeCreationStatement(text: string): Diagnostic[] {
+  return [
+    diagnostic(
+      "SUPA_CHECK_CREATE_TYPE_GUARD",
+      "error",
+      "TYPE and DOMAIN creation must be wrapped in a catalog guard",
+      { statement: text }
+    ),
+  ];
+}
+
+function checkMaterializedViewStatement(node: AstNode, text: string): Diagnostic[] {
+  if (
+    readString(node.objtype) !== "OBJECT_MATVIEW" ||
+    readBoolean(node.if_not_exists) ||
+    readBoolean(asRecord(node.into)?.if_not_exists)
+  ) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_CHECK_CREATE_MATERIALIZED_VIEW_GUARD",
+      "error",
+      "MATERIALIZED VIEW creation must use IF NOT EXISTS or a catalog guard",
+      { statement: text }
+    ),
+  ];
+}
+
+function checkPolicyStatement(previous: AstStatement | undefined, text: string): Diagnostic[] {
+  if (previousDrops(previous, "OBJECT_POLICY")) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_CHECK_POLICY_REPLACEMENT",
+      "error",
+      "CREATE POLICY has no OR REPLACE form and must be preceded by DROP POLICY IF EXISTS",
+      { statement: text }
+    ),
+  ];
+}
+
+function checkTriggerStatement(
+  node: AstNode,
+  previous: AstStatement | undefined,
+  text: string
+): Diagnostic[] {
+  if (readBoolean(node.replace) || previousDrops(previous, "OBJECT_TRIGGER")) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_CHECK_CREATE_TRIGGER_REPLACEMENT",
+      "error",
+      "CREATE TRIGGER must be preceded by DROP TRIGGER IF EXISTS",
+      { statement: text }
+    ),
+  ];
+}
+
+function checkConcurrentStatement(
+  node: AstNode,
+  text: string,
+  kind: "index" | "refresh"
+): Diagnostic[] {
+  if (!readBoolean(node.concurrent)) {
+    return [];
+  }
+  const isIndex = kind === "index";
+  return [
+    diagnostic(
+      isIndex ? "SUPA_CHECK_NONTRANSACTIONAL_INDEX" : "SUPA_CHECK_NONTRANSACTIONAL_REFRESH",
+      "warning",
+      isIndex
+        ? "CREATE INDEX CONCURRENTLY cannot run inside a transaction block"
+        : "REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction block",
+      {
+        hint: "Run this migration with transaction wrapping disabled.",
+        statement: text,
+      }
+    ),
+  ];
+}
+
+function checkInsertStatement(node: AstNode, text: string): Diagnostic[] {
+  if (asRecord(node.onConflictClause) !== undefined) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_CHECK_INSERT_ON_CONFLICT",
+      "error",
+      "INSERT statements in migrations must use ON CONFLICT for replay safety",
+      { statement: text }
+    ),
+  ];
+}
+
+function checkDmlStatement(text: string): Diagnostic[] {
+  return [
+    diagnostic(
+      "SUPA_CHECK_DML_REVIEW",
+      "warning",
+      "data-modifying statements in migrations require explicit idempotency review",
+      { statement: text }
+    ),
+  ];
 }
 
 function checkDropStatement(node: AstNode, text: string): Diagnostic[] {
@@ -247,14 +271,14 @@ function checkDropStatement(node: AstNode, text: string): Diagnostic[] {
       diagnostic("SUPA_CHECK_CASCADE", "error", "implicit CASCADE is forbidden", {
         hint: "Drop dependent objects explicitly in dependency order.",
         statement: text,
-      }),
+      })
     );
   }
   if (!readBoolean(node.missing_ok)) {
     diagnostics.push(
       diagnostic("SUPA_CHECK_DROP_IF_EXISTS", "error", "DROP statements must use IF EXISTS", {
         statement: text,
-      }),
+      })
     );
   }
   return diagnostics;
@@ -268,8 +292,8 @@ function checkFunctionStatement(node: AstNode, text: string): Diagnostic[] {
         "SUPA_CHECK_CREATE_ROUTINE_REPLACE",
         "error",
         "FUNCTION and PROCEDURE creation must use OR REPLACE",
-        { statement: text },
-      ),
+        { statement: text }
+      )
     );
   }
   let securityDefiner = false;
@@ -293,8 +317,8 @@ function checkFunctionStatement(node: AstNode, text: string): Diagnostic[] {
         "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH",
         "warning",
         "SECURITY DEFINER functions should set a safe function-local search_path",
-        { statement: text },
-      ),
+        { statement: text }
+      )
     );
   }
   return diagnostics;
@@ -311,8 +335,8 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
           "SUPA_CHECK_ADD_CONSTRAINT_GUARD",
           "error",
           "ADD CONSTRAINT must be wrapped in a catalog guard",
-          { statement: text },
-        ),
+          { statement: text }
+        )
       );
     }
     if (subtype === "AT_AlterColumnType") {
@@ -324,8 +348,8 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
           {
             hint: "Verify the rewrite window is acceptable for populated tables.",
             statement: text,
-          },
-        ),
+          }
+        )
       );
     }
     if (subtype === "AT_SetNotNull") {
@@ -334,8 +358,8 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
           "SUPA_CHECK_SET_NOT_NULL_SCAN",
           "warning",
           "SET NOT NULL scans the full table unless a validated CHECK constraint already proves it",
-          { statement: text },
-        ),
+          { statement: text }
+        )
       );
     }
     if (subtype === "AT_AddColumn") {
@@ -349,8 +373,8 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
             {
               hint: "Add the column without a default, backfill in batches, then set the default.",
               statement: text,
-            },
-          ),
+            }
+          )
         );
       }
     }

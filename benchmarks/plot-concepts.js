@@ -34,7 +34,7 @@ function node(x, y, w, h, item) {
         fill: tagColor,
         size: 11,
         weight: "600",
-      }),
+      })
     );
   }
   return parts.join("\n");
@@ -81,7 +81,7 @@ function renderFlow(config) {
   const height = calloutY + 48 + 40;
   const xFor = (index) => marginX + index * (nodeW + gap);
   const parts = [
-    svgHeader(width, height),
+    svgHeader(width, height, config.title),
     `<rect width="100%" height="100%" rx="14" fill="${theme.bg}" />`,
     text(marginX, 52, config.title, { fill: theme.title, size: 22, weight: "700" }),
     text(marginX, 78, config.subtitle, { fill: theme.subtitle, size: 13 }),
@@ -98,11 +98,11 @@ function renderFlow(config) {
       xFor(config.bracket.to) + nodeW,
       bracketY,
       config.bracket.label,
-      config.bracket.color,
+      config.bracket.color
     ),
     callout(calloutY, config.callout.label, config.callout.color, config.callout.fill),
     text(marginX, height - 18, config.footer, { fill: theme.muted, size: 11 }),
-    svgFooter(),
+    svgFooter()
   );
   return parts.join("\n");
 }
@@ -160,7 +160,7 @@ const supaschema = renderFlow({
   title: "The supaschema workflow",
 });
 
-const outDir = resolve("docs/concepts");
+const outDir = resolve("docs/images/concepts");
 await mkdir(outDir, { recursive: true });
 const legacyPath = resolve(outDir, "legacy-flow.svg");
 const supaschemaPath = resolve(outDir, "supaschema-flow.svg");

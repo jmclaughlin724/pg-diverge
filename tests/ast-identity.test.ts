@@ -5,11 +5,16 @@ import type { RenderGuardFacts } from "../src/sql/facts.js";
 
 async function singleObject(
   sql: string,
-  config?: { normalize?: "off" | "deparse" },
+  config?: { normalize?: "off" | "deparse" }
 ): Promise<SchemaObject> {
   const result = await extractObjectsFromSql(sql, config ? { config } : {});
-  expect(result.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-  expect(result.objects).toHaveLength(1);
+  const errors = result.diagnostics.filter((item) => item.severity === "error");
+  if (errors.length > 0) {
+    throw new Error(`expected extraction to succeed: ${JSON.stringify(errors)}`);
+  }
+  if (result.objects.length !== 1) {
+    throw new Error(`expected one extracted object, got ${result.objects.length}`);
+  }
   const object = result.objects[0];
   if (!object) {
     throw new Error("expected one extracted object");
@@ -36,10 +41,10 @@ function splicedGuard(object: SchemaObject, insert: string): string {
 describe("AST object identity", () => {
   it("hashes equivalent spellings of the same definition identically", async () => {
     const upper = await singleObject(
-      "CREATE TABLE App.Accounts (id INT NOT NULL, label VARCHAR(10));",
+      "CREATE TABLE App.Accounts (id INT NOT NULL, label VARCHAR(10));"
     );
     const lower = await singleObject(
-      "create table if not exists app.accounts (\n  id integer not null,\n  label character varying(10)\n);",
+      "create table if not exists app.accounts (\n  id integer not null,\n  label character varying(10)\n);"
     );
 
     expect(upper.key).toBe(lower.key);
@@ -72,17 +77,17 @@ describe("render guard facts", () => {
 
     expect(renderFacts(table).guard).toBe("ifNotExists");
     expect(splicedGuard(table, "IF NOT EXISTS ")).toBe(
-      "CREATE UNLOGGED TABLE IF NOT EXISTS app.t (id integer)",
+      "CREATE UNLOGGED TABLE IF NOT EXISTS app.t (id integer)"
     );
   });
 
   it("locates the splice offset after CONCURRENTLY for unique indexes", async () => {
     const index = await singleObject(
-      "CREATE UNIQUE INDEX CONCURRENTLY items_idx ON app.items (id);",
+      "CREATE UNIQUE INDEX CONCURRENTLY items_idx ON app.items (id);"
     );
 
     expect(splicedGuard(index, "IF NOT EXISTS ")).toBe(
-      "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON app.items (id)",
+      "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS items_idx ON app.items (id)"
     );
   });
 
@@ -91,7 +96,7 @@ describe("render guard facts", () => {
 
     expect(renderFacts(view).guard).toBe("orReplace");
     expect(splicedGuard(view, "OR REPLACE ")).toBe(
-      "CREATE OR REPLACE VIEW app.v2 AS SELECT 2 AS two",
+      "CREATE OR REPLACE VIEW app.v2 AS SELECT 2 AS two"
     );
   });
 
@@ -101,7 +106,7 @@ describe("render guard facts", () => {
     });
 
     expect(splicedGuard(table, "IF NOT EXISTS ")).toBe(
-      "-- owner comment\nCREATE TABLE IF NOT EXISTS app.t2 (id integer)",
+      "-- owner comment\nCREATE TABLE IF NOT EXISTS app.t2 (id integer)"
     );
   });
 });
@@ -109,7 +114,7 @@ describe("render guard facts", () => {
 describe("statement facts", () => {
   it("derives view output columns and security_invoker", async () => {
     const view = await singleObject(
-      "CREATE VIEW app.v3 WITH (security_invoker = true) AS SELECT a.id, a.label AS name FROM app.accounts a;",
+      "CREATE VIEW app.v3 WITH (security_invoker = true) AS SELECT a.id, a.label AS name FROM app.accounts a;"
     );
 
     expect(view.metadata.viewColumns).toEqual(["id", "name"]);
@@ -124,7 +129,7 @@ describe("statement facts", () => {
 
   it("derives routine return facts including SETOF", async () => {
     const fn = await singleObject(
-      "CREATE FUNCTION app.f(a integer) RETURNS SETOF text LANGUAGE sql AS $$ SELECT 'x' $$;",
+      "CREATE FUNCTION app.f(a integer) RETURNS SETOF text LANGUAGE sql AS $$ SELECT 'x' $$;"
     );
 
     expect(fn.metadata.returns).toEqual({ setof: true, type: "text" });
@@ -132,7 +137,7 @@ describe("statement facts", () => {
 
   it("derives OUT parameter facts", async () => {
     const fn = await singleObject(
-      "CREATE FUNCTION app.g(IN a integer, OUT b text) LANGUAGE sql AS $$ SELECT 'x' $$;",
+      "CREATE FUNCTION app.g(IN a integer, OUT b text) LANGUAGE sql AS $$ SELECT 'x' $$;"
     );
 
     expect(fn.metadata.outParams).toEqual([{ mode: "FUNC_PARAM_OUT", name: "b", type: "text" }]);
@@ -142,10 +147,10 @@ describe("statement facts", () => {
 describe("view qualification canonicalization", () => {
   it("hashes PG15-style sole-relation qualification equal to the bare form", async () => {
     const qualified = await singleObject(
-      "CREATE VIEW app.v AS SELECT upper(accounts.name) AS name FROM app.accounts;",
+      "CREATE VIEW app.v AS SELECT upper(accounts.name) AS name FROM app.accounts;"
     );
     const bare = await singleObject(
-      "CREATE VIEW app.v AS SELECT upper(name) AS name FROM app.accounts;",
+      "CREATE VIEW app.v AS SELECT upper(name) AS name FROM app.accounts;"
     );
 
     expect(qualified.hash).toBe(bare.hash);
@@ -160,10 +165,10 @@ describe("view qualification canonicalization", () => {
 
   it("hashes materialized view qualification equal to the bare form", async () => {
     const qualified = await singleObject(
-      "CREATE MATERIALIZED VIEW app.mv AS SELECT accounts.name FROM app.accounts;",
+      "CREATE MATERIALIZED VIEW app.mv AS SELECT accounts.name FROM app.accounts;"
     );
     const bare = await singleObject(
-      "CREATE MATERIALIZED VIEW app.mv AS SELECT name FROM app.accounts;",
+      "CREATE MATERIALIZED VIEW app.mv AS SELECT name FROM app.accounts;"
     );
 
     expect(qualified.hash).toBe(bare.hash);
@@ -171,10 +176,10 @@ describe("view qualification canonicalization", () => {
 
   it("preserves qualification when the scope has multiple relations", async () => {
     const qualified = await singleObject(
-      "CREATE VIEW app.v AS SELECT accounts.name FROM app.accounts, app.other;",
+      "CREATE VIEW app.v AS SELECT accounts.name FROM app.accounts, app.other;"
     );
     const bare = await singleObject(
-      "CREATE VIEW app.v AS SELECT name FROM app.accounts, app.other;",
+      "CREATE VIEW app.v AS SELECT name FROM app.accounts, app.other;"
     );
 
     expect(qualified.hash).not.toBe(bare.hash);
@@ -182,13 +187,13 @@ describe("view qualification canonicalization", () => {
 
   it("strips inner sole-relation refs but preserves correlated outer refs", async () => {
     const qualified = await singleObject(
-      "CREATE VIEW app.v AS SELECT (SELECT b.x FROM app.b WHERE b.y = accounts.name) AS x FROM app.accounts;",
+      "CREATE VIEW app.v AS SELECT (SELECT b.x FROM app.b WHERE b.y = accounts.name) AS x FROM app.accounts;"
     );
     const innerBare = await singleObject(
-      "CREATE VIEW app.v AS SELECT (SELECT x FROM app.b WHERE y = accounts.name) AS x FROM app.accounts;",
+      "CREATE VIEW app.v AS SELECT (SELECT x FROM app.b WHERE y = accounts.name) AS x FROM app.accounts;"
     );
     const outerBare = await singleObject(
-      "CREATE VIEW app.v AS SELECT (SELECT b.x FROM app.b WHERE b.y = name) AS x FROM app.accounts;",
+      "CREATE VIEW app.v AS SELECT (SELECT b.x FROM app.b WHERE b.y = name) AS x FROM app.accounts;"
     );
 
     expect(qualified.hash).toBe(innerBare.hash);

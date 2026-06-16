@@ -50,10 +50,10 @@ describe.skipIf(!databaseUrl)("migrations status (against a target)", () => {
       await target.connect();
       await target.query("CREATE SCHEMA supabase_migrations");
       await target.query(
-        "CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY)",
+        "CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY)"
       );
       await target.query(
-        "INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20260101000000'), ('20260103000000')",
+        "INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20260101000000'), ('20260103000000')"
       );
       await target.end();
 

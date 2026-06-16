@@ -1,0 +1,8 @@
+{
+  "packageManager": "npm",
+  "mcpTools": {
+    "cclsp": "0.7.0",
+    "@codeatlas/mcp": "latest",
+    "next-devtools-mcp": "latest"
+  }
+}

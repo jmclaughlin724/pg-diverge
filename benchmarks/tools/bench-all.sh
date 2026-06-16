@@ -8,25 +8,25 @@ export SUPASCHEMA_COMPARE_TIMEOUT_MS=480000
 run_small() {
   SUPASCHEMA_COMPARE_FIXTURES=additive,functions-policies SUPASCHEMA_COMPARE_ITERATIONS=3 \
     SUPASCHEMA_COMPARE_PORT_BASE=55400 \
-    SUPASCHEMA_COMPARE_OUT=benchmarks/results/comparison.json node benchmarks/compare.js >/dev/null
+    SUPASCHEMA_COMPARE_OUT=benchmarks/results/comparison.json node benchmarks/compare.js > /dev/null
   echo "DONE small-fixtures"
 }
 run_realistic() {
   SUPASCHEMA_COMPARE_FIXTURES=realistic SUPASCHEMA_COMPARE_ITERATIONS=3 \
     SUPASCHEMA_COMPARE_PORT_BASE=56400 \
-    SUPASCHEMA_COMPARE_OUT=benchmarks/results/comparison-realistic.json node benchmarks/compare.js >/dev/null
+    SUPASCHEMA_COMPARE_OUT=benchmarks/results/comparison-realistic.json node benchmarks/compare.js > /dev/null
   echo "DONE realistic"
 }
 run_xl() {
   SUPASCHEMA_COMPARE_XL_TABLES=1000 SUPASCHEMA_COMPARE_FIXTURES=xl SUPASCHEMA_COMPARE_ITERATIONS=3 \
     SUPASCHEMA_COMPARE_PORT_BASE=57400 \
-    SUPASCHEMA_COMPARE_OUT=benchmarks/results/comparison-xl.json node benchmarks/compare.js >/dev/null
+    SUPASCHEMA_COMPARE_OUT=benchmarks/results/comparison-xl.json node benchmarks/compare.js > /dev/null
   echo "DONE xl"
 }
 run_xxl() {
   SUPASCHEMA_COMPARE_XXL_TABLES=2500 SUPASCHEMA_COMPARE_FIXTURES=xxl SUPASCHEMA_COMPARE_ITERATIONS=1 \
     SUPASCHEMA_COMPARE_PORT_BASE=58400 \
-    SUPASCHEMA_COMPARE_OUT=benchmarks/results/comparison-xxl.json node benchmarks/compare.js >/dev/null
+    SUPASCHEMA_COMPARE_OUT=benchmarks/results/comparison-xxl.json node benchmarks/compare.js > /dev/null
   echo "DONE xxl"
 }
 
@@ -44,6 +44,6 @@ else
 fi
 
 node benchmarks/plot.js benchmarks/results/comparison.json benchmarks/results/comparison-realistic.json \
-  benchmarks/results/comparison-xl.json benchmarks/results/comparison-xxl.json >/dev/null
-cp benchmarks/results/*-latency.svg benchmarks/results/*-correctness.svg docs/benchmarks/
+  benchmarks/results/comparison-xl.json benchmarks/results/comparison-xxl.json > /dev/null
+cp benchmarks/results/*-latency.svg benchmarks/results/*-correctness.svg docs/images/benchmarks/
 echo "DONE plot-and-charts"

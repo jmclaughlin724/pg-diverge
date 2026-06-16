@@ -1,0 +1,26 @@
+interface:
+  display_name: "Upstream"
+  short_description: "Audit a target against official upstream sources, then drive it to the DRY /elegant end state"
+  default_prompt: "Use $upstream to audit this path, glob, or topic against the official upstream sources and drive it to the DRY /elegant end state."
+policy:
+  allow_implicit_invocation: false
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "context7"
+      description: "Canonical library/framework docs via resolve-library-id and query-docs"
+    - type: "mcp"
+      value: "zod"
+      description: "Zod v4 canonical documentation"
+    - type: "mcp"
+      value: "ultracite"
+      description: "Biome/Ultracite upstream guidance"
+    - type: "mcp"
+      value: "mintlify"
+      description: "Mintlify docs-as-code components and configuration"
+    - type: "mcp"
+      value: "cloudflare-docs"
+      description: "Cloudflare Workers upstream docs"
+    - type: "mcp"
+      value: "cclsp"
+      description: "TypeScript/Python LSP language features and symbol flow"

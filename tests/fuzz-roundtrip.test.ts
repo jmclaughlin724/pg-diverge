@@ -12,11 +12,8 @@ const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseU
 function mulberry32(seed: number): () => number {
   let state = seed;
   return () => {
-    state |= 0;
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    state = (state * 1_664_525 + 1_013_904_223) % 4_294_967_296;
+    return state / 4_294_967_296;
   };
 }
 
@@ -53,7 +50,7 @@ function generateTree(seed: number): string {
   const statements: string[] = ["CREATE SCHEMA fuzz;"];
   const enumValues = ["alpha", "beta", "gamma", "delta"].slice(0, 2 + Math.floor(random() * 3));
   statements.push(
-    `CREATE TYPE fuzz.status AS ENUM (${enumValues.map((value) => `'${value}'`).join(", ")});`,
+    `CREATE TYPE fuzz.status AS ENUM (${enumValues.map((value) => `'${value}'`).join(", ")});`
   );
   const tableCount = 2 + Math.floor(random() * 4);
   const tables: { columns: string[]; name: string }[] = [];
@@ -100,10 +97,10 @@ function generateTree(seed: number): string {
   }
   const viewSource = pick(tables);
   statements.push(
-    `CREATE VIEW fuzz.v_${seed} AS SELECT id FROM fuzz.${viewSource.name} WHERE id > 0;`,
+    `CREATE VIEW fuzz.v_${seed} AS SELECT id FROM fuzz.${viewSource.name} WHERE id > 0;`
   );
   statements.push(
-    `CREATE FUNCTION fuzz.count_${seed}() RETURNS bigint LANGUAGE sql STABLE AS $$ SELECT count(*) FROM fuzz.${viewSource.name} $$;`,
+    `CREATE FUNCTION fuzz.count_${seed}() RETURNS bigint LANGUAGE sql STABLE AS $$ SELECT count(*) FROM fuzz.${viewSource.name} $$;`
   );
   return statements.join("\n");
 }
@@ -121,9 +118,9 @@ const strictKinds = new Set([
 ]);
 
 describe.skipIf(!databaseUrl)("seeded round-trip fuzz", () => {
-  const seeds = [11, 42, 1337, 2026, 90210];
+  const seeds = [11, 42, 1337, 2026, 90_210];
   it.each(
-    seeds,
+    seeds
   )("round-trips generated tree (seed %i) through a live catalog without false changes", {
     timeout: 60_000,
   }, async (seed) => {
@@ -131,7 +128,7 @@ describe.skipIf(!databaseUrl)("seeded round-trip fuzz", () => {
       return;
     }
     const sql = generateTree(seed);
-    const extracted = await extractObjectsFromSql(sql, { config: { adapter: "postgres" } });
+    const extracted = await extractObjectsFromSql(sql, { config: { managedSchemas: [] } });
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
     const dir: SchemaModel = {
       diagnostics: [],
@@ -157,7 +154,7 @@ describe.skipIf(!databaseUrl)("seeded round-trip fuzz", () => {
       }
       const live = await extractCatalogModel({ databaseUrl: url.toString() });
       expect(live.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-      const plan = planSchemaDiff(live, dir, { config: { adapter: "postgres" } });
+      const plan = planSchemaDiff(live, dir, { config: { managedSchemas: [] } });
       const falseChanges = plan.operations
         .filter((operation) => operation.kind !== "drop")
         .filter((operation) => strictKinds.has(operation.ref.kind))

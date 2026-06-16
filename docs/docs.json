@@ -3,10 +3,16 @@
   "theme": "luma",
   "name": "supaschema",
   "description": "From declarative schema to fully synced database in milliseconds. No ORM, no Docker, no shadow database.",
+  "logo": {
+    "light": "/images/brand/supaschema-logo-light.png",
+    "dark": "/images/brand/supaschema-logo-dark.png",
+    "href": "https://supaschema.com/docs"
+  },
+  "favicon": "/images/brand/favicon.png",
   "colors": {
-    "primary": "#1D4ED8",
-    "light": "#60A5FA",
-    "dark": "#3B82F6"
+    "primary": "#A91616",
+    "light": "#FACC15",
+    "dark": "#C2410C"
   },
   "appearance": {
     "default": "system"
@@ -16,6 +22,23 @@
   },
   "metadata": {
     "timestamp": true
+  },
+  "thumbnails": {
+    "appearance": "dark",
+    "background": "/images/brand/mintlify-og-background.png"
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "add-mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "seo": {
     "metatags": {
@@ -54,6 +77,10 @@
           {
             "label": "Quickstart",
             "href": "/quickstart"
+          },
+          {
+            "label": "Setup",
+            "href": "/setup"
           },
           {
             "label": "Commands",
@@ -99,25 +126,35 @@
   "navigation": {
     "groups": [
       {
-        "group": "Get Started",
+        "group": "Start",
         "icon": "rocket",
-        "pages": ["introduction", "installation", "quickstart", "faq"]
+        "pages": ["introduction", "installation", "setup", "quickstart", "faq"]
       },
       {
-        "group": "Core Concepts",
+        "group": "Coding agents",
+        "icon": "bot",
+        "pages": ["coding-agents", "coding-agents/agent-bundle"]
+      },
+      {
+        "group": "Understand",
         "icon": "book-open",
-        "pages": ["concepts/declarative-schema", "concepts/migration-pipeline", "concepts/sources"]
+        "pages": [
+          "concepts/declarative-schema",
+          "concepts/migration-pipeline",
+          "concepts/sources",
+          "comparisons/supaschema-vs-supabase-cli"
+        ]
       },
       {
-        "group": "Use Cases",
-        "icon": "search",
+        "group": "Generate",
+        "icon": "wand-sparkles",
         "pages": [
-          "comparisons/supaschema-vs-supabase-cli",
-          "guides/supabase-db-diff-without-docker",
           "guides/declarative-postgres-schema-management",
+          "guides/supabase-db-diff-without-docker",
           "guides/idempotent-postgres-migrations",
           "guides/rls-policy-migration-safety",
-          "guides/generate-supabase-types-without-database"
+          "guides/generate-supabase-types-without-database",
+          "guides/supabase-integration"
         ]
       },
       {
@@ -137,27 +174,33 @@
       {
         "group": "Configuration",
         "icon": "settings",
-        "pages": ["configuration/config-file", "configuration/environments", "configuration/hints"]
+        "pages": [
+          "configuration/config-file",
+          "configuration/environments",
+          "configuration/hints"
+        ]
       },
       {
-        "group": "Guides",
+        "group": "Ship",
         "icon": "shield-check",
         "pages": [
-          "guides/supabase-integration",
           "guides/ci-github-actions",
           "guides/ci-gate",
           "guides/corpus-oracle"
         ]
       },
       {
-        "group": "Benchmarks",
-        "icon": "chart-line",
-        "pages": ["benchmarks", "case-study-anilize"]
-      },
-      {
         "group": "Reference",
         "icon": "library",
-        "pages": ["reference/diagnostics", "reference/library-api", "reference/support-matrix"]
+        "pages": [
+          "benchmarks",
+          "case-study-anilize",
+          "reference/branding",
+          "reference/diagnostics",
+          "reference/library-api",
+          "reference/package-boundary",
+          "reference/support-matrix"
+        ]
       }
     ]
   },
@@ -217,6 +260,14 @@
     {
       "source": "/index",
       "destination": "/introduction"
+    },
+    {
+      "source": "/agents",
+      "destination": "/coding-agents"
+    },
+    {
+      "source": "/ai-agents",
+      "destination": "/coding-agents"
     },
     {
       "source": "/compare",

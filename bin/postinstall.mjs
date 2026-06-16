@@ -1,26 +1,67 @@
 #!/usr/bin/env node
-// Install-time notice only: point the consumer at `supaschema init` rather
-// than writing into their project. A package postinstall that writes files
-// is flagged by supply-chain scanners, so scaffolding stays an explicit
-// step. Never prints inside supaschema's own checkout; never fails install.
-import { existsSync } from "node:fs";
+// Install-time wrapper for consuming projects. This makes `npm install
+// --save-dev supaschema` the single step that installs config, agent
+// guidance, rules, skills, hooks, and default schema/migration folders.
+// The actual scaffolding lives in the shared, dist-free ./scaffold.mjs so
+// `supaschema init` can reproduce the same setup when npm does not run install
+// scripts (npm v12, ~July 2026, defaults to ignore-scripts). This wrapper owns
+// only the lifecycle concerns: INIT_CWD resolution, the opt-out/own-checkout
+// skip guards, the never-fail-install swallow, and the stdout summary. The
+// script is idempotent and never fails package installation; skipped work is
+// reported and install still exits 0.
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scaffoldProject } from "./scaffold.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const target = resolve(process.env.INIT_CWD ?? process.cwd());
+const packageJson = readJson(join(packageRoot, "package.json")) ?? {};
+const packageVersion = typeof packageJson.version === "string" ? packageJson.version : "unknown";
 
-try {
-  if (target === packageRoot || target.startsWith(packageRoot + sep)) {
-    process.exit(0);
+await main();
+
+// Opt-out used by the composite GitHub Action (action.yml): the action only runs
+// the supaschema CLI as a gate, so the consumer-scaffolding postinstall must not
+// write config/agent/hook/manifest files into the user's checkout.
+function shouldSkipInstall() {
+  const flag = (process.env.SUPASCHEMA_SKIP_POSTINSTALL ?? "").trim().toLowerCase();
+  return flag !== "" && flag !== "0" && flag !== "false";
+}
+
+async function main() {
+  try {
+    if (shouldSkipInstall() || target === packageRoot || target.startsWith(packageRoot + sep)) {
+      process.exit(0);
+    }
+
+    const { installed, skipped, pathConfirmationNeeded } = await scaffoldProject({
+      interactive: true,
+      packageRoot,
+      packageVersion,
+      targetDir: target,
+    });
+
+    const suffix = skipped.length > 0 ? `; skipped ${skipped.join(", ")}` : "";
+    process.stdout.write(
+      `supaschema: installed ${installed.join(", ")} for Claude/Codex agents${suffix}\n`
+    );
+
+    if (pathConfirmationNeeded) {
+      process.stdout.write(
+        "supaschema: confirm detected schema/migration paths in .supaschema/install.json before the first diff\n"
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`supaschema: postinstall setup skipped (${message})\n`);
   }
-  const existing = ["supaschema.config.json", "supaschema.config.mjs", "supaschema.config.js"];
-  if (existing.some((name) => existsSync(join(target, name)))) {
-    process.exit(0);
+}
+
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return;
   }
-  process.stdout.write(
-    "supaschema: run `npx supaschema init` to scaffold supaschema.config.json\n",
-  );
-} catch {
-  process.exit(0);
 }

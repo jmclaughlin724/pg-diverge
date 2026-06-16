@@ -1,5 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { checkMigrationSql } from "./check.js";
 import type { CheckReporter, FileDiagnostics } from "./check-reporters.js";
@@ -15,7 +16,7 @@ import { filterModel, registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
-import { defaultConfigFile, loadConfig } from "./config.js";
+import { loadConfig, validateConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors, redactSecrets } from "./diagnostics.js";
@@ -23,25 +24,37 @@ import { selfCheckCatalog } from "./selfcheck.js";
 import { extractSourceModel } from "./source.js";
 import { verifyMigration } from "./verify.js";
 
-type GlobalOptions = { config?: string; env?: string; quiet?: boolean };
-type InspectOptions = { from?: string; schema?: string };
-type VerifyOptions = {
+interface GlobalOptions {
+  config?: string;
+  env?: string;
+  quiet?: boolean;
+}
+interface InitOptions {
+  dryRun?: boolean;
+  json?: boolean;
+  repair?: boolean;
+}
+interface InspectOptions {
   from?: string;
-  to?: string;
+  schema?: string;
+}
+interface VerifyOptions {
   databaseUrl?: string;
-  ensureRoles?: boolean;
   ensureEnvironment?: boolean;
+  ensureRoles?: boolean;
+  from?: string;
   keepDatabases?: boolean;
   migration?: string;
   migrationsDir?: string;
-};
+  to?: string;
+}
 
 const cliVersion = await readPackageVersion();
 const program = new Command();
 program
   .name("supaschema")
   .description("Generate deterministic, replay-safe PostgreSQL/Supabase migrations from SQL trees.")
-  .option("--config <path>", "explicit config file path (.json, .mjs, or .js)")
+  .option("--config <path>", "explicit JSON config file path")
   .option("--env <name>", "named environment from config.environments for the database URL")
   .option("--quiet", "suppress diagnostic output on stderr")
   .version(cliVersion)
@@ -53,24 +66,75 @@ Exit codes:
   1  runtime error (bad arguments, unreadable input, crash)
   2  diagnostics contained at least one error
   3  --fail-on-diff was set and the plan contained operations
-`,
+`
   );
 
 program
   .command("init")
-  .description("Create supaschema.config.json in the current directory.")
-  .action(async () => {
-    const path = resolve(process.cwd(), "supaschema.config.json");
-    try {
-      await writeFile(path, defaultConfigFile, { flag: "wx" });
-      process.stdout.write(`${path}\n`);
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "EEXIST") {
-        process.stderr.write("supaschema.config.json already exists\n");
-        process.exitCode = 1;
-        return;
+  .description(
+    "Scaffold the full supaschema setup in the current directory — config, schema/migration directories, agent rules/skills/hooks, and AGENTS/CLAUDE guidance. This is the same setup `postinstall` performs; run it when npm did not run install scripts (npm v12 defaults to ignore-scripts) or to repair setup. It is idempotent: an existing config is left untouched and the managed guidance block is upserted in place."
+  )
+  .option("--dry-run", "print the scaffold/repair plan without writing files")
+  .option("--json", "print the init result as redacted JSON")
+  .option("--repair", "rewrite supaschema.config.json from the canonical contract when needed")
+  .action(async (options: InitOptions) => {
+    // Resolve the installed package root from the compiled CLI (dist/cli.js -> ../),
+    // the same anchor readPackageVersion uses, then load the shared scaffolder that
+    // ships at <package>/bin/scaffold.mjs. The dynamic, URL-form import is the
+    // OS-safe convention for a computed path that points out of dist into bin/.
+    const packageRoot = fileURLToPath(new URL("../", import.meta.url));
+    const packageVersion = await readPackageVersion();
+    const { scaffoldProject } = await import(
+      pathToFileURL(join(packageRoot, "bin", "scaffold.mjs")).href
+    );
+    const result = await scaffoldProject({
+      dryRun: options.dryRun === true,
+      interactive: true,
+      packageRoot,
+      packageVersion,
+      repair: options.repair === true,
+      targetDir: process.cwd(),
+    });
+    if (options.json === true) {
+      process.stdout.write(`${JSON.stringify(redactJson(result), null, 2)}\n`);
+      return;
+    }
+    const { installed, pathConfirmationNeeded, skipped } = result;
+    const verb = options.dryRun === true ? "would install" : "installed";
+    const suffix = skipped.length > 0 ? `; skipped ${skipped.join(", ")}` : "";
+    process.stdout.write(`supaschema: ${verb} ${installed.join(", ")}${suffix}\n`);
+    if (pathConfirmationNeeded) {
+      process.stdout.write(
+        "supaschema: confirm detected schema/migration paths in .supaschema/install.json before the first diff\n"
+      );
+    }
+  });
+
+const configCommand = program.command("config").description("Inspect and validate configuration.");
+
+configCommand
+  .command("validate")
+  .option("--json", "print validation diagnostics as JSON")
+  .description("Validate supaschema.config.json paths, sources, and credential references.")
+  .action(async (options: { json?: boolean }) => {
+    const config = await loadCliConfig();
+    const diagnostics = await validateConfig(config, process.cwd());
+    const hasErrorDiagnostics = diagnostics.some((item) => item.severity === "error");
+    if (options.json === true) {
+      process.stdout.write(
+        `${JSON.stringify({ diagnostics, ok: !hasErrorDiagnostics }, null, 2)}\n`
+      );
+    } else if (diagnostics.length === 0) {
+      process.stdout.write("config ok\n");
+    } else {
+      for (const item of diagnostics) {
+        process.stdout.write(
+          `${item.severity}: ${item.field}: ${item.message}${item.hint ? ` (${item.hint})` : ""}\n`
+        );
       }
-      throw error;
+    }
+    if (hasErrorDiagnostics) {
+      process.exitCode = 2;
     }
   });
 
@@ -109,7 +173,7 @@ program
   .argument("[migrations...]", "migration files (default: every .sql in config.migrationsDir)")
   .option("--reporter <name>", "text | github | sarif | json", "text")
   .description(
-    "Validate replay-safety and parser diagnostics for migration files (shell globs expand to a directory gate; `-` reads stdin; zero args checks the migrations directory).",
+    "Validate replay-safety and parser diagnostics for migration files (shell globs expand to a directory gate; `-` reads stdin; zero args checks the migrations directory)."
   )
   .action(async (migrationArgs: string[], options: { reporter: string }) => {
     const config = await loadCliConfig();
@@ -138,39 +202,39 @@ program
     }
     if (reporter === "text") {
       process.stdout.write(
-        migrationPaths.length > 1 ? `ok (${migrationPaths.length} files)\n` : "ok\n",
+        migrationPaths.length > 1 ? `ok (${migrationPaths.length} files)\n` : "ok\n"
       );
     }
   });
 
 program
   .command("verify")
-  .option("--from <source>", "source model before the change (default: database, then git:HEAD)")
-  .option("--to <target>", "source model after the change (default: the config schema tree)")
+  .option("--from <source>", "source model before the change (default: config.sources.from)")
+  .option("--to <target>", "source model after the change (default: config.sources.to)")
   .option(
     "--migration <file>",
-    "migration SQL file to apply twice (default: newest .sql in config.migrationsDir)",
+    "migration SQL file to apply twice (default: newest .sql in config.migrationsDir)"
   )
   .option("--migrations-dir <dir>", "migrations directory (default: config.migrationsDir)")
   .option(
     "--database-url <url>",
-    "PostgreSQL URL whose role can create temporary databases (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
+    "PostgreSQL URL whose role can create temporary databases (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)"
   )
   .option(
     "--ensure-roles",
-    "create missing NOLOGIN roles referenced by grants/policies on the verification server (cluster-level; never dropped)",
+    "create missing NOLOGIN roles referenced by grants/policies on the verification server (cluster-level; never dropped)"
   )
   .option(
     "--ensure-environment",
-    "stub Supabase-provisioned surfaces (auth helpers, cron schema) in the temporary databases (default under adapter supabase-auto)",
+    "stub Supabase-provisioned surfaces (auth helpers, cron schema) in the temporary databases"
   )
   .option(
     "--no-ensure-environment",
-    "disable the Supabase environment stub even under adapter supabase-auto (for servers whose new databases already provision the managed surface)",
+    "disable the Supabase environment stub when a wrapper or config enables it"
   )
   .option(
     "--keep-databases",
-    "keep the temporary databases after the run and print their names (debugging failed verifies)",
+    "keep the temporary databases after the run and print their names (debugging failed verifies)"
   )
   .description("Apply from + migration twice and compare against target in temporary databases.")
   .action(async (options: VerifyOptions) => {
@@ -178,7 +242,7 @@ program
     const databaseUrl = await resolveCliDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
       process.stderr.write(
-        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n",
+        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n"
       );
       process.exitCode = 1;
       return;
@@ -192,7 +256,7 @@ program
       return;
     }
     const sources = await resolveSourceDefaults(options, config, () =>
-      resolveCliDatabaseUrl(options.databaseUrl),
+      resolveCliDatabaseUrl(options.databaseUrl)
     );
     if (sources.notice !== undefined) {
       process.stderr.write(sources.notice);
@@ -224,14 +288,14 @@ program
   .command("selfcheck")
   .option(
     "--database-url <url>",
-    "PostgreSQL URL to extract (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)",
+    "PostgreSQL URL to extract (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack from supabase/config.toml)"
   )
   .description("Re-extract the live catalog's rendered SQL and report identity normalization gaps.")
   .action(async (options: { databaseUrl?: string }) => {
     const databaseUrl = await resolveCliDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
       process.stderr.write(
-        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n",
+        "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n"
       );
       process.exitCode = 1;
       return;
@@ -239,7 +303,7 @@ program
     const result = await selfCheckCatalog({ databaseUrl });
     printDiagnostics(result.diagnostics);
     process.stdout.write(
-      `selfcheck: ${result.checkedObjects} objects, ${result.mismatches} parity mismatches\n`,
+      `selfcheck: ${result.checkedObjects} objects, ${result.mismatches} parity mismatches\n`
     );
     if (hasErrors(result.diagnostics)) {
       process.exitCode = 2;
@@ -265,7 +329,7 @@ program.parseAsync(process.argv).catch((error: unknown) => {
   process.exitCode = 1;
 });
 
-async function loadCliConfig(): Promise<SupaschemaConfig> {
+function loadCliConfig(): Promise<SupaschemaConfig> {
   const globals = program.opts<GlobalOptions>();
   return loadConfig(process.cwd(), globals.config);
 }
@@ -281,7 +345,7 @@ async function resolveCliDatabaseUrl(explicit?: string): Promise<string | undefi
 }
 
 async function resolveCliDatabaseUrlInfo(
-  explicit?: string,
+  explicit?: string
 ): Promise<{ lane: string; url: string | undefined }> {
   if (explicit) {
     return { lane: "explicit --database-url", url: resolveDatabaseUrl(explicit) };
@@ -292,18 +356,24 @@ async function resolveCliDatabaseUrlInfo(
     const entry = config.environments[globals.env];
     if (!entry) {
       throw new Error(
-        `--env "${globals.env}" is not defined in config.environments (known: ${Object.keys(config.environments).join(", ") || "none"})`,
+        `--env "${globals.env}" is not defined in config.environments (known: ${Object.keys(config.environments).join(", ") || "none"})`
       );
     }
     return { lane: `--env ${globals.env}`, url: resolveDatabaseUrl(entry.databaseUrl) };
   }
   const url = resolveDatabaseUrl();
-  const lane = process.env.SUPASCHEMA_DATABASE_URL
-    ? "SUPASCHEMA_DATABASE_URL"
-    : resolveSupabaseLocalDatabaseUrl()
-      ? "supabase/config.toml auto-discovery"
-      : "none";
+  const lane = resolvedDatabaseUrlLane();
   return { lane, url };
+}
+
+function resolvedDatabaseUrlLane(): string {
+  if (process.env.SUPASCHEMA_DATABASE_URL) {
+    return "SUPASCHEMA_DATABASE_URL";
+  }
+  if (resolveSupabaseLocalDatabaseUrl()) {
+    return "supabase/config.toml auto-discovery";
+  }
+  return "none";
 }
 
 async function readStdin(): Promise<string> {
@@ -324,6 +394,19 @@ function printDiagnostics(diagnostics: Diagnostic[]): void {
 
 function redactRawError(error: unknown): string {
   return redactSecrets(error instanceof Error ? error.message : String(error));
+}
+
+function redactJson(value: unknown): unknown {
+  if (typeof value === "string") {
+    return redactSecrets(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactJson);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactJson(item)]));
+  }
+  return value;
 }
 
 async function readPackageVersion(): Promise<string> {

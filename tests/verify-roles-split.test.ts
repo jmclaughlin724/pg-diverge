@@ -14,21 +14,24 @@ import { supabaseEnvironmentStubSql } from "../src/verify-environment.js";
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 async function model(sql: string, source: string): Promise<SchemaModel> {
-  const extracted = await extractObjectsFromSql(sql, { config: { adapter: "postgres" } });
-  expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  const extracted = await extractObjectsFromSql(sql, { config: { managedSchemas: [] } });
+  const errors = extracted.diagnostics.filter((item) => item.severity === "error");
+  if (errors.length > 0) {
+    throw new Error(`expected extraction to succeed: ${JSON.stringify(errors)}`);
+  }
   return { diagnostics: [], fingerprint: source, objects: extracted.objects, source };
 }
 
 describe("concurrent index split rendering", () => {
-  it("moves CONCURRENTLY statements to a companion script under adapter postgres", async () => {
+  it("moves CONCURRENTLY statements to a companion script for per-statement runners", async () => {
     const from = await model("CREATE TABLE app.items (id integer);", "test:from");
     const to = await model(
       "CREATE TABLE app.items (id integer);\nCREATE INDEX CONCURRENTLY items_idx ON app.items (id);",
-      "test:to",
+      "test:to"
     );
-    const plan = planSchemaDiff(from, to, { config: { adapter: "postgres" } });
+    const plan = planSchemaDiff(from, to, { config: { transactionMode: "per-statement" } });
     const rendered = renderMigrationSplit(plan, {
-      config: { adapter: "postgres" },
+      config: { transactionMode: "per-statement" },
       includeHeader: false,
     });
 
@@ -73,13 +76,13 @@ describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
     const migrationPath = join(directory, "migration.sql");
     await writeFile(
       migrationPath,
-      `CREATE TABLE IF NOT EXISTS app.items (id integer);\nGRANT SELECT ON TABLE app.items TO ${role};\n`,
+      `CREATE TABLE IF NOT EXISTS app.items (id integer);\nGRANT SELECT ON TABLE app.items TO ${role};\n`
     );
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
     try {
       const baseOptions = {
-        config: { adapter: "postgres" as const },
+        config: { managedSchemas: [] },
         databaseUrl,
         from: `dump:${join(directory, "from.sql")}`,
         migrationPath,
@@ -138,7 +141,7 @@ describe.skipIf(!databaseUrl)("verify managed-schema stub", () => {
         "CREATE TABLE app.items (id integer);",
         "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY;",
         policy,
-      ].join("\n"),
+      ].join("\n")
     );
     const migrationPath = join(directory, "migration.sql");
     await writeFile(
@@ -148,10 +151,10 @@ describe.skipIf(!databaseUrl)("verify managed-schema stub", () => {
         "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY;",
         "DROP POLICY IF EXISTS items_select ON app.items;",
         policy,
-      ].join("\n"),
+      ].join("\n")
     );
     const diagnostics = await verifyMigration({
-      config: { adapter: "supabase-auto" },
+      config: { managedSchemas: ["auth", "storage"] },
       databaseUrl,
       ensureEnvironment: true,
       from: `dump:${join(directory, "from.sql")}`,
@@ -183,7 +186,7 @@ describe.skipIf(!databaseUrl)("verify policy subquery reconvergence", () => {
         "CREATE TABLE app.items (id integer);",
         "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY;",
         policy,
-      ].join("\n"),
+      ].join("\n")
     );
     const migrationPath = join(directory, "migration.sql");
     await writeFile(
@@ -194,10 +197,10 @@ describe.skipIf(!databaseUrl)("verify policy subquery reconvergence", () => {
         "ALTER TABLE app.items ENABLE ROW LEVEL SECURITY;",
         "DROP POLICY IF EXISTS items_sel ON app.items;",
         policy,
-      ].join("\n"),
+      ].join("\n")
     );
     const diagnostics = await verifyMigration({
-      config: { adapter: "postgres" },
+      config: { managedSchemas: [] },
       databaseUrl,
       from: `dump:${join(directory, "from.sql")}`,
       migrationPath,
@@ -237,14 +240,14 @@ describe.skipIf(!databaseUrl)("CLI concurrent companion file", () => {
     await writeFile(join(directory, "from.sql"), "CREATE TABLE app.items (id integer);");
     await writeFile(
       join(directory, "to.sql"),
-      "CREATE TABLE app.items (id integer);\nCREATE INDEX CONCURRENTLY items_idx ON app.items (id);",
+      "CREATE TABLE app.items (id integer);\nCREATE INDEX CONCURRENTLY items_idx ON app.items (id);"
     );
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const run = promisify(execFile);
     const outPath = join(directory, "migration.sql");
     const configPath = join(directory, "supaschema.config.json");
-    await writeFile(configPath, JSON.stringify({ adapter: "postgres" }));
+    await writeFile(configPath, JSON.stringify({ transactionMode: "per-statement" }));
     await run("node", [
       "dist/cli.js",
       "--config",

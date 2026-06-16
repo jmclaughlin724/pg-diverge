@@ -1,0 +1,44 @@
+name: Dependency Review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    # Block PRs that introduce known-vulnerable or license-incompatible deps
+    # before merge. supaschema ships dual-licensed: AGPL-3.0-only (LICENSE) for
+    # open-source use, or a commercial license (LICENSE-COMMERCIAL.md) for
+    # proprietary/hosted use. A copyleft transitive dep can make a dependency
+    # un-relicensable into the commercial lane, so deny strong-copyleft and
+    # network-copyleft licenses that are incompatible with commercial
+    # relicensing. MAINTAINER: review deny-licenses below against the actual
+    # dependency tree before enabling as a required check; tune as needed
+    # (SPDX expressions, https://spdx.org/licenses/).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Dependency review
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          # Deny only strong/network copyleft that would force the COMMERCIAL
+          # lane open if a dependency's code were linked/distributed: GPL, AGPL,
+          # and SSPL. LGPL is intentionally NOT denied — it permits use in
+          # proprietary software via linking, and the LGPL deps here are
+          # dev-only Python tooling (e.g. pytoolconfig) that is never shipped in
+          # the npm package. The project's own AGPL-3.0 covers first-party code,
+          # not incoming deps. MAINTAINER: review before requiring as a gate.
+          deny-licenses: >-
+            GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-only, GPL-3.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, SSPL-1.0
+

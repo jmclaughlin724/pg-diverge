@@ -88,7 +88,7 @@ export function rangeVarName(value: unknown): QualifiedName | undefined {
   const relation = asRecord(asRecord(value)?.RangeVar) ?? asRecord(value);
   const relname = readString(relation?.relname);
   if (!relname) {
-    return undefined;
+    return;
   }
   return {
     name: relname,
@@ -99,7 +99,7 @@ export function rangeVarName(value: unknown): QualifiedName | undefined {
 export function qualifiedName(value: unknown): QualifiedName | undefined {
   const parts = stringList(value);
   if (parts.length === 0) {
-    return undefined;
+    return;
   }
   if (parts.length === 1) {
     return { name: parts[0] ?? "", schema: "public" };
@@ -151,11 +151,11 @@ export interface FunctionIdentity extends QualifiedName {
 
 export function functionIdentity(
   funcname: unknown,
-  parameters: unknown,
+  parameters: unknown
 ): FunctionIdentity | undefined {
   const name = qualifiedName(funcname);
   if (!name) {
-    return undefined;
+    return;
   }
   const args: string[] = [];
   for (const item of readArray(parameters)) {
@@ -177,21 +177,21 @@ export function objectWithArgsIdentity(value: unknown): FunctionIdentity | undef
   const object = asRecord(asRecord(value)?.ObjectWithArgs) ?? asRecord(value);
   const name = qualifiedName(object?.objname);
   if (!name) {
-    return undefined;
+    return;
   }
   const args = readArray(object?.objargs).map((item) => typeNameToSql(item));
   return { ...name, signature: args.join(", ") };
 }
 
 export interface ColumnFacts {
+  generated: boolean;
+  hasDefault: boolean;
+  hasInlineConstraint: boolean;
+  identity: boolean;
+  location: number;
   name: string;
   notNull: boolean;
-  hasDefault: boolean;
-  identity: boolean;
-  generated: boolean;
-  hasInlineConstraint: boolean;
   type: string;
-  location: number;
 }
 
 export function collectReferences(value: unknown, into: Set<string> = new Set()): Set<string> {
@@ -237,7 +237,7 @@ export function collectReferences(value: unknown, into: Set<string> = new Set())
 function qualifiedNameWhenQualified(value: unknown): QualifiedName | undefined {
   const parts = stringList(value);
   if (parts.length < 2) {
-    return undefined;
+    return;
   }
   return {
     name: parts.at(-1) ?? "",
@@ -248,8 +248,8 @@ function qualifiedNameWhenQualified(value: unknown): QualifiedName | undefined {
 export function columnFacts(value: unknown): ColumnFacts | undefined {
   const column = asRecord(asRecord(value)?.ColumnDef);
   const name = readString(column?.colname);
-  if (!column || !name) {
-    return undefined;
+  if (!(column && name)) {
+    return;
   }
   let notNull = false;
   let hasDefault = false;

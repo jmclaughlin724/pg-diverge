@@ -140,7 +140,7 @@ $$;`,
     "ALTER TABLE app.audit_events ADD CONSTRAINT audit_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES app.tenants (id);",
     "CREATE INDEX audit_events_tenant_id_idx ON app.audit_events (tenant_id);",
     "ALTER TABLE app.audit_events ENABLE ROW LEVEL SECURITY;",
-    `CREATE POLICY audit_events_select ON app.audit_events FOR SELECT TO public USING (${tenantPredicate()});`,
+    `CREATE POLICY audit_events_select ON app.audit_events FOR SELECT TO public USING (${tenantPredicate()});`
   );
   return { from: from.join("\n\n"), to: to.join("\n\n") };
 }
@@ -171,7 +171,7 @@ function entityStatements(index: number, mutated: boolean): string[] {
   ];
   if (mutated && index === 1) {
     statements.push(
-      `CREATE INDEX ${table}_active_name_idx ON ${qualified} (name) WHERE status = 'active'::app.entity_status;`,
+      `CREATE INDEX ${table}_active_name_idx ON ${qualified} (name) WHERE status = 'active'::app.entity_status;`
     );
   }
   if (index % 5 === 0) {
@@ -188,7 +188,7 @@ JOIN app.tenants t ON t.id = e.tenant_id;`);
   }
   if (index % 25 === 7) {
     statements.push(
-      `CREATE MATERIALIZED VIEW app.${table}_stats AS SELECT count(*) AS total FROM ${qualified};`,
+      `CREATE MATERIALIZED VIEW app.${table}_stats AS SELECT count(*) AS total FROM ${qualified};`
     );
   }
   if (index % 20 === 9) {

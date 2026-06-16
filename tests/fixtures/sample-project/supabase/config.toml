@@ -1,0 +1,12 @@
+# Supabase CLI project config for the supaschema sample project.
+# supaschema reads ONLY the [db] port from here for zero-flag local database URL
+# discovery (src/database-url.ts). Every other section is owned by the Supabase CLI.
+project_id = "supaschema-sample"
+
+[db]
+port = 54322
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seeds/seed.sql"]

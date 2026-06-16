@@ -25,7 +25,7 @@ export function renderRename(operation: MigrationOperation): string {
   const newExists = existsExpression(after);
   const renameSql = renderRenameStatement(before.ref, after.ref);
   const conflict = quoteLiteral(
-    `supaschema rename conflict: both ${before.key} and ${after.key} exist`,
+    `supaschema rename conflict: both ${before.key} and ${after.key} exist`
   );
   return `DO $supaschema$
 BEGIN

@@ -9,6 +9,7 @@ const roots: string[] = [];
 const page = (body: string) => `---
 title: "Test"
 description: "A test page."
+keywords: ["test", "docs"]
 ---
 
 ${body}
@@ -43,7 +44,7 @@ describe("docs authoring standard", () => {
 [dot](./setup)
 [parent](../configuration/hints)
 <Card title="Relative" href="commands/types" />
-`),
+`)
     );
 
     expect(violations).toHaveLength(4);
@@ -54,7 +55,7 @@ describe("docs authoring standard", () => {
       "internal-link",
     ]);
     expect(violations.map((violation) => violation.msg).join("\n")).toContain(
-      'link "commands/diff" - docs links must be root-relative',
+      'link "commands/diff" - docs links must be root-relative'
     );
   });
 
@@ -69,7 +70,7 @@ describe("docs authoring standard", () => {
 [mail](mailto:docs@example.com)
 [external](https://example.com/docs)
 <Card title="Root" href="/commands/types" />
-`),
+`)
     );
 
     expect(violations).toEqual([]);
@@ -83,7 +84,7 @@ describe("docs authoring standard", () => {
 [docs-dir](docs/configuration/hints)
 [root-docs-dir](/docs/configuration/hints)
 [extension](/configuration/hints.md)
-`),
+`)
     );
 
     expect(violations.map((violation) => violation.rule)).toEqual([
@@ -107,10 +108,23 @@ describe("docs authoring standard", () => {
 \`\`\`bash theme={null}
 echo ok
 \`\`\`
-`),
+`)
     );
 
     expect(violations.map((violation) => violation.rule)).toEqual(["body-h1", "fence-artifact"]);
+  });
+
+  it("requires language tags on code fences", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+\`\`\`
+plain output
+\`\`\`
+`)
+    );
+
+    expect(violations.map((violation) => violation.rule)).toEqual(["code-fence-language"]);
   });
 
   it("requires ParamField on command pages with Flags or Options sections", async () => {
@@ -120,7 +134,7 @@ echo ok
 ## Flags
 
 - \`--from\`
-`),
+`)
     );
     const present = await lintOne(
       "docs/commands/example.mdx",
@@ -130,10 +144,146 @@ echo ok
 <ParamField path="--from" type="source">
   Source.
 </ParamField>
-`),
+`)
     );
 
     expect(missing.map((violation) => violation.rule)).toEqual(["component"]);
     expect(present).toEqual([]);
+  });
+
+  it("validates docs.json navigation and allows hidden unlisted pages", async () => {
+    const root = await writeDocs({
+      "docs/docs.json": JSON.stringify({
+        $schema: "https://mintlify.com/docs.json",
+        theme: "luma",
+        name: "supaschema",
+        colors: { primary: "#1D4ED8" },
+        icons: { library: "lucide" },
+        contextual: {
+          options: ["copy", "view", "chatgpt", "claude", "mcp", "add-mcp", "cursor", "vscode"],
+        },
+        navigation: { groups: [{ group: "Start", pages: ["page"] }] },
+      }),
+      "docs/page.mdx": page("## Start"),
+      "docs/hidden.mdx": `---
+title: "Hidden"
+description: "Hidden page."
+keywords: ["hidden", "docs"]
+hidden: true
+---
+
+## Hidden
+`,
+    });
+
+    const violations = lintDocsStandard({
+      rootDir: root,
+      files: ["docs/page.mdx", "docs/hidden.mdx"],
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("requires keywords and rejects unsupported frontmatter values", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      `---
+title: "Test"
+description: "A test page."
+keywords: []
+hidden: false
+mode: "unsupported"
+noindex: "no"
+---
+
+## Start
+`
+    );
+
+    expect(violations.map((violation) => violation.rule)).toEqual([
+      "frontmatter",
+      "frontmatter",
+      "frontmatter",
+      "frontmatter",
+    ]);
+    expect(violations.map((violation) => violation.msg).join("\n")).toContain(
+      "missing or invalid `keywords` array"
+    );
+    expect(violations.map((violation) => violation.msg).join("\n")).toContain(
+      "`hidden` must be true when present"
+    );
+  });
+
+  it("rejects generic link text", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+[here](/commands/diff)
+[Descriptive command reference](/commands/diff)
+`)
+    );
+
+    expect(violations.map((violation) => violation.rule)).toEqual(["link-text"]);
+  });
+
+  it("requires docs images to live under /images and use Frame", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+![Example diagram](/diagrams/example.svg)
+
+<img src="/images/example.svg" alt="Example diagram" />
+`)
+    );
+
+    expect(violations.map((violation) => violation.rule)).toEqual([
+      "image-path",
+      "image-frame",
+      "image-frame",
+    ]);
+  });
+
+  it("allows framed docs images under /images", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+<Frame caption="Example diagram">
+  <img src="/images/example.svg" alt="Example diagram" />
+</Frame>
+`)
+    );
+
+    expect(violations).toEqual([]);
+  });
+
+  it("rejects invalid docs.json config and orphan navigation pages", async () => {
+    const root = await writeDocs({
+      "docs/docs.json": JSON.stringify({
+        $schema: "https://example.com/schema.json",
+        theme: "unknown",
+        name: "",
+        colors: { primary: "blue" },
+        icons: { library: "tabler" },
+        navigation: {
+          groups: [
+            {
+              group: "This navigation label is too long for a compact sidebar item",
+              pages: ["missing.md"],
+            },
+          ],
+        },
+      }),
+      "docs/page.mdx": page("## Start"),
+    });
+
+    const violations = lintDocsStandard({ rootDir: root, files: ["docs/page.mdx"] });
+    const rules = violations.map((violation) => violation.rule);
+
+    expect(rules).toContain("docs-json");
+    expect(rules).toContain("navigation");
+    expect(rules).toContain("navigation-label");
+    expect(violations.map((violation) => violation.msg).join("\n")).toContain(
+      "missing from docs.json"
+    );
   });
 });
