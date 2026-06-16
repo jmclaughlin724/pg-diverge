@@ -124,25 +124,19 @@ assert(release, "release.yml must exist");
 const releaseOn = release.doc?.on ?? {};
 assert(
   !releaseOn.release,
-  "release.yml must not publish from GitHub Release events; npm publishes after CI succeeds on main"
+  "release.yml must not publish from GitHub Release events; npm and GitHub releases are created from main"
 );
 assert(
-  !releaseOn.push,
-  "release.yml must not publish directly from push; it must publish the exact commit after CI succeeds"
-);
-const workflowRun = releaseOn.workflow_run;
-assert(workflowRun, "release.yml must trigger from workflow_run");
-assert(
-  asArray(workflowRun.workflows).includes("CI"),
-  `release.yml workflow_run must depend on CI (got ${JSON.stringify(workflowRun.workflows)})`
+  !releaseOn.workflow_run,
+  "release.yml must not wait on workflow_run; release must not be gated on the full CI/benchmark workflow"
 );
 assert(
-  asArray(workflowRun.types).includes("completed"),
-  `release.yml workflow_run must use completed (got ${JSON.stringify(workflowRun.types)})`
+  asArray(releaseOn.push?.branches).includes("main"),
+  `release.yml push trigger must be scoped to main (got ${JSON.stringify(releaseOn.push?.branches)})`
 );
 assert(
-  asArray(workflowRun.branches).includes("main"),
-  `release.yml workflow_run must be scoped to main (got ${JSON.stringify(workflowRun.branches)})`
+  releaseOn.workflow_dispatch !== undefined,
+  "release.yml must keep workflow_dispatch for release repair"
 );
 assert(
   release.doc?.concurrency?.group === "release-npm" &&
@@ -167,13 +161,13 @@ assert(
   "release.yml manual dispatch path must be scoped to refs/heads/main"
 );
 assert(
-  publishIf.includes("github.event.workflow_run.conclusion == 'success'") &&
-    publishIf.includes("github.event.workflow_run.event == 'push'"),
-  "release.yml publish job must run only after a successful push-triggered CI workflow_run"
+  publishIf.includes("github.event_name == 'push'") &&
+    publishIf.includes("github.ref == 'refs/heads/main'"),
+  "release.yml publish job must run on push only for refs/heads/main"
 );
 assert(
-  publishJob.permissions?.contents === "read",
-  "release.yml publish job must keep contents: read; it no longer uploads GitHub release artifacts"
+  publishJob.permissions?.contents === "write",
+  "release.yml publish job must grant contents: write so it can create the GitHub Release/tag"
 );
 assert(
   !publishJob.env?.SUPASCHEMA_DATABASE_URL,
@@ -189,14 +183,10 @@ assert(
 const checkoutStep = (publishJob.steps ?? []).find(
   (step) => typeof step?.uses === "string" && step.uses.startsWith("actions/checkout")
 );
-const workflowRunHeadShaRef = [
-  "${{",
-  " github.event.workflow_run.head_sha || github.sha ",
-  "}}",
-].join("");
+const workflowRunHeadShaRef = ["${{", " github.sha ", "}}"].join("");
 assert(
   checkoutStep?.with?.ref === workflowRunHeadShaRef,
-  "release.yml checkout must use github.event.workflow_run.head_sha so publish uses the CI-tested commit"
+  "release.yml checkout must use github.sha so publish and GitHub release target the merged main commit"
 );
 assert(
   (publishJob.steps ?? []).some((step) =>
@@ -219,8 +209,18 @@ assert(
   "release.yml must publish the exact tarball that was smoked"
 );
 assert(
+  release.raw.includes("gh release create") &&
+    release.raw.includes('--target "$GITHUB_SHA"') &&
+    release.raw.includes("--generate-notes"),
+  "release.yml must create the GitHub Release/tag for the released package version"
+);
+assert(
+  !release.raw.includes("npm run benchmark"),
+  "release.yml must not run benchmark; benchmarks stay in CI and must not block release publication"
+);
+assert(
   !release.raw.includes("gh release upload"),
-  "release.yml must not upload artifacts to a GitHub Release; npm is released from main after CI"
+  "release.yml must not upload extra artifacts to a GitHub Release; create the release/tag only"
 );
 
 // Support-contract matrices must not silently narrow.

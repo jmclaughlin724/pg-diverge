@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+const GITHUB_REPOSITORY_RE = /github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/;
+const WHITESPACE_RE = /\s+/;
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -20,6 +23,39 @@ function normalizeVersions(raw) {
     return raw.length === 0 ? [] : [raw];
   }
   return [];
+}
+
+function envBoolean(name) {
+  const value = process.env[name];
+  if (value === undefined) {
+    return;
+  }
+  if (value === "1" || value === "true") {
+    return true;
+  }
+  if (value === "0" || value === "false") {
+    return false;
+  }
+  fail(`${name} must be one of true, false, 1, or 0`);
+}
+
+function repositorySlug(packageJson) {
+  if (process.env.GITHUB_REPOSITORY) {
+    return process.env.GITHUB_REPOSITORY;
+  }
+
+  const repository =
+    typeof packageJson.repository === "string"
+      ? packageJson.repository
+      : packageJson.repository?.url;
+  if (typeof repository === "string") {
+    const match = repository.match(GITHUB_REPOSITORY_RE);
+    if (match) {
+      return `${match[1]}/${match[2]}`;
+    }
+  }
+
+  fail("GITHUB_REPOSITORY or package.json repository.url is required for release preflight");
 }
 
 function npmViewVersions(packageName) {
@@ -42,12 +78,90 @@ function npmViewVersions(packageName) {
   }
 }
 
+function githubReleaseExists(repo, tag) {
+  const mocked = envBoolean("SUPASCHEMA_RELEASE_GITHUB_RELEASE_EXISTS");
+  if (mocked !== undefined) {
+    return mocked;
+  }
+
+  try {
+    execFileSync("gh", ["release", "view", tag, "--repo", repo, "--json", "tagName"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return true;
+  } catch (error) {
+    const stderr = error?.stderr?.toString?.() ?? "";
+    if (stderr.includes("release not found") || stderr.includes("Not Found")) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function githubTagTarget(tag) {
+  if (process.env.SUPASCHEMA_RELEASE_GITHUB_TAG_TARGET !== undefined) {
+    const value = process.env.SUPASCHEMA_RELEASE_GITHUB_TAG_TARGET;
+    if (value.length === 0) {
+      return;
+    }
+    return value;
+  }
+
+  try {
+    const output = execFileSync("git", ["ls-remote", "--tags", "origin", `refs/tags/${tag}*`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const lines = output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const peeled = lines.find((line) => line.endsWith(`refs/tags/${tag}^{}`));
+    const exact = lines.find((line) => line.endsWith(`refs/tags/${tag}`));
+    const selected = peeled ?? exact;
+    return selected?.split(WHITESPACE_RE)[0];
+  } catch (error) {
+    const status = typeof error?.status === "number" ? error.status : undefined;
+    const stderr = error?.stderr?.toString?.() ?? "";
+    if (status === 2 || stderr.includes("not found") || stderr.length === 0) {
+      return;
+    }
+    throw error;
+  }
+}
+
+function writeActionsValue(file, key, value) {
+  if (file) {
+    appendFileSync(file, `${key}=${value}\n`);
+  }
+}
+
+function exposeReleaseState(state) {
+  const entries = {
+    SUPASCHEMA_PACKAGE_NAME: state.name,
+    SUPASCHEMA_PACKAGE_VERSION: state.version,
+    SUPASCHEMA_RELEASE_ALREADY_COMPLETE: state.alreadyComplete,
+    SUPASCHEMA_RELEASE_GITHUB_RELEASE_EXISTS: state.githubReleaseExists,
+    SUPASCHEMA_RELEASE_NPM_PUBLISHED: state.npmPublished,
+    SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE: state.shouldCreateGithubRelease,
+    SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM: state.shouldPublishNpm,
+    SUPASCHEMA_RELEASE_TAG: state.tag,
+  };
+
+  for (const [key, value] of Object.entries(entries)) {
+    writeActionsValue(process.env.GITHUB_ENV, key, value);
+    writeActionsValue(process.env.GITHUB_OUTPUT, key, value);
+  }
+}
+
 const root = process.cwd();
 const packageJson = readJson(join(root, "package.json"));
 const packageLock = readJson(join(root, "package-lock.json"));
 
 const name = packageJson.name;
 const version = packageJson.version;
+const tag = `v${version}`;
 if (typeof name !== "string" || name.length === 0) {
   fail("package.json must include a package name before release");
 }
@@ -65,8 +179,46 @@ if (packageLock.packages?.[""]?.version !== version) {
 }
 
 const published = npmViewVersions(name);
-if (published.includes(version)) {
-  fail(`${name}@${version} already exists on npm; bump the version before merging to main`);
+const npmPublished = published.includes(version);
+const repo = repositorySlug(packageJson);
+const releaseExists = githubReleaseExists(repo, tag);
+const tagTarget = githubTagTarget(tag);
+const targetSha = process.env.GITHUB_SHA;
+
+if (releaseExists && !npmPublished) {
+  fail(
+    `${tag} already exists on GitHub but ${name}@${version} is not on npm; fix the inconsistent release before rerunning`
+  );
 }
 
-console.log(`RELEASE_PREFLIGHT_OK ${name}@${version} is unpublished`);
+if (!releaseExists && tagTarget !== undefined) {
+  if (!targetSha) {
+    fail(`${tag} exists on GitHub but GITHUB_SHA is unavailable for target validation`);
+  }
+  if (tagTarget !== targetSha) {
+    fail(`${tag} points to ${tagTarget}, not the release commit ${targetSha}`);
+  }
+}
+
+const shouldPublishNpm = !npmPublished;
+const shouldCreateGithubRelease = !releaseExists;
+const alreadyComplete = npmPublished && releaseExists;
+
+exposeReleaseState({
+  alreadyComplete,
+  githubReleaseExists: releaseExists,
+  name,
+  npmPublished,
+  shouldCreateGithubRelease,
+  shouldPublishNpm,
+  tag,
+  version,
+});
+
+if (alreadyComplete) {
+  console.log(`RELEASE_PREFLIGHT_OK ${name}@${version} and ${tag} are already released`);
+} else if (npmPublished) {
+  console.log(`RELEASE_PREFLIGHT_OK ${name}@${version} is on npm; ${tag} will be created`);
+} else {
+  console.log(`RELEASE_PREFLIGHT_OK ${name}@${version} will publish to npm and create ${tag}`);
+}

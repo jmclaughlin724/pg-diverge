@@ -1,9 +1,7 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -17,14 +15,14 @@ concurrency:
 jobs:
   publish:
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+      github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
 
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release
     permissions:
-      contents: read
+      contents: write
       id-token: write
       attestations: write
 
@@ -48,7 +46,7 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
       # No check-latest: use the runner's cached Node 24 toolcache (deterministic
       # patch, no nodejs.org fetch on the OIDC publish job). The npm-version
       # preflight below fails loudly if the cached npm predates 11.5.1.
@@ -57,17 +55,26 @@ jobs:
           node-version: 24
           package-manager-cache: false
           registry-url: https://registry.npmjs.org
+      - name: Release version preflight
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/preflight.mjs
       - name: Confirm npm supports OIDC trusted publishing
+        if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         run: |
           npm --version
           node -e "const { execFileSync } = require('node:child_process'); const raw = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(); const match = /^(\d+)\.(\d+)\.(\d+)/.exec(raw); if (!match) throw new Error('could not parse npm version: ' + raw); const [major, minor, patch] = match.slice(1).map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) throw new Error('npm >= 11.5.1 is required for trusted publishing, found ' + raw);"
-      - name: Release version preflight
-        run: node scripts/release/preflight.mjs
-      - run: npm ci
-      - run: npm audit signatures
-      - run: npm run build
-      - run: npm run check:package
+      - if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+        run: npm ci
+      - if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+        run: npm audit signatures
+      - if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+        run: npm run build
+      - if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+        run: npm run check:package
       - name: Pack package
+        if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         id: pack
         run: |
           tarball="$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" --silent)"
@@ -79,6 +86,7 @@ jobs:
       # so the smoke render must not share $RUNNER_TEMP with the packed tarball,
       # the sigstore bundle, or any future second render.
       - name: Smoke npx from tarball
+        if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         run: |
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
@@ -86,9 +94,21 @@ jobs:
             --to dir:tests/fixtures/basic/to \
             --out "$RUNNER_TEMP/smoke/basic.sql"
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke/basic.sql"
-      - run: npm publish "$SUPASCHEMA_TARBALL" --access public --provenance
+      - if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+        run: npm publish "$SUPASCHEMA_TARBALL" --access public --provenance
       - name: Attest tarball provenance
+        if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         id: attest
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: ${{ steps.pack.outputs.tarball_path }}
+      - name: Create GitHub release
+        if: env.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$SUPASCHEMA_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$SUPASCHEMA_RELEASE_TAG" \
+            --generate-notes
