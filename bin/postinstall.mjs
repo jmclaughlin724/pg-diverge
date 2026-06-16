@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// Install-time wrapper for consuming projects. This makes `npm install
-// supaschema` the single step that installs config, agent
-// guidance, rules, skills, hooks, and default schema/migration folders.
+// Install-time wrapper for consuming projects. This makes the consumer's
+// package-manager install the single step that installs config, agent guidance,
+// rules, skills, hooks, and default schema/migration folders.
 // The actual scaffolding lives in the shared, dist-free ./scaffold.mjs so
 // `supaschema init` can reproduce the same setup when dependency lifecycle
-// scripts are blocked or skipped (npm v12 allowScripts policy, --ignore-scripts,
-// or local npm policy). This wrapper owns
-// only the lifecycle concerns: INIT_CWD resolution, the opt-out/own-checkout
-// skip guards, the never-fail-install swallow, and the stdout summary. The
-// script is idempotent and never fails package installation; skipped work is
-// reported and install still exits 0.
+// scripts are blocked or skipped by npm, pnpm, Yarn, Bun, or local project
+// policy. This wrapper owns only the lifecycle concerns: INIT_CWD resolution,
+// the opt-out/own-checkout skip guards, the never-fail-install swallow, and the
+// stdout-silent package-manager contract. The script is idempotent and never
+// fails package installation; setup failures are reported on stderr and install
+// still exits 0.
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,23 +36,12 @@ async function main() {
       process.exit(0);
     }
 
-    const { installed, skipped, pathConfirmationNeeded } = await scaffoldProject({
-      interactive: true,
+    await scaffoldProject({
+      interactive: false,
       packageRoot,
       packageVersion,
       targetDir: target,
     });
-
-    const suffix = skipped.length > 0 ? `; skipped ${skipped.join(", ")}` : "";
-    process.stdout.write(
-      `supaschema: installed ${installed.join(", ")} for Claude/Codex agents${suffix}\n`
-    );
-
-    if (pathConfirmationNeeded) {
-      process.stdout.write(
-        "supaschema: confirm detected schema/migration paths in .supaschema/install.json before the first diff\n"
-      );
-    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`supaschema: postinstall setup skipped (${message})\n`);

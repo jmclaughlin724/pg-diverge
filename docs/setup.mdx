@@ -6,10 +6,12 @@ keywords: ["setup", "configuration", "agent bundle", "schema paths"]
 
 Use this page to confirm paths and setup output after install.
 
-If setup did not run, start with [Installation](/installation). If dependency lifecycle scripts were blocked, run:
+Command examples show `supaschema` as CLI syntax. In a project install, run it through the local runner from [Installation](/installation).
+
+If setup did not run, start with [Installation](/installation). If dependency lifecycle scripts were blocked, run `init` through the local runner for your package manager:
 
 ```bash
-npx supaschema init
+supaschema init
 ```
 
 ## Path selection
@@ -24,7 +26,9 @@ Install scans the repository before writing config:
 
 <Warning>
   Do not run the first `diff` from a guessed path. If `.supaschema/install.json`
-  says `pathConfirmationNeeded: true`, confirm the intended paths first.
+  says `pathConfirmationNeeded: true`, `config validate`, `doctor`, and zero-source
+  `diff` block until `supaschema.config.json` explicitly sets `schemaPaths`,
+  `sources.to`, and `migrationsDir`.
 </Warning>
 
 | Provider marker | Schema path | Migrations path |
@@ -56,7 +60,7 @@ Content outside the markers is preserved.
 Run `doctor` when setup behaves unexpectedly:
 
 ```bash
-npx supaschema doctor
+supaschema doctor
 ```
 
 `doctor` checks Node, parser load, config validity, database URL resolution, optional database reachability, `CREATEDB`, migration history, and declarative schema paths.

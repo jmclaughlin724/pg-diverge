@@ -33,8 +33,9 @@ database or migration state + declarative SQL tree
   </Step>
   <Step title="Plan">
     The planner compares tables, constraints, indexes, functions, triggers,
-    views, policies, grants, publications, subscriptions, storage objects, and
-    supported extension ownership.
+    views, policies, grants, foreign data wrappers, comments, and supported
+    extension ownership. Unsupported and provider-owned surfaces fail closed
+    instead of being guessed.
   </Step>
   <Step title="Render">
     The renderer emits deterministic SQL with idempotent guards, lock and

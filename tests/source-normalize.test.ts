@@ -17,6 +17,14 @@ function errors(model: Awaited<ReturnType<typeof modelFromSql>>) {
 }
 
 describe("split privilege aggregation", () => {
+  it("extracts empty: as a valid empty schema source", async () => {
+    const model = await extractSourceModel("empty:");
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects).toEqual([]);
+    expect(model.source).toBe("empty:");
+  });
+
   it("suppresses no-op schema revokes (no default, nothing granted) without duplicates", async () => {
     const model = await modelFromSql(
       "CREATE SCHEMA app;\nREVOKE CREATE ON SCHEMA app FROM PUBLIC;\nREVOKE USAGE ON SCHEMA app FROM PUBLIC;\n"

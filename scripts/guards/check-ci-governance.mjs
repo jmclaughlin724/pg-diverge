@@ -93,6 +93,7 @@ for (const file of files) {
   const raw = fs.readFileSync(path.join(WORKFLOWS_DIR, file), "utf8");
   parsed.set(file, { doc: parseYaml(raw), raw });
 }
+const packageJson = readJson("package.json");
 
 for (const [file, { doc, raw }] of parsed) {
   // Least privilege: no top-level write scope on any workflow.
@@ -260,8 +261,10 @@ assert(
 assert(
   release.raw.includes("gh release create") &&
     release.raw.includes('--target "$GITHUB_SHA"') &&
-    release.raw.includes("--generate-notes"),
-  "release.yml must create the GitHub Release/tag for the released package version"
+    release.raw.includes("--notes-file") &&
+    release.raw.includes("node scripts/release/changelog-notes.mjs") &&
+    !release.raw.includes("--generate-notes"),
+  "release.yml must create the GitHub Release/tag from the CHANGELOG.md release notes file"
 );
 assert(
   (publishJob.steps ?? []).some((step) => stepActionName(step) === "actions/attest"),
@@ -295,6 +298,45 @@ assert(
   "ci.yml quality job must not run npm run benchmark without a database URL"
 );
 const qualitySteps = ci.jobs?.quality?.steps ?? [];
+assert(
+  packageJson.scripts?.["package:smoke"] === "node scripts/release/package-smoke.mjs",
+  "package.json must expose one strict npm run package:smoke consumer tarball smoke"
+);
+assert(
+  !packageJson.scripts?.["package:smoke:all"],
+  "package.json must not expose a second package-smoke entry point"
+);
+assert(
+  String(packageJson.scripts?.["release:verify"] ?? "").includes("npm run package:smoke"),
+  "release:verify must include npm run package:smoke"
+);
+const preparePackageManagersStep = findNamedStep(
+  qualitySteps,
+  "Prepare alternate consumer package managers"
+);
+assert(
+  preparePackageManagersStep &&
+    stepIf(preparePackageManagersStep) === "matrix.node-version == 22" &&
+    stepRun(preparePackageManagersStep).includes("corepack prepare pnpm@10.18.1 --activate") &&
+    stepRun(preparePackageManagersStep).includes("corepack prepare yarn@4.12.0 --activate"),
+  "ci.yml must prepare pnpm and Yarn only for the Node 22 consumer package-smoke lane"
+);
+const setupBunStep = findNamedStep(qualitySteps, "Install Bun for consumer package smoke");
+assert(
+  setupBunStep &&
+    stepIf(setupBunStep) === "matrix.node-version == 22" &&
+    stepActionName(setupBunStep) === "oven-sh/setup-bun" &&
+    String(setupBunStep.with?.["bun-version"]) === "1.3.14",
+  "ci.yml must install pinned Bun only for the Node 22 consumer package-smoke lane"
+);
+const packageSmokeStep = findNamedStep(qualitySteps, "Smoke package managers from tarball");
+assert(
+  packageSmokeStep &&
+    stepIf(packageSmokeStep) === "matrix.node-version == 22" &&
+    !packageSmokeStep.env &&
+    stepRun(packageSmokeStep) === "npm run package:smoke",
+  "ci.yml must run npm run package:smoke with all package-manager lanes required on Node 22"
+);
 const examplesSmokeStep = findNamedStep(
   qualitySteps,
   "Examples smoke (shipped examples render + check clean)"

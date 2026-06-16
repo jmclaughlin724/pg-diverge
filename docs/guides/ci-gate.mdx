@@ -6,7 +6,7 @@ keywords: ["CI gate", "drift check", "replay safety", "policy isolation"]
 
 Use this when schema changes should fail before merge instead of failing in a deploy.
 
-The gate is a command set today: `diff --fail-on-diff`, `check`, and optional `verify`. A future hosted product can enforce the same checks at an organization level.
+The gate is a command set: `diff --fail-on-diff`, `check`, and optional `verify`. This repository ships CLI and GitHub Action gates, not hosted CI, billing, marketplace distribution, or license enforcement.
 
 ## Use this when
 
@@ -22,7 +22,7 @@ Start with the free CI layer:
 ```yaml
 - uses: jmclaughlin724/supaschema@<tag>
   with:
-    args: diff --fail-on-diff --quiet
+    argv: '["diff","--fail-on-diff","--quiet"]'
   env:
     SUPASCHEMA_DATABASE_URL: ${{ secrets.DATABASE_URL }}
 ```
@@ -46,7 +46,8 @@ npx supaschema check --reporter sarif
 - Which branches require drift checks.
 - Whether `verify` runs on every PR or only protected branches.
 - Who can approve destructive hints.
-- Whether future hosted policy enforcement belongs in the workflow.
+- Whether your organization needs additional policy enforcement outside this
+  repository.
 
 ## Related
 

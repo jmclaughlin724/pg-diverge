@@ -24,7 +24,7 @@ npm run check     # lint + tests + build (build type-checks via noEmitOnError)
 - **pre-commit** formats and lints your staged files with Biome.
 - **pre-push** runs `npm run typecheck` and `npm run guard` (the repo guard suite).
 
-To bypass a hook in an emergency: `git commit --no-verify` (or `LEFTHOOK=0 git commit`). Prefer fixing the failure — CI runs the same gates.
+Do not bypass hooks with `--no-verify` or `LEFTHOOK=0`. Fix the failure locally; CI runs the same gates.
 
 ### Common commands
 
@@ -81,9 +81,9 @@ When changing the planner or renderer, run `supaschema check` (replay-safety gat
 
 For core SQL extraction, planning, rendering, checking, verifying, typegen, or CLI-default changes, run the targeted tests plus `npm run typecheck`. For package/release/agent-surface changes, run `npm run check:package` or `npm pack --dry-run`.
 
-## Changesets
+## Changesets and releases
 
-Any user-facing change (behavior, CLI, config, diagnostics, docs that ship) needs a changeset so the changelog and version can't drift from what shipped:
+Any user-facing change (behavior, CLI, config, diagnostics, docs that ship) needs a changeset while the change is fresh:
 
 ```bash
 npm run changeset
@@ -91,7 +91,7 @@ npm run changeset
 
 Pick the semver bump (patch/minor/major) and write a short, user-readable note. Commit the generated `.changeset/*.md` file with your PR.
 
-`main` is the npm release source. Every PR that merges to `main` must carry a package version that has not already been published to npm, including build/CI/internal-only changes. Before merging to `main`, run `npm run release:version`, update `action.yml`'s default version to match `package.json`, and include the resulting `package.json`, `package-lock.json`, `CHANGELOG.md`, and `action.yml` changes. The release workflow publishes only after CI succeeds on `main` and fails if the committed package version already exists on npm.
+`main` is the npm release source. Release PRs follow [Release](./docs/release.mdx): run `npm run release:version`, confirm `npm run release:notes -- --version <version>`, and run `npm run release:verify`. The top `CHANGELOG.md` entry is the canonical GitHub Release body.
 
 ## Commit sign-off (DCO)
 
@@ -123,11 +123,12 @@ Before opening a PR (the [PR template](./.github/PULL_REQUEST_TEMPLATE.md) repea
 2. `npm run check` passes locally.
 3. Source changes are in `src/**`; `dist/**` is regenerated, not hand-edited.
 4. No generated migration (`-- supaschema: lineage`) was hand-edited.
-5. SQL semantics go through the AST/model, not regex; ESM and npm-only preserved.
+5. SQL semantics go through the AST/model, not regex; ESM and the npm maintainer toolchain stay preserved, with no repo-root pnpm/Yarn/Bun lockfile outside package-smoke temp projects.
 6. Tests added/updated; any snapshot change is intentional and explained.
 7. Docs updated for user-facing flag/config/diagnostic changes (`npm run docs:check` if `docs/**` is touched); `supaschema-config.schema.json`, docs, and examples stay aligned.
 8. A `.changeset/` entry is included for user-facing changes.
-9. **All commits are signed off** (`git commit -s`).
+9. Release PRs follow [Release](./docs/release.mdx).
+10. **All commits are signed off** (`git commit -s`).
 
 ## Reporting bugs and requesting features
 

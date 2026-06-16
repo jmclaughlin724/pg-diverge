@@ -171,6 +171,18 @@ for (const forbidden of [
     `scripts/agent-hooks/skills.mjs must not use ${forbidden} for skill matching`
   );
 }
+assert(
+  skillMatcherText.includes("isSubagentInvocation") && skillMatcherText.includes("agent_id"),
+  "scripts/agent-hooks/skills.mjs must downgrade the PreToolUse skill gate to advisory inside subagents (agent_id)"
+);
+const evidenceGateText = fs.readFileSync(
+  path.join(ROOT, "scripts/agent-hooks/detectors.mjs"),
+  "utf8"
+);
+assert(
+  evidenceGateText.includes("isSubagentInvocation"),
+  "scripts/agent-hooks/detectors.mjs response-evidence gate must downgrade to advisory inside subagents"
+);
 for (const file of claudeSkillFiles) {
   const text = fs.readFileSync(file, "utf8");
   assert(

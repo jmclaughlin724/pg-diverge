@@ -15,7 +15,7 @@
 - **Replay-safe by construction.** Every statement is guarded (`IF NOT EXISTS`, catalog-checked `DO` blocks), so a crashed or retried deploy just re-runs the file — where the CLI's unguarded `CREATE TABLE` / `CREATE INDEX` fail on the second apply.
 
 ```bash
-npx supaschema diff   # writes the migration; refreshes configured outputs per workflow policy
+supaschema diff   # writes the migration; refreshes configured outputs per workflow policy
 ```
 
 ![supaschema vs every Supabase CLI engine at 1,000 tables — median diff latency, accuracy F1, and replay-safety side by side](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xl.svg)
@@ -40,13 +40,18 @@ supaschema ships PostgreSQL's own parser inside the package. It reads your SQL i
 
 ## Install
 
-```bash
-npm install supaschema
-```
+Install with the package manager that owns the target project or workspace:
+
+| Manager | Install command | Run command |
+| --- | --- | --- |
+| npm | `npm install supaschema` | `npm exec -- supaschema <cmd>` |
+| pnpm | `pnpm add --allow-build=supaschema supaschema` | `pnpm exec supaschema <cmd>` |
+| Yarn | `yarn add supaschema` | `yarn exec supaschema <cmd>` |
+| Bun | `bun add --trust supaschema` | `bunx --no-install supaschema <cmd>` |
 
 Requires Node 22.12+ and PostgreSQL 15+. Install runs the one-step setup: config, schema/migration paths, type output paths, and the bundled Claude/Codex-compatible agent guidance. Use `supaschema.config.json` to edit `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, and named `environments` that reference database URLs via `$ENV_NAME`. Details: [installation](https://supaschema.com/docs/installation) and [setup](https://supaschema.com/docs/setup).
 
-For consuming projects, install the npm package from that project root. Cloning this repository and running `npm ci` is only for developing supaschema itself; it does not wire the package into your target schema repo.
+For consuming projects, install from the package or workspace directory that owns the schema workflow. In pnpm workspace member packages, use `pnpm add --ignore-scripts supaschema` and then `pnpm exec supaschema init` from that member. In Bun workspace member packages, use `bun add supaschema` and then `bunx --no-install supaschema init` from that member. Cloning this repository and running `npm ci` is only for developing supaschema itself; it does not wire the package into your target schema repo.
 
 ## Quick Start
 
@@ -57,7 +62,7 @@ You edit one thing: your configured schema files. Everything downstream — the 
 **By hand or in CI**, run the diff yourself:
 
 ```bash
-npx supaschema diff
+supaschema diff
 ```
 
 Either way, supaschema compares the schema you declared with the schema your database has, and writes the difference to a timestamped migration like `database/migrations/20260605205117_add_audit_events.sql`:
@@ -87,8 +92,8 @@ $supaschema$;
 Prove the migration, then apply it with your normal runner:
 
 ```bash
-npx supaschema check    # static replay-safety and lock-hazard gate
-npx supaschema verify   # applies it twice in throwaway databases, compares catalogs
+supaschema check    # static replay-safety and lock-hazard gate
+supaschema verify   # applies it twice in throwaway databases, compares catalogs
 psql "$DATABASE_URL" -f database/migrations/20260605205117_add_audit_events.sql
 ```
 
@@ -168,7 +173,7 @@ Every engine's migration applies once and reaches the target catalog. Only supas
 | `corpus` / `selfcheck` | The engine's own correctness oracles ([Corpus oracle](https://supaschema.com/docs/guides/corpus-oracle)) |
 | `doctor` / `init` / `completion` / `explain` | Setup diagnosis · config scaffold · shell completions · offline diagnostic decoder |
 
-Defaults: `--from` is the database (falling back to `git:HEAD`), `--to` is the schema tree, and output lands in the migrations directory — paths set by `schemaPaths` and `migrationsDir` in the config. Full flags: [Commands reference](https://supaschema.com/docs/commands). Exit codes: `0` ok · `1` runtime error · `2` diagnostic errors · `3` drift found.
+Defaults: `--from` is the database, then valid `git:HEAD`, then `empty:`, `--to` is the schema tree, and output lands in the migrations directory — paths set by `schemaPaths` and `migrationsDir` in the config. Full flags: [Commands reference](https://supaschema.com/docs/commands). Exit codes: `0` ok · `1` runtime error · `2` diagnostic errors · `3` drift found.
 
 ## Sources
 
@@ -181,6 +186,7 @@ Either side of a diff can be any of these — generating a diff never creates a 
 | `database:$DATABASE_URL` | a live catalog, read-only |
 | `dump:path.sql` / `dump:-` | one SQL file, or stdin |
 | `catalog:path.json` | a saved `inspect` snapshot, for air-gapped or point-in-time comparison |
+| `empty:` | an empty baseline for first migrations |
 
 ## Safety
 
@@ -203,7 +209,7 @@ The package ships a governance bundle so coding agents generate migrations throu
   - a **PostToolUse** hook that senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, returns the generated migration name, and emits continuation feedback when a blocking `SUPA_*` diagnostic requires root-cause investigation and a rerun.
 - A sync hook keeps the installed `.agents` skill and Codex rule/hook mirrors aligned when the consumer edits the shipped `.claude` supaschema rule or skill.
 
-So when an agent (or anyone) edits the declarative tree, the migration and configured generated outputs are refreshed according to `workflow.*` and the agent is told what happened, with no command to remember under the default hook policy. `npm install supaschema` installs the config, agent addenda, the narrow supaschema consumer rule/skill/hook bundle, and minimal hook wiring in one step. Pointing agents only at `node_modules/supaschema/` gives them package guidance without project hook wiring. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
+So when an agent (or anyone) edits the declarative tree, the migration and configured generated outputs are refreshed according to `workflow.*` and the agent is told what happened, with no command to remember under the default hook policy. Installing `supaschema` with the consuming project's package manager installs the config, agent addenda, the narrow supaschema consumer rule/skill/hook bundle, and minimal hook wiring in one step. Pointing agents only at `node_modules/supaschema/` gives them package guidance without project hook wiring. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
 
 For portable Agent Skill context without project setup:
 
@@ -211,7 +217,7 @@ For portable Agent Skill context without project setup:
 npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/supaschema
 ```
 
-That `npx skills` lane installs only the `supaschema` workflow skill into the location selected by the Skills CLI. `npm install supaschema` does not run that command; it installs the package-owned skill directly into `.agents/skills` and `.claude/skills`. Rules, hooks, config, and hook registration are installed by `npm install supaschema` or, when lifecycle scripts did not run, `npx supaschema init`.
+That `npx skills` lane installs only the `supaschema` workflow skill into the location selected by the Skills CLI. The package install does not run that command; it installs the package-owned skill directly into `.agents/skills` and `.claude/skills`. Rules, hooks, config, and hook registration are installed by the package install or, when lifecycle scripts did not run, by running `init` through the same package manager's local runner.
 
 ## Library
 
@@ -236,11 +242,11 @@ import {
 
 ## Scope and Stability
 
-Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes, sequences, functions/procedures, views/materialized views, triggers, RLS, policies, grants/default privileges, foreign data wrappers, comments. Deliberate non-goals (partitioning, publications, event triggers, collations) fail closed with diagnostics ([support matrix](https://supaschema.com/docs/reference/support-matrix)). Pre-1.0: pin an exact version in CI. Worked Supabase and plain-PostgreSQL setups live in `examples/`.
+Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes, sequences, functions/procedures, views/materialized views, triggers, RLS, policies, grants/default privileges, foreign data wrappers, comments. Deliberate non-goals and provider-owned boundaries (partitioning, publications/subscriptions, event triggers, collations, Supabase-managed storage/auth/realtime internals) fail closed with diagnostics ([support matrix](https://supaschema.com/docs/reference/support-matrix)). Pre-1.0: pin an exact version in CI. Worked Supabase and plain-PostgreSQL setups live in `examples/`.
 
 ## Documentation
 
-[what's included](https://supaschema.com/docs/whats-included) · [setup](https://supaschema.com/docs/setup) · [quickstart](https://supaschema.com/docs/quickstart) · [coding agents](https://supaschema.com/docs/coding-agents) · [commands](https://supaschema.com/docs/commands) · [config](https://supaschema.com/docs/configuration/config-file) · [hints & recovery](https://supaschema.com/docs/configuration/hints) · [CI recipes](https://supaschema.com/docs/guides/ci-github-actions) · [CI gate & paid tier](https://supaschema.com/docs/guides/ci-gate) · [diagnostics](https://supaschema.com/docs/reference/diagnostics) · [support matrix](https://supaschema.com/docs/reference/support-matrix) · [corpus oracle](https://supaschema.com/docs/guides/corpus-oracle) · [case study](https://supaschema.com/docs/case-study-anilize) · [benchmarks](https://supaschema.com/docs/benchmarks)
+[what's included](https://supaschema.com/docs/whats-included) · [setup](https://supaschema.com/docs/setup) · [quickstart](https://supaschema.com/docs/quickstart) · [coding agents](https://supaschema.com/docs/coding-agents) · [commands](https://supaschema.com/docs/commands) · [config](https://supaschema.com/docs/configuration/config-file) · [hints & recovery](https://supaschema.com/docs/configuration/hints) · [CI recipes](https://supaschema.com/docs/guides/ci-github-actions) · [CI gate](https://supaschema.com/docs/guides/ci-gate) · [diagnostics](https://supaschema.com/docs/reference/diagnostics) · [support matrix](https://supaschema.com/docs/reference/support-matrix) · [commercial support](https://supaschema.com/docs/reference/support) · [corpus oracle](https://supaschema.com/docs/guides/corpus-oracle) · [case study](https://supaschema.com/docs/case-study-anilize) · [benchmarks](https://supaschema.com/docs/benchmarks)
 
 ## Development
 
@@ -253,7 +259,7 @@ npm run benchmark       # threshold-enforced benchmarks
 
 ## Contributing and License
 
-Bug reports and feature requests: [GitHub issues](https://github.com/jmclaughlin724/supaschema/issues). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — run `npm run check`, sign off your commits (DCO), and add a changeset before opening a pull request.
+Bug reports and feature requests: [GitHub issues](https://github.com/jmclaughlin724/supaschema/issues). Commercial licensing and support intake: [commercial support](https://supaschema.com/docs/reference/support). Do not put secrets, database URLs, customer data, or private schema dumps in public issues. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — run `npm run check`, sign off your commits (DCO), and add a changeset for user-facing changes.
 
 supaschema is an independent open-source project and is not affiliated with or endorsed by Supabase.
 

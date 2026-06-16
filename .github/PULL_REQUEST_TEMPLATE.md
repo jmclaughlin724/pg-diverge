@@ -22,12 +22,12 @@ What this PR changes and why. Link any related issue (`Closes #123`).
 - [ ] Source changes live in `src/**`; `dist/**` is not hand-edited.
 - [ ] No generated migration (`.sql` containing `-- supaschema: lineage`) was hand-edited.
 - [ ] SQL semantics go through the AST / model (`libpg-query`), not ad hoc regex.
-- [ ] ESM preserved; npm only (no pnpm/yarn, `package-lock.json` intact).
+- [ ] ESM preserved; maintainer toolchain stays npm-only (`package-lock.json` intact; no repo-root pnpm/Yarn/Bun lockfile outside package-smoke temp projects).
 - [ ] Tests added or updated; snapshot changes are intentional and explained below.
 - [ ] Docs updated for any user-facing flag/config/diagnostic change (`npm run docs:check` if `docs/**` touched).
 - [ ] Config changes keep `supaschema-config.schema.json`, docs, and examples aligned.
 - [ ] A `.changeset/` entry is included for any user-facing change (run `npm run changeset`).
-- [ ] If this PR is intended to merge to `main`, it carries a package version not already published to npm (`npm run release:version` plus `package.json`, `package-lock.json`, `CHANGELOG.md`, and `action.yml`).
+- [ ] If this is a release PR, the release checklist in `docs/release.mdx` is complete.
 - [ ] **All commits are signed off** (DCO — see below).
 
 ## Rendered SQL / snapshot changes

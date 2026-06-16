@@ -50,12 +50,12 @@ assert(
   JSON.stringify(sourceProperties.from?.oneOf) ===
     JSON.stringify([
       { const: "auto" },
-      { pattern: "^(?:(?:dir|database|dump|catalog):.+|git:.*)$", type: "string" },
+      { pattern: "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$", type: "string" },
     ]),
   "sources.from must allow only auto or a supported source spec"
 );
 assert(
-  sourceProperties.to?.pattern === "^(?:(?:dir|database|dump|catalog):.+|git:.*)$",
+  sourceProperties.to?.pattern === "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$",
   "sources.to must require a supported source spec"
 );
 
@@ -73,11 +73,11 @@ for (const key of fieldKeys) {
   );
 }
 assert(
-  docs.includes("npx supaschema config validate --json"),
+  docs.includes("supaschema config validate --json"),
   "configuration docs must document config validate --json"
 );
 assert(
-  docs.includes("npx supaschema init --dry-run --json"),
+  docs.includes("supaschema init --dry-run --json"),
   "configuration docs must document init --dry-run --json"
 );
 

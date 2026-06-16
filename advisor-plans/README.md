@@ -25,12 +25,18 @@ The theme the user asked for — **enhance, optimize performance, and move towar
 | 010 | Standardize Mintlify components and enforce the docs pattern | P1 | M | MED | 008 | docs / dx | DONE |
 | 009 | Condense entry-path pages and guide pages for short-attention readers | P1 | M | MED | 008, 010 | docs | DONE |
 | 011 | Template command reference pages and split utility commands | P2 | L | MED | 008, 010 | docs | DONE |
+| 012 | Monetization funnel, hosted CI policy design, agent governance support, and adoption audit services | P1 | L | MED | - | direction / monetization | TODO |
+| 013 | Expanded monetization product roadmap, incumbent strategy, pricing meters, and execution system | P1 | L | MED | 012 | direction / monetization | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
 
 Plans 001-007 are independent and already completed.
 
 Plans 008-011 are the docs/Mintlify review wave requested on 2026-06-16. They assume an ADHD-first reader: fewer choices per screen, task-first navigation, one page owner per concept, and Mintlify components that are standardized and enforced.
+
+Plan 012 is the monetization implementation proposal requested on 2026-06-16 for revenue opportunities 1-4. It is a tracked proposal and execution handoff, not a pricing, billing, hosted infrastructure, or legal-terms implementation.
+
+Plan 013 expands the monetization work into a full product roadmap. It maps each paid opportunity to the bigger problem it solves, incumbent positioning against Liquibase, Flyway Enterprise, Bytebase, and Atlas, implementation steps, scale meters, subscription versus usage model, and immediate service paths that can be used before hosted infrastructure exists. Its proposal-level execution bundle lives in `advisor-plans/013-monetization-product-roadmap/`.
 
 Elegant docs end state:
 
@@ -48,6 +54,8 @@ Elegant docs end state:
 - 010 depends on 008 so component rules can encode the final page and navigation model.
 - 009 depends on 008 and 010 because content owners should match the final sidebar taxonomy and broad rewrites should follow the executable component standard.
 - 011 depends on 008 and 010 because command-page splits should land after the navigation taxonomy and component rules are settled.
+- 012 depends on none of the completed docs plans, but its executor must preserve the docs owner model created by 008-011.
+- 013 depends on 012 for the first four monetization lanes and extends it into the broader product and market roadmap.
 
 ## Findings considered and rejected (do not re-audit)
 

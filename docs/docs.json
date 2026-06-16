@@ -116,6 +116,10 @@
             "href": "/comparisons/supaschema-vs-supabase-cli"
           },
           {
+            "label": "Commercial support",
+            "href": "/reference/support"
+          },
+          {
             "label": "Issues",
             "href": "https://github.com/jmclaughlin724/supaschema/issues"
           }
@@ -225,6 +229,7 @@
           "reference/diagnostics",
           "reference/library-api",
           "reference/package-boundary",
+          "reference/support",
           "reference/branding"
         ]
       }

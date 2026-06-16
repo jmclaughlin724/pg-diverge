@@ -39,7 +39,7 @@ Use the format `<prefix>:<location>`, such as `dir:database/schemas`.
   </Card>
 </CardGroup>
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card title="SQL dump" icon="file-arrow-down">
     **Syntax:** `dump:path/to/schema.sql`, `dump:-`
 
@@ -51,6 +51,13 @@ Use the format `<prefix>:<location>`, such as `dir:database/schemas`.
     **Syntax:** `catalog:path/to/snapshot.json`
 
     A JSON file produced by `supaschema inspect`. Lets you compare against a saved point-in-time without a live database.
+
+  </Card>
+
+  <Card title="Empty baseline" icon="circle">
+    **Syntax:** `empty:`
+
+    A zero-object schema model. Useful for first migrations when there is no database and no valid Git baseline.
 
   </Card>
 </CardGroup>
@@ -266,12 +273,13 @@ The table below summarises the most useful source pairings and the workflow each
 | PR safety check (CI) | `git:origin/main` | `dir:database/schemas` | Diff the branch against the base without a database |
 | Deploy to production | `database:$PROD_URL` | `dir:database/schemas` | Generate a migration targeting the live production database |
 | Drift detection | `database:$PROD_URL` | `catalog:snapshots/last-deploy.json` | Detect out-of-band changes on the server |
+| First migration | `empty:` | `dir:database/schemas` | Generate the initial migration without a database or Git baseline |
 | Reconciling existing DB | `database:$DATABASE_URL` | `dir:database/schemas` | Generate a migration from the deployed catalog to your files |
 | Cross-branch comparison | `git:origin/main` | `git:feature/my-branch` | Preview the migration a merge would produce |
 | Analyse a legacy dump | `dump:legacy-schema.sql` | `dir:database/schemas` | Diff a dump file against your current schema |
 
 <Tip>
-  Defaults come from `supaschema.config.json`. `sources.from` owns the before-state and `sources.to` owns the after-state for zero-source-flag commands. The scaffolded `"auto"` before-state resolves a database URL, then falls back to `git:HEAD`.
+  Defaults come from `supaschema.config.json`. `sources.from` owns the before-state and `sources.to` owns the after-state for zero-source-flag commands. The scaffolded `"auto"` before-state resolves a database URL, then valid `git:HEAD`, then `empty:`.
 
 ```json
 {

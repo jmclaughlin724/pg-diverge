@@ -18,7 +18,7 @@ You can use supaschema for free under the AGPL-3.0 — including inside your com
 - Offer supaschema's functionality as part of a **hosted or SaaS service** to third parties without releasing the service's corresponding source under the AGPL.
 - Otherwise use supaschema in a way the AGPL-3.0 would require you to release source you do not wish to release.
 
-If you are unsure whether your use is covered, ask — the goal is for ordinary adoption to stay free and frictionless.
+If you are unsure whether your use is covered, ask. Ordinary development dependency and CI adoption should remain free and frictionless when it complies with the AGPL.
 
 ## What the commercial license grants
 
@@ -26,10 +26,13 @@ A commercial license grants the right to use, modify, and distribute supaschema 
 
 ## How to obtain one
 
-Open an issue titled "Commercial license inquiry" on the [project repository](https://github.com/jmclaughlin724/supaschema/issues), or contact the copyright holder listed in `package.json`. Include:
+Open a [commercial support request](https://github.com/jmclaughlin724/supaschema/issues/new?template=commercial_support.md) on the project repository, or contact the copyright holder listed in `package.json`. Include:
 
 - Your company and the product or service supaschema would be part of.
 - Whether it is distributed software, a hosted service, or both.
 - Approximate scale (repositories, seats, or end customers).
+- Support, response-time, procurement, or compliance requirements.
 
-Pricing is quoted per engagement. No rights beyond the AGPL-3.0 are granted without a signed commercial agreement.
+Do not include secrets, database URLs, customer data, private schema dumps, contracts, pricing details, or confidential roadmap material in a public GitHub issue.
+
+Pricing is quoted per engagement. No rights beyond the AGPL-3.0 are granted without a signed commercial agreement, and no support level or SLA exists until it is written into that agreement. See the [commercial support docs](https://supaschema.com/docs/reference/support) for the current public intake path and support boundaries.

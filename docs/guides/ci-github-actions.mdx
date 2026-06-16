@@ -35,22 +35,20 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - run: npm install --no-save supaschema
       - name: Render migration from the PR diff
-        run: |
-          npx supaschema diff \
-            --from "git:origin/${{ github.base_ref }}" \
-            --to dir:database/schemas \
-            --out /tmp/supaschema/migration.sql
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: >-
+            ["diff","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--out","/tmp/supaschema/migration.sql"]
       - name: Check replay safety
-        run: npx supaschema check /tmp/supaschema/migration.sql
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: '["check","/tmp/supaschema/migration.sql"]'
       - name: Verify apply-twice and catalog parity
-        run: |
-          npx supaschema verify \
-            --from "git:origin/${{ github.base_ref }}" \
-            --to dir:database/schemas \
-            --migration /tmp/supaschema/migration.sql \
-            --database-url postgresql://postgres:postgres@localhost:5432/postgres
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: >-
+            ["verify","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--migration","/tmp/supaschema/migration.sql","--database-url","postgresql://postgres:postgres@localhost:5432/postgres"]
 ```
 
 ## Keep

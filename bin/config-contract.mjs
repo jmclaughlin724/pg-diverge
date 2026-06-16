@@ -728,7 +728,8 @@ const contract = JSON.parse(`{
     "git:",
     "database:",
     "dump:",
-    "catalog:"
+    "catalog:",
+    "empty:"
   ],
   "schemaDiffPolicies": [
     "disabled",
@@ -742,9 +743,10 @@ const contract = JSON.parse(`{
     "git:",
     "database:",
     "dump:",
-    "catalog:"
+    "catalog:",
+    "empty:"
   ],
-  "sourceSpecPattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*)$",
+  "sourceSpecPattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$",
   "supabaseManagedSchemas": [
     "auth",
     "storage",

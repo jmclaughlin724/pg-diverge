@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -30,6 +30,24 @@ import {
 // npm-documented "install the tarball, run the installed bin" pattern.
 
 const run = promisify(execFile);
+const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const bunCommand = process.platform === "win32" ? "bun.exe" : "bun";
+const pnpmAvailable = (() => {
+  try {
+    execFileSync(pnpmCommand, ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const bunAvailable = (() => {
+  try {
+    execFileSync(bunCommand, ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 interface Spawn {
   args: string[];
@@ -89,6 +107,7 @@ let binPath = "";
 // setup. Marker-free -> generic layout.
 let consumer2 = "";
 let binPath2 = "";
+let tarballPath = "";
 
 beforeAll(async () => {
   const packDir = await mkdtemp(join(tmpdir(), "supa-pack-"));
@@ -96,6 +115,7 @@ beforeAll(async () => {
   const { stdout } = await run(pack.file, pack.args, { maxBuffer: 32 * 1024 * 1024 });
   const [packed] = JSON.parse(stdout) as { filename: string }[];
   const tarball = join(packDir, packed.filename);
+  tarballPath = tarball;
 
   consumer = await mkdtemp(join(tmpdir(), "supa-consumer-"));
   await writeFile(
@@ -213,6 +233,184 @@ describe("consumer lifecycle: install then use the published package", () => {
       expect(zodFile, fragment).toContain(fragment);
     }
   });
+});
+
+describe("consumer lifecycle: workspace member install from member directory", () => {
+  it("npm install from the owning workspace member scaffolds that member, not the root", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "supa-npm-workspace-"));
+    const member = join(workspace, "packages", "db");
+    await mkdir(member, { recursive: true });
+    await writeFile(
+      join(workspace, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-npm-workspace-root",
+        private: true,
+        version: "0.0.0",
+        workspaces: ["packages/*"],
+      })}\n`
+    );
+    await writeFile(
+      join(member, "package.json"),
+      `${JSON.stringify({ name: "db", private: true, version: "0.0.0" })}\n`
+    );
+
+    const install = npmExec([
+      "install",
+      tarballPath,
+      "--prefer-offline",
+      "--no-audit",
+      "--no-fund",
+    ]);
+    await run(install.file, install.args, { cwd: member, maxBuffer: 64 * 1024 * 1024 });
+
+    expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(member, "supaschema.config.json"))).toBe(true);
+    expect(existsSync(join(member, "database", "schemas"))).toBe(true);
+    expect(existsSync(join(member, "database", "migrations"))).toBe(true);
+  }, 300_000);
+});
+
+describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery lanes", () => {
+  it("pnpm add with approved supaschema build scripts scaffolds the project", async () => {
+    const pnpmConsumer = await mkdtemp(join(tmpdir(), "supa-pnpm-consumer-"));
+    await writeFile(
+      join(pnpmConsumer, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-pnpm-consumer-fixture",
+        packageManager: "pnpm@10.18.1",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+
+    await run(pnpmCommand, ["add", "--allow-build=supaschema", tarballPath], {
+      cwd: pnpmConsumer,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+    expect(existsSync(join(pnpmConsumer, "supaschema.config.json"))).toBe(true);
+    expect(existsSync(join(pnpmConsumer, "database", "schemas"))).toBe(true);
+    expect(existsSync(join(pnpmConsumer, "database", "migrations"))).toBe(true);
+    expect(existsSync(join(pnpmConsumer, "node_modules", "supaschema", "bin", "supaschema"))).toBe(
+      true
+    );
+
+    const version = await capture(pnpmCommand, ["exec", "supaschema", "--version"], pnpmConsumer);
+    expect(version.code, version.stderr).toBe(0);
+    expect(version.stdout.trim()).toBe(repoVersion);
+  }, 300_000);
+
+  it("pnpm add with scripts blocked can recover through pnpm exec supaschema init", async () => {
+    const pnpmConsumer = await mkdtemp(join(tmpdir(), "supa-pnpm-init-"));
+    await writeFile(
+      join(pnpmConsumer, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-pnpm-init-fixture",
+        packageManager: "pnpm@10.18.1",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+
+    await run(pnpmCommand, ["add", "--ignore-scripts", tarballPath], {
+      cwd: pnpmConsumer,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+    expect(existsSync(join(pnpmConsumer, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(pnpmConsumer, "node_modules", "supaschema", "bin", "supaschema"))).toBe(
+      true
+    );
+
+    const init = await capture(pnpmCommand, ["exec", "supaschema", "init"], pnpmConsumer);
+    expect(init.code, init.stderr).toBe(0);
+
+    const config = JSON.parse(
+      readFileSync(join(pnpmConsumer, "supaschema.config.json"), "utf8")
+    ) as Record<string, unknown>;
+    expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
+    for (const file of installedAgentFiles) {
+      expect(existsSync(join(pnpmConsumer, file)), file).toBe(true);
+    }
+    expect(existsSync(join(pnpmConsumer, ".supaschema"))).toBe(false);
+  }, 300_000);
+
+  it("pnpm workspace member install uses ignored scripts then explicit init from the member", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "supa-pnpm-workspace-"));
+    const member = join(workspace, "packages", "db");
+    await mkdir(member, { recursive: true });
+    await writeFile(
+      join(workspace, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-pnpm-workspace-root",
+        packageManager: "pnpm@10.18.1",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+    await writeFile(join(workspace, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+    await writeFile(
+      join(member, "package.json"),
+      `${JSON.stringify({ name: "db", private: true, version: "0.0.0" })}\n`
+    );
+
+    await run(pnpmCommand, ["add", "--ignore-scripts", tarballPath], {
+      cwd: member,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+    expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(member, "supaschema.config.json"))).toBe(false);
+
+    const init = await capture(pnpmCommand, ["exec", "supaschema", "init"], member);
+    expect(init.code, init.stderr).toBe(0);
+
+    expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(member, "supaschema.config.json"))).toBe(true);
+    expect(existsSync(join(member, "database", "schemas"))).toBe(true);
+    expect(existsSync(join(member, "database", "migrations"))).toBe(true);
+
+    const version = await capture(pnpmCommand, ["exec", "supaschema", "--version"], member);
+    expect(version.code, version.stderr).toBe(0);
+    expect(version.stdout.trim()).toBe(repoVersion);
+  }, 300_000);
+});
+
+describe.skipIf(!bunAvailable)("consumer lifecycle: Bun workspace member setup", () => {
+  it("bun workspace member install uses untrusted add then explicit init from the member", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "supa-bun-workspace-"));
+    const member = join(workspace, "packages", "db");
+    await mkdir(member, { recursive: true });
+    await writeFile(
+      join(workspace, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-bun-workspace-root",
+        private: true,
+        version: "0.0.0",
+        workspaces: ["packages/*"],
+      })}\n`
+    );
+    await writeFile(
+      join(member, "package.json"),
+      `${JSON.stringify({ name: "db", private: true, version: "0.0.0" })}\n`
+    );
+
+    await run(bunCommand, ["add", tarballPath], {
+      cwd: member,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+    expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(member, "supaschema.config.json"))).toBe(false);
+
+    const init = await capture(bunCommand, ["x", "--no-install", "supaschema", "init"], member);
+    expect(init.code, init.stderr).toBe(0);
+
+    expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(member, "supaschema.config.json"))).toBe(true);
+    expect(existsSync(join(member, "database", "schemas"))).toBe(true);
+    expect(existsSync(join(member, "database", "migrations"))).toBe(true);
+  }, 300_000);
 });
 
 describe("consumer lifecycle: ignore-scripts install then supaschema init reaches full parity", () => {

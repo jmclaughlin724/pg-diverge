@@ -153,7 +153,7 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `renameDetection` | `"hints-only"` | `hints-only` uses `hints.renames`; `off` disables rename handling entirely. |
 | `schemaPaths` | `["database/schemas"]` | Paths read by `git:` sources and the default `--to dir:` target (the first entry). Install can scaffold provider-specific folders; the canonical path table lives in [Setup](/setup#path-selection). Configure the final paths here. |
 | `schemas.include` / `schemas.exclude` | `[]` | Persistent schema filters applied to every extracted model (the CLI `--schema` flag composes on top). |
-| `sources.from` | `"auto"` | Default before-state source for zero-source-flag `diff`, `plan`, and `verify`. `"auto"` resolves a database URL, then falls back to `git:HEAD`. Pin `dump:`, `dir:`, `git:`, `database:`, or `catalog:` when the project has a specific baseline source. |
+| `sources.from` | `"auto"` | Default before-state source for zero-source-flag `diff`, `plan`, and `verify`. `"auto"` resolves a database URL, then valid `git:HEAD`, then `empty:` for a first migration in a fresh repository. Pin `dump:`, `dir:`, `git:`, `database:`, `catalog:`, or `empty:` when the project has a specific baseline source. |
 | `sources.to` | scaffolded to `dir:<schemaPaths[0]>` | Default after-state source for zero-source-flag `diff`, `plan`, and `verify`. If omitted, supaschema falls back to `dir:<config.schemaPaths[0]>`. |
 | `statementTimeout` | `"60s"` | Value for the `SET statement_timeout` migration preamble. |
 | `transactionMode` | `"per-migration"` | How `verify` applies the migration and how transaction hazards are graded. `per-migration` mirrors runners like `supabase db push` (one transaction per file); `per-statement` matches autocommit runners. |
@@ -165,19 +165,21 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 Use `config validate` when an agent or CI job needs a machine-readable check of path fields, source defaults, and inline credential risks:
 
 ```bash
-npx supaschema config validate --json
+supaschema config validate --json
 ```
+
+If `.supaschema/install.json` records pending path confirmation, `config validate` exits with an error until `supaschema.config.json` explicitly sets `schemaPaths`, `sources.to`, and `migrationsDir`.
 
 Use `init --dry-run --json` to inspect what install would write before changing the repository:
 
 ```bash
-npx supaschema init --dry-run --json
+supaschema init --dry-run --json
 ```
 
 Use `init --repair` to rewrite `supaschema.config.json` from the canonical contract. Existing JSON values are preserved where they are valid; missing non-secret fields such as `sources.to`, `typesFile`, and `zodFile` are filled from the detected or configured paths. A normal install or `init` run leaves an existing JSON config untouched.
 
 ```bash
-npx supaschema init --repair
+supaschema init --repair
 ```
 
 JavaScript config files are not loaded or converted. Move persistent settings into `supaschema.config.json`.
