@@ -236,6 +236,16 @@ assert(
   [15, 16, 17].every((value) => postgres.includes(value)),
   `ci.yml check postgres matrix must include 15, 16, 17 (got ${JSON.stringify(postgres)})`
 );
+const qualityRuns = (ci.jobs?.quality?.steps ?? []).map((step) => String(step?.run ?? ""));
+assert(
+  !qualityRuns.some((run) => run.includes("npm run benchmark")),
+  "ci.yml quality job must not run npm run benchmark without a database URL"
+);
+const checkRuns = (ci.jobs?.check?.steps ?? []).map((step) => String(step?.run ?? ""));
+assert(
+  checkRuns.some((run) => run.includes("npm run benchmark")),
+  "ci.yml check job must run npm run benchmark with SUPASCHEMA_DATABASE_URL"
+);
 const oses = jobMatrix(ci, "check-os", "os");
 assert(
   ["macos-latest", "windows-latest"].every((value) => oses.includes(value)),

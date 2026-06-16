@@ -39,7 +39,6 @@ jobs:
         run: npm run guard
       - run: npm run check:schema
       - run: npm run check:package
-      - run: npm run benchmark
       - name: Pack package
         run: |
           tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
@@ -118,6 +117,8 @@ jobs:
         run: npm run fixture:verify
       - name: Corpus oracle (dirty-real reconvergence)
         run: npm run corpus:check
+      - name: Benchmark regression gate
+        run: npm run benchmark
 
   check-os:
     # Path handling and git: sources without a database; DB-gated tests skip.

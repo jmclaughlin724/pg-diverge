@@ -137,15 +137,17 @@ try {
         .join(", ")} because workflow.schema_diff is "${pathState.workflow.schema_diff}". Run \`supaschema diff\` manually when this schema change should produce a migration.`
     );
   }
-  if (groups.length > 1) {
+  if (pathState.schemaPaths.length > 1) {
     emit(
       `supaschema auto-diff skipped for ${changed
         .map((path) => rel(projectDir, path))
-        .join(", ")} because the edit touched multiple configured schema roots (${groups
+        .join(", ")} because the project has multi-root schemaPaths (${pathState.schemaPaths.join(
+        ", "
+      )}) and automatic diff would only target the touched root (${groups
         .map((group) => group.display)
         .join(
           ", "
-        )}). Run one reviewed \`supaschema diff\` from the intended current state, then run \`supaschema check\`; the hook avoids chaining partial migrations for multi-root edits.`
+        )}). Run one reviewed \`supaschema diff\` from the intended current state, then run \`supaschema check\`; the hook avoids chaining partial migrations for multi-root configs.`
     );
   }
   const bin = resolveBinary(projectDir);

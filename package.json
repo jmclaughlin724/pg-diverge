@@ -83,7 +83,7 @@
     "build": "tsc -p tsconfig.src.json && node dist/config-schema-gen.js",
     "catalog:check": "node scripts/guards/check-dependency-catalog.mjs",
     "changeset": "changeset",
-    "check": "npm run lint && npm test && npm run build",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "check:package": "publint && attw --pack . --profile esm-only",
     "check:schema": "node scripts/check-schema.mjs",
     "clean": "rm -rf dist coverage .tmp api-docs benchmarks/results .wrangler/tmp",

@@ -14,8 +14,13 @@
     "adapter": {
       "default": "auto",
       "type": "string",
-      "const": "auto",
-      "description": "Provider-neutral adapter sentinel. Provider-specific behavior and workflow automation come from explicit config fields, not adapter switching."
+      "enum": [
+        "auto",
+        "postgres",
+        "supabase",
+        "supabase-auto"
+      ],
+      "description": "Provider-neutral adapter sentinel. Legacy adapter strings are accepted at the input boundary and normalized to auto."
     },
     "cascade": {
       "default": "never",

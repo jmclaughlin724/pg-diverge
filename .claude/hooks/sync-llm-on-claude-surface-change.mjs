@@ -34,14 +34,14 @@ try {
     targets.some((target) => isClaudeSyncSurface(projectDir, target)) ||
     commandMentionsClaudeSurface(payload);
   const changedSinceLastSync = previousDigest !== undefined && previousDigest !== currentDigest;
+  const syncAvailable = hasSyncScript(projectDir);
 
+  if (!syncAvailable) {
+    emitNoop(hookEventName);
+  }
   if (!explicitClaudeChange && !changedSinceLastSync) {
     writeSyncedDigest(projectDir, currentDigest);
     emitNoop();
-  }
-  if (!hasSyncScript(projectDir)) {
-    writeSyncedDigest(projectDir, currentDigest);
-    emitNoop(hookEventName);
   }
 
   const output = runSync(projectDir);

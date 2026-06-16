@@ -154,6 +154,7 @@ describe("diff lineage chain gate", () => {
       fromArg,
       "--to",
       toArg,
+      "--fail-on-diff",
       "--no-check-chain",
       "--out",
       first,

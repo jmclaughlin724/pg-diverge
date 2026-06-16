@@ -377,6 +377,9 @@ describe("llm surface sync hook", () => {
 
     expect(result.code).toBe(0);
     await expect(readFile(log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(join(project, ".tmp", "sync-llm-on-claude-surface-change.json"), "utf8")
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 
@@ -669,7 +672,7 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
   );
 
   it.skipIf(process.platform === "win32")(
-    "diffs the schema path that contains the changed file",
+    "skips auto-diff for a single-root edit in a multi-root config",
     async () => {
       const { env, log, project } = await autoDiffFixture(["schemas/one", "schemas/two"]);
       await writeFile(
@@ -687,7 +690,8 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
       );
 
       expect(result.code).toBe(0);
-      expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:schemas/two"], ["check"]]);
+      expect(result.stdout).toContain("multi-root schemaPaths");
+      expect(await readFakeCalls(log)).toEqual([]);
     }
   );
 
@@ -913,7 +917,7 @@ process.exit(1);
       );
 
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain("multiple configured schema roots");
+      expect(result.stdout).toContain("multi-root schemaPaths");
       expect(await readFakeCalls(log)).toEqual([]);
     }
   );

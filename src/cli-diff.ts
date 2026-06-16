@@ -151,7 +151,9 @@ async function runDiff(
   if (!(await validateLineageChain(output.outPath, plan, context, options.checkChain))) {
     return;
   }
-  await writeOrPrintDiffOutput(options, output, config, context);
+  if (!(await writeOrPrintDiffOutput(options, output, config, context))) {
+    return;
+  }
   if (options.failOnDiff && plan.operations.length > 0) {
     process.exitCode = 3;
   }
@@ -244,13 +246,13 @@ async function writeOrPrintDiffOutput(
   output: DiffOutput,
   config: SupaschemaConfig,
   context: DiffCommandContext
-): Promise<void> {
+): Promise<boolean> {
   if (options.dryRun || output.outPath === undefined) {
     printDryRunOutput(output);
-    return;
+    return true;
   }
   if (!(await writeDiffFiles(output, context))) {
-    return;
+    return false;
   }
   process.stdout.write(
     options.json
@@ -258,6 +260,7 @@ async function writeOrPrintDiffOutput(
       : `${output.outPath}\n${output.concurrentPath === undefined ? "" : `${output.concurrentPath}\n`}`
   );
   await refreshTypesFile(options.to, config, options.schema);
+  return true;
 }
 
 function printDryRunOutput(output: DiffOutput): void {

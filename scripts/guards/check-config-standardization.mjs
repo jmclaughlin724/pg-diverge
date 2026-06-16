@@ -33,8 +33,9 @@ assert(
 );
 const schemaProperties = schema.properties ?? {};
 assert(
-  schemaProperties.adapter?.const === "auto",
-  "supaschema-config.schema.json adapter must allow only auto"
+  JSON.stringify(schemaProperties.adapter?.enum) ===
+    JSON.stringify(["auto", "postgres", "supabase", "supabase-auto"]),
+  "supaschema-config.schema.json adapter must allow auto plus legacy input values"
 );
 for (const key of fieldKeys) {
   assert(schemaProperties[key], `supaschema-config.schema.json is missing ${key}`);
@@ -128,7 +129,7 @@ assert(
   configSource.includes("createInstalledConfig()"),
   "src/config.ts defaultConfigFile must come from createInstalledConfig()"
 );
-for (const forbidden of ["normalizeAdapter", "supabase-auto", '"supabase"', '"postgres"']) {
+for (const forbidden of ["normalizeAdapter"]) {
   assert(
     !configSource.includes(forbidden),
     `src/config.ts must not preserve adapter compatibility (${forbidden})`
@@ -140,7 +141,7 @@ assert(
 );
 
 const contractSource = read("src/config-contract.ts");
-for (const forbidden of ["normalizeAdapter", "supabase-auto"]) {
+for (const forbidden of ["normalizeAdapter"]) {
   assert(
     !contractSource.includes(forbidden),
     `src/config-contract.ts must not preserve adapter compatibility (${forbidden})`

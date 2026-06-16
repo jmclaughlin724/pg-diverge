@@ -41,10 +41,10 @@ describe("config DX", () => {
     });
   });
 
-  it("rejects non-canonical adapter values", () => {
-    expect(() => resolveConfig({ adapter: "supabase-auto" } as never)).toThrow();
-    expect(() => resolveConfig({ adapter: "postgres" } as never)).toThrow();
-    expect(() => resolveConfig({ adapter: "supabase" } as never)).toThrow();
+  it("normalizes legacy adapter values at the input boundary", () => {
+    expect(resolveConfig({ adapter: "supabase-auto" } as never).adapter).toBe("auto");
+    expect(resolveConfig({ adapter: "postgres" } as never).adapter).toBe("auto");
+    expect(resolveConfig({ adapter: "supabase" } as never).adapter).toBe("auto");
   });
 
   it("defaults to provider-neutral managed schemas unless configured", () => {
@@ -99,7 +99,10 @@ describe("config DX", () => {
     ]) {
       expect(schema.properties?.[key], key).toBeDefined();
     }
-    expect(schema.properties?.adapter).toMatchObject({ const: "auto", default: "auto" });
+    expect(schema.properties?.adapter).toMatchObject({
+      default: "auto",
+      enum: ["auto", "postgres", "supabase", "supabase-auto"],
+    });
     const workflow = schema.properties?.workflow as {
       properties?: Record<string, { enum?: string[] }>;
     };

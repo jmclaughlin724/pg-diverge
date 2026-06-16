@@ -101,7 +101,9 @@ The config schema is generated from `src/config.ts` plus the shared contract in 
 
 `auto` means provider-specific behavior is not selected through an adapter switch. Provider-specific setup is expressed through paths, `managedSchemas`, `transactionMode`, `excludedGrantRoles`, and explicit command flags such as `verify --ensure-environment`. Workflow consent lives in the `workflow` object.
 
-Any other adapter value fails config validation.
+Legacy adapter values (`postgres`, `supabase`, and `supabase-auto`) are accepted
+when loading older configs and normalized to `auto`. New configs should write
+`auto`.
 
 ## Workflow policy
 

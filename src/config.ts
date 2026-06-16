@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
+  adapterInputValues,
   canonicalSchemaId,
   canonicalSourceTo,
   configFieldMetadata,
@@ -65,7 +66,10 @@ const sourcesSchema = z
   })
   .default({ from: "auto", to: canonicalSourceTo([genericSchemaPath]) });
 
-const adapterSchema = z.literal("auto").default("auto");
+const adapterSchema = z
+  .enum(adapterInputValues)
+  .default("auto")
+  .transform(() => "auto" as const);
 const workflowSchema = z
   .strictObject({
     schema_diff: z.enum(schemaDiffPolicies).default(defaultWorkflow.schema_diff),

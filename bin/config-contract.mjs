@@ -214,6 +214,12 @@ const contract = JSON.parse(`{
       "schemaPath": "azure-postgresql/schemas"
     }
   ],
+  "adapterInputValues": [
+    "auto",
+    "postgres",
+    "supabase",
+    "supabase-auto"
+  ],
   "canonicalSchemaId": "https://supaschema.com/schemas/supaschema-config.schema.json",
   "configFieldMetadata": [
     {
@@ -227,10 +233,13 @@ const contract = JSON.parse(`{
     },
     {
       "allowed": [
-        "auto"
+        "auto",
+        "postgres",
+        "supabase",
+        "supabase-auto"
       ],
       "default": "auto",
-      "description": "Provider-neutral adapter sentinel. Provider-specific behavior and workflow automation come from explicit config fields, not adapter switching.",
+      "description": "Provider-neutral adapter sentinel. Legacy adapter strings are accepted at the input boundary and normalized to auto.",
       "key": "adapter"
     },
     {
@@ -774,6 +783,7 @@ export const genericSchemaPath = contract.genericSchemaPath;
 export const genericMigrationsDir = contract.genericMigrationsDir;
 export const defaultTypesFile = contract.defaultTypesFile;
 export const defaultZodFile = contract.defaultZodFile;
+export const adapterInputValues = contract.adapterInputValues;
 export const defaultWorkflow = contract.defaultWorkflow;
 export const supabaseManagedSchemas = contract.supabaseManagedSchemas;
 export const supportedValidators = contract.supportedValidators;

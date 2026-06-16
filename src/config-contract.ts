@@ -7,6 +7,7 @@ export const genericSchemaPath = "database/schemas";
 export const genericMigrationsDir = "database/migrations";
 export const defaultTypesFile = "database.types.ts";
 export const defaultZodFile = "database.zod.ts";
+export const adapterInputValues = ["auto", "postgres", "supabase", "supabase-auto"] as const;
 
 export const supabaseManagedSchemas = [
   "auth",
@@ -410,10 +411,10 @@ export const configFieldMetadata = [
     key: "$schema",
   },
   {
-    allowed: ["auto"],
+    allowed: [...adapterInputValues],
     default: "auto",
     description:
-      "Provider-neutral adapter sentinel. Provider-specific behavior and workflow automation come from explicit config fields, not adapter switching.",
+      "Provider-neutral adapter sentinel. Legacy adapter strings are accepted at the input boundary and normalized to auto.",
     key: "adapter",
   },
   {
@@ -562,6 +563,7 @@ export const configFieldMetadata = [
 export function configContractModuleText(): string {
   const data = {
     allProviderPresets,
+    adapterInputValues,
     canonicalSchemaId,
     configFieldMetadata,
     configSchemaFileName,
@@ -602,6 +604,7 @@ export const genericSchemaPath = contract.genericSchemaPath;
 export const genericMigrationsDir = contract.genericMigrationsDir;
 export const defaultTypesFile = contract.defaultTypesFile;
 export const defaultZodFile = contract.defaultZodFile;
+export const adapterInputValues = contract.adapterInputValues;
 export const defaultWorkflow = contract.defaultWorkflow;
 export const supabaseManagedSchemas = contract.supabaseManagedSchemas;
 export const supportedValidators = contract.supportedValidators;
