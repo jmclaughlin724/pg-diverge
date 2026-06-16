@@ -57,7 +57,7 @@ The installed hooks enforce only supaschema migration policy:
 | `auto-diff-on-schema-change.mjs` | `PostToolUse` | Watches schema-tree SQL writes, runs `supaschema diff`, then runs `supaschema check`. |
 | `sync-llm-on-claude-surface-change.mjs` | Claude `PostToolBatch`, Codex `Stop` | Keeps the installed `.agents` skill and Codex rule/hook mirrors aligned when the consumer edits the shipped `.claude` supaschema rule or skill. |
 
-`auto-diff-on-schema-change.mjs` is the hook that triggers the default migration workflow after configured schema files are edited. It writes the migration when `workflow.schema_diff` is `"on_schema_write"` and runs the replay-safety check when `workflow.migration_check` is `"after_schema_diff"`.
+`auto-diff-on-schema-change.mjs` is the hook that triggers the default migration workflow after configured schema files are edited. It writes the migration when `workflow.schema_diff` is `"on_schema_write"` and runs the replay-safety check when `workflow.migration_check` is `"after_schema_diff"`. If `check` fails, the hook emits continuation feedback so Claude or Codex investigates the root source, searches for correlated migration failures, fixes the canonical owner, and reruns `supaschema check`.
 
 The hooks generate and prove migrations. They never apply migrations to a database.
 

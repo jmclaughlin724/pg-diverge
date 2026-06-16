@@ -165,6 +165,11 @@ describe("install-time project setup", () => {
       join(packageRoot, ".claude/skills/supaschema/references/workflow.md"),
       "claude reference\n"
     );
+    await writeNestedFile(
+      join(consumer, ".codex/skills/supaschema/SKILL.md"),
+      "retired codex skill\n"
+    );
+    await writeNestedFile(join(consumer, ".codex/skills/custom/SKILL.md"), "custom skill\n");
 
     const { scaffoldProject } = (await import(
       pathToFileURL(join(process.cwd(), "bin/scaffold.mjs")).href
@@ -197,6 +202,9 @@ describe("install-time project setup", () => {
       await readFile(join(consumer, ".claude/skills/supaschema/references/workflow.md"), "utf8")
     ).toBe("claude reference\n");
     expect(existsSync(join(consumer, ".codex/skills/supaschema/SKILL.md"))).toBe(false);
+    expect(await readFile(join(consumer, ".codex/skills/custom/SKILL.md"), "utf8")).toBe(
+      "custom skill\n"
+    );
   });
 
   it("uses Supabase paths when the project has Supabase local config", async () => {

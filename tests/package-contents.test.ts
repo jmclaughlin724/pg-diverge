@@ -107,6 +107,10 @@ describe("npm package contents", () => {
     expect(codexHookContents).not.toContain("scripts/agent-hooks");
     expect(codexHookContents).toContain("block-generated-migration-edits.mjs");
     expect(codexHookContents).toContain("auto-diff-on-schema-change.mjs");
+    expect(
+      paths.filter((path) => path.startsWith(".codex/skills/")),
+      "legacy Codex skills must not ship"
+    ).toEqual([]);
     expect(paths, "legacy config-schema.json must not ship").not.toContain("config-schema.json");
 
     const forbiddenPrefixes = [
