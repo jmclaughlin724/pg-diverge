@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Declarative PostgreSQL schema migrations plus TypeScript and Zod types in milliseconds — Supabase-aware, built on PostgreSQL's own parser, with no Docker or shadow database.",
   "keywords": [
     "database-migrations",
@@ -39,7 +39,8 @@
       "import": "./dist/index.js"
     }
   },
-  "main": "index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "supaschema": "bin/supaschema"
   },

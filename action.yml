@@ -10,7 +10,7 @@ inputs:
   version:
     description: Exact supaschema npm version to run.
     required: false
-    default: "0.2.1"
+    default: "0.2.3"
 runs:
   using: composite
   steps:
@@ -25,7 +25,7 @@ runs:
         SUPASCHEMA_SKIP_POSTINSTALL: "1"
       run: |
         if [[ ! "$SUPASCHEMA_ACTION_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-          echo "invalid supaschema version: $SUPASCHEMA_ACTION_VERSION (use an exact npm version, e.g. 0.2.1)" >&2
+          echo "invalid supaschema version: $SUPASCHEMA_ACTION_VERSION (use an exact npm version, e.g. 0.2.3)" >&2
           exit 1
         fi
         npx --yes "supaschema@${SUPASCHEMA_ACTION_VERSION}" $SUPASCHEMA_ACTION_ARGS
