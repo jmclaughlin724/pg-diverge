@@ -10,7 +10,13 @@ Use this checklist for an npm release.
 The package is designed for trusted publishing from GitHub Actions. `main` is the release source: every push to `main` starts the release workflow directly, without waiting for the full CI benchmark matrix.
 
 1. Create the public GitHub repository.
-2. Add the npm trusted publisher for the repository and `release.yml` workflow.
+2. Add the npm trusted publisher for this repository:
+   - Provider: GitHub Actions
+   - Organization or user: `jmclaughlin724`
+   - Repository: `supaschema`
+   - Workflow filename: `release.yml`
+   - Environment name: `release`
+   - Allowed actions: `npm publish`
 3. Configure the GitHub `release` environment so deployment branch policies allow `main`.
 4. Add a changeset for the release.
 5. Run `npm run release:version` and include the resulting package version, lockfile, action metadata, and changelog changes in the release PR.
