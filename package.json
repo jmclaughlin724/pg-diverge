@@ -104,6 +104,7 @@
     "guard:code-atlas": "npm run code-atlas:check",
     "guard:fastmcp": "node scripts/guards/check-fastmcp-agent.mjs",
     "guard:lsp-coverage": "node scripts/guards/check-lsp-coverage.mjs",
+    "guard:release-version": "node scripts/guards/check-release-version-surfaces.mjs",
     "postinstall": "node bin/postinstall.mjs",
     "lint": "ultracite check .",
     "lint:ci": "biome ci .",

@@ -41,6 +41,7 @@ supaschema is a Node 22.12+ TypeScript CLI and library that generates determinis
 | Security | `.claude/rules/15-security.md` |
 | File size and composition | `.claude/rules/16-file-size-and-composition.md` |
 | Prompt and context authoring | `.claude/rules/17-prompt-craft-standards.md`, `.claude/rules/18-context-surface-sync.md` |
+| Version control and release version bumps | `.claude/rules/19-version-control-release.md` |
 | Migration policy | `.claude/rules/supaschema.md` |
 
 ## Workflow map

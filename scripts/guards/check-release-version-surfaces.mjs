@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+import { parse as parseYaml } from "yaml";
+import { assert, ok, readJson, readText } from "./lib/guard-utils.js";
+
+const packageJson = readJson("package.json");
+const packageLock = readJson("package-lock.json");
+const version = packageJson.version;
+
+assert(typeof version === "string" && version.length > 0, "package.json version must be set");
+assert(
+  packageLock.version === version,
+  `package-lock.json version must match package.json version ${version}`
+);
+assert(
+  packageLock.packages?.[""]?.version === version,
+  `package-lock.json root package version must match package.json version ${version}`
+);
+
+const changelog = readText("CHANGELOG.md");
+const firstVersionHeading = changelog.split("\n").find((line) => line.startsWith("## "));
+assert(
+  firstVersionHeading?.startsWith(`## ${version} (`) && firstVersionHeading.endsWith(")"),
+  `CHANGELOG.md first version heading must be "## ${version} (YYYY-MM-DD)"`
+);
+
+const actionText = readText("action.yml");
+const action = parseYaml(actionText);
+const actionVersionInput = action?.inputs?.version;
+assert(actionVersionInput, "action.yml must declare inputs.version");
+assert(
+  actionVersionInput.default === version,
+  `action.yml inputs.version.default must match package.json version ${version}`
+);
+assert(
+  typeof actionVersionInput.description === "string" &&
+    actionVersionInput.description.includes("Exact supaschema npm version"),
+  "action.yml inputs.version.description must require an exact supaschema npm version"
+);
+assert(
+  !actionText.includes("default: latest"),
+  "action.yml inputs.version.default must never be an npm dist-tag"
+);
+
+const actionRunText = (action?.runs?.steps ?? [])
+  .map((step) => (typeof step?.run === "string" ? step.run : ""))
+  .join("\n");
+assert(
+  actionRunText.includes("use an exact npm version"),
+  "action.yml version validation must tell users to use an exact npm version"
+);
+assert(
+  actionRunText.includes(`e.g. ${version}`),
+  `action.yml exact-version example must use package.json version ${version}`
+);
+assert(
+  !actionRunText.includes("latest|next"),
+  "action.yml version validation must not allow npm dist-tags"
+);
+
+ok("RELEASE_VERSION_SURFACES_OK");
