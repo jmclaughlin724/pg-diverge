@@ -200,7 +200,7 @@ The package ships a governance bundle so coding agents generate migrations throu
 - `.agents/skills/supaschema/` and `.claude/skills/supaschema/` — the step-by-step workflow skill, with recovery steps for every blocking `SUPA_*` code.
 - `.claude/hooks/` and `.codex/hooks/` — two wired migration-policy hooks in each runtime:
   - a **PreToolUse** hook that blocks any edit to a generated migration (identified by its lineage marker), and
-  - a **PostToolUse** hook that senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, and returns the generated migration name — or the blocking `SUPA_*` diagnostic — straight back to the agent as context.
+  - a **PostToolUse** hook that senses a write to a schema-tree `.sql` file, runs `supaschema diff` then `supaschema check` to completion, returns the generated migration name, and emits continuation feedback when a blocking `SUPA_*` diagnostic requires root-cause investigation and a rerun.
 - A sync hook keeps the installed `.agents` skill and Codex rule/hook mirrors aligned when the consumer edits the shipped `.claude` supaschema rule or skill.
 
 So when an agent (or anyone) edits the declarative tree, the migration and configured generated outputs are refreshed according to `workflow.*` and the agent is told what happened, with no command to remember under the default hook policy. `npm install supaschema` installs the config, agent addenda, the narrow supaschema consumer rule/skill/hook bundle, and minimal hook wiring in one step. Pointing agents only at `node_modules/supaschema/` gives them package guidance without project hook wiring. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
