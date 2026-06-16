@@ -1,6 +1,7 @@
 # Prettier owns MDX, Markdown, and YAML formatting in this repo (run it via
-# `npm run format:md`). Biome owns JS/TS/JSON/JSONC/CSS and pgformatter owns SQL
-# — see .claude/rules/06-multi-language-toolchain.md and 08-biome-ultracite-policy.md.
+# `npm run format:md`). Biome owns JS/TS/JSON/JSONC/CSS; SQL is governed by
+# supaschema's parser/deparser/semantic checks, not a text formatter — see
+# .claude/rules/06-multi-language-toolchain.md and 08-biome-ultracite-policy.md.
 # Prettier 3.x also reads .gitignore; these entries keep direct `prettier` runs scoped.
 
 # Dependencies, build output, caches, scratch graph state.

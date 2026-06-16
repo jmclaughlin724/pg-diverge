@@ -16,7 +16,10 @@ describe("editor and language-server surfaces", () => {
     expect(settings["//scope"]).toContain("Maintainer workspace");
     expect(settings["tailwindCSS.classFunctions"]).toBeUndefined();
     expect(settings["tailwindCSS.experimental.classRegex"]).toBeUndefined();
-    expect(settings["files.associations"]).toBeUndefined();
+    expect(settings["files.associations"]).toMatchObject({
+      "action.yml": "yaml",
+      "action.yaml": "yaml",
+    });
     expect(settings["yaml.schemas"]).toMatchObject({
       "https://www.schemastore.org/github-action.json": ["action.yml", "action.yaml"],
       "https://www.schemastore.org/github-workflow.json": [

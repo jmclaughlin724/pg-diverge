@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://www.schemastore.org/github-action.json
 name: supaschema
 description: Run supaschema gates (drift detection, migration check, verify) against a declarative SQL tree.
 branding:

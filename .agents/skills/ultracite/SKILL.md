@@ -28,7 +28,7 @@ Use the repo-owned npm scripts. Do not run direct `ultracite` or `biome` command
 - Package manager: npm only. Preserve `package-lock.json`; do not add pnpm, yarn, or bun lockfiles.
 - Canonical lint config: root `biome.jsonc`.
 - Canonical lint check: `npm run lint`.
-- Canonical write/fix command: `npm run format`. It runs the Biome/Ultracite step internally, then the other language formatters/sorters (Prettier, pgformatter, taplo, shfmt, sort-package-json, ruff) — see Rule 06. Do not use direct `ultracite` or `biome` commands, `npm run lint fix`, or formatter aliases such as `npm run lint:fix`.
+- Canonical write/fix command: `npm run format`. It runs the Biome/Ultracite step internally, then the other language formatters/sorters (Prettier, taplo, shfmt, sort-package-json, ruff) — see Rule 06. Do not use direct `ultracite` or `biome` commands, `npm run lint fix`, or formatter aliases such as `npm run lint:fix`.
 - Setup diagnosis: `npm run lint:doctor`.
 - Tool versions are pinned in both `package.json` and `scripts/dependency-catalog.json`; keep them identical.
 - `vitest.config.ts` owns test runner behavior. Keep DB-safe worker limits and V8 coverage reporting.

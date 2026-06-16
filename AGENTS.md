@@ -1,117 +1,141 @@
-# supaschema repository map
+# supaschema Operating Contract
 
 ## Purpose
 
-This file is the root route map for AI agents working in this repository. Apply a closer `AGENTS.md` when one exists. Durable policy lives in `.claude/rules/**`; repeatable workflows live in `.claude/skills/**`; deterministic enforcement lives in hooks, guards, and tests; public product explanation lives in `README.md` and `docs/**`.
+This file defines the repository-wide operating contract for AI coding agents. Keep durable repo-wide invariants here and route detailed procedures to `.claude/rules/**`, `.claude/skills/**`, hooks, runtime config, or the nearest owner `AGENTS.md`.
 
-supaschema is a Node 22.12+ TypeScript CLI and library that generates deterministic, replay-safe PostgreSQL/Supabase migrations from declarative SQL tree diffs.
+## Rule Map
 
-## Project map
+- Code Atlas routing and repo-wide graph policy: `.claude/rules/10-code-atlas.md`.
+- Supaschema migration policy: `.claude/rules/supaschema.md`.
 
-| Concern | Owner |
-| --- | --- |
-| Source code | `src/**` |
-| CLI entry points | `src/cli.ts`, `src/cli-diff.ts`, `src/cli-reports.ts`, `src/cli-tools.ts` |
-| Library exports | `src/index.ts` |
-| Config semantics | `src/config.ts`, `src/config-contract.ts` |
-| Generated config artifacts | `supaschema-config.schema.json`, `bin/config-contract.mjs` |
-| Tests and fixtures | `tests/**`, `tests/fixtures/**`, `corpus/**` |
-| Python FastMCP side service | `services/agent-mcp/**` |
-| Public docs | `docs/**`, `README.md` |
-| npm package boundary | `package.json#files` |
-| Generated build output | `dist/**` |
+## Operating Rules
 
-## Rule map
+- Repo facts come from live files and command output. External-tech facts come from upstream MCP/docs first, official web fallback second, then installed/live proof.
+- Use MUST, MUST NOT, SHOULD, DEFAULT TO, VERIFY, FIX BY, and STOP IF consistently.
+- Every hard rule must include a verification path.
+- Every verification failure must include corrective action.
+- Preserve every user instruction as an acceptance criterion. Do not narrow the requested action, stop at a representative subset, or treat current structure as proof of correctness.
+- Use AST instead of regex for code analysis and generation whenever possible.
+- Do not delete, weaken, bypass, or skip guards without explicit user approval and a documented reason.
+- For anything important, use this chain:
+    - Rule file says the requirement.
+    - Hook blocks obvious local violations.
+    - Guard script performs deterministic validation.
+    - CI runs the same guard.
+    - Skill tells agent how to fix failures.
 
-| Concern | Rule owner |
-| --- | --- |
-| Compatibility migration pointer | `.claude/rules/00-supaschema.md` |
-| Operating discipline | `.claude/rules/01-operating-rules.md` |
-| Docs writing and Mintlify components | `.claude/rules/02-mintlify-writing-standards.md`, `.claude/rules/03-mintlify-component-reference.md` |
-| Python and FastMCP toolchain | `.claude/rules/04-python-toolchain.md`, `.claude/rules/11-agent-mcp-fastmcp.md` |
-| Decision protocol | `.claude/rules/05-decision-protocol.md` |
-| Multi-language LSP and formatter ownership | `.claude/rules/06-multi-language-toolchain.md` |
-| AST-over-regex | `.claude/rules/07-ast-over-regex.md` |
-| Biome and Ultracite | `.claude/rules/08-biome-ultracite-policy.md` |
-| CI/CD and release | `.claude/rules/09-ci-cd-efficiency-governance.md` |
-| Code Atlas | `.claude/rules/10-code-atlas.md` |
-| Hook context and skill loading | `.claude/rules/12-skill-loading-enforcement.md` |
-| npm package boundary | `.claude/rules/13-npm-package-boundary.md` |
-| Worktree and git safety | `.claude/rules/14-editing-worktree-git.md` |
-| Security | `.claude/rules/15-security.md` |
-| File size and composition | `.claude/rules/16-file-size-and-composition.md` |
-| Prompt and context authoring | `.claude/rules/17-prompt-craft-standards.md`, `.claude/rules/18-context-surface-sync.md` |
-| Version control and release version bumps | `.claude/rules/19-version-control-release.md` |
-| Migration policy | `.claude/rules/supaschema.md` |
+## Working style
 
-## Workflow map
+### Use 
 
-| Workflow | Owner |
-| --- | --- |
-| supaschema schema-change workflow | `.claude/skills/supaschema/SKILL.md` |
-| Code Atlas workflow | `.claude/skills/code-atlas/SKILL.md` |
-| FastMCP workflow | `.claude/skills/fastmcp/SKILL.md`, `.claude/skills/fastmcp-client-cli/SKILL.md` |
-| Ultracite workflow | `.claude/skills/ultracite/SKILL.md` |
-| Agent surface sync | `scripts/skills/sync-llm.mjs` |
-| Consumer scaffold | `bin/scaffold.mjs` |
+- Be direct.
+- Make small, verifiable changes.
+- Prefer editing existing files over creating new abstractions.
+- Do not mark work complete until the relevant checks have run or a blocking reason is stated.
+- Core writing style of short, operational, and enforceable sentences. 
+- Avoid fluffy, general, aspirational, or unverifiable language. Use the active voice and present tense.
 
-## Command map
+### Do not use
 
-Supaschema CLI:
+- Motivational language.
+- Long rationale.
+- Unbounded “best practices.”
+- Duplicated rules.
+- Conflicting instructions.
+- Hidden assumptions.
 
-```bash
-supaschema diff
-supaschema check
-supaschema verify
-supaschema types
-supaschema diff --fail-on-diff --quiet
-supaschema diff --summary
-supaschema diff --write-hints <file>
-supaschema audit --from <source>
-supaschema selfcheck
-supaschema migrations
-supaschema sync
-supaschema corpus
-```
+## Required workflow
 
-Repository development:
+### Before editing
 
-```bash
-npm run check
-npm run lint
-npm run format
-npm run typecheck
-npm test
-npm run build
-npm run check:package
-npm run pack:dry
-npm run fixture:verify
-npm run corpus:check
-npm run benchmark
-npm run docs:check
-npm run guard
-```
+1. Read this file and the nearest applicable `AGENTS.md` and `.claude/rules/*.md`.
+2. Identify the owning app, package, service, or database area.
+3. Verify upstream best practices from the canonical source.
+4. Utilize DRY principles for existing owners, patterns, and conventions over introducing new ones.
+5. Make the smallest safe change that satisfies the task.
 
-Python/FastMCP:
+### After editing
 
-```bash
-npm run py:format:check
-npm run py:lint
-npm run py:typecheck
-npm run py:test
-npm run guard:fastmcp
-npm run fastmcp:status
-```
+1. Update tests, generated files, docs, and guards affected by the change.
+2. Run targeted checks. Targeted checks include test suites, type checks, lints, formatting, and generated-file diffs related to the changed area.
+3. Run global guards when boundaries, database, auth, tenancy, generated files, CI, hooks, or rules changed.
+4. Summarize changed files, commands run, results, and unresolved risks.
 
-## Verification map
+## Repo-Wide Change Discipline
 
-| Change area | Usual proof |
-| --- | --- |
-| Core SQL extraction, planning, rendering, checking, verification, typegen, CLI defaults | Targeted tests plus `npm run typecheck` |
-| Package, release, or bundled agent surfaces | `npm run check:package`, `npm run pack:dry`, or `npm pack --dry-run --json` |
-| Docs pages, navigation, components, or images | `npm run docs:check` |
-| Python or FastMCP surfaces | Python checks plus FastMCP guards |
-| Hooks, rules, skills, or context surfaces | `npm run sync:llm`, `npm run hooks:check`, `npm run guard:agent`, or `npm run guard` |
+Root `AGENTS.md` is the only owner of this repo-wide action sequence. Do not restate it elsewhere.
+
+This sequence applies to every repository change: code, tests, docs, schemas, configs, scripts, prompts, generated surfaces, and verification.
+
+1. Identify the requested end state, the concept being changed, and the canonical owner.
+2. Implement the requested end state in the canonical owner. Extend, move, merge, or delete there before adding a new surface.
+3. Do not create or preserve duplicate owners, aliases, wrappers, helpers, types, schemas, docs, configs, routes, exports, workflows, or instructions for the same concept.
+4. Keep a separate surface only for a genuinely distinct runtime, storage, compliance, lifecycle, or external-contract boundary.
+5. Treat automation, guards, and checks as supporting evidence only; they do not replace owner classification or implementation in the canonical owner.
+
+A task is not complete while any user instruction lacks a disposition, the owner is unknown, the requested end state is unmet, avoidable duplication remains in the accepted scope, or verification has not covered the canonical owner.
+
+## Rule priority
+
+When instructions conflict, use this order:
+
+1. User’s explicit current task.
+2. Safety, secrets, and data-protection rules.
+3. Tenant isolation and RLS rules.
+4. Database migration/source-of-truth rules.
+5. App/package boundary rules.
+6. Framework-specific rules.
+7. Style preferences.
+
+Never use a lower-priority rule to bypass a higher-priority rule.
+
+## Worktree And Approval
+
+- You may be in a dirty worktree. Preserve unrelated, pre-existing work that exists in the worktree. Do not stage, commit, stash, reset, clean, or overwrite changes you did not make unless explicitly requested by the user.
+- Destructive git operations, force-pushes, publishing/deployments, linked or production external-state mutation, deleting user-owned data, rotating secrets, and spending money require explicit user approval.
+
+## Failure behavior
+
+If verification fails:
+
+1. Treat the failure as blocking.
+2. Fix failures caused by the current change.
+3. Re-run the failed command.
+4. Do not bypass, delete, weaken, or skip the guard.
+5. If the failure appears unrelated, document the evidence and continue only if the requested change is still verifiable.
+
+## Stop conditions
+
+Stop before editing if:
+
+- The task requires destructive database migration behavior.
+- The correct tenant source is unclear.
+- The change requires a new production dependency.
+- The implementation would expose service-role access to client code.
+- The requested change conflicts with a higher-level rule.
+
+## Done means
+
+- The requested change is implemented.
+- The owning tests were added or updated.
+- Required guards passed.
+- Generated files are current.
+- Docs or rules were updated if behavior changed.
+- The final response lists commands run and remaining risks.
+
+## Final response format
+
+When finishing code work, report:
+
+1. What changed.
+2. Files changed.
+3. Commands run.
+4. Results.
+5. Remaining risks or skipped checks.
+
+Do not claim success for checks that were not run.
+Do not say "should work" without verification.
 
 <!-- supaschema:agent-guidance:start -->
 

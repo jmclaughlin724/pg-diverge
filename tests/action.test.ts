@@ -19,7 +19,8 @@ describe("composite action", () => {
 
   it("is mapped to the action metadata schema, not the workflow schema", () => {
     const root = resolve(import.meta.dirname, "..");
-    const action = parse(readFileSync(resolve(root, "action.yml"), "utf8")) as {
+    const actionText = readFileSync(resolve(root, "action.yml"), "utf8");
+    const action = parse(actionText) as {
       inputs?: unknown;
       jobs?: unknown;
       on?: unknown;
@@ -29,6 +30,11 @@ describe("composite action", () => {
       "yaml.schemas"?: Record<string, string[]>;
     };
 
+    expect(
+      actionText.startsWith(
+        "# yaml-language-server: $schema=https://www.schemastore.org/github-action.json"
+      )
+    ).toBe(true);
     expect(action.inputs).toBeDefined();
     expect(action.runs?.using).toBe("composite");
     expect(action.on).toBeUndefined();

@@ -41,7 +41,7 @@ export async function runConfiguredValidators(
       if (!spec) {
         diagnostics.push(
           diagnostic("SUPA_VALIDATOR_UNKNOWN", "error", `unknown validator "${validator}"`, {
-            hint: "Supported validators: internal-parser, squawk, squawk-cli, pgls, postgres-language-server, @postgres-language-server/cli, sqlfluff, pg-formatter, pgformatter.",
+            hint: "Supported validators: internal-parser, squawk, squawk-cli, pgls, postgres-language-server, @postgres-language-server/cli, sqlfluff.",
           })
         );
         continue;
@@ -73,9 +73,6 @@ function validatorSpec(name: string): ValidatorSpec | undefined {
       };
     case "sqlfluff":
       return { args: ["lint", "--dialect", "postgres"], command: "sqlfluff" };
-    case "pg-formatter":
-    case "pgformatter":
-      return { args: ["--check"], command: "pg-formatter" };
     default:
       return;
   }

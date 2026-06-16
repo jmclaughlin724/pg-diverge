@@ -764,9 +764,7 @@ const contract = JSON.parse(`{
     "pgls",
     "postgres-language-server",
     "@postgres-language-server/cli",
-    "sqlfluff",
-    "pg-formatter",
-    "pgformatter"
+    "sqlfluff"
   ],
   "typeUsagePolicies": [
     "typescript_only",

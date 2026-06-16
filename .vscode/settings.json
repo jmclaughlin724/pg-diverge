@@ -1,5 +1,9 @@
 {
   "//scope": "Maintainer workspace settings for developing supaschema. These are not copied into consumer projects by postinstall.",
+  "files.associations": {
+    "action.yml": "yaml",
+    "action.yaml": "yaml"
+  },
   "yaml.validate": true,
   "yaml.schemaStore.enable": true,
   "yaml.schemas": {

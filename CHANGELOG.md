@@ -6,6 +6,7 @@
 - `.supaschema` state is now only used for pending install decisions such as ambiguous schema or migration paths; resolved installs no longer create an otherwise-empty project folder, and `install.json` remains the only durable state file when confirmation is needed.
 - Package boundary and agent surfaces now ship whole skill directories for future `references/`, `scripts/`, and asset files, while Codex-specific packaged `.codex/skills` output is removed in favor of the `.agents` skill plus Codex rules and hooks.
 - Formatting policy is tightened around `npm run format` as the only write/fix command; stale `lint:fix`, direct Ultracite, and direct Biome fix instructions were removed from rules, skills, docs, and guards.
+- The pgformatter lane is removed: SQL formatting is governed by supaschema's renderer, deparse normalization, semantic checks, and PostgreSQL language tooling, and the shipped examples are restored after a local formatter failure had overwritten them.
 
 ## 0.2.1 (2026-06-16)
 
