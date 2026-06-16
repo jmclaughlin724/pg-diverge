@@ -1,0 +1,59 @@
+---
+title: "audit"
+description: "Report support-matrix coverage for one schema source."
+keywords: ["audit command", "support matrix", "coverage", "unsupported DDL"]
+---
+
+Use `audit` before adopting an existing schema or provider-specific tree.
+
+The report shows what supaschema can model and which statements are outside the supported contract.
+
+## Use this when
+
+- You are onboarding a database into declarative management.
+- Unsupported DDL should be known before the first generated migration.
+- A support-matrix report belongs in migration planning.
+- CI needs JSON coverage output.
+
+## Run it
+
+```bash
+npx supaschema audit --from dir:database/schemas
+npx supaschema audit --from "database:$DATABASE_URL"
+npx supaschema audit --from dir:database/schemas --json
+```
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Required source to audit against the support matrix.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Print the audit report as JSON.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Source is fully supported |
+| `1` | Runtime failure |
+| `2` | Unsupported coverage was found |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Support matrix" icon="table" href="/reference/support-matrix">
+    Review modeled PostgreSQL objects.
+  </Card>
+  <Card title="Inspect" icon="scan-search" href="/commands/inspect">
+    Print extracted model details.
+  </Card>
+  <Card title="Declarative management" icon="files" href="/guides/declarative-postgres-schema-management">
+    Adopt schema files as source of truth.
+  </Card>
+  <Card title="Explain" icon="message-circle-question" href="/commands/explain">
+    Decode unsupported diagnostic codes.
+  </Card>
+</CardGroup>

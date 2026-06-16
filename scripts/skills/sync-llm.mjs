@@ -23,6 +23,10 @@ export const agentSurfaceManifest = {
     sourceRoot: ".claude/skills",
     targetRoots: [".agents/skills", ".codex/skills"],
   },
+  publicSkills: {
+    sourceRoot: ".claude/skills/supaschema",
+    targetRoot: "skills/supaschema",
+  },
 };
 
 const frontmatterLinePattern = /\r?\n/;
@@ -53,12 +57,13 @@ export function runCli(argv = process.argv.slice(2), root = ROOT) {
 
   const result = syncAgentSurfaces({ root });
   process.stdout.write(
-    `SYNC_LLM_OK skills=${result.skills} skillTargets=${result.skillTargets} agents=${result.agents} hooks=${result.hooks} rules=${result.rules}\n`
+    `SYNC_LLM_OK skills=${result.skills} skillTargets=${result.skillTargets} publicSkills=${result.publicSkills} agents=${result.agents} hooks=${result.hooks} rules=${result.rules}\n`
   );
 }
 
 export function syncAgentSurfaces({ root = ROOT } = {}) {
   const skillResult = syncSkills(root);
+  const publicSkillResult = syncPublicSkills(root);
   const hookResult = syncDirectoryMirror(root, agentSurfaceManifest.hooks);
   const agentResult = syncCodexAgents(root);
   const ruleResult = syncCodexRules(root);
@@ -66,6 +71,7 @@ export function syncAgentSurfaces({ root = ROOT } = {}) {
   return {
     agents: agentResult.files,
     hooks: hookResult.files,
+    publicSkills: publicSkillResult.files,
     rules: ruleResult.files,
     skillTargets: skillResult.targets,
     skills: skillResult.files,
@@ -75,6 +81,7 @@ export function syncAgentSurfaces({ root = ROOT } = {}) {
 export function checkAgentSurfaces({ root = ROOT } = {}) {
   const errors = [];
   checkSkills(root, errors);
+  checkPublicSkills(root, errors);
   checkDirectoryMirror(root, agentSurfaceManifest.hooks, errors);
   checkCodexAgents(root, errors);
   checkCodexRules(root, errors);
@@ -122,6 +129,10 @@ function syncSkills(root) {
   }
 
   return { files, targets };
+}
+
+function syncPublicSkills(root) {
+  return syncDirectoryMirror(root, agentSurfaceManifest.publicSkills);
 }
 
 function syncDirectoryMirror(root, surface) {
@@ -180,6 +191,10 @@ function checkSkills(root, errors) {
   for (const targetRoot of targetRoots) {
     checkDirectoryMirror(root, { sourceRoot, targetRoot }, errors);
   }
+}
+
+function checkPublicSkills(root, errors) {
+  checkDirectoryMirror(root, agentSurfaceManifest.publicSkills, errors);
 }
 
 function checkDirectoryMirror(root, surface, errors) {

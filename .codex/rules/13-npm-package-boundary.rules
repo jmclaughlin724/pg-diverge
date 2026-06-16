@@ -2,13 +2,24 @@
 # Do not edit directly; update the Claude rule source and re-run sync.
 # Codex .rules files are command-policy programs, so Claude Markdown policy is mirrored as comments.
 
+# ---
+# description: npm package `files` boundary, consumer agent bundle, postinstall/scaffold surface, and package-content tests.
+# ---
+#
 # # Rule 13 — npm package boundary
+#
+# ## Contract
+#
+# This rule owns the published npm package boundary: `package.json#files`, tarball contents, consumer agent bundle, scaffold/postinstall behavior, lifecycle-script silence, and package-content tests.
+#
 #
 # Sources:
 #
 # - npm package `files`: <https://docs.npmjs.com/cli/v8/configuring-npm/package-json/#files>
 # - npm publish contents: <https://docs.npmjs.com/cli/v8/commands/npm-publish/#files-included-in-package>
 # - npm developer guide: <https://docs.npmjs.com/cli/v9/using-npm/developers/#keeping-files-out-of-your-package>
+# - Agent Skills specification: <https://agentskills.io/specification>
+# - Vercel Skills CLI: <https://github.com/vercel-labs/skills>
 #
 # The published package is an explicit consumer surface. The repository also contains maintainer-only tooling for developing supaschema itself. Keep those surfaces separate.
 #
@@ -19,6 +30,9 @@
 # - Treat `npm pack --dry-run --json` as the authoritative preview of the published tarball.
 # - `postinstall` owns consumer setup after npm downloads the package. Do not confuse tarball contents with files written into the consuming project.
 # - The downloadable consumer agent bundle is deliberately narrow: `.agents/skills/supaschema`, `.claude/skills/supaschema`, `.claude/rules/supaschema.md`, `.claude/hooks/auto-diff-on-schema-change.mjs`, `.claude/hooks/block-generated-migration-edits.mjs`, `.claude/hooks/sync-llm-on-claude-surface-change.mjs`, `.codex/hooks.json`, and the matching Codex rule, skill, and hook script mirrors.
+# - `skills/supaschema` is the only public `npx skills` source in this repository. It is a generated mirror of `.claude/skills/supaschema` and installs portable Agent Skill context only. It must not include hooks, rules, subagents, config scaffolding, or maintainer skills.
+# - Do not advertise the repository root as an `npx skills` source. The Skills CLI scans standard agent directories such as `.agents/skills`, `.claude/skills`, and `.codex/skills`; this repository uses those locations for maintainer mirrors while developing supaschema itself.
+# - Rules and hooks ship through the npm package scaffold, not through `npx skills`. `postinstall` and `supaschema init` copy the consumer rule/skill/hook files and merge `.claude/settings.json` / `.codex/hooks.json` because those surfaces require runtime-specific project registration.
 # - `docs/coding-agents/agent-bundle.mdx` is the reader-facing owner for consumer agent bundle contents, installed hook names, hook events, and schema-edit workflow trigger behavior such as `auto-diff-on-schema-change.mjs`. `docs/reference/package-boundary.mdx` owns package mechanics only and should link to the agent-bundle page instead of duplicating the hook contract.
 # - Consumer setup writes `.claude/settings.json` through `bin/scaffold.mjs` and merges `.codex/hooks.json` from the packaged consumer registration file. The packaged `.codex/hooks.json` must only wire the supaschema generated-migration block, schema auto-diff, and LLM surface sync hooks.
 # - Maintainer Claude/Codex optimization infrastructure is repo-local by default. Do not publish or scaffold `.claude/hooks/context-*`, `.codex/hooks/context-*`, `scripts/agent-hooks/**`, optimizer skills, internal rules, `.claude/agents/**`, `.codex/agents/**`, `.codex/config.toml`, or other agent-development tooling unless the consumer contract explicitly changes and `tests/package-contents.test.ts`, `tests/database-url.test.ts`, `bin/scaffold.mjs`, and this rule change together.
@@ -27,6 +41,7 @@
 # - Maintainer workspace surfaces stay repo-only unless the consumer contract explicitly changes. Examples include `.vscode`, `.mcp.json`, `.claude/cclsp.json`, Postgres Language Server config, Python/FastMCP support, Code Atlas, tests, guards, source files, CI support, and lint config.
 # - Generated and incremental build artifacts stay out of every allowlisted directory. A broad `files` entry like `dist` sweeps in everything beneath it, so write caches such as a `tsBuildInfoFile` to `.tmp/` (gitignored, not in `files`), never inside `dist/`. A `.tsbuildinfo` must never reach the published tarball.
 # - When adding, moving, or deleting a package or consumer install surface, update `docs/reference/package-boundary.mdx`, package tests, and tooling guards in the same change.
+# - When changing the public `npx skills` surface, update `skills/README.md`, `docs/coding-agents.mdx`, `docs/coding-agents/agent-bundle.mdx`, `scripts/skills/sync-llm.mjs`, and `scripts/guards/check-agent-surface-parity.mjs` in the same change.
 # - The download→install→use lifecycle has three test owners that move together with this rule and `docs/reference/package-boundary.mdx`, and none should grow to cover another's surface: `tests/package-contents.test.ts` (shipped tarball file list plus an `examples/` allowlist and size budget so a fixture cannot bloat the download), `tests/database-url.test.ts` (the `postinstall` scaffold), and `tests/consumer-lifecycle.test.ts` (pack, `npm install` the tarball into a throwaway consumer, then run the installed binary to prove an accurate migration and generated types). A bare tarball extract cannot run the CLI (`dist` needs its runtime deps), so the lifecycle proof installs the tarball — the npm-documented "install the tarball, run the installed bin" pattern. A local registry (Verdaccio) flow is the optional high-fidelity tier, not the default.
 #
 # ## Enforced by
@@ -36,5 +51,24 @@
 # - `npm pack --dry-run --json`.
 # - `npx vitest run tests/editor-surfaces.test.ts tests/database-url.test.ts tests/package-contents.test.ts tests/consumer-lifecycle.test.ts`.
 #
-# STOP if root `.npmignore` is introduced, a maintainer-only support surface enters `package.json` `files`, a consumer agent surface is removed from the tarball, `.claude/hooks/context-*`, `.codex/hooks/context-*`, `scripts/agent-hooks/**`, or repo-local context infrastructure enters the tarball or consumer scaffold without an explicit consumer-contract change, `.codex/hooks.json` wires anything beyond the consumer supaschema hooks, a `.tsbuildinfo` or other build cache appears in the dry-run tarball, a lifecycle script (`prepare`/`preinstall`/`postinstall`) writes to stdout and breaks `npm pack` tarball-name or `--json` parsing, or `postinstall` writes repo-only tooling into a consuming project without a documented contract change.
+# STOP if root `.npmignore` is introduced, `skills/` enters `package.json` `files`, `skills/` exposes anything except `skills/supaschema`, a maintainer-only support surface enters `package.json` `files`, a consumer agent surface is removed from the tarball, `.claude/hooks/context-*`, `.codex/hooks/context-*`, `scripts/agent-hooks/**`, or repo-local context infrastructure enters the tarball or consumer scaffold without an explicit consumer-contract change, `.codex/hooks.json` wires anything beyond the consumer supaschema hooks, a `.tsbuildinfo` or other build cache appears in the dry-run tarball, a lifecycle script (`prepare`/`preinstall`/`postinstall`) writes to stdout and breaks `npm pack` tarball-name or `--json` parsing, or `postinstall` writes repo-only tooling into a consuming project without a documented contract change.
+#
+# ## Verification
+#
+# After package files, scaffold, postinstall, docs, published agent bundle, or release surface changes, run:
+#
+# ```bash
+# npm run check:package
+# npm run pack:dry
+# npm pack --dry-run --json
+# npx vitest run tests/editor-surfaces.test.ts tests/database-url.test.ts tests/package-contents.test.ts tests/consumer-lifecycle.test.ts
+# ```
+#
+# ## Failure behavior
+#
+# Fix the allowlist, scaffold, docs, or tests. Do not add `.npmignore`, ship maintainer-only tooling, let lifecycle scripts print stdout, or edit generated package artifacts to satisfy tests.
+#
+# ## Done means
+#
+# The dry-run tarball contains only the intended consumer surface, postinstall/init scaffold parity holds, consumer lifecycle tests pass, and docs match the published package boundary.
 #

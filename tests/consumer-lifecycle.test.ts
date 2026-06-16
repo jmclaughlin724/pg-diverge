@@ -84,8 +84,9 @@ const fixtureTo = "tests/fixtures/sample-project/supabase/schemas-next";
 
 let consumer = "";
 let binPath = "";
-// A second consumer installed WITH --ignore-scripts (npm v12 default): postinstall
-// never runs, so `supaschema init` must complete setup. Marker-free -> generic layout.
+// A second consumer installed WITH --ignore-scripts simulates blocked dependency
+// lifecycle scripts: postinstall never runs, so `supaschema init` must complete
+// setup. Marker-free -> generic layout.
 let consumer2 = "";
 let binPath2 = "";
 
@@ -114,9 +115,9 @@ beforeAll(async () => {
   binPath = join(consumer, "node_modules", "supaschema", "bin", "supaschema");
 
   // Second consumer: marker-free (generic layout), installed WITH --ignore-scripts to
-  // simulate npm v12's ignore-scripts default — postinstall does NOT run, leaving the
-  // project unscaffolded for the `supaschema init` fallback lane to complete. The same
-  // packed tarball is reused (only the pack is shared; this install is independent).
+  // simulate blocked dependency lifecycle scripts — postinstall does NOT run, leaving
+  // the project unscaffolded for the `supaschema init` fallback lane to complete. The
+  // same packed tarball is reused (only the pack is shared; this install is independent).
   consumer2 = await mkdtemp(join(tmpdir(), "supa-consumer-init-"));
   await writeFile(
     join(consumer2, "package.json"),
@@ -216,7 +217,7 @@ describe("consumer lifecycle: install then use the published package", () => {
 
 describe("consumer lifecycle: ignore-scripts install then supaschema init reaches full parity", () => {
   it("install --ignore-scripts does not scaffold but still ships the CLI and shared scaffolder", () => {
-    // npm v12 defaults to ignore-scripts: postinstall did not run, so nothing scaffolded...
+    // Dependency lifecycle scripts were blocked: postinstall did not run, so nothing scaffolded...
     expect(existsSync(join(consumer2, "supaschema.config.json"))).toBe(false);
     expect(existsSync(join(consumer2, ".supaschema", "install.json"))).toBe(false);
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);

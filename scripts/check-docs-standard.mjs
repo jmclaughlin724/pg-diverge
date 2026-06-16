@@ -47,6 +47,11 @@ const HEX_COLOR_PATTERN = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i;
 const OPENAPI_OPERATION_PATTERN = /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE)\s+\//;
 const DOCS_ROUTE_PREFIX_PATTERN = /^docs\//;
 const DOCS_PAGE_EXTENSION_PATTERN = /\.mdx?$/;
+const WHITESPACE_PATTERN = /\s+/;
+const LOWERCASE_START_PATTERN = /^[a-z0-9]/;
+const LOWERCASE_WORD_PATTERN = /^[a-z]/;
+const WORD_EDGE_PUNCTUATION_PATTERN = /^[^\w.-]+|[^\w.-]+$/g;
+const TITLE_CASE_WORD_PATTERN = /^[A-Z][a-z]+/;
 const LOCAL_IMAGE_PREFIX = "/images/";
 const FRONTMATTER_MODES = new Set(["default", "wide", "custom", "frame", "center"]);
 const GENERIC_LINK_TEXT = new Set([
@@ -56,6 +61,28 @@ const GENERIC_LINK_TEXT = new Set([
   "read more",
   "this",
   "this page",
+]);
+const CALLOUT_COMPONENTS = new Set(["Note", "Info", "Tip", "Warning", "Danger", "Check"]);
+const TITLE_CASE_WORD_ALLOWLIST = new Set([
+  "AGENTS.md",
+  "API",
+  "CI",
+  "CLI",
+  "Codex",
+  "GitHub",
+  "JSON",
+  "MCP",
+  "Mintlify",
+  "Node.js",
+  "PostgreSQL",
+  "RLS",
+  "SQL",
+  "SUPA",
+  "Supabase",
+  "TypeScript",
+  "URL",
+  "URLs",
+  "Zod",
 ]);
 
 const markdownProcessor = unified()
@@ -80,6 +107,8 @@ const firstWord = (text) => {
 
 const isMdxJsxNode = (node) =>
   node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
+
+const isMdxJsxNamed = (node, name) => isMdxJsxNode(node) && node.name === name;
 
 const hasMarkdownExtension = (pathname) => pathname.endsWith(".md") || pathname.endsWith(".mdx");
 
@@ -149,6 +178,59 @@ const addLinkViolation = (violations, file, line, target) => {
   if (msg) {
     violations.push({ file, line, rule: "internal-link", msg });
   }
+};
+
+const getMdxAttribute = (node, name) =>
+  (node.attributes ?? []).find(
+    (attribute) => attribute.type === "mdxJsxAttribute" && attribute.name === name
+  );
+
+const mdxAttributeString = (node, name) => {
+  const attribute = getMdxAttribute(node, name);
+  return typeof attribute?.value === "string" ? attribute.value : undefined;
+};
+
+const mdxAttributeNumber = (node, name) => {
+  const attribute = getMdxAttribute(node, name);
+  if (!attribute) {
+    return;
+  }
+  if (typeof attribute.value === "number") {
+    return attribute.value;
+  }
+  if (
+    attribute.value &&
+    typeof attribute.value === "object" &&
+    attribute.value.type === "mdxJsxAttributeValueExpression"
+  ) {
+    const parsed = Number(attribute.value.value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  if (typeof attribute.value === "string") {
+    const parsed = Number(attribute.value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+};
+
+const wordCount = (text) => text.trim().split(WHITESPACE_PATTERN).filter(Boolean).length;
+
+const childText = (node) => {
+  if (typeof node.value === "string") {
+    return node.value;
+  }
+  return (node.children ?? []).map(childText).join(" ");
+};
+
+const isWhitespaceText = (node) => node.type === "text" && node.value.trim().length === 0;
+
+const collectMdxDescendants = (node, name, matches = []) => {
+  for (const child of node.children ?? []) {
+    if (isMdxJsxNamed(child, name)) {
+      matches.push(child);
+    }
+    collectMdxDescendants(child, name, matches);
+  }
+  return matches;
 };
 
 const readFrontmatter = (tree, file, violations) => {
@@ -286,6 +368,7 @@ export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
       inspectDocNode(node, displayFile, violations, state);
     });
     visitWithParents(tree, (node, ancestors) => {
+      inspectAdjacentCallouts(node, displayFile, violations);
       inspectImageFrame(node, ancestors, displayFile, violations);
     });
 
@@ -334,6 +417,14 @@ function inspectHeading(node, displayFile, violations, state) {
   if (node.depth === 2 && ["Flags", "Options"].includes(firstWord(headingText))) {
     state.hasFlagsOrOptionsHeading = true;
   }
+  if (node.depth >= 2 && isObviousTitleCaseHeading(node, headingText)) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "heading-case",
+      msg: `heading "${headingText}" should use sentence case unless it is a command, acronym, code symbol, product name, or diagnostic code`,
+    });
+  }
 }
 
 function inspectCodeFence(node, displayFile, violations) {
@@ -380,6 +471,15 @@ function inspectMdxNode(node, displayFile, violations, state) {
   if (node.name === "img") {
     inspectImgElement(node, displayFile, violations);
   }
+  if (node.name === "Columns") {
+    inspectColumnsElement(node, displayFile, violations);
+  }
+  if (node.name === "CardGroup") {
+    inspectCardGroupElement(node, displayFile, violations);
+  }
+  if (node.name === "Card") {
+    inspectCardElement(node, displayFile, violations);
+  }
   for (const attribute of node.attributes ?? []) {
     if (
       attribute.type === "mdxJsxAttribute" &&
@@ -395,6 +495,70 @@ function inspectMdxNode(node, displayFile, violations, state) {
     ) {
       inspectImageSrc(attribute.value, displayFile, lineOf(attribute), violations);
     }
+  }
+}
+
+function inspectColumnsElement(node, displayFile, violations) {
+  if (collectMdxDescendants(node, "Card").length === 0) {
+    return;
+  }
+  violations.push({
+    file: displayFile,
+    line: lineOf(node),
+    rule: "card-grid",
+    msg: "use <CardGroup> for docs card grids so the repo has one card layout owner",
+  });
+}
+
+function inspectCardGroupElement(node, displayFile, violations) {
+  const cols = mdxAttributeNumber(node, "cols") ?? 2;
+  const cards = collectMdxDescendants(node, "Card");
+  if (![2, 3].includes(cols)) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "card-grid",
+      msg: "<CardGroup> must use cols={2} or cols={3}",
+    });
+    return;
+  }
+  if (cols === 3 && cards.length !== 3) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "card-grid",
+      msg: "<CardGroup cols={3}> must contain exactly three direct <Card> children",
+    });
+  }
+  if (cols === 2 && cards.length > 4) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "card-grid",
+      msg: "<CardGroup cols={2}> must contain at most four direct <Card> children",
+    });
+  }
+}
+
+function inspectCardElement(node, displayFile, violations) {
+  for (const attributeName of ["title", "icon"]) {
+    if (typeof mdxAttributeString(node, attributeName) !== "string") {
+      violations.push({
+        file: displayFile,
+        line: lineOf(node),
+        rule: "card",
+        msg: `<Card> must include a string ${attributeName} attribute`,
+      });
+    }
+  }
+  const bodyWords = wordCount(childText(node));
+  if (bodyWords > 35) {
+    violations.push({
+      file: displayFile,
+      line: lineOf(node),
+      rule: "card",
+      msg: `<Card> body is ${bodyWords} words; keep card bodies to one short sentence (35 words max)`,
+    });
   }
 }
 
@@ -492,6 +656,64 @@ function inspectImageFrame(node, ancestors, displayFile, violations) {
       msg: "`<img>` elements in docs must be wrapped in a Mintlify <Frame>",
     });
   }
+}
+
+function inspectAdjacentCallouts(node, displayFile, violations) {
+  let previousCallout;
+  for (const child of node.children ?? []) {
+    if (isWhitespaceText(child)) {
+      continue;
+    }
+    const currentCallout = isMdxJsxNode(child) && CALLOUT_COMPONENTS.has(child.name);
+    if (currentCallout && previousCallout) {
+      violations.push({
+        file: displayFile,
+        line: lineOf(child),
+        rule: "callout-spacing",
+        msg: "do not stack callouts without intervening explanatory content",
+      });
+    }
+    previousCallout = currentCallout ? child : undefined;
+  }
+}
+
+function isObviousTitleCaseHeading(node, text) {
+  if ((node.children ?? []).some((child) => child.type === "inlineCode")) {
+    return false;
+  }
+  const normalized = text.trim();
+  if (
+    normalized.length === 0 ||
+    !normalized.includes(" ") ||
+    LOWERCASE_START_PATTERN.test(normalized) ||
+    normalized.startsWith("SUPA_")
+  ) {
+    return false;
+  }
+
+  const words = normalized
+    .split(WHITESPACE_PATTERN)
+    .map((word) => word.replace(WORD_EDGE_PUNCTUATION_PATTERN, ""))
+    .filter(Boolean);
+  if (words.length < 2) {
+    return false;
+  }
+  if (
+    words
+      .slice(1)
+      .some(
+        (word) =>
+          LOWERCASE_WORD_PATTERN.test(word) &&
+          !["and", "or", "to", "of", "in", "with", "for"].includes(word)
+      )
+  ) {
+    return false;
+  }
+
+  const titleWords = words.filter(
+    (word) => TITLE_CASE_WORD_PATTERN.test(word) && !TITLE_CASE_WORD_ALLOWLIST.has(word)
+  );
+  return titleWords.length >= 2;
 }
 
 function visitWithParents(node, visitor, ancestors = []) {

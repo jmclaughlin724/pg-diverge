@@ -4,38 +4,23 @@ description: "Review install-time setup, verify the environment, and find detail
 keywords: ["setup", "configuration", "agent bundle", "schema paths"]
 ---
 
-Setup is completed by package install.
+Use this page to confirm paths and setup output after install.
 
-Run:
+If setup did not run, start with [Installation](/installation). If dependency lifecycle scripts were blocked, run:
 
 ```bash
-npm install supaschema
+npx supaschema init
 ```
-
-The installer prepares the project once. It does not generate or apply a migration.
-
-When npm does not run install scripts — npm v12 ignores dependency install scripts by default, or you installed with `--ignore-scripts` — run `npx supaschema init` to perform the same setup explicitly.
-
-<Info>
-  If you need to change paths later, edit `schemaPaths`, `sources.to`,
-  `migrationsDir`, `typesFile`, or `zodFile` in `supaschema.config.json`. Edit
-  `workflow` when you need to change agent hook automation, migration sync
-  handoff, or generated output refresh policy.
-</Info>
-
-This page covers path selection, agent addendum behavior, setup checks, and where detailed configuration lives. For the package contents installed in that step, see [What gets installed?](/introduction#what-gets-installed).
 
 ## Path selection
 
-Install scans the repository before writing config.
-
-The path decision is:
+Install scans the repository before writing config:
 
 - one detected schema folder and one detected migrations folder are used automatically;
-- if a provider marker is present and no existing schema or migrations folder is found, install uses that provider's default folders;
-- otherwise the neutral PostgreSQL layout is `database/schemas` and `database/migrations`;
-- if multiple candidates exist, install records them in `.supaschema/install.json`;
-- in an interactive terminal, install can ask for the paths immediately.
+- provider markers seed default folders when no existing folders are found;
+- generic PostgreSQL projects use `database/schemas` and `database/migrations`;
+- multiple candidates are recorded in `.supaschema/install.json`;
+- interactive terminals can confirm paths immediately.
 
 <Warning>
   Do not run the first `diff` from a guessed path. If `.supaschema/install.json`
@@ -51,57 +36,38 @@ The path decision is:
 | AlloyDB markers in Terraform, Cloud Build, or App Engine config | `alloydb/schemas` | `alloydb/migrations` |
 | Azure PostgreSQL markers in Terraform, Bicep, ARM, or Azure Developer CLI config | `azure-postgresql/schemas` | `azure-postgresql/migrations` |
 
-When no existing folders are found, generic PostgreSQL projects use `database/schemas` and `database/migrations`. The full generated config shape is defined in [Configuration](/configuration/config-file#generated-config).
-
-All providers use `adapter: "auto"`. Provider detection seeds paths and the default `sources.to`; Supabase detection also seeds Supabase managed-schema protection. Transaction behavior, workflow automation, type outputs, source defaults, and environment references are configured with explicit fields in `supaschema.config.json`.
-
-Commit this file. It keeps developers, CI, and coding agents on the same paths.
-
-`npx supaschema init` performs the full setup — config, schema and migration directories, the agent rules/skills/hooks bundle, and the `AGENTS.md` / `CLAUDE.md` guidance — the same scaffold as package install. Run it when install scripts did not run (npm v12 ignores dependency install scripts by default) or to repair setup. It is idempotent: existing JSON config files are left untouched unless `--repair` is passed, and the managed guidance block is updated where it already exists.
+Commit `supaschema.config.json` after confirming paths. It keeps humans, CI, and coding agents on the same schema tree and migration directory.
 
 ## Agent addendum
 
-Install updates `AGENTS.md` and `CLAUDE.md` by replacing only the managed block between these markers:
+Install updates `AGENTS.md` and `CLAUDE.md` only inside this managed block:
 
 ```text
 <!-- supaschema:agent-guidance:start -->
 <!-- supaschema:agent-guidance:end -->
 ```
 
-Existing content outside the markers is preserved.
+Content outside the markers is preserved.
 
 ## Check setup
 
-Run `doctor` when you want a one-page environment check:
+Run `doctor` when setup behaves unexpectedly:
 
 ```bash
 npx supaschema doctor
 ```
 
-`doctor` checks:
-
-- Node version;
-- parser load;
-- config validity;
-- database URL resolution;
-- database reachability when a URL is available;
-- `CREATEDB` capability for verification;
-- migration history;
-- declarative schema tree.
+`doctor` checks Node, parser load, config validity, database URL resolution, optional database reachability, `CREATEDB`, migration history, and declarative schema paths.
 
 ## Configuration
 
-Use the detailed configuration pages when setup needs more than the defaults:
-
 <CardGroup cols={3}>
   <Card title="Config file" icon="file-json" href="/configuration/config-file">
-    Review schema paths, migrations, type outputs, validators, and planner policies.
+    Review paths, migrations, type outputs, validators, and planner policies.
   </Card>
-
-<Card title="Environments" icon="database" href="/configuration/environments">
-  Configure named targets and database URL resolution.
-</Card>
-
+  <Card title="Environments" icon="database" href="/configuration/environments">
+    Configure named targets and database URL resolution.
+  </Card>
   <Card title="Hints" icon="shield-alert" href="/configuration/hints">
     Approve reviewed destructive changes and renames.
   </Card>

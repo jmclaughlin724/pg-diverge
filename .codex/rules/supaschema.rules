@@ -15,7 +15,7 @@
 # ## Rules
 #
 # - Consumer migration policy must rely on project files, generated hook context, and supaschema command output. Repo-local maintainer tooling such as Code Atlas, cclsp, FastMCP, and context-enforcement hooks is not part of the published consumer install surface.
-# - Consumer setup is one package install. The installed config, schema/migration directories, supaschema consumer rule/skill/hook bundle, hook wiring, and tagged `AGENTS.md` / `CLAUDE.md` addendum are part of the package surface. Maintainer-only Claude/Codex optimization and context-enforcement tooling remains repo-local under Rule 13. `postinstall` and `supaschema init` perform consumer setup through one shared scaffolder (`bin/scaffold.mjs`), so `supaschema init` is at full parity with `postinstall` — config, directories, agent bundle, hook wiring, and manifest — not a config-only recovery step. It is the explicit fallback when npm does not run install scripts (npm v12 defaults to ignoring dependency install scripts) and is idempotent: existing JSON config files are left untouched unless explicit repair is requested, JavaScript config files are not loaded or converted, and the managed guidance block is upserted in place.
+# - Consumer setup is one package install. The installed config, schema/migration directories, supaschema consumer rule/skill/hook bundle, hook wiring, and tagged `AGENTS.md` / `CLAUDE.md` addendum are part of the package surface. Maintainer-only Claude/Codex optimization and context-enforcement tooling remains repo-local under Rule 13. `postinstall` and `supaschema init` perform consumer setup through one shared scaffolder (`bin/scaffold.mjs`), so `supaschema init` is at full parity with `postinstall` — config, directories, agent bundle, hook wiring, and manifest — not a config-only recovery step. It is the explicit fallback when dependency lifecycle scripts are blocked or skipped, including npm v12 `allowScripts` policy, `--ignore-scripts`, or local npm policy. It is idempotent: existing JSON config files are left untouched unless explicit repair is requested, JavaScript config files are not loaded or converted, and the managed guidance block is upserted in place.
 # - If `.supaschema/install.json` records `"pathConfirmationNeeded": true`, inspect the detected candidates, ask the user which `schemaPaths`, `sources.to`, and `migrationsDir` to use, and update `supaschema.config.json` before the first diff. Do not generate from the installer's guessed first candidate; the PostToolUse hook must skip auto-diff until all three fields are explicitly configured.
 # - `supaschema.config.json` owns `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, and named `environments`. `sources.from` and `sources.to` are the machine-readable defaults for zero-source-flag `diff`, `plan`, and `verify`; install writes `sources.from: "auto"` and `sources.to: "dir:<schemaPaths[0]>"`. `adapter: "auto"` is provider-neutral and is not a Supabase switch. Workflow automation is explicit: default `workflow.schema_diff: "on_schema_write"` runs hook diff, `workflow.migration_check: "after_schema_diff"` runs hook check, `workflow.type_generation: "create_or_refresh"` and `workflow.zod_generation: "create_or_refresh"` make `diff` create or update generated TypeScript and Zod outputs, `workflow.type_usage: "zod_validated"` tells agents to use generated Zod validators as the runtime-boundary contract, `workflow.migration_verify` controls verify guidance, and `workflow.migration_sync` controls explicit sync apply handoff. Provider-specific behavior is expressed through paths, managed schemas, transaction mode, excluded grant roles, and explicit verify flags. Generic PostgreSQL installs use `managedSchemas: []`; Supabase installs seed the Supabase platform schema list.
 # - Schema intent changes only in the configured declarative SQL tree (`schemaPaths` in `supaschema.config.json`), such as `database/schemas/**`, `supabase/schemas/**`, `neon/schemas/**`, `aws-postgresql/schemas/**`, `cloud-sql/schemas/**`, `alloydb/schemas/**`, or `azure-postgresql/schemas/**`. Render the migration with `supaschema diff`; do not hand-author migration SQL for changes the tree can express.
@@ -31,4 +31,26 @@
 # - `supaschema sync` is an explicit operational handoff. With no apply flag it is a dry run; with `--local` or `--remote` it runs migration status and replay-safety gates, then delegates the actual apply/deploy to the Supabase CLI only when `workflow.migration_sync` is `explicit_request_only`. Agents must not use apply flags without an explicit human request.
 # - Database URLs resolve flag (`$ENV` indirection supported) > named `config.environments` entry via `--env` > `SUPASCHEMA_DATABASE_URL` > nearest `supabase/config.toml`. Do not hard-code connection strings in scripts, config, or CI.
 # - Decode any `SUPA_*` diagnostic with `supaschema explain <CODE>`; recovery procedures live in `docs/configuration/hints.mdx`.
+#
+# ## Verification
+#
+# For schema workflow changes or consumer migration guidance, prove the actual lane with the relevant command:
+#
+# ```bash
+# supaschema diff
+# supaschema check
+# supaschema verify
+# supaschema types
+# supaschema explain <SUPA_CODE>
+# ```
+#
+# When editing this repo's implementation, run the narrow source tests plus `npm run typecheck` and the relevant fixture/corpus checks.
+#
+# ## Failure behavior
+#
+# Resolve `SUPA_*` diagnostics through `supaschema explain`, edit the declarative tree rather than generated migrations, and ask for explicit approval before any `sync --local|--remote` apply flag or `--no-check-chain` path.
+#
+# ## Done means
+#
+# Schema intent is in the tree, generated migration/types/Zod outputs are current, generated artifacts were not hand-edited, destructive/rename intent is explicit, and check/verify evidence exists for the touched lane.
 #

@@ -5,9 +5,9 @@ keywords: ["release", "trusted publishing", "npm", "checklist"]
 hidden: true
 ---
 
-Use this checklist for an npm release.
-
 The package is designed for trusted publishing from GitHub Actions. `main` is the release source: every push to `main` starts the release workflow directly, without waiting for the full CI benchmark matrix.
+
+## One-time setup
 
 1. Create the public GitHub repository.
 2. Add the npm trusted publisher for this repository:
@@ -18,18 +18,21 @@ The package is designed for trusted publishing from GitHub Actions. `main` is th
    - Environment name: `release`
    - Allowed actions: `npm publish`
 3. Configure the GitHub `release` environment so deployment branch policies allow `main`.
-4. Add a changeset for the release.
-5. Run `npm run release:version` and include the resulting package version, lockfile, action metadata, and changelog changes in the release PR.
-6. Confirm CI passes all required checks.
-7. Merge the release PR to `main`.
+
+## Per-release checklist
+
+1. Add a changeset for the release.
+2. Run `npm run release:version` and include the resulting package version, lockfile, action metadata, and changelog changes in the release PR.
+3. Confirm PR CI passes all required checks before merge.
+4. Merge the release PR to `main`.
 
 Do not publish from GitHub Releases or local machines. If npm publish succeeds but GitHub Release creation fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm.
 
 ## Required checks
 
-- CI: lint, typecheck, tests, guard suite, package check, benchmarks, fixture diff, fixture verification, corpus oracle, tarball pack, and tarball smoke;
+- PR/main CI evidence: lint, typecheck, tests, guard suite, package check, benchmarks, fixture diff, fixture verification, corpus oracle, tarball pack, and tarball smoke;
 - release preflight: package and lockfile versions match, npm/GitHub release state is consistent, and any existing GitHub tag points to the release commit;
-- release: clean install, signature audit, build, package check, tarball pack, tarball smoke, npm publish, build-provenance attestation, and GitHub Release/tag creation.
+- release job: clean install, signature audit, build, package check, tarball pack, tarball smoke, npm publish, build-provenance attestation, and GitHub Release/tag creation. The release job does not rerun benchmarks, corpus, or database-backed CI proofs.
 
 ## Package boundary
 
@@ -48,11 +51,12 @@ The release workflow uses:
 - `permissions.id-token: write`
 - `permissions.contents: write` on the publish job
 - `push` to `main` plus a main-only `workflow_dispatch` repair path
-- `actions/setup-node` with `registry-url: https://registry.npmjs.org`
+- a GitHub-hosted Ubuntu runner with Node 24, npm `>=11.5.1`, and `actions/setup-node` with `registry-url: https://registry.npmjs.org`
 - `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`
+- `actions/attest@v4` for tarball provenance attestation
 - `gh release create "$SUPASCHEMA_RELEASE_TAG" --target "$GITHUB_SHA" --generate-notes`
 
-With npm trusted publishing, provenance is generated through GitHub Actions OIDC.
+With npm trusted publishing, provenance is generated through GitHub Actions OIDC. The explicit `--provenance` flag is kept as release policy.
 
 No long-lived npm token is required.
 

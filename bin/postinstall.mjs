@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Install-time wrapper for consuming projects. This makes `npm install
-// --save-dev supaschema` the single step that installs config, agent
+// supaschema` the single step that installs config, agent
 // guidance, rules, skills, hooks, and default schema/migration folders.
 // The actual scaffolding lives in the shared, dist-free ./scaffold.mjs so
-// `supaschema init` can reproduce the same setup when npm does not run install
-// scripts (npm v12, ~July 2026, defaults to ignore-scripts). This wrapper owns
+// `supaschema init` can reproduce the same setup when dependency lifecycle
+// scripts are blocked or skipped (npm v12 allowScripts policy, --ignore-scripts,
+// or local npm policy). This wrapper owns
 // only the lifecycle concerns: INIT_CWD resolution, the opt-out/own-checkout
 // skip guards, the never-fail-install swallow, and the stdout summary. The
 // script is idempotent and never fails package installation; skipped work is

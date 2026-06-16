@@ -71,6 +71,7 @@ export function expectedInstalledConfig(
 
 // Agent-bundle + hook-wiring files a scaffolded consumer must contain.
 export const installedAgentFiles = [
+  ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema/SKILL.md",
   ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/block-generated-migration-edits.mjs",

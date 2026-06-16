@@ -1,80 +1,66 @@
 ---
 title: "RLS policy safety"
-description: "Detect PostgreSQL and Supabase Row Level Security policy changes by comparing policy expressions, not just policy names."
-keywords: ["RLS policy safety", "policy diff", "Supabase", "PostgreSQL"]
+description: "Detect PostgreSQL Row Level Security policy changes by comparing policy expressions, not just policy names."
+keywords: ["RLS policy safety", "policy diff", "PostgreSQL"]
 ---
 
-Row Level Security policy predicates are access-control logic. A migration generator must detect changes to `USING` and `WITH CHECK` expressions, because the policy name can stay the same while tenant isolation changes.
+Use this when Row Level Security predicates protect tenants or other sensitive boundaries.
 
-`supaschema` compares RLS policy definitions structurally and surfaces predicate changes as migration operations.
+`supaschema` compares policy definitions structurally. A changed `USING` expression, `WITH CHECK` expression, command, role list, or permissive/restrictive mode is treated as a real schema change.
 
-## The risk
+## Use this when
 
-In a Supabase application, a policy like this may be the tenant boundary:
+- Policy bodies are part of your access-control model.
+- Reviewers need to see tenant-isolation changes.
+- CI should catch drift between policy files and the database.
+- Supabase projects use `auth.uid()` or platform roles in policies.
 
-```sql
-CREATE POLICY invoices_select ON app.invoices
-  FOR SELECT
-  TO authenticated
-  USING (tenant_id = auth.uid());
-```
+## Do this
 
-If the policy body changes, review must see the change. Treating two policies as equal because their names match can hide a regression or omit a needed tightening.
-
-## How supaschema compares policies
-
-`supaschema` parses policy statements with PostgreSQL's parser and compares the normalized structure. A changed `USING` expression, changed `WITH CHECK` expression, changed command, changed roles, or changed permissive/restrictive mode is a real schema change.
-
-That means this edit is not ignored:
-
-```sql
--- before
-USING (true)
-
--- after
-USING (tenant_id = auth.uid())
-```
-
-The generated migration will include the policy change and `check` will include it in the review surface.
-
-## Recommended workflow
-
-Keep RLS policies in the declarative tree next to the tables they protect:
+Keep policies in the declarative tree near the protected tables:
 
 ```text
-supabase/schemas/
+database/schemas/
   020_invoices.sql
   021_invoices_policies.sql
 ```
 
-Then run:
+Generate and check every policy change:
 
 ```bash
 npx supaschema diff
 npx supaschema check
-npx supaschema verify
 ```
 
-In CI, use `diff --fail-on-diff` so drift between the database and policy files blocks the merge:
+Review whether each predicate broadened reads, weakened writes, or changed role coverage.
+
+## Verify
+
+Block drift in CI:
 
 ```bash
 npx supaschema diff --fail-on-diff --quiet
 ```
 
-## What reviewers should look for
+Use Supabase stubs when verifying against bare PostgreSQL:
 
-Review RLS migrations like application security changes:
+```bash
+npx supaschema verify --ensure-environment --ensure-roles
+```
 
-- Does every tenant-scoped table have RLS enabled?
-- Did a `USING` predicate broaden access?
-- Did a `WITH CHECK` predicate weaken write isolation?
-- Did role coverage change?
-- Did the migration drop and recreate a policy instead of altering the intended object?
+## Related
 
-`supaschema` makes those changes visible; the final security decision still belongs to the reviewer.
-
-## Related pages
-
-- [supaschema vs Supabase CLI db diff](/comparisons/supaschema-vs-supabase-cli)
-- [CI gate](/guides/ci-gate)
-- [Benchmarks](/benchmarks)
+<CardGroup cols={2}>
+  <Card title="Supabase comparison" icon="scale" href="/comparisons/supaschema-vs-supabase-cli">
+    See why structural policy diffs matter.
+  </Card>
+  <Card title="CI gate" icon="circle-check" href="/guides/ci-gate">
+    Gate policy changes before merge.
+  </Card>
+  <Card title="Check command" icon="shield-check" href="/commands/check">
+    Surface policy changes with safety diagnostics.
+  </Card>
+  <Card title="Supabase integration" icon="database" href="/guides/supabase-integration">
+    Configure managed schemas and environment stubs.
+  </Card>
+</CardGroup>

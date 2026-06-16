@@ -1,4 +1,13 @@
+---
+description: Multi-language LSP coverage, formatter/linter ownership, import/key sorting, and npm-only toolchain.
+---
+
 # Rule 06 — Multi-language LSP coverage + formatting/lint standards
+
+## Contract
+
+This rule owns multi-language code intelligence and tool ownership: every tracked code extension has cclsp coverage, every language has one formatter/linter owner, and `npm run format` is the single repo-wide write/fix command.
+
 
 Every language used in this repo is a governed surface: it gets a language server under **cclsp** for code intelligence, and a formatter/linter gate where one exists. This is an npm single-package repo (TypeScript CLI/library under `src/` → `dist/`, plus a Python `uv` workspace at `services/agent-mcp`) — there is no pnpm, no Turborepo, no workspaces `apps/`, and no sqlfluff. Each language has exactly one formatting owner: **Biome** (JS/TS/JSON/JSONC/CSS), **Prettier** (MDX/Markdown/YAML), **pgformatter** (SQL declarative trees), **ruff** (Python), **taplo** (TOML), and **shfmt** (shell). Import and key sorting follow the same one-owner rule (see [Import and key sorting](#import-and-key-sorting)). Coverage is enforced by `scripts/guards/check-lsp-coverage.mjs` (`npm run guard:lsp-coverage`), the lint gate `npm run lint` (Ultracite/Biome), and the per-language Python gate in Rule 04.
 
@@ -64,3 +73,24 @@ Sorting has one owner per language too, and is **deliberately conservative** —
 - Tooling is pinned in root `devDependencies` (`@biomejs/biome` 2.5.0, `ultracite` 7.8.3, the LSP servers) and in the `uv` dev group (`ruff`, `mypy`, the pylsp plugins); `check-tooling-stack.mjs` and `uv lock --check` keep them reproducible.
 
 STOP if a new language ships without a cclsp mapping, if JS/TS/JSON/JSONC/CSS/HTML/GraphQL is committed unformatted, if Python fails ruff/mypy, if schema SQL bypasses the supaschema semantic guards, if a second formatter is added that competes with the one owner for a language (Biome for JS/TS/JSON/JSONC/CSS, Prettier for MDX/Markdown/YAML, pgformatter for SQL, ruff for Python, taplo for TOML, shfmt for shell), if pgformatter is pointed at generated migrations or `tests/fixtures`/`corpus` evidence, if blanket key sorting is enabled over semantic/conventional order (Biome `useSortedKeys` on globally or taplo `reorder_keys` on), or if pnpm/Turborepo/sqlfluff is reintroduced.
+
+## Verification
+
+When adding a file type, formatter, linter, LSP, language config, or format script, run:
+
+```bash
+npm run guard:lsp-coverage
+npm run guard
+npm run lint
+npm run typecheck
+```
+
+Use `npm run format` for write/fix remediation.
+
+## Failure behavior
+
+Add missing LSP coverage before adding a language. Remove competing formatters/linters and align with the one-owner map. Do not use `npm run lint` as a fixer or introduce pnpm/Turborepo/sqlfluff.
+
+## Done means
+
+Every touched language surface is mapped, formatted by its canonical owner, checked by its gate, and free of competing tooling.

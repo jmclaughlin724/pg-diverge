@@ -1,398 +1,90 @@
 ---
-description: Reference for Mintlify MDX components with syntax examples
+description: Concise Mintlify component selection policy and syntax guardrails.
+paths:
+  - "docs/**"
 ---
 
-# Mintlify component reference
+# Rule 03 — Mintlify component reference
 
-docs.json schema: https://mintlify.com/docs.json
+## Contract
 
-### Callout components
+This rule owns Mintlify component selection guardrails. It is a concise policy reference; full examples belong in the Mintlify skill references.
 
-#### Note - Additional helpful information
+## Component selection
 
-<Note>
-Supplementary information that supports the main content without interrupting flow. Use for helpful context, related concepts, or non-critical details.
-</Note>
+| Need | Component |
+| --- | --- |
+| Supplementary context | `<Note>` |
+| Best-practice or shortcut | `<Tip>` |
+| Required neutral context or permission note | `<Info>` |
+| Potentially destructive, breaking, or security-sensitive caution | `<Warning>` |
+| Critical data-loss or irreversible risk | `<Danger>` |
+| Sequential complex procedure | `<Steps>` / `<Step>` |
+| Platform or language alternatives | `<Tabs>` / `<Tab>` |
+| Same concept in multiple languages | `<CodeGroup>` |
+| API request example | `<RequestExample>` |
+| API response example | `<ResponseExample>` |
+| API request/query/path/header field | `<ParamField>` |
+| API response field | `<ResponseField>` |
+| Nested object/property hierarchy | `<Expandable>` |
+| Navigation or related resources | `<Card>` / `<CardGroup>` |
+| Images and diagrams | `<Frame>` |
+| Directory/file tree | `<Tree>` |
+| Simple generated diagram | fenced `mermaid` block |
 
-#### Tip - Best practices and pro tips
+## Syntax rules
 
-<Tip>
-Expert advice, shortcuts, or best practices that enhance user success. Use for optimization suggestions, time-savers, or friendly recommendations.
-</Tip>
+- Prefer semantic callouts over custom `<Callout>` unless a custom icon/color materially improves clarity.
+- Do not stack callouts without intervening explanatory content.
+- Use `<Steps>` for procedures with subtasks or verification; use ordered lists for short/simple steps.
+- Use `<Tabs>` only when alternatives are genuinely parallel and the user chooses one path.
+- Use `<CodeGroup>` only when examples express the same concept in multiple languages.
+- Use `<CardGroup>` as the single repo-standard card grid owner. Do not use `<Columns>` for card grids.
+- Use `<Card>` only for navigation, related resources, or discrete choice summaries. Use tables or definition lists for dense reference data.
+- Every `<Card>` has a short `title`, an `icon`, and one short body sentence. Internal card links use extensionless root-relative `href` values.
+- Use `<CardGroup cols={2}>` by default. Use `cols={3}` only for exactly three parallel choices.
+- Keep card grids small: at most four cards in a two-column grid. Split larger choice sets into smaller grids with clear section headings.
+- Use `<ParamField path="query.name">`, `path="body.name"`, `path="path.name"`, or `path="header.Name"`; do not use legacy-looking `body=`, `query=`, or `header=` attributes.
+- Use `<ResponseField>` and nested `<Expandable>` for structured responses.
+- Wrap all docs images/diagrams in `<Frame>` with descriptive alt text.
+- Use root-relative image paths beginning with `/images/`.
+- Use `<Prompt>` only when the prompt itself is a reusable docs artifact users should copy.
 
-#### Warning - Important cautions
+## Code example rules
 
-<Warning>
-Critical information about potential issues, breaking changes, or destructive actions. Use sparingly and only for genuine risks.
-</Warning>
+- Use complete, runnable examples when the user is expected to copy them.
+- Show realistic values without real secrets.
+- Include expected output or verification when the example changes state.
+- Include error handling when the example touches network, files, credentials, databases, or external APIs.
+- Specify the code-fence language and filename/title when useful.
+- Use `text` for terminal output and other plain output.
 
-#### Info - Neutral contextual information
+## API docs rules
 
-<Info>
-Background information, context, or neutral announcements. Use for prerequisites, permissions, or required setup information.
-</Info>
+- Prefer OpenAPI/AsyncAPI specs for endpoint references.
+- Manual API docs must show request and response examples, all required fields, authentication format, status/error behavior, and pagination/rate-limit behavior when applicable.
+- API docs that include a route contract must stay aligned with the generated/public contract owner.
 
-#### Check - Success confirmations
+## Accessibility rules
 
-<Check>
-Positive confirmations, successful completions, or achievement indicators. Use to verify steps were completed correctly.
-</Check>
+- Images require descriptive alt text.
+- Links use specific actionable text, not "click here".
+- Heading hierarchy starts with H2 inside the page body.
+- Component usage must support scanning and keyboard navigation.
 
-#### Danger - Critical warnings
+## Verification
 
-<Danger>
-Critical warnings about data loss, irreversible operations, or breaking changes. Use only when a normal warning is not strong enough.
-</Danger>
-
-#### Callout - Custom icon/color callout
-
-<Callout icon="key" color="#FFC107">
-Custom callout with a specific icon and color. Prefer the semantic callout components unless custom styling adds real clarity.
-</Callout>
-
-### Code components
-
-#### Single code block
-
-```javascript config.js
-const apiConfig = {
-  baseURL: "https://api.example.com",
-  timeout: 5000,
-  headers: {
-    Authorization: `Bearer ${process.env.API_TOKEN}`,
-  },
-};
-```
-
-#### Code group with multiple languages
-
-<CodeGroup>
-```javascript Node.js
-const response = await fetch('/api/endpoint', {
-  headers: { Authorization: `Bearer ${apiKey}` }
-});
-```
-
-```python Python
-import requests
-response = requests.get('/api/endpoint',
-  headers={'Authorization': f'Bearer {api_key}'})
-```
-
-```curl cURL
-curl -X GET '/api/endpoint' \
-  -H 'Authorization: Bearer YOUR_API_KEY'
-```
-
-</CodeGroup>
-
-#### Request/Response examples
-
-<RequestExample>
-```bash cURL
-curl -X POST 'https://api.example.com/users' \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "John Doe", "email": "john@example.com"}'
-```
-</RequestExample>
-
-<ResponseExample>
-```json Success
-{
-  "id": "user_123",
-  "name": "John Doe",
-  "email": "john@example.com",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
-</ResponseExample>
-
-### Structural components
-
-#### Steps for procedures
-
-<Steps>
-<Step title="Install dependencies">
-  Run `npm install` to install required packages.
-
-  <Check>
-  Verify installation by running `npm list`.
-  </Check>
-</Step>
-
-<Step title="Configure environment">
-  Create a `.env` file with your API credentials.
+When component syntax changes or a docs page uses these components, run:
 
 ```bash
-API_KEY=your_api_key_here
+npm run docs:lint
+npm run docs:check
 ```
 
-  <Warning>
-  Never commit API keys to version control.
-  </Warning>
-</Step>
-</Steps>
+## Failure behavior
 
-#### Tabs for alternative content
+Fix the MDX component structure or route the pattern to the correct Mintlify owner. Do not flatten component-rich content into plain Markdown merely to avoid syntax errors.
 
-<Tabs>
-<Tab title="macOS">
-  ```bash
-  brew install node
-  npm install -g package-name
-  ```
-</Tab>
+## Done means
 
-<Tab title="Windows">
-  ```powershell
-  choco install nodejs
-  npm install -g package-name
-  ```
-</Tab>
-
-<Tab title="Linux">
-  ```bash
-  sudo apt install nodejs npm
-  npm install -g package-name
-  ```
-</Tab>
-</Tabs>
-
-#### Accordions for collapsible content
-
-<AccordionGroup>
-<Accordion title="Troubleshooting connection issues">
-  - **Firewall blocking**: Ensure ports 80 and 443 are open
-  - **Proxy configuration**: Set HTTP_PROXY environment variable
-  - **DNS resolution**: Try using 8.8.8.8 as DNS server
-</Accordion>
-
-<Accordion title="Advanced configuration">
-  ```javascript
-  const config = {
-    performance: { cache: true, timeout: 30000 },
-    security: { encryption: 'AES-256' }
-  };
-  ```
-</Accordion>
-</AccordionGroup>
-
-### API documentation components
-
-#### Parameter fields
-
-<ParamField path="user_id" type="string" required>
-Unique identifier for the user. Must be a valid UUID v4 format.
-</ParamField>
-
-<ParamField path="body.email" type="string" required>
-User's email address. Must be valid and unique within the system.
-</ParamField>
-
-<ParamField path="query.limit" type="integer" default="10">
-Maximum number of results to return. Range: 1-100.
-</ParamField>
-
-<ParamField path="header.Authorization" type="string" required>
-Bearer token for API authentication. Format: `Bearer YOUR_API_KEY`
-</ParamField>
-
-Use `path="path.name"`, `path="query.name"`, `path="body.name"`, or `path="header.Name"`. Do not use legacy-looking `body=`, `query=`, or `header=` attributes.
-
-#### Response fields
-
-<ResponseField name="user_id" type="string" required>
-Unique identifier assigned to the newly created user.
-</ResponseField>
-
-<ResponseField name="created_at" type="timestamp">
-ISO 8601 formatted timestamp of when the user was created.
-</ResponseField>
-
-<ResponseField name="permissions" type="array">
-List of permission strings assigned to this user.
-</ResponseField>
-
-#### Expandable nested fields
-
-<ResponseField name="user" type="object">
-Complete user object with all associated data.
-
-<Expandable title="User properties">
-  <ResponseField name="profile" type="object">
-  User profile information including personal details.
-
-  <Expandable title="Profile details">
-    <ResponseField name="first_name" type="string">
-    User's first name as entered during registration.
-    </ResponseField>
-
-    <ResponseField name="avatar_url" type="string | null">
-    URL to user's profile picture. Returns null if no avatar is set.
-    </ResponseField>
-
-  </Expandable>
-  </ResponseField>
-</Expandable>
-</ResponseField>
-
-### Interactive components
-
-#### Cards for navigation
-
-<Card title="Getting started guide" icon="rocket" href="/quickstart">
-Complete walkthrough from installation to your first API call in under 10 minutes.
-</Card>
-
-<CardGroup cols={2}>
-<Card title="Authentication" icon="key" href="/auth">
-  Learn how to authenticate requests using API keys or JWT tokens.
-</Card>
-
-<Card title="Rate limiting" icon="clock" href="/rate-limits">
-  Understand rate limits and best practices for high-volume usage.
-</Card>
-</CardGroup>
-
-<Columns cols={3}>
-  <Card title="First" icon="circle-dot">First option.</Card>
-  <Card title="Second" icon="circle-dot">Second option.</Card>
-  <Card title="Third" icon="circle-dot">Third option.</Card>
-</Columns>
-
-### Media and advanced components
-
-#### Frames for images
-
-Wrap all images in frames with descriptive alt text.
-
-<Frame>
-<img src="/images/dashboard.png" alt="Main dashboard showing analytics overview" />
-</Frame>
-
-<Frame caption="The analytics dashboard provides real-time insights">
-<img src="/images/analytics.png" alt="Analytics dashboard with charts" />
-</Frame>
-
-#### Tooltips and updates
-
-<Tooltip tip="Application Programming Interface - protocols for building software">
-API
-</Tooltip>
-
-<Badge color="green" size="sm" shape="pill" icon="check">
-Stable
-</Badge>
-
-<Tree>
-  <Tree.Folder name="database" defaultOpen>
-    <Tree.Folder name="schemas" defaultOpen>
-      <Tree.File name="public.sql" />
-    </Tree.Folder>
-  </Tree.Folder>
-</Tree>
-
-```mermaid
-flowchart LR
-  Edit[Edit schema] --> Diff[Generate migration]
-  Diff --> Check[Check replay safety]
-```
-
-<Prompt description="Review a migration" actions={["copy"]}> Review this SQL migration for destructive changes, replay safety, and lock risk. </Prompt>
-
-<Panel>
-  <Info>Use sparingly when a page needs custom right-sidebar context instead of the table of contents.</Info>
-</Panel>
-
-<Update label="Version 2.1.0" description="Released March 15, 2024">
-## New features
-- Added bulk user import functionality
-- Improved error messages with actionable suggestions
-
-## Bug fixes
-
-- Fixed pagination issue with large datasets
-- Resolved authentication timeout problems </Update>
-
-## Required page structure
-
-Every documentation page must begin with YAML frontmatter:
-
-```yaml
----
-title: "Clear, specific, keyword-rich title"
-description: "Concise description explaining page purpose and value"
----
-```
-
-## Content quality standards
-
-### Code examples requirements
-
-- Always include complete, runnable examples that users can copy and execute
-- Show proper error handling and edge case management
-- Use realistic data instead of placeholder values (you can use `minty`, `wintergreen`, `spearmint` or similar for Mintlify examples)
-- Include expected outputs and results for verification
-- Test all code examples thoroughly before publishing
-- Specify language and include filename when relevant
-- Add explanatory comments for complex logic
-- Never include real API keys or sensitive credentials
-
-### API documentation requirements
-
-- Document all parameters including optional ones with clear descriptions
-- Show both success and error response examples with realistic data
-- Include rate limiting information with specific limits
-- Provide authentication examples showing proper format
-- Explain all HTTP status codes and error handling
-- Cover complete request/response cycles
-- Include pagination details when applicable
-
-### Accessibility requirements
-
-- Include descriptive alt text for all images and diagrams
-- Use specific, actionable link text instead of "click here"
-- Ensure proper heading hierarchy starting with H2
-- Provide keyboard navigation considerations
-- Use sufficient color contrast in examples and visuals
-- Structure content for easy scanning with headers and lists
-- Use semantic HTML elements appropriately
-
-## Component selection logic
-
-### When to use each component
-
-- **Steps**: Procedures, tutorials, setup guides, and sequential instructions
-- **Tabs**: Platform-specific content, alternative approaches, or multiple installation methods
-- **CodeGroup**: Same concept demonstrated in multiple programming languages
-- **Accordions**: Supplementary information that might interrupt main flow
-- **Cards/CardGroup**: Navigation, feature overviews, and related resources
-- **Frame**: Wrap all images with descriptive captions when helpful
-- **RequestExample/ResponseExample**: Specifically for API endpoint documentation
-- **Expandable**: Nested object properties or hierarchical information
-- **ParamField**: API parameters with types and requirements
-- **ResponseField**: API response documentation with clear descriptions
-
-### Callout selection guidelines
-
-- **Note**: Extra relevant information that supports main content (not crucial to task completion)
-- **Warning**: Potentially destructive actions, breaking changes, or critical cautions
-- **Info**: Required information, permissions, prerequisites, neutral announcements, background context
-- **Tip**: Opinionated best practices, expert advice, shortcuts, or friendly recommendations
-- **Check**: Success confirmations, positive completions, achievement indicators
-- Don't stack callouts - separate with content between them
-
-## Component selection decision trees
-
-### For procedures:
-
-- Use ordered lists when: Sequential simple tasks. For example "Navigate to the dashboard" or "Click Configurations"
-- Use <Steps> when: Sequential complex tasks that require subtasks to complete
-- Use <Tabs> when: Platform-specific alternatives
-- Use <AccordionGroup> when: Optional supplementary info
-
-### For code examples:
-
-- Use single ``` when: One language, simple example
-- Use <CodeGroup> when: Same concept in multiple languages
-- Use <RequestExample>/<ResponseExample> when: API documentation
+The selected component matches the reader need, validates in Mintlify, remains accessible, and does not introduce unnecessary navigation exits or visual noise.

@@ -1,31 +1,24 @@
 ---
 title: "Declarative management"
-description: "Manage PostgreSQL schemas declaratively with SQL files, deterministic diffs, replay-safe migrations, explicit destructive hints, and CI drift checks."
+description: "Manage PostgreSQL schemas from versioned SQL files with deterministic diffs, replay-safe migrations, explicit destructive hints, and CI drift checks."
 keywords:
   ["declarative management", "PostgreSQL schema", "migration workflow", "CI"]
 ---
 
-Declarative PostgreSQL schema management means the desired database schema lives in versioned SQL files. Developers edit the target state, and a tool generates the migration required to move from the current state to that target.
+Use this when SQL files should be the source of truth for your PostgreSQL schema.
 
-`supaschema` implements this workflow for PostgreSQL and Supabase without requiring an ORM, Docker, or a shadow database during migration generation.
+`supaschema` compares a declared schema tree with another schema source and renders the migration needed to move between them. It does not require an ORM, Docker, or a shadow database for generation.
 
-## Why declarative schema management helps
+## Use this when
 
-Hand-authored migrations describe the steps you think are needed. Declarative schema files describe the state you actually want. That difference matters when the same schema must stay aligned across local development, CI, staging, and production.
+- You want schema review to start from the desired end state.
+- You need migrations that can be retried after a failed deploy.
+- You want drift checks in CI before a database changes.
+- You use PostgreSQL directly or through Supabase, Neon, RDS/Aurora, Cloud SQL, AlloyDB, or Azure PostgreSQL.
 
-With `supaschema`, the normal loop is:
+## Do this
 
-```bash
-npx supaschema diff
-npx supaschema check
-npx supaschema verify
-```
-
-The output is a generated migration file with a lineage marker, plus refreshed TypeScript and Zod files when type output is enabled.
-
-## Schema files are the source of truth
-
-By default, the neutral install scaffold reads SQL from `database/schemas/`. Provider-specific defaults are listed in [Setup](/setup#path-selection). Split the schema by domain, feature, or dependency order:
+Keep SQL files in the configured schema directory:
 
 ```text
 database/schemas/
@@ -35,35 +28,42 @@ database/schemas/
   policies.sql
 ```
 
-The migration is generated from these files. If the migration contains a `-- supaschema: lineage` marker, do not hand-edit it; change the schema tree and regenerate.
-
-## Safety model
-
-`supaschema` fails closed on ambiguity:
-
-- Drops require exact `hints.destructive` approval.
-- Renames require explicit hints.
-- Unsupported PostgreSQL DDL produces diagnostics instead of pass-through SQL.
-- Generated statements are guarded for replay safety.
-- Existing migrations are checked for chain continuity.
-
-This makes schema review focus on intent: the declared target changed, the generated migration reflects that target, and CI proves the file can be retried safely.
-
-## Works with Supabase and plain PostgreSQL
-
-For Supabase projects, `supaschema` fits into the existing `supabase/schemas/` and `supabase/migrations/` layout. For other PostgreSQL projects, use the paths in `supaschema.config.json` plus optional named environments.
-
-Source defaults live in `supaschema.config.json`, so the normal command stays flagless:
+Generate and check the migration:
 
 ```bash
 npx supaschema diff
+npx supaschema check
 ```
 
-When you intentionally override config, sources can be directories, git refs, live read-only catalogs, dumps, or saved catalog JSON.
+If the generated file contains a `-- supaschema: lineage` marker, change the schema tree and regenerate instead of editing that file by hand.
 
-## Related guides
+## Verify
 
-- [Quickstart](/quickstart)
-- [Configuration file](/configuration/config-file)
-- [Destructive change hints](/configuration/hints)
-- [Support matrix](/reference/support-matrix)
+Use a disposable database when you need runtime proof:
+
+```bash
+npx supaschema verify
+```
+
+In CI, fail when the configured sources disagree:
+
+```bash
+npx supaschema diff --fail-on-diff --quiet
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="terminal" href="/quickstart">
+    Generate and check a first migration.
+  </Card>
+  <Card title="Declarative schema" icon="files" href="/concepts/declarative-schema">
+    Understand the schema tree model.
+  </Card>
+  <Card title="Destructive hints" icon="triangle-alert" href="/configuration/hints">
+    Approve exact drops and rewrites intentionally.
+  </Card>
+  <Card title="CI recipe" icon="circle-check" href="/guides/ci-github-actions">
+    Add drift, check, and verify gates.
+  </Card>
+</CardGroup>

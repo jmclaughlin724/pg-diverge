@@ -1,0 +1,60 @@
+---
+title: "doctor"
+description: "Diagnose local setup, config, parser loading, database reachability, and migrations history."
+keywords: ["doctor command", "diagnostics", "setup", "database"]
+---
+
+Use `doctor` when setup behaves unexpectedly or before adding supaschema to CI.
+
+The command checks the local environment and prints pass/fail results with remediation hints.
+
+## Use this when
+
+- The config file was edited.
+- Database URL resolution is unclear.
+- A local or CI database should be checked for reachability.
+- `verify`, `migrations`, or `sync` cannot find the expected target.
+
+## Run it
+
+```bash
+npx supaschema doctor
+npx supaschema doctor --database-url "$DATABASE_URL"
+npx supaschema doctor --json
+```
+
+## Flags
+
+<ParamField path="--database-url" type="url">
+  Database URL to probe. Defaults to normal database URL resolution.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Print the doctor report as JSON.
+</ParamField>
+
+## What it checks
+
+- Node.js version and parser loading;
+- config presence and validation;
+- database URL resolution;
+- reachability, authentication, and `CREATEDB`;
+- migration history table access;
+- declarative schema tree presence.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Config validate" icon="settings" href="/commands/config-validate">
+    Check config relationships directly.
+  </Card>
+  <Card title="Setup" icon="wrench" href="/setup">
+    Confirm install-time paths and generated output.
+  </Card>
+  <Card title="Environments" icon="server" href="/configuration/environments">
+    Configure named database URL resolution.
+  </Card>
+  <Card title="Verify" icon="repeat-2" href="/commands/verify">
+    Use a checked database for apply-twice proof.
+  </Card>
+</CardGroup>

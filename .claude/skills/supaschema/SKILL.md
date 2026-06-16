@@ -15,6 +15,8 @@ When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/ho
 
 The normal consumer setup is one package install: `npm install supaschema`. Treat `supaschema.config.json`, installed schema/migration directories, Claude/Codex rule and skill files, hook wiring, and tagged `AGENTS.md` / `CLAUDE.md` addenda as the package-owned setup surface.
 
+If this skill was installed through `npx skills`, treat it as portable workflow context only. Agent Skills installs `SKILL.md`-based folders; it does not create `supaschema.config.json`, schema/migration directories, passive rule files, hook scripts, or hook registration. To install those project enforcement surfaces, run `npm install supaschema` from the consuming project root. If the package is already present but lifecycle scripts did not run, run `npx supaschema init` from the same root. The npm scaffold installs the rule and hooks; the `npx skills` lane does not.
+
 Before the first schema edit, check `.supaschema/install.json` if it exists. If it says `"pathConfirmationNeeded": true`, inspect its candidate `schemaPaths` and `migrationsDirs`, ask the user which `schemaPaths`, `sources.to`, and `migrationsDir` to use, update `supaschema.config.json`, then run the workflow. Do not generate a migration from a guessed path; the bundled hooks also skip auto-diff until all three fields are explicit.
 
 Use the configured `schemaPaths`, `sources`, and `migrationsDir` as the source of truth. Do not create a parallel schema tree, a second migrations directory, or a new config unless the user explicitly asks to change project layout.

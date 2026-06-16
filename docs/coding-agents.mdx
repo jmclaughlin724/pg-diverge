@@ -1,110 +1,76 @@
 ---
-title: "Coding Agents"
-description: "How supaschema guides Claude, Codex, and other coding agents through safe migration generation."
+title: "Coding agents"
+description: "How AI coding agents should install, configure, and use supaschema without cloning the source repository."
 keywords:
-  ["coding agents", "AI agents", "AGENTS.md", "CLAUDE.md", "llms.txt", "MCP"]
+  - supaschema coding agents
+  - AI agents
+  - agent skills
+  - Codex
+  - Claude Code
 ---
 
-supaschema ships an agent bundle so coding agents follow the same migration contract as humans: edit the declarative schema tree, generate migrations with `diff`, check replay safety, and never hand-edit generated migration files.
+supaschema installs agent context into the consuming project so an AI agent can make schema changes without reading the entire source repository or guessing the migration workflow.
 
-## Start
+For a new project setup, copy the agent prompt from [Installation](/installation#agent-install-prompt). The important instruction is simple: install the npm package in the project root, inspect the generated config and install manifest, then use `npx supaschema diff` for schema changes.
 
-After installing the package in a project, give the agent this instruction:
+## Agent workflow
 
-```text
-Use supaschema for schema changes. Read the project-installed supaschema guidance in `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file. Edit declarative SQL files, run `npx supaschema diff`, then run `npx supaschema check`. Do not hand-edit generated migrations. Do not apply migrations unless explicitly asked.
-```
+<Steps>
+  <Step title="Install the package">
+    Run `npm install supaschema` from the consuming project root. Do not clone the supaschema repository into the project unless you are intentionally developing supaschema itself.
+  </Step>
+  <Step title="Read installed context">
+    Use `.agents/prompts/supaschema-install.md`, the installed supaschema skill, and the installed rule file as the project-local contract.
+  </Step>
+  <Step title="Edit schema intent">
+    Change the configured declarative SQL tree, such as `database/schemas/**`, `neon/schemas/**`, `aws-postgresql/schemas/**`, or `supabase/schemas/**`.
+  </Step>
+  <Step title="Run one command">
+    Run `npx supaschema diff`. The command extracts both sides, plans the change, renders the migration, and refreshes configured TypeScript and Zod outputs.
+  </Step>
+  <Step title="Report the result">
+    Summarize the generated migration, generated outputs, target runner expectations, and any `SUPA_*` diagnostic. Do not apply migrations unless the human explicitly asks for an apply handoff.
+  </Step>
+</Steps>
 
-For a new project, the human or agent only needs the normal package install:
+## Installed agent context
 
-```bash
-npm install supaschema
-```
+The public npm package includes only the consumer-safe surfaces needed for that workflow:
 
-Install includes the surfaces described in [Agent bundle](/coding-agents/agent-bundle).
-
-If install records multiple possible schema or migration paths in `.supaschema/install.json`, ask which paths to use before the first diff.
-
-Agents should treat `supaschema.config.json` as the source of truth for `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, and named database URL references. Do not assume `supabase/schemas` or `supabase/migrations` unless those paths are configured.
-
-Run `npx supaschema config validate --json` after confirming paths or repairing config. It reports missing directories, mismatched `sources.to`, and inline database URLs in a format agents can use without guessing.
-
-`adapter: "auto"` is not a Supabase switch and does not grant workflow consent. Provider-specific behavior is expressed through paths, managed schemas, transaction mode, excluded grant roles, and explicit verify flags. Agent automation is controlled by `workflow.schema_diff`, `workflow.migration_check`, `workflow.migration_verify`, `workflow.migration_sync`, `workflow.type_generation`, `workflow.zod_generation`, and `workflow.type_usage`.
-
-## Agent docs
-
-<Columns cols={2}>
-  <Card title="Agent bundle" icon="package" href="/coding-agents/agent-bundle">
-    Review the shipped Claude, Codex, and shared agent surfaces, plus what stays repo-local.
+<CardGroup cols={2}>
+  <Card title="Install prompt" icon="clipboard-list" href="/installation#agent-install-prompt">
+    Copyable setup instructions for another coding agent.
   </Card>
-
-  <Card title="Setup" icon="settings" href="/setup">
-    Review install-time path selection, generated config, hook wiring, and setup checks.
+  <Card title="Rule" icon="scale-balanced" href="/coding-agents/agent-bundle">
+    Durable migration policy: generated files are not hand-edited, destructive intent must be explicit, and apply is opt-in.
   </Card>
-</Columns>
+  <Card title="Skill" icon="bot" href="/coding-agents/agent-bundle">
+    The repeatable schema-change workflow for agents that support skills.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/coding-agents/agent-bundle">
+    Write-time guardrails that block generated migration edits, run diff after schema edits, and sync installed LLM surfaces.
+  </Card>
+</CardGroup>
 
-## llms.txt
+## Optional discovery surfaces
 
-The published Mintlify docs expose LLM-readable documentation through `llms.txt` and the full-document export. Use these URLs when an assistant needs product documentation context without scraping the rendered site:
+Use these only when the agent or documentation client supports them.
 
-```text
-https://supaschema.com/docs/llms.txt
-https://supaschema.com/docs/llms-full.txt
-```
+<CardGroup cols={2}>
+  <Card title="Hosted skill" icon="sparkles">
+    Public agent skill metadata for clients that can read `https://supaschema.com/docs/skill.md`.
+  </Card>
+  <Card title="llms.txt" icon="file-text">
+    Compressed docs context for agents that load `https://supaschema.com/docs/llms.txt`.
+  </Card>
+  <Card title="MCP docs" icon="plug">
+    Mintlify MCP endpoint for documentation-aware clients at `https://supaschema.com/docs/mcp`.
+  </Card>
+  <Card title="npx skills" icon="download" href="https://github.com/vercel-labs/skills">
+    Installs reusable skill context only; project setup still comes from `npm install supaschema`.
+  </Card>
+</CardGroup>
 
-These files describe the public docs. They do not replace the repository agent files, which carry write-time migration policy for agents operating inside a codebase.
-
-## Mintlify MCP
-
-Mintlify hosts a read-only search MCP server for the public docs. Use it when an agent needs current supaschema documentation inside an MCP-aware tool:
-
-```text
-https://supaschema.com/docs/mcp
-```
-
-The MCP server exposes search and docs-filesystem tools over the indexed public docs. It gives agents source-backed context, while the installed rule, skill, and hook bundle tells agents what to do inside a project.
-
-## Hosted skill.md
-
-Mintlify also hosts the docs-derived agent skill for tools that understand `skill.md`:
-
-```text
-https://supaschema.com/docs/skill.md
-```
-
-Agents can install it manually when they need documentation context outside a repository that already has the npm package installed:
-
-```bash
-npx skills add https://supaschema.com/docs
-```
-
-## CLAUDE.md / AGENTS.md
-
-`AGENTS.md` is the root operator brief. It tells agents where source code, docs, tests, generated output, config, and migration policy live. It also defines the repository's durable rules: generated migrations are artifacts, destructive changes require exact hints, and `sync --local` or `sync --remote` needs explicit human intent.
-
-`CLAUDE.md` is a compatibility stub that points to `AGENTS.md`. Keep it as the bridge for tools that read Claude-specific instruction files.
-
-## Rule
-
-The rule surface carries durable migration policy:
-
-- Claude reads `.claude/rules/supaschema.md`.
-- Codex reads `.codex/rules/supaschema.rules`.
-
-Both surfaces describe the same contract: schema intent belongs in the declarative tree, generated migrations with lineage markers are not hand-edited, destructive operations are hint-gated, and database URLs must resolve through the documented lanes instead of hard-coded credentials.
-
-## Skill
-
-The skill is the repeatable workflow an agent follows when a schema change is requested:
-
-- Edit the schema tree.
-- Run `supaschema diff`.
-- Run `supaschema check`.
-- Run `supaschema verify` when a disposable database is reachable.
-- Commit the tree change, generated migration, and refreshed type files together.
-
-The Claude skill lives at `.claude/skills/supaschema/SKILL.md`. The `.agents/skills/supaschema/SKILL.md` mirror carries the same workflow for Codex-compatible agent surfaces.
-
-## Hook
-
-The installed hook files, runtime events, and schema-edit workflow trigger are documented in [Agent bundle](/coding-agents/agent-bundle#hook-behavior).
+<Note>
+  The npm package is the project integration path. `npx skills` is useful for reusable agent context, but it cannot replace the project config, hook registration, install manifest, or generated-output workflow installed by `npm install supaschema`.
+</Note>

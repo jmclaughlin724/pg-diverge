@@ -6,8 +6,9 @@
 // Two callers use it:
 //   - bin/postinstall.mjs (the npm lifecycle wrapper) statically imports it.
 //   - `supaschema init` (src/cli.ts) dynamically imports it from the installed
-//     package so setup is reproducible when npm does not run install scripts
-//     (npm v12, ~July 2026, defaults to ignore-scripts).
+//     package so setup is reproducible when dependency lifecycle scripts are
+//     blocked or skipped (npm v12 allowScripts policy, --ignore-scripts, or
+//     local npm policy).
 //
 // It depends ONLY on node: builtins (no dist, no runtime deps) so it loads safely
 // at install time, and it is stdout-SILENT: it returns { installed, skipped,
@@ -47,6 +48,7 @@ const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const hookScriptPathPattern = /\.(mjs|sh)$/;
 
 const agentFiles = [
+  ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema/SKILL.md",
   ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/block-generated-migration-edits.mjs",
@@ -579,6 +581,7 @@ function agentGuidanceBlock(selection) {
 This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
 
 ${pathLines}
+- The agent install prompt lives at \`.agents/prompts/supaschema-install.md\`; read it before installing, initializing, inspecting, or explaining supaschema setup in this project.
 - Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
 - Edit \`supaschema.config.json\` to change \`adapter\`, \`workflow\`, \`schemaPaths\`, \`sources\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
 - For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, run \`npx supaschema diff\`, then run \`npx supaschema check\`.

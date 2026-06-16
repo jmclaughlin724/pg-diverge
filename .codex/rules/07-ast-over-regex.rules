@@ -2,7 +2,16 @@
 # Do not edit directly; update the Claude rule source and re-run sync.
 # Codex .rules files are command-policy programs, so Claude Markdown policy is mirrored as comments.
 
+# ---
+# description: Parser/AST-first policy for guards, hooks, and scripts that classify code or SQL structure.
+# ---
+#
 # # Rule 07 — Analyze code with an AST, not regex
+#
+# ## Contract
+#
+# This rule owns structural analysis policy for repo scripts and hooks: use an AST/parser for code or SQL structure; reserve regex for text patterns with an explicit `regex-ok` reason.
+#
 #
 # Guards and hooks that reason about **code structure** parse it with a real **AST/parser** — never a regex. Regex cannot see structure: quote style, whitespace, type parameters, comments, and string contents all create bypasses (an adversarial pass found ~12 in the regex-era shape detector — single/mixed quotes, `z .enum`, `z.enum (`, a marker smuggled inside a string) and false positives. An AST sees the real tree, so that whole class of holes is gone by construction.
 #
@@ -44,4 +53,16 @@
 # This is a technical decision — resolve it by Rule 05 (research the upstream best practice), not a guess. Where a first-class parser exists for the language (TypeScript compiler API, libpg_query for Postgres), it is the canonical choice.
 #
 # STOP if a regex that analyzes code structure ships in a script under `scripts/` or `.claude/hooks/` without being converted to an AST/parser, or if a non-structural regex ships without an `// regex-ok:` reason.
+#
+# ## Verification
+#
+# Run `npm run guard` or `npm run guard:no-regex-in-scripts` after changing scripts, hooks, guards, or parser helpers. Detector changes need focused true-positive and false-positive tests.
+#
+# ## Failure behavior
+#
+# Convert structural regexes to TypeScript AST, libpg-query, JSON/TOML/YAML parsers, or literal string operations as appropriate. If regex remains, add a narrow `regex-ok` reason that explains why the target is text, not structure.
+#
+# ## Done means
+#
+# The classifier uses the canonical parser, tests cover the target structure, and any remaining regex is text-only and justified.
 #

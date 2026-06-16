@@ -34,11 +34,11 @@ Extraction and checking are AST-only. Statements are classified through the Post
 | Comments | Yes (keyed by structured descriptor) | `COMMENT ON ...`; removal renders `COMMENT ON ... IS NULL` | Live catalogs extract relation, column, function, and schema comments. |
 | Side-effect statements | Blocks | No | `INSERT`, `UPDATE`, `DELETE`, `DO`, and control-plane `SELECT` statements belong in explicit reviewed migrations. |
 
-## Managed Schemas
+## Managed schemas
 
 Objects in configured `managedSchemas` are blocked before rendering. Generic PostgreSQL installs default to `managedSchemas: []`. Supabase installs seed the common Supabase-provisioned schemas: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
 
-## Verify Environment Stub
+## Verify environment stub
 
 `verify --ensure-environment` provisions a minimal stand-in for the Supabase-provisioned surface so a declarative tree that _references_ managed schemas can apply against bare PostgreSQL:
 
@@ -65,7 +65,7 @@ That failure may be a stub limitation. Confirm by applying the migration to a di
 
 - `examples/postgres/schemas` demonstrates a generic PostgreSQL schema tree without Supabase-managed schema rules.
 
-## Rename Policy
+## Rename policy
 
 Rename detection is hints-only. The planner does not infer renames from similar definitions because a false positive can destroy data.
 

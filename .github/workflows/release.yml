@@ -99,7 +99,7 @@ jobs:
       - name: Attest tarball provenance
         if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         id: attest
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest@281a49d4cbb0a72c9575a50d18f6deb515a11deb # v4
         with:
           subject-path: ${{ steps.pack.outputs.tarball_path }}
       - name: Create GitHub release

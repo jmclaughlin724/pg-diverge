@@ -15,6 +15,7 @@ const guards = [
   ["node", ["scripts/guards/check-rule-citations.mjs"]],
   ["node", ["scripts/guards/check-no-regex-in-scripts.mjs"]],
   ["node", ["scripts/guards/check-ci-governance.mjs"]],
+  ["node", ["scripts/guards/check-release-version-surfaces.mjs"]],
 ];
 
 for (const [command, args] of guards) {

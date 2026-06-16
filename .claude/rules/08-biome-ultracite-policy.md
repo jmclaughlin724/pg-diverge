@@ -1,4 +1,13 @@
+---
+description: Biome/Ultracite JS/TS lint and format policy for the single-package npm repo.
+---
+
 # Rule 08 — Biome/Ultracite is the JS/TS lint policy
+
+## Contract
+
+This rule owns the JS/TS/JSON/CSS/HTML/GraphQL lint and format policy: root `biome.jsonc` extends Ultracite presets, Biome/Ultracite is the only JS/TS gate, and generated surfaces stay excluded.
+
 
 Sources:
 
@@ -33,3 +42,24 @@ Biome is the canonical JS/TS/JSX/TSX/JSON/JSONC/CSS/HTML/GraphQL formatter and l
 - `scripts/guards/check-tooling-stack.mjs` (pins `@biomejs/biome` and `ultracite`, asserts the extends presets, the `useImportExtensions` mappings, the `src/index.ts` barrel exception, the 65-point complexity cap file list, and that no Biome rule is disabled outside the approved override zone).
 
 STOP if a second Biome config appears without a shared policy, if ESLint returns as a parallel lint surface, if a local suppression comment is introduced, if generated contract/build/dependency artifacts become part of the lint surface, if codemod-generated active source stops passing the normal lint/format gates, or if a JS/TS formatter or linter is added that competes with Biome.
+
+## Verification
+
+When Biome, Ultracite, lint surface, config overrides, generated exclusions, or JS/TS formatting changes, run:
+
+```bash
+npm run format
+npm run lint
+npm run lint:doctor
+npm run guard
+```
+
+Use `npm run lint:ci` for CI-equivalent formatting/lint proof.
+
+## Failure behavior
+
+Fix source or shared config; do not add inline suppressions, local duplicate Biome configs, ESLint, or competing formatters. If an override is necessary, make it narrow and document the rationale.
+
+## Done means
+
+Biome/Ultracite config is single-source, generated/build surfaces are excluded, source is formatted/lint-clean, and no competing JS/TS lint surface exists.

@@ -1,0 +1,60 @@
+---
+title: "inspect"
+description: "Extract and print the deterministic schema model for one source."
+keywords: ["inspect command", "schema model", "JSON", "extract"]
+---
+
+Use `inspect` when you need to see what supaschema read from a source.
+
+The output is the extracted schema model as JSON, including diagnostics for unsupported or unparseable input.
+
+## Use this when
+
+- A `diff` result is surprising.
+- You need to confirm source resolution.
+- Unsupported DDL should be visible before planning.
+- Tooling needs the model JSON directly.
+
+## Run it
+
+```bash
+npx supaschema inspect
+npx supaschema inspect --from dir:database/schemas
+npx supaschema inspect --from "database:$DATABASE_URL"
+npx supaschema inspect --from git:HEAD~1 --schema public,auth
+```
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Source to inspect. Defaults to the configured schema tree.
+</ParamField>
+
+<ParamField path="--schema" type="names">
+  Include only the comma-separated PostgreSQL schema names.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Model printed |
+| `1` | Runtime failure |
+| `2` | Extraction diagnostics contained an error |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Plan" icon="list-tree" href="/commands/plan">
+    Compare two extracted models.
+  </Card>
+  <Card title="Fingerprint" icon="fingerprint" href="/commands/fingerprint">
+    Print the model equality hash.
+  </Card>
+  <Card title="Audit" icon="clipboard-check" href="/commands/audit">
+    Summarize supported and unsupported coverage.
+  </Card>
+  <Card title="Support matrix" icon="table" href="/reference/support-matrix">
+    Check modeled PostgreSQL object support.
+  </Card>
+</CardGroup>

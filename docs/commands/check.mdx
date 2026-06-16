@@ -1,211 +1,75 @@
 ---
 title: "check"
-description: "check statically validates SQL migration files for replay-safety, lock hazards, and parser issues. Supports --reporter text, github, sarif, and json."
+description: "Statically validate migration SQL for replay safety, lock hazards, parser issues, and blocked patterns."
 keywords: ["check command", "migration safety", "replay safety", "diagnostics"]
 ---
 
-Use `check` before any migration reaches a database.
+Use `check` before migration SQL reaches a database.
 
-It reads migration SQL. It does not connect to a database.
+`check` reads SQL files or stdin. It does not connect to a database.
 
-`check` looks for:
+## Use this when
 
-- replay-safety problems;
-- lock hazards;
-- parser errors;
-- unsafe `DROP` and `CASCADE` patterns;
-- non-idempotent data changes.
+- A generated migration needs replay-safety proof.
+- Hand-written SQL should be gated before review.
+- CI should annotate pull requests or upload SARIF.
+- A pre-commit hook should reject unsafe staged migrations.
 
-<Info>
-  Run `npx supaschema check` with no arguments to check every `.sql` file in
-  `config.migrationsDir`.
-</Info>
+## Run it
+
+```bash
+npx supaschema check
+npx supaschema check database/migrations/*.sql
+cat migration.sql | npx supaschema check -
+npx supaschema check migration.sql --reporter github
+```
+
+With no migration arguments, `check` scans every `.sql` file in `config.migrationsDir`.
 
 ## Input
 
-You can pass files, a shell-expanded glob, or `-` for stdin:
+<ParamField path="[migrations...]" type="file | -">
+  Migration files to check. Use `-` to read SQL from stdin.
+</ParamField>
 
-```bash
-# Single file
-npx supaschema check database/migrations/20240101000000_add_accounts.sql
-
-# Glob (all migrations)
-npx supaschema check database/migrations/*.sql
-
-# From stdin
-cat migration.sql | npx supaschema check -
-```
-
-<Note>
-  With no arguments, supaschema scans the configured migrations directory for
-  `*.sql` files. Explicit arguments must be migration files, shell-expanded
-  globs, or `-` for standard input; explicit directory arguments are not
-  expanded.
-</Note>
-
-## Examples
-
-```bash
-# Check the latest migration
-npx supaschema check database/migrations/20240101000000_add_accounts.sql
-
-# Check all migrations
-npx supaschema check database/migrations/*.sql
-
-# Check from stdin
-cat migration.sql | npx supaschema check -
-
-# GitHub PR annotations reporter
-npx supaschema check migration.sql --reporter github
-
-# SARIF for code scanning
-npx supaschema check migration.sql --reporter sarif
-```
+Explicit directory arguments are not expanded. Use a shell glob such as `database/migrations/*.sql`.
 
 ## Flags
 
 <ParamField path="--reporter" type="text | github | sarif | json">
-  Controls the diagnostic output format. Use `text` for human-readable output
-  with file names, line numbers, rule codes, and messages. Use `github` to emit
-  [workflow commands](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions)
-  that GitHub Actions renders as inline PR annotations. Use `sarif` to write a
-  SARIF 2.1.0 document for GitHub code scanning. Use `json` for programmatic
-  consumption or custom reporters.
+  Choose human text, GitHub workflow annotations, SARIF, or JSON.
 </ParamField>
 
-<ParamField path="--quiet" type="boolean">
-  Suppresses all output when no errors are found. Only prints diagnostics when
-  the exit code would be non-zero. Useful in pre-commit hooks where you only
-  want noise on failure.
-</ParamField>
+## What it checks
 
-## Rules
+- unguarded `CREATE`, `DROP`, and constraint operations;
+- unsafe `DROP ... CASCADE`;
+- lock hazards such as table rewrites and non-concurrent indexes;
+- transaction-incompatible statements;
+- `search_path` hazards;
+- DML that cannot be proven idempotent.
 
-### Idempotency Guards
+## Exit codes
 
-These rules ensure your DDL statements are safe to run more than once — critical for replay and rollback workflows.
-
-| Rule | Description |
+| Code | Meaning |
 | --- | --- |
-| `CREATE TABLE` | Must include `IF NOT EXISTS` |
-| `CREATE SCHEMA` | Must include `IF NOT EXISTS` |
-| `CREATE INDEX` | Must include `IF NOT EXISTS` |
-| `CREATE SEQUENCE` | Must include `IF NOT EXISTS` |
-| `CREATE EXTENSION` | Must include `IF NOT EXISTS` |
-| `CREATE TYPE` / `CREATE DOMAIN` | Must use a catalog guard (check `pg_type` before creating) |
-| `CREATE MATERIALIZED VIEW` | Must include `IF NOT EXISTS` or a catalog guard |
-| `ADD CONSTRAINT` | Must use a catalog guard against `pg_constraint` |
+| `0` | All checked files passed |
+| `1` | Runtime failure |
+| `2` | At least one diagnostic had error severity |
 
-### Safe Replacement
+## Related
 
-These rules ensure objects are updated in place rather than requiring a drop-and-recreate cycle.
-
-| Rule | Description |
-| --- | --- |
-| `CREATE VIEW` | Must use `OR REPLACE` |
-| `CREATE FUNCTION` / `CREATE PROCEDURE` | Must use `OR REPLACE` |
-| `CREATE TRIGGER` | Must use `OR REPLACE`, or be preceded by `DROP TRIGGER IF EXISTS` |
-| `CREATE POLICY` | Must be preceded by `DROP POLICY IF EXISTS` |
-
-### Drop Safety
-
-Unguarded `DROP` statements will fail on a first-run database where the object was never created, and `CASCADE` can silently wipe dependent objects.
-
-| Rule | Description |
-| --- | --- |
-| `DROP` statements | Must include `IF EXISTS` |
-| `DROP ... CASCADE` | Forbidden — cascading drops are not replay-safe and hide dependency errors |
-
-<Warning>
-  `DROP ... CASCADE` is an unconditional error. supaschema will never approve
-  it, regardless of hints or configuration. Explicitly enumerate the dependent
-  objects you want to drop instead.
-</Warning>
-
-### Lock Hazards
-
-These operations acquire `ACCESS EXCLUSIVE` or table-level locks that block reads and writes. supaschema flags them so you can schedule them during a maintenance window or rewrite them using safer alternatives.
-
-| Rule | Description |
-| --- | --- |
-| `ALTER COLUMN TYPE` | May rewrite the entire table; acquires `ACCESS EXCLUSIVE` lock |
-| `SET NOT NULL` | Scans the full table to validate the constraint |
-| `ADD COLUMN` with volatile default | Rewrites the table (PostgreSQL \< 11 behavior; flagged for safety) |
-| `CREATE INDEX` (without `CONCURRENTLY`) | Locks the table for the duration of the build |
-| `CREATE INDEX CONCURRENTLY` | Cannot run inside a transaction block |
-| `REFRESH MATERIALIZED VIEW CONCURRENTLY` | Cannot run inside a transaction block |
-
-<Tip>
-  Use `CREATE INDEX CONCURRENTLY` to build indexes without blocking reads — just
-  make sure the statement runs **outside** of a `BEGIN ... COMMIT` block.
-  supaschema flags both patterns: non-concurrent index creation and concurrent
-  index creation inside a transaction.
-</Tip>
-
-### DML Review
-
-Data-manipulation statements inside migrations require special care for replay safety.
-
-| Rule | Description |
-| --- | --- |
-| `INSERT` | Must include `ON CONFLICT` clause to handle re-runs gracefully |
-| `UPDATE` / `DELETE` | Flagged for explicit idempotency review — supaschema cannot prove these are safe automatically |
-| `SET search_path` | Forbidden in migrations; use fully-qualified object names instead |
-| `SECURITY DEFINER` functions | Must explicitly `SET search_path` to prevent search-path injection |
-
-## Exit Codes
-
-| Code | Meaning                                                |
-| ---- | ------------------------------------------------------ |
-| `0`  | All checks passed — no errors found                    |
-| `2`  | One or more diagnostics with error severity were found |
-
-<Note>
-  `check` never exits with code `1` unless the command itself fails to parse
-  arguments or read files. A clean exit always means `0` (pass) or `2` (rule
-  violations found).
-</Note>
-
-## Reporters in Detail
-
-### Text (`--reporter text`)
-
-The default human-readable format. Prints file names, line numbers, rule codes, and messages to stdout. When multiple files are checked, each file section is prefixed with its path.
-
-### GitHub Annotations (`--reporter github`)
-
-Use this reporter inside a GitHub Actions job to surface violations as inline comments on the diff view of a pull request:
-
-```yaml
-# .github/workflows/check.yml
-- name: Check migrations
-  run: npx supaschema check database/migrations/*.sql --reporter github
-```
-
-No extra upload step is required — GitHub Actions picks up the `::error` commands automatically.
-
-### SARIF (`--reporter sarif`)
-
-Use this reporter to upload results to GitHub's code scanning dashboard, where they persist as security alerts:
-
-```yaml
-- name: Check migrations (SARIF)
-  run: npx supaschema check database/migrations/*.sql --reporter sarif > results.sarif
-
-- name: Upload SARIF
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: results.sarif
-```
-
-## Pre-commit Hook
-
-Catch violations before they ever reach CI by adding a Husky pre-commit hook:
-
-```sh
-# .husky/pre-commit
-staged=$(git diff --cached --name-only --diff-filter=ACM -- 'database/migrations/*.sql')
-[ -z "$staged" ] || npx supaschema check $staged
-```
-
-This only checks files that are staged for the current commit, so it runs in milliseconds even on large migration histories.
+<CardGroup cols={2}>
+  <Card title="Verify" icon="repeat-2" href="/commands/verify">
+    Prove apply-twice behavior with a database.
+  </Card>
+  <Card title="Diagnostics" icon="message-square-warning" href="/reference/diagnostics">
+    Look up safety and extraction codes.
+  </Card>
+  <Card title="CI recipe" icon="github" href="/guides/ci-github-actions">
+    Add reporters to GitHub Actions.
+  </Card>
+  <Card title="Idempotent migrations" icon="shield-check" href="/guides/idempotent-postgres-migrations">
+    Learn the replay-safety model.
+  </Card>
+</CardGroup>

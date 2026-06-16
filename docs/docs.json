@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "luma",
   "name": "supaschema",
-  "description": "From declarative schema to fully synced database in milliseconds. No ORM, no Docker, no shadow database.",
+  "description": "From declarative PostgreSQL schema to replay-safe migrations and generated types in seconds. No ORM, no Docker, no shadow database.",
   "logo": {
     "light": "/images/brand/supaschema-logo-light.png",
     "dark": "/images/brand/supaschema-logo-dark.png",
@@ -79,24 +79,24 @@
             "href": "/quickstart"
           },
           {
-            "label": "Setup",
-            "href": "/setup"
-          },
-          {
-            "label": "Commands",
-            "href": "/commands/diff"
-          },
-          {
-            "label": "FAQ",
-            "href": "/faq"
-          },
-          {
-            "label": "Benchmarks",
-            "href": "/benchmarks"
+            "label": "Core workflow",
+            "href": "/commands"
           },
           {
             "label": "Configuration",
             "href": "/configuration/config-file"
+          },
+          {
+            "label": "Agents and CI",
+            "href": "/coding-agents"
+          },
+          {
+            "label": "Evidence",
+            "href": "/benchmarks"
+          },
+          {
+            "label": "FAQ",
+            "href": "/faq"
           }
         ]
       },
@@ -128,25 +128,66 @@
       {
         "group": "Start",
         "icon": "rocket",
-        "pages": ["introduction", "installation", "setup", "quickstart", "faq"]
-      },
-      {
-        "group": "Coding agents",
-        "icon": "bot",
-        "pages": ["coding-agents", "coding-agents/agent-bundle"]
-      },
-      {
-        "group": "Understand",
-        "icon": "book-open",
         "pages": [
-          "concepts/declarative-schema",
-          "concepts/migration-pipeline",
-          "concepts/sources",
-          "comparisons/supaschema-vs-supabase-cli"
+          "introduction",
+          "whats-included",
+          "installation",
+          "quickstart",
+          "setup",
+          "faq",
+          {
+            "group": "Concepts",
+            "expanded": false,
+            "pages": [
+              "concepts/declarative-schema",
+              "concepts/migration-pipeline"
+            ]
+          }
         ]
       },
       {
-        "group": "Generate",
+        "group": "Core workflow",
+        "icon": "route",
+        "pages": [
+          "commands",
+          "commands/diff",
+          "commands/check",
+          "commands/verify",
+          "commands/types",
+          "commands/migrations",
+          "commands/sync",
+          {
+            "group": "Utilities",
+            "expanded": false,
+            "pages": [
+              "commands/plan",
+              "commands/inspect",
+              "commands/fingerprint",
+              "commands/audit",
+              "commands/corpus",
+              "commands/doctor",
+              "commands/config-validate",
+              "commands/init",
+              "commands/completion",
+              "commands/explain",
+              "commands/selfcheck"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "Configure",
+        "icon": "settings",
+        "pages": [
+          "configuration/config-file",
+          "configuration/environments",
+          "configuration/hints",
+          "concepts/sources",
+          "reference/support-matrix"
+        ]
+      },
+      {
+        "group": "Tasks",
         "icon": "wand-sparkles",
         "pages": [
           "guides/declarative-postgres-schema-management",
@@ -158,34 +199,22 @@
         ]
       },
       {
-        "group": "Commands",
-        "icon": "terminal",
+        "group": "Agents and CI",
+        "icon": "bot",
         "pages": [
-          "commands",
-          "commands/diff",
-          "commands/check",
-          "commands/verify",
-          "commands/types",
-          "commands/migrations",
-          "commands/sync",
-          "commands/other"
-        ]
-      },
-      {
-        "group": "Configuration",
-        "icon": "settings",
-        "pages": [
-          "configuration/config-file",
-          "configuration/environments",
-          "configuration/hints"
-        ]
-      },
-      {
-        "group": "Ship",
-        "icon": "shield-check",
-        "pages": [
+          "coding-agents",
+          "coding-agents/agent-bundle",
           "guides/ci-github-actions",
-          "guides/ci-gate",
+          "guides/ci-gate"
+        ]
+      },
+      {
+        "group": "Evidence",
+        "icon": "gauge",
+        "pages": [
+          "comparisons/supaschema-vs-supabase-cli",
+          "benchmarks",
+          "case-study-anilize",
           "guides/corpus-oracle"
         ]
       },
@@ -193,13 +222,10 @@
         "group": "Reference",
         "icon": "library",
         "pages": [
-          "benchmarks",
-          "case-study-anilize",
-          "reference/branding",
           "reference/diagnostics",
           "reference/library-api",
           "reference/package-boundary",
-          "reference/support-matrix"
+          "reference/branding"
         ]
       }
     ]
@@ -218,6 +244,14 @@
       "destination": "/commands"
     },
     {
+      "source": "/commands/other",
+      "destination": "/commands/plan"
+    },
+    {
+      "source": "/docs/commands/other",
+      "destination": "/commands/plan"
+    },
+    {
       "source": "/docs/config",
       "destination": "/configuration/config-file"
     },
@@ -232,6 +266,10 @@
     {
       "source": "/docs/support-matrix",
       "destination": "/reference/support-matrix"
+    },
+    {
+      "source": "/docs/whats-included",
+      "destination": "/whats-included"
     },
     {
       "source": "/docs/ci",

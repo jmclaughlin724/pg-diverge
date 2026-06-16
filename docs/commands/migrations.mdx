@@ -1,6 +1,6 @@
 ---
 title: "migrations"
-description: "migrations compares SQL files on disk against a database's applied history to surface ghost versions, out-of-order files, and pending migrations."
+description: "Compare SQL files on disk against a database's applied migration history."
 keywords:
   [
     "migrations command",
@@ -12,152 +12,68 @@ keywords:
 
 Use `migrations` when you need to know what has been applied and what is still pending.
 
-It compares two lists:
+The command compares migration files on disk with versions recorded in a target database history table. Without a database URL, it still lists disk files.
 
-- migration files on disk;
-- versions recorded in the target database history table.
+## Use this when
 
-If no database URL is available, it still lists disk files.
+- A deploy needs a preflight view of pending files.
+- A branch may have ghost or out-of-order migrations.
+- Supabase local and remote histories need comparison.
+- `sync` refused and you need the history reason.
 
-## What it does
-
-`supaschema migrations` performs the following steps:
-
-1. Reads every `.sql` file in your migrations directory and sorts them by version prefix.
-2. If a database URL is available, queries the history table to retrieve the list of already-applied versions.
-3. Cross-references the two lists and assigns each file one of four statuses:
-   - **applied** — the file exists on disk and has been recorded in the history table.
-   - **pending** — the file exists on disk but has not yet been applied.
-   - **ghost** — the version appears in the history table but the corresponding file is missing from disk.
-   - **out-of-order** — the file's version is lower than the highest version already applied, but the file itself has not been recorded as applied.
-
-The output is a formatted table printed to stdout. The command exits with a non-zero code if any diagnostic conditions are detected.
-
-## Disk-only mode
-
-If you omit `--database-url` and no `SUPASCHEMA_DATABASE_URL` environment variable is set, `migrations` runs in disk-only mode. It still reads and lists your migration files, but it skips the history reconciliation step and marks every file as **pending (no target)**. This is useful in environments where a database is not available, such as during a schema review in a pull request.
-
-<Note>
-  Disk-only mode emits a `SUPA_MIGRATIONS_NO_TARGET` diagnostic to indicate that
-  no database was reachable. This is informational, not an error — the command
-  still exits 0 unless you have explicitly configured it to treat missing
-  targets as failures.
-</Note>
-
-## Flags
-
-<ParamField path="--database-url" type="string">
-  Connection URL for the target PostgreSQL database. If omitted, supaschema
-  falls back to the `SUPASCHEMA_DATABASE_URL` environment variable, then to any
-  URL configured under the active environment in your config file.
-</ParamField>
-
-<ParamField path="--migrations-dir" type="string">
-  Path to the directory that contains your numbered migration files. Defaults to
-  `config.migrationsDir`.
-</ParamField>
-
-<ParamField path="--history-table" type="string">
-  Fully-qualified name of the history table to query, in the form
-  `schema.table`. Use this when you are running migrations with a non-Supabase
-  runner that records history in a different table. Defaults to
-  `supabase_migrations.schema_migrations`.
-</ParamField>
-
-<ParamField path="--json" type="boolean">
-  Outputs the reconciliation report as a structured JSON payload instead of the
-  default formatted table. Useful for programmatic consumption in CI scripts or
-  custom tooling.
-</ParamField>
-
-<ParamField path="--env" type="string">
-  Name of a configured environment (defined in `supaschema.config.json` under
-  `environments`). supaschema reads the database URL and any
-  environment-specific settings from that entry. This is a global flag available
-  on all commands.
-</ParamField>
-
-<ParamField path="--config" type="string">
-  Path to a `supaschema.config.json` file. Defaults to `supaschema.config.json`
-  in the current working directory. This is a global flag available on all
-  commands.
-</ParamField>
-
-## Usage
+## Run it
 
 ```bash
-# Show all migration status using config defaults
 npx supaschema migrations
-
-# Against a specific database URL
-npx supaschema migrations --database-url postgresql://postgres:postgres@localhost:54322/postgres
-
-# Against a named environment from your config
+npx supaschema migrations --database-url "$DATABASE_URL"
 npx supaschema migrations --env staging
-
-# Use a custom migrations directory
-npx supaschema migrations --migrations-dir db/migrations
-
-# Use a non-Supabase history table
 npx supaschema migrations --history-table public.flyway_schema_history
-
-# Output as JSON
 npx supaschema migrations --json
 ```
 
-## Example output
+## Flags
 
-```text
- Version          File                                    Status
- ───────────────  ──────────────────────────────────────  ───────────────
- 20240101120000   20240101120000_create_profiles.sql      applied
- 20240215083000   20240215083000_add_avatar_url.sql       applied
- 20240310140000   20240310140000_create_orders.sql        applied
- 20240401090000   20240401090000_add_order_status.sql     pending
- 20240312110000   20240312110000_missing_locally.sql      ghost
-```
+<ParamField path="--migrations-dir" type="path">
+  Directory containing numbered migration files.
+</ParamField>
 
-<Warning>
-  A **ghost** version means the database thinks a migration was applied, but the
-  corresponding file no longer exists on disk. This usually indicates that a
-  file was deleted after it was applied, or that a branch was merged without its
-  migration files. Resolve ghost versions before running `sync`.
-</Warning>
+<ParamField path="--database-url" type="url">
+  Target database whose applied history should be compared.
+</ParamField>
 
-## Diagnostic codes
+<ParamField path="--history-table" type="schema.table">
+  Migration history table. Use this for non-Supabase runners.
+</ParamField>
 
-The following diagnostic codes can be emitted by the `migrations` command. Use `supaschema explain <code>` to read a full offline description of any code.
+<ParamField path="--json" type="boolean">
+  Print the reconciliation report as JSON.
+</ParamField>
 
-<Accordion title="SUPA_MIGRATIONS_GHOST_VERSIONS">
-  One or more versions are recorded in the history table but the corresponding
-  SQL files are missing from disk. The ghost versions are listed in the command
-  output. You must resolve them — either by restoring the missing files or by
-  manually removing the history entries — before `sync` will proceed.
-</Accordion>
+## Status values
 
-<Accordion title="SUPA_MIGRATIONS_OUT_OF_ORDER">
-  One or more SQL files on disk have version numbers lower than the highest
-  version already applied to the database, but those files are not recorded as
-  applied. This typically means a migration file was added to a branch that
-  branched off before the current tip, creating a version ordering conflict.
-  supaschema will not apply out-of-order migrations automatically.
-</Accordion>
+| Status | Meaning |
+| --- | --- |
+| `applied` | File exists and version appears in history |
+| `pending` | File exists but version is not applied |
+| `ghost` | Version is applied but file is missing |
+| `out-of-order` | File version is older than the current applied tip and is not applied |
+| `pending (no target)` | No database URL was available |
 
-<Accordion title="SUPA_MIGRATIONS_NO_TARGET">
-  No database URL was available (no flag, no environment variable, no config
-  entry). The command ran in disk-only mode and could not perform history
-  reconciliation. All files are reported as pending.
-</Accordion>
+Resolve ghost and out-of-order states before running `sync`.
 
-<Accordion title="SUPA_MIGRATIONS_HISTORY_TABLE">
-  The configured history table does not exist in the target database, or
-  supaschema could not query it. Verify that the Supabase CLI has been
-  initialised on this database, or supply the correct `--history-table` value if
-  you are using a custom migration runner.
-</Accordion>
+## Related
 
-<Tip>
-  Run `supaschema migrations` as part of a pre-deploy check to catch ghost
-  versions or out-of-order files before they cause a failed deployment. It pairs
-  naturally with `supaschema sync --env production` in a CI pipeline.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Sync" icon="refresh-cw" href="/commands/sync">
+    Gate pending Supabase migrations after reconciliation.
+  </Card>
+  <Card title="Supabase integration" icon="database" href="/guides/supabase-integration">
+    Keep Supabase CLI ownership of apply history.
+  </Card>
+  <Card title="Explain" icon="message-circle-question" href="/commands/explain">
+    Decode migration diagnostics.
+  </Card>
+  <Card title="CI gate" icon="circle-check" href="/guides/ci-gate">
+    Add history checks before deploy.
+  </Card>
+</CardGroup>

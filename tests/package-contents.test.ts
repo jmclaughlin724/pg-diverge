@@ -19,8 +19,9 @@ const npmExec = (args: string[]): { file: string; args: string[] } => {
 // authoritative preview of what `npm publish` ships. This guards two things:
 //   1. the necessary runtime + installer surface stays present, and
 //   2. build caches, sources, maintainer tooling, and secrets never leak in.
-// docs/, examples/, benchmarks/, and corpus/ are intentional "public-support
-// assets" per the boundary policy and are therefore NOT treated as leaks.
+// Public docs/examples live in the GitHub/docs surface, not in the npm install.
+// The tarball stays runtime-first: built CLI/library files, config contract,
+// licenses, README, and the explicit consumer agent bundle.
 describe("npm package contents", () => {
   it("keeps the generated install-time config contract executable", async () => {
     const mirror = (await import(
@@ -47,7 +48,10 @@ describe("npm package contents", () => {
   }, async () => {
     const { file, args } = npmExec(["pack", "--dry-run", "--json", "--ignore-scripts"]);
     const { stdout } = await run(file, args, { maxBuffer: 32 * 1024 * 1024 });
-    const [packed] = JSON.parse(stdout) as { files: { path: string }[] }[];
+    const [packed] = JSON.parse(stdout) as {
+      files: { path: string }[];
+      unpackedSize: number;
+    }[];
     const paths = packed.files.map((file) => file.path);
     const readmes = paths.filter((path) => path.endsWith("README.md")).sort();
     expect(readmes, "only the root README should ship").toEqual(["README.md"]);
@@ -61,6 +65,7 @@ describe("npm package contents", () => {
       "bin/scaffold.mjs",
       "bin/config-contract.mjs",
       "supaschema-config.schema.json",
+      ".agents/prompts/supaschema-install.md",
       ".agents/skills/supaschema/SKILL.md",
       ".claude/hooks/auto-diff-on-schema-change.mjs",
       ".claude/hooks/block-generated-migration-edits.mjs",
@@ -105,54 +110,28 @@ describe("npm package contents", () => {
     expect(codexHookContents).toContain("auto-diff-on-schema-change.mjs");
     expect(paths, "legacy config-schema.json must not ship").not.toContain("config-schema.json");
 
+    const forbiddenPrefixes = [
+      "benchmarks/",
+      "corpus/",
+      "docs/",
+      "examples/",
+      "scripts/",
+      "services/",
+      "skills/",
+      "src/",
+      "tests/",
+    ];
     const isLeak = (path: string): boolean =>
       path.endsWith(".tsbuildinfo") ||
       path.endsWith(".tgz") ||
       path === ".env" ||
       path.startsWith(".env.") ||
-      path.startsWith("src/") ||
-      path.startsWith("tests/") ||
-      path.startsWith("services/") ||
-      path.startsWith("scripts/") ||
+      forbiddenPrefixes.some((prefix) => path.startsWith(prefix)) ||
       path.startsWith("node_modules/");
     const leaks = paths.filter(isLeak);
     expect(leaks, `unexpected files in npm tarball: ${leaks.join(", ")}`).toEqual([]);
-  });
-
-  // examples/ ships to every consumer (it is in package.json `files`), but the
-  // leak deny-list above is prefix-only and excludes examples/ as a public-support
-  // asset — so without this an oversized sample under examples/ would bloat every
-  // download silently. The full sample consumer project lives under tests/fixtures/
-  // (never shipped) precisely to avoid that; this locks the shipped examples surface
-  // to the small, known set and a tight byte budget.
-  it("keeps the shipped examples surface allowlisted and small", {
-    timeout: 60_000,
-  }, async () => {
-    const { file, args } = npmExec(["pack", "--dry-run", "--json", "--ignore-scripts"]);
-    const { stdout } = await run(file, args, { maxBuffer: 32 * 1024 * 1024 });
-    const [packed] = JSON.parse(stdout) as {
-      files: { path: string; size: number }[];
-    }[];
-    const examples = packed.files.filter((entry) => entry.path.startsWith("examples/"));
-
-    const allowed = [
-      "examples/postgres/schemas/app.sql",
-      "examples/supabase/AGENTS.md",
-      "examples/supabase/baseline.sql",
-      "examples/supabase/supabase/config.toml",
-      "examples/supabase/supabase/migrations/.gitkeep",
-      "examples/supabase/supabase/schemas/app.sql",
-      "examples/supabase/supaschema.config.json",
-    ];
-    const shipped = examples.map((entry) => entry.path).sort();
-    expect(
-      shipped,
-      "shipped examples/ paths changed — keep examples tiny and update the allowlist intentionally"
-    ).toEqual([...allowed].sort());
-
-    // Byte ceiling well above today's ~1.5 KB baseline but far below any realistic
-    // multi-directory supabase/* sample, so an accidental heavy example trips here.
-    const examplesBytes = examples.reduce((total, entry) => total + entry.size, 0);
-    expect(examplesBytes, `examples/ tarball bytes: ${examplesBytes}`).toBeLessThan(16_384);
+    expect(packed.unpackedSize, `npm tarball unpacked bytes: ${packed.unpackedSize}`).toBeLessThan(
+      1_500_000
+    );
   });
 });

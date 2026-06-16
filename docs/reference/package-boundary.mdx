@@ -4,7 +4,7 @@ description: "How supaschema decides what belongs in the npm package, consumer s
 keywords: ["package boundary", "npm package", "files", "consumer setup"]
 ---
 
-Use this page when changing release packaging, agent bundle files, or install-time setup.
+Use this page when changing release packaging, agent bundle files, install-time setup, or public repository exposure.
 
 ## Decision rule
 
@@ -18,33 +18,60 @@ There is intentionally no root `.npmignore`.
   contents is safer than trying to exclude everything that should not publish.
 </Note>
 
-## Three surfaces
+## Four surfaces
 
 | Surface | Source of truth | Purpose |
 | --- | --- | --- |
 | npm tarball | `package.json` `files` | Files downloaded into `node_modules/supaschema` |
 | Consumer setup | `postinstall` | Files written or merged into the installing project |
-| Maintainer workspace | git-tracked repo files outside the package allowlist | Tooling for developing supaschema itself |
+| Public `npx skills` source | `skills/supaschema` | Portable Agent Skill context installed by the Skills CLI |
+| Public repository | Git-tracked public-safe files | Source, docs, examples, tests, CI, and release evidence that can be public |
+| Private maintainer workspace | Private repository or intentionally untracked local files | Private automation, credentials, plans, scratch output, and non-public operator context |
 
 The npm tarball and consumer setup are not the same thing. The tarball is what npm downloads. The installer is the script that uses selected tarball files and generated templates to prepare the consuming project.
 
 ## npm package
 
-The package allowlist includes runtime and public-support assets: the built CLI and library, config schema, docs, examples, public benchmark/corpus assets, and the supaschema agent bundle.
+The package allowlist includes only runtime and install assets: the built CLI and library, config schema, README/license files, and the explicit supaschema consumer agent bundle.
 
 Do not add broad repo directories to the allowlist just because a single file is needed. Add the narrowest file or directory that matches the consumer contract.
 
-Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package-contents.test.ts` fails if any `.tsbuildinfo`, source file, or maintainer tooling reaches the tarball.
+Public docs, examples, benchmarks, corpus fixtures, source files, tests, services, and maintainer scripts stay out of the npm tarball. They belong in the public repository or hosted docs when they are product evidence, and in a private maintainer workspace when they are not.
+
+Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package-contents.test.ts` fails if any `.tsbuildinfo`, source file, public-support directory, or maintainer tooling reaches the tarball.
 
 ## Agent bundle boundary
 
 The exact Claude, Codex, and shared agent surfaces live in [Agent bundle](/coding-agents/agent-bundle). Keep that page as the reader-facing owner for agent bundle contents. Keep this page focused on package mechanics, tarball inclusion, consumer setup, and maintainer-only exclusions.
 
+## Public npx skills source
+
+`skills/supaschema` is a generated mirror of the canonical
+`.claude/skills/supaschema` workflow. It exists so users can install portable
+workflow context without installing the npm package:
+
+```bash
+npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/supaschema
+```
+
+Do not advertise the repository root as the Skills source. The Skills CLI scans
+standard agent skill directories, including `.agents/skills`, `.claude/skills`,
+and `.codex/skills`; this repository uses those locations for maintainer
+mirrors while developing supaschema itself.
+
+That command does not install hooks or rules. Agent Skills are `SKILL.md` folders
+with optional scripts, references, and assets; the supaschema rule and hooks
+need project files and Claude/Codex hook registration. Those surfaces are
+installed by `npm install supaschema` or `npx supaschema init` through
+`bin/scaffold.mjs`.
+
 ## Consumer setup
 
-The installer owns one-step setup for consuming projects. The install contents list lives in [Introduction](/introduction#what-gets-installed); keep it there instead of duplicating it across release and packaging references.
+The installer owns one-step setup for consuming projects. The install contents list lives in [What's included](/whats-included); keep it there instead of duplicating it across release and packaging references.
 
-`postinstall` and the `supaschema init` command perform this setup through one shared scaffolder, `bin/scaffold.mjs` (a dist-free module that ships in the `bin` allowlist entry). `postinstall` is the lifecycle wrapper; `init` calls the same core directly, so `npx supaschema init` reproduces the identical scaffold when npm does not run install scripts (npm v12 ignores dependency install scripts by default). The shared scaffold creates `supaschema.config.json` from the generated config contract when it is absent, rewrites it only for explicit repair, and records unresolved path confirmation in `.supaschema/install.json`.
+`postinstall` and the `supaschema init` command perform this setup through one shared scaffolder, `bin/scaffold.mjs` (a dist-free module that ships in the `bin` allowlist entry). `postinstall` is the lifecycle wrapper; `init` calls the same core directly, so `npx supaschema init` reproduces the identical scaffold when dependency lifecycle scripts are blocked or skipped, including npm v12 `allowScripts` policy, `--ignore-scripts`, or local npm policy. The shared scaffold creates `supaschema.config.json` from the generated config contract when it is absent, rewrites it only for explicit repair, and records unresolved path confirmation in `.supaschema/install.json`.
+
+The same scaffold copies the shared agent install prompt into `.agents/prompts/supaschema-install.md` and upserts `AGENTS.md` / `CLAUDE.md` managed addenda that point agents to that prompt before setup or schema work.
 
 Do not copy maintainer workspace tooling into consumer projects unless the consumer contract explicitly changes and package tests are updated at the same time.
 
@@ -52,7 +79,33 @@ Do not copy maintainer workspace tooling into consumer projects unless the consu
 
 Repo-local editor, language-server, Python, MCP, Code Atlas, FastMCP, lint, test, guard, and release tooling is for developing supaschema itself.
 
-These files stay out of the package allowlist unless they become runtime product assets or consumer install outputs.
+These files stay out of the package allowlist unless they become runtime product assets or consumer install outputs. If any of them are not public-safe, they must be moved to a private repository or intentionally untracked local path before the public repository is pushed.
+
+## Public repository boundary
+
+The public repository may include public-safe product source, public docs, public examples, tests, CI, and release evidence. It must not include credentials, customer data, private plans, private operator context, or maintainer-only automation that is not intended for public review.
+
+`.gitignore` is the prevention layer for generated and local-only files, not an access-control layer. Git's own manual says ignore rules apply to intentionally untracked files and do not affect files already tracked by Git; tracked files must first be removed from the index before ignore rules prevent reintroduction.
+
+That means the correct public-repo sequence is:
+
+<Steps>
+  <Step title="Classify">
+    Decide whether each surface is public product source/docs/examples, public
+    verification evidence, or private maintainer context.
+  </Step>
+  <Step title="Move or untrack private files">
+    Move private surfaces to a private repository or remove them from the public
+    index with `git rm --cached` after verifying the public build and release no
+    longer depend on them.
+  </Step>
+  <Step title="Ignore reintroduction">
+    Add `.gitignore` patterns only after the files are untracked, so future
+    generated or private-local copies do not get staged again.
+  </Step>
+</Steps>
+
+Do not solve GitHub exposure by adding broad ignore rules over files that release, package, docs, or CI still require. That creates a public repository that cannot reproduce the package and still does not remove already committed content from GitHub history.
 
 ## Why not .npmignore?
 
@@ -62,9 +115,13 @@ npm also falls back to `.gitignore` when `.npmignore` is missing and no `files` 
 
 Sources:
 
-- [npm package.json files](https://docs.npmjs.com/cli/v8/configuring-npm/package-json/#files)
-- [npm publish package contents](https://docs.npmjs.com/cli/v8/commands/npm-publish/#files-included-in-package)
-- [npm developer guide](https://docs.npmjs.com/cli/v9/using-npm/developers/#keeping-files-out-of-your-package)
+- [npm package.json files](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#files)
+- [npm publish package contents](https://docs.npmjs.com/cli/v11/commands/npm-publish/#files-included-in-package)
+- [GitHub changelog: upcoming npm v12 changes](https://github.blog/changelog/2026-06-09-upcoming-breaking-changes-for-npm-v12/)
+- [npm developer guide](https://docs.npmjs.com/cli/v11/using-npm/developers/#keeping-files-out-of-your-package)
+- [Git gitignore manual](https://git-scm.com/docs/gitignore)
+- [GitHub repository visibility](https://docs.github.com/en/repositories/creating-and-managing-repositories/about-repositories#about-repository-visibility)
+- [GitHub sensitive data removal](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
 
 ## Consumer lifecycle verification
 
@@ -72,7 +129,7 @@ Three test owners prove the three surfaces, and they move together with this pag
 
 | Phase | Owner | Proves |
 | --- | --- | --- |
-| Download | `tests/package-contents.test.ts` | The shipped file list, plus an `examples/` allowlist and tarball size budget so a sample cannot silently bloat the download. |
+| Download | `tests/package-contents.test.ts` | The shipped file list, package-size budget, and broad-directory denylist so docs, examples, benchmarks, corpus fixtures, source, tests, services, and maintainer scripts cannot silently bloat the download. |
 | Install | `tests/database-url.test.ts` | `postinstall` scaffolds the consuming project (config, schema/migration dirs, agent bundle, install manifest). |
 | Use | `tests/consumer-lifecycle.test.ts` | The full chain end to end: pack, `npm install` the tarball into a throwaway project, edit a schema in the scaffolded tree, then run the _installed_ `supaschema` binary and confirm an accurate, replay-safe migration and accurate generated types. |
 

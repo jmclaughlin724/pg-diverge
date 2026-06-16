@@ -1,0 +1,46 @@
+---
+title: "explain"
+description: "Look up a supaschema diagnostic code offline."
+keywords: ["explain command", "diagnostic code", "SUPA", "troubleshooting"]
+---
+
+Use `explain` when CI or a hook prints a `SUPA_*` diagnostic code.
+
+The command prints the built-in diagnostic summary without opening a browser.
+
+## Run it
+
+```bash
+npx supaschema explain SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED
+npx supaschema explain SUPA_VERIFY_FINGERPRINT_MISMATCH
+```
+
+## Arguments
+
+<ParamField path="<code>" type="string">
+  Required diagnostic code. Matching is case-insensitive.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Code was found and explained |
+| `1` | Unknown code or runtime failure |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Diagnostics" icon="message-square-warning" href="/reference/diagnostics">
+    Browse documented diagnostic families.
+  </Card>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    Understand safety diagnostics.
+  </Card>
+  <Card title="Verify" icon="repeat-2" href="/commands/verify">
+    Understand convergence diagnostics.
+  </Card>
+  <Card title="Migrations" icon="list-checks" href="/commands/migrations">
+    Understand history diagnostics.
+  </Card>
+</CardGroup>

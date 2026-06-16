@@ -2,9 +2,18 @@
 # Do not edit directly; update the Claude rule source and re-run sync.
 # Codex .rules files are command-policy programs, so Claude Markdown policy is mirrored as comments.
 
+# ---
+# description: Repo operating discipline: STOP gates, enforcement, technical decisions, npm-only package manager, and closeout behavior.
+# ---
+#
 # # Rule 01 — Operating rules
 #
-# The non-negotiable working agreement for any agent or contributor in this repo. The standing rules live in the root `AGENTS.md` and the per-concern files under `.claude/rules/`; this file states the operating discipline that governs how all of them are applied.
+# ## Contract
+#
+# This rule owns the repo-wide operating discipline that applies every other rule: gates are real, technical decisions are evidence-based, npm is the only package manager, and no standard ships without an executable enforcement path.
+#
+#
+# The non-negotiable working agreement for any agent or contributor in this repo. Standing rules live in the per-concern files under `.claude/rules/`; `AGENTS.md` is the root route map that points agents to those owners.
 #
 # ## Hard rules
 #
@@ -15,7 +24,7 @@
 # - **Stay inside the governed toolchain** (Rules 04/06/08): navigate and refactor via cclsp; format and lint with the one owner per concern — `ruff` for Python, Biome via Ultracite for JS/TS/JSON/CSS/HTML/GraphQL; analyze code structure with an AST, never ad hoc regex (Rule 07).
 # - **Use Code Atlas for repo-wide graph claims** (Rule 10): build and query the atlas before broad owner, route, consumer, dependency, DB, API, worker, generated-surface, or rollout assertions, then prove exact behavior with cclsp and direct source reads.
 # - **Keep agent surfaces synchronized.** After changing one of the six mirrored skills (`code-atlas`, `fastmcp`, `fastmcp-client-cli`, `supaschema`, `ultracite`, `upstream`), run `npm run sync:llm` so the `.codex/skills` and `.agents/skills` mirrors stay byte-identical to their `.claude/skills` owners (Rule 12). Codex hooks stay native; Codex rule files should hold executable command policy or short pointers to canonical rule owners, not duplicated long-form policy.
-# - **Operator and agent guidance lives in `AGENTS.md` and `.claude/rules/`;** `README.md` is the npm package landing page and `docs/` is the Mintlify site. The published npm package boundary is the `package.json` `files` allowlist (Rule 13).
+# - **Durable operator policy lives in `.claude/rules/`, not `AGENTS.md`.** `AGENTS.md` is a concise repo map and rule index; `README.md` is the npm package landing page and `docs/` is the Mintlify site. The published npm package boundary is the `package.json` `files` allowlist (Rule 13).
 # - **The package manager is npm.** Never introduce pnpm, yarn, or an alternate lockfile; preserve `package-lock.json`. There is no Turborepo, no workspaces, and no `apps/` in this single-package repo.
 # - **Commit only when asked; branch off the default branch first;** let lefthook run (never `--no-verify`).
 #
@@ -24,4 +33,25 @@
 # - `npm run guard` (`scripts/guards/check-all.mjs`) is the umbrella gate — tooling stack, agent hooks, agent-surface parity, rule-citation integrity, dependency catalog, Code Atlas, LSP coverage, FastMCP surface, and no-regex-in-scripts. lefthook (`pre-commit` runs Biome on staged files; `pre-push` runs `npm run typecheck` + `npm run guard`) and the PreToolUse/PostToolUse hooks enforce in-loop.
 #
 # STOP if any STOP condition in `.claude/rules/*` is skipped, a guard or test is weakened instead of its cause being fixed, a standard ships without an executable enforcement path, the package manager is switched away from npm, or a technical decision ships on a guess when an authoritative upstream source was available.
+#
+# ## Verification
+#
+# Run the narrowest command that proves the touched rule, then the umbrella gate when rule, hook, package, migration, toolchain, or CI behavior changed.
+#
+# Required closeout checks when this rule or a cross-cutting rule changes:
+#
+# ```bash
+# npm run guard
+# npm run typecheck
+# ```
+#
+# `npm run guard` must finish with `ALL_GUARDS_OK`.
+#
+# ## Failure behavior
+#
+# If any gate fails, fix the underlying cause and rerun the failed command. Do not weaken, disable, skip, comment out, baseline, or bypass a guard, test, hook, assertion, or STOP condition to make the run green.
+#
+# ## Done means
+#
+# Every accepted instruction has a disposition: resolved with evidence, not applicable with evidence, or blocked by a concrete external constraint after investigation. Deferral and future cleanup are not closeout states.
 #

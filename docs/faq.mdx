@@ -1,18 +1,22 @@
 ---
 title: "FAQ"
-description: "Direct answers about supaschema, declarative PostgreSQL migrations, Supabase schema diffs, replay safety, RLS policies, and type generation."
-keywords: ["FAQ", "questions", "PostgreSQL migrations", "Supabase"]
+description: "Direct answers about supaschema, declarative PostgreSQL migrations, provider support, replay safety, RLS policies, and type generation."
+keywords: ["FAQ", "questions", "PostgreSQL migrations", "providers"]
 ---
 
-This FAQ gives short, citation-friendly answers about `supaschema`: what it is, how it differs from database-backed diff tools, what it generates, and how it fits into a Supabase or PostgreSQL migration workflow.
+This FAQ gives short, citation-friendly answers about `supaschema`: what it is, how it differs from database-backed diff tools, what it generates, and how it fits into PostgreSQL migration workflows across providers.
 
 ## What is supaschema?
 
-`supaschema` is a CLI and Node.js library that generates deterministic PostgreSQL and Supabase migrations from declarative SQL schema files. You edit the desired schema tree, run `supaschema diff`, and get a timestamped migration plus refreshed TypeScript and Zod output.
+`supaschema` is a CLI and Node.js library that generates deterministic PostgreSQL migrations from declarative SQL schema files. You edit the desired schema tree, run `supaschema diff`, and get a timestamped migration plus refreshed TypeScript and Zod output.
+
+## Does supaschema work outside Supabase?
+
+Yes. supaschema works with PostgreSQL 15+ targets, including plain PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, and Supabase. It writes normal SQL migration files; your existing runner applies them.
 
 ## Is supaschema affiliated with Supabase?
 
-No. `supaschema` is an independent open-source project for PostgreSQL and Supabase projects. It generates SQL migrations that you can apply with your existing runner, including `supabase db push`.
+No. `supaschema` is an independent open-source project for PostgreSQL projects on any provider. Supabase is supported, including `supabase db push`, but it is not required.
 
 ## Does supaschema apply migrations to my database?
 
@@ -28,9 +32,9 @@ No for migration generation and type generation. `supaschema diff` parses schema
 
 For a deeper comparison, see [supaschema vs Supabase CLI](/comparisons/supaschema-vs-supabase-cli).
 
-## Can supaschema generate Supabase TypeScript types without a database?
+## Can supaschema generate TypeScript types without a database?
 
-Yes. `supaschema types` emits Supabase-compatible `database.types.ts` plus `database.zod.ts` directly from the declarative schema tree. It does not need a live database or a previously applied migration.
+Yes. `supaschema types` emits a `database.types.ts` shape compatible with the Supabase client plus `database.zod.ts` directly from the declarative schema tree. You can use those generated types and validators in any TypeScript app; it does not need a live database or a previously applied migration.
 
 ## What makes a migration replay-safe?
 

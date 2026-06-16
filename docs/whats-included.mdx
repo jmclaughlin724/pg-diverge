@@ -1,0 +1,88 @@
+---
+title: "What's included"
+description: "The features included with supaschema out of the box: migration generation, safety checks, types, CI gates, corpus testing, and agent context."
+keywords:
+  - supaschema features
+  - PostgreSQL migration generator
+  - PostgreSQL migration safety
+  - database providers
+  - coding agent bundle
+---
+
+Use this page to see the package surfaces at a glance.
+
+supaschema is packaged as a PostgreSQL project workflow, not just a binary. Installing it gives your repo the generator, safety checks, generated outputs, and public-safe agent context needed to keep declarative schema changes repeatable across plain PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, and Supabase.
+
+## Core workflow
+
+<CardGroup cols={2}>
+  <Card title="One-command migration generation" icon="wand-magic-sparkles" href="/concepts/migration-pipeline">
+    `supaschema diff` extracts, plans, renders, writes the migration, and refreshes configured generated outputs.
+  </Card>
+  <Card title="Replay-safety checker" icon="shield-check" href="/commands/check">
+    `supaschema check` validates generated migrations before they reach a database.
+  </Card>
+  <Card title="Apply-twice verification" icon="repeat-2" href="/commands/verify">
+    `supaschema verify` proves the newest pending migration is replay-safe against a disposable database.
+  </Card>
+  <Card title="Runner handoff" icon="cloud-upload" href="/concepts/migration-pipeline#apply-handoff">
+    Generated SQL works with your normal PostgreSQL runner; Supabase projects also get the optional `sync` handoff.
+  </Card>
+</CardGroup>
+
+## Generated outputs
+
+<CardGroup cols={2}>
+  <Card title="TypeScript types" icon="file-code-2" href="/guides/generate-supabase-types-without-database">
+    Types are generated from the declarative schema tree, not a live database snapshot.
+  </Card>
+  <Card title="Zod validators" icon="braces" href="/guides/generate-supabase-types-without-database">
+    Runtime validators are produced from the same source as the migration.
+  </Card>
+  <Card title="Actionable diagnostics" icon="circle-alert" href="/reference/diagnostics">
+    `SUPA_*` diagnostics explain blocked or ambiguous schema changes and point to recovery steps.
+  </Card>
+  <Card title="Destructive hints" icon="triangle-alert" href="/configuration/hints">
+    Drops and incompatible changes require explicit object-level intent before SQL is generated.
+  </Card>
+</CardGroup>
+
+## Project surfaces
+
+<CardGroup cols={3}>
+  <Card title="Coding-agent bundle" icon="bot" href="/coding-agents/agent-bundle">
+    Public-safe prompt, rule, skill, and hooks for AI agents working in the consuming repo.
+  </Card>
+  <Card title="GitHub Actions" icon="github" href="/guides/ci-github-actions">
+    A ready CI lane for drift, safety, package, docs, corpus, and benchmark checks.
+  </Card>
+  <Card title="CI drift gate" icon="git-branch" href="/guides/ci-gate">
+    Fails pull requests when the declarative tree and generated migrations are out of sync.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card title="Corpus oracle" icon="database-zap" href="/guides/corpus-oracle">
+    Exercises real-world catalogs to prove reconvergence outside toy fixtures.
+  </Card>
+  <Card title="Provider-aware setup" icon="server-cog" href="/setup#path-selection">
+    Detects common PostgreSQL provider layouts while keeping `adapter: "auto"` provider-neutral.
+  </Card>
+</CardGroup>
+
+## Evidence
+
+<CardGroup cols={2}>
+  <Card title="Benchmarks" icon="gauge" href="/benchmarks">
+    Large-schema benchmark results for diff performance, correctness, and workflow cost.
+  </Card>
+  <Card title="Case study" icon="chart-no-axes-combined" href="/case-study-anilize">
+    A production Supabase project used to validate the migration workflow at real project scale.
+  </Card>
+  <Card title="Support matrix" icon="table-properties" href="/reference/support-matrix">
+    Supported PostgreSQL object classes, failure modes, and current boundaries.
+  </Card>
+  <Card title="Package boundary" icon="package" href="/reference/package-boundary">
+    The exact public npm package contract and why internal maintainer tooling stays out.
+  </Card>
+</CardGroup>

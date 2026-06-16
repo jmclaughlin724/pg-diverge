@@ -1,12 +1,12 @@
 # supaschema
 
 <p align="center">
-  <img src="docs/images/brand/supaschema-logo-readme.png" alt="supaschema logo" width="720">
+  <img src="https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/brand/supaschema-logo-readme.png" alt="supaschema logo" width="720">
 </p>
 
 [![CI](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml/badge.svg)](https://github.com/jmclaughlin724/supaschema/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/supaschema)](https://www.npmjs.com/package/supaschema) [![npm downloads](https://img.shields.io/npm/dm/supaschema)](https://www.npmjs.com/package/supaschema) [![node](https://img.shields.io/node/v/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/package.json) [![license](https://img.shields.io/npm/l/supaschema)](https://github.com/jmclaughlin724/supaschema/blob/main/LICENSE) [![codecov](https://codecov.io/gh/jmclaughlin724/supaschema/branch/main/graph/badge.svg)](https://codecov.io/gh/jmclaughlin724/supaschema) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jmclaughlin724/supaschema/badge)](https://scorecard.dev/viewer/?uri=github.com/jmclaughlin724/supaschema) [![install size](https://packagephobia.com/badge?p=supaschema)](https://packagephobia.com/result?p=supaschema)
 
-[Documentation](https://supaschema.com/docs) · [Setup](https://supaschema.com/docs/setup) · [Quickstart](https://supaschema.com/docs/quickstart) · [Benchmarks](https://supaschema.com/docs/benchmarks) · [Supabase CLI comparison](https://supaschema.com/docs/comparisons/supaschema-vs-supabase-cli) · [FAQ](https://supaschema.com/docs/faq)
+[Documentation](https://supaschema.com/docs) · [What's included](https://supaschema.com/docs/whats-included) · [Setup](https://supaschema.com/docs/setup) · [Quickstart](https://supaschema.com/docs/quickstart) · [Benchmarks](https://supaschema.com/docs/benchmarks) · [Supabase CLI comparison](https://supaschema.com/docs/comparisons/supaschema-vs-supabase-cli) · [FAQ](https://supaschema.com/docs/faq)
 
 **Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, and refreshes TypeScript + Zod outputs according to config in the same command — without standing up a database to do it.
 
@@ -18,7 +18,7 @@
 npx supaschema diff   # writes the migration; refreshes configured outputs per workflow policy
 ```
 
-![supaschema vs every Supabase CLI engine at 1,000 tables — median diff latency, accuracy F1, and replay-safety side by side](docs/images/benchmarks/head-to-head-xl.svg)
+![supaschema vs every Supabase CLI engine at 1,000 tables — median diff latency, accuracy F1, and replay-safety side by side](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xl.svg)
 
 The promise of declarative schema management sounds great: keep your schema in SQL files, edit them in your editor, diff against your database to produce a type-safe, idempotent migration, and get regenerated types back in your repo.
 
@@ -32,11 +32,11 @@ Migrations diff without an ORM, without Docker, without a shadow database, and w
 
 Declarative schema management promises a simple loop: edit your SQL files, diff them, and get a replay-safe migration and fresh types back. The catch is that every tool in that loop needs a database that already has your change — so a diff spins up a Docker shadow database and replays your whole schema, and types can't regenerate until the migration is applied. The change sitting in your editor is stuck behind infrastructure, and the diff itself is only as careful as a name-by-name comparison.
 
-![The declarative workflow today: spin up a shadow database, replay the schema, diff, apply, then introspect for types — every step needs a running PostgreSQL, and policies are diffed by name](docs/images/concepts/legacy-flow.svg)
+![The declarative workflow today: spin up a shadow database, replay the schema, diff, apply, then introspect for types — every step needs a running PostgreSQL, and policies are diffed by name](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/concepts/legacy-flow.svg)
 
 supaschema ships PostgreSQL's own parser inside the package. It reads your SQL into an AST, compares object definitions structurally — policy bodies included, not just their names — and renders a guarded, replay-safe migration, all without a database. Types and Zod validators come from the same parse, in the same command, so they never wait on a deploy.
 
-![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](docs/images/concepts/supaschema-flow.svg)
+![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/concepts/supaschema-flow.svg)
 
 ## Install
 
@@ -45,6 +45,8 @@ npm install supaschema
 ```
 
 Requires Node 22.12+ and PostgreSQL 15+. Install runs the one-step setup: config, schema/migration paths, type output paths, and the bundled Claude/Codex-compatible agent guidance. Use `supaschema.config.json` to edit `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, and named `environments` that reference database URLs via `$ENV_NAME`. Details: [installation](https://supaschema.com/docs/installation) and [setup](https://supaschema.com/docs/setup).
+
+For consuming projects, install the npm package from that project root. Cloning this repository and running `npm ci` is only for developing supaschema itself; it does not wire the package into your target schema repo.
 
 ## Quick Start
 
@@ -110,23 +112,23 @@ No flags are needed day to day: sources, output paths, and names all have sensib
 
 ## Benchmarks
 
-All numbers are reproducible from this repo (`npm run benchmark`; harness in [benchmarks/README.md](benchmarks/README.md)) and verified, not just timed: every generated migration is applied in one transaction, applied a second time, and the resulting catalog is compared against the target. Reference run 2026-06-12: Apple Silicon, Node 24, PostgreSQL 17.6, Supabase CLI 2.106.0.
+All numbers are reproducible from this repo (`npm run benchmark`; see the [benchmark docs](https://supaschema.com/docs/benchmarks)) and verified, not just timed: every generated migration is applied in one transaction, applied a second time, and the resulting catalog is compared against the target. Reference run 2026-06-12: Apple Silicon, Node 24, PostgreSQL 17.6, Supabase CLI 2.106.0.
 
 ### Speed and accuracy, head to head
 
 At 1,000 tables (~7,000 objects), supaschema against each of the five Supabase CLI engines — median diff latency, accuracy (F1 vs a ground-truth change manifest), and whether the migration survives a second apply:
 
-![supaschema vs every Supabase CLI engine at 1,000 tables — latency bars, F1 accuracy, and replay-safety](docs/images/benchmarks/head-to-head-xl.svg)
+![supaschema vs every Supabase CLI engine at 1,000 tables — latency bars, F1 accuracy, and replay-safety](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xl.svg)
 
 The gap widens with scale. At 2,500 tables (~17,500 objects) the engines cross three minutes while supaschema stays around three seconds — and every engine still drops the same policy and still fails the second apply:
 
-![supaschema vs every Supabase CLI engine at 2,500 tables — latency bars, F1 accuracy, and replay-safety](docs/images/benchmarks/head-to-head-xxl.svg)
+![supaschema vs every Supabase CLI engine at 2,500 tables — latency bars, F1 accuracy, and replay-safety](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xxl.svg)
 
 The diff is only half the loop. Once type outputs exist, getting a migration **and** refreshed types is one `supaschema diff` — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
 
-![Full workflow at 1,000 tables — supaschema's migration plus generated type outputs in one command vs db diff, apply, and gen types per engine](docs/images/benchmarks/head-to-head-workflow-xl.svg)
+![Full workflow at 1,000 tables — supaschema's migration plus generated type outputs in one command vs db diff, apply, and gen types per engine](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-workflow-xl.svg)
 
-Per-fixture latency bar charts at every scale: [additive](docs/images/benchmarks/additive-latency.svg) · [functions-policies](docs/images/benchmarks/functions-policies-latency.svg) · [realistic](docs/images/benchmarks/realistic-latency.svg) · [xl](docs/images/benchmarks/xl-latency.svg) · [xxl](docs/images/benchmarks/xxl-latency.svg).
+Per-fixture latency bar charts at every scale: [additive](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/additive-latency.svg) · [functions-policies](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/functions-policies-latency.svg) · [realistic](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/realistic-latency.svg) · [xl](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xl-latency.svg) · [xxl](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xxl-latency.svg).
 
 ### Accuracy
 
@@ -138,9 +140,9 @@ That miss matters more than speed. A slow diff costs seconds and an unreplayable
 
 ### Replay safety
 
-![XL fixture correctness](docs/images/benchmarks/xl-correctness.svg)
+![XL fixture correctness](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xl-correctness.svg)
 
-Every engine's migration applies once and reaches the target catalog. Only supaschema's also applies **twice**: the others emit unguarded `ADD COLUMN` and `CREATE INDEX`, which fail on re-run for every fixture containing column or index changes. Per-fixture charts: [additive](docs/images/benchmarks/additive-correctness.svg) · [functions-policies](docs/images/benchmarks/functions-policies-correctness.svg) · [realistic](docs/images/benchmarks/realistic-correctness.svg) · [xxl](docs/images/benchmarks/xxl-correctness.svg).
+Every engine's migration applies once and reaches the target catalog. Only supaschema's also applies **twice**: the others emit unguarded `ADD COLUMN` and `CREATE INDEX`, which fail on re-run for every fixture containing column or index changes. Per-fixture charts: [additive](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/additive-correctness.svg) · [functions-policies](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/functions-policies-correctness.svg) · [realistic](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/realistic-correctness.svg) · [xxl](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xxl-correctness.svg).
 
 ## How It Works
 
@@ -192,7 +194,8 @@ Either side of a diff can be any of these — generating a diff never creates a 
 
 The package ships a governance bundle so coding agents generate migrations through the diff instead of hand-writing SQL — and so the diff runs itself the moment a schema file changes:
 
-- `AGENTS.md` — operator brief: invariants, commands, recovery codes.
+- `AGENTS.md` / `CLAUDE.md` managed addenda — point agents to the installed setup prompt before setup or schema work.
+- `.agents/prompts/supaschema-install.md` — the install/setup prompt for agents, including what was installed, what to inspect, what to verify, and how to report completion without cloning the supaschema source repo.
 - `.claude/rules/` and `.codex/rules/` — the migration policy for Claude Code and Codex.
 - `.agents/skills/supaschema/`, `.claude/skills/supaschema/`, and `.codex/skills/supaschema/` — the step-by-step workflow skill, with recovery steps for every blocking `SUPA_*` code.
 - `.claude/hooks/` and `.codex/hooks/` — two wired migration-policy hooks in each runtime:
@@ -201,6 +204,16 @@ The package ships a governance bundle so coding agents generate migrations throu
 - A sync hook keeps the installed `.agents` and Codex mirrors aligned when the consumer edits the shipped `.claude` supaschema rule or skill.
 
 So when an agent (or anyone) edits the declarative tree, the migration and configured generated outputs are refreshed according to `workflow.*` and the agent is told what happened, with no command to remember under the default hook policy. `npm install supaschema` installs the config, agent addenda, the narrow supaschema consumer rule/skill/hook bundle, and minimal hook wiring in one step. Pointing agents only at `node_modules/supaschema/` gives them package guidance without project hook wiring. `supaschema explain <SUPA_CODE>` decodes every diagnostic offline.
+
+For portable Agent Skill context without project setup:
+
+```bash
+npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/supaschema
+```
+
+That `npx skills` lane installs only the `supaschema` workflow skill. Rules,
+hooks, config, and hook registration are installed by `npm install supaschema`
+or, when lifecycle scripts did not run, `npx supaschema init`.
 
 ## Library
 
@@ -229,7 +242,7 @@ Modeled: schemas, extensions, types/enums/domains, tables, constraints, indexes,
 
 ## Documentation
 
-[setup](https://supaschema.com/docs/setup) · [quickstart](https://supaschema.com/docs/quickstart) · [coding agents](https://supaschema.com/docs/coding-agents) · [commands](https://supaschema.com/docs/commands) · [config](https://supaschema.com/docs/configuration/config-file) · [hints & recovery](https://supaschema.com/docs/configuration/hints) · [CI recipes](https://supaschema.com/docs/guides/ci-github-actions) · [CI gate & paid tier](https://supaschema.com/docs/guides/ci-gate) · [diagnostics](https://supaschema.com/docs/reference/diagnostics) · [support matrix](https://supaschema.com/docs/reference/support-matrix) · [corpus oracle](https://supaschema.com/docs/guides/corpus-oracle) · [case study](https://supaschema.com/docs/case-study-anilize) · [benchmark harness](benchmarks/README.md)
+[what's included](https://supaschema.com/docs/whats-included) · [setup](https://supaschema.com/docs/setup) · [quickstart](https://supaschema.com/docs/quickstart) · [coding agents](https://supaschema.com/docs/coding-agents) · [commands](https://supaschema.com/docs/commands) · [config](https://supaschema.com/docs/configuration/config-file) · [hints & recovery](https://supaschema.com/docs/configuration/hints) · [CI recipes](https://supaschema.com/docs/guides/ci-github-actions) · [CI gate & paid tier](https://supaschema.com/docs/guides/ci-gate) · [diagnostics](https://supaschema.com/docs/reference/diagnostics) · [support matrix](https://supaschema.com/docs/reference/support-matrix) · [corpus oracle](https://supaschema.com/docs/guides/corpus-oracle) · [case study](https://supaschema.com/docs/case-study-anilize) · [benchmarks](https://supaschema.com/docs/benchmarks)
 
 ## Development
 

@@ -19,3 +19,8 @@ benchmarks/results
 .claude/scheduled_tasks.lock
 .claude/plans
 .wrangler/
+
+# Local/private workspace material. These patterns prevent future staging only;
+# they do not hide files that are already tracked.
+.local/
+.private/

@@ -18,17 +18,36 @@ The theme the user asked for — **enhance, optimize performance, and move towar
 | 002 | Bounded (LRU) parse-cache eviction instead of full clear | P1 | S | LOW | — | perf | DONE |
 | 003 | Dispatch every `ALTER TABLE` subcommand (stop silently dropping all but the first) | P1 | S | MED | — | bug | DONE |
 | 004 | Remove the double `Client.end()` that can hang `verify` | P1 | S | LOW | — | bug | DONE |
-| 005 | Fail closed when a set-operation view replace cannot be proven column-compatible | P2 | S | MED | — | bug | DONE |
-| 006 | Warn that `ALTER COLUMN TYPE` renders an identity `USING` cast | P2 | M | LOW | — | bug | DONE |
-| 007 | Distinguish "Supabase CLI not installed" from a real runner failure in `sync` | P2 | S | LOW | — | bug / dx | DONE |
+| 005 | Fail closed when a set-operation view replace cannot be proven column-compatible | P2 | S | MED | - | bug | DONE |
+| 006 | Warn that `ALTER COLUMN TYPE` renders an identity `USING` cast | P2 | M | LOW | - | bug | DONE |
+| 007 | Distinguish "Supabase CLI not installed" from a real runner failure in `sync` | P2 | S | LOW | - | bug / dx | DONE |
+| 008 | Reorganize Mintlify navigation around reader tasks | P1 | S | LOW | - | docs / tech-debt | DONE |
+| 010 | Standardize Mintlify components and enforce the docs pattern | P1 | M | MED | 008 | docs / dx | DONE |
+| 009 | Condense entry-path pages and guide pages for short-attention readers | P1 | M | MED | 008, 010 | docs | DONE |
+| 011 | Template command reference pages and split utility commands | P2 | L | MED | 008, 010 | docs | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
 
-All seven plans are independent — no plan depends on another, so they can be executed in any order or in parallel on separate branches. The numbering is leverage order (impact ÷ effort, weighted by confidence and a clean verification story).
+Plans 001-007 are independent and already completed.
+
+Plans 008-011 are the docs/Mintlify review wave requested on 2026-06-16. They assume an ADHD-first reader: fewer choices per screen, task-first navigation, one page owner per concept, and Mintlify components that are standardized and enforced.
+
+Elegant docs end state:
+
+- `docs/docs.json` is the single owner for public navigation and footer shortcuts.
+- Entry pages answer "what should I do next?" in the first screen.
+- `docs/commands/**` is command reference only, with one canonical page per public command.
+- `docs/guides/**` contains short scenario recipes, not duplicate concept/reference bodies.
+- `docs/concepts/**`, `docs/configuration/**`, and `docs/reference/**` own deep explanation.
+- `CardGroup` is the single card-grid owner for this repo; cards are short, iconed, and used for navigation or discrete choices.
+- Scanability rules that are standards are enforced by `scripts/check-docs-standard.mjs` and `tests/docs-standard.test.ts`.
 
 ## Dependency notes
 
-- None. Each plan touches a disjoint or near-disjoint file set. If two are executed on the same branch, 001 and 006 both touch `src/typegen*.ts` / `src/render.ts` respectively but do not overlap; 003 and 005 both touch the SQL/planner layer but different files (`src/sql/extract-helpers.ts` vs `src/planner-replace.ts`).
+- 001-007: none. Each completed plan touched a disjoint or near-disjoint file set.
+- 010 depends on 008 so component rules can encode the final page and navigation model.
+- 009 depends on 008 and 010 because content owners should match the final sidebar taxonomy and broad rewrites should follow the executable component standard.
+- 011 depends on 008 and 010 because command-page splits should land after the navigation taxonomy and component rules are settled.
 
 ## Findings considered and rejected (do not re-audit)
 
@@ -48,3 +67,9 @@ Grounded in repo evidence; each is a design/spike, not a build-everything plan. 
 - **Batch/programmatic multi-config API** — `src/index.ts` exports per-operation functions but no `batchDiff(configs[])`; orgs with many schema trees loop the CLI per project. A thin orchestration export would unlock monorepo/consistency workflows. (M.)
 - **Public-API minimization (elegance decision)** — `src/index.ts` exports ~30 symbols; the README "Library" contract documents ~12. The `db-admin` temp-database cluster (`applySql`, `createTemporaryDatabases`, …) and several typegen/audit/lineage internals have only internal consumers (Code Atlas: `verify.ts`, `corpus.ts`, `benchmark.ts`). Decide which are public; demote or document the rest. Breaking change — best done before 1.0. (M.)
 - **Validation-rule plugin seam** — `src/validators.ts` only shells out to external tools; there is no in-process rule hook (`(plan: MigrationPlan) => Diagnostic[]`). A small typed rule interface would let teams enforce org schema policies during `diff`. (M, additive.)
+
+## Docs review findings considered and rejected
+
+- **Run full Mintlify check during advisor audit**: rejected for the advisor pass. `npm run docs:check` shells through `npx --yes mint@4.2.616`, which can mutate the npm cache. The focused read-only gate `npm run docs:lint` passed (`docs-standard: 41 pages OK`). Executors should run `npm run docs:check` when applying plans.
+- **Move hidden maintainer pages into public navigation**: rejected. `docs/mintlify.mdx` and `docs/release.mdx` already use `hidden: true`, which is the correct Mintlify pattern for maintainer-only pages.
+- **Switch all card grids from `CardGroup` to `Columns`**: rejected. The Mintlify reference supports card grids, but this repo's local component rule already names `<Card>` / `<CardGroup>`, and current pages consistently use `CardGroup`. The elegant state is one repo-local owner, not a churn rewrite to another valid component.
