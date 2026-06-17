@@ -55,9 +55,8 @@ The parent agent must wait for all requested subagents, compare their answers, r
 
 ## Runtime Controls
 
-- Use `[agents].max_threads` to limit parallel work.
-- Use `[agents].max_depth` to prevent uncontrolled delegation chains.
-- Use `[agents].job_max_runtime_seconds` to bound expensive work.
+- Use current documented Codex feature flags and runtime controls only. Do not add `[agents]`, `[parallelization]`, or `[workflow]` config tables unless the installed CLI strict-config path and current upstream docs both prove those tables are valid.
+- This repo uses `[features].multi_agent`, `[features].multi_agent_v2`, and `[features].enable_fanout = false` for the checked-in Codex config. Keep worker limits in the coordinator prompt, worker skill/agent instructions, or native runtime controls instead of inventing config keys.
 - Remember subagents inherit sandbox constraints and approval behavior from the parent.
 
 ## Output Contract
