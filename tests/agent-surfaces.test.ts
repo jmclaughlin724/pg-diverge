@@ -153,6 +153,22 @@ Review like an owner.
     );
   });
 
+  it("renders wildcard Claude agents as writable Codex custom agents", () => {
+    const rendered = renderCodexAgent(
+      `---
+name: worker
+description: Execute autonomous worker tasks.
+tools: "*"
+---
+
+Work directly.
+`,
+      ".claude/agents/worker.md"
+    );
+
+    expect(rendered).toContain('sandbox_mode = "workspace-write"');
+  });
+
   it("renders Claude Markdown rules as comment-only Codex .rules files", () => {
     const rendered = renderCodexRule(
       "# Supaschema Rule\n\n- Keep migrations replay-safe.\n",
