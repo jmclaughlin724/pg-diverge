@@ -40,7 +40,8 @@ When the user asks to stage, commit, push, or create a PR after a version bump:
 - Use a release-specific commit message such as `Prepare release <version>` or `Enforce release version surfaces`.
 - Let local hooks run. Do not use `--no-verify`.
 - Push the current branch without force-push unless the user explicitly approved a destructive branch operation.
-- When asked for a PR, create a non-draft PR unless the user explicitly says draft. Include the version, changelog, release-surface parity, and verification commands in the PR body.
+- Before creating or replacing a PR, complete Rule 14 PR scope and mergeability verification.
+- When asked for a PR, create a non-draft PR unless the user explicitly says draft. Include the version, changelog, release-surface parity, base branch, head branch, commit count, changed-file count, mergeability result, and verification commands in the PR body.
 - If CI fails on a version-coupled surface, fix the source drift and add or update guard coverage so the same miss fails locally next time.
 
 ## Enforced by
@@ -54,7 +55,7 @@ When the user asks to stage, commit, push, or create a PR after a version bump:
 - `tests/action.test.ts` verifies the composite action default follows `package.json` and does not drift to npm dist-tags.
 - Rule 09 release workflow checks, Rule 13 package checks, Rule 14 git safety, and Rule 18 generated-surface sync remain required where their surfaces are touched.
 
-STOP if a version bump leaves any known release surface on the previous version, uses an npm dist-tag for the GitHub Action default, omits the changelog top entry, commits generated mirrors without syncing from the canonical owner, bypasses hooks, or weakens a guard/test to make the release pass.
+STOP if a version bump leaves any known release surface on the previous version, uses an npm dist-tag for the GitHub Action default, omits the changelog top entry, commits generated mirrors without syncing from the canonical owner, bypasses hooks, weakens a guard/test to make the release pass, or opens a PR before Rule 14 PR scope and mergeability verification passes.
 
 ## Verification
 

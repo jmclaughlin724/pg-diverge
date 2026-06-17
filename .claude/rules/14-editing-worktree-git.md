@@ -46,6 +46,9 @@ This rule owns edit safety, dirty-worktree handling, generated mirror discipline
 - Let lefthook/pre-commit/pre-push run. Never use `--no-verify`.
 - Do not use `git reset --hard`, `git checkout --`, `git restore --source`, `git stash`, force-push, or destructive branch operations without explicit approval.
 - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.
+- Before creating or replacing a PR, verify the intended base branch, current head branch, upstream, existing PRs for the head branch, commit count, changed-file count, and mergeability.
+- Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch that contains commits outside the requested task. Create a clean task branch from the intended base instead.
+- If a PR was opened from the wrong branch, create and verify a clean replacement PR before closing or superseding the bad PR. Document why the old PR was superseded.
 - Subagents may edit files only. The parent/orchestrator owns staging, commit, push, and final verification.
 
 ## Delete, rename, and export-shape sweeps
@@ -67,6 +70,15 @@ git status --short
 git diff -- <touched files>
 ```
 
+Before PR creation or replacement:
+
+```bash
+git status --short --branch
+git log --oneline --left-right <base>...HEAD
+git diff --stat <base>...HEAD
+git merge-tree --write-tree --name-only --messages <base> HEAD
+```
+
 Run the owner checks for the changed surface. For source deletion, rename, export, package, or generated-surface work, include Code Atlas or cclsp/source evidence for the consumer sweep.
 
 ## Failure behavior
@@ -79,4 +91,4 @@ If verification fails, fix failures caused by the current change and rerun the f
 - Unrelated dirty work was preserved.
 - Generated mirrors were synced from their owners, not patched directly.
 - Delete/rename/export changes include consumer-sweep evidence.
-- Requested commit/push work used approved git paths and did not bypass hooks.
+- Requested commit/push/PR work used approved git paths, verified the intended scope, and did not bypass hooks.
