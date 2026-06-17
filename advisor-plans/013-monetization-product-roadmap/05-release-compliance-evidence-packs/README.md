@@ -8,6 +8,16 @@ Planned on 2026-06-16 against commit `fb8c461`.
 
 > Drift check: `git diff --stat fb8c461..HEAD -- src/audit.ts src/doctor.ts src/migrations-status.ts src/check-reporters.ts src/verify.ts src/source.ts src/catalog.ts src/cli.ts docs/commands/audit.mdx docs/commands/doctor.mdx docs/commands/migrations.mdx docs/guides/ci-github-actions.mdx advisor-plans/013-monetization-product-roadmap/05-release-compliance-evidence-packs`
 
+> Before executing: read the **Executor Readiness Contract** in `../README.md`.
+> The `supaschema evidence init|collect|validate|sign` commands DO NOT EXIST yet —
+> they are TO CREATE. The first executable step is the Phase 0 design spec: new
+> `src/cli-evidence.ts` registered via `src/cli-reports.ts`; the
+> `evidence-manifest.json` / `evidence-summary.md` / `technical-appendix.md`
+> schema (keys + types + required/optional); the evidence collector must COMPOSE
+> the existing reporters in `src/check-reporters.ts` (never fork a second reporter);
+> exit codes; named to-create tests. Convert prose done criteria to command +
+> expected output. Read market/value figures from folder `07`, do not inline them.
+
 ## Status
 
 - Priority: P1

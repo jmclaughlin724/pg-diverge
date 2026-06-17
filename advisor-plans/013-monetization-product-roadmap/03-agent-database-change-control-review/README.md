@@ -8,6 +8,16 @@ Planned on 2026-06-16 against commit `fb8c461`.
 
 > Drift check: `git diff --stat fb8c461..HEAD -- AGENTS.md CLAUDE.md .codex/hooks.json .claude/settings.json .agents/prompts/supaschema-install.md .agents/skills/supaschema/SKILL.md .claude/skills/supaschema/SKILL.md skills/supaschema/SKILL.md bin/scaffold.mjs scripts/agent-hooks tests/agent-hooks.test.ts docs/coding-agents.mdx docs/coding-agents/agent-bundle.mdx advisor-plans/013-monetization-product-roadmap/03-agent-database-change-control-review`
 
+> Before executing: read the **Executor Readiness Contract** in `../README.md`.
+> The `supaschema agents doctor`, `agents doctor --fix-plan`, `agents
+> apply-fix-plan`, and `agents evidence` commands DO NOT EXIST yet — they are TO
+> CREATE. The first executable step is the Phase 0 design spec: new `src/cli-agents.ts`
+> registered via `src/cli-tools.ts`; the control checklist + severity model (enumerate
+> the controls, do not leave "define the score" open); the report JSON schema; exit
+> codes; named to-create test files (e.g. `tests/agents-doctor.test.ts`). Convert
+> every prose done criterion to a command + expected output. Do not weaken any hook
+> or generated-migration guard.
+
 ## Status
 
 - Priority: P1

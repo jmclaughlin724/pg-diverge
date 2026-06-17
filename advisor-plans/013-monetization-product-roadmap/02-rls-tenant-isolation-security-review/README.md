@@ -8,6 +8,14 @@ Planned on 2026-06-16 against commit `fb8c461`.
 
 > Drift check: `git diff --stat fb8c461..HEAD -- src/core.ts src/sql/extract.ts src/sql/facts.ts src/catalog.ts src/check.ts src/check-reporters.ts src/config-contract.ts src/cli.ts docs/guides/rls-policy-migration-safety.mdx tests advisor-plans/013-monetization-product-roadmap/02-rls-tenant-isolation-security-review`
 
+> Before executing: read the **Executor Readiness Contract** in `../README.md`.
+> The `supaschema rls *` commands and `check --pack rls` named below DO NOT EXIST
+> yet — they are TO CREATE. Write the Phase 0 design spec (new `src/cli-rls.ts`
+> registered via `src/cli-tools.ts`; the rule-engine module over `SchemaModel` /
+> `MigrationPlan` in `src/core.ts` emitting diagnostics through
+> `src/check-reporters.ts`; per-rule detection predicates; named to-create tests)
+> before building, and convert prose done criteria to command + expected output.
+
 ## Status
 
 - Priority: P1

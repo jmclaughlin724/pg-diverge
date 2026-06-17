@@ -36,7 +36,7 @@ Plans 008-011 are the docs/Mintlify review wave requested on 2026-06-16. They as
 
 Plan 012 is the monetization implementation proposal requested on 2026-06-16 for revenue opportunities 1-4. It is a tracked proposal and execution handoff, not a pricing, billing, hosted infrastructure, or legal-terms implementation.
 
-Plan 013 expands the monetization work into a full product roadmap. It maps each paid opportunity to the bigger problem it solves, incumbent positioning against Liquibase, Flyway Enterprise, Bytebase, and Atlas, implementation steps, scale meters, subscription versus usage model, and immediate service paths that can be used before hosted infrastructure exists. Its proposal-level execution bundle lives in `advisor-plans/013-monetization-product-roadmap/`.
+Plan 013 expands the monetization work into a full product roadmap. It maps each paid opportunity to the bigger problem it solves, incumbent positioning against Liquibase, Flyway Enterprise, Bytebase, and Atlas, implementation steps, scale meters, subscription versus usage model, and immediate service paths that can be used before hosted infrastructure exists. Its proposal-level execution bundle lives in `advisor-plans/013-monetization-product-roadmap/`. Extended 2026-06-16 with two cross-cutting folders: `06-seo-aeo-geo-marketing` (the SEO/AEO/GEO marketing plan for all five offers) and `07-market-and-value-verification` (upstream-re-verified market data and pricing, client value-delivered economics, a bottom-up SAM framework, and the steps to execute analysis items 1-5). The same re-verification corrected the parent roadmap's Supabase developer count and retired-competitor pricing.
 
 Elegant docs end state:
 

@@ -8,6 +8,16 @@ Planned on 2026-06-16 against commit `fb8c461`.
 
 > Drift check: `git diff --stat fb8c461..HEAD -- src/audit.ts src/doctor.ts src/migrations-status.ts src/source.ts src/catalog.ts src/verify.ts src/cli.ts docs/commands/audit.mdx docs/commands/doctor.mdx docs/commands/migrations.mdx docs/concepts/sources.mdx advisor-plans/013-monetization-product-roadmap/04-adoption-audit-migration-rescue`
 
+> Before executing: read the **Executor Readiness Contract** in `../README.md`.
+> The `supaschema onboard scan|classify|plan|apply-safe-fixes` commands DO NOT
+> EXIST yet — they are TO CREATE. The first executable step is the Phase 0 design
+> spec: new `src/cli-onboard.ts` registered via `src/cli-tools.ts`; the
+> `adoption-bundle.json` / `adoption-summary.md` schema; the adoption readiness
+> score formula (do not leave "define the score" open); the migration-system
+> detector signatures (now listed in "Automation And Onboarding Needed"); exit
+> codes; named to-create tests. Convert prose done criteria to command + expected
+> output. `apply-safe-fixes` must never apply a migration.
+
 ## Status
 
 - Priority: P1
@@ -92,17 +102,18 @@ fingerprint primitives that can be packaged into a high-value paid assessment.
 
 ## Automation And Onboarding Needed
 
-1. Migration-system detector:
-   - Supabase CLI.
-   - Flyway.
-   - Liquibase.
-   - Atlas.
-   - Prisma.
-   - Drizzle.
-   - Rails.
-   - Django.
-   - custom SQL.
-   - mixed workflows.
+1. Migration-system detector. Detect by these file/marker signatures (public
+   conventions, not product choices — implement as deterministic path checks):
+   - Supabase CLI: `supabase/config.toml`, `supabase/migrations/*.sql`.
+   - Flyway: `flyway.conf` / `flyway.toml`, `sql/` with `V<n>__*.sql` naming.
+   - Liquibase: `liquibase.properties`, `db/changelog/**` (`changelog.xml|yaml|json|sql`).
+   - Atlas: `atlas.hcl`, `migrations/atlas.sum`.
+   - Prisma: `prisma/schema.prisma`, `prisma/migrations/**`.
+   - Drizzle: `drizzle.config.{ts,js}`, `drizzle/` with `meta/_journal.json`.
+   - Rails: `db/schema.rb` or `db/structure.sql`, `db/migrate/*.rb`.
+   - Django: `*/migrations/0001_initial.py` and `settings.py` `INSTALLED_APPS`.
+   - custom SQL: a SQL dir with no recognized tool marker.
+   - mixed workflows: two or more of the above markers present at once (report all).
 2. State collector:
    - read supaschema config if present.
    - read schema paths and migrations dir.

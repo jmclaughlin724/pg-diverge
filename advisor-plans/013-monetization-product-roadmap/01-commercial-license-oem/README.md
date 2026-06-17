@@ -9,6 +9,13 @@ Planned on 2026-06-16 against commit `fb8c461`.
 
 > Drift check: `git diff --stat fb8c461..HEAD -- LICENSE-COMMERCIAL.md README.md docs/faq.mdx docs/docs.json package.json .github/ISSUE_TEMPLATE advisor-plans/013-monetization-product-roadmap/01-commercial-license-oem`
 
+> Before executing: read the **Executor Readiness Contract** in `../README.md`.
+> Any `supaschema <command>` or `scripts/<path>` named below that is not already in
+> the existing CLI surface is TO CREATE — write its Phase 0 design spec (module
+> path, CLI registration in `src/cli-tools.ts` / `src/cli-reports.ts`, input/output
+> schema, exit codes, named to-create test) before building, and convert any prose
+> done criterion to a command + expected output.
+
 ## Status
 
 - Priority: P1
@@ -76,6 +83,13 @@ proprietary embedding, hosted redistribution, private builds, and support.
   public sales claims.
 - `.github/ISSUE_TEMPLATE/config.yml` disables blank issues, so a generic issue
   instruction is not a reliable buyer path.
+- A commercial intake template ALREADY EXISTS: `.github/ISSUE_TEMPLATE/commercial_support.md`.
+  It is the canonical buyer-intake owner. Do NOT create a second
+  `commercial_license.yml` (that would duplicate the entry point and trip the
+  bundle's Shared Stop Condition against duplicate onboarding artifacts). Convert
+  this `.md` into a structured YAML issue form in place (rename to
+  `commercial_support.yml` with typed fields) or extend the existing `.md` — one
+  file, not two.
 - `docs/reference/package-boundary.mdx` documents the package boundary and
   maintainer tooling exclusions.
 
@@ -169,7 +183,9 @@ Add or update only public plan-approved surfaces:
 - `README.md`
 - `docs/faq.mdx`
 - `docs/docs.json`
-- `.github/ISSUE_TEMPLATE/commercial_license.yml`
+- `.github/ISSUE_TEMPLATE/commercial_support.{md,yml}` — the EXISTING canonical
+  intake file (see Current State Evidence); extend or convert it, do not add a
+  second template.
 
 Verification:
 

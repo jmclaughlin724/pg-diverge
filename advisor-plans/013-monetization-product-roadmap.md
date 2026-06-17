@@ -122,6 +122,13 @@ Current gaps that block full SaaS monetization:
 
 Use these market facts as pricing and positioning constraints during execution:
 
+> Pricing re-verified 2026-06-16 in folder `07` Section 2. The Liquibase
+> `$5,000/year` and Flyway `$150,000/year` figures below are HISTORICAL AWS
+> listings, not current: Liquibase now lists no public prices (contact-sales) and
+> Flyway Teams was retired to renewal-only on 2025-05-14. Do not quote either to a
+> buyer. Current public benchmarks are Atlas (`$9/seat`, `$59/project`, `$39/DB`)
+> and Bytebase (`$20/user/mo`).
+
 - Liquibase sells a commercial secure tier with plan limits around applications
   and database types. A legacy AWS Marketplace listing showed Liquibase Pro at
   about `$5,000/year` for 10 targets:
@@ -224,6 +231,11 @@ Detailed execution handoffs live in
 - `03-agent-database-change-control-review/README.md`
 - `04-adoption-audit-migration-rescue/README.md`
 - `05-release-compliance-evidence-packs/README.md`
+- `06-seo-aeo-geo-marketing/README.md` (cross-cutting: SEO/AEO/GEO marketing
+  plan for all five offers)
+- `07-market-and-value-verification/README.md` (cross-cutting: re-verified market
+  data and pricing, client value-delivered economics, and the meta-plan for
+  executing analysis items 1-5)
 
 The parent roadmap remains the strategy owner. The subfolder index is the
 proposal-level task system and should be updated when a proposal enters
@@ -235,6 +247,16 @@ repeatable work; humans approve only legal terms, pricing exceptions,
 destructive operations, customer commitments, and risky waivers.
 
 ### Market Size And Client Economics
+
+> Verification status (2026-06-16): these figures were re-verified in
+> `advisor-plans/013-monetization-product-roadmap/07-market-and-value-verification/`.
+> No Tier-1 firm sizes this exact category, so treat every TAM number as an
+> order-of-magnitude positioning anchor. The compliance-software and
+> regulatory-compliance-management anchors are "directional only"; eGRC
+> (`~$70-72B`, corroborated by Grand View and Fortune Business Insights) is the
+> strongest compliance-side anchor. The tables below state price charged (ACV);
+> the client value-delivered (cost-of-pain avoided) per offer lives in folder
+> `07` Section 3 and is the decisive selling argument.
 
 Sizing policy:
 
@@ -252,40 +274,45 @@ Public market anchors:
 
 | Anchor | Current public size | Forecast | Why it matters | Source |
 | --- | --- | --- | --- | --- |
-| Database automation | `$2.443B` expected in 2025 | `$8.0406B` by 2030 | Core market for schema automation, migration governance, drift, and database delivery | Grand View Research, database automation market: <https://www.grandviewresearch.com/industry-analysis/database-automation-market-report> |
+| Database automation | ~`$2-3B` (2025), order-of-magnitude | ~`$8-13B` by 2030-2032 at ~24-26% CAGR (firms disagree) | Core market for schema automation, migration governance, drift, and database delivery | Second-tier firms only (no Tier-1 sizing): Grand View Research <https://www.grandviewresearch.com/industry-analysis/database-automation-market-report>, SNS Insider, PS Market Research. See folder `07` Section 1 for the spread. |
 | Application security testing | `$1.83B` in 2025 | `$7.60B` by 2031 | RLS and tenant isolation sell as application security and DevSecOps controls | MarketsandMarkets, application security testing market: <https://www.marketsandmarkets.com/Market-Reports/application-security-testing-market-147329639.html> |
 | AI code tools | `$7.37B` in 2025 | `$29.96B` by 2031 | Agent governance rides the growth of AI coding tools and enterprise demand for controls, audit trails, and governance | Mordor Intelligence, AI code tools market: <https://www.mordorintelligence.com/industry-reports/artificial-intelligence-code-tools-market> |
-| Compliance software | `$35.37B` in 2025 | `$74.12B` by 2031 | Release evidence packs monetize the shift from episodic audit work to continuous control evidence | Mordor Intelligence, compliance software market: <https://www.mordorintelligence.com/industry-reports/compliance-software-market> |
-| Regulatory compliance management software | `$12.41B` in 2025 | `$19.8B` by 2030 | Narrower compliance anchor for audit workflow, reporting, and evidence automation | The Business Research Company, regulatory compliance management software: <https://www.thebusinessresearchcompany.com/report/regulatory-compliance-management-software-global-market-report> |
+| Compliance software | `$35.37B` in 2025 (directional only) | `$74.12B` by 2031 | Release evidence packs monetize the shift from episodic audit work to continuous control evidence; figures vary widely by firm (see folder `07` §1) | Mordor Intelligence, compliance software market: <https://www.mordorintelligence.com/industry-reports/compliance-software-market> |
+| Regulatory compliance management software | `$12.41B` in 2025 (directional only) | `$19.8B` by 2030 | Narrower compliance anchor; no current Tier-1 source — prefer the eGRC anchor (folder `07` §1) | The Business Research Company, regulatory compliance management software: <https://www.thebusinessresearchcompany.com/report/regulatory-compliance-management-software-global-market-report> |
 | eGRC | `$72.4B` in 2025 | `$203.7B` by 2033 | Enterprise buyers already budget for governance, risk, compliance, audit trails, and control monitoring | Grand View Research, eGRC market: <https://www.grandviewresearch.com/industry-analysis/enterprise-governance-risk-compliance-egrc-market> |
-| Postgres/Supabase ecosystem | PostgreSQL is the top Stack Overflow database for desired and admired use; Supabase reported eight million developers in 2026 | Growing developer and startup adoption | Validates the Postgres/Supabase wedge inside broader database and application-security markets | Stack Overflow 2025 technology survey: <https://survey.stackoverflow.co/2025/technology>; Supabase 100k stars post: <https://supabase.com/blog/100000-github-stars> |
+| Postgres/Supabase ecosystem | PostgreSQL is the #1 most-used database (55.6% of professional developers) and most-desired/most-admired in the 2025 Stack Overflow survey; Supabase is cited at ~4M+ developers with a `$5.1B` Series E valuation (Oct 2025) | Growing developer and startup adoption | Validates the Postgres/Supabase wedge inside broader database and application-security markets | Stack Overflow 2025 technology survey: <https://survey.stackoverflow.co/2025/technology>. NOTE: the prior "eight million developers" figure is uncorroborated; the ~4M+ count is aggregator-sourced (founder interviews), not audited — replace with a primary Supabase source before public use. See folder `07` Section 1. |
 
 Competitor pricing anchors:
 
 - Bytebase Pro is `$20/user/month`; Enterprise is custom and adds SLA support,
   custom users/instances, OIDC/LDAP SSO, SCIM, 2FA, and audit logs:
   <https://www.bytebase.com/pricing/>.
-- Atlas prices around developer seats, projects, and deployed or monitored
-  databases; Atlas docs state that AI agents triggering Atlas in CI count as
-  seats and registry root objects have plan limits:
-  <https://atlasgo.io/cloud/pricing>.
-- Flyway Enterprise is licensed by contributing users; an AWS Marketplace
-  listing shows a 50-user Enterprise tier at `$150,000/year`:
-  <https://documentation.red-gate.com/fd/how-flyway-per-user-licensing-works-206605237.html>,
-  <https://aws.amazon.com/marketplace/pp/prodview-eyxtrwubfunwq>.
-- A legacy Liquibase Pro AWS listing shows `$5,000/year` for 10 database targets,
-  `$7,500/year` for 15 targets, and `$10,000/year` for 20 targets:
-  <https://aws.amazon.com/marketplace/pp/prodview-asxd5dbnayzu6>.
+- Atlas (verified 2026-06-16): Pro is `$9/seat/month` (max 50), `$59/CI-CD
+  project/month` (includes 2 target DBs), and `$39/additional-database/month`;
+  Enterprise (min 20 DBs) is contact-sales. This is the best current public
+  benchmark for supaschema's eventual hosted meters: <https://atlasgo.io/pricing>.
+- Flyway: per-contributing-user licensing. STALE FIGURE — the `$150,000`/50-user
+  AWS-listing number reflects a retired listing, and Flyway Teams was retired to
+  renewal-only on 2025-05-14; Flyway Enterprise is now contact-sales only. Do not
+  cite the `$150k` figure as current:
+  <https://www.red-gate.com/products/flyway/enterprise/>.
+- Liquibase: STALE FIGURE — liquibase.com/pricing now lists tiers with no dollar
+  amounts (contact-sales). The legacy `$5,000`/10-targets AWS listing is
+  uncorroborated and must not ship to buyer-facing copy: <https://www.liquibase.com/pricing>.
+
+See folder `07` Section 2 for the full pricing re-verification. The take-away:
+Liquibase and Flyway have both gone contact-sales-only, so a transparent
+self-serve Postgres/Supabase price is a differentiator, not just a feature.
 
 Top-five economics:
 
 | Rank | Offer | Public TAM anchor | Supaschema SAM estimate | Value per client | Revenue model | First-24-month opportunity |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Commercial license and OEM/private-build rights | Database automation: `$2.443B` in 2025 | `0.5%-2%` Postgres/OEM/schema-engine wedge, or about `$12M-$49M` current annual spend | `$5k-$25k/year` for commercial internal/proprietary use; `$25k-$150k/year` for OEM/private build; `$150k+` for broad redistribution | Annual subscription or commercial/OEM contract, metered by embedding scope, redistribution rights, private build, support tier, and number of proprietary products | `10-40` contracts at `$10k-$75k` ACV produces `$100k-$3M` ARR without hosted infrastructure |
+| 1 | Commercial license and OEM/private-build rights | Database automation: ~`$2-3B` (2025, order-of-magnitude; folder `07` §1) | `0.5%-2%` Postgres/OEM/schema-engine wedge, or about `$12M-$49M` current annual spend | `$5k-$25k/year` for commercial internal/proprietary use; `$25k-$150k/year` for OEM/private build; `$150k+` for broad redistribution | Annual subscription or commercial/OEM contract, metered by embedding scope, redistribution rights, private build, support tier, and number of proprietary products | `10-40` contracts at `$10k-$75k` ACV produces `$100k-$3M` ARR without hosted infrastructure |
 | 2 | RLS and tenant-isolation security review | Application security testing: `$1.83B` in 2025 | `0.5%-2%` Postgres/Supabase tenant-isolation wedge, or about `$9M-$37M` current annual spend | `$5k-$15k` one-time review; `$10k-$60k/year` for recurring RLS policy-pack subscription or quarterly reviews | Fixed-scope security review first; then subscription by protected repo/project, active schema contributors, and policy-pack support | `15-50` reviews or subscriptions at `$7.5k-$30k` ACV produces `$112k-$1.5M` with the existing scanner primitives |
 | 3 | Agent database change-control review | AI code tools: `$7.37B` in 2025 | `0.25%-1%` database-governance wedge around AI coding tools, or about `$18M-$74M` current annual spend | `$5k-$20k` setup review; `$15k-$75k/year` for ongoing governance pack across agent-enabled repos | Fixed review plus annual subscription by agent-enabled repo, protected project, active schema contributors, and support tier | `10-30` customers at `$10k-$50k` ACV produces `$100k-$1.5M`; demand signal should come from teams already using Codex/Claude/Cursor against DB-backed apps |
-| 4 | Adoption audit and migration rescue | Database automation: `$2.443B` in 2025 | `1%-3%` Postgres adoption/rescue wedge, or about `$24M-$73M` current annual spend | `$3k-$12k` assessment; `$10k-$40k` rescue; `$2k-$8k/month` governance retainer after remediation | Fixed-scope service, urgent rescue premium, then monthly retainer or conversion to RLS/evidence subscription | `20-60` engagements at `$5k-$25k` produces `$100k-$1.5M`; best immediate cash generator but less scalable until evidence/rules are productized |
-| 5 | Release and compliance evidence packs | Compliance software: `$35.37B` in 2025; regulatory compliance management: `$12.41B` in 2025 | `0.1%-0.5%` database-release evidence wedge, or about `$35M-$177M` using compliance software as the broad anchor | `$2k-$8k` per release pack; `$15k-$75k/year` for recurring release cadence; `$75k-$150k/year` for enterprise evidence plus retention once hosted storage exists | Per-release package first; annual subscription by protected project, release cadence, evidence retention, and auditor/export access | `15-40` customers at `$10k-$40k` annual cadence produces `$150k-$1.6M`; hosted retention comes after the local evidence bundle proves demand |
+| 4 | Adoption audit and migration rescue | Database automation: ~`$2-3B` (2025, order-of-magnitude; folder `07` §1) | `1%-3%` Postgres adoption/rescue wedge, or about `$24M-$73M` current annual spend | `$3k-$12k` assessment; `$10k-$40k` rescue; `$2k-$8k/month` governance retainer after remediation | Fixed-scope service, urgent rescue premium, then monthly retainer or conversion to RLS/evidence subscription | `20-60` engagements at `$5k-$25k` produces `$100k-$1.5M`; best immediate cash generator but less scalable until evidence/rules are productized |
+| 5 | Release and compliance evidence packs | Compliance software / regulatory compliance: directional only — lead with eGRC `~$70-72B` (folder `07` §1) | `0.1%-0.5%` database-release evidence wedge, or about `$35M-$177M` using compliance software as the broad anchor | `$2k-$8k` per release pack; `$15k-$75k/year` for recurring release cadence; `$75k-$150k/year` for enterprise evidence plus retention once hosted storage exists | Per-release package first; annual subscription by protected project, release cadence, evidence retention, and auditor/export access | `15-40` customers at `$10k-$40k` annual cadence produces `$150k-$1.6M`; hosted retention comes after the local evidence bundle proves demand |
 
 Revenue model detail:
 
