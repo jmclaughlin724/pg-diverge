@@ -29,9 +29,9 @@ Use `supaschema` when the schema files are the source of truth and you need a fa
 The practical loop is:
 
 ```bash
-npx supaschema diff
-npx supaschema check
-npx supaschema verify
+supaschema diff
+supaschema check
+supaschema verify
 supabase db push
 ```
 
@@ -68,10 +68,9 @@ Keep using the Supabase CLI for:
 ## Minimal migration pipeline
 
 ```bash
-npm install supaschema
-npx supaschema diff
-npx supaschema check
+supaschema diff
+supaschema check
 supabase db push
 ```
 
-Add `npx supaschema verify` before merge when CI can reach a disposable PostgreSQL database.
+Install with the package-manager lane from [Installation](/installation). Add `supaschema verify` before merge when CI can reach a disposable PostgreSQL database.

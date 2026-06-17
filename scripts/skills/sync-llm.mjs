@@ -411,6 +411,9 @@ function codexSandboxMode(tools) {
   if (tools.length === 0) {
     return;
   }
+  if (tools.includes("*")) {
+    return "workspace-write";
+  }
   const writeTools = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
   return tools.some((tool) => writeTools.has(tool)) ? "workspace-write" : "read-only";
 }

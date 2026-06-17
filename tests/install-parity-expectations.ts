@@ -41,6 +41,7 @@ export function expectedInstalledConfig(
     environments: {},
     excludedGrantRoles: [],
     hints: {
+      allowedGrantees: [],
       destructive: [],
       renames: [],
     },

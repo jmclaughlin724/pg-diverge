@@ -110,6 +110,8 @@ export interface RenameHint {
 }
 
 export interface SupaschemaHints {
+  /** Roles permitted to receive grants; drives the P11 role-policy drift rule. */
+  allowedGrantees?: string[];
   destructive?: string[];
   renames?: RenameHint[];
 }

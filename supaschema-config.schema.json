@@ -75,11 +75,19 @@
     },
     "hints": {
       "default": {
+        "allowedGrantees": [],
         "destructive": [],
         "renames": []
       },
       "type": "object",
       "properties": {
+        "allowedGrantees": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "destructive": {
           "default": [],
           "type": "array",
@@ -108,7 +116,7 @@
           }
         }
       },
-      "description": "Reviewed destructive-change and rename hints using exact object keys."
+      "description": "Reviewed grant, destructive-change, and rename hints using exact object keys or role names."
     },
     "idempotency": {
       "default": "required",
@@ -334,10 +342,11 @@
       "properties": {
         "from": {
           "default": "auto",
-          "description": "Default before-state source. Use \"auto\" to resolve a database URL first and fall back to git:HEAD.",
+          "description": "Default before-state source. Use \"auto\" to resolve a database URL first, then git:HEAD, then empty:.",
           "examples": [
             "auto",
             "git:HEAD",
+            "empty:",
             "dir:baseline/schemas",
             "database:$DATABASE_URL"
           ],
@@ -346,7 +355,7 @@
               "const": "auto"
             },
             {
-              "pattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*)$",
+              "pattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$",
               "type": "string"
             }
           ]
@@ -359,7 +368,7 @@
             "dir:database/schemas",
             "dir:supabase/schemas"
           ],
-          "pattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*)$"
+          "pattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$"
         }
       },
       "additionalProperties": false,

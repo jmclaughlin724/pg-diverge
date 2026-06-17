@@ -34,6 +34,16 @@ Extraction and checking are AST-only. Statements are classified through the Post
 | Comments | Yes (keyed by structured descriptor) | `COMMENT ON ...`; removal renders `COMMENT ON ... IS NULL` | Live catalogs extract relation, column, function, and schema comments. |
 | Side-effect statements | Blocks | No | `INSERT`, `UPDATE`, `DELETE`, `DO`, and control-plane `SELECT` statements belong in explicit reviewed migrations. |
 
+## Explicitly unsupported boundaries
+
+| Boundary | Status | Notes |
+| --- | --- | --- |
+| Partitioning | Blocks | Partition topology and attach/detach operations remain explicit reviewed migrations. |
+| Publications/subscriptions | Blocks | Logical replication setup is operational and environment-specific. |
+| Event triggers | Blocks | Cluster-level trigger behavior is outside declarative application schema ownership. |
+| Collations | Blocks | Collation availability and locale behavior are cluster/provider-owned. |
+| Supabase-managed storage/auth/realtime/vault internals | Blocks as declarative source ownership | These schemas can be referenced where the provider owns them, but supaschema does not model `storage.*`, `auth.*`, `realtime.*`, or `vault.*` objects as user-owned declarative schema. |
+
 ## Managed schemas
 
 Objects in configured `managedSchemas` are blocked before rendering. Generic PostgreSQL installs default to `managedSchemas: []`. Supabase installs seed the common Supabase-provisioned schemas: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.

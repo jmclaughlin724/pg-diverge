@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parse as parseYaml } from "yaml";
+import { extractChangelogEntry } from "../release/changelog-notes.mjs";
 import { assert, ok, readJson, readText } from "./lib/guard-utils.js";
 
 const packageJson = readJson("package.json");
@@ -17,13 +18,14 @@ assert(
 );
 
 const changelog = readText("CHANGELOG.md");
-const firstVersionHeading = changelog.split("\n").find((line) => line.startsWith("## "));
-assert(
-  firstVersionHeading?.startsWith(`## ${version} (`) && firstVersionHeading.endsWith(")"),
-  `CHANGELOG.md first version heading must be "## ${version} (YYYY-MM-DD)"`
-);
+try {
+  extractChangelogEntry(changelog, version);
+} catch (error) {
+  assert(false, error.message);
+}
 
 const actionText = readText("action.yml");
+const actionRunnerText = readText("scripts/actions/run-supaschema-action.mjs");
 const action = parseYaml(actionText);
 const actionVersionInput = action?.inputs?.version;
 assert(actionVersionInput, "action.yml must declare inputs.version");
@@ -41,20 +43,17 @@ assert(
   "action.yml inputs.version.default must never be an npm dist-tag"
 );
 
-const actionRunText = (action?.runs?.steps ?? [])
-  .map((step) => (typeof step?.run === "string" ? step.run : ""))
-  .join("\n");
 assert(
-  actionRunText.includes("use an exact npm version"),
-  "action.yml version validation must tell users to use an exact npm version"
+  actionRunnerText.includes("use an exact npm version"),
+  "supaschema action runner version validation must tell users to use an exact npm version"
 );
 assert(
-  actionRunText.includes(`e.g. ${version}`),
-  `action.yml exact-version example must use package.json version ${version}`
+  actionRunnerText.includes(`e.g. ${version}`),
+  `supaschema action runner exact-version example must use package.json version ${version}`
 );
 assert(
-  !actionRunText.includes("latest|next"),
-  "action.yml version validation must not allow npm dist-tags"
+  !actionRunnerText.includes("latest|next"),
+  "supaschema action runner version validation must not allow npm dist-tags"
 );
 
 ok("RELEASE_VERSION_SURFACES_OK");

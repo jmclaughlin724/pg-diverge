@@ -52,9 +52,9 @@ Use this skill for Claude Code configuration work. Read official platform docs b
 Agent definitions in `.claude/agents/*.md` interact with the path-trigger agent hook gate in two non-obvious ways:
 
 1. **`skills:`** preloads full `SKILL.md` content at subagent startup (deterministic, front-loads context cost).
-2. **`tools:`** controls runtime invocation of non-preloaded skills. If `tools:` is an explicit allowlist that omits `Skill` and usable skill reads, the subagent cannot resolve path-trigger skill gates at runtime. In parallel orchestration where workers span multiple path-trigger globs, that produces blocked-tool exits.
+2. **`tools:`** controls runtime invocation of non-preloaded skills. If `tools:` is an explicit allowlist that omits `Skill` and usable skill reads, the subagent cannot actively load a path-trigger skill at runtime. The gate no longer deadlocks such a subagent: inside a subagent (payload `agent_id`) it downgrades the hard deny to advisory `additionalContext` (Rule 12), so the worker is informed and continues. Keeping `Skill` in `tools:` (or omitting `tools:`) stays best practice so the worker can act on that advisory instead of only reporting it.
 
-When designing or auditing an agent that may receive work via `/team` / `/batch`-style fan-out, verify either `Skill` is in the `tools:` list or `tools:` is omitted entirely (inherits all). See [`references/subagent-skill-runtime.md`](references/subagent-skill-runtime.md) for the full contract, two compliant configurations, and the "report findings, orchestrator applies" fallback.
+When designing or auditing an agent that may receive fan-out work, verify either `Skill` is in the `tools:` list or `tools:` is omitted entirely (inherits all). See [`references/subagent-skill-runtime.md`](references/subagent-skill-runtime.md) for the full contract, the advisory-in-subagent gate behavior, the runtime invocation precondition, and the "report findings, orchestrator applies" fallback.
 
 **Loading model:** a skill invoke injects only the `SKILL.md` body; references are lazy (`Read`-pulled) and `@`-mentions are **inert** in `SKILL.md`; a fresh subagent inherits none of the parent's loaded skills. See [`references/dynamic-context-and-runtime.md`](references/dynamic-context-and-runtime.md) §1a and [`references/subagent-skill-runtime.md`](references/subagent-skill-runtime.md).
 

@@ -4,6 +4,9 @@ description: "Install supaschema in a PostgreSQL project and give coding agents 
 keywords:
   - install supaschema
   - npm install supaschema
+  - pnpm add supaschema
+  - yarn add supaschema
+  - bun add supaschema
   - PostgreSQL migrations
   - hosted PostgreSQL
   - AI coding agents
@@ -11,13 +14,34 @@ keywords:
 
 Use this page to add supaschema to a project.
 
-Install from the project root, not from a clone of the supaschema source repository:
+Install from the package or workspace that owns your schema workflow, not from a clone of the supaschema source repository. Use the project's package manager; do not create a second lockfile.
 
-```bash
-npm install supaschema
-```
+| Manager | Install command | Run command |
+| --- | --- | --- |
+| npm | `npm install supaschema` | `npm exec -- supaschema <cmd>` |
+| pnpm | `pnpm add --allow-build=supaschema supaschema` | `pnpm exec supaschema <cmd>` |
+| Yarn | `yarn add supaschema` | `yarn exec supaschema <cmd>` |
+| Bun | `bun add --trust supaschema` | `bunx --no-install supaschema <cmd>` |
 
 supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, hooks, and coding-agent bundle are part of the consuming repo's migration workflow.
+
+For workspaces, run the first install from the package directory that owns `supaschema.config.json` and the schema files. Dependency-targeting flags such as npm `--workspace`, pnpm `--filter`, or Yarn `workspace` can update the member manifest while lifecycle scripts still see the command's original directory; that can scaffold the wrong project. Use root-level workspace flags only when the workspace root owns the schema workflow.
+
+For pnpm workspace member packages, install with scripts blocked from the member directory, then run setup from that same directory:
+
+```bash
+pnpm add --ignore-scripts supaschema
+pnpm exec supaschema init
+```
+
+For Bun workspace member packages, do not use `--trust` for the first install. Add the package from the member directory, then run setup from that same directory:
+
+```bash
+bun add supaschema
+bunx --no-install supaschema init
+```
+
+Stop before installing if package-manager signals conflict, the workspace owner is unclear, Node is below 22.12, or dependency build scripts are blocked and you cannot approve `supaschema`.
 
 ## Agent install prompt
 
@@ -26,29 +50,36 @@ Use this prompt when asking an AI coding agent to install supaschema.
 <Prompt description="Copy install prompt for a coding agent" actions={["copy"]}>
 Install supaschema in this project. Work from the project root, not from a nested clone of the supaschema source repository.
 
-Run `npm install supaschema`.
+First identify the package manager from `packageManager`, `devEngines.packageManager`, lockfiles, and workspace files. Use that manager from the package directory that owns the schema workflow; do not run npm in a pnpm, Yarn, or Bun project, and do not create a second lockfile.
+
+Use the matching local runner for every command after install:
+
+- npm: `npm exec -- supaschema <cmd>`
+- pnpm: `pnpm exec supaschema <cmd>`
+- Yarn: `yarn exec supaschema <cmd>`
+- Bun: `bunx --no-install supaschema <cmd>`
 
 After install, read `.agents/prompts/supaschema-install.md` if it exists, inspect `supaschema.config.json`, and inspect `.supaschema/install.json` only when it exists for pending path confirmation. Then run:
 
-`npx supaschema --version` `npx supaschema config validate --json`
+`<local-runner> --version` `<local-runner> config validate --json`
 
 Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, installed agent bundle surfaces, and whether path confirmation is still pending.
 
-Do not apply migrations to any database unless I explicitly ask for that. For schema changes, edit the declarative schema tree and run `npx supaschema diff`; treat generated migrations as build output.
+Do not apply migrations to any database unless I explicitly ask for that. For schema changes, edit the declarative schema tree and run `<local-runner> diff`; treat generated migrations as build output.
 
 </Prompt>
 
 ## Verify
 
 ```bash
-npx supaschema --version
-npx supaschema config validate
+<local-runner> --version
+<local-runner> config validate
 ```
 
-If lifecycle scripts were blocked or no config exists, run the same setup explicitly:
+If lifecycle scripts were blocked or no config exists, run the same setup explicitly through the matching local runner:
 
 ```bash
-npx supaschema init
+<local-runner> init
 ```
 
 ## Database URLs
@@ -56,7 +87,7 @@ npx supaschema init
 Database URLs are only needed for commands that inspect or compare a live database.
 
 ```bash
-SUPASCHEMA_DATABASE_URL="postgres://..." npx supaschema diff
+SUPASCHEMA_DATABASE_URL="postgres://..." <local-runner> diff
 ```
 
 Use named environments when you need repeatable targets without repeating connection strings.

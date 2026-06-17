@@ -78,11 +78,28 @@ describe("source defaults", () => {
     expect(resolved.notice).not.toContain("secret");
   });
 
-  it("falls back to git:HEAD when no database URL resolves", async () => {
-    const resolved = await resolveSourceDefaults({}, config, async () => undefined);
+  it("falls back to git:HEAD when no database URL resolves and HEAD exists", async () => {
+    const resolved = await resolveSourceDefaults(
+      {},
+      config,
+      async () => undefined,
+      async () => true
+    );
 
     expect(resolved.from).toBe("git:HEAD");
     expect(resolved.notice).toContain("--from git:HEAD");
+  });
+
+  it("falls back to empty: when no database URL or git HEAD resolves", async () => {
+    const resolved = await resolveSourceDefaults(
+      {},
+      config,
+      async () => undefined,
+      async () => false
+    );
+
+    expect(resolved.from).toBe("empty:");
+    expect(resolved.notice).toContain("--from empty:");
   });
 });
 

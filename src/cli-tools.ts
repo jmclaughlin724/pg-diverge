@@ -12,6 +12,7 @@ import { collectSchemaShapes } from "./typegen-model.js";
 import { generateZodSchemasFromShapes } from "./typegen-zod.js";
 
 export interface ToolCommandContext {
+  configPath: () => string | undefined;
   loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
   resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
@@ -32,8 +33,10 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .action(async (options: { databaseUrl?: string; json?: boolean }) => {
       const config = await context.loadCliConfig();
       const database = await context.resolveCliDatabaseUrlInfo(options.databaseUrl);
+      const configPath = context.configPath();
       const report = await runDoctor(config, {
         ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
+        ...(configPath === undefined ? {} : { configPath }),
         databaseUrlLane: database.lane,
         ...(database.url === undefined ? {} : { resolvedDatabaseUrl: database.url }),
       });

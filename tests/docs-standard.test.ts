@@ -31,6 +31,61 @@ const lintOne = async (file: string, contents: string) => {
   return lintDocsStandard({ rootDir: root, files: [file] });
 };
 
+const localRunnerDocsPages = [
+  "coding-agents",
+  "coding-agents/agent-bundle",
+  "installation",
+  "quickstart",
+  "reference/package-boundary",
+  "setup",
+];
+
+const localRunnerPrompt = [
+  "packageManager",
+  "devEngines.packageManager",
+  "pnpm add --allow-build=supaschema supaschema",
+  "pnpm add --ignore-scripts supaschema",
+  "yarn add supaschema",
+  "bun add --trust supaschema",
+  "bun add supaschema",
+  "npm exec -- supaschema <cmd>",
+  "pnpm exec supaschema <cmd>",
+  "yarn exec supaschema <cmd>",
+  "bunx --no-install supaschema <cmd>",
+  "pnpm exec supaschema init",
+  "bunx --no-install supaschema init",
+  "Do not run npm in a pnpm, Yarn, or Bun project",
+  "For workspaces, `cd` into the owning member package before first install.",
+].join("\n");
+
+function localRunnerFixtureFiles(overrides: Record<string, string> = {}) {
+  return {
+    ".agents/prompts/supaschema-install.md": localRunnerPrompt,
+    ".claude/skills/supaschema/SKILL.md": "Use the package manager local runner.\n",
+    ".claude/rules/supaschema.md": "Use the package manager local runner.\n",
+    "AGENTS.md": "Use the package manager local runner.\n",
+    "CLAUDE.md": "Use the package manager local runner.\n",
+    "README.md": "Use the package manager local runner.\n",
+    "bin/postinstall.mjs": "// silent lifecycle wrapper\n",
+    "bin/scaffold.mjs": "// shared setup owner\n",
+    "docs/docs.json": JSON.stringify({
+      $schema: "https://mintlify.com/docs.json",
+      theme: "luma",
+      name: "supaschema",
+      colors: { primary: "#1D4ED8" },
+      icons: { library: "lucide" },
+      contextual: {
+        options: ["copy", "view", "chatgpt", "claude", "mcp", "add-mcp", "cursor", "vscode"],
+      },
+      navigation: { groups: [{ group: "Start", pages: localRunnerDocsPages }] },
+    }),
+    ...Object.fromEntries(
+      localRunnerDocsPages.map((route) => [`docs/${route}.mdx`, page("## Start")])
+    ),
+    ...overrides,
+  };
+}
+
 describe("docs authoring standard", () => {
   afterEach(async () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -384,5 +439,35 @@ noindex: "no"
     expect(violations.map((violation) => violation.msg).join("\n")).toContain(
       "missing from docs.json"
     );
+  });
+
+  it("checks local-runner install wording as part of docs-standard", async () => {
+    const root = await writeDocs(localRunnerFixtureFiles());
+
+    const violations = lintDocsStandard({ rootDir: root });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("rejects stale universal npx and missing local-runner install guidance", async () => {
+    const root = await writeDocs(
+      localRunnerFixtureFiles({
+        ".agents/prompts/supaschema-install.md": localRunnerPrompt.replace(
+          "bunx --no-install supaschema init",
+          ""
+        ),
+        "README.md": "Run `npm install supaschema`\nnpx supaschema diff\n",
+      })
+    );
+
+    const violations = lintDocsStandard({ rootDir: root });
+    const localRunnerMessages = violations
+      .filter((violation) => violation.rule === "local-runner")
+      .map((violation) => violation.msg)
+      .join("\n");
+
+    expect(localRunnerMessages).toContain("must document bunx --no-install supaschema init");
+    expect(localRunnerMessages).toContain("must not present npm install as universal");
+    expect(localRunnerMessages).toContain("must not present npx supaschema as universal");
   });
 });

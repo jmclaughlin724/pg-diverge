@@ -243,7 +243,7 @@ def server_status() -> dict[str, Any]:
         "server": "supaschema",
         "readonly": True,
         "repo_root": str(REPO_ROOT),
-        "tools": ["server_status", "code_atlas_query", "repo_context_query"],
+        "tools": ["server_status", "code_atlas_query", "repo_context_query", "repo_safety_scan"],
         "code_atlas_hint": (
             "Use code_atlas_query(kind='pre-edit', value='<target>') for first-touch edits, "
             "kind='trace-change' for wider plans, and kind='regression-scope' before final guards."
@@ -303,6 +303,30 @@ def repo_context_query(
         case "agent-instructions":
             return _nearest_agent_instructions(target)
     raise ToolError("unsupported repo context action")
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def repo_safety_scan(
+    source: Annotated[
+        str | None, Field(description="Schema source to scan; defaults to the declarative tree")
+    ] = None,
+) -> dict[str, Any]:
+    """Run a read-only supaschema safety scan and return JSON findings (no DB, no mutation)."""
+    v = (source or "").strip()
+    if v and (v.startswith("-") or any(c in v for c in "\x00\n\r")):
+        raise ToolError("unsafe source value")
+    if v.startswith("database:") or "://" in v:
+        raise ToolError("repo_safety_scan stays local; database/URL sources are not allowed")
+    args = ["node", "dist/cli.js", "scan", "--reporter", "json"]
+    if v:
+        args += ["--from", v]
+    r = subprocess.run(args, cwd=REPO_ROOT, capture_output=True, text=True, timeout=60, check=False)
+    stdout: Any
+    try:
+        stdout = json.loads(r.stdout or "null")
+    except json.JSONDecodeError:
+        stdout = r.stdout[:MAX_READ_BYTES]
+    return {"ok": r.returncode == 0, "stdout": stdout, "stderr": r.stderr[:MAX_READ_BYTES]}
 
 
 @mcp.resource("repo://agents/root")

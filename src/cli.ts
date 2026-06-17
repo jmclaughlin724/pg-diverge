@@ -16,7 +16,7 @@ import { filterModel, registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
-import { loadConfig, validateConfig } from "./config.js";
+import { formatConfigValidationDiagnostics, loadConfig, validateConfig } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors, redactSecrets } from "./diagnostics.js";
@@ -118,7 +118,11 @@ configCommand
   .description("Validate supaschema.config.json paths, sources, and credential references.")
   .action(async (options: { json?: boolean }) => {
     const config = await loadCliConfig();
-    const diagnostics = await validateConfig(config, process.cwd());
+    const configPath = currentConfigPath();
+    const diagnostics = await validateConfig(config, process.cwd(), {
+      ...(configPath === undefined ? {} : { configPath }),
+      includeInstallState: true,
+    });
     const hasErrorDiagnostics = diagnostics.some((item) => item.severity === "error");
     if (options.json === true) {
       process.stdout.write(
@@ -127,11 +131,7 @@ configCommand
     } else if (diagnostics.length === 0) {
       process.stdout.write("config ok\n");
     } else {
-      for (const item of diagnostics) {
-        process.stdout.write(
-          `${item.severity}: ${item.field}: ${item.message}${item.hint ? ` (${item.hint})` : ""}\n`
-        );
-      }
+      process.stdout.write(formatConfigValidationDiagnostics(diagnostics));
     }
     if (hasErrorDiagnostics) {
       process.exitCode = 2;
@@ -148,7 +148,7 @@ program
     const source = options.from ?? defaultTreeSource(config);
     const model = filterModel(await extractSourceModel(source, { config }), options.schema);
     printDiagnostics(model.diagnostics);
-    process.stdout.write(`${JSON.stringify(model, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(redactJson(model), null, 2)}\n`);
     if (hasErrors(model.diagnostics)) {
       process.exitCode = 2;
     }
@@ -156,12 +156,14 @@ program
 
 registerDiffCommands(program, {
   cliVersion,
+  configPath: currentConfigPath,
   loadCliConfig,
   printDiagnostics,
   resolveCliDatabaseUrl,
 });
 registerReportCommands(program, { loadCliConfig, printDiagnostics, resolveCliDatabaseUrl });
 registerToolCommands(program, {
+  configPath: currentConfigPath,
   loadCliConfig,
   printDiagnostics,
   resolveCliDatabaseUrl,
@@ -171,11 +173,12 @@ registerToolCommands(program, {
 program
   .command("check")
   .argument("[migrations...]", "migration files (default: every .sql in config.migrationsDir)")
+  .option("--allow-empty", "exit 0 when config.migrationsDir contains no .sql files")
   .option("--reporter <name>", "text | github | sarif | json", "text")
   .description(
     "Validate replay-safety and parser diagnostics for migration files (shell globs expand to a directory gate; `-` reads stdin; zero args checks the migrations directory)."
   )
-  .action(async (migrationArgs: string[], options: { reporter: string }) => {
+  .action(async (migrationArgs: string[], options: { allowEmpty?: boolean; reporter: string }) => {
     const config = await loadCliConfig();
     const migrationPaths =
       migrationArgs.length > 0
@@ -183,6 +186,9 @@ program
         : await migrationFiles(resolve(process.cwd(), config.migrationsDir));
     if (migrationPaths.length === 0) {
       process.stderr.write(`no migrations found in ${config.migrationsDir}\n`);
+      if (options.allowEmpty !== true) {
+        process.exitCode = 1;
+      }
       return;
     }
     const results: FileDiagnostics[] = [];
@@ -332,6 +338,10 @@ program.parseAsync(process.argv).catch((error: unknown) => {
 function loadCliConfig(): Promise<SupaschemaConfig> {
   const globals = program.opts<GlobalOptions>();
   return loadConfig(process.cwd(), globals.config);
+}
+
+function currentConfigPath(): string | undefined {
+  return program.opts<GlobalOptions>().config;
 }
 
 /**

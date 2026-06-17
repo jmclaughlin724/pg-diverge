@@ -395,7 +395,14 @@ async function mergeRlsFacets(
       first.ref,
       ordered.map((member) => member.sql).join(";\n"),
       first.ordinal,
-      first.file
+      first.file,
+      {
+        rlsEnabled: ordered.some((member) => member.metadata.rlsSubtype === "AT_EnableRowSecurity"),
+        rlsForced: ordered.some((member) => member.metadata.rlsSubtype === "AT_ForceRowSecurity"),
+        rlsSubtype: ordered.some((member) => member.metadata.rlsSubtype === "AT_EnableRowSecurity")
+          ? "AT_EnableRowSecurity"
+          : String(first.metadata.rlsSubtype),
+      }
     );
     merged.dependencies = mergedDependencies(ordered);
     await finalizeObject(merged, { normalize: options.normalize === true });

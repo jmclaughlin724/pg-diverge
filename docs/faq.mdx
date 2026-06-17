@@ -67,7 +67,7 @@ See [GitHub Actions CI](/guides/ci-github-actions) for a complete workflow.
 
 ## Which PostgreSQL objects are supported?
 
-`supaschema` models schemas, extensions, enum/domain/composite types, tables, constraints, indexes, sequences, functions, procedures, views, materialized views, triggers, RLS, policies, grants, default privileges, comments, and foreign data wrappers. Unsupported DDL fails with a diagnostic instead of passing through silently. See the [support matrix](/reference/support-matrix).
+`supaschema` models schemas, extensions, enum/domain/composite types, tables, constraints, indexes, sequences, functions, procedures, views, materialized views, triggers, RLS, policies, grants, default privileges, comments, and foreign data wrappers. Unsupported DDL and provider-owned surfaces such as publications/subscriptions, partitioning, event triggers, collations, and Supabase-managed storage/auth/realtime internals fail with a diagnostic instead of passing through silently. See the [support matrix](/reference/support-matrix).
 
 ## What happens when supaschema blocks a diff?
 
@@ -82,3 +82,7 @@ The offline explanation tells you what failed, why the plan was blocked, and how
 ## What license does supaschema use?
 
 `supaschema` is dual-licensed: AGPL-3.0 for open-source projects and a commercial license for proprietary use.
+
+## How do I get commercial support or a commercial license?
+
+Use the [commercial support](/reference/support) page and issue template for licensing or support intake. Public bug reports and feature requests still belong in GitHub issues. Do not include secrets, database URLs, customer data, private schema dumps, contracts, pricing details, or confidential roadmap material in a public issue.

@@ -8,6 +8,8 @@ Use `config validate` after editing `supaschema.config.json`.
 
 The command loads config, checks path and source relationships, and reports warnings or errors before a migration command depends on it.
 
+It also blocks pending first-run path confirmation. If `.supaschema/install.json` says `pathConfirmationNeeded: true`, set `schemaPaths`, `sources.to`, and `migrationsDir` explicitly in `supaschema.config.json` before running zero-source migration commands.
+
 ## Use this when
 
 - Schema or migration paths changed.

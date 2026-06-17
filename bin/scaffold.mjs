@@ -7,15 +7,15 @@
 //   - bin/postinstall.mjs (the npm lifecycle wrapper) statically imports it.
 //   - `supaschema init` (src/cli.ts) dynamically imports it from the installed
 //     package so setup is reproducible when dependency lifecycle scripts are
-//     blocked or skipped (npm v12 allowScripts policy, --ignore-scripts, or
-//     local npm policy).
+//     blocked or skipped by npm, pnpm, Yarn, Bun, or local project policy.
 //
 // It depends ONLY on node: builtins (no dist, no runtime deps) so it loads safely
-// at install time, and it is stdout-SILENT: it returns { installed, skipped,
-// pathConfirmationNeeded, selection } and each caller prints its own summary
-// (Rule 13 — lifecycle scripts must not write stdout). The install-time skip
-// guards (SUPASCHEMA_SKIP_POSTINSTALL, own-checkout, INIT_CWD) stay in the
-// postinstall wrapper; `init` calls this core directly with no guards.
+// at install time. It returns { installed, skipped, pathConfirmationNeeded,
+// selection }; the postinstall lifecycle wrapper stays stdout-silent, while
+// `supaschema init` owns user-facing setup output (Rule 13 — lifecycle scripts
+// must not write stdout). The install-time skip guards
+// (SUPASCHEMA_SKIP_POSTINSTALL, own-checkout, INIT_CWD) stay in the postinstall
+// wrapper; `init` calls this core directly with no guards.
 import {
   copyFileSync,
   existsSync,
@@ -118,9 +118,9 @@ const hookConfigs = [
 ];
 
 // Scaffold a consuming project at `targetDir`. Returns the result instead of
-// writing stdout; callers print their own summary. `interactive` enables the TTY
-// path-confirmation prompt (still gated by canPrompt()); install and init both
-// pass true and degrade to record-and-defer in CI/non-TTY automatically.
+// writing a setup summary. `interactive` enables the TTY path-confirmation prompt
+// (still gated by canPrompt()); `init` passes true, while postinstall passes
+// false so package lifecycle output remains parseable.
 export async function scaffoldProject({
   targetDir,
   packageRoot,
@@ -584,9 +584,9 @@ ${pathLines}
 - The agent install prompt lives at \`.agents/prompts/supaschema-install.md\`; read it before installing, initializing, inspecting, or explaining supaschema setup in this project.
 - Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
 - Edit \`supaschema.config.json\` to change \`adapter\`, \`workflow\`, \`schemaPaths\`, \`sources\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
-- For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, run \`npx supaschema diff\`, then run \`npx supaschema check\`.
+- For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, then run \`diff\` and \`check\` through the local runner selected in \`.agents/prompts/supaschema-install.md\`.
 - Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes; check failures trigger agent-loop feedback to investigate the root source and correlated migration failures, and hooks never apply migrations.
-- Do not run \`npx supaschema sync --local\` or \`npx supaschema sync --remote\` unless explicitly asked to apply migrations; \`workflow.migration_sync: "disabled"\` blocks those apply handoff flags.
+- Do not run \`sync --local\` or \`sync --remote\` unless explicitly asked to apply migrations; \`workflow.migration_sync: "disabled"\` blocks those apply handoff flags.
 ${guidanceEnd}
 `;
 }

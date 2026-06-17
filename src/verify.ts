@@ -203,7 +203,7 @@ async function pushReconvergenceDiagnostic(
 ): Promise<void> {
   // Reconvergence catches false drift that symmetric catalog fingerprints miss.
   const reconvergence = planSchemaDiff(afterMigration, to, {
-    config: { ...config, hints: { destructive: ["*"], renames: [] } },
+    config: { ...config, hints: { ...config.hints, destructive: ["*"], renames: [] } },
   });
   const stubKeys = environmentEnsured ? await stubObjectKeys(config) : new Set<string>();
   const result = reconvergenceResidualDiagnostic(reconvergence.operations, stubKeys);

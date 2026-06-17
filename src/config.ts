@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
   adapterInputValues,
@@ -36,6 +36,7 @@ export type {
 
 const hintsSchema = z
   .object({
+    allowedGrantees: z.array(z.string()).default([]),
     destructive: z.array(z.string()).default([]),
     renames: z
       .array(
@@ -46,7 +47,7 @@ const hintsSchema = z
       )
       .default([]),
   })
-  .default({ destructive: [], renames: [] });
+  .default({ allowedGrantees: [], destructive: [], renames: [] });
 
 const schemaFilterSchema = z
   .strictObject({
@@ -220,7 +221,8 @@ export interface ConfigValidationDiagnostic {
 
 export async function validateConfig(
   config: SupaschemaConfig,
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
+  options: { configPath?: string; includeInstallState?: boolean } = {}
 ): Promise<ConfigValidationDiagnostic[]> {
   const diagnostics: ConfigValidationDiagnostic[] = [];
   if (config.schemaPaths.length === 0) {
@@ -284,8 +286,85 @@ export async function validateConfig(
       severity: "error",
     });
   }
+  if (options.includeInstallState === true) {
+    const pendingInstall = await pendingInstallPathConfirmationDiagnostic(cwd, options.configPath);
+    if (pendingInstall) {
+      diagnostics.push(pendingInstall);
+    }
+  }
 
   return diagnostics;
+}
+
+export function formatConfigValidationDiagnostics(
+  diagnostics: ConfigValidationDiagnostic[]
+): string {
+  if (diagnostics.length === 0) {
+    return "";
+  }
+  return `${diagnostics
+    .map(
+      (item) =>
+        `${item.severity}: ${item.field}: ${item.message}${item.hint ? ` (${item.hint})` : ""}`
+    )
+    .join("\n")}\n`;
+}
+
+export async function pendingInstallPathConfirmationDiagnostic(
+  cwd: string = process.cwd(),
+  configPath?: string
+): Promise<ConfigValidationDiagnostic | undefined> {
+  const manifest = await readJsonIfExists(resolve(cwd, ".supaschema", "install.json"));
+  if (!isRecord(manifest) || manifest.pathConfirmationNeeded !== true) {
+    return;
+  }
+  if (await hasConfirmedInstallPaths(cwd, configPath)) {
+    return;
+  }
+  return {
+    field: ".supaschema/install.json",
+    hint: "Inspect .supaschema/install.json candidates, ask which paths to use, then set schemaPaths, sources.to, and migrationsDir in supaschema.config.json.",
+    message:
+      "Install path confirmation is pending; zero-source migration commands must not use guessed schema or migration paths.",
+    severity: "error",
+  };
+}
+
+async function hasConfirmedInstallPaths(
+  cwd: string,
+  configPath: string | undefined
+): Promise<boolean> {
+  const parsed = await readJsonIfExists(configFilePath(cwd, configPath));
+  if (!isRecord(parsed)) {
+    return false;
+  }
+  return (
+    Array.isArray(parsed.schemaPaths) &&
+    parsed.schemaPaths.some((item) => typeof item === "string" && item.trim().length > 0) &&
+    typeof parsed.migrationsDir === "string" &&
+    parsed.migrationsDir.trim().length > 0 &&
+    isRecord(parsed.sources) &&
+    typeof parsed.sources.to === "string" &&
+    parsed.sources.to.trim().length > 0
+  );
+}
+
+function configFilePath(cwd: string, configPath: string | undefined): string {
+  if (configPath) {
+    return isAbsolute(configPath) ? configPath : resolve(cwd, configPath);
+  }
+  return join(cwd, "supaschema.config.json");
+}
+
+async function readJsonIfExists(path: string): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (isFileMissing(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 function enrichConfigJsonSchema(schema: Record<string, unknown>): Record<string, unknown> {
@@ -322,8 +401,14 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
     const to = sourceProperties.to;
     if (isRecord(from)) {
       from.description =
-        'Default before-state source. Use "auto" to resolve a database URL first and fall back to git:HEAD.';
-      from.examples = ["auto", "git:HEAD", "dir:baseline/schemas", "database:$DATABASE_URL"];
+        'Default before-state source. Use "auto" to resolve a database URL first, then git:HEAD, then empty:.';
+      from.examples = [
+        "auto",
+        "git:HEAD",
+        "empty:",
+        "dir:baseline/schemas",
+        "database:$DATABASE_URL",
+      ];
       from.oneOf = [{ const: "auto" }, { pattern: sourceSpecPattern, type: "string" }];
       from.type = undefined;
     }

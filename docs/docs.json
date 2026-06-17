@@ -116,6 +116,10 @@
             "href": "/comparisons/supaschema-vs-supabase-cli"
           },
           {
+            "label": "Commercial support",
+            "href": "/reference/support"
+          },
+          {
             "label": "Issues",
             "href": "https://github.com/jmclaughlin724/supaschema/issues"
           }
@@ -156,11 +160,14 @@
           "commands/types",
           "commands/migrations",
           "commands/sync",
+          "commands/scan",
+          "commands/type-contract",
           {
             "group": "Utilities",
             "expanded": false,
             "pages": [
               "commands/plan",
+              "commands/onboard",
               "commands/inspect",
               "commands/fingerprint",
               "commands/audit",
@@ -225,6 +232,7 @@
           "reference/diagnostics",
           "reference/library-api",
           "reference/package-boundary",
+          "reference/support",
           "reference/branding"
         ]
       }

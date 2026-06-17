@@ -52,7 +52,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 1. Read this file and the nearest applicable `AGENTS.md` and `.claude/rules/*.md`.
 2. Identify the owning app, package, service, or database area.
 3. Verify upstream best practices from the canonical source.
-4. Utilize DRY principles for existing owners, patterns, and conventions over introducing new ones.
+4. Apply the Repo-Wide Change Discipline below for duplicates, redundancies, and entry points before introducing a new surface.
 5. Make the smallest safe change that satisfies the task.
 
 ### After editing
@@ -68,13 +68,14 @@ Root `AGENTS.md` is the only owner of this repo-wide action sequence. Do not res
 
 This sequence applies to every repository change: code, tests, docs, schemas, configs, scripts, prompts, generated surfaces, and verification.
 
-1. Identify the requested end state, the concept being changed, and the canonical owner.
-2. Implement the requested end state in the canonical owner. Extend, move, merge, or delete there before adding a new surface.
-3. Do not create or preserve duplicate owners, aliases, wrappers, helpers, types, schemas, docs, configs, routes, exports, workflows, or instructions for the same concept.
+1. Identify the requested end state, the concept being changed, the canonical owner, and the single entry point agents or users should use.
+2. Inspect the accepted scope for existing owners, aliases, wrappers, helpers, types, schemas, docs, configs, routes, exports, workflows, commands, prompts, instructions, and entry points before adding a new surface.
+3. Burn down avoidable duplication and redundancy in the same change by extending, moving, merging, or deleting in the canonical owner before adding a new surface.
 4. Keep a separate surface only for a genuinely distinct runtime, storage, compliance, lifecycle, or external-contract boundary.
-5. Treat automation, guards, and checks as supporting evidence only; they do not replace owner classification or implementation in the canonical owner.
+5. Use upstream-verified behavior when external technology controls the target shape. Use the elegant end state when local structure is overgrown, compatibility is not required, or duplicate surfaces have spread.
+6. Treat automation, guards, and checks as supporting evidence only; they do not replace owner classification or implementation in the canonical owner.
 
-A task is not complete while any user instruction lacks a disposition, the owner is unknown, the requested end state is unmet, avoidable duplication remains in the accepted scope, or verification has not covered the canonical owner.
+A task is not complete while any user instruction lacks a disposition, the owner or single entry point is unknown, the requested end state is unmet, avoidable duplication or multiple entry points remain in the accepted scope, or verification has not covered the canonical owner.
 
 ## Rule priority
 
@@ -92,7 +93,9 @@ Never use a lower-priority rule to bypass a higher-priority rule.
 
 ## Worktree And Approval
 
-- You may be in a dirty worktree. Preserve unrelated, pre-existing work that exists in the worktree. Do not stage, commit, stash, reset, clean, or overwrite changes you did not make unless explicitly requested by the user.
+- You may be in a dirty worktree. Preserve unrelated, pre-existing work that exists in the worktree.
+- Do not stage, commit, stash, reset, clean, or overwrite changes you did not make unless explicitly requested by the user.
+- Concurrent editing in the same worktree is allowed. Do not treat concurrent editing as a blocker, if you spot it, keep building.
 - Destructive git operations, force-pushes, publishing/deployments, linked or production external-state mutation, deleting user-owned data, rotating secrets, and spending money require explicit user approval.
 
 ## Failure behavior
@@ -115,9 +118,9 @@ Stop before editing if:
 - The implementation would expose service-role access to client code.
 - The requested change conflicts with a higher-level rule.
 
-## Done means
+## "Done" means
 
-- The requested change is implemented.
+- Any requested changes, tasks, or plans are fully implemented.
 - The owning tests were added or updated.
 - Required guards passed.
 - Generated files are current.
@@ -138,7 +141,6 @@ Do not claim success for checks that were not run.
 Do not say "should work" without verification.
 
 <!-- supaschema:agent-guidance:start -->
-
 ## supaschema
 
 This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
@@ -148,7 +150,7 @@ This project uses supaschema for declarative PostgreSQL migrations. The configur
 - The agent install prompt lives at `.agents/prompts/supaschema-install.md`; read it before installing, initializing, inspecting, or explaining supaschema setup in this project.
 - Generated type outputs use `database.types.ts` and `database.zod.ts` unless `typesFile` or `zodFile` is changed in config; default workflow creates or refreshes both after `diff`, and `workflow.type_usage: "zod_validated"` tells agents to use generated Zod validators at runtime boundaries.
 - Edit `supaschema.config.json` to change `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, or named `environments`; use `$ENV_NAME` database URL references instead of committing credentials.
-- For schema changes, read `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file, edit declarative SQL, run `npx supaschema diff`, then run `npx supaschema check`.
+- For schema changes, read `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file, edit declarative SQL, then run `diff` and `check` through the local runner selected in `.agents/prompts/supaschema-install.md`.
 - Hooks in `.claude/settings.json` and `.codex/hooks.json` enforce generated-migration protection and auto-run diff/check after schema SQL writes; check failures trigger agent-loop feedback to investigate the root source and correlated migration failures, and hooks never apply migrations.
-- Do not run `npx supaschema sync --local` or `npx supaschema sync --remote` unless explicitly asked to apply migrations; `workflow.migration_sync: "disabled"` blocks those apply handoff flags.
+- Do not run `sync --local` or `sync --remote` unless explicitly asked to apply migrations; `workflow.migration_sync: "disabled"` blocks those apply handoff flags.
 <!-- supaschema:agent-guidance:end -->

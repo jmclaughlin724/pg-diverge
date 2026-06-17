@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -154,6 +154,45 @@ describe("config DX", () => {
     expect(text).toContain("postgresql://postgres:[redacted]@example.com/app");
     expect(text).not.toContain("secret");
   });
+
+  it("reports pending install path confirmation during config validation", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-pending-config-"));
+    mkdirSync(join(cwd, ".supaschema"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".supaschema", "install.json"),
+      JSON.stringify({ pathConfirmationNeeded: true })
+    );
+
+    const diagnostics = await validateConfig(resolveConfig(), cwd, { includeInstallState: true });
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        field: ".supaschema/install.json",
+        severity: "error",
+      })
+    );
+  });
+
+  it("accepts a stale pending install flag after explicit path confirmation", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-confirmed-config-"));
+    mkdirSync(join(cwd, ".supaschema"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".supaschema", "install.json"),
+      JSON.stringify({ pathConfirmationNeeded: true })
+    );
+    writeFileSync(
+      join(cwd, "supaschema.config.json"),
+      JSON.stringify({
+        migrationsDir: "apps/api/migrations",
+        schemaPaths: ["apps/api/schemas"],
+        sources: { from: "auto", to: "dir:apps/api/schemas" },
+      })
+    );
+
+    const diagnostics = await validateConfig(resolveConfig(), cwd, { includeInstallState: true });
+
+    expect(diagnostics.map((item) => item.field)).not.toContain(".supaschema/install.json");
+  });
 });
 
 describe("check reporters", () => {
@@ -204,6 +243,23 @@ describe("stdin sources", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("ok");
   });
+
+  it("fails zero-arg check on an empty migrations directory unless allowed", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-empty-check-"));
+
+    const rejected = spawnSync(process.execPath, [cliPath, "check"], {
+      cwd,
+      encoding: "utf8",
+    });
+    const allowed = spawnSync(process.execPath, [cliPath, "check", "--allow-empty"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain("no migrations found in database/migrations");
+    expect(allowed.status).toBe(0);
+  });
 });
 
 describe("raw CLI errors", () => {
@@ -225,6 +281,19 @@ describe("raw CLI errors", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("JavaScript config files are not supported");
+  });
+
+  it("redacts database source credentials from inspect JSON output", () => {
+    const password = "p".repeat(300);
+    const source = `database:postgresql://user:${password}@127.0.0.1:9/db`;
+    const result = spawnSync(process.execPath, [cliPath, "inspect", "--from", source], {
+      encoding: "utf8",
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).not.toContain(password);
+    expect(result.stderr).not.toContain(password);
+    expect(result.stdout).toContain("postgresql://user:[redacted]@127.0.0.1:9/db");
   });
 
   it("ignores JavaScript config files during default discovery", () => {
@@ -275,5 +344,55 @@ describe("doctor environment resolution", () => {
 
     expect(result.status).toBe(2);
     expect(result.stdout).toContain("database url: resolved via --env staging");
+  });
+});
+
+describe("pending install path confirmation", () => {
+  it("blocks config validate, doctor, and zero-source diff", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-pending-install-"));
+    mkdirSync(join(cwd, ".supaschema"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".supaschema", "install.json"),
+      JSON.stringify({
+        candidates: {
+          migrationsDirs: ["apps/api/migrations", "packages/db/migrations"],
+          schemaPaths: ["apps/api/schemas", "packages/db/schemas"],
+        },
+        pathConfirmationNeeded: true,
+      })
+    );
+
+    const validate = spawnSync(process.execPath, [cliPath, "config", "validate", "--json"], {
+      cwd,
+      encoding: "utf8",
+    });
+    const doctor = spawnSync(process.execPath, [cliPath, "doctor"], { cwd, encoding: "utf8" });
+    const diff = spawnSync(process.execPath, [cliPath, "diff"], { cwd, encoding: "utf8" });
+
+    expect(validate.status).toBe(2);
+    expect(JSON.parse(validate.stdout).diagnostics).toContainEqual(
+      expect.objectContaining({ field: ".supaschema/install.json", severity: "error" })
+    );
+    expect(doctor.status).toBe(2);
+    expect(doctor.stdout).toContain("install path confirmation");
+    expect(diff.status).toBe(2);
+    expect(diff.stderr).toContain(".supaschema/install.json");
+  });
+
+  it("allows explicit source diff as a recovery path while install confirmation is pending", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-pending-explicit-diff-"));
+    mkdirSync(join(cwd, ".supaschema"), { recursive: true });
+    mkdirSync(join(cwd, "schemas"), { recursive: true });
+    writeFileSync(join(cwd, ".supaschema", "install.json"), '{"pathConfirmationNeeded":true}\n');
+    writeFileSync(join(cwd, "schemas", "schema.sql"), "CREATE SCHEMA app;\n");
+
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "diff", "--from", "empty:", "--to", "dir:schemas", "--out", "stdout"],
+      { cwd, encoding: "utf8" }
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("CREATE SCHEMA IF NOT EXISTS app");
   });
 });

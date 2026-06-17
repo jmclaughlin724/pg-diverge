@@ -22,9 +22,10 @@ npx supaschema check
 npx supaschema check database/migrations/*.sql
 cat migration.sql | npx supaschema check -
 npx supaschema check migration.sql --reporter github
+npx supaschema check --allow-empty
 ```
 
-With no migration arguments, `check` scans every `.sql` file in `config.migrationsDir`.
+With no migration arguments, `check` scans every `.sql` file in `config.migrationsDir`. It exits `1` when no migrations exist unless `--allow-empty` is passed.
 
 ## Input
 
@@ -38,6 +39,10 @@ Explicit directory arguments are not expanded. Use a shell glob such as `databas
 
 <ParamField path="--reporter" type="text | github | sarif | json">
   Choose human text, GitHub workflow annotations, SARIF, or JSON.
+</ParamField>
+
+<ParamField path="--allow-empty" type="boolean">
+  Treat an empty `config.migrationsDir` as success for setup probes.
 </ParamField>
 
 ## What it checks
@@ -54,7 +59,7 @@ Explicit directory arguments are not expanded. Use a shell glob such as `databas
 | Code | Meaning                                    |
 | ---- | ------------------------------------------ |
 | `0`  | All checked files passed                   |
-| `1`  | Runtime failure                            |
+| `1`  | Runtime failure or no migrations found     |
 | `2`  | At least one diagnostic had error severity |
 
 ## Related

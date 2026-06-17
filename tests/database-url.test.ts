@@ -76,7 +76,7 @@ describe("install-time project setup", () => {
     const env = { ...process.env, INIT_CWD: consumer };
 
     const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
-    expect(stdout).toContain("installed config, directories, agent files, hook wiring");
+    expect(stdout).toBe("");
 
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
@@ -124,8 +124,22 @@ describe("install-time project setup", () => {
     expect(claude).toContain("<!-- supaschema:agent-guidance:start -->");
     expect(prompt).toContain("Do not clone `jmclaughlin724/supaschema`");
     expect(prompt).toContain("npm install supaschema");
+    expect(prompt).toContain("pnpm add --allow-build=supaschema supaschema");
+    expect(prompt).toContain("pnpm add --ignore-scripts supaschema");
+    expect(prompt).toContain("pnpm exec supaschema init");
+    expect(prompt).toContain("yarn add supaschema");
+    expect(prompt).toContain("bun add --trust supaschema");
+    expect(prompt).toContain("bun add supaschema");
+    expect(prompt).toContain("bunx --no-install supaschema init");
+    expect(prompt).toContain("Do not run npm in a pnpm, Yarn, or Bun project");
+    expect(prompt).toContain("cd` into the owning member package");
+    expect(prompt).not.toContain("--workspace <name-or-path>");
+    expect(prompt).not.toContain("--filter <pkg> add");
     expect(prompt).not.toContain("--save-dev");
-    expect(prompt).toContain("npx supaschema config validate --json");
+    expect(prompt).toContain("npm exec -- supaschema <cmd>");
+    expect(prompt).toContain("pnpm exec supaschema <cmd>");
+    expect(prompt).toContain("bunx --no-install supaschema <cmd>");
+    expect(prompt).toContain("config validate --json");
 
     await run("node", ["bin/postinstall.mjs"], { env });
     const claudeSettings = JSON.parse(
@@ -310,7 +324,7 @@ describe("install-time project setup", () => {
     const env = { ...process.env, INIT_CWD: consumer };
 
     const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
-    expect(stdout).toContain("installed directories, agent files, hook wiring");
+    expect(stdout).toBe("");
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
       '{"adapter":"auto"}\n'
     );
@@ -375,7 +389,7 @@ describe("install-time project setup", () => {
     const { stdout } = await run("node", ["bin/postinstall.mjs"], {
       env: { ...process.env, INIT_CWD: consumer, CI: "1" },
     });
-    expect(stdout).toContain("confirm detected schema/migration paths");
+    expect(stdout).toBe("");
 
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
     expect(manifest.pathConfirmationNeeded).toBe(true);

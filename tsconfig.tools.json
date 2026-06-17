@@ -28,6 +28,7 @@
     "bin/**/*.mjs",
     "cloudflare/**/*.js",
     "scripts/**/*.js",
-    "scripts/**/*.mjs"
+    "scripts/**/*.mjs",
+    "services/license-worker/**/*.ts"
   ]
 }

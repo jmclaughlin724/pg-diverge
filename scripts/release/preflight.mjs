@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { extractChangelogEntry } from "./changelog-notes.mjs";
 
 const GITHUB_REPOSITORY_RE = /github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/;
 const WHITESPACE_RE = /\s+/;
@@ -158,6 +159,7 @@ function exposeReleaseState(state) {
 const root = process.cwd();
 const packageJson = readJson(join(root, "package.json"));
 const packageLock = readJson(join(root, "package-lock.json"));
+const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf8");
 
 const name = packageJson.name;
 const version = packageJson.version;
@@ -176,6 +178,11 @@ if (packageLock.packages?.[""]?.version !== version) {
   fail(
     `package-lock.json root package version ${packageLock.packages?.[""]?.version} does not match package.json ${version}`
   );
+}
+try {
+  extractChangelogEntry(changelog, version);
+} catch (error) {
+  fail(error.message);
 }
 
 const published = npmViewVersions(name);

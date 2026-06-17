@@ -64,8 +64,8 @@ describe("agent surface sync", () => {
     expect(await readFile(join(root, "skills/supaschema/SKILL.md"), "utf8")).toBe(
       "supaschema skill\n"
     );
-    expect(await readFile(join(root, ".codex/hooks/skill-gate.mjs"), "utf8")).toBe(
-      await readFile(join(root, ".claude/hooks/skill-gate.mjs"), "utf8")
+    expect(await readFile(join(root, ".codex/hooks/sample-hook.mjs"), "utf8")).toBe(
+      await readFile(join(root, ".claude/hooks/sample-hook.mjs"), "utf8")
     );
     expect(await readFile(join(root, ".codex/agents/database.toml"), "utf8")).toContain(
       'name = "database"'
@@ -153,6 +153,22 @@ Review like an owner.
     );
   });
 
+  it("renders wildcard Claude agents as writable Codex custom agents", () => {
+    const rendered = renderCodexAgent(
+      `---
+name: worker
+description: Execute autonomous worker tasks.
+tools: "*"
+---
+
+Work directly.
+`,
+      ".claude/agents/worker.md"
+    );
+
+    expect(rendered).toContain('sandbox_mode = "workspace-write"');
+  });
+
   it("renders Claude Markdown rules as comment-only Codex .rules files", () => {
     const rendered = renderCodexRule(
       "# Supaschema Rule\n\n- Keep migrations replay-safe.\n",
@@ -170,8 +186,8 @@ async function seedSurfaceRoot(): Promise<string> {
   await write(root, ".claude/skills/supaschema/SKILL.md", "supaschema skill\n");
   await write(root, ".claude/skills/supaschema/references/workflow.md", "workflow\n");
   await write(root, ".claude/skills/upstream/SKILL.md", "upstream skill\n");
-  await write(root, ".claude/hooks/skill-gate.mjs", "gate hook\n");
-  await write(root, ".claude/hooks/skill-record.mjs", "record hook\n");
+  await write(root, ".claude/hooks/sample-hook.mjs", "sample hook\n");
+  await write(root, ".claude/hooks/sample-hook-extra.mjs", "sample hook extra\n");
   await write(root, ".claude/rules/supaschema.md", "# Supaschema Rule\n");
   await write(root, ".claude/rules/operating.md", "# Operating Rule\n");
   await write(

@@ -102,6 +102,12 @@ jobs:
         uses: actions/attest@281a49d4cbb0a72c9575a50d18f6deb515a11deb # v4
         with:
           subject-path: ${{ steps.pack.outputs.tarball_path }}
+      - name: Prepare GitHub release notes
+        if: env.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE == 'true'
+        run: |
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          node scripts/release/changelog-notes.mjs --version "$SUPASCHEMA_PACKAGE_VERSION" --out "$notes_file"
+          echo "SUPASCHEMA_RELEASE_NOTES_FILE=$notes_file" >> "$GITHUB_ENV"
       - name: Create GitHub release
         if: env.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE == 'true'
         env:
@@ -111,4 +117,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$SUPASCHEMA_RELEASE_TAG" \
-            --generate-notes
+            --notes-file "$SUPASCHEMA_RELEASE_NOTES_FILE"

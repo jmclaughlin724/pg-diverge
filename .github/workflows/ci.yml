@@ -57,6 +57,20 @@ jobs:
             --to dir:tests/fixtures/basic/to \
             --out "$RUNNER_TEMP/smoke/basic.sql"
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke/basic.sql"
+      - name: Prepare alternate consumer package managers
+        if: matrix.node-version == 22
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.18.1 --activate
+          corepack prepare yarn@4.12.0 --activate
+      - name: Install Bun for consumer package smoke
+        if: matrix.node-version == 22
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: Smoke package managers from tarball
+        if: matrix.node-version == 22
+        run: npm run package:smoke
       - name: Examples smoke (shipped examples render + check clean)
         if: matrix.node-version == 22
         # Run from INSIDE the example so supaschema resolves the example's own

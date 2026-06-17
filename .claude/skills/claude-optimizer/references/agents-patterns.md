@@ -236,7 +236,7 @@ Background agents are ideal for independent tasks like running tests, searching 
 | Missing output format | Specify exact structure |
 | Tool list without guidance | Explain when to use each tool |
 | Missing `skills` preload | Add `skills` for deterministic preloading; keep description for discovery |
-| Explicit `tools:` allowlist without `Skill` | Subagent cannot resolve runtime path-trigger skill gates — add `Skill` to `tools:` or omit `tools:` entirely. See [subagent-skill-runtime.md](subagent-skill-runtime.md) |
+| Explicit `tools:` allowlist without `Skill` | Subagent cannot actively load a runtime path-trigger skill; the gate downgrades to advisory inside subagents (Rule 12) so it is not deadlocked, but add `Skill` to `tools:` or omit `tools:` so it can act on the advisory. See [subagent-skill-runtime.md](subagent-skill-runtime.md) |
 | No verification step | Add quality check before completion |
 | Overly complex process | Keep to 5-7 clear steps |
 

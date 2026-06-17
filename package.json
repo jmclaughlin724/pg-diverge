@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Declarative PostgreSQL schema migrations plus TypeScript and Zod types in milliseconds — Supabase-aware, built on PostgreSQL's own parser, with no Docker or shadow database.",
   "keywords": [
     "database-migrations",
@@ -115,12 +115,15 @@
     "lint:ci": "biome ci .",
     "lint:doctor": "ultracite doctor",
     "pack:dry": "npm pack --dry-run",
+    "package:smoke": "node scripts/release/package-smoke.mjs",
     "prepare": "npm run build && node scripts/install-hooks.mjs",
     "py:fix": "uv run --package supaschema-agent-mcp ruff check --fix services/agent-mcp && uv run --package supaschema-agent-mcp ruff format services/agent-mcp",
     "py:format:check": "uv run --package supaschema-agent-mcp ruff format --check services/agent-mcp",
     "py:lint": "uv run --package supaschema-agent-mcp ruff check services/agent-mcp",
     "py:test": "uv run --package supaschema-agent-mcp pytest services/agent-mcp/tests",
     "py:typecheck": "uv run --package supaschema-agent-mcp mypy services/agent-mcp/supaschema_agent_mcp",
+    "release:notes": "node scripts/release/changelog-notes.mjs",
+    "release:verify": "npm run guard:release-version && npm test -- tests/action.test.ts tests/release-preflight.test.ts && npm run build && npm run check:package && npm run package:smoke && npm run pack:dry && npm run guard",
     "release:version": "changeset version",
     "sync:llm": "node scripts/skills/sync-llm.mjs",
     "sync:llm:check": "node scripts/skills/sync-llm.mjs --check",

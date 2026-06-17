@@ -23,13 +23,14 @@ from fastmcp.exceptions import ToolError
 
 from supaschema_agent_mcp.server import REPO_ROOT, mcp
 
-# The three real tools the server exposes. After the BM25 transform removal these
+# The four real tools the server exposes. After the BM25 transform removal these
 # must be the exact catalog returned by list_tools() -- not the Tool Search
 # surface (['call_tool', 'search_tools', 'server_status']).
 EXPECTED_TOOLS = {
     "server_status",
     "code_atlas_query",
     "repo_context_query",
+    "repo_safety_scan",
 }
 
 LEGACY_TOOL_NAMES = {
@@ -158,6 +159,31 @@ async def test_code_atlas_query_exposes_trace_change() -> None:
     assert payload["stdout"]["kind"] == "trace-change"
     assert payload["stdout"]["owners"]
     assert payload["stdout"]["verification"]["commands"]
+
+
+async def test_repo_safety_scan_returns_structured_result() -> None:
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool(
+            "repo_safety_scan",
+            {"source": "dir:examples/postgres/schemas"},
+        )
+    payload = result.data
+
+    assert "ok" in payload
+    assert "stdout" in payload
+    assert "stderr" in payload
+
+
+async def test_repo_safety_scan_rejects_unsafe_source() -> None:
+    async with Client(transport=mcp) as client:
+        with pytest.raises(ToolError, match=r"unsafe source value"):
+            await client.call_tool("repo_safety_scan", {"source": "-rm"})
+
+
+async def test_repo_safety_scan_rejects_database_source() -> None:
+    async with Client(transport=mcp) as client:
+        with pytest.raises(ToolError, match=r"stays local"):
+            await client.call_tool("repo_safety_scan", {"source": "database:postgres://u:p@h/db"})
 
 
 async def test_code_atlas_query_exposes_regression_scope() -> None:

@@ -302,7 +302,7 @@ Each subagent maintains its own context window and compacts independently:
 
 ## Path-Trigger Skill Gate Friction
 
-When parallel workers are dispatched against slices spanning multiple subdirectories, each worker may touch files matching multiple `.claude/skills/*/file-triggers:` globs. The shared agent hook gate fires on governed tool calls that hit a triggering path, requiring a `Skill({ skill: "X" })` call or observable `SKILL.md` read first. Subagents whose agent definition uses an explicit `tools:` allowlist that omits both `Skill` and a usable read path cannot resolve this gate at runtime; they exit with a blocked-tool message and the orchestrator must apply the work directly.
+When parallel workers are dispatched against slices spanning multiple subdirectories, each worker may touch files matching multiple `.claude/skills/*/file-triggers:` globs. The shared agent hook gate fires on governed tool calls that hit a triggering path. In the main session it requires a `Skill({ skill: "X" })` call or observable `SKILL.md` read first; inside a subagent (payload `agent_id`) it downgrades that hard deny to advisory `additionalContext` instead (Rule 12), so a worker whose `tools:` allowlist omits both `Skill` and a usable read path is informed of the pending skill rather than exiting with a blocked-tool message. Such a worker still cannot actively load the skill body, so it reports findings for the orchestrator to apply.
 
 The structural fix lives in agent definitions, not in orchestration prompts. See [subagent-skill-runtime.md](subagent-skill-runtime.md) for:
 
@@ -311,12 +311,10 @@ The structural fix lives in agent definitions, not in orchestration prompts. See
 - The fallback "report findings, orchestrator applies" pattern when an agent is intentionally locked out
 - A repo-state audit of which agents currently lack runtime skill invocation
 
-Before designing a parallel orchestration that spans path-trigger globs, verify the spawned agent type's `tools:` field includes `Skill` (or omits `tools:` entirely). The friction observed in the 2026-05-09 `/team /simplify` orchestration (3 of 4 workers blocked across two waves) was traced to this exact gap in `elegant.md` and constrained agent definitions.
+Before designing a parallel orchestration that spans path-trigger globs, verify the spawned agent type's `tools:` field includes `Skill` (or omits `tools:` entirely). A worker whose definition drops `Skill` cannot act on the gate's advisory and falls back to reporting findings for the orchestrator to apply.
 
 ## Related
 
-- [team/SKILL.md](../../team/SKILL.md) - repo-managed subagent coordination skill
 - [workflow-patterns.md](workflow-patterns.md) - Wave and execution details
-- [lightweight-explorer/SKILL.md](../../lightweight-explorer/SKILL.md) - fast exploration workflow
 - [agent-teams-patterns.md](agent-teams-patterns.md) - Official Agent Teams for inter-agent communication and collaborative work (experimental)
 - [subagent-skill-runtime.md](subagent-skill-runtime.md) - skill loading paths, runtime invocation precondition, parallel-orchestration friction
