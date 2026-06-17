@@ -29,6 +29,8 @@ describe("extracted workflow sources", () => {
     );
 
     expect(sourceText).toContain("searchParams.delete(param)");
+    expect(sourceText).toContain("const query = p.searchParams.toString()");
+    expect(sourceText).toContain('(query ? "?" + query : "")');
     expect(sourceText).toContain(".slice(0, MAX_FETCH)");
     expect(
       ifStatements.some((statement) =>
@@ -46,6 +48,25 @@ describe("extracted workflow sources", () => {
     expect(sourceText).toContain('token === "--comment"');
     expect(sourceText).toContain("POSITIONAL_ARGS");
     expect(sourceText).toContain("FLAG_INSTRUCTIONS");
+  });
+
+  it("keeps batch and worker extraction edit-only and runtime-neutral", async () => {
+    const [batchText, workerText] = await Promise.all([
+      readFile(join(process.cwd(), ".claude/skills/batch/SKILL.md"), "utf8"),
+      readFile(join(process.cwd(), ".claude/agents/worker.md"), "utf8"),
+    ]);
+
+    expect(workerText).toContain("Do not stage, commit, push");
+    expect(workerText).toContain("FILES:");
+    expect(workerText).not.toContain("Committed abc123");
+
+    expect(batchText).toContain("workers edit the current branch in the current worktree");
+    expect(batchText).toContain("Do not stage, commit, push");
+    expect(batchText).toContain("| # | Unit | Status | Files |");
+    expect(batchText).not.toContain("| # | Unit | Status | Commit |");
+    expect(batchText).not.toContain("Invoke the `Skill` tool");
+    expect(batchText).not.toContain("Use `subagent_type:");
+    expect(batchText).not.toContain("commit, push, and open a PR");
   });
 });
 

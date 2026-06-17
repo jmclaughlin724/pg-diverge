@@ -348,9 +348,10 @@ describe("doctor environment resolution", () => {
 });
 
 describe("pending install path confirmation", () => {
-  it("blocks config validate, doctor, and zero-source diff", () => {
+  it("blocks config validate, doctor, zero-source diff, and zero-arg check", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-pending-install-"));
     mkdirSync(join(cwd, ".supaschema"), { recursive: true });
+    mkdirSync(join(cwd, "database/migrations"), { recursive: true });
     writeFileSync(
       join(cwd, ".supaschema", "install.json"),
       JSON.stringify({
@@ -361,6 +362,10 @@ describe("pending install path confirmation", () => {
         pathConfirmationNeeded: true,
       })
     );
+    writeFileSync(
+      join(cwd, "database/migrations", "20260101000000_safe.sql"),
+      "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE IF NOT EXISTS app.t (id bigint);\n"
+    );
 
     const validate = spawnSync(process.execPath, [cliPath, "config", "validate", "--json"], {
       cwd,
@@ -368,6 +373,7 @@ describe("pending install path confirmation", () => {
     });
     const doctor = spawnSync(process.execPath, [cliPath, "doctor"], { cwd, encoding: "utf8" });
     const diff = spawnSync(process.execPath, [cliPath, "diff"], { cwd, encoding: "utf8" });
+    const check = spawnSync(process.execPath, [cliPath, "check"], { cwd, encoding: "utf8" });
 
     expect(validate.status).toBe(2);
     expect(JSON.parse(validate.stdout).diagnostics).toContainEqual(
@@ -377,6 +383,8 @@ describe("pending install path confirmation", () => {
     expect(doctor.stdout).toContain("install path confirmation");
     expect(diff.status).toBe(2);
     expect(diff.stderr).toContain(".supaschema/install.json");
+    expect(check.status).toBe(2);
+    expect(check.stderr).toContain(".supaschema/install.json");
   });
 
   it("allows explicit source diff as a recovery path while install confirmation is pending", () => {
