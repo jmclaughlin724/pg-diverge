@@ -7,15 +7,14 @@ argument-hint: "<instruction>"
 
 ## Contract
 
-Run the extracted Claude Code `/batch` procedure for large, parallelizable changes. Treat the skill argument as the batch instruction. This command is useful only in a git repository because the main agent stages, commits, and pushes worker edits on the current branch.
+Run the extracted Claude Code `/batch` procedure for large, parallelizable changes. Treat the skill argument as the batch instruction. This command is useful only in a git repository because workers edit the current branch in the current worktree and the main agent owns any requested git publication.
 
-This extraction adapts the binary tool constants to the current runtime when the literal tool is available:
+The source command referenced Claude Code planning, question, delegation, and skill-loading tools. Adapt those actions to the current runtime:
 
-- `EnterPlanMode`
-- `ExitPlanMode`
-- `AskUserQuestion`
-- `Agent`
-- `Skill`
+- Use the runtime's planning or task-tracking surface when one exists; otherwise write the plan directly in the transcript.
+- Ask clarifying or approval questions through the runtime's native question path when one exists; otherwise use a concise message.
+- Launch workers only through an available delegation tool. If the runtime has no worker delegation, stop after the approved plan and report that fan-out is unavailable.
+- Run a code-review pass through an available skill invocation when one exists; otherwise do a focused manual review using the code-review instructions available in the session.
 
 ## Command Metadata
 
@@ -44,7 +43,7 @@ Examples:
 If the current directory is not a git repository, respond:
 
 ```text
-This is not a git repository. The `/batch` command requires a git repo because the main agent stages, commits, and pushes worker edits on the current branch. Initialize a repo first, or run this from inside an existing one.
+This is not a git repository. The `/batch` command requires a git repo because workers edit the current branch in the current worktree and the main agent owns any requested git publication. Initialize a repo first, or run this from inside an existing one.
 ```
 
 ## Batch Prompt
@@ -62,9 +61,9 @@ You are orchestrating a large, parallelizable change across this codebase.
 
 ## Phase 1: Research and Plan
 
-Enter the runtime's planning mode when it exists; otherwise use the native task tracker or write the plan directly in the transcript. Then:
+Use the runtime's planning or task-tracking surface when one exists; otherwise write the plan directly in the transcript. Then:
 
-1. **Understand the scope.** Launch one or more subagents (in the foreground — you need their results) to deeply research what this instruction touches. Find all the files, patterns, and call sites that need to change. Understand the existing conventions so the migration is consistent.
+1. **Understand the scope.** Launch one or more foreground subagents if the runtime has an available delegation tool; otherwise research directly. You need the results before planning. Find all the files, patterns, and call sites that need to change. Understand the existing conventions so the migration is consistent.
 
 2. **Decompose into independent units.** Break the work into 5–30 self-contained units. Each unit must:
    - Be independently implementable on the current branch in the current worktree
@@ -93,7 +92,7 @@ Enter the runtime's planning mode when it exists; otherwise use the native task 
 
 ## Phase 2: Spawn Workers (After Plan Approval)
 
-Once the plan is approved, spawn worker agents using the runtime's available delegation tool. Workers must stay on the current branch in the current worktree; do not request worktree isolation, branch creation, or fan-out PRs. Respect the configured thread cap when running workers in parallel.
+Once the plan is approved, spawn worker agents using the runtime's available delegation tool. If no delegation tool is available, stop and report that worker fan-out is unavailable. Workers must stay on the current branch in the current worktree; do not request worktree isolation, branch creation, or fan-out PRs. Respect the configured thread cap when running workers in parallel.
 
 For each agent, the prompt must be fully self-contained. Include:
 
@@ -106,7 +105,7 @@ For each agent, the prompt must be fully self-contained. Include:
 
 After you finish implementing the change:
 
-1. **Code review** — Invoke the `Skill` tool with `skill: "code-review"` to find correctness bugs (it reports findings; it does not edit code). Fix any findings it surfaces before continuing.
+1. **Code review** — Run a code-review pass through the runtime's available skill invocation when one exists; otherwise do a focused manual code-review pass using the code-review instructions available in the session. Fix any findings it surfaces before continuing.
 2. **Run unit tests** — Run the project's test suite (check for package.json scripts, Makefile targets, or common commands like `npm test`, `bun test`, `pytest`, `go test`). If tests fail, fix them.
 3. **Test end-to-end** — Follow the e2e test recipe from the coordinator's prompt (below). If the recipe says to skip e2e for this unit, skip it.
 4. **Report changed files** — Do not stage, commit, push, create or switch branches, create worktrees, force-push, merge, or open a PR. The main agent owns all git publication steps.
@@ -114,20 +113,20 @@ After you finish implementing the change:
 
 ```
 
-Use `subagent_type: "general-purpose"` unless a more specific agent type fits.
+Use the runtime's general-purpose worker type unless a more specific agent type fits.
 
 ## Phase 3: Track Progress
 
 After launching all workers, render an initial status table:
 
-| # | Unit | Status | Commit |
+| # | Unit | Status | Files |
 |---|------|--------|----|
 | 1 | <title> | running | — |
 | 2 | <title> | running | — |
 
 As worker completion notifications arrive, parse the `FILES: ...` line from each agent's result and re-render the table with updated status (`done` / `failed`) and changed files. Keep a brief failure note for any agent that did not produce the required report line.
 
-When all agents have reported, render the final table and a one-line summary (e.g., "22/24 units completed; main agent owns staging, commit, and push").
+When all agents have reported, render the final table and a one-line summary (e.g., "22/24 units completed; main agent owns any requested staging, commit, and push").
 ```
 
 ## Verification

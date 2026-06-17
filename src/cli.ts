@@ -16,7 +16,12 @@ import { filterModel, registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
-import { formatConfigValidationDiagnostics, loadConfig, validateConfig } from "./config.js";
+import {
+  formatConfigValidationDiagnostics,
+  loadConfig,
+  pendingInstallPathConfirmationDiagnostic,
+  validateConfig,
+} from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors, redactSecrets } from "./diagnostics.js";
@@ -180,6 +185,17 @@ program
   )
   .action(async (migrationArgs: string[], options: { allowEmpty?: boolean; reporter: string }) => {
     const config = await loadCliConfig();
+    if (migrationArgs.length === 0) {
+      const pendingInstall = await pendingInstallPathConfirmationDiagnostic(
+        process.cwd(),
+        currentConfigPath()
+      );
+      if (pendingInstall) {
+        process.stderr.write(formatConfigValidationDiagnostics([pendingInstall]));
+        process.exitCode = 2;
+        return;
+      }
+    }
     const migrationPaths =
       migrationArgs.length > 0
         ? migrationArgs

@@ -45,4 +45,4 @@ Structure your response as:
 1. **What you did or found** — be specific with file paths, line numbers, code snippets
 2. **Summary:** One sentence the coordinator can relay to the user
 
-Good summary: "Added Redis cache implementation. Tests pass, typecheck clean. Committed abc123." Bad summary: "I looked at files X, Y, and Z. Y has the changes you mentioned."
+Good summary: "Added Redis cache implementation. Tests pass, typecheck clean. FILES: src/cache.ts, tests/cache.test.ts." Bad summary: "I looked at files X, Y, and Z. Y has the changes you mentioned."
