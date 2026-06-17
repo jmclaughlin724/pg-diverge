@@ -35,3 +35,32 @@ export function remediationCacheKey(diagnostic: Diagnostic): string {
     ref === undefined ? (diagnostic.file ?? "") : `${ref.kind}:${ref.schema ?? ""}.${ref.name}`;
   return `${diagnostic.code}|${target}`;
 }
+
+export interface RemediationStep {
+  diagnostic: Diagnostic;
+  order: number;
+  prompt: string;
+}
+
+function severityRank(severity: string): number {
+  if (severity === "error") {
+    return 0;
+  }
+  return severity === "warning" ? 1 : 2;
+}
+
+/**
+ * Ordered remediation plan (task X52): severity-first (errors before warnings),
+ * each finding paired with its remediation prompt so an agent works the
+ * highest-impact fixes first. A pragmatic ordering, not a dependency DAG — findings
+ * carry no explicit inter-dependencies to order on.
+ */
+export function buildRemediationPlan(diagnostics: Diagnostic[]): RemediationStep[] {
+  return [...diagnostics]
+    .sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
+    .map((diagnostic, index) => ({
+      diagnostic,
+      order: index + 1,
+      prompt: remediationPrompt(diagnostic),
+    }));
+}

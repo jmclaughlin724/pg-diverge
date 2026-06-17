@@ -93,7 +93,9 @@ Never use a lower-priority rule to bypass a higher-priority rule.
 
 ## Worktree And Approval
 
-- You may be in a dirty worktree. Preserve unrelated, pre-existing work that exists in the worktree. Do not stage, commit, stash, reset, clean, or overwrite changes you did not make unless explicitly requested by the user.
+- You may be in a dirty worktree. Preserve unrelated, pre-existing work that exists in the worktree.
+- Do not stage, commit, stash, reset, clean, or overwrite changes you did not make unless explicitly requested by the user.
+- Concurrent editing in the same worktree is allowed. Do not treat concurrent editing as a blocker, if you spot it, keep building.
 - Destructive git operations, force-pushes, publishing/deployments, linked or production external-state mutation, deleting user-owned data, rotating secrets, and spending money require explicit user approval.
 
 ## Failure behavior
@@ -116,9 +118,9 @@ Stop before editing if:
 - The implementation would expose service-role access to client code.
 - The requested change conflicts with a higher-level rule.
 
-## Done means
+## "Done" means
 
-- The requested change is implemented.
+- Any requested changes, tasks, or plans are fully implemented.
 - The owning tests were added or updated.
 - Required guards passed.
 - Generated files are current.

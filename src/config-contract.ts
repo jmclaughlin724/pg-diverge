@@ -305,6 +305,7 @@ export function createInstalledConfig(
     environments: {},
     excludedGrantRoles: [],
     hints: {
+      allowedGrantees: [],
       destructive: [],
       renames: [],
     },
@@ -455,8 +456,9 @@ export const configFieldMetadata = [
     key: "excludedGrantRoles",
   },
   {
-    default: { destructive: [], renames: [] },
-    description: "Reviewed destructive-change and rename hints using exact object keys.",
+    default: { allowedGrantees: [], destructive: [], renames: [] },
+    description:
+      "Reviewed grant, destructive-change, and rename hints using exact object keys or role names.",
     key: "hints",
   },
   {
@@ -683,7 +685,7 @@ export function createInstalledConfig(options = {}) {
     destructiveChanges: "hint-required",
     environments: {},
     excludedGrantRoles: [],
-    hints: { destructive: [], renames: [] },
+    hints: { allowedGrantees: [], destructive: [], renames: [] },
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,

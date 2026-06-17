@@ -20,6 +20,8 @@ export {
   supaschemaConfigSchema,
   validateConfig,
 } from "./config.js";
+export type { SchemaContract } from "./contract-registry.js";
+export { contractDrift, toContract } from "./contract-registry.js";
 export type {
   CheckOptions,
   Diagnostic,

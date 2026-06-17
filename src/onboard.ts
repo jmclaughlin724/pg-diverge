@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { redactSecrets } from "./redaction.js";
+import type { ScanResult } from "./scan.js";
 
 /**
  * Migration-system detector (plan `04-adoption-audit-migration-rescue.md` and the
@@ -46,4 +48,43 @@ export interface MigrationSystemReport {
 export function classifyMigrationSystems(rootDir: string): MigrationSystemReport {
   const systems = detectMigrationSystems(rootDir);
   return { mixed: systems.length > 1, systems };
+}
+
+const READY_SCORE = 90;
+
+export interface ReadinessReport {
+  findingCount: number;
+  grade: string;
+  migrationSystems: string[];
+  mixed: boolean;
+  ready: boolean;
+  score: number;
+}
+
+/** Combine migration-system detection and the safety scan into a readiness verdict. */
+export function buildReadinessReport(
+  systems: MigrationSystemReport,
+  scan: ScanResult,
+  grade: string
+): ReadinessReport {
+  return {
+    findingCount: scan.diagnostics.length,
+    grade,
+    migrationSystems: systems.systems,
+    mixed: systems.mixed,
+    ready: scan.score >= READY_SCORE && !systems.mixed,
+    score: scan.score,
+  };
+}
+
+/** Human-readable, credential-redacted readiness summary (a shareable bundle). */
+export function renderReadiness(report: ReadinessReport): string {
+  const systems =
+    report.migrationSystems.length > 0 ? report.migrationSystems.join(", ") : "none detected";
+  const lines = [
+    `Migration system: ${systems}${report.mixed ? " (mixed workflow)" : ""}`,
+    `Postgres safety: ${report.score}/100 (${report.grade}) — ${report.findingCount} finding(s)`,
+    `Onboarding readiness: ${report.ready ? "READY" : "needs work"}`,
+  ];
+  return redactSecrets(lines.join("\n"));
 }

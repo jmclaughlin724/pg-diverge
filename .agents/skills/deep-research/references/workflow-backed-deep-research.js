@@ -115,14 +115,20 @@ log("Decomposed into " + scope.angles.length + " angles: " + scope.angles.map(a 
 const normURL = u => {
   try {
     const p = new URL(u)
-    return (p.hostname.replace(/^www\./, "") + p.pathname.replace(/\/$/, "")).toLowerCase()
+    const trackingParams = ["fbclid", "gclid", "mc_cid", "mc_eid", "ref", "spm"]
+    for (const param of [...p.searchParams.keys()]) {
+      if (param.toLowerCase().startsWith("utm_") || trackingParams.includes(param.toLowerCase())) {
+        p.searchParams.delete(param)
+      }
+    }
+    const query = p.searchParams.toString()
+    return (p.hostname.replace(/^www\./, "") + p.pathname.replace(/\/$/, "") + (query ? "?" + query : "")).toLowerCase()
   } catch { return u.toLowerCase() }
 }
 const seen = new Map()
 const dupes = []
 const budgetDropped = []
 const relRank = { high: 0, medium: 1, low: 2 }
-let fetchSlots = MAX_FETCH
 
 // ─── Prompts ───
 const SEARCH_PROMPT = (angle) =>
@@ -165,11 +171,9 @@ const VERIFY_PROMPT = (claim, v) =>
   "**refuted=false** ONLY if: claim is well-supported, current, and source quality matches claim strength.\n" +
   "Default to refuted=true if uncertain.\n\nStructured output only. Evidence MUST be specific."
 
-// ─── Pipeline: search → dedup → fetch+extract (no barrier) ───
-const searchResults = await pipeline(
-  scope.angles,
-
-  angle => agent(SEARCH_PROMPT(angle), {
+// ─── Search barrier: gather all angles before URL-dedup/ranking/fetch ───
+const searchResults = (await parallel(
+  scope.angles.map(angle => () => agent(SEARCH_PROMPT(angle), {
     label: "search:" + angle.label, phase: "Search", schema: SEARCH_SCHEMA
   }).then(r => {
     if (!r) {
@@ -178,54 +182,50 @@ const searchResults = await pipeline(
     }
     log(angle.label + ": " + r.results.length + " results")
     return { angle: angle.label, results: r.results }
-  }),
+  })))
+)).filter(Boolean)
 
-  searchResult => {
-    const sorted = [...searchResult.results].sort((a, b) => relRank[a.relevance] - relRank[b.relevance])
-    const novel = sorted.filter(r => {
-      const key = normURL(r.url)
-      if (seen.has(key)) {
-        dupes.push({ ...r, angle: searchResult.angle, dupOf: seen.get(key) })
-        return false
-      }
-      if (fetchSlots <= 0) {
-        budgetDropped.push({ ...r, angle: searchResult.angle })
-        return false
-      }
-      seen.set(key, { angle: searchResult.angle, title: r.title })
-      fetchSlots--
-      return true
-    })
-    if (novel.length < searchResult.results.length) {
-      log(searchResult.angle + ": " + novel.length + " novel (" + (searchResult.results.length - novel.length) + " filtered)")
+const candidates = []
+for (const searchResult of searchResults) {
+  for (const result of searchResult.results) {
+    const key = normURL(result.url)
+    if (seen.has(key)) {
+      dupes.push({ ...result, angle: searchResult.angle, dupOf: seen.get(key) })
+      continue
     }
-    return parallel(
-      novel.map(source => () => {
-        let host = "unknown"
-        try { host = new URL(source.url).hostname.replace(/^www\./, "") } catch {}
-        return agent(FETCH_PROMPT(source, searchResult.angle), {
-          label: "fetch:" + host,
-          phase: "Fetch",
-          schema: EXTRACT_SCHEMA,
-        }).then(ext => {
-          // User-skip → null; drop it (filtered by searchResults.flat().filter(Boolean))
-          // rather than throwing into .catch() and mislabeling it "unreliable".
-          if (!ext) return null
-          return {
-            url: source.url, title: source.title, angle: searchResult.angle,
-            sourceQuality: ext.sourceQuality, publishDate: ext.publishDate,
-            claims: ext.claims.map(c => ({ ...c, sourceUrl: source.url, sourceQuality: ext.sourceQuality })),
-          }
-        }).catch(e => {
-          log("fetch failed: " + source.url + " — " + (e.message || e))
-          return { url: source.url, title: source.title, angle: searchResult.angle, sourceQuality: "unreliable", claims: [] }
-        })
-      })
-    )
+    seen.set(key, { angle: searchResult.angle, title: result.title })
+    candidates.push({ ...result, angle: searchResult.angle })
   }
-)
+}
 
-const allSources = searchResults.flat().filter(Boolean)
+const rankedSources = candidates.sort((a, b) => relRank[a.relevance] - relRank[b.relevance])
+const fetchSources = rankedSources.slice(0, MAX_FETCH)
+budgetDropped.push(...rankedSources.slice(MAX_FETCH))
+log("Selected " + fetchSources.length + " sources from " + candidates.length + " novel results (" + dupes.length + " URL dupes, " + budgetDropped.length + " budget-dropped)")
+
+const allSources = (await parallel(
+  fetchSources.map(source => () => {
+    let host = "unknown"
+    try { host = new URL(source.url).hostname.replace(/^www\./, "") } catch {}
+    return agent(FETCH_PROMPT(source, source.angle), {
+      label: "fetch:" + host,
+      phase: "Fetch",
+      schema: EXTRACT_SCHEMA,
+    }).then(ext => {
+      // User-skip → null; drop it (filtered below) rather than throwing into
+      // .catch() and mislabeling it "unreliable".
+      if (!ext) return null
+      return {
+        url: source.url, title: source.title, angle: source.angle,
+        sourceQuality: ext.sourceQuality, publishDate: ext.publishDate,
+        claims: ext.claims.map(c => ({ ...c, sourceUrl: source.url, sourceQuality: ext.sourceQuality })),
+      }
+    }).catch(e => {
+      log("fetch failed: " + source.url + " — " + (e.message || e))
+      return { url: source.url, title: source.title, angle: source.angle, sourceQuality: "unreliable", claims: [] }
+    })
+  })
+)).filter(Boolean)
 const allClaims = allSources.flatMap(s => s.claims)
 const impRank = { central: 0, supporting: 1, tangential: 2 }
 const qualRank = { primary: 0, secondary: 1, blog: 2, forum: 3, unreliable: 4 }

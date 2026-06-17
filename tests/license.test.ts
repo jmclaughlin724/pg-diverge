@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isEntitled,
   isEntitledFromEnv,
+  isEntitledFromEnvWithTrustedKey,
   type LicenseClaims,
   verifyLicenseToken,
 } from "../src/license.js";
@@ -70,17 +71,25 @@ describe("license entitlement (M30/M32 verify side)", () => {
 });
 
 describe("env entitlement gate (M32)", () => {
-  it("is entitled with a valid token, key, and matching repo", () => {
+  it("is entitled with a valid token signed by the trusted key and matching repo", () => {
+    const env = {
+      GITHUB_REPOSITORY: "acme/app",
+      SUPASCHEMA_LICENSE: makeToken(validClaims, keyPair.privateKey),
+    };
+    expect(isEntitledFromEnvWithTrustedKey(env, NOW, publicKeyPem)).toBe(true);
+  });
+
+  it("ignores caller-provided public keys as trust anchors", () => {
     const env = {
       GITHUB_REPOSITORY: "acme/app",
       SUPASCHEMA_LICENSE: makeToken(validClaims, keyPair.privateKey),
       SUPASCHEMA_LICENSE_PUBLIC_KEY: publicKeyPem,
     };
-    expect(isEntitledFromEnv(env, NOW)).toBe(true);
+    expect(isEntitledFromEnv(env, NOW)).toBe(false);
   });
 
   it("is not entitled when the token is missing", () => {
-    const env = { GITHUB_REPOSITORY: "acme/app", SUPASCHEMA_LICENSE_PUBLIC_KEY: publicKeyPem };
+    const env = { GITHUB_REPOSITORY: "acme/app" };
     expect(isEntitledFromEnv(env, NOW)).toBe(false);
   });
 
@@ -88,8 +97,7 @@ describe("env entitlement gate (M32)", () => {
     const env = {
       GITHUB_REPOSITORY: "other/repo",
       SUPASCHEMA_LICENSE: makeToken(validClaims, keyPair.privateKey),
-      SUPASCHEMA_LICENSE_PUBLIC_KEY: publicKeyPem,
     };
-    expect(isEntitledFromEnv(env, NOW)).toBe(false);
+    expect(isEntitledFromEnvWithTrustedKey(env, NOW, publicKeyPem)).toBe(false);
   });
 });

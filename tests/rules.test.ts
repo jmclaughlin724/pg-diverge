@@ -3,6 +3,7 @@ import { renderCheckReport } from "../src/check-reporters.js";
 import type { MigrationOperation, MigrationPlan, SchemaModel, SchemaObject } from "../src/core.js";
 import {
   grantAllPrivilegesRule,
+  grantPolicyRule,
   grantToPublicRule,
   hygienePack,
   listRulePacks,
@@ -125,6 +126,19 @@ function rlsObject(table: string): SchemaObject {
   };
 }
 
+function catalogRlsObject(table: string): SchemaObject {
+  return {
+    dependencies: [],
+    hash: "h",
+    key: `public.${table}.rls`,
+    metadata: { rlsEnabled: true, rlsForced: true },
+    normalizedSql: "",
+    ordinal: 0,
+    ref: { kind: "rls", name: table, schema: "public", table },
+    sql: `ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;\nALTER TABLE public.${table} FORCE ROW LEVEL SECURITY`,
+  };
+}
+
 function policyObject(table: string, name: string): SchemaObject {
   return {
     dependencies: [],
@@ -162,6 +176,14 @@ describe("RLS audit rules (F20)", () => {
     const objects = [rlsObject("orders"), policyObject("orders", "tenant_isolation")];
     expect(policyWithoutRlsRule.check({ model: model(objects) })).toHaveLength(0);
   });
+
+  it("recognizes catalog and merged RLS objects as enabled", () => {
+    const objects = [catalogRlsObject("orders"), policyObject("orders", "tenant_isolation")];
+    expect(policyWithoutRlsRule.check({ model: model(objects) })).toHaveLength(0);
+    expect(
+      rlsEnabledNoPolicyRule.check({ model: model([catalogRlsObject("users")]) })
+    ).toHaveLength(1);
+  });
 });
 
 function grantObject(
@@ -181,6 +203,26 @@ function grantObject(
   };
 }
 
+function defaultPrivilegeObject(grantee: string): SchemaObject {
+  return {
+    dependencies: [],
+    hash: "h",
+    key: `default:tables:${grantee}`,
+    metadata: {
+      grantee,
+      objectType: "TABLES",
+      privileges: ["SELECT"],
+      schema: "public",
+      target: "default privileges on tables in public",
+      verb: "GRANT",
+    },
+    normalizedSql: "",
+    ordinal: 0,
+    ref: { kind: "default-privilege", name: `grant:public:tables:${grantee}`, schema: "public" },
+    sql: "",
+  };
+}
+
 describe("grant least-privilege rule (P11 seed)", () => {
   it("flags GRANT to PUBLIC", () => {
     const diagnostics = grantToPublicRule.check({
@@ -195,6 +237,14 @@ describe("grant least-privilege rule (P11 seed)", () => {
       model: model([grantObject("authenticated", "public.users")]),
     });
     expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags default privileges granted to PUBLIC", () => {
+    const diagnostics = grantToPublicRule.check({
+      model: model([defaultPrivilegeObject("PUBLIC")]),
+    });
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_GRANT_TO_PUBLIC");
   });
 });
 
@@ -211,6 +261,29 @@ describe("grant ALL-privileges rule (P11)", () => {
     const diagnostics = grantAllPrivilegesRule.check({
       model: model([grantObject("authenticated", "public.users", ["SELECT"])]),
     });
+    expect(diagnostics).toHaveLength(0);
+  });
+});
+
+describe("grant role-policy drift rule (P11)", () => {
+  it("flags a grant to a role outside the declared policy", () => {
+    const rule = grantPolicyRule(["authenticated"]);
+    const diagnostics = rule.check({ model: model([grantObject("evil_role", "public.users")]) });
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_GRANT_UNDECLARED_ROLE");
+  });
+
+  it("passes a grant to a declared role", () => {
+    const rule = grantPolicyRule(["authenticated"]);
+    const diagnostics = rule.check({
+      model: model([grantObject("authenticated", "public.users")]),
+    });
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("is a no-op when no policy is declared", () => {
+    const rule = grantPolicyRule([]);
+    const diagnostics = rule.check({ model: model([grantObject("anyone", "public.users")]) });
     expect(diagnostics).toHaveLength(0);
   });
 });

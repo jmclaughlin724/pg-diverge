@@ -9,12 +9,6 @@
 
 const MASK = "***";
 
-// regex-ok: credential redaction over transport text — mask the password segment
-// of any `scheme://user:password@host` URL (Postgres and friends). Every quantifier
-// is length-bounded so a long credential-shaped string with no trailing `@` cannot
-// drive quadratic backtracking on diagnostic output.
-const URL_CREDENTIALS = /([a-z][a-z0-9+.-]{0,32}:\/\/[^:@\s/]{1,256}:)[^@\s/]{1,256}@/gi;
-
 // regex-ok: credential redaction — mask `password=...`, `passwd=...`, `pwd=...`, and
 // prefixed variants (`pgpassword`, `pg_password`, `db_password`) as key/value pairs in
 // connection text and error output. Bounded prefix/value lengths keep matching linear.
@@ -22,7 +16,7 @@ const PASSWORD_KV = /\b([a-z_]{0,16}pass(?:word|wd)|pwd)(\s*[=:]\s*)[^\s&;"']{1,
 
 /** Mask credentials in arbitrary text before it is displayed or shared. */
 export function redactSecrets(text: string): string {
-  return text.replace(URL_CREDENTIALS, `$1${MASK}@`).replace(PASSWORD_KV, `$1$2${MASK}`);
+  return redactUrlCredentials(text).replace(PASSWORD_KV, `$1$2${MASK}`);
 }
 
 /**
@@ -34,4 +28,39 @@ export function redactSecrets(text: string): string {
  */
 export function hasUnredactedSecret(text: string): boolean {
   return redactSecrets(text) !== text;
+}
+
+function isUserinfoEnd(char: string): boolean {
+  return (
+    char === "@" || char === "/" || char === " " || char === "\t" || char === "\n" || char === "\r"
+  );
+}
+
+function redactUrlCredentials(value: string): string {
+  let result = "";
+  let index = 0;
+  while (index < value.length) {
+    const marker = value.indexOf("://", index);
+    if (marker === -1) {
+      result += value.slice(index);
+      break;
+    }
+    const afterScheme = marker + 3;
+    result += value.slice(index, afterScheme);
+    let cursor = afterScheme;
+    let colon = -1;
+    while (cursor < value.length && !isUserinfoEnd(value[cursor] ?? "")) {
+      if (value[cursor] === ":" && colon === -1) {
+        colon = cursor;
+      }
+      cursor += 1;
+    }
+    if (value[cursor] === "@" && colon > afterScheme && cursor > colon + 1) {
+      result += `${value.slice(afterScheme, colon + 1)}${MASK}`;
+      index = cursor;
+    } else {
+      index = afterScheme;
+    }
+  }
+  return result;
 }

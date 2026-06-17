@@ -18,6 +18,10 @@ export interface LicenseClaims {
   repo: string;
 }
 
+export const TRUSTED_LICENSE_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAHQm8wOkw+0KwWtHORh56qzBqpwNj9lIY8RIZtleRil0=
+-----END PUBLIC KEY-----`;
+
 function base64UrlToBuffer(part: string): Buffer {
   return Buffer.from(part.replaceAll("-", "+").replaceAll("_", "/"), "base64");
 }
@@ -85,20 +89,26 @@ export function isEntitled(
 }
 
 /**
- * Resolve entitlement from the environment for the `--enforce` gate (task M32):
- * `SUPASCHEMA_LICENSE` (token), `SUPASCHEMA_LICENSE_PUBLIC_KEY` (PEM; production
- * embeds this constant in the CLI), and `GITHUB_REPOSITORY` (the bound repo). The
- * free OSS CLI never calls this — only the paid packs gate on it.
+ * Resolve entitlement from the environment for the `--enforce` gate (task M32).
+ * The token and bound repository are caller-provided, but the verifier trust
+ * anchor is embedded in the CLI and not read from the caller environment.
  */
 export function isEntitledFromEnv(
   env: Record<string, string | undefined>,
   nowSeconds: number
 ): boolean {
+  return isEntitledFromEnvWithTrustedKey(env, nowSeconds, TRUSTED_LICENSE_PUBLIC_KEY_PEM);
+}
+
+export function isEntitledFromEnvWithTrustedKey(
+  env: Record<string, string | undefined>,
+  nowSeconds: number,
+  trustedPublicKeyPem: string
+): boolean {
   const token = env.SUPASCHEMA_LICENSE;
-  const publicKeyPem = env.SUPASCHEMA_LICENSE_PUBLIC_KEY;
   const repo = env.GITHUB_REPOSITORY;
-  if (token === undefined || publicKeyPem === undefined || repo === undefined) {
+  if (token === undefined || repo === undefined) {
     return false;
   }
-  return isEntitled(verifyLicenseToken(token, publicKeyPem), repo, nowSeconds);
+  return isEntitled(verifyLicenseToken(token, trustedPublicKeyPem), repo, nowSeconds);
 }

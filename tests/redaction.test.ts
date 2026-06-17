@@ -8,6 +8,13 @@ describe("secret redaction (S1)", () => {
     expect(out).not.toContain("s3cr3t");
   });
 
+  it("masks long URL passwords before reports are published", () => {
+    const password = "s".repeat(300);
+    const out = redactSecrets(`postgres://app:${password}@db.example.com/prod`);
+    expect(out).toBe("postgres://app:***@db.example.com/prod");
+    expect(out).not.toContain(password);
+  });
+
   it("masks a password key/value pair", () => {
     expect(redactSecrets("connection failed: password=hunter2")).toBe(
       "connection failed: password=***"

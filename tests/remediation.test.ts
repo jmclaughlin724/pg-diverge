@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Diagnostic } from "../src/core.js";
-import { remediationCacheKey, remediationPrompt } from "../src/remediation.js";
+import {
+  buildRemediationPlan,
+  remediationCacheKey,
+  remediationPrompt,
+} from "../src/remediation.js";
 
 const finding: Diagnostic = {
   code: "SUPA_RULE_RLS_NO_POLICY",
@@ -39,5 +43,20 @@ describe("remediation cache key (M33)", () => {
   it("differs when the code differs", () => {
     const other: Diagnostic = { ...finding, code: "SUPA_RULE_POLICY_NO_RLS" };
     expect(remediationCacheKey(other)).not.toBe(remediationCacheKey(finding));
+  });
+});
+
+describe("remediation plan ordering (X52)", () => {
+  it("orders errors before warnings and numbers the steps", () => {
+    const warning: Diagnostic = { code: "W", message: "w", severity: "warning" };
+    const error: Diagnostic = { code: "E", message: "e", severity: "error" };
+    const plan = buildRemediationPlan([warning, error]);
+    expect(plan.map((step) => step.diagnostic.code)).toEqual(["E", "W"]);
+    expect(plan.map((step) => step.order)).toEqual([1, 2]);
+    expect(plan[0]?.prompt).toContain("[E]");
+  });
+
+  it("returns an empty plan for no findings", () => {
+    expect(buildRemediationPlan([])).toHaveLength(0);
   });
 });

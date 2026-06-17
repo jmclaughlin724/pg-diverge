@@ -36,6 +36,7 @@ export type {
 
 const hintsSchema = z
   .object({
+    allowedGrantees: z.array(z.string()).default([]),
     destructive: z.array(z.string()).default([]),
     renames: z
       .array(
@@ -46,7 +47,7 @@ const hintsSchema = z
       )
       .default([]),
   })
-  .default({ destructive: [], renames: [] });
+  .default({ allowedGrantees: [], destructive: [], renames: [] });
 
 const schemaFilterSchema = z
   .strictObject({

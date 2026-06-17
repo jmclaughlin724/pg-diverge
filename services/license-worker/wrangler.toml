@@ -1,0 +1,10 @@
+name = "supaschema-license-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+# node:crypto (Ed25519 signing, HMAC webhook verification) requires nodejs_compat.
+compatibility_flags = ["nodejs_compat"]
+
+# Secrets are set with `wrangler secret put` and never committed:
+#   SUPASCHEMA_LICENSE_PRIVATE_KEY  Ed25519 PKCS8 PEM; its public half is embedded
+#                                   in the CLI trusted public key constant.
+#   STRIPE_WEBHOOK_SECRET           Stripe endpoint signing secret (whsec_...).

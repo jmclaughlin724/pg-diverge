@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { diffTypeContract } from "../src/type-contract.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes, TableShape } from "../src/typegen-model.js";
 
-function column(name: string, type: string): ColumnShape {
-  return { name, notNull: false, type };
+function column(name: string, type: string, notNull = false): ColumnShape {
+  return { name, notNull, type };
 }
 
 function table(name: string, columns: ColumnShape[]): TableShape {
@@ -61,6 +61,14 @@ describe("type-contract diff (P10)", () => {
     const diagnostics = diffTypeContract(before, after);
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]?.code).toBe("SUPA_TYPE_COLUMN_TYPE_CHANGED");
+  });
+
+  it("flags a changed column nullability", () => {
+    const before = usersWith([column("name", "string", true)]);
+    const after = usersWith([column("name", "string", false)]);
+    const diagnostics = diffTypeContract(before, after);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_TYPE_COLUMN_NULLABILITY_CHANGED");
   });
 
   it("treats an added column as non-breaking (silent)", () => {

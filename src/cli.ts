@@ -148,7 +148,7 @@ program
     const source = options.from ?? defaultTreeSource(config);
     const model = filterModel(await extractSourceModel(source, { config }), options.schema);
     printDiagnostics(model.diagnostics);
-    process.stdout.write(`${JSON.stringify(model, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(redactJson(model), null, 2)}\n`);
     if (hasErrors(model.diagnostics)) {
       process.exitCode = 2;
     }

@@ -1,15 +1,15 @@
 ---
 name: batch
-description: Research and plan a large-scale change, then execute it in parallel across 5–30 isolated worktree agents that each open a PR. Use when the user wants to make a sweeping, mechanical change across many files (migrations, refactors, bulk renames) that can be decomposed into independent parallel units.
+description: Research and plan a large-scale change, then execute it with bounded parallel workers on the current branch and current worktree. Use when the user wants to make a sweeping, mechanical change across many files (migrations, refactors, bulk renames) that can be decomposed into independent parallel units.
 user-invocable: true
 argument-hint: "<instruction>"
 ---
 
 ## Contract
 
-Run the extracted Claude Code `/batch` procedure for large, parallelizable changes. Treat the skill argument as the batch instruction. This command is useful only in a git repository because it spawns isolated worktree agents and tracks PRs.
+Run the extracted Claude Code `/batch` procedure for large, parallelizable changes. Treat the skill argument as the batch instruction. This command is useful only in a git repository because workers commit to the current branch.
 
-This extraction resolves the binary tool constants to their literal names:
+This extraction adapts the binary tool constants to the current runtime when the literal tool is available:
 
 - `EnterPlanMode`
 - `ExitPlanMode`
@@ -20,8 +20,8 @@ This extraction resolves the binary tool constants to their literal names:
 ## Command Metadata
 
 - Name: `batch`.
-- Menu description: `Plan a large change; background agents each open a PR`.
-- Description: `Research and plan a large-scale change, then execute it in parallel across 5–30 isolated worktree agents that each open a PR.`
+- Menu description: `Plan a large change; bounded workers commit on the current branch`.
+- Description: `Research and plan a large-scale change, then execute it with bounded parallel workers on the current branch and current worktree.`
 - When to use: `Use when the user wants to make a sweeping, mechanical change across many files (migrations, refactors, bulk renames) that can be decomposed into independent parallel units.`
 - Argument hint: `<instruction>`.
 - User invocable: `true`.
@@ -44,7 +44,7 @@ Examples:
 If the current directory is not a git repository, respond:
 
 ```text
-This is not a git repository. The `/batch` command requires a git repo because it spawns agents in isolated git worktrees and creates PRs from each. Initialize a repo first, or run this from inside an existing one.
+This is not a git repository. The `/batch` command requires a git repo because workers commit to the current branch. Initialize a repo first, or run this from inside an existing one.
 ```
 
 ## Batch Prompt
@@ -60,15 +60,15 @@ You are orchestrating a large, parallelizable change across this codebase.
 
 <insert the skill argument verbatim here>
 
-## Phase 1: Research and Plan (Plan Mode)
+## Phase 1: Research and Plan
 
-Call the `EnterPlanMode` tool now to enter plan mode, then:
+Enter the runtime's planning mode when it exists; otherwise use the native task tracker or write the plan directly in the transcript. Then:
 
 1. **Understand the scope.** Launch one or more subagents (in the foreground — you need their results) to deeply research what this instruction touches. Find all the files, patterns, and call sites that need to change. Understand the existing conventions so the migration is consistent.
 
 2. **Decompose into independent units.** Break the work into 5–30 self-contained units. Each unit must:
-   - Be independently implementable in an isolated git worktree (no shared state with sibling units)
-   - Be mergeable on its own without depending on another unit's PR landing first
+   - Be independently implementable on the current branch in the current worktree
+   - Avoid depending on another unit landing first
    - Be roughly uniform in size (split large units, merge trivial ones)
 
    Scale the count to the actual work: few files → closer to 5; hundreds of files → closer to 30. Prefer per-directory or per-module slicing over arbitrary file lists.
@@ -79,7 +79,7 @@ Call the `EnterPlanMode` tool now to enter plan mode, then:
    - A dev-server + curl pattern (for API changes: start the server, hit the affected endpoints)
    - An existing e2e/integration test suite the worker can run
 
-   If you cannot find a concrete e2e path, use the `AskUserQuestion` tool to ask the user how to verify this change end-to-end. Offer 2–3 specific options based on what you found (e.g., "Screenshot via chrome extension", "Run `bun run dev` and curl the endpoint", "No e2e — unit tests are sufficient"). Do not skip this — the workers cannot ask the user themselves.
+   If you cannot find a concrete e2e path, ask the user how to verify this change end-to-end using the runtime's native question tool when one exists, or a concise message otherwise. Offer 2–3 specific options based on what you found (e.g., "Screenshot via chrome extension", "Run `bun run dev` and curl the endpoint", "No e2e — unit tests are sufficient"). Do not skip this — the workers cannot ask the user themselves.
 
    Write the recipe as a short, concrete set of steps that a worker can execute autonomously. Include any setup (start a dev server, build first) and the exact command/interaction to verify.
 
@@ -89,26 +89,29 @@ Call the `EnterPlanMode` tool now to enter plan mode, then:
    - The e2e test recipe (or "skip e2e because …" if the user chose that)
    - The exact worker instructions you will give each agent (the shared template)
 
-5. Call `ExitPlanMode` to present the plan for approval.
+5. Present the plan for approval using the runtime's native approval path when one exists; otherwise present the plan in the transcript.
 
 ## Phase 2: Spawn Workers (After Plan Approval)
 
-Once the plan is approved, spawn one background agent per work unit using the `Agent` tool. **All agents must use `isolation: "worktree"` and `run_in_background: true`.** Launch them all in a single message block so they run in parallel.
+Once the plan is approved, spawn worker agents using the runtime's available delegation tool. Workers must stay on the current branch in the current worktree; do not request worktree isolation, branch creation, or fan-out PRs. Respect the configured thread cap when running workers in parallel.
 
 For each agent, the prompt must be fully self-contained. Include:
+
 - The overall goal (the user's instruction)
 - This unit's specific task (title, file list, change description — copied verbatim from your plan)
 - Any codebase conventions you discovered that the worker needs to follow
 - The e2e test recipe from your plan (or "skip e2e because …")
 - The worker instructions below, copied verbatim:
-
 ```
+
 After you finish implementing the change:
+
 1. **Code review** — Invoke the `Skill` tool with `skill: "code-review"` to find correctness bugs (it reports findings; it does not edit code). Fix any findings it surfaces before continuing.
 2. **Run unit tests** — Run the project's test suite (check for package.json scripts, Makefile targets, or common commands like `npm test`, `bun test`, `pytest`, `go test`). If tests fail, fix them.
 3. **Test end-to-end** — Follow the e2e test recipe from the coordinator's prompt (below). If the recipe says to skip e2e for this unit, skip it.
-4. **Commit and push** — Commit all changes with a clear message, push the branch, and create a PR with `gh pr create`. Use a descriptive title. If `gh` is not available or the push fails, note it in your final message.
-5. **Report** — End with a single line: `PR: <url>` so the coordinator can track it. If no PR was created, end with `PR: none — <reason>`.
+4. **Commit and push** — Commit your changes on the current branch with a clear message and push the current branch. Do not create or switch branches, create worktrees, force-push, or open a PR unless the coordinator explicitly assigned that exact operation. If `git`/`gh` is not available or the push fails, note it in your final message.
+5. **Report** — End with a single line: `COMMIT: <hash>` so the coordinator can track it. If no commit was created, end with `COMMIT: none — <reason>`.
+
 ```
 
 Use `subagent_type: "general-purpose"` unless a more specific agent type fits.
@@ -117,14 +120,14 @@ Use `subagent_type: "general-purpose"` unless a more specific agent type fits.
 
 After launching all workers, render an initial status table:
 
-| # | Unit | Status | PR |
+| # | Unit | Status | Commit |
 |---|------|--------|----|
 | 1 | <title> | running | — |
 | 2 | <title> | running | — |
 
-As background-agent completion notifications arrive, parse the `PR: <url>` line from each agent's result and re-render the table with updated status (`done` / `failed`) and PR links. Keep a brief failure note for any agent that did not produce a PR.
+As worker completion notifications arrive, parse the `COMMIT: <hash>` line from each agent's result and re-render the table with updated status (`done` / `failed`) and commit links. Keep a brief failure note for any agent that did not produce a commit.
 
-When all agents have reported, render the final table and a one-line summary (e.g., "22/24 units landed as PRs").
+When all agents have reported, render the final table and a one-line summary (e.g., "22/24 units committed successfully").
 ```
 
 ## Verification

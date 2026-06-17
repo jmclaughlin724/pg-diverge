@@ -7,9 +7,10 @@ import { renderCorpusReport, runCorpus } from "./corpus.js";
 import { hasErrors } from "./diagnostics.js";
 import { isEntitledFromEnv } from "./license.js";
 import { migrationsStatus, renderMigrationsStatus } from "./migrations-status.js";
-import { classifyMigrationSystems } from "./onboard.js";
+import { buildReadinessReport, classifyMigrationSystems, renderReadiness } from "./onboard.js";
 import { redactSecrets } from "./redaction.js";
-import { grantPack, hygienePack, rlsPack } from "./rules.js";
+import { buildRemediationPlan } from "./remediation.js";
+import { grantPack, grantPolicyRule, hygienePack, type RulePack, rlsPack } from "./rules.js";
 import { renderScan, type ScanResult, scanModel, scoreGrade } from "./scan.js";
 import { extractSourceModel } from "./source.js";
 import { syncMigrations } from "./sync.js";
@@ -45,7 +46,12 @@ async function scanFromSource(
 ): Promise<{ result: ScanResult; source: string }> {
   const source = from ?? config.sources.to;
   const model = await extractSourceModel(source, { config });
-  return { result: scanModel(model, SCAN_PACKS), source };
+  const rolePolicyPack: RulePack = {
+    id: "role-policy",
+    rules: [grantPolicyRule(config.hints.allowedGrantees)],
+    version: "0.1.0",
+  };
+  return { result: scanModel(model, [...SCAN_PACKS, rolePolicyPack]), source };
 }
 
 export function registerReportCommands(program: Command, context: ReportCommandContext): void {
@@ -103,15 +109,16 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .description("Detect the current migration system and report onboarding readiness.")
     .action(async (options: { from?: string }) => {
       const config = await context.loadCliConfig();
-      const report = classifyMigrationSystems(process.cwd());
-      const systems = report.systems.length > 0 ? report.systems.join(", ") : "none detected";
-      process.stdout.write(
-        `Migration system: ${systems}${report.mixed ? " (mixed workflow)" : ""}\n`
-      );
+      const systems = classifyMigrationSystems(process.cwd());
       const { result } = await scanFromSource(config, options.from);
-      process.stdout.write(
-        `Postgres safety score: ${result.score}/100 (${scoreGrade(result.score)})\n`
-      );
+      const readiness = buildReadinessReport(systems, result, scoreGrade(result.score));
+      process.stdout.write(`${renderReadiness(readiness)}\n`);
+      if (!readiness.ready && result.diagnostics.length > 0) {
+        const steps = buildRemediationPlan(result.diagnostics)
+          .map((step) => `  ${step.order}. ${step.diagnostic.code}`)
+          .join("\n");
+        process.stdout.write(`Remediate in order:\n${redactSecrets(steps)}\n`);
+      }
     });
 
   program
@@ -144,9 +151,21 @@ export function registerReportCommands(program: Command, context: ReportCommandC
           collectSchemaShapes(beforeModel),
           collectSchemaShapes(afterModel),
         ]);
+        const sourceDiagnostics = [...beforeModel.diagnostics, ...afterModel.diagnostics];
         const diagnostics = diffTypeContract(before, after);
-        const report = renderCheckReport(reporter, [{ diagnostics, file: toSource }]);
+        const report = renderCheckReport(
+          reporter,
+          [
+            { diagnostics: beforeModel.diagnostics, file: fromSource },
+            { diagnostics: afterModel.diagnostics, file: toSource },
+            { diagnostics, file: toSource },
+          ].filter((entry) => entry.diagnostics.length > 0)
+        );
         process.stdout.write(redactSecrets(report));
+        if (sourceDiagnostics.some((item) => item.severity === "error")) {
+          process.exitCode = 2;
+          return;
+        }
         if (!diagnostics.some((item) => item.severity === "error") || options.enforce !== true) {
           return;
         }

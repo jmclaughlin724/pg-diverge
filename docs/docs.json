@@ -160,11 +160,14 @@
           "commands/types",
           "commands/migrations",
           "commands/sync",
+          "commands/scan",
+          "commands/type-contract",
           {
             "group": "Utilities",
             "expanded": false,
             "pages": [
               "commands/plan",
+              "commands/onboard",
               "commands/inspect",
               "commands/fingerprint",
               "commands/audit",

@@ -23,7 +23,7 @@ const WARNING_WEIGHT = 3;
 const MAX_SCORE = 100;
 
 export function scanModel(model: SchemaModel, packs: RulePack[]): ScanResult {
-  const diagnostics = runRulePacks(packs, { model });
+  const diagnostics = [...model.diagnostics, ...runRulePacks(packs, { model })];
   const errorCount = diagnostics.filter((item) => item.severity === "error").length;
   const warningCount = diagnostics.filter((item) => item.severity === "warning").length;
   const score = Math.max(0, MAX_SCORE - errorCount * ERROR_WEIGHT - warningCount * WARNING_WEIGHT);

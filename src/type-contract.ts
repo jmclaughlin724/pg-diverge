@@ -52,6 +52,16 @@ function diffColumns(schema: string, before: TableShape, after: TableShape): Dia
           `column "${before.name}.${column.name}" type changed: ${column.type} -> ${afterColumn.type}`
         )
       );
+    } else if (afterColumn.notNull !== column.notNull) {
+      diagnostics.push(
+        breaking(
+          "SUPA_TYPE_COLUMN_NULLABILITY_CHANGED",
+          "table",
+          schema,
+          before.name,
+          `column "${before.name}.${column.name}" nullability changed: ${column.notNull ? "NOT NULL" : "nullable"} -> ${afterColumn.notNull ? "NOT NULL" : "nullable"}`
+        )
+      );
     }
   }
   return diagnostics;

@@ -147,10 +147,21 @@ function tableKey(ref: ObjectRef): string {
   return `${ref.schema ?? "public"}.${ref.table ?? ref.name}`;
 }
 
+const ENABLE_ROW_LEVEL_SECURITY_SQL = /\bENABLE\s+ROW\s+LEVEL\s+SECURITY\b/i;
+
+function isRlsEnabledObject(object: SchemaObject): boolean {
+  return (
+    object.ref.kind === "rls" &&
+    (object.metadata.rlsSubtype === "AT_EnableRowSecurity" ||
+      object.metadata.rlsEnabled === true ||
+      ENABLE_ROW_LEVEL_SECURITY_SQL.test(object.sql))
+  );
+}
+
 function rlsEnabledTableKeys(model: SchemaModel): Set<string> {
   const enabled = new Set<string>();
   for (const object of model.objects) {
-    if (object.ref.kind === "rls" && object.metadata.rlsSubtype === "AT_EnableRowSecurity") {
+    if (isRlsEnabledObject(object)) {
       enabled.add(tableKey(object.ref));
     }
   }
@@ -166,7 +177,7 @@ export const rlsEnabledNoPolicyRule: Rule = {
     );
     const diagnostics: Diagnostic[] = [];
     for (const object of model.objects) {
-      if (object.ref.kind !== "rls" || object.metadata.rlsSubtype !== "AT_EnableRowSecurity") {
+      if (!isRlsEnabledObject(object)) {
         continue;
       }
       if (!policyTables.has(tableKey(object.ref))) {
@@ -232,7 +243,7 @@ export const grantToPublicRule: Rule = {
   check: ({ model }) => {
     const diagnostics: Diagnostic[] = [];
     for (const object of model.objects) {
-      if (object.ref.kind !== "grant") {
+      if (object.ref.kind !== "grant" && object.ref.kind !== "default-privilege") {
         continue;
       }
       if (object.metadata.verb !== "GRANT" || object.metadata.grantee !== "PUBLIC") {
@@ -281,6 +292,46 @@ export const grantAllPrivilegesRule: Rule = {
   },
   id: "PRIV002",
 };
+
+/**
+ * Declared role-policy drift (task P11). Given the grantees a project permits, flag
+ * any `GRANT` to a role outside that set. A no-op when no policy is declared (empty
+ * set), so it never fires until a project opts in via `hints.allowedGrantees`;
+ * PUBLIC and over-broad ALL grants are caught by the dedicated rules above. The
+ * allowed set is injected, keeping this a pure rule.
+ */
+export function grantPolicyRule(allowedGrantees: string[]): Rule {
+  const allowed = new Set(allowedGrantees);
+  return {
+    check: ({ model }) => {
+      if (allowed.size === 0) {
+        return [];
+      }
+      const diagnostics: Diagnostic[] = [];
+      for (const object of model.objects) {
+        if (object.ref.kind !== "grant" && object.ref.kind !== "default-privilege") {
+          continue;
+        }
+        if (object.metadata.verb !== "GRANT") {
+          continue;
+        }
+        const grantee = object.metadata.grantee;
+        if (typeof grantee !== "string" || grantee === "PUBLIC" || allowed.has(grantee)) {
+          continue;
+        }
+        diagnostics.push({
+          code: "SUPA_RULE_GRANT_UNDECLARED_ROLE",
+          hint: "Add the role to hints.allowedGrantees or revoke the grant (least privilege)",
+          message: `Grant to undeclared role "${grantee}" on ${grantTarget(object)}`,
+          ref: object.ref,
+          severity: "warning",
+        });
+      }
+      return diagnostics;
+    },
+    id: "PRIV003",
+  };
+}
 
 export const grantPack: RulePack = {
   id: "grants",

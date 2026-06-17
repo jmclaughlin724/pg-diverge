@@ -377,7 +377,17 @@ async function appendPoliciesAndRls(
       statements.push(`ALTER TABLE ${formatQualifiedName(schema, name)} FORCE ROW LEVEL SECURITY`);
     }
     objects.push(
-      makeObject({ kind: "rls", name, schema, table: name }, statements.join(";\n"), nextOrdinal)
+      makeObject(
+        { kind: "rls", name, schema, table: name },
+        statements.join(";\n"),
+        nextOrdinal,
+        undefined,
+        {
+          rlsEnabled: row.rls === true,
+          rlsForced: row.force === true,
+          rlsSubtype: row.rls === true ? "AT_EnableRowSecurity" : "AT_ForceRowSecurity",
+        }
+      )
     );
     nextOrdinal += 1;
   }

@@ -283,6 +283,19 @@ describe("raw CLI errors", () => {
     expect(result.stderr).toContain("JavaScript config files are not supported");
   });
 
+  it("redacts database source credentials from inspect JSON output", () => {
+    const password = "p".repeat(300);
+    const source = `database:postgresql://user:${password}@127.0.0.1:9/db`;
+    const result = spawnSync(process.execPath, [cliPath, "inspect", "--from", source], {
+      encoding: "utf8",
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).not.toContain(password);
+    expect(result.stderr).not.toContain(password);
+    expect(result.stdout).toContain("postgresql://user:[redacted]@127.0.0.1:9/db");
+  });
+
   it("ignores JavaScript config files during default discovery", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-cli-js-default-"));
     writeFileSync(

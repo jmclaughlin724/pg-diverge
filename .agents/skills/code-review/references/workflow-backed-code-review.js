@@ -18,12 +18,23 @@ const LEVEL_PARAMS = {
 const SWEEP_MAX = 8
 
 const RAW_ARGS = (typeof args === "string" ? args : "").trim()
-const FIRST = RAW_ARGS.split(/\s+/)[0] || ""
+const ARG_TOKENS = RAW_ARGS.split(/\s+/).filter(Boolean)
+const FLAG_FIX = ARG_TOKENS.some(token => token === "--fix")
+const FLAG_COMMENT = ARG_TOKENS.some(token => token === "--comment")
+const POSITIONAL_ARGS = ARG_TOKENS.filter(token => token !== "--fix" && token !== "--comment")
+const FIRST = POSITIONAL_ARGS[0] || ""
 // Own-property check so Object.prototype keys ("constructor", "toString") never parse as a level.
 const FIRST_IS_LEVEL = Object.prototype.hasOwnProperty.call(LEVEL_PARAMS, FIRST)
 const LEVEL = FIRST_IS_LEVEL ? FIRST : "high"
-const TARGET = FIRST_IS_LEVEL ? RAW_ARGS.slice(FIRST.length).trim() : RAW_ARGS
+const TARGET = FIRST_IS_LEVEL ? POSITIONAL_ARGS.slice(1).join(" ").trim() : POSITIONAL_ARGS.join(" ").trim()
 const P = LEVEL_PARAMS[LEVEL]
+const FLAG_INSTRUCTIONS =
+  (FLAG_FIX
+    ? "\n## Applying fixes (--fix)\nThe `--fix` flag was passed. After producing the findings list, apply the findings to the working tree instead of stopping at the report: fix each one directly when the fix is local and intended. Skip any finding whose fix would change intended behavior, require changes well outside the reviewed diff, or is judged false positive; note the skip.\n"
+    : "") +
+  (FLAG_COMMENT
+    ? "\n## Posting to GitHub (--comment)\nThe `--comment` flag was passed. After producing the findings list, post findings as inline PR comments when the target is a GitHub PR and a comment tool or `gh api` is available; otherwise print the findings and note that inline posting was unavailable.\n"
+    : "")
 
 // Prompt fragments shared with the inline /code-review cells (one source of truth).
 const CORRECTNESS_ANGLES = [{"label":"angle-A","text":"### Angle A — line-by-line diff scan\n\nRead every hunk in the diff, line by line. Then Read the enclosing function for\neach hunk — bugs in unchanged lines of a touched function are in scope (the PR\nre-exposes or fails to fix them). For every line ask: what input, state, timing,\nor platform makes this line wrong? Look for inverted/wrong conditions,\noff-by-one, null/undefined deref, missing `await`, falsy-zero checks,\nwrong-variable copy-paste, error swallowed in catch, unescaped regex metachars.\n"},{"label":"angle-B","text":"### Angle B — removed-behavior auditor\n\nFor every line the diff DELETES or replaces, name the invariant or behavior it\nenforced, then search the new code for where that invariant is re-established.\nIf you can't find it, that's a candidate: a removed guard, a dropped error\npath, a narrowed validation, a deleted test that was covering a real case.\n"},{"label":"angle-C","text":"### Angle C — cross-file tracer\n\nFor each function the diff changes, find its callers (Grep for the symbol) and\ncheck whether the change breaks any call site: a new precondition, a changed\nreturn shape, a new exception, a timing/ordering dependency. Also check callees:\ndoes a parallel change in the same PR make a call unsafe?\n"},{"label":"angle-D","text":"### Angle D — language-pitfall specialist\n\nScan for the classic pitfalls of the diff's language/framework — for example:\nJS falsy-zero, `==` coercion, closure-captured loop var; Python mutable default\nargs, late-binding closures; Go nil-map write, range-var capture; SQL injection;\ntimezone/DST drift; float equality. Flag any instance the diff introduces.\n"},{"label":"angle-E","text":"### Angle E — wrapper/proxy correctness\n\nWhen the PR adds or modifies a type that wraps another (cache, proxy, decorator,\nadapter): check that every method routes to the wrapped instance and not back\nthrough a registry/session/global — e.g. a caching provider holding a\n`delegate` field that resolves IDs via `session.get(...)` instead of\n`delegate.get(...)` will re-enter the cache or recurse. Also check that the\nwrapper forwards all the methods the callers actually use.\n"}]
@@ -116,7 +127,8 @@ const SCOPE_BLOCK =
   // not just used for diff scoping.
   (TARGET
     ? "\n## User instructions (verbatim)\n" + TARGET + "\nHonor any scope restrictions or focus areas stated above — they take precedence over your angle's default breadth. Do not surface findings the instructions ask to skip.\n"
-    : "")
+    : "") +
+  FLAG_INSTRUCTIONS
 
 // ─── Prompts ───
 const FINDER_PROMPT = f =>
@@ -273,6 +285,7 @@ const summary = usedDecisions && report
 return {
   level: LEVEL,
   target: TARGET || undefined,
+  flags: { fix: FLAG_FIX, comment: FLAG_COMMENT },
   summary,
   findings,
   refuted: refuted.map(c => ({ file: c.file, line: c.line, summary: c.summary })),

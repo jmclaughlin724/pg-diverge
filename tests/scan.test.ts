@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SchemaModel, SchemaObject } from "../src/core.js";
+import type { Diagnostic, SchemaModel, SchemaObject } from "../src/core.js";
 import { hygienePack } from "../src/rules.js";
 import { renderScan, scanBadge, scanModel, scoreGrade } from "../src/scan.js";
 
@@ -16,8 +16,8 @@ function tableObject(name: string): SchemaObject {
   };
 }
 
-function model(objects: SchemaObject[]): SchemaModel {
-  return { diagnostics: [], fingerprint: "f", objects, source: "test" };
+function model(objects: SchemaObject[], diagnostics: Diagnostic[] = []): SchemaModel {
+  return { diagnostics, fingerprint: "f", objects, source: "test" };
 }
 
 describe("scan core (K0)", () => {
@@ -35,6 +35,25 @@ describe("scan core (K0)", () => {
     expect(result.warningCount).toBe(2);
     expect(result.score).toBe(94); // 100 - 2*3
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("includes extraction diagnostics in the score and error count", () => {
+    const result = scanModel(
+      model(
+        [],
+        [
+          {
+            code: "SUPA_EXTRACT_UNSUPPORTED",
+            message: "unsupported statement",
+            severity: "error",
+          },
+        ]
+      ),
+      [hygienePack]
+    );
+    expect(result.errorCount).toBe(1);
+    expect(result.score).toBe(90);
+    expect(result.diagnostics[0]?.code).toBe("SUPA_EXTRACT_UNSUPPORTED");
   });
 
   it("never returns a negative score", () => {

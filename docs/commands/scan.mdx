@@ -1,0 +1,49 @@
+---
+title: "scan"
+description: "Score a declarative schema for Postgres safety with the rule packs and report findings."
+keywords: ["scan command", "postgres safety score", "rule packs", "rls audit"]
+---
+
+Use `scan` to grade a declarative schema and surface safety findings without a database.
+
+`scan` reads the declarative tree (or any source) and runs the rule packs. It does not connect to a database.
+
+## Use this when
+
+- A repo needs a quick Postgres safety score.
+- CI should surface RLS, grant, and hygiene findings.
+- An onboarding check wants a baseline grade.
+
+## Run it
+
+```bash
+npx supaschema scan
+npx supaschema scan --from dir:database/schemas
+npx supaschema scan --reporter json
+```
+
+With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Output is credential-redacted before printing.
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Source to scan. Defaults to the declarative tree (`config.sources.to`).
+</ParamField>
+
+<ParamField path="--reporter" type="text | json | github | sarif">
+  Output format. An unknown value exits `2` with an error.
+</ParamField>
+
+## What it scores
+
+- a composite safety score (0-100) and letter grade A-F;
+- table-naming hygiene;
+- RLS misconfiguration (enabled without a policy; policy without RLS);
+- over-broad grants (to PUBLIC, ALL privileges, or roles outside `hints.allowedGrantees`).
+
+## Exit codes
+
+| Code | Meaning                                              |
+| ---- | ---------------------------------------------------- |
+| 0    | Scan completed; warnings are allowed.                |
+| 2    | Error-severity findings, or an unknown `--reporter`. |
