@@ -1,8 +1,12 @@
+import { execFile } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import type { SupaschemaConfig } from "./config.js";
 import type { MigrationPlan } from "./core.js";
 import { redactSecrets } from "./diagnostics.js";
+
+const execFileAsync = promisify(execFile);
 
 export interface ResolvedSources {
   from: string;
@@ -23,15 +27,16 @@ export function resolveMigrationsDir(
 
 /**
  * Zero-flag source resolution: config.sources owns machine-readable defaults.
- * sources.from="auto" resolves to the database (the applied state) and falls
- * back to git:HEAD when no database URL resolves. sources.to falls back to the
- * declarative tree from config.schemaPaths. The notice names every defaulted
- * lane so the chosen sources are never silent.
+ * sources.from="auto" resolves to the database (the applied state), then a
+ * valid git:HEAD, then empty:. sources.to falls back to the declarative tree
+ * from config.schemaPaths. The notice names every defaulted lane so the chosen
+ * sources are never silent.
  */
 export async function resolveSourceDefaults(
   options: { from?: string; to?: string },
   config: SupaschemaConfig,
-  resolveDbUrl: () => Promise<string | undefined>
+  resolveDbUrl: () => Promise<string | undefined>,
+  gitHeadExists: () => Promise<boolean> = defaultGitHeadExists
 ): Promise<ResolvedSources> {
   const defaulted: string[] = [];
   const to = options.to ?? config.sources.to ?? defaultTreeSource(config);
@@ -42,7 +47,13 @@ export async function resolveSourceDefaults(
   if (from === undefined) {
     if (config.sources.from === "auto") {
       const databaseUrl = await resolveDbUrl();
-      from = databaseUrl === undefined ? "git:HEAD" : `database:${databaseUrl}`;
+      if (databaseUrl !== undefined) {
+        from = `database:${databaseUrl}`;
+      } else if (await gitHeadExists()) {
+        from = "git:HEAD";
+      } else {
+        from = "empty:";
+      }
     } else {
       from = config.sources.from;
     }
@@ -51,6 +62,17 @@ export async function resolveSourceDefaults(
   const notice =
     defaulted.length > 0 ? `defaults: ${defaulted.join(" · ")} (flags override)\n` : undefined;
   return { from, notice, to };
+}
+
+async function defaultGitHeadExists(): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["rev-parse", "--verify", "--quiet", "HEAD"], {
+      maxBuffer: 1024 * 1024,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function defaultMigrationName(plan: MigrationPlan): string {

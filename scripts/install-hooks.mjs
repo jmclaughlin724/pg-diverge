@@ -3,12 +3,13 @@
 // lifecycle script (after the build). Skipped in CI and fully silent so it
 // never pollutes stdout captured by `npm pack` / `npm ci` — both of which run
 // `prepare`, and several gates parse that stdout (the tarball name, `npm pack
-// --json`). Cross-platform: resolves lefthook via the shell and ignores all
-// output; a missing lefthook is a no-op, never a failed install.
+// --json`). Cross-platform: resolves lefthook from PATH and ignores all output;
+// a missing lefthook is a no-op, never a failed install.
 import { spawnSync } from "node:child_process";
 
 if (process.env.CI) {
   process.exit(0);
 }
 
-spawnSync("lefthook", ["install"], { stdio: "ignore", shell: true });
+const command = process.platform === "win32" ? "lefthook.cmd" : "lefthook";
+spawnSync(command, ["install"], { stdio: "ignore", shell: false });

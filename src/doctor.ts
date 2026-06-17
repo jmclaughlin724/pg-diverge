@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Client } from "pg";
-import type { SupaschemaConfig } from "./config.js";
+import { pendingInstallPathConfirmationDiagnostic, type SupaschemaConfig } from "./config.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { migrationsStatus } from "./migrations-status.js";
 import { parseSqlAst } from "./sql/parser.js";
@@ -32,7 +32,12 @@ export async function runDoctor(
   const cwd = options.cwd ?? process.cwd();
   const checks: DoctorCheck[] = [];
 
-  checks.push(nodeVersionCheck(), await sqlParserCheck(), configCheck(options.configPath));
+  checks.push(
+    nodeVersionCheck(),
+    await sqlParserCheck(),
+    configCheck(options.configPath),
+    await installPathConfirmationCheck(cwd, options.configPath)
+  );
 
   const explicit = options.databaseUrl;
   const resolved = options.resolvedDatabaseUrl ?? resolveDatabaseUrl(explicit);
@@ -81,6 +86,25 @@ function configCheck(configPath: string | undefined): DoctorCheck {
     detail: configPath ?? "defaults (no config file found is fine)",
     name: "config",
     status: "pass",
+  };
+}
+
+async function installPathConfirmationCheck(
+  cwd: string,
+  configPath: string | undefined
+): Promise<DoctorCheck> {
+  const pending = await pendingInstallPathConfirmationDiagnostic(cwd, configPath);
+  if (!pending) {
+    return {
+      detail: "no pending install path confirmation",
+      name: "install path confirmation",
+      status: "pass",
+    };
+  }
+  return {
+    detail: `${pending.message} ${pending.hint}`,
+    name: "install path confirmation",
+    status: "fail",
   };
 }
 

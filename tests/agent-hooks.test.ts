@@ -548,66 +548,149 @@ describe("codex generated-migration tool gate", () => {
   });
 });
 
-const skillGateCases = [
-  {
-    gate: ".claude/hooks/skill-gate.mjs",
-    init: ".claude/hooks/skill-session-init.mjs",
-    name: "claude",
-  },
-  {
-    gate: ".codex/hooks/skill-gate.mjs",
-    init: ".codex/hooks/skill-session-init.mjs",
-    name: "codex",
-  },
-];
+describe("agent-hooks response-evidence recording", () => {
+  const postToolHook = ".claude/hooks/context-post-tool-use.mjs";
+  const stopHook = ".claude/hooks/context-stop.mjs";
+  const promptHook = ".claude/hooks/context-user-prompt-submit.mjs";
+  const claimReason = "claims verification without a recorded successful verification command";
 
-describe.each(skillGateCases)("repo skill enforcement hook ($name)", ({ gate, init }) => {
-  it("denies a governed edit once, delivers skill context, then allows the re-run", async () => {
-    const ledger = await mkdtemp(join(tmpdir(), "supa-skill-gate-"));
-    const env = {
-      ...process.env,
-      SKILL_GATE_MODE: "enforce",
-      SUPASCHEMA_SKILL_GATE_LEDGER_DIR: ledger,
-    };
-    const payload = {
-      session_id: "skill-gate-test",
-      tool_input: {
-        patch:
-          "*** Begin Patch\n" +
-          "*** Update File: src/render.ts\n" +
-          "@@\n" +
-          "-old\n" +
-          "+new\n" +
-          "*** End Patch",
+  // The live Bash tool_response shape carries { stdout, stderr, interrupted } and no exit code.
+  const bashResponse = { interrupted: false, stderr: "", stdout: "ALL_GUARDS_OK" };
+
+  it("records a completed Bash run as evidence so a truthful verification claim is not flagged", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-evidence-state-"));
+    const env = { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir };
+    const session = "evidence-positive";
+
+    await runHook(promptHook, { prompt: "do the task", session_id: session }, { env });
+    await runHook(
+      postToolHook,
+      {
+        session_id: session,
+        tool_input: { command: "npm run guard" },
+        tool_name: "Bash",
+        tool_response: bashResponse,
       },
-      tool_name: "apply_patch",
-    };
+      { env }
+    );
+    const stop = await runHook(
+      stopHook,
+      { last_assistant_message: "Guards passed and the change is verified.", session_id: session },
+      { env }
+    );
+    expect(stop.stdout).not.toContain(claimReason);
+  });
 
-    await runHook(init, { session_id: "skill-gate-test" }, { env });
-    const first = await runHook(gate, payload, { env });
-    const firstOutput = hookJson(first.stdout) as {
-      hookSpecificOutput?: {
-        permissionDecision?: string;
-        permissionDecisionReason?: string;
-      };
-    };
-    expect(first.code).toBe(0);
-    expect(firstOutput.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(firstOutput.hookSpecificOutput?.permissionDecisionReason).toContain("code-atlas");
-    expect(firstOutput.hookSpecificOutput?.permissionDecisionReason).toContain(
-      "Code Atlas Workflow"
+  it("still flags a verification claim when no successful command evidence exists", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-evidence-state-"));
+    const env = { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir };
+    const session = "evidence-negative";
+
+    await runHook(promptHook, { prompt: "do the task", session_id: session }, { env });
+    const stop = await runHook(
+      stopHook,
+      { last_assistant_message: "The change is verified and tested.", session_id: session },
+      { env }
+    );
+    expect(stop.stdout).toContain(claimReason);
+  });
+
+  it("treats an interrupted Bash run as a failure, not evidence", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-evidence-state-"));
+    const env = { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir };
+    const session = "evidence-interrupted";
+
+    await runHook(promptHook, { prompt: "do the task", session_id: session }, { env });
+    await runHook(
+      postToolHook,
+      {
+        session_id: session,
+        tool_input: { command: "npm run guard" },
+        tool_name: "Bash",
+        tool_response: { interrupted: true, stderr: "", stdout: "" },
+      },
+      { env }
+    );
+    const stop = await runHook(
+      stopHook,
+      { last_assistant_message: "The guards passed and are verified.", session_id: session },
+      { env }
+    );
+    expect(stop.stdout).toContain(claimReason);
+  });
+
+  it("does not credit a completed command whose output reports a non-zero exit code", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-evidence-state-"));
+    const env = { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir };
+    const session = "evidence-failed-exit";
+
+    await runHook(promptHook, { prompt: "do the task", session_id: session }, { env });
+    await runHook(
+      postToolHook,
+      {
+        session_id: session,
+        tool_input: { command: "npm run guard" },
+        tool_name: "Bash",
+        // Completed (interrupted: false) but the output reports failure — must not be credited.
+        tool_response: { interrupted: false, stderr: "guard exited with code 1", stdout: "" },
+      },
+      { env }
+    );
+    const stop = await runHook(
+      stopHook,
+      { last_assistant_message: "The guards passed and are verified.", session_id: session },
+      { env }
+    );
+    expect(stop.stdout).toContain(claimReason);
+  });
+});
+
+describe("agent-hooks PreToolUse subagent downgrade", () => {
+  it("hard-denies a gated tool in the main session but only advises inside a subagent", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-state-"));
+    const env = { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir };
+    const session = "subagent-downgrade-test";
+    const promptHook = ".claude/hooks/context-user-prompt-submit.mjs";
+    const preToolHook = ".claude/hooks/context-pre-tool-use.mjs";
+
+    // Make a skill pending for this turn via an explicit prompt token.
+    await runHook(
+      promptHook,
+      { prompt: "load the supaschema skill now", session_id: session },
+      { env }
     );
 
-    const second = await runHook(gate, payload, { env });
-    expect(second.code).toBe(0);
-    expect(second.stdout.trim()).toBe("");
-
-    await runHook(init, { session_id: "skill-gate-test" }, { env });
-    const afterReset = await runHook(gate, payload, { env });
-    const resetOutput = hookJson(afterReset.stdout) as {
-      hookSpecificOutput?: { permissionDecision?: string };
+    const gatedInput = {
+      file_path: "src/example-not-a-skill.ts",
+      new_string: "b",
+      old_string: "a",
     };
-    expect(resetOutput.hookSpecificOutput?.permissionDecision).toBe("deny");
+
+    // Main session: hard deny with the pending-skill reason.
+    const mainCall = await runHook(
+      preToolHook,
+      { session_id: session, tool_input: gatedInput, tool_name: "Edit" },
+      { env }
+    );
+    const mainOut = JSON.parse(mainCall.stdout) as {
+      hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string };
+    };
+    expect(mainOut.hookSpecificOutput?.permissionDecision).toBe("deny");
+    expect(mainOut.hookSpecificOutput?.permissionDecisionReason).toContain(
+      "Required skills are pending"
+    );
+
+    // Subagent (agent_id present): advisory only, never a deny.
+    const subCall = await runHook(
+      preToolHook,
+      { agent_id: "sub-1", session_id: session, tool_input: gatedInput, tool_name: "Edit" },
+      { env }
+    );
+    const subOut = JSON.parse(subCall.stdout) as {
+      hookSpecificOutput?: { additionalContext?: string; permissionDecision?: string };
+    };
+    expect(subOut.hookSpecificOutput?.permissionDecision).toBeUndefined();
+    expect(subOut.hookSpecificOutput?.additionalContext ?? "").toContain("subagent");
   });
 });
 

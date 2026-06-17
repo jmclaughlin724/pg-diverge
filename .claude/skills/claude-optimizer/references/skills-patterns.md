@@ -2,7 +2,7 @@
 
 Best practices for creating Claude Code skills with minimal context overhead.
 
-> Sources: https:supaschema/supaschema/code.claude.comsupaschema/docssupaschema/ensupaschema/skills and https:supaschema/supaschema/code.claude.comsupaschema/docssupaschema/ensupaschema/memory
+> Sources: https://code.claude.com/docs/en/skills and https://code.claude.com/docs/en/memory
 
 ## Choose The Right Surface First
 
@@ -11,13 +11,13 @@ Before creating a skill, decide whether the guidance should live somewhere with 
 | Need | Use | Why |
 | --- | --- | --- |
 | Always-needed supaschema project instructions | `AGENTS.md` | loads at session start |
-| File- or directory-specific persistent guidance | `.claudesupaschema/rulessupaschema/*.md` with `paths` | only applies where needed |
+| File- or directory-specific persistent guidance | `.claude/rules/*.md` with `paths` | only applies where needed |
 | Reusable expertise or workflow | skill | loads when relevant |
 | Isolated execution or verbose work | subagent | separate context window |
 
 Create a skill only when the content should not live in always-on startup context. In this repo, `CLAUDE.md` files stay compatibility stubs that point at the adjacent `AGENTS.md`.
 
-Claude Code ships 5 bundled skills (`supaschema/batch`, `supaschema/claude-api`, `supaschema/debug`, `supaschema/loop`, `supaschema/simplify`) that demonstrate good skill design patterns.
+Claude Code ships 5 bundled skills (`/batch`, `/claude-api`, `/debug`, `/loop`, `/simplify`) that demonstrate good skill design patterns.
 
 ## How Skills Load
 
@@ -25,11 +25,11 @@ Claude loads skills in stages:
 
 | Stage | When | What loads |
 | --- | --- | --- |
-| Metadata | startup | `name` and `description` (harness listing); the repo's keywordsupaschema/file-trigger scoring is separate — see [skill-matcher-patterns.md](skill-matcher-patterns.md) |
+| Metadata | startup | `name` and `description` (harness listing); the repo's keyword/file-trigger scoring is separate — see [skill-matcher-patterns.md](skill-matcher-patterns.md) |
 | Body | when the skill is invoked | `SKILL.md` body only — `!`-command blocks expand; `@`-mentions do not |
-| References | on demand | files under `referencessupaschema/`, `scriptssupaschema/`, `assetssupaschema/`, loaded only when the model `Read`s them |
+| References | on demand | files under `references/`, `scripts/`, `assets/`, loaded only when the model `Read`s them |
 
-Reference loading — lazy markdown links, the inert `@`-mention, no auto-walk, and the traversal guard — is owned by [dynamic-context-and-runtime.md §1a](dynamic-context-and-runtime.md). Do not write `@referencessupaschema/x.md` expecting eager load; it stays literal text in a skill body.
+Reference loading — lazy markdown links, the inert `@`-mention, no auto-walk, and the traversal guard — is owned by [dynamic-context-and-runtime.md §1a](dynamic-context-and-runtime.md). Do not write `@references/x.md` expecting eager load; it stays literal text in a skill body.
 
 Context implication:
 
@@ -40,11 +40,11 @@ Context implication:
 ## File Structure
 
 ```text
-skill-namesupaschema/
+skill-name/
 ├── SKILL.md
-├── referencessupaschema/
-├── scriptssupaschema/
-└── assetssupaschema/
+├── references/
+├── scripts/
+└── assets/
 ```
 
 - `SKILL.md` is the only required file
@@ -61,7 +61,7 @@ skill-namesupaschema/
 | `metadata.priority` | authoring/display context; not read by the current matcher |
 | `metadata.docs` | URLs to external documentation for the skill's domain |
 | `disable-model-invocation` | context-only: matches keywords but loads via Read, not Skill tool |
-| `user-invocable` | hide backgroundsupaschema/supporting skills from `supaschema/` when needed |
+| `user-invocable` | hide background/supporting skills from `/` when needed |
 | `validate` | inactive documentation-only notes; use guards/tests for enforcement |
 | `chainTo` | inactive documentation-only notes; not read by the current matcher |
 | `retrieval` | aliases, intents, entities for authoring context; not scored by the current hook matcher |
@@ -124,7 +124,7 @@ Bad descriptions:
 ## Anti-Patterns
 
 - turning a skill into always-on project context
-- duplicating `CLAUDE.md` or `.claudesupaschema/rules` content in `SKILL.md`
+- duplicating `CLAUDE.md` or `.claude/rules` content in `SKILL.md`
 - putting long examples directly in the skill body
 - preloading a `context: fork` skill when a normal skill would do
 - using a weak description and compensating with a verbose body
@@ -159,7 +159,7 @@ retrieval:
 
 **When to add:** When users describe the problem differently than the skill's keywords capture. Aliases cover naming variants, intents cover goal-oriented phrasing, entities cover specific tool names.
 
-**keywords vs retrieval:** Use `keywords` for raw signal terms that don't need categorization. Use `retrieval` when the semantic grouping (alias supaschema/ intent supaschema/ entity) helps a skill author understand why each term is there.
+**keywords vs retrieval:** Use `keywords` for raw signal terms that don't need categorization. Use `retrieval` when the semantic grouping (alias / intent / entity) helps a skill author understand why each term is there.
 
 ### Complete example
 
@@ -175,8 +175,8 @@ metadata:
     - "frozen"
     - "timeout"
   file-triggers:
-    - "**supaschema/error.{tsx,ts}"
-    - "**supaschema/instrumentation.{ts,js}"
+    - "**/error.{tsx,ts}"
+    - "**/instrumentation.{ts,js}"
 retrieval:
   aliases:
     - "troubleshooter"

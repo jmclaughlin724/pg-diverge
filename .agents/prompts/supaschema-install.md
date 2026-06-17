@@ -8,25 +8,50 @@ You are working in the consuming project, not in the supaschema source repositor
 
 Do not clone `jmclaughlin724/supaschema` into the project, run `npm ci` in a nested supaschema checkout, or validate supaschema by running its internal fixture suite unless the user explicitly asks you to develop supaschema itself. For normal use, install the npm package in the target project and work from that project root.
 
+## Identify the Package Manager
+
+Before installing, identify the package manager from this evidence, in order:
+
+1. `packageManager` in `package.json`.
+2. `devEngines.packageManager` in `package.json`.
+3. Lockfile and workspace evidence: `package-lock.json` or `npm-shrinkwrap.json` means npm, `pnpm-lock.yaml` or `pnpm-workspace.yaml` means pnpm, `yarn.lock` means Yarn, and `bun.lock` or `bun.lockb` means Bun.
+
+STOP IF package-manager signals conflict, the owning workspace package is unclear, Node is below 22.12, or the project policy blocks dependency build scripts without permission to approve `supaschema`. Do not run npm in a pnpm, Yarn, or Bun project. Do not create a second lockfile.
+
+For workspaces, `cd` into the owning member package before first install unless the workspace root owns `supaschema.config.json` and the schema workflow. Dependency-targeting flags can update a member manifest while lifecycle scripts still see the command's original directory, which can scaffold the wrong project.
+
 ## Install Command
 
-If supaschema is not installed, run this from the project root:
+| Manager | First install | Workspace note |
+| --- | --- | --- |
+| npm | `npm install supaschema` | Run from the owning package directory |
+| pnpm | `pnpm add --allow-build=supaschema supaschema` | Root owner can add `-w` from the root. Member owner: run `pnpm add --ignore-scripts supaschema`, then `pnpm exec supaschema init` from the member directory |
+| Yarn | `yarn add supaschema` | Run from the owning workspace package directory |
+| Bun | `bun add --trust supaschema` | Root owner can use `--trust`. Member owner: run `bun add supaschema`, then `bunx --no-install supaschema init` from the member directory |
+
+Use the matching local runner for every command after install:
+
+| Manager | Local runner |
+| --- | --- |
+| npm | `npm exec -- supaschema <cmd>` |
+| pnpm | `pnpm exec supaschema <cmd>` |
+| Yarn | `yarn exec supaschema <cmd>` |
+| Bun | `bunx --no-install supaschema <cmd>` |
+
+If install scripts did not run, or setup needs to be repaired, run the matching explicit setup command from the owning package directory:
 
 ```bash
-npm install supaschema
+npm exec -- supaschema init
+pnpm exec supaschema init
+yarn exec supaschema init
+bunx --no-install supaschema init
 ```
 
-If install scripts did not run, or setup needs to be repaired, run:
-
-```bash
-npx supaschema init
-```
-
-Use `npx supaschema init --dry-run` when you need to preview setup before writing files.
+Use `<local-runner> init --dry-run --json` when you need to preview setup before writing files.
 
 ## What Install Provides
 
-The npm package provides:
+The package provides:
 
 - the `supaschema` CLI and typed ESM library exports;
 - PostgreSQL parser/deparser runtime dependencies;
@@ -58,24 +83,24 @@ Install does not edit schema files, generate migrations, connect to a database, 
 1. Read the supaschema managed block in `AGENTS.md` or `CLAUDE.md`.
 2. Read `.agents/skills/supaschema/SKILL.md` and the matching rule file for the active agent runtime: `.claude/rules/supaschema.md` or `.codex/rules/supaschema.rules`.
 3. Inspect `supaschema.config.json`.
-4. If `.supaschema/install.json` exists and has `pathConfirmationNeeded: true`, stop before diffing. Ask the user which detected schema and migration paths to use, then update `supaschema.config.json`.
-5. Run `npx supaschema --version`.
-6. Run `npx supaschema config validate --json` after config exists or paths are confirmed.
+4. If `.supaschema/install.json` exists and has `pathConfirmationNeeded: true`, stop before diffing. Ask the user which detected schema and migration paths to use, then update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`; `config validate`, `doctor`, and zero-source `diff` block until those fields are explicit.
+5. Run `<local-runner> --version`.
+6. Run `<local-runner> config validate --json` after config exists or paths are confirmed.
 
 ## Schema Change Workflow
 
 For schema changes, edit only the configured declarative SQL tree from `schemaPaths`. Then run:
 
 ```bash
-npx supaschema diff
-npx supaschema check
+<local-runner> diff
+<local-runner> check
 ```
 
 If installed hooks are trusted and fire after a schema-tree write, treat their returned migration name or `SUPA_*` diagnostic as authoritative. If they do not fire, run the commands manually.
 
 Generated migrations containing `-- supaschema: lineage` are artifacts. Do not hand-edit them; change the schema tree and regenerate.
 
-Do not run `npx supaschema sync --local` or `npx supaschema sync --remote` unless the user explicitly asks to apply migrations.
+Do not run `<local-runner> sync --local` or `<local-runner> sync --remote` unless the user explicitly asks to apply migrations.
 
 ## Completion Report
 
@@ -84,8 +109,8 @@ When reporting installation or setup, summarize:
 - package install or `init` command used;
 - whether config exists and which schema/migration paths are configured;
 - whether path confirmation is pending;
-- `npx supaschema --version` result;
-- `npx supaschema config validate --json` result or why it was not run;
+- `<local-runner> --version` result;
+- `<local-runner> config validate --json` result or why it was not run;
 - the next schema-change command.
 
 Do not include internal supaschema source checkout details, internal fixture diff output, or package development test output unless the user asked to work on supaschema itself.

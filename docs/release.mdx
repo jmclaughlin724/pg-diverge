@@ -21,18 +21,14 @@ The package is designed for trusted publishing from GitHub Actions. `main` is th
 
 ## Per-release checklist
 
-1. Add a changeset for the release.
-2. Run `npm run release:version` and include the resulting package version, lockfile, action metadata, and changelog changes in the release PR.
-3. Confirm PR CI passes all required checks before merge.
-4. Merge the release PR to `main`.
+1. Add changesets for user-facing PRs while the change is fresh.
+2. Run `npm run release:version` for the release PR and review the resulting `package.json`, `package-lock.json`, `CHANGELOG.md`, and `action.yml` changes.
+3. Run `npm run release:notes -- --version <version>` and confirm the output is the GitHub Release body you want.
+4. Run `npm run release:verify`.
+5. Confirm PR CI passes all required checks before merge.
+6. Merge the release PR to protected `main`.
 
 Do not publish from GitHub Releases or local machines. If npm publish succeeds but GitHub Release creation fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm.
-
-## Required checks
-
-- PR/main CI evidence: lint, typecheck, tests, guard suite, package check, benchmarks, fixture diff, fixture verification, corpus oracle, tarball pack, and tarball smoke;
-- release preflight: package and lockfile versions match, npm/GitHub release state is consistent, and any existing GitHub tag points to the release commit;
-- release job: clean install, signature audit, build, package check, tarball pack, tarball smoke, npm publish, build-provenance attestation, and GitHub Release/tag creation. The release job does not rerun benchmarks, corpus, or database-backed CI proofs.
 
 ## Package boundary
 
@@ -40,11 +36,7 @@ Package contents are allowlisted with `package.json` `files`. Do not add a root 
 
 Use [Package Boundary](/reference/package-boundary) before adding, moving, or deleting any published file or consumer installer output. Use [Agent bundle](/coding-agents/agent-bundle) before changing shipped agent surfaces or hook behavior.
 
-Before publishing, inspect the dry-run tarball and confirm it contains only the npm package surface:
-
-```bash
-npm pack --dry-run --json
-```
+Before publishing, `npm run release:verify` is the local release proof. It runs release preflight, package checks, tarball inspection, and the package-manager smoke owned by [Package Boundary](/reference/package-boundary).
 
 The release workflow uses:
 
@@ -54,7 +46,8 @@ The release workflow uses:
 - a GitHub-hosted Ubuntu runner with Node 24, npm `>=11.5.1`, and `actions/setup-node` with `registry-url: https://registry.npmjs.org`
 - `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`
 - `actions/attest@v4` for tarball provenance attestation
-- `gh release create "$SUPASCHEMA_RELEASE_TAG" --target "$GITHUB_SHA" --generate-notes`
+- `node scripts/release/changelog-notes.mjs --version "$SUPASCHEMA_PACKAGE_VERSION" --out "$RUNNER_TEMP/release-notes.md"`
+- `gh release create "$SUPASCHEMA_RELEASE_TAG" --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"`
 
 With npm trusted publishing, provenance is generated through GitHub Actions OIDC. The explicit `--provenance` flag is kept as release policy.
 

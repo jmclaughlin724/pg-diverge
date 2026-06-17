@@ -11,7 +11,11 @@ import {
 } from "./cli-defaults.js";
 import type { SummaryTone } from "./cli-tools.js";
 import { colorizeSummaryLine } from "./cli-tools.js";
-import type { SupaschemaConfig } from "./config.js";
+import {
+  formatConfigValidationDiagnostics,
+  pendingInstallPathConfirmationDiagnostic,
+  type SupaschemaConfig,
+} from "./config.js";
 import type { Diagnostic, MigrationPlan, SchemaModel } from "./core.js";
 import { diagnostic, hasErrors, redactSecrets } from "./diagnostics.js";
 import { latestLineage } from "./lineage.js";
@@ -46,6 +50,7 @@ type DiffOptions = PlanCommandOptions & {
 
 export interface DiffCommandContext {
   cliVersion: string;
+  configPath: () => string | undefined;
   loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
   resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
@@ -105,6 +110,17 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
     )
     .action(async (options: DiffOptions) => {
       const config = await context.loadCliConfig();
+      if (isZeroSourceDiff(options)) {
+        const pendingInstall = await pendingInstallPathConfirmationDiagnostic(
+          process.cwd(),
+          context.configPath()
+        );
+        if (pendingInstall) {
+          process.stderr.write(formatConfigValidationDiagnostics([pendingInstall]));
+          process.exitCode = 2;
+          return;
+        }
+      }
       const resolved = await withSourceDefaults(options, config, context);
       if (resolved.watch) {
         await watchDiff(resolved, config, context);
@@ -112,6 +128,10 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
       }
       await runDiff(resolved, config, context);
     });
+}
+
+function isZeroSourceDiff(options: PlanCommandOptions): boolean {
+  return options.from === undefined && options.to === undefined;
 }
 
 type WithSources<T> = T & { from: string; to: string };

@@ -74,6 +74,9 @@ async function extractRawModel(
     const files = await readSqlFiles(root);
     return modelFromSqlFiles(files, source, config);
   }
+  if (parsed.kind === "empty") {
+    return modelFromSqlFiles([], source, config);
+  }
   if (parsed.kind === "git") {
     const ref = parsed.payload || "HEAD";
     const files = await readGitSqlFiles(ref, cwd, config.schemaPaths);

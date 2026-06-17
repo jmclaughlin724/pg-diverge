@@ -122,6 +122,18 @@ export function updateToolSkills(payload, state, options = {}) {
   ) {
     return contextParts.length > 0 ? { contextParts } : {};
   }
+  if (isSubagentInvocation(payload)) {
+    return {
+      contextParts: [
+        ...contextParts,
+        [
+          "Skills pending from the parent task are not loaded in this subagent's isolated context:",
+          ...pending.map((item) => `- ${item.name}: ${item.reason}`),
+          "Load them with the Skill tool or a SKILL.md read if available; otherwise report findings for the orchestrator to apply in the main session. Subagent skill gating is advisory because PreToolUse fires inside subagents while SubagentStart cannot block and the subagent may lack the Skill/Read tools.",
+        ].join("\n"),
+      ],
+    };
+  }
   return {
     contextParts,
     deny: [
@@ -183,6 +195,14 @@ export function observedLoadedSkills(payload, root = defaultRoot) {
 
 export function isObservableLoad(payload) {
   return observedLoadedSkills(payload).length > 0;
+}
+
+export function isSubagentInvocation(payload) {
+  // Claude Code includes agent_id only when a hook fires inside a subagent call
+  // (https://code.claude.com/docs/en/hooks). PreToolUse fires inside subagents, but
+  // SubagentStart is injection-only and a subagent may run under a restricted tools:
+  // set without Skill/Read, so a hard deny inside a subagent would deadlock it.
+  return Boolean(payload?.agent_id ?? payload?.agentId);
 }
 
 export function promptText(payload) {

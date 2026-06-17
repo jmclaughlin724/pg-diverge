@@ -5,10 +5,12 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const script = resolve(import.meta.dirname, "..", "scripts/release/preflight.mjs");
+const notesScript = resolve(import.meta.dirname, "..", "scripts/release/changelog-notes.mjs");
 const tempDirs: string[] = [];
 const releaseCommit = "0123456789abcdef0123456789abcdef01234567";
 
 function makeProject(options: {
+  changelogText?: string;
   packageVersion?: string;
   lockVersion?: string;
   rootVersion?: string;
@@ -41,6 +43,20 @@ function makeProject(options: {
       null,
       2
     )}\n`
+  );
+  writeFileSync(
+    join(dir, "CHANGELOG.md"),
+    options.changelogText ??
+      `# Changelog
+
+## ${packageVersion} (2026-06-16)
+
+- Release note for ${packageVersion}.
+
+## 1.2.2 (2026-06-15)
+
+- Previous release note.
+`
   );
 
   return dir;
@@ -177,5 +193,35 @@ describe("release preflight", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("package-lock.json root package version 1.2.2 does not match");
+  });
+
+  it("rejects a package version without a matching top changelog entry", () => {
+    const cwd = makeProject({
+      changelogText: `# Changelog
+
+## 1.2.2 (2026-06-15)
+
+- Previous release note.
+`,
+    });
+
+    const result = runPreflight(cwd);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'CHANGELOG.md first version heading must be "## 1.2.3 (YYYY-MM-DD)"'
+    );
+  });
+
+  it("extracts the top changelog entry for GitHub release notes", () => {
+    const cwd = makeProject({});
+
+    const result = spawnSync(process.execPath, [notesScript, "--version", "1.2.3"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("- Release note for 1.2.3.\n");
   });
 });

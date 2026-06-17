@@ -45,7 +45,7 @@ Do not use the repository root as the Skills source. The Skills CLI scans standa
 
 That source mirrors `.claude/skills/supaschema/SKILL.md` into `skills/supaschema/SKILL.md`. It installs Agent Skill context only into the location selected by the Skills CLI. It does not install passive rule files, hook scripts, hook registration, config, or schema directories.
 
-Rules and hooks are included by `npm install supaschema` through the `postinstall` scaffold. If lifecycle scripts did not run, `npx supaschema init` uses the same scaffold and writes the same rule, skill, hook, config, and manifest surfaces.
+Rules and hooks are included by package install through the `postinstall` scaffold. If lifecycle scripts did not run, `supaschema init` through the same package manager's local runner uses the same scaffold and writes the same rule, skill, hook, config, and manifest surfaces.
 
 ## Hook behavior
 

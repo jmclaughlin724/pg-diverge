@@ -33,9 +33,16 @@ export const supportedValidators = [
 ] as const;
 
 export const sourceAuto = "auto";
-export const runtimeSourcePrefixes = ["dir:", "git:", "database:", "dump:", "catalog:"] as const;
+export const runtimeSourcePrefixes = [
+  "dir:",
+  "git:",
+  "database:",
+  "dump:",
+  "catalog:",
+  "empty:",
+] as const;
 export const sourcePrefixes = [sourceAuto, ...runtimeSourcePrefixes] as const;
-export const sourceSpecPattern = "^(?:(?:dir|database|dump|catalog):.+|git:.*)$";
+export const sourceSpecPattern = "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$";
 export const schemaDiffPolicies = ["disabled", "manual", "on_schema_write"] as const;
 export const migrationCheckPolicies = [
   "manual",
@@ -81,7 +88,7 @@ export interface SupaschemaWorkflow {
   zod_generation: GeneratedOutputPolicy;
 }
 
-export type RuntimeSourceKind = "catalog" | "database" | "dir" | "dump" | "git";
+export type RuntimeSourceKind = "catalog" | "database" | "dir" | "dump" | "empty" | "git";
 
 export interface ParsedRuntimeSource {
   kind: RuntimeSourceKind;
@@ -246,7 +253,13 @@ export function canonicalSourceTo(schemaPaths: readonly string[] = [genericSchem
 }
 
 export function parseRuntimeSource(source: string): ParsedRuntimeSource | undefined {
+  if (source === "empty:") {
+    return { kind: "empty", payload: "" };
+  }
   for (const prefix of runtimeSourcePrefixes) {
+    if (prefix === "empty:") {
+      continue;
+    }
     if (!source.startsWith(prefix)) {
       continue;
     }

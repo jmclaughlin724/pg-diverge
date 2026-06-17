@@ -18,6 +18,7 @@
 #
 # - **Follow the gates; do not skip a STOP condition.** Every concern has a STOP gate with an executable enforcement path. A red gate is a real failure — fix the cause, never weaken, disable, skip, or comment out a guard, test, hook, or assertion to make it pass. The umbrella gate is `npm run guard` (`scripts/guards/check-all.mjs`), which must print `ALL_GUARDS_OK`.
 # - **No standard without enforcement.** A rule, contract, or STOP gate that no guard or test reaches is incomplete — wire it into `npm run guard` or a test, do not leave it as prose.
+# - **Burn down duplicates in scope.** MUST follow the `AGENTS.md` Repo-Wide Change Discipline: identify one owner and one entry point, collapse avoidable duplicate or redundant surfaces in the accepted scope, and use upstream evidence plus the elegant end state when the shape is not obvious. VERIFY with Code Atlas owner and entrypoint queries plus direct source reads. FIX BY merging, moving, deleting, or documenting the distinct boundary that justifies a separate surface.
 # - **Resolve technical choices by research, not by polling the user** (Rule 05): default to the upstream-canonical pattern and cite the source. Escalate only product scope, irreversible/outward-facing actions, secrets/spend, or a genuine conflict between the user's own prior instructions.
 # - **Generated types come from the declarative tree, never hand-rolled.** supaschema generates `database.types.ts` and `database.zod.ts` from the declarative SQL tree and source model (`supaschema types`), not from live database introspection (`.claude/rules/supaschema.md`).
 # - **Stay inside the governed toolchain** (Rules 04/06/08): navigate and refactor via cclsp; format and lint with the one owner per concern — `ruff` for Python, Biome via Ultracite for JS/TS/JSON/CSS/HTML/GraphQL; analyze code structure with an AST, never ad hoc regex (Rule 07).
@@ -31,7 +32,7 @@
 #
 # - `npm run guard` (`scripts/guards/check-all.mjs`) is the umbrella gate — tooling stack, agent hooks, agent-surface parity, rule-citation integrity, dependency catalog, Code Atlas, LSP coverage, FastMCP surface, and no-regex-in-scripts. lefthook (`pre-commit` runs Biome on staged files; `pre-push` runs `npm run typecheck` + `npm run guard`) and the PreToolUse/PostToolUse hooks enforce in-loop.
 #
-# STOP if any STOP condition in `.claude/rules/*` is skipped, a guard or test is weakened instead of its cause being fixed, a standard ships without an executable enforcement path, the package manager is switched away from npm, or a technical decision ships on a guess when an authoritative upstream source was available.
+# STOP if any STOP condition in `.claude/rules/*` is skipped, a guard or test is weakened instead of its cause being fixed, a standard ships without an executable enforcement path, the package manager is switched away from npm, a technical decision ships on a guess when an authoritative upstream source was available, or avoidable duplicate or redundant surfaces or multiple entry points remain in the accepted scope.
 #
 # ## Verification
 #

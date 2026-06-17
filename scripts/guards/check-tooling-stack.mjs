@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { forEachNode, parseScript, ts } from "./lib/ast-utils.js";
 import { assert, exists, gitFiles, ok, readJson, readText } from "./lib/guard-utils.js";
 
 const packageJson = readJson("package.json");
@@ -121,6 +122,8 @@ assert(
   packageJson.scripts?.["lint:doctor"] === "ultracite doctor",
   "lint:doctor must run Ultracite doctor"
 );
+assertNoShellTrueWithArgs("scripts/install-hooks.mjs");
+assertNoShellTrueWithArgs("scripts/actions/run-supaschema-action.mjs");
 
 assert(
   biome.$schema === "https://biomejs.dev/schemas/2.5.0/schema.json",
@@ -178,6 +181,51 @@ ok("TOOLING_STACK_OK");
 
 function hasRelativeTsImport(text) {
   return relativeTsImportPattern.test(text);
+}
+
+function assertNoShellTrueWithArgs(file) {
+  const source = parseScript(readText(file), file);
+  forEachNode(source, (node) => {
+    if (!(ts.isCallExpression(node) && isChildProcessCall(node.expression))) {
+      return;
+    }
+    if (node.arguments.length < 3 || !objectHasShellTrue(node.arguments[2])) {
+      return;
+    }
+    assert(
+      false,
+      `${file} must not pass child_process args with shell: true; use argv arrays with shell: false`
+    );
+  });
+}
+
+function isChildProcessCall(expression) {
+  if (ts.isIdentifier(expression)) {
+    return ["execFile", "execFileSync", "spawn", "spawnSync"].includes(expression.text);
+  }
+  if (ts.isPropertyAccessExpression(expression)) {
+    return ["execFile", "execFileSync", "spawn", "spawnSync"].includes(expression.name.text);
+  }
+  return false;
+}
+
+function objectHasShellTrue(expression) {
+  if (!ts.isObjectLiteralExpression(expression)) {
+    return false;
+  }
+  return expression.properties.some(
+    (property) =>
+      ts.isPropertyAssignment(property) &&
+      propertyName(property.name) === "shell" &&
+      property.initializer.kind === ts.SyntaxKind.TrueKeyword
+  );
+}
+
+function propertyName(name) {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+  return;
 }
 
 function assertAgentPackageSurface(files) {

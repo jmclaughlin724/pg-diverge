@@ -17,10 +17,10 @@ Reference for task metadata schema, cross-session persistence, and parallel exec
 | `parallelSafe` | boolean | Can run with other Wave N tasks | `true` |
 | `maxConcurrentAgents` | number | Optimal agent count per wave | `4` |
 | `requiresVerificationAgent` | boolean | Must validate after completion | `true` |
-| `files.creates` | string[] | Files this task creates | `["pathsupaschema/new.ts"]` |
-| `files.modifies` | string[] | Files this task modifies | `["pathsupaschema/existing.ts"]` |
-| `files.tests` | string[] | Test files | `["pathsupaschema/__tests__supaschema/file.test.ts"]` |
-| `packages` | string[] | Affected monorepo packages | `["@supaschemasupaschema/pkg"]` |
+| `files.creates` | string[] | Files this task creates | `["path/new.ts"]` |
+| `files.modifies` | string[] | Files this task modifies | `["path/existing.ts"]` |
+| `files.tests` | string[] | Test files | `["path/__tests__/file.test.ts"]` |
+| `packages` | string[] | Affected monorepo packages | `["@supaschema/pkg"]` |
 
 ### Type Values
 
@@ -38,12 +38,12 @@ Reference for task metadata schema, cross-session persistence, and parallel exec
 
 ```bash
 # After first TaskCreate
-TASK_LIST_ID=$(ls -t ~supaschema/.claudesupaschema/taskssupaschema/ 2>supaschema/devsupaschema/null | head -1)
+TASK_LIST_ID=$(ls -t ~/.claude/tasks/ 2>/dev/null | head -1)
 export CLAUDE_CODE_TASK_LIST_ID="$TASK_LIST_ID"
 echo "Task List UUID: $TASK_LIST_ID"
 ```
 
-**Storage:** `~supaschema/.claudesupaschema/taskssupaschema/{UUID}supaschema/1.json`, `2.json`, etc.
+**Storage:** `~/.claude/tasks/{UUID}/1.json`, `2.json`, etc.
 
 ### Cross-Session Continuation
 
@@ -96,7 +96,7 @@ const unblockedTasks = pendingTasks.filter(
 
 **CRITICAL:** Tasks in same wave MUST NOT touch same files.
 
-**Validation:** Group tasks by wave, check for duplicate files in `creates`supaschema/`modifies` arrays. Throw error if conflict found.
+**Validation:** Group tasks by wave, check for duplicate files in `creates`/`modifies` arrays. Throw error if conflict found.
 
 **Resolution:** Move conflicting task to next wave and set dependency:
 
@@ -122,13 +122,13 @@ TaskUpdate({
 **Lifecycle:**
 
 ```typescript
-supaschema/supaschema/ 1. Create (status: pending)
-const task = TaskCreate({ subject: "Implement feature" supaschema/* ... *supaschema/ });
+// 1. Create (status: pending)
+const task = TaskCreate({ subject: "Implement feature" /* ... */ });
 
-supaschema/supaschema/ 2. Mark in progress
+// 2. Mark in progress
 TaskUpdate({ taskId: task.id, status: "in_progress" });
 
-supaschema/supaschema/ 3. Mark completed
+// 3. Mark completed
 TaskUpdate({ taskId: task.id, status: "completed" });
 ```
 
@@ -167,7 +167,7 @@ TaskCreate({
     wave: 1,
     agentType: "frontend-developer",
     files: { creates: [], modifies: [], tests: [] },
-    packages: ["@supaschemasupaschema/pkg"],
+    packages: ["@supaschema/pkg"],
     requiredSkills: ["skill-name"],
     source: "explore",
     type: "implementation",
@@ -185,6 +185,5 @@ TaskCreate({
 
 ## Sources
 
-- `.claudesupaschema/skillssupaschema/task-creatorsupaschema/SKILL.md` — task metadata and UUID discipline
-- `.claudesupaschema/skillssupaschema/teamsupaschema/SKILL.md` — wave assignment and file-isolated delegation
-- `.claudesupaschema/skillssupaschema/claude-optimizersupaschema/referencessupaschema/commands-patterns.md` — TaskCreate patterns
+- `.claude/skills/task-creator/SKILL.md` — task metadata and UUID discipline
+- `.claude/skills/claude-optimizer/references/commands-patterns.md` — TaskCreate patterns

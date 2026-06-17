@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { codeAtlasQueryEvidence } from "./atlas.mjs";
+import { isSubagentInvocation } from "./skills.mjs";
 import { addEvidence, currentTurnState, setCorrections } from "./state.mjs";
 
 const verificationWords = ["verified", "tested", "passed", "green", "clean"];
@@ -77,6 +78,17 @@ export function preToolEvidenceGate(payload, state) {
       toolName(payload)
     )
   ) {
+    if (isSubagentInvocation(payload)) {
+      return {
+        contextParts: [
+          [
+            "A response evidence correction is pending in the parent session:",
+            ...pending.map((item) => `- ${item.message}`),
+            "This subagent cannot resolve the parent's response-shape correction; report results to the orchestrator instead of relying on this edit. The gate is advisory inside subagents because PreToolUse fires here but the subagent cannot revise the parent's final response.",
+          ].join("\n"),
+        ],
+      };
+    }
     return {
       deny: [
         "Response evidence correction is still pending.",
@@ -201,7 +213,26 @@ function transcriptEvidence(payload) {
 function toolSucceeded(payload) {
   const response =
     payload?.tool_response ?? payload?.tool_output ?? payload?.tool_result ?? payload?.response;
-  return toolOutcome(response);
+  const outcome = toolOutcome(response);
+  if (outcome !== undefined) {
+    return outcome;
+  }
+  // Command tools (Bash) report { stdout, stderr, interrupted } with no exit code, no
+  // is_error, and no status (verified against the live tool_response shape). When the normal
+  // parse — including the stderr exit-code text scan in toolOutcome — finds nothing, a
+  // completed (non-interrupted) run is the only available success signal. Applied as a
+  // fallback so an explicit failure in stdout/stderr is still detected first; without it,
+  // successful command runs record no evidence and the claim-without-evidence detector
+  // false-positives on truthful verification reports.
+  if (
+    response &&
+    typeof response === "object" &&
+    !Array.isArray(response) &&
+    typeof response.interrupted === "boolean"
+  ) {
+    return !response.interrupted;
+  }
+  return;
 }
 
 function isCommandTool(name) {

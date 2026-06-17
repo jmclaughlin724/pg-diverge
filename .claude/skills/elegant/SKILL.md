@@ -40,6 +40,7 @@ Use upstream docs or the owning MCP lane for external technology behavior before
 
 - The user invokes `$elegant`, asks for a clean slate, or explicitly removes backwards compatibility constraints.
 - The task is consolidation, simplification, deduplication, deletion of legacy surfaces, or standardization to the canonical owner.
+- Any task exposes avoidable duplicate or redundant owners, entry points, wrappers, docs, configs, exports, commands, prompts, or instructions inside the accepted scope.
 - Current architecture, names, references, or consumers may be wrong and must not define the target shape.
 
 If the user explicitly requires backwards compatibility, a minimal patch, or preservation of a public contract, record that constraint and run only the compatible portion of the elegant workflow.

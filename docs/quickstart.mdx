@@ -8,13 +8,15 @@ Use this page to generate and check one migration.
 
 The examples use the neutral paths `database/schemas` and `database/migrations`. If install selected provider-specific paths, use the values in `supaschema.config.json`.
 
+Command examples show `supaschema` as CLI syntax. In a project install, run it through the local runner from [Installation](/installation).
+
 <Steps>
   <Step title="Install">
-    Install supaschema in the project that owns your schema files:
+    Install supaschema in the package or workspace that owns your schema files.
+    Use the package-manager command and local runner from [Installation](/installation).
 
     ```bash
-    npm install supaschema
-    npx supaschema --version
+    supaschema --version
     ```
 
   </Step>
@@ -50,7 +52,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
     Generate the migration:
 
     ```bash
-    npx supaschema diff
+    supaschema diff
     ```
 
     You will see output like this:
@@ -77,7 +79,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
     Check the migration before applying it:
 
     ```bash
-    npx supaschema check database/migrations/20240101120000_migration.sql
+    supaschema check database/migrations/20240101120000_migration.sql
     ```
 
     A passing check reports that the migration is replay-safe.
@@ -112,7 +114,7 @@ The examples use the neutral paths `database/schemas` and `database/migrations`.
     `diff` refreshes configured TypeScript and Zod outputs by default. Run `types` directly when you need an explicit refresh:
 
     ```bash
-    npx supaschema types
+    supaschema types
     ```
 
   </Step>
