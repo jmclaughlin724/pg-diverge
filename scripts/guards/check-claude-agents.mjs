@@ -8,6 +8,14 @@ const frontmatterLinePattern = /\r?\n/;
 const listItemPattern = /^\s+-\s+(.+)\s*$/;
 const listStartPattern = /^([A-Za-z][A-Za-z0-9]*):\s*$/;
 const namePattern = /^[a-z][a-z0-9-]*$/;
+const permissionModes = new Set([
+  "default",
+  "acceptEdits",
+  "auto",
+  "dontAsk",
+  "bypassPermissions",
+  "plan",
+]);
 const scalarLinePattern = /^([A-Za-z][A-Za-z0-9]*):\s*(.+)\s*$/;
 const agentDir = path.join(ROOT, ".claude/agents");
 const skillDir = path.join(ROOT, ".claude/skills");
@@ -27,9 +35,14 @@ for (const fileName of listMarkdownFiles(agentDir)) {
   const frontmatter = parseFrontmatter(text, relativePath);
   const name = scalar(frontmatter, "name");
   const description = scalar(frontmatter, "description");
+  const permissionMode = scalar(frontmatter, "permissionMode");
   assert(name !== undefined, `${relativePath} missing required name`);
   assert(description !== undefined, `${relativePath} missing required description`);
   assert(namePattern.test(name ?? ""), `${relativePath} name must be lowercase kebab-case`);
+  assert(
+    permissionMode === undefined || permissionModes.has(permissionMode),
+    `${relativePath} permissionMode must be one of ${[...permissionModes].join(", ")}`
+  );
   assert(!names.has(name), `${relativePath} duplicates agent name ${name} from ${names.get(name)}`);
   names.set(name, relativePath);
 

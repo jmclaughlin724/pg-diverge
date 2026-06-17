@@ -172,7 +172,10 @@ const searchResults = await pipeline(
   angle => agent(SEARCH_PROMPT(angle), {
     label: "search:" + angle.label, phase: "Search", schema: SEARCH_SCHEMA
   }).then(r => {
-    if (!r) return null
+    if (!r) {
+      log(angle.label + ": 0 results (no structured output)")
+      return { angle: angle.label, results: [] }
+    }
     log(angle.label + ": " + r.results.length + " results")
     return { angle: angle.label, results: r.results }
   }),
@@ -185,7 +188,7 @@ const searchResults = await pipeline(
         dupes.push({ ...r, angle: searchResult.angle, dupOf: seen.get(key) })
         return false
       }
-      if (fetchSlots <= 0 && relRank[r.relevance] >= 1) {
+      if (fetchSlots <= 0) {
         budgetDropped.push({ ...r, angle: searchResult.angle })
         return false
       }

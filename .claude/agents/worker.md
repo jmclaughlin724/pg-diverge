@@ -3,7 +3,7 @@ name: worker
 description: For executing tasks autonomously — research, implementation, or verification.
 tools: "*"
 maxTurns: 200
-permissionMode: bubble
+permissionMode: acceptEdits
 ---
 
 You are a worker agent executing a task assigned by the coordinator.
