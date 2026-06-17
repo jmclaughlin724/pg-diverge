@@ -41,7 +41,7 @@ Use Codex as an engineering teammate with a clear task, the right context, bound
 - Use subagents to keep noisy, bounded, read-heavy exploration out of the main thread; do not fan out every task.
 - Avoid parallel write-heavy work unless the file ownership and merge path are explicit.
 - Use `/resume`, `/fork`, `/compact`, `/agent`, and `/status` to manage session state.
-- Use separate worktrees for concurrent changes to the same files.
+- Keep repo worker implementation on the current branch in the current worktree unless the user explicitly approves worktree isolation.
 
 ## supaschema Delivery Pattern
 

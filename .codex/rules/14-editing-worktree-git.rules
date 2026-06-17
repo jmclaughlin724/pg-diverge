@@ -53,7 +53,8 @@
 # - Before creating or replacing a PR, verify the intended base branch, current head branch, upstream, existing PRs for the head branch, commit count, changed-file count, and mergeability.
 # - Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch that contains commits outside the requested task. Create a clean task branch from the intended base instead.
 # - If a PR was opened from the wrong branch, create and verify a clean replacement PR before closing or superseding the bad PR. Document why the old PR was superseded.
-# - Subagents may edit files only. The parent/orchestrator owns staging, commit, push, and final verification.
+# - Subagents and workers may edit files only. They must not stage, commit, push, switch branches, create branches, create worktrees, force-push, merge, or open/replace PRs.
+# - Only the main agent may stage, commit, or push, and only on the current branch after explicit user instruction. The main agent owns final integration, branch cleanup, PR creation/replacement, merge, and final verification.
 #
 # ## Delete, rename, and export-shape sweeps
 #

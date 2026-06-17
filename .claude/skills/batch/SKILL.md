@@ -1,13 +1,13 @@
 ---
 name: batch
-description: Research and plan a large-scale change, then execute it with bounded parallel workers on the current branch and current worktree. Use when the user wants to make a sweeping, mechanical change across many files (migrations, refactors, bulk renames) that can be decomposed into independent parallel units.
+description: Research and plan a large-scale change, then execute it with bounded parallel workers editing on the current branch and current worktree. Use when the user wants to make a sweeping, mechanical change across many files (migrations, refactors, bulk renames) that can be decomposed into independent parallel units.
 user-invocable: true
 argument-hint: "<instruction>"
 ---
 
 ## Contract
 
-Run the extracted Claude Code `/batch` procedure for large, parallelizable changes. Treat the skill argument as the batch instruction. This command is useful only in a git repository because workers commit to the current branch.
+Run the extracted Claude Code `/batch` procedure for large, parallelizable changes. Treat the skill argument as the batch instruction. This command is useful only in a git repository because the main agent stages, commits, and pushes worker edits on the current branch.
 
 This extraction adapts the binary tool constants to the current runtime when the literal tool is available:
 
@@ -20,8 +20,8 @@ This extraction adapts the binary tool constants to the current runtime when the
 ## Command Metadata
 
 - Name: `batch`.
-- Menu description: `Plan a large change; bounded workers commit on the current branch`.
-- Description: `Research and plan a large-scale change, then execute it with bounded parallel workers on the current branch and current worktree.`
+- Menu description: `Plan a large change; bounded workers edit on the current branch`.
+- Description: `Research and plan a large-scale change, then execute it with bounded parallel workers editing on the current branch and current worktree.`
 - When to use: `Use when the user wants to make a sweeping, mechanical change across many files (migrations, refactors, bulk renames) that can be decomposed into independent parallel units.`
 - Argument hint: `<instruction>`.
 - User invocable: `true`.
@@ -44,7 +44,7 @@ Examples:
 If the current directory is not a git repository, respond:
 
 ```text
-This is not a git repository. The `/batch` command requires a git repo because workers commit to the current branch. Initialize a repo first, or run this from inside an existing one.
+This is not a git repository. The `/batch` command requires a git repo because the main agent stages, commits, and pushes worker edits on the current branch. Initialize a repo first, or run this from inside an existing one.
 ```
 
 ## Batch Prompt
@@ -109,8 +109,8 @@ After you finish implementing the change:
 1. **Code review** — Invoke the `Skill` tool with `skill: "code-review"` to find correctness bugs (it reports findings; it does not edit code). Fix any findings it surfaces before continuing.
 2. **Run unit tests** — Run the project's test suite (check for package.json scripts, Makefile targets, or common commands like `npm test`, `bun test`, `pytest`, `go test`). If tests fail, fix them.
 3. **Test end-to-end** — Follow the e2e test recipe from the coordinator's prompt (below). If the recipe says to skip e2e for this unit, skip it.
-4. **Commit and push** — Commit your changes on the current branch with a clear message and push the current branch. Do not create or switch branches, create worktrees, force-push, or open a PR unless the coordinator explicitly assigned that exact operation. If `git`/`gh` is not available or the push fails, note it in your final message.
-5. **Report** — End with a single line: `COMMIT: <hash>` so the coordinator can track it. If no commit was created, end with `COMMIT: none — <reason>`.
+4. **Report changed files** — Do not stage, commit, push, create or switch branches, create worktrees, force-push, merge, or open a PR. The main agent owns all git publication steps.
+5. **Report** — End with a single line: `FILES: <comma-separated changed files>` so the coordinator can track the worker output. If no files were changed, end with `FILES: none — <reason>`.
 
 ```
 
@@ -125,9 +125,9 @@ After launching all workers, render an initial status table:
 | 1 | <title> | running | — |
 | 2 | <title> | running | — |
 
-As worker completion notifications arrive, parse the `COMMIT: <hash>` line from each agent's result and re-render the table with updated status (`done` / `failed`) and commit links. Keep a brief failure note for any agent that did not produce a commit.
+As worker completion notifications arrive, parse the `FILES: ...` line from each agent's result and re-render the table with updated status (`done` / `failed`) and changed files. Keep a brief failure note for any agent that did not produce the required report line.
 
-When all agents have reported, render the final table and a one-line summary (e.g., "22/24 units committed successfully").
+When all agents have reported, render the final table and a one-line summary (e.g., "22/24 units completed; main agent owns staging, commit, and push").
 ```
 
 ## Verification
