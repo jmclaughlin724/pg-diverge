@@ -3,7 +3,7 @@ import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { checkMigrationSql } from "./check.js";
-import { defaultMigrationName } from "./cli-defaults.js";
+import { defaultMigrationName, resolveSourceDefaults } from "./cli-defaults.js";
 import { resolveConfig } from "./config.js";
 import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { resolveDatabaseUrl } from "./database-url.js";
@@ -56,7 +56,10 @@ const updateHeader = "*** Update File: ";
 const moveHeader = "*** Move to: ";
 const genericSchemaPath = "database/schemas";
 const supabaseSchemaPath = "supabase/schemas";
-const providerSchemaMarkers = [
+const providerSchemaMarkers: {
+  markers: { contentTerms?: string[]; fileNames?: string[]; path?: string }[];
+  schemaPath: string;
+}[] = [
   { schemaPath: supabaseSchemaPath, markers: [{ path: "supabase/config.toml" }] },
   {
     schemaPath: "neon/schemas",
@@ -134,7 +137,7 @@ const providerSchemaMarkers = [
       },
     ],
   },
-] as const;
+];
 
 export interface AgentHookOutput {
   decision?: "block";
@@ -450,35 +453,46 @@ async function runPipelineStages(
   diagnostics: Diagnostic[],
   lines: string[]
 ): Promise<SyncResult | undefined> {
+  const sources = await resolveSyncSources(options, config);
   if (options.skipDiff !== true) {
-    const diffResult = await runSyncDiffStage(options, config, diagnostics, lines);
+    const diffResult = await runSyncDiffStage(options, config, sources, diagnostics, lines);
     if (diffResult !== undefined) {
       return diffResult;
     }
   }
-  const gateResult = await runSyncSafetyGates(options, config, diagnostics, lines);
+  const gateResult = await runSyncSafetyGates(config, sources, diagnostics, lines);
   if (gateResult !== undefined) {
     return gateResult;
   }
   return;
 }
 
+interface SyncSources {
+  from: string;
+  to: string;
+}
+
+function resolveSyncSources(options: SyncOptions, config: SupaschemaConfig): Promise<SyncSources> {
+  return resolveSourceDefaults(options, config, () =>
+    Promise.resolve(resolveDatabaseUrl(options.databaseUrl))
+  );
+}
+
 async function runSyncDiffStage(
   options: SyncOptions,
   config: SupaschemaConfig,
+  sources: SyncSources,
   diagnostics: Diagnostic[],
   lines: string[]
 ): Promise<SyncResult | undefined> {
-  const from = options.from ?? config.sources.from;
-  const to = options.to ?? config.sources.to;
-  const plan = await buildSchemaDiffPlan({ config, from, to });
+  const plan = await buildSchemaDiffPlan({ config, from: sources.from, to: sources.to });
   diagnostics.push(...plan.diagnostics);
   if (hasErrors(plan.diagnostics)) {
     lines.push("refusing to sync: schema diff has blocking diagnostics");
     return { applied: false, diagnostics, pending: [], report: render(lines) };
   }
-  await refreshGeneratedOutputs({ config, toSource: to });
   if (plan.operations.length === 0) {
+    await refreshGeneratedOutputs({ config, toSource: sources.to });
     lines.push("diff: no schema changes");
     return;
   }
@@ -492,6 +506,7 @@ async function runSyncDiffStage(
     lines.push("refusing to sync: pending supaschema migration lineage is not contiguous");
     return { applied: false, diagnostics, pending: [], report: render(lines) };
   }
+  await refreshGeneratedOutputs({ config, toSource: sources.to });
   const outPath = resolve(
     process.cwd(),
     options.directory,
@@ -513,21 +528,19 @@ async function runSyncDiffStage(
 }
 
 async function runSyncSafetyGates(
-  options: SyncOptions,
   config: SupaschemaConfig,
+  sources: SyncSources,
   diagnostics: Diagnostic[],
   lines: string[]
 ): Promise<SyncResult | undefined> {
-  const fromSource = options.from ?? config.sources.from;
-  const toSource = options.to ?? config.sources.to;
   const typeGate = await runTypeSafetyGate({
     config,
-    fromSource,
-    toSource,
+    fromSource: sources.from,
+    toSource: sources.to,
   });
   const rlsGate = await runRlsSafetyGate({
     config,
-    source: toSource,
+    source: sources.to,
   });
   diagnostics.push(...typeGate.diagnostics, ...rlsGate.diagnostics);
   if (typeGate.blocked || rlsGate.blocked) {
@@ -582,7 +595,7 @@ async function runConfiguredTargets(
     for (const file of targetResult.pending) {
       allPending.add(file);
     }
-    if (!targetResult.applied || hasErrors(diagnostics)) {
+    if (hasErrors(diagnostics) || (!targetResult.applied && targetResult.pending.length > 0)) {
       return {
         applied,
         diagnostics,
@@ -590,7 +603,7 @@ async function runConfiguredTargets(
         report: render(lines),
       };
     }
-    applied = true;
+    applied = applied || targetResult.applied;
   }
   return {
     applied,
@@ -721,20 +734,41 @@ function resolveTargetUrl(
       return resolveDatabaseUrl(env.databaseUrl);
     }
     const value = target.databaseUrl ?? config.environments[target.environment ?? ""]?.databaseUrl;
-    return value === undefined ? undefined : resolveDatabaseUrl(value);
+    if (value === undefined) {
+      if (target.environment !== undefined || isRemoteTargetName(target, selection.name)) {
+        pushTargetUrlDiagnostic(
+          diagnostics,
+          selection.name,
+          target.environment === undefined
+            ? `sync target ${selection.name} does not define a database URL`
+            : `sync target ${selection.name} references unknown environment "${target.environment}"`
+        );
+      }
+      return;
+    }
+    return resolveDatabaseUrl(value);
   } catch (error) {
-    if (selection.automatic || runner === "direct") {
-      diagnostics.push(
-        diagnostic(
-          "SUPA_SYNC_TARGET_URL_UNRESOLVED",
-          "error",
-          error instanceof Error ? error.message : String(error),
-          { hint: `Resolve the database URL for sync target ${selection.name}.` }
-        )
+    if (selection.automatic || runner === "direct" || runner === "supabase-cli") {
+      pushTargetUrlDiagnostic(
+        diagnostics,
+        selection.name,
+        error instanceof Error ? error.message : String(error)
       );
     }
     return;
   }
+}
+
+function pushTargetUrlDiagnostic(
+  diagnostics: Diagnostic[],
+  targetName: string,
+  message: string
+): void {
+  diagnostics.push(
+    diagnostic("SUPA_SYNC_TARGET_URL_UNRESOLVED", "error", message, {
+      hint: `Resolve the database URL for sync target ${targetName}.`,
+    })
+  );
 }
 
 async function runOneTarget(
@@ -760,7 +794,7 @@ async function runOneTarget(
   }
   if (status.report.pending.length === 0) {
     lines.push(`nothing to sync on ${target.name}: disk and target history match`);
-    return { applied: true, diagnostics, pending: [], report: render(lines) };
+    return { applied: false, diagnostics, pending: [], report: render(lines) };
   }
   const checkResult = await checkPendingMigrations(
     options.directory,
@@ -980,52 +1014,60 @@ function render(lines: string[]): string {
 }
 
 function hookProjectDir(payload: unknown): string {
-  const record = asRecord(payload);
-  const cwd = typeof record.cwd === "string" && record.cwd.length > 0 ? record.cwd : undefined;
+  const record = asObject(payload);
+  const cwdValue = property(record, "cwd");
+  const cwd = typeof cwdValue === "string" && cwdValue.length > 0 ? cwdValue : undefined;
   return resolve(cwd ?? process.env.CLAUDE_PROJECT_DIR ?? process.env.CODEX_PROJECT_DIR ?? ".");
 }
 
 function hookEditTargets(payload: unknown, projectDir: string): string[] {
-  const record = asRecord(payload);
-  const toolName = typeof record.tool_name === "string" ? record.tool_name : "";
+  const record = asObject(payload);
+  const toolNameValue = property(record, "tool_name");
+  const toolName = typeof toolNameValue === "string" ? toolNameValue : "";
   if (!editTools.has(toolName)) {
     return [];
   }
-  const input = asRecord(record.tool_input);
+  const input = asObject(property(record, "tool_input"));
   if (toolName === "apply_patch") {
     return hookPatchTargets(patchTextFromInput(input), projectDir);
   }
-  if (typeof input.file_path === "string" && input.file_path.length > 0) {
-    return [resolveHookTarget(projectDir, input.file_path)];
+  const filePath = property(input, "file_path");
+  if (typeof filePath === "string" && filePath.length > 0) {
+    return [resolveHookTarget(projectDir, filePath)];
   }
   return [];
 }
 
 function generatedMigrationEditTargets(payload: unknown, projectDir: string): string[] {
-  const record = asRecord(payload);
-  const toolName = typeof record.tool_name === "string" ? record.tool_name : "";
+  const record = asObject(payload);
+  const toolNameValue = property(record, "tool_name");
+  const toolName = typeof toolNameValue === "string" ? toolNameValue : "";
   if (!editTools.has(toolName)) {
     return [];
   }
-  const input = asRecord(record.tool_input);
+  const input = asObject(property(record, "tool_input"));
   if (toolName === "apply_patch") {
     return generatedMigrationPatchTargets(patchTextFromInput(input), projectDir);
   }
-  if (typeof input.file_path === "string" && input.file_path.length > 0) {
-    return [resolveHookTarget(projectDir, input.file_path)];
+  const filePath = property(input, "file_path");
+  if (typeof filePath === "string" && filePath.length > 0) {
+    return [resolveHookTarget(projectDir, filePath)];
   }
   return [];
 }
 
-function patchTextFromInput(input: Record<string, unknown>): string {
-  if (typeof input.command === "string") {
-    return input.command;
+function patchTextFromInput(input: object): string {
+  const command = property(input, "command");
+  if (typeof command === "string") {
+    return command;
   }
-  if (typeof input.patch === "string") {
-    return input.patch;
+  const patch = property(input, "patch");
+  if (typeof patch === "string") {
+    return patch;
   }
-  if (typeof input.input === "string") {
-    return input.input;
+  const inputValue = property(input, "input");
+  if (typeof inputValue === "string") {
+    return inputValue;
   }
   return "";
 }
@@ -1119,6 +1161,9 @@ function migrationOutputs(stdout: string): string[] {
 }
 
 function isGeneratedMigration(path: string): boolean {
+  if (!path.endsWith(".sql")) {
+    return false;
+  }
   try {
     return readFileSync(path, "utf8").includes(lineageMarker);
   } catch {
@@ -1144,10 +1189,14 @@ function readSchemaPathState(projectDir: string): SchemaPathState {
   const { environments, explicit, migrationsDir, schemaPaths, sourcesTo, sync, workflow } =
     readConfigPathFields(projectDir);
   const manifest = readInstallManifest(projectDir);
-  if (manifest?.pathConfirmationNeeded === true && !explicit) {
-    const candidates = asRecord(manifest.candidates);
-    const candidateSchemaPaths = strings(candidates.schemaPaths);
-    const candidateMigrationsDirs = strings(candidates.migrationsDirs);
+  if (
+    manifest !== undefined &&
+    property(manifest, "pathConfirmationNeeded") === true &&
+    !explicit
+  ) {
+    const candidates = asObject(property(manifest, "candidates"));
+    const candidateSchemaPaths = strings(property(candidates, "schemaPaths"));
+    const candidateMigrationsDirs = strings(property(candidates, "migrationsDirs"));
     return {
       candidateMigrationsDirs,
       candidateSchemaPaths,
@@ -1209,15 +1258,17 @@ function resolveConfigPathFields(
   sync: { targets: Record<string, HookSyncTarget> };
   workflow: SupaschemaConfig["workflow"];
 } {
-  const record = asRecord(config);
+  const record = asObject(config);
   const explicitSchemaPaths = schemaPathsFromConfig(record);
+  const migrationsDirValue = property(record, "migrationsDir");
   const migrationsDir =
-    typeof record.migrationsDir === "string" && record.migrationsDir.length > 0
-      ? record.migrationsDir
+    typeof migrationsDirValue === "string" && migrationsDirValue.length > 0
+      ? migrationsDirValue
       : undefined;
-  const sources = asRecord(record.sources);
+  const sources = asObject(property(record, "sources"));
+  const sourcesToValue = property(sources, "to");
   const sourcesTo =
-    typeof sources.to === "string" && sources.to.length > 0 ? sources.to : undefined;
+    typeof sourcesToValue === "string" && sourcesToValue.length > 0 ? sourcesToValue : undefined;
   return {
     environments: environmentsFromConfig(record),
     explicit:
@@ -1227,74 +1278,85 @@ function resolveConfigPathFields(
     ...(sourcesTo === undefined ? {} : { sourcesTo }),
     sync: syncFromHookConfig(record),
     workflow: resolveConfig({
-      workflow: asRecord(record.workflow) as Partial<SupaschemaConfig["workflow"]>,
-    } as Partial<SupaschemaConfig>).workflow,
+      workflow: asObject(property(record, "workflow")),
+    }).workflow,
   };
 }
 
-function readInstallManifest(projectDir: string): Record<string, unknown> | undefined {
+function readInstallManifest(projectDir: string): object | undefined {
   const path = join(projectDir, ".supaschema", "install.json");
   if (!existsSync(path)) {
     return;
   }
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    return asObject(JSON.parse(readFileSync(path, "utf8")));
   } catch {
     return;
   }
 }
 
-function schemaPathsFromConfig(config: Record<string, unknown>): string[] | undefined {
-  if (Array.isArray(config.schemaPaths) && config.schemaPaths.length > 0) {
-    return config.schemaPaths.map(String);
+function schemaPathsFromConfig(config: object): string[] | undefined {
+  const schemaPaths = property(config, "schemaPaths");
+  if (Array.isArray(schemaPaths) && schemaPaths.length > 0) {
+    return schemaPaths.map(String);
   }
   return;
 }
 
-function environmentsFromConfig(
-  config: Record<string, unknown>
-): Record<string, { databaseUrl: string }> {
-  const configured = asRecord(config.environments);
+function environmentsFromConfig(config: object): Record<string, { databaseUrl: string }> {
+  const configured = asObject(property(config, "environments"));
   const environments: Record<string, { databaseUrl: string }> = {};
   for (const [name, value] of Object.entries(configured)) {
-    const record = asRecord(value);
-    if (typeof record.databaseUrl === "string" && record.databaseUrl !== "") {
-      environments[name] = { databaseUrl: record.databaseUrl };
+    const record = asObject(value);
+    const databaseUrl = property(record, "databaseUrl");
+    if (typeof databaseUrl === "string" && databaseUrl !== "") {
+      environments[name] = { databaseUrl };
     }
   }
   return environments;
 }
 
-function syncFromHookConfig(config: Record<string, unknown>): {
+function syncFromHookConfig(config: object): {
   targets: Record<string, HookSyncTarget>;
 } {
-  const sync = asRecord(config.sync);
-  const configured = asRecord(sync.targets);
+  const sync = asObject(property(config, "sync"));
+  const configured = asObject(property(sync, "targets"));
   const targets: Record<string, HookSyncTarget> = {};
   for (const [name, value] of Object.entries(configured)) {
-    const record = asRecord(value);
+    const record = asObject(value);
     if (Object.keys(record).length === 0) {
       continue;
     }
     const target: HookSyncTarget = {
-      mode: enumValue(record.mode, ["manual", "auto"], "manual"),
-      runner: enumValue(record.runner, ["direct", "supabase-cli"], "direct"),
+      mode: hookTargetMode(property(record, "mode")),
+      runner: hookTargetRunner(property(record, "runner")),
     };
-    if (typeof record.databaseUrl === "string" && record.databaseUrl !== "") {
-      target.databaseUrl = record.databaseUrl;
+    const databaseUrl = property(record, "databaseUrl");
+    if (typeof databaseUrl === "string" && databaseUrl !== "") {
+      target.databaseUrl = databaseUrl;
     }
-    if (typeof record.environment === "string" && record.environment !== "") {
-      target.environment = record.environment;
+    const environment = property(record, "environment");
+    if (typeof environment === "string" && environment !== "") {
+      target.environment = environment;
     }
-    if (typeof record.requireApprovalEnv === "string" && record.requireApprovalEnv !== "") {
-      target.requireApprovalEnv = record.requireApprovalEnv;
+    const requireApprovalEnv = property(record, "requireApprovalEnv");
+    if (typeof requireApprovalEnv === "string" && requireApprovalEnv !== "") {
+      target.requireApprovalEnv = requireApprovalEnv;
     }
-    if (record.remote === true) {
+    if (property(record, "remote") === true) {
       target.remote = true;
     }
     targets[name] = target;
   }
   return { targets };
+}
+
+function hookTargetMode(value: unknown): HookSyncTarget["mode"] {
+  return value === "auto" ? "auto" : "manual";
+}
+
+function hookTargetRunner(value: unknown): HookSyncTarget["runner"] {
+  return value === "supabase-cli" ? "supabase-cli" : "direct";
 }
 
 function automaticSyncPlan(pathState: SchemaPathState): AutomaticSyncPlan {
@@ -1575,19 +1637,14 @@ function runHookCommand(bin: HookCommand, args: string[], cwd: string): HookComm
     });
     return { code: 0, stderr: "", stdout };
   } catch (error) {
+    const record = asObject(error);
+    const status = property(record, "status");
+    const stderr = property(record, "stderr");
+    const stdout = property(record, "stdout");
     return {
-      code:
-        typeof (error as { status?: unknown }).status === "number"
-          ? (error as { status: number }).status
-          : 1,
-      stderr:
-        typeof (error as { stderr?: unknown }).stderr === "string"
-          ? (error as { stderr: string }).stderr
-          : "",
-      stdout:
-        typeof (error as { stdout?: unknown }).stdout === "string"
-          ? (error as { stdout: string }).stdout
-          : "",
+      code: typeof status === "number" ? status : 1,
+      stderr: typeof stderr === "string" ? stderr : "",
+      stdout: typeof stdout === "string" ? stdout : "",
     };
   }
 }
@@ -1610,14 +1667,10 @@ function head(text: string): string {
     .join("\n");
 }
 
-function enumValue<const T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
-  return typeof value === "string" && (allowed as readonly string[]).includes(value)
-    ? (value as T)
-    : fallback;
+function property(value: object, key: string): unknown {
+  return Reflect.get(value, key);
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+function asObject(value: unknown): object {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
 }

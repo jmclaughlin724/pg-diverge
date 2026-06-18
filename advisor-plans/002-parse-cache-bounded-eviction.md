@@ -143,14 +143,14 @@ Optional true-LRU upgrade (only if you prefer it and it stays simple): on a cach
 
 ALL must hold:
 
-- [ ] `npm run typecheck` exits 0
-- [ ] `npm test` exits 0
-- [ ] `npm run lint` exits 0
-- [ ] `npm run build` exits 0
-- [ ] `grep -n "parseCache.clear()" src/sql/parser.ts` returns no matches
-- [ ] A test exercising the >cap path exists and passes
-- [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `advisor-plans/README.md` status row updated
+- [x] `npm run typecheck` exits 0
+- [x] `npm test` exits 0
+- [x] `npm run lint` exits 0
+- [x] `npm run build` exits 0
+- [x] `grep -n "parseCache.clear()" src/sql/parser.ts` returns no matches
+- [x] A test exercising the >cap path exists and passes
+- [x] No files outside the in-scope list are modified (`git status`)
+- [x] `advisor-plans/README.md` status row updated
 
 ## STOP conditions
 

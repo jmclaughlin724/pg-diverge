@@ -29,6 +29,7 @@
     "cloudflare/**/*.js",
     "scripts/**/*.js",
     "scripts/**/*.mjs",
+    "src/license.ts",
     "services/license-worker/**/*.ts"
   ]
 }

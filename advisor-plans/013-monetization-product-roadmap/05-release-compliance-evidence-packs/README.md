@@ -25,9 +25,9 @@ Planned on 2026-06-16 against commit `fb8c461`.
 - Risk: MED
 - Depends on: none
 - Category: compliance / release evidence / monetization
-- Execution lens: compatibility-constrained
-- Compatibility constraint: evidence can affect audit and compliance claims.
-  Keep wording precise and avoid hosted retention promises until the data model
+- Execution lens: elegant canonical-owner execution.
+- Protected invariant: evidence can affect audit and compliance claims. Keep
+  wording precise and avoid hosted retention promises until the data model
   exists.
 
 ## Why This Matters

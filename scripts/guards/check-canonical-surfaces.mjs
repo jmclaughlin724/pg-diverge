@@ -378,6 +378,10 @@ function packageScriptViolations(scripts) {
     if (typeof command !== "string") {
       return [];
     }
+    const shellDeleteViolation = packageScriptShellDeleteViolation(name, command);
+    if (shellDeleteViolation !== undefined) {
+      return [shellDeleteViolation];
+    }
     const commandPath = commandPathFromScript(command);
     if (commandPath === undefined) {
       return [];
@@ -390,6 +394,24 @@ function packageScriptViolations(scripts) {
       `package script ${name} runs ${commandPath}, which has a compatibility/shim-style module name.`,
     ];
   });
+}
+
+function packageScriptShellDeleteViolation(name, command) {
+  if (!command.includes("rm")) {
+    return;
+  }
+  const tokens = command.split(" ").filter(Boolean);
+  const rmIndex = tokens.findIndex((token) => token === "rm" || token.endsWith("/rm"));
+  if (rmIndex === -1) {
+    return;
+  }
+  const flags = tokens
+    .slice(rmIndex + 1)
+    .filter((token) => token.startsWith("-"))
+    .join("");
+  return flags.includes("r") && flags.includes("f")
+    ? `package script ${name} uses recursive force deletion; delete the script or move cleanup into a guarded owner.`
+    : undefined;
 }
 
 function commandPathFromScript(command) {

@@ -257,7 +257,7 @@ program
   )
   .option(
     "--no-ensure-environment",
-    "disable the Supabase environment stub when a wrapper or config enables it"
+    "disable the Supabase environment stub when another command or config enables it"
   )
   .option(
     "--keep-databases",

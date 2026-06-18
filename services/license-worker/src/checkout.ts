@@ -19,11 +19,12 @@ export function parsePlanCatalog(raw: string): PlanCatalog {
     throw new Error("STRIPE_PRICE_MAP must be a JSON object");
   }
   const catalog = new Map<string, PlanPrice>();
-  for (const [plan, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof value !== "object" || value === null) {
+  for (const [plan, value] of Object.entries(parsed)) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
       throw new Error(`STRIPE_PRICE_MAP["${plan}"] must be an object`);
     }
-    const { price, mode } = value as Record<string, unknown>;
+    const price = Reflect.get(value, "price");
+    const mode = Reflect.get(value, "mode");
     if (typeof price !== "string" || !price.startsWith("price_")) {
       throw new Error(`STRIPE_PRICE_MAP["${plan}"].price must be a Stripe price id`);
     }
@@ -62,8 +63,9 @@ export async function createCheckoutSession(
     mode: request.planPrice.mode,
     success_url: request.successUrl,
   });
-  if (typeof session.url !== "string" || session.url.length === 0) {
+  const url = Reflect.get(session, "url");
+  if (typeof url !== "string" || url.length === 0) {
     throw new Error("Stripe checkout session returned no url");
   }
-  return session.url;
+  return url;
 }

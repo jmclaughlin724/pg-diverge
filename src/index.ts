@@ -101,6 +101,16 @@ export { planSchemaDiff } from "./planner.js";
 export { renderMigration, renderMigrationSplit } from "./render.js";
 export { extractSourceModel } from "./source.js";
 export { generateDatabaseTypes } from "./typegen.js";
+export type {
+  ColumnShape,
+  FunctionShape,
+  RelationshipShape,
+  ResolvedColumnType,
+  SchemaEntry,
+  SchemaShapes,
+  TableShape,
+} from "./typegen-model.js";
+export { collectSchemaShapes } from "./typegen-model.js";
 export { generateZodSchemas } from "./typegen-zod.js";
 export { runConfiguredValidators } from "./validators.js";
 export { verifyMigration } from "./verify.js";

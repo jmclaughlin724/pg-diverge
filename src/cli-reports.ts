@@ -31,11 +31,9 @@ interface SyncCommandOptions {
   target?: string;
 }
 
-const VALID_REPORTERS = new Set<CheckReporter>(["text", "json", "github", "sarif"]);
-
 function resolveReporter(value: string | undefined): CheckReporter | null {
-  const reporter = (value ?? "text") as CheckReporter;
-  if (!VALID_REPORTERS.has(reporter)) {
+  const reporter = value ?? "text";
+  if (reporter !== "text" && reporter !== "json" && reporter !== "github" && reporter !== "sarif") {
     process.stderr.write(
       `supaschema: unknown --reporter "${value}" (use text|json|github|sarif)\n`
     );
@@ -236,8 +234,8 @@ export function registerReportCommands(program: Command, context: ReportCommandC
       "--database-url <url>",
       "target whose applied history gates the sync (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)"
     )
-    .option("--target <name>", "override config-selected sync targets")
-    .option("--runner <runner>", "direct | supabase-cli")
+    .option("--target <name>", "operator override for one configured sync target")
+    .option("--runner <runner>", "operator override: direct | supabase-cli")
     .option("--no-diff", "skip schema diff generation and generated output refresh")
     .description(
       "Run the sync pipeline: schema diff, generated outputs, safety gates, target reconciliation, and selected runner apply/deploy."
@@ -250,6 +248,16 @@ function resolveSyncRunner(value: string | undefined): "direct" | "supabase-cli"
     return;
   }
   return value === "direct" || value === "supabase-cli" ? value : undefined;
+}
+
+function syncUsesConfiguredTargets(options: SyncCommandOptions, config: SupaschemaConfig): boolean {
+  if (options.target !== undefined) {
+    return true;
+  }
+  return (
+    config.workflow.migration_sync === "auto" &&
+    Object.values(config.sync.targets).some((target) => target.mode === "auto")
+  );
 }
 
 async function runSyncCommand(
@@ -265,10 +273,10 @@ async function runSyncCommand(
     process.exitCode = 2;
     return;
   }
-  const hasSelectedTarget = options.target !== undefined;
-  const databaseUrl = hasSelectedTarget
-    ? options.databaseUrl
-    : await context.resolveCliDatabaseUrl(options.databaseUrl);
+  const databaseUrl =
+    options.databaseUrl !== undefined || !syncUsesConfiguredTargets(options, config)
+      ? await context.resolveCliDatabaseUrl(options.databaseUrl)
+      : undefined;
   const envName = context.globalEnvName();
   const result = await syncMigrations({
     cliVersion: context.cliVersion,

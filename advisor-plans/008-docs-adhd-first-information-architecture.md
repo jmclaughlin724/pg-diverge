@@ -31,7 +31,7 @@ The docs validate, but the sidebar currently makes short-attention readers choos
   - Hidden maintainer pages stay hidden: `docs/mintlify.mdx`, `docs/release.mdx`.
 - **Legacy surfaces to delete**: none in this plan. This plan changes grouping only. Deletions/splits are handled by later plans.
 - **Overlapping surfaces to merge/move/rename**: move pages between navigation groups in `docs/docs.json`; do not rename files in this plan.
-- **Compatibility constraints**: keep existing page URLs working because the local docs rule requires redirects when pages move or rename. This plan does not move files, so no new redirects should be needed.
+- **URL invariants**: keep existing page URLs working because the local docs rule requires redirects when pages move or rename. This plan does not move files, so no new redirects should be needed.
 
 ## Current state
 
@@ -232,11 +232,11 @@ Expected: exit 0. If Mintlify reports a broken link, fix the navigation or foote
 
 ## Done criteria
 
-- [ ] `docs/docs.json` uses the seven target groups: Start, Core workflow, Configure, Tasks, Agents and CI, Evidence, Reference.
-- [ ] No public page is removed from navigation unless it has `hidden: true`.
-- [ ] `npm run docs:lint` exits 0.
-- [ ] `npm run docs:check` exits 0, or the operator records why `npx mint@4.2.616` could not run in the environment.
-- [ ] Only `docs/docs.json` and `advisor-plans/README.md` are modified for this plan.
+- [x] `docs/docs.json` uses the seven target groups: Start, Core workflow, Configure, Tasks, Agents and CI, Evidence, Reference.
+- [x] No public page is removed from navigation unless it has `hidden: true`.
+- [x] `npm run docs:lint` exits 0.
+- [x] `npm run docs:check` exits 0, or the operator records why `npx mint@4.2.616` could not run in the environment.
+- [x] Only `docs/docs.json` and `advisor-plans/README.md` are modified for this plan.
 
 ## STOP conditions
 

@@ -35,9 +35,8 @@ assert(
 );
 const schemaProperties = schema.properties ?? {};
 assert(
-  JSON.stringify(schemaProperties.adapter?.enum) ===
-    JSON.stringify(["auto", "postgres", "supabase", "supabase-auto"]),
-  "supaschema-config.schema.json adapter must allow auto plus legacy input values"
+  JSON.stringify(schemaProperties.adapter?.enum) === JSON.stringify(["auto"]),
+  "supaschema-config.schema.json adapter must allow only auto"
 );
 for (const key of fieldKeys) {
   assert(schemaProperties[key], `supaschema-config.schema.json is missing ${key}`);

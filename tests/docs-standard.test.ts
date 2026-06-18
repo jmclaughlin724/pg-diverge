@@ -66,8 +66,8 @@ function localRunnerFixtureFiles(overrides: Record<string, string> = {}) {
     "AGENTS.md": "Use the package manager local runner.\n",
     "CLAUDE.md": "Use the package manager local runner.\n",
     "README.md": "Use the package manager local runner.\n",
-    "bin/postinstall.mjs": "// silent lifecycle wrapper\n",
-    "bin/scaffold.mjs": "// shared setup owner\n",
+    "bin/postinstall.mjs": "export {};\n",
+    "bin/scaffold.mjs": "export {};\n",
     "docs/docs.json": JSON.stringify({
       $schema: "https://mintlify.com/docs.json",
       theme: "luma",

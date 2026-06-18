@@ -19,9 +19,6 @@ Bare `sync` selects every configured `sync.targets.<name>` entry with `mode: "au
 ```bash
 npx supaschema sync
 npx supaschema sync --no-diff
-npx supaschema sync --target staging
-npx supaschema --env staging sync --target staging
-npx supaschema sync --target staging --runner direct
 ```
 
 `sync.targets` controls target selection. `workflow.migration_sync` only controls whether apply is allowed and whether bare `sync` may select automatic targets: `disabled` refuses apply, `manual` leaves bare `sync` on the dry-run gate, and `auto` lets bare `sync` use targets whose own `mode` is `"auto"`. `--target <name>` is an explicit override for one configured target.
@@ -37,8 +34,7 @@ npx supaschema sync --target staging --runner direct
 </ParamField>
 
 <ParamField path="--target" type="name">
-  Override config-selected targets with one configured `sync.targets.<name>`
-  target.
+  Override config-selected targets with one configured `sync.targets.<name>` target.
 </ParamField>
 
 <ParamField path="--runner" type="direct | supabase-cli">

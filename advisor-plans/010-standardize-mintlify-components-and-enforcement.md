@@ -172,12 +172,12 @@ Expected: both exit 0.
 
 ## Done criteria
 
-- [ ] `.claude/rules/02` and `.claude/rules/03` describe the component and scanability standards.
-- [ ] `.codex/rules/02...` and `.codex/rules/03...` are synced through `npm run sync:llm`.
-- [ ] `scripts/check-docs-standard.mjs` enforces the new component rules structurally.
-- [ ] `tests/docs-standard.test.ts` covers each new rule.
-- [ ] Current docs pass `npm run docs:lint`.
-- [ ] `npm run docs:check` exits 0, or the operator records why Mintlify could not run.
+- [x] `.claude/rules/02` and `.claude/rules/03` describe the component and scanability standards.
+- [x] `.codex/rules/02...` and `.codex/rules/03...` are synced through `npm run sync:llm`.
+- [x] `scripts/check-docs-standard.mjs` enforces the new component rules structurally.
+- [x] `tests/docs-standard.test.ts` covers each new rule.
+- [x] Current docs pass `npm run docs:lint`.
+- [x] `npm run docs:check` exits 0, or the operator records why Mintlify could not run.
 
 ## STOP conditions
 

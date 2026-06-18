@@ -32,15 +32,15 @@ legal terms.
 - Missing named support skills: `worker-prompt-craft`, `lightweight-explorer`,
   and `team` were not present in the local skill roots, so this plan uses the
   exposed multi-agent tools, Code Atlas, source reads, and market sources.
-- Execution lens: compatibility-constrained.
+- Execution lens: elegant canonical-owner execution.
 - Elegant end state: one free OSS CLI and package boundary; one commercial
   inquiry funnel; one paid product architecture with clear lanes; one canonical
   owner per paid capability; no duplicate scanners, docs owners, policy engines,
   or private consumer hooks.
-- Compatibility constraint: preserve current AGPL/free local usage, preserve the
-  npm package boundary, preserve existing public CLI/API behavior until an
-  intentional versioned change, avoid customer-data storage before tenancy and
-  retention exist, and keep billing/license enforcement out of the local CLI.
+- Protected invariants: keep current AGPL/free local usage, the npm package
+  boundary, public CLI/API behavior unless a deliberate versioned change is
+  approved, no customer-data storage before tenancy and retention owners exist,
+  and no billing/license enforcement in the local CLI.
 - Open assumptions: none.
 - Resolved assumptions:
   - The repo has no hosted control plane, account model, billing owner, license
@@ -68,7 +68,7 @@ legal terms.
     hosted app code, billing provider integration, GitHub Marketplace
     submission, AWS Marketplace listing, customer-data ingestion, telemetry, and
     license enforcement.
-- Placeholders / TODOs: none.
+- Deferred markers: none.
 - Deferral budget: zero. Every monetization lane below has a problem, buyer,
   implementation path, monetization model, incumbent relationship, and
   acceptance path.

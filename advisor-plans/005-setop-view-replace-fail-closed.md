@@ -164,13 +164,13 @@ Add cases to `tests/replace-safety.test.ts` (follow the existing view-replace te
 
 ALL must hold:
 
-- [ ] `npm run typecheck` exits 0
-- [ ] `npm test` exits 0
-- [ ] A test asserts an aliasless set-op view replace with a changed body is **blocked** without a hint and **rendered as guarded DROP+CREATE** with a hint
-- [ ] `npm run lint` exits 0
-- [ ] `npm run build` exits 0
-- [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `advisor-plans/README.md` status row updated
+- [x] `npm run typecheck` exits 0
+- [x] `npm test` exits 0
+- [x] A test asserts an aliasless set-op view replace with a changed body is **blocked** without a hint and **rendered as guarded DROP+CREATE** with a hint
+- [x] `npm run lint` exits 0
+- [x] `npm run build` exits 0
+- [x] No files outside the in-scope list are modified (`git status`)
+- [x] `advisor-plans/README.md` status row updated
 
 ## STOP conditions
 

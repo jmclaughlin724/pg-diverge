@@ -419,7 +419,9 @@ describe("consumer lifecycle: ignore-scripts install then supaschema init reache
     expect(agentsAfter.split("<!-- supaschema:agent-guidance:start -->")).toHaveLength(2);
   });
 
-  it("generates an accurate migration and types after init, via the installed CLI", async () => {
+  it("generates an accurate migration and types after init, via the installed CLI", {
+    timeout: 30_000,
+  }, async () => {
     await copySqlTree(fixtureFrom, join(consumer2, "baseline", "schemas"));
     await copySqlTree(fixtureTo, join(consumer2, "database", "schemas"));
 

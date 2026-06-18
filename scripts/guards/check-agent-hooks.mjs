@@ -48,7 +48,7 @@ const claudeSkillFiles = fs
   .filter((entry) => entry.isDirectory())
   .map((entry) => path.join(ROOT, ".claude/skills", entry.name, "SKILL.md"))
   .filter((file) => fs.existsSync(file));
-const legacyClaudeNodeWrappers = [
+const shellQuotedClaudeNodeCommands = [
   ['node "', "$CLAUDE_PROJECT_DIR", '"'].join(""),
   ['node "', "${", "CLAUDE_PROJECT_DIR", "}"].join(""),
 ];
@@ -80,7 +80,7 @@ assert(
     settingsText.includes("auto-diff-on-schema-change.mjs") ||
     settingsText.includes("block-generated-migration-edits.mjs")
   ),
-  ".claude/settings.json must not register retired supaschema hook wrapper scripts"
+  ".claude/settings.json must not register removed supaschema hook scripts"
 );
 for (const hook of claudeHooks.filter((item) => item.endsWith(".mjs"))) {
   const expectedArg = `\${CLAUDE_PROJECT_DIR}/${hook}`;
@@ -95,18 +95,21 @@ for (const hook of claudeHooks.filter((item) => item.endsWith(".mjs"))) {
   );
 }
 assert(
-  !legacyClaudeNodeWrappers.some((fragment) => settingsText.includes(fragment)),
+  !shellQuotedClaudeNodeCommands.some((fragment) => settingsText.includes(fragment)),
   ".claude/settings.json must use command+args instead of shell-quoted node hook paths"
 );
-for (const legacy of [
+for (const removedHook of [
   "skill_session_init.sh",
   "skill_inject.sh",
   "skill_gate.sh",
   "skill_subagent_gate.sh",
   "skill_record.sh",
 ]) {
-  assert(!exists(`.claude/hooks/${legacy}`), `.claude/hooks/${legacy} should not exist`);
-  assert(!settingsText.includes(legacy), `.claude/settings.json still registers ${legacy}`);
+  assert(!exists(`.claude/hooks/${removedHook}`), `.claude/hooks/${removedHook} should not exist`);
+  assert(
+    !settingsText.includes(removedHook),
+    `.claude/settings.json still registers ${removedHook}`
+  );
 }
 const claudePostToolUseText = JSON.stringify(claudeSettings.hooks?.PostToolUse ?? []);
 const claudePostToolBatch = claudeSettings.hooks?.PostToolBatch;
@@ -148,7 +151,7 @@ assert(
     codexHooksJson.includes("auto-diff-on-schema-change.mjs") ||
     codexHooksJson.includes("block-generated-migration-edits.mjs")
   ),
-  ".codex/hooks.json must not register retired supaschema hook wrapper scripts"
+  ".codex/hooks.json must not register removed supaschema hook scripts"
 );
 for (const eventName of ["PreToolUse", "PostToolUse"]) {
   const entries = codexConfig.hooks?.[eventName];

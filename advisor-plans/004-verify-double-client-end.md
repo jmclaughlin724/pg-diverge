@@ -148,13 +148,13 @@ The failure path requires a database whose role lacks `CREATEDB`, which is awkwa
 
 ALL must hold:
 
-- [ ] `npm run typecheck` exits 0
-- [ ] `npm test` exits 0
-- [ ] `grep -n "admin.end()" src/verify.ts` shows exactly **one** occurrence (in the `finally` block)
-- [ ] `npm run lint` exits 0
-- [ ] `npm run build` exits 0
-- [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `advisor-plans/README.md` status row updated
+- [x] `npm run typecheck` exits 0
+- [x] `npm test` exits 0
+- [x] `grep -n "admin.end()" src/verify.ts` shows exactly **one** occurrence (in the `finally` block)
+- [x] `npm run lint` exits 0
+- [x] `npm run build` exits 0
+- [x] No files outside the in-scope list are modified (`git status`)
+- [x] `advisor-plans/README.md` status row updated
 
 ## STOP conditions
 

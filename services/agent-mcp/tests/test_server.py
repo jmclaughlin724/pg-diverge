@@ -30,7 +30,7 @@ EXPECTED_TOOLS = {
     "repo_safety_scan",
 }
 
-LEGACY_TOOL_NAMES = {
+REMOVED_TOOL_NAMES = {
     "search_repo_context",
     "read_context_file",
     "nearest_agent_instructions",
@@ -69,8 +69,8 @@ async def test_list_tools_exposes_real_catalog_after_bm25_removal() -> None:
         names = {tool.name for tool in await client.list_tools()}
 
     assert names == EXPECTED_TOOLS, f"unexpected tool catalog: {sorted(names)}"
-    assert not (LEGACY_TOOL_NAMES & names), (
-        f"legacy tools still listed: {LEGACY_TOOL_NAMES & names}"
+    assert not (REMOVED_TOOL_NAMES & names), (
+        f"removed tools still listed: {REMOVED_TOOL_NAMES & names}"
     )
 
     assert not (TOOL_SEARCH_ARTIFACTS & names), (
@@ -81,8 +81,10 @@ async def test_list_tools_exposes_real_catalog_after_bm25_removal() -> None:
 @pytest.mark.parametrize("bad_path", REJECTED_PATHS)
 async def test_read_context_file_rejects_unsafe_paths(bad_path: str) -> None:
     async with Client(transport=mcp) as client:
-        with pytest.raises(ToolError, match=r"repo-relative paths only|path is denied"):
+        with pytest.raises(ToolError) as error:
             await _read_context(client, bad_path)
+    message = str(error.value)
+    assert "repo-relative paths only" in message or "path is denied" in message
 
 
 async def test_secret_suffix_variants_are_all_rejected() -> None:
@@ -95,16 +97,18 @@ async def test_secret_suffix_variants_are_all_rejected() -> None:
     ]
     async with Client(transport=mcp) as client:
         for path in secret_paths:
-            with pytest.raises(ToolError, match="path is denied"):
+            with pytest.raises(ToolError) as error:
                 await _read_context(client, path)
+            assert "path is denied" in str(error.value)
 
 
 async def test_dotenv_family_is_rejected() -> None:
 
     async with Client(transport=mcp) as client:
         for path in (".env", ".env.local", ".env.production"):
-            with pytest.raises(ToolError, match="path is denied"):
+            with pytest.raises(ToolError) as error:
                 await _read_context(client, path)
+            assert "path is denied" in str(error.value)
 
 
 async def test_read_context_file_reads_allowlisted_agents_md() -> None:
@@ -163,14 +167,16 @@ async def test_repo_safety_scan_returns_structured_result() -> None:
 
 async def test_repo_safety_scan_rejects_unsafe_source() -> None:
     async with Client(transport=mcp) as client:
-        with pytest.raises(ToolError, match=r"unsafe source value"):
+        with pytest.raises(ToolError) as error:
             await client.call_tool("repo_safety_scan", {"source": "-rm"})
+    assert "unsafe source value" in str(error.value)
 
 
 async def test_repo_safety_scan_rejects_database_source() -> None:
     async with Client(transport=mcp) as client:
-        with pytest.raises(ToolError, match=r"stays local"):
+        with pytest.raises(ToolError) as error:
             await client.call_tool("repo_safety_scan", {"source": "database:postgres://u:p@h/db"})
+    assert "stays local" in str(error.value)
 
 
 async def test_code_atlas_query_exposes_regression_scope() -> None:

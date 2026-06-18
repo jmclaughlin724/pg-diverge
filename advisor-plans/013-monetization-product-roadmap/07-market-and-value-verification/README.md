@@ -191,7 +191,7 @@ path.
 | Local evidence/bundle manifest + Markdown renderer | 3 (agent evidence), 4 (rescue bundle), 5 (release pack) | absent | reuse `src/check-reporters.ts`; do not fork a second reporter |
 | Structured intake JSON schemas + agent prompt templates | 1, 2, 3, 4, 5 | absent | new `scripts/` intake owners |
 | Migration-system detector (incumbent fingerprinting) | 4 (rescue), onboarding flow | absent | `src/doctor.ts` / new onboarding owner |
-| GitHub Action wrappers around the above | 2, 3, 5 (CI delivery) | composite Action exists | `action.yml` |
+| GitHub Action entrypoints for the above | 2, 3, 5 (CI delivery) | composite Action exists | `action.yml` |
 
 The single most leveraged build is the **shared evidence/manifest renderer**: it
 is the common output for offers 3, 4, and 5 and must reuse the existing reporter

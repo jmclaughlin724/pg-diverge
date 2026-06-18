@@ -10,11 +10,11 @@ export type StripeFetch = (
   init: { body: string; headers: Record<string, string>; method: string }
 ) => Promise<StripeResponse>;
 
-function asObject(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null) {
+function stripeObject(value: unknown): object {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("unexpected Stripe response shape");
   }
-  return value as Record<string, unknown>;
+  return value;
 }
 
 export async function stripePost(
@@ -22,7 +22,7 @@ export async function stripePost(
   secretKey: string,
   path: string,
   form: Record<string, string>
-): Promise<Record<string, unknown>> {
+): Promise<object> {
   const response = await fetchImpl(`https://api.stripe.com/v1/${path}`, {
     body: new URLSearchParams(form).toString(),
     headers: {
@@ -35,5 +35,5 @@ export async function stripePost(
   if (!response.ok) {
     throw new Error(`Stripe ${path} failed: ${response.status} ${await response.text()}`);
   }
-  return asObject(await response.json());
+  return stripeObject(await response.json());
 }

@@ -15,14 +15,14 @@ execution handoffs.
 
 - Persistent task API: unavailable in this Codex session after tool discovery.
   This directory index is the durable fallback task system.
-- Execution lens: compatibility-constrained.
+- Execution lens: elegant canonical-owner execution.
 - Elegant end state: one canonical execution folder per active monetization
   proposal; one shared index; no duplicated source implementation; no hosted,
   billing, license-key, telemetry, or customer-data path added by this planning
   task.
-- Compatibility constraint: the repo already uses `advisor-plans/` as the
-  improve-plan surface because root `plans/` is reserved. Keep the existing
-  roadmap file and add subfolders beside it instead of moving the parent plan.
+- Protected invariant: `advisor-plans/` is the improve-plan surface because root
+  `plans/` is reserved. Keep the parent roadmap as the strategy owner and keep
+  proposal subfolders beside it.
 - Open assumptions: none (all validated).
 - Resolved assumptions:
   - The active five proposals are commercial/OEM licensing, RLS/tenant-isolation
@@ -63,7 +63,7 @@ execution handoffs.
     changed.
   - Future implementation must add guards, tests, hooks, docs checks, or CI only
     inside the specific proposal plan that changes those surfaces.
-- Placeholders / TODOs: none.
+- Deferred markers: none.
 - Deferral budget: zero for this planning workstream. Every active proposal has
   a subfolder, a self-contained plan, scope boundaries, onboarding automation,
   value proposition, and validation gates.
@@ -166,7 +166,7 @@ Shared automation primitives to build once and reuse:
 - local evidence collector.
 - report manifest and Markdown renderer.
 - agent prompt templates that consume structured JSON.
-- GitHub Action wrappers.
+- GitHub Action entrypoints.
 - waiver and approval metadata.
 - customer-safe export bundles.
 

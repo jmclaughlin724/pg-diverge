@@ -12,7 +12,11 @@ import {
 } from "../scripts/agent-hooks/detectors.mjs";
 import { runChecks, shapeHookResult } from "../scripts/agent-hooks/payload.mjs";
 import { handleAgentHookEvent } from "../scripts/agent-hooks/runner.mjs";
-import { currentTurnState, readSessionState } from "../scripts/agent-hooks/state.mjs";
+import {
+  currentTurnState,
+  normalizeState,
+  readSessionState,
+} from "../scripts/agent-hooks/state.mjs";
 
 describe("agent hook payload mapping", () => {
   it("pins model-context output shapes by event", () => {
@@ -451,46 +455,55 @@ describe("agent hook response detectors", () => {
       completionClaimWithOpenItems(
         "Done.",
         { background_tasks: [{ id: "t1" }] },
-        { invokedSkills: {}, pendingSkills: {} }
+        normalizedHookState()
       )
     ).toMatchObject({ id: "completion-claim-with-open-items" });
     expect(
-      completionClaimWithOpenItems(
-        "Done.",
-        { background_tasks: [] },
-        {
-          invokedSkills: {},
-          pendingSkills: {},
-        }
-      )
+      completionClaimWithOpenItems("Done.", { background_tasks: [] }, normalizedHookState())
     ).toBeUndefined();
   });
 
   it("detects verification claims without evidence", () => {
-    expect(claimWithoutEvidence("Verified and clean.", { evidence: [] }, [])).toMatchObject({
+    expect(claimWithoutEvidence("Verified and clean.", normalizedHookState(), [])).toMatchObject({
       id: "claim-without-evidence",
     });
     expect(
-      claimWithoutEvidence("Verified and clean.", { evidence: [{ kind: "verified-command" }] }, [])
+      claimWithoutEvidence(
+        "Verified and clean.",
+        normalizedHookState({ evidence: [{ kind: "verified-command" }] }),
+        []
+      )
     ).toBeUndefined();
     expect(
-      claimWithoutEvidence("Verified and clean.", {
-        evidence: [{ kind: "code-atlas-query", outcome: "success" }],
-      })
+      claimWithoutEvidence(
+        "Verified and clean.",
+        normalizedHookState({
+          evidence: [{ kind: "code-atlas-query", outcome: "success" }],
+        })
+      )
     ).toMatchObject({ id: "claim-without-evidence" });
     expect(
-      claimWithoutEvidence("Verified Code Atlas scope.", {
-        evidence: [{ kind: "code-atlas-query", outcome: "success" }],
-      })
+      claimWithoutEvidence(
+        "Verified Code Atlas scope.",
+        normalizedHookState({
+          evidence: [{ kind: "code-atlas-query", outcome: "success" }],
+        })
+      )
     ).toBeUndefined();
   });
 
   it("detects decision menus after direct directives", () => {
     expect(
-      decisionMenuAfterDirective("Option 1 is safer, choose one.", { lastPrompt: "implement it" })
+      decisionMenuAfterDirective(
+        "Option 1 is safer, choose one.",
+        normalizedHookState({ lastPrompt: "implement it" })
+      )
     ).toMatchObject({ id: "decision-menu-after-directive" });
     expect(
-      decisionMenuAfterDirective("I implemented it.", { lastPrompt: "what are options?" })
+      decisionMenuAfterDirective(
+        "I implemented it.",
+        normalizedHookState({ lastPrompt: "what are options?" })
+      )
     ).toBeUndefined();
   });
 
@@ -502,32 +515,43 @@ describe("agent hook response detectors", () => {
       deferralLanguage("Tests failed; the next step is to fix src/config.ts.")
     ).toBeUndefined();
     expect(
-      toolFailureWithoutRetry({
-        evidence: [
-          {
-            at: "2026-06-15T00:00:00.000Z",
-            kind: "failed-command",
-            outcome: "failure",
-          },
-        ],
-      })
+      toolFailureWithoutRetry(
+        normalizedHookState({
+          evidence: [
+            {
+              at: "2026-06-15T00:00:00.000Z",
+              kind: "failed-command",
+              outcome: "failure",
+            },
+          ],
+        })
+      )
     ).toMatchObject({ id: "tool-failure-without-retry" });
     expect(
-      toolFailureWithoutRetry({
-        evidence: [
-          {
-            at: "2026-06-15T00:00:00.000Z",
-            kind: "failed-command",
-            outcome: "failure",
-          },
-          { at: "2026-06-15T00:01:00.000Z", kind: "verified-command" },
-        ],
-      })
+      toolFailureWithoutRetry(
+        normalizedHookState({
+          evidence: [
+            {
+              at: "2026-06-15T00:00:00.000Z",
+              kind: "failed-command",
+              outcome: "failure",
+            },
+            { at: "2026-06-15T00:01:00.000Z", kind: "verified-command" },
+          ],
+        })
+      )
     ).toBeUndefined();
     expect(
-      toolFailureWithoutRetry({
-        evidence: [{ at: "2026-06-15T00:00:00.000Z", kind: "failed-command" }],
-      })
+      toolFailureWithoutRetry(
+        normalizedHookState({
+          evidence: [
+            {
+              at: "2026-06-15T00:00:00.000Z",
+              kind: "failed-command",
+            },
+          ],
+        })
+      )
     ).toBeUndefined();
   });
 
@@ -724,6 +748,15 @@ metadata:
   );
   await write(root, ".agents/skills/code-atlas/SKILL.md", "# Code Atlas\n");
   return { root, stateDir };
+}
+
+function normalizedHookState(turn: Record<string, unknown> = {}) {
+  return normalizeState({
+    currentTurnId: "turn-0",
+    turns: {
+      "turn-0": turn,
+    },
+  });
 }
 
 async function writeSkill(root: string, name: string, text: string): Promise<void> {

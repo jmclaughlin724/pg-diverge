@@ -23,9 +23,9 @@ Planned on 2026-06-16 against commit `fb8c461`.
 - Risk: MED
 - Depends on: none
 - Category: security / monetization
-- Execution lens: compatibility-constrained
-- Compatibility constraint: RLS is a tenant-isolation surface. Fail closed and
-  avoid changing current migration behavior until rule diagnostics are proven.
+- Execution lens: elegant canonical-owner execution.
+- Protected invariant: RLS is a tenant-isolation surface. Fail closed and keep
+  migration behavior unchanged unless rule diagnostics prove the change.
 
 ## Why This Matters
 

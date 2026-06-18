@@ -100,9 +100,9 @@ describe("npm package contents", () => {
     expect(codexHookContents).toContain("supaschema hook schema-write");
     expect(
       paths.filter((path) => path.startsWith(".codex/skills/")),
-      "legacy Codex skills must not ship"
+      "Codex skill duplicates must not ship"
     ).toEqual([]);
-    expect(paths, "legacy config-schema.json must not ship").not.toContain("config-schema.json");
+    expect(paths, "config-schema.json must not ship").not.toContain("config-schema.json");
 
     const forbiddenPrefixes = [
       "benchmarks/",

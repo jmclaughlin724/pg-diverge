@@ -97,10 +97,7 @@ const sourcesSchema = z
   })
   .default({ from: "auto", to: canonicalSourceTo([genericSchemaPath]) });
 
-const adapterSchema = z
-  .enum(adapterInputValues)
-  .default("auto")
-  .transform(() => "auto" as const);
+const adapterSchema = z.enum(adapterInputValues).default("auto");
 const workflowSchema = z
   .strictObject({
     schema_diff: z.enum(schemaDiffPolicies).default(defaultWorkflow.schema_diff),
@@ -149,7 +146,7 @@ export const defaultConfig: SupaschemaConfig = finalizeConfigDefaults(
   {}
 );
 
-export function resolveConfig(config?: Partial<SupaschemaConfig>): SupaschemaConfig {
+export function resolveConfig(config?: unknown): SupaschemaConfig {
   const input = config ?? {};
   return finalizeConfigDefaults(supaschemaConfigSchema.parse(input), input);
 }
@@ -248,7 +245,10 @@ export function configJsonSchema(): Record<string, unknown> {
   const schema = z.toJSONSchema(supaschemaConfigSchema, {
     io: "input",
     target: "draft-2020-12",
-  }) as Record<string, unknown>;
+  });
+  if (!isRecord(schema)) {
+    return {};
+  }
   return enrichConfigJsonSchema(schema);
 }
 

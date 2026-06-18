@@ -34,7 +34,7 @@ npx supaschema check
 npx supaschema sync
 ```
 
-The installed default lets target config decide selection. For remote deploys, set the remote target to `mode: "auto"` and provide the target's approval environment variable in the deployment job. Supabase compatibility aliases exist for explicit operator overrides, but they are not the standard workflow.
+The installed default lets target config decide selection. For remote deploys, set the remote target to `mode: "auto"` and provide the target's approval environment variable in the deployment job. Use `--target <name>` only for an explicit one-target operator override.
 
 ## Verify
 

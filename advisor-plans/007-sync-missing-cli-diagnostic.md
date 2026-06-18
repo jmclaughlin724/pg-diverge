@@ -212,14 +212,14 @@ SUPA_SYNC_RUNNER_UNAVAILABLE:
 
 ALL must hold:
 
-- [ ] `npm run typecheck` exits 0
-- [ ] `npm test` exits 0, with a test asserting the missing-CLI path yields `SUPA_SYNC_RUNNER_UNAVAILABLE`
-- [ ] `npm run lint` exits 0
-- [ ] `npm run build` exits 0
-- [ ] `node dist/cli.js explain SUPA_SYNC_RUNNER_UNAVAILABLE` prints the summary
-- [ ] A genuine nonzero runner exit still produces `SUPA_SYNC_RUNNER_FAILED` (unchanged)
-- [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `advisor-plans/README.md` status row updated
+- [x] `npm run typecheck` exits 0
+- [x] `npm test` exits 0, with a test asserting the missing-CLI path yields `SUPA_SYNC_RUNNER_UNAVAILABLE`
+- [x] `npm run lint` exits 0
+- [x] `npm run build` exits 0
+- [x] `node dist/cli.js explain SUPA_SYNC_RUNNER_UNAVAILABLE` prints the summary
+- [x] A genuine nonzero runner exit still produces `SUPA_SYNC_RUNNER_FAILED` (unchanged)
+- [x] No files outside the in-scope list are modified (`git status`)
+- [x] `advisor-plans/README.md` status row updated
 
 ## STOP conditions
 

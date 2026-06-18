@@ -7,7 +7,7 @@ export const genericSchemaPath = "database/schemas";
 export const genericMigrationsDir = "database/migrations";
 export const defaultTypesFile = "database.types.ts";
 export const defaultZodFile = "database.zod.ts";
-export const adapterInputValues = ["auto", "postgres", "supabase", "supabase-auto"] as const;
+export const adapterInputValues = ["auto"] as const;
 
 export const supabaseManagedSchemas = [
   "auth",
@@ -487,8 +487,7 @@ export const configFieldMetadata = [
   {
     allowed: [...adapterInputValues],
     default: "auto",
-    description:
-      "Provider-neutral adapter sentinel. Legacy adapter strings are accepted at the input boundary and normalized to auto.",
+    description: "Provider-neutral adapter sentinel.",
     key: "adapter",
   },
   {

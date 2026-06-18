@@ -214,10 +214,7 @@ const contract = JSON.parse(`{
     }
   ],
   "adapterInputValues": [
-    "auto",
-    "postgres",
-    "supabase",
-    "supabase-auto"
+    "auto"
   ],
   "canonicalSchemaId": "https://supaschema.com/schemas/supaschema-config.schema.json",
   "configFieldMetadata": [
@@ -232,13 +229,10 @@ const contract = JSON.parse(`{
     },
     {
       "allowed": [
-        "auto",
-        "postgres",
-        "supabase",
-        "supabase-auto"
+        "auto"
       ],
       "default": "auto",
-      "description": "Provider-neutral adapter sentinel. Legacy adapter strings are accepted at the input boundary and normalized to auto.",
+      "description": "Provider-neutral adapter sentinel.",
       "key": "adapter"
     },
     {

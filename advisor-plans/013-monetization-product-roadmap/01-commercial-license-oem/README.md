@@ -23,10 +23,10 @@ Planned on 2026-06-16 against commit `fb8c461`.
 - Risk: MED
 - Depends on: none
 - Category: direction / monetization
-- Execution lens: compatibility-constrained
-- Compatibility constraint: commercial terms affect public licensing,
-  packaging, and legal claims. Preserve free OSS local usage and do not add
-  license-key checks to the CLI.
+- Execution lens: elegant canonical-owner execution.
+- Protected invariant: commercial terms affect public licensing, packaging, and
+  legal claims. Keep free OSS local usage intact and do not add license-key
+  checks to the CLI.
 
 ## Why This Matters
 

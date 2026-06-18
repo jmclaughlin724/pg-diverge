@@ -25,9 +25,9 @@ Planned on 2026-06-16 against commit `fb8c461`.
 - Risk: MED
 - Depends on: none
 - Category: agent governance / monetization
-- Execution lens: compatibility-constrained
-- Compatibility constraint: preserve the free local agent bundle and never make
-  agents apply migrations automatically.
+- Execution lens: elegant canonical-owner execution.
+- Protected invariant: keep the free local agent bundle intact and never let
+  agents apply migrations outside configured automation and approval gates.
 
 ## Why This Matters
 

@@ -4,6 +4,7 @@ import {
   extractCheckoutCompletion,
   handleLicenseWorker,
   type LicenseWorkerEnv,
+  type LicenseWorkerStores,
 } from "../services/license-worker/src/index.js";
 import { issueLicenseToken, licenseClaimsFor } from "../services/license-worker/src/issue.js";
 import { createMemoryStore } from "../services/license-worker/src/store.js";
@@ -49,24 +50,43 @@ const failingStripe: StripeFetch = () =>
     text: () => Promise.resolve("payment required"),
   });
 
+function stripeSignature(rawBody: string, secret: string, timestamp: number): string {
+  return createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+}
+
 function stripeSignatureHeader(rawBody: string, secret: string, timestamp: number): string {
-  const signature = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
+  const signature = stripeSignature(rawBody, secret, timestamp);
   return `t=${timestamp},v1=${signature}`;
 }
 
-function checkoutEvent(repo: string, plan: string, sessionId: string): string {
+function checkoutEvent(
+  repo: string,
+  plan: string,
+  sessionId: string,
+  options: { paymentStatus?: string; type?: string } = {}
+): string {
   return JSON.stringify({
-    data: { object: { id: sessionId, metadata: { plan, repo } } },
-    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: sessionId,
+        metadata: { plan, repo },
+        payment_status: options.paymentStatus ?? "paid",
+      },
+    },
+    type: options.type ?? "checkout.session.completed",
   });
 }
 
-function envWith(store: LicenseWorkerEnv["LICENSE_KV"]): LicenseWorkerEnv {
+function memoryStores(): LicenseWorkerStores {
+  return { contracts: createMemoryStore(), licenses: createMemoryStore() };
+}
+
+function envWith(stores: LicenseWorkerStores): LicenseWorkerEnv {
   return {
     CHECKOUT_CANCEL_URL: "https://supaschema.com/pricing",
     CHECKOUT_SUCCESS_URL: "https://supaschema.com/license",
-    CONTRACT_REGISTRY_TOKEN: "registry_token",
-    LICENSE_KV: store,
+    CONTRACT_KV: stores.contracts,
+    LICENSE_KV: stores.licenses,
     STRIPE_PRICE_MAP: PRICE_MAP,
     STRIPE_SECRET_KEY: "rk_test_only_not_a_real_key",
     STRIPE_WEBHOOK_SECRET: SECRET,
@@ -81,14 +101,24 @@ const usersTable: TableShape = {
   uniqueColumnSets: [],
 };
 
-function contract(tables: TableShape[]) {
+function contract(tables: unknown[]) {
   return { schemas: { public: { enums: [], tables } } };
 }
 
-function registryRequest(method: string, body?: unknown): Request {
-  return new Request("https://license.example/contracts?repo=acme/app&name=main", {
+function registryLicense(repo = "acme/app"): string {
+  return issueLicenseToken(licenseClaimsFor(repo, "bundle", NOW), keyPair.privateKey);
+}
+
+function registryRequest(
+  method: string,
+  body?: unknown,
+  repo = "acme/app",
+  license = registryLicense(repo)
+): Request {
+  const url = `https://license.example/contracts?repo=${encodeURIComponent(repo)}&name=main`;
+  return new Request(url, {
     body: body === undefined ? undefined : JSON.stringify(body),
-    headers: { authorization: "Bearer registry_token", "content-type": "application/json" },
+    headers: { authorization: `Bearer ${license}`, "content-type": "application/json" },
     method,
   });
 }
@@ -121,6 +151,15 @@ describe("Stripe webhook signature (M30)", () => {
     );
   });
 
+  it("accepts a matching rotated signature that is not the last v1 value", () => {
+    const body = checkoutEvent("acme/app", "bundle", "cs_test_sig_rotation");
+    const matching = stripeSignature(body, SECRET, NOW);
+    const stale = stripeSignature(body, "whsec_previous_secret", NOW);
+    expect(verifyStripeSignature(body, `t=${NOW},v1=${matching},v1=${stale}`, SECRET, NOW)).toBe(
+      true
+    );
+  });
+
   it("rejects a tampered body", () => {
     const header = stripeSignatureHeader(checkoutEvent("acme/app", "bundle", "cs_a"), SECRET, NOW);
     const tampered = checkoutEvent("evil/repo", "bundle", "cs_a");
@@ -136,57 +175,86 @@ describe("Stripe webhook signature (M30)", () => {
 
 describe("license Worker end-to-end (M30/M31)", () => {
   it("mints + stores on verified checkout, retrievable by session_id and CLI-valid", async () => {
-    const store = createMemoryStore();
-    const env = envWith(store);
+    const stores = memoryStores();
+    const env = envWith(stores);
     const webhook = await handleLicenseWorker(
       signedWebhook(checkoutEvent("acme/app", "bundle", "cs_test_abc")),
       env,
-      store,
+      stores,
       NOW,
       noFetch
     );
     expect(webhook.status).toBe(200);
-    expect(((await webhook.json()) as { issued: boolean }).issued).toBe(true);
+    expect(await webhook.json()).toMatchObject({ issued: true });
 
     const retrieval = await handleLicenseWorker(
       new Request("https://license.example/license?session_id=cs_test_abc"),
       env,
-      store,
+      stores,
       NOW,
       noFetch
     );
     expect(retrieval.status).toBe(200);
-    const { license } = (await retrieval.json()) as { license: string };
+    const retrievalBody = await retrieval.json();
+    const license = typeof retrievalBody.license === "string" ? retrievalBody.license : "";
     expect(isEntitled(verifyLicenseToken(license, publicKeyPem), "acme/app", NOW)).toBe(true);
   });
 
   it("is idempotent on a webhook retry (no second mint)", async () => {
-    const store = createMemoryStore();
-    const env = envWith(store);
+    const stores = memoryStores();
+    const env = envWith(stores);
     const body = checkoutEvent("acme/app", "bundle", "cs_test_dup");
-    await handleLicenseWorker(signedWebhook(body), env, store, NOW, noFetch);
-    const first = await store.get("cs_test_dup");
-    const retry = await handleLicenseWorker(signedWebhook(body), env, store, NOW, noFetch);
-    expect(((await retry.json()) as { idempotent?: boolean }).idempotent).toBe(true);
-    expect(await store.get("cs_test_dup")).toBe(first);
+    await handleLicenseWorker(signedWebhook(body), env, stores, NOW, noFetch);
+    const first = await stores.licenses.get("cs_test_dup");
+    const retry = await handleLicenseWorker(signedWebhook(body), env, stores, NOW, noFetch);
+    expect(await retry.json()).toMatchObject({ idempotent: true });
+    expect(await stores.licenses.get("cs_test_dup")).toBe(first);
+  });
+
+  it("does not mint for an unpaid completed Checkout Session", async () => {
+    const stores = memoryStores();
+    const env = envWith(stores);
+    const sessionId = "cs_test_unpaid";
+    const body = checkoutEvent("acme/app", "bundle", sessionId, { paymentStatus: "unpaid" });
+
+    const response = await handleLicenseWorker(signedWebhook(body), env, stores, NOW, noFetch);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ignored: true });
+    expect(await stores.licenses.get(sessionId)).toBeNull();
+  });
+
+  it("mints after a delayed Checkout payment succeeds", async () => {
+    const stores = memoryStores();
+    const env = envWith(stores);
+    const sessionId = "cs_test_async_paid";
+    const body = checkoutEvent("acme/app", "bundle", sessionId, {
+      type: "checkout.session.async_payment_succeeded",
+    });
+
+    const response = await handleLicenseWorker(signedWebhook(body), env, stores, NOW, noFetch);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ issued: true });
+    expect(await stores.licenses.get(sessionId)).not.toBeNull();
   });
 
   it("rejects an unsigned webhook", async () => {
-    const store = createMemoryStore();
+    const stores = memoryStores();
     const request = new Request("https://license.example/webhook", {
       body: checkoutEvent("acme/app", "bundle", "cs_test_x"),
       method: "POST",
     });
-    const response = await handleLicenseWorker(request, envWith(store), store, NOW, noFetch);
+    const response = await handleLicenseWorker(request, envWith(stores), stores, NOW, noFetch);
     expect(response.status).toBe(400);
   });
 
   it("returns pending 404 for an unknown session_id", async () => {
-    const store = createMemoryStore();
+    const stores = memoryStores();
     const response = await handleLicenseWorker(
       new Request("https://license.example/license?session_id=unknown"),
-      envWith(store),
-      store,
+      envWith(stores),
+      stores,
       NOW,
       noFetch
     );
@@ -200,9 +268,9 @@ describe("license Worker end-to-end (M30/M31)", () => {
 
 describe("self-serve checkout (M31)", () => {
   function checkout(repo: string, plan: string, stripeFetch: StripeFetch): Promise<Response> {
-    const store = createMemoryStore();
+    const stores = memoryStores();
     const url = `https://license.example/checkout?repo=${encodeURIComponent(repo)}&plan=${plan}`;
-    return handleLicenseWorker(new Request(url), envWith(store), store, NOW, stripeFetch);
+    return handleLicenseWorker(new Request(url), envWith(stores), stores, NOW, stripeFetch);
   }
 
   it("creates a repo-bound session and 302-redirects to its hosted url", async () => {
@@ -250,31 +318,61 @@ describe("self-serve checkout (M31)", () => {
 
 describe("contract registry Worker routes (X51)", () => {
   it("stores and retrieves an authenticated schema contract", async () => {
-    const store = createMemoryStore();
-    const env = envWith(store);
+    const stores = memoryStores();
+    const env = envWith(stores);
     const stored = await handleLicenseWorker(
       registryRequest("PUT", contract([usersTable])),
       env,
-      store,
+      stores,
       NOW,
       noFetch
     );
     expect(stored.status).toBe(200);
 
-    const retrieved = await handleLicenseWorker(registryRequest("GET"), env, store, NOW, noFetch);
+    const retrieved = await handleLicenseWorker(registryRequest("GET"), env, stores, NOW, noFetch);
     expect(retrieved.status).toBe(200);
     expect(await retrieved.json()).toEqual(contract([usersTable]));
   });
 
+  it("deletes an authenticated schema contract", async () => {
+    const stores = memoryStores();
+    const env = envWith(stores);
+    await handleLicenseWorker(
+      registryRequest("PUT", contract([usersTable])),
+      env,
+      stores,
+      NOW,
+      noFetch
+    );
+
+    const deleted = await handleLicenseWorker(registryRequest("DELETE"), env, stores, NOW, noFetch);
+    expect(deleted.status).toBe(200);
+
+    const retrieved = await handleLicenseWorker(registryRequest("GET"), env, stores, NOW, noFetch);
+    expect(retrieved.status).toBe(404);
+  });
+
   it("rejects unauthenticated registry writes", async () => {
-    const store = createMemoryStore();
+    const stores = memoryStores();
     const response = await handleLicenseWorker(
       new Request("https://license.example/contracts?repo=acme/app&name=main", {
         body: JSON.stringify(contract([usersTable])),
         method: "PUT",
       }),
-      envWith(store),
-      store,
+      envWith(stores),
+      stores,
+      NOW,
+      noFetch
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects registry writes when the license belongs to another repo", async () => {
+    const stores = memoryStores();
+    const response = await handleLicenseWorker(
+      registryRequest("PUT", contract([usersTable]), "acme/app", registryLicense("other/repo")),
+      envWith(stores),
+      stores,
       NOW,
       noFetch
     );
@@ -282,14 +380,40 @@ describe("contract registry Worker routes (X51)", () => {
   });
 
   it("rejects payloads outside the contract shape before storage", async () => {
-    const store = createMemoryStore();
+    const stores = memoryStores();
     const response = await handleLicenseWorker(
       registryRequest("PUT", { schemas: { public: { enums: [], tables: [] } }, token: "abc123" }),
-      envWith(store),
-      store,
+      envWith(stores),
+      stores,
       NOW,
       noFetch
     );
+    expect(response.status).toBe(400);
+  });
+
+  it.each([
+    {
+      name: "column",
+      table: { ...usersTable, columns: [null] },
+    },
+    {
+      name: "relationship",
+      table: { ...usersTable, relationships: [null] },
+    },
+    {
+      name: "unique column set",
+      table: { ...usersTable, uniqueColumnSets: [null] },
+    },
+  ])("rejects malformed nested $name entries", async ({ table }) => {
+    const stores = memoryStores();
+    const response = await handleLicenseWorker(
+      registryRequest("PUT", contract([table])),
+      envWith(stores),
+      stores,
+      NOW,
+      noFetch
+    );
+
     expect(response.status).toBe(400);
   });
 });

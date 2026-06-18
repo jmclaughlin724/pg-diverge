@@ -23,8 +23,30 @@ describe("secret redaction (S1)", () => {
 
   it("masks passwd and prefixed password variants", () => {
     expect(redactSecrets("FATAL: passwd=hunter2")).toBe("FATAL: passwd=[redacted]");
+    expect(redactSecrets("PWD=hunter2")).toBe("PWD=[redacted]");
     expect(redactSecrets("db_password=hunter2")).toBe("db_password=[redacted]");
     expect(redactSecrets("PGPASSWORD=hunter2")).toBe("PGPASSWORD=[redacted]");
+  });
+
+  it("masks token and API key variants", () => {
+    expect(redactSecrets("access_token=hunter2")).toBe("access_token=[redacted]");
+    expect(redactSecrets("api-key=hunter2")).toBe("api-key=[redacted]");
+    expect(redactSecrets("service-role-key=hunter2")).toBe("service-role-key=[redacted]");
+  });
+
+  it("redacts quoted JSON-style secret properties", () => {
+    const redacted = redactSecrets('{"password":"hunter2","api_key":"abc123"}');
+    expect(redacted).toBe('{"password":"[redacted]","api_key":"[redacted]"}');
+    expect(redacted).not.toContain("hunter2");
+    expect(redacted).not.toContain("abc123");
+  });
+
+  it("keeps already redacted assignment values idempotent", () => {
+    expect(redactSecrets("password=[redacted]")).toBe("password=[redacted]");
+    expect(redactSecrets("password=[redacted]hunter2")).toBe("password=[redacted]");
+    expect(redactSecrets('{"password":"[redacted]"}')).toBe('{"password":"[redacted]"}');
+    expect(hasUnredactedSecret("password=[redacted]")).toBe(false);
+    expect(hasUnredactedSecret('{"password":"[redacted]"}')).toBe(false);
   });
 
   it("redacts a long credential-free of quadratic blowup", () => {
@@ -46,7 +68,7 @@ describe("secret redaction (S1)", () => {
     expect(hasUnredactedSecret(redactSecrets(text))).toBe(false);
   });
 
-  it("is stable across repeated detection calls (no /g lastIndex drift)", () => {
+  it("is stable across repeated detection calls", () => {
     const text = "postgres://u:p@h/db";
     expect(hasUnredactedSecret(text)).toBe(true);
     expect(hasUnredactedSecret(text)).toBe(true);

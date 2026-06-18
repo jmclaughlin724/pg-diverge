@@ -12,8 +12,8 @@
 
 - First-run setup now has a safe empty baseline: `sources.from: "auto"` resolves a database URL, then `git:HEAD`, then `empty:`, while pending `.supaschema/install.json` path confirmation blocks `config validate`, `doctor`, and zero-source `diff` until `schemaPaths`, `sources.to`, and `migrationsDir` are explicit.
 - GitHub Action execution now accepts a structured `argv` JSON array instead of raw shell `args`, runs through a Node action runner with `shell: false`, and keeps the action pinned to an exact package version.
-- Consumer install and package verification are tightened: `postinstall` is a silent lifecycle wrapper over the shared scaffolder, `supaschema init` remains the recovery path when lifecycle scripts are blocked, and `package:smoke` owns npm, pnpm, Yarn, and Bun install/init proof.
-- Agent surfaces no longer carry the old skill-router hook system; Claude, Codex, and `.agents` mirrors now sync from the canonical owners without stale router scripts or post-edit consistency shims.
+- Consumer install and package verification are tightened: `postinstall` delegates silently to the shared scaffolder, `supaschema init` remains the recovery path when lifecycle scripts are blocked, and `package:smoke` owns npm, pnpm, Yarn, and Bun install/init proof.
+- Agent surfaces no longer carry the old skill-router hook system; Claude, Codex, and `.agents` mirrors now sync from the canonical owners without stale router scripts or post-edit consistency paths.
 - Release and support surfaces now use `CHANGELOG.md` as the GitHub Release body source, add commercial/support intake docs and an issue template, and clarify unsupported boundaries such as publications/subscriptions, partitioning, event triggers, collations, and Supabase-managed storage/auth/realtime internals.
 - Package lifecycle and action-runner guards now reject child-process args with `shell: true`, preventing Node DEP0190 warnings from leaking into package gates.
 

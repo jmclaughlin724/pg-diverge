@@ -18,10 +18,10 @@
 When a column's type changes, supaschema renders:
 
 ```sql
-ALTER TABLE <t> ALTER COLUMN <c> TYPE <newtype> USING <c>::<newtype>;
+ALTER TABLE app.accounts ALTER COLUMN label TYPE text USING label::text;
 ```
 
-The `USING <c>::<newtype>` is an **identity cast** — it casts the existing value directly to the new type. PostgreSQL rejects this for most non-trivial conversions where no implicit/assignment cast exists (`text → uuid`, `integer → jsonb`, narrowing `varchar(10) → varchar(5)` with longer data, etc.). The operator gets here only after explicitly adding a `hints.destructive` entry (the change is gated by `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED`), so they reasonably trust the rendered SQL — but `check` is static and won't catch the cast failure, and `verify` is optional. The result is an apply-time error on SQL the tool generated and the operator approved. This plan does **not** try to synthesize a correct cast (impossible in general) — it makes the placeholder cast **visible**: a plan-time advisory diagnostic plus an inline SQL comment telling the operator to supply a real `USING` expression when needed.
+The `USING label::text` clause is an identity cast: it casts the existing value directly to the new type. PostgreSQL rejects this for most non-trivial conversions where no implicit or assignment cast exists (`text` to `uuid`, `integer` to `jsonb`, narrowing `varchar(10)` to `varchar(5)` with longer data, etc.). The operator gets here only after explicitly adding a `hints.destructive` entry, so they reasonably trust the rendered SQL, but `check` is static and will not catch the cast failure, and `verify` is optional. The result is an apply-time error on SQL the tool generated and the operator approved. This plan does not try to synthesize a correct cast; it makes the default identity cast visible through a plan-time advisory diagnostic plus an inline SQL comment telling the operator to supply a real `USING` expression when needed.
 
 ## Current state
 
@@ -38,7 +38,7 @@ if (typeof record.type === "string") {
 // ...dropDefault / setDefault / setNotNull / dropNotNull...
 ```
 
-`src/planner-table.ts:80-96` — the destructive gate that fires when a type change is present (but says nothing about the `USING` placeholder once hinted):
+`src/planner-table.ts:80-96` — the destructive gate that fires when a type change is present and now pairs with the `USING` review diagnostic:
 
 ```ts
 const destructive =
@@ -102,7 +102,7 @@ Repo conventions:
 ## Git workflow
 
 - Branch: `advisor/006-column-type-using-warning` off the default branch.
-- Commit style: conventional commits (e.g. `fix(plan): warn that ALTER COLUMN TYPE renders a placeholder USING cast`).
+- Commit style: conventional commits (e.g. `fix(plan): warn that ALTER COLUMN TYPE renders an identity USING cast`).
 - Do NOT push or open a PR unless instructed.
 
 ## Steps
@@ -147,7 +147,7 @@ Keep this separate from the `destructive`/`blocked` logic so it is purely adviso
 
 ### Step 3: Add an inline SQL comment above the rendered cast
 
-In `src/render.ts` `renderColumnAlteration`, when emitting the `TYPE ... USING` statement (line 176), prepend a stable comment so the migration file itself flags the placeholder:
+In `src/render.ts` `renderColumnAlteration`, when emitting the `TYPE ... USING` statement (line 176), prepend a stable comment so the migration file itself flags the review requirement:
 
 ```ts
 if (typeof record.type === "string") {
@@ -187,13 +187,13 @@ Confirm the surrounding code joins `statements` with `\n` (it does — `renderCo
 
 ALL must hold:
 
-- [ ] `npm run typecheck` exits 0
-- [ ] `npm test` exits 0, with any snapshot updates limited to the added comment line
-- [ ] `supaschema explain SUPA_PLAN_COLUMN_TYPE_USING_REVIEW` resolves (i.e. the code is in `diagnosticCatalog`) — verify with `node dist/cli.js explain SUPA_PLAN_COLUMN_TYPE_USING_REVIEW` after `npm run build`
-- [ ] `npm run lint` exits 0
-- [ ] `npm run build` exits 0
-- [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `advisor-plans/README.md` status row updated
+- [x] `npm run typecheck` exits 0
+- [x] `npm test` exits 0, with any snapshot updates limited to the added comment line
+- [x] `supaschema explain SUPA_PLAN_COLUMN_TYPE_USING_REVIEW` resolves (i.e. the code is in `diagnosticCatalog`) — verify with `node dist/cli.js explain SUPA_PLAN_COLUMN_TYPE_USING_REVIEW` after `npm run build`
+- [x] `npm run lint` exits 0
+- [x] `npm run build` exits 0
+- [x] No files outside the in-scope list are modified (`git status`)
+- [x] `advisor-plans/README.md` status row updated
 
 ## STOP conditions
 

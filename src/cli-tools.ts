@@ -7,9 +7,9 @@ import type { Diagnostic } from "./core.js";
 import { hasErrors } from "./diagnostics.js";
 import { renderDoctorReport, runDoctor } from "./doctor.js";
 import { extractSourceModel } from "./source.js";
-import { generateDatabaseTypesFromShapes } from "./typegen.js";
+import { generateDatabaseTypes } from "./typegen.js";
 import { collectSchemaShapes } from "./typegen-model.js";
-import { generateZodSchemasFromShapes } from "./typegen-zod.js";
+import { generateZodSchemas } from "./typegen-zod.js";
 
 export interface ToolCommandContext {
   configPath: () => string | undefined;
@@ -65,7 +65,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
         return;
       }
       const shapes = await collectSchemaShapes(model);
-      const types = generateDatabaseTypesFromShapes(shapes);
+      const types = generateDatabaseTypes(shapes);
       const target = options.out ?? config.typesFile;
       if (target === "stdout") {
         process.stdout.write(types);
@@ -76,7 +76,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
       await writeFile(outPath, types);
       const zodPath = resolve(process.cwd(), config.zodFile);
       await mkdir(dirname(zodPath), { recursive: true });
-      await writeFile(zodPath, generateZodSchemasFromShapes(shapes));
+      await writeFile(zodPath, generateZodSchemas(shapes));
       process.stdout.write(`${outPath}\n${zodPath}\n`);
     });
 
