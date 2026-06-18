@@ -30,8 +30,8 @@ What this PR changes and why. Link any related issue (`Closes #123`).
 - [ ] A `.changeset/` entry is included for any user-facing change (run `npm run changeset`).
 - [ ] If this is a release PR, the release checklist in `docs/release.mdx` is complete.
 - [ ] Before merge: `npm run github:audit-settings` and `npm run github:merge-preflight -- --pr <number>` pass.
-- [ ] Merge command is `gh pr merge <number> --rebase --delete-branch`.
-- [ ] After merge: `npm run github:post-merge-verify -- --pr <number>` passes.
+- [ ] Merge command is `npm run github:merge -- --pr <number>`.
+- [ ] If the PR was merged outside the wrapper, `npm run github:post-merge-verify -- --pr <number>` passes.
 - [ ] **All commits are signed off** (DCO — see below; `npm run github:check-dco -- --range origin/main..HEAD` passes after commits exist).
 
 ## Rendered SQL / snapshot changes

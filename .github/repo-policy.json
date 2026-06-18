@@ -61,9 +61,11 @@
   "pullRequests": {
     "base": "main",
     "mergeMethod": "rebase",
+    "requiredMergeWorkflow": "npm run github:merge -- --pr <number>",
     "requiredPreflight": "npm run github:pr-preflight -- --base main",
     "requiredMergePreflight": "npm run github:merge-preflight -- --pr <number>",
-    "requiredPostMergeVerification": "npm run github:post-merge-verify -- --pr <number>"
+    "requiredPostMergeVerification": "npm run github:post-merge-verify -- --pr <number>",
+    "postMergeLocalSync": "post-merge verification must fetch origin/main, verify the merged commit is contained in origin/main, preserve divergent local main as preserve/local-main-<sha>, and align local main to origin/main"
   },
   "branches": {
     "main": {
