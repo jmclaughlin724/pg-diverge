@@ -1,0 +1,71 @@
+---
+title: "Flyway comparison"
+description: "Compare supaschema with Redgate Flyway for PostgreSQL. Flyway is a multi-database migration runner that applies versioned SQL; its auto-generation is a paid Enterprise feature. supaschema generates, checks, and can sync migrations from declarative SQL for free."
+keywords:
+  [
+    "flyway comparison",
+    "redgate flyway",
+    "versioned migrations",
+    "migration runner",
+    "declarative sql",
+  ]
+---
+
+`supaschema` and Flyway sit at adjacent stages of the migration lifecycle. Flyway is a mature, multi-database migration runner: it applies versioned SQL scripts in order. `supaschema` is a Postgres-native generator, checker, and gated sync orchestrator: it renders replay-safe migration SQL from declarative SQL, proves it, and can apply it to configured PostgreSQL targets.
+
+## Short answer
+
+Use `supaschema` to generate and check a Postgres migration from declarative SQL for free, with no live database. Use Flyway to apply versioned migrations across many databases. They can work together: generate and check with `supaschema`, then apply with Flyway. Flyway's own schema-diff auto-generation is a paid Enterprise feature; supaschema's generation is free.
+
+## Comparison
+
+| Capability | supaschema | Flyway |
+| --- | --- | --- |
+| Primary role | Generate and check migrations | Apply versioned migrations (runner) |
+| Migration source | Declarative SQL, diffed via parse trees | Versioned SQL scripts you author (or Java) |
+| Auto-generate from a schema diff | Yes, free | Paid (Flyway Enterprise `generate`); Community is hand-authored |
+| Live database needed to generate | No | Not applicable in Community; Enterprise generate compares schemas |
+| Replay-safety and lock-hazard checks | Yes, free (`supaschema check`) | Paid (Enterprise code checks and drift detection) |
+| Applies migrations | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`flyway migrate`) |
+| Database support | Any PostgreSQL database (any provider) | Many database engines |
+| Generated types | TypeScript and Zod from the SQL tree | None |
+| Editions | Free core (open) | Community (free) and Enterprise (paid) |
+
+## Why choose supaschema for generation
+
+- Generating a migration from a schema change is free and needs no live database; in Flyway, schema-diff auto-generation is an Enterprise (paid) capability and Community migrations are hand-authored.
+- `supaschema check` gates replay-safety and lock hazards for free; Flyway's equivalent code checks and drift detection are Enterprise features.
+- Output is PostgreSQL SQL plus generated TypeScript and Zod types.
+
+## When Flyway still fits
+
+- Choose Flyway when one migration runner must manage many database engines.
+- Choose Flyway when your deployment lifecycle depends on its history-table mechanics, undo scripts, or repeatable migrations.
+- Use `supaschema sync` when the target is PostgreSQL and you want the package-owned generation, safety, type-output, reconciliation, and apply lane.
+
+A practical setup is `supaschema diff` and `supaschema check` to author and prove the SQL, then either `supaschema sync` for PostgreSQL targets or Flyway Community to apply the versioned script.
+
+<Info>
+  Flyway editions and feature gating are set by Redgate and can change (the
+  Teams tier was discontinued in May 2025). Last verified 2026-06-17; confirm
+  current terms before relying on them.
+</Info>
+
+<CardGroup cols={2}>
+  <Card
+    title="Liquibase comparison"
+    icon="layer-group"
+    href="/comparisons/supaschema-vs-liquibase"
+  >
+    How supaschema compares to Liquibase's changelog-based migration runner.
+  </Card>
+  <Card title="The check command" icon="shield-check" href="/commands/check">
+    The replay-safety and lock-hazard diagnostics supaschema runs for free.
+  </Card>
+</CardGroup>
+
+## Sources
+
+- [Redgate Flyway features and editions](https://www.red-gate.com/products/flyway/editions/)
+- [Flyway Community (free)](https://www.red-gate.com/products/flyway/community/)
+- [Flyway Generate command](https://documentation.red-gate.com/flyway/reference/commands/generate)

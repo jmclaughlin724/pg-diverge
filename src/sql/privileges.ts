@@ -82,11 +82,6 @@ const fullPrivilegeSets = new Map<string, string[]>([
   ["TYPES", ["USAGE"]],
 ]);
 
-// PostgreSQL's built-in default ACL (acldefault): PUBLIC implicitly holds
-// EXECUTE on routines and USAGE on types/domains/languages. pg_dump only
-// dumps ACL deltas against these defaults; both supaschema lanes do the
-// same so an explicit grant on one object does not surface the materialized
-// default entries as drift.
 const builtinPublicDefaults = new Map<string, string[]>([
   ["DOMAIN", ["USAGE"]],
   ["FUNCTION", ["EXECUTE"]],
@@ -106,7 +101,6 @@ export function builtinPublicDefault(kindPhrase: string): string[] | undefined {
   return builtinPublicDefaults.get(lookupKey);
 }
 
-/** A GRANT that restates the built-in default ACL is a semantic no-op. */
 export function isBuiltinDefaultGrant(
   kindPhrase: string,
   grantee: string,
@@ -190,10 +184,6 @@ export interface DefaultPrivilegeObjectInput {
 }
 
 export function buildDefaultPrivilegeObject(input: DefaultPrivilegeObjectInput): SchemaObject {
-  // The identity deliberately excludes FOR ROLE: a statement without it
-  // records under whichever role executes the migration, so the executor
-  // role cannot be part of cross-lane identity. forRole stays in metadata
-  // for excludedGrantRoles filtering and SQL rendering.
   const scope = input.schema ? `in ${input.schema}` : "";
   const privileges = normalizePrivileges(input.privileges, input.objectType);
   const clauses = [
@@ -373,9 +363,7 @@ function commentTarget(
     }
     return { identity: normalizeSql(typeNameToSql(object)) };
   }
-  // Parse-tree identifier parts are already canonical (unquoted names are
-  // folded, quoted case is preserved); lowercasing here would corrupt quoted
-  // mixed-case identities and break cross-lane comment parity.
+
   const parts = stringList(object);
   if (parts.length === 0) {
     const single = stringValue(object) ?? readString(object);

@@ -23,7 +23,7 @@
 #
 # This rule owns the operator workflow for version bumps, release notes, and release-control git work. When a user says to update supaschema to a version, that is one release-version transaction: update every version-coupled surface, prove parity with the guard, then stage, commit, push, or open the PR when requested. Do not ask the user to enumerate these steps.
 #
-# Rules 09, 13, 14, and 18 remain the owners for CI posture, package contents, git safety, and generated-surface sync. This rule connects those owners into the version bump path.
+# Rules 09, 13, 14, 18, and 21 remain the owners for CI posture, package contents, local git safety, generated-surface sync, and GitHub PR/merge process. This rule connects those owners into the version bump path. Rule 20 owns the consolidated anti-pattern index for release and version-control bypasses.
 #
 # ## Release-note owner
 #
@@ -53,7 +53,7 @@
 # - Use a release-specific commit message such as `Prepare release <version>` or `Enforce release version surfaces`.
 # - Let local hooks run. Do not use `--no-verify`.
 # - Push the current branch without force-push unless the user explicitly approved a destructive branch operation.
-# - Before creating or replacing a PR, complete Rule 14 PR scope and mergeability verification.
+# - Before creating or replacing a PR, complete Rule 21 PR preflight and mergeability verification.
 # - When asked for a PR, create a non-draft PR unless the user explicitly says draft. Include the version, changelog, release-surface parity, base branch, head branch, commit count, changed-file count, mergeability result, and verification commands in the PR body.
 # - If CI fails on a version-coupled surface, fix the source drift and add or update guard coverage so the same miss fails locally next time.
 #

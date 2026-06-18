@@ -10,24 +10,18 @@ export interface MigrationLineage {
 
 const lineagePrefix = "-- supaschema: lineage ";
 const headerByteLimit = 4096;
-const whitespacePattern = /\s+/;
 
 export function lineageLine(plan: MigrationPlan): string {
   return `${lineagePrefix}from=${plan.fromFingerprint} to=${plan.toFingerprint}`;
 }
 
-/**
- * Parses the machine-readable lineage marker supaschema embeds in every
- * rendered migration header. Hand-authored migrations have no marker and are
- * invisible to the chain gate by design.
- */
 export function parseLineage(content: string): { from: string; to: string } | undefined {
   for (const line of content.split("\n")) {
     if (!line.startsWith(lineagePrefix)) {
       continue;
     }
     const fields = new Map<string, string>();
-    for (const token of line.slice(lineagePrefix.length).trim().split(whitespacePattern)) {
+    for (const token of splitWhitespace(line.slice(lineagePrefix.length).trim())) {
       const separator = token.indexOf("=");
       if (separator > 0) {
         fields.set(token.slice(0, separator), token.slice(separator + 1));
@@ -42,11 +36,29 @@ export function parseLineage(content: string): { from: string; to: string } | un
   return;
 }
 
-/**
- * Finds the newest supaschema-generated migration in a directory by filename
- * order (timestamped names sort chronologically). Returns undefined when no
- * lineage-bearing migration exists, which disables the chain gate.
- */
+function splitWhitespace(value: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  for (const char of value) {
+    if (isWhitespace(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+  return tokens;
+}
+
+function isWhitespace(char: string): boolean {
+  return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
+}
+
 export async function latestLineage(directory: string): Promise<MigrationLineage | undefined> {
   let entries: string[];
   try {

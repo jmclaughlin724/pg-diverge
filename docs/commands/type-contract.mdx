@@ -4,14 +4,17 @@ description: "Gate breaking changes in the generated TypeScript/Zod type contrac
 keywords: ["type-contract command", "breaking change", "type gate", "ci"]
 ---
 
-Use `type-contract` to fail CI on a breaking change to the generated type surface.
+Use `type-contract` to inspect breaking changes to the generated type surface.
 
 `type-contract` diffs the type shapes of two schema sources (before vs after). It does not connect to a database.
+
+`supaschema sync` runs deploy-blocking type-safety gates through `workflow.type_safety`; that package-owned deploy gate is separate from the standalone `type-contract --enforce` license path.
 
 ## Use this when
 
 - A migration must not break downstream TypeScript/Zod consumers.
 - CI should gate breaking type-contract changes on a pull request.
+- You want to understand the type-safety diagnostics that `sync` can block before apply.
 
 ## Run it
 
@@ -37,7 +40,9 @@ With no flags, `--from` defaults to `git:HEAD` and `--to` to the declarative tre
 </ParamField>
 
 <ParamField path="--enforce" type="boolean">
-  Fail (exit `2`) on a breaking change. Requires a license; the free tier reports only.
+  Fail (exit `2`) on a breaking change in the standalone command. This CLI flag
+  requires a license; the `sync` deploy-safety gate is configured separately by
+  `workflow.type_safety`.
 </ParamField>
 
 ## What it flags as breaking
@@ -49,7 +54,22 @@ With no flags, `--from` defaults to `git:HEAD` and `--to` to the declarative tre
 
 ## Exit codes
 
-| Code | Meaning                                                            |
-| ---- | ----------------------------------------------------------------- |
+| Code | Meaning                                                             |
+| ---- | ------------------------------------------------------------------- |
 | 0    | No breaking change, or report-only (no `--enforce`, or unlicensed). |
-| 2    | Breaking change under `--enforce` with a valid license.            |
+| 2    | Breaking change under `--enforce` with a valid license.             |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card
+    title="ORM-free apps"
+    icon="database"
+    href="/concepts/orm-free-applications"
+  >
+    See how generated types and validators replace ORM schema ownership.
+  </Card>
+  <Card title="Sync command" icon="refresh-cw" href="/commands/sync">
+    Run deploy-blocking type-safety and RLS-safety gates before apply.
+  </Card>
+</CardGroup>

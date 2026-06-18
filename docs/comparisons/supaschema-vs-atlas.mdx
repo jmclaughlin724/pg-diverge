@@ -1,0 +1,52 @@
+---
+title: "Atlas comparison"
+description: "Compare supaschema with Atlas for Postgres migration generation and safety. Atlas migrate lint moved to the paid Atlas Pro tier in v0.38; supaschema keeps declarative diff and replay/lock-safety checks in the free core."
+keywords:
+  ["atlas comparison", "atlasgo", "migrate lint", "schema as code", "postgres migrations"]
+---
+
+`supaschema` and Atlas both manage schema as code, but they aim at different scopes. `supaschema` is a PostgreSQL tool that generates a replay-safe migration from declarative SQL and proves it locally, against any Postgres provider (self-hosted, RDS/Aurora, Cloud SQL, AlloyDB, Neon, Azure, or Supabase). Atlas is a broader multi-database schema-as-code platform whose migration linting and custom policy rules moved to the paid Atlas Pro tier.
+
+## Short answer
+
+Use `supaschema` when you want free, Postgres-native migration generation plus replay-safety and lock-hazard checks from declarative SQL, with no Docker or shadow database. Use Atlas when you want its multi-database platform and hosted reporting and you are willing to pay for Atlas Pro to keep `atlas migrate lint`.
+
+## Comparison
+
+| Capability | supaschema | Atlas |
+| --- | --- | --- |
+| Migration-safety linting cost | Free (`supaschema check`) | `atlas migrate lint` is Atlas Pro only since v0.38 (2025-10-28) |
+| Custom policy linting | Free rule packs in `scan` | Schema-policy rules are Atlas Pro only |
+| Database focus | Any PostgreSQL database (any provider) | Many database engines |
+| Parser | PostgreSQL's parser (libpg_query) compiled to WebAssembly | Its own multi-engine schema engine |
+| Docker or shadow database | Not required | Often used for diffing |
+| RLS policy body changes | Compared structurally | Postgres RLS coverage varies by feature |
+| Generated types | TypeScript and Zod from the schema files | Not the same generated-type workflow |
+| Apply to production | No, generation and proof only | Yes, Atlas applies migrations |
+
+## Why the workflow differs
+
+`supaschema` parses declarative SQL into PostgreSQL parse trees and renders a guarded migration from the structural difference, then `supaschema check` flags replay-safety and lock hazards. Those safety checks are in the free core. The paid packs are separate analysis gates (TypeScript/Zod type-contract and grant-drift), not the migration linting itself.
+
+Atlas is a larger platform that spans multiple database engines and adds hosted reporting and CI integration. Starting with Atlas v0.38 (2025-10-28), `atlas migrate lint` and the custom schema-policy rule language require Atlas Pro (priced per seat, with a trial). If migration linting was the reason you used Atlas and you want a free Postgres-native option, `supaschema check` covers that lane.
+
+<Info>
+  Atlas pricing and feature gating are set by Atlas and can change. Last verified
+  2026-06-17 against the Atlas documentation; confirm current terms before relying
+  on them.
+</Info>
+
+<CardGroup cols={2}>
+  <Card title="Atlas lint is paid: free alternatives" icon="scale-balanced" href="/comparisons/atlas-migrate-lint-paid-alternatives">
+    The free Postgres migration-safety options after the v0.38 change.
+  </Card>
+  <Card title="The check command" icon="shield-check" href="/commands/check">
+    The replay-safety and lock-hazard diagnostics supaschema runs for free.
+  </Card>
+</CardGroup>
+
+## Sources
+
+- [Atlas, "Verifying Migration Safety"](https://atlasgo.io/versioned/lint) — `atlas migrate lint` is Atlas Pro only since v0.38.
+- [Atlas v0.38 release notes (2025-10-28)](https://atlasgo.io/blog/2025/10/28/v038-analyzers-pii-and-migration-hooks)
+- [Atlas pricing](https://atlasgo.io/pricing)

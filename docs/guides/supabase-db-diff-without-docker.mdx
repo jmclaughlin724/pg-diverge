@@ -6,14 +6,14 @@ keywords: ["Docker-free diff", "Supabase db diff", "schema diff", "PostgreSQL"]
 
 Use this when a Supabase project needs a migration but Docker or a local stack is not part of the workflow.
 
-`supaschema diff` reads declarative SQL, compares it with the configured source state, and writes a migration that the Supabase CLI can apply.
+`supaschema diff` reads declarative SQL, compares it with the configured source state, and writes a migration that `supaschema sync` or the Supabase CLI can apply.
 
 ## Use this when
 
 - CI cannot run Docker reliably.
 - You want schema diffing without a shadow database.
-- Supabase should remain the migration runner.
-- The review should include replay-safety checks before `supabase db push`.
+- The review should include replay-safety checks before any Supabase apply path.
+- You want the option to run the Supabase CLI through a configured `supaschema sync` target.
 
 ## Do this
 
@@ -30,13 +30,13 @@ npx supaschema diff
 npx supaschema check
 ```
 
-Then apply with the Supabase CLI:
+Then apply through the configured sync workflow:
 
 ```bash
-supabase db push
+npx supaschema sync
 ```
 
-`supaschema` generates and proves the migration. It never applies migrations to your tracked database.
+`sync` runs the safety gates and then invokes the config-selected direct PostgreSQL or Supabase CLI runner. Target config decides selection: every `sync.targets.<name>` entry with `mode: "auto"` joins the bare `sync` path. Remote targets also require their approval variable before deploy. Use `supabase db push` directly only when your deployment process intentionally keeps the Supabase CLI as a separate operational step.
 
 ## Verify
 

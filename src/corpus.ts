@@ -29,16 +29,6 @@ export interface CorpusReport {
   stages: string[];
 }
 
-const migrationFilePattern = /^\d{8,}.*\.sql$/u;
-
-/**
- * The corpus oracle: replay a migrations corpus into a disposable database
- * (an independently-evolved, catalog-noisy state no fixture reconstruction
- * produces), diff it against the declarative tree, apply the rendered
- * reconciliation twice, and require the re-diff to converge to zero. Unlike
- * verify — which compares two databases built from the same models — every
- * comparison here crosses lanes, so symmetric modeling errors fail loudly.
- */
 export async function runCorpus(
   options: CorpusOptions
 ): Promise<{ diagnostics: Diagnostic[]; report: CorpusReport }> {
@@ -67,7 +57,7 @@ export async function runCorpus(
     }
     const migrationsDir = join(options.corpusDir, "migrations");
     const migrationFiles = (await readdir(migrationsDir))
-      .filter((name) => migrationFilePattern.test(name))
+      .filter(isMigrationFile)
       .sort((left, right) => left.localeCompare(right));
     for (const file of migrationFiles) {
       await applyMigrationSql(corpusUrl, await readFile(join(migrationsDir, file), "utf8"));
@@ -153,6 +143,23 @@ export async function runCorpus(
   } finally {
     await dropTemporaryDatabases(options.databaseUrl, [corpusUrl]);
   }
+}
+
+function isMigrationFile(name: string): boolean {
+  return name.endsWith(".sql") && migrationFileVersion(name) !== undefined;
+}
+
+function migrationFileVersion(name: string): string | undefined {
+  let index = 0;
+  while (index < name.length && isDigit(name[index] ?? "")) {
+    index += 1;
+  }
+  return index >= 8 ? name.slice(0, index) : undefined;
+}
+
+function isDigit(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }
 
 export function renderCorpusReport(report: CorpusReport): string {

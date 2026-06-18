@@ -24,7 +24,7 @@ Before any broad owner, route, consumer, dependency, database, API, worker, gene
 
 Live Code Atlas MCP output can supplement this flow, but it never replaces the local atlas, cclsp, and source as proof. `npx` fallback for the live tier requires explicit `CODEATLAS_MCP_ALLOW_NPX=1`.
 
-If a change updates a source of atlas truth, update `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, `scripts/code-atlas/lib/**`, `scripts/code-atlas/query.mjs`, `scripts/code-atlas/mcp-wrapper.mjs`, and `scripts/guards/check-code-atlas.mjs` together.
+If a change updates a source of atlas truth, update `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, `scripts/code-atlas/lib/**`, `scripts/code-atlas/query.mjs`, `scripts/code-atlas/mcp-launcher.mjs`, and `scripts/guards/check-code-atlas.mjs` together.
 
 See:
 

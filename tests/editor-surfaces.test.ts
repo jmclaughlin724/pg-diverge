@@ -105,10 +105,7 @@ describe("editor and language-server surfaces", () => {
     expect(packageJson.devDependencies?.["@postgres-language-server/cli"]).toBe("0.25.3");
     expect(packageJson.devDependencies?.["@postgrestools/postgrestools"]).toBeUndefined();
     expect(packageJson.devDependencies?.["@tailwindcss/language-server"]).toBeUndefined();
-    // The dependency catalog is slimmed to cross-surface pins only (packageManager +
-    // mcpTools). Language-server versions are sourced from package.json and echoed
-    // into .claude/cclsp.json (reconciled by check-dependency-catalog.mjs), never
-    // duplicated into the catalog — so the catalog carries no devDependencies.
+
     expect(catalog.devDependencies).toBeUndefined();
     expect(commands).toContain(
       "npx --yes --package @postgres-language-server/cli@0.25.3 postgres-language-server lsp-proxy"
@@ -124,13 +121,12 @@ describe("editor and language-server surfaces", () => {
     expect(files).toEqual(
       expect.arrayContaining([
         ".agents/skills/supaschema",
-        ".claude/hooks/auto-diff-on-schema-change.mjs",
-        ".claude/hooks/block-generated-migration-edits.mjs",
+        ".claude/hooks/guards/bash-policy-checks.mjs",
         ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
         ".claude/rules/supaschema.md",
         ".claude/skills/supaschema",
-        ".codex/hooks/auto-diff-on-schema-change.mjs",
-        ".codex/hooks/block-generated-migration-edits.mjs",
+        ".codex/hooks/general-guard.mjs",
+        ".codex/hooks/guards/bash-policy-checks.mjs",
         ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
         ".codex/hooks.json",
         ".codex/rules/supaschema.rules",

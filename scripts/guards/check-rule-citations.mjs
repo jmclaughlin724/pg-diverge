@@ -1,22 +1,15 @@
 #!/usr/bin/env node
-// Rule-citation integrity guard. Every "rule NN" reference in the agent bundle
-// (rules, skills, the Codex/agents mirrors, and the root AGENTS/CLAUDE briefs)
-// must resolve to an existing .claude/rules/NN-*.md file. The de-templating pass
-// renumbered the rules to a clean 00-13 sequence but left dangling citations
-// (rules 16/18/23/24/25/27) behind because nothing enforced the namespace.
-// Rule 01: no standard without enforcement.
+
 import fs from "node:fs";
 import path from "node:path";
 import { assert, ok, ROOT } from "./lib/guard-utils.js";
 
-// The valid citation namespace is derived from the actual numbered rule files, so
-// it auto-adapts the next time a rule is added, removed, or renumbered.
 const ruleDir = path.join(ROOT, ".claude", "rules");
 const validNumbers = new Set();
 for (const name of fs.readdirSync(ruleDir)) {
-  const prefix = /^(\d{2})-.+\.md$/.exec(name); // regex-ok: 2-digit rule filename prefix (text, not code structure)
-  if (prefix) {
-    validNumbers.add(prefix[1]);
+  const prefix = numberedRulePrefix(name);
+  if (prefix !== undefined) {
+    validNumbers.add(prefix);
   }
 }
 assert(validNumbers.size > 0, "no numbered .claude/rules/NN-*.md files found");
@@ -25,28 +18,98 @@ const scanRoots = [".claude/rules", ".claude/skills", ".codex/rules", ".agents/s
 const scanExtensions = [".md", ".rules"];
 const extraFiles = ["AGENTS.md", "CLAUDE.md"];
 
-// regex-ok: free-text scan for "rule NN" citations over markdown prose (not code structure)
-const citationRe = /\b[Rr]ules?\s+#?\d{1,2}(?:\s*(?:and|,|\/)\s*#?\d{1,2})*/g;
-const digitRe = /\d{1,2}/g; // regex-ok: extract cited numbers from a matched citation string
-
 const violations = [];
 
 function scanText(rel, text) {
   const lines = text.split("\n");
   for (let index = 0; index < lines.length; index += 1) {
-    const citations = lines[index].match(citationRe);
-    if (!citations) {
-      continue;
-    }
-    for (const citation of citations) {
-      for (const raw of citation.match(digitRe) ?? []) {
-        const nn = raw.padStart(2, "0");
-        if (!validNumbers.has(nn)) {
-          violations.push(`${rel}:${index + 1}: cites "rule ${raw}" but no rule ${nn} exists`);
-        }
+    for (const raw of ruleCitationNumbers(lines[index] ?? "")) {
+      const nn = raw.padStart(2, "0");
+      if (!validNumbers.has(nn)) {
+        violations.push(`${rel}:${index + 1}: cites "rule ${raw}" but no rule ${nn} exists`);
       }
     }
   }
+}
+
+function numberedRulePrefix(name) {
+  if (name.length < 6 || !name.endsWith(".md") || name[2] !== "-") {
+    return;
+  }
+  const prefix = name.slice(0, 2);
+  return isDigits(prefix) ? prefix : undefined;
+}
+
+function ruleCitationNumbers(line) {
+  const tokens = tokensForLine(line);
+  const numbers = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.kind !== "word" || !(token.value === "rule" || token.value === "rules")) {
+      continue;
+    }
+    for (let cursor = index + 1; cursor < tokens.length; cursor += 1) {
+      const current = tokens[cursor];
+      if (current.kind === "number" && current.value.length <= 2) {
+        numbers.push(current.value);
+        continue;
+      }
+      if (
+        (current.kind === "word" && current.value === "and") ||
+        (current.kind === "symbol" &&
+          (current.value === "," || current.value === "/" || current.value === "#"))
+      ) {
+        continue;
+      }
+      break;
+    }
+  }
+  return numbers;
+}
+
+function tokensForLine(line) {
+  const tokens = [];
+  let index = 0;
+  while (index < line.length) {
+    const char = line[index] ?? "";
+    if (isAsciiLetter(char)) {
+      const start = index;
+      index += 1;
+      while (index < line.length && isAsciiLetter(line[index] ?? "")) {
+        index += 1;
+      }
+      tokens.push({ kind: "word", value: line.slice(start, index).toLowerCase() });
+      continue;
+    }
+    if (isDigit(char)) {
+      const start = index;
+      index += 1;
+      while (index < line.length && isDigit(line[index] ?? "")) {
+        index += 1;
+      }
+      tokens.push({ kind: "number", value: line.slice(start, index) });
+      continue;
+    }
+    if (char === "," || char === "/" || char === "#") {
+      tokens.push({ kind: "symbol", value: char });
+    }
+    index += 1;
+  }
+  return tokens;
+}
+
+function isDigits(value) {
+  return value.length > 0 && [...value].every(isDigit);
+}
+
+function isAsciiLetter(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isDigit(char) {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }
 
 function walk(dir) {

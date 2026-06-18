@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseFrontmatter, scalar } from "../lib/frontmatter.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -28,14 +29,6 @@ export const agentSurfaceManifest = {
     targetRoot: "skills/supaschema",
   },
 };
-
-const frontmatterLinePattern = /\r?\n/;
-const listItemPattern = /^\s+-\s+(.+)\s*$/;
-const listStartPattern = /^([A-Za-z][A-Za-z0-9]*):\s*$/;
-const rootScalarStartPattern = /^[A-Za-z][A-Za-z0-9]*:/;
-const scalarLinePattern = /^([A-Za-z][A-Za-z0-9]*):\s*(.*)\s*$/;
-const leadingWhitespacePattern = /^\s*/;
-const markdownExtensionPattern = /\.md$/;
 
 export function runCli(argv = process.argv.slice(2), root = ROOT) {
   const args = new Set(argv);
@@ -112,7 +105,7 @@ export function renderCodexRule(sourceText, sourcePath = "rule.md") {
     "# Do not edit directly; update the Claude rule source and re-run sync.",
     "# Codex .rules files are command-policy programs, so Claude Markdown policy is mirrored as comments.",
     "",
-    ...sourceText.split(frontmatterLinePattern).map((line) => `#${line ? ` ${line}` : ""}`),
+    ...splitLines(sourceText).map((line) => `#${line ? ` ${line}` : ""}`),
   ];
   return `${lines.join("\n").trimEnd()}\n`;
 }
@@ -310,93 +303,6 @@ function parseClaudeAgent(sourceText, sourcePath) {
   };
 }
 
-function parseFrontmatter(text, sourcePath) {
-  const lines = text.split(frontmatterLinePattern);
-  if (lines[0] !== "---") {
-    throw new Error(`agent source must start with frontmatter: ${sourcePath}`);
-  }
-  const frontmatter = new Map();
-  let currentList;
-  for (let index = 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (line === "---") {
-      return {
-        body: lines.slice(index + 1).join("\n"),
-        frontmatter,
-      };
-    }
-
-    const parsed = readFrontmatterLine(lines, index, frontmatter, currentList);
-    currentList = parsed.currentList;
-    index = parsed.index;
-  }
-  throw new Error(`agent frontmatter is not closed: ${sourcePath}`);
-}
-
-function readFrontmatterLine(lines, index, frontmatter, currentList) {
-  const line = lines[index] ?? "";
-  const listItem = line.match(listItemPattern);
-  if (currentList && listItem) {
-    frontmatter.get(currentList).push(unquote(listItem[1] ?? ""));
-    return { currentList, index };
-  }
-
-  const scalarLine = line.match(scalarLinePattern);
-  if (scalarLine) {
-    return readFrontmatterScalar(lines, index, frontmatter, scalarLine);
-  }
-
-  const listStart = line.match(listStartPattern);
-  if (listStart) {
-    const nextList = listStart[1];
-    frontmatter.set(nextList, []);
-    return { currentList: nextList, index };
-  }
-
-  return { currentList, index };
-}
-
-function readFrontmatterScalar(lines, index, frontmatter, scalarLine) {
-  const key = scalarLine[1] ?? "";
-  const value = scalarLine[2] ?? "";
-  if (value === "|") {
-    const block = readBlockScalar(lines, index + 1);
-    frontmatter.set(key, block.value);
-    return { currentList: undefined, index: block.end - 1 };
-  }
-  if (value === "") {
-    frontmatter.set(key, []);
-    return { currentList: key, index };
-  }
-  frontmatter.set(key, unquote(value));
-  return { currentList: undefined, index };
-}
-
-function readBlockScalar(lines, start) {
-  const block = [];
-  let end = start;
-  for (; end < lines.length; end += 1) {
-    const line = lines[end] ?? "";
-    if (line === "---" || (rootScalarStartPattern.test(line) && block.length > 0)) {
-      break;
-    }
-    block.push(line);
-  }
-  const indent = Math.min(
-    ...block
-      .filter((line) => line.trim().length > 0)
-      .map((line) => line.match(leadingWhitespacePattern)?.[0].length ?? 0)
-  );
-  const trimIndent = Number.isFinite(indent) ? indent : 0;
-  return {
-    end,
-    value: block
-      .map((line) => line.slice(trimIndent))
-      .join("\n")
-      .trim(),
-  };
-}
-
 function splitTools(value) {
   if (!value) {
     return [];
@@ -557,12 +463,7 @@ function listFiles(root) {
 }
 
 function codexTargetPath(file, extension) {
-  return file.replace(markdownExtensionPattern, extension);
-}
-
-function scalar(frontmatter, key) {
-  const value = frontmatter.get(key);
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  return file.endsWith(".md") ? `${file.slice(0, -3)}${extension}` : `${file}${extension}`;
 }
 
 function tomlString(value) {
@@ -580,8 +481,8 @@ function stripTomlUnsafeControls(value) {
   return out;
 }
 
-function unquote(value) {
-  return value.trim().replace(/^["']|["']$/g, "");
+function splitLines(value) {
+  return value.split("\n").map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
 }
 
 function display(root, file) {

@@ -11,7 +11,7 @@ keywords:
   ]
 ---
 
-Use this when application code needs database types before the migration is applied.
+Use this when application code needs database types and runtime validators before the migration is applied.
 
 `supaschema types` reads declarative PostgreSQL files and emits a Supabase-compatible `Database` type plus runtime Zod validators from the same schema model used for migrations.
 
@@ -20,6 +20,7 @@ Use this when application code needs database types before the migration is appl
 - A pull request changes SQL and TypeScript together.
 - Database introspection cannot see the new schema yet.
 - You want runtime validators generated from the same source as migrations.
+- You want a typed, validated application boundary without adding an ORM schema layer.
 - A non-Supabase app still benefits from the familiar Supabase type shape.
 
 ## Do this
@@ -38,6 +39,19 @@ npx supaschema types --out src/lib/database.types.ts
 ```
 
 `supaschema diff` refreshes configured TypeScript and Zod outputs after writing a migration, so the schema, migration, and app types can be reviewed together.
+
+Use the generated helpers as the application contract:
+
+```ts
+import { schemas, type TableInsert, type TableRow } from "./database.zod";
+
+type Account = TableRow<"app", "accounts">;
+type NewAccount = TableInsert<"app", "accounts">;
+
+const input: NewAccount = schemas.app.Tables.accounts.Insert.parse(body);
+```
+
+That covers the shape and validation responsibilities that teams often reach for an ORM-generated client to solve. Query execution can stay SQL-native through your PostgreSQL driver or platform client.
 
 ## Verify
 
@@ -66,8 +80,12 @@ npm run typecheck
   >
     Set default output paths in config.
   </Card>
-  <Card title="Quickstart" icon="terminal" href="/quickstart">
-    Generate a migration and matching outputs.
+  <Card
+    title="ORM-free apps"
+    icon="database"
+    href="/concepts/orm-free-applications"
+  >
+    Use generated outputs as the application contract.
   </Card>
   <Card title="CI recipe" icon="circle-check" href="/guides/ci-github-actions">
     Keep generated files checked in CI.

@@ -1,0 +1,78 @@
+---
+title: "Atlas migrate lint is now paid: free Postgres alternatives"
+description: "Atlas made `atlas migrate lint` an Atlas Pro feature in v0.38 (October 2025). Here are free, Postgres-native migration-safety alternatives, including supaschema's free diff/check and scan."
+keywords:
+  [
+    "atlas migrate lint paid",
+    "atlas migrate lint alternative",
+    "free postgres migration linter",
+    "migration safety",
+    "squawk",
+    "supaschema",
+  ]
+---
+
+If you relied on `atlas migrate lint` for free migration-safety checks, that command moved behind Atlas Pro. This page lists free, Postgres-native alternatives and shows where `supaschema` fits.
+
+## What changed in Atlas
+
+Starting with Atlas v0.38 (released 2025-10-28), the `atlas migrate lint` command is available only to Atlas Pro users, and the custom schema-policy linting rules are Pro-only as well. Atlas Pro is a paid plan ($9 per seat per month at the time of writing) with a 30-day trial.
+
+<Info>
+  Last verified 2026-06-17 against the Atlas documentation. Pricing and feature
+  gating are set by Atlas and can change; confirm the current terms on the Atlas
+  site before quoting them.
+</Info>
+
+## Free alternatives at a glance
+
+| Tool | License | Migration-safety scope | Needs a database or Docker? |
+| --- | --- | --- | --- |
+| `supaschema` | Free core (open) | Replay-safety + lock-hazard checks on generated migrations (`check`), a destructive-operation advisory in `diff`, and a free `scan` score with RLS-audit and least-privilege packs | No, generation and checks run from declarative SQL files |
+| Squawk | Open source (MIT/Apache-2.0) | Lock-safety linter for Postgres migration SQL | No |
+| pgfence | Source-available | Migration-safety CLI: lock-mode analysis, risk scoring, and safe-rewrite recipes | No |
+
+Each tool is Postgres-native. None requires an Atlas Pro seat to run its free checks.
+
+## Where supaschema fits
+
+`supaschema` generates migrations from declarative SQL and proves them before apply. The migration-safety checks that overlap with `atlas migrate lint` are in the free core:
+
+- `supaschema check` flags replay-safety and lock hazards on a generated migration (missing `IF EXISTS`/`IF NOT EXISTS` guards, table-rewriting `ALTER`s, `CREATE INDEX CONCURRENTLY` inside a transaction, and more), each as a `SUPA_*` diagnostic you can decode with `supaschema explain <CODE>`.
+- `supaschema diff` surfaces a lock-impact advisory on each destructive operation that will actually run.
+- `supaschema scan` produces a composite safety score with free RLS-audit and least-privilege packs.
+
+```bash
+supaschema diff      # render a replay-safe migration from declarative SQL
+supaschema check     # replay-safety and lock-hazard diagnostics
+supaschema scan      # composite safety score (RLS + lock-safety packs)
+```
+
+Destructive changes fail closed until you add the exact object key to `hints.destructive` after reviewing the rendered SQL, so a drop or a type change cannot land silently.
+
+## What is not free
+
+`supaschema` is open-core. The migration-safety checks above are free. Two analysis packs are paid: the TypeScript/Zod type-contract breaking-change gate and the grant-drift least-privilege gate. Those are not part of the `atlas migrate lint` overlap; they are additional gates a downstream team can opt into.
+
+## Choosing between them
+
+- You want Postgres migration-safety linting without a paid seat: use `supaschema check`, Squawk, or pgfence.
+- You generate migrations from declarative SQL and want the safety check in the same tool: use `supaschema diff` then `supaschema check`.
+- You already run the broader Atlas schema-as-code platform and want its hosted reporting: Atlas Pro is the paid path for that.
+
+<CardGroup cols={2}>
+  <Card title="Supabase CLI comparison" icon="layer-group" href="/comparisons/supaschema-vs-supabase-cli">
+    How supaschema's declarative diff compares to the Supabase CLI db diff workflow.
+  </Card>
+  <Card title="The check command" icon="shield-check" href="/commands/check">
+    The replay-safety and lock-hazard diagnostics supaschema runs on every migration.
+  </Card>
+</CardGroup>
+
+## Sources
+
+- [Atlas, "Verifying Migration Safety"](https://atlasgo.io/versioned/lint) — `atlas migrate lint` is Atlas Pro only since v0.38.
+- [Atlas v0.38 release notes (2025-10-28)](https://atlasgo.io/blog/2025/10/28/v038-analyzers-pii-and-migration-hooks)
+- [Atlas pricing](https://atlasgo.io/pricing)
+- [Squawk, Postgres migration linter](https://squawkhq.com)
+- [pgfence](https://pgfence.com)

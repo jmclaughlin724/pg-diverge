@@ -1,6 +1,6 @@
 #:schema https://developers.openai.com/codex/config-schema.json
 
-approval_policy = { granular = { sandbox_approval = true, rules = true, mcp_elicitations = true, request_permissions = false, skill_approval = false } }
+approval_policy = "never"
 approvals_reviewer = 'user'
 file_opener = 'vscode'
 hide_agent_reasoning = true
@@ -50,6 +50,18 @@ args = ["cclsp@0.7.0"]
 
 [mcp_servers.cclsp.env]
 CCLSP_CONFIG_PATH = ".claude/cclsp.json"
+
+[mcp_servers.cclsp.tools.get_diagnostics]
+approval_mode = "approve"
+
+[mcp_servers.cclsp.tools.find_references]
+approval_mode = "approve"
+
+[mcp_servers.cclsp.tools.find_workspace_symbols]
+approval_mode = "approve"
+
+[mcp_servers.cclsp.tools.find_definition]
+approval_mode = "approve"
 
 [mcp_servers.supaschema]
 command = "uv"

@@ -1,31 +1,11 @@
-/**
- * Secret redaction (plan `40-rule-engine-foundation.md`, task S1; also the K0
- * "redaction via S1" follow-on). The free `scan` / badge flow can surface
- * diagnostic text publicly (PR comments, a public result page), so connection
- * strings and credentials must be masked before output leaves the machine. This is
- * text redaction over transport strings, the one case Rule 07 reserves for regex
- * (credential-pattern detection), not SQL-structure analysis.
- */
+const MASK = "[redacted]";
 
-const MASK = "***";
-
-// regex-ok: credential redaction — mask `password=...`, `passwd=...`, `pwd=...`, and
-// prefixed variants (`pgpassword`, `pg_password`, `db_password`) as key/value pairs in
-// connection text and error output. Bounded prefix/value lengths keep matching linear.
-const PASSWORD_KV = /\b([a-z_]{0,16}pass(?:word|wd)|pwd)(\s*[=:]\s*)[^\s&;"']{1,256}/gi;
-
-/** Mask credentials in arbitrary text before it is displayed or shared. */
 export function redactSecrets(text: string): string {
-  return redactUrlCredentials(text).replace(PASSWORD_KV, `$1$2${MASK}`);
+  return redactJwtTokens(
+    redactSupabaseSecrets(redactSecretAssignments(redactUrlCredentials(text)))
+  );
 }
 
-/**
- * True when the text contains a recognizable credential. Defined as "redaction
- * changes the text" so there is one source of truth for what counts as a secret,
- * and so it reads `false` on already-redacted text (masking is idempotent: the
- * `***` mask does not re-trigger a change). This also avoids the `/g` +
- * `RegExp.test` `lastIndex` footgun by never calling `test`.
- */
 export function hasUnredactedSecret(text: string): boolean {
   return redactSecrets(text) !== text;
 }
@@ -63,4 +43,182 @@ function redactUrlCredentials(value: string): string {
     }
   }
   return result;
+}
+
+function redactSecretAssignments(value: string): string {
+  let output = "";
+  let index = 0;
+  while (index < value.length) {
+    const assignment = readSecretAssignment(value, index);
+    if (assignment === undefined) {
+      output += value[index] ?? "";
+      index += 1;
+      continue;
+    }
+    output += value.slice(index, assignment.secretStart);
+    output += MASK;
+    index = assignment.end;
+  }
+  return output;
+}
+
+function readSecretAssignment(
+  value: string,
+  index: number
+): { end: number; secretStart: number } | undefined {
+  const key = readSecretKey(value, index);
+  if (key === undefined) {
+    return;
+  }
+  const separator = skipInlineWhitespace(value, key.end);
+  if (value[separator] !== ":" && value[separator] !== "=") {
+    return;
+  }
+  let secretStart = skipInlineWhitespace(value, separator + 1);
+  if (value[secretStart] === `"` || value[secretStart] === "'") {
+    secretStart += 1;
+  }
+  const end = secretValueEnd(value, secretStart);
+  return end > secretStart ? { end, secretStart } : undefined;
+}
+
+function skipInlineWhitespace(value: string, start: number): number {
+  let cursor = start;
+  while (cursor < value.length && isInlineWhitespace(value[cursor] ?? "")) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function secretValueEnd(value: string, start: number): number {
+  let cursor = start;
+  while (cursor < value.length && !isSecretValueEnd(value[cursor] ?? "")) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function readSecretKey(value: string, start: number): { end: number } | undefined {
+  if (start > 0 && isKeyChar(value[start - 1] ?? "")) {
+    return;
+  }
+  let end = start;
+  while (end < value.length && isKeyChar(value[end] ?? "")) {
+    end += 1;
+  }
+  if (end === start) {
+    return;
+  }
+  const key = value.slice(start, end).toLowerCase();
+  return isSensitiveKey(key) ? { end } : undefined;
+}
+
+function isSensitiveKey(key: string): boolean {
+  const compact = key.split("_").join("").split("-").join("");
+  return (
+    key === "pwd" ||
+    compact.includes("password") ||
+    compact.endsWith("passwd") ||
+    compact.endsWith("pass") ||
+    compact.includes("token") ||
+    compact.includes("secret") ||
+    compact.includes("apikey") ||
+    compact.includes("servicerolekey")
+  );
+}
+
+function redactSupabaseSecrets(value: string): string {
+  const prefix = "sb_secret_";
+  let output = "";
+  let index = 0;
+  while (index < value.length) {
+    const start = value.indexOf(prefix, index);
+    if (start === -1) {
+      output += value.slice(index);
+      break;
+    }
+    output += value.slice(index, start + prefix.length);
+    let end = start + prefix.length;
+    while (end < value.length && isTokenChar(value[end] ?? "")) {
+      end += 1;
+    }
+    output += MASK;
+    index = end;
+  }
+  return output;
+}
+
+function redactJwtTokens(value: string): string {
+  let output = "";
+  let index = 0;
+  while (index < value.length) {
+    const start = value.indexOf("eyJ", index);
+    if (start === -1) {
+      output += value.slice(index);
+      break;
+    }
+    output += value.slice(index, start);
+    let end = start;
+    while (end < value.length && isJwtTokenChar(value[end] ?? "")) {
+      end += 1;
+    }
+    const token = value.slice(start, end);
+    if (isJwtToken(token)) {
+      output += "[redacted-jwt]";
+    } else {
+      output += token;
+    }
+    index = end;
+  }
+  return output;
+}
+
+function isJwtToken(value: string): boolean {
+  const parts = value.split(".");
+  return (
+    parts.length === 3 && parts.every((part) => part.length > 0 && [...part].every(isTokenChar))
+  );
+}
+
+function isKeyChar(char: string): boolean {
+  return isAsciiLetter(char) || isDigit(char) || char === "_" || char === "-";
+}
+
+function isTokenChar(char: string): boolean {
+  return isAsciiLetter(char) || isDigit(char) || char === "_" || char === "-";
+}
+
+function isJwtTokenChar(char: string): boolean {
+  return isTokenChar(char) || char === ".";
+}
+
+function isSecretValueEnd(char: string): boolean {
+  return (
+    char === "" ||
+    char === " " ||
+    char === "\n" ||
+    char === "\r" ||
+    char === "\t" ||
+    char === "&" ||
+    char === ";" ||
+    char === `"` ||
+    char === "'" ||
+    char === "," ||
+    char === ")" ||
+    char === "]"
+  );
+}
+
+function isInlineWhitespace(char: string): boolean {
+  return char === " " || char === "\t";
+}
+
+function isAsciiLetter(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isDigit(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }

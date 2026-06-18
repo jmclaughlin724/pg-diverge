@@ -3,10 +3,7 @@ import type { SchemaModel } from "../src/core.js";
 import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
-
-const unqualifiedConstraintPattern = /(?<!pg_catalog\.)pg_constraint\b/;
-const unqualifiedNamespacePattern = /(?<!pg_catalog\.)pg_namespace\b/;
-const unqualifiedTypePattern = /(?<!pg_catalog\.)pg_type\b/;
+import { hasUnqualifiedCatalogName } from "./helpers/catalog-qualification.js";
 
 function emptyModel(): SchemaModel {
   return { diagnostics: [], fingerprint: "empty", objects: [], source: "test:empty" };
@@ -97,8 +94,8 @@ describe("catalog-qualified DO guards", () => {
     expect(sql).toContain("pg_catalog.pg_type");
     expect(sql).toContain("pg_catalog.pg_constraint");
     expect(sql).toContain("pg_catalog.pg_class");
-    expect(sql).not.toMatch(unqualifiedTypePattern);
-    expect(sql).not.toMatch(unqualifiedConstraintPattern);
-    expect(sql).not.toMatch(unqualifiedNamespacePattern);
+    expect(hasUnqualifiedCatalogName(sql, ["pg_type", "pg_constraint", "pg_namespace"])).toBe(
+      false
+    );
   });
 });

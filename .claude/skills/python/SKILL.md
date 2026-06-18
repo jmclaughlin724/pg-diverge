@@ -25,7 +25,7 @@ Always respect the repository's existing toolchain first. If the repo already go
 - Verify current upstream docs before changing tool configuration, publishing workflows, security policy, or dependency constraints. The source index lists official docs to check.
 - Prefer `pyproject.toml` as the canonical project/tooling surface when the repo supports it.
 - Prefer `src/` layout for distributable libraries unless the existing repo has a deliberate alternative.
-- Treat public APIs as contracts: preserve backwards compatibility, document deprecations, and test behavior before changing signatures.
+- Treat public APIs as external contracts: preserve compatibility only where that contract exists, document deprecations, and test behavior before changing signatures.
 - Make quality gates executable: lint, format, type check, test, package build, docs build, security scan, and benchmark only where relevant to the change.
 - Do not add heavyweight tooling unless it solves a demonstrated problem in the repo. </essential_principles>
 

@@ -4,9 +4,6 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { extractChangelogEntry } from "./changelog-notes.mjs";
 
-const GITHUB_REPOSITORY_RE = /github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/;
-const WHITESPACE_RE = /\s+/;
-
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
@@ -50,9 +47,9 @@ function repositorySlug(packageJson) {
       ? packageJson.repository
       : packageJson.repository?.url;
   if (typeof repository === "string") {
-    const match = repository.match(GITHUB_REPOSITORY_RE);
-    if (match) {
-      return `${match[1]}/${match[2]}`;
+    const slug = githubRepositoryFromUrl(repository);
+    if (slug !== undefined) {
+      return slug;
     }
   }
 
@@ -121,7 +118,7 @@ function githubTagTarget(tag) {
     const peeled = lines.find((line) => line.endsWith(`refs/tags/${tag}^{}`));
     const exact = lines.find((line) => line.endsWith(`refs/tags/${tag}`));
     const selected = peeled ?? exact;
-    return selected?.split(WHITESPACE_RE)[0];
+    return selected === undefined ? undefined : firstWhitespaceToken(selected);
   } catch (error) {
     const status = typeof error?.status === "number" ? error.status : undefined;
     const stderr = error?.stderr?.toString?.() ?? "";
@@ -130,6 +127,38 @@ function githubTagTarget(tag) {
     }
     throw error;
   }
+}
+
+function githubRepositoryFromUrl(value) {
+  const marker = "github.com";
+  const markerIndex = value.lastIndexOf(marker);
+  if (markerIndex === -1) {
+    return;
+  }
+  let slug = value.slice(markerIndex + marker.length);
+  if (slug.startsWith(":") || slug.startsWith("/")) {
+    slug = slug.slice(1);
+  }
+  if (slug.endsWith(".git")) {
+    slug = slug.slice(0, -4);
+  }
+  const parts = slug.split("/").filter(Boolean);
+  return parts.length >= 2 ? `${parts[0]}/${parts.slice(1).join("/")}` : undefined;
+}
+
+function firstWhitespaceToken(value) {
+  let token = "";
+  for (const char of value.trim()) {
+    if (isWhitespace(char)) {
+      break;
+    }
+    token += char;
+  }
+  return token.length > 0 ? token : undefined;
+}
+
+function isWhitespace(char) {
+  return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
 }
 
 function writeActionsValue(file, key, value) {

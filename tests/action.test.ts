@@ -5,6 +5,7 @@ import { parse } from "yaml";
 import {
   buildNpxArgs,
   parseActionArgv,
+  runAction,
   validateExactVersion,
 } from "../scripts/actions/run-supaschema-action.mjs";
 
@@ -74,6 +75,7 @@ describe("composite action", () => {
     expect(action.inputs?.args).toBeUndefined();
     expect(action.inputs?.argv?.required).toBe(true);
     expect(action.inputs?.argv?.description).toContain("JSON array");
+    expect(action.inputs?.argv?.description).toContain('["sync","--target","remote"]');
     expect(step?.shell).toBe("bash");
     expect(step?.env?.SUPASCHEMA_ACTION_ARGV).toBe(githubExpression("inputs.argv"));
     expect(actionText).not.toContain("SUPASCHEMA_ACTION_ARGS");
@@ -98,5 +100,52 @@ describe("composite action", () => {
     expect(() => parseActionArgv('"diff --fail-on-diff"')).toThrow("argv must be a JSON array");
     expect(() => parseActionArgv('["diff",null]')).toThrow("argv[1] must be a non-empty string");
     expect(() => validateExactVersion("latest")).toThrow("use an exact npm version");
+  });
+
+  it("passes sync argv without manufacturing remote approval", async () => {
+    let captured:
+      | {
+          args: string[];
+          env?: NodeJS.ProcessEnv;
+          options: { shell?: boolean };
+        }
+      | undefined;
+    const spawnImpl = (
+      command: string,
+      args: string[],
+      options: { env?: NodeJS.ProcessEnv; shell?: boolean }
+    ) => {
+      captured = { args: [command, ...args], env: options.env, options };
+      return {
+        on(event: string, handler: (code: number) => void) {
+          if (event === "exit") {
+            queueMicrotask(() => handler(0));
+          }
+          return this;
+        },
+      };
+    };
+
+    const code = await runAction({
+      env: {
+        SUPASCHEMA_ACTION_ARGV: '["sync","--target","remote"]',
+        SUPASCHEMA_ACTION_VERSION: "0.2.4",
+      },
+      platform: "linux",
+      spawnImpl,
+    });
+
+    expect(code).toBe(0);
+    expect(captured?.args).toEqual([
+      "npx",
+      "--yes",
+      "supaschema@0.2.4",
+      "sync",
+      "--target",
+      "remote",
+    ]);
+    expect(captured?.options.shell).toBe(false);
+    expect(captured?.env?.SUPASCHEMA_SKIP_POSTINSTALL).toBe("1");
+    expect(captured?.env?.SUPASCHEMA_REMOTE_SYNC_APPROVED).toBeUndefined();
   });
 });

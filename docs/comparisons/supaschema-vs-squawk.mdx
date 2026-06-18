@@ -1,0 +1,46 @@
+---
+title: "Squawk comparison"
+description: "Compare supaschema with Squawk for PostgreSQL migration safety. Squawk lints migration SQL you already wrote; supaschema generates the migration from declarative SQL and then checks it."
+keywords:
+  ["squawk comparison", "postgres migration linter", "lock safety", "declarative sql", "migration safety"]
+---
+
+`supaschema` and Squawk both improve PostgreSQL migration safety, and they are complementary rather than competing. Squawk is a free linter that analyzes migration SQL you have already written. `supaschema` generates the migration from declarative SQL and then runs its own replay-safety and lock-hazard checks.
+
+## Short answer
+
+Use Squawk when you hand-write migration SQL and want a free lock-safety linter over it. Use `supaschema` when you want the migration generated from declarative SQL files and checked in the same tool. You can also run both: generate and check with `supaschema`, then lint the rendered SQL with Squawk.
+
+## Comparison
+
+| Capability | supaschema | Squawk |
+| --- | --- | --- |
+| Generates migrations | Yes, from declarative SQL | No, lints SQL you provide |
+| Lock-safety analysis | Yes (`supaschema check`) | Yes |
+| Replay-safety guards (IF EXISTS, ON CONFLICT) | Yes | Partial, focused on lock and breaking-change rules |
+| RLS policy body changes | Compared structurally | Not its focus |
+| Generated types | TypeScript and Zod from the SQL tree | None |
+| License | Free core (open) | Open source (MIT / Apache-2.0) |
+| Database or Docker required | No | No |
+
+## Why the workflow differs
+
+Squawk is a focused static linter: you point it at migration SQL and it flags dangerous operations such as table-locking `ALTER`s. It does not generate migrations or model the schema.
+
+`supaschema` starts a step earlier. It diffs declarative SQL into a migration, then `supaschema check` applies replay-safety and lock-hazard rules to the result. Because supaschema also models the schema, it can compare RLS policy bodies structurally and generate TypeScript and Zod types from the same source.
+
+The two are not mutually exclusive: if you already trust Squawk's lint rules, you can keep running it over the SQL `supaschema diff` renders.
+
+<CardGroup cols={2}>
+  <Card title="Atlas lint is paid: free alternatives" icon="scale-balanced" href="/comparisons/atlas-migrate-lint-paid-alternatives">
+    Free Postgres migration-safety options, including Squawk and supaschema.
+  </Card>
+  <Card title="The check command" icon="shield-check" href="/commands/check">
+    The replay-safety and lock-hazard diagnostics supaschema runs on each migration.
+  </Card>
+</CardGroup>
+
+## Sources
+
+- [Squawk, a linter for Postgres migrations](https://squawkhq.com)
+- [Squawk on GitHub](https://github.com/sbdchd/squawk)

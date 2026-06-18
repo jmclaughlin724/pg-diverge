@@ -90,7 +90,7 @@ Repo conventions:
 | Purpose | Command | Expected on success |
 | --- | --- | --- |
 | Typecheck | `npm run typecheck` | exit 0 |
-| Targeted tests | `npx vitest run tests/replace-compat.test.ts tests/replace-dependents.test.ts tests/plan-guards.test.ts` | all pass |
+| Targeted tests | `npx vitest run tests/replace-safety.test.ts tests/replace-dependents.test.ts tests/plan-guards.test.ts` | all pass |
 | Full tests | `npm test` | all pass |
 | Lint | `npm run lint` | exit 0 |
 | Apply fixes | `npm run format` | writes fixes |
@@ -101,7 +101,7 @@ Repo conventions:
 **In scope**:
 
 - `src/planner-replace.ts`
-- `tests/replace-compat.test.ts` (add set-op view cases)
+- `tests/replace-safety.test.ts` (add set-op view cases)
 - `src/diagnostics.ts` — only if you add a new `SUPA_PLAN_VIEW_REPLACE_UNVERIFIABLE` code (optional; reusing `SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE` is acceptable and simpler)
 
 **Out of scope** (do NOT touch):
@@ -146,19 +146,19 @@ Note: `markDropRequired` blocks **only** when the key is not already in `hints.d
 **Verify**:
 
 - `npm run lint` → exit 0
-- `npx vitest run tests/replace-compat.test.ts tests/replace-dependents.test.ts tests/plan-guards.test.ts` → all pass
+- `npx vitest run tests/replace-safety.test.ts tests/replace-dependents.test.ts tests/plan-guards.test.ts` → all pass
 - `npm test` → all pass
 - `npm run build` → exit 0
 
 ## Test plan
 
-Add cases to `tests/replace-compat.test.ts` (follow the existing view-replace test structure there):
+Add cases to `tests/replace-safety.test.ts` (follow the existing view-replace test structure there):
 
 - **Aliasless set-op view, body change, no hint** → operation is `blocked` with the chosen diagnostic code; the previous non-blocking `VERIFY_REQUIRED`-only behavior is gone. This is the regression fix.
 - **Aliasless set-op view, body change, key present in `hints.destructive`** → not blocked; renders a guarded `DROP VIEW + CREATE` (asserts the escape hatch works).
 - **Set-op view _with_ an explicit column alias list, compatible change** → unchanged (still resolves via `viewColumns` from `aliases`, no false block) — proves the fix is scoped to the unverifiable case only.
 - **Ordinary single-select view** → unchanged behavior (no regression).
-- Verification: `npx vitest run tests/replace-compat.test.ts` → all pass including the new cases.
+- Verification: `npx vitest run tests/replace-safety.test.ts` → all pass including the new cases.
 
 ## Done criteria
 
@@ -176,7 +176,7 @@ ALL must hold:
 
 Stop and report if:
 
-- Existing `replace-compat`/`cross-lane` tests show many _compatible_ set-op view edits suddenly blocking — that would mean the fix is too broad (it should only fire when `viewColumns` is genuinely undetermined). If a common compatible edit now requires a hint, reconsider scope and report.
+- Existing replace-safety/cross-lane tests show many PostgreSQL-valid set-op view edits suddenly blocking — that would mean the fix is too broad (it should only fire when `viewColumns` is genuinely undetermined). If a common valid edit now requires a hint, reconsider scope and report.
 - A set-op view that already has an explicit alias list starts hitting the new branch (it should resolve via `aliases` in `facts.ts` and never reach `!(before && after)`). If it does, the alias path is broken upstream — report rather than work around it.
 
 ## Maintenance notes

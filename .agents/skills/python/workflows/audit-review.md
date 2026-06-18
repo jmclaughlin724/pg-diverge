@@ -10,7 +10,7 @@
 3. Use scanners as evidence, not as a substitute for review: Bandit for common Python code issues, pip-audit for vulnerable dependencies, Semgrep for custom/static patterns, detect-secrets for credential leaks.
 4. For performance work, profile before optimizing. Use `cProfile` or PyInstrument for CPU paths, `tracemalloc` or Memray for memory paths, and pytest-benchmark/timeit for repeatable comparisons.
 5. Report findings by severity and evidence. Include exact file/line references when reviewing local code.
-6. Fix only the smallest root cause unless the user asked for a broader refactor.
+6. Fix the root cause to the smallest correct end state unless an external contract requires compatibility staging.
 7. Verify with the matching test/security/performance command and record before/after evidence for performance claims.
 </process>
 

@@ -1,6 +1,6 @@
 # Skills Patterns
 
-Best practices for creating Claude Code skills with minimal context overhead.
+Best practices for creating Claude Code skills with controlled context overhead.
 
 > Sources: https://code.claude.com/docs/en/skills and https://code.claude.com/docs/en/memory
 
@@ -15,7 +15,7 @@ Before creating a skill, decide whether the guidance should live somewhere with 
 | Reusable expertise or workflow | skill | loads when relevant |
 | Isolated execution or verbose work | subagent | separate context window |
 
-Create a skill only when the content should not live in always-on startup context. In this repo, `CLAUDE.md` files stay compatibility stubs that point at the adjacent `AGENTS.md`.
+Create a skill only when the content should not live in always-on startup context. In this repo, `CLAUDE.md` files are Claude runtime entry points that import adjacent `AGENTS.md` guidance.
 
 Claude Code ships 5 bundled skills (`/batch`, `/claude-api`, `/debug`, `/loop`, `/simplify`) that demonstrate good skill design patterns.
 

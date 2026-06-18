@@ -139,7 +139,10 @@ assert(
 );
 const mcpStatus = query("mcp-status");
 assert(mcpStatus.localAtlas?.nodes > 0, "mcp-status must report local atlas nodes");
-assert(mcpStatus.liveMcp?.wrapper === "scripts/code-atlas/mcp-wrapper.mjs", "mcp wrapper drifted");
+assert(
+  mcpStatus.liveMcp?.launcher === "scripts/code-atlas/mcp-launcher.mjs",
+  "mcp launcher drifted"
+);
 assert(mcpStatus.liveMcp?.source !== "npx", "mcp-status must not use npx fallback by default");
 assert(
   mcpStatus.liveMcp?.npxFallbackEnabled === false,

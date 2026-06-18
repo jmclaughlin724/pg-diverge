@@ -8,6 +8,8 @@ This file defines the repository-wide operating contract for AI coding agents. K
 
 - Code Atlas routing and repo-wide graph policy: `.claude/rules/10-code-atlas.md`.
 - Supaschema migration policy: `.claude/rules/supaschema.md`.
+- Consolidated anti-pattern index: `.claude/rules/20-anti-patterns.md`.
+- GitHub repository settings, PR, merge, and post-merge process: `.claude/rules/21-github-process.md`.
 
 ## Operating Rules
 
@@ -15,25 +17,27 @@ This file defines the repository-wide operating contract for AI coding agents. K
 - Use MUST, MUST NOT, SHOULD, DEFAULT TO, VERIFY, FIX BY, and STOP IF consistently.
 - Every hard rule must include a verification path.
 - Every verification failure must include corrective action.
+- Use active voice and validated facts, not aspirational language or future-tense plans.
 - Preserve every user instruction as an acceptance criterion. Do not narrow the requested action, stop at a representative subset, or treat current structure as proof of correctness.
-- Use AST instead of regex for code analysis and generation whenever possible.
+- Use AST instead of regex for code analysis and generation.
+- DEFAULT TO `$elegant` for every task and action. MUST NOT create or keep backwards compatibility behavior or paths, export-only compatibility files, shims, aliases, wrappers, comments in code or scripts, redundant or convenience entry points, placeholders, TODOs, regex, duplicate owners, or unverified automation. Use AST only for structural analysis. Treat external-contract conflicts as STOP conditions; solve them in the canonical owner.
 - Do not delete, weaken, bypass, or skip guards without explicit user approval and a documented reason.
 - For anything important, use this chain:
-    - Rule file says the requirement.
-    - Hook blocks obvious local violations.
-    - Guard script performs deterministic validation.
-    - CI runs the same guard.
-    - Skill tells agent how to fix failures.
+  - Rule file says the requirement.
+  - Hook blocks obvious local violations.
+  - Guard script performs deterministic validation.
+  - CI runs the same guard.
+  - Skill tells agent how to fix failures.
 
 ## Working style
 
-### Use 
+### Use
 
 - Be direct.
-- Make small, verifiable changes.
+- Optimize for the smallest correct end state, not the smallest patch.
 - Prefer editing existing files over creating new abstractions.
 - Do not mark work complete until the relevant checks have run or a blocking reason is stated.
-- Core writing style of short, operational, and enforceable sentences. 
+- Core writing style of short, operational, and enforceable sentences.
 - Avoid fluffy, general, aspirational, or unverifiable language. Use the active voice and present tense.
 
 ### Do not use
@@ -53,7 +57,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 2. Identify the owning app, package, service, or database area.
 3. Verify upstream best practices from the canonical source.
 4. Apply the Repo-Wide Change Discipline below for duplicates, redundancies, and entry points before introducing a new surface.
-5. Make the smallest safe change that satisfies the task.
+5. Choose the smallest correct end state first, then make every change required to reach it. Do not preserve backwards compatibility behavior or paths, duplicate owners, wrappers, aliases, shims, placeholders, TODOs, or redundant or convenience entry points only to keep the patch small.
 
 ### After editing
 
@@ -68,14 +72,15 @@ Root `AGENTS.md` is the only owner of this repo-wide action sequence. Do not res
 
 This sequence applies to every repository change: code, tests, docs, schemas, configs, scripts, prompts, generated surfaces, and verification.
 
-1. Identify the requested end state, the concept being changed, the canonical owner, and the single entry point agents or users should use.
-2. Inspect the accepted scope for existing owners, aliases, wrappers, helpers, types, schemas, docs, configs, routes, exports, workflows, commands, prompts, instructions, and entry points before adding a new surface.
-3. Burn down avoidable duplication and redundancy in the same change by extending, moving, merging, or deleting in the canonical owner before adding a new surface.
+1. Define the requested end state, the smallest correct end state, the concept being changed, the canonical owner, and the single entry point agents or users should use.
+2. Inspect the accepted scope for existing owners, aliases, wrappers, helpers, types, schemas, docs, configs, routes, exports, workflows, commands, prompts, placeholders, TODOs, instructions, and entry points before adding a new surface.
+3. Treat current structure and current consumers as evidence and a worklist, not as proof of the target shape. Burn down avoidable duplication and redundancy in the same change by extending, moving, merging, or deleting in the canonical owner before adding a new surface.
 4. Keep a separate surface only for a genuinely distinct runtime, storage, compliance, lifecycle, or external-contract boundary.
-5. Use upstream-verified behavior when external technology controls the target shape. Use the elegant end state when local structure is overgrown, compatibility is not required, or duplicate surfaces have spread.
-6. Treat automation, guards, and checks as supporting evidence only; they do not replace owner classification or implementation in the canonical owner.
+5. Use upstream-verified behavior when external technology controls the target shape. Use the elegant end state for every task and action; delete legacy surfaces and rewrite consumers instead of preserving backwards compatibility behavior or paths, compatibility files, shims, aliases, wrappers, placeholders, TODOs, or redundant or convenience entry points.
+6. Use narrow verification only to prove the chosen end state. Do not use a narrow check, narrow owner, or narrow implementation step to shrink the requested end state.
+7. Treat automation, guards, and checks as supporting evidence only; they do not replace owner classification or implementation in the canonical owner.
 
-A task is not complete while any user instruction lacks a disposition, the owner or single entry point is unknown, the requested end state is unmet, avoidable duplication or multiple entry points remain in the accepted scope, or verification has not covered the canonical owner.
+A task is not complete while any user instruction lacks a disposition, the owner or single entry point is unknown, the requested end state is unmet, avoidable duplication or multiple entry points remain in the accepted scope, the implementation works only because the same concept was copied across multiple owners or entry points, or verification has not covered the canonical owner.
 
 ## Rule priority
 
@@ -137,10 +142,10 @@ When finishing code work, report:
 4. Results.
 5. Remaining risks or skipped checks.
 
-Do not claim success for checks that were not run.
-Do not say "should work" without verification.
+Do not claim success for checks that were not run. Do not say "should work" without verification.
 
 <!-- supaschema:agent-guidance:start -->
+
 ## supaschema
 
 This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
@@ -151,6 +156,6 @@ This project uses supaschema for declarative PostgreSQL migrations. The configur
 - Generated type outputs use `database.types.ts` and `database.zod.ts` unless `typesFile` or `zodFile` is changed in config; default workflow creates or refreshes both after `diff`, and `workflow.type_usage: "zod_validated"` tells agents to use generated Zod validators at runtime boundaries.
 - Edit `supaschema.config.json` to change `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, or named `environments`; use `$ENV_NAME` database URL references instead of committing credentials.
 - For schema changes, read `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file, edit declarative SQL, then run `diff` and `check` through the local runner selected in `.agents/prompts/supaschema-install.md`.
-- Hooks in `.claude/settings.json` and `.codex/hooks.json` enforce generated-migration protection and auto-run diff/check after schema SQL writes; check failures trigger agent-loop feedback to investigate the root source and correlated migration failures, and hooks never apply migrations.
-- Do not run `sync --local` or `sync --remote` unless explicitly asked to apply migrations; `workflow.migration_sync: "disabled"` blocks those apply handoff flags.
+- Hooks in `.claude/settings.json` and `.codex/hooks.json` enforce generated-migration protection and auto-run diff/check after schema SQL writes. When `workflow.migration_sync` allows automatic sync, the schema-write hook preflights every `sync.targets` entry with `mode: "auto"`; if each target resolves and any remote target is approved, it delegates to `supaschema sync`. Otherwise it stays on the non-mutating diff/check lane. Check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
+- Use bare `sync` for the configured workflow. Do not run `sync --target <name>` unless explicitly asked to override target selection. `sync.targets.<name>.mode` decides automatic target selection, `workflow.migration_sync: "manual"` keeps bare sync on the dry-run gate, and `workflow.migration_sync: "disabled"` blocks apply.
 <!-- supaschema:agent-guidance:end -->

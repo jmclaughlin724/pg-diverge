@@ -8,8 +8,7 @@ from pathlib import Path
 
 def main() -> None:
     payload = json.load(sys.stdin)
-    # Active-file selection is owned by build.mjs; this helper only enriches
-    # the Python files that the JS atlas builder passes through.
+
     files = sorted(payload.get("files", []))
     file_set = set(payload.get("allFiles", files))
     nodes = []
@@ -19,7 +18,7 @@ def main() -> None:
         try:
             text = Path(file).read_text(encoding="utf8")
             tree = ast.parse(text, filename=file)
-        except Exception as exc:  # noqa: BLE001 - diagnostics are data for the JS caller.
+        except Exception as exc:
             diagnostics.append({"file": file, "message": str(exc)})
             continue
         attach_parents(tree)
@@ -39,13 +38,26 @@ def attach_parents(tree: ast.AST) -> None:
 
 def collect_module(nodes: list[dict], edges: list[dict], file: str, tree: ast.Module) -> None:
     module_id = f"python_module:{module_name(file)}"
-    nodes.append({"id": module_id, "kind": "python_module", "name": module_name(file), "path": file})
-    edges.append({"from": file_id(file), "to": module_id, "type": "declares_python_module", "evidence": file})
+    nodes.append(
+        {"id": module_id, "kind": "python_module", "name": module_name(file), "path": file}
+    )
+    edges.append(
+        {"from": file_id(file), "to": module_id, "type": "declares_python_module", "evidence": file}
+    )
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             symbol_id = f"python_symbol:{file}#{statement.name}"
-            nodes.append({"id": symbol_id, "kind": "python_symbol", "name": statement.name, "path": file})
-            edges.append({"from": file_id(file), "to": symbol_id, "type": "declares_symbol", "evidence": file})
+            nodes.append(
+                {"id": symbol_id, "kind": "python_symbol", "name": statement.name, "path": file}
+            )
+            edges.append(
+                {
+                    "from": file_id(file),
+                    "to": symbol_id,
+                    "type": "declares_symbol",
+                    "evidence": file,
+                }
+            )
 
 
 def collect_imports(
@@ -65,14 +77,30 @@ def collect_imports(
             target = resolve_python_import(file, name, file_set)
             if not target:
                 continue
-            edges.append({"from": file_id(file), "to": file_id(target), "type": "imports_file", "evidence": name})
+            edges.append(
+                {
+                    "from": file_id(file),
+                    "to": file_id(target),
+                    "type": "imports_file",
+                    "evidence": name,
+                }
+            )
 
 
 def collect_fastapi(nodes: list[dict], edges: list[dict], file: str, tree: ast.Module) -> None:
     if "/routers/" in f"/{file}":
         router_id = f"api_router:{module_name(file)}"
-        nodes.append({"id": router_id, "kind": "api_router", "name": module_name(file), "path": file})
-        edges.append({"from": file_id(file), "to": router_id, "type": "declares_api_router", "evidence": file})
+        nodes.append(
+            {"id": router_id, "kind": "api_router", "name": module_name(file), "path": file}
+        )
+        edges.append(
+            {
+                "from": file_id(file),
+                "to": router_id,
+                "type": "declares_api_router",
+                "evidence": file,
+            }
+        )
     else:
         router_id = None
     for node in ast.walk(tree):
@@ -114,9 +142,21 @@ def collect_fastapi(nodes: list[dict], edges: list[dict], file: str, tree: ast.M
 def collect_typer(nodes: list[dict], edges: list[dict], file: str, tree: ast.Module) -> None:
     if "/commands/" in f"/{file}":
         group_id = f"worker_command_group:{module_name(file)}"
-        nodes.append({"id": group_id, "kind": "worker_command_group", "name": module_name(file), "path": file})
+        nodes.append(
+            {
+                "id": group_id,
+                "kind": "worker_command_group",
+                "name": module_name(file),
+                "path": file,
+            }
+        )
         edges.append(
-            {"from": file_id(file), "to": group_id, "type": "declares_worker_command_group", "evidence": file}
+            {
+                "from": file_id(file),
+                "to": group_id,
+                "type": "declares_worker_command_group",
+                "evidence": file,
+            }
         )
     else:
         group_id = None
@@ -125,7 +165,9 @@ def collect_typer(nodes: list[dict], edges: list[dict], file: str, tree: ast.Mod
             for decorator in node.decorator_list:
                 if call_name(decorator).endswith(".command") and group_id:
                     command_id = f"worker_job:{module_name(file)}.{node.name}"
-                    nodes.append({"id": command_id, "kind": "worker_job", "name": node.name, "path": file})
+                    nodes.append(
+                        {"id": command_id, "kind": "worker_job", "name": node.name, "path": file}
+                    )
                     edges.append(
                         {
                             "from": group_id,
@@ -148,9 +190,15 @@ def collect_typer(nodes: list[dict], edges: list[dict], file: str, tree: ast.Mod
                 )
 
 
-def collect_file_references(edges: list[dict], file: str, tree: ast.Module, file_set: set[str]) -> None:
+def collect_file_references(
+    edges: list[dict], file: str, tree: ast.Module, file_set: set[str]
+) -> None:
     for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in file_set:
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in file_set
+        ):
             edges.append(
                 {
                     "from": file_id(file),
@@ -181,7 +229,11 @@ def call_name(node: ast.AST) -> str:
 
 def keyword_string(node: ast.Call, key: str) -> str | None:
     for keyword in node.keywords:
-        if keyword.arg == key and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
+        if (
+            keyword.arg == key
+            and isinstance(keyword.value, ast.Constant)
+            and isinstance(keyword.value.value, str)
+        ):
             return keyword.value.value
     return None
 

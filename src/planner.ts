@@ -165,14 +165,6 @@ const relationDependentKinds = new Set<ObjectKind>([
 ]);
 const blockingRelationDependentKinds = new Set<ObjectKind>(["view", "materialized-view"]);
 
-/**
- * A relation replace renders DROP + CREATE, which destroys every dependent
- * object in the target database even when that dependent is unchanged
- * between the two models (equal hashes produce no operation). Re-create the
- * to-state dependents alongside the replace so the rebuilt relation keeps
- * its constraints, indexes, RLS state, policies, triggers, grants, blocking
- * views/materialized views, and comments.
- */
 function appendReplacedRelationDependents(
   operations: MigrationOperation[],
   from: SchemaModel,
@@ -183,10 +175,7 @@ function appendReplacedRelationDependents(
   if (replacedRelations.length === 0) {
     return;
   }
-  // Only objects that already exist get collaterally dropped by the relation
-  // replace, so a pre-drop is needed only for them. A dependent that is new in
-  // the target (created in this same plan) must not be pre-dropped — that would
-  // emit a destructive DROP for an object that does not exist yet.
+
   const context = replacedDependentContext(from, operations, replacedRelations);
   expandAffectedRelationDependents(to.objects, operations, context, config);
   appendAffectedComments(to.objects, operations, context, config);
@@ -399,11 +388,6 @@ function rememberAffectedRef(affectedRefs: Map<string, ObjectRef>, ref: ObjectRe
   affectedRefs.set(`${ref.kind}:${ref.schema ?? ""}:${ref.table ?? ""}:${ref.name}`, ref);
 }
 
-/**
- * A diff engine's worst failure mode is an empty plan over states that
- * actually differ. Zero operations must imply equal model fingerprints; when
- * it does not, fail loud with the divergence instead of rendering a no-op.
- */
 function emptyPlanDriftDiagnostic(
   fromMap: Map<string, SchemaObject>,
   toMap: Map<string, SchemaObject>,
@@ -615,11 +599,7 @@ function enumValues(object: SchemaObject): string[] | undefined {
   const strings = values.filter((value): value is string => typeof value === "string");
   return strings.length === values.length ? strings : undefined;
 }
-/**
- * Names what actually differs between the two definitions so a gated replace
- * is reviewable without manually diffing SQL. Tables get a per-column report
- * from their canonical shapes; other kinds report a definition change.
- */
+
 function describeReplaceDifference(
   before: SchemaObject | undefined,
   after: SchemaObject | undefined

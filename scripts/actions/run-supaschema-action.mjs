@@ -2,15 +2,63 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const exactVersionPattern = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-
 export function validateExactVersion(version) {
-  if (typeof version !== "string" || !exactVersionPattern.test(version)) {
+  if (typeof version !== "string" || !isExactVersion(version)) {
     throw new Error(
       `invalid supaschema version: ${version} (use an exact npm version, e.g. 0.2.4)`
     );
   }
   return version;
+}
+
+function isExactVersion(version) {
+  const plusParts = version.split("+");
+  if (plusParts.length > 2) {
+    return false;
+  }
+  const build = plusParts[1];
+  const dashParts = plusParts[0].split("-");
+  if (dashParts.length > 2) {
+    return false;
+  }
+  const core = dashParts[0];
+  const prerelease = dashParts[1];
+  return (
+    isNumericTriplet(core) &&
+    (prerelease === undefined || isIdentifierList(prerelease)) &&
+    (build === undefined || isIdentifierList(build))
+  );
+}
+
+function isNumericTriplet(value) {
+  const parts = value.split(".");
+  return parts.length === 3 && parts.every(isDigits);
+}
+
+function isIdentifierList(value) {
+  return value.length > 0 && value.split(".").every(isIdentifier);
+}
+
+function isIdentifier(value) {
+  return value.length > 0 && [...value].every(isIdentifierChar);
+}
+
+function isIdentifierChar(char) {
+  return isAsciiLetter(char) || isDigit(char) || char === "-";
+}
+
+function isAsciiLetter(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isDigits(value) {
+  return value.length > 0 && [...value].every(isDigit);
+}
+
+function isDigit(char) {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }
 
 export function parseActionArgv(input) {

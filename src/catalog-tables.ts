@@ -72,9 +72,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
         columns: columnDefinitions,
       })
     );
-    // Constraints are separate identity owners on every lane, so a constraint
-    // declared inline in a source tree and the same constraint read from
-    // pg_constraint compare as the same object instead of changing the table.
+
     for (const constraint of constraintsByOid.get(oid) ?? []) {
       const constraintName = stringValue(constraint.name);
       const constraintObject = makeObject(

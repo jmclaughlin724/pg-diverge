@@ -30,7 +30,7 @@ metadata:
 
 This skill is a direct execution contract. Use it when the requested outcome is the most efficient correct end state, not a compatibility-preserving migration.
 
-The elegant end state is one canonical owner per concept, the smallest public API that satisfies current requirements, no duplicate wrappers, aliases, types, schemas, config, docs, or transitional branches, no orphan files, folders, or dependencies, and all impacted consumers rewritten or deleted in the same change.
+The elegant end state is one canonical owner per concept, the smallest public API that satisfies current requirements, no backwards compatibility paths, duplicate wrappers, aliases, types, schemas, config, docs, placeholders, TODOs, convenience entry points, or transitional branches, no orphan files, folders, or dependencies, and all impacted consumers rewritten or deleted in the same change.
 
 Treat current consumers as evidence and a worklist, not as a veto. Work through neighboring consumers, sibling files, containing folders, package exports, declared dependencies, tests, docs, generated surfaces, and owner briefs until avoidable complexity in the touched scope is gone.
 
@@ -38,16 +38,14 @@ Use upstream docs or the owning MCP lane for external technology behavior before
 
 ## Use When
 
-- The user invokes `$elegant`, asks for a clean slate, or explicitly removes backwards compatibility constraints.
+- Every task or action in this repo; `$elegant` is the default execution lens.
 - The task is consolidation, simplification, deduplication, deletion of legacy surfaces, or standardization to the canonical owner.
-- Any task exposes avoidable duplicate or redundant owners, entry points, wrappers, docs, configs, exports, commands, prompts, or instructions inside the accepted scope.
+- Any task exposes avoidable duplicate or redundant owners, entry points, wrappers, docs, configs, exports, commands, prompts, placeholders, TODOs, or instructions inside the accepted scope.
 - Current architecture, names, references, or consumers may be wrong and must not define the target shape.
-
-If the user explicitly requires backwards compatibility, a minimal patch, or preservation of a public contract, record that constraint and run only the compatible portion of the elegant workflow.
 
 ## Direct Workflow
 
-1. Restate the task as if there were no existing consumers. Name the controlling objective, invariants, and compatibility constraints.
+1. Restate the task as if there were no existing consumers. Name the controlling objective, invariants, and external-contract STOP conditions.
 2. Map concepts by meaning before reading current structure as guidance. Start with Code Atlas `pre-edit`, `trace-change`, `regression-scope`, `impact`, `consumers`, `file-owners`, `entrypoints`, or `health` queries, and use the `code-atlas` skill's MCP tool map when CodeAtlas-Live MCP is exposed. Include target files, neighboring files and folders, direct and transitive consumers, exports, tests, docs, generated surfaces, owner briefs, `package.json` dependencies, and imports.
 3. Choose the canonical owner and smallest architecture. Preserve a separate surface only for a distinct runtime, storage, compliance, lifecycle, or external-contract boundary.
 4. Implement through the owner and its neighbors. Merge, move, rename, or delete overlapping surfaces; remove pass-through layers, re-exports, wrappers, local parallel types, redundant schemas, unused branches, orphan tests, stale docs, and declared-but-unused dependencies.
@@ -66,14 +64,14 @@ For a review, recommendation, plan, or task list, explicitly state:
 - the canonical owners
 - legacy surfaces to delete
 - overlapping surfaces to merge, move, or rename
-- compatibility constraints, or `none`
+- external-contract STOP conditions, or `none`
 
 For implementation closeout, report only what changed, what was verified, and concrete blockers inside the touched scope.
 
 ## Boundaries
 
 - Prefer deletion over adaptation when old paths exist only for legacy consumers.
-- Do not keep backwards-compatibility shims unless the user explicitly requires them.
+- Do not keep backwards compatibility paths, convenience entry points, placeholders, TODOs, or backwards-compatibility shims.
 - Do not preserve a surface because it is internally consistent or locally referenced; preserve it only when it satisfies the target without duplicating another owner.
 - Add an abstraction only when it removes real complexity or matches an established owner pattern.
 - Do not hand-author or hand-edit generated artifacts. Migration SQL, TypeScript/Zod type outputs, and other lineage-tagged or generated surfaces are owned by the declarative tree and the supaschema CLI (`.claude/rules/supaschema.md`); change the source and regenerate with `supaschema diff` / `supaschema types`, never by restating generated fields inline. Classify and compare DDL through PostgreSQL parse trees and model helpers, not ad hoc regex (rule 07).

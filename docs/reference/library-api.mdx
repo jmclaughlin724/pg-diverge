@@ -17,6 +17,11 @@ import {
   checkMigrationSql, // SQL -> replay-safety diagnostics
   verifyMigration, // apply-twice + reconvergence proof
   migrationsStatus, // disk files vs applied history
+  compareMigrationHistory, // expected vs applied version sets
+  runDirectMigrationRunner, // provider-neutral PostgreSQL apply
+  runSupabaseCliMigrationRunner, // Supabase CLI adapter
+  runTypeSafetyGate, // deploy policy over type-contract diagnostics
+  runRlsSafetyGate, // deploy policy over RLS/grant diagnostics
   syncMigrations, // gate + orchestrate the migration runner
   runCorpus, // the corpus oracle
   resolveDatabaseUrl,
@@ -40,8 +45,11 @@ import {
 
 | Export | Maps to | Purpose |
 | --- | --- | --- |
-| `migrationsStatus` / `renderMigrationsStatus` | `migrations` | Reconcile disk files against a database's applied history (applied, pending, ghosts, out-of-order). |
-| `syncMigrations` | `sync` | Gate pending migrations, then optionally drive the Supabase CLI. |
+| `migrationsStatus` / `renderMigrationsStatus` | `migrations` | Reconcile disk files against a database target's applied history, with optional target/runner labels and expected final versions. |
+| `compareMigrationHistory` / `migrationFileVersions` | `migrations` | Compare expected migration versions with applied history for post-run target verification. |
+| `runDirectMigrationRunner` / `runSupabaseCliMigrationRunner` | `sync` | Apply pending migration units through direct PostgreSQL or the Supabase CLI adapter. |
+| `runTypeSafetyGate` / `runRlsSafetyGate` | `sync` | Run deploy-safety policy gates without depending on CLI reporting or license-gated `type-contract --enforce`. |
+| `syncMigrations` | `sync` | Gate pending migrations, then optionally drive the selected runner. |
 | `auditModel` / `renderAuditReport` | `audit` | Support-matrix coverage report for adopting an existing schema. |
 | `runCorpus` / `renderCorpusReport` | `corpus` | Replay a corpus tree and require reconvergence to zero. |
 | `generateDatabaseTypes` / `generateZodSchemas` | `types` | PostgreSQL TypeScript types in the Supabase-compatible `Database` shape, plus runtime Zod validators from a model. |

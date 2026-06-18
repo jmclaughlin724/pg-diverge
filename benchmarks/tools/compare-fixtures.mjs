@@ -8,8 +8,6 @@ const { makeRealisticSqlFixture, realisticFixtureManifest } = await import(
   join(packageRoot, "dist/benchmark-fixtures.js")
 );
 
-const fixtureDirsSeparatorPattern = /[,:]/;
-
 export async function discoverFixtures(fixtureRoot) {
   const entries = await readdir(fixtureRoot, { withFileTypes: true });
   const fixtures = [];
@@ -21,7 +19,8 @@ export async function discoverFixtures(fixtureRoot) {
   }
 
   const extraDirs = (process.env.SUPASCHEMA_COMPARE_FIXTURE_DIRS ?? "")
-    .split(fixtureDirsSeparatorPattern)
+    .split(",")
+    .flatMap((value) => value.split(":"))
     .map((value) => value.trim())
     .filter(Boolean);
   for (const directory of extraDirs) {
@@ -38,26 +37,28 @@ async function fixtureFromDirectory(directory, name) {
     toDirectory: directory,
     toSqlPath: join(directory, "to.sql"),
   };
-  try {
-    const config = JSON.parse(await readFile(join(directory, "fixture.json"), "utf8"));
+  const config = await readJson(join(directory, "fixture.json"));
+  if (config !== undefined) {
     if (Array.isArray(config.schemas) && config.schemas.length > 0) {
       fixture.schemas = config.schemas.map(String);
     }
     if (typeof config.supaschemaAdapter === "string") {
       fixture.supaschemaAdapter = config.supaschemaAdapter;
     }
-  } catch {
-    // Optional fixture metadata is allowed to be absent.
   }
-  try {
-    const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
-    if (Array.isArray(manifest)) {
-      fixture.manifest = manifest;
-    }
-  } catch {
-    // Optional benchmark manifests are generated only for selected fixtures.
+  const manifest = await readJson(join(directory, "manifest.json"));
+  if (manifest !== undefined && Array.isArray(manifest)) {
+    fixture.manifest = manifest;
   }
   return fixture;
+}
+
+async function readJson(filePath) {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return;
+  }
 }
 
 export async function materializeGeneratedFixtures(tempRoot, xlTables, xxlTables = 0) {

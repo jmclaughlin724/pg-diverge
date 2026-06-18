@@ -57,11 +57,7 @@ interface DependencyGraph {
 
 function buildDependencyGraph(base: MigrationOperation[]): DependencyGraph {
   const operationByKey = new Map(base.map((operation) => [operation.key, operation]));
-  // A relation replace can emit both a pre-drop `drop` and a later `create` for
-  // the same object identity (e.g. a dependent view rebuilt around the replace).
-  // Resolve drop dependencies against drop operations so a dependent's drop
-  // orders before its dependency's drop (independent of source ordinals), and
-  // create/replace dependencies against the surviving create operation.
+
   const dropKeyByIdentity = identityIndex(base.filter((operation) => operation.kind === "drop"));
   const upsertKeyByIdentity = identityIndex(base.filter((operation) => operation.kind !== "drop"));
   const outgoing = new Map<string, Set<string>>();

@@ -56,8 +56,8 @@
 #
 # - `scripts/guards/check-code-atlas.mjs` is part of `npm run guard` through `scripts/guards/check-all.mjs`.
 # - lefthook runs `npm run guard:code-atlas` before commit.
-# - Rule 11 owns the local MCP registry wiring for Code Atlas access; this rule owns the graph build/query guard and CodeAtlas-Live diagnostic wrapper contract.
-# - Changes to Code Atlas behavior must update the same-change owner set: `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, `scripts/code-atlas/lib/**`, `scripts/code-atlas/query.mjs`, `scripts/code-atlas/mcp-wrapper.mjs`, `scripts/guards/check-code-atlas.mjs`, `.claude/skills/code-atlas/**`, and this rule when operator guidance changes.
+# - Rule 11 owns the local MCP registry wiring for Code Atlas access; this rule owns the graph build/query guard and CodeAtlas-Live diagnostic launcher contract.
+# - Changes to Code Atlas behavior must update the same-change owner set: `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, `scripts/code-atlas/lib/**`, `scripts/code-atlas/query.mjs`, `scripts/code-atlas/mcp-launcher.mjs`, `scripts/guards/check-code-atlas.mjs`, `.claude/skills/code-atlas/**`, and this rule when operator guidance changes.
 #
 # STOP if a broad owner, route, consumer, DB, API, worker, generated-surface, or rollout claim is made without Code Atlas or cclsp/source evidence; if live MCP output is treated as a final replacement for local atlas/source proof; if generated atlas/cache output is committed; if regex/string heuristics are added where AST/model data is available; or if the atlas guard is weakened instead of fixing the graph source. Do not use CodeAtlas-Live AI review/fix tools unless the user explicitly approves external LLM calls, API spend, and data exposure.
 #

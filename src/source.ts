@@ -94,9 +94,7 @@ export function filterModelBySchemas(model: SchemaModel, schemas: Set<string>): 
   if (schemas.size === 0) {
     return model;
   }
-  // An include list defines the contract scope: extraction findings for
-  // statements that reference no in-scope schema (managed-schema bootstrap,
-  // out-of-contract partition wiring) must not block in-scope diffs.
+
   const filtered = withObjects(
     model,
     model.objects.filter((object) => schemas.has(objectSchema(object)))

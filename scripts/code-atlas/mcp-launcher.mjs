@@ -19,7 +19,7 @@ if (status) {
         version: resolution?.version ?? null,
         npxFallbackEnabled: process.env.CODEATLAS_MCP_ALLOW_NPX === "1",
         workspace,
-        wrapper: path.relative(workspace, new URL(import.meta.url).pathname),
+        launcher: path.relative(workspace, new URL(import.meta.url).pathname),
       },
       null,
       2
@@ -118,14 +118,12 @@ function resolveEditorExtension() {
 function extensionBinary(extensionPath) {
   const packageJson = path.join(extensionPath, "package.json");
   if (fs.existsSync(packageJson)) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(packageJson, "utf8"));
+    const parsed = readJsonFile(packageJson);
+    if (parsed !== undefined) {
       const bin = parsed?.bin?.codeatlas ?? parsed?.bin?.["codeatlas-mcp"] ?? parsed?.bin?.mcp;
       if (typeof bin === "string" && fs.existsSync(path.join(extensionPath, bin))) {
         return path.join(extensionPath, bin);
       }
-    } catch {
-      // Fall through to known extension layouts.
     }
   }
   const candidates = [
@@ -139,6 +137,14 @@ function extensionBinary(extensionPath) {
   return candidates
     .map((candidate) => path.join(extensionPath, candidate))
     .find((candidate) => fs.existsSync(candidate));
+}
+
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return;
+  }
 }
 
 function versionFor(binary) {

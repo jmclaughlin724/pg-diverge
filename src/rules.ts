@@ -1,15 +1,5 @@
 import type { Diagnostic, MigrationPlan, ObjectRef, SchemaModel, SchemaObject } from "./core.js";
 
-/**
- * Rule-engine foundation (plan `.claude/plans/40-rule-engine-foundation.md`, task S0).
- *
- * A rule reads the declarative model (and optionally the migration plan) and
- * returns `Diagnostic[]`. Diagnostics render through the existing reporter
- * (`src/check-reporters.ts`) — packs never fork a second reporter. The engine is
- * AST/model-native by construction: rules receive the parsed `SchemaModel`, not a
- * live catalog, preserving the pre-write, migration-scoped analysis position.
- */
-
 export interface RuleContext {
   model: SchemaModel;
   plan?: MigrationPlan;
@@ -26,7 +16,6 @@ export interface RulePack {
   version: string;
 }
 
-/** Run every rule in the given packs and return the flattened diagnostics. */
 export function runRulePacks(packs: RulePack[], context: RuleContext): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   for (const pack of packs) {
@@ -51,7 +40,6 @@ export function listRulePacks(): RulePack[] {
   return [...registry.values()];
 }
 
-/** Identifier-name format check (a name string, not SQL structure — no parser needed). */
 function isSnakeCase(name: string): boolean {
   if (name.length === 0) {
     return false;
@@ -66,11 +54,6 @@ function isSnakeCase(name: string): boolean {
   return true;
 }
 
-/**
- * Seed hygiene rule that proves the engine end-to-end: flag tables whose name is
- * not snake_case. Real packs (RLS, type-contract, grant-drift) are separate tasks
- * (plans 10-12) built on this same interface.
- */
 export const tableNamingRule: Rule = {
   check: ({ model }) => {
     const diagnostics: Diagnostic[] = [];
@@ -98,14 +81,6 @@ export const hygienePack: RulePack = {
   version: "0.1.0",
 };
 
-/**
- * Migration-safety seed rule (plan `12-free-packs-rls-locks.md`, task F21). Surfaces
- * operations the planner has ALREADY classified as destructive — it reuses the
- * existing `MigrationOperation.destructive` flag rather than re-deriving lock impact,
- * so it adds no false confidence. The transaction-mode-aware lock routing in the
- * plan is the follow-on; this is the plan-scoped seed proving the engine reads the
- * migration plan, not only the model.
- */
 export const migrationSafetyRule: Rule = {
   check: ({ plan }) => {
     if (plan === undefined) {
@@ -113,7 +88,7 @@ export const migrationSafetyRule: Rule = {
     }
     const diagnostics: Diagnostic[] = [];
     for (const operation of plan.operations) {
-      if (!operation.destructive) {
+      if (!operation.destructive || operation.blocked) {
         continue;
       }
       diagnostics.push({
@@ -135,27 +110,55 @@ export const migrationSafetyPack: RulePack = {
   version: "0.1.0",
 };
 
-/**
- * RLS audit pack (plan `12-free-packs-rls-locks.md`, task F20). Grounded in the
- * model's actual RLS representation: `rls` objects carry `metadata.rlsSubtype`
- * (`AT_EnableRowSecurity`) and `ref.table`; `policy` objects carry `ref.table`.
- * These mirror Supabase Splinter's presence/absence checks but run over the AST
- * model inside the migration pipeline — the differentiation is integration, not
- * rule count (pgrls covers breadth on the free tier).
- */
 function tableKey(ref: ObjectRef): string {
   return `${ref.schema ?? "public"}.${ref.table ?? ref.name}`;
 }
-
-const ENABLE_ROW_LEVEL_SECURITY_SQL = /\bENABLE\s+ROW\s+LEVEL\s+SECURITY\b/i;
 
 function isRlsEnabledObject(object: SchemaObject): boolean {
   return (
     object.ref.kind === "rls" &&
     (object.metadata.rlsSubtype === "AT_EnableRowSecurity" ||
       object.metadata.rlsEnabled === true ||
-      ENABLE_ROW_LEVEL_SECURITY_SQL.test(object.sql))
+      containsEnableRowLevelSecurity(object.sql))
   );
+}
+
+function containsEnableRowLevelSecurity(sql: string): boolean {
+  const tokens = splitWhitespace(sql).map((token) => token.toUpperCase());
+  for (let index = 0; index <= tokens.length - 4; index += 1) {
+    if (
+      tokens[index] === "ENABLE" &&
+      tokens[index + 1] === "ROW" &&
+      tokens[index + 2] === "LEVEL" &&
+      tokens[index + 3] === "SECURITY"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function splitWhitespace(value: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  for (const char of value) {
+    if (isWhitespace(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+  return tokens;
+}
+
+function isWhitespace(char: string): boolean {
+  return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
 }
 
 function rlsEnabledTableKeys(model: SchemaModel): Set<string> {
@@ -228,13 +231,6 @@ export const rlsPack: RulePack = {
   version: "0.1.0",
 };
 
-/**
- * Grant-drift / least-privilege seed (plan `11-pack-grant-drift-gate.md`, task P11;
- * OPEN white space — Atlas announced a CI grant gate but has not shipped one).
- * Grounded in the grant object's metadata (`verb`, `grantee`). Flags
- * `GRANT ... TO PUBLIC` as an over-broad grant. The declared role-policy model in
- * config is the follow-on; this is the unambiguous, no-false-confidence seed.
- */
 function grantTarget(object: SchemaObject): string {
   return typeof object.metadata.target === "string" ? object.metadata.target : object.ref.name;
 }
@@ -263,11 +259,6 @@ export const grantToPublicRule: Rule = {
   id: "PRIV001",
 };
 
-/**
- * Over-broad privilege grant (task P11; no config needed). The model normalizes a
- * full-privilege grant to `metadata.privileges === ["ALL"]`, so this is a grounded
- * least-privilege check distinct from grant-to-PUBLIC.
- */
 export const grantAllPrivilegesRule: Rule = {
   check: ({ model }) => {
     const diagnostics: Diagnostic[] = [];
@@ -293,13 +284,6 @@ export const grantAllPrivilegesRule: Rule = {
   id: "PRIV002",
 };
 
-/**
- * Declared role-policy drift (task P11). Given the grantees a project permits, flag
- * any `GRANT` to a role outside that set. A no-op when no policy is declared (empty
- * set), so it never fires until a project opts in via `hints.allowedGrantees`;
- * PUBLIC and over-broad ALL grants are caught by the dedicated rules above. The
- * allowed set is injected, keeping this a pure rule.
- */
 export function grantPolicyRule(allowedGrantees: string[]): Rule {
   const allowed = new Set(allowedGrantees);
   return {

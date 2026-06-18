@@ -112,9 +112,6 @@ export async function finalizeObject(
   }
   const diagnostics: Diagnostic[] = [];
   if (options.normalize === true) {
-    // Deparse-normalization is fidelity-gated: the canonical text is used
-    // only when it reparses to the identical location-stripped tree, so
-    // hashes are unchanged and a deparser gap degrades to the source text.
     const normalized = await normalizeObjectSql(object, parsed.ast);
     diagnostics.push(...normalized.diagnostics);
     if (normalized.sql !== undefined && normalized.statements !== undefined) {
@@ -169,8 +166,7 @@ function tableShapeHash(object: SchemaObject, createStmt: AstNode | undefined): 
     return;
   }
   const shape = canonicalTableShape(createStmt);
-  // Carried so the planner can diff per-column instead of replacing the
-  // whole table when only column facts change.
+
   object.metadata.canonicalShape = shape;
   return shapeHash(shape, object.key, object.ref);
 }
@@ -183,8 +179,7 @@ function sequenceShapeHash(
     return;
   }
   const shape = canonicalSequenceShape(createSeqStmt);
-  // Carried so a standalone ALTER SEQUENCE ... OWNED BY (the pg_dump serial
-  // decomposition) can fold into the sequence's identity.
+
   object.metadata.canonicalShape = shape;
   return shapeHash(shape, object.key, object.ref);
 }
@@ -227,9 +222,6 @@ function canonicalObjectKindHash(
 }
 
 function defaultPrivilegeHash(object: SchemaObject): string {
-  // Hash from the builder-normalized shape, not the statement AST: the FOR ROLE
-  // clause names the executing role and must not affect identity or content
-  // equality across lanes.
   return shapeHash(
     {
       grantee: String(object.metadata.grantee ?? ""),
@@ -244,8 +236,6 @@ function defaultPrivilegeHash(object: SchemaObject): string {
 }
 
 function rlsHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
-  // ALTER TABLE [ONLY] for RLS flags does not recurse to children, so ONLY
-  // spelling is semantically inert and must not split cross-lane identity.
   return astObjectHash(
     statements.map((item) => {
       const cloned = structuredClone(item.node) as Record<string, unknown>;
@@ -262,8 +252,6 @@ function rlsHash(object: SchemaObject, statements: { node: AstNode; tag: string 
 }
 
 function policyHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
-  // pg_get_expr renders analyzed expressions; canonicalPolicyNode strips
-  // semantically inert aliases/casts on both lanes before hashing.
   return astObjectHash(
     statements.map((item) => canonicalPolicyNode(item.node) as AstNode),
     object.key,
@@ -272,8 +260,6 @@ function policyHash(object: SchemaObject, statements: { node: AstNode; tag: stri
 }
 
 function viewHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
-  // pg_get_viewdef can qualify columns with the sole plain relation name.
-  // canonicalViewNode strips only that safe qualifier before hashing.
   return astObjectHash(
     statements.map((item) => canonicalViewNode(item.node, []) as AstNode),
     object.key,
@@ -321,12 +307,6 @@ export function statementFacts(
   return facts;
 }
 
-/**
- * A comment drop is the same statement with a NULL value; deparsing the
- * comment-stripped node quotes the target correctly (descriptor text is an
- * identity label, not renderable SQL — `extension uuid-ossp` must render as
- * `COMMENT ON EXTENSION "uuid-ossp"`).
- */
 function commentDropSql(node: AstNode): string | undefined {
   try {
     const { comment: _comment, ...stripped } = structuredClone(node) as Record<string, unknown>;
@@ -345,7 +325,6 @@ function renderGuardFacts(tag: string, node: AstNode, sql: string): RenderGuardF
   }
   const steps = ifNotExistsSteps[tag];
   if (steps) {
-    // CreateForeignTableStmt nests the flag on its embedded base CreateStmt.
     const flagNode = tag === "CreateForeignTableStmt" ? (asRecord(node.base) ?? node) : node;
     const facts: RenderGuardFacts = {
       guard: "ifNotExists",
@@ -469,11 +448,6 @@ function defElemBoolean(arg: unknown): boolean {
   return text === "true" || text === "on" || text === "1" || text === "yes";
 }
 
-/**
- * Walks the leading keyword sequence of a statement (skipping whitespace and
- * comments) and returns the offset of the token that follows it — the splice
- * point for a replay guard. Character scanning only; classification stays AST.
- */
 export function keywordOffset(sql: string, steps: KeywordStep[]): number | undefined {
   let index = skipNonTokens(sql, 0);
   for (const step of steps) {

@@ -20,13 +20,6 @@ import {
   expectedZodFragments,
 } from "./sample-schema-expectations.js";
 
-// Exercises the maintainer-only sample consumer project under tests/fixtures/sample-project:
-// editing the declarative supabase/schemas tree (here: add an enum, an enum-typed
-// NOT NULL column, and a view) must render an accurate, replay-safe migration and
-// produce accurate TypeScript + Zod for the user-named packages/db/src/types layout.
-// The fixture config compares a real configured tree shape (`supabase/schemas`)
-// to a test-only edited snapshot (`supabase/schemas-next`), with no build, no
-// live database, and no source flags required for the non-DB lanes.
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
 const sampleRoot = "tests/fixtures/sample-project";
@@ -68,7 +61,7 @@ describe("supabase sample project schema-edit migration", () => {
 
     const plan = planSchemaDiff(from, to, { config });
     expect(errorsOf(plan.diagnostics)).toEqual([]);
-    // The edit is purely additive — no destructive operation should be planned.
+
     expect(plan.operations.filter((operation) => operation.kind === "drop")).toEqual([]);
     expect(plan.operations.some((operation) => operation.blocked === true)).toBe(false);
 
@@ -95,10 +88,6 @@ describe("supabase sample project schema-edit migration", () => {
       expect(zod, fragment).toContain(fragment);
     }
 
-    // Materialize into the configured monorepo destination, mirroring the
-    // `supaschema types` writer (src/cli-tools.ts): resolve typesFile/zodFile
-    // against the project root and create the nested packages/db/src/types path.
-    // Written to a throwaway consumer so the committed fixture tree stays clean.
     const consumer = await mkdtemp(join(tmpdir(), "supa-sample-types-"));
     const typesPath = resolve(consumer, config.typesFile);
     const zodPath = resolve(consumer, config.zodFile);

@@ -106,7 +106,7 @@ Teammates inherit the lead's permission settings at spawn. You can change indivi
 
 ### Context
 
-Teammates load the same startup context as a regular session (`AGENTS.md` via the compatibility stub, applicable rules, MCP servers, preloaded skills) plus the spawn prompt. The lead's conversation history does NOT carry over.
+Teammates load the same startup context as a regular session (`AGENTS.md` via the Claude runtime entry point, applicable rules, MCP servers, preloaded skills) plus the spawn prompt. The lead's conversation history does NOT carry over.
 
 Because every teammate pays that startup cost, keep global context lean. Put only always-needed guidance in `AGENTS.md`, use path-scoped rules for persistent local guidance, and keep large task detail in the spawn prompt or on-demand references.
 

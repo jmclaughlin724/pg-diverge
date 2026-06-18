@@ -164,10 +164,6 @@ export function colorEnabled(): boolean {
 
 export type SummaryTone = "create" | "drop" | "blocked" | "plain";
 
-/**
- * Tone comes from the structured operation (kind/blocked), never from
- * re-classifying rendered text.
- */
 export function colorizeSummaryLine(line: string, tone: SummaryTone): string {
   if (!colorEnabled() || tone === "plain") {
     return line;

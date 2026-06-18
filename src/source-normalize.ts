@@ -37,13 +37,6 @@ const kindPhraseToDefaultObjectType = new Map([
   ["TYPE", "TYPES"],
 ]);
 
-/**
- * Postgres applies in-model ALTER DEFAULT PRIVILEGES to every later object,
- * and the resulting ACL entry is indistinguishable from an explicit GRANT.
- * A grant fully implied by an in-model default-privilege entry is therefore
- * suppressed on BOTH lanes (catalog models route through this too): trees
- * declare the default once, catalogs materialize it per object.
- */
 export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): SchemaObject[] {
   const defaults = new Map<string, Set<string>>();
   for (const object of objects) {
@@ -87,14 +80,6 @@ export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): Schema
   });
 }
 
-/**
- * acldefault delta on the source lane, mirroring the catalog lane: a GRANT
- * that restates PostgreSQL's built-in default (PUBLIC EXECUTE on routines,
- * PUBLIC USAGE on types) and a REVOKE aimed at a grantee that holds neither
- * a built-in default nor a granted privilege in this model are semantic
- * no-ops the catalog can never reproduce; keeping them would be permanent
- * false drift.
- */
 function suppressDefaultEqualPrivileges(objects: SchemaObject[]): SchemaObject[] {
   const grantsByTarget = collectGrantsByTarget(objects);
   const nettedAway = defaultEqualPrivilegesToSuppress(objects, grantsByTarget);
@@ -118,9 +103,6 @@ function defaultEqualPrivilegesToSuppress(
   objects: SchemaObject[],
   grantsByTarget: Map<string, SchemaObject[]>
 ): Set<SchemaObject> {
-  // Statement order decides the net ACL: a revoke superseded by a later grant
-  // vanishes, and a trailing full-coverage revoke nets the pair to nothing.
-  // Two passes — netting decisions must complete before any object is kept.
   const nettedAway = new Set<SchemaObject>();
   for (const object of objects) {
     markDefaultEqualPrivilege(object, grantsByTarget, nettedAway);
@@ -358,11 +340,6 @@ const rlsSubtypeOrder = new Map([
   ["AT_NoForceRowSecurity", 3],
 ]);
 
-/**
- * ENABLE and FORCE ROW LEVEL SECURITY are facets of one table's RLS state
- * sharing one identity; the catalog lane emits them as one multi-statement
- * object, so split source statements merge the same way.
- */
 async function mergeRlsFacets(
   objects: SchemaObject[],
   options: SourceNormalizeOptions

@@ -1,16 +1,15 @@
 ---
 title: "sync"
-description: "Gate pending Supabase migrations, then optionally delegate apply to the Supabase CLI."
-keywords: ["sync command", "Supabase CLI", "apply gate", "migrations"]
+description: "Gate pending migrations, reconcile configured targets, and apply through the selected runner."
+keywords: ["sync command", "migration sync", "apply gate", "migrations"]
 ---
 
-Use `sync` when you want a guarded Supabase CLI handoff.
+Use `sync` when you want a guarded migration apply path.
 
-With no apply flag, `sync` is a dry run. With `--local` or `--remote`, it reconciles history, checks pending migrations, then invokes the Supabase CLI.
+Bare `sync` selects every configured `sync.targets.<name>` entry with `mode: "auto"`, reconciles history, checks pending migrations, runs deploy safety gates, then invokes each selected target's runner. Remote deploy uses the same selection rule; it also requires that target's approval variable before any mutation.
 
 ## Use this when
 
-- Supabase remains the migration runner.
 - Pending files need `check` before apply.
 - Ghost or out-of-order history should block deployment.
 - A dry run should preview what the runner would apply.
@@ -19,12 +18,13 @@ With no apply flag, `sync` is a dry run. With `--local` or `--remote`, it reconc
 
 ```bash
 npx supaschema sync
-npx supaschema sync --local
-npx supaschema sync --remote
-npx supaschema sync --env staging
+npx supaschema sync --no-diff
+npx supaschema sync --target staging
+npx supaschema --env staging sync --target staging
+npx supaschema sync --target staging --runner direct
 ```
 
-`workflow.migration_sync` must allow explicit handoff. No config value makes apply automatic.
+`sync.targets` controls target selection. `workflow.migration_sync` only controls whether apply is allowed and whether bare `sync` may select automatic targets: `disabled` refuses apply, `manual` leaves bare `sync` on the dry-run gate, and `auto` lets bare `sync` use targets whose own `mode` is `"auto"`. `--target <name>` is an explicit override for one configured target.
 
 ## Flags
 
@@ -36,12 +36,22 @@ npx supaschema sync --env staging
   Target database used for history reconciliation.
 </ParamField>
 
-<ParamField path="--local" type="boolean">
-  Apply pending migrations with `supabase migration up`.
+<ParamField path="--target" type="name">
+  Override config-selected targets with one configured `sync.targets.<name>`
+  target.
 </ParamField>
 
-<ParamField path="--remote" type="boolean">
-  Push pending migrations with `supabase db push`.
+<ParamField path="--runner" type="direct | supabase-cli">
+  Override the configured runner for the selected target.
+</ParamField>
+
+<ParamField path="--no-diff" type="boolean">
+  Skip schema diff generation and generated TypeScript/Zod refresh. Pending
+  migrations are still reconciled and checked.
+</ParamField>
+
+<ParamField path="sync.targets.<name>.runner" type="direct | supabase-cli">
+  Target runner configured in `supaschema.config.json`.
 </ParamField>
 
 ## Refusal cases
@@ -51,8 +61,11 @@ npx supaschema sync --env staging
 - migration history has ghost versions;
 - migration files are out of order;
 - a pending migration fails `check`;
-- the Supabase CLI is unavailable;
-- `workflow.migration_sync` disables apply handoff.
+- the selected runner is unavailable;
+- `workflow.migration_sync` disables apply;
+- deploy type-safety or RLS-safety gates fail;
+- `--env` or `--database-url` attempts to override more than one selected target;
+- a remote automatic target lacks its configured runtime approval environment variable.
 
 ## Exit codes
 

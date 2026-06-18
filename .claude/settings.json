@@ -60,8 +60,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre_tool_guard.sh",
-            "args": [],
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guards/bash-policy-checks.mjs"
+            ],
             "timeout": 10
           }
         ]
@@ -71,9 +73,14 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
+            "command": "npx",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-generated-migration-edits.mjs"
+              "--no-install",
+              "supaschema",
+              "hook",
+              "generated-migration-edit",
+              "--runtime",
+              "claude"
             ],
             "timeout": 10
           }
@@ -99,9 +106,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
+            "command": "npx",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/auto-diff-on-schema-change.mjs"
+              "--no-install",
+              "supaschema",
+              "hook",
+              "schema-write"
             ],
             "timeout": 130
           }

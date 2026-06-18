@@ -148,8 +148,7 @@ $$;`,
 function entityStatements(index: number, mutated: boolean): string[] {
   const table = `entity_${String(index).padStart(3, "0")}`;
   const qualified = `app.${table}`;
-  // Added columns go last so ALTER TABLE ADD COLUMN reproduces the same
-  // catalog column order as applying the target tree directly.
+
   const externalRef =
     mutated && index % 3 === 1 ? ",\n  external_ref text DEFAULT ''::text NOT NULL" : "";
   const statements = [

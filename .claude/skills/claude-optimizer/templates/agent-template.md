@@ -27,7 +27,7 @@ Do not:
 Workflow:
 1. Restate the assigned slice in one sentence.
 2. Read the relevant files and commands first.
-3. Make the smallest complete change, or report findings if assigned read-only work.
+3. Reach the smallest correct end state, or report findings if assigned read-only work.
 4. Run only the closeout command specified by the parent.
 5. Return changed files, evidence, closeout result, and blockers.
 

@@ -1,12 +1,12 @@
 # yaml-language-server: $schema=https://www.schemastore.org/github-action.json
 name: supaschema
-description: Run supaschema gates (drift detection, migration check, verify) against a declarative SQL tree.
+description: Run supaschema CLI gates or the config-gated sync pipeline against a declarative SQL tree.
 branding:
   color: blue
   icon: git-merge
 inputs:
   argv:
-    description: JSON array of argv entries passed to supaschema, excluding the binary name (e.g. ["diff","--fail-on-diff","--quiet"]).
+    description: JSON array of argv entries passed to supaschema, excluding the binary name (e.g. ["diff","--fail-on-diff","--quiet"] or ["sync","--target","remote"]).
     required: true
   version:
     description: Exact supaschema npm version to run.

@@ -61,8 +61,6 @@ function renderRenameStatement(before: ObjectRef, after: ObjectRef): string {
   }
 }
 
-// Guard bodies schema-qualify every catalog reference so a hostile or
-// unusual search_path cannot redirect the existence check.
 function existsExpression(object: SchemaObject): string {
   const ref = object.ref;
   if (ref.kind === "schema") {
@@ -87,8 +85,6 @@ END
 $supaschema$;`;
 }
 
-// CREATE FOREIGN DATA WRAPPER has no IF NOT EXISTS form, so replay safety
-// comes from a catalog-guarded DO block like types use.
 export function renderFdwGuard(object: SchemaObject): string {
   const catalogCheck = `SELECT 1 FROM pg_catalog.pg_foreign_data_wrapper WHERE fdwname = ${quoteLiteral(object.ref.name)}`;
   return `DO $supaschema$

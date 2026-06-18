@@ -26,10 +26,6 @@ export function catalogFingerprint(url) {
   return dbAdmin.catalogFingerprint(url, "bench:catalog");
 }
 
-// The Supabase CLI's diff engines silently omit objects owned by
-// supabase_admin (empty diff, exit 0). After seeding as the admin (which
-// extension creation requires), hand every user-schema object to `role` so
-// the engines can see them.
 export async function transferOwnership(url, role) {
   const client = new Client({ connectionString: url });
   const owner = quoteIdent(role);

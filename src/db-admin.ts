@@ -4,8 +4,6 @@ import { fingerprintObjects } from "./hash.js";
 import { quoteIdent } from "./sql/identifiers.js";
 import { splitSqlStatements } from "./sql/split.js";
 
-const leadingSlashPattern = /^\//;
-
 export interface CreateTemporaryDatabasesOptions {
   purpose?: string;
   templateName?: string;
@@ -13,7 +11,7 @@ export interface CreateTemporaryDatabasesOptions {
 
 export function tempDatabaseName(purpose: string, index = 0): string {
   const suffix = `${process.pid}_${Date.now()}_${index}_${Math.random().toString(16).slice(2)}`;
-  return `supaschema_${purpose}_${suffix}`.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 60);
+  return sanitizeDatabaseName(`supaschema_${purpose}_${suffix}`).slice(0, 60);
 }
 
 export function databaseUrlWithDatabase(databaseUrl: string, databaseName: string): string {
@@ -22,12 +20,28 @@ export function databaseUrlWithDatabase(databaseUrl: string, databaseName: strin
   return url.toString();
 }
 
-/**
- * Concurrent CREATE DATABASE calls cloning the same template fail with
- * SQLSTATE 55006 ("source database is being accessed by other users");
- * parallel CI lanes and test workers hit this routinely, so creation
- * retries with backoff instead of failing on the first collision.
- */
+function sanitizeDatabaseName(value: string): string {
+  let output = "";
+  for (const char of value) {
+    output += isDatabaseNameChar(char) ? char : "_";
+  }
+  return output;
+}
+
+function isDatabaseNameChar(char: string): boolean {
+  return isAsciiLetter(char) || isDigit(char) || char === "_";
+}
+
+function isAsciiLetter(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isDigit(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
+}
+
 export async function createDatabaseWithRetry(
   admin: Pick<Client, "query">,
   statement: string,
@@ -92,7 +106,8 @@ export async function dropTemporaryDatabases(adminUrl: string, urls: string[]): 
   try {
     await admin.connect();
     for (const url of [...urls].reverse()) {
-      const databaseName = new URL(url).pathname.replace(leadingSlashPattern, "");
+      const pathname = new URL(url).pathname;
+      const databaseName = pathname.startsWith("/") ? pathname.slice(1) : pathname;
       await admin
         .query(
           "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
@@ -134,25 +149,27 @@ export async function applySql(databaseUrl: string, sql: string): Promise<void> 
   const client = new Client({ connectionString: databaseUrl });
   try {
     await client.connect();
-    for (const statement of splitSqlStatements(sql)) {
-      await client.query(statement);
-    }
+    await applySqlStatements(client, sql);
   } finally {
     await client.end().catch(() => undefined);
   }
 }
 
-// One transaction per migration mirrors runners like `supabase db push`;
-// per-statement autocommit would mask transactional failures. An error
-// leaves the transaction uncommitted and ending the connection aborts it.
+export async function applySqlStatements(
+  client: Pick<Client, "query">,
+  sql: string
+): Promise<void> {
+  for (const statement of splitSqlStatements(sql)) {
+    await client.query(statement);
+  }
+}
+
 export async function applyMigrationSql(databaseUrl: string, sql: string): Promise<void> {
   const client = new Client({ connectionString: databaseUrl });
   try {
     await client.connect();
     await client.query("BEGIN");
-    for (const statement of splitSqlStatements(sql)) {
-      await client.query(statement);
-    }
+    await applySqlStatements(client, sql);
     await client.query("COMMIT");
   } finally {
     await client.end().catch(() => undefined);

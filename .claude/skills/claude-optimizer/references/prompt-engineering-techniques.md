@@ -146,7 +146,7 @@ Place security rules at multiple levels of the prompt hierarchy.
 
 **Why:** No single instruction is 100% reliable. Repeating constraints at different levels (root brief, rules, hooks, CI) creates redundancy.
 
-**Status:** [COVERED] — generated-migration protection is layered: `AGENTS.md` and `.claude/rules/supaschema.md` state the policy, the PreToolUse hook (`.claude/hooks/block-generated-migration-edits.mjs`) blocks edits to lineage-tagged SQL, the PostToolUse hook (`.claude/hooks/auto-diff-on-schema-change.mjs`) proves the diff, and CI gates (`npm run guard`, `npm run check:schema`, `npm run check:package`) provide the production gate.
+**Status:** [COVERED] — generated-migration protection is layered: `AGENTS.md` and `.claude/rules/supaschema.md` state the policy, the PreToolUse command (`supaschema hook generated-migration-edit`) blocks edits to lineage-tagged SQL, the PostToolUse command (`supaschema hook schema-write`) proves the diff, and CI gates (`npm run guard`, `npm run check:schema`, `npm run check:package`) provide the production gate.
 
 ### Technique 14: Prompt Injection Detection
 
@@ -262,7 +262,7 @@ Provide different instruction sets based on context or invoker.
 
 **Why:** Different contexts need different guidance. One-size-fits-all prompts satisfy nobody and waste tokens on irrelevant instructions.
 
-**Status:** [REFERENCE-ONLY] — for example, generation-lane guidance (`supaschema diff`/`check`/`verify`) differs from the gated operational lane (`supaschema sync --local|--remote`, which requires explicit human approval per `.claude/rules/01-operating-rules.md`). Generic authoring practice.
+**Status:** [REFERENCE-ONLY] — for example, generation-lane guidance (`supaschema diff`/`check`/`verify`) differs from the gated operational lane (`supaschema sync`, which uses configured target approval by default and accepts explicit override targets per `.claude/rules/supaschema.md`). Generic authoring practice.
 
 ### Technique 26: Model-Specific Tuning [REFERENCE-ONLY]
 

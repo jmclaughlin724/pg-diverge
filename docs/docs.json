@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "luma",
   "name": "supaschema",
-  "description": "From declarative PostgreSQL schema to replay-safe migrations and generated types in seconds. No ORM, no Docker, no shadow database.",
+  "description": "From declarative PostgreSQL schema to replay-safe migrations, generated types, Zod validators, and guarded sync in seconds. No ORM schema layer, no Docker, no shadow database.",
   "logo": {
     "light": "/images/brand/supaschema-logo-light.png",
     "dark": "/images/brand/supaschema-logo-dark.png",
@@ -144,6 +144,7 @@
             "expanded": false,
             "pages": [
               "concepts/declarative-schema",
+              "concepts/orm-free-applications",
               "concepts/migration-pipeline"
             ]
           }
@@ -220,6 +221,14 @@
         "icon": "gauge",
         "pages": [
           "comparisons/supaschema-vs-supabase-cli",
+          "comparisons/supaschema-vs-atlas",
+          "comparisons/supaschema-vs-prisma",
+          "comparisons/supaschema-vs-drizzle",
+          "comparisons/supaschema-vs-squawk",
+          "comparisons/supaschema-vs-pgfence",
+          "comparisons/supaschema-vs-flyway",
+          "comparisons/supaschema-vs-liquibase",
+          "comparisons/atlas-migrate-lint-paid-alternatives",
           "benchmarks",
           "case-study-anilize",
           "guides/corpus-oracle"
@@ -322,6 +331,38 @@
     {
       "source": "/supaschema-vs-supabase-cli",
       "destination": "/comparisons/supaschema-vs-supabase-cli"
+    },
+    {
+      "source": "/atlas-migrate-lint-paid-alternatives",
+      "destination": "/comparisons/atlas-migrate-lint-paid-alternatives"
+    },
+    {
+      "source": "/supaschema-vs-atlas",
+      "destination": "/comparisons/supaschema-vs-atlas"
+    },
+    {
+      "source": "/supaschema-vs-prisma",
+      "destination": "/comparisons/supaschema-vs-prisma"
+    },
+    {
+      "source": "/supaschema-vs-drizzle",
+      "destination": "/comparisons/supaschema-vs-drizzle"
+    },
+    {
+      "source": "/supaschema-vs-squawk",
+      "destination": "/comparisons/supaschema-vs-squawk"
+    },
+    {
+      "source": "/supaschema-vs-pgfence",
+      "destination": "/comparisons/supaschema-vs-pgfence"
+    },
+    {
+      "source": "/supaschema-vs-flyway",
+      "destination": "/comparisons/supaschema-vs-flyway"
+    },
+    {
+      "source": "/supaschema-vs-liquibase",
+      "destination": "/comparisons/supaschema-vs-liquibase"
     },
     {
       "source": "/concepts",

@@ -12,7 +12,7 @@ This FAQ gives short, citation-friendly answers about `supaschema`: what it is, 
 
 ## Does supaschema work outside Supabase?
 
-Yes. supaschema works with PostgreSQL 15+ targets, including plain PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, and Supabase. It writes normal SQL migration files; your existing runner applies them.
+Yes. supaschema works with PostgreSQL 15+ targets, including plain PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, and Supabase. `supaschema sync` can apply generated migration files through configured direct PostgreSQL or Supabase CLI targets; teams with a separate deployment owner can still apply the generated SQL through that runner.
 
 ## Is supaschema affiliated with Supabase?
 
@@ -20,7 +20,7 @@ No. `supaschema` is an independent open-source project for PostgreSQL projects o
 
 ## Does supaschema apply migrations to my database?
 
-No. `supaschema` is a generator and prover. It writes migration files, checks them for replay safety, and can verify them in disposable databases. Your existing migration runner applies the final SQL to real environments.
+Yes, through `supaschema sync` when you select an apply target explicitly or configure approved automatic targets. `sync` still runs the generation, generated-output refresh, replay-safety, type-safety, RLS-safety, and target-reconciliation gates before it mutates a database. Remote automatic targets require an approval environment variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1`.
 
 ## Does supaschema need Docker or a shadow database?
 
@@ -35,6 +35,12 @@ For a deeper comparison, see [supaschema vs Supabase CLI](/comparisons/supaschem
 ## Can supaschema generate TypeScript types without a database?
 
 Yes. `supaschema types` emits a `database.types.ts` shape compatible with the Supabase client plus `database.zod.ts` directly from the declarative schema tree. You can use those generated types and validators in any TypeScript app; it does not need a live database or a previously applied migration.
+
+## Do I still need an ORM?
+
+No for schema ownership, migration generation, generated TypeScript types, runtime validators, guarded apply, type-safety checks, or RLS-safety checks. Use the generated `database.types.ts` and `database.zod.ts` contracts with your PostgreSQL driver or platform client. Add an ORM or query builder only when you specifically want its query-construction API.
+
+See [ORM-free applications](/concepts/orm-free-applications) for the directive.
 
 ## What makes a migration replay-safe?
 

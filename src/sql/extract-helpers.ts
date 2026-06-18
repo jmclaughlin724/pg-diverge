@@ -97,12 +97,6 @@ function alterTableCommandObject(
   return;
 }
 
-/**
- * Reads the OWNED BY target from ALTER SEQUENCE options: `null` for
- * OWNED BY NONE, the dotted column path otherwise, `undefined` when the
- * statement carries no owned_by option (other ALTER SEQUENCE forms stay
- * unsupported).
- */
 export function sequenceOwnedByOption(options: unknown): string | null | undefined {
   for (const item of readArray(options)) {
     const defElem = asRecord(asRecord(item)?.DefElem);

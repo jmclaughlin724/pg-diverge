@@ -54,6 +54,9 @@
       "type": "http",
       "url": "https://developers.openai.com/mcp"
     },
+    "stripe": {
+      "url": "https://mcp.stripe.com"
+    },
     "ultracite": {
       "type": "http",
       "url": "https://docs.ultracite.ai/mcp"

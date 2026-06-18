@@ -18,7 +18,7 @@ paths:
 
 ## Contract
 
-This rule owns the repo-wide security baseline: no secrets in source, commands, logs, examples, package artifacts, MCP output, generated diagnostics, or docs; external calls and shell execution must fail closed and redact sensitive values.
+This rule owns the repo-wide security baseline: no secrets in source, commands, logs, examples, package artifacts, MCP output, generated diagnostics, or docs; external calls and shell execution must fail closed and redact sensitive values. Rule 20 owns the consolidated anti-pattern index for security violations.
 
 ## Rules
 
@@ -54,7 +54,7 @@ npm run guard
 npm run check:package
 ```
 
-For FastMCP changes, add `npm run guard:fastmcp` and Python checks. For docs examples, add `npm run docs:check`.
+For FastMCP changes, add `npm run guard:fastmcp` and Python checks. For docs examples, add `npm run docs:check`. For security anti-pattern changes, update Rule 20 in the same change.
 
 ## Failure behavior
 

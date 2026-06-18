@@ -100,7 +100,7 @@ retrieval:
 
 ## Quick Copy Template
 
-Minimal template for new skills. Keep deterministic routing in active `metadata.*` fields; add guards or tests for enforcement.
+Focused template for new skills. Keep deterministic routing in active `metadata.*` fields; add guards or tests for enforcement.
 
 ```yaml
 ---

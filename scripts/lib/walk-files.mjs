@@ -1,6 +1,3 @@
-// Shared file walker for the native-formatter lanes (sh-syntax, taplo). Regex-free
-// per Rule 07. Skips dependency, build, cache, and scratch directories so a default
-// whole-repo run never reaches node_modules or generated output.
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 

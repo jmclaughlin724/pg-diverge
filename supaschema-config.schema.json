@@ -39,7 +39,14 @@
       "description": "Controls whether destructive operations require exact hints, always block, or are allowed."
     },
     "environments": {
-      "default": {},
+      "default": {
+        "local": {
+          "databaseUrl": "$LOCAL_DATABASE_URL"
+        },
+        "production": {
+          "databaseUrl": "$PRODUCTION_DATABASE_URL"
+        }
+      },
       "type": "object",
       "propertyNames": {
         "type": "string"
@@ -58,6 +65,14 @@
       },
       "description": "Named database URL references used by --env. Store credentials in environment variables.",
       "examples": [
+        {
+          "local": {
+            "databaseUrl": "$LOCAL_DATABASE_URL"
+          },
+          "production": {
+            "databaseUrl": "$PRODUCTION_DATABASE_URL"
+          }
+        },
         {
           "staging": {
             "databaseUrl": "$STAGING_DB"
@@ -134,7 +149,9 @@
         "schema_diff": "on_schema_write",
         "migration_check": "after_schema_diff",
         "migration_verify": "suggest_after_check",
-        "migration_sync": "explicit_request_only",
+        "migration_sync": "auto",
+        "type_safety": "deploy_blocking",
+        "rls_safety": "deploy_blocking",
         "type_generation": "create_or_refresh",
         "zod_generation": "create_or_refresh",
         "type_usage": "zod_validated"
@@ -172,13 +189,34 @@
           "description": "Controls whether agents should only suggest verification or run it automatically when a database is available."
         },
         "migration_sync": {
-          "default": "explicit_request_only",
+          "default": "auto",
           "type": "string",
           "enum": [
             "disabled",
-            "explicit_request_only"
+            "manual",
+            "auto"
           ],
-          "description": "Controls whether supaschema sync may hand off pending migrations to the Supabase CLI when an explicit apply flag is used."
+          "description": "Controls whether supaschema sync refuses apply, only applies explicit --target overrides, or uses sync.targets entries whose mode is \"auto\"."
+        },
+        "type_safety": {
+          "default": "deploy_blocking",
+          "type": "string",
+          "enum": [
+            "disabled",
+            "report_only",
+            "deploy_blocking"
+          ],
+          "description": "Controls whether sync type-contract diagnostics are disabled, reported only, or block deploy."
+        },
+        "rls_safety": {
+          "default": "deploy_blocking",
+          "type": "string",
+          "enum": [
+            "disabled",
+            "report_only",
+            "deploy_blocking"
+          ],
+          "description": "Controls whether sync RLS and least-privilege diagnostics are disabled, reported only, or block deploy."
         },
         "type_generation": {
           "default": "create_or_refresh",
@@ -211,7 +249,114 @@
         }
       },
       "additionalProperties": false,
-      "description": "Agent and hook workflow policy for schema diffs, migration checks, verification, explicit migration sync, and generated type/Zod output refresh."
+      "description": "Agent and hook workflow policy for schema diffs, migration checks, verification, sync automation, deploy safety gates, and generated type/Zod output refresh."
+    },
+    "sync": {
+      "default": {
+        "targets": {
+          "local": {
+            "mode": "auto",
+            "runner": "direct",
+            "environment": "local",
+            "historyTable": "supabase_migrations.schema_migrations"
+          },
+          "remote": {
+            "mode": "manual",
+            "runner": "direct",
+            "environment": "production",
+            "historyTable": "supabase_migrations.schema_migrations",
+            "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+            "remote": true
+          }
+        }
+      },
+      "type": "object",
+      "properties": {
+        "targets": {
+          "default": {
+            "local": {
+              "mode": "auto",
+              "runner": "direct",
+              "environment": "local",
+              "historyTable": "supabase_migrations.schema_migrations"
+            },
+            "remote": {
+              "mode": "manual",
+              "runner": "direct",
+              "environment": "production",
+              "historyTable": "supabase_migrations.schema_migrations",
+              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+              "remote": true
+            }
+          },
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "historyTable": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "manual",
+                  "auto"
+                ]
+              },
+              "remote": {
+                "type": "boolean"
+              },
+              "requireApprovalEnv": {
+                "type": "string"
+              },
+              "runner": {
+                "type": "string",
+                "enum": [
+                  "direct",
+                  "supabase-cli"
+                ]
+              },
+              "databaseUrl": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "historyTable",
+              "mode",
+              "runner"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Named migration sync targets. Each target selects a runner, URL owner, history table, and manual or automatic mode.",
+      "examples": [
+        {
+          "targets": {
+            "local": {
+              "mode": "auto",
+              "runner": "direct",
+              "environment": "local",
+              "historyTable": "supabase_migrations.schema_migrations"
+            },
+            "remote": {
+              "mode": "manual",
+              "runner": "direct",
+              "environment": "production",
+              "historyTable": "supabase_migrations.schema_migrations",
+              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+              "remote": true
+            }
+          }
+        }
+      ]
     },
     "migrationsDir": {
       "default": "database/migrations",

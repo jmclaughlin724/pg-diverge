@@ -1,16 +1,6 @@
 import type { Diagnostic, ObjectKind } from "./core.js";
 import type { SchemaEntry, SchemaShapes, TableShape } from "./typegen-model.js";
 
-/**
- * Type-contract breaking-change gate core (plan `10-pack-type-contract-gate.md`,
- * task P10 — the most-defensible OPEN pack: no competitor diffs the generated
- * TS/Zod surface). Pure structural diff of two `SchemaShapes` (before vs after,
- * both produced by `collectSchemaShapes`). Breaking deltas — removed table, removed
- * column, changed column type, removed enum value — emit `error` diagnostics so a
- * `--enforce` gate fails the PR; additive changes are silent. AST/model fidelity,
- * no live DB. Command wiring (collect both surfaces, gate) is the follow-on.
- */
-
 function breaking(
   code: string,
   kind: ObjectKind,

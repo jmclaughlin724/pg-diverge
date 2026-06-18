@@ -8,24 +8,31 @@ import { hasErrors } from "./diagnostics.js";
 import { isEntitledFromEnv } from "./license.js";
 import { migrationsStatus, renderMigrationsStatus } from "./migrations-status.js";
 import { buildReadinessReport, classifyMigrationSystems, renderReadiness } from "./onboard.js";
+import { evaluateTypeContract, scanSchemaSafety } from "./pipeline-services.js";
 import { redactSecrets } from "./redaction.js";
 import { buildRemediationPlan } from "./remediation.js";
-import { grantPack, grantPolicyRule, hygienePack, type RulePack, rlsPack } from "./rules.js";
-import { renderScan, type ScanResult, scanModel, scoreGrade } from "./scan.js";
+import { renderScan, scoreGrade } from "./scan.js";
 import { extractSourceModel } from "./source.js";
-import { syncMigrations } from "./sync.js";
-import { diffTypeContract } from "./type-contract.js";
-import { collectSchemaShapes } from "./typegen-model.js";
+import { syncMigrations } from "./workflow.js";
 
 export interface ReportCommandContext {
+  cliVersion: string;
+  globalEnvName: () => string | undefined;
   loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
   resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
 }
 
+interface SyncCommandOptions {
+  databaseUrl?: string;
+  diff?: boolean;
+  migrationsDir?: string;
+  runner?: string;
+  target?: string;
+}
+
 const VALID_REPORTERS = new Set<CheckReporter>(["text", "json", "github", "sarif"]);
 
-/** Validate a `--reporter` value; write an error and return null on an unknown one. */
 function resolveReporter(value: string | undefined): CheckReporter | null {
   const reporter = (value ?? "text") as CheckReporter;
   if (!VALID_REPORTERS.has(reporter)) {
@@ -35,23 +42,6 @@ function resolveReporter(value: string | undefined): CheckReporter | null {
     return null;
   }
   return reporter;
-}
-
-const SCAN_PACKS = [grantPack, hygienePack, rlsPack];
-
-/** Resolve a scan source (defaulting to the declarative tree) and run the rule packs. */
-async function scanFromSource(
-  config: SupaschemaConfig,
-  from: string | undefined
-): Promise<{ result: ScanResult; source: string }> {
-  const source = from ?? config.sources.to;
-  const model = await extractSourceModel(source, { config });
-  const rolePolicyPack: RulePack = {
-    id: "role-policy",
-    rules: [grantPolicyRule(config.hints.allowedGrantees)],
-    version: "0.1.0",
-  };
-  return { result: scanModel(model, [...SCAN_PACKS, rolePolicyPack]), source };
 }
 
 export function registerReportCommands(program: Command, context: ReportCommandContext): void {
@@ -86,7 +76,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
         process.exitCode = 2;
         return;
       }
-      const { result, source } = await scanFromSource(config, options.from);
+      const { result, source } = await scanSchemaSafety(config, options.from);
       if (reporter === "text") {
         process.stdout.write(
           `Postgres safety score: ${result.score}/100 (${scoreGrade(result.score)})\n`
@@ -110,7 +100,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .action(async (options: { from?: string }) => {
       const config = await context.loadCliConfig();
       const systems = classifyMigrationSystems(process.cwd());
-      const { result } = await scanFromSource(config, options.from);
+      const { result } = await scanSchemaSafety(config, options.from);
       const readiness = buildReadinessReport(systems, result, scoreGrade(result.score));
       process.stdout.write(`${renderReadiness(readiness)}\n`);
       if (!readiness.ready && result.diagnostics.length > 0) {
@@ -143,30 +133,24 @@ export function registerReportCommands(program: Command, context: ReportCommandC
         }
         const fromSource = options.from ?? "git:HEAD";
         const toSource = options.to ?? config.sources.to;
-        const [beforeModel, afterModel] = await Promise.all([
-          extractSourceModel(fromSource, { config }),
-          extractSourceModel(toSource, { config }),
-        ]);
-        const [before, after] = await Promise.all([
-          collectSchemaShapes(beforeModel),
-          collectSchemaShapes(afterModel),
-        ]);
-        const sourceDiagnostics = [...beforeModel.diagnostics, ...afterModel.diagnostics];
-        const diagnostics = diffTypeContract(before, after);
+        const contract = await evaluateTypeContract({ config, fromSource, toSource });
         const report = renderCheckReport(
           reporter,
           [
-            { diagnostics: beforeModel.diagnostics, file: fromSource },
-            { diagnostics: afterModel.diagnostics, file: toSource },
-            { diagnostics, file: toSource },
+            { diagnostics: contract.beforeDiagnostics, file: fromSource },
+            { diagnostics: contract.afterDiagnostics, file: toSource },
+            { diagnostics: contract.diagnostics, file: toSource },
           ].filter((entry) => entry.diagnostics.length > 0)
         );
         process.stdout.write(redactSecrets(report));
-        if (sourceDiagnostics.some((item) => item.severity === "error")) {
+        if (contract.sourceDiagnostics.some((item) => item.severity === "error")) {
           process.exitCode = 2;
           return;
         }
-        if (!diagnostics.some((item) => item.severity === "error") || options.enforce !== true) {
+        if (
+          !contract.diagnostics.some((item) => item.severity === "error") ||
+          options.enforce !== true
+        ) {
           return;
         }
         if (isEntitledFromEnv(process.env, Math.floor(Date.now() / 1000))) {
@@ -252,32 +236,54 @@ export function registerReportCommands(program: Command, context: ReportCommandC
       "--database-url <url>",
       "target whose applied history gates the sync (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)"
     )
-    .option("--local", "apply pending migrations to the target via `supabase migration up`")
-    .option("--remote", "push pending migrations to the linked project via `supabase db push`")
+    .option("--target <name>", "override config-selected sync targets")
+    .option("--runner <runner>", "direct | supabase-cli")
+    .option("--no-diff", "skip schema diff generation and generated output refresh")
     .description(
-      "Gate and apply pending migrations: status + replay-safety checks, then the Supabase CLI runs the actual apply/deploy. Dry run without --local/--remote."
+      "Run the sync pipeline: schema diff, generated outputs, safety gates, target reconciliation, and selected runner apply/deploy."
     )
-    .action(
-      async (options: {
-        databaseUrl?: string;
-        local?: boolean;
-        migrationsDir?: string;
-        remote?: boolean;
-      }) => {
-        const config = await context.loadCliConfig();
-        const databaseUrl = await context.resolveCliDatabaseUrl(options.databaseUrl);
-        const result = await syncMigrations({
-          config,
-          directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
-          ...(databaseUrl === undefined ? {} : { databaseUrl }),
-          ...(options.local === true ? { local: true } : {}),
-          ...(options.remote === true ? { remote: true } : {}),
-        });
-        context.printDiagnostics(result.diagnostics);
-        process.stdout.write(result.report);
-        if (hasErrors(result.diagnostics)) {
-          process.exitCode = 2;
-        }
-      }
+    .action((options: SyncCommandOptions) => runSyncCommand(options, context));
+}
+
+function resolveSyncRunner(value: string | undefined): "direct" | "supabase-cli" | undefined {
+  if (value === undefined) {
+    return;
+  }
+  return value === "direct" || value === "supabase-cli" ? value : undefined;
+}
+
+async function runSyncCommand(
+  options: SyncCommandOptions,
+  context: ReportCommandContext
+): Promise<void> {
+  const config = await context.loadCliConfig();
+  const runner = resolveSyncRunner(options.runner);
+  if (runner === undefined && options.runner !== undefined) {
+    process.stderr.write(
+      `supaschema: unknown --runner "${options.runner}" (use direct|supabase-cli)\n`
     );
+    process.exitCode = 2;
+    return;
+  }
+  const hasSelectedTarget = options.target !== undefined;
+  const databaseUrl = hasSelectedTarget
+    ? options.databaseUrl
+    : await context.resolveCliDatabaseUrl(options.databaseUrl);
+  const envName = context.globalEnvName();
+  const result = await syncMigrations({
+    cliVersion: context.cliVersion,
+    config,
+    directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
+    ...(databaseUrl === undefined ? {} : { databaseUrl }),
+    ...(envName === undefined ? {} : { envName }),
+    pipeline: true,
+    ...(runner === undefined ? {} : { runner }),
+    skipDiff: options.diff === false,
+    ...(options.target === undefined ? {} : { target: options.target }),
+  });
+  context.printDiagnostics(result.diagnostics);
+  process.stdout.write(result.report);
+  if (hasErrors(result.diagnostics)) {
+    process.exitCode = 2;
+  }
 }

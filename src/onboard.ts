@@ -3,16 +3,7 @@ import { join } from "node:path";
 import { redactSecrets } from "./redaction.js";
 import type { ScanResult } from "./scan.js";
 
-/**
- * Migration-system detector (plan `04-adoption-audit-migration-rescue.md` and the
- * X52 onboarding wizard). Detects the incumbent migration tooling in a repo from
- * deterministic marker files — the signatures documented in plan 04. Pure
- * filesystem checks (no parsing, no DB), so adoption/rescue intake can classify the
- * starting state without guessing. Two or more results means a mixed workflow.
- */
-
 interface MigrationSystemSignature {
-  /** Relative marker paths; presence of any one identifies the system. */
   markers: string[];
   name: string;
 }
@@ -28,7 +19,6 @@ const SIGNATURES: MigrationSystemSignature[] = [
   { markers: ["supaschema.config.json"], name: "supaschema" },
 ];
 
-/** Return every migration system whose marker files are present under `rootDir`. */
 export function detectMigrationSystems(rootDir: string): string[] {
   const detected: string[] = [];
   for (const signature of SIGNATURES) {
@@ -40,7 +30,6 @@ export function detectMigrationSystems(rootDir: string): string[] {
 }
 
 export interface MigrationSystemReport {
-  /** True when more than one migration system is detected. */
   mixed: boolean;
   systems: string[];
 }
@@ -61,7 +50,6 @@ export interface ReadinessReport {
   score: number;
 }
 
-/** Combine migration-system detection and the safety scan into a readiness verdict. */
 export function buildReadinessReport(
   systems: MigrationSystemReport,
   scan: ScanResult,
@@ -77,7 +65,6 @@ export function buildReadinessReport(
   };
 }
 
-/** Human-readable, credential-redacted readiness summary (a shareable bundle). */
 export function renderReadiness(report: ReadinessReport): string {
   const systems =
     report.migrationSystems.length > 0 ? report.migrationSystems.join(", ") : "none detected";

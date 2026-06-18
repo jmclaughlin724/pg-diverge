@@ -5,9 +5,9 @@ import { svgFooter, svgHeader, text, theme } from "./plot-lib.js";
 
 const width = 1200;
 const palette = {
-  neutral: { fill: "rgba(82,96,121,0.16)", stroke: theme.slateBar, title: theme.text },
-  warn: { fill: "rgba(248,113,113,0.10)", stroke: theme.failStroke, title: "#fca5a5" },
-  good: { fill: "rgba(16,185,129,0.10)", stroke: theme.passStroke, title: theme.accent },
+  neutral: { fill: theme.neutralFill, stroke: theme.slateBar, title: theme.text },
+  warn: { fill: theme.failFill, stroke: theme.failStroke, title: theme.fail },
+  good: { fill: theme.passFill, stroke: theme.passStroke, title: theme.accent },
 };
 
 function node(x, y, w, h, item) {
@@ -24,7 +24,7 @@ function node(x, y, w, h, item) {
   ];
   if (item.tag) {
     const tagColor = item.kind === "warn" ? theme.fail : theme.accent;
-    const tagFill = item.kind === "warn" ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)";
+    const tagFill = item.kind === "warn" ? theme.failFill : theme.passFill;
     const tagWidth = 12 + item.tag.length * 6.6;
     const tagX = x + w / 2 - tagWidth / 2;
     parts.push(
@@ -116,7 +116,7 @@ const legacy = renderFlow({
   },
   callout: {
     color: theme.failStroke,
-    fill: "rgba(248,113,113,0.08)",
+    fill: theme.failFill,
     label:
       "RLS policies are diffed by name — a tightened USING predicate can be dropped silently, shipping a tenant-isolation hole.",
   },
@@ -142,7 +142,7 @@ const supaschema = renderFlow({
   },
   callout: {
     color: theme.passStroke,
-    fill: "rgba(52,211,153,0.08)",
+    fill: theme.passFill,
     label:
       "Policy bodies are compared structurally, so the tenant-isolation regression every CLI engine misses is caught before it merges.",
   },

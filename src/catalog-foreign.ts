@@ -9,12 +9,6 @@ interface CatalogQuery {
   ) => Promise<{ rows: Row[] }>;
 }
 
-/**
- * Whole-object FDW tier: servers and foreign tables are modeled by their
- * complete definition (no column-level diffing). Server and column options
- * are reconstructed from catalog option arrays; user mappings are excluded
- * because they carry credentials.
- */
 export async function collectForeignObjects(pool: CatalogQuery): Promise<SchemaObject[]> {
   const objects: SchemaObject[] = [];
   const wrappers = await pool.query<Record<string, unknown>>(`

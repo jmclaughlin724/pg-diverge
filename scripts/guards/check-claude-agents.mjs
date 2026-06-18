@@ -1,13 +1,10 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { list, parseFrontmatter, scalar } from "../lib/frontmatter.mjs";
 import { assert, ok, ROOT, readJson } from "./lib/guard-utils.js";
 
 const forbiddenFragments = ["Anilize", "anilize", "@anilize", "anilize-code-map"];
-const frontmatterLinePattern = /\r?\n/;
-const listItemPattern = /^\s+-\s+(.+)\s*$/;
-const listStartPattern = /^([A-Za-z][A-Za-z0-9]*):\s*$/;
-const namePattern = /^[a-z][a-z0-9-]*$/;
 const permissionModes = new Set([
   "default",
   "acceptEdits",
@@ -16,7 +13,6 @@ const permissionModes = new Set([
   "bypassPermissions",
   "plan",
 ]);
-const scalarLinePattern = /^([A-Za-z][A-Za-z0-9]*):\s*(.+)\s*$/;
 const agentDir = path.join(ROOT, ".claude/agents");
 const skillDir = path.join(ROOT, ".claude/skills");
 const enabledMcpServers = new Set(readJson(".claude/settings.json").enabledMcpjsonServers ?? []);
@@ -32,13 +28,13 @@ for (const fileName of listMarkdownFiles(agentDir)) {
     assert(!text.includes(fragment), `${relativePath} must not reference ${fragment}`);
   }
 
-  const frontmatter = parseFrontmatter(text, relativePath);
+  const frontmatter = parseFrontmatter(text, relativePath).frontmatter;
   const name = scalar(frontmatter, "name");
   const description = scalar(frontmatter, "description");
   const permissionMode = scalar(frontmatter, "permissionMode");
   assert(name !== undefined, `${relativePath} missing required name`);
   assert(description !== undefined, `${relativePath} missing required description`);
-  assert(namePattern.test(name ?? ""), `${relativePath} name must be lowercase kebab-case`);
+  assert(isKebabName(name ?? ""), `${relativePath} name must be lowercase kebab-case`);
   assert(
     permissionMode === undefined || permissionModes.has(permissionMode),
     `${relativePath} permissionMode must be one of ${[...permissionModes].join(", ")}`
@@ -75,50 +71,20 @@ function listDirectories(dir) {
     .sort();
 }
 
-function parseFrontmatter(text, relativePath) {
-  const lines = text.split(frontmatterLinePattern);
-  assert(lines[0] === "---", `${relativePath} must start with YAML frontmatter`);
-  const out = new Map();
-  let currentList;
-  for (let index = 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (line === "---") {
-      return out;
-    }
-    const listItem = line.match(listItemPattern);
-    if (currentList && listItem) {
-      out.get(currentList).push(unquote(listItem[1] ?? ""));
-      continue;
-    }
-    const listStart = line.match(listStartPattern);
-    if (listStart) {
-      currentList = listStart[1];
-      out.set(currentList, []);
-      continue;
-    }
-    const scalarLine = line.match(scalarLinePattern);
-    if (scalarLine) {
-      currentList = undefined;
-      out.set(scalarLine[1], unquote(scalarLine[2] ?? ""));
-      continue;
-    }
-    if (!line.startsWith(" ") && line.trim() !== "") {
-      currentList = undefined;
-    }
-  }
-  assert(false, `${relativePath} frontmatter is not closed`);
+function isKebabName(value) {
+  return value.length > 0 && isLowercaseAscii(value[0] ?? "") && [...value].every(isKebabChar);
 }
 
-function scalar(frontmatter, key) {
-  const value = frontmatter.get(key);
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+function isKebabChar(char) {
+  return isLowercaseAscii(char) || isDigit(char) || char === "-";
 }
 
-function list(frontmatter, key) {
-  const value = frontmatter.get(key);
-  return Array.isArray(value) ? value : [];
+function isLowercaseAscii(char) {
+  const code = char.charCodeAt(0);
+  return code >= 97 && code <= 122;
 }
 
-function unquote(value) {
-  return value.trim().replace(/^["']|["']$/g, "");
+function isDigit(char) {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }

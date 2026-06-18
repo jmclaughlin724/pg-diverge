@@ -8,3 +8,19 @@ compatibility_flags = ["nodejs_compat"]
 #   SUPASCHEMA_LICENSE_PRIVATE_KEY  Ed25519 PKCS8 PEM; its public half is embedded
 #                                   in the CLI trusted public key constant.
 #   STRIPE_WEBHOOK_SECRET           Stripe endpoint signing secret (whsec_...).
+#   STRIPE_SECRET_KEY               Restricted API key (rk_...) for the /checkout
+#                                   route; scope it to Checkout Sessions: write only.
+
+# Non-secret /checkout config. STRIPE_PRICE_MAP is the operator plan->price map; the
+# prices come from `scripts/stripe/create-catalog.py` output and the mode must match
+# the price (one-time pack = "payment", annual = "subscription").
+[vars]
+CHECKOUT_CANCEL_URL = "https://supaschema.com/pricing"
+CHECKOUT_SUCCESS_URL = "https://supaschema.com/license"
+STRIPE_PRICE_MAP = "{\"type-contract\":{\"price\":\"price_REPLACE\",\"mode\":\"payment\"},\"grant-drift\":{\"price\":\"price_REPLACE\",\"mode\":\"payment\"},\"bundle\":{\"price\":\"price_REPLACE\",\"mode\":\"payment\"},\"annual\":{\"price\":\"price_REPLACE\",\"mode\":\"subscription\"}}"
+
+# Stores issued license tokens by Stripe session id (the /license route reads it).
+# Create the namespace once and paste the id:  wrangler kv namespace create LICENSE_KV
+[[kv_namespaces]]
+binding = "LICENSE_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

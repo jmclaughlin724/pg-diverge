@@ -7,24 +7,31 @@ export const fixtureScale = {
 };
 
 export const theme = {
-  accent: "#34d399",
-  accentDeep: "#059669",
-  amber: "#fbbf24",
-  bg: "#0b1220",
-  fail: "#f87171",
-  failStroke: "#ef4444",
-  grid: "#1e293b",
-  muted: "#64748b",
-  pass: "#34d399",
-  passStroke: "#10b981",
-  slateBar: "#526079",
-  slateBarDeep: "#3b4757",
-  subtitle: "#94a3b8",
-  text: "#e2e8f0",
-  title: "#f8fafc",
+  accent: "#FACC15",
+  accentDeep: "#A91616",
+  amber: "#FACC15",
+  bg: "#160807",
+  fail: "#FCA5A5",
+  failFill: "rgba(169,22,22,0.16)",
+  failStroke: "#A91616",
+  grid: "#3B1A15",
+  muted: "#9B746A",
+  mutedFill: "rgba(155,116,106,0.16)",
+  neutralFill: "rgba(138,98,85,0.18)",
+  pass: "#3ECF8E",
+  passFill: "rgba(62,207,142,0.14)",
+  passStroke: "#10B981",
+  slateBar: "#8A6255",
+  slateBarDeep: "#3C241D",
+  subtitle: "#D8B49C",
+  success: "#3ECF8E",
+  text: "#FFF2E1",
+  title: "#FFF8EA",
+  warnFill: "rgba(250,204,21,0.14)",
 };
 
-const fontStack = "ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif";
+const fontStack =
+  "Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif";
 
 export function formatSeconds(ms) {
   const seconds = ms / 1000;
@@ -166,18 +173,18 @@ export function percentile(values, percentileValue) {
 
 export function svgHeader(width, height, title) {
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">`,
+    `<svg height="${height}" role="img" viewBox="0 0 ${width} ${height}" width="${width}" xmlns="http://www.w3.org/2000/svg">`,
     `<title>${escapeXml(title)}</title>`,
   ].join("\n");
 }
 
 export function defs() {
   return `<defs>
-<linearGradient id="supaGradient" x1="0" y1="0" x2="1" y2="0">
+<linearGradient id="supaGradient" x1="0" x2="1" y1="0" y2="0">
 <stop offset="0%" stop-color="${theme.accentDeep}" />
 <stop offset="100%" stop-color="${theme.accent}" />
 </linearGradient>
-<linearGradient id="slateGradient" x1="0" y1="0" x2="1" y2="0">
+<linearGradient id="slateGradient" x1="0" x2="1" y1="0" y2="0">
 <stop offset="0%" stop-color="${theme.slateBarDeep}" />
 <stop offset="100%" stop-color="${theme.slateBar}" />
 </linearGradient>
@@ -193,22 +200,22 @@ export function text(x, y, value, options = {}) {
   const weight = options.weight ?? "400";
   const fill = options.fill ?? theme.text;
   const size = options.size ?? 12;
-  return `<text x="${typeof x === "number" ? x.toFixed(1) : x}" y="${typeof y === "number" ? y.toFixed(1) : y}" fill="${fill}" font-family="${fontStack}" font-size="${size}" font-weight="${weight}"${anchor}>${escapeXml(value)}</text>`;
+  return `<text fill="${fill}" font-family="${fontStack}" font-size="${size}" font-weight="${weight}"${anchor} x="${typeof x === "number" ? x.toFixed(1) : x}" y="${typeof y === "number" ? y.toFixed(1) : y}">${escapeXml(value)}</text>`;
 }
 
 export function chip(x, y, label, kind) {
   const palette = {
-    fail: { fill: "rgba(239,68,68,0.12)", stroke: theme.failStroke, text: theme.fail },
-    muted: { fill: "rgba(100,116,139,0.12)", stroke: theme.muted, text: theme.subtitle },
-    pass: { fill: "rgba(16,185,129,0.14)", stroke: theme.passStroke, text: theme.pass },
-    warn: { fill: "rgba(251,191,36,0.12)", stroke: theme.amber, text: theme.amber },
+    fail: { fill: theme.failFill, stroke: theme.failStroke, text: theme.fail },
+    muted: { fill: theme.mutedFill, stroke: theme.muted, text: theme.subtitle },
+    pass: { fill: theme.passFill, stroke: theme.passStroke, text: theme.pass },
+    warn: { fill: theme.warnFill, stroke: theme.amber, text: theme.success },
   }[kind];
   return [
-    `<rect x="${x}" y="${y}" width="120" height="23" rx="11.5" fill="${palette.fill}" stroke="${palette.stroke}" stroke-opacity="0.55" />`,
-    text(x + 60, y + 15.5, label, {
+    `<rect fill="${palette.fill}" height="32" rx="16" stroke="${palette.stroke}" stroke-opacity="0.55" width="120" x="${x}" y="${y}" />`,
+    text(x + 60, y + 21.4, label, {
       anchor: "middle",
       fill: palette.text,
-      size: 11.5,
+      size: 16,
       weight: "600",
     }),
   ].join("\n");

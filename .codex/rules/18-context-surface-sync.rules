@@ -32,7 +32,7 @@
 # | Surface | Canonical owner | Targets | Sync / validation |
 # | --- | --- | --- | --- |
 # | Root route map | `AGENTS.md` | discovered by coding agents | no sync; validate with `npm run guard` |
-# | Claude compatibility | `CLAUDE.md` | Claude Code | keep as `@AGENTS.md` unless Claude-specific guidance is intentional |
+# | Claude runtime entrypoint | `CLAUDE.md` | Claude Code | keep as a runtime entrypoint for Claude Code only; unique durable policy belongs in `AGENTS.md` or scoped rules |
 # | Rules | `.claude/rules/**` | Codex rule pointers/mirrors when packaged | `npm run sync:llm`; rule guard if available |
 # | Skills | `.claude/skills/**` | `.agents/skills/**` for mirrored skills; `skills/supaschema` for the public `npx skills` source | `npm run sync:llm` |
 # | Hooks | `.claude/hooks/**` | `.codex/hooks/**` mirrors or native adapters where supported | edit Claude/shared owner, then sync or update native adapter |

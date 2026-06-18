@@ -216,9 +216,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
       })
     );
   }
-  // pg_init_privs records initdb/extension-time ACLs; like pg_dump, only the
-  // delta against them is declared state (initdb grants USAGE on schema
-  // public to PUBLIC in every database).
+
   const schemaGrants = await pool.query(`
     select n.nspname as name,
       case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee,
@@ -292,8 +290,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
       })
     );
   }
-  // A non-null routine ACL lacking PUBLIC's built-in EXECUTE means it was
-  // explicitly revoked; emit that revoke so trees declaring it hash-match.
+
   const revokedFunctionDefaults = await pool.query(`
     select n.nspname as schema, p.proname as name, oidvectortypes(p.proargtypes) as args
     from pg_proc p
@@ -397,8 +394,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     const forRole = text(row.for_role);
     const grantee = text(row.grantee);
     const privileges = textArray(row.privileges);
-    // The owner's self-entry and PUBLIC's built-in routine/type defaults are
-    // acldefault noise, not declared state.
+
     if (grantee === forRole || isBuiltinDefaultGrant(objectType, grantee, privileges)) {
       continue;
     }
@@ -414,8 +410,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
       })
     );
   }
-  // A default-ACL row for routines whose entries lack PUBLIC EXECUTE records
-  // an ALTER DEFAULT PRIVILEGES ... REVOKE ... FROM PUBLIC.
+
   const revokedDefaults = await pool.query(`
     select pg_get_userbyid(d.defaclrole) as for_role,
       case when d.defaclnamespace = 0 then null else n.nspname end as schema,

@@ -1,15 +1,5 @@
 #!/usr/bin/env node
-// Cross-surface version reconciliation.
-//
-// package.json (+ package-lock.json) is the single source of truth for npm
-// dependencies, and pyproject.toml owns the Python pins. This guard does NOT
-// mirror those manifests — adding or bumping an ordinary dependency is a single
-// package.json (or pyproject.toml) edit. It only reconciles versions that are
-// DUPLICATED across surfaces npm/uv cannot keep in sync:
-//   - language-server pins echoed in .claude/cclsp.json (source: package.json)
-//   - the npx-invoked MCP tool versions in .mcp.json / .codex/config.toml / the
-//     Code Atlas wrapper (source: the catalog's mcpTools — they have no manifest)
-//   - the one Python pin shared by both pyproject.toml files (pytest-asyncio)
+
 import { assert, ok, readJson, readText } from "./lib/guard-utils.js";
 
 const catalog = readJson("scripts/dependency-catalog.json");
@@ -17,9 +7,6 @@ const packageJson = readJson("package.json");
 
 assert(catalog.packageManager === "npm", "dependency catalog must match this repo's npm contract");
 
-// Language servers are declared in package.json (the source) and echoed with a
-// pinned `name@version` in .claude/cclsp.json. Reconcile cclsp.json against the
-// live package.json devDependency version — not a hand-maintained copy.
 const cclsp = readText(".claude/cclsp.json");
 for (const [name, version] of Object.entries(packageJson.devDependencies ?? {})) {
   if (!isLanguageServerDependency(name)) {
@@ -31,9 +18,6 @@ for (const [name, version] of Object.entries(packageJson.devDependencies ?? {}))
   );
 }
 
-// npx-invoked MCP tools have no package.json/pyproject manifest, so the catalog
-// is their single source. Reconcile .mcp.json, the Code Atlas wrapper fallback,
-// and .codex/config.toml against it.
 const mcp = readJson(".mcp.json");
 assert(
   mcp.mcpServers?.cclsp?.args?.includes(`cclsp@${catalog.mcpTools.cclsp}`),
@@ -46,10 +30,10 @@ assert(
   ".mcp.json next-devtools version must come from dependency catalog"
 );
 
-const wrapper = readText("scripts/code-atlas/mcp-wrapper.mjs");
+const launcher = readText("scripts/code-atlas/mcp-launcher.mjs");
 assert(
-  wrapper.includes(`@codeatlas/mcp@${catalog.mcpTools["@codeatlas/mcp"]}`),
-  "Code Atlas wrapper fallback must use dependency catalog version"
+  launcher.includes(`@codeatlas/mcp@${catalog.mcpTools["@codeatlas/mcp"]}`),
+  "Code Atlas launcher fallback must use dependency catalog version"
 );
 
 const codexConfig = readText(".codex/config.toml");
@@ -60,9 +44,6 @@ for (const token of [
   assert(codexConfig.includes(token), `.codex/config.toml missing catalog token ${token}`);
 }
 
-// pyproject.toml owns the Python pins; the only cross-surface invariant is that
-// the workspace root and the member package agree on pytest-asyncio (the one
-// pin declared in both). The agent package keeps its published identity.
 const rootPyproject = readText("pyproject.toml");
 const agentPyproject = readText("services/agent-mcp/pyproject.toml");
 assert(

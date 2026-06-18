@@ -6,7 +6,12 @@ import { describe, expect, it } from "vitest";
 import type { MigrationPlan } from "../src/core.js";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 import { lineageLine } from "../src/lineage.js";
-import { migrationsStatus } from "../src/migrations-status.js";
+import {
+  compareMigrationHistory,
+  migrationFileVersions,
+  migrationsStatus,
+  renderMigrationsStatus,
+} from "../src/migrations-status.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
@@ -33,6 +38,40 @@ describe("migrations status (disk only)", () => {
     expect(report.pendingLineage.map((item) => item.file)).toEqual([
       "20260104000000_generated.sql",
     ]);
+  });
+
+  it("carries target labels and expected versions for callers", async () => {
+    const { report } = await migrationsStatus({
+      directory: await migrationDir(),
+      runnerLabel: "direct",
+      targetLabel: "local",
+    });
+
+    expect(report.targetLabel).toBe("local");
+    expect(report.runnerLabel).toBe("direct");
+    expect(report.expectedAppliedVersions).toEqual([
+      "20260101000000",
+      "20260102000000",
+      "20260104000000",
+    ]);
+    expect(report.missingExpectedVersions).toEqual(report.expectedAppliedVersions);
+    expect(renderMigrationsStatus(report)).toContain("migrations [local / direct]:");
+  });
+
+  it("compares applied history against an expected final version set", () => {
+    expect(
+      compareMigrationHistory(
+        ["20260101000000", "20260103000000"],
+        ["20260101000000", "20260102000000"]
+      )
+    ).toEqual({
+      expectedAppliedVersions: ["20260101000000", "20260102000000"],
+      missingExpectedVersions: ["20260102000000"],
+      unexpectedAppliedVersions: ["20260103000000"],
+    });
+    expect(
+      migrationFileVersions(["20260102000000_two.sql", "notes.txt", "20260101000000_one.sql"])
+    ).toEqual(["20260101000000", "20260102000000"]);
   });
 });
 
@@ -66,6 +105,8 @@ describe.skipIf(!databaseUrl)("migrations status (against a target)", () => {
       expect(report.pending).toEqual(["20260102000000_two.sql", "20260104000000_generated.sql"]);
       expect(report.ghosts).toEqual(["20260103000000"]);
       expect(report.outOfOrder).toEqual(["20260102000000_two.sql"]);
+      expect(report.missingExpectedVersions).toEqual(["20260102000000", "20260104000000"]);
+      expect(report.unexpectedAppliedVersions).toEqual(["20260103000000"]);
       const codes = diagnostics.map((item) => item.code);
       expect(codes).toContain("SUPA_MIGRATIONS_GHOST_VERSIONS");
       expect(codes).toContain("SUPA_MIGRATIONS_OUT_OF_ORDER");

@@ -1,9 +1,5 @@
 #!/usr/bin/env node
-// Enforces the supaschema Mintlify authoring standard. It parses docs as
-// Markdown/MDX and lints the resulting syntax tree so headings, links, code
-// fences, and JSX components are classified structurally.
-//
-// Run: npm run docs:lint   (also runs as the first step of `docs:check`)
+
 import { existsSync, globSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,16 +38,6 @@ const REQUIRED_CONTEXTUAL_OPTIONS = new Set([
   "cursor",
   "vscode",
 ]);
-const HTTP_URL_PATTERN = /^https?:\/\//;
-const HEX_COLOR_PATTERN = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i;
-const OPENAPI_OPERATION_PATTERN = /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE)\s+\//;
-const DOCS_ROUTE_PREFIX_PATTERN = /^docs\//;
-const DOCS_PAGE_EXTENSION_PATTERN = /\.mdx?$/;
-const WHITESPACE_PATTERN = /\s+/;
-const LOWERCASE_START_PATTERN = /^[a-z0-9]/;
-const LOWERCASE_WORD_PATTERN = /^[a-z]/;
-const WORD_EDGE_PUNCTUATION_PATTERN = /^[^\w.-]+|[^\w.-]+$/g;
-const TITLE_CASE_WORD_PATTERN = /^[A-Z][a-z]+/;
 const LOCAL_IMAGE_PREFIX = "/images/";
 const FRONTMATTER_MODES = new Set(["default", "wide", "custom", "frame", "center"]);
 const GENERIC_LINK_TEXT = new Set([
@@ -160,6 +146,101 @@ const firstWord = (text) => {
   return spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex);
 };
 
+const splitWhitespace = (value) => {
+  const words = [];
+  let current = "";
+  for (const char of value) {
+    if (isWhitespace(char)) {
+      if (current.length > 0) {
+        words.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current.length > 0) {
+    words.push(current);
+  }
+  return words;
+};
+
+const collapseWhitespace = (value) => splitWhitespace(value).join(" ");
+
+const stripDocsPrefix = (file) => (file.startsWith("docs/") ? file.slice(5) : file);
+
+const stripMarkdownExtension = (file) => {
+  if (file.endsWith(".mdx")) {
+    return file.slice(0, -4);
+  }
+  if (file.endsWith(".md")) {
+    return file.slice(0, -3);
+  }
+  return file;
+};
+
+const trimWordEdgePunctuation = (word) => {
+  let start = 0;
+  let end = word.length;
+  while (start < end && !isWordEdgeChar(word[start] ?? "")) {
+    start += 1;
+  }
+  while (end > start && !isWordEdgeChar(word[end - 1] ?? "")) {
+    end -= 1;
+  }
+  return word.slice(start, end);
+};
+
+const isWhitespace = (char) =>
+  char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f";
+
+const isWordEdgeChar = (char) =>
+  isAsciiLetter(char) || isDigit(char) || char === "_" || char === "." || char === "-";
+
+const isAsciiLetter = (char) => {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+};
+
+const isUppercaseAscii = (char) => {
+  const code = char.charCodeAt(0);
+  return code >= 65 && code <= 90;
+};
+
+const isLowercaseAscii = (char) => {
+  const code = char.charCodeAt(0);
+  return code >= 97 && code <= 122;
+};
+
+const isLowercaseOrDigit = (char) => isLowercaseAscii(char) || isDigit(char);
+
+const isDigit = (char) => {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
+};
+
+const isHttpUrl = (value) => value.startsWith("http://") || value.startsWith("https://");
+
+const isHexColor = (value) => {
+  if (!((value.length === 4 || value.length === 7) && value.startsWith("#"))) {
+    return false;
+  }
+  return [...value.slice(1)].every(isHexDigit);
+};
+
+const isHexDigit = (char) => isDigit(char) || "abcdefABCDEF".includes(char);
+
+const isTitleCaseWord = (word) =>
+  word.length >= 2 && isUppercaseAscii(word[0] ?? "") && isLowercaseAscii(word[1] ?? "");
+
+const isOpenApiOperationRef = (value) => {
+  const methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"];
+  const space = value.indexOf(" ");
+  return (
+    space > 0 && methods.includes(value.slice(0, space)) && value.slice(space + 1).startsWith("/")
+  );
+};
+
 const isMdxJsxNode = (node) =>
   node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
 
@@ -167,8 +248,7 @@ const isMdxJsxNamed = (node, name) => isMdxJsxNode(node) && node.name === name;
 
 const hasMarkdownExtension = (pathname) => pathname.endsWith(".md") || pathname.endsWith(".mdx");
 
-const routeForDocFile = (file) =>
-  file.replace(DOCS_ROUTE_PREFIX_PATTERN, "").replace(DOCS_PAGE_EXTENSION_PATTERN, "");
+const routeForDocFile = (file) => stripMarkdownExtension(stripDocsPrefix(file));
 
 const hasDocPageFile = (rootDir, page) =>
   existsSync(join(rootDir, "docs", `${page}.mdx`)) ||
@@ -187,6 +267,14 @@ const targetPathname = (target) => {
   }
 };
 
+const parseUrl = (value) => {
+  try {
+    return new URL(value);
+  } catch {
+    return;
+  }
+};
+
 const classifyInternalLink = (target) => {
   const trimmed = target.trim();
   if (
@@ -198,14 +286,12 @@ const classifyInternalLink = (target) => {
     return;
   }
 
-  try {
-    const url = new URL(trimmed);
+  const url = parseUrl(trimmed);
+  if (url !== undefined) {
     if (isDocsSiteUrl(url)) {
       return `link "${trimmed}" - use a root-relative path (e.g. /commands/diff), not the absolute docs URL`;
     }
     return;
-  } catch {
-    // Relative URLs are handled below.
   }
 
   const pathname = targetPathname(trimmed);
@@ -267,7 +353,7 @@ const mdxAttributeNumber = (node, name) => {
   }
 };
 
-const wordCount = (text) => text.trim().split(WHITESPACE_PATTERN).filter(Boolean).length;
+const wordCount = (text) => splitWhitespace(text.trim()).length;
 
 const childText = (node) => {
   if (typeof node.value === "string") {
@@ -622,7 +708,7 @@ function inspectCardElement(node, displayFile, violations) {
 }
 
 function inspectLinkText(node, displayFile, violations) {
-  const text = nodeText(node).trim().toLowerCase().replace(/\s+/g, " ");
+  const text = collapseWhitespace(nodeText(node).trim().toLowerCase());
   if (!GENERIC_LINK_TEXT.has(text)) {
     return;
   }
@@ -668,7 +754,7 @@ function inspectImgElement(node, displayFile, violations) {
 }
 
 function inspectImageSrc(src, displayFile, line, violations) {
-  if (typeof src !== "string" || src.startsWith("#") || HTTP_URL_PATTERN.test(src)) {
+  if (typeof src !== "string" || src.startsWith("#") || isHttpUrl(src)) {
     return;
   }
   if (src.startsWith(LOCAL_IMAGE_PREFIX)) {
@@ -744,16 +830,13 @@ function isObviousTitleCaseHeading(node, text) {
   if (
     normalized.length === 0 ||
     !normalized.includes(" ") ||
-    LOWERCASE_START_PATTERN.test(normalized) ||
+    isLowercaseOrDigit(normalized[0] ?? "") ||
     normalized.startsWith("SUPA_")
   ) {
     return false;
   }
 
-  const words = normalized
-    .split(WHITESPACE_PATTERN)
-    .map((word) => word.replace(WORD_EDGE_PUNCTUATION_PATTERN, ""))
-    .filter(Boolean);
+  const words = splitWhitespace(normalized).map(trimWordEdgePunctuation).filter(Boolean);
   if (words.length < 2) {
     return false;
   }
@@ -762,7 +845,7 @@ function isObviousTitleCaseHeading(node, text) {
       .slice(1)
       .some(
         (word) =>
-          LOWERCASE_WORD_PATTERN.test(word) &&
+          isLowercaseAscii(word[0] ?? "") &&
           !["and", "or", "to", "of", "in", "with", "for"].includes(word)
       )
   ) {
@@ -770,7 +853,7 @@ function isObviousTitleCaseHeading(node, text) {
   }
 
   const titleWords = words.filter(
-    (word) => TITLE_CASE_WORD_PATTERN.test(word) && !TITLE_CASE_WORD_ALLOWLIST.has(word)
+    (word) => isTitleCaseWord(word) && !TITLE_CASE_WORD_ALLOWLIST.has(word)
   );
   return titleWords.length >= 2;
 }
@@ -890,7 +973,7 @@ function inspectDocsJsonShape(config, violations) {
 }
 
 function inspectHexColor(value, path, violations) {
-  if (typeof value !== "string" || !HEX_COLOR_PATTERN.test(value)) {
+  if (typeof value !== "string" || !isHexColor(value)) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
@@ -998,7 +1081,7 @@ function inspectContextualOptions(config, violations) {
 function inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterByRoute, violations) {
   const pageFiles = new Set(relativeFiles.map(routeForDocFile));
   const navRefs = collectNavigationPageRefs(config.navigation);
-  const navPages = new Set(navRefs.filter((page) => !OPENAPI_OPERATION_PATTERN.test(page)));
+  const navPages = new Set(navRefs.filter((page) => !isOpenApiOperationRef(page)));
 
   for (const page of navPages) {
     if (page.startsWith("/") || page.startsWith("docs/") || hasMarkdownExtension(page)) {

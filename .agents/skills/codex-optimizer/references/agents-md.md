@@ -14,7 +14,7 @@ Use `AGENTS.md` for durable operator context that should load before work starts
 1. Put universal repo context in the root `AGENTS.md`.
 2. Put directory-specific ownership, commands, and constraints in the closest workspace `AGENTS.md`.
 3. Use `AGENTS.override.md` only when override semantics are intentional.
-4. Keep `CLAUDE.md` compatibility stubs short and route back to canonical sources.
+4. Keep `CLAUDE.md` runtime entry points short and route back to canonical sources.
 
 Codex first checks the global Codex home for `AGENTS.override.md`, then `AGENTS.md`, and uses only the first non-empty global file. For project guidance, it reads from project root to cwd. In each directory, it checks `AGENTS.override.md`, then `AGENTS.md`, then configured fallback filenames only when `AGENTS.md` is missing. Later and closer guidance wins.
 

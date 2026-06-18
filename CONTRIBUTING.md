@@ -113,22 +113,36 @@ Signed-off-by: Your Name <you@example.com>
 
 To sign off the last commit you forgot: `git commit --amend -s --no-edit`. To sign off a range during cleanup: `git rebase --signoff <base>`.
 
-PRs whose commits are not all signed off cannot be merged. We do not require a separate CLA — the DCO sign-off is the contributor agreement.
+PRs whose commits are not all signed off cannot be merged. CI enforces this with `npm run github:check-dco`; before pushing, you can check committed branch work with `npm run github:check-dco -- --range origin/main..HEAD`. We do not require a separate CLA — the DCO sign-off is the contributor agreement.
 
 ## Pull-request checklist
 
-Before opening a PR (the [PR template](./.github/PULL_REQUEST_TEMPLATE.md) repeats this):
+Use the [PR template](./.github/PULL_REQUEST_TEMPLATE.md) as the current checklist. Before opening or replacing a PR, run:
 
-1. Keep the PR focused; split unrelated changes.
-2. `npm run check` passes locally.
-3. Source changes are in `src/**`; `dist/**` is regenerated, not hand-edited.
-4. No generated migration (`-- supaschema: lineage`) was hand-edited.
-5. SQL semantics go through the AST/model, not regex; ESM and the npm maintainer toolchain stay preserved, with no repo-root pnpm/Yarn/Bun lockfile outside package-smoke temp projects.
-6. Tests added/updated; any snapshot change is intentional and explained.
-7. Docs updated for user-facing flag/config/diagnostic changes (`npm run docs:check` if `docs/**` is touched); `supaschema-config.schema.json`, docs, and examples stay aligned.
-8. A `.changeset/` entry is included for user-facing changes.
-9. Release PRs follow [Release](./docs/release.mdx).
-10. **All commits are signed off** (`git commit -s`).
+```bash
+npm run github:pr-preflight -- --base main
+```
+
+Before merge, run:
+
+```bash
+npm run github:audit-settings
+npm run github:merge-preflight -- --pr <number>
+```
+
+Merge with:
+
+```bash
+gh pr merge <number> --rebase --delete-branch
+```
+
+After merge, run:
+
+```bash
+npm run github:post-merge-verify -- --pr <number>
+```
+
+Release PRs also follow [Release](./docs/release.mdx). All commits must be signed off (`git commit -s`).
 
 ## Reporting bugs and requesting features
 

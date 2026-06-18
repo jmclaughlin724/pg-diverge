@@ -217,13 +217,7 @@ function toolSucceeded(payload) {
   if (outcome !== undefined) {
     return outcome;
   }
-  // Command tools (Bash) report { stdout, stderr, interrupted } with no exit code, no
-  // is_error, and no status (verified against the live tool_response shape). When the normal
-  // parse — including the stderr exit-code text scan in toolOutcome — finds nothing, a
-  // completed (non-interrupted) run is the only available success signal. Applied as a
-  // fallback so an explicit failure in stdout/stderr is still detected first; without it,
-  // successful command runs record no evidence and the claim-without-evidence detector
-  // false-positives on truthful verification reports.
+
   if (
     response &&
     typeof response === "object" &&

@@ -14,15 +14,6 @@ export interface NormalizeResult {
   statements?: AstStatement[];
 }
 
-/**
- * Canonical-output normalization: the parse tree supaschema already computed
- * is deparsed back to SQL through PostgreSQL's grammar (pgsql-deparser, the
- * pure-TypeScript companion of the installed libpg-query binding). The
- * normalized text is accepted only when reparsing it yields a
- * location-stripped parse tree identical to the original — a deparser
- * infidelity therefore falls back to the author's text with a warning
- * instead of silently changing semantics.
- */
 export async function normalizeObjectSql(
   object: SchemaObject,
   ast: unknown
@@ -60,12 +51,6 @@ export async function normalizeObjectSql(
   return { diagnostics: [], sql: cleaned, statements };
 }
 
-/**
- * Round-trip fidelity proof over rendered migration SQL: every statement
- * must deparse and reparse back to an identical location-stripped parse
- * tree. This is the always-on telemetry that makes `normalize: "deparse"`
- * trustworthy exactly where it would be used.
- */
 export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnostic[]> {
   const parsed = await parseSqlAst(sql);
   if (parsed.ast === undefined) {

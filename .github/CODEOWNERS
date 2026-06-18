@@ -1,10 +1,10 @@
 # Code owners for supaschema.
 #
-# These globs protect publish-critical and cross-runtime configuration:
-# any PR touching them requires review from the listed owner. This is
-# defense-in-depth layered with the `release` GitHub Environment gate on
-# the publish job, not a substitute for it. Enable "Require review from
-# Code Owners" in branch protection for this file to take effect.
+# These globs document publish-critical and cross-runtime ownership and
+# request the listed owner on matching PRs. Branch protection intentionally
+# does not require code-owner approval while this is a solo-maintainer repo;
+# enable "Require review from Code Owners" only when there is an independent
+# reviewer who can satisfy the gate.
 
 # Default owner for everything not matched below.
 *                       @jmclaughlin724

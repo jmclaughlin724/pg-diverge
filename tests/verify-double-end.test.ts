@@ -3,15 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Shared, hoisted so the vi.mock factory can reach it.
 const state = vi.hoisted(() => ({ endCalls: 0 }));
 
-// Replace node-postgres with a fake admin client. The capability query
-// (preflightCapability) answers "this role cannot CREATE DATABASE", which
-// drives verifyMigration down the early-return path — the exact path where the
-// pre-fix code called Client.end() twice (node-postgres #2716 can hang on the
-// second end()). The fake counts end() calls so the test fails if the redundant
-// call ever comes back.
 vi.mock("pg", () => {
   class FakeClient {
     connect(): Promise<void> {
@@ -53,10 +46,8 @@ describe("verify admin client lifecycle (plan 004)", () => {
       to: `dir:${emptyTo}`,
     });
 
-    // The preflight failure must surface, proving we reached the early-return path.
     expect(diagnostics.map((item) => item.code)).toContain("SUPA_VERIFY_ROLE_CAPABILITY");
-    // The fix: the finally block is the sole owner of end(); the pre-fix code
-    // called it twice (line 56 + the finally), which this asserts against.
+
     expect(state.endCalls).toBe(1);
   });
 });

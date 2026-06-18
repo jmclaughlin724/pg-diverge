@@ -1,40 +1,70 @@
 import { createPrivateKey } from "node:crypto";
+import {
+  type CheckoutRequest,
+  createCheckoutSession,
+  type PlanPrice,
+  parsePlanCatalog,
+  successUrlWithSessionId,
+} from "./checkout.js";
 import { issueLicenseToken, licenseClaimsFor } from "./issue.js";
+import type { LicenseStore } from "./store.js";
+import type { StripeFetch } from "./stripe-api.js";
 import { verifyStripeSignature } from "./webhook.js";
 
-/**
- * License issuance Worker (plan `20-hands-off-stack.md`, task M30). On a verified
- * Stripe `checkout.session.completed` webhook it mints a repo-bound Ed25519 license
- * token (verified later by the CLI's `src/license.ts`). Runs on Cloudflare Workers
- * with `nodejs_compat` (so `node:crypto` is available). The signing key and Stripe
- * secret come from secret bindings — never the repo. The handler is split out and
- * `nowSeconds`-injected so it is testable without a live runtime or real clock.
- */
-
 export interface LicenseWorkerEnv {
-  /** Stripe webhook endpoint signing secret, from a Worker secret binding. */
+  CHECKOUT_CANCEL_URL: string;
+
+  CHECKOUT_SUCCESS_URL: string;
+
+  LICENSE_KV: LicenseStore;
+
+  STRIPE_PRICE_MAP: string;
+
+  STRIPE_SECRET_KEY: string;
+
   STRIPE_WEBHOOK_SECRET: string;
-  /** Ed25519 private key, PKCS8 PEM, from a Worker secret binding. */
+
   SUPASCHEMA_LICENSE_PRIVATE_KEY: string;
 }
 
 interface CheckoutCompletion {
   plan: string;
   repo: string;
+  sessionId: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 }
 
-const REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
-
-/** A repo binding must be a single `owner/name` slug, not an arbitrary string. */
 function isValidRepo(repo: string): boolean {
-  return repo.length > 0 && repo.length <= 200 && REPO_PATTERN.test(repo);
+  const parts = repo.split("/");
+  return (
+    repo.length > 0 &&
+    repo.length <= 200 &&
+    parts.length === 2 &&
+    parts.every((part) => part.length > 0 && [...part].every(isRepoSlugChar))
+  );
 }
 
-/** Pull the repo/plan binding out of a `checkout.session.completed` event, or null. */
+function isRepoSlugChar(char: string): boolean {
+  return isAsciiLetter(char) || isDigit(char) || char === "." || char === "_" || char === "-";
+}
+
+function isAsciiLetter(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isDigit(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
+}
+
+function isValidPlan(plan: string): boolean {
+  return plan.length > 0 && plan.length <= 64;
+}
+
 export function extractCheckoutCompletion(event: unknown): CheckoutCompletion | null {
   const root = asRecord(event);
   if (root === null || root.type !== "checkout.session.completed") {
@@ -43,22 +73,27 @@ export function extractCheckoutCompletion(event: unknown): CheckoutCompletion | 
   const data = asRecord(root.data);
   const session = data === null ? null : asRecord(data.object);
   const metadata = session === null ? null : asRecord(session.metadata);
-  if (metadata === null) {
+  if (session === null || metadata === null) {
     return null;
   }
   const { repo, plan } = metadata;
-  if (typeof repo !== "string" || !isValidRepo(repo) || typeof plan !== "string") {
+  const sessionId = session.id;
+  if (typeof sessionId !== "string" || sessionId.length === 0) {
     return null;
   }
-  if (plan.length === 0 || plan.length > 64) {
+  if (typeof repo !== "string" || !isValidRepo(repo)) {
     return null;
   }
-  return { plan, repo };
+  if (typeof plan !== "string" || !isValidPlan(plan)) {
+    return null;
+  }
+  return { plan, repo, sessionId };
 }
 
-export async function handleLicenseWebhook(
+async function handleWebhook(
   request: Request,
   env: LicenseWorkerEnv,
+  store: LicenseStore,
   nowSeconds: number
 ): Promise<Response> {
   if (request.method !== "POST") {
@@ -80,25 +115,111 @@ export async function handleLicenseWebhook(
   }
   const completion = extractCheckoutCompletion(event);
   if (completion === null) {
-    return new Response(JSON.stringify({ ignored: true }), {
-      headers: { "content-type": "application/json" },
-      status: 200,
-    });
+    return jsonResponse({ ignored: true });
+  }
+
+  const existing = await store.get(completion.sessionId);
+  if (existing !== null) {
+    return jsonResponse({ idempotent: true, issued: true });
   }
   const privateKey = createPrivateKey(env.SUPASCHEMA_LICENSE_PRIVATE_KEY);
   const token = issueLicenseToken(
     licenseClaimsFor(completion.repo, completion.plan, nowSeconds),
     privateKey
   );
-  return new Response(JSON.stringify({ license: token, repo: completion.repo }), {
+  await store.put(completion.sessionId, token);
+  return jsonResponse({ issued: true, repo: completion.repo });
+}
+
+async function handleLicenseRetrieval(url: URL, store: LicenseStore): Promise<Response> {
+  const sessionId = url.searchParams.get("session_id");
+  if (sessionId === null || sessionId.length === 0) {
+    return new Response("missing session_id", { status: 400 });
+  }
+  const token = await store.get(sessionId);
+  if (token === null) {
+    return jsonResponse({ pending: true }, 404);
+  }
+  return jsonResponse({ license: token });
+}
+
+async function handleCheckout(
+  request: Request,
+  env: LicenseWorkerEnv,
+  url: URL,
+  stripeFetch: StripeFetch
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return new Response("method not allowed", { status: 405 });
+  }
+  const repo = url.searchParams.get("repo") ?? "";
+  const plan = url.searchParams.get("plan") ?? "";
+  if (!isValidRepo(repo)) {
+    return new Response("invalid repo", { status: 400 });
+  }
+  if (!isValidPlan(plan)) {
+    return new Response("invalid plan", { status: 400 });
+  }
+  let planPrice: PlanPrice | undefined;
+  try {
+    planPrice = parsePlanCatalog(env.STRIPE_PRICE_MAP).get(plan);
+  } catch {
+    return new Response("checkout misconfigured", { status: 500 });
+  }
+  if (planPrice === undefined) {
+    return new Response("unknown plan", { status: 404 });
+  }
+  const checkout: CheckoutRequest = {
+    cancelUrl: env.CHECKOUT_CANCEL_URL,
+    plan,
+    planPrice,
+    repo,
+    successUrl: successUrlWithSessionId(env.CHECKOUT_SUCCESS_URL),
+  };
+  try {
+    const sessionUrl = await createCheckoutSession(stripeFetch, env.STRIPE_SECRET_KEY, checkout);
+    return new Response(null, { headers: { location: sessionUrl }, status: 302 });
+  } catch {
+    return new Response("checkout unavailable", { status: 502 });
+  }
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },
-    status: 200,
+    status,
   });
+}
+
+export function handleLicenseWorker(
+  request: Request,
+  env: LicenseWorkerEnv,
+  store: LicenseStore,
+  nowSeconds: number,
+  stripeFetch: StripeFetch
+): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.pathname === "/checkout") {
+    return handleCheckout(request, env, url, stripeFetch);
+  }
+  if (url.pathname === "/webhook") {
+    return handleWebhook(request, env, store, nowSeconds);
+  }
+  if (url.pathname === "/license" && request.method === "GET") {
+    return handleLicenseRetrieval(url, store);
+  }
+  return Promise.resolve(new Response("not found", { status: 404 }));
 }
 
 const worker = {
   fetch(request: Request, env: LicenseWorkerEnv): Promise<Response> {
-    return handleLicenseWebhook(request, env, Math.floor(Date.now() / 1000));
+    return handleLicenseWorker(
+      request,
+      env,
+      env.LICENSE_KV,
+      Math.floor(Date.now() / 1000),
+      fetch as unknown as StripeFetch
+    );
   },
 };
 

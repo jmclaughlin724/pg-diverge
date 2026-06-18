@@ -44,7 +44,7 @@ Use this skill for [bounded workflow].
 
 1. Identify the controlling objective and acceptance criteria.
 2. Classify the owner surface before editing.
-3. Make the smallest complete change.
+3. Reach the smallest correct end state.
 4. Run the closeout command for the touched owner.
 5. Report owner changed, proof run, and blockers inside scope.
 

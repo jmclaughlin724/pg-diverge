@@ -40,13 +40,9 @@ supaschema is packaged as a PostgreSQL project workflow, not just a binary. Inst
     `supaschema verify` proves the newest pending migration is replay-safe
     against a disposable database.
   </Card>
-  <Card
-    title="Runner handoff"
-    icon="cloud-upload"
-    href="/concepts/migration-pipeline#apply-handoff"
-  >
-    Generated SQL works with your normal PostgreSQL runner; Supabase projects
-    also get the optional `sync` handoff.
+  <Card title="Guarded sync" icon="cloud-upload" href="/commands/sync">
+    `supaschema sync` reconciles target history and applies pending migrations
+    after replay, type, and RLS gates pass.
   </Card>
 </CardGroup>
 
@@ -64,9 +60,10 @@ supaschema is packaged as a PostgreSQL project workflow, not just a binary. Inst
   <Card
     title="Zod validators"
     icon="braces"
-    href="/guides/generate-supabase-types-without-database"
+    href="/concepts/orm-free-applications"
   >
-    Runtime validators are produced from the same source as the migration.
+    Runtime validators turn generated database types into an application
+    boundary without an ORM schema layer.
   </Card>
   <Card
     title="Actionable diagnostics"
