@@ -5,6 +5,7 @@ import {
   recommendedCatalog,
   stripePriceMap,
 } from "../scripts/stripe/create-catalog.mjs";
+import { parsePlanCatalog } from "../services/license-worker/src/checkout.js";
 
 function okResponse(payload: unknown) {
   return {
@@ -65,6 +66,19 @@ describe("Stripe catalog setup (M31)", () => {
     });
   });
 
+  it("emits a Worker-parseable price map for every recommended plan", () => {
+    const created = recommendedCatalog().map((plan) => ({
+      mode: plan.mode,
+      plan: plan.plan,
+      priceId: `price_${plan.plan.replaceAll("-", "_")}`,
+      productId: `prod_${plan.plan.replaceAll("-", "_")}`,
+    }));
+    const parsed = parsePlanCatalog(JSON.stringify(stripePriceMap(created)));
+    expect([...parsed.keys()]).toEqual(["type-contract", "grant-drift", "bundle", "annual"]);
+    expect(parsed.get("bundle")).toEqual({ mode: "payment", price: "price_bundle" });
+    expect(parsed.get("annual")).toEqual({ mode: "subscription", price: "price_annual" });
+  });
+
   it("reuses an existing matching product and price", async () => {
     const calls: { body: string; url: string }[] = [];
     const fetchImpl = (url: string, init: RequestInit) => {
@@ -117,5 +131,12 @@ describe("Stripe catalog setup (M31)", () => {
     await expect(main({ STRIPE_SECRET_KEY: "sk_test_fake" }, fetchImpl)).rejects.toThrow(
       "STRIPE_CATALOG_APPROVED=1"
     );
+  });
+
+  it("requires a second approval before live catalog mutation", async () => {
+    const fetchImpl = () => Promise.reject(new Error("fetch not expected"));
+    await expect(
+      main({ STRIPE_CATALOG_APPROVED: "1", STRIPE_SECRET_KEY: "sk_live_fake" }, fetchImpl)
+    ).rejects.toThrow("STRIPE_LIVE_APPROVED=1");
   });
 });

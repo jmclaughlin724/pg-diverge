@@ -49,6 +49,12 @@ The repository benchmark harness compares `supaschema` with Supabase CLI diff en
 
 See [benchmarks](/benchmarks) for latency, accuracy, and replay-safety charts, and see the [anilize case study](/case-study-anilize) for a production Supabase schema with thousands of objects.
 
+<Info>
+  Last verified 2026-06-18 against the Supabase CLI documentation. Supabase CLI
+  behavior is set by Supabase and can change; confirm current command semantics
+  before relying on them.
+</Info>
+
 ## When to use each tool
 
 Choose `supaschema` for:
@@ -74,3 +80,9 @@ supaschema sync
 ```
 
 Install with the package-manager lane from [Installation](/installation). Add `supaschema verify` before merge when CI can reach a disposable PostgreSQL database.
+
+## Sources
+
+- [Supabase CLI reference](https://supabase.com/docs/reference/cli/introduction)
+- [Supabase database migrations](https://supabase.com/docs/guides/deployment/database-migrations)
+- [Supabase declarative database schemas](https://supabase.com/docs/guides/local-development/declarative-database-schemas)

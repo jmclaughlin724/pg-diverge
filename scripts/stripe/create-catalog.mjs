@@ -48,8 +48,9 @@ export function stripePriceMap(created) {
 
 export async function createStripeCatalog(fetchImpl, secretKey, catalog = recommendedCatalog()) {
   const created = [];
+  const productsByName = await activeProductIndex(fetchImpl, secretKey);
   for (const plan of catalog) {
-    const product = await ensureProduct(fetchImpl, secretKey, plan);
+    const product = await ensureProduct(fetchImpl, secretKey, productsByName, plan);
     const price = await ensurePrice(fetchImpl, secretKey, product.id, plan);
     created.push({
       mode: plan.mode,
@@ -61,18 +62,21 @@ export async function createStripeCatalog(fetchImpl, secretKey, catalog = recomm
   return created;
 }
 
-async function ensureProduct(fetchImpl, secretKey, plan) {
-  const existing = await findProduct(fetchImpl, secretKey, plan.name);
-  if (existing !== null) {
+async function ensureProduct(fetchImpl, secretKey, productsByName, plan) {
+  const existing = productsByName.get(plan.name);
+  if (existing !== undefined) {
     return existing;
   }
-  return stripePost(fetchImpl, secretKey, "products", {
+  const product = await stripePost(fetchImpl, secretKey, "products", {
     name: plan.name,
     ...metadataForm(plan.metadata),
   });
+  productsByName.set(plan.name, product);
+  return product;
 }
 
-async function findProduct(fetchImpl, secretKey, name) {
+async function activeProductIndex(fetchImpl, secretKey) {
+  const productsByName = new Map();
   let startingAfter;
   for (;;) {
     const query = { active: "true", limit: "100" };
@@ -81,18 +85,17 @@ async function findProduct(fetchImpl, secretKey, name) {
     }
     const page = await stripeGet(fetchImpl, secretKey, "products", query);
     const products = Array.isArray(page.data) ? page.data : [];
-    const product = products.find(
-      (item) => item && item.name === name && typeof item.id === "string"
-    );
-    if (product !== undefined) {
-      return product;
+    for (const product of products) {
+      if (product && typeof product.name === "string" && typeof product.id === "string") {
+        productsByName.set(product.name, product);
+      }
     }
     if (page.has_more !== true || products.length === 0) {
-      return null;
+      return productsByName;
     }
     const last = products.at(-1);
     if (!last || typeof last.id !== "string") {
-      return null;
+      return productsByName;
     }
     startingAfter = last.id;
   }

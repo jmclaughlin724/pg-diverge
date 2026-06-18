@@ -52,8 +52,8 @@ export async function createDatabaseWithRetry(
       await admin.query(statement);
       return;
     } catch (error) {
-      const busy =
-        error instanceof Error && "code" in error && (error as { code?: string }).code === "55006";
+      const code = error instanceof Error ? Reflect.get(error, "code") : undefined;
+      const busy = code === "55006";
       if (!busy || attempt >= attempts) {
         throw error;
       }

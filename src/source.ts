@@ -24,13 +24,6 @@ interface SqlFile {
   sql: string;
 }
 
-interface CatalogSnapshot {
-  diagnostics?: Diagnostic[];
-  fingerprint?: string;
-  formatVersion?: number;
-  objects?: SchemaObject[];
-}
-
 export async function extractSourceModel(
   source: string,
   options: ExtractOptions = {}
@@ -169,15 +162,19 @@ function isExcludedGrant(object: SchemaObject, roles: Set<string>): boolean {
 }
 async function readCatalogSource(path: string, cwd: string, source: string): Promise<SchemaModel> {
   const fullPath = resolve(cwd, path);
-  const raw = JSON.parse(await readFile(fullPath, "utf8")) as CatalogSnapshot;
-  const objects = Array.isArray(raw.objects) ? raw.objects : [];
-  const diagnostics = Array.isArray(raw.diagnostics) ? raw.diagnostics : [];
-  if (raw.formatVersion !== MODEL_FORMAT_VERSION) {
+  const raw = objectValue(JSON.parse(await readFile(fullPath, "utf8")));
+  const rawObjects = property(raw, "objects");
+  const rawDiagnostics = property(raw, "diagnostics");
+  const formatVersion = property(raw, "formatVersion");
+  const fingerprint = property(raw, "fingerprint");
+  const objects = Array.isArray(rawObjects) ? rawObjects.filter(isSchemaObject) : [];
+  const diagnostics = Array.isArray(rawDiagnostics) ? rawDiagnostics.filter(isDiagnostic) : [];
+  if (formatVersion !== MODEL_FORMAT_VERSION) {
     diagnostics.push(
       diagnostic(
         "SUPA_CATALOG_SNAPSHOT_VERSION",
         "warning",
-        `catalog snapshot model version ${raw.formatVersion ?? "unknown"} does not match this supaschema model version ${MODEL_FORMAT_VERSION}`,
+        `catalog snapshot model version ${formatVersion ?? "unknown"} does not match this supaschema model version ${MODEL_FORMAT_VERSION}`,
         {
           file: fullPath,
           hint: "Object hashes are version-specific; regenerate the snapshot with `supaschema inspect` to avoid false replacements.",
@@ -187,15 +184,48 @@ async function readCatalogSource(path: string, cwd: string, source: string): Pro
   }
   const model: SchemaModel = {
     diagnostics,
-    fingerprint: raw.fingerprint ?? fingerprintObjects(objects),
+    fingerprint: typeof fingerprint === "string" ? fingerprint : fingerprintObjects(objects),
     objects,
     source,
   };
-  if (raw.formatVersion !== undefined) {
-    model.formatVersion = raw.formatVersion;
+  if (typeof formatVersion === "number") {
+    model.formatVersion = formatVersion;
   }
   return model;
 }
+
+function isDiagnostic(value: unknown): value is Diagnostic {
+  const record = objectValue(value);
+  const severity = property(record, "severity");
+  return (
+    typeof property(record, "code") === "string" &&
+    typeof property(record, "message") === "string" &&
+    (severity === "info" || severity === "warning" || severity === "error")
+  );
+}
+
+function isSchemaObject(value: unknown): value is SchemaObject {
+  const record = objectValue(value);
+  return (
+    Array.isArray(property(record, "dependencies")) &&
+    typeof property(record, "hash") === "string" &&
+    typeof property(record, "key") === "string" &&
+    typeof property(record, "metadata") === "object" &&
+    typeof property(record, "normalizedSql") === "string" &&
+    typeof property(record, "ordinal") === "number" &&
+    typeof property(record, "ref") === "object" &&
+    typeof property(record, "sql") === "string"
+  );
+}
+
+function objectValue(value: unknown): object {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+}
+
+function property(value: object, key: string): unknown {
+  return Reflect.get(value, key);
+}
+
 async function modelFromSqlFiles(
   files: SqlFile[],
   source: string,
@@ -229,7 +259,7 @@ async function modelFromSqlFiles(
 async function readAllStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   }
   return Buffer.concat(chunks).toString("utf8");
 }

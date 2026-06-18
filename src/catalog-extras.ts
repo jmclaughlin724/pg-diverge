@@ -140,13 +140,14 @@ export async function collectSequences(pool: CatalogQuery): Promise<SchemaObject
     if (dataType !== "bigint") {
       clauses.push(`AS ${dataType}`);
     }
-    for (const [keyword, value, fallback] of [
+    const optionalClauses: [string, string, string][] = [
       ["INCREMENT BY", text(row.increment_by), "1"],
       ["MINVALUE", text(row.min_value), "1"],
       ["MAXVALUE", text(row.max_value), sequenceTypeMax.get(dataType) ?? ""],
       ["START WITH", text(row.start_value), "1"],
       ["CACHE", text(row.cache_size), "1"],
-    ] as const) {
+    ];
+    for (const [keyword, value, fallback] of optionalClauses) {
       if (value !== fallback) {
         clauses.push(`${keyword} ${value}`);
       }

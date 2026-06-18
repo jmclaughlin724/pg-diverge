@@ -24,11 +24,10 @@ function isLicenseClaims(value: unknown): value is LicenseClaims {
   if (typeof value !== "object" || value === null) {
     return false;
   }
-  const record = value as Record<string, unknown>;
   return (
-    typeof record.exp === "number" &&
-    typeof record.plan === "string" &&
-    typeof record.repo === "string"
+    typeof Reflect.get(value, "exp") === "number" &&
+    typeof Reflect.get(value, "plan") === "string" &&
+    typeof Reflect.get(value, "repo") === "string"
   );
 }
 
@@ -36,8 +35,7 @@ function isLicenseHeader(value: unknown): value is LicenseHeader {
   if (typeof value !== "object" || value === null) {
     return false;
   }
-  const record = value as Record<string, unknown>;
-  return record.alg === "EdDSA" && record.typ === "JWT";
+  return Reflect.get(value, "alg") === "EdDSA" && Reflect.get(value, "typ") === "JWT";
 }
 
 export function verifyLicenseToken(token: string, publicKeyPem: string): LicenseClaims | null {
@@ -93,18 +91,10 @@ export function isEntitledFromEnv(
   env: Record<string, string | undefined>,
   nowSeconds: number
 ): boolean {
-  return isEntitledFromEnvWithTrustedKey(env, nowSeconds, TRUSTED_LICENSE_PUBLIC_KEY_PEM);
-}
-
-export function isEntitledFromEnvWithTrustedKey(
-  env: Record<string, string | undefined>,
-  nowSeconds: number,
-  trustedPublicKeyPem: string
-): boolean {
   const token = env.SUPASCHEMA_LICENSE;
   const repo = env.GITHUB_REPOSITORY;
   if (token === undefined || repo === undefined) {
     return false;
   }
-  return isEntitled(verifyLicenseToken(token, trustedPublicKeyPem), repo, nowSeconds);
+  return isEntitled(verifyLicenseToken(token, TRUSTED_LICENSE_PUBLIC_KEY_PEM), repo, nowSeconds);
 }

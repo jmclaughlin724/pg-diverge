@@ -120,6 +120,10 @@
             "href": "/reference/support"
           },
           {
+            "label": "Privacy",
+            "href": "/reference/privacy"
+          },
+          {
             "label": "Issues",
             "href": "https://github.com/jmclaughlin724/supaschema/issues"
           }
@@ -242,6 +246,7 @@
           "reference/library-api",
           "reference/package-boundary",
           "reference/support",
+          "reference/privacy",
           "reference/branding"
         ]
       }

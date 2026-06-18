@@ -60,6 +60,7 @@
 # - Never carry rendered-output artifacts such as `theme={null}` on code fences.
 # - Use realistic placeholders and never include API keys or secrets.
 # - Public API pages prefer OpenAPI/AsyncAPI from `docs/docs.json`; manual endpoint docs must include request/response examples and structured fields.
+# - Comparison pages under `docs/comparisons/` must include `Last verified YYYY-MM-DD` for external claims and a `## Sources` section with at least one outbound source link.
 #
 # ## AI and MCP readiness
 #

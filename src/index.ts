@@ -20,7 +20,6 @@ export {
   supaschemaConfigSchema,
   validateConfig,
 } from "./config.js";
-export type { SchemaContract } from "./contract-registry.js";
 export { contractDrift, toContract } from "./contract-registry.js";
 export type {
   CheckOptions,
@@ -99,6 +98,7 @@ export {
 } from "./pipeline-services.js";
 export { planSchemaDiff } from "./planner.js";
 export { renderMigration, renderMigrationSplit } from "./render.js";
+export type { SchemaContract } from "./schema-contract.js";
 export { extractSourceModel } from "./source.js";
 export { generateDatabaseTypes } from "./typegen.js";
 export type {

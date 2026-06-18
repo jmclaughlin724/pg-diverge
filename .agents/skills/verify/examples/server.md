@@ -21,24 +21,23 @@ for i in {1..30}; do curl -sf localhost:PORT/health >/dev/null && break; sleep 1
 kill $SERVER_PID
 ```
 
-No readiness endpoint? Poll the route you're about to test until it
-stops returning connection-refused, then add a beat.
+No readiness endpoint? Poll the route you're about to test until it stops returning connection-refused, then add a beat.
 
 ## Worked example
 
-**Diff:** adds a `Retry-After` header to 429 responses in `rateLimit.ts`.
-**Claim (PR body):** "clients can now back off correctly."
+**Diff:** adds a `Retry-After` header to 429 responses in `rateLimit.ts`. **Claim (PR body):** "clients can now back off correctly."
 
-**Inference:** hitting the rate limit should now return `Retry-After: <n>`
-in the response headers. It didn't before.
+**Inference:** hitting the rate limit should now return `Retry-After: <n>` in the response headers. It didn't before.
 
 **Plan:**
+
 1. Start server
 2. Hit the rate-limited endpoint enough times to trigger 429
 3. Check the 429 response has `Retry-After` header
 4. Check the value is a positive integer
 
 **Execute:**
+
 ```bash
 # trigger the limit — 10 fast requests, limit is 5/sec per the diff
 for i in {1..10}; do curl -s -o /dev/null -w "%{http_code}\n" localhost:3000/api/thing; done
@@ -55,9 +54,6 @@ curl -si localhost:3000/api/thing | head -20
 
 ## What FAIL looks like
 
-- Header absent → the diff didn't take effect, or you're not actually
-  hitting the 429 path (check the status code first)
-- Header present but value is `NaN` / `undefined` / negative → the
-  logic is wrong
-- You got 200s all the way through → you never triggered the changed
-  path. Tighten the request burst or check the rate limit config.
+- Header absent → the diff didn't take effect, or you're not actually hitting the 429 path (check the status code first)
+- Header present but value is `NaN` / `undefined` / negative → the logic is wrong
+- You got 200s all the way through → you never triggered the changed path. Tighten the request burst or check the rate limit config.

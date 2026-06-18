@@ -8,6 +8,7 @@ const prTemplate = readText(".github/PULL_REQUEST_TEMPLATE.md");
 const contributing = readText("CONTRIBUTING.md");
 const checkAll = readText("scripts/guards/check-all.mjs");
 const agents = readText("AGENTS.md");
+const auditSettings = readText("scripts/github/audit-settings.mjs");
 
 for (const file of [
   "scripts/github/policy.mjs",
@@ -80,6 +81,26 @@ assert(
 for (const topic of expectedTopics) {
   assert(packageJson.keywords.includes(topic), `package keywords must include ${topic}`);
 }
+assert(
+  auditSettings.includes("--apply-topics"),
+  "audit-settings must own the approval-gated topic apply flag"
+);
+assert(
+  auditSettings.includes("GITHUB_REPOSITORY_TOPICS_APPROVED"),
+  "audit-settings must require explicit topic write approval"
+);
+assert(
+  auditSettings.includes('"PUT"'),
+  "audit-settings topic apply must use the GitHub replace-topics endpoint"
+);
+assert(
+  rule.includes("npm run github:audit-settings -- --apply-topics"),
+  "Rule 21 must document the topic apply command"
+);
+assert(
+  rule.includes("GITHUB_REPOSITORY_TOPICS_APPROVED=1"),
+  "Rule 21 must document the topic write approval variable"
+);
 assert(policy.repository?.default_branch === "main", "default branch must be main");
 assert(policy.repository?.allow_merge_commit === false, "merge commits must be disabled");
 assert(policy.repository?.allow_squash_merge === false, "squash merges must be disabled");

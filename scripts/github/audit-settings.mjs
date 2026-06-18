@@ -3,6 +3,7 @@ import {
   argValue,
   asEnabled,
   ghJson,
+  hasFlag,
   readPolicy,
   repoFullName,
   reportFailures,
@@ -13,7 +14,9 @@ import {
 const args = process.argv.slice(2);
 const policy = readPolicy();
 const repo = argValue(args, "--repo") ?? repoFullName(policy);
+const applyTopics = hasFlag(args, "--apply-topics");
 const failures = [];
+const topicFailures = [];
 
 function sameJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -77,10 +80,10 @@ const expectedTopics = sorted(policy.repositoryTopics ?? []);
 if (expectedTopics.length > 0) {
   const actualTopics = sorted(ghJson(["api", `repos/${repo}/topics`]).names ?? []);
   for (const topic of setDifference(expectedTopics, actualTopics)) {
-    failures.push(`repositoryTopics missing required topic: ${topic}`);
+    topicFailures.push(`repositoryTopics missing required topic: ${topic}`);
   }
   for (const topic of setDifference(actualTopics, expectedTopics)) {
-    failures.push(`repositoryTopics has unowned topic: ${topic}`);
+    topicFailures.push(`repositoryTopics has unowned topic: ${topic}`);
   }
 }
 
@@ -241,4 +244,30 @@ for (const expectedRuleset of policy.rulesets ?? []) {
   }
 }
 
-reportFailures(failures, "GITHUB_SETTINGS_AUDIT_OK");
+if (applyTopics) {
+  if (process.env.GITHUB_REPOSITORY_TOPICS_APPROVED !== "1") {
+    failures.push("--apply-topics requires GITHUB_REPOSITORY_TOPICS_APPROVED=1");
+  }
+  if (failures.length > 0) {
+    failures.push(...topicFailures);
+  } else if (topicFailures.length > 0) {
+    applyRepositoryTopics(repo, expectedTopics);
+    const updatedTopics = sorted(ghJson(["api", `repos/${repo}/topics`]).names ?? []);
+    for (const topic of setDifference(expectedTopics, updatedTopics)) {
+      failures.push(`repositoryTopics missing required topic after apply: ${topic}`);
+    }
+    for (const topic of setDifference(updatedTopics, expectedTopics)) {
+      failures.push(`repositoryTopics has unowned topic after apply: ${topic}`);
+    }
+  }
+} else {
+  failures.push(...topicFailures);
+}
+
+reportFailures(failures, applyTopics ? "GITHUB_SETTINGS_APPLY_OK" : "GITHUB_SETTINGS_AUDIT_OK");
+
+function applyRepositoryTopics(targetRepo, topics) {
+  ghJson(["api", `repos/${targetRepo}/topics`, "-X", "PUT", "--input", "-"], {
+    input: JSON.stringify({ names: topics }),
+  });
+}

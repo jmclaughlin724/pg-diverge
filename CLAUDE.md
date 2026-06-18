@@ -1,6 +1,7 @@
 @AGENTS.md
 
 <!-- supaschema:agent-guidance:start -->
+
 ## supaschema
 
 This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.

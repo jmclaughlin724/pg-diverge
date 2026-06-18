@@ -14,12 +14,6 @@ interface ValidatorSpec {
   command: string;
 }
 
-type CommandError = Error & {
-  code?: unknown;
-  stderr?: unknown;
-  stdout?: unknown;
-};
-
 export async function runConfiguredValidators(
   sql: string,
   options: CheckOptions = {}
@@ -118,8 +112,7 @@ function commandOutput(error: unknown): string {
     .trim();
   return output.length > 0 ? output.slice(0, 2000) : String(error);
 }
-function readStringProperty(value: unknown, property: "stdout" | "stderr"): string {
-  const record = value as CommandError;
-  const output = record[property];
+function readStringProperty(value: object, property: "stdout" | "stderr"): string {
+  const output = Reflect.get(value, property);
   return typeof output === "string" ? output : "";
 }

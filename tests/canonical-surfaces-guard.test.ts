@@ -70,6 +70,70 @@ describe("canonical surfaces guard", () => {
     expect(result.stderr).toContain("contains pattern-engine syntax");
   });
 
+  it("blocks duplicate monetization owners outside the Worker and Stripe catalog setup", () => {
+    const cwd = tempGitRepo(
+      {},
+      {
+        "src/marketplace.ts":
+          "export const endpoint = 'https://api.stripe.com/v1/checkout/sessions';\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("contains monetization term");
+    expect(result.stderr).toContain("services/license-worker");
+  });
+
+  it("blocks duplicate GitHub Marketplace billing owners outside the Worker", () => {
+    const cwd = tempGitRepo(
+      {},
+      {
+        "src/billing.ts": "export const event = 'marketplace_purchase';\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("contains monetization term marketplace_purchase");
+    expect(result.stderr).toContain("GitHub Marketplace");
+  });
+
+  it("allows the canonical Worker Stripe transport owner", () => {
+    const cwd = tempGitRepo(
+      {},
+      {
+        "services/license-worker/src/stripe-api.ts":
+          "export const endpoint = 'https://api.stripe.com/v1/checkout/sessions';\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("CANONICAL_SURFACES_OK");
+  });
+
+  it("allows the canonical Worker to own GitHub Marketplace webhook handling", () => {
+    const cwd = tempGitRepo(
+      {},
+      {
+        "services/license-worker/src/index.ts": "export const event = 'marketplace_purchase';\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("CANONICAL_SURFACES_OK");
+  });
+
   it("allows package scripts without recursive force deletion", () => {
     const cwd = tempGitRepo({
       scripts: { lint: "node scripts/check.mjs" },

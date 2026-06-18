@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Diagnostic, SchemaModel, SchemaObject } from "../src/core.js";
 import { hygienePack } from "../src/rules.js";
-import { renderScan, scanBadge, scanModel, scoreGrade } from "../src/scan.js";
+import {
+  aggregateOptInScanReports,
+  renderScan,
+  scanBadge,
+  scanJsonReport,
+  scanModel,
+  scoreGrade,
+} from "../src/scan.js";
 
 function tableObject(name: string): SchemaObject {
   return {
@@ -96,5 +103,70 @@ describe("scan core (K0)", () => {
     const badge = scanBadge({ diagnostics: [], errorCount: 10, score: 0, warningCount: 0 });
     expect(badge).toContain("0/100 F");
     expect(badge).toContain("#e05d44");
+  });
+
+  it("aggregates opt-in scan reports without retaining source filenames", () => {
+    const clean = scanJsonReport(
+      { diagnostics: [], errorCount: 0, score: 100, warningCount: 0 },
+      "customer-a/schema.sql"
+    );
+    const warning = scanJsonReport(
+      {
+        diagnostics: [
+          {
+            code: "SUPA_RULE_TABLE_NAMING",
+            message: "table name should be snake_case",
+            severity: "warning",
+          },
+        ],
+        errorCount: 0,
+        score: 97,
+        warningCount: 1,
+      },
+      "customer-b/schema.sql"
+    );
+    const error = scanJsonReport(
+      {
+        diagnostics: [
+          {
+            code: "SUPA_RULE_TABLE_NAMING",
+            message: "table name should be snake_case",
+            severity: "warning",
+          },
+          {
+            code: "SUPA_EXTRACT_UNSUPPORTED",
+            message: "unsupported statement",
+            severity: "error",
+          },
+        ],
+        errorCount: 1,
+        score: 87,
+        warningCount: 1,
+      },
+      "customer-c/schema.sql"
+    );
+
+    const aggregate = aggregateOptInScanReports([clean, warning, error], "2026-06-18T00:00:00Z");
+
+    expect(aggregate).toEqual({
+      averageScore: (100 + 97 + 87) / 3,
+      diagnosticCounts: [
+        { code: "SUPA_RULE_TABLE_NAMING", count: 2, severity: "warning" },
+        { code: "SUPA_EXTRACT_UNSUPPORTED", count: 1, severity: "error" },
+      ],
+      generatedAt: "2026-06-18T00:00:00Z",
+      gradeCounts: { A: 2, B: 1, C: 0, D: 0, F: 0 },
+      maxScore: 100,
+      medianScore: 97,
+      minScore: 87,
+      sampleCount: 3,
+    });
+    expect(JSON.stringify(aggregate)).not.toContain("customer-");
+  });
+
+  it("rejects an aggregate with no opt-in reports", () => {
+    expect(() => aggregateOptInScanReports([], "2026-06-18T00:00:00Z")).toThrow(
+      "aggregate requires at least one opt-in scan report"
+    );
   });
 });

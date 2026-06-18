@@ -2,7 +2,13 @@
 title: "Squawk comparison"
 description: "Compare supaschema with Squawk for PostgreSQL migration safety. Squawk lints migration SQL you already wrote; supaschema generates the migration from declarative SQL and then checks it."
 keywords:
-  ["squawk comparison", "postgres migration linter", "lock safety", "declarative sql", "migration safety"]
+  [
+    "squawk comparison",
+    "postgres migration linter",
+    "lock safety",
+    "declarative sql",
+    "migration safety",
+  ]
 ---
 
 `supaschema` and Squawk both improve PostgreSQL migration safety, and they are complementary rather than competing. Squawk is a free linter that analyzes migration SQL you have already written. `supaschema` generates the migration from declarative SQL and then runs its own replay-safety and lock-hazard checks.
@@ -31,12 +37,22 @@ Squawk is a focused static linter: you point it at migration SQL and it flags da
 
 The two are not mutually exclusive: if you already trust Squawk's lint rules, you can keep running it over the SQL `supaschema diff` renders.
 
+<Info>
+  Last verified 2026-06-18 against the Squawk documentation and GitHub
+  repository. Confirm current behavior and licensing before relying on it.
+</Info>
+
 <CardGroup cols={2}>
-  <Card title="Atlas lint is paid: free alternatives" icon="scale-balanced" href="/comparisons/atlas-migrate-lint-paid-alternatives">
+  <Card
+    title="Atlas lint is paid: free alternatives"
+    icon="scale-balanced"
+    href="/comparisons/atlas-migrate-lint-paid-alternatives"
+  >
     Free Postgres migration-safety options, including Squawk and supaschema.
   </Card>
   <Card title="The check command" icon="shield-check" href="/commands/check">
-    The replay-safety and lock-hazard diagnostics supaschema runs on each migration.
+    The replay-safety and lock-hazard diagnostics supaschema runs on each
+    migration.
   </Card>
 </CardGroup>
 

@@ -108,7 +108,8 @@ export function escalateNontransactional(
       item.code === "SUPA_CHECK_NONTRANSACTIONAL_INDEX" ||
       item.code === "SUPA_CHECK_NONTRANSACTIONAL_REFRESH"
     ) {
-      return { ...item, severity: "error" as const };
+      const diagnostic: Diagnostic = { ...item, severity: "error" };
+      return diagnostic;
     }
     return item;
   });

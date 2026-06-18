@@ -28,6 +28,32 @@ const deferredMarkerTerms = [
 const externalContractExportOnlyFiles = new Map([
   ["src/index.ts", "npm package public API entry point"],
 ]);
+const monetizationOwnerFiles = new Set([
+  "scripts/stripe/create-catalog.mjs",
+  "services/license-worker/src/checkout.ts",
+  "services/license-worker/src/index.ts",
+  "services/license-worker/src/issue.ts",
+  "services/license-worker/src/stripe-api.ts",
+  "services/license-worker/src/webhook.ts",
+  "src/license.ts",
+]);
+const monetizationTerms = [
+  "STRIPE_SECRET_KEY",
+  "STRIPE_PRICE_MAP",
+  "STRIPE_WEBHOOK_SECRET",
+  "STRIPE_CATALOG_APPROVED",
+  "STRIPE_LIVE_APPROVED",
+  "SUPASCHEMA_LICENSE_PRIVATE_KEY",
+  "GITHUB_MARKETPLACE_WEBHOOK_SECRET",
+  "checkout/sessions",
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "marketplace_purchase",
+  "marketplace_listing_plan_id",
+  "X-Hub-Signature-256",
+  "x-hub-signature-256",
+  "api.stripe.com",
+];
 
 const packageJson = readJson("package.json");
 const files = gitFiles().filter((file) => exists(file));
@@ -47,6 +73,7 @@ const violations = [
   ...(await shellCommentViolations(shellFiles)),
   ...(await shellPatternEngineViolations(shellFiles)),
   ...shellDeferredMarkerViolations(shellFiles),
+  ...monetizationSurfaceViolations(jsTsFiles),
   ...packageScriptViolations(packageJson.scripts ?? {}),
 ];
 
@@ -167,6 +194,9 @@ function jsTsSearchableValue(node) {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     return node.text;
   }
+  if (ts.isTemplateExpression(node)) {
+    return [node.head.text, ...node.templateSpans.map((span) => span.literal.text)].join("");
+  }
 }
 
 function collectJsTsCommentRanges(node, text, ranges) {
@@ -184,6 +214,36 @@ function addJsTsCommentRange(range, text, ranges) {
     return;
   }
   ranges.set(`${range.pos}:${range.end}`, range);
+}
+
+function monetizationSurfaceViolations(candidates) {
+  return candidates.flatMap((file) => {
+    if (
+      file.startsWith("tests/") ||
+      file === "scripts/guards/check-canonical-surfaces.mjs" ||
+      monetizationOwnerFiles.has(file)
+    ) {
+      return [];
+    }
+    const source = parseJsTs(readText(file), { fileName: file });
+    const found = [];
+    collectMonetizationTerms(source, source, found);
+    return found.map(({ node, term }) => {
+      const location = source.getLineAndCharacterOfPosition(node.getStart(source));
+      return `${file}:${location.line + 1}:${location.character + 1} contains monetization term ${term}; route checkout, Stripe, GitHub Marketplace, and license issuance through services/license-worker or scripts/stripe/create-catalog.mjs.`;
+    });
+  });
+}
+
+function collectMonetizationTerms(node, source, found) {
+  const value = jsTsSearchableValue(node);
+  if (value !== undefined) {
+    const term = monetizationTerms.find((candidate) => value.includes(candidate));
+    if (term !== undefined) {
+      found.push({ node, term });
+    }
+  }
+  ts.forEachChild(node, (child) => collectMonetizationTerms(child, source, found));
 }
 
 function pythonCommentViolations(candidates) {

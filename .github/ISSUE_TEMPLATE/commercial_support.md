@@ -18,14 +18,11 @@ Company or project name.
 
 ## Use case
 
-How supaschema would be used. Note whether this is a dev dependency, internal CI
-tool, distributed product, hosted service, OEM/redistribution use, or another
-commercial path.
+How supaschema would be used. Note whether this is a dev dependency, internal CI tool, distributed product, hosted service, OEM/redistribution use, or another commercial path.
 
 ## Support need
 
-The support, licensing, response-time, procurement, or compliance requirements
-you need covered by an agreement.
+The support, licensing, response-time, procurement, or compliance requirements you need covered by an agreement.
 
 ## Timeline
 

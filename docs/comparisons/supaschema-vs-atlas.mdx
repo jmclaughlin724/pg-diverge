@@ -2,7 +2,13 @@
 title: "Atlas comparison"
 description: "Compare supaschema with Atlas for Postgres migration generation and safety. Atlas migrate lint moved to the paid Atlas Pro tier in v0.38; supaschema keeps declarative diff and replay/lock-safety checks in the free core."
 keywords:
-  ["atlas comparison", "atlasgo", "migrate lint", "schema as code", "postgres migrations"]
+  [
+    "atlas comparison",
+    "atlasgo",
+    "migrate lint",
+    "schema as code",
+    "postgres migrations",
+  ]
 ---
 
 `supaschema` and Atlas both manage schema as code, but they aim at different scopes. `supaschema` is a PostgreSQL tool that generates a replay-safe migration from declarative SQL and proves it locally, against any Postgres provider (self-hosted, RDS/Aurora, Cloud SQL, AlloyDB, Neon, Azure, or Supabase). Atlas is a broader multi-database schema-as-code platform whose migration linting and custom policy rules moved to the paid Atlas Pro tier.
@@ -31,13 +37,15 @@ Use `supaschema` when you want free, Postgres-native migration generation plus r
 Atlas is a larger platform that spans multiple database engines and adds hosted reporting and CI integration. Starting with Atlas v0.38 (2025-10-28), `atlas migrate lint` and the custom schema-policy rule language require Atlas Pro (priced per seat, with a trial). If migration linting was the reason you used Atlas and you want a free Postgres-native option, `supaschema check` covers that lane.
 
 <Info>
-  Atlas pricing and feature gating are set by Atlas and can change. Last verified
-  2026-06-17 against the Atlas documentation; confirm current terms before relying
-  on them.
+  Atlas pricing and feature gating are set by Atlas and can change. Last verified 2026-06-17 against the Atlas documentation; confirm current terms before relying on them.
 </Info>
 
 <CardGroup cols={2}>
-  <Card title="Atlas lint is paid: free alternatives" icon="scale-balanced" href="/comparisons/atlas-migrate-lint-paid-alternatives">
+  <Card
+    title="Atlas lint is paid: free alternatives"
+    icon="scale-balanced"
+    href="/comparisons/atlas-migrate-lint-paid-alternatives"
+  >
     The free Postgres migration-safety options after the v0.38 change.
   </Card>
   <Card title="The check command" icon="shield-check" href="/commands/check">

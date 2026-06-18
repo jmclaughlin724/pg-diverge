@@ -6,7 +6,7 @@
 - The GitHub Action now consumes `scan --reporter json` and publishes the Postgres safety score to the job summary, a `supaschema scan` check run, and one updated pull-request comment when workflow permissions allow it.
 - Repository distribution metadata is aligned for the package and GitHub policy: npm description/keywords now match the ORM-free, Docker-free, guarded-sync value proposition, and repository topics are owned by `.github/repo-policy.json`.
 - The license Worker now also exposes authenticated `/contracts` storage for cross-repo schema contracts, while drift comparison remains in the package library through `contractDrift`.
-- Canonical surface guards now reject compatibility shims, duplicate owners, code/script comments, regex usage in active code roots, and deferred placeholder markers through one enforcement owner.
+- Canonical surface guards now reject legacy paths, duplicate owners, code/script comments, regex usage in active code roots, and deferred placeholder markers through one enforcement owner.
 
 ## 0.2.4 (2026-06-16)
 

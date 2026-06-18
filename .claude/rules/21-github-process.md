@@ -121,7 +121,7 @@ The merged PR MUST report `MERGED` from GitHub, the merge commit MUST be contain
 - `npm run guard:github-process` (`scripts/guards/check-github-process.mjs`) asserts the policy file, Rule 21, package commands, guard wiring, and PR template stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, and repository rulesets to `.github/repo-policy.json`.
-- `npm run github:audit-settings` also compares live repository topics to `repositoryTopics`.
+- `npm run github:audit-settings` also compares live repository topics to `repositoryTopics`. `npm run github:audit-settings -- --apply-topics` reconciles only topics, refuses to run unless `GITHUB_REPOSITORY_TOPICS_APPROVED=1` is already present, and does not apply topics while non-topic repository policy failures exist.
 - `npm run github:check-dco` (`scripts/github/check-dco.mjs`) verifies DCO signoff trailers for PR or push commits.
 - `npm run github:pr-preflight`, `npm run github:merge-preflight`, and `npm run github:post-merge-verify` prove the PR lifecycle state before PR creation, merge, and closeout.
 - `.github/PULL_REQUEST_TEMPLATE.md` records the required operator checklist for PR authors and reviewers.

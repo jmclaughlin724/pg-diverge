@@ -1,7 +1,12 @@
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { auditModel, renderAuditReport } from "./audit.js";
-import { type CheckReporter, renderCheckReport } from "./check-reporters.js";
+import {
+  CHECK_REPORTER_DISPLAY,
+  type CheckReporter,
+  parseCheckReporter,
+  renderCheckReport,
+} from "./check-reporters.js";
 import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { renderCorpusReport, runCorpus } from "./corpus.js";
 import { hasErrors } from "./diagnostics.js";
@@ -32,10 +37,10 @@ interface SyncCommandOptions {
 }
 
 function resolveReporter(value: string | undefined): CheckReporter | null {
-  const reporter = value ?? "text";
-  if (reporter !== "text" && reporter !== "json" && reporter !== "github" && reporter !== "sarif") {
+  const reporter = parseCheckReporter(value);
+  if (reporter === undefined) {
     process.stderr.write(
-      `supaschema: unknown --reporter "${value}" (use text|json|github|sarif)\n`
+      `supaschema: unknown --reporter "${value}" (use ${CHECK_REPORTER_DISPLAY})\n`
     );
     return null;
   }

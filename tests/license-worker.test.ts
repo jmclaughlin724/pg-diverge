@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { createHmac, generateKeyPairSync } from "node:crypto";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   extractCheckoutCompletion,
@@ -131,6 +133,22 @@ function signedWebhook(body: string): Request {
   });
 }
 
+function taploBinary(): string {
+  return resolve("node_modules", ".bin", process.platform === "win32" ? "taplo.cmd" : "taplo");
+}
+
+function wranglerConfig(): Record<string, unknown> {
+  return JSON.parse(
+    execFileSync(taploBinary(), [
+      "get",
+      "-f",
+      "services/license-worker/wrangler.toml",
+      "-o",
+      "json",
+    ]).toString("utf8")
+  ) as Record<string, unknown>;
+}
+
 describe("license issuance ↔ verification round-trip (M30)", () => {
   it("issues a token the CLI verify-side accepts and entitles", () => {
     const token = issueLicenseToken(
@@ -140,6 +158,28 @@ describe("license issuance ↔ verification round-trip (M30)", () => {
     const claims = verifyLicenseToken(token, publicKeyPem);
     expect(claims?.repo).toBe("acme/app");
     expect(isEntitled(claims, "acme/app", NOW)).toBe(true);
+  });
+});
+
+describe("license Worker deployment config (M30/X51)", () => {
+  it("declares the Worker entrypoint, automatic KV bindings, and required secrets", () => {
+    const config = wranglerConfig();
+    expect(config.name).toBe("supaschema-license-worker");
+    expect(config.main).toBe("src/index.ts");
+    expect(config.compatibility_flags).toEqual(["nodejs_compat"]);
+    expect(config.secrets).toEqual({
+      required: [
+        "STRIPE_PRICE_MAP",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "SUPASCHEMA_LICENSE_PRIVATE_KEY",
+      ],
+    });
+    expect(config.kv_namespaces).toEqual([{ binding: "CONTRACT_KV" }, { binding: "LICENSE_KV" }]);
+    expect(config.vars).toEqual({
+      CHECKOUT_CANCEL_URL: "https://supaschema.com/pricing",
+      CHECKOUT_SUCCESS_URL: "https://supaschema.com/license",
+    });
   });
 });
 
@@ -174,6 +214,53 @@ describe("Stripe webhook signature (M30)", () => {
 });
 
 describe("license Worker end-to-end (M30/M31)", () => {
+  it("fails closed when deployment configuration is incomplete", async () => {
+    const stores = memoryStores();
+    const env = { ...envWith(stores), STRIPE_PRICE_MAP: "{}" };
+
+    const response = await handleLicenseWorker(
+      new Request("https://license.example/license?session_id=unknown"),
+      env,
+      stores,
+      NOW,
+      noFetch
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe("worker misconfigured");
+  });
+
+  it("fails closed when the signing key is not an Ed25519 private key", async () => {
+    const stores = memoryStores();
+    const env = { ...envWith(stores), SUPASCHEMA_LICENSE_PRIVATE_KEY: "invalid" };
+
+    const response = await handleLicenseWorker(
+      new Request("https://license.example/license?session_id=unknown"),
+      env,
+      stores,
+      NOW,
+      noFetch
+    );
+
+    expect(response.status).toBe(500);
+  });
+
+  it("fails closed when required KV bindings are missing", async () => {
+    const stores = memoryStores();
+    const response = await handleLicenseWorker(
+      new Request("https://license.example/license?session_id=unknown"),
+      envWith(stores),
+      {
+        contracts: stores.contracts,
+        licenses: undefined as unknown as LicenseWorkerStores["licenses"],
+      },
+      NOW,
+      noFetch
+    );
+
+    expect(response.status).toBe(500);
+  });
+
   it("mints + stores on verified checkout, retrievable by session_id and CLI-valid", async () => {
     const stores = memoryStores();
     const env = envWith(stores);
