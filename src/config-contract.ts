@@ -489,6 +489,9 @@ export function mergeInstalledConfig(
   const baseSources = recordValue(base.sources);
   const baseSync = recordValue(base.sync);
   const baseWorkflow = recordValue(base.workflow);
+  const existingWorkflow = isRecord(existing.workflow)
+    ? normalizeInstalledWorkflow(existing.workflow)
+    : {};
   const schemaPaths = normalizedStringArray(
     existing.schemaPaths,
     normalizedStringArray(base.schemaPaths, [genericSchemaPath])
@@ -535,7 +538,7 @@ export function mergeInstalledConfig(
           },
     workflow: {
       ...baseWorkflow,
-      ...(isRecord(existing.workflow) ? existing.workflow : {}),
+      ...existingWorkflow,
     },
     typesFile: normalizedString(
       existing.typesFile,
@@ -555,6 +558,14 @@ export function mergeInstalledConfig(
     sources.from = sourceAuto;
   }
   return orderInstalledConfig(merged);
+}
+
+function normalizeInstalledWorkflow(workflow: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...workflow };
+  if (next.migration_sync === "explicit_request_only") {
+    next.migration_sync = MigrationSyncPolicy.Manual;
+  }
+  return next;
 }
 
 export function orderInstalledConfig(config: Record<string, unknown>): Record<string, unknown> {
@@ -922,6 +933,9 @@ export function mergeInstalledConfig(existing, options = {}) {
   const schemaPaths = normalizedStringArray(existing.schemaPaths, base.schemaPaths);
   const hasExistingEnvironments = "environments" in existing && isRecord(existing.environments);
   const existingSync = isRecord(existing.sync) ? existing.sync : undefined;
+  const existingWorkflow = isRecord(existing.workflow)
+    ? normalizeInstalledWorkflow(existing.workflow)
+    : {};
   const merged = {
     ...base,
     ...existing,
@@ -939,7 +953,7 @@ export function mergeInstalledConfig(existing, options = {}) {
       hasExistingEnvironments && existingSync === undefined
         ? { targets: {} }
         : { ...base.sync, ...(existingSync ?? {}) },
-    workflow: { ...base.workflow, ...(isRecord(existing.workflow) ? existing.workflow : {}) },
+    workflow: { ...base.workflow, ...existingWorkflow },
     typesFile: normalizedString(existing.typesFile, base.typesFile),
     validators: normalizedStringArray(existing.validators, base.validators),
     zodFile: normalizedString(existing.zodFile, base.zodFile),
@@ -951,6 +965,14 @@ export function mergeInstalledConfig(existing, options = {}) {
     merged.sources.from = "auto";
   }
   return orderInstalledConfig(merged);
+}
+
+function normalizeInstalledWorkflow(workflow) {
+  const next = { ...workflow };
+  if (next.migration_sync === "explicit_request_only") {
+    next.migration_sync = "manual";
+  }
+  return next;
 }
 
 export function orderInstalledConfig(config) {

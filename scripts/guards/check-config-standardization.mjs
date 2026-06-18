@@ -52,7 +52,11 @@ assert(
   JSON.stringify(sourceProperties.from?.oneOf) ===
     JSON.stringify([
       { const: "auto" },
-      { type: "string", "x-supaschema-source-parser": "parseRuntimeSource" },
+      {
+        type: "string",
+        not: { const: "auto" },
+        "x-supaschema-source-parser": "parseRuntimeSource",
+      },
     ]),
   "sources.from must allow only auto or a supported source spec"
 );
@@ -64,6 +68,10 @@ assert(
   JSON.stringify(workflowProperties.migration_sync?.enum) ===
     JSON.stringify(["disabled", "manual", "auto"]),
   "workflow.migration_sync must allow only disabled, manual, and auto"
+);
+assert(
+  !JSON.stringify(workflowProperties.migration_sync).includes("explicit_request_only"),
+  "workflow.migration_sync schema must not allow removed explicit_request_only values"
 );
 assert(
   workflowProperties.migration_sync?.default === "auto",
@@ -154,17 +162,22 @@ assert(
 );
 
 const contractSource = read("src/config-contract.ts");
-for (const forbidden of [
-  "normalizeAdapter",
-  "explicit_request_only",
-  "auto_local",
-  "auto_targets",
-]) {
+for (const forbidden of ["normalizeAdapter", "auto_local", "auto_targets"]) {
   assert(
     !contractSource.includes(forbidden),
     `src/config-contract.ts must not preserve removed config compatibility (${forbidden})`
   );
 }
+assert(
+  contractSource.includes('next.migration_sync === "explicit_request_only"') &&
+    contractSource.includes("MigrationSyncPolicy.Manual"),
+  "src/config-contract.ts must repair removed migration_sync scaffold values to manual"
+);
+assert(
+  mirror.includes('next.migration_sync === "explicit_request_only"') &&
+    mirror.includes('next.migration_sync = "manual"'),
+  "bin/config-contract.mjs must mirror removed migration_sync scaffold repair"
+);
 
 const cliReportsSource = read("src/cli-reports.ts");
 for (const forbidden of ['.option("--local"', '.option("--remote"']) {

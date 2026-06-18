@@ -483,6 +483,35 @@ describe("init project setup", () => {
     expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
   });
 
+  it("repairs removed migration_sync scaffold values to the canonical policy", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-legacy-sync-"));
+    await writeFile(
+      join(consumer, "supaschema.config.json"),
+      `${JSON.stringify(
+        {
+          adapter: "auto",
+          migrationsDir: "database/migrations",
+          schemaPaths: ["database/schemas"],
+          sources: { from: "auto", to: "dir:database/schemas" },
+          workflow: { migration_sync: "explicit_request_only" },
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    await runScaffold(consumer, { repair: true });
+
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config.workflow.migration_sync).toBe("manual");
+    expect(config.workflow).toMatchObject({
+      migration_check: "after_schema_diff",
+      migration_verify: "suggest_after_check",
+      schema_diff: "on_schema_write",
+    });
+    expect(config.sources).toEqual({ from: "auto", to: "dir:database/schemas" });
+  });
+
   it("scans existing schema and migration folders for the generated config", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-scan-"));
     await mkdir(join(consumer, "database", "schema"), { recursive: true });

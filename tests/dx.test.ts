@@ -117,7 +117,11 @@ describe("config DX", () => {
     const sources = schema.properties?.sources;
     expect(sources.properties?.from?.oneOf).toEqual([
       { const: "auto" },
-      { type: "string", "x-supaschema-source-parser": "parseRuntimeSource" },
+      {
+        type: "string",
+        not: { const: "auto" },
+        "x-supaschema-source-parser": "parseRuntimeSource",
+      },
     ]);
     expect(sources.properties?.to?.["x-supaschema-source-parser"]).toBe("parseRuntimeSource");
   });
