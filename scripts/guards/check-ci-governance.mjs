@@ -76,6 +76,12 @@ function stepRun(step) {
   return String(step?.run ?? "").trim();
 }
 
+function stepRunBefore(steps, before, after) {
+  const beforeIndex = steps.findIndex((step) => stepRun(step) === before);
+  const afterIndex = steps.findIndex((step) => stepRun(step) === after);
+  return beforeIndex !== -1 && afterIndex !== -1 && beforeIndex < afterIndex;
+}
+
 function findNamedStep(steps, name) {
   return steps.find((step) => stepName(step) === name);
 }
@@ -332,6 +338,14 @@ assert(
   "ci.yml quality job must not run npm run benchmark without a database URL"
 );
 const qualitySteps = ci.jobs?.quality?.steps ?? [];
+assert(
+  packageJson.scripts?.check?.startsWith("npm run build && npm run lint"),
+  "package.json check must build generated dist before lint resolves dist imports"
+);
+assert(
+  stepRunBefore(qualitySteps, "npm run build", "npm run lint:ci"),
+  "ci.yml quality job must build generated dist before npm run lint:ci resolves dist imports"
+);
 const dcoStep = findNamedStep(qualitySteps, "DCO sign-off");
 const githubTokenExpression = ["${{", " github.token ", "}}"].join("");
 assert(

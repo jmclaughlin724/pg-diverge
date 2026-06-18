@@ -38,9 +38,9 @@ jobs:
         run: npm run github:check-dco
       - run: npm ci
       - run: npm audit signatures
+      - run: npm run build
       - run: npm run lint:ci
       - run: npm run typecheck
-      - run: npm run build
       - name: Guard suite
         run: npm run guard
       - run: npm run check:schema
