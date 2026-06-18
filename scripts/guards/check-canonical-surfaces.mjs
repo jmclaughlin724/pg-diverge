@@ -15,8 +15,12 @@ const forbiddenSurfaceNameTerms = [
   "compat",
   "compatibility",
   "deprecated",
+  "dto",
+  "facade",
   "legacy",
   "shim",
+  "view-model",
+  "viewmodel",
   "wrapper",
 ];
 const deferredMarkerTerms = [
@@ -100,7 +104,7 @@ function forbiddenFileNameViolations(candidates) {
     })
     .map(
       (file) =>
-        `${file} has a compatibility/shim-style module name; rename or delete it unless a documented external contract makes the current name unavoidable.`
+        `${file} has a forbidden compatibility or parallel-contract module name; rename or delete it in the canonical owner.`
     );
 }
 
@@ -451,7 +455,7 @@ function packageScriptViolations(scripts) {
       return [];
     }
     return [
-      `package script ${name} runs ${commandPath}, which has a compatibility/shim-style module name.`,
+      `package script ${name} runs ${commandPath}, which has a forbidden compatibility or parallel-contract module name.`,
     ];
   });
 }

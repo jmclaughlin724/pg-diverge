@@ -70,6 +70,25 @@ describe("canonical surfaces guard", () => {
     expect(result.stderr).toContain("contains pattern-engine syntax");
   });
 
+  it("blocks DTO facade and view-model code surfaces", () => {
+    const cwd = tempGitRepo(
+      {},
+      {
+        "src/account-dto.ts": "export const value = 1;\n",
+        "src/profile-facade.ts": "export const value = 1;\n",
+        "src/user-view-model.ts": "export const value = 1;\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("src/account-dto.ts has a forbidden compatibility");
+    expect(result.stderr).toContain("src/profile-facade.ts has a forbidden compatibility");
+    expect(result.stderr).toContain("src/user-view-model.ts has a forbidden compatibility");
+  });
+
   it("blocks duplicate monetization owners outside the Worker and Stripe catalog setup", () => {
     const cwd = tempGitRepo(
       {},

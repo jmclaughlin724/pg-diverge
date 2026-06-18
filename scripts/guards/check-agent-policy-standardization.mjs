@@ -7,7 +7,9 @@ const canonicalPolicyRoots = ["AGENTS.md", ".claude/rules", ".claude/skills"];
 
 const agents = readText("AGENTS.md");
 const rule01 = readText(".claude/rules/01-operating-rules.md");
+const rule07 = readText(".claude/rules/07-ast-over-regex.md");
 const rule20 = readText(".claude/rules/20-anti-patterns.md");
+const elegant = readText(".claude/skills/elegant/SKILL.md");
 
 assertIncludesAll(agents, "AGENTS.md", "smallest-correct-end-state workflow", [
   "smallest correct end state",
@@ -26,6 +28,13 @@ assertIncludesAll(agents, "AGENTS.md", "smallest-correct-end-state workflow", [
   "wrappers",
   "aliases",
   "shims",
+  "DTOs",
+  "facades",
+  "copied enum tuples",
+  "casts",
+  "local view-models",
+  "allowlist exceptions",
+  "Typed UI prop containers",
   "evidence and a worklist",
   "narrow check",
   "narrow owner",
@@ -51,7 +60,20 @@ assertIncludesAll(rule01, "Rule 01", "AGENTS-owned enforcement gate", [
   "backwards-compatibility shims",
   "avoidable duplicate owners",
   "multiple entry points",
+  "DTOs",
+  "facades",
+  "copied enum tuples",
+  "cast-based contract patches",
+  "local view-models",
+  "allowlist exceptions",
   "scripts/guards/check-agent-policy-standardization.mjs",
+]);
+
+assertIncludesAll(rule07, "Rule 07", "regex remediation sequence", [
+  "ast-grep",
+  "TypeScript AST",
+  "canonical scanner, parser, or model helpers",
+  "zero regex nodes remain",
 ]);
 
 assertIncludesAll(rule20, "Rule 20", "minimal-patch anti-pattern index", [
@@ -61,6 +83,12 @@ assertIncludesAll(rule20, "Rule 20", "minimal-patch anti-pattern index", [
   "wrappers",
   "aliases",
   "shims",
+  "DTOs",
+  "facades",
+  "copied enum tuples",
+  "casts that patch missing contracts",
+  "local view-models",
+  "allowlist exceptions",
   "export-only compatibility files",
   "re-export shims",
   "alias modules",
@@ -71,6 +99,19 @@ assertIncludesAll(rule20, "Rule 20", "minimal-patch anti-pattern index", [
   "scripts/guards/check-canonical-surfaces.mjs",
   "multiple entry points",
   "consolidation is larger",
+  "Typed UI prop containers",
+]);
+
+assertIncludesAll(elegant, "elegant skill", "canonical execution lens", [
+  "one canonical owner per concept",
+  "DTOs",
+  "facades",
+  "copied enum tuples",
+  "casts that patch missing contracts",
+  "local view-models",
+  "allowlist exceptions",
+  "Typed UI prop containers",
+  "Do not patch around missing contracts",
 ]);
 
 assert(!exists(".claude/rules/00-supaschema.md"), "remove compatibility-only Rule 00 pointer");
