@@ -30,12 +30,13 @@ const action = parseYaml(actionText);
 const actionVersionInput = action?.inputs?.version;
 assert(actionVersionInput, "action.yml must declare inputs.version");
 assert(
-  actionVersionInput.default === version,
-  `action.yml inputs.version.default must match package.json version ${version}`
+  actionVersionInput.default === undefined,
+  "action.yml inputs.version.default must stay unset; the runner defaults from package.json"
 );
 assert(
   typeof actionVersionInput.description === "string" &&
-    actionVersionInput.description.includes("Exact supaschema npm version"),
+    actionVersionInput.description.includes("Exact supaschema npm version") &&
+    actionVersionInput.description.includes("package.json version"),
   "action.yml inputs.version.description must require an exact supaschema npm version"
 );
 assert(
@@ -48,8 +49,13 @@ assert(
   "supaschema action runner version validation must tell users to use an exact npm version"
 );
 assert(
-  actionRunnerText.includes(`e.g. ${version}`),
-  `supaschema action runner exact-version example must use package.json version ${version}`
+  actionRunnerText.includes("../../package.json") &&
+    actionRunnerText.includes("resolveActionVersion"),
+  "supaschema action runner must default the action version from package.json"
+);
+assert(
+  !actionRunnerText.includes(`e.g. ${version}`),
+  "supaschema action runner must not duplicate package.json version in validation text"
 );
 assert(
   !actionRunnerText.includes("latest|next"),

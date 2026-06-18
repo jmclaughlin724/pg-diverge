@@ -5,14 +5,25 @@ import { fileURLToPath } from "node:url";
 
 const scanReportMarker = "<!-- supaschema:scan-report -->";
 const defaultApiUrl = "https://api.github.com";
+const packageJsonPath = fileURLToPath(new URL("../../package.json", import.meta.url));
 
 export function validateExactVersion(version) {
   if (typeof version !== "string" || !isExactVersion(version)) {
-    throw new Error(
-      `invalid supaschema version: ${version} (use an exact npm version, e.g. 0.3.0)`
-    );
+    throw new Error(`invalid supaschema version: ${version} (use an exact npm version)`);
   }
   return version;
+}
+
+export function readPackageVersion(readFile = readFileSync) {
+  const packageJson = JSON.parse(readFile(packageJsonPath, "utf8"));
+  return validateExactVersion(packageJson.version);
+}
+
+export function resolveActionVersion(version, readFile = readFileSync) {
+  if (version === undefined || version.length === 0) {
+    return readPackageVersion(readFile);
+  }
+  return validateExactVersion(version);
 }
 
 function isExactVersion(version) {
@@ -106,7 +117,7 @@ export async function runAction({
   platform = process.platform,
   spawnImpl = spawn,
 } = {}) {
-  const version = validateExactVersion(env.SUPASCHEMA_ACTION_VERSION);
+  const version = resolveActionVersion(env.SUPASCHEMA_ACTION_VERSION, readFile);
   const argv = parseActionArgv(env.SUPASCHEMA_ACTION_ARGV);
   const command = npxCommand(platform);
   const args = buildNpxArgs(version, argv);

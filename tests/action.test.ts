@@ -9,15 +9,17 @@ import {
   parseScanReport,
   publishActionReport,
   renderActionScanMarkdown,
+  resolveActionVersion,
   runAction,
   validateExactVersion,
 } from "../scripts/actions/run-supaschema-action.mjs";
 
 const githubExpression = (name: string) => `${"$"}{{ ${name} }}`;
 const shellParameter = (name: string) => `${"$"}{${name}}`;
+const explicitVersion = "1.2.3";
 
 describe("composite action", () => {
-  it("defaults to the pinned package version, not an npm dist-tag", () => {
+  it("defaults to package.json version, not an action metadata literal or npm dist-tag", () => {
     const root = resolve(import.meta.dirname, "..");
     const action = readFileSync(resolve(root, "action.yml"), "utf8");
     const actionRunner = readFileSync(
@@ -25,9 +27,14 @@ describe("composite action", () => {
       "utf8"
     );
     const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+    const actionMetadata = parse(action);
 
-    expect(action).toContain(`default: "${packageJson.version}"`);
+    expect(actionMetadata.inputs?.version?.default).toBeUndefined();
+    expect(resolveActionVersion(undefined)).toBe(packageJson.version);
+    expect(resolveActionVersion("")).toBe(packageJson.version);
     expect(actionRunner).toContain("use an exact npm version");
+    expect(actionRunner).toContain("../../package.json");
+    expect(actionRunner).not.toContain(`e.g. ${packageJson.version}`);
     expect(action).not.toContain("default: latest");
     expect(action).not.toContain("latest|next");
   });
@@ -73,9 +80,9 @@ describe("composite action", () => {
       "--fail-on-diff",
       "--quiet",
     ]);
-    expect(buildNpxArgs("0.2.3", ["diff", "--fail-on-diff", "--quiet"])).toEqual([
+    expect(buildNpxArgs(explicitVersion, ["diff", "--fail-on-diff", "--quiet"])).toEqual([
       "--yes",
-      "supaschema@0.2.3",
+      `supaschema@${explicitVersion}`,
       "diff",
       "--fail-on-diff",
       "--quiet",
@@ -112,7 +119,7 @@ describe("composite action", () => {
     const code = await runAction({
       env: {
         SUPASCHEMA_ACTION_ARGV: '["sync","--target","remote"]',
-        SUPASCHEMA_ACTION_VERSION: "0.2.4",
+        SUPASCHEMA_ACTION_VERSION: explicitVersion,
       },
       platform: "linux",
       spawnImpl,
@@ -122,14 +129,58 @@ describe("composite action", () => {
     expect(captured?.args).toEqual([
       "npx",
       "--yes",
-      "supaschema@0.2.4",
+      `supaschema@${explicitVersion}`,
       "sync",
       "--target",
       "remote",
     ]);
     expect(captured?.options.shell).toBe(false);
-    expect(captured?.env?.SUPASCHEMA_ACTION_VERSION).toBe("0.2.4");
+    expect(captured?.env?.SUPASCHEMA_ACTION_VERSION).toBe(explicitVersion);
     expect(captured?.env?.SUPASCHEMA_REMOTE_SYNC_APPROVED).toBeUndefined();
+  });
+
+  it("uses package.json version when action version input is omitted", async () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, "..", "package.json"), "utf8")
+    );
+    let captured:
+      | {
+          args: string[];
+          options: { shell?: boolean };
+        }
+      | undefined;
+    const spawnImpl = (
+      command: string,
+      args: string[],
+      options: { env?: NodeJS.ProcessEnv; shell?: boolean }
+    ) => {
+      captured = { args: [command, ...args], options };
+      return {
+        on(event: string, handler: (code: number) => void) {
+          if (event === "exit") {
+            queueMicrotask(() => handler(0));
+          }
+          return this;
+        },
+      };
+    };
+
+    const code = await runAction({
+      env: {
+        SUPASCHEMA_ACTION_ARGV: '["--version"]',
+      },
+      platform: "linux",
+      spawnImpl,
+    });
+
+    expect(code).toBe(0);
+    expect(captured?.args).toEqual([
+      "npx",
+      "--yes",
+      `supaschema@${packageJson.version}`,
+      "--version",
+    ]);
+    expect(captured?.options.shell).toBe(false);
   });
 
   it("renders a scan report for GitHub surfaces", () => {
