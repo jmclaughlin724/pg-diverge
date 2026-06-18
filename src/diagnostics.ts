@@ -127,6 +127,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "The selected migration runner exited nonzero during sync; supaschema gates but the runner owns apply/deploy.",
   SUPA_SYNC_RUNNER_UNAVAILABLE:
     "The selected migration runner could not be launched or connected. supaschema gates and delegates apply to the runner.",
+  SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION:
+    "The Supabase CLI runner cannot safely apply concurrent companion migrations because Supabase keys migration history by timestamp.",
   SUPA_SYNC_TARGET_OVERRIDE_MULTI:
     "A database URL or environment override can only be used when exactly one sync target is selected.",
   SUPA_SYNC_TARGET_UNKNOWN: "The selected sync target is not configured.",

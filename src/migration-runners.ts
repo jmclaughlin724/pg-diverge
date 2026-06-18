@@ -89,7 +89,7 @@ export function groupMigrationUnits(
   });
 }
 
-function isConcurrentMigrationFile(file: string): boolean {
+export function isConcurrentMigrationFile(file: string): boolean {
   return file.endsWith(".concurrent.sql");
 }
 

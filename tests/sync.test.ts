@@ -204,6 +204,7 @@ describe("sync diagnostics", () => {
     expect(diagnosticCatalog.SUPA_SYNC_REMOTE_APPROVAL_REQUIRED).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_RUNNER_FAILED).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_RUNNER_UNAVAILABLE).toBeDefined();
+    expect(diagnosticCatalog.SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_OVERRIDE_MULTI).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_UNKNOWN).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_URL_UNRESOLVED).toBeDefined();
@@ -588,6 +589,47 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     }
 
     expect(fallbackResolved).toBe(false);
+  });
+
+  it("refuses Supabase CLI targets with concurrent companion migrations", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-concurrent-"));
+    await writeFile(
+      join(root, "20260101000000_concurrent.sql"),
+      "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE IF NOT EXISTS app.items (id bigint PRIMARY KEY);\n"
+    );
+    await writeFile(
+      join(root, "20260101000000_concurrent.concurrent.sql"),
+      "CREATE INDEX CONCURRENTLY IF NOT EXISTS items_id_idx ON app.items (id);\n"
+    );
+
+    const result = await syncMigrations({
+      config: {
+        sync: {
+          targets: {
+            local: {
+              historyTable: "supabase_migrations.schema_migrations",
+              mode: "manual",
+              runner: "supabase-cli",
+            },
+          },
+        },
+        transactionMode: "per-statement",
+        workflow: {
+          rls_safety: "disabled",
+          type_safety: "disabled",
+        },
+      },
+      directory: root,
+      pipeline: true,
+      skipDiff: true,
+      target: "local",
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION"
+    );
+    expect(result.report).toContain("Supabase CLI cannot safely apply");
   });
 });
 
