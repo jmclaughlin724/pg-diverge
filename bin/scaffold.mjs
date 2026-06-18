@@ -29,6 +29,8 @@ const manifestPath = ".supaschema/install.json";
 const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
+const pnpmWorkspaceFile = "pnpm-workspace.yaml";
+const pnpmBuildApprovalLine = "  supaschema: true";
 const agentPaths = [
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema",
@@ -43,8 +45,8 @@ const agentPaths = [
 ];
 const nonCanonicalAgentPaths = [".codex/skills/supaschema"];
 
-function hookConfigsFor(targetDir) {
-  const runner = localRunnerForPackageManager(detectPackageManager(targetDir));
+function hookConfigsFor(targetDir, packageManager = detectPackageManager(targetDir)) {
+  const runner = localRunnerForPackageManager(packageManager);
   return [
     {
       path: ".claude/settings.json",
@@ -68,6 +70,7 @@ export async function scaffoldProject({
 }) {
   const installed = [];
   const skipped = [];
+  const packageManager = detectPackageManager(targetDir);
   const scan = scanProject(targetDir);
   const existingConfig = readExistingConfig(targetDir);
   const selection = await resolvePathSelection(targetDir, scan, existingConfig, interactive);
@@ -93,12 +96,16 @@ export async function scaffoldProject({
   removeNonCanonicalAgentSurfaces({ dryRun, targetDir });
   installed.push("agent files");
 
-  for (const config of hookConfigsFor(targetDir)) {
+  for (const config of hookConfigsFor(targetDir, packageManager)) {
     if (!dryRun) {
       mergeHookConfig(packageRoot, targetDir, config, skipped);
     }
   }
   installed.push("hook wiring");
+
+  if (ensurePnpmBuildApproval({ dryRun, packageManager, targetDir })) {
+    installed.push("pnpm build approval");
+  }
 
   if (!dryRun) {
     installAgentGuidance(targetDir, selection);
@@ -305,6 +312,95 @@ function lockfilePackageManagers(dir) {
     managers.push("bun");
   }
   return managers;
+}
+
+function ensurePnpmBuildApproval({ dryRun, packageManager, targetDir }) {
+  if (packageManager !== "pnpm") {
+    return false;
+  }
+  const path = findPnpmWorkspaceFile(targetDir);
+  if (path === undefined) {
+    return false;
+  }
+  const current = readText(path);
+  if (current === undefined) {
+    return false;
+  }
+  const next = withPnpmBuildApproval(current);
+  if (next === current) {
+    return false;
+  }
+  if (!dryRun) {
+    writeFileAtomic(path, next);
+  }
+  return true;
+}
+
+function findPnpmWorkspaceFile(targetDir) {
+  let current = targetDir;
+  while (true) {
+    const candidate = join(current, pnpmWorkspaceFile);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return;
+    }
+    current = parent;
+  }
+}
+
+function withPnpmBuildApproval(text) {
+  const lines = text.split("\n");
+  if (text.endsWith("\n")) {
+    lines.pop();
+  }
+  const allowBuildsIndex = topLevelKeyIndex(lines, "allowBuilds:");
+  if (allowBuildsIndex === -1) {
+    const next = [...lines];
+    if (next.length > 0 && next.at(-1) !== "") {
+      next.push("");
+    }
+    next.push("allowBuilds:", pnpmBuildApprovalLine);
+    return `${next.join("\n")}\n`;
+  }
+  const blockEnd = topLevelBlockEnd(lines, allowBuildsIndex);
+  const entryIndex = pnpmBuildApprovalEntryIndex(lines, allowBuildsIndex + 1, blockEnd);
+  const next = [...lines];
+  if (entryIndex === -1) {
+    next.splice(blockEnd, 0, pnpmBuildApprovalLine);
+  } else {
+    next[entryIndex] = pnpmBuildApprovalLine;
+  }
+  return `${next.join("\n")}\n`;
+}
+
+function topLevelKeyIndex(lines, key) {
+  return lines.indexOf(key);
+}
+
+function topLevelBlockEnd(lines, start) {
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (isTopLevelYamlKey(lines[index])) {
+      return index;
+    }
+  }
+  return lines.length;
+}
+
+function isTopLevelYamlKey(line) {
+  return line.length > 0 && !line.startsWith(" ") && !line.startsWith("\t") && line.endsWith(":");
+}
+
+function pnpmBuildApprovalEntryIndex(lines, start, end) {
+  for (let index = start; index < end; index += 1) {
+    const line = lines[index].trimStart();
+    if (line.startsWith("supaschema:")) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function materializeCodexRunner(value, runner) {

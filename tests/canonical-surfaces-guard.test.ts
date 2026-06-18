@@ -48,6 +48,28 @@ describe("canonical surfaces guard", () => {
     expect(result.stderr).toContain("package script clean uses recursive force deletion");
   });
 
+  it.each([
+    "install",
+    "postinstall",
+    "preinstall",
+    "prepare",
+  ])("blocks public package lifecycle script %s", (script) => {
+    const cwd = tempGitRepo(
+      {
+        scripts: { [script]: "node scripts/check.mjs" },
+      },
+      {
+        "scripts/check.mjs": "process.stdout.write('ok\\n');\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`package script ${script} is a public install lifecycle`);
+  });
+
   it("blocks comments in code files", () => {
     const cwd = tempGitRepo(
       {},

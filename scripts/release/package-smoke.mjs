@@ -90,6 +90,7 @@ function smokePnpmWorkspaceMember() {
   runTool("pnpm", ["exec", PACKAGE_NAME, "init"], member);
   assertNoRootScaffold(root);
   assertGenericScaffold(member);
+  assertPnpmBuildApproval(root);
   assertVersion((args, cwd) => runTool("pnpm", ["exec", PACKAGE_NAME, ...args], cwd), member);
 }
 
@@ -175,6 +176,18 @@ function assertNoRootScaffold(root) {
 
 function assertNoScaffold(dir, message) {
   assert(!existsSync(join(dir, "supaschema.config.json")), `${message}: ${dir}`);
+}
+
+function assertPnpmBuildApproval(root) {
+  const workspace = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
+  assert(
+    workspace.includes("allowBuilds:\n  supaschema: true\n"),
+    "pnpm workspace must approve the supaschema build entry during init"
+  );
+  assert(
+    !workspace.includes("set this to true or false"),
+    "pnpm workspace must not keep the unresolved supaschema build entry"
+  );
 }
 
 function createWorkspace(prefix, options) {

@@ -209,6 +209,56 @@ describe("init project setup", () => {
     expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(0);
   });
 
+  it("sets pnpm build approval for supaschema when initializing a pnpm workspace member", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "supa-init-pnpm-workspace-"));
+    const member = join(workspace, "packages", "db");
+    await mkdir(member, { recursive: true });
+    await writeFile(
+      join(workspace, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-pnpm-workspace-root",
+        packageManager: "pnpm@10.18.1",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+    await writeFile(
+      join(workspace, "pnpm-workspace.yaml"),
+      "packages:\n  - packages/*\nallowBuilds:\n  supaschema: set this to true or false\n"
+    );
+    await writeFile(
+      join(member, "package.json"),
+      `${JSON.stringify({ name: "db", private: true, version: "0.0.0" })}\n`
+    );
+
+    await runScaffold(member);
+
+    const workspaceYaml = await readFile(join(workspace, "pnpm-workspace.yaml"), "utf8");
+    expect(workspaceYaml).toContain("allowBuilds:\n  supaschema: true\n");
+    expect(workspaceYaml).not.toContain("set this to true or false");
+    expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(member, "supaschema.config.json"))).toBe(true);
+  });
+
+  it("adds pnpm build approval when a pnpm workspace has no allowBuilds block", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-pnpm-allow-builds-"));
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-pnpm-workspace-root",
+        packageManager: "pnpm@10.18.1",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+    await writeFile(join(consumer, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+
+    await runScaffold(consumer);
+
+    const workspaceYaml = await readFile(join(consumer, "pnpm-workspace.yaml"), "utf8");
+    expect(workspaceYaml).toBe("packages:\n  - packages/*\n\nallowBuilds:\n  supaschema: true\n");
+  });
+
   it("does not inherit unrelated ancestor package-manager lockfiles", async () => {
     const parent = await mkdtemp(join(tmpdir(), "supa-init-parent-lock-"));
     const consumer = join(parent, "consumer");

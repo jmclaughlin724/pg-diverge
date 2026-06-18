@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 (2026-06-18)
+
+### Patch Changes
+
+- Remove consumer install lifecycle scripts and make `supaschema init` write a concrete pnpm `allowBuilds.supaschema: true` approval in existing pnpm workspaces.
+
 ## 0.3.0 (2026-06-18)
 
 - `supaschema sync` now runs the config-owned full pipeline: optional diff generation, migration safety checks, generated TypeScript/Zod refresh, type-safety and RLS-safety gates, independent target reconciliation, and guarded apply through direct PostgreSQL or Supabase CLI runners.
