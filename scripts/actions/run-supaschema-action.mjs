@@ -9,7 +9,7 @@ const defaultApiUrl = "https://api.github.com";
 export function validateExactVersion(version) {
   if (typeof version !== "string" || !isExactVersion(version)) {
     throw new Error(
-      `invalid supaschema version: ${version} (use an exact npm version, e.g. 0.2.4)`
+      `invalid supaschema version: ${version} (use an exact npm version, e.g. 0.3.0)`
     );
   }
   return version;

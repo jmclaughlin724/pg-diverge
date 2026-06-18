@@ -73,6 +73,17 @@ for (const [key, expected] of Object.entries(policy.repository ?? {})) {
   }
 }
 
+const expectedTopics = sorted(policy.repositoryTopics ?? []);
+if (expectedTopics.length > 0) {
+  const actualTopics = sorted(ghJson(["api", `repos/${repo}/topics`]).names ?? []);
+  for (const topic of setDifference(expectedTopics, actualTopics)) {
+    failures.push(`repositoryTopics missing required topic: ${topic}`);
+  }
+  for (const topic of setDifference(actualTopics, expectedTopics)) {
+    failures.push(`repositoryTopics has unowned topic: ${topic}`);
+  }
+}
+
 const expectedActions = policy.actions ?? {};
 if (expectedActions.permissions) {
   const actualPermissions = ghJson(["api", `repos/${repo}/actions/permissions`]);

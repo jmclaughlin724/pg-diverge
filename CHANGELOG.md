@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (2026-06-18)
+
+- `supaschema sync` now runs the config-owned full pipeline: optional diff generation, migration safety checks, generated TypeScript/Zod refresh, type-safety and RLS-safety gates, independent target reconciliation, and guarded apply through direct PostgreSQL or Supabase CLI runners.
+- The GitHub Action now consumes `scan --reporter json` and publishes the Postgres safety score to the job summary, a `supaschema scan` check run, and one updated pull-request comment when workflow permissions allow it.
+- Repository distribution metadata is aligned for the package and GitHub policy: npm description/keywords now match the ORM-free, Docker-free, guarded-sync value proposition, and repository topics are owned by `.github/repo-policy.json`.
+- The license Worker now also exposes authenticated `/contracts` storage for cross-repo schema contracts, while drift comparison remains in the package library through `contractDrift`.
+- Canonical surface guards now reject compatibility shims, duplicate owners, code/script comments, regex usage in active code roots, and deferred placeholder markers through one enforcement owner.
+
 ## 0.2.4 (2026-06-16)
 
 - First-run setup now has a safe empty baseline: `sources.from: "auto"` resolves a database URL, then `git:HEAD`, then `empty:`, while pending `.supaschema/install.json` path confirmation blocks `config validate`, `doctor`, and zero-source `diff` until `schemaPaths`, `sources.to`, and `migrationsDir` are explicit.
