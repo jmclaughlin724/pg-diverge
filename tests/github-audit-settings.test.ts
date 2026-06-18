@@ -10,9 +10,8 @@ const repo = policy.repositoryFullName;
 
 function runAudit(options: { approved?: boolean; apply?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "supa-github-audit-"));
-  const bin = join(dir, "gh");
   const log = join(dir, "gh.log");
-  writeFileSync(bin, fakeGhSource(), { mode: 0o755 });
+  installFakeGh(dir);
   const result = spawnSync(
     process.execPath,
     [script, ...(options.apply === true ? ["--apply-topics"] : [])],
@@ -30,6 +29,21 @@ function runAudit(options: { approved?: boolean; apply?: boolean } = {}) {
   );
   const calls = readCalls(log);
   return { calls, result };
+}
+
+function installFakeGh(dir: string): void {
+  const fakeGh = join(dir, "gh.mjs");
+  writeFileSync(fakeGh, fakeGhSource());
+  writeFileSync(
+    join(dir, "gh"),
+    `#!/bin/sh\nexec ${shQuote(process.execPath)} ${shQuote(fakeGh)} "$@"\n`,
+    { mode: 0o755 }
+  );
+  writeFileSync(join(dir, "gh.cmd"), `@echo off\r\n"${process.execPath}" "%~dp0gh.mjs" %*\r\n`);
+}
+
+function shQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function readCalls(file: string): unknown[] {
