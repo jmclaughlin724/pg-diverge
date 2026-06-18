@@ -133,13 +133,14 @@ function signedWebhook(body: string): Request {
   });
 }
 
-function taploBinary(): string {
-  return resolve("node_modules", ".bin", process.platform === "win32" ? "taplo.cmd" : "taplo");
+function taploCli(): string {
+  return resolve("node_modules", "@taplo", "cli", "dist", "cli.js");
 }
 
 function wranglerConfig(): Record<string, unknown> {
   return JSON.parse(
-    execFileSync(taploBinary(), [
+    execFileSync(process.execPath, [
+      taploCli(),
       "get",
       "-f",
       "services/license-worker/wrangler.toml",

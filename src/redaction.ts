@@ -31,6 +31,9 @@ function mayContainSecret(value: string): boolean {
 }
 
 function mayContainSecretAssignment(value: string): boolean {
+  if (!containsSensitiveKeyMarker(value)) {
+    return false;
+  }
   let cursor = 0;
   while (cursor < value.length) {
     const key = readSecretKey(value, cursor);
@@ -45,6 +48,18 @@ function mayContainSecretAssignment(value: string): boolean {
     cursor += 1;
   }
   return false;
+}
+
+function containsSensitiveKeyMarker(value: string): boolean {
+  const lowerValue = value.toLowerCase();
+  return (
+    lowerValue.includes("api") ||
+    lowerValue.includes("key") ||
+    lowerValue.includes("pass") ||
+    lowerValue.includes("pwd") ||
+    lowerValue.includes("secret") ||
+    lowerValue.includes("token")
+  );
 }
 
 function redactUrlCredentials(value: string): string {
