@@ -1,10 +1,14 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
   buildNpxArgs,
   parseActionArgv,
+  parseScanReport,
+  publishActionReport,
+  renderActionScanMarkdown,
   runAction,
   validateExactVersion,
 } from "../scripts/actions/run-supaschema-action.mjs";
@@ -75,9 +79,10 @@ describe("composite action", () => {
     expect(action.inputs?.args).toBeUndefined();
     expect(action.inputs?.argv?.required).toBe(true);
     expect(action.inputs?.argv?.description).toContain("JSON array");
-    expect(action.inputs?.argv?.description).toContain('["sync","--target","remote"]');
+    expect(action.inputs?.argv?.description).toContain('["scan","--reporter","json"]');
     expect(step?.shell).toBe("bash");
     expect(step?.env?.SUPASCHEMA_ACTION_ARGV).toBe(githubExpression("inputs.argv"));
+    expect(step?.env?.SUPASCHEMA_ACTION_GITHUB_TOKEN).toBe(githubExpression("github.token"));
     expect(actionText).not.toContain("SUPASCHEMA_ACTION_ARGS");
     expect(actionText).not.toContain("$SUPASCHEMA_ACTION_ARGS");
     expect(actionText).not.toContain(shellParameter("SUPASCHEMA_ACTION_VERSION"));
@@ -148,4 +153,103 @@ describe("composite action", () => {
     expect(captured?.env?.SUPASCHEMA_SKIP_POSTINSTALL).toBe("1");
     expect(captured?.env?.SUPASCHEMA_REMOTE_SYNC_APPROVED).toBeUndefined();
   });
+
+  it("renders a scan report for GitHub surfaces", () => {
+    const report = scanReport();
+    const parsed = parseScanReport(JSON.stringify(report));
+    const markdown = renderActionScanMarkdown(report, 0);
+
+    expect(parsed?.score).toBe(94);
+    expect(markdown).toContain("<!-- supaschema:scan-report -->");
+    expect(markdown).toContain("Score: **94/100 (A)**");
+    expect(markdown).toContain("SUPA_RULE_TABLE_NAMING");
+  });
+
+  it("publishes scan JSON to a step summary, check run, and pull request comment", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "supa-action-"));
+    const summary = join(tmp, "summary.md");
+    const eventPath = join(tmp, "event.json");
+    writeFileSync(
+      eventPath,
+      JSON.stringify({ pull_request: { head: { sha: "abc123" }, number: 17 } })
+    );
+    const calls: { body?: unknown; method: string; path: string }[] = [];
+    const fetchImpl = (url: string | URL, init?: RequestInit) => {
+      const parsed = new URL(String(url));
+      calls.push({
+        body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+        method: init?.method ?? "GET",
+        path: parsed.pathname + parsed.search,
+      });
+      if (parsed.pathname.endsWith("/comments") && init?.method === "GET") {
+        return jsonResponse([
+          { body: "<!-- supaschema:scan-report --> old", id: 99, user: { type: "Bot" } },
+        ]);
+      }
+      return jsonResponse({});
+    };
+
+    await publishActionReport({
+      argv: ["scan", "--reporter", "json"],
+      env: {
+        GITHUB_API_URL: "https://api.github.test",
+        GITHUB_EVENT_PATH: eventPath,
+        GITHUB_REPOSITORY: "acme/app",
+        GITHUB_STEP_SUMMARY: summary,
+        SUPASCHEMA_ACTION_GITHUB_TOKEN: "ghs_test",
+      },
+      fetchImpl,
+      result: { code: 0, stderr: "", stdout: JSON.stringify(scanReport()) },
+    });
+
+    expect(readFileSync(summary, "utf8")).toContain("Score: **94/100 (A)**");
+    expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "POST /repos/acme/app/check-runs",
+      "GET /repos/acme/app/issues/17/comments?per_page=100",
+      "PATCH /repos/acme/app/issues/comments/99",
+    ]);
+    expect(calls[0]?.body).toMatchObject({
+      conclusion: "success",
+      head_sha: "abc123",
+      name: "supaschema scan",
+    });
+    expect(calls[2]?.body).toMatchObject({
+      body: expect.stringContaining("<!-- supaschema:scan-report -->"),
+    });
+  });
+
+  it("requires scan JSON before publishing GitHub scan surfaces", async () => {
+    await expect(
+      publishActionReport({
+        argv: ["scan"],
+        env: { SUPASCHEMA_ACTION_GITHUB_TOKEN: "ghs_test" },
+        fetchImpl: () => jsonResponse({}),
+        result: { code: 0, stderr: "", stdout: "Postgres safety score: 100/100 (A)" },
+      })
+    ).rejects.toThrow('scan reporting requires argv to include "--reporter","json"');
+  });
 });
+
+function scanReport() {
+  return {
+    diagnostics: [
+      {
+        code: "SUPA_RULE_TABLE_NAMING",
+        message: "table name should be snake_case",
+        severity: "warning",
+      },
+    ],
+    errorCount: 0,
+    file: "database/schemas",
+    grade: "A",
+    score: 94,
+    warningCount: 2,
+  };
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { "content-type": "application/json" },
+    status,
+  });
+}

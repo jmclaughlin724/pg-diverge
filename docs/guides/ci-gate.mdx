@@ -6,7 +6,7 @@ keywords: ["CI gate", "drift check", "replay safety", "policy isolation"]
 
 Use this when schema changes should fail before merge instead of failing in a deploy.
 
-The gate is a command set: `diff --fail-on-diff`, `check`, and optional `verify`. Protected deploy jobs can run `sync` with configured targets and an explicit remote approval environment variable. This repository ships CLI and GitHub Action gates, not hosted CI, billing, marketplace distribution, or license enforcement.
+The gate is a command set: `scan --reporter json`, `diff --fail-on-diff`, `check`, and optional `verify`. Protected deploy jobs can run `sync` with configured targets and an explicit remote approval environment variable. This repository ships CLI and GitHub Action gates, not hosted CI, billing, marketplace distribution, or license enforcement.
 
 ## Use this when
 
@@ -22,6 +22,10 @@ Start with the free CI layer:
 ```yaml
 - uses: jmclaughlin724/supaschema@<tag>
   with:
+    argv: '["scan","--reporter","json"]'
+
+- uses: jmclaughlin724/supaschema@<tag>
+  with:
     argv: '["diff","--fail-on-diff","--quiet"]'
   env:
     SUPASCHEMA_DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -30,6 +34,7 @@ Start with the free CI layer:
 Compose required checks from the CLI:
 
 ```bash
+npx supaschema scan --reporter json
 npx supaschema diff --fail-on-diff --quiet
 npx supaschema check --reporter github
 npx supaschema verify

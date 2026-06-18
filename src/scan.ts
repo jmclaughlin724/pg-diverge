@@ -10,6 +10,11 @@ export interface ScanResult {
   warningCount: number;
 }
 
+export interface ScanJsonReport extends ScanResult {
+  file: string;
+  grade: ReturnType<typeof scoreGrade>;
+}
+
 const ERROR_WEIGHT = 10;
 const WARNING_WEIGHT = 3;
 const MAX_SCORE = 100;
@@ -39,8 +44,15 @@ export function scoreGrade(score: number): "A" | "B" | "C" | "D" | "F" {
 }
 
 export function renderScan(result: ScanResult, reporter: CheckReporter, file: string): string {
+  if (reporter === "json") {
+    return `${JSON.stringify(scanJsonReport(result, file), null, 2)}\n`;
+  }
   const files: FileDiagnostics[] = [{ diagnostics: result.diagnostics, file }];
   return renderCheckReport(reporter, files);
+}
+
+export function scanJsonReport(result: ScanResult, file: string): ScanJsonReport {
+  return { ...result, file, grade: scoreGrade(result.score) };
 }
 
 function gradeColor(grade: string): string {
