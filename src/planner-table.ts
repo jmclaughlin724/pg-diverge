@@ -254,8 +254,7 @@ function residual(entry: CanonicalColumnEntry): string {
 }
 
 function canonicalShape(object: SchemaObject): Record<string, unknown> | undefined {
-  const shape = object.metadata.canonicalShape;
-  return shape && typeof shape === "object" ? (shape as Record<string, unknown>) : undefined;
+  return recordFromObject(object.metadata.canonicalShape);
 }
 
 function canonicalColumns(shape: Record<string, unknown>): CanonicalColumnEntry[] | undefined {
@@ -265,14 +264,11 @@ function canonicalColumns(shape: Record<string, unknown>): CanonicalColumnEntry[
   }
   const entries: CanonicalColumnEntry[] = [];
   for (const column of columns) {
-    if (
-      !column ||
-      typeof column !== "object" ||
-      typeof (column as { name?: unknown }).name !== "string"
-    ) {
+    const record = recordFromObject(column);
+    if (!record || typeof record.name !== "string") {
       return;
     }
-    entries.push(column as CanonicalColumnEntry);
+    entries.push({ ...record, name: record.name });
   }
   return entries;
 }
@@ -282,13 +278,42 @@ function tableColumns(object: SchemaObject): TableColumn[] {
   if (!Array.isArray(columns)) {
     return [];
   }
-  return columns.filter(
-    (column): column is TableColumn =>
-      Boolean(column) &&
-      typeof column === "object" &&
-      typeof (column as { name?: unknown }).name === "string" &&
-      typeof (column as { definition?: unknown }).definition === "string"
-  );
+  return columns.flatMap((column) => {
+    const record = recordFromObject(column);
+    if (!record || typeof record.name !== "string" || typeof record.definition !== "string") {
+      return [];
+    }
+    const entry: TableColumn = { definition: record.definition, name: record.name };
+    if (typeof record.defaultExpression === "string") {
+      entry.defaultExpression = record.defaultExpression;
+    }
+    if (record.generated === true) {
+      entry.generated = true;
+    }
+    if (record.hasDefault === true) {
+      entry.hasDefault = true;
+    }
+    if (record.hasInlineConstraint === true) {
+      entry.hasInlineConstraint = true;
+    }
+    if (record.identity === true) {
+      entry.identity = true;
+    }
+    if (record.notNull === true) {
+      entry.notNull = true;
+    }
+    if (typeof record.type === "string") {
+      entry.type = record.type;
+    }
+    return [entry];
+  });
+}
+
+function recordFromObject(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+  return Object.fromEntries(Object.entries(value));
 }
 
 function unsafeAddColumnReason(column: TableColumn): string | undefined {

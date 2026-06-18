@@ -15,7 +15,7 @@ function scanResult(score: number, findings: number): ScanResult {
     diagnostics: Array.from({ length: findings }, () => ({
       code: "X",
       message: "m",
-      severity: "warning" as const,
+      severity: "warning",
     })),
     errorCount: 0,
     score,

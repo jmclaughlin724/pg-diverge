@@ -49,6 +49,14 @@ describe("secret redaction (S1)", () => {
     expect(hasUnredactedSecret('{"password":"[redacted]"}')).toBe(false);
   });
 
+  it("keeps already redacted Supabase secret values idempotent", () => {
+    expect(redactSecrets("sb_secret_[redacted]")).toBe("sb_secret_[redacted]");
+    expect(redactSecrets("sb_secret_[redacted]abc123")).toBe("sb_secret_[redacted]");
+    expect(hasUnredactedSecret("sb_secret_[redacted]")).toBe(false);
+    expect(hasUnredactedSecret("sb_secret_[redacted]abc123")).toBe(true);
+    expect(hasUnredactedSecret(redactSecrets("sb_secret_[redacted]abc123"))).toBe(false);
+  });
+
   it("redacts a long credential-free of quadratic blowup", () => {
     const long = `postgres://user:${"a".repeat(40_000)}`;
     const start = process.hrtime.bigint();

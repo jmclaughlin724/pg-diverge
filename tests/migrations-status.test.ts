@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
-import type { MigrationPlan } from "../src/core.js";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 import { lineageLine } from "../src/lineage.js";
 import {
@@ -22,7 +21,7 @@ async function migrationDir(): Promise<string> {
   const lineage = lineageLine({
     fromFingerprint: "abc",
     toFingerprint: "def",
-  } as MigrationPlan);
+  });
   await writeFile(join(root, "20260104000000_generated.sql"), `${lineage}\nSELECT 4;\n`);
   await writeFile(join(root, "notes.txt"), "ignored\n");
   return root;
@@ -82,7 +81,7 @@ describe.skipIf(!databaseUrl)("migrations status (against a target)", () => {
     const db = `supa_migrations_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
     await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
     await admin.query(`CREATE DATABASE ${db}`);
-    const url = new URL(databaseUrl as string);
+    const url = new URL(databaseUrl);
     url.pathname = `/${db}`;
     try {
       const target = new Client({ connectionString: url.toString() });
@@ -118,7 +117,7 @@ describe.skipIf(!databaseUrl)("migrations status (against a target)", () => {
 
   it("reports a missing history table as an error", async () => {
     const { diagnostics } = await migrationsStatus({
-      databaseUrl: databaseUrl as string,
+      databaseUrl,
       directory: await migrationDir(),
       historyTable: "supabase_migrations.no_such_table",
     });

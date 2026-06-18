@@ -373,11 +373,12 @@ function fingerprintMismatchHint(migration: SchemaModel, target: SchemaModel): s
   }
   const unexpected = [...appliedHashes.keys()].filter((key) => !targetHashes.has(key));
   const parts: string[] = [];
-  for (const [label, keys] of [
+  const mismatchGroups: [string, string[]][] = [
     ["missing from migration result", missing],
     ["not present in target", unexpected],
     ["definition differs", changed],
-  ] as const) {
+  ];
+  for (const [label, keys] of mismatchGroups) {
     if (keys.length === 0) {
       continue;
     }

@@ -14,6 +14,10 @@ if (process.argv.length > 2) {
 const packageJson = readJson(join(ROOT, "package.json"));
 const packageVersion = packageJson.version;
 const nodeBinDir = dirname(process.execPath);
+const corepackTools = new Map([
+  ["pnpm", "pnpm@10.18.1"],
+  ["yarn", "yarn@4.12.0"],
+]);
 const tarball = resolveTarball();
 const tools = {
   bun: detectTool("bun", ["--version"], createProbe("bun", { packageManager: "bun@1.3.14" })),
@@ -25,12 +29,12 @@ const tools = {
 const skipped = [];
 const completed = [];
 
-runLane("npm root install", tools.npm, smokeNpmRoot);
-runLane("npm workspace member install", tools.npm, smokeNpmWorkspaceMember);
-runLane("pnpm approved root install", tools.pnpm, smokePnpmRoot);
-runLane("pnpm workspace member init recovery", tools.pnpm, smokePnpmWorkspaceMember);
-runLane("Yarn workspace member install", tools.yarn, smokeYarnWorkspaceMember);
-runLane("Bun trusted root install", tools.bun, smokeBunRoot);
+runLane("npm root install plus init", tools.npm, smokeNpmRoot);
+runLane("npm workspace member install plus init", tools.npm, smokeNpmWorkspaceMember);
+runLane("pnpm root install plus init", tools.pnpm, smokePnpmRoot);
+runLane("pnpm workspace member install plus init", tools.pnpm, smokePnpmWorkspaceMember);
+runLane("Yarn workspace member install plus init", tools.yarn, smokeYarnWorkspaceMember);
+runLane("Bun root install plus init", tools.bun, smokeBunRoot);
 runLane("Bun workspace member init recovery", tools.bun, smokeBunWorkspaceMember);
 
 if (skipped.length > 0) {
@@ -42,6 +46,8 @@ console.log(`PACKAGE_SMOKE_OK completed=${completed.length} skipped=${skipped.le
 function smokeNpmRoot() {
   const consumer = createProject("supa-smoke-npm-root-", "supaschema-npm-root");
   runNpm(["install", tarball, "--prefer-offline", "--no-audit", "--no-fund"], consumer);
+  assertNoScaffold(consumer, "npm root install should wait for explicit init");
+  runNpm(["exec", "--", PACKAGE_NAME, "init"], consumer);
   assertGenericScaffold(consumer);
   assertVersion((args, cwd) => runNpm(["exec", "--", PACKAGE_NAME, ...args], cwd), consumer);
 }
@@ -53,6 +59,9 @@ function smokeNpmWorkspaceMember() {
   });
   runNpm(["install", tarball, "--prefer-offline", "--no-audit", "--no-fund"], member);
   assertNoRootScaffold(root);
+  assertNoScaffold(member, "npm workspace member install should wait for explicit init");
+  runNpm(["exec", "--", PACKAGE_NAME, "init"], member);
+  assertNoRootScaffold(root);
   assertGenericScaffold(member);
   assertVersion((args, cwd) => runNpm(["exec", "--", PACKAGE_NAME, ...args], cwd), member);
 }
@@ -61,7 +70,8 @@ function smokePnpmRoot() {
   const consumer = createProject("supa-smoke-pnpm-root-", "supaschema-pnpm-root", {
     packageManager: "pnpm@10.18.1",
   });
-  runTool("pnpm", ["add", "--allow-build=supaschema", tarball], consumer);
+  runTool("pnpm", ["add", tarball], consumer);
+  runTool("pnpm", ["exec", PACKAGE_NAME, "init"], consumer);
   assertGenericScaffold(consumer);
   assertVersion((args, cwd) => runTool("pnpm", ["exec", PACKAGE_NAME, ...args], cwd), consumer);
 }
@@ -71,7 +81,7 @@ function smokePnpmWorkspaceMember() {
     packageManager: "pnpm@10.18.1",
     workspaceFile: "packages:\n  - packages/*\n",
   });
-  runTool("pnpm", ["add", "--ignore-scripts", tarball], member);
+  runTool("pnpm", ["add", tarball], member);
   assertNoRootScaffold(root);
   assertNoScaffold(member, "pnpm workspace member should wait for explicit init");
   runTool("pnpm", ["exec", PACKAGE_NAME, "init"], member);
@@ -87,6 +97,9 @@ function smokeYarnWorkspaceMember() {
   });
   runTool("yarn", ["add", tarball], member);
   assertNoRootScaffold(root);
+  assertNoScaffold(member, "Yarn workspace member should wait for explicit init");
+  runTool("yarn", ["exec", PACKAGE_NAME, "init"], member);
+  assertNoRootScaffold(root);
   assertGenericScaffold(member);
   assertVersion((args, cwd) => runTool("yarn", ["exec", PACKAGE_NAME, ...args], cwd), member);
 }
@@ -95,7 +108,8 @@ function smokeBunRoot() {
   const consumer = createProject("supa-smoke-bun-root-", "supaschema-bun-root", {
     packageManager: "bun@1.3.14",
   });
-  runTool("bun", ["add", "--trust", tarball], consumer);
+  runTool("bun", ["add", tarball], consumer);
+  runTool("bun", ["x", "--no-install", PACKAGE_NAME, "init"], consumer);
   assertGenericScaffold(consumer);
   assertVersion(
     (args, cwd) => runTool("bun", ["x", "--no-install", PACKAGE_NAME, ...args], cwd),
@@ -218,7 +232,7 @@ function resolveTarball() {
 
 function detectTool(name, args, cwd) {
   try {
-    const version = runRaw(commandName(name), args, cwd).trim();
+    const version = runTool(name, args, cwd).trim();
     if (name === "yarn" && !version.startsWith("4.")) {
       return {
         available: false,
@@ -244,7 +258,10 @@ function runNpm(args, cwd) {
 }
 
 function runTool(name, args, cwd) {
-  return runRaw(commandName(name), args, cwd);
+  const corepackTool = corepackTools.get(name);
+  return corepackTool === undefined
+    ? runRaw(commandName(name), args, cwd)
+    : runRaw(commandName("corepack"), [corepackTool, ...args], cwd);
 }
 
 function runRaw(file, args, cwd) {
@@ -268,7 +285,7 @@ function runRaw(file, args, cwd) {
 function commandName(name) {
   const executable = process.platform === "win32" ? `${name}.cmd` : name;
   const nodeShim = join(nodeBinDir, executable);
-  return existsSync(nodeShim) ? nodeShim : executable;
+  return name === "npm" && existsSync(nodeShim) ? nodeShim : executable;
 }
 
 function childEnv() {

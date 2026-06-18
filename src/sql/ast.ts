@@ -13,7 +13,10 @@ export interface AstStatement {
 }
 
 export function asRecord(value: unknown): AstNode | undefined {
-  return value && typeof value === "object" ? (value as AstNode) : undefined;
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  return Object.fromEntries(Object.entries(value));
 }
 
 export function readArray(value: unknown): unknown[] {
@@ -229,6 +232,36 @@ export function collectReferences(value: unknown, into: Set<string> = new Set())
   for (const child of Object.values(record)) {
     if (child && typeof child === "object") {
       collectReferences(child, into);
+    }
+  }
+  return into;
+}
+
+export function collectColumnReferences(
+  value: unknown,
+  into: Set<string> = new Set()
+): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectColumnReferences(item, into);
+    }
+    return into;
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return into;
+  }
+  const columnRef = asRecord(record.ColumnRef);
+  if (columnRef) {
+    const names = stringList(columnRef.fields);
+    const column = names.at(-1);
+    if (column !== undefined && column !== "*") {
+      into.add(column);
+    }
+  }
+  for (const child of Object.values(record)) {
+    if (child && typeof child === "object") {
+      collectColumnReferences(child, into);
     }
   }
   return into;

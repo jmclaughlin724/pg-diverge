@@ -13,6 +13,8 @@ import {
   hygienePack,
   listRulePacks,
   migrationSafetyRule,
+  policyMissingPredicateRule,
+  policyRequiredColumnsRule,
   policyWithoutRlsRule,
   registerRulePack,
   rlsEnabledNoPolicyRule,
@@ -152,12 +154,16 @@ function catalogRlsObject(table: string): SchemaObject {
   };
 }
 
-function policyObject(table: string, name: string): SchemaObject {
+function policyObject(
+  table: string,
+  name: string,
+  metadata: Record<string, unknown> = {}
+): SchemaObject {
   return {
     dependencies: [],
     hash: "h",
     key: `public.${table}.${name}`,
-    metadata: {},
+    metadata,
     normalizedSql: "",
     ordinal: 0,
     ref: { kind: "policy", name, schema: "public", table },
@@ -196,6 +202,110 @@ describe("RLS audit rules (F20)", () => {
     expect(
       rlsEnabledNoPolicyRule.check({ model: model([catalogRlsObject("users")]) })
     ).toHaveLength(1);
+  });
+
+  it("flags enabled-table SELECT policies without USING predicates", () => {
+    const diagnostics = policyMissingPredicateRule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_select", { command: "select" }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_POLICY_MISSING_PREDICATE");
+    expect(diagnostics[0]?.message).toContain("USING");
+  });
+
+  it("flags enabled-table INSERT policies without WITH CHECK predicates", () => {
+    const diagnostics = policyMissingPredicateRule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_insert", { command: "insert" }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("WITH CHECK");
+  });
+
+  it("uses UPDATE USING as the write check fallback", () => {
+    const diagnostics = policyMissingPredicateRule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_update", {
+          command: "update",
+          hasUsingPredicate: true,
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags configured required policy columns missing from the effective predicate", () => {
+    const rule = policyRequiredColumnsRule({ "public.accounts": ["tenant_id"] });
+    const diagnostics = rule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_select", {
+          command: "select",
+          hasUsingPredicate: true,
+          usingColumns: ["owner_id"],
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN");
+  });
+
+  it("passes configured required policy columns present in a read predicate", () => {
+    const rule = policyRequiredColumnsRule({ "public.accounts": ["tenant_id"] });
+    const diagnostics = rule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_select", {
+          command: "select",
+          hasUsingPredicate: true,
+          usingColumns: ["tenant_id"],
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("uses INSERT WITH CHECK columns for configured required policy columns", () => {
+    const rule = policyRequiredColumnsRule({ "public.accounts": ["tenant_id"] });
+    const diagnostics = rule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_insert", {
+          checkColumns: ["tenant_id"],
+          command: "insert",
+          hasCheckPredicate: true,
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("uses UPDATE USING columns as the configured required-column fallback", () => {
+    const rule = policyRequiredColumnsRule({ "public.accounts": ["tenant_id"] });
+    const diagnostics = rule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_update", {
+          command: "update",
+          hasUsingPredicate: true,
+          usingColumns: ["tenant_id"],
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(0);
   });
 });
 
@@ -346,5 +456,25 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     expect(
       result.diagnostics.find((item) => item.code === "SUPA_RULE_RLS_NO_POLICY")?.severity
     ).toBe("warning");
+  });
+
+  it("promotes configured required policy-column findings to deploy-blocking errors", async () => {
+    const source = await sqlSource(`
+CREATE TABLE public.accounts (id bigint PRIMARY KEY, tenant_id uuid, owner_id uuid);
+ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY accounts_select ON public.accounts FOR SELECT USING (owner_id = auth.uid());
+`);
+    const config = resolveConfig({
+      hints: { requiredPolicyColumns: { "public.accounts": ["tenant_id"] } },
+      sources: { to: source },
+      workflow: { rls_safety: "deploy_blocking" },
+    });
+
+    const result = await runRlsSafetyGate({ config });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingDiagnostics.map((item) => item.code)).toContain(
+      "SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN"
+    );
   });
 });

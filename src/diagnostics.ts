@@ -149,6 +149,10 @@ export const diagnosticCatalog: Record<string, string> = {
     "Customer-supplied intake payload contains a secret-shaped value; redact credentials before submitting.",
   SUPA_RULE_DESTRUCTIVE_OP:
     "A destructive operation will run in this migration; review it for data loss and lock impact before deploy.",
+  SUPA_RULE_POLICY_MISSING_PREDICATE:
+    "An RLS policy lacks the USING or WITH CHECK predicate needed for its command class.",
+  SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN:
+    "An RLS policy lacks a configured table column in its effective predicate.",
   SUPA_OBJECT_PARSE_FAILED:
     "Object SQL did not parse, so its identity hash fell back to normalized text.",
   SUPA_PARSE_ERROR: "SQL failed to parse with the PostgreSQL parser.",

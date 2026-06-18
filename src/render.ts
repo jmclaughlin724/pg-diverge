@@ -165,7 +165,7 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
   if (!alteration || typeof alteration !== "object") {
     throw new Error("invalid alter-column metadata");
   }
-  const record = alteration as Record<string, unknown>;
+  const record = recordFromObject(alteration);
   const name = typeof record.name === "string" ? record.name : undefined;
   if (!name) {
     throw new Error("invalid alter-column metadata");
@@ -274,10 +274,10 @@ function renderCreate(object: SchemaObject): string {
   }
 }
 
-const guardInserts = {
+const guardInserts: Record<"ifNotExists" | "orReplace", string> = {
   ifNotExists: "IF NOT EXISTS ",
   orReplace: "OR REPLACE ",
-} as const;
+};
 
 function spliceGuard(object: SchemaObject): string {
   const facts = object.metadata.render;
@@ -286,7 +286,7 @@ function spliceGuard(object: SchemaObject): string {
       `object ${object.key} has no render guard facts; re-extract the source model with this supaschema version`
     );
   }
-  const record = facts as Record<string, unknown>;
+  const record = recordFromObject(facts);
   const guard = record.guard;
   if (guard !== "ifNotExists" && guard !== "orReplace") {
     throw new Error(`object ${object.key} has unsupported render guard facts`);
@@ -303,6 +303,10 @@ function spliceGuard(object: SchemaObject): string {
   return ensureSemicolon(
     `${object.sql.slice(0, offset)}${guardInserts[guard]}${object.sql.slice(offset)}`
   );
+}
+
+function recordFromObject(value: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value));
 }
 
 function renderDrop(object: SchemaObject): string {

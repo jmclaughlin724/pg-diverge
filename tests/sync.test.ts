@@ -54,6 +54,21 @@ describe("sync (no target)", () => {
     expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_SYNC_DISABLED");
   });
 
+  it("refuses bare sync when workflow.migration_sync is disabled", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-disabled-bare-"));
+
+    const result = await syncMigrations({
+      config: { workflow: { migration_sync: "disabled" } },
+      directory: root,
+      pipeline: true,
+      skipDiff: true,
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.report).toContain('workflow.migration_sync is "disabled"');
+    expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_SYNC_DISABLED");
+  });
+
   it("refuses explicit target override when workflow.migration_sync is disabled", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-disabled-target-"));
 

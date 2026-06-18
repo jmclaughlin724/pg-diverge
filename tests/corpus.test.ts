@@ -12,7 +12,7 @@ describe.skipIf(!databaseUrl)("corpus oracle", () => {
   it("converges on the committed supabase-style corpus", async () => {
     const { diagnostics, report } = await runCorpus({
       corpusDir: committedCorpus,
-      databaseUrl: databaseUrl as string,
+      databaseUrl,
     });
 
     expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
@@ -41,7 +41,7 @@ describe.skipIf(!databaseUrl)("corpus oracle", () => {
 
     const { diagnostics } = await runCorpus({
       corpusDir: root,
-      databaseUrl: databaseUrl as string,
+      databaseUrl,
     });
 
     expect(diagnostics.some((item) => item.severity === "error")).toBe(true);

@@ -225,9 +225,136 @@ export const policyWithoutRlsRule: Rule = {
   id: "SEC002",
 };
 
+export const policyMissingPredicateRule: Rule = {
+  check: ({ model }) => {
+    const enabled = rlsEnabledTableKeys(model);
+    const diagnostics: Diagnostic[] = [];
+    for (const object of model.objects) {
+      if (object.ref.kind !== "policy" || !enabled.has(tableKey(object.ref))) {
+        continue;
+      }
+      const missing = missingPolicyPredicates(object);
+      if (missing.length === 0) {
+        continue;
+      }
+      diagnostics.push({
+        code: "SUPA_RULE_POLICY_MISSING_PREDICATE",
+        hint: "Add USING for visible rows and WITH CHECK for inserted or updated rows",
+        message: `Policy "${object.ref.name}" on "${tableKey(object.ref)}" is missing ${missing.join(" and ")}`,
+        ref: object.ref,
+        severity: "warning",
+      });
+    }
+    return diagnostics;
+  },
+  id: "SEC003",
+};
+
+export function policyRequiredColumnsRule(requiredPolicyColumns: Record<string, string[]>): Rule {
+  return {
+    check: ({ model }) => {
+      const enabled = rlsEnabledTableKeys(model);
+      const diagnostics: Diagnostic[] = [];
+      for (const object of model.objects) {
+        if (object.ref.kind !== "policy" || !enabled.has(tableKey(object.ref))) {
+          continue;
+        }
+        const required = requiredPolicyColumns[tableKey(object.ref)] ?? [];
+        if (required.length === 0) {
+          continue;
+        }
+        const present = effectivePolicyColumns(object);
+        const missing = required.filter((column) => !present.has(column));
+        if (missing.length === 0) {
+          continue;
+        }
+        diagnostics.push({
+          code: "SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN",
+          hint: `Add ${missing.join(", ")} to the effective RLS predicate or remove it from hints.requiredPolicyColumns for this table`,
+          message: `Policy "${object.ref.name}" on "${tableKey(object.ref)}" is missing required column ${missing.join(", ")}`,
+          ref: object.ref,
+          severity: "warning",
+        });
+      }
+      return diagnostics;
+    },
+    id: "SEC004",
+  };
+}
+
+function missingPolicyPredicates(object: SchemaObject): string[] {
+  const command = policyCommand(object);
+  const hasUsing = object.metadata.hasUsingPredicate === true;
+  const hasCheck = object.metadata.hasCheckPredicate === true;
+  const missing: string[] = [];
+  if (needsUsingPredicate(command) && !hasUsing) {
+    missing.push("USING");
+  }
+  if (needsCheckPredicate(command) && !hasCheck && !(hasUsing && usesUsingAsCheck(command))) {
+    missing.push("WITH CHECK");
+  }
+  return missing;
+}
+
+function policyCommand(object: SchemaObject): string {
+  const command = object.metadata.command;
+  if (
+    command === "all" ||
+    command === "select" ||
+    command === "insert" ||
+    command === "update" ||
+    command === "delete"
+  ) {
+    return command;
+  }
+  return "all";
+}
+
+function needsUsingPredicate(command: string): boolean {
+  return command === "all" || command === "select" || command === "update" || command === "delete";
+}
+
+function needsCheckPredicate(command: string): boolean {
+  return command === "all" || command === "insert" || command === "update";
+}
+
+function usesUsingAsCheck(command: string): boolean {
+  return command === "all" || command === "update";
+}
+
+function effectivePolicyColumns(object: SchemaObject): Set<string> {
+  const command = policyCommand(object);
+  const usingColumns = metadataStrings(object.metadata.usingColumns);
+  const checkColumns = metadataStrings(object.metadata.checkColumns);
+  const columns = new Set<string>();
+  if (needsUsingPredicate(command)) {
+    for (const column of usingColumns) {
+      columns.add(column);
+    }
+  }
+  if (needsCheckPredicate(command)) {
+    let source: string[] = [];
+    if (checkColumns.length > 0) {
+      source = checkColumns;
+    } else if (usesUsingAsCheck(command)) {
+      source = usingColumns;
+    }
+    for (const column of source) {
+      columns.add(column);
+    }
+  }
+  return columns;
+}
+
+function metadataStrings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 export const rlsPack: RulePack = {
   id: "rls",
-  rules: [rlsEnabledNoPolicyRule, policyWithoutRlsRule],
+  rules: [rlsEnabledNoPolicyRule, policyWithoutRlsRule, policyMissingPredicateRule],
   version: "0.1.0",
 };
 

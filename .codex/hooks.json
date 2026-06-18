@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "^(Bash|apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx --no-install supaschema hook generated-migration-edit --runtime codex",
+            "command": "npm exec -- supaschema hook generated-migration-edit --runtime codex",
             "timeout": 10,
             "statusMessage": "Checking supaschema generated-migration policy"
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx --no-install supaschema hook schema-write",
+            "command": "npm exec -- supaschema hook schema-write",
             "timeout": 130,
             "statusMessage": "Running supaschema auto-diff on schema change"
           }

@@ -24,3 +24,24 @@ benchmarks/results
 # they do not hide files that are already tracked.
 .local/
 .private/
+
+# Private maintainer planning, operator, MCP, and deployment surfaces.
+advisor-plans/
+.planning/
+.mcp.json
+.vscode/
+fastmcp.json
+services/agent-mcp/
+services/license-worker/
+scripts/agent-hooks/
+scripts/code-atlas/
+scripts/stripe/
+.claude/agents/
+.claude/cclsp.json
+.claude/settings.json
+.codex/agents/
+.codex/config.toml
+wrangler.toml
+cloudflare/
+pyproject.toml
+uv.lock

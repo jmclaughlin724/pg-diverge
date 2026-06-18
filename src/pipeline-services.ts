@@ -11,6 +11,7 @@ import {
   grantPolicyRule,
   hygienePack,
   migrationSafetyPack,
+  policyRequiredColumnsRule,
   type RulePack,
   rlsPack,
   runRulePacks,
@@ -26,6 +27,8 @@ import { generateZodSchemas } from "./typegen-zod.js";
 export const deployBlockingRlsDiagnosticCodes: string[] = [
   "SUPA_RULE_RLS_NO_POLICY",
   "SUPA_RULE_POLICY_NO_RLS",
+  "SUPA_RULE_POLICY_MISSING_PREDICATE",
+  "SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN",
   "SUPA_RULE_GRANT_TO_PUBLIC",
   "SUPA_RULE_GRANT_ALL_PRIVILEGES",
   "SUPA_RULE_GRANT_UNDECLARED_ROLE",
@@ -219,8 +222,19 @@ export async function scanSchemaSafety(
     rules: [grantPolicyRule(config.hints.allowedGrantees)],
     version: "0.1.0",
   };
+  const requiredPolicyColumnsPack: RulePack = {
+    id: "rls-required-columns",
+    rules: [policyRequiredColumnsRule(config.hints.requiredPolicyColumns)],
+    version: "0.1.0",
+  };
   return {
-    result: scanModel(model, [grantPack, hygienePack, rlsPack, rolePolicyPack]),
+    result: scanModel(model, [
+      grantPack,
+      hygienePack,
+      rlsPack,
+      requiredPolicyColumnsPack,
+      rolePolicyPack,
+    ]),
     source,
   };
 }
@@ -238,7 +252,17 @@ export async function runRlsSafetyGate(
     rules: [grantPolicyRule(options.config.hints.allowedGrantees)],
     version: "0.1.0",
   };
-  const raw = scanModel(model, [rlsPack, grantPack, rolePolicyPack]).diagnostics;
+  const requiredPolicyColumnsPack: RulePack = {
+    id: "rls-required-columns",
+    rules: [policyRequiredColumnsRule(options.config.hints.requiredPolicyColumns)],
+    version: "0.1.0",
+  };
+  const raw = scanModel(model, [
+    rlsPack,
+    requiredPolicyColumnsPack,
+    grantPack,
+    rolePolicyPack,
+  ]).diagnostics;
   const adjusted = applyDeploySafetyPolicy(raw, options.config.workflow.rls_safety, (item) =>
     deployBlockingRlsCodeSet.has(item.code)
   );

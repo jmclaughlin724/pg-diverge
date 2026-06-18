@@ -89,6 +89,7 @@
       "default": {
         "allowedGrantees": [],
         "destructive": [],
+        "requiredPolicyColumns": {},
         "renames": []
       },
       "type": "object",
@@ -105,6 +106,19 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "requiredPolicyColumns": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "renames": {
@@ -128,7 +142,7 @@
           }
         }
       },
-      "description": "Reviewed grant, destructive-change, and rename hints using exact object keys or role names."
+      "description": "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names."
     },
     "idempotency": {
       "default": "required",
@@ -193,7 +207,7 @@
             "manual",
             "auto"
           ],
-          "description": "Controls whether supaschema sync refuses apply, only applies explicit --target overrides, or uses sync.targets entries whose mode is \"auto\"."
+          "description": "Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select sync.targets entries whose mode is \"auto\"."
         },
         "type_safety": {
           "default": "deploy_blocking",
@@ -246,7 +260,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Agent and hook workflow policy for schema diffs, migration checks, verification, sync automation, deploy safety gates, and generated type/Zod output refresh."
+      "description": "Automation policy for generated outputs, hook diff/check, verification guidance, deploy safety gates, and whether bare sync may apply selected targets."
     },
     "sync": {
       "default": {
@@ -333,7 +347,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Named migration sync targets. Each target selects a runner, URL owner, history table, and manual or automatic mode.",
+      "description": "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; each target mode decides whether bare sync selects that target.",
       "examples": [
         {
           "targets": {
@@ -433,7 +447,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Declarative SQL tree directories. The first path owns the default sources.to.",
+      "description": "Declarative SQL tree roots. Each root is read recursively; the first path usually matches sources.to.",
       "examples": [
         [
           "database/schemas"
@@ -497,8 +511,8 @@
               "const": "auto"
             },
             {
-              "pattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$",
-              "type": "string"
+              "type": "string",
+              "x-supaschema-source-parser": "parseRuntimeSource"
             }
           ]
         },
@@ -510,11 +524,11 @@
             "dir:database/schemas",
             "dir:supabase/schemas"
           ],
-          "pattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$"
+          "x-supaschema-source-parser": "parseRuntimeSource"
         }
       },
       "additionalProperties": false,
-      "description": "Default before/after sources for zero-source-flag diff, plan, and verify.",
+      "description": "Default before/after sources for zero-source-flag diff, plan, and verify. Keep sources.to explicit even when it matches schemaPaths[0].",
       "examples": [
         {
           "from": "auto",

@@ -43,75 +43,20 @@ const agentPaths = [
 ];
 const nonCanonicalAgentPaths = [".codex/skills/supaschema"];
 
-const hookConfigs = [
-  {
-    path: ".claude/settings.json",
-    config: {
-      hooks: {
-        PreToolUse: [
-          {
-            matcher: "Bash",
-            hooks: [
-              {
-                type: "command",
-                command: "node",
-                args: [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`],
-                timeout: 10,
-              },
-            ],
-          },
-          {
-            matcher: "Write|Edit|MultiEdit|apply_patch",
-            hooks: [
-              {
-                type: "command",
-                command: "npx",
-                args: [
-                  "--no-install",
-                  "supaschema",
-                  "hook",
-                  "generated-migration-edit",
-                  "--runtime",
-                  "claude",
-                ],
-                timeout: 10,
-              },
-            ],
-          },
-        ],
-        PostToolUse: [
-          {
-            matcher: "Write|Edit|MultiEdit|apply_patch",
-            hooks: [
-              {
-                type: "command",
-                command: "npx",
-                args: ["--no-install", "supaschema", "hook", "schema-write"],
-                timeout: 130,
-              },
-            ],
-          },
-        ],
-        PostToolBatch: [
-          {
-            hooks: [
-              {
-                type: "command",
-                command: "node",
-                args: [`${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`],
-                timeout: 130,
-              },
-            ],
-          },
-        ],
-      },
+function hookConfigsFor(targetDir) {
+  const runner = localRunnerForPackageManager(detectPackageManager(targetDir));
+  return [
+    {
+      path: ".claude/settings.json",
+      config: claudeHookConfig(runner),
     },
-  },
-  {
-    path: ".codex/hooks.json",
-    configFile: ".codex/hooks.json",
-  },
-];
+    {
+      path: ".codex/hooks.json",
+      configFile: ".codex/hooks.json",
+      transform: (config) => materializeCodexRunner(config, runner),
+    },
+  ];
+}
 
 export async function scaffoldProject({
   targetDir,
@@ -148,7 +93,7 @@ export async function scaffoldProject({
   removeNonCanonicalAgentSurfaces({ dryRun, targetDir });
   installed.push("agent files");
 
-  for (const config of hookConfigs) {
+  for (const config of hookConfigsFor(targetDir)) {
     if (!dryRun) {
       mergeHookConfig(packageRoot, targetDir, config, skipped);
     }
@@ -178,6 +123,220 @@ export async function scaffoldProject({
 
 function shellParameter(expression) {
   return ["$", "{", expression, "}"].join("");
+}
+
+function claudeHookConfig(runner) {
+  return {
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: "Bash",
+          hooks: [
+            {
+              type: "command",
+              command: "node",
+              args: [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`],
+              timeout: 10,
+            },
+          ],
+        },
+        {
+          matcher: "Write|Edit|MultiEdit|apply_patch",
+          hooks: [
+            {
+              type: "command",
+              command: runner.command,
+              args: [...runner.args, "hook", "generated-migration-edit", "--runtime", "claude"],
+              timeout: 10,
+            },
+          ],
+        },
+      ],
+      PostToolUse: [
+        {
+          matcher: "Write|Edit|MultiEdit|apply_patch",
+          hooks: [
+            {
+              type: "command",
+              command: runner.command,
+              args: [...runner.args, "hook", "schema-write"],
+              timeout: 130,
+            },
+          ],
+        },
+      ],
+      PostToolBatch: [
+        {
+          hooks: [
+            {
+              type: "command",
+              command: "node",
+              args: [`${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`],
+              timeout: 130,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function localRunnerForPackageManager(packageManager) {
+  if (packageManager === "pnpm") {
+    return {
+      args: ["exec", "supaschema"],
+      command: "pnpm",
+      commandString: "pnpm exec supaschema",
+    };
+  }
+  if (packageManager === "yarn") {
+    return {
+      args: ["exec", "supaschema"],
+      command: "yarn",
+      commandString: "yarn exec supaschema",
+    };
+  }
+  if (packageManager === "bun") {
+    return {
+      args: ["--no-install", "supaschema"],
+      command: "bunx",
+      commandString: "bunx --no-install supaschema",
+    };
+  }
+  return {
+    args: ["exec", "--", "supaschema"],
+    command: "npm",
+    commandString: "npm exec -- supaschema",
+  };
+}
+
+function detectPackageManager(projectDir) {
+  const manifestSignals = [];
+  const lockfileSignals = [];
+  for (const dir of packageManagerEvidenceDirs(projectDir)) {
+    const manifest = readJson(join(dir, "package.json"));
+    const manifestManager = manifestPackageManager(manifest);
+    if (manifestManager !== undefined) {
+      manifestSignals.push(manifestManager);
+    }
+    lockfileSignals.push(...lockfilePackageManagers(dir));
+  }
+  const signals = [...new Set([...manifestSignals, ...lockfileSignals])];
+  if (signals.length > 1) {
+    throw new Error(`conflicting package-manager signals: ${signals.join(", ")}`);
+  }
+  return signals[0] ?? "npm";
+}
+
+function packageManagerEvidenceDirs(projectDir) {
+  if (!(hasPackageManagerEvidence(projectDir) || existsSync(join(projectDir, "package.json")))) {
+    return [projectDir];
+  }
+  const dirs = [];
+  let current = projectDir;
+  while (true) {
+    dirs.push(current);
+    if (current !== projectDir && hasPackageManagerEvidence(current)) {
+      return dirs;
+    }
+    if (current === projectDir && hasPackageManagerEvidence(current)) {
+      return dirs;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return dirs;
+    }
+    current = parent;
+  }
+}
+
+function hasPackageManagerEvidence(dir) {
+  const manifest = readJson(join(dir, "package.json"));
+  return (
+    manifestPackageManager(manifest) !== undefined ||
+    manifestHasWorkspaces(manifest) ||
+    lockfilePackageManagers(dir).length > 0
+  );
+}
+
+function manifestHasWorkspaces(manifest) {
+  return Array.isArray(manifest?.workspaces) || isRecord(manifest?.workspaces);
+}
+
+function manifestPackageManager(manifest) {
+  const direct = packageManagerName(manifest?.packageManager);
+  if (direct !== undefined) {
+    return direct;
+  }
+  return packageManagerName(manifest?.devEngines?.packageManager);
+}
+
+function packageManagerName(value) {
+  if (typeof value === "string") {
+    return packageManagerNameFromSpec(value);
+  }
+  if (isRecord(value) && typeof value.name === "string") {
+    return packageManagerNameFromSpec(value.name);
+  }
+  return;
+}
+
+function packageManagerNameFromSpec(value) {
+  for (const manager of ["npm", "pnpm", "yarn", "bun"]) {
+    if (value === manager || value.startsWith(`${manager}@`)) {
+      return manager;
+    }
+  }
+  return;
+}
+
+function lockfilePackageManagers(dir) {
+  const managers = [];
+  if (existsSync(join(dir, "package-lock.json")) || existsSync(join(dir, "npm-shrinkwrap.json"))) {
+    managers.push("npm");
+  }
+  if (existsSync(join(dir, "pnpm-lock.yaml")) || existsSync(join(dir, "pnpm-workspace.yaml"))) {
+    managers.push("pnpm");
+  }
+  if (existsSync(join(dir, "yarn.lock"))) {
+    managers.push("yarn");
+  }
+  if (existsSync(join(dir, "bun.lock")) || existsSync(join(dir, "bun.lockb"))) {
+    managers.push("bun");
+  }
+  return managers;
+}
+
+function materializeCodexRunner(value, runner) {
+  if (Array.isArray(value)) {
+    return value.map((item) => materializeCodexRunner(item, runner));
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+  const next = {};
+  for (const [key, item] of Object.entries(value)) {
+    next[key] =
+      key === "command" && typeof item === "string"
+        ? materializeSupaschemaCommand(item, runner)
+        : materializeCodexRunner(item, runner);
+  }
+  return next;
+}
+
+function materializeSupaschemaCommand(command, runner) {
+  for (const prefix of [
+    "npm exec -- supaschema",
+    "pnpm exec supaschema",
+    "yarn exec supaschema",
+    "bunx --no-install supaschema",
+    "npx --no-install supaschema",
+  ]) {
+    if (command.startsWith(prefix)) {
+      return `${runner.commandString}${command.slice(prefix.length)}`;
+    }
+  }
+  return command;
 }
 
 function readExistingConfig(projectDir) {
@@ -559,15 +718,18 @@ function agentGuidanceBlock(selection) {
 - Generated migrations and \`-- supaschema: lineage\` files must not be hand-edited; regenerate from the declarative tree once the paths are confirmed.`
     : `- Schema intent belongs in \`${selection.schemaPaths.join("`, `")}\`.
 - Generated migrations write to \`${selection.migrationsDir}\`; files containing \`-- supaschema: lineage\` must not be hand-edited.`;
+  const sourceTargets = selection.schemaPaths.map((path) => `dir:${path}`).join("`, `");
   return `${guidanceStart}
 ## supaschema
 
-This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
+This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; setup can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
 
 ${pathLines}
 - The agent install prompt lives at \`.agents/prompts/supaschema-install.md\`; read it before installing, initializing, inspecting, or explaining supaschema setup in this project.
+- Treat \`supaschema.config.json\` as four decisions: schema tree (\`schemaPaths\`, \`sources.to\`, \`migrationsDir\`), diff baseline (\`sources.from\`, \`sources.to\`), generated contracts (\`typesFile\`, \`zodFile\`, \`workflow.type_generation\`, \`workflow.zod_generation\`, \`workflow.type_usage\`), and apply policy (\`workflow.migration_sync\`, \`sync.targets\`).
+- \`schemaPaths\` roots are recursive. The default target source is \`${sourceTargets}\`; keep \`sources.to\` explicit when the diff target is intentionally different.
 - Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
-- Edit \`supaschema.config.json\` to change \`adapter\`, \`workflow\`, \`schemaPaths\`, \`sources\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
+- Use \`$ENV_NAME\` database URL references in \`environments\` or \`sync.targets\`; do not commit credentials.
 - For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, then run \`diff\` and \`check\` through the local runner selected in \`.agents/prompts/supaschema-install.md\`.
 - Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes. When \`workflow.migration_sync\` allows automatic sync, the schema-write hook preflights every \`sync.targets\` entry with \`mode: "auto"\`; if each target resolves and any remote target is approved, it delegates to \`supaschema sync\`. Otherwise it stays on the non-mutating diff/check lane. Check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
 - Use bare \`sync\` for the configured workflow. Do not run \`sync --target <name>\` unless explicitly asked to override target selection. \`sync.targets.<name>.mode\` decides automatic target selection, \`workflow.migration_sync: "manual"\` keeps bare sync on the dry-run gate, and \`workflow.migration_sync: "disabled"\` blocks apply.
@@ -733,14 +895,16 @@ function mergeHookConfig(packageRoot, target, hookConfig, skipped) {
     typeof hookConfig.configFile === "string"
       ? readJson(join(packageRoot, hookConfig.configFile))
       : hookConfig.config;
+  const transformedSource =
+    typeof hookConfig.transform === "function" ? hookConfig.transform(source) : source;
   const destination = join(target, hookConfig.path);
   const existing = readJsonIfPresent(destination);
-  if (!source || existing === undefined) {
+  if (!transformedSource || existing === undefined) {
     skipped.push(hookConfig.path);
     return;
   }
 
-  const merged = mergeHooks(existing, source);
+  const merged = mergeHooks(existing, transformedSource);
   writeFileAtomic(destination, `${JSON.stringify(merged, null, 2)}\n`);
 }
 
@@ -809,10 +973,22 @@ function mergeHooks(existing, source) {
       .map(managedHookScript)
       .filter((name) => name !== undefined),
   ]);
+  const allManagedSupaschemaHooks = new Set([
+    ...Object.values(sourceHooks)
+      .filter(Array.isArray)
+      .flatMap((entries) => entries.flatMap(hookDefinitions))
+      .map(managedSupaschemaHook)
+      .filter((name) => name !== undefined),
+  ]);
 
   for (const [eventName, existingEntries] of Object.entries(mergedHooks)) {
     if (Array.isArray(existingEntries)) {
-      mergedHooks[eventName] = withoutManagedHooks(existingEntries, new Set(), allManagedScripts);
+      mergedHooks[eventName] = withoutManagedHooks(
+        existingEntries,
+        new Set(),
+        allManagedScripts,
+        allManagedSupaschemaHooks
+      );
     }
   }
 
@@ -825,9 +1001,12 @@ function mergeHooks(existing, source) {
     const managedScripts = new Set(
       sourceHookDefs.map(managedHookScript).filter((name) => name !== undefined)
     );
+    const managedSupaschemaHooks = new Set(
+      sourceHookDefs.map(managedSupaschemaHook).filter((name) => name !== undefined)
+    );
     const existingEntries = Array.isArray(mergedHooks[eventName]) ? mergedHooks[eventName] : [];
     mergedHooks[eventName] = [
-      ...withoutManagedHooks(existingEntries, signatures, managedScripts),
+      ...withoutManagedHooks(existingEntries, signatures, managedScripts, managedSupaschemaHooks),
       ...structuredClone(sourceEntries),
     ];
   }
@@ -835,14 +1014,16 @@ function mergeHooks(existing, source) {
   return merged;
 }
 
-function withoutManagedHooks(entries, signatures, managedScripts) {
+function withoutManagedHooks(entries, signatures, managedScripts, managedSupaschemaHooks) {
   const kept = [];
   for (const entry of entries) {
     if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
       kept.push(entry);
       continue;
     }
-    const hooks = entry.hooks.filter((hook) => !isSupersededHook(hook, signatures, managedScripts));
+    const hooks = entry.hooks.filter(
+      (hook) => !isSupersededHook(hook, signatures, managedScripts, managedSupaschemaHooks)
+    );
     if (hooks.length > 0) {
       kept.push({ ...entry, hooks });
     }
@@ -850,7 +1031,7 @@ function withoutManagedHooks(entries, signatures, managedScripts) {
   return kept;
 }
 
-function isSupersededHook(hook, signatures, managedScripts) {
+function isSupersededHook(hook, signatures, managedScripts, managedSupaschemaHooks) {
   if (!isRecord(hook)) {
     return false;
   }
@@ -858,7 +1039,11 @@ function isSupersededHook(hook, signatures, managedScripts) {
     return true;
   }
   const script = managedHookScript(hook);
-  return script !== undefined && managedScripts.has(script);
+  if (script !== undefined && managedScripts.has(script)) {
+    return true;
+  }
+  const supaschemaHook = managedSupaschemaHook(hook);
+  return supaschemaHook !== undefined && managedSupaschemaHooks.has(supaschemaHook);
 }
 
 function managedHookScript(hook) {
@@ -895,6 +1080,33 @@ function basenameFromCommand(command) {
   }
   const name = command.slice(lastSlash + 1, end);
   return name.endsWith(".mjs") || name.endsWith(".sh") ? name : undefined;
+}
+
+function managedSupaschemaHook(hook) {
+  if (!isRecord(hook)) {
+    return;
+  }
+  const tokens = [];
+  if (typeof hook.command === "string") {
+    tokens.push(...hook.command.split(" ").filter((token) => token.length > 0));
+  }
+  if (Array.isArray(hook.args)) {
+    tokens.push(...hook.args.filter((arg) => typeof arg === "string"));
+  }
+  const binaryIndex = tokens.indexOf("supaschema");
+  if (binaryIndex === -1 || tokens[binaryIndex + 1] !== "hook") {
+    return;
+  }
+  const hookName = tokens[binaryIndex + 2];
+  if (hookName === "schema-write") {
+    return hookName;
+  }
+  if (hookName !== "generated-migration-edit") {
+    return;
+  }
+  const runtimeFlag = tokens.indexOf("--runtime");
+  const runtime = runtimeFlag === -1 ? "" : (tokens[runtimeFlag + 1] ?? "");
+  return `${hookName}:${runtime}`;
 }
 
 function hookDefinitions(entry) {

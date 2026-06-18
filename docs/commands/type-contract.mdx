@@ -10,6 +10,8 @@ Use `type-contract` to inspect breaking changes to the generated type surface.
 
 `supaschema sync` runs deploy-blocking type-safety gates through `workflow.type_safety`; that package-owned deploy gate is separate from the standalone `type-contract --enforce` license path.
 
+`type-contract --enforce` requires a signed local entitlement token. Without a valid entitlement, the command prints the findings in report-only mode and exits `0`; with a valid entitlement, breaking changes exit `2`.
+
 ## Use this when
 
 - A migration must not break downstream TypeScript/Zod consumers.
@@ -58,6 +60,8 @@ With no flags, `--from` defaults to `git:HEAD` and `--to` to the declarative tre
 | ---- | ------------------------------------------------------------------- |
 | 0    | No breaking change, or report-only (no `--enforce`, or unlicensed). |
 | 2    | Breaking change under `--enforce` with a valid license.             |
+
+Commercial licensing and support intake use the [commercial support](/reference/support) path.
 
 ## Related
 

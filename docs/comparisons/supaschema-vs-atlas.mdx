@@ -32,12 +32,12 @@ Use `supaschema` when you want free, Postgres-native migration generation plus r
 
 ## Why the workflow differs
 
-`supaschema` parses declarative SQL into PostgreSQL parse trees and renders a guarded migration from the structural difference, then `supaschema check` flags replay-safety and lock hazards. Those safety checks are in the free core. The paid packs are separate analysis gates (TypeScript/Zod type-contract and grant-drift), not the migration linting itself.
+`supaschema` parses declarative SQL into PostgreSQL parse trees and renders a guarded migration from the structural difference, then `supaschema check` flags replay-safety and lock hazards. Those safety checks are in the free core. Grant and RLS safety run through free scan and deploy-safety gates; the licensed standalone CLI gate is `type-contract --enforce`.
 
-Atlas is a larger platform that spans multiple database engines and adds hosted reporting and CI integration. Starting with Atlas v0.38 (2025-10-28), `atlas migrate lint` and the custom schema-policy rule language require Atlas Pro (priced per seat, with a trial). If migration linting was the reason you used Atlas and you want a free Postgres-native option, `supaschema check` covers that lane.
+Atlas is a larger platform that spans multiple database engines and adds hosted reporting and CI integration. Starting with Atlas v0.38, `atlas migrate lint` and the custom schema-policy rule language require Atlas Pro. Atlas's current pricing pages describe separate CLI seat, pipeline project, and target-database pricing. If migration linting was the reason you used Atlas and you want a free Postgres-native option, `supaschema check` covers that lane.
 
 <Info>
-  Atlas pricing and feature gating are set by Atlas and can change. Last verified 2026-06-17 against the Atlas documentation; confirm current terms before relying on them.
+  Atlas pricing and feature gating are set by Atlas and can change. Last verified 2026-06-18 against the Atlas documentation; confirm current terms before relying on them.
 </Info>
 
 <CardGroup cols={2}>

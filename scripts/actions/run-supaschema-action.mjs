@@ -118,7 +118,7 @@ export async function runAction({
 async function runSupaschema(command, args, env, spawnImpl) {
   return await new Promise((resolve) => {
     const child = spawnImpl(command, args, {
-      env: { ...env, SUPASCHEMA_SKIP_POSTINSTALL: "1" },
+      env,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });

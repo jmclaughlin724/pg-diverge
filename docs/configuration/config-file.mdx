@@ -11,17 +11,16 @@ keywords:
   ]
 ---
 
-`supaschema.config.json` is the project-owned place for persistent defaults.
+`supaschema.config.json` is the project-owned place for persistent defaults. Read it as four decisions, not as a flat list of switches.
 
-Most teams edit only these fields:
+| Decision | Config fields | Default meaning |
+| --- | --- | --- |
+| Schema tree | `schemaPaths`, `sources.to`, `migrationsDir` | Read every nested `.sql` file under `database/schemas`, diff toward `dir:database/schemas`, and write migrations to `database/migrations`. |
+| Diff baseline | `sources.from`, `sources.to` | Diff from `"auto"` to the configured schema tree. `"auto"` resolves a database URL, then `git:HEAD`, then `empty:`. |
+| Generated contracts | `typesFile`, `zodFile`, `workflow.type_generation`, `workflow.zod_generation`, `workflow.type_usage` | Create or refresh TypeScript and Zod outputs after `diff`, and tell agents to use Zod validators at runtime boundaries. |
+| Apply policy | `workflow.migration_sync`, `sync.targets` | Keep bare `sync` apply-capable by default, but only targets with `mode: "auto"` are selected; remote targets also require their approval environment variable. |
 
-- `schemaPaths` — where declarative SQL files live.
-- `sources` — default before/after sources for zero-source-flag `diff`, `plan`, and `verify`.
-- `migrationsDir` — where generated migrations are written.
-- `typesFile` / `zodFile` — generated TypeScript and Zod output paths.
-- `workflow` — agent/hook policy for diff, check, verify, migration sync, and generated outputs.
-- `environments` — named database URL references such as staging or production.
-- `hints` — exact reviewed destructive changes or renames.
+Use the detailed field reference when the project needs a non-default path, source, generated-output policy, validator, or apply target.
 
 ## Load order
 
@@ -44,75 +43,59 @@ The scaffolded config includes a `$schema` pointer to the shipped `supaschema-co
 
 ## Generated config
 
-Generic PostgreSQL installs write this full config shape:
+Generic PostgreSQL installs write explicit defaults so humans, agents, and editor schema validation agree on the same workflow.
+
+Schema tree and diff target:
 
 ```json
 {
-  "$schema": "./node_modules/supaschema/supaschema-config.schema.json",
-  "adapter": "auto",
-  "cascade": "never",
-  "destructiveChanges": "hint-required",
-  "environments": {
-    "local": { "databaseUrl": "$LOCAL_DATABASE_URL" },
-    "production": { "databaseUrl": "$PRODUCTION_DATABASE_URL" }
-  },
-  "excludedGrantRoles": [],
-  "hints": {
-    "destructive": [],
-    "renames": []
-  },
-  "idempotency": "required",
-  "lockTimeout": "5s",
-  "workflow": {
-    "schema_diff": "on_schema_write",
-    "migration_check": "after_schema_diff",
-    "migration_verify": "suggest_after_check",
-    "migration_sync": "auto",
-    "type_safety": "deploy_blocking",
-    "rls_safety": "deploy_blocking",
-    "type_generation": "create_or_refresh",
-    "zod_generation": "create_or_refresh",
-    "type_usage": "zod_validated"
-  },
-  "sync": {
-    "targets": {
-      "local": {
-        "mode": "auto",
-        "runner": "direct",
-        "environment": "local",
-        "historyTable": "supabase_migrations.schema_migrations"
-      },
-      "remote": {
-        "mode": "manual",
-        "runner": "direct",
-        "environment": "production",
-        "historyTable": "supabase_migrations.schema_migrations",
-        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-        "remote": true
-      }
-    }
-  },
-  "migrationsDir": "database/migrations",
-  "typesFile": "database.types.ts",
-  "zodFile": "database.zod.ts",
-  "normalize": "deparse",
-  "managedSchemas": [],
-  "postgresVersion": "15+",
-  "renameDetection": "hints-only",
   "schemaPaths": ["database/schemas"],
-  "schemas": {
-    "exclude": [],
-    "include": []
-  },
   "sources": {
     "from": "auto",
     "to": "dir:database/schemas"
   },
-  "statementTimeout": "60s",
-  "transactionMode": "per-migration",
-  "validators": ["internal-parser"]
+  "migrationsDir": "database/migrations"
 }
 ```
+
+`schemaPaths` is recursive. A root such as `database/schemas` can contain nested folders like `database/schemas/app/tables.sql` or `database/schemas/auth/policies/read.sql`; supaschema reads every nested `.sql` file and merges the parsed objects into one schema model. `sources.to` stays explicit because it is the command default for zero-source-flag `diff`, `plan`, and `verify`.
+
+Generated contracts:
+
+```json
+{
+  "typesFile": "database.types.ts",
+  "zodFile": "database.zod.ts",
+  "workflow": {
+    "type_generation": "create_or_refresh",
+    "zod_generation": "create_or_refresh",
+    "type_usage": "zod_validated"
+  }
+}
+```
+
+Apply policy:
+
+```json
+{
+  "workflow": {
+    "migration_sync": "auto"
+  },
+  "sync": {
+    "targets": {
+      "local": { "mode": "auto", "environment": "local" },
+      "remote": {
+        "mode": "manual",
+        "environment": "production",
+        "remote": true,
+        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
+      }
+    }
+  }
+}
+```
+
+`workflow.migration_sync: "auto"` keeps bare `supaschema sync` enabled. Target `mode` decides what is selected. Set a target to `"manual"` to omit it from bare sync, set `workflow.migration_sync` to `"manual"` to require `--target <name>`, or set it to `"disabled"` to block apply.
 
 Provider detection can change the initial `schemaPaths`, `sources.to`, and `migrationsDir` values during install. Supabase installs also seed `managedSchemas` with the Supabase platform schema list; generic PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, and Azure PostgreSQL installs use `managedSchemas: []` unless you configure otherwise.
 
@@ -156,19 +139,13 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `destructiveChanges` | `"hint-required"` | `hint-required` blocks destructive operations until the object key is listed in `hints.destructive`; `block` always blocks; `allow` permits everything (not recommended). |
 | `environments` | `local` and `production` `$ENV` references | Named database targets for the global `--env` flag and sync target references. Use `$ENV_NAME` indirection so committed config carries no credentials. |
 | `excludedGrantRoles` | `[]` | Grants and default privileges whose grantee or `FOR ROLE` matches are removed from extracted models (useful for platform roles such as `supabase_admin`). |
+| `hints.allowedGrantees` | `[]` | Roles allowed by the free grant least-privilege rule. When non-empty, grants to other roles are reported by `scan` and `workflow.rls_safety`. |
+| `hints.requiredPolicyColumns` | `{}` | Table keys mapped to columns that every effective RLS policy predicate must reference, for example `{ "public.accounts": ["tenant_id"] }`. |
 | `hints.destructive` | `[]` | Exact object keys (or `"*"`) approved for destructive drop/replace. |
 | `hints.renames` | `[]` | `{ "from": "<object key>", "to": "<object key>" }` pairs rendered as guarded `ALTER ... RENAME`. |
 | `idempotency` | `"required"` | Rendered SQL is replay-safe by construction. Not configurable away. |
 | `lockTimeout` | `"5s"` | Value for the `SET lock_timeout` migration preamble. |
-| `workflow.schema_diff` | `"on_schema_write"` | See [Workflow policy](#workflow-policy). |
-| `workflow.migration_check` | `"after_schema_diff"` | See [Workflow policy](#workflow-policy). |
-| `workflow.migration_verify` | `"suggest_after_check"` | See [Workflow policy](#workflow-policy). |
-| `workflow.migration_sync` | `"auto"` | See [Workflow policy](#workflow-policy). |
-| `workflow.type_safety` | `"deploy_blocking"` | See [Workflow policy](#workflow-policy). |
-| `workflow.rls_safety` | `"deploy_blocking"` | See [Workflow policy](#workflow-policy). |
-| `workflow.type_generation` | `"create_or_refresh"` | See [Workflow policy](#workflow-policy). |
-| `workflow.zod_generation` | `"create_or_refresh"` | See [Workflow policy](#workflow-policy). |
-| `workflow.type_usage` | `"zod_validated"` | See [Workflow policy](#workflow-policy) and [ORM-free applications](/concepts/orm-free-applications). |
+| `workflow` | see [Workflow policy](#workflow-policy) | Hook automation, generated output refresh, deploy safety gates, verification guidance, and sync apply policy. |
 | `sync.targets.<name>` | `local` and `remote` targets | Named sync targets. Each target sets `mode`, `runner`, exactly one of `environment` or `databaseUrl`, and `historyTable`; remote targets also set `requireApprovalEnv`. |
 | `managedSchemas` | `[]` for generic installs; Supabase platform set for Supabase installs | Schemas treated as externally managed. Objects inside these schemas cannot be claimed by the declarative tree unless you remove the schema from this list because the project truly owns it. |
 | `migrationsDir` | `"database/migrations"` | Where zero-flag `diff` writes migrations, zero-arg `check` reads them, and `verify` finds the newest pending file. Install can scaffold provider-specific folders; the canonical path table lives in [Setup](/setup#path-selection). The `--migrations-dir` flag overrides per command. |

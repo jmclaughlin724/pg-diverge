@@ -16,32 +16,20 @@ Use this page to add supaschema to a project.
 
 Install from the package or workspace that owns your schema workflow, not from a clone of the supaschema source repository. Use the project's package manager; do not create a second lockfile.
 
-| Manager | Install command | Run command |
-| --- | --- | --- |
-| npm | `npm install supaschema` | `npm exec -- supaschema <cmd>` |
-| pnpm | `pnpm add --allow-build=supaschema supaschema` | `pnpm exec supaschema <cmd>` |
-| Yarn | `yarn add supaschema` | `yarn exec supaschema <cmd>` |
-| Bun | `bun add --trust supaschema` | `bunx --no-install supaschema <cmd>` |
+| Manager | Install command | Setup command | Run command |
+| --- | --- | --- | --- |
+| npm | `npm install supaschema` | `npm exec -- supaschema init` | `npm exec -- supaschema <cmd>` |
+| pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` | `pnpm exec supaschema <cmd>` |
+| Yarn | `yarn add supaschema` | `yarn exec supaschema init` | `yarn exec supaschema <cmd>` |
+| Bun | `bun add supaschema` | `bunx --no-install supaschema init` | `bunx --no-install supaschema <cmd>` |
 
 supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, hooks, and coding-agent bundle are part of the consuming repo's migration workflow.
 
-For workspaces, run the first install from the package directory that owns `supaschema.config.json` and the schema files. Dependency-targeting flags such as npm `--workspace`, pnpm `--filter`, or Yarn `workspace` can update the member manifest while lifecycle scripts still see the command's original directory; that can scaffold the wrong project. Use root-level workspace flags only when the workspace root owns the schema workflow.
+For workspaces, run both install and setup from the package directory that owns `supaschema.config.json` and the schema files. Dependency-targeting flags such as npm `--workspace`, pnpm `--filter`, or Yarn `workspace` can update the member manifest while setup still runs from the command's current directory. Use root-level workspace flags only when the workspace root owns the schema workflow.
 
-For pnpm workspace member packages, install with scripts blocked from the member directory, then run setup from that same directory:
+For pnpm, `pnpm add supaschema` adds the dependency to the package in the current directory. Run `pnpm add -w supaschema` only when the workspace root owns the schema workflow.
 
-```bash
-pnpm add --ignore-scripts supaschema
-pnpm exec supaschema init
-```
-
-For Bun workspace member packages, do not use `--trust` for the first install. Add the package from the member directory, then run setup from that same directory:
-
-```bash
-bun add supaschema
-bunx --no-install supaschema init
-```
-
-Stop before installing if package-manager signals conflict, the workspace owner is unclear, Node is below 22.12, or dependency build scripts are blocked and you cannot approve `supaschema`.
+Stop before installing if package-manager signals conflict, the workspace owner is unclear, or Node is below 22.12.
 
 ## Agent install prompt
 
@@ -59,13 +47,13 @@ Use the matching local runner for every command after install:
 - Yarn: `yarn exec supaschema <cmd>`
 - Bun: `bunx --no-install supaschema <cmd>`
 
-After install, read `.agents/prompts/supaschema-install.md` if it exists, inspect `supaschema.config.json`, and inspect `.supaschema/install.json` only when it exists for pending path confirmation. Then run:
+After install, run `<local-runner> init`. It uses the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths together with the packaged supaschema rule, skill, hook, config, and prompt bundle. Then read `.agents/prompts/supaschema-install.md` if it exists, inspect `supaschema.config.json`, and inspect `.supaschema/install.json` only when it exists for pending path confirmation. Then run:
 
 `<local-runner> --version` `<local-runner> config validate --json`
 
 Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, installed agent bundle surfaces, and whether path confirmation is still pending.
 
-Do not apply migrations to any database unless I explicitly ask for that or `sync.targets.<name>.mode` selects an approved automatic target under the configured sync workflow. For schema changes, edit the declarative schema tree and run `<local-runner> diff` or the configured `sync` workflow; treat generated migrations as build output.
+Do not apply migrations to any database unless I explicitly ask for that or the configured apply policy allows it: `workflow.migration_sync` must permit sync, `sync.targets.<name>.mode` must select the target, and any remote approval variable must be set by the operator. For schema changes, edit the declarative schema tree and run `<local-runner> diff` or the configured `sync` workflow; treat generated migrations as build output.
 
 </Prompt>
 
@@ -76,7 +64,7 @@ Do not apply migrations to any database unless I explicitly ask for that or `syn
 <local-runner> config validate
 ```
 
-If lifecycle scripts were blocked or no config exists, run the same setup explicitly through the matching local runner:
+Run setup explicitly through the matching local runner after install. It is idempotent, so it is safe to rerun when managed surfaces need repair:
 
 ```bash
 <local-runner> init

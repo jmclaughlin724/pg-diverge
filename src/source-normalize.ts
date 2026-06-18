@@ -1,5 +1,6 @@
 import type { Diagnostic, SchemaObject } from "./core.js";
 import { diagnostic } from "./diagnostics.js";
+import { asRecord } from "./sql/ast.js";
 import { finalizeObject } from "./sql/facts.js";
 import { shapeHash, stripLocations } from "./sql/object-hash.js";
 import {
@@ -49,9 +50,7 @@ export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): Schema
       String(object.metadata.grantee ?? ""),
     ].join("|");
     const privileges = defaults.get(key) ?? new Set<string>();
-    for (const privilege of Array.isArray(object.metadata.privileges)
-      ? (object.metadata.privileges as string[])
-      : []) {
+    for (const privilege of stringArray(object.metadata.privileges) ?? []) {
       privileges.add(privilege);
     }
     defaults.set(key, privileges);
@@ -73,9 +72,7 @@ export function suppressDefaultAclImpliedGrants(objects: SchemaObject[]): Schema
     if (!implied) {
       return true;
     }
-    const privileges = Array.isArray(object.metadata.privileges)
-      ? (object.metadata.privileges as string[])
-      : [];
+    const privileges = stringArray(object.metadata.privileges) ?? [];
     return !privileges.every((privilege) => implied.has(privilege) || implied.has("ALL"));
   });
 }
@@ -160,7 +157,14 @@ function isBuiltinPublicRevoke(object: SchemaObject): boolean {
 }
 
 function metadataPrivileges(meta: Record<string, unknown>): string[] {
-  return Array.isArray(meta.privileges) ? (meta.privileges as string[]) : [];
+  return stringArray(meta.privileges) ?? [];
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    return;
+  }
+  return [...value];
 }
 
 function latestOrdinal(objects: SchemaObject[]): number {
@@ -180,9 +184,7 @@ function metadataKindPhrase(meta: Record<string, unknown>): string {
 function coversAllGrants(revoked: string[], grants: SchemaObject[]): boolean {
   const revokedSet = new Set(revoked);
   return grants.every((grant) => {
-    const granted = Array.isArray(grant.metadata.privileges)
-      ? (grant.metadata.privileges as string[])
-      : [];
+    const granted = stringArray(grant.metadata.privileges) ?? [];
     return granted.every((privilege) => revokedSet.has(privilege) || privilege === "ALL");
   });
 }
@@ -203,16 +205,35 @@ interface ColumnDefaultAmendment {
   expression: unknown;
 }
 
+interface ColumnDefaultShapeColumn extends Record<string, unknown> {
+  name: string;
+}
+
 function columnDefaultAmendment(object: SchemaObject): ColumnDefaultAmendment | undefined {
-  const raw = object.metadata.columnDefaultAmendment;
-  if (typeof raw !== "object" || raw === null) {
+  const raw = asRecord(object.metadata.columnDefaultAmendment);
+  if (!raw) {
     return;
   }
-  const column = (raw as Record<string, unknown>).column;
+  const column = raw.column;
   if (typeof column !== "string" || column.length === 0) {
     return;
   }
-  return { column, expression: (raw as Record<string, unknown>).expression ?? null };
+  return { column, expression: raw.expression ?? null };
+}
+
+function columnDefaultColumns(value: unknown): ColumnDefaultShapeColumn[] | undefined {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const columns: ColumnDefaultShapeColumn[] = [];
+  for (const item of value) {
+    const record = asRecord(item);
+    if (!record || typeof record.name !== "string") {
+      return;
+    }
+    columns.push({ ...record, name: record.name });
+  }
+  return columns;
 }
 
 function applyColumnDefaultAmendments(
@@ -232,10 +253,8 @@ function applyColumnDefaultAmendments(
   for (const marker of markers) {
     const amendment = columnDefaultAmendment(marker);
     const table = tablesByKey.get(marker.key);
-    const shape = table?.metadata.canonicalShape as
-      | { columns?: { default?: unknown; name: string }[] }
-      | undefined;
-    const columns = shape?.columns;
+    const shape = asRecord(table?.metadata.canonicalShape);
+    const columns = columnDefaultColumns(shape?.columns);
     const columnIndex = columns?.findIndex((item) => item.name === amendment?.column) ?? -1;
     if (!(table && shape && columns && columnIndex >= 0 && amendment)) {
       diagnostics.push(
@@ -248,7 +267,7 @@ function applyColumnDefaultAmendments(
       );
       continue;
     }
-    const column = columns[columnIndex] as { default?: unknown; name: string };
+    const column = columns[columnIndex];
     if (column === undefined) {
       continue;
     }
@@ -264,7 +283,7 @@ function applyColumnDefaultAmendments(
     }
     const nextShape = { ...shape, columns: nextColumns };
     table.metadata = { ...table.metadata, canonicalShape: nextShape };
-    table.hash = shapeHash(nextShape as Record<string, unknown>, table.key, table.ref);
+    table.hash = shapeHash(nextShape, table.key, table.ref);
     table.sql = `${table.sql};\n${marker.sql}`;
     table.dependencies = mergedDependencies([table, marker]);
   }
@@ -276,11 +295,11 @@ interface SequenceOwnedByAmendment {
 }
 
 function sequenceOwnedByAmendment(object: SchemaObject): SequenceOwnedByAmendment | undefined {
-  const raw = object.metadata.sequenceOwnedByAmendment;
-  if (typeof raw !== "object" || raw === null) {
+  const raw = asRecord(object.metadata.sequenceOwnedByAmendment);
+  if (!raw) {
     return;
   }
-  const ownedBy = (raw as Record<string, unknown>).ownedBy;
+  const ownedBy = raw.ownedBy;
   if (ownedBy !== null && typeof ownedBy !== "string") {
     return;
   }
@@ -304,7 +323,7 @@ function applySequenceOwnedByAmendments(
   for (const marker of markers) {
     const amendment = sequenceOwnedByAmendment(marker);
     const sequence = sequencesByKey.get(marker.key);
-    const shape = sequence?.metadata.canonicalShape as { ownedBy?: string } | undefined;
+    const shape = asRecord(sequence?.metadata.canonicalShape);
     if (!(sequence && shape && amendment)) {
       diagnostics.push(
         diagnostic(
@@ -321,14 +340,14 @@ function applySequenceOwnedByAmendments(
         ? sequenceShapeWithoutOwner(shape)
         : { ...shape, ownedBy: amendment.ownedBy };
     sequence.metadata = { ...sequence.metadata, canonicalShape: nextShape };
-    sequence.hash = shapeHash(nextShape as Record<string, unknown>, sequence.key, sequence.ref);
+    sequence.hash = shapeHash(nextShape, sequence.key, sequence.ref);
     sequence.sql = `${sequence.sql};\n${marker.sql}`;
     sequence.dependencies = mergedDependencies([sequence, marker]);
   }
   return objects.filter((object) => sequenceOwnedByAmendment(object) === undefined);
 }
 
-function sequenceShapeWithoutOwner(shape: { ownedBy?: string }): Record<string, unknown> {
+function sequenceShapeWithoutOwner(shape: Record<string, unknown>): Record<string, unknown> {
   const { ownedBy: _ownedBy, ...rest } = shape;
   return rest;
 }
@@ -516,7 +535,7 @@ function unionPrivileges(group: SchemaObject[]): string[] | undefined {
     if (!Array.isArray(privileges) || privileges.some((item) => typeof item !== "string")) {
       return;
     }
-    for (const privilege of privileges as string[]) {
+    for (const privilege of privileges) {
       if (privilege === "ALL") {
         return ["ALL"];
       }

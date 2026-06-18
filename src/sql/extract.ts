@@ -31,6 +31,7 @@ import {
 } from "./extract-helpers.js";
 import { finalizeObjects } from "./facts.js";
 import { parseSqlAst } from "./parser.js";
+import { policyMetadataFromAst } from "./policies.js";
 import {
   commentObjectFromAst,
   defaultPrivilegesFromAst,
@@ -416,7 +417,24 @@ function policyObjects(
   ordinal: number,
   file: string | undefined
 ): SchemaObject[] | undefined {
-  return tableScopedObject("policy", node.table, node.policy_name, statement, ordinal, file);
+  const tableName = rangeVarName(node.table);
+  const name = readString(node.policy_name);
+  return tableName && name
+    ? [
+        makeObject(
+          {
+            kind: "policy",
+            name,
+            schema: tableName.schema,
+            table: tableName.name,
+          },
+          statement.text,
+          ordinal,
+          file,
+          policyMetadataFromAst(node)
+        ),
+      ]
+    : undefined;
 }
 
 function defaultPrivilegeObjects(

@@ -3,11 +3,9 @@ import { assert, exists, ok, readJson, readText } from "./lib/guard-utils.js";
 
 const policy = readJson(".github/repo-policy.json");
 const packageJson = readJson("package.json");
-const rule = readText(".claude/rules/21-github-process.md");
 const prTemplate = readText(".github/PULL_REQUEST_TEMPLATE.md");
 const contributing = readText("CONTRIBUTING.md");
 const checkAll = readText("scripts/guards/check-all.mjs");
-const agents = readText("AGENTS.md");
 const auditSettings = readText("scripts/github/audit-settings.mjs");
 
 for (const file of [
@@ -40,13 +38,9 @@ assert(
   "npm run guard must include check-github-process.mjs"
 );
 assert(
-  agents.includes(".claude/rules/21-github-process.md"),
-  "AGENTS.md Rule Map must route GitHub process to Rule 21"
+  Array.isArray(policy.upstreamSources) && policy.upstreamSources.length > 0,
+  "repo policy must cite GitHub upstream sources"
 );
-
-for (const source of policy.upstreamSources ?? []) {
-  assert(rule.includes(source), `Rule 21 must cite upstream source ${source}`);
-}
 
 assert(
   policy.repositoryFullName === "jmclaughlin724/supaschema",
@@ -92,14 +86,6 @@ assert(
 assert(
   auditSettings.includes('"PUT"'),
   "audit-settings topic apply must use the GitHub replace-topics endpoint"
-);
-assert(
-  rule.includes("npm run github:audit-settings -- --apply-topics"),
-  "Rule 21 must document the topic apply command"
-);
-assert(
-  rule.includes("GITHUB_REPOSITORY_TOPICS_APPROVED=1"),
-  "Rule 21 must document the topic write approval variable"
 );
 assert(policy.repository?.default_branch === "main", "default branch must be main");
 assert(policy.repository?.allow_merge_commit === false, "merge commits must be disabled");
@@ -155,8 +141,8 @@ for (const context of [
   "check-os (macos-latest)",
   "check-os (windows-latest)",
   "dependency-review",
+  "analyze (actions)",
   "analyze (javascript-typescript)",
-  "analyze (python)",
 ]) {
   assert(
     main.required_status_checks.contexts.includes(context),
@@ -199,7 +185,6 @@ for (const command of [
   "gh pr merge <number> --rebase --delete-branch",
 ]) {
   assert(prTemplate.includes(command), `.github/PULL_REQUEST_TEMPLATE.md must include ${command}`);
-  assert(rule.includes(command), `.claude/rules/21-github-process.md must include ${command}`);
 }
 
 assert(

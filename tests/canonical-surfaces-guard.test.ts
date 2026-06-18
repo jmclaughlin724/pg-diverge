@@ -13,7 +13,7 @@ function tempGitRepo(packageJson: unknown, files: Record<string, string> = {}): 
   symlinkSync(repoNodeModules, join(dir, "node_modules"), "dir");
   writeFileSync(
     join(dir, "package.json"),
-    `${JSON.stringify({ ...(packageJson as Record<string, unknown>), type: "module" })}\n`
+    `${JSON.stringify({ ...objectValue(packageJson), type: "module" })}\n`
   );
   for (const [file, source] of Object.entries(files)) {
     mkdirSync(join(dir, dirname(file)), { recursive: true });
@@ -25,6 +25,13 @@ function tempGitRepo(packageJson: unknown, files: Record<string, string> = {}): 
     stdio: "ignore",
   });
   return dir;
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(value));
 }
 
 describe("canonical surfaces guard", () => {
@@ -70,6 +77,76 @@ describe("canonical surfaces guard", () => {
     expect(result.stderr).toContain("contains pattern-engine syntax");
   });
 
+  it("blocks TypeScript assertions in code files", () => {
+    const cwd = tempGitRepo(
+      {},
+      {
+        "src/assertion.ts":
+          "const raw: unknown = {};\nexport const value = raw as { ok: boolean };\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("contains a TypeScript assertion");
+  });
+
+  it("blocks inline zod enum tuples in code files", () => {
+    const cwd = tempGitRepo(
+      {},
+      {
+        "src/schema.ts": "import { z } from 'zod';\nexport const schema = z.enum(['a', 'b']);\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("contains an inline z.enum tuple");
+  });
+
+  it("blocks regex-shaped string contracts in code files", () => {
+    const groupStart = ["(", "?", ":"].join("");
+    const pattern = ["^", groupStart, "dir:.+", "|empty:", ")", "$"].join("");
+    const cwd = tempGitRepo(
+      {},
+      {
+        "src/source-contract.ts": `export const sourceSpecPattern = ${JSON.stringify(pattern)};\n`,
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("contains a regex-shaped string contract");
+  });
+
+  it("blocks comments and regular expression engines in skill reference code", () => {
+    const cwd = tempGitRepo(
+      {},
+      {
+        ".claude/skills/research/references/workflow.js": "const value = /x/;\n",
+        ".agents/skills/research/references/workflow.js":
+          "const value = 1;\n// generated mirror must stay clean\n",
+      }
+    );
+    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+      cwd,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      ".claude/skills/research/references/workflow.js:1:15 contains pattern-engine syntax"
+    );
+    expect(result.stderr).toContain(
+      ".agents/skills/research/references/workflow.js:2:1 contains a line comment"
+    );
+  });
+
   it("blocks DTO facade and view-model code surfaces", () => {
     const cwd = tempGitRepo(
       {},
@@ -89,7 +166,7 @@ describe("canonical surfaces guard", () => {
     expect(result.stderr).toContain("src/user-view-model.ts has a forbidden compatibility");
   });
 
-  it("blocks duplicate monetization owners outside the Worker and Stripe catalog setup", () => {
+  it("blocks public Stripe checkout implementation", () => {
     const cwd = tempGitRepo(
       {},
       {
@@ -103,10 +180,10 @@ describe("canonical surfaces guard", () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("contains monetization term");
-    expect(result.stderr).toContain("services/license-worker");
+    expect(result.stderr).toContain("outside the public repository");
   });
 
-  it("blocks duplicate GitHub Marketplace billing owners outside the Worker", () => {
+  it("blocks public GitHub Marketplace billing implementation", () => {
     const cwd = tempGitRepo(
       {},
       {
@@ -120,37 +197,6 @@ describe("canonical surfaces guard", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("contains monetization term marketplace_purchase");
     expect(result.stderr).toContain("GitHub Marketplace");
-  });
-
-  it("allows the canonical Worker Stripe transport owner", () => {
-    const cwd = tempGitRepo(
-      {},
-      {
-        "services/license-worker/src/stripe-api.ts":
-          "export const endpoint = 'https://api.stripe.com/v1/checkout/sessions';\n",
-      }
-    );
-    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
-      cwd,
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("CANONICAL_SURFACES_OK");
-  });
-
-  it("allows the canonical Worker to own GitHub Marketplace webhook handling", () => {
-    const cwd = tempGitRepo(
-      {},
-      {
-        "services/license-worker/src/index.ts": "export const event = 'marketplace_purchase';\n",
-      }
-    );
-    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
-      cwd,
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("CANONICAL_SURFACES_OK");
   });
 
   it("allows package scripts without recursive force deletion", () => {

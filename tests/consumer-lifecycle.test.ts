@@ -58,7 +58,7 @@ async function capture(file: string, args: string[], cwd: string): Promise<Captu
     const { stdout, stderr } = await run(file, args, { cwd, maxBuffer: 64 * 1024 * 1024 });
     return { code: 0, stderr, stdout };
   } catch (error) {
-    const failure = error as { code?: number | string; stderr?: string; stdout?: string };
+    const failure = error;
     return {
       code: typeof failure.code === "number" ? failure.code : 1,
       stderr: failure.stderr ?? "",
@@ -76,13 +76,13 @@ async function copySqlTree(sourceDir: string, targetDir: string): Promise<void> 
   }
 }
 
-const repoVersion = (JSON.parse(readFileSync("package.json", "utf8")) as { version: string })
-  .version;
+const repoVersion = JSON.parse(readFileSync("package.json", "utf8")).version;
 
 const fixtureFrom = "tests/fixtures/sample-project/supabase/schemas";
 const fixtureTo = "tests/fixtures/sample-project/supabase/schemas-next";
 
 let consumer = "";
+let consumerScaffoldBeforeInit = true;
 let binPath = "";
 
 let consumer2 = "";
@@ -93,7 +93,7 @@ beforeAll(async () => {
   const packDir = await mkdtemp(join(tmpdir(), "supa-pack-"));
   const pack = npmExec(["pack", "--json", "--ignore-scripts", "--pack-destination", packDir]);
   const { stdout } = await run(pack.file, pack.args, { maxBuffer: 32 * 1024 * 1024 });
-  const [packed] = JSON.parse(stdout) as { filename: string }[];
+  const [packed] = JSON.parse(stdout);
   const tarball = join(packDir, packed.filename);
   tarballPath = tarball;
 
@@ -110,21 +110,19 @@ beforeAll(async () => {
   await run(install.file, install.args, { cwd: consumer, maxBuffer: 64 * 1024 * 1024 });
 
   binPath = join(consumer, "node_modules", "supaschema", "bin", "supaschema");
+  consumerScaffoldBeforeInit = existsSync(join(consumer, "supaschema.config.json"));
+  await run(process.execPath, [binPath, "init"], {
+    cwd: consumer,
+    maxBuffer: 64 * 1024 * 1024,
+  });
 
   consumer2 = await mkdtemp(join(tmpdir(), "supa-consumer-init-"));
   await writeFile(
     join(consumer2, "package.json"),
     `${JSON.stringify({ name: "supaschema-init-fixture", private: true, version: "0.0.0" })}\n`
   );
-  const installNoScripts = npmExec([
-    "install",
-    tarball,
-    "--ignore-scripts",
-    "--prefer-offline",
-    "--no-audit",
-    "--no-fund",
-  ]);
-  await run(installNoScripts.file, installNoScripts.args, {
+  const installOnly = npmExec(["install", tarball, "--prefer-offline", "--no-audit", "--no-fund"]);
+  await run(installOnly.file, installOnly.args, {
     cwd: consumer2,
     maxBuffer: 64 * 1024 * 1024,
   });
@@ -132,7 +130,8 @@ beforeAll(async () => {
 }, 300_000);
 
 describe("consumer lifecycle: install then use the published package", () => {
-  it("npm install of the packed tarball scaffolds the project and ships a runnable CLI", () => {
+  it("npm install ships the package and explicit init scaffolds the project", () => {
+    expect(consumerScaffoldBeforeInit).toBe(false);
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(true);
     expect(existsSync(join(consumer, "supabase", "schemas"))).toBe(true);
     expect(existsSync(join(consumer, "supabase", "migrations"))).toBe(true);
@@ -140,9 +139,7 @@ describe("consumer lifecycle: install then use the published package", () => {
     expect(existsSync(join(consumer, "node_modules", "supaschema", "dist", "cli.js"))).toBe(true);
     expect(existsSync(binPath)).toBe(true);
 
-    const config = JSON.parse(
-      readFileSync(join(consumer, "supaschema.config.json"), "utf8")
-    ) as Record<string, unknown>;
+    const config = JSON.parse(readFileSync(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config.schemaPaths).toEqual(["supabase/schemas"]);
     expect(config.migrationsDir).toBe("supabase/migrations");
   });
@@ -159,7 +156,7 @@ describe("consumer lifecycle: install then use the published package", () => {
     await copySqlTree(fixtureTo, join(consumer, "supabase", "schemas"));
 
     const configPath = join(consumer, "supaschema.config.json");
-    const config = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+    const config = JSON.parse(await readFile(configPath, "utf8"));
     config.sources = {
       from: "dir:baseline/schemas",
       to: "dir:supabase/schemas",
@@ -201,7 +198,7 @@ describe("consumer lifecycle: install then use the published package", () => {
 });
 
 describe("consumer lifecycle: workspace member install from member directory", () => {
-  it("npm install from the owning workspace member scaffolds that member, not the root", async () => {
+  it("npm install from the owning workspace member plus init scaffolds that member, not the root", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "supa-npm-workspace-"));
     const member = join(workspace, "packages", "db");
     await mkdir(member, { recursive: true });
@@ -229,6 +226,16 @@ describe("consumer lifecycle: workspace member install from member directory", (
     await run(install.file, install.args, { cwd: member, maxBuffer: 64 * 1024 * 1024 });
 
     expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(member, "supaschema.config.json"))).toBe(false);
+
+    const init = await capture(
+      npmExec(["exec", "--", "supaschema", "init"]).file,
+      npmExec(["exec", "--", "supaschema", "init"]).args,
+      member
+    );
+    expect(init.code, init.stderr).toBe(0);
+
+    expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
     expect(existsSync(join(member, "supaschema.config.json"))).toBe(true);
     expect(existsSync(join(member, "database", "schemas"))).toBe(true);
     expect(existsSync(join(member, "database", "migrations"))).toBe(true);
@@ -236,7 +243,7 @@ describe("consumer lifecycle: workspace member install from member directory", (
 });
 
 describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery lanes", () => {
-  it("pnpm add with approved supaschema build scripts scaffolds the project", async () => {
+  it("pnpm add plus explicit init scaffolds the project", async () => {
     const pnpmConsumer = await mkdtemp(join(tmpdir(), "supa-pnpm-consumer-"));
     await writeFile(
       join(pnpmConsumer, "package.json"),
@@ -248,24 +255,28 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
       })}\n`
     );
 
-    await run(pnpmCommand, ["add", "--allow-build=supaschema", tarballPath], {
+    await run(pnpmCommand, ["add", tarballPath], {
       cwd: pnpmConsumer,
       maxBuffer: 64 * 1024 * 1024,
     });
 
-    expect(existsSync(join(pnpmConsumer, "supaschema.config.json"))).toBe(true);
-    expect(existsSync(join(pnpmConsumer, "database", "schemas"))).toBe(true);
-    expect(existsSync(join(pnpmConsumer, "database", "migrations"))).toBe(true);
+    expect(existsSync(join(pnpmConsumer, "supaschema.config.json"))).toBe(false);
     expect(existsSync(join(pnpmConsumer, "node_modules", "supaschema", "bin", "supaschema"))).toBe(
       true
     );
+
+    const init = await capture(pnpmCommand, ["exec", "supaschema", "init"], pnpmConsumer);
+    expect(init.code, init.stderr).toBe(0);
+    expect(existsSync(join(pnpmConsumer, "supaschema.config.json"))).toBe(true);
+    expect(existsSync(join(pnpmConsumer, "database", "schemas"))).toBe(true);
+    expect(existsSync(join(pnpmConsumer, "database", "migrations"))).toBe(true);
 
     const version = await capture(pnpmCommand, ["exec", "supaschema", "--version"], pnpmConsumer);
     expect(version.code, version.stderr).toBe(0);
     expect(version.stdout.trim()).toBe(repoVersion);
   }, 300_000);
 
-  it("pnpm add with scripts blocked can recover through pnpm exec supaschema init", async () => {
+  it("pnpm add without setup can recover through pnpm exec supaschema init", async () => {
     const pnpmConsumer = await mkdtemp(join(tmpdir(), "supa-pnpm-init-"));
     await writeFile(
       join(pnpmConsumer, "package.json"),
@@ -277,7 +288,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
       })}\n`
     );
 
-    await run(pnpmCommand, ["add", "--ignore-scripts", tarballPath], {
+    await run(pnpmCommand, ["add", tarballPath], {
       cwd: pnpmConsumer,
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -290,9 +301,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
     const init = await capture(pnpmCommand, ["exec", "supaschema", "init"], pnpmConsumer);
     expect(init.code, init.stderr).toBe(0);
 
-    const config = JSON.parse(
-      readFileSync(join(pnpmConsumer, "supaschema.config.json"), "utf8")
-    ) as Record<string, unknown>;
+    const config = JSON.parse(readFileSync(join(pnpmConsumer, "supaschema.config.json"), "utf8"));
     expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
     for (const file of installedAgentFiles) {
       expect(existsSync(join(pnpmConsumer, file)), file).toBe(true);
@@ -300,7 +309,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
     expect(existsSync(join(pnpmConsumer, ".supaschema"))).toBe(false);
   }, 300_000);
 
-  it("pnpm workspace member install uses ignored scripts then explicit init from the member", async () => {
+  it("pnpm workspace member install uses explicit init from the member", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "supa-pnpm-workspace-"));
     const member = join(workspace, "packages", "db");
     await mkdir(member, { recursive: true });
@@ -319,7 +328,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
       `${JSON.stringify({ name: "db", private: true, version: "0.0.0" })}\n`
     );
 
-    await run(pnpmCommand, ["add", "--ignore-scripts", tarballPath], {
+    await run(pnpmCommand, ["add", tarballPath], {
       cwd: member,
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -378,8 +387,8 @@ describe.skipIf(!bunAvailable)("consumer lifecycle: Bun workspace member setup",
   }, 300_000);
 });
 
-describe("consumer lifecycle: ignore-scripts install then supaschema init reaches full parity", () => {
-  it("install --ignore-scripts does not scaffold but still ships the CLI and shared scaffolder", () => {
+describe("consumer lifecycle: package install then supaschema init reaches full setup", () => {
+  it("package install does not scaffold but still ships the CLI and shared scaffolder", () => {
     expect(existsSync(join(consumer2, "supaschema.config.json"))).toBe(false);
     expect(existsSync(join(consumer2, ".supaschema", "install.json"))).toBe(false);
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
@@ -392,13 +401,11 @@ describe("consumer lifecycle: ignore-scripts install then supaschema init reache
     );
   });
 
-  it("supaschema init scaffolds the full setup at parity with postinstall, idempotently", async () => {
+  it("supaschema init scaffolds the full setup idempotently", async () => {
     const first = await capture(process.execPath, [binPath2, "init"], consumer2);
     expect(first.code, first.stderr).toBe(0);
 
-    const config = JSON.parse(
-      readFileSync(join(consumer2, "supaschema.config.json"), "utf8")
-    ) as Record<string, unknown>;
+    const config = JSON.parse(readFileSync(join(consumer2, "supaschema.config.json"), "utf8"));
     expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
     expect(existsSync(join(consumer2, "database", "schemas"))).toBe(true);
     expect(existsSync(join(consumer2, "database", "migrations"))).toBe(true);

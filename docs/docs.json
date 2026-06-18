@@ -167,6 +167,7 @@
           "commands/sync",
           "commands/scan",
           "commands/type-contract",
+          "commands/contracts",
           {
             "group": "Utilities",
             "expanded": false,

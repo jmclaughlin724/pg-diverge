@@ -135,7 +135,10 @@ export function canonicalizeRegclassLiterals(node: unknown): unknown {
   if (typeof node !== "object" || node === null) {
     return node;
   }
-  const record = node as Record<string, unknown>;
+  const record = asRecord(node);
+  if (!record) {
+    return node;
+  }
   const typeCast = asRecord(record.TypeCast);
   if (typeCast && typeNameToSql(typeCast.typeName) === "regclass") {
     const constant = asRecord(asRecord(typeCast.arg)?.A_Const);

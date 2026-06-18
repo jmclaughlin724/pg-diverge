@@ -91,8 +91,8 @@
           "check-os (macos-latest)",
           "check-os (windows-latest)",
           "dependency-review",
-          "analyze (javascript-typescript)",
-          "analyze (python)"
+          "analyze (actions)",
+          "analyze (javascript-typescript)"
         ]
       }
     }
@@ -166,11 +166,11 @@
                 "integration_id": 15368
               },
               {
-                "context": "analyze (javascript-typescript)",
+                "context": "analyze (actions)",
                 "integration_id": 15368
               },
               {
-                "context": "analyze (python)",
+                "context": "analyze (javascript-typescript)",
                 "integration_id": 15368
               }
             ],

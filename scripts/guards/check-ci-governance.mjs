@@ -84,8 +84,8 @@ const files = fs
   .readdirSync(WORKFLOWS_DIR)
   .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"));
 assert(
-  files.length >= 7,
-  `expected at least 7 workflows under .github/workflows, found ${files.length}`
+  files.length >= 6,
+  `expected at least 6 workflows under .github/workflows, found ${files.length}`
 );
 
 const parsed = new Map();
@@ -128,7 +128,7 @@ for (const [file, { doc, raw }] of parsed) {
   }
 }
 
-for (const file of ["ci.yml", "python.yml", "dependency-review.yml"]) {
+for (const file of ["ci.yml", "dependency-review.yml"]) {
   const doc = parsed.get(file)?.doc;
   assert(doc, `${file} must exist`);
   assert(
@@ -146,7 +146,7 @@ assert(codeql, "codeql.yml must exist");
 const codeqlJob = codeql.jobs?.analyze;
 assert(codeqlJob, "codeql.yml must define an analyze job");
 const codeqlLanguages = matrixValues(codeql, "analyze", "language");
-for (const language of ["actions", "javascript-typescript", "python"]) {
+for (const language of ["actions", "javascript-typescript"]) {
   assert(
     codeqlLanguages.includes(language),
     `codeql.yml analyze language matrix must include ${language} (got ${JSON.stringify(codeqlLanguages)})`
@@ -171,22 +171,9 @@ assert(
     [undefined, "none"].includes(codeqlInitStep.with?.["build-mode"]),
   "codeql.yml init must use matrix.language, security-and-quality queries, and no-build analysis"
 );
-const codeqlSetupUvIndex = codeqlSteps.findIndex(
-  (step) => stepIf(step).includes("python") && stepActionName(step) === "astral-sh/setup-uv"
-);
 assert(
-  codeqlSetupUvIndex >= 0 && codeqlSetupUvIndex < codeqlInitIndex,
-  "codeql.yml Python lane must set up uv before CodeQL init"
-);
-const codeqlUvSyncIndex = codeqlSteps.findIndex(
-  (step) =>
-    stepIf(step).includes("python") &&
-    stepRun(step).includes("uv sync --locked") &&
-    stepRun(step).includes("--package supaschema-agent-mcp")
-);
-assert(
-  codeqlUvSyncIndex > codeqlSetupUvIndex && codeqlUvSyncIndex < codeqlInitIndex,
-  "codeql.yml Python lane must sync locked workspace dependencies with --package supaschema-agent-mcp before CodeQL init"
+  !codeqlSteps.some((step) => stepIf(step).includes("python") || stepRun(step).includes("uv ")),
+  "codeql.yml must not retain Python dependency setup after private Python service removal"
 );
 assert(
   !codeqlSteps.some((step) => "setup-python-dependencies" in (step?.with ?? {})),
@@ -453,51 +440,6 @@ assert(
   "ci.yml check-os must use npm run test:matrix so examples failures stay in quality"
 );
 
-const python = parsed.get("python.yml")?.doc;
-assert(python, "python.yml must exist");
-const pythonSteps = python.jobs?.python?.steps ?? [];
-const pythonSetupNode = pythonSteps.find((step) => stepActionName(step) === "actions/setup-node");
-assert(
-  pythonSetupNode?.with?.["node-version"] === 22,
-  `python.yml must set up Node 22 for Code Atlas-backed FastMCP tests (got ${JSON.stringify(pythonSetupNode?.with?.["node-version"])})`
-);
-assert(
-  pythonSetupNode?.with?.cache === "npm",
-  "python.yml setup-node step must enable npm caching for Code Atlas dependencies"
-);
-const pythonRunSteps = (python.jobs?.python?.steps ?? []).filter(
-  (step) => typeof step?.run === "string"
-);
-const npmInstallIndex = pythonRunSteps.findIndex(
-  (step) => step.run.trim() === "npm ci --ignore-scripts"
-);
-const pytestIndex = pythonRunSteps.findIndex((step) => step.run.includes("pytest"));
-assert(
-  npmInstallIndex >= 0,
-  "python.yml must install npm deps with `npm ci --ignore-scripts` for Code Atlas-backed FastMCP tests"
-);
-assert(
-  pytestIndex >= 0 && npmInstallIndex < pytestIndex,
-  "python.yml must install Code Atlas npm deps before pytest"
-);
-for (const tool of ["mypy", "pytest"]) {
-  const steps = pythonRunSteps.filter((step) => step.run.includes(tool));
-  assert(steps.length > 0, `python.yml must have a ${tool} step`);
-  for (const step of steps) {
-    assert(
-      step.run.includes("--package supaschema-agent-mcp"),
-      `python.yml ${tool} step must pass --package supaschema-agent-mcp (root env lacks fastmcp/mcp/pydantic): ${step.run}`
-    );
-  }
-}
-
-const pkg = readJson("package.json");
-for (const script of ["py:typecheck", "py:test"]) {
-  const body = pkg.scripts?.[script] ?? "";
-  assert(
-    body.includes("--package supaschema-agent-mcp"),
-    `package.json scripts.${script} must pass --package supaschema-agent-mcp: ${body}`
-  );
-}
+assert(!parsed.has("python.yml"), "python.yml must stay private with the agent MCP service");
 
 ok("CI_GOVERNANCE_OK");

@@ -20,7 +20,7 @@ The downloadable consumer agent bundle is intentionally narrow.
 | Codex rule mirror | `.codex/rules/supaschema.rules` |
 | Codex hooks | `.codex/hooks.json` entries for `supaschema hook schema-write` and `supaschema hook generated-migration-edit`, plus `.codex/hooks/general-guard.mjs`, `.codex/hooks/guards/bash-policy-checks.mjs`, and `.codex/hooks/sync-llm-on-claude-surface-change.mjs` |
 
-`postinstall` and `supaschema init` also write or merge hook registration files into the consuming project:
+`supaschema init` writes or merges hook registration files into the consuming project:
 
 | Runtime | Generated registration  |
 | ------- | ----------------------- |
@@ -41,11 +41,11 @@ The public `npx skills` source is intentionally narrower than the npm setup surf
 npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/supaschema
 ```
 
-Do not use the repository root as the Skills source. The Skills CLI scans standard agent skill directories, and this repository contains maintainer skill mirrors for developing supaschema itself.
+Do not use the repository root as the Skills source. The Skills CLI scans standard agent skill directories, and the public Skills source is only `skills/supaschema`.
 
 That source mirrors `.claude/skills/supaschema/SKILL.md` into `skills/supaschema/SKILL.md`. It installs Agent Skill context only into the location selected by the Skills CLI. It does not install passive rule files, hook scripts, hook registration, config, or schema directories.
 
-Rules and hooks are included by package install through the `postinstall` scaffold. If lifecycle scripts did not run, `supaschema init` through the same package manager's local runner uses the same scaffold and writes the same rule, skill, hook, config, and manifest surfaces.
+Rules and hooks are included by package setup through `supaschema init`. Run it through the same package manager's local runner after install; it writes the rule, skill, hook, config, and manifest surfaces and is safe to rerun.
 
 ## Hook behavior
 
@@ -64,17 +64,19 @@ If config or approval does not permit automatic sync, the hook stays on the non-
 
 ## Repo-local tooling
 
-Maintainer Claude/Codex optimization infrastructure is not part of the download or install scaffold by default.
+Maintainer Claude/Codex optimization infrastructure is not part of the public repository, npm package, or install scaffold by default.
 
-Keep these repo-local unless the consumer contract explicitly changes:
+Keep these private unless the consumer contract explicitly changes:
 
 - `.claude/hooks/context-*`
 - `.codex/hooks/context-*`
-- `scripts/agent-hooks/**`
 - optimizer skills
 - internal rules
 - `.claude/agents/**`
 - `.codex/agents/**`
 - `.codex/config.toml`
+- MCP config
+- advisor plans
+- operator services
 
 If one of these surfaces becomes part of the consumer contract, update the package allowlist, scaffold, package tests, and [Package Boundary](/reference/package-boundary) in the same change.

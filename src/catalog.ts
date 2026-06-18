@@ -14,6 +14,7 @@ import { fingerprintObjects, MODEL_FORMAT_VERSION } from "./hash.js";
 import { suppressDefaultAclImpliedGrants } from "./source-normalize.js";
 import { finalizeObjects } from "./sql/facts.js";
 import { formatQualifiedName, quoteIdent, stripOuterDoubleQuotes } from "./sql/identifiers.js";
+import { policyMetadataFromSql } from "./sql/policies.js";
 import { makeObject } from "./sql/statements.js";
 
 export interface ExtractCatalogOptions {
@@ -406,8 +407,14 @@ async function appendPoliciesAndRls(
     if (row.with_check) {
       clauses.push(`WITH CHECK (${stringValue(row.with_check)})`);
     }
+    const sql = clauses.join(" ");
     objects.push(
-      makeObject({ kind: "policy", name, schema, table }, clauses.join(" "), nextOrdinal)
+      makeObject({ kind: "policy", name, schema, table }, sql, nextOrdinal, undefined, {
+        command: stringValue(row.cmd)?.toLowerCase() ?? "all",
+        hasCheckPredicate: stringValue(row.with_check) !== undefined,
+        hasUsingPredicate: stringValue(row.qual) !== undefined,
+        ...(await policyMetadataFromSql(sql)),
+      })
     );
     nextOrdinal += 1;
   }

@@ -93,7 +93,7 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
 
     const diagnostics = await verifyMigration({
       config: { managedSchemas: ["auth", "storage", "cron"] },
-      databaseUrl: databaseUrl as string,
+      databaseUrl,
       ensureEnvironment: true,
       ensureRoles: true,
       from: `dir:${root.replaceAll("\\", "/")}`,
@@ -111,7 +111,7 @@ describe.skipIf(!databaseUrl)("verify environment pack", () => {
     await admin.query(`DROP ROLE IF EXISTS ${role}`);
     await admin.query(`CREATE ROLE ${role} LOGIN PASSWORD 'supa-test' NOCREATEDB`);
     try {
-      const url = new URL(databaseUrl as string);
+      const url = new URL(databaseUrl);
       url.username = role;
       url.password = "supa-test";
       const root = await mkdtemp(join(tmpdir(), "supa-preflight-"));
@@ -148,7 +148,7 @@ describe.skipIf(!databaseUrl)("bootstrap ordering proof", () => {
 
     expect(await checkMigrationSql(rendered)).toEqual([]);
     const diagnostics = await verifyMigration({
-      databaseUrl: databaseUrl as string,
+      databaseUrl,
       from: `dir:${emptyRoot.replaceAll("\\", "/")}`,
       migrationPath: migration,
       to: tree,

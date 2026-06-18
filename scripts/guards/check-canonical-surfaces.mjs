@@ -1,10 +1,21 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { parse as parseShell } from "sh-syntax";
 import { parse as parseJsTs, ts } from "./lib/ast-utils.js";
 import { assert, exists, gitFiles, ok, readJson, readText, run } from "./lib/guard-utils.js";
 
-const codeRoots = ["benchmarks/", "bin/", "cloudflare/", "scripts/", "services/", "src/", "tests/"];
+const codeRoots = [
+  ".agents/skills/",
+  ".claude/skills/",
+  "benchmarks/",
+  "bin/",
+  "cloudflare/",
+  "scripts/",
+  "services/",
+  "src/",
+  "tests/",
+];
 const codeRootFiles = ["prettier.config.mjs", "vitest.config.ts"];
 const jsTsExtensions = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
 const pythonExtensions = new Set([".py"]);
@@ -32,15 +43,7 @@ const deferredMarkerTerms = [
 const externalContractExportOnlyFiles = new Map([
   ["src/index.ts", "npm package public API entry point"],
 ]);
-const monetizationOwnerFiles = new Set([
-  "scripts/stripe/create-catalog.mjs",
-  "services/license-worker/src/checkout.ts",
-  "services/license-worker/src/index.ts",
-  "services/license-worker/src/issue.ts",
-  "services/license-worker/src/stripe-api.ts",
-  "services/license-worker/src/webhook.ts",
-  "src/license.ts",
-]);
+const monetizationOwnerFiles = new Set(["src/license.ts"]);
 const monetizationTerms = [
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_MAP",
@@ -69,7 +72,11 @@ const violations = [
   ...forbiddenFileNameViolations(codeFiles),
   ...exportOnlyModuleViolations(jsTsFiles),
   ...jsTsCommentViolations(jsTsFiles),
+  ...jsTsAstGrepPatternEngineViolations(jsTsFiles),
   ...jsTsPatternEngineViolations(jsTsFiles),
+  ...jsTsRegexStringContractViolations(jsTsFiles),
+  ...jsTsTypeAssertionViolations(jsTsFiles),
+  ...jsTsCopiedEnumTupleViolations(jsTsFiles),
   ...jsTsDeferredMarkerViolations(jsTsFiles),
   ...pythonCommentViolations(pythonFiles),
   ...pythonPatternEngineViolations(pythonFiles),
@@ -152,6 +159,50 @@ function jsTsPatternEngineViolations(candidates) {
   });
 }
 
+function jsTsAstGrepPatternEngineViolations(candidates) {
+  if (candidates.length === 0) {
+    return [];
+  }
+  const inlineRules = [
+    astGrepRule("no-regex-literal-ts", "TypeScript", "/$A/"),
+    astGrepRule("no-regexp-new-ts", "TypeScript", "new RegExp($A)"),
+    astGrepRule("no-regexp-call-ts", "TypeScript", "RegExp($A)"),
+    astGrepRule("no-regex-literal-js", "JavaScript", "/$A/"),
+    astGrepRule("no-regexp-new-js", "JavaScript", "new RegExp($A)"),
+    astGrepRule("no-regexp-call-js", "JavaScript", "RegExp($A)"),
+  ].join("\n---\n");
+  const result = spawnSync(
+    "npx",
+    [
+      "--no-install",
+      "ast-grep",
+      "scan",
+      "--inline-rules",
+      inlineRules,
+      "--json=compact",
+      "--max-results",
+      "20",
+      ...candidates,
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    }
+  );
+  if (result.status !== 0) {
+    return [`ast-grep regex discovery failed:\n${result.stderr || result.stdout}`];
+  }
+  const matches = JSON.parse(result.stdout || "[]");
+  return matches.map(
+    (match) =>
+      `${match.file}:${match.range.start.line + 1}:${match.range.start.column + 1} contains pattern-engine syntax found by ast-grep; use parser or AST helpers.`
+  );
+}
+
+function astGrepRule(id, language, pattern) {
+  return [`id: ${id}`, `language: ${language}`, "rule:", `  pattern: ${pattern}`].join("\n");
+}
+
 function collectJsTsPatternEngineViolations(node, source, found) {
   if (node.kind === ts.SyntaxKind.RegularExpressionLiteral || isRegExpConstructorCall(node)) {
     found.push(node);
@@ -164,6 +215,112 @@ function isRegExpConstructorCall(node) {
     (ts.isNewExpression(node) || ts.isCallExpression(node)) &&
     ts.isIdentifier(node.expression) &&
     node.expression.text === "RegExp"
+  );
+}
+
+function jsTsRegexStringContractViolations(candidates) {
+  return candidates.flatMap((file) => {
+    const text = readText(file);
+    const source = parseJsTs(text, { fileName: file });
+    const found = [];
+    collectJsTsRegexStringContractViolations(source, source, found);
+    return found.map((node) => {
+      const location = source.getLineAndCharacterOfPosition(node.getStart(source));
+      return `${file}:${location.line + 1}:${location.character + 1} contains a regex-shaped string contract; move validation to the canonical scanner or parser owner.`;
+    });
+  });
+}
+
+function collectJsTsRegexStringContractViolations(node, source, found) {
+  const value = jsTsStringValue(node);
+  if (value !== undefined && isRegexShapedString(value)) {
+    found.push(node);
+  }
+  ts.forEachChild(node, (child) => collectJsTsRegexStringContractViolations(child, source, found));
+}
+
+function isRegexShapedString(value) {
+  if (value.length === 0) {
+    return false;
+  }
+  const groupStart = ["(", "?", ":"].join("");
+  const lookaheadStart = ["(", "?", "="].join("");
+  const namedStart = ["(", "?", "<"].join("");
+  const startsLikePattern =
+    value.startsWith("^") ||
+    value.startsWith(groupStart) ||
+    value.startsWith(lookaheadStart) ||
+    value.startsWith(namedStart);
+  if (!startsLikePattern) {
+    return false;
+  }
+  const slash = "\\";
+  const tokenTerms = [
+    [slash, "d"].join(""),
+    [slash, "w"].join(""),
+    [slash, "s"].join(""),
+    [".", "*"].join(""),
+    [".", "+"].join(""),
+    ["?", ":"].join(""),
+    ["(", "?"].join(""),
+    "$",
+  ];
+  return tokenTerms.some((token) => value.includes(token));
+}
+
+function jsTsTypeAssertionViolations(candidates) {
+  return candidates.flatMap((file) => {
+    const text = readText(file);
+    const source = parseJsTs(text, { fileName: file });
+    const found = [];
+    collectJsTsTypeAssertionViolations(source, source, found);
+    return found.map((node) => {
+      const location = source.getLineAndCharacterOfPosition(node.getStart(source));
+      return `${file}:${location.line + 1}:${location.character + 1} contains a TypeScript assertion; use the generated contract, parser, or scanner owner instead.`;
+    });
+  });
+}
+
+function collectJsTsTypeAssertionViolations(node, source, found) {
+  if (
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isNonNullExpression(node)
+  ) {
+    found.push(node);
+  }
+  ts.forEachChild(node, (child) => collectJsTsTypeAssertionViolations(child, source, found));
+}
+
+function jsTsCopiedEnumTupleViolations(candidates) {
+  return candidates.flatMap((file) => {
+    const text = readText(file);
+    const source = parseJsTs(text, { fileName: file });
+    const found = [];
+    collectJsTsCopiedEnumTupleViolations(source, source, found);
+    return found.map((node) => {
+      const location = source.getLineAndCharacterOfPosition(node.getStart(source));
+      return `${file}:${location.line + 1}:${location.character + 1} contains an inline z.enum tuple; use the canonical enum owner.`;
+    });
+  });
+}
+
+function collectJsTsCopiedEnumTupleViolations(node, source, found) {
+  if (isInlineZodEnumTuple(node)) {
+    found.push(node);
+  }
+  ts.forEachChild(node, (child) => collectJsTsCopiedEnumTupleViolations(child, source, found));
+}
+
+function isInlineZodEnumTuple(node) {
+  return (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "z" &&
+    node.expression.name.text === "enum" &&
+    node.arguments.length > 0 &&
+    ts.isArrayLiteralExpression(node.arguments[0])
   );
 }
 
@@ -195,6 +352,10 @@ function jsTsSearchableValue(node) {
   if (ts.isIdentifier(node)) {
     return node.text;
   }
+  return jsTsStringValue(node);
+}
+
+function jsTsStringValue(node) {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     return node.text;
   }
@@ -234,7 +395,7 @@ function monetizationSurfaceViolations(candidates) {
     collectMonetizationTerms(source, source, found);
     return found.map(({ node, term }) => {
       const location = source.getLineAndCharacterOfPosition(node.getStart(source));
-      return `${file}:${location.line + 1}:${location.character + 1} contains monetization term ${term}; route checkout, Stripe, GitHub Marketplace, and license issuance through services/license-worker or scripts/stripe/create-catalog.mjs.`;
+      return `${file}:${location.line + 1}:${location.character + 1} contains monetization term ${term}; keep checkout, Stripe, GitHub Marketplace, and license issuance implementation outside the public repository.`;
     });
   });
 }

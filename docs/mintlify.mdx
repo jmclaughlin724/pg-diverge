@@ -59,23 +59,13 @@ Because the content root is `docs/`, the rest of the repository (source code, te
 
 ## Cloudflare custom domain
 
-The repository includes a Cloudflare Worker (`cloudflare/mintlify-docs-worker.js`) that proxies the whole custom domain to the Mintlify-hosted origin at `https://supaschema.mintlify.dev`, preserving the request path and rewriting redirect `Location` headers from the origin back to the custom host:
+The public repository includes the Mintlify content and validation workflow. Custom-domain proxy deployment code is operator-owned and not included in this public repository.
 
-```js
-const DOCS_URL = "supaschema.mintlify.dev";
-const CUSTOM_URL = "supaschema.com";
-```
+The production domain must preserve Mintlify routing and hosted AI discovery paths:
 
-The Worker:
+The `/docs` subpath comes from Mintlify's **Host at `/docs`** setting.
 
-- proxies most requests to Mintlify;
-- proxies Mintlify agent discovery paths such as `/.well-known/mcp`, `/.well-known/skills/*`, and `/.well-known/agent-skills/*`;
-- passes other `/.well-known/*` paths through for domain verification;
-- redirects `www.supaschema.com` to `supaschema.com`.
-
-The `/docs` subpath comes from Mintlify's **Host at `/docs`** setting, not from the Worker.
-
-Preserve the hosted AI paths when changing the Worker or Mintlify domain settings:
+Preserve the hosted AI paths when changing Mintlify domain settings:
 
 ```text
 /docs/llms.txt
@@ -86,13 +76,5 @@ Preserve the hosted AI paths when changing the Worker or Mintlify domain setting
 /.well-known/agent-skills/*
 /.well-known/skills/*
 ```
-
-Deploy it with Wrangler after authenticating Cloudflare:
-
-```bash
-npx wrangler deploy
-```
-
-The Worker is configured by `wrangler.toml` as the Cloudflare Custom Domain target for both `supaschema.com` and `www.supaschema.com`.
 
 Keep Mintlify in monorepo mode with **Host at `/docs`** enabled. Local validation, GitHub previews, and production deploys should all read the same content root.

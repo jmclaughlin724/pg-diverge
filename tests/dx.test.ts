@@ -10,7 +10,6 @@ import {
   resolveConfig,
   validateConfig,
 } from "../src/config.js";
-import { sourceSpecPattern } from "../src/config-contract.js";
 import type { Diagnostic } from "../src/core.js";
 
 const cliPath = resolve(import.meta.dirname, "../dist/cli.js");
@@ -42,9 +41,9 @@ describe("config DX", () => {
   });
 
   it("rejects non-canonical adapter values", () => {
-    expect(() => resolveConfig({ adapter: "supabase-auto" } as never)).toThrow();
-    expect(() => resolveConfig({ adapter: "postgres" } as never)).toThrow();
-    expect(() => resolveConfig({ adapter: "supabase" } as never)).toThrow();
+    expect(() => resolveConfig({ adapter: "supabase-auto" })).toThrow();
+    expect(() => resolveConfig({ adapter: "postgres" })).toThrow();
+    expect(() => resolveConfig({ adapter: "supabase" })).toThrow();
   });
 
   it("defaults to provider-neutral managed schemas unless configured", () => {
@@ -69,14 +68,11 @@ describe("config DX", () => {
       environments: { staging: { databaseUrl: "$STAGING_DB" } },
     });
     expect(config.environments.staging?.databaseUrl).toBe("$STAGING_DB");
-    expect(() => resolveConfig({ environments: { bad: { url: "x" } } as never })).toThrow();
+    expect(() => resolveConfig({ environments: { bad: { url: "x" } } })).toThrow();
   });
 
   it("generates a JSON schema documenting every config key", () => {
-    const schema = configJsonSchema() as {
-      $id?: string;
-      properties?: Record<string, unknown>;
-    };
+    const schema = configJsonSchema();
     expect(schema.$id).toBe("https://supaschema.com/schemas/supaschema-config.schema.json");
     expect(schema.properties).toBeDefined();
     for (const key of [
@@ -104,9 +100,7 @@ describe("config DX", () => {
       default: "auto",
       enum: ["auto"],
     });
-    const workflow = schema.properties?.workflow as {
-      properties?: Record<string, { enum?: string[] }>;
-    };
+    const workflow = schema.properties?.workflow;
     expect(workflow.properties?.migration_sync?.enum).toEqual(["disabled", "manual", "auto"]);
     expect(workflow.properties?.type_safety?.enum).toEqual([
       "disabled",
@@ -118,18 +112,14 @@ describe("config DX", () => {
       "report_only",
       "deploy_blocking",
     ]);
-    const sync = schema.properties?.sync as {
-      properties?: { targets?: { default?: unknown } };
-    };
+    const sync = schema.properties?.sync;
     expect(sync.properties?.targets?.default).toEqual(resolveConfig().sync.targets);
-    const sources = schema.properties?.sources as {
-      properties?: Record<string, { oneOf?: unknown[]; pattern?: string }>;
-    };
+    const sources = schema.properties?.sources;
     expect(sources.properties?.from?.oneOf).toEqual([
       { const: "auto" },
-      { pattern: sourceSpecPattern, type: "string" },
+      { type: "string", "x-supaschema-source-parser": "parseRuntimeSource" },
     ]);
-    expect(sources.properties?.to?.pattern).toBe(sourceSpecPattern);
+    expect(sources.properties?.to?.["x-supaschema-source-parser"]).toBe("parseRuntimeSource");
   });
 
   it("accepts automatic sync and deploy safety workflow policies", () => {
@@ -150,7 +140,7 @@ describe("config DX", () => {
     expect(() =>
       resolveConfig({
         workflow: { migration_sync: "auto_apply" },
-      } as never)
+      })
     ).toThrow();
     expect(resolveConfig().workflow).toEqual({
       schema_diff: "on_schema_write",
@@ -249,7 +239,7 @@ describe("config DX", () => {
             },
           },
         },
-      } as never),
+      }),
       mkdtempSync(join(tmpdir(), "supa-sync-target-missing-"))
     );
     expect(missingDiagnostics).toContainEqual(
@@ -273,7 +263,7 @@ describe("config DX", () => {
             },
           },
         },
-      } as never),
+      }),
       mkdtempSync(join(tmpdir(), "supa-sync-target-remote-"))
     );
 
@@ -304,7 +294,7 @@ describe("config DX", () => {
           from: "postgresql://postgres:secret@example.com/app",
           to: "auto",
         },
-      } as never),
+      }),
       mkdtempSync(join(tmpdir(), "supa-config-validate-"))
     );
 
@@ -369,10 +359,7 @@ describe("check reporters", () => {
   });
 
   it("renders valid SARIF with rule ids", () => {
-    const sarif = JSON.parse(renderCheckReport("sarif", files)) as {
-      runs: { results: { ruleId: string; level: string }[] }[];
-      version: string;
-    };
+    const sarif = JSON.parse(renderCheckReport("sarif", files));
     expect(sarif.version).toBe("2.1.0");
     expect(sarif.runs[0]?.results.map((result) => result.ruleId)).toContain(
       "SUPA_CHECK_DROP_IF_EXISTS"
@@ -380,10 +367,7 @@ describe("check reporters", () => {
   });
 
   it("renders json as an array of per-file diagnostics", () => {
-    const parsed = JSON.parse(renderCheckReport("json", files)) as {
-      diagnostics: Diagnostic[];
-      file: string;
-    }[];
+    const parsed = JSON.parse(renderCheckReport("json", files));
     expect(parsed[0]?.file).toBe("migrations/x.sql");
     expect(parsed[0]?.diagnostics).toHaveLength(2);
   });
@@ -473,9 +457,7 @@ describe("raw CLI errors", () => {
     });
 
     expect(result.status).toBe(0);
-    const parsed = JSON.parse(result.stdout) as {
-      diagnostics: { field: string }[];
-    };
+    const parsed = JSON.parse(result.stdout);
     expect(parsed.diagnostics.map((item) => item.field)).toContain("schemaPaths[0]");
   });
 });

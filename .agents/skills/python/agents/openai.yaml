@@ -1,4 +1,0 @@
-interface:
-  display_name: "Python"
-  short_description: "Python runtime, packaging, and release guidance"
-  default_prompt: "Use $python to design, test, package, observe, secure, or release Python apps and libraries."

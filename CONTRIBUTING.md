@@ -10,7 +10,6 @@ Requirements:
 
 - **Node 22.12 or newer** for package compatibility. Local development uses the exact runtime in `.nvmrc`; run `nvm use` or `fnm use`.
 - **npm** — this is an npm-only project. Do not introduce pnpm, yarn, or an alternate lockfile, and keep `package-lock.json` intact.
-- For the Python side-service (`services/agent-mcp`): [`uv`](https://docs.astral.sh/uv/). Only needed if you touch that service.
 
 Install and verify a clean checkout:
 
@@ -36,7 +35,7 @@ Do not bypass hooks with `--no-verify` or `LEFTHOOK=0`. Fix the failure locally;
 | `npm run typecheck` | TypeScript no-emit type check |
 | `npm test` | Vitest suite |
 | `npm run build` | emit `dist/` + regenerate `supaschema-config.schema.json` |
-| `npm run guard` | repo guard suite (agent surfaces, catalog, code-atlas, …) |
+| `npm run guard` | repo guard suite: public surface, package/tooling, config, CI, GitHub process, release metadata |
 | `npm run check:package` | `publint` + `attw` package-shape checks |
 | `npm run fixture:verify` | render a fixture migration, apply twice, compare catalogs |
 | `npm run docs:check` | Mintlify validation, links, accessibility (only if `docs/**` changed) |
@@ -77,8 +76,6 @@ When changing the planner or renderer, run `supaschema check` (replay-safety gat
   - `npm run fixture:verify` renders a fixture migration, applies it twice, and compares the resulting catalogs.
   - `npm run corpus:check` runs the dirty-real corpus reconvergence oracle when a database is reachable.
 - `tests/property.test.ts` uses `fast-check` for property-based testing of the planner (parse→deparse round-trips, idempotent replay). New planner/renderer work is a good candidate for property tests.
-- The Python side-service has its own `pytest` harness under `services/agent-mcp/tests`.
-
 For core SQL extraction, planning, rendering, checking, verifying, typegen, or CLI-default changes, run the targeted tests plus `npm run typecheck`. For package/release/agent-surface changes, run `npm run check:package` or `npm pack --dry-run`.
 
 ## Changesets and releases

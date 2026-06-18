@@ -7,107 +7,114 @@ export const genericSchemaPath = "database/schemas";
 export const genericMigrationsDir = "database/migrations";
 export const defaultTypesFile = "database.types.ts";
 export const defaultZodFile = "database.zod.ts";
-export const adapterInputValues = ["auto"] as const;
 
-export const supabaseManagedSchemas = [
-  "auth",
-  "storage",
-  "realtime",
-  "vault",
-  "extensions",
-  "cron",
-  "net",
-  "supabase_functions",
-  "graphql",
-  "graphql_public",
-] as const;
+function literalContract<const T extends Record<string, string>>(value: T): T {
+  return value;
+}
 
-export const supportedValidators = [
-  "internal-parser",
-  "squawk",
-  "squawk-cli",
-  "pgls",
-  "postgres-language-server",
-  "@postgres-language-server/cli",
-  "sqlfluff",
-] as const;
+export const AdapterInput = literalContract({
+  Auto: "auto",
+});
+export type AdapterInput = (typeof AdapterInput)[keyof typeof AdapterInput];
 
-export const sourceAuto = "auto";
-export const runtimeSourcePrefixes = [
-  "dir:",
-  "git:",
-  "database:",
-  "dump:",
-  "catalog:",
-  "empty:",
-] as const;
-export const sourcePrefixes = [sourceAuto, ...runtimeSourcePrefixes] as const;
-export const sourceSpecPattern = "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$";
-export const schemaDiffPolicies = ["disabled", "manual", "on_schema_write"] as const;
-export const migrationCheckPolicies = [
-  "manual",
-  "after_schema_diff",
-  "required_before_complete",
-] as const;
-export const migrationVerifyPolicies = [
-  "manual",
-  "suggest_after_check",
-  "after_schema_diff",
-] as const;
-export const migrationSyncPolicies = ["disabled", "manual", "auto"] as const;
-export const deploySafetyPolicies = ["disabled", "report_only", "deploy_blocking"] as const;
-export const generatedOutputPolicies = [
-  "disabled",
-  "refresh_existing",
-  "create_or_refresh",
-] as const;
-export const typeUsagePolicies = ["typescript_only", "zod_validated"] as const;
-export const syncTargetModes = ["manual", "auto"] as const;
-export const syncTargetRunners = ["direct", "supabase-cli"] as const;
-export const defaultMigrationHistoryTable = "supabase_migrations.schema_migrations";
-export const defaultEnvironments = {
-  local: { databaseUrl: "$LOCAL_DATABASE_URL" },
-  production: { databaseUrl: "$PRODUCTION_DATABASE_URL" },
-} as const;
-export const defaultSync = {
-  targets: {
-    local: {
-      mode: "auto",
-      runner: "direct",
-      environment: "local",
-      historyTable: defaultMigrationHistoryTable,
-    },
-    remote: {
-      mode: "manual",
-      runner: "direct",
-      environment: "production",
-      historyTable: defaultMigrationHistoryTable,
-      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-      remote: true,
-    },
-  },
-} as const;
-export const defaultWorkflow = {
-  schema_diff: "on_schema_write",
-  migration_check: "after_schema_diff",
-  migration_verify: "suggest_after_check",
-  migration_sync: "auto",
-  type_safety: "deploy_blocking",
-  rls_safety: "deploy_blocking",
-  type_generation: "create_or_refresh",
-  zod_generation: "create_or_refresh",
-  type_usage: "zod_validated",
-} as const;
+export const RuntimeSourceKind = literalContract({
+  Catalog: "catalog",
+  Database: "database",
+  Dir: "dir",
+  Dump: "dump",
+  Empty: "empty",
+  Git: "git",
+});
+export type RuntimeSourceKind = (typeof RuntimeSourceKind)[keyof typeof RuntimeSourceKind];
 
-export type SchemaDiffPolicy = (typeof schemaDiffPolicies)[number];
-export type MigrationCheckPolicy = (typeof migrationCheckPolicies)[number];
-export type MigrationVerifyPolicy = (typeof migrationVerifyPolicies)[number];
-export type MigrationSyncPolicy = (typeof migrationSyncPolicies)[number];
-export type DeploySafetyPolicy = (typeof deploySafetyPolicies)[number];
-export type GeneratedOutputPolicy = (typeof generatedOutputPolicies)[number];
-export type TypeUsagePolicy = (typeof typeUsagePolicies)[number];
-export type SyncTargetMode = (typeof syncTargetModes)[number];
-export type SyncTargetRunner = (typeof syncTargetRunners)[number];
+export const SchemaDiffPolicy = literalContract({
+  Disabled: "disabled",
+  Manual: "manual",
+  OnSchemaWrite: "on_schema_write",
+});
+export type SchemaDiffPolicy = (typeof SchemaDiffPolicy)[keyof typeof SchemaDiffPolicy];
+
+export const MigrationCheckPolicy = literalContract({
+  Manual: "manual",
+  AfterSchemaDiff: "after_schema_diff",
+  RequiredBeforeComplete: "required_before_complete",
+});
+export type MigrationCheckPolicy = (typeof MigrationCheckPolicy)[keyof typeof MigrationCheckPolicy];
+
+export const MigrationVerifyPolicy = literalContract({
+  Manual: "manual",
+  SuggestAfterCheck: "suggest_after_check",
+  AfterSchemaDiff: "after_schema_diff",
+});
+export type MigrationVerifyPolicy =
+  (typeof MigrationVerifyPolicy)[keyof typeof MigrationVerifyPolicy];
+
+export const MigrationSyncPolicy = literalContract({
+  Disabled: "disabled",
+  Manual: "manual",
+  Auto: "auto",
+});
+export type MigrationSyncPolicy = (typeof MigrationSyncPolicy)[keyof typeof MigrationSyncPolicy];
+
+export const DeploySafetyPolicy = literalContract({
+  Disabled: "disabled",
+  ReportOnly: "report_only",
+  DeployBlocking: "deploy_blocking",
+});
+export type DeploySafetyPolicy = (typeof DeploySafetyPolicy)[keyof typeof DeploySafetyPolicy];
+
+export const GeneratedOutputPolicy = literalContract({
+  Disabled: "disabled",
+  RefreshExisting: "refresh_existing",
+  CreateOrRefresh: "create_or_refresh",
+});
+export type GeneratedOutputPolicy =
+  (typeof GeneratedOutputPolicy)[keyof typeof GeneratedOutputPolicy];
+
+export const TypeUsagePolicy = literalContract({
+  TypescriptOnly: "typescript_only",
+  ZodValidated: "zod_validated",
+});
+export type TypeUsagePolicy = (typeof TypeUsagePolicy)[keyof typeof TypeUsagePolicy];
+
+export const SyncTargetMode = literalContract({
+  Manual: "manual",
+  Auto: "auto",
+});
+export type SyncTargetMode = (typeof SyncTargetMode)[keyof typeof SyncTargetMode];
+
+export const SyncTargetRunner = literalContract({
+  Direct: "direct",
+  SupabaseCli: "supabase-cli",
+});
+export type SyncTargetRunner = (typeof SyncTargetRunner)[keyof typeof SyncTargetRunner];
+
+export const DestructiveChangesPolicy = literalContract({
+  HintRequired: "hint-required",
+  Block: "block",
+  Allow: "allow",
+});
+export type DestructiveChangesPolicy =
+  (typeof DestructiveChangesPolicy)[keyof typeof DestructiveChangesPolicy];
+
+export const NormalizePolicy = literalContract({
+  Off: "off",
+  Deparse: "deparse",
+});
+export type NormalizePolicy = (typeof NormalizePolicy)[keyof typeof NormalizePolicy];
+
+export const RenameDetectionPolicy = literalContract({
+  HintsOnly: "hints-only",
+  Off: "off",
+});
+export type RenameDetectionPolicy =
+  (typeof RenameDetectionPolicy)[keyof typeof RenameDetectionPolicy];
+
+export const TransactionMode = literalContract({
+  PerMigration: "per-migration",
+  PerStatement: "per-statement",
+});
+export type TransactionMode = (typeof TransactionMode)[keyof typeof TransactionMode];
 
 export interface SupaschemaWorkflow {
   migration_check: MigrationCheckPolicy;
@@ -139,12 +146,94 @@ export interface SupaschemaSync {
   targets: Record<string, SupaschemaSyncTarget>;
 }
 
-export type RuntimeSourceKind = "catalog" | "database" | "dir" | "dump" | "empty" | "git";
-
 export interface ParsedRuntimeSource {
   kind: RuntimeSourceKind;
   payload: string;
 }
+
+export const adapterInputValues = Object.values(AdapterInput);
+
+export const supabaseManagedSchemas = [
+  "auth",
+  "storage",
+  "realtime",
+  "vault",
+  "extensions",
+  "cron",
+  "net",
+  "supabase_functions",
+  "graphql",
+  "graphql_public",
+] satisfies string[];
+
+export const supportedValidators = [
+  "internal-parser",
+  "squawk",
+  "squawk-cli",
+  "pgls",
+  "postgres-language-server",
+  "@postgres-language-server/cli",
+  "sqlfluff",
+] satisfies string[];
+
+export const sourceAuto = "auto";
+const runtimeSourcePrefixEntries: readonly [RuntimeSourceKind, string][] = [
+  [RuntimeSourceKind.Dir, "dir:"],
+  [RuntimeSourceKind.Git, "git:"],
+  [RuntimeSourceKind.Database, "database:"],
+  [RuntimeSourceKind.Dump, "dump:"],
+  [RuntimeSourceKind.Catalog, "catalog:"],
+  [RuntimeSourceKind.Empty, "empty:"],
+];
+export const runtimeSourcePrefixes = runtimeSourcePrefixEntries.map((entry) => entry[1]);
+export const sourcePrefixes = [sourceAuto, ...runtimeSourcePrefixes];
+export const schemaDiffPolicies = Object.values(SchemaDiffPolicy);
+export const migrationCheckPolicies = Object.values(MigrationCheckPolicy);
+export const migrationVerifyPolicies = Object.values(MigrationVerifyPolicy);
+export const migrationSyncPolicies = Object.values(MigrationSyncPolicy);
+export const deploySafetyPolicies = Object.values(DeploySafetyPolicy);
+export const generatedOutputPolicies = Object.values(GeneratedOutputPolicy);
+export const typeUsagePolicies = Object.values(TypeUsagePolicy);
+export const syncTargetModes = Object.values(SyncTargetMode);
+export const syncTargetRunners = Object.values(SyncTargetRunner);
+export const destructiveChangesPolicies = Object.values(DestructiveChangesPolicy);
+export const normalizePolicies = Object.values(NormalizePolicy);
+export const renameDetectionPolicies = Object.values(RenameDetectionPolicy);
+export const transactionModes = Object.values(TransactionMode);
+export const defaultMigrationHistoryTable = "supabase_migrations.schema_migrations";
+export const defaultEnvironments: Record<string, SupaschemaEnvironment> = {
+  local: { databaseUrl: "$LOCAL_DATABASE_URL" },
+  production: { databaseUrl: "$PRODUCTION_DATABASE_URL" },
+};
+export const defaultSync: SupaschemaSync = {
+  targets: {
+    local: {
+      mode: SyncTargetMode.Auto,
+      runner: SyncTargetRunner.Direct,
+      environment: "local",
+      historyTable: defaultMigrationHistoryTable,
+    },
+    remote: {
+      mode: SyncTargetMode.Manual,
+      runner: SyncTargetRunner.Direct,
+      environment: "production",
+      historyTable: defaultMigrationHistoryTable,
+      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+      remote: true,
+    },
+  },
+};
+export const defaultWorkflow: SupaschemaWorkflow = {
+  schema_diff: SchemaDiffPolicy.OnSchemaWrite,
+  migration_check: MigrationCheckPolicy.AfterSchemaDiff,
+  migration_verify: MigrationVerifyPolicy.SuggestAfterCheck,
+  migration_sync: MigrationSyncPolicy.Auto,
+  type_safety: DeploySafetyPolicy.DeployBlocking,
+  rls_safety: DeploySafetyPolicy.DeployBlocking,
+  type_generation: GeneratedOutputPolicy.CreateOrRefresh,
+  zod_generation: GeneratedOutputPolicy.CreateOrRefresh,
+  type_usage: TypeUsagePolicy.ZodValidated,
+};
 
 export interface ProviderMarker {
   contentTerms?: string[];
@@ -153,7 +242,7 @@ export interface ProviderMarker {
 }
 
 export interface ProviderPreset {
-  adapter: "auto";
+  adapter: AdapterInput;
   id: string;
   label: string;
   managedSchemas: string[];
@@ -164,7 +253,7 @@ export interface ProviderPreset {
 
 export const providerPresets = [
   {
-    adapter: "auto",
+    adapter: AdapterInput.Auto,
     id: "supabase",
     label: "Supabase",
     managedSchemas: [...supabaseManagedSchemas],
@@ -173,7 +262,7 @@ export const providerPresets = [
     schemaPath: "supabase/schemas",
   },
   {
-    adapter: "auto",
+    adapter: AdapterInput.Auto,
     id: "neon",
     label: "Neon",
     managedSchemas: [],
@@ -190,7 +279,7 @@ export const providerPresets = [
     schemaPath: "neon/schemas",
   },
   {
-    adapter: "auto",
+    adapter: AdapterInput.Auto,
     id: "aws-postgresql",
     label: "RDS/Aurora PostgreSQL",
     managedSchemas: [],
@@ -219,7 +308,7 @@ export const providerPresets = [
     schemaPath: "aws-postgresql/schemas",
   },
   {
-    adapter: "auto",
+    adapter: AdapterInput.Auto,
     id: "alloydb",
     label: "AlloyDB",
     managedSchemas: [],
@@ -237,7 +326,7 @@ export const providerPresets = [
     schemaPath: "alloydb/schemas",
   },
   {
-    adapter: "auto",
+    adapter: AdapterInput.Auto,
     id: "cloud-sql",
     label: "Cloud SQL for PostgreSQL",
     managedSchemas: [],
@@ -255,7 +344,7 @@ export const providerPresets = [
     schemaPath: "cloud-sql/schemas",
   },
   {
-    adapter: "auto",
+    adapter: AdapterInput.Auto,
     id: "azure-postgresql",
     label: "Azure PostgreSQL",
     managedSchemas: [],
@@ -276,21 +365,23 @@ export const providerPresets = [
     migrationsDir: "azure-postgresql/migrations",
     schemaPath: "azure-postgresql/schemas",
   },
-] as const satisfies readonly ProviderPreset[];
+] satisfies ProviderPreset[];
 
 export const genericProviderPreset = {
-  adapter: "auto",
+  adapter: AdapterInput.Auto,
   id: genericProviderId,
   label: "PostgreSQL",
   managedSchemas: [],
   markers: [],
   migrationsDir: genericMigrationsDir,
   schemaPath: genericSchemaPath,
-} as const satisfies ProviderPreset;
+} satisfies ProviderPreset;
 
-export const allProviderPresets = [genericProviderPreset, ...providerPresets] as const;
+export const allProviderPresets = [genericProviderPreset, ...providerPresets];
 export const providerSchemaPaths = providerPresets.map((preset) => preset.schemaPath);
 export const providerMigrationsDirs = providerPresets.map((preset) => preset.migrationsDir);
+export const cascadePolicies = ["never"];
+export const idempotencyPolicies = ["required"];
 
 export interface InstalledConfigOptions {
   migrationsDir?: string;
@@ -304,19 +395,17 @@ export function canonicalSourceTo(schemaPaths: readonly string[] = [genericSchem
 }
 
 export function parseRuntimeSource(source: string): ParsedRuntimeSource | undefined {
-  if (source === "empty:") {
-    return { kind: "empty", payload: "" };
-  }
-  for (const prefix of runtimeSourcePrefixes) {
-    if (prefix === "empty:") {
-      continue;
-    }
+  for (const [kind, prefix] of runtimeSourcePrefixEntries) {
     if (!source.startsWith(prefix)) {
       continue;
     }
+    const payload = source.slice(prefix.length);
+    if (kind !== RuntimeSourceKind.Empty && payload.length === 0) {
+      continue;
+    }
     return {
-      kind: prefix.slice(0, -1) as RuntimeSourceKind,
-      payload: source.slice(prefix.length),
+      kind,
+      payload,
     };
   }
   return;
@@ -350,14 +439,15 @@ export function createInstalledConfig(
   const migrationsDir = normalizedString(options.migrationsDir, provider.migrationsDir);
   return orderInstalledConfig({
     $schema: options.schemaRef ?? packageSchemaRef,
-    adapter: "auto",
+    adapter: AdapterInput.Auto,
     cascade: "never",
-    destructiveChanges: "hint-required",
+    destructiveChanges: DestructiveChangesPolicy.HintRequired,
     environments: defaultEnvironments,
     excludedGrantRoles: [],
     hints: {
       allowedGrantees: [],
       destructive: [],
+      requiredPolicyColumns: {},
       renames: [],
     },
     idempotency: "required",
@@ -367,21 +457,21 @@ export function createInstalledConfig(
     migrationsDir,
     typesFile: defaultTypesFile,
     zodFile: defaultZodFile,
-    normalize: "deparse",
+    normalize: NormalizePolicy.Deparse,
     managedSchemas: managedSchemasForProvider(provider.id),
     postgresVersion: "15+",
-    renameDetection: "hints-only",
+    renameDetection: RenameDetectionPolicy.HintsOnly,
     schemaPaths,
     schemas: {
       exclude: [],
       include: [],
     },
     sources: {
-      from: "auto",
+      from: sourceAuto,
       to: canonicalSourceTo(schemaPaths),
     },
     statementTimeout: "60s",
-    transactionMode: "per-migration",
+    transactionMode: TransactionMode.PerMigration,
     validators: ["internal-parser"],
   });
 }
@@ -394,55 +484,75 @@ export function mergeInstalledConfig(
   if (!isRecord(existing)) {
     return base;
   }
-  const schemaPaths = normalizedStringArray(existing.schemaPaths, base.schemaPaths as string[]);
+  const baseHints = recordValue(base.hints);
+  const baseSchemas = recordValue(base.schemas);
+  const baseSources = recordValue(base.sources);
+  const baseSync = recordValue(base.sync);
+  const baseWorkflow = recordValue(base.workflow);
+  const schemaPaths = normalizedStringArray(
+    existing.schemaPaths,
+    normalizedStringArray(base.schemaPaths, [genericSchemaPath])
+  );
   const hasExistingEnvironments = "environments" in existing && isRecord(existing.environments);
   const existingSync = isRecord(existing.sync) ? existing.sync : undefined;
   const merged = {
     ...base,
     ...existing,
-    $schema: normalizedString(existing.$schema, base.$schema as string),
-    adapter: "auto",
+    $schema: normalizedString(existing.$schema, normalizedString(base.$schema, packageSchemaRef)),
+    adapter: AdapterInput.Auto,
     environments: hasExistingEnvironments ? existing.environments : base.environments,
     excludedGrantRoles: normalizedStringArray(
       existing.excludedGrantRoles,
-      base.excludedGrantRoles as string[]
+      normalizedStringArray(base.excludedGrantRoles, [])
     ),
     hints: {
-      ...(base.hints as Record<string, unknown>),
+      ...baseHints,
       ...(isRecord(existing.hints) ? existing.hints : {}),
     },
-    managedSchemas: normalizedStringArray(existing.managedSchemas, base.managedSchemas as string[]),
-    migrationsDir: normalizedString(existing.migrationsDir, base.migrationsDir as string),
+    managedSchemas: normalizedStringArray(
+      existing.managedSchemas,
+      normalizedStringArray(base.managedSchemas, [])
+    ),
+    migrationsDir: normalizedString(
+      existing.migrationsDir,
+      normalizedString(base.migrationsDir, genericMigrationsDir)
+    ),
     schemaPaths,
     schemas: {
-      ...(base.schemas as Record<string, unknown>),
+      ...baseSchemas,
       ...(isRecord(existing.schemas) ? existing.schemas : {}),
     },
     sources: {
-      ...(base.sources as Record<string, unknown>),
+      ...baseSources,
       ...(isRecord(existing.sources) ? existing.sources : {}),
     },
     sync:
       hasExistingEnvironments && existingSync === undefined
         ? { targets: {} }
         : {
-            ...(base.sync as Record<string, unknown>),
+            ...baseSync,
             ...(existingSync ?? {}),
           },
     workflow: {
-      ...(base.workflow as Record<string, unknown>),
+      ...baseWorkflow,
       ...(isRecord(existing.workflow) ? existing.workflow : {}),
     },
-    typesFile: normalizedString(existing.typesFile, base.typesFile as string),
-    validators: normalizedStringArray(existing.validators, base.validators as string[]),
-    zodFile: normalizedString(existing.zodFile, base.zodFile as string),
+    typesFile: normalizedString(
+      existing.typesFile,
+      normalizedString(base.typesFile, defaultTypesFile)
+    ),
+    validators: normalizedStringArray(
+      existing.validators,
+      normalizedStringArray(base.validators, ["internal-parser"])
+    ),
+    zodFile: normalizedString(existing.zodFile, normalizedString(base.zodFile, defaultZodFile)),
   };
-  const sources = merged.sources as Record<string, unknown>;
+  const sources = merged.sources;
   if (typeof sources.to !== "string" || sources.to.length === 0) {
     sources.to = canonicalSourceTo(schemaPaths);
   }
   if (typeof sources.from !== "string" || sources.from.length === 0) {
-    sources.from = "auto";
+    sources.from = sourceAuto;
   }
   return orderInstalledConfig(merged);
 }
@@ -476,7 +586,16 @@ export function orderInstalledConfig(config: Record<string, unknown>): Record<st
   };
 }
 
-export const configFieldMetadata = [
+interface ConfigFieldMetadata {
+  allowed?: readonly unknown[];
+  default: unknown;
+  description: string;
+  examples?: readonly unknown[];
+  key: string;
+  pathKind?: string;
+}
+
+export const configFieldMetadata: ConfigFieldMetadata[] = [
   {
     default: "Generated configs point to the package schema.",
     description:
@@ -485,20 +604,20 @@ export const configFieldMetadata = [
     key: "$schema",
   },
   {
-    allowed: [...adapterInputValues],
-    default: "auto",
+    allowed: adapterInputValues,
+    default: AdapterInput.Auto,
     description: "Provider-neutral adapter sentinel.",
     key: "adapter",
   },
   {
-    allowed: ["never"],
+    allowed: cascadePolicies,
     default: "never",
     description: "CASCADE is never emitted by generated migrations.",
     key: "cascade",
   },
   {
-    allowed: ["hint-required", "block", "allow"],
-    default: "hint-required",
+    allowed: destructiveChangesPolicies,
+    default: DestructiveChangesPolicy.HintRequired,
     description:
       "Controls whether destructive operations require exact hints, always block, or are allowed.",
     key: "destructiveChanges",
@@ -517,13 +636,13 @@ export const configFieldMetadata = [
     key: "excludedGrantRoles",
   },
   {
-    default: { allowedGrantees: [], destructive: [], renames: [] },
+    default: { allowedGrantees: [], destructive: [], requiredPolicyColumns: {}, renames: [] },
     description:
-      "Reviewed grant, destructive-change, and rename hints using exact object keys or role names.",
+      "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
     key: "hints",
   },
   {
-    allowed: ["required"],
+    allowed: idempotencyPolicies,
     default: "required",
     description: "Generated SQL must be replay-safe by construction.",
     key: "idempotency",
@@ -536,13 +655,13 @@ export const configFieldMetadata = [
   {
     default: defaultWorkflow,
     description:
-      "Agent and hook workflow policy for schema diffs, migration checks, verification, sync automation, deploy safety gates, and generated type/Zod output refresh.",
+      "Automation policy for generated outputs, hook diff/check, verification guidance, deploy safety gates, and whether bare sync may apply selected targets.",
     key: "workflow",
   },
   {
     default: defaultSync,
     description:
-      "Named migration sync targets. Each target selects a runner, URL owner, history table, and manual or automatic mode.",
+      "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; each target mode decides whether bare sync selects that target.",
     examples: [defaultSync],
     key: "sync",
   },
@@ -572,8 +691,8 @@ export const configFieldMetadata = [
     pathKind: "file",
   },
   {
-    allowed: ["off", "deparse"],
-    default: "deparse",
+    allowed: normalizePolicies,
+    default: NormalizePolicy.Deparse,
     description: "Controls canonical SQL deparse normalization for extracted objects.",
     key: "normalize",
   },
@@ -590,14 +709,15 @@ export const configFieldMetadata = [
     key: "postgresVersion",
   },
   {
-    allowed: ["hints-only", "off"],
-    default: "hints-only",
+    allowed: renameDetectionPolicies,
+    default: RenameDetectionPolicy.HintsOnly,
     description: "Controls whether reviewed hints can render guarded renames.",
     key: "renameDetection",
   },
   {
     default: [genericSchemaPath],
-    description: "Declarative SQL tree directories. The first path owns the default sources.to.",
+    description:
+      "Declarative SQL tree roots. Each root is read recursively; the first path usually matches sources.to.",
     examples: [
       [genericSchemaPath],
       ["supabase/schemas"],
@@ -613,10 +733,11 @@ export const configFieldMetadata = [
     key: "schemas",
   },
   {
-    default: { from: "auto", to: canonicalSourceTo([genericSchemaPath]) },
-    description: "Default before/after sources for zero-source-flag diff, plan, and verify.",
+    default: { from: sourceAuto, to: canonicalSourceTo([genericSchemaPath]) },
+    description:
+      "Default before/after sources for zero-source-flag diff, plan, and verify. Keep sources.to explicit even when it matches schemaPaths[0].",
     examples: [
-      { from: "auto", to: "dir:database/schemas" },
+      { from: sourceAuto, to: "dir:database/schemas" },
       { from: "dir:baseline/schemas", to: "dir:database/schemas" },
     ],
     key: "sources",
@@ -627,8 +748,8 @@ export const configFieldMetadata = [
     key: "statementTimeout",
   },
   {
-    allowed: ["per-migration", "per-statement"],
-    default: "per-migration",
+    allowed: transactionModes,
+    default: TransactionMode.PerMigration,
     description: "Transaction model used by verification and transaction-hazard diagnostics.",
     key: "transactionMode",
   },
@@ -639,12 +760,13 @@ export const configFieldMetadata = [
     examples: [["internal-parser"], ["internal-parser", "squawk"]],
     key: "validators",
   },
-] as const;
+];
 
 export function configContractModuleText(): string {
   const data = {
     allProviderPresets,
     adapterInputValues,
+    cascadePolicies,
     canonicalSchemaId,
     configFieldMetadata,
     configSchemaFileName,
@@ -654,6 +776,7 @@ export function configContractModuleText(): string {
     defaultTypesFile,
     defaultZodFile,
     defaultWorkflow,
+    destructiveChangesPolicies,
     deploySafetyPolicies,
     generatedOutputPolicies,
     genericMigrationsDir,
@@ -664,19 +787,21 @@ export function configContractModuleText(): string {
     migrationCheckPolicies,
     migrationSyncPolicies,
     migrationVerifyPolicies,
+    normalizePolicies,
     packageSchemaRef,
     providerMigrationsDirs,
     providerPresets,
     providerSchemaPaths,
+    renameDetectionPolicies,
     runtimeSourcePrefixes,
     schemaDiffPolicies,
     sourceAuto,
     sourcePrefixes,
-    sourceSpecPattern,
     supabaseManagedSchemas,
     supportedValidators,
     syncTargetModes,
     syncTargetRunners,
+    transactionModes,
     typeUsagePolicies,
   };
   return `const contract = JSON.parse(\`${JSON.stringify(data, null, 2)}\`);
@@ -700,7 +825,6 @@ export const supportedValidators = contract.supportedValidators;
 export const sourceAuto = contract.sourceAuto;
 export const runtimeSourcePrefixes = contract.runtimeSourcePrefixes;
 export const sourcePrefixes = contract.sourcePrefixes;
-export const sourceSpecPattern = contract.sourceSpecPattern;
 export const schemaDiffPolicies = contract.schemaDiffPolicies;
 export const migrationCheckPolicies = contract.migrationCheckPolicies;
 export const migrationVerifyPolicies = contract.migrationVerifyPolicies;
@@ -710,6 +834,11 @@ export const generatedOutputPolicies = contract.generatedOutputPolicies;
 export const typeUsagePolicies = contract.typeUsagePolicies;
 export const syncTargetModes = contract.syncTargetModes;
 export const syncTargetRunners = contract.syncTargetRunners;
+export const destructiveChangesPolicies = contract.destructiveChangesPolicies;
+export const normalizePolicies = contract.normalizePolicies;
+export const renameDetectionPolicies = contract.renameDetectionPolicies;
+export const transactionModes = contract.transactionModes;
+export const cascadePolicies = contract.cascadePolicies;
 export const providerPresets = contract.providerPresets;
 export const genericProviderPreset = contract.genericProviderPreset;
 export const allProviderPresets = contract.allProviderPresets;
@@ -873,10 +1002,14 @@ function normalizedString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
-function normalizedStringArray(value: unknown, fallback: string[]): string[] {
+function normalizedStringArray(value: unknown, fallback: readonly string[]): string[] {
   return Array.isArray(value) && value.length > 0
     ? value.map(String).filter(Boolean)
     : [...fallback];
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

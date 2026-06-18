@@ -114,7 +114,7 @@ describe("migration name defaults", () => {
         ref: { kind: "table", name: "accounts", schema: "app" },
         sql: "",
       },
-    ] as MigrationPlan["operations"]);
+    ]);
 
     expect(defaultMigrationName(plan)).toBe("create_table_accounts");
   });
@@ -138,7 +138,7 @@ describe("migration name defaults", () => {
         ref: { kind: "view", name: "b", schema: "app" },
         sql: "",
       },
-    ] as MigrationPlan["operations"]);
+    ]);
     expect(defaultMigrationName(multi)).toBe("schema_diff");
   });
 
