@@ -421,11 +421,11 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
 }
 
 function disabledSyncResult(
-  options: SyncOptions,
+  _options: SyncOptions,
   config: SupaschemaConfig,
   diagnostics: Diagnostic[]
 ): SyncResult | undefined {
-  if (options.target === undefined || config.workflow.migration_sync !== "disabled") {
+  if (config.workflow.migration_sync !== "disabled") {
     return;
   }
   diagnostics.push(

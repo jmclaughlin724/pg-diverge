@@ -5,7 +5,7 @@ keywords:
   [
     "type generation",
     "PostgreSQL types",
-    "Supabase-compatible types",
+    "database types",
     "Zod",
     "no database",
   ]
@@ -13,7 +13,7 @@ keywords:
 
 Use this when application code needs database types and runtime validators before the migration is applied.
 
-`supaschema types` reads declarative PostgreSQL files and emits a Supabase-compatible `Database` type plus runtime Zod validators from the same schema model used for migrations.
+`supaschema types` reads declarative PostgreSQL files and emits TypeScript database types plus runtime Zod validators from the same schema model used for migrations.
 
 ## Use this when
 
@@ -21,7 +21,7 @@ Use this when application code needs database types and runtime validators befor
 - Database introspection cannot see the new schema yet.
 - You want runtime validators generated from the same source as migrations.
 - You want a typed, validated application boundary without adding an ORM schema layer.
-- A non-Supabase app still benefits from the familiar Supabase type shape.
+- You want generated application contracts without adding a provider-specific or ORM schema layer.
 
 ## Do this
 

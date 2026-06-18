@@ -83,7 +83,7 @@ async function loadParser(): Promise<PgParser | undefined> {
   if (cachedParser === null) {
     return;
   }
-  const module = (await import("libpg-query")) as PgParserModule;
+  const module = await import("libpg-query");
   const parser = findParser(module);
   cachedParser = parser ?? null;
   return parser;

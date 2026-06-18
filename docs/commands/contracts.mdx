@@ -1,0 +1,83 @@
+---
+title: "contracts"
+description: "Export, diff, push, and pull JSON schema contracts for cross-repository drift checks."
+keywords: ["contracts command", "schema contract", "contract registry", "cross repo drift"]
+---
+
+Use `contracts` when one repository publishes the database shape another repository consumes.
+
+The local commands export and diff JSON contracts without a hosted service. Push and pull use a hosted contract registry only when an operator deployment exists.
+
+## Run it
+
+```bash
+npx supaschema contracts export --out schema-contract.json
+npx supaschema contracts diff --from schema-contract.json
+npx supaschema contracts push --registry-url https://license.example --repo acme/app
+npx supaschema contracts pull --registry-url https://license.example --repo acme/app --out schema-contract.json
+```
+
+## Subcommands
+
+<ParamField path="export" type="command">
+  Build a JSON schema contract from `--from`, defaulting to the configured schema
+  tree.
+</ParamField>
+
+<ParamField path="diff" type="command">
+  Compare `--from <file>` with `--to <source>`, defaulting `--to` to the
+  configured schema tree.
+</ParamField>
+
+<ParamField path="push" type="command">
+  Export `--from` and store the contract in the hosted registry at
+  `/contracts?repo=&name=`.
+</ParamField>
+
+<ParamField path="pull" type="command">
+  Retrieve a stored contract from the hosted registry.
+</ParamField>
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Schema source used by `export` and `push`.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  Candidate source used by `diff`. Defaults to the configured schema tree.
+</ParamField>
+
+<ParamField path="--out" type="file | stdout">
+  Output destination for `export` and `pull`. Defaults to `stdout`.
+</ParamField>
+
+<ParamField path="--registry-url" type="URL">
+  Base URL for the hosted contract registry.
+</ParamField>
+
+<ParamField path="--repo" type="owner/repo">
+  Repository identity bound to the license token.
+</ParamField>
+
+<ParamField path="--name" type="string">
+  Contract name in the registry. Defaults to `main`.
+</ParamField>
+
+<ParamField path="--license-env" type="environment variable name">
+  Environment variable containing the repo-bound license token. Defaults to
+  `SUPASCHEMA_LICENSE`.
+</ParamField>
+
+## Boundaries
+
+The registry stores schema metadata only after an authenticated client submits it. It does not receive database URLs, migrations, table rows, or live database credentials through the normal routes.
+
+Do not pass license tokens in argv. Put the token in the environment variable named by `--license-env`.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Contract command completed. |
+| 2 | `diff` found error-severity drift diagnostics. |

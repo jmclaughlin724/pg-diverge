@@ -30,7 +30,6 @@ const safeEnvTemplates = new Set([
   ".env.sample",
   ".env.template",
 ]);
-
 export function evaluateBashPolicy(input, env = process.env) {
   if (!isBashPayload(input)) {
     return allowResult();

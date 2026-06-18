@@ -113,6 +113,7 @@ export interface SupaschemaHints {
   allowedGrantees?: string[];
   destructive?: string[];
   renames?: RenameHint[];
+  requiredPolicyColumns?: Record<string, string[]>;
 }
 
 export interface ExtractOptions {

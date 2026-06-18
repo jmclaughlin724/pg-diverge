@@ -71,12 +71,7 @@ describe("scan core (K0)", () => {
 
   it("renders the scan through the existing reporter", () => {
     const result = scanModel(model([tableObject("BadName")]), [hygienePack]);
-    const parsed = JSON.parse(renderScan(result, "json", "schema.sql")) as {
-      diagnostics: Diagnostic[];
-      file: string;
-      grade: string;
-      score: number;
-    };
+    const parsed = JSON.parse(renderScan(result, "json", "schema.sql"));
     expect(parsed.file).toBe("schema.sql");
     expect(parsed.score).toBe(97);
     expect(parsed.grade).toBe("A");

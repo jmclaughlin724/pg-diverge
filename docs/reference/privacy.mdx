@@ -1,6 +1,6 @@
 ---
 title: "Privacy and data handling"
-description: "What supaschema stores, sends, and avoids collecting across the CLI, GitHub Action, support intake, and license Worker surfaces."
+description: "What supaschema stores, sends, and avoids collecting across the CLI, GitHub Action, support intake, and hosted commercial surfaces."
 keywords:
   [
     "privacy",
@@ -29,12 +29,12 @@ Public bug reports, feature requests, and commercial support requests are GitHub
 
 Commercial rights, response times, procurement terms, and security-review terms exist only in a signed agreement. The public support issue template is an intake path, not a private support portal.
 
-## License worker
+## Hosted commercial surfaces
 
-The repository includes a Cloudflare Worker for paid-pack entitlement and the hosted schema-contract registry. A deployed Worker stores license tokens by checkout session id, verifies Stripe webhook payloads, creates Stripe Checkout Sessions from the operator price map, and stores schema-contract JSON only when an authenticated customer submits it to `/contracts`.
+The public repository includes local license-token verification and a contract-registry client. Hosted token issuance, billing, and registry deployment code is operator-owned and not included in this public repository.
 
-The Worker does not receive database URLs, raw migrations, application rows, or live database credentials through its normal routes. Contract registry payloads are schema metadata, so customers should treat submitted contracts as commercial data and use the registry only under approved commercial terms.
+The hosted registry stores schema-contract JSON only when an authenticated customer submits it. It does not receive database URLs, raw migrations, application rows, or live database credentials through its normal routes. Contract registry payloads are schema metadata, so customers should treat submitted contracts as commercial data and use the registry only under approved commercial terms.
 
 ## Marketplace readiness
 
-GitHub Marketplace publication still requires operator approval, live entitlement and billing, a verified publisher flow, install-threshold evidence, support terms, and legal review. Marketplace plan-change and cancellation handling must reuse the canonical license Worker entitlement path.
+GitHub Marketplace publication still requires operator approval, live entitlement and billing, a verified publisher flow, install-threshold evidence, support terms, and legal review. Marketplace plan-change and cancellation handling belongs in private operator deployment code.

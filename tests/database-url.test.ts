@@ -12,14 +12,15 @@ import { expectedInstalledConfig } from "./install-parity-expectations.js";
 const run = promisify(execFile);
 const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const codexGateCommand =
-  "npx --no-install supaschema hook generated-migration-edit --runtime codex";
-const codexAutoDiffCommand = "npx --no-install supaschema hook schema-write";
+const codexGateCommand = "npm exec -- supaschema hook generated-migration-edit --runtime codex";
+const codexAutoDiffCommand = "npm exec -- supaschema hook schema-write";
 const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
 const codexGeneralGuardCommand = `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`;
+const codexMutationMatcher = ["Write", "Edit", "MultiEdit", "apply_patch"].join("|");
 const removedClaudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
 const claudeGeneratedGateArgs = [
-  "--no-install",
+  "exec",
+  "--",
   "supaschema",
   "hook",
   "generated-migration-edit",
@@ -27,12 +28,28 @@ const claudeGeneratedGateArgs = [
   "claude",
 ];
 const claudeBashPolicyArgs = [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`];
-const claudeAutoDiffArgs = ["--no-install", "supaschema", "hook", "schema-write"];
+const claudeAutoDiffArgs = ["exec", "--", "supaschema", "hook", "schema-write"];
 const claudeLlmSyncArgs = [
   `${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
 ];
 function shellParameter(expression: string): string {
   return ["$", "{", expression, "}"].join("");
+}
+
+async function runScaffold(
+  targetDir: string,
+  options: { packageRoot?: string; repair?: boolean } = {}
+): Promise<void> {
+  const { scaffoldProject } = await import(
+    pathToFileURL(join(process.cwd(), "bin/scaffold.mjs")).href
+  );
+  await scaffoldProject({
+    interactive: false,
+    packageRoot: options.packageRoot ?? process.cwd(),
+    packageVersion: "test",
+    repair: options.repair === true,
+    targetDir,
+  });
 }
 
 describe("supabase database URL discovery", () => {
@@ -78,13 +95,11 @@ describe("supabase database URL discovery", () => {
   });
 });
 
-describe("install-time project setup", () => {
-  it("installs config and agent surfaces in one postinstall step", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-"));
-    const env = { ...process.env, INIT_CWD: consumer };
+describe("init project setup", () => {
+  it("installs config and agent surfaces through explicit init setup", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-"));
 
-    const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
-    expect(stdout).toBe("");
+    await runScaffold(consumer);
 
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
@@ -131,11 +146,11 @@ describe("install-time project setup", () => {
     expect(claude).toContain("<!-- supaschema:agent-guidance:start -->");
     expect(prompt).toContain("Do not clone `jmclaughlin724/supaschema`");
     expect(prompt).toContain("npm install supaschema");
-    expect(prompt).toContain("pnpm add --allow-build=supaschema supaschema");
-    expect(prompt).toContain("pnpm add --ignore-scripts supaschema");
+    expect(prompt).toContain("pnpm add supaschema");
+    expect(prompt).toContain("npm exec -- supaschema init");
     expect(prompt).toContain("pnpm exec supaschema init");
     expect(prompt).toContain("yarn add supaschema");
-    expect(prompt).toContain("bun add --trust supaschema");
+    expect(prompt).toContain("yarn exec supaschema init");
     expect(prompt).toContain("bun add supaschema");
     expect(prompt).toContain("bunx --no-install supaschema init");
     expect(prompt).toContain("Do not run npm in a pnpm, Yarn, or Bun project");
@@ -148,7 +163,7 @@ describe("install-time project setup", () => {
     expect(prompt).toContain("bunx --no-install supaschema <cmd>");
     expect(prompt).toContain("config validate --json");
 
-    await run("node", ["bin/postinstall.mjs"], { env });
+    await runScaffold(consumer);
     const claudeSettings = JSON.parse(
       await readFile(join(consumer, ".claude/settings.json"), "utf8")
     );
@@ -156,8 +171,8 @@ describe("install-time project setup", () => {
     expect(claudeSettings.enabledMcpjsonServers).toBeUndefined();
     expect(commandCount(claudeSettings, removedClaudeSkillGateCommand)).toBe(0);
     expect(hookCount(claudeSettings, "node", claudeBashPolicyArgs)).toBe(1);
-    expect(hookCount(claudeSettings, "npx", claudeGeneratedGateArgs)).toBe(1);
-    expect(hookCount(claudeSettings, "npx", claudeAutoDiffArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "npm", claudeGeneratedGateArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "npm", claudeAutoDiffArgs)).toBe(1);
     expect(hookCount(claudeSettings, "node", claudeLlmSyncArgs)).toBe(1);
     expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
@@ -166,9 +181,55 @@ describe("install-time project setup", () => {
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
   });
 
+  it("materializes hook commands with the detected package manager runner", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-pnpm-hooks-"));
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({ name: "db", packageManager: "pnpm@10.18.1", private: true })}\n`
+    );
+
+    await runScaffold(consumer);
+
+    const claudeSettings = JSON.parse(
+      await readFile(join(consumer, ".claude/settings.json"), "utf8")
+    );
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    expect(
+      hookCount(claudeSettings, "pnpm", [
+        "exec",
+        "supaschema",
+        "hook",
+        "generated-migration-edit",
+        "--runtime",
+        "claude",
+      ])
+    ).toBe(1);
+    expect(commandCount(codexHooks, "pnpm exec supaschema hook schema-write")).toBe(1);
+    expect(commandCount(codexHooks, "npm exec -- supaschema hook schema-write")).toBe(0);
+    expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(0);
+  });
+
+  it("does not inherit unrelated ancestor package-manager lockfiles", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "supa-init-parent-lock-"));
+    const consumer = join(parent, "consumer");
+    await mkdir(consumer, { recursive: true });
+    await writeFile(join(parent, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({ name: "db", private: true, version: "0.0.0" })}\n`
+    );
+    await writeFile(join(consumer, "package-lock.json"), '{"lockfileVersion":3}\n');
+
+    await runScaffold(consumer);
+
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    expect(commandCount(codexHooks, "npm exec -- supaschema hook schema-write")).toBe(1);
+    expect(commandCount(codexHooks, "pnpm exec supaschema hook schema-write")).toBe(0);
+  });
+
   it("copies complete packaged skill directories into shared and Claude skill locations", async () => {
     const packageRoot = await mkdtemp(join(tmpdir(), "supa-package-root-"));
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-skills-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-skills-"));
     await writeNestedFile(
       join(packageRoot, ".agents/prompts/supaschema-install.md"),
       "install prompt\n"
@@ -195,16 +256,9 @@ describe("install-time project setup", () => {
     );
     await writeNestedFile(join(consumer, ".codex/skills/custom/SKILL.md"), "custom skill\n");
 
-    const { scaffoldProject } = (await import(
+    const { scaffoldProject } = await import(
       pathToFileURL(join(process.cwd(), "bin/scaffold.mjs")).href
-    )) as {
-      scaffoldProject: (options: {
-        interactive: boolean;
-        packageRoot: string;
-        packageVersion: string;
-        targetDir: string;
-      }) => Promise<unknown>;
-    };
+    );
 
     await scaffoldProject({
       interactive: false,
@@ -232,11 +286,11 @@ describe("install-time project setup", () => {
   });
 
   it("uses Supabase paths when the project has Supabase local config", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-supabase-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-supabase-"));
     await mkdir(join(consumer, "supabase"), { recursive: true });
     await writeFile(join(consumer, "supabase", "config.toml"), "[db]\nport = 54322\n");
 
-    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+    await runScaffold(consumer);
 
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config).toEqual(expectedInstalledConfig("supabase/schemas", "supabase/migrations"));
@@ -287,11 +341,11 @@ describe("install-time project setup", () => {
     migrationsDir,
     schemaPath,
   }) => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-provider-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-provider-"));
     await mkdir(dirname(join(consumer, marker)), { recursive: true });
     await writeFile(join(consumer, marker), markerContent);
 
-    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+    await runScaffold(consumer);
 
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config).toEqual(expectedInstalledConfig(schemaPath, migrationsDir));
@@ -301,7 +355,7 @@ describe("install-time project setup", () => {
   });
 
   it("preserves an existing config and merges hook wiring", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-existing-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-existing-"));
     await writeFile(join(consumer, "supaschema.config.json"), '{"adapter":"auto"}\n');
     await writeFile(join(consumer, "AGENTS.md"), "# Existing agents\n\nKeep this.\n");
     await writeFile(join(consumer, "CLAUDE.md"), "@AGENTS.md\n");
@@ -313,6 +367,35 @@ describe("install-time project setup", () => {
           PreToolUse: [
             {
               hooks: [{ args: ["scripts/local-policy.mjs"], command: "node", type: "command" }],
+            },
+            {
+              matcher: codexMutationMatcher,
+              hooks: [
+                {
+                  args: [
+                    "--no-install",
+                    "supaschema",
+                    "hook",
+                    "generated-migration-edit",
+                    "--runtime",
+                    "claude",
+                  ],
+                  command: "npx",
+                  type: "command",
+                },
+              ],
+            },
+          ],
+          PostToolUse: [
+            {
+              matcher: codexMutationMatcher,
+              hooks: [
+                {
+                  args: ["--no-install", "supaschema", "hook", "schema-write"],
+                  command: "npx",
+                  type: "command",
+                },
+              ],
             },
           ],
         },
@@ -327,14 +410,32 @@ describe("install-time project setup", () => {
             {
               hooks: [{ command: "echo existing", type: "command" }],
             },
+            {
+              matcher: "Write|Edit|MultiEdit|apply_patch",
+              hooks: [
+                {
+                  command:
+                    "npx --no-install supaschema hook generated-migration-edit --runtime codex",
+                  type: "command",
+                },
+              ],
+            },
+          ],
+          PostToolUse: [
+            {
+              matcher: "Write|Edit|MultiEdit|apply_patch",
+              hooks: [
+                {
+                  command: "npx --no-install supaschema hook schema-write",
+                  type: "command",
+                },
+              ],
+            },
           ],
         },
       })}\n`
     );
-    const env = { ...process.env, INIT_CWD: consumer };
-
-    const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
-    expect(stdout).toBe("");
+    await runScaffold(consumer);
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
       '{"adapter":"auto"}\n'
     );
@@ -351,18 +452,39 @@ describe("install-time project setup", () => {
     );
     expect(hookCount(claudeSettings, "node", ["scripts/local-policy.mjs"])).toBe(1);
     expect(hookCount(claudeSettings, "node", claudeBashPolicyArgs)).toBe(1);
-    expect(hookCount(claudeSettings, "npx", claudeGeneratedGateArgs)).toBe(1);
+    expect(
+      hookCount(claudeSettings, "npx", [
+        "--no-install",
+        "supaschema",
+        "hook",
+        "generated-migration-edit",
+        "--runtime",
+        "claude",
+      ])
+    ).toBe(0);
+    expect(
+      hookCount(claudeSettings, "npx", ["--no-install", "supaschema", "hook", "schema-write"])
+    ).toBe(0);
+    expect(hookCount(claudeSettings, "npm", claudeGeneratedGateArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "npm", claudeAutoDiffArgs)).toBe(1);
     expect(hookCount(claudeSettings, "node", claudeLlmSyncArgs)).toBe(1);
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(commandCount(codexHooks, "echo existing")).toBe(1);
     expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
     expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
+    expect(
+      commandCount(
+        codexHooks,
+        "npx --no-install supaschema hook generated-migration-edit --runtime codex"
+      )
+    ).toBe(0);
+    expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(0);
     expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
   });
 
   it("scans existing schema and migration folders for the generated config", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-scan-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-scan-"));
     await mkdir(join(consumer, "database", "schema"), { recursive: true });
     await mkdir(join(consumer, "database", "migrations"), { recursive: true });
     await writeFile(join(consumer, "database", "schema", "schema.sql"), "create schema app;\n");
@@ -371,7 +493,7 @@ describe("install-time project setup", () => {
       "select 1;\n"
     );
 
-    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+    await runScaffold(consumer);
 
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config.schemaPaths).toEqual(["database/schema"]);
@@ -380,7 +502,7 @@ describe("install-time project setup", () => {
   });
 
   it("records ambiguous scanned paths for agent confirmation", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-ambiguous-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-ambiguous-"));
     await mkdir(join(consumer, "apps", "api", "schemas"), { recursive: true });
     await mkdir(join(consumer, "packages", "db", "schemas"), { recursive: true });
     await mkdir(join(consumer, "apps", "api", "migrations"), { recursive: true });
@@ -399,10 +521,7 @@ describe("install-time project setup", () => {
       "select 1;\n"
     );
 
-    const { stdout } = await run("node", ["bin/postinstall.mjs"], {
-      env: { ...process.env, INIT_CWD: consumer, CI: "1" },
-    });
-    expect(stdout).toBe("");
+    await runScaffold(consumer);
 
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
     expect(manifest.pathConfirmationNeeded).toBe(true);
@@ -421,7 +540,7 @@ describe("install-time project setup", () => {
     const extractDir = await mkdtemp(join(tmpdir(), "supa-pack-extract-"));
     const npm = npmExec(["pack", "--json", "--ignore-scripts", "--pack-destination", packDir]);
     const { stdout } = await run(npm.file, npm.args);
-    const [packed] = JSON.parse(stdout) as { filename: string }[];
+    const [packed] = JSON.parse(stdout);
     const tarball = join(packDir, packed.filename);
 
     await run("tar", ["-xzf", tarball, "-C", extractDir]);
@@ -437,9 +556,7 @@ describe("install-time project setup", () => {
     ]) {
       expect(existsSync(join(extractDir, "package", file)), file).toBe(false);
     }
-    await run("node", [join(extractDir, "package", "bin", "postinstall.mjs")], {
-      env: { ...process.env, INIT_CWD: consumer },
-    });
+    await runScaffold(consumer, { packageRoot: join(extractDir, "package") });
 
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(true);
     expect(existsSync(join(consumer, ".agents/prompts/supaschema-install.md"))).toBe(true);
@@ -457,37 +574,28 @@ describe("install-time project setup", () => {
     );
   });
 
-  it("does nothing inside supaschema's own checkout", async () => {
-    const env = { ...process.env, INIT_CWD: process.cwd() };
-
-    const { stdout } = await run("node", ["bin/postinstall.mjs"], { env });
-
-    expect(stdout).toBe("");
-  });
-
   it("does not create install state on a no-op resolved re-install", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-idempotent-"));
-    const env = { ...process.env, INIT_CWD: consumer };
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-idempotent-"));
 
-    await run("node", ["bin/postinstall.mjs"], { env });
+    await runScaffold(consumer);
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
     await mkdir(join(consumer, ".supaschema"), { recursive: true });
     await writeFile(
       join(consumer, ".supaschema", "install.json"),
       '{"pathConfirmationNeeded":false}\n'
     );
-    await run("node", ["bin/postinstall.mjs"], { env });
+    await runScaffold(consumer);
 
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
   it("resolves a sparse existing config through the CLI defaults, not provider detection", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-sparse-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-sparse-"));
     await mkdir(join(consumer, "supabase"), { recursive: true });
     await writeFile(join(consumer, "supabase", "config.toml"), "[db]\nport = 54322\n");
     await writeFile(join(consumer, "supaschema.config.json"), "{}\n");
 
-    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+    await runScaffold(consumer);
 
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe("{}\n");
     expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
@@ -498,13 +606,13 @@ describe("install-time project setup", () => {
   });
 
   it("ignores JavaScript config files and writes the canonical JSON config", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-module-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-module-"));
     await writeFile(
       join(consumer, "supaschema.config.mjs"),
       'export default { schemaPaths: ["db/sql"], migrationsDir: "db/changes" };\n'
     );
 
-    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
+    await runScaffold(consumer);
 
     expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
       "Schema intent belongs in `database/schemas`"
@@ -520,7 +628,7 @@ describe("install-time project setup", () => {
   });
 
   it("does not scaffold a guessed config while path confirmation is pending", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-pending-"));
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-pending-"));
     await mkdir(join(consumer, "apps", "api", "schemas"), { recursive: true });
     await mkdir(join(consumer, "packages", "db", "schemas"), { recursive: true });
     await writeFile(join(consumer, "apps", "api", "schemas", "schema.sql"), "create schema app;\n");
@@ -529,27 +637,11 @@ describe("install-time project setup", () => {
       "create schema app;\n"
     );
 
-    await run("node", ["bin/postinstall.mjs"], {
-      env: { ...process.env, INIT_CWD: consumer, CI: "1" },
-    });
+    await runScaffold(consumer);
 
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
     expect(manifest.pathConfirmationNeeded).toBe(true);
-  });
-
-  it("skips all scaffolding when SUPASCHEMA_SKIP_POSTINSTALL is set", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-skip-"));
-
-    const { stdout } = await run("node", ["bin/postinstall.mjs"], {
-      env: { ...process.env, INIT_CWD: consumer, SUPASCHEMA_SKIP_POSTINSTALL: "1" },
-    });
-
-    expect(stdout).toBe("");
-    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
-    expect(existsSync(join(consumer, ".supaschema/install.json"))).toBe(false);
-    expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
-    expect(existsSync(join(consumer, ".codex"))).toBe(false);
   });
 });
 
@@ -585,7 +677,7 @@ function hookCount(value: unknown, command: string, args: string[]): number {
     return value.reduce((count, item) => count + hookCount(item, command, args), 0);
   }
   if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
+    const record = value;
     const own =
       record.command === command &&
       Array.isArray(record.args) &&

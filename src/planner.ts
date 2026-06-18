@@ -647,9 +647,10 @@ function describeReplaceDifference(
 }
 
 function asShape(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+  return Object.fromEntries(Object.entries(value));
 }
 
 function shapeColumns(shape: Record<string, unknown>): Map<string, Record<string, unknown>> {

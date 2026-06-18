@@ -161,6 +161,42 @@ describe("rls facet merge", () => {
     expect(rls[0]?.sql).toContain("ENABLE ROW LEVEL SECURITY");
     expect(rls[0]?.sql).toContain("FORCE ROW LEVEL SECURITY");
   });
+
+  it("extracts policy command and predicate metadata", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint, tenant_id bigint);\nALTER TABLE app.accounts ENABLE ROW LEVEL SECURITY;\nCREATE POLICY accounts_select ON app.accounts FOR SELECT TO public USING (tenant_id > 0);\nCREATE POLICY accounts_insert ON app.accounts FOR INSERT TO public;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const policies = model.objects.filter((object) => object.ref.kind === "policy");
+    expect(
+      policies.map((object) => ({
+        checkColumns: object.metadata.checkColumns,
+        command: object.metadata.command,
+        hasCheckPredicate: object.metadata.hasCheckPredicate,
+        hasUsingPredicate: object.metadata.hasUsingPredicate,
+        name: object.ref.name,
+        usingColumns: object.metadata.usingColumns,
+      }))
+    ).toEqual([
+      {
+        checkColumns: undefined,
+        command: "select",
+        hasCheckPredicate: false,
+        hasUsingPredicate: true,
+        name: "accounts_select",
+        usingColumns: ["tenant_id"],
+      },
+      {
+        checkColumns: undefined,
+        command: "insert",
+        hasCheckPredicate: false,
+        hasUsingPredicate: false,
+        name: "accounts_insert",
+        usingColumns: undefined,
+      },
+    ]);
+  });
 });
 
 describe("sequence OWNED BY amendments", () => {

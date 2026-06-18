@@ -4,23 +4,23 @@ description: "Scaffold or repair the supaschema setup bundle in the current proj
 keywords: ["init command", "scaffold", "repair", "setup"]
 ---
 
-Use `init` when dependency lifecycle scripts were blocked or the setup bundle needs repair.
+Use `init` after package install or when the setup bundle needs repair.
 
 The command scaffolds config, schema and migration directories, agent rules, skills, hooks, and managed `AGENTS.md` / `CLAUDE.md` addenda.
 
 ## Use this when
 
-- `npm install` skipped lifecycle scripts.
+- supaschema was installed in a project that has not been set up yet.
 - Generated agent surfaces need to be refreshed.
 - `supaschema.config.json` should be repaired from the canonical contract.
-- A project needs the same setup package install would create.
+- A project needs config, schema directories, agent guidance, rules, skills, and hook wiring after package install.
 
 ## Run it
 
 ```bash
-npx supaschema init
-npx supaschema init --dry-run --json
-npx supaschema init --repair
+<local-runner> init
+<local-runner> init --dry-run --json
+<local-runner> init --repair
 ```
 
 Existing config files are left untouched unless `--repair` is passed.

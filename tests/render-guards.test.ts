@@ -13,7 +13,7 @@ async function renderCreates(
   sql: string,
   config?: { transactionMode?: "per-migration" | "per-statement" }
 ): Promise<string> {
-  const spliceConfig = { normalize: "off" as const, ...config };
+  const spliceConfig = { normalize: "off", ...config };
   const extracted = await extractObjectsFromSql(sql, { config: spliceConfig });
   const errors = extracted.diagnostics.filter((item) => item.severity === "error");
   if (errors.length > 0) {

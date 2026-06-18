@@ -15,12 +15,9 @@ const npmExec = (args: string[]): { file: string; args: string[] } => {
 
 describe("npm package contents", () => {
   it("keeps the generated install-time config contract executable", async () => {
-    const mirror = (await import(
+    const mirror = await import(
       pathToFileURL(resolve(import.meta.dirname, "../bin/config-contract.mjs")).href
-    )) as {
-      configSchemaFileName: string;
-      createInstalledConfig: () => Record<string, unknown>;
-    };
+    );
 
     expect(mirror.configSchemaFileName).toBe("supaschema-config.schema.json");
     expect(mirror.createInstalledConfig()).toMatchObject({
@@ -39,10 +36,7 @@ describe("npm package contents", () => {
   }, async () => {
     const { file, args } = npmExec(["pack", "--dry-run", "--json", "--ignore-scripts"]);
     const { stdout } = await run(file, args, { maxBuffer: 32 * 1024 * 1024 });
-    const [packed] = JSON.parse(stdout) as {
-      files: { path: string }[];
-      unpackedSize: number;
-    }[];
+    const [packed] = JSON.parse(stdout);
     const paths = packed.files.map((file) => file.path);
     const readmes = paths.filter((path) => path.endsWith("README.md")).sort();
     expect(readmes, "only the root README should ship").toEqual(["README.md"]);
@@ -52,7 +46,6 @@ describe("npm package contents", () => {
       "dist/index.js",
       "dist/index.d.ts",
       "bin/supaschema",
-      "bin/postinstall.mjs",
       "bin/scaffold.mjs",
       "bin/config-contract.mjs",
       "supaschema-config.schema.json",
@@ -74,6 +67,7 @@ describe("npm package contents", () => {
     for (const entry of required) {
       expect(paths, `missing required package file: ${entry}`).toContain(entry);
     }
+    expect(paths, "postinstall lifecycle setup must not ship").not.toContain("bin/postinstall.mjs");
     const forbiddenInternalAgentPrefixes = [
       ".claude/hooks/context-",
       ".codex/hooks/context-",
@@ -98,6 +92,7 @@ describe("npm package contents", () => {
     expect(codexHookContents).toContain("general-guard.mjs");
     expect(codexHookContents).toContain("supaschema hook generated-migration-edit");
     expect(codexHookContents).toContain("supaschema hook schema-write");
+    expect(codexHookContents).not.toContain("npx --no-install");
     expect(
       paths.filter((path) => path.startsWith(".codex/skills/")),
       "Codex skill duplicates must not ship"

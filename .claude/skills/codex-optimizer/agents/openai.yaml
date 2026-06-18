@@ -1,6 +1,0 @@
-interface:
-  display_name: "Codex Optimizer"
-  short_description: "Codex config and generated mirror hygiene"
-  default_prompt: "Use $codex-optimizer to create, review, or repair Codex-facing repo configuration cleanly."
-policy:
-  allow_implicit_invocation: true

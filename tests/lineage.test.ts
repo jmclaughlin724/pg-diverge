@@ -19,7 +19,7 @@ async function cli(args: string[]): Promise<CliResult> {
     const { stdout, stderr } = await run("node", ["dist/cli.js", ...args]);
     return { code: 0, stderr, stdout };
   } catch (error) {
-    const failure = error as { code?: number; stderr?: string; stdout?: string };
+    const failure = error;
     return { code: failure.code ?? 1, stderr: failure.stderr ?? "", stdout: failure.stdout ?? "" };
   }
 }

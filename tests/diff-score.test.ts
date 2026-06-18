@@ -3,9 +3,9 @@ import { realisticFixtureManifest } from "../src/benchmark-fixtures.js";
 import { scoreDiffOutput } from "../src/diff-score.js";
 
 const manifest = [
-  { change: "create" as const, key: "table:app.audit_events" },
-  { change: "change" as const, key: "table:app.entity_001" },
-  { change: "change" as const, key: "enum:app.entity_status" },
+  { change: "create", key: "table:app.audit_events" },
+  { change: "change", key: "table:app.entity_001" },
+  { change: "change", key: "enum:app.entity_status" },
 ];
 
 describe("diff output accuracy scoring", () => {

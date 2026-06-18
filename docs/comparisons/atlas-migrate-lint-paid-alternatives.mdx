@@ -16,10 +16,10 @@ If you relied on `atlas migrate lint` for free migration-safety checks, that com
 
 ## What changed in Atlas
 
-Starting with Atlas v0.38 (released 2025-10-28), the `atlas migrate lint` command is available only to Atlas Pro users, and the custom schema-policy linting rules are Pro-only as well. Atlas Pro is a paid plan ($9 per seat per month at the time of writing) with a 30-day trial.
+Starting with Atlas v0.38, the `atlas migrate lint` command is available only to Atlas Pro users, and the custom schema-policy linting rules are Pro-only as well. Atlas's current pricing pages describe separate CLI seat, pipeline project, and target-database pricing. Confirm the current pricing page before quoting a number.
 
 <Info>
-  Last verified 2026-06-17 against the Atlas documentation. Pricing and feature
+  Last verified 2026-06-18 against the Atlas documentation. Pricing and feature
   gating are set by Atlas and can change; confirm the current terms on the Atlas
   site before quoting them.
 </Info>
@@ -52,7 +52,7 @@ Destructive changes fail closed until you add the exact object key to `hints.des
 
 ## What is not free
 
-`supaschema` is open-core. The migration-safety checks above are free. Two analysis packs are paid: the TypeScript/Zod type-contract breaking-change gate and the grant-drift least-privilege gate. Those are not part of the `atlas migrate lint` overlap; they are additional gates a downstream team can opt into.
+`supaschema` is open-core. The migration-safety checks above are free. Grant and RLS safety also run through the free `scan` and deploy-safety gates. The current licensed standalone CLI gate is `type-contract --enforce`, which turns TypeScript/Zod breaking-change diagnostics into a failing command when a valid entitlement is present.
 
 ## Choosing between them
 

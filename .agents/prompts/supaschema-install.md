@@ -16,18 +16,18 @@ Before installing, identify the package manager from this evidence, in order:
 2. `devEngines.packageManager` in `package.json`.
 3. Lockfile and workspace evidence: `package-lock.json` or `npm-shrinkwrap.json` means npm, `pnpm-lock.yaml` or `pnpm-workspace.yaml` means pnpm, `yarn.lock` means Yarn, and `bun.lock` or `bun.lockb` means Bun.
 
-STOP IF package-manager signals conflict, the owning workspace package is unclear, Node is below 22.12, or the project policy blocks dependency build scripts without permission to approve `supaschema`. Do not run npm in a pnpm, Yarn, or Bun project. Do not create a second lockfile.
+STOP IF package-manager signals conflict, the owning workspace package is unclear, or Node is below 22.12. Do not run npm in a pnpm, Yarn, or Bun project. Do not create a second lockfile.
 
-For workspaces, `cd` into the owning member package before first install unless the workspace root owns `supaschema.config.json` and the schema workflow. Dependency-targeting flags can update a member manifest while lifecycle scripts still see the command's original directory, which can scaffold the wrong project.
+For workspaces, `cd` into the owning member package before install and setup unless the workspace root owns `supaschema.config.json` and the schema workflow. Dependency-targeting flags can update a member manifest while `supaschema init` still writes setup files in the command's current directory. With pnpm, `pnpm add supaschema` targets the package in the current directory; use `pnpm add -w supaschema` only when the workspace root owns the schema workflow.
 
 ## Install Command
 
-| Manager | First install | Workspace note |
+| Manager | First install | Setup |
 | --- | --- | --- |
-| npm | `npm install supaschema` | Run from the owning package directory |
-| pnpm | `pnpm add --allow-build=supaschema supaschema` | Root owner can add `-w` from the root. Member owner: run `pnpm add --ignore-scripts supaschema`, then `pnpm exec supaschema init` from the member directory |
-| Yarn | `yarn add supaschema` | Run from the owning workspace package directory |
-| Bun | `bun add --trust supaschema` | Root owner can use `--trust`. Member owner: run `bun add supaschema`, then `bunx --no-install supaschema init` from the member directory |
+| npm | `npm install supaschema` | `npm exec -- supaschema init` |
+| pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` |
+| Yarn | `yarn add supaschema` | `yarn exec supaschema init` |
+| Bun | `bun add supaschema` | `bunx --no-install supaschema init` |
 
 Use the matching local runner for every command after install:
 
@@ -38,7 +38,7 @@ Use the matching local runner for every command after install:
 | Yarn | `yarn exec supaschema <cmd>` |
 | Bun | `bunx --no-install supaschema <cmd>` |
 
-If install scripts did not run, or setup needs to be repaired, run the matching explicit setup command from the owning package directory:
+Always run the matching explicit setup command from the owning package directory after install. The command is idempotent; it leaves existing config intact and refreshes the managed agent surfaces. `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, and migration paths with the packaged supaschema rule, skill, hook, config, and prompt bundle.
 
 ```bash
 npm exec -- supaschema init
@@ -64,7 +64,7 @@ The package provides:
 
 Public docs and examples are hosted in the supaschema documentation and source repository. They are not part of the normal `node_modules/supaschema` install payload, and you should not clone the source repository just to read them during consumer setup.
 
-The installer or `supaschema init` writes or merges these project files:
+`supaschema init` writes or merges these project files into the consuming repo:
 
 - `supaschema.config.json` when the project does not already have one;
 - configured schema and migration directories;
@@ -76,7 +76,7 @@ The installer or `supaschema init` writes or merges these project files:
 - `.claude/settings.json` hook wiring;
 - `.codex/rules/supaschema.rules`, the three supaschema Codex hooks, and `.codex/hooks.json`.
 
-Install does not edit schema files, generate migrations, connect to a database, apply migrations, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. The package scaffold installs the supaschema skill directly into `.agents/skills/supaschema` and `.claude/skills/supaschema`; the public `npx skills` source is only for portable skill context without project setup.
+Install does not edit schema files, generate migrations, connect to a database, apply migrations, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. The setup scaffold installs the supaschema skill directly into `.agents/skills/supaschema` and `.claude/skills/supaschema`; the public `npx skills` source is only for portable skill context without project setup.
 
 ## First Tasks After Install
 

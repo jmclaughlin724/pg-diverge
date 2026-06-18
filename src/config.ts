@@ -2,11 +2,13 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
+  AdapterInput,
   adapterInputValues,
   canonicalSchemaId,
   canonicalSourceTo,
   configFieldMetadata,
   createInstalledConfig,
+  DestructiveChangesPolicy,
   defaultEnvironments,
   defaultMigrationHistoryTable,
   defaultSync,
@@ -14,6 +16,7 @@ import {
   defaultWorkflow,
   defaultZodFile,
   deploySafetyPolicies,
+  destructiveChangesPolicies,
   generatedOutputPolicies,
   genericMigrationsDir,
   genericSchemaPath,
@@ -21,11 +24,17 @@ import {
   migrationCheckPolicies,
   migrationSyncPolicies,
   migrationVerifyPolicies,
+  NormalizePolicy,
+  normalizePolicies,
+  RenameDetectionPolicy,
+  renameDetectionPolicies,
   schemaDiffPolicies,
+  sourceAuto,
   sourceHint,
-  sourceSpecPattern,
   syncTargetModes,
   syncTargetRunners,
+  TransactionMode,
+  transactionModes,
   typeUsagePolicies,
 } from "./config-contract.js";
 import { diagnostic, diagnosticCatalog, formatDiagnostic } from "./diagnostics.js";
@@ -51,6 +60,7 @@ const hintsSchema = z
   .object({
     allowedGrantees: z.array(z.string()).default([]),
     destructive: z.array(z.string()).default([]),
+    requiredPolicyColumns: z.record(z.string(), z.array(z.string())).default({}),
     renames: z
       .array(
         z.strictObject({
@@ -60,7 +70,7 @@ const hintsSchema = z
       )
       .default([]),
   })
-  .default({ allowedGrantees: [], destructive: [], renames: [] });
+  .default({ allowedGrantees: [], destructive: [], requiredPolicyColumns: {}, renames: [] });
 
 const schemaFilterSchema = z
   .strictObject({
@@ -92,12 +102,12 @@ const syncSchema = z
 
 const sourcesSchema = z
   .strictObject({
-    from: z.string().default("auto"),
+    from: z.string().default(sourceAuto),
     to: z.string().default(canonicalSourceTo([genericSchemaPath])),
   })
-  .default({ from: "auto", to: canonicalSourceTo([genericSchemaPath]) });
+  .default({ from: sourceAuto, to: canonicalSourceTo([genericSchemaPath]) });
 
-const adapterSchema = z.enum(adapterInputValues).default("auto");
+const adapterSchema = z.enum(adapterInputValues).default(AdapterInput.Auto);
 const workflowSchema = z
   .strictObject({
     schema_diff: z.enum(schemaDiffPolicies).default(defaultWorkflow.schema_diff),
@@ -115,7 +125,9 @@ export const supaschemaConfigSchema = z.strictObject({
   $schema: z.string().optional(),
   adapter: adapterSchema,
   cascade: z.literal("never").default("never"),
-  destructiveChanges: z.enum(["hint-required", "block", "allow"]).default("hint-required"),
+  destructiveChanges: z
+    .enum(destructiveChangesPolicies)
+    .default(DestructiveChangesPolicy.HintRequired),
   environments: z.record(z.string(), environmentSchema).default(defaultEnvironments),
   excludedGrantRoles: z.array(z.string()).default([]),
   hints: hintsSchema,
@@ -126,15 +138,15 @@ export const supaschemaConfigSchema = z.strictObject({
   migrationsDir: z.string().default(genericMigrationsDir),
   typesFile: z.string().default(defaultTypesFile),
   zodFile: z.string().default(defaultZodFile),
-  normalize: z.enum(["off", "deparse"]).default("deparse"),
+  normalize: z.enum(normalizePolicies).default(NormalizePolicy.Deparse),
   managedSchemas: z.array(z.string()).default([]),
   postgresVersion: z.string().default("15+"),
-  renameDetection: z.enum(["hints-only", "off"]).default("hints-only"),
+  renameDetection: z.enum(renameDetectionPolicies).default(RenameDetectionPolicy.HintsOnly),
   schemaPaths: z.array(z.string()).default([genericSchemaPath]),
   schemas: schemaFilterSchema,
   sources: sourcesSchema,
   statementTimeout: z.string().default("60s"),
-  transactionMode: z.enum(["per-migration", "per-statement"]).default("per-migration"),
+  transactionMode: z.enum(transactionModes).default(TransactionMode.PerMigration),
   validators: z.array(z.string()).default(["internal-parser"]),
 });
 
@@ -450,13 +462,16 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
         "dir:baseline/schemas",
         "database:$DATABASE_URL",
       ];
-      from.oneOf = [{ const: "auto" }, { pattern: sourceSpecPattern, type: "string" }];
+      from.oneOf = [
+        { const: sourceAuto },
+        { type: "string", "x-supaschema-source-parser": "parseRuntimeSource" },
+      ];
       from.type = undefined;
     }
     if (isRecord(to)) {
       to.description = "Default after-state source, usually dir:<schemaPaths[0]>.";
       to.examples = ["dir:database/schemas", "dir:supabase/schemas"];
-      to.pattern = sourceSpecPattern;
+      to["x-supaschema-source-parser"] = "parseRuntimeSource";
     }
   }
   const environments = properties.environments;
@@ -467,7 +482,7 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
   const sync = properties.sync;
   if (isRecord(sync)) {
     sync.description =
-      "Named migration sync targets. Each target selects a runner, URL owner, history table, and manual or automatic mode.";
+      "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; each target mode decides whether bare sync selects that target.";
   }
   const workflow = properties.workflow;
   const workflowProperties =
@@ -496,7 +511,7 @@ function enrichWorkflowJsonSchema(workflowProperties: Record<string, unknown>): 
   setNestedDescription(
     workflowProperties,
     "migration_sync",
-    'Controls whether supaschema sync refuses apply, only applies explicit --target overrides, or uses sync.targets entries whose mode is "auto".'
+    'Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select sync.targets entries whose mode is "auto".'
   );
   setNestedDescription(
     workflowProperties,

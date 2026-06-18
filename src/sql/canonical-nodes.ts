@@ -9,7 +9,10 @@ export function canonicalPolicyNode(node: unknown, scopes: Scope[] = []): unknow
   if (typeof node !== "object" || node === null) {
     return node;
   }
-  const record = node as Record<string, unknown>;
+  const record = asRecord(node);
+  if (!record) {
+    return node;
+  }
   const typeCast = asRecord(record.TypeCast);
   if (typeCast && asRecord(typeCast.arg)?.A_Const !== undefined) {
     return canonicalPolicyNode(typeCast.arg, scopes);
@@ -30,8 +33,9 @@ export function canonicalPolicyNode(node: unknown, scopes: Scope[] = []): unknow
   }
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record)) {
-    if (key === "ResTarget" && typeof value === "object" && value !== null) {
-      const { name: _alias, ...rest } = value as Record<string, unknown>;
+    const target = asRecord(value);
+    if (key === "ResTarget" && target) {
+      const { name: _alias, ...rest } = target;
       result[key] = canonicalPolicyNode(rest, scopes);
       continue;
     }
@@ -47,7 +51,10 @@ export function canonicalViewNode(node: unknown, scopes: Scope[]): unknown {
   if (typeof node !== "object" || node === null) {
     return node;
   }
-  const record = node as Record<string, unknown>;
+  const record = asRecord(node);
+  if (!record) {
+    return node;
+  }
   const selectStmt = asRecord(record.SelectStmt);
   if (selectStmt) {
     const next = [...scopes, soleFromRelation(selectStmt)];

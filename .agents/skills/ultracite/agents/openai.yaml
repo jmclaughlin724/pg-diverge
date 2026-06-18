@@ -1,4 +1,0 @@
-interface:
-  display_name: "Ultracite"
-  short_description: "Ultracite linting, formatting, and codebase hygiene"
-  default_prompt: "Use $ultracite to lint, format, or standardize this JS or TS codebase."

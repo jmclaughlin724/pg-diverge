@@ -52,16 +52,13 @@ assert(
   JSON.stringify(sourceProperties.from?.oneOf) ===
     JSON.stringify([
       { const: "auto" },
-      {
-        pattern: "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$",
-        type: "string",
-      },
+      { type: "string", "x-supaschema-source-parser": "parseRuntimeSource" },
     ]),
   "sources.from must allow only auto or a supported source spec"
 );
 assert(
-  sourceProperties.to?.pattern === "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$",
-  "sources.to must require a supported source spec"
+  sourceProperties.to?.["x-supaschema-source-parser"] === "parseRuntimeSource",
+  "sources.to must use the canonical source parser"
 );
 assert(
   JSON.stringify(workflowProperties.migration_sync?.enum) ===

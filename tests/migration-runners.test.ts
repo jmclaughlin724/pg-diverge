@@ -152,12 +152,12 @@ CREATE TABLE app.runner_concurrent (id bigint PRIMARY KEY);
 });
 
 async function withTempDatabase(callback: (url: string) => Promise<void>): Promise<void> {
-  const admin = new Client({ connectionString: databaseUrl as string });
+  const admin = new Client({ connectionString: databaseUrl });
   await admin.connect();
   const db = `supa_runner_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
   await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
   await admin.query(`CREATE DATABASE ${db}`);
-  const url = new URL(databaseUrl as string);
+  const url = new URL(databaseUrl);
   url.pathname = `/${db}`;
   try {
     await callback(url.toString());

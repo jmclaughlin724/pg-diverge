@@ -238,13 +238,19 @@ function defaultPrivilegeHash(object: SchemaObject): string {
 function rlsHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
   return astObjectHash(
     statements.map((item) => {
-      const cloned = structuredClone(item.node) as Record<string, unknown>;
+      const cloned = structuredClone(item.node);
       const alterTable = asRecord(cloned.AlterTableStmt);
       const relation = asRecord(alterTable?.relation);
-      if (relation) {
-        relation.inh = true;
+      if (alterTable && relation) {
+        return {
+          ...cloned,
+          AlterTableStmt: {
+            ...alterTable,
+            relation: { ...relation, inh: true },
+          },
+        };
       }
-      return cloned as AstNode;
+      return cloned;
     }),
     object.key,
     object.ref
@@ -253,7 +259,7 @@ function rlsHash(object: SchemaObject, statements: { node: AstNode; tag: string 
 
 function policyHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
   return astObjectHash(
-    statements.map((item) => canonicalPolicyNode(item.node) as AstNode),
+    statements.map((item) => canonicalPolicyNode(item.node)),
     object.key,
     object.ref
   );
@@ -261,7 +267,7 @@ function policyHash(object: SchemaObject, statements: { node: AstNode; tag: stri
 
 function viewHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
   return astObjectHash(
-    statements.map((item) => canonicalViewNode(item.node, []) as AstNode),
+    statements.map((item) => canonicalViewNode(item.node, [])),
     object.key,
     object.ref
   );
@@ -309,11 +315,19 @@ export function statementFacts(
 
 function commentDropSql(node: AstNode): string | undefined {
   try {
-    const { comment: _comment, ...stripped } = structuredClone(node) as Record<string, unknown>;
-    return deparseSync({
-      stmts: [{ stmt: { CommentStmt: stripped } }],
-      version: 170_004,
-    } as unknown as Parameters<typeof deparseSync>[0]);
+    const cloned = asRecord(structuredClone(node));
+    if (!cloned) {
+      return;
+    }
+    const { comment: _comment, ...stripped } = cloned;
+    return deparseSync(
+      JSON.parse(
+        JSON.stringify({
+          stmts: [{ stmt: { CommentStmt: stripped } }],
+          version: 170_004,
+        })
+      )
+    );
   } catch {
     return;
   }

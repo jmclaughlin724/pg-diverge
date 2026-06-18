@@ -216,6 +216,9 @@ const contract = JSON.parse(`{
   "adapterInputValues": [
     "auto"
   ],
+  "cascadePolicies": [
+    "never"
+  ],
   "canonicalSchemaId": "https://supaschema.com/schemas/supaschema-config.schema.json",
   "configFieldMetadata": [
     {
@@ -289,9 +292,10 @@ const contract = JSON.parse(`{
       "default": {
         "allowedGrantees": [],
         "destructive": [],
+        "requiredPolicyColumns": {},
         "renames": []
       },
-      "description": "Reviewed grant, destructive-change, and rename hints using exact object keys or role names.",
+      "description": "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
       "key": "hints"
     },
     {
@@ -319,7 +323,7 @@ const contract = JSON.parse(`{
         "zod_generation": "create_or_refresh",
         "type_usage": "zod_validated"
       },
-      "description": "Agent and hook workflow policy for schema diffs, migration checks, verification, sync automation, deploy safety gates, and generated type/Zod output refresh.",
+      "description": "Automation policy for generated outputs, hook diff/check, verification guidance, deploy safety gates, and whether bare sync may apply selected targets.",
       "key": "workflow"
     },
     {
@@ -341,7 +345,7 @@ const contract = JSON.parse(`{
           }
         }
       },
-      "description": "Named migration sync targets. Each target selects a runner, URL owner, history table, and manual or automatic mode.",
+      "description": "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; each target mode decides whether bare sync selects that target.",
       "examples": [
         {
           "targets": {
@@ -435,7 +439,7 @@ const contract = JSON.parse(`{
       "default": [
         "database/schemas"
       ],
-      "description": "Declarative SQL tree directories. The first path owns the default sources.to.",
+      "description": "Declarative SQL tree roots. Each root is read recursively; the first path usually matches sources.to.",
       "examples": [
         [
           "database/schemas"
@@ -466,7 +470,7 @@ const contract = JSON.parse(`{
         "from": "auto",
         "to": "dir:database/schemas"
       },
-      "description": "Default before/after sources for zero-source-flag diff, plan, and verify.",
+      "description": "Default before/after sources for zero-source-flag diff, plan, and verify. Keep sources.to explicit even when it matches schemaPaths[0].",
       "examples": [
         {
           "from": "auto",
@@ -551,6 +555,11 @@ const contract = JSON.parse(`{
     "zod_generation": "create_or_refresh",
     "type_usage": "zod_validated"
   },
+  "destructiveChangesPolicies": [
+    "hint-required",
+    "block",
+    "allow"
+  ],
   "deploySafetyPolicies": [
     "disabled",
     "report_only",
@@ -588,6 +597,10 @@ const contract = JSON.parse(`{
     "manual",
     "suggest_after_check",
     "after_schema_diff"
+  ],
+  "normalizePolicies": [
+    "off",
+    "deparse"
   ],
   "packageSchemaRef": "./node_modules/supaschema/supaschema-config.schema.json",
   "providerMigrationsDirs": [
@@ -811,6 +824,10 @@ const contract = JSON.parse(`{
     "cloud-sql/schemas",
     "azure-postgresql/schemas"
   ],
+  "renameDetectionPolicies": [
+    "hints-only",
+    "off"
+  ],
   "runtimeSourcePrefixes": [
     "dir:",
     "git:",
@@ -834,7 +851,6 @@ const contract = JSON.parse(`{
     "catalog:",
     "empty:"
   ],
-  "sourceSpecPattern": "^(?:(?:dir|database|dump|catalog):.+|git:.*|empty:)$",
   "supabaseManagedSchemas": [
     "auth",
     "storage",
@@ -864,6 +880,10 @@ const contract = JSON.parse(`{
     "direct",
     "supabase-cli"
   ],
+  "transactionModes": [
+    "per-migration",
+    "per-statement"
+  ],
   "typeUsagePolicies": [
     "typescript_only",
     "zod_validated"
@@ -889,7 +909,6 @@ export const supportedValidators = contract.supportedValidators;
 export const sourceAuto = contract.sourceAuto;
 export const runtimeSourcePrefixes = contract.runtimeSourcePrefixes;
 export const sourcePrefixes = contract.sourcePrefixes;
-export const sourceSpecPattern = contract.sourceSpecPattern;
 export const schemaDiffPolicies = contract.schemaDiffPolicies;
 export const migrationCheckPolicies = contract.migrationCheckPolicies;
 export const migrationVerifyPolicies = contract.migrationVerifyPolicies;
@@ -899,6 +918,11 @@ export const generatedOutputPolicies = contract.generatedOutputPolicies;
 export const typeUsagePolicies = contract.typeUsagePolicies;
 export const syncTargetModes = contract.syncTargetModes;
 export const syncTargetRunners = contract.syncTargetRunners;
+export const destructiveChangesPolicies = contract.destructiveChangesPolicies;
+export const normalizePolicies = contract.normalizePolicies;
+export const renameDetectionPolicies = contract.renameDetectionPolicies;
+export const transactionModes = contract.transactionModes;
+export const cascadePolicies = contract.cascadePolicies;
 export const providerPresets = contract.providerPresets;
 export const genericProviderPreset = contract.genericProviderPreset;
 export const allProviderPresets = contract.allProviderPresets;

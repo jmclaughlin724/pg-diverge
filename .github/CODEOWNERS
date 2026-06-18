@@ -15,13 +15,5 @@
 # npm package manifest and publish metadata.
 /package.json           @jmclaughlin724
 
-# Python side-service (FastMCP agent) packaging and source.
-/pyproject.toml         @jmclaughlin724
-/services/agent-mcp/    @jmclaughlin724
-
-# Cloudflare Worker and FastMCP server config.
-/wrangler.toml          @jmclaughlin724
-/fastmcp.json           @jmclaughlin724
-
 # Release workflow.
 /.github/workflows/release.yml  @jmclaughlin724

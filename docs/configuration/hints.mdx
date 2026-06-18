@@ -6,10 +6,12 @@ keywords: ["hints", "destructive changes", "renames", "recovery"]
 
 `supaschema` fails closed when intent cannot be proven from the SQL parse tree. Hints are the explicit, reviewable way to state intent.
 
-Use hints for two cases only:
+Use hints for four cases:
 
 - a destructive change that a human already reviewed;
-- a rename that would otherwise look like drop plus create.
+- a rename that would otherwise look like drop plus create;
+- roles allowed by the free grant least-privilege rule;
+- table columns required by the free RLS policy-column rule.
 
 <Warning>
   Do not commit broad destructive approval. Use exact object keys, not `"*"`, in
@@ -42,6 +44,32 @@ Recovery:
 `"*"` approves all destructive changes for one run; prefer exact keys in committed config.
 
 Dropped grants render as `REVOKE`, and dropped default privileges render as the reverse `ALTER DEFAULT PRIVILEGES ... REVOKE`, but both still require the destructive hint first.
+
+## Grant and RLS safety
+
+`hints.allowedGrantees` declares the roles that grant/default-privilege diagnostics accept:
+
+```json
+{
+  "hints": {
+    "allowedGrantees": ["anon", "authenticated", "service_role"]
+  }
+}
+```
+
+`hints.requiredPolicyColumns` declares table columns that must appear in the effective RLS predicate for each configured table:
+
+```json
+{
+  "hints": {
+    "requiredPolicyColumns": {
+      "public.accounts": ["tenant_id"]
+    }
+  }
+}
+```
+
+For `SELECT` and `DELETE`, the rule reads `USING`. For `INSERT`, it reads `WITH CHECK`. For `UPDATE` and `ALL`, it uses `WITH CHECK` when present and otherwise applies PostgreSQL's `USING` fallback.
 
 ## Column drops and type changes
 

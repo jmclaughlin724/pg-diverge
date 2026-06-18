@@ -3,7 +3,7 @@ import type { Diagnostic, SchemaObject } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 import { sha256, stableJson } from "../hash.js";
 import type { AstStatement } from "./ast.js";
-import { astStatements } from "./ast.js";
+import { asRecord, astStatements } from "./ast.js";
 import { normalizeSql } from "./identifiers.js";
 import { stripLocations } from "./object-hash.js";
 import { parseSqlAst } from "./parser.js";
@@ -20,7 +20,7 @@ export async function normalizeObjectSql(
 ): Promise<NormalizeResult> {
   let text: string;
   try {
-    text = deparseSync(ast as Parameters<typeof deparseSync>[0]);
+    text = deparseSync(JSON.parse(JSON.stringify(ast)));
   } catch (error) {
     return {
       diagnostics: [
@@ -60,10 +60,14 @@ export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnosti
   for (const statement of astStatements(parsed.ast, sql)) {
     let text: string;
     try {
-      text = deparseSync({
-        stmts: [{ stmt: statement.node }],
-        version: 170_004,
-      } as unknown as Parameters<typeof deparseSync>[0]);
+      text = deparseSync(
+        JSON.parse(
+          JSON.stringify({
+            stmts: [{ stmt: statement.node }],
+            version: 170_004,
+          })
+        )
+      );
     } catch (error) {
       diagnostics.push(
         diagnostic(
@@ -105,14 +109,15 @@ function nodeEquals(left: unknown, right: unknown): boolean {
 }
 
 function statementNodes(ast: unknown): unknown[] {
-  if (typeof ast !== "object" || ast === null) {
+  const record = asRecord(ast);
+  if (!record) {
     return [];
   }
-  const stmts = (ast as { stmts?: unknown }).stmts;
+  const stmts = record.stmts;
   if (!Array.isArray(stmts)) {
     return [];
   }
-  return stmts.map((item) => (item as { stmt?: unknown }).stmt);
+  return stmts.map((item) => asRecord(item)?.stmt);
 }
 
 function errorMessage(error: unknown): string {

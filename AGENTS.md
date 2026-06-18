@@ -2,14 +2,13 @@
 
 ## Purpose
 
-This file defines the repository-wide operating contract for AI coding agents. Keep durable repo-wide invariants here and route detailed procedures to `.claude/rules/**`, `.claude/skills/**`, hooks, runtime config, or the nearest owner `AGENTS.md`.
+This file defines the repository-wide operating contract for AI coding agents. Keep durable repo-wide invariants here and route detailed procedures to the public supaschema rule, hooks, runtime config, or the nearest owner `AGENTS.md`.
 
 ## Rule Map
 
-- Code Atlas routing and repo-wide graph policy: `.claude/rules/10-code-atlas.md`.
 - Supaschema migration policy: `.claude/rules/supaschema.md`.
-- Consolidated anti-pattern index: `.claude/rules/20-anti-patterns.md`.
-- GitHub repository settings, PR, merge, and post-merge process: `.claude/rules/21-github-process.md`.
+- Public repository exposure policy: `npm run guard:public-surface`.
+- GitHub repository settings, PR, merge, and post-merge process: `.github/repo-policy.json`, `.github/PULL_REQUEST_TEMPLATE.md`, `CONTRIBUTING.md`, and `npm run guard:github-process`.
 
 ## Operating Rules
 
@@ -148,14 +147,16 @@ Do not claim success for checks that were not run. Do not say "should work" with
 
 ## supaschema
 
-This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; install can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
+This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; setup can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
 
 - Schema intent belongs in `examples/postgres/schemas`.
 - Generated migrations write to `database/migrations`; files containing `-- supaschema: lineage` must not be hand-edited.
 - The agent install prompt lives at `.agents/prompts/supaschema-install.md`; read it before installing, initializing, inspecting, or explaining supaschema setup in this project.
+- Treat `supaschema.config.json` as four decisions: schema tree (`schemaPaths`, `sources.to`, `migrationsDir`), diff baseline (`sources.from`, `sources.to`), generated contracts (`typesFile`, `zodFile`, `workflow.type_generation`, `workflow.zod_generation`, `workflow.type_usage`), and apply policy (`workflow.migration_sync`, `sync.targets`).
+- `schemaPaths` roots are recursive. The default target source is `dir:examples/postgres/schemas`; keep `sources.to` explicit when the diff target is intentionally different.
 - Generated type outputs use `database.types.ts` and `database.zod.ts` unless `typesFile` or `zodFile` is changed in config; default workflow creates or refreshes both after `diff`, and `workflow.type_usage: "zod_validated"` tells agents to use generated Zod validators at runtime boundaries.
-- Edit `supaschema.config.json` to change `adapter`, `workflow`, `schemaPaths`, `sources`, `migrationsDir`, `typesFile`, `zodFile`, `managedSchemas`, `transactionMode`, or named `environments`; use `$ENV_NAME` database URL references instead of committing credentials.
+- Use `$ENV_NAME` database URL references in `environments` or `sync.targets`; do not commit credentials.
 - For schema changes, read `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file, edit declarative SQL, then run `diff` and `check` through the local runner selected in `.agents/prompts/supaschema-install.md`.
-- Hooks in `.claude/settings.json` and `.codex/hooks.json` enforce generated-migration protection and auto-run diff/check after schema SQL writes. When `workflow.migration_sync` allows automatic sync, the schema-write hook preflights every `sync.targets` entry with `mode: "auto"`; if each target resolves and any remote target is approved, it delegates to `supaschema sync`. Otherwise it stays on the non-mutating diff/check lane. Check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
+- Consumer installs generate `.claude/settings.json` and merge `.codex/hooks.json` to enforce generated-migration protection and auto-run diff/check after schema SQL writes. When `workflow.migration_sync` allows automatic sync, the schema-write hook preflights every `sync.targets` entry with `mode: "auto"`; if each target resolves and any remote target is approved, it delegates to `supaschema sync`. Otherwise it stays on the non-mutating diff/check lane. Check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
 - Use bare `sync` for the configured workflow. Do not run `sync --target <name>` unless explicitly asked to override target selection. `sync.targets.<name>.mode` decides automatic target selection, `workflow.migration_sync: "manual"` keeps bare sync on the dry-run gate, and `workflow.migration_sync: "disabled"` blocks apply.
 <!-- supaschema:agent-guidance:end -->

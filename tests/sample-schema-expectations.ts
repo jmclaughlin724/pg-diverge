@@ -3,13 +3,13 @@ export const expectedMigrationFragments = [
   'ALTER TABLE "app"."accounts" ADD COLUMN IF NOT EXISTS "status"',
   "CREATE OR REPLACE VIEW app.account_names AS",
   "COMMENT ON TABLE app.accounts IS 'Customer accounts';",
-] as const;
+];
 
 export const expectedTypesFragments = [
   'account_status: "active" | "suspended";',
   'status: Database["app"]["Enums"]["account_status"];',
   'account_status: ["active", "suspended"],',
-] as const;
+];
 
 export const expectedZodFragments = [
   'const app_account_status = z.enum(["active", "suspended"]);',
@@ -17,4 +17,4 @@ export const expectedZodFragments = [
   "export type TableRow<",
   "export type TableInsert<",
   "export type EnumValue<",
-] as const;
+];

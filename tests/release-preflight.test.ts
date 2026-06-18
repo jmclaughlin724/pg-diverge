@@ -91,7 +91,7 @@ function runPreflight(
 
 afterEach(() => {
   while (tempDirs.length > 0) {
-    rmSync(tempDirs.pop() as string, { force: true, recursive: true });
+    rmSync(tempDirs.pop(), { force: true, recursive: true });
   }
 });
 

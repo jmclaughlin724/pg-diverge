@@ -1,11 +1,14 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { defaultTreeSource } from "./cli-defaults.js";
 import type { SupaschemaConfig } from "./config.js";
+import { contractDrift, toContract } from "./contract-registry.js";
+import { pullContract, pushContract } from "./contract-registry-client.js";
 import type { Diagnostic } from "./core.js";
-import { hasErrors } from "./diagnostics.js";
+import { formatDiagnostics, hasErrors } from "./diagnostics.js";
 import { renderDoctorReport, runDoctor } from "./doctor.js";
+import { isSchemaContract, type SchemaContract } from "./schema-contract.js";
 import { extractSourceModel } from "./source.js";
 import { generateDatabaseTypes } from "./typegen.js";
 import { collectSchemaShapes } from "./typegen-model.js";
@@ -53,7 +56,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .option("--from <source>", "source to type (default: the config schema tree)")
     .option("--out <file|stdout>", "TypeScript output path (default: config.typesFile)")
     .description(
-      "Generate Supabase-compatible TypeScript types and Zod validators straight from the schema tree — no database, no introspection, no applied migrations required."
+      "Generate TypeScript types and Zod validators straight from the PostgreSQL schema tree — no database, no introspection, no applied migrations required."
     )
     .action(async (options: { from?: string; out?: string }) => {
       const config = await context.loadCliConfig();
@@ -97,6 +100,104 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
       process.stdout.write(`${model.fingerprint}\n`);
     });
 
+  const contracts = program
+    .command("contracts")
+    .description("Export, diff, push, and pull schema contracts.");
+
+  contracts
+    .command("export")
+    .option("--from <source>", "source to export (default: the config schema tree)")
+    .option("--out <file|stdout>", "contract output path", "stdout")
+    .description("Export a JSON schema contract from a schema source.")
+    .action(async (options: { from?: string; out?: string }) => {
+      const config = await context.loadCliConfig();
+      const contract = await buildContract(config, options.from);
+      await writeJson(options.out ?? "stdout", contract);
+    });
+
+  contracts
+    .command("diff")
+    .requiredOption("--from <file>", "previous contract JSON file")
+    .option("--to <source>", "candidate schema source (default: the config schema tree)")
+    .description("Diff a stored schema contract against a schema source.")
+    .action(async (options: { from: string; to?: string }) => {
+      const config = await context.loadCliConfig();
+      const previous = await readContractFile(options.from);
+      const next = await buildContract(config, options.to);
+      const diagnostics = contractDrift(previous, next);
+      if (diagnostics.length > 0) {
+        process.stdout.write(`${formatDiagnostics(diagnostics)}\n`);
+      }
+      if (hasErrors(diagnostics)) {
+        process.exitCode = 2;
+      }
+    });
+
+  contracts
+    .command("push")
+    .requiredOption("--registry-url <url>", "contract registry base URL")
+    .requiredOption("--repo <owner/repo>", "repo bound to the license token")
+    .option("--name <name>", "contract name", "main")
+    .option("--from <source>", "source to export and push (default: the config schema tree)")
+    .option(
+      "--license-env <name>",
+      "environment variable containing the license token",
+      "SUPASCHEMA_LICENSE"
+    )
+    .description("Push a schema contract to the hosted registry.")
+    .action(
+      async (options: {
+        from?: string;
+        licenseEnv: string;
+        name: string;
+        registryUrl: string;
+        repo: string;
+      }) => {
+        const config = await context.loadCliConfig();
+        const contract = await buildContract(config, options.from);
+        await pushContract({
+          contract,
+          fetchImpl: globalThis.fetch,
+          license: licenseFromEnv(options.licenseEnv),
+          name: options.name,
+          registryUrl: options.registryUrl,
+          repo: options.repo,
+        });
+        process.stdout.write("contract stored\n");
+      }
+    );
+
+  contracts
+    .command("pull")
+    .requiredOption("--registry-url <url>", "contract registry base URL")
+    .requiredOption("--repo <owner/repo>", "repo bound to the license token")
+    .option("--name <name>", "contract name", "main")
+    .option("--out <file|stdout>", "contract output path", "stdout")
+    .option(
+      "--license-env <name>",
+      "environment variable containing the license token",
+      "SUPASCHEMA_LICENSE"
+    )
+    .description("Pull a schema contract from the hosted registry.")
+    .action(
+      async (options: {
+        licenseEnv: string;
+        name: string;
+        out?: string;
+        registryUrl: string;
+        repo: string;
+      }) => {
+        const contract = await pullContract({
+          fetchImpl: globalThis.fetch,
+          license: licenseFromEnv(options.licenseEnv),
+          name: options.name,
+          registryUrl: options.registryUrl,
+          repo: options.repo,
+        });
+        await writeJson(options.out ?? "stdout", contract);
+      }
+    );
+
   program
     .command("completion")
     .argument("<shell>", "bash, zsh, or fish")
@@ -112,6 +213,45 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
       }
       process.stdout.write(script);
     });
+}
+
+async function buildContract(
+  config: SupaschemaConfig,
+  source: string | undefined
+): Promise<SchemaContract> {
+  const model = await extractSourceModel(source ?? defaultTreeSource(config), { config });
+  if (hasErrors(model.diagnostics)) {
+    throw new Error(formatDiagnostics(model.diagnostics));
+  }
+  return toContract(await collectSchemaShapes(model));
+}
+
+async function readContractFile(path: string): Promise<SchemaContract> {
+  const parsed: unknown = JSON.parse(await readFile(resolve(process.cwd(), path), "utf8"));
+  if (!isSchemaContract(parsed)) {
+    throw new Error(`${path} is not a schema contract`);
+  }
+  return parsed;
+}
+
+async function writeJson(path: string, value: unknown): Promise<void> {
+  const json = `${JSON.stringify(value, null, 2)}\n`;
+  if (path === "stdout") {
+    process.stdout.write(json);
+    return;
+  }
+  const outPath = resolve(process.cwd(), path);
+  await mkdir(dirname(outPath), { recursive: true });
+  await writeFile(outPath, json);
+  process.stdout.write(`${outPath}\n`);
+}
+
+function licenseFromEnv(name: string): string {
+  const token = process.env[name];
+  if (token === undefined || token.length === 0) {
+    throw new Error(`${name} must contain a license token`);
+  }
+  return token;
 }
 
 function completionScript(shell: string, program: Command): string | undefined {

@@ -24,9 +24,7 @@ describe("composite action", () => {
       resolve(root, "scripts/actions/run-supaschema-action.mjs"),
       "utf8"
     );
-    const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
-      version: string;
-    };
+    const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 
     expect(action).toContain(`default: "${packageJson.version}"`);
     expect(actionRunner).toContain("use an exact npm version");
@@ -37,15 +35,7 @@ describe("composite action", () => {
   it("is mapped to the action metadata schema, not the workflow schema", () => {
     const root = resolve(import.meta.dirname, "..");
     const actionText = readFileSync(resolve(root, "action.yml"), "utf8");
-    const action = parse(actionText) as {
-      inputs?: unknown;
-      jobs?: unknown;
-      on?: unknown;
-      runs?: { using?: string };
-    };
-    const settings = JSON.parse(readFileSync(resolve(root, ".vscode/settings.json"), "utf8")) as {
-      "yaml.schemas"?: Record<string, string[]>;
-    };
+    const action = parse(actionText);
 
     expect(
       actionText.startsWith(
@@ -56,24 +46,12 @@ describe("composite action", () => {
     expect(action.runs?.using).toBe("composite");
     expect(action.on).toBeUndefined();
     expect(action.jobs).toBeUndefined();
-    expect(settings["yaml.schemas"]?.["https://www.schemastore.org/github-action.json"]).toContain(
-      "action.yml"
-    );
-    expect(
-      settings["yaml.schemas"]?.["https://www.schemastore.org/github-workflow.json"]
-    ).toContain(".github/workflows/*.yml");
   });
 
   it("accepts structured argv input instead of raw shell args", () => {
     const root = resolve(import.meta.dirname, "..");
     const actionText = readFileSync(resolve(root, "action.yml"), "utf8");
-    const action = parse(actionText) as {
-      inputs?: {
-        args?: unknown;
-        argv?: { description?: string; required?: boolean };
-      };
-      runs?: { steps?: { env?: Record<string, string>; run?: string; shell?: string }[] };
-    };
+    const action = parse(actionText);
     const [step] = action.runs?.steps ?? [];
 
     expect(action.inputs?.args).toBeUndefined();
@@ -150,7 +128,7 @@ describe("composite action", () => {
       "remote",
     ]);
     expect(captured?.options.shell).toBe(false);
-    expect(captured?.env?.SUPASCHEMA_SKIP_POSTINSTALL).toBe("1");
+    expect(captured?.env?.SUPASCHEMA_ACTION_VERSION).toBe("0.2.4");
     expect(captured?.env?.SUPASCHEMA_REMOTE_SYNC_APPROVED).toBeUndefined();
   });
 

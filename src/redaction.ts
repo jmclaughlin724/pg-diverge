@@ -211,6 +211,11 @@ function redactSupabaseSecrets(value: string): string {
     }
     output += value.slice(index, start + prefix.length);
     let end = start + prefix.length;
+    if (value.startsWith(MASK, end)) {
+      output += MASK;
+      index = redactedValueEnd(value, end + MASK.length);
+      continue;
+    }
     while (end < value.length && isTokenChar(value[end] ?? "")) {
       end += 1;
     }

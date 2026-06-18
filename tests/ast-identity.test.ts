@@ -23,7 +23,7 @@ async function singleObject(
 }
 
 function renderFacts(object: SchemaObject): RenderGuardFacts {
-  const facts = object.metadata.render as RenderGuardFacts | undefined;
+  const facts = object.metadata.render;
   if (!facts) {
     throw new Error(`object ${object.key} has no render facts`);
   }

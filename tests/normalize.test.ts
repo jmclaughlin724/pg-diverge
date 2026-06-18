@@ -20,7 +20,7 @@ async function treeDir(sql: string): Promise<string> {
 
 describe("deparse normalization (tier 2, opt-in)", () => {
   it("renders byte-identical migrations from differently formatted equivalent trees", async () => {
-    const config = { normalize: "deparse" as const };
+    const config = { normalize: "deparse" };
     const empty = await treeDir("");
     const from = await extractSourceModel(`dir:${empty}`, { config });
     const messy = await extractSourceModel(`dir:${await treeDir(messyTree)}`, { config });

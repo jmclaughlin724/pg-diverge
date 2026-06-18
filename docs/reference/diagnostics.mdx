@@ -66,6 +66,8 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_CHECK_INSERT_ON_CONFLICT` | error | `INSERT` statements in migrations must use `ON CONFLICT` for replay safety. |
 | `SUPA_CHECK_DML_REVIEW` | warning | `UPDATE`/`DELETE` statements need explicit idempotency review. |
 | `SUPA_CHECK_POLICY_REPLACEMENT` | error | `CREATE POLICY` should be paired with an explicit prior drop for replacement. |
+| `SUPA_RULE_POLICY_MISSING_PREDICATE` | warning | An RLS policy lacks the `USING` or `WITH CHECK` predicate needed for its command class. |
+| `SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN` | warning | An RLS policy lacks a column configured in `hints.requiredPolicyColumns` for its table. |
 | `SUPA_SELFCHECK_HASH_MISMATCH` | error | A catalog object hashes differently after its rendered SQL is re-extracted; cross-lane diffs would report a false change. |
 | `SUPA_SELFCHECK_MISSING` | error | A catalog object disappeared when its rendered SQL was re-extracted. |
 | `SUPA_SELFCHECK_UNEXPECTED` | error | Re-extraction produced an object the catalog model does not contain. |

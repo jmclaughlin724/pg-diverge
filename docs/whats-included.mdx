@@ -104,6 +104,20 @@ supaschema is packaged as a PostgreSQL project workflow, not just a binary. Inst
   </Card>
 </CardGroup>
 
+<CardGroup cols={3}>
+  <Card title="Schema safety scan" icon="shield-alert" href="/commands/scan">
+    Scores RLS, grant, and hygiene findings without connecting to a database.
+  </Card>
+  <Card title="Type-contract gate" icon="file-warning" href="/commands/type-contract">
+    Reports breaking generated TypeScript/Zod contract changes, with licensed
+    standalone enforcement.
+  </Card>
+  <Card title="Schema contracts" icon="archive" href="/commands/contracts">
+    Exports, diffs, pushes, and pulls JSON contracts for cross-repository drift
+    checks.
+  </Card>
+</CardGroup>
+
 <CardGroup cols={2}>
   <Card title="Corpus oracle" icon="database-zap" href="/guides/corpus-oracle">
     Exercises real-world catalogs to prove reconvergence outside toy fixtures.

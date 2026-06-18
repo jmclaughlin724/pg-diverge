@@ -6,7 +6,7 @@ import type { SchemaContract } from "../src/schema-contract.js";
 const SECRET_URL = ["postgres://svc:", "s3cr3t", "@db.internal/app"].join("");
 const SECRET_KV = ["pass", "word=", "p4ssval"].join("");
 
-const REQUIRE_SCHEMAS = { label: "contract", requiredKeys: ["schemas"] as const };
+const REQUIRE_SCHEMAS = { label: "contract", requiredKeys: ["schemas"] };
 
 describe("intake validator (S1)", () => {
   it("accepts a well-formed payload with the required scope", () => {
@@ -81,7 +81,7 @@ describe("contractDrift intake gate (S1 × X51)", () => {
   it("fails closed on a secret-bearing contract instead of diffing", () => {
     const tainted = {
       schemas: { public: { enums: [{ name: "e", values: [SECRET_URL] }], tables: [] } },
-    } as SchemaContract;
+    };
     const codes = contractDrift(valid, tainted).map((d) => d.code);
     expect(codes).toContain("SUPA_INTAKE_SECRET");
 
@@ -89,7 +89,7 @@ describe("contractDrift intake gate (S1 × X51)", () => {
   });
 
   it("fails closed on a malformed contract", () => {
-    const codes = contractDrift(valid, null as unknown as SchemaContract).map((d) => d.code);
+    const codes = contractDrift(valid, null).map((d) => d.code);
     expect(codes).toContain("SUPA_INTAKE_MALFORMED");
   });
 
