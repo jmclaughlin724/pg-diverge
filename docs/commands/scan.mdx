@@ -22,7 +22,7 @@ npx supaschema scan --from dir:database/schemas
 npx supaschema scan --reporter json
 ```
 
-With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Output is credential-redacted before printing.
+With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Output is credential-redacted before printing. JSON output is the machine contract used by the GitHub Action; it includes `file`, `score`, `grade`, `errorCount`, `warningCount`, and `diagnostics`.
 
 ## Flags
 
@@ -31,7 +31,8 @@ With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Ou
 </ParamField>
 
 <ParamField path="--reporter" type="text | json | github | sarif">
-  Output format. An unknown value exits `2` with an error.
+  Output format. Use `json` for Action PR comments and check runs. An unknown
+  value exits `2` with an error.
 </ParamField>
 
 ## What it scores

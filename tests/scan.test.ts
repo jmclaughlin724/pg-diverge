@@ -64,7 +64,16 @@ describe("scan core (K0)", () => {
 
   it("renders the scan through the existing reporter", () => {
     const result = scanModel(model([tableObject("BadName")]), [hygienePack]);
-    expect(renderScan(result, "json", "schema.sql")).toContain("SUPA_RULE_TABLE_NAMING");
+    const parsed = JSON.parse(renderScan(result, "json", "schema.sql")) as {
+      diagnostics: Diagnostic[];
+      file: string;
+      grade: string;
+      score: number;
+    };
+    expect(parsed.file).toBe("schema.sql");
+    expect(parsed.score).toBe(97);
+    expect(parsed.grade).toBe("A");
+    expect(parsed.diagnostics[0]?.code).toBe("SUPA_RULE_TABLE_NAMING");
   });
 
   it("maps grades across the band", () => {

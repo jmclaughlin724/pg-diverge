@@ -14,6 +14,11 @@ This workflow renders the migration from the PR diff, checks replay safety, and 
 name: schema-diff
 on: pull_request
 
+permissions:
+  contents: read
+  checks: write
+  issues: write
+
 jobs:
   supaschema:
     runs-on: ubuntu-latest
@@ -35,11 +40,16 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+      - name: Scan schema safety
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: '["scan","--reporter","json"]'
       - name: Render migration from the PR diff
         uses: jmclaughlin724/supaschema@<tag>
         with:
           argv: >-
             ["diff","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--out","/tmp/supaschema/migration.sql"]
+
 
       - name: Check replay safety
         uses: jmclaughlin724/supaschema@<tag>
@@ -51,6 +61,8 @@ jobs:
           argv: >-
             ["verify","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--migration","/tmp/supaschema/migration.sql","--database-url","postgresql://postgres:postgres@localhost:5432/postgres"]
 ```
+
+The scan step writes the job summary, creates a `supaschema scan` check run on the pull-request head SHA, and updates one PR comment with the score and top issues. It requires `checks: write` for the check run and `issues: write` because GitHub stores pull-request timeline comments through the Issues comments API.
 
 ## Protected sync
 

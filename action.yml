@@ -6,7 +6,7 @@ branding:
   icon: git-merge
 inputs:
   argv:
-    description: JSON array of argv entries passed to supaschema, excluding the binary name (e.g. ["diff","--fail-on-diff","--quiet"] or ["sync","--target","remote"]).
+    description: JSON array of argv entries passed to supaschema, excluding the binary name. Use ["scan","--reporter","json"] for PR comments and check runs.
     required: true
   version:
     description: Exact supaschema npm version to run.
@@ -20,8 +20,6 @@ runs:
       env:
         SUPASCHEMA_ACTION_VERSION: ${{ inputs.version }}
         SUPASCHEMA_ACTION_ARGV: ${{ inputs.argv }}
-        # The action only runs the supaschema CLI as a gate. Suppress the consumer
-        # bundle scaffolding so `npx supaschema@...` does not write config, agent
-        # files, hook wiring, or .supaschema/install.json into the caller's checkout.
+        SUPASCHEMA_ACTION_GITHUB_TOKEN: ${{ github.token }}
         SUPASCHEMA_SKIP_POSTINSTALL: "1"
       run: node "$GITHUB_ACTION_PATH/scripts/actions/run-supaschema-action.mjs"
