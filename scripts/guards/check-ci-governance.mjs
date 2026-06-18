@@ -364,7 +364,7 @@ assert(
   preparePackageManagersStep &&
     stepIf(preparePackageManagersStep) === "matrix.node-version == 22" &&
     stepRun(preparePackageManagersStep).includes("corepack prepare pnpm@10.18.1 --activate") &&
-    stepRun(preparePackageManagersStep).includes("corepack prepare yarn@4.12.0 --activate"),
+    stepRun(preparePackageManagersStep).includes("corepack prepare yarn@4.16.0 --activate"),
   "ci.yml must prepare pnpm and Yarn only for the Node 22 consumer package-smoke lane"
 );
 const setupBunStep = findNamedStep(qualitySteps, "Install Bun for consumer package smoke");

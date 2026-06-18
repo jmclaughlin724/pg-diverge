@@ -1,9 +1,8 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+export const ROOT = path.resolve(resolveRoot());
 
 export function ok(token) {
   process.stdout.write(`${token}\n`);
@@ -50,4 +49,18 @@ export function gitFiles() {
 
 export function edgeKey(edge) {
   return `${edge.from}\0${edge.to}\0${edge.type}\0${edge.evidence ?? ""}`;
+}
+
+function resolveRoot() {
+  const result = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  if (result.status === 0) {
+    const root = result.stdout.trim();
+    if (root.length > 0) {
+      return root;
+    }
+  }
+  return process.cwd();
 }

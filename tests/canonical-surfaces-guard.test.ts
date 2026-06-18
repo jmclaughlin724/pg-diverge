@@ -200,14 +200,19 @@ describe("canonical surfaces guard", () => {
   });
 
   it("allows package scripts without recursive force deletion", () => {
-    const cwd = tempGitRepo({
-      scripts: { lint: "node scripts/check.mjs" },
-    });
+    const cwd = tempGitRepo(
+      {
+        scripts: { lint: "node scripts/check.mjs" },
+      },
+      {
+        "scripts/check.mjs": "process.stdout.write('ok\\n');\n",
+      }
+    );
     const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
       cwd,
       encoding: "utf8",
     });
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr || result.stdout).toBe(0);
     expect(result.stdout).toContain("CANONICAL_SURFACES_OK");
   });
 });
