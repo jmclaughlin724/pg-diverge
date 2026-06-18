@@ -25,12 +25,16 @@
 # | What you are analyzing | Use |
 # | --- | --- |
 # | TypeScript / JS / JSX structure | TypeScript compiler API via `lib/ast-utils.mjs` (`parse`, `parseScript`, `forEachNode`, `leadingCommentHasToken`) |
-# | Postgres schema SQL (tables, RLS, functions…) | the real Postgres parser via `lib/sql-ast.mjs` (libpg-query / libpg_query) |
+# | Postgres schema SQL (tables, RLS, functions…) | the real Postgres parser via `scripts/guards/lib/sql-ast.js` (libpg-query / libpg_query) |
 # | `package.json` / `tsconfig` / JSON config | `JSON.parse` + object walks |
 # | TOML / a known-format config line | string ops (`split`, `indexOf`, `slice`, `startsWith`) |
 # | A version prefix / path suffix / membership | `startsWith` / `endsWith` / `includes` |
 #
-# The shared helpers are `scripts/guards/lib/ast-utils.mjs` (TS AST) and `scripts/guards/lib/sql-ast.mjs` (Postgres AST) — study them first.
+# The shared helpers are `scripts/guards/lib/ast-utils.js` (TS AST) and `scripts/guards/lib/sql-ast.js` (Postgres AST) — study them first.
+#
+# ## Regex resolution sequence
+#
+# When resolving a regex violation, use `ast-grep` as the first discovery or codemod pass when it is available in the active toolchain, then use the TypeScript AST, the compiler, or the relevant parser/typecheck lane to prove exact node classes and compile safety. Replace regex behavior with canonical scanner, parser, or model helpers in the owning module. Re-run the ast-grep query plus the compiler or parser-backed guard to prove zero regex nodes remain; if `ast-grep` is unavailable, record that fact and use the canonical AST scanner as the fallback evidence.
 #
 # ## Decision posture
 #
