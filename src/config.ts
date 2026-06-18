@@ -464,7 +464,11 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
       ];
       from.oneOf = [
         { const: sourceAuto },
-        { type: "string", "x-supaschema-source-parser": "parseRuntimeSource" },
+        {
+          type: "string",
+          not: { const: sourceAuto },
+          "x-supaschema-source-parser": "parseRuntimeSource",
+        },
       ];
       from.type = undefined;
     }
