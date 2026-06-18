@@ -10,6 +10,8 @@ compatibility_flags = ["nodejs_compat"]
 #   STRIPE_WEBHOOK_SECRET           Stripe endpoint signing secret (whsec_...).
 #   STRIPE_SECRET_KEY               Restricted API key (rk_...) for the /checkout
 #                                   route; scope it to Checkout Sessions: write only.
+#   CONTRACT_REGISTRY_TOKEN         Bearer token required by /contracts reads and
+#                                   writes.
 
 # Non-secret /checkout config. STRIPE_PRICE_MAP is the operator plan->price map; the
 # prices come from `scripts/stripe/create-catalog.py` output and the mode must match

@@ -51,6 +51,35 @@ assert(
   policy.repositoryFullName === "jmclaughlin724/supaschema",
   "repo policy must name this repository"
 );
+const expectedTopics = [
+  "ai-coding-agents",
+  "database-migrations",
+  "declarative-schema",
+  "drift-detection",
+  "postgres",
+  "postgres-migrations",
+  "postgresql",
+  "postgresql-migrations",
+  "row-level-security",
+  "schema-diff",
+  "schema-management",
+  "supabase",
+  "supabase-migrations",
+  "typescript-types",
+  "zod",
+];
+assert(
+  JSON.stringify(policy.repositoryTopics) === JSON.stringify(expectedTopics),
+  "repo policy topics must match the G41 distribution set"
+);
+assert(
+  packageJson.description ===
+    "Declarative PostgreSQL schema management for replay-safe migrations, guarded sync, TypeScript types, and Zod validators without an ORM, Docker, or a shadow database.",
+  "package description must match the canonical distribution paragraph"
+);
+for (const topic of expectedTopics) {
+  assert(packageJson.keywords.includes(topic), `package keywords must include ${topic}`);
+}
 assert(policy.repository?.default_branch === "main", "default branch must be main");
 assert(policy.repository?.allow_merge_commit === false, "merge commits must be disabled");
 assert(policy.repository?.allow_squash_merge === false, "squash merges must be disabled");

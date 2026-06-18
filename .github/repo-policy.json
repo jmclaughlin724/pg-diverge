@@ -1,5 +1,22 @@
 {
   "repositoryFullName": "jmclaughlin724/supaschema",
+  "repositoryTopics": [
+    "ai-coding-agents",
+    "database-migrations",
+    "declarative-schema",
+    "drift-detection",
+    "postgres",
+    "postgres-migrations",
+    "postgresql",
+    "postgresql-migrations",
+    "row-level-security",
+    "schema-diff",
+    "schema-management",
+    "supabase",
+    "supabase-migrations",
+    "typescript-types",
+    "zod"
+  ],
   "upstreamSources": [
     "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches",
     "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/about-merge-methods-on-github",
@@ -7,6 +24,8 @@
     "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets",
     "https://docs.github.com/en/rest/branches/branch-protection",
     "https://docs.github.com/en/rest/actions/permissions",
+    "https://docs.github.com/en/rest/repos/repos#get-all-repository-topics",
+    "https://docs.github.com/en/rest/repos/repos#replace-all-repository-topics",
     "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/managing-the-commit-signoff-policy-for-your-repository",
     "https://cli.github.com/manual/gh_pr_merge",
     "https://cli.github.com/manual/gh_repo_edit"

@@ -10,6 +10,7 @@ import { createMemoryStore } from "../services/license-worker/src/store.js";
 import type { StripeFetch } from "../services/license-worker/src/stripe-api.js";
 import { verifyStripeSignature } from "../services/license-worker/src/webhook.js";
 import { isEntitled, verifyLicenseToken } from "../src/license.js";
+import type { TableShape } from "../src/typegen-model.js";
 
 const keyPair = generateKeyPairSync("ed25519");
 const privateKeyPem = keyPair.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
@@ -64,12 +65,32 @@ function envWith(store: LicenseWorkerEnv["LICENSE_KV"]): LicenseWorkerEnv {
   return {
     CHECKOUT_CANCEL_URL: "https://supaschema.com/pricing",
     CHECKOUT_SUCCESS_URL: "https://supaschema.com/license",
+    CONTRACT_REGISTRY_TOKEN: "registry_token",
     LICENSE_KV: store,
     STRIPE_PRICE_MAP: PRICE_MAP,
     STRIPE_SECRET_KEY: "rk_test_only_not_a_real_key",
     STRIPE_WEBHOOK_SECRET: SECRET,
     SUPASCHEMA_LICENSE_PRIVATE_KEY: privateKeyPem,
   };
+}
+
+const usersTable: TableShape = {
+  columns: [{ name: "id", notNull: true, type: "number" }],
+  name: "users",
+  relationships: [],
+  uniqueColumnSets: [],
+};
+
+function contract(tables: TableShape[]) {
+  return { schemas: { public: { enums: [], tables } } };
+}
+
+function registryRequest(method: string, body?: unknown): Request {
+  return new Request("https://license.example/contracts?repo=acme/app&name=main", {
+    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: { authorization: "Bearer registry_token", "content-type": "application/json" },
+    method,
+  });
 }
 
 function signedWebhook(body: string): Request {
@@ -224,5 +245,51 @@ describe("self-serve checkout (M31)", () => {
   it("fails closed with 502 when Stripe rejects the request", async () => {
     const response = await checkout("acme/app", "bundle", failingStripe);
     expect(response.status).toBe(502);
+  });
+});
+
+describe("contract registry Worker routes (X51)", () => {
+  it("stores and retrieves an authenticated schema contract", async () => {
+    const store = createMemoryStore();
+    const env = envWith(store);
+    const stored = await handleLicenseWorker(
+      registryRequest("PUT", contract([usersTable])),
+      env,
+      store,
+      NOW,
+      noFetch
+    );
+    expect(stored.status).toBe(200);
+
+    const retrieved = await handleLicenseWorker(registryRequest("GET"), env, store, NOW, noFetch);
+    expect(retrieved.status).toBe(200);
+    expect(await retrieved.json()).toEqual(contract([usersTable]));
+  });
+
+  it("rejects unauthenticated registry writes", async () => {
+    const store = createMemoryStore();
+    const response = await handleLicenseWorker(
+      new Request("https://license.example/contracts?repo=acme/app&name=main", {
+        body: JSON.stringify(contract([usersTable])),
+        method: "PUT",
+      }),
+      envWith(store),
+      store,
+      NOW,
+      noFetch
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects payloads outside the contract shape before storage", async () => {
+    const store = createMemoryStore();
+    const response = await handleLicenseWorker(
+      registryRequest("PUT", { schemas: { public: { enums: [], tables: [] } }, token: "abc123" }),
+      envWith(store),
+      store,
+      NOW,
+      noFetch
+    );
+    expect(response.status).toBe(400);
   });
 });

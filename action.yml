@@ -11,7 +11,7 @@ inputs:
   version:
     description: Exact supaschema npm version to run.
     required: false
-    default: "0.2.4"
+    default: "0.3.0"
 runs:
   using: composite
   steps:

@@ -25,6 +25,8 @@ Sources:
 - GitHub ruleset rules: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets>
 - GitHub branch protection REST API: <https://docs.github.com/en/rest/branches/branch-protection>
 - GitHub Actions permissions REST API: <https://docs.github.com/en/rest/actions/permissions>
+- GitHub repository topics REST API: <https://docs.github.com/en/rest/repos/repos#get-all-repository-topics>
+- GitHub replace repository topics REST API: <https://docs.github.com/en/rest/repos/repos#replace-all-repository-topics>
 - GitHub commit signoff policy: <https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/managing-the-commit-signoff-policy-for-your-repository>
 - GitHub CLI `gh pr merge`: <https://cli.github.com/manual/gh_pr_merge>
 - GitHub CLI `gh repo edit`: <https://cli.github.com/manual/gh_repo_edit>
@@ -36,6 +38,7 @@ Sources:
 Required repository settings:
 
 - `default_branch` MUST be `main`.
+- Repository topics MUST match `repositoryTopics` in `.github/repo-policy.json`.
 - `allow_rebase_merge` MUST be `true`.
 - `allow_merge_commit` MUST be `false`.
 - `allow_squash_merge` MUST be `false`.
@@ -118,6 +121,7 @@ The merged PR MUST report `MERGED` from GitHub, the merge commit MUST be contain
 - `npm run guard:github-process` (`scripts/guards/check-github-process.mjs`) asserts the policy file, Rule 21, package commands, guard wiring, and PR template stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, and repository rulesets to `.github/repo-policy.json`.
+- `npm run github:audit-settings` also compares live repository topics to `repositoryTopics`.
 - `npm run github:check-dco` (`scripts/github/check-dco.mjs`) verifies DCO signoff trailers for PR or push commits.
 - `npm run github:pr-preflight`, `npm run github:merge-preflight`, and `npm run github:post-merge-verify` prove the PR lifecycle state before PR creation, merge, and closeout.
 - `.github/PULL_REQUEST_TEMPLATE.md` records the required operator checklist for PR authors and reviewers.

@@ -16,6 +16,8 @@ export interface LicenseWorkerEnv {
 
   CHECKOUT_SUCCESS_URL: string;
 
+  CONTRACT_REGISTRY_TOKEN: string;
+
   LICENSE_KV: LicenseStore;
 
   STRIPE_PRICE_MAP: string;
@@ -63,6 +65,14 @@ function isDigit(char: string): boolean {
 
 function isValidPlan(plan: string): boolean {
   return plan.length > 0 && plan.length <= 64;
+}
+
+function isValidRegistryName(name: string): boolean {
+  return name.length > 0 && name.length <= 96 && [...name].every(isRegistryNameChar);
+}
+
+function isRegistryNameChar(char: string): boolean {
+  return isAsciiLetter(char) || isDigit(char) || char === "." || char === "_" || char === "-";
 }
 
 export function extractCheckoutCompletion(event: unknown): CheckoutCompletion | null {
@@ -184,6 +194,101 @@ async function handleCheckout(
   }
 }
 
+async function handleContractRegistry(
+  request: Request,
+  env: LicenseWorkerEnv,
+  store: LicenseStore,
+  url: URL
+): Promise<Response> {
+  const key = contractStorageKey(url);
+  if (key === null) {
+    return new Response("invalid contract key", { status: 400 });
+  }
+  if (!isRegistryAuthorized(request, env)) {
+    return new Response("unauthorized", { status: 401 });
+  }
+  if (url.pathname === "/contracts" && request.method === "GET") {
+    const stored = await store.get(key);
+    return stored === null ? jsonResponse({ found: false }, 404) : jsonResponse(JSON.parse(stored));
+  }
+  if (url.pathname === "/contracts" && request.method === "PUT") {
+    const contract = await readContract(request);
+    if (contract === null) {
+      return new Response("invalid contract", { status: 400 });
+    }
+    await store.put(key, JSON.stringify(contract));
+    return jsonResponse({ stored: true });
+  }
+  return new Response("method not allowed", { status: 405 });
+}
+
+function contractStorageKey(url: URL): string | null {
+  const repo = url.searchParams.get("repo") ?? "";
+  const name = url.searchParams.get("name") ?? "";
+  if (!(isValidRepo(repo) && isValidRegistryName(name))) {
+    return null;
+  }
+  return `contract:${repo}:${name}`;
+}
+
+function isRegistryAuthorized(request: Request, env: LicenseWorkerEnv): boolean {
+  const token = env.CONTRACT_REGISTRY_TOKEN;
+  return token.length > 0 && request.headers.get("authorization") === `Bearer ${token}`;
+}
+
+async function readContract(request: Request): Promise<unknown | null> {
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return null;
+  }
+  return isSchemaContract(payload) ? payload : null;
+}
+
+function isSchemaContract(value: unknown): boolean {
+  const root = asRecord(value);
+  if (root === null || Object.keys(root).length !== 1) {
+    return false;
+  }
+  const schemas = asRecord(root.schemas);
+  return schemas !== null && Object.values(schemas).every(isSchemaContractEntry);
+}
+
+function isSchemaContractEntry(value: unknown): boolean {
+  const entry = asRecord(value);
+  return (
+    entry !== null &&
+    Object.keys(entry).length === 2 &&
+    Array.isArray(entry.enums) &&
+    Array.isArray(entry.tables) &&
+    entry.enums.every(isSchemaContractEnum) &&
+    entry.tables.every(isSchemaContractTable)
+  );
+}
+
+function isSchemaContractEnum(value: unknown): boolean {
+  const entry = asRecord(value);
+  return (
+    entry !== null &&
+    Object.keys(entry).length === 2 &&
+    typeof entry.name === "string" &&
+    Array.isArray(entry.values) &&
+    entry.values.every((item) => typeof item === "string")
+  );
+}
+
+function isSchemaContractTable(value: unknown): boolean {
+  const entry = asRecord(value);
+  return (
+    entry !== null &&
+    typeof entry.name === "string" &&
+    Array.isArray(entry.columns) &&
+    Array.isArray(entry.relationships) &&
+    Array.isArray(entry.uniqueColumnSets)
+  );
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },
@@ -201,6 +306,9 @@ export function handleLicenseWorker(
   const url = new URL(request.url);
   if (url.pathname === "/checkout") {
     return handleCheckout(request, env, url, stripeFetch);
+  }
+  if (url.pathname === "/contracts") {
+    return handleContractRegistry(request, env, store, url);
   }
   if (url.pathname === "/webhook") {
     return handleWebhook(request, env, store, nowSeconds);
