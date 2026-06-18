@@ -22,7 +22,7 @@ The package is designed for trusted publishing from GitHub Actions. `main` is th
 ## Per-release checklist
 
 1. Add changesets for user-facing PRs while the change is fresh.
-2. Run `npm run release:version` for the release PR and review the resulting `package.json`, `package-lock.json`, `CHANGELOG.md`, and `action.yml` changes.
+2. Run `npm run release:version` for the release PR and review the resulting `package.json`, `package-lock.json`, and `CHANGELOG.md` changes.
 3. Run `npm run release:notes -- --version <version>` and confirm the output is the GitHub Release body you want.
 4. Run `npm run release:verify`.
 5. Confirm PR CI passes all required checks before merge.

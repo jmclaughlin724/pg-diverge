@@ -9,9 +9,8 @@ inputs:
     description: JSON array of argv entries passed to supaschema, excluding the binary name. Use ["scan","--reporter","json"] for PR comments and check runs.
     required: true
   version:
-    description: Exact supaschema npm version to run.
+    description: Exact supaschema npm version to run. Defaults to this action tag's package.json version.
     required: false
-    default: "0.3.0"
 runs:
   using: composite
   steps:
