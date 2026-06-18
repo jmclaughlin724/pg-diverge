@@ -127,12 +127,14 @@ The test owners and release smoke script prove the package surfaces, and they mo
 
 The "use" proof installs the real tarball rather than extracting it, because a bare extract cannot run the CLI — `dist/cli.js` needs its runtime dependencies. This is the npm-documented "install the tarball, run the installed bin" pattern.
 
+The published package must not define `preinstall`, `install`, `postinstall`, or `prepare` scripts. Consumer setup runs through explicit `supaschema init`, so pnpm, Bun, Yarn, and npm installs do not require build-script approval to download the CLI.
+
 `npm run release:verify` is the release-facing entry point. It calls the package-manager smoke after the package checks, so use that command for release readiness.
 
 <Note>
   A local registry (Verdaccio) publish-then-install flow is the optional
-  high-fidelity tier for exercising registry resolution, dist-tags, and the
-  npm-triggered install lifecycle. It is intentionally not used by default: this
+  high-fidelity tier for exercising registry resolution, dist-tags, and package
+  manager download behavior. It is intentionally not used by default: this
   is a single-package CLI whose `bin` is a small launcher of `dist`, so a
   tarball install is hermetic, offline, and cross-platform without the extra
   service.

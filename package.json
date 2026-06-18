@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Declarative PostgreSQL schema management for replay-safe migrations, guarded sync, TypeScript types, and Zod validators without an ORM, Docker, or a shadow database.",
   "keywords": [
     "ai-coding-agents",
@@ -112,7 +112,6 @@
     "lint:doctor": "ultracite doctor",
     "pack:dry": "npm pack --dry-run",
     "package:smoke": "node scripts/release/package-smoke.mjs",
-    "prepare": "npm run build && node scripts/install-hooks.mjs",
     "release:notes": "node scripts/release/changelog-notes.mjs",
     "release:verify": "npm run guard:release-version && npm test -- tests/action.test.ts tests/release-preflight.test.ts && npm run build && npm run check:package && npm run package:smoke && npm run pack:dry && npm run guard",
     "release:version": "changeset version",

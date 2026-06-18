@@ -40,6 +40,12 @@ const deferredMarkerTerms = [
   ["T", "BD"].join(""),
   ["place", "holder"].join(""),
 ];
+const forbiddenPackageLifecycleScripts = new Set([
+  "install",
+  "postinstall",
+  "preinstall",
+  "prepare",
+]);
 const externalContractExportOnlyFiles = new Map([
   ["src/index.ts", "npm package public API entry point"],
 ]);
@@ -609,6 +615,11 @@ function packageScriptViolations(scripts) {
   return Object.entries(scripts).flatMap(([name, command]) => {
     if (typeof command !== "string") {
       return [];
+    }
+    if (forbiddenPackageLifecycleScripts.has(name)) {
+      return [
+        `package script ${name} is a public install lifecycle script; remove it so consumer package managers do not require build-script approval.`,
+      ];
     }
     const shellDeleteViolation = packageScriptShellDeleteViolation(name, command);
     if (shellDeleteViolation !== undefined) {

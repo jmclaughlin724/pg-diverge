@@ -52,6 +52,13 @@ describe("npm package contents", () => {
   it("ships the necessary surface and no build-cache, source, or tooling leaks", {
     timeout: 60_000,
   }, async () => {
+    const manifest = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8")
+    );
+    for (const script of ["install", "postinstall", "preinstall", "prepare"]) {
+      expect(manifest.scripts).not.toHaveProperty(script);
+    }
+
     const { file, args } = npmExec(["pack", "--dry-run", "--json", "--ignore-scripts"]);
     const { stdout } = await run(file, args, { maxBuffer: 32 * 1024 * 1024 });
     const [packed] = JSON.parse(stdout);
