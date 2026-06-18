@@ -127,13 +127,15 @@ npm run github:audit-settings
 npm run github:merge-preflight -- --pr <number>
 ```
 
-Merge with:
+Merge with the canonical wrapper:
 
 ```bash
-gh pr merge <number> --rebase --delete-branch
+npm run github:merge -- --pr <number>
 ```
 
-After merge, run:
+The wrapper runs merge preflight, performs the required rebase merge, deletes the PR branch, and runs post-merge verification. Post-merge verification fetches `origin/main`, verifies the merged commit is contained in `origin/main`, preserves any divergent local `main` commit as `preserve/local-main-<sha>`, and aligns local `main` to `origin/main`. It stops if checked-out `main` has uncommitted changes.
+
+If the GitHub merge already happened outside the wrapper, run:
 
 ```bash
 npm run github:post-merge-verify -- --pr <number>

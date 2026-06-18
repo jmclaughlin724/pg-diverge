@@ -11,6 +11,7 @@ const auditSettings = readText("scripts/github/audit-settings.mjs");
 for (const file of [
   "scripts/github/policy.mjs",
   "scripts/github/check-dco.mjs",
+  "scripts/github/merge.mjs",
   "scripts/github/pr-preflight.mjs",
   "scripts/github/merge-preflight.mjs",
   "scripts/github/post-merge-verify.mjs",
@@ -22,6 +23,7 @@ for (const file of [
 for (const [name, command] of Object.entries({
   "github:audit-settings": "node scripts/github/audit-settings.mjs",
   "github:check-dco": "node scripts/github/check-dco.mjs",
+  "github:merge": "node scripts/github/merge.mjs",
   "github:merge-preflight": "node scripts/github/merge-preflight.mjs",
   "github:post-merge-verify": "node scripts/github/post-merge-verify.mjs",
   "github:pr-preflight": "node scripts/github/pr-preflight.mjs",
@@ -114,6 +116,15 @@ assert(
   "DCO policy must point at npm run github:check-dco"
 );
 assert(policy.pullRequests?.mergeMethod === "rebase", "canonical PR merge method must be rebase");
+assert(
+  policy.pullRequests?.requiredMergeWorkflow === "npm run github:merge -- --pr <number>",
+  "canonical PR merge workflow must be npm run github:merge"
+);
+assert(
+  policy.pullRequests?.postMergeLocalSync?.includes("preserve/local-main-<sha>") &&
+    policy.pullRequests.postMergeLocalSync.includes("align local main to origin/main"),
+  "post-merge policy must require preserving divergent local main and aligning it to origin/main"
+);
 
 const main = policy.branches?.main;
 assert(main, "repo policy must define branches.main");
@@ -181,8 +192,8 @@ for (const command of [
   "npm run github:check-dco",
   "npm run github:pr-preflight -- --base main",
   "npm run github:merge-preflight -- --pr <number>",
+  "npm run github:merge -- --pr <number>",
   "npm run github:post-merge-verify -- --pr <number>",
-  "gh pr merge <number> --rebase --delete-branch",
 ]) {
   assert(prTemplate.includes(command), `.github/PULL_REQUEST_TEMPLATE.md must include ${command}`);
 }
@@ -191,5 +202,31 @@ assert(
   contributing.includes("npm run github:check-dco"),
   "CONTRIBUTING.md must document the DCO checker command"
 );
+assert(
+  contributing.includes("npm run github:merge -- --pr <number>") &&
+    contributing.includes("preserve/local-main-<sha>") &&
+    contributing.includes("aligns local `main` to `origin/main`"),
+  "CONTRIBUTING.md must document the canonical merge wrapper and local main reconciliation"
+);
+const postMergeVerify = readText("scripts/github/post-merge-verify.mjs");
+assert(
+  postMergeVerify.includes("syncLocalBase(base, head, failures)") &&
+    postMergeVerify.includes("const backup = `preserve/local-") &&
+    postMergeVerify.includes("branchSegment(base)") &&
+    postMergeVerify.includes("localOid") &&
+    postMergeVerify.includes('"reset", "--hard"') &&
+    postMergeVerify.includes("`origin/"),
+  "post-merge verify must reconcile local main after remote merge verification"
+);
+const mergeWorkflow = readText("scripts/github/merge.mjs");
+for (const term of [
+  "scripts/github/merge-preflight.mjs",
+  '"pr", "merge"',
+  "--rebase",
+  "--delete-branch",
+  "scripts/github/post-merge-verify.mjs",
+]) {
+  assert(mergeWorkflow.includes(term), `github merge workflow must include ${term}`);
+}
 
 ok("GITHUB_PROCESS_GUARD_OK");
