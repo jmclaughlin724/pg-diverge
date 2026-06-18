@@ -39,13 +39,15 @@ export async function resolveSourceDefaults(
   let from = options.from;
   if (from === undefined) {
     if (config.sources.from === "auto") {
-      const databaseUrl = await resolveDbUrl();
-      if (databaseUrl !== undefined) {
-        from = `database:${databaseUrl}`;
-      } else if (await gitHeadExists()) {
+      if (await gitHeadExists()) {
         from = "git:HEAD";
       } else {
-        from = "empty:";
+        const databaseUrl = await resolveDbUrl();
+        if (databaseUrl === undefined) {
+          from = "empty:";
+        } else {
+          from = `database:${databaseUrl}`;
+        }
       }
     } else {
       from = config.sources.from;

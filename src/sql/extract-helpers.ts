@@ -197,6 +197,7 @@ function managedSchemaDiagnostics(
         file,
         hint: `Move this statement out of the declarative tree, or remove "${schema}" from managedSchemas only if this project owns it.`,
         ref: object.ref,
+        schemas: [schema],
         statement,
       }
     ),

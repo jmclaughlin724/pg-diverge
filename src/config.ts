@@ -454,7 +454,7 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
     const to = sourceProperties.to;
     if (isRecord(from)) {
       from.description =
-        'Default before-state source. Use "auto" to resolve a database URL first, then git:HEAD, then empty:.';
+        'Default before-state source. Use "auto" to resolve git:HEAD first, then a database URL, then empty:.';
       from.examples = [
         "auto",
         "git:HEAD",

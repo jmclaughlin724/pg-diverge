@@ -498,7 +498,7 @@
       "properties": {
         "from": {
           "default": "auto",
-          "description": "Default before-state source. Use \"auto\" to resolve a database URL first, then git:HEAD, then empty:.",
+          "description": "Default before-state source. Use \"auto\" to resolve git:HEAD first, then a database URL, then empty:.",
           "examples": [
             "auto",
             "git:HEAD",

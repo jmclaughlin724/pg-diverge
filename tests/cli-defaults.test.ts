@@ -50,7 +50,7 @@ describe("source defaults", () => {
     expect(resolved.notice).toContain("--to dir:db/schemas");
   });
 
-  it("uses config-owned source defaults before database/git fallback", async () => {
+  it("uses config-owned source defaults before git/database fallback", async () => {
     const custom = resolveConfig({
       schemaPaths: ["ignored/schemas"],
       sources: { from: "dump:baseline.sql", to: "dir:db/schemas" },
@@ -66,23 +66,13 @@ describe("source defaults", () => {
     expect(resolved.notice).toContain("--to dir:db/schemas");
   });
 
-  it("defaults --from to the resolved database and redacts credentials", async () => {
+  it("defaults --from to git:HEAD before a resolved database when HEAD exists", async () => {
     const resolved = await resolveSourceDefaults(
       {},
       config,
-      async () => "postgresql://postgres:secret@127.0.0.1:5432/postgres"
-    );
-
-    expect(resolved.from).toBe("database:postgresql://postgres:secret@127.0.0.1:5432/postgres");
-    expect(resolved.notice).toContain("[redacted]");
-    expect(resolved.notice).not.toContain("secret");
-  });
-
-  it("falls back to git:HEAD when no database URL resolves and HEAD exists", async () => {
-    const resolved = await resolveSourceDefaults(
-      {},
-      config,
-      async () => undefined,
+      () => {
+        throw new Error("database lookup should not run when HEAD exists");
+      },
       async () => true
     );
 
@@ -90,7 +80,20 @@ describe("source defaults", () => {
     expect(resolved.notice).toContain("--from git:HEAD");
   });
 
-  it("falls back to empty: when no database URL or git HEAD resolves", async () => {
+  it("falls back to the resolved database when no git HEAD exists and redacts credentials", async () => {
+    const resolved = await resolveSourceDefaults(
+      {},
+      config,
+      async () => "postgresql://postgres:secret@127.0.0.1:5432/postgres",
+      async () => false
+    );
+
+    expect(resolved.from).toBe("database:postgresql://postgres:secret@127.0.0.1:5432/postgres");
+    expect(resolved.notice).toContain("[redacted]");
+    expect(resolved.notice).not.toContain("secret");
+  });
+
+  it("falls back to empty: when no git HEAD or database URL resolves", async () => {
     const resolved = await resolveSourceDefaults(
       {},
       config,

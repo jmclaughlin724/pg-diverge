@@ -277,7 +277,6 @@ async function writeOrPrintDiffOutput(
   );
   await refreshGeneratedOutputs({
     config,
-    ...(options.schema === undefined ? {} : { schemaFilter: options.schema }),
     toSource: options.to,
   });
   return true;

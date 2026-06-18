@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { planSchemaDiff } from "../src/planner.js";
-import { extractSourceModel } from "../src/source.js";
+import { extractSourceModel, filterModelBySchemas } from "../src/source.js";
 
 async function modelFromSql(sql: string) {
   const root = await mkdtemp(join(tmpdir(), "supa-normalize-"));
@@ -23,6 +23,50 @@ describe("split privilege aggregation", () => {
     expect(errors(model)).toEqual([]);
     expect(model.objects).toEqual([]);
     expect(model.source).toBe("empty:");
+  });
+
+  it("filters managed-schema and side-effect diagnostics out of scoped schema diffs", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-filter-"));
+    await writeFile(
+      join(root, "bootstrap.sql"),
+      [
+        "CREATE SCHEMA auth;",
+        "DO $$ BEGIN CREATE ROLE zapier NOLOGIN; END $$;",
+        "CREATE SCHEMA app;",
+        "CREATE TABLE app.accounts (id bigint PRIMARY KEY);",
+      ].join("\n")
+    );
+
+    const model = await extractSourceModel(`dir:${root}`, {
+      config: { managedSchemas: ["auth"] },
+    });
+    expect(errors(model).map((item) => item.code)).toEqual([
+      "SUPA_SUPABASE_MANAGED_SCHEMA",
+      "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
+    ]);
+
+    const scoped = filterModelBySchemas(
+      {
+        ...model,
+        diagnostics: [
+          ...model.diagnostics,
+          {
+            code: "SUPA_NORMALIZE_FIDELITY",
+            message: "outside schema normalization warning",
+            ref: {
+              kind: "grant",
+              name: "grant:table:other.accounts:service_role",
+              schema: "other",
+            },
+            severity: "warning",
+          },
+        ],
+      },
+      new Set(["app"])
+    );
+    expect(errors(scoped)).toEqual([]);
+    expect(scoped.diagnostics).toEqual([]);
+    expect(scoped.objects.map((object) => object.key)).toContain("table:app.accounts");
   });
 
   it("suppresses no-op schema revokes (no default, nothing granted) without duplicates", async () => {

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -566,5 +566,62 @@ describe("pending install path confirmation", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("CREATE SCHEMA IF NOT EXISTS app");
+  });
+});
+
+describe("schema diff defaults", () => {
+  it("diffs scoped schema edits from git without a database or unrelated managed-schema failures", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-git-scoped-diff-"));
+    mkdirSync(join(cwd, "schemas"), { recursive: true });
+    writeFileSync(
+      join(cwd, "supaschema.config.json"),
+      `${JSON.stringify({
+        managedSchemas: ["auth"],
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto", to: "dir:schemas" },
+      })}\n`
+    );
+    writeFileSync(join(cwd, "schemas", "auth.sql"), "CREATE SCHEMA auth;\n");
+    writeFileSync(
+      join(cwd, "schemas", "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint PRIMARY KEY);\n"
+    );
+
+    for (const args of [
+      ["init"],
+      ["config", "user.email", "test@example.com"],
+      ["config", "user.name", "Test User"],
+      ["add", "."],
+      ["commit", "-m", "baseline"],
+    ]) {
+      const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+      expect(result.status, result.stderr).toBe(0);
+    }
+    writeFileSync(
+      join(cwd, "schemas", "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint PRIMARY KEY, name text);\n"
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "diff", "--schema", "app", "--name", "add_account_name"],
+      { cwd, encoding: "utf8", env: { ...process.env, SUPASCHEMA_DATABASE_URL: "" } }
+    );
+
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
+    expect(result.stderr).toContain("--from git:HEAD");
+    expect(result.stderr).not.toContain("SUPA_SUPABASE_MANAGED_SCHEMA");
+    expect(result.stdout).toContain("migrations/");
+    expect(result.stdout).toContain("add_account_name.sql");
+    expect(existsSync(join(cwd, "database.types.ts"))).toBe(false);
+    expect(existsSync(join(cwd, "database.zod.ts"))).toBe(false);
+
+    const migration = spawnSync(
+      process.execPath,
+      [cliPath, "check", result.stdout.trim().split("\n").at(-1) ?? ""],
+      { cwd, encoding: "utf8" }
+    );
+    expect(migration.status, migration.stderr).toBe(0);
   });
 });

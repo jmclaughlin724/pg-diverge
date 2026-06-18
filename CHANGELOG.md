@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 (2026-06-18)
+
+### Patch Changes
+
+- `sources.from: "auto"` now resolves the previous Git schema tree before database URL fallbacks, so schema diffs work from committed declarative SQL without requiring a running database.
+- `diff --schema` now filters managed-schema and unsupported-object diagnostics to the requested schema while keeping generated TypeScript and Zod outputs full-tree only.
+- Config schema, docs, and agent guidance now match the 0.3.x migration-sync modes and route schema changes through the declarative SQL owner.
+
 ## 0.3.1 (2026-06-18)
 
 ### Patch Changes
@@ -16,7 +24,7 @@
 
 ## 0.2.4 (2026-06-16)
 
-- First-run setup now has a safe empty baseline: `sources.from: "auto"` resolves a database URL, then `git:HEAD`, then `empty:`, while pending `.supaschema/install.json` path confirmation blocks `config validate`, `doctor`, and zero-source `diff` until `schemaPaths`, `sources.to`, and `migrationsDir` are explicit.
+- First-run setup now has a safe empty baseline: `sources.from: "auto"` resolves `git:HEAD`, then a database URL, then `empty:`, while pending `.supaschema/install.json` path confirmation blocks `config validate`, `doctor`, and zero-source `diff` until `schemaPaths`, `sources.to`, and `migrationsDir` are explicit.
 - GitHub Action execution now accepts a structured `argv` JSON array instead of raw shell `args`, runs through a Node action runner with `shell: false`, and keeps the action pinned to an exact package version.
 - Consumer install and package verification are tightened: `postinstall` delegates silently to the shared scaffolder, `supaschema init` remains the recovery path when lifecycle scripts are blocked, and `package:smoke` owns npm, pnpm, Yarn, and Bun install/init proof.
 - Agent surfaces no longer carry the old skill-router hook system; Claude, Codex, and `.agents` mirrors now sync from the canonical owners without stale router scripts or post-edit consistency paths.

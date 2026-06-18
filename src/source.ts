@@ -81,6 +81,9 @@ async function extractRawModel(
 const schemaScopedDiagnosticCodes = new Set([
   "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED",
   "SUPA_EXTRACT_UNSUPPORTED",
+  "SUPA_NORMALIZE_FIDELITY",
+  "SUPA_NORMALIZE_UNSUPPORTED",
+  "SUPA_SUPABASE_MANAGED_SCHEMA",
 ]);
 
 export function filterModelBySchemas(model: SchemaModel, schemas: Set<string>): SchemaModel {
@@ -97,7 +100,7 @@ export function filterModelBySchemas(model: SchemaModel, schemas: Set<string>): 
     diagnostics: filtered.diagnostics.filter(
       (item) =>
         !schemaScopedDiagnosticCodes.has(item.code) ||
-        (item.schemas ?? []).some((schema) => schemas.has(schema))
+        diagnosticSchemas(item).some((schema) => schemas.has(schema))
     ),
   };
 }
@@ -115,12 +118,13 @@ function applyConfigModelFilters(model: SchemaModel, config: SupaschemaConfig): 
     );
     current = {
       ...current,
-      diagnostics: current.diagnostics.filter(
-        (item) =>
-          !schemaScopedDiagnosticCodes.has(item.code) ||
-          (item.schemas ?? []).length === 0 ||
-          (item.schemas ?? []).some((schema) => !excluded.has(schema))
-      ),
+      diagnostics: current.diagnostics.filter((item) => {
+        if (!schemaScopedDiagnosticCodes.has(item.code)) {
+          return true;
+        }
+        const itemSchemas = diagnosticSchemas(item);
+        return itemSchemas.length === 0 || itemSchemas.some((schema) => !excluded.has(schema));
+      }),
     };
   }
   if (config.excludedGrantRoles.length > 0) {
@@ -148,6 +152,17 @@ function objectSchema(object: SchemaObject): string {
     return object.metadata.schema;
   }
   return object.ref.schema ?? "public";
+}
+
+function diagnosticSchemas(item: Diagnostic): string[] {
+  const schemas = new Set(item.schemas ?? []);
+  if (item.ref?.kind === "schema") {
+    schemas.add(item.ref.name);
+  }
+  if (item.ref?.schema !== undefined) {
+    schemas.add(item.ref.schema);
+  }
+  return [...schemas];
 }
 
 function isExcludedGrant(object: SchemaObject, roles: Set<string>): boolean {

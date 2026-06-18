@@ -41,7 +41,7 @@ Other config fields refine those decisions: `managedSchemas` blocks externally o
    supaschema diff
    ```
 
-   Zero-source-flag defaults come from `config.sources` and are printed to stderr. `sources.from: "auto"` resolves to the database, then valid `git:HEAD`, then `empty:`; `sources.to` points at the configured declarative tree. The file lands in `config.migrationsDir` as `<UTC timestamp>_<derived name>.sql`. Pass `--name <snake_case>` only when the human wants a specific file name. The write is no-clobber and chain-gated. If it exits 2, read the diagnostic:
+   Zero-source-flag defaults come from `config.sources` and are printed to stderr. `sources.from: "auto"` resolves to valid `git:HEAD`, then a database URL, then `empty:`; `sources.to` points at the configured declarative tree. The file lands in `config.migrationsDir` as `<UTC timestamp>_<derived name>.sql`. Pass `--name <snake_case>` only when the human wants a specific file name. The write is no-clobber and chain-gated. If it exits 2, read the diagnostic:
    - `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` / `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED` / `SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE` / `SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED` — review the rendered `-- BLOCKED` section, then add the exact object key to `hints.destructive` in `supaschema.config.json` and regenerate. Never use `"*"` in committed config.
    - `SUPA_DIFF_LINEAGE_BROKEN` — a pending generated migration exists; diff from the post-migration state instead: `--from database:<db with pending applied>`.
    - `SUPA_DIFF_LINEAGE_DUPLICATE` — the transition is already pending; apply or remove the pending migration instead of regenerating.
