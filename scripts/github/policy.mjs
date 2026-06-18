@@ -44,8 +44,75 @@ export function git(args, options = {}) {
 }
 
 export function ghJson(args, options = {}) {
+  if (process.env.SUPASCHEMA_FAKE_GH_POLICY) {
+    return fakeGhJson(args, options);
+  }
   const result = run("gh", args, options);
   return JSON.parse(result.stdout);
+}
+
+function fakeGhJson(args, options) {
+  const policy = JSON.parse(process.env.SUPASCHEMA_FAKE_GH_POLICY);
+  const log = process.env.SUPASCHEMA_FAKE_GH_LOG;
+  const endpoint = args[1];
+  const repo = policy.repositoryFullName;
+  const methodIndex = args.indexOf("-X");
+  const method = methodIndex === -1 ? "GET" : args[methodIndex + 1];
+
+  if (endpoint === `repos/${repo}`) {
+    return policy.repository;
+  }
+  if (endpoint === `repos/${repo}/topics` && method === "PUT") {
+    const body = JSON.parse(options.input ?? "{}");
+    if (log) {
+      fs.appendFileSync(log, `${JSON.stringify({ body, endpoint, method })}\n`);
+    }
+    return { names: body.names };
+  }
+  if (endpoint === `repos/${repo}/topics`) {
+    return {
+      names:
+        log && fs.existsSync(log) && fs.readFileSync(log, "utf8").includes('"method":"PUT"')
+          ? policy.repositoryTopics
+          : ["cli", "database", "idempotent-migrations", "migrations", "rls", "typescript"],
+    };
+  }
+  if (endpoint === `repos/${repo}/actions/permissions`) {
+    return policy.actions.permissions;
+  }
+  if (endpoint === `repos/${repo}/actions/permissions/workflow`) {
+    return policy.actions.workflowPermissions;
+  }
+  if (endpoint === `repos/${repo}/actions/permissions/fork-pr-contributor-approval`) {
+    return policy.actions.forkPullRequestContributorApproval;
+  }
+  if (endpoint === `repos/${repo}/branches/main/protection`) {
+    const main = policy.branches.main;
+    return {
+      allow_deletions: { enabled: main.allow_deletions },
+      allow_force_pushes: { enabled: main.allow_force_pushes },
+      enforce_admins: { enabled: main.enforce_admins },
+      required_conversation_resolution: { enabled: main.required_conversation_resolution },
+      required_linear_history: { enabled: main.required_linear_history },
+      required_pull_request_reviews: main.required_pull_request_reviews,
+      required_signatures: { enabled: main.required_signatures },
+      required_status_checks: {
+        checks: main.required_status_checks.contexts.map((context) => ({
+          app_id: main.required_status_checks.app_id,
+          context,
+        })),
+        contexts: main.required_status_checks.contexts,
+        strict: main.required_status_checks.strict,
+      },
+    };
+  }
+  if (endpoint === `repos/${repo}/rulesets`) {
+    return policy.rulesets.map((ruleset, index) => ({ id: index + 1, name: ruleset.name }));
+  }
+  if (endpoint === `repos/${repo}/rulesets/1`) {
+    return policy.rulesets[0];
+  }
+  throw new Error(`unhandled fake gh endpoint ${endpoint}`);
 }
 
 export function repoFullName(policy = readPolicy()) {
