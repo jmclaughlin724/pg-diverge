@@ -79,7 +79,7 @@
     "build": "tsc -p tsconfig.src.json && node dist/config-schema-gen.js",
     "catalog:check": "node scripts/guards/check-dependency-catalog.mjs",
     "changeset": "changeset",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "check": "npm run build && npm run lint && npm run typecheck && npm test",
     "check:package": "publint && attw --pack . --profile esm-only",
     "check:schema": "node scripts/check-schema.mjs",
     "corpus:check": "npm run build && node dist/cli.js corpus --corpus-dir corpus/supabase-style",
