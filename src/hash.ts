@@ -29,11 +29,13 @@ function sortJson(value: unknown): JsonLike {
     return value.map(sortJson);
   }
   if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, child]) => [key, sortJson(child)])
-    ) as { [key: string]: JsonLike };
+    const sorted: { [key: string]: JsonLike } = {};
+    for (const [key, child] of Object.entries(value).sort(([left], [right]) =>
+      left.localeCompare(right)
+    )) {
+      sorted[key] = sortJson(child);
+    }
+    return sorted;
   }
   if (
     value === null ||

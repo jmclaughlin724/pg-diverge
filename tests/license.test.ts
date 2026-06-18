@@ -1,10 +1,10 @@
-import { generateKeyPairSync, type KeyObject, sign } from "node:crypto";
+import { createPublicKey, generateKeyPairSync, type KeyObject, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   isEntitled,
   isEntitledFromEnv,
-  isEntitledFromEnvWithTrustedKey,
   type LicenseClaims,
+  TRUSTED_LICENSE_PUBLIC_KEY_PEM,
   verifyLicenseToken,
 } from "../src/license.js";
 
@@ -85,12 +85,8 @@ describe("license entitlement (M30/M32 verify side)", () => {
 });
 
 describe("env entitlement gate (M32)", () => {
-  it("is entitled with a valid token signed by the trusted key and matching repo", () => {
-    const env = {
-      GITHUB_REPOSITORY: "acme/app",
-      SUPASCHEMA_LICENSE: makeToken(validClaims, keyPair.privateKey),
-    };
-    expect(isEntitledFromEnvWithTrustedKey(env, NOW, publicKeyPem)).toBe(true);
+  it("uses an embedded Ed25519 public key as the trust anchor", () => {
+    expect(createPublicKey(TRUSTED_LICENSE_PUBLIC_KEY_PEM).asymmetricKeyType).toBe("ed25519");
   });
 
   it("ignores caller-provided public keys as trust anchors", () => {
@@ -107,11 +103,11 @@ describe("env entitlement gate (M32)", () => {
     expect(isEntitledFromEnv(env, NOW)).toBe(false);
   });
 
-  it("is not entitled on a repo mismatch", () => {
+  it("does not accept a token signed outside the embedded trust anchor", () => {
     const env = {
-      GITHUB_REPOSITORY: "other/repo",
+      GITHUB_REPOSITORY: "acme/app",
       SUPASCHEMA_LICENSE: makeToken(validClaims, keyPair.privateKey),
     };
-    expect(isEntitledFromEnvWithTrustedKey(env, NOW, publicKeyPem)).toBe(false);
+    expect(isEntitledFromEnv(env, NOW)).toBe(false);
   });
 });

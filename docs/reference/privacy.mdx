@@ -1,0 +1,40 @@
+---
+title: "Privacy and data handling"
+description: "What supaschema stores, sends, and avoids collecting across the CLI, GitHub Action, support intake, and license Worker surfaces."
+keywords:
+  [
+    "privacy",
+    "data handling",
+    "telemetry",
+    "GitHub Marketplace",
+    "commercial support",
+  ]
+---
+
+supaschema is local-first. The CLI and library do not phone home, collect telemetry, upload schemas, or call a hosted supaschema service during `diff`, `check`, `types`, `scan`, `verify`, or local source parsing.
+
+## Local CLI and library
+
+Schema files, generated migrations, generated TypeScript, generated Zod validators, diagnostics, and reports stay in the repository or process that runs supaschema.
+
+When a config points at a PostgreSQL database, the connection is made from the user's local machine or CI job to that configured database. supaschema does not proxy that connection through a supaschema-hosted service.
+
+## GitHub Action
+
+The GitHub Action runs inside the consumer's GitHub Actions job. It reads the checked-out repository, runs the packaged CLI, and uses the workflow `GITHUB_TOKEN` only for the configured GitHub check run, job summary, and PR comment behavior.
+
+## Support intake
+
+Public bug reports, feature requests, and commercial support requests are GitHub issue surfaces. Do not include secrets, database URLs, customer data, private schema dumps, tokens, contracts, pricing details, or confidential roadmap material in public issues.
+
+Commercial rights, response times, procurement terms, and security-review terms exist only in a signed agreement. The public support issue template is an intake path, not a private support portal.
+
+## License worker
+
+The repository includes a Cloudflare Worker for paid-pack entitlement and the hosted schema-contract registry. A deployed Worker stores license tokens by checkout session id, verifies Stripe webhook payloads, creates Stripe Checkout Sessions from the operator price map, and stores schema-contract JSON only when an authenticated customer submits it to `/contracts`.
+
+The Worker does not receive database URLs, raw migrations, application rows, or live database credentials through its normal routes. Contract registry payloads are schema metadata, so customers should treat submitted contracts as commercial data and use the registry only under approved commercial terms.
+
+## Marketplace readiness
+
+GitHub Marketplace publication still requires operator approval, live entitlement and billing, a verified publisher flow, install-threshold evidence, support terms, and legal review. Marketplace plan-change and cancellation handling must reuse the canonical license Worker entitlement path.

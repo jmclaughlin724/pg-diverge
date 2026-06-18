@@ -1,7 +1,8 @@
 ---
 title: "onboard"
 description: "Detect the current migration system and report onboarding readiness with a safety score and ordered fixes."
-keywords: ["onboard command", "migration system detection", "readiness", "adoption"]
+keywords:
+  ["onboard command", "migration system detection", "readiness", "adoption"]
 ---
 
 Use `onboard` to assess a repo's migration tooling and Postgres safety in one pass.
@@ -25,7 +26,8 @@ Detection runs against the current working directory; `--from` selects the schem
 ## Flags
 
 <ParamField path="--from" type="source">
-  Schema source to score. Defaults to the declarative tree (`config.sources.to`).
+  Schema source to score. Defaults to the declarative tree
+  (`config.sources.to`).
 </ParamField>
 
 ## What it reports
@@ -37,6 +39,6 @@ Detection runs against the current working directory; `--from` selects the schem
 
 ## Exit codes
 
-| Code | Meaning                  |
-| ---- | ------------------------ |
+| Code | Meaning                   |
+| ---- | ------------------------- |
 | 0    | Readiness report printed. |

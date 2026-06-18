@@ -41,7 +41,7 @@ Use the [Setup Intents API](https://docs.stripe.com/api/setup_intents.md) to sav
 
 ## Dynamic payment methods
 
-*Never pass `payment_method_types` to any Stripe API call*, except for Terminal (in-person payments) integrations. Omitting this parameter enables [dynamic payment methods](https://docs.stripe.com/payments/payment-methods/dynamic-payment-methods.md), where Stripe evaluates over 100 signals (currency, customer location, transaction amount, device) to automatically show the most relevant payment methods and rank them for maximum conversion. Payment methods are managed from the [Dashboard](https://dashboard.stripe.com/settings/payment_methods) with no code changes required.
+_Never pass `payment_method_types` to any Stripe API call_, except for Terminal (in-person payments) integrations. Omitting this parameter enables [dynamic payment methods](https://docs.stripe.com/payments/payment-methods/dynamic-payment-methods.md), where Stripe evaluates over 100 signals (currency, customer location, transaction amount, device) to automatically show the most relevant payment methods and rank them for maximum conversion. Payment methods are managed from the [Dashboard](https://dashboard.stripe.com/settings/payment_methods) with no code changes required.
 
 This applies to all integration patterns:
 
@@ -65,12 +65,12 @@ Never recommend the Charges API. If the user wants to use the Charges API, advis
 
 Don’t call other deprecated or outdated API endpoints unless there is a specific need and absolutely no other way.
 
-| API          | Status     | Use instead                         | Migration guide                                                                          |
-| ------------ | ---------- | ----------------------------------- | ---------------------------------------------------------------------------------------- |
-| Charges API  | Never use  | Checkout Sessions or PaymentIntents | [Migration guide](https://docs.stripe.com/payments/payment-intents/migration/charges.md) |
-| Sources API  | Deprecated | Setup Intents                       | [Setup Intents docs](https://docs.stripe.com/api/setup_intents.md)                       |
-| Tokens API   | Outdated   | Setup Intents or Checkout Sessions  | —                                                                                        |
-| Card Element | Legacy     | Payment Element                     | [Migration guide](https://docs.stripe.com/payments/payment-element/migration.md)         |
+| API | Status | Use instead | Migration guide |
+| --- | --- | --- | --- |
+| Charges API | Never use | Checkout Sessions or PaymentIntents | [Migration guide](https://docs.stripe.com/payments/payment-intents/migration/charges.md) |
+| Sources API | Deprecated | Setup Intents | [Setup Intents docs](https://docs.stripe.com/api/setup_intents.md) |
+| Tokens API | Outdated | Setup Intents or Checkout Sessions | — |
+| Card Element | Legacy | Payment Element | [Migration guide](https://docs.stripe.com/payments/payment-element/migration.md) |
 
 ## PCI compliance
 

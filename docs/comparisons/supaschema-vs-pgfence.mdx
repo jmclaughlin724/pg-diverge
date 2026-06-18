@@ -2,7 +2,13 @@
 title: "pgfence comparison"
 description: "Compare supaschema with pgfence for PostgreSQL migration safety. Both use libpg_query AST analysis; pgfence scores existing migrations and ORM migration files, while supaschema generates migrations from declarative SQL and checks them."
 keywords:
-  ["pgfence comparison", "postgres migration safety", "lock mode analysis", "libpg_query", "declarative sql"]
+  [
+    "pgfence comparison",
+    "postgres migration safety",
+    "lock mode analysis",
+    "libpg_query",
+    "declarative sql",
+  ]
 ---
 
 `supaschema` and pgfence both analyze PostgreSQL migration safety with libpg_query, PostgreSQL's own parser. pgfence is a migration-safety CLI that analyzes migration SQL (including ORM-generated migration files) for lock mode and risk. `supaschema` generates the migration from declarative SQL and then checks it.
@@ -33,16 +39,21 @@ pgfence reads migration SQL (or ORM migration files) and reports each statement'
 If your migrations come out of an ORM and you want lock scoring over those files, pgfence fits directly. If declarative SQL is your source of truth and you want generation plus checking in one tool, `supaschema` covers that lane.
 
 <Info>
-  pgfence behavior described here was checked 2026-06-17 against the pgfence
-  documentation. Confirm current behavior and licensing before relying on it.
+  Last verified 2026-06-17 against the pgfence documentation. Confirm current
+  behavior and licensing before relying on it.
 </Info>
 
 <CardGroup cols={2}>
-  <Card title="Atlas lint is paid: free alternatives" icon="scale-balanced" href="/comparisons/atlas-migrate-lint-paid-alternatives">
+  <Card
+    title="Atlas lint is paid: free alternatives"
+    icon="scale-balanced"
+    href="/comparisons/atlas-migrate-lint-paid-alternatives"
+  >
     Free Postgres migration-safety options, including pgfence and supaschema.
   </Card>
   <Card title="The check command" icon="shield-check" href="/commands/check">
-    The replay-safety and lock-hazard diagnostics supaschema runs on each migration.
+    The replay-safety and lock-hazard diagnostics supaschema runs on each
+    migration.
   </Card>
 </CardGroup>
 

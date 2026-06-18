@@ -17,12 +17,12 @@ For new Connect platforms, ALWAYS use the [Accounts v2 API](https://docs.stripe.
 
 Configure connected accounts using `controller` properties instead of legacy account types:
 
-| Property                            | Controls                                     |
-| ----------------------------------- | -------------------------------------------- |
-| `controller.losses.payments`        | Who is liable for negative balances          |
-| `controller.fees.payer`             | Who pays Stripe fees                         |
-| `controller.stripe_dashboard.type`  | Dashboard access (`full`, `express`, `none`) |
-| `controller.requirement_collection` | Who collects onboarding requirements         |
+| Property | Controls |
+| --- | --- |
+| `controller.losses.payments` | Who is liable for negative balances |
+| `controller.fees.payer` | Who pays Stripe fees |
+| `controller.stripe_dashboard.type` | Dashboard access (`full`, `express`, `none`) |
+| `controller.requirement_collection` | Who collects onboarding requirements |
 
 Use `defaults.responsibilities`, `dashboard`, and `configuration` as described in [connected account configuration](https://docs.stripe.com/connect/accounts-v2/connected-account-configuration.md).
 

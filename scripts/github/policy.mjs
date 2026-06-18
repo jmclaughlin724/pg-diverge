@@ -43,8 +43,8 @@ export function git(args, options = {}) {
   return run("git", args, options).stdout.trim();
 }
 
-export function ghJson(args) {
-  const result = run("gh", args);
+export function ghJson(args, options = {}) {
+  const result = run("gh", args, options);
   return JSON.parse(result.stdout);
 }
 

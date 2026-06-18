@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { contractDrift, type SchemaContract } from "../src/contract-registry.js";
+import { contractDrift } from "../src/contract-registry.js";
 import { validateIntake } from "../src/intake.js";
+import type { SchemaContract } from "../src/schema-contract.js";
 
 const SECRET_URL = ["postgres://svc:", "s3cr3t", "@db.internal/app"].join("");
 const SECRET_KV = ["pass", "word=", "p4ssval"].join("");
@@ -89,6 +90,13 @@ describe("contractDrift intake gate (S1 × X51)", () => {
 
   it("fails closed on a malformed contract", () => {
     const codes = contractDrift(valid, null as unknown as SchemaContract).map((d) => d.code);
+    expect(codes).toContain("SUPA_INTAKE_MALFORMED");
+  });
+
+  it("fails closed when the contract shape is not usable for drift comparison", () => {
+    const codes = contractDrift(valid, { schemas: { public: { enums: [], tables: [null] } } }).map(
+      (d) => d.code
+    );
     expect(codes).toContain("SUPA_INTAKE_MALFORMED");
   });
 });

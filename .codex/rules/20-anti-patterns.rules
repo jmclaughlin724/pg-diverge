@@ -34,6 +34,7 @@
 # | Secrets | Reading `.env*`, key, certificate, or secret directories just to inspect configuration. | Rule 15; Bash blocker; FastMCP deny-list. |
 # | Secrets | Secrets in argv, literal secret flags, inline secret env assignments, unredacted diagnostics, or package/docs examples containing real credentials. | Rule 15; Bash blocker; redaction tests; package/docs checks. |
 # | Shell safety | Interpolating user-controlled input into shell commands, or combining child-process args with `shell: true`. | Rules 13 and 15; tooling-stack guard. |
+# | Monetization | Adding Stripe checkout, Stripe secrets/catalog/session handling, GitHub Marketplace purchase/webhook handling, or license issuance outside `services/license-worker/**`, `scripts/stripe/create-catalog.mjs`, or `src/license.ts`. | Rule 01; `scripts/guards/check-canonical-surfaces.mjs`; `npm run guard:canonical-surfaces`. |
 # | Database | Raw SQL DDL through Bash or database CLIs for structural changes that belong in the declarative schema tree. | `supaschema.md`; Bash blocker; `supaschema diff` and `supaschema check`. |
 # | Database | Hand-editing generated migrations, overwriting generated migration files, bypassing lineage, using `--no-check-chain` without approval, or applying through `sync` without configured automatic sync approval or an explicit user-approved override target. | `supaschema.md`; migration hooks; supaschema guards. |
 # | Database | Wildcard destructive hints, unreviewed destructive operations, inferred renames, or committed hard-coded database URLs. | `supaschema.md`; config and migration checks. |
@@ -44,6 +45,7 @@
 # | MCP | Exposing write authority, arbitrary shell execution, raw SQL, credential reads, external LLM proxying, or reads outside the repo in the FastMCP surface. | Rule 11; FastMCP guard and Python tests. |
 # | Agent surfaces | Duplicating durable policy across AGENTS, rules, skills, hooks, commands, generated mirrors, or docs; hand-editing generated `.codex/**` / `.agents/**` mirrors. | Rules 12, 17, and 18; `npm run sync:llm`; `npm run guard:agent`. |
 # | Agent surfaces | Adding regex intent metadata, unresolved placeholders, invented commands or paths, hidden assumptions, or stale plan text to agent prompts/rules/skills. | Rule 17; docs and agent-surface guards. |
+# | Docs | Publishing comparison pages with undated or unsourced external claims. | Rule 02; `scripts/check-docs-standard.mjs`; `npm run docs:lint`. |
 # | CI/release | Unpinning actions, adding stored npm publish tokens, weakening OIDC/provenance, path-skipping required gates, moving DB proofs into release, bypassing hooks, or publishing release notes from generated notes instead of the changelog. | Rules 09 and 19; CI and release guards. |
 #
 # ## Verification

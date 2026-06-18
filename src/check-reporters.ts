@@ -3,6 +3,22 @@ import { formatDiagnostics } from "./diagnostics.js";
 
 export type CheckReporter = "text" | "github" | "sarif" | "json";
 
+const CHECK_REPORTERS: readonly CheckReporter[] = ["text", "github", "sarif", "json"];
+
+export const CHECK_REPORTER_DISPLAY = CHECK_REPORTERS.join("|");
+
+export function isCheckReporter(value: string): value is CheckReporter {
+  return CHECK_REPORTERS.some((reporter) => reporter === value);
+}
+
+export function parseCheckReporter(
+  value: string | undefined,
+  fallback: CheckReporter = "text"
+): CheckReporter | undefined {
+  const reporter = value ?? fallback;
+  return isCheckReporter(reporter) ? reporter : undefined;
+}
+
 export interface FileDiagnostics {
   diagnostics: Diagnostic[];
   file: string;

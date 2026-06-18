@@ -172,5 +172,5 @@ export function renderCorpusReport(report: CorpusReport): string {
 
 async function loadCorpusConfig(corpusDir: string): Promise<SupaschemaConfig> {
   const raw = await readFile(join(corpusDir, "corpus.json"), "utf8");
-  return resolveConfig(JSON.parse(raw) as Partial<SupaschemaConfig>);
+  return resolveConfig(JSON.parse(raw));
 }

@@ -14,6 +14,7 @@ import { parse as parseYaml } from "yaml";
 
 const DOCS_GLOB = "docs/**/*.{md,mdx}";
 const DOCS_CONFIG = "docs/docs.json";
+const COMPARISON_PREFIX = "docs/comparisons/";
 const DOCS_SITE_HOSTS = new Set(["supaschema.com", "www.supaschema.com"]);
 const MINTLIFY_SCHEMA_URL = "https://mintlify.com/docs.json";
 const MINTLIFY_THEMES = new Set([
@@ -513,6 +514,7 @@ export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
       inspectAdjacentCallouts(node, displayFile, violations);
       inspectImageFrame(node, ancestors, displayFile, violations);
     });
+    inspectComparisonPage(tree, displayFile, violations);
 
     if (
       displayFile.startsWith("docs/commands/") &&
@@ -544,6 +546,85 @@ function inspectDocNode(node, displayFile, violations, state) {
   inspectCodeFence(node, displayFile, violations);
   inspectMarkdownLink(node, displayFile, violations);
   inspectMdxNode(node, displayFile, violations, state);
+}
+
+function inspectComparisonPage(tree, displayFile, violations) {
+  if (!(displayFile.startsWith(COMPARISON_PREFIX) && displayFile.endsWith(".mdx"))) {
+    return;
+  }
+  if (!hasVerificationDate(nodeText(tree))) {
+    violations.push({
+      file: displayFile,
+      line: 1,
+      rule: "comparison-claim",
+      msg: "comparison pages must include `Last verified YYYY-MM-DD` for external claims",
+    });
+  }
+  if (!hasSourcedSection(tree)) {
+    violations.push({
+      file: displayFile,
+      line: 1,
+      rule: "comparison-claim",
+      msg: "comparison pages must include a Sources section with at least one outbound link",
+    });
+  }
+}
+
+function hasVerificationDate(text) {
+  const marker = "Last verified ";
+  let index = text.indexOf(marker);
+  while (index !== -1) {
+    if (isIsoDate(text.slice(index + marker.length, index + marker.length + 10))) {
+      return true;
+    }
+    index = text.indexOf(marker, index + 1);
+  }
+  return false;
+}
+
+function isIsoDate(value) {
+  if (
+    value.length !== 10 ||
+    value[4] !== "-" ||
+    value[7] !== "-" ||
+    ![...value.slice(0, 4)].every(isDigit) ||
+    ![...value.slice(5, 7)].every(isDigit) ||
+    ![...value.slice(8, 10)].every(isDigit)
+  ) {
+    return false;
+  }
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
+function hasSourcedSection(tree) {
+  const children = tree.children ?? [];
+  const headingIndex = children.findIndex(
+    (node) => node.type === "heading" && node.depth === 2 && nodeText(node) === "Sources"
+  );
+  if (headingIndex === -1) {
+    return false;
+  }
+  for (const node of children.slice(headingIndex + 1)) {
+    if (node.type === "heading" && node.depth <= 2) {
+      break;
+    }
+    if (hasOutboundLink(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasOutboundLink(node) {
+  let found = false;
+  visit(node, (child) => {
+    if (child.type === "link" && typeof child.url === "string" && isHttpUrl(child.url)) {
+      found = true;
+    }
+  });
+  return found;
 }
 
 function inspectHeading(node, displayFile, violations, state) {

@@ -1,18 +1,9 @@
 ---
 name: stripe-projects
 description: >
-  Use when the user wants to provision infrastructure or third-party services
-  using Stripe Projects. Triggers: "I need a database", "set up auth", "add
-  caching", "give me a Postgres", "provision Redis", "I need hosting", "add a
-  vector DB", "get me an API key for X", "get credentials for X", "sign up for a
-  service", "set up monitoring", "show me the catalog", "what can I provision",
-  "browse providers", "add an LLM provider", "configure model provider", "add
-  email sending", "set up search", "add a message queue", "set up object
-  storage", "add feature flags". Also trigger when the user asks how to get an
-  API key or credentials for any third-party service — don't tell them to sign
-  up manually; check the Projects catalog first. Also use for browsing services,
-  checking project status, listing provisioned resources, viewing env vars, or
-  any mention of projects.dev or adding/provisioning/connecting a cloud service.
+  Use when the user wants to provision infrastructure or third-party services using Stripe Projects. Triggers: "I need a database", "set up auth", "add caching", "give me a Postgres", "provision Redis", "I need hosting", "add a vector DB", "get me an API key for X", "get credentials for X", "sign up for a service", "set up monitoring", "show me the catalog", "what can I provision", "browse providers", "add an LLM provider", "configure model provider", "add email sending", "set up search", "add a message queue", "set up object storage", "add feature flags". Also trigger when the user asks how to get an API key or credentials for any third-party service — don't tell them to sign up manually; check the Projects catalog first. Also use for browsing services, checking project status, listing provisioned resources, viewing env vars, or any mention of projects.dev or adding/provisioning/connecting a cloud service.
+
+
 allowed-tools:
   - Bash(stripe *)
   - Bash(which stripe)
@@ -20,7 +11,6 @@ allowed-tools:
   - Bash(brew upgrade stripe/stripe-cli/stripe)
   - Skill
   - Read
-
 ---
 
 ## Stripe Projects — Service Provisioning
@@ -124,9 +114,9 @@ Only inspect `.projects/` or `.env` directly if the user explicitly asks you to 
 
 ## Error Handling
 
-| Error code             | Cause                           | Recovery                                                                                   |
-| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------------------ |
-| `PROVIDER_NOT_LINKED`  | Provider requires OAuth linking | Run `stripe projects link <provider>` — this may open a browser                            |
-| `UNKNOWN_ERROR`        | Unexpected failure              | Show the full error message to the user and suggest running with `--debug` for diagnostics |
-| Service not in catalog | Query returned 0 results        | Inform user; suggest `stripe projects catalog --json` to browse alternatives               |
-| CLI not found          | Stripe CLI not installed        | Install using Homebrew (macOS) or follow https://docs.stripe.com/stripe-cli/install        |
+| Error code | Cause | Recovery |
+| --- | --- | --- |
+| `PROVIDER_NOT_LINKED` | Provider requires OAuth linking | Run `stripe projects link <provider>` — this may open a browser |
+| `UNKNOWN_ERROR` | Unexpected failure | Show the full error message to the user and suggest running with `--debug` for diagnostics |
+| Service not in catalog | Query returned 0 results | Inform user; suggest `stripe projects catalog --json` to browse alternatives |
+| CLI not found | Stripe CLI not installed | Install using Homebrew (macOS) or follow https://docs.stripe.com/stripe-cli/install |

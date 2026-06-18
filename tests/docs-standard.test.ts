@@ -470,4 +470,33 @@ noindex: "no"
     expect(localRunnerMessages).toContain("must not present npm install as universal");
     expect(localRunnerMessages).toContain("must not present npx supaschema as universal");
   });
+
+  it("requires comparison pages to carry dated sources", async () => {
+    const missing = await lintOne(
+      "docs/comparisons/example.mdx",
+      page(`
+## Comparison
+
+This page compares an external tool.
+`)
+    );
+    const sourced = await lintOne(
+      "docs/comparisons/example.mdx",
+      page(`
+<Info>
+  Last verified 2026-06-18 against the vendor documentation.
+</Info>
+
+## Sources
+
+- [Vendor documentation](https://example.com/docs)
+`)
+    );
+
+    expect(missing.map((violation) => violation.rule)).toEqual([
+      "comparison-claim",
+      "comparison-claim",
+    ]);
+    expect(sourced).toEqual([]);
+  });
 });

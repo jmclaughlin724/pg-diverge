@@ -1,5 +1,6 @@
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { isEntitled, verifyLicenseToken } from "../../../src/license.js";
+import { isSchemaContract } from "../../../src/schema-contract.js";
 import {
   type CheckoutRequest,
   createCheckoutSession,
@@ -40,6 +41,26 @@ interface CheckoutCompletion {
   repo: string;
   sessionId: string;
 }
+
+interface LicenseWorkerRuntime {
+  cancelUrl: string;
+  contracts: WorkerStore;
+  licensePublicKeyPem: string;
+  licenses: WorkerStore;
+  planCatalog: ReadonlyMap<string, PlanPrice>;
+  privateKey: ReturnType<typeof createPrivateKey>;
+  stripeSecretKey: string;
+  stripeWebhookSecret: string;
+  successUrl: string;
+}
+
+type LicenseWorkerStringKey =
+  | "CHECKOUT_CANCEL_URL"
+  | "CHECKOUT_SUCCESS_URL"
+  | "STRIPE_PRICE_MAP"
+  | "STRIPE_SECRET_KEY"
+  | "STRIPE_WEBHOOK_SECRET"
+  | "SUPASCHEMA_LICENSE_PRIVATE_KEY";
 
 function asObject(value: unknown): object | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
@@ -121,8 +142,7 @@ export function extractCheckoutCompletion(event: unknown): CheckoutCompletion | 
 
 async function handleWebhook(
   request: Request,
-  env: LicenseWorkerEnv,
-  store: WorkerStore,
+  runtime: LicenseWorkerRuntime,
   nowSeconds: number
 ): Promise<Response> {
   if (request.method !== "POST") {
@@ -133,7 +153,7 @@ async function handleWebhook(
     return new Response("missing signature", { status: 400 });
   }
   const rawBody = await request.text();
-  if (!verifyStripeSignature(rawBody, signature, env.STRIPE_WEBHOOK_SECRET, nowSeconds)) {
+  if (!verifyStripeSignature(rawBody, signature, runtime.stripeWebhookSecret, nowSeconds)) {
     return new Response("invalid signature", { status: 400 });
   }
   let event: unknown;
@@ -147,16 +167,15 @@ async function handleWebhook(
     return jsonResponse({ ignored: true });
   }
 
-  const existing = await store.get(completion.sessionId);
+  const existing = await runtime.licenses.get(completion.sessionId);
   if (existing !== null) {
     return jsonResponse({ idempotent: true, issued: true });
   }
-  const privateKey = createPrivateKey(env.SUPASCHEMA_LICENSE_PRIVATE_KEY);
   const token = issueLicenseToken(
     licenseClaimsFor(completion.repo, completion.plan, nowSeconds),
-    privateKey
+    runtime.privateKey
   );
-  await store.put(completion.sessionId, token);
+  await runtime.licenses.put(completion.sessionId, token);
   return jsonResponse({ issued: true, repo: completion.repo });
 }
 
@@ -174,7 +193,7 @@ async function handleLicenseRetrieval(url: URL, store: WorkerStore): Promise<Res
 
 async function handleCheckout(
   request: Request,
-  env: LicenseWorkerEnv,
+  runtime: LicenseWorkerRuntime,
   url: URL,
   stripeFetch: StripeFetch
 ): Promise<Response> {
@@ -189,24 +208,19 @@ async function handleCheckout(
   if (!isValidPlan(plan)) {
     return new Response("invalid plan", { status: 400 });
   }
-  let planPrice: PlanPrice | undefined;
-  try {
-    planPrice = parsePlanCatalog(env.STRIPE_PRICE_MAP).get(plan);
-  } catch {
-    return new Response("checkout misconfigured", { status: 500 });
-  }
+  const planPrice = runtime.planCatalog.get(plan);
   if (planPrice === undefined) {
     return new Response("unknown plan", { status: 404 });
   }
   const checkout: CheckoutRequest = {
-    cancelUrl: env.CHECKOUT_CANCEL_URL,
+    cancelUrl: runtime.cancelUrl,
     plan,
     planPrice,
     repo,
-    successUrl: successUrlWithSessionId(env.CHECKOUT_SUCCESS_URL),
+    successUrl: successUrlWithSessionId(runtime.successUrl),
   };
   try {
-    const sessionUrl = await createCheckoutSession(stripeFetch, env.STRIPE_SECRET_KEY, checkout);
+    const sessionUrl = await createCheckoutSession(stripeFetch, runtime.stripeSecretKey, checkout);
     return new Response(null, { headers: { location: sessionUrl }, status: 302 });
   } catch {
     return new Response("checkout unavailable", { status: 502 });
@@ -215,8 +229,7 @@ async function handleCheckout(
 
 async function handleContractRegistry(
   request: Request,
-  env: LicenseWorkerEnv,
-  store: WorkerStore,
+  runtime: LicenseWorkerRuntime,
   url: URL,
   nowSeconds: number
 ): Promise<Response> {
@@ -224,11 +237,11 @@ async function handleContractRegistry(
   if (contract === null) {
     return new Response("invalid contract key", { status: 400 });
   }
-  if (!isRegistryAuthorized(request, env, contract.repo, nowSeconds)) {
+  if (!isRegistryAuthorized(request, runtime.licensePublicKeyPem, contract.repo, nowSeconds)) {
     return new Response("unauthorized", { status: 401 });
   }
   if (url.pathname === "/contracts" && request.method === "GET") {
-    const stored = await store.get(contract.key);
+    const stored = await runtime.contracts.get(contract.key);
     return stored === null ? jsonResponse({ found: false }, 404) : jsonResponse(JSON.parse(stored));
   }
   if (url.pathname === "/contracts" && request.method === "PUT") {
@@ -236,11 +249,11 @@ async function handleContractRegistry(
     if (payload === null) {
       return new Response("invalid contract", { status: 400 });
     }
-    await store.put(contract.key, JSON.stringify(payload));
+    await runtime.contracts.put(contract.key, JSON.stringify(payload));
     return jsonResponse({ stored: true });
   }
   if (url.pathname === "/contracts" && request.method === "DELETE") {
-    await store.delete(contract.key);
+    await runtime.contracts.delete(contract.key);
     return jsonResponse({ deleted: true });
   }
   return new Response("method not allowed", { status: 405 });
@@ -257,21 +270,13 @@ function contractStorageKey(url: URL): { key: string; repo: string } | null {
 
 function isRegistryAuthorized(
   request: Request,
-  env: LicenseWorkerEnv,
+  publicKeyPem: string,
   repo: string,
   nowSeconds: number
 ): boolean {
   const authorization = request.headers.get("authorization") ?? "";
   const [scheme, token, extra] = authorization.split(" ");
   if (scheme !== "Bearer" || token === undefined || token.length === 0 || extra !== undefined) {
-    return false;
-  }
-  let publicKeyPem: string;
-  try {
-    publicKeyPem = createPublicKey(createPrivateKey(env.SUPASCHEMA_LICENSE_PRIVATE_KEY))
-      .export({ format: "pem", type: "spki" })
-      .toString();
-  } catch {
     return false;
   }
   return isEntitled(verifyLicenseToken(token, publicKeyPem), repo, nowSeconds);
@@ -287,89 +292,113 @@ async function readContract(request: Request): Promise<unknown | null> {
   return isSchemaContract(payload) ? payload : null;
 }
 
-function isSchemaContract(value: unknown): boolean {
-  const root = asObject(value);
-  if (root === null || Object.keys(root).length !== 1) {
+function requiredString(
+  env: LicenseWorkerEnv,
+  key: LicenseWorkerStringKey,
+  errors: string[]
+): string | undefined {
+  const value = env[key];
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  errors.push(`${key} is required`);
+  return;
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
     return false;
   }
-  const schemas = asObject(property(root, "schemas"));
-  return schemas !== null && Object.values(schemas).every(isSchemaContractEntry);
 }
 
-function isSchemaContractEntry(value: unknown): boolean {
-  const entry = asObject(value);
-  const enums = entry === null ? undefined : property(entry, "enums");
-  const tables = entry === null ? undefined : property(entry, "tables");
+function hasStoreMethods(value: unknown): value is WorkerStore {
+  const store = asObject(value);
   return (
-    entry !== null &&
-    Object.keys(entry).length === 2 &&
-    Array.isArray(enums) &&
-    Array.isArray(tables) &&
-    enums.every(isSchemaContractEnum) &&
-    tables.every(isSchemaContractTable)
+    store !== null &&
+    typeof property(store, "delete") === "function" &&
+    typeof property(store, "get") === "function" &&
+    typeof property(store, "put") === "function"
   );
 }
 
-function isSchemaContractEnum(value: unknown): boolean {
-  const entry = asObject(value);
-  const name = entry === null ? undefined : property(entry, "name");
-  const values = entry === null ? undefined : property(entry, "values");
-  return (
-    entry !== null &&
-    Object.keys(entry).length === 2 &&
-    typeof name === "string" &&
-    Array.isArray(values) &&
-    values.every((item) => typeof item === "string")
-  );
-}
-
-function isSchemaContractTable(value: unknown): boolean {
-  const entry = asObject(value);
-  const name = entry === null ? undefined : property(entry, "name");
-  const columns = entry === null ? undefined : property(entry, "columns");
-  const primaryKey = entry === null ? undefined : property(entry, "primaryKey");
-  const relationships = entry === null ? undefined : property(entry, "relationships");
-  const uniqueColumnSets = entry === null ? undefined : property(entry, "uniqueColumnSets");
-  return (
-    entry !== null &&
-    typeof name === "string" &&
-    Array.isArray(columns) &&
-    columns.every(isSchemaContractColumn) &&
-    (primaryKey === undefined || isStringArray(primaryKey)) &&
-    Array.isArray(relationships) &&
-    relationships.every(isSchemaContractRelationship) &&
-    Array.isArray(uniqueColumnSets) &&
-    uniqueColumnSets.every(isStringArray)
-  );
-}
-
-function isSchemaContractColumn(value: unknown): boolean {
-  const entry = asObject(value);
-  const identity = entry === null ? undefined : property(entry, "identity");
-  return (
-    entry !== null &&
-    typeof property(entry, "name") === "string" &&
-    typeof property(entry, "notNull") === "boolean" &&
-    typeof property(entry, "type") === "string" &&
-    (identity === undefined || typeof identity === "string")
-  );
-}
-
-function isSchemaContractRelationship(value: unknown): boolean {
-  const entry = asObject(value);
-  return (
-    entry !== null &&
-    isStringArray(property(entry, "columns")) &&
-    typeof property(entry, "foreignKeyName") === "string" &&
-    typeof property(entry, "isOneToOne") === "boolean" &&
-    isStringArray(property(entry, "referencedColumns")) &&
-    typeof property(entry, "referencedRelation") === "string" &&
-    typeof property(entry, "referencedSchema") === "string"
-  );
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+function licenseWorkerRuntime(
+  env: LicenseWorkerEnv,
+  stores: LicenseWorkerStores
+): { errors: string[]; runtime?: LicenseWorkerRuntime } {
+  const errors: string[] = [];
+  const cancelUrl = requiredString(env, "CHECKOUT_CANCEL_URL", errors);
+  const successUrl = requiredString(env, "CHECKOUT_SUCCESS_URL", errors);
+  const priceMap = requiredString(env, "STRIPE_PRICE_MAP", errors);
+  const stripeSecretKey = requiredString(env, "STRIPE_SECRET_KEY", errors);
+  const stripeWebhookSecret = requiredString(env, "STRIPE_WEBHOOK_SECRET", errors);
+  const privateKeyPem = requiredString(env, "SUPASCHEMA_LICENSE_PRIVATE_KEY", errors);
+  let planCatalog: ReadonlyMap<string, PlanPrice> | undefined;
+  let privateKey: ReturnType<typeof createPrivateKey> | undefined;
+  let licensePublicKeyPem: string | undefined;
+  if (cancelUrl !== undefined && !isHttpsUrl(cancelUrl)) {
+    errors.push("CHECKOUT_CANCEL_URL must be an HTTPS URL");
+  }
+  if (successUrl !== undefined && !isHttpsUrl(successUrl)) {
+    errors.push("CHECKOUT_SUCCESS_URL must be an HTTPS URL");
+  }
+  if (priceMap !== undefined) {
+    try {
+      planCatalog = parsePlanCatalog(priceMap);
+      if (planCatalog.size === 0) {
+        errors.push("STRIPE_PRICE_MAP must contain at least one plan");
+      }
+    } catch {
+      errors.push("STRIPE_PRICE_MAP must be valid");
+    }
+  }
+  if (privateKeyPem !== undefined) {
+    try {
+      privateKey = createPrivateKey(privateKeyPem);
+      if (privateKey.asymmetricKeyType === "ed25519") {
+        licensePublicKeyPem = createPublicKey(privateKey)
+          .export({ format: "pem", type: "spki" })
+          .toString();
+      } else {
+        errors.push("SUPASCHEMA_LICENSE_PRIVATE_KEY must be an Ed25519 private key");
+      }
+    } catch {
+      errors.push("SUPASCHEMA_LICENSE_PRIVATE_KEY must be an Ed25519 private key");
+    }
+  }
+  if (!hasStoreMethods(stores.contracts)) {
+    errors.push("CONTRACT_KV must provide get, put, and delete");
+  }
+  if (!hasStoreMethods(stores.licenses)) {
+    errors.push("LICENSE_KV must provide get, put, and delete");
+  }
+  if (
+    errors.length > 0 ||
+    cancelUrl === undefined ||
+    successUrl === undefined ||
+    planCatalog === undefined ||
+    privateKey === undefined ||
+    licensePublicKeyPem === undefined ||
+    stripeSecretKey === undefined ||
+    stripeWebhookSecret === undefined
+  ) {
+    return { errors };
+  }
+  return {
+    errors,
+    runtime: {
+      cancelUrl,
+      contracts: stores.contracts,
+      licensePublicKeyPem,
+      licenses: stores.licenses,
+      planCatalog,
+      privateKey,
+      stripeSecretKey,
+      stripeWebhookSecret,
+      successUrl,
+    },
+  };
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -386,18 +415,23 @@ export function handleLicenseWorker(
   nowSeconds: number,
   stripeFetch: StripeFetch
 ): Promise<Response> {
+  const readiness = licenseWorkerRuntime(env, stores);
+  const runtime = readiness.runtime;
+  if (runtime === undefined) {
+    return Promise.resolve(new Response("worker misconfigured", { status: 500 }));
+  }
   const url = new URL(request.url);
   if (url.pathname === "/checkout") {
-    return handleCheckout(request, env, url, stripeFetch);
+    return handleCheckout(request, runtime, url, stripeFetch);
   }
   if (url.pathname === "/contracts") {
-    return handleContractRegistry(request, env, stores.contracts, url, nowSeconds);
+    return handleContractRegistry(request, runtime, url, nowSeconds);
   }
   if (url.pathname === "/webhook") {
-    return handleWebhook(request, env, stores.licenses, nowSeconds);
+    return handleWebhook(request, runtime, nowSeconds);
   }
   if (url.pathname === "/license" && request.method === "GET") {
-    return handleLicenseRetrieval(url, stores.licenses);
+    return handleLicenseRetrieval(url, runtime.licenses);
   }
   return Promise.resolve(new Response("not found", { status: 404 }));
 }

@@ -4,26 +4,15 @@ description: Verify that a code change actually does what it's supposed to by ru
 user-invocable: true
 ---
 
-**Verification is runtime observation.** You build the app, run it,
-drive it to where the changed code executes, and capture what you
-see. That capture is your evidence. Nothing else is.
+**Verification is runtime observation.** You build the app, run it, drive it to where the changed code executes, and capture what you see. That capture is your evidence. Nothing else is.
 
-**Don't run tests. Don't typecheck.** Running them here proves you
-can run CI — not that the change works. Not as a warm-up,
-not "just to be sure," not as a regression sweep after. The time
-goes to running the app instead.
+**Don't run tests. Don't typecheck.** Running them here proves you can run CI — not that the change works. Not as a warm-up, not "just to be sure," not as a regression sweep after. The time goes to running the app instead.
 
-**Don't import-and-call.** `import { foo } from './src/...'` then
-`console.log(foo(x))` is a unit test you wrote. The function did what
-the function does — you knew that from reading it. The app never ran.
-Whatever calls `foo` in the real codebase ends at a CLI, a socket, or
-a window. Go there.
+**Don't import-and-call.** `import { foo } from './src/...'` then `console.log(foo(x))` is a unit test you wrote. The function did what the function does — you knew that from reading it. The app never ran. Whatever calls `foo` in the real codebase ends at a CLI, a socket, or a window. Go there.
 
 ## Find the change
 
-The scope is what you're verifying — usually a diff, sometimes just
-"does X work." In a git repo, establish the full range (a branch may
-be many commits, or the change may still be uncommitted):
+The scope is what you're verifying — usually a diff, sometimes just "does X work." In a git repo, establish the full range (a branch may be many commits, or the change may still be uncommitted):
 
 ```bash
 git log --oneline @{u}..              # count commits (if upstream set)
@@ -33,21 +22,16 @@ git diff HEAD --stat                  # uncommitted: working tree vs HEAD
 gh pr diff                            # if in a PR context
 ```
 
-State the commit count. Large diff truncating? Redirect to a file
-then Read it. Repo but no diff from any of these → say so, stop.
-**No repo → the scope is whatever the user named; ask if they
-didn't.**
+State the commit count. Large diff truncating? Redirect to a file then Read it. Repo but no diff from any of these → say so, stop. **No repo → the scope is whatever the user named; ask if they didn't.**
 
-**The diff is ground truth. Any description is a claim about it.**
-Read both. If they disagree, that's a finding.
+**The diff is ground truth. Any description is a claim about it.** Read both. If they disagree, that's a finding.
 
 ## Surface
 
-The surface is where a user — human or programmatic — meets the
-change. That's where you observe.
+The surface is where a user — human or programmatic — meets the change. That's where you observe.
 
 | Change reaches | Surface | You |
-|---|---|---|
+| --- | --- | --- |
 | CLI / TUI | terminal | type the command, capture the pane — [example](examples/cli.md) |
 | Server / API | socket | send the request, capture the response — [example](examples/server.md) |
 | GUI | pixels | drive it under xvfb/Playwright, screenshot |
@@ -55,45 +39,23 @@ change. That's where you observe.
 | Prompt / agent config | the agent | run the agent, capture its behavior |
 | CI workflow | Actions | dispatch it, read the run |
 
-**Internal function? Not a surface.** Something in the repo calls it
-and that caller ends at one of the rows above. Follow it there. A
-bash security gate's surface isn't the function's return value — it's
-the CLI prompting or auto-allowing when you type the command.
+**Internal function? Not a surface.** Something in the repo calls it and that caller ends at one of the rows above. Follow it there. A bash security gate's surface isn't the function's return value — it's the CLI prompting or auto-allowing when you type the command.
 
-**No runtime surface at all** — docs-only, type declarations with no
-emit, build config that produces no behavioral diff — report
-**SKIP — no runtime surface: (reason).** Don't run tests to fill
-the space.
+**No runtime surface at all** — docs-only, type declarations with no emit, build config that produces no behavioral diff — report **SKIP — no runtime surface: (reason).** Don't run tests to fill the space.
 
-**Tests in the diff are the author's evidence, not a surface.** CI
-runs them. You'd be re-running CI. Tests-only PR → SKIP, one line.
-Mixed src+tests → verify the src, ignore the test files. Reading a
-test to learn what to check is fine — it's a spec. But then go run
-the app. Checking that assertions match source is code review.
+**Tests in the diff are the author's evidence, not a surface.** CI runs them. You'd be re-running CI. Tests-only PR → SKIP, one line. Mixed src+tests → verify the src, ignore the test files. Reading a test to learn what to check is fine — it's a spec. But then go run the app. Checking that assertions match source is code review.
 
 ## Get a handle
 
-**Check `.claude/skills/` first — even if you already know how to
-build and run.** A matching `verifier-*` skill is the repo's
-evidence-capture protocol: it wraps the session so a reviewer can
-replay what you saw (recording, screenshots). Drive the surface
-without it and you get a verdict with no replay.
+**Check `.claude/skills/` first — even if you already know how to build and run.** A matching `verifier-*` skill is the repo's evidence-capture protocol: it wraps the session so a reviewer can replay what you saw (recording, screenshots). Drive the surface without it and you get a verdict with no replay.
 
 ```bash
 ls .claude/skills/
 ```
 
-- **`verifier-*` matching your surface** (CLI verifier for a CLI
-  change, etc.) → invoke it with the Skill tool and follow its
-  setup. Mismatched surface → skip that one, try the next. Stale
-  verifier (fails on mechanics unrelated to the change) → ask the
-  user whether to patch it; don't FAIL the change for verifier rot.
-- **`run-*` but no matching verifier** → use its build/launch
-  primitives as your handle.
-- **Neither** → cold start from README/package.json/Makefile. Timebox
-  ~15min. Stuck → BLOCKED with exactly where, plus a filled-in
-  `/run-skill-generator` prompt. Got through → note the working
-  build/launch recipe so it can become a `verifier-*` skill.
+- **`verifier-*` matching your surface** (CLI verifier for a CLI change, etc.) → invoke it with the Skill tool and follow its setup. Mismatched surface → skip that one, try the next. Stale verifier (fails on mechanics unrelated to the change) → ask the user whether to patch it; don't FAIL the change for verifier rot.
+- **`run-*` but no matching verifier** → use its build/launch primitives as your handle.
+- **Neither** → cold start from README/package.json/Makefile. Timebox ~15min. Stuck → BLOCKED with exactly where, plus a filled-in `/run-skill-generator` prompt. Got through → note the working build/launch recipe so it can become a `verifier-*` skill.
 
 ## Drive it
 
@@ -102,70 +64,38 @@ Smallest path that makes the changed code execute:
 - Changed a flag? Run with it.
 - Changed a handler? Hit that route.
 - Changed error handling? Trigger the error.
-- Changed an internal function? Find the CLI command / request / render
-  that reaches it. Run that.
+- Changed an internal function? Find the CLI command / request / render that reaches it. Run that.
 
-**Read your plan back before running.** If every step is build /
-typecheck / run test file — you've planned a CI rerun, not a
-verification. Find a step that reaches the surface or report BLOCKED.
+**Read your plan back before running.** If every step is build / typecheck / run test file — you've planned a CI rerun, not a verification. Find a step that reaches the surface or report BLOCKED.
 
-**The verdict is table stakes. Your observations are the signal.**
-A PASS with three sharp "hey, I noticed…" lines is worth more than a
-bare PASS. You're the only reviewer who actually *ran* the thing —
-anything that made you pause, work around, or go "huh" is information
-the author doesn't have. Don't filter for "is this a bug." Filter for
-"would I mention this if they were sitting next to me."
+**The verdict is table stakes. Your observations are the signal.** A PASS with three sharp "hey, I noticed…" lines is worth more than a bare PASS. You're the only reviewer who actually _ran_ the thing — anything that made you pause, work around, or go "huh" is information the author doesn't have. Don't filter for "is this a bug." Filter for "would I mention this if they were sitting next to me."
 
-**End-to-end, through the real interface.** Pieces passing in
-isolation doesn't mean the flow works — seams are where bugs hide.
-If users click buttons, test by clicking buttons, not by curling the
-API underneath.
+**End-to-end, through the real interface.** Pieces passing in isolation doesn't mean the flow works — seams are where bugs hide. If users click buttons, test by clicking buttons, not by curling the API underneath.
 
-**Destructive path?** If the change touches code that deletes,
-publishes, sends, or writes outside the workspace and there's no
-dry-run or safe target, don't drive it live. Verify what you can
-around it and say which path you didn't exercise and why.
+**Destructive path?** If the change touches code that deletes, publishes, sends, or writes outside the workspace and there's no dry-run or safe target, don't drive it live. Verify what you can around it and say which path you didn't exercise and why.
 
 ## Push on it
 
-The claim checked out — that's the first half. Confirming is step
-one, not the job. The description is what the author intended;
-your value is what they didn't.
+The claim checked out — that's the first half. Confirming is step one, not the job. The description is what the author intended; your value is what they didn't.
 
-You know exactly what changed. Probe *around* it, at the same
-surface you just drove:
+You know exactly what changed. Probe _around_ it, at the same surface you just drove:
 
-- **New flag / option** → empty value, passed twice, combined with a
-  conflicting flag, typo'd (does the error name it?)
-- **New handler / route** → wrong method, malformed body, missing
-  required field, oversized payload
-- **Changed error path** → the adjacent errors it didn't touch —
-  did the refactor catch them too, or only the one in the diff?
-- **Interactive / TUI** → Ctrl-C mid-op, resize the pane, paste
-  garbage, rapid-fire the key, Esc at the wrong moment
-- **State / persistence** → do it twice, do it with stale state
-  underneath, do it in two sessions at once
-- **Wander** → what's adjacent? What looked off while you were
-  confirming? Go back to it.
+- **New flag / option** → empty value, passed twice, combined with a conflicting flag, typo'd (does the error name it?)
+- **New handler / route** → wrong method, malformed body, missing required field, oversized payload
+- **Changed error path** → the adjacent errors it didn't touch — did the refactor catch them too, or only the one in the diff?
+- **Interactive / TUI** → Ctrl-C mid-op, resize the pane, paste garbage, rapid-fire the key, Esc at the wrong moment
+- **State / persistence** → do it twice, do it with stale state underneath, do it in two sessions at once
+- **Wander** → what's adjacent? What looked off while you were confirming? Go back to it.
 
-These aren't a checklist — pick the ones the change points at. Stop
-when you've covered the obvious adjacents or hit something worth a
-⚠️. A probe that finds nothing is still a step: "🔍 passed `--from ''`
-→ clean `error: --from requires a value`, exit 2." That the author
-didn't test it is exactly why it's worth knowing it holds.
+These aren't a checklist — pick the ones the change points at. Stop when you've covered the obvious adjacents or hit something worth a ⚠️. A probe that finds nothing is still a step: "🔍 passed `--from ''` → clean `error: --from requires a value`, exit 2." That the author didn't test it is exactly why it's worth knowing it holds.
 
-Still not a test run. You're at the surface, typing what a user
-would type wrong.
+Still not a test run. You're at the surface, typing what a user would type wrong.
 
 ## Capture
 
-Stdout, response bodies, screenshots, pane dumps. Captured output is
-evidence; your memory isn't. Something unexpected? Don't route around
-it — capture, note, decide if it's the change or the environment.
-Unrelated breakage is a finding, not noise.
+Stdout, response bodies, screenshots, pane dumps. Captured output is evidence; your memory isn't. Something unexpected? Don't route around it — capture, note, decide if it's the change or the environment. Unrelated breakage is a finding, not noise.
 
-Shared process state (tmux, ports, lockfiles) — isolate. `tmux -L
-name`, bind `:0`, `mktemp -d`. You share a namespace with your host.
+Shared process state (tmux, ports, lockfiles) — isolate. `tmux -L name`, bind `:0`, `mktemp -d`. You share a namespace with your host.
 
 ## Report
 
@@ -220,31 +150,15 @@ bullets are context. Empty is fine if nothing stuck out — but nothing
 sticking out is itself rare.>
 ```
 
-**Evidence has to reach the reader.** A file path is only evidence
-if the person reading the report can open it. If the `SendUserFile`
-tool is in your toolset, you're on a remote surface where they
-can't — send the screenshots and recordings with it and let the
-report name what you sent. Without it, reference the path and keep
-the evidence that matters inline — pane captures and response
-bodies travel in the report; a bare path only works when the reader
-shares your filesystem.
+**Evidence has to reach the reader.** A file path is only evidence if the person reading the report can open it. If the `SendUserFile` tool is in your toolset, you're on a remote surface where they can't — send the screenshots and recordings with it and let the report name what you sent. Without it, reference the path and keep the evidence that matters inline — pane captures and response bodies travel in the report; a bare path only works when the reader shares your filesystem.
 
 **Verdicts:**
-- **PASS** — you ran the app, the change did what it should at its
-  surface. Not: tests pass, builds clean, code looks right.
-- **FAIL** — you ran it and it doesn't. Or it breaks something else.
-  Or claim and diff disagree materially.
-- **BLOCKED** — couldn't reach a state where the change is observable.
-  Build broke, env missing a dep, handle wouldn't come up. Not a
-  verdict on the change. Say exactly where it stopped +
-  `/run-skill-generator` prompt.
-- **SKIP** — no runtime surface exists. Docs-only, types-only,
-  tests-only. Nothing went wrong; there's just nothing here to run.
-  One line why.
 
-No partial pass. "3 of 4 passed" is FAIL until 4 passes or is
-explained away.
+- **PASS** — you ran the app, the change did what it should at its surface. Not: tests pass, builds clean, code looks right.
+- **FAIL** — you ran it and it doesn't. Or it breaks something else. Or claim and diff disagree materially.
+- **BLOCKED** — couldn't reach a state where the change is observable. Build broke, env missing a dep, handle wouldn't come up. Not a verdict on the change. Say exactly where it stopped + `/run-skill-generator` prompt.
+- **SKIP** — no runtime surface exists. Docs-only, types-only, tests-only. Nothing went wrong; there's just nothing here to run. One line why.
 
-**When in doubt, FAIL.** False PASS ships broken code; false FAIL
-costs one more human look. Ambiguous output is FAIL with the raw
-capture attached — don't interpret.
+No partial pass. "3 of 4 passed" is FAIL until 4 passes or is explained away.
+
+**When in doubt, FAIL.** False PASS ships broken code; false FAIL costs one more human look. Ambiguous output is FAIL with the raw capture attached — don't interpret.

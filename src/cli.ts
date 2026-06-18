@@ -3,8 +3,12 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
 import { checkMigrationSql } from "./check.js";
-import type { CheckReporter, FileDiagnostics } from "./check-reporters.js";
-import { renderCheckReport } from "./check-reporters.js";
+import {
+  CHECK_REPORTER_DISPLAY,
+  type FileDiagnostics,
+  parseCheckReporter,
+  renderCheckReport,
+} from "./check-reporters.js";
 import {
   defaultTreeSource,
   latestMigrationFile,
@@ -218,7 +222,14 @@ program
       const diagnostics = await checkMigrationSql(sql, { config, cwd: process.cwd() });
       results.push({ diagnostics, file: migrationPath === "-" ? "<stdin>" : migrationPath });
     }
-    const reporter = options.reporter as CheckReporter;
+    const reporter = parseCheckReporter(options.reporter);
+    if (reporter === undefined) {
+      process.stderr.write(
+        `supaschema: unknown --reporter "${options.reporter}" (use ${CHECK_REPORTER_DISPLAY})\n`
+      );
+      process.exitCode = 2;
+      return;
+    }
     const report = renderCheckReport(reporter, results);
     if (report.length > 0) {
       process.stdout.write(report);
@@ -360,7 +371,7 @@ hookCommand
   .description("Run the internal schema-write hook workflow.")
   .action(() =>
     runHookFailOpen(async () => {
-      const payload = JSON.parse(await readStdin()) as unknown;
+      const payload = JSON.parse(await readStdin());
       const output = await schemaWriteHookOutput(payload);
       if (output !== undefined) {
         process.stdout.write(`${JSON.stringify(output)}\n`);
@@ -375,7 +386,7 @@ hookCommand
   .action((options: { runtime?: string }) =>
     runHookFailOpen(async () => {
       const runtime = options.runtime === "codex" ? "codex" : "claude";
-      const payload = JSON.parse(await readStdin()) as unknown;
+      const payload = JSON.parse(await readStdin());
       const output = generatedMigrationEditHookOutput(payload, runtime);
       if (runtime === "codex") {
         process.stdout.write(`${JSON.stringify(output ?? {})}\n`);
@@ -449,7 +460,7 @@ function resolvedDatabaseUrlLane(): string {
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   }
   return Buffer.concat(chunks).toString("utf8");
 }
@@ -482,8 +493,12 @@ function redactJson(value: unknown): unknown {
 async function readPackageVersion(): Promise<string> {
   try {
     const raw = await readFile(new URL("../package.json", import.meta.url), "utf8");
-    const parsed = JSON.parse(raw) as { version?: string };
-    return parsed.version ?? "0.0.0";
+    const parsed = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === "object") {
+      const version = Reflect.get(parsed, "version");
+      return typeof version === "string" ? version : "0.0.0";
+    }
+    return "0.0.0";
   } catch {
     return "0.0.0";
   }

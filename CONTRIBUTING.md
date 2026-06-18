@@ -8,7 +8,7 @@ By participating you agree to our [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 Requirements:
 
-- **Node 22.12 or newer** (an `.nvmrc` pins the major; run `nvm use`).
+- **Node 22.12 or newer** for package compatibility. Local development uses the exact runtime in `.nvmrc`; run `nvm use` or `fnm use`.
 - **npm** — this is an npm-only project. Do not introduce pnpm, yarn, or an alternate lockfile, and keep `package-lock.json` intact.
 - For the Python side-service (`services/agent-mcp`): [`uv`](https://docs.astral.sh/uv/). Only needed if you touch that service.
 

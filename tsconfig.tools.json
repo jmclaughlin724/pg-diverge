@@ -30,6 +30,7 @@
     "scripts/**/*.js",
     "scripts/**/*.mjs",
     "src/license.ts",
+    "src/schema-contract.ts",
     "services/license-worker/**/*.ts"
   ]
 }
