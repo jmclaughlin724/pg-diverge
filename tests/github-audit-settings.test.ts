@@ -12,6 +12,7 @@ function runAudit(options: { approved?: boolean; apply?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "supa-github-audit-"));
   const log = join(dir, "gh.log");
   installFakeGh(dir);
+  const path = `${dir}${delimiter}${process.env.PATH ?? process.env.Path ?? ""}`;
   const result = spawnSync(
     process.execPath,
     [script, ...(options.apply === true ? ["--apply-topics"] : [])],
@@ -21,7 +22,8 @@ function runAudit(options: { approved?: boolean; apply?: boolean } = {}) {
       env: {
         ...process.env,
         GITHUB_REPOSITORY_TOPICS_APPROVED: options.approved === true ? "1" : undefined,
-        PATH: `${dir}${delimiter}${process.env.PATH ?? ""}`,
+        PATH: path,
+        Path: path,
         SUPASCHEMA_FAKE_GH_LOG: log,
         SUPASCHEMA_FAKE_GH_POLICY: JSON.stringify(policy),
       },
@@ -33,13 +35,15 @@ function runAudit(options: { approved?: boolean; apply?: boolean } = {}) {
 
 function installFakeGh(dir: string): void {
   const fakeGh = join(dir, "gh.mjs");
+  const windowsShim = `@echo off\r\n"${process.execPath}" "%~dp0gh.mjs" %*\r\n`;
   writeFileSync(fakeGh, fakeGhSource());
   writeFileSync(
     join(dir, "gh"),
     `#!/bin/sh\nexec ${shQuote(process.execPath)} ${shQuote(fakeGh)} "$@"\n`,
     { mode: 0o755 }
   );
-  writeFileSync(join(dir, "gh.cmd"), `@echo off\r\n"${process.execPath}" "%~dp0gh.mjs" %*\r\n`);
+  writeFileSync(join(dir, "gh.bat"), windowsShim);
+  writeFileSync(join(dir, "gh.cmd"), windowsShim);
 }
 
 function shQuote(value: string): string {
