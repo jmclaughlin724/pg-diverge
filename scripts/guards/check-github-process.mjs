@@ -125,6 +125,11 @@ assert(
     policy.pullRequests.postMergeLocalSync.includes("align local main to origin/main"),
   "post-merge policy must require preserving divergent local main and aligning it to origin/main"
 );
+assert(
+  policy.pullRequests?.mergeCliIsolation?.includes("temporary directory") &&
+    policy.pullRequests.mergeCliIsolation.includes("gh cannot mutate local branches"),
+  "post-merge policy must require isolating gh merge from local branch mutation"
+);
 
 const main = policy.branches?.main;
 assert(main, "repo policy must define branches.main");
@@ -204,6 +209,8 @@ assert(
 );
 assert(
   contributing.includes("npm run github:merge -- --pr <number>") &&
+    contributing.includes("temporary directory") &&
+    contributing.includes("prevents `gh` from mutating local branches") &&
     contributing.includes("preserve/local-main-<sha>") &&
     contributing.includes("aligns local `main` to `origin/main`"),
   "CONTRIBUTING.md must document the canonical merge wrapper and local main reconciliation"
@@ -220,10 +227,14 @@ assert(
 );
 const mergeWorkflow = readText("scripts/github/merge.mjs");
 for (const term of [
+  "mkdtempSync",
+  "repoFullName(policy)",
   "scripts/github/merge-preflight.mjs",
   '"pr", "merge"',
+  "--repo",
   "--rebase",
   "--delete-branch",
+  "rmSync",
   "scripts/github/post-merge-verify.mjs",
 ]) {
   assert(mergeWorkflow.includes(term), `github merge workflow must include ${term}`);

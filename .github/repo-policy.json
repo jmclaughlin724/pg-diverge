@@ -65,6 +65,7 @@
     "requiredPreflight": "npm run github:pr-preflight -- --base main",
     "requiredMergePreflight": "npm run github:merge-preflight -- --pr <number>",
     "requiredPostMergeVerification": "npm run github:post-merge-verify -- --pr <number>",
+    "mergeCliIsolation": "the merge wrapper must run gh pr merge with --repo from a temporary directory so gh cannot mutate local branches before post-merge verification",
     "postMergeLocalSync": "post-merge verification must fetch origin/main, verify the merged commit is contained in origin/main, preserve divergent local main as preserve/local-main-<sha>, and align local main to origin/main"
   },
   "branches": {
