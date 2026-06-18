@@ -60,7 +60,7 @@ This skill is a direct execution contract. Use it only when the trigger matches,
 
 1. Confirm the task matches the skill description and identify the owner files, command, or diagnostic needed.
 2. Read [skill-playbook.md](references/skill-playbook.md) only for the sections needed by the current task.
-3. Execute the smallest root-cause fix in the canonical owner; do not patch generated mirrors (`.codex`/`.agents`) by hand — change the `.claude` source and run `npm run sync:llm`.
+3. Execute the root-cause fix in the canonical owner and carry it to the smallest correct end state; do not patch generated mirrors (`.codex`/`.agents`) by hand — change the `.claude` source and run `npm run sync:llm`.
 4. Run the narrowest validation that proves the fix (`npm run typecheck`/`test`/`guard`, `npm run py:test`, `supaschema check`, etc.).
 5. Report only the owner changed, the validation run, and concrete blockers inside scope.
 

@@ -32,9 +32,6 @@ export async function parseSqlAst(sql: string, file?: string): Promise<ParsedSql
   }
   const outcome = await parseUncached(sql);
   if (parseCache.size >= parseCacheLimit) {
-    // Evict the oldest entries (Map preserves insertion order) instead of
-    // dropping the whole cache, so the extract -> finalize -> typegen passes
-    // keep their recently-parsed objects warm on schemas larger than the cap.
     const evictCount = Math.max(1, Math.floor(parseCacheLimit * 0.2));
     let removed = 0;
     for (const key of parseCache.keys()) {

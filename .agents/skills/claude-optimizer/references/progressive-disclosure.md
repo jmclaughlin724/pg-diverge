@@ -28,15 +28,15 @@ References load lazily: a markdown link or path is inert until the model `Read`s
 - Use rules to split persistent guidance by topic or path.
 - Keep one canonical owner per concept to avoid contradictory instructions.
 - Use skills for task-specific or optional guidance that should not live in startup context.
-- In this repo, `CLAUDE.md` files are compatibility stubs only; keep unique guidance in the adjacent `AGENTS.md` or scoped `.claude/rules/**`. Claude Code reads `CLAUDE.md` (not `AGENTS.md`), so the stub must `@AGENTS.md`-import or symlink the brief — `ln -s AGENTS.md CLAUDE.md` works on POSIX; on Windows the symlink needs Administrator/Developer Mode, so the import form is safer.
+- In this repo, `CLAUDE.md` files are Claude runtime entry points; keep unique guidance in the adjacent `AGENTS.md` or scoped `.claude/rules/**`. Claude Code reads `CLAUDE.md` (not `AGENTS.md`), so the entry point must `@AGENTS.md`-import or symlink the brief — `ln -s AGENTS.md CLAUDE.md` works on POSIX; on Windows the symlink needs Administrator/Developer Mode, so the import form is safer.
 
 ## Stub Mechanics That Affect AGENTS.md Routing
 
-In this repo, `CLAUDE.md` exists only as a thin stub that imports the adjacent `AGENTS.md`. The handful of mechanics below matter for that import path; everything else about CLAUDE.md is off-policy here. Source: `https://code.claude.com/docs/en/memory`.
+In this repo, `CLAUDE.md` exists only as the Claude runtime entry point that imports the adjacent `AGENTS.md`. The handful of mechanics below matter for that import path; everything else about CLAUDE.md is off-policy here. Source: `https://code.claude.com/docs/en/memory`.
 
-- The stub imports the brief with `@AGENTS.md`. Relative paths resolve from the file containing the import; recursion is capped at five hops. On Windows the alternative — `ln -s AGENTS.md CLAUDE.md` — requires Administrator or Developer Mode, so the import form is the portable default.
-- The stub survives `/compact` and is re-read from disk on each session start; subdirectory stubs only reload when Claude reads files in that subtree, which matches the per-app AGENTS.md routing this repo uses.
-- `claudeMdExcludes` (in project, local, or managed settings) can skip an ancestor stub if a parent repo's CLAUDE.md is interfering with the local AGENTS-first brief. Arrays merge across scopes; managed-policy CLAUDE.md cannot be excluded.
+- The entry point imports the brief with `@AGENTS.md`. Relative paths resolve from the file containing the import; recursion is capped at five hops. On Windows the alternative — `ln -s AGENTS.md CLAUDE.md` — requires Administrator or Developer Mode, so the import form is the portable default.
+- The entry point survives `/compact` and is re-read from disk on each session start; subdirectory entry points only reload when Claude reads files in that subtree, which matches the per-app AGENTS.md routing this repo uses.
+- `claudeMdExcludes` (in project, local, or managed settings) can skip an ancestor entry point if a parent repo's CLAUDE.md is interfering with the local AGENTS-first brief. Arrays merge across scopes; managed-policy CLAUDE.md cannot be excluded.
 - The `InstructionsLoaded` hook logs which stub + rules files actually loaded. Use it when an `@AGENTS.md` import or a path-scoped rule appears to be missing in the live session.
 
 The official `claudeMdExcludes`, `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD`, and `/memory` features are part of the platform but are not the canonical authoring surface for this codebase — `.claude/rules/**` is.

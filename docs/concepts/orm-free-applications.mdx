@@ -1,0 +1,93 @@
+---
+title: "ORM-free applications"
+description: "A directive for using supaschema-generated PostgreSQL types, Zod validators, migrations, sync, and safety gates without making an ORM the schema owner."
+keywords:
+  [
+    "ORM-free",
+    "PostgreSQL types",
+    "Zod validators",
+    "typed SQL",
+    "schema management",
+  ]
+---
+
+Use this directive when an application needs typed, validated PostgreSQL access without making an ORM or query builder the source of truth.
+
+## Directive
+
+Do not introduce an ORM only to own schema, generate migrations, create TypeScript types, validate runtime payloads, apply migrations, or protect deploys. `supaschema` owns those lanes from the declarative SQL tree.
+
+Choose an ORM or query builder only when its query-construction API is itself the feature you want. It is optional infrastructure, not a requirement for using PostgreSQL safely from application code.
+
+## Why the ORM layer is no longer necessary
+
+- **PostgreSQL SQL is the schema contract.** Tables, constraints, indexes, views, functions, triggers, grants, RLS, policies, and supported extensions live in the SQL tree. No application DSL has to approximate those objects.
+- **Migrations come from the same tree.** `supaschema diff` renders guarded SQL from parser-backed model differences, and `supaschema check` verifies the migration before it reaches a database.
+- **Apply is part of the workflow.** `supaschema sync` can reconcile target history and apply pending migrations through configured direct PostgreSQL or Supabase CLI runners after safety gates pass.
+- **Types are generated before deploy.** `supaschema types` writes `database.types.ts` from the declared schema, so application code can compile against the intended shape before the database has caught up.
+- **Runtime validation is generated too.** `database.zod.ts` provides Zod schemas and derived `TableRow`, `TableInsert`, `TableUpdate`, `ViewRow`, and `EnumValue` helpers from the same model.
+- **Deploy safety is package-owned.** The sync pipeline can block type-breaking changes and RLS hazards before mutation, instead of relying on a query layer to notice drift later.
+
+## Application pattern
+
+Use PostgreSQL as the query language and the generated outputs as the application contract:
+
+```ts app/accounts.ts
+import { schemas, type TableInsert, type TableRow } from "../database.zod";
+
+type Account = TableRow<"app", "accounts">;
+type NewAccount = TableInsert<"app", "accounts">;
+
+export async function createAccount(
+  db: { query<T>(sql: string, values: unknown[]): Promise<{ rows: T[] }> },
+  body: unknown
+): Promise<Account> {
+  const input: NewAccount = schemas.app.Tables.accounts.Insert.parse(body);
+  const result = await db.query<Account>(
+    "insert into app.accounts (name) values ($1) returning id, name",
+    [input.name]
+  );
+
+  return schemas.app.Tables.accounts.Row.parse(result.rows[0]);
+}
+```
+
+This pattern uses a driver or platform client to execute SQL. The generated helpers provide the compile-time row/insert/update shape and the runtime boundary validation. An ORM can still be layered on top for query-builder ergonomics, but it should not duplicate schema ownership, generated types, validation contracts, or migration control.
+
+## Keep one source of truth
+
+| Concern | Owner |
+| --- | --- |
+| Schema intent | Declarative PostgreSQL SQL files in `schemaPaths` |
+| Migration SQL | `supaschema diff` |
+| Replay and lock safety | `supaschema check` |
+| Local and remote apply | `supaschema sync` targets |
+| TypeScript shape | `database.types.ts` |
+| Runtime validation | `database.zod.ts` |
+| API/request validation | Generated Zod schemas |
+| Query execution | PostgreSQL driver, platform client, or optional query builder |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Types command" icon="code" href="/commands/types">
+    Generate TypeScript and Zod outputs from the schema tree.
+  </Card>
+  <Card title="Sync command" icon="refresh-cw" href="/commands/sync">
+    Run diff, safety gates, target reconciliation, and apply.
+  </Card>
+  <Card
+    title="Prisma comparison"
+    icon="triangle"
+    href="/comparisons/supaschema-vs-prisma"
+  >
+    Replace Prisma Migrate and generated schema types with SQL-owned outputs.
+  </Card>
+  <Card
+    title="Drizzle comparison"
+    icon="droplet"
+    href="/comparisons/supaschema-vs-drizzle"
+  >
+    Replace drizzle-kit schema ownership with declarative PostgreSQL SQL.
+  </Card>
+</CardGroup>

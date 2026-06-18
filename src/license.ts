@@ -1,20 +1,9 @@
 import { createPublicKey, verify } from "node:crypto";
 
-/**
- * License entitlement — verify side (plan `20-hands-off-stack.md`, tasks M30/M32).
- *
- * Verifies an Ed25519-signed license token against a public key embedded in the
- * CLI, with no per-run server call. This is the half that is codeable without
- * secrets: the issuance Worker (signs with the private key on a Stripe webhook) and
- * the Stripe/Cloudflare accounts are M30/M31 and remain blocked. The OSS CLI stays
- * free — only the paid packs / `--enforce` consult entitlement.
- */
-
 export interface LicenseClaims {
-  /** Expiry, unix seconds. */
   exp: number;
   plan: string;
-  /** `owner/repo` the license is bound to. */
+
   repo: string;
 }
 
@@ -38,7 +27,6 @@ function isLicenseClaims(value: unknown): value is LicenseClaims {
   );
 }
 
-/** Verify the token's Ed25519 signature and shape; return claims or null. */
 export function verifyLicenseToken(token: string, publicKeyPem: string): LicenseClaims | null {
   const parts = token.split(".");
   const [headerPart, payloadPart, signaturePart] = parts;
@@ -54,10 +42,7 @@ export function verifyLicenseToken(token: string, publicKeyPem: string): License
   let signatureValid = false;
   try {
     const publicKey = createPublicKey(publicKeyPem);
-    // Reject any non-Ed25519 key. `verify(null, ...)` selects the algorithm from
-    // the key type, so without this a substituted RSA/ECDSA public key would let an
-    // attacker who controls the key sign a token with the matching private key
-    // (algorithm-confusion bypass). The issuer only ever signs with Ed25519.
+
     if (publicKey.asymmetricKeyType !== "ed25519") {
       return null;
     }
@@ -76,7 +61,6 @@ export function verifyLicenseToken(token: string, publicKeyPem: string): License
   }
 }
 
-/** True only when the token is valid, unexpired, and bound to this repo. */
 export function isEntitled(
   claims: LicenseClaims | null,
   repo: string,
@@ -88,11 +72,6 @@ export function isEntitled(
   return claims.repo === repo && claims.exp > nowSeconds;
 }
 
-/**
- * Resolve entitlement from the environment for the `--enforce` gate (task M32).
- * The token and bound repository are caller-provided, but the verifier trust
- * anchor is embedded in the CLI and not read from the caller environment.
- */
 export function isEntitledFromEnv(
   env: Record<string, string | undefined>,
   nowSeconds: number

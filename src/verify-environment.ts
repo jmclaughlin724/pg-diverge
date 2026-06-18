@@ -19,12 +19,6 @@ export async function preflightCapability(admin: Client): Promise<Diagnostic | u
   );
 }
 
-// The stub mirrors the stable GoTrue auth.users column set so that RLS
-// policies, foreign keys, and views referencing auth.users columns
-// (role, email, phone, raw_app_meta_data, ...) resolve during verify
-// instead of failing with a false-negative undefined-column error. auth
-// is a managed schema, so user trees only reference it; a wider stub is
-// pure reference-resolution benefit and is subtracted from reconvergence.
 export const supabaseEnvironmentStubSql = `
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS auth.users (

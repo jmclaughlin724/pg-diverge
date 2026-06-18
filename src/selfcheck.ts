@@ -23,7 +23,7 @@ export async function selfCheckCatalog(options: SelfCheckOptions): Promise<SelfC
     .sort((left, right) => left.ordinal - right.ordinal)
     .map((object) => `${object.sql};`)
     .join("\n\n");
-  // Managed-schema policy is a posture concern, not an identity-parity concern.
+
   const reparsed = await extractObjectsFromSql(script, {
     config: { managedSchemas: [] },
     file: "selfcheck:rendered",

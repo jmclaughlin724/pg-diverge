@@ -1,21 +1,3 @@
-// Shared consumer-project scaffolder. This is the single owner of the install-time
-// setup: it writes config, agent guidance, rules, skills, hooks, and default
-// schema/migration folders into a target project, preserving user-owned
-// AGENTS.md / CLAUDE.md content through a managed addendum block.
-//
-// Two callers use it:
-//   - bin/postinstall.mjs (the npm lifecycle wrapper) statically imports it.
-//   - `supaschema init` (src/cli.ts) dynamically imports it from the installed
-//     package so setup is reproducible when dependency lifecycle scripts are
-//     blocked or skipped by npm, pnpm, Yarn, Bun, or local project policy.
-//
-// It depends ONLY on node: builtins (no dist, no runtime deps) so it loads safely
-// at install time. It returns { installed, skipped, pathConfirmationNeeded,
-// selection }; the postinstall lifecycle wrapper stays stdout-silent, while
-// `supaschema init` owns user-facing setup output (Rule 13 — lifecycle scripts
-// must not write stdout). The install-time skip guards
-// (SUPASCHEMA_SKIP_POSTINSTALL, own-checkout, INIT_CWD) stay in the postinstall
-// wrapper; `init` calls this core directly with no guards.
 import {
   copyFileSync,
   existsSync,
@@ -47,23 +29,30 @@ const manifestPath = ".supaschema/install.json";
 const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const hookScriptPathPattern = /\.(mjs|sh)$/;
-
 const agentPaths = [
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema",
-  ".claude/hooks/auto-diff-on-schema-change.mjs",
-  ".claude/hooks/block-generated-migration-edits.mjs",
+  ".claude/hooks/guards/bash-policy-checks.mjs",
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/rules/supaschema.md",
   ".claude/skills/supaschema",
-  ".codex/hooks/auto-diff-on-schema-change.mjs",
-  ".codex/hooks/block-generated-migration-edits.mjs",
+  ".codex/hooks/general-guard.mjs",
+  ".codex/hooks/guards/bash-policy-checks.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/rules/supaschema.rules",
 ];
 
-const retiredAgentPaths = [".codex/skills/supaschema"];
+const retiredAgentPaths = [
+  ".codex/skills/supaschema",
+  ".claude/hooks/auto-diff-on-schema-change.mjs",
+  ".claude/hooks/block-generated-migration-edits.mjs",
+  ".codex/hooks/auto-diff-on-schema-change.mjs",
+  ".codex/hooks/block-generated-migration-edits.mjs",
+];
+const retiredHookScripts = new Set([
+  "auto-diff-on-schema-change.mjs",
+  "block-generated-migration-edits.mjs",
+]);
 
 const hookConfigs = [
   {
@@ -72,12 +61,30 @@ const hookConfigs = [
       hooks: {
         PreToolUse: [
           {
-            matcher: "Write|Edit|MultiEdit|apply_patch",
+            matcher: "Bash",
             hooks: [
               {
                 type: "command",
                 command: "node",
-                args: [`${claudeProjectDir}/.claude/hooks/block-generated-migration-edits.mjs`],
+                args: [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`],
+                timeout: 10,
+              },
+            ],
+          },
+          {
+            matcher: "Write|Edit|MultiEdit|apply_patch",
+            hooks: [
+              {
+                type: "command",
+                command: "npx",
+                args: [
+                  "--no-install",
+                  "supaschema",
+                  "hook",
+                  "generated-migration-edit",
+                  "--runtime",
+                  "claude",
+                ],
                 timeout: 10,
               },
             ],
@@ -89,8 +96,8 @@ const hookConfigs = [
             hooks: [
               {
                 type: "command",
-                command: "node",
-                args: [`${claudeProjectDir}/.claude/hooks/auto-diff-on-schema-change.mjs`],
+                command: "npx",
+                args: ["--no-install", "supaschema", "hook", "schema-write"],
                 timeout: 130,
               },
             ],
@@ -117,10 +124,6 @@ const hookConfigs = [
   },
 ];
 
-// Scaffold a consuming project at `targetDir`. Returns the result instead of
-// writing a setup summary. `interactive` enables the TTY path-confirmation prompt
-// (still gated by canPrompt()); `init` passes true, while postinstall passes
-// false so package lifecycle output remains parseable.
 export async function scaffoldProject({
   targetDir,
   packageRoot,
@@ -138,10 +141,6 @@ export async function scaffoldProject({
     ? undefined
     : scaffoldConfig(selection, existingConfig.parsed);
 
-  // When the detected paths are ambiguous (pathConfirmationNeeded), do not pin a
-  // guessed config or create guessed directories. Leaving the config absent keeps
-  // "config explicitly defines schemaPaths" an unambiguous signal that a human has
-  // confirmed the paths, which the auto-diff hook uses to resume safely.
   if (configContents !== undefined && shouldWriteConfig(existingConfig, repair)) {
     if (!dryRun) {
       writeProjectFile(targetDir, "supaschema.config.json", configContents);
@@ -204,10 +203,6 @@ function readExistingConfig(projectDir) {
   return { exists: false };
 }
 
-// Resolve the same effective paths the CLI (`loadConfig` in src/config.ts) uses for
-// an existing config: explicit values win, otherwise fall back to the CLI's static
-// defaults — never provider detection, which only seeds brand-new configs. This keeps
-// the installed guidance, directories, and manifest aligned with what the CLI loads.
 function effectiveExistingConfig(parsed, metadata) {
   const schemaPaths =
     Array.isArray(parsed?.schemaPaths) && parsed.schemaPaths.length > 0
@@ -585,8 +580,8 @@ ${pathLines}
 - Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
 - Edit \`supaschema.config.json\` to change \`adapter\`, \`workflow\`, \`schemaPaths\`, \`sources\`, \`migrationsDir\`, \`typesFile\`, \`zodFile\`, \`managedSchemas\`, \`transactionMode\`, or named \`environments\`; use \`$ENV_NAME\` database URL references instead of committing credentials.
 - For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, then run \`diff\` and \`check\` through the local runner selected in \`.agents/prompts/supaschema-install.md\`.
-- Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes; check failures trigger agent-loop feedback to investigate the root source and correlated migration failures, and hooks never apply migrations.
-- Do not run \`sync --local\` or \`sync --remote\` unless explicitly asked to apply migrations; \`workflow.migration_sync: "disabled"\` blocks those apply handoff flags.
+- Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes. When \`workflow.migration_sync\` allows automatic sync, the schema-write hook preflights every \`sync.targets\` entry with \`mode: "auto"\`; if each target resolves and any remote target is approved, it delegates to \`supaschema sync\`. Otherwise it stays on the non-mutating diff/check lane. Check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
+- Use bare \`sync\` for the configured workflow. Do not run \`sync --target <name>\` unless explicitly asked to override target selection. \`sync.targets.<name>.mode\` decides automatic target selection, \`workflow.migration_sync: "manual"\` keeps bare sync on the dry-run gate, and \`workflow.migration_sync: "disabled"\` blocks apply.
 ${guidanceEnd}
 `;
 }
@@ -627,10 +622,6 @@ function writeInstallManifest(target, packageVersion, scan, selection, existingC
   };
   const existing = readJson(join(target, manifestPath));
   if (existing && manifestSelectionUnchanged(existing, manifest)) {
-    // No setup choice changed: keep the committed manifest byte-for-byte so a
-    // re-install in a clean checkout stays idempotent. The volatile installedAt
-    // timestamp and rescanned candidates (the directories the first run created)
-    // would otherwise dirty the tree on every npm install.
     return;
   }
   writeProjectFile(target, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -803,12 +794,17 @@ function writeFileAtomic(destination, contents) {
     writeFileSync(temp, contents, { flag: "wx" });
     renameSync(temp, destination);
   } catch (error) {
-    try {
-      unlinkSync(temp);
-    } catch {
-      // Best-effort cleanup. The original write error is more useful.
-    }
+    removeIfPresent(temp);
     throw error;
+  }
+}
+
+function removeIfPresent(filePath) {
+  try {
+    unlinkSync(filePath);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -817,13 +813,14 @@ function mergeHooks(existing, source) {
   const sourceHooks = isRecord(source.hooks) ? source.hooks : {};
   const mergedHooks = isRecord(merged.hooks) ? merged.hooks : {};
   merged.hooks = mergedHooks;
-  const allManagedScripts = new Set(
-    Object.values(sourceHooks)
+  const allManagedScripts = new Set([
+    ...Object.values(sourceHooks)
       .filter(Array.isArray)
       .flatMap((entries) => entries.flatMap(hookDefinitions))
       .map(managedHookScript)
-      .filter((name) => name !== undefined)
-  );
+      .filter((name) => name !== undefined),
+    ...retiredHookScripts,
+  ]);
 
   for (const [eventName, existingEntries] of Object.entries(mergedHooks)) {
     if (Array.isArray(existingEntries)) {
@@ -865,11 +862,6 @@ function withoutManagedHooks(entries, signatures, managedScripts) {
   return kept;
 }
 
-// A previously-installed managed hook is superseded by the incoming source when its
-// command+args signature matches exactly (a same-version re-install) OR by managed
-// script identity — an upgrade where the old command wrapped the same script through
-// a different path prefix. This avoids removing unrelated user hooks that also run
-// through `node`.
 function isSupersededHook(hook, signatures, managedScripts) {
   if (!isRecord(hook)) {
     return false;
@@ -886,13 +878,17 @@ function managedHookScript(hook) {
     return;
   }
   const scriptArg = Array.isArray(hook.args)
-    ? hook.args.find((arg) => typeof arg === "string" && hookScriptPathPattern.test(arg))
+    ? hook.args.find((arg) => typeof arg === "string" && isHookScriptPath(arg))
     : undefined;
   if (typeof scriptArg === "string") {
     return basenameFromCommand(scriptArg);
   }
   const command = typeof hook.command === "string" ? hook.command : "";
   return basenameFromCommand(command);
+}
+
+function isHookScriptPath(value) {
+  return value.endsWith(".mjs") || value.endsWith(".sh");
 }
 
 function basenameFromCommand(command) {

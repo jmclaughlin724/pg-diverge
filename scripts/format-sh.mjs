@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-// shfmt — via the maintained `sh-syntax` WASM port of mvdan/sh — owns shell
-// formatting. It only formats (no sorting). Defaults to the whole repo (minus
-// dependency/build/cache dirs); pass explicit roots with `npm run format:sh -- <dir>`.
+
 import { readFileSync, writeFileSync } from "node:fs";
 import { print } from "sh-syntax";
 import { collectFiles } from "./lib/walk-files.mjs";

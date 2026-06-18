@@ -27,7 +27,7 @@ At 1,000 tables (~7,000 objects), `supaschema` against each of the five Supabase
 <Frame>
   <img
     src="/images/benchmarks/head-to-head-xl.svg"
-    alt="supaschema vs every Supabase CLI engine at 1,000 tables: latency bars, F1 accuracy, and replay-safety"
+    alt="supaschema vs diff engines at 1,000 tables: latency bars, F1 accuracy, and replay-safety"
   />
 </Frame>
 
@@ -36,7 +36,7 @@ The gap widens with scale. At 2,500 tables (~17,500 objects) the engines cross t
 <Frame>
   <img
     src="/images/benchmarks/head-to-head-xxl.svg"
-    alt="supaschema vs every Supabase CLI engine at 2,500 tables: latency bars, F1 accuracy, and replay-safety"
+    alt="supaschema vs diff engines at 2,500 tables: latency bars, F1 accuracy, and replay-safety"
   />
 </Frame>
 
@@ -47,7 +47,7 @@ The diff is only half the loop. Once type outputs exist, getting a migration **a
 <Frame>
   <img
     src="/images/benchmarks/head-to-head-workflow-xl.svg"
-    alt="Full workflow at 1,000 tables: supaschema migration plus refreshed type outputs in one command versus db diff, apply, and gen types per engine"
+    alt="full workflow vs diff engines at 1,000 tables: supaschema migration plus refreshed type outputs in one command versus db diff, apply, and gen types per engine"
   />
 </Frame>
 
@@ -67,7 +67,7 @@ The compared Supabase engines score `0.982-0.999` and miss the same RLS policy c
 <Frame>
   <img
     src="/images/benchmarks/xl-correctness.svg"
-    alt="XL fixture correctness comparison across supaschema and Supabase CLI engines"
+    alt="migration verification at 1,000 tables across supaschema and Supabase CLI engines"
   />
 </Frame>
 

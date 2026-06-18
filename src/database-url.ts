@@ -19,11 +19,6 @@ export function resolveSupabaseLocalDatabaseUrl(cwd: string = process.cwd()): st
   }
 }
 
-/**
- * Database URL precedence shared by `verify`, tests, and benchmarks:
- * explicit value (supports `$ENV_NAME` indirection) > SUPASCHEMA_DATABASE_URL
- * > the local Supabase stack discovered from supabase/config.toml.
- */
 export function resolveDatabaseUrl(
   explicit?: string,
   cwd: string = process.cwd()

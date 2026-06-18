@@ -15,7 +15,7 @@ This includes:
 - `sync`;
 - `doctor`.
 
-You usually do not need to repeat the URL on every command. Configure each local, staging, preview, or production PostgreSQL target once, then select it with `--env`.
+You usually do not need to repeat the URL on every command. Configure each local, staging, preview, or production PostgreSQL target once, then select it with `--env` or reference it from a named `sync.targets` entry.
 
 ## Resolution order
 
@@ -40,8 +40,9 @@ Define targets once in `supaschema.config.json` and select them per run with `--
 ```json
 {
   "environments": {
+    "local": { "databaseUrl": "$LOCAL_DATABASE_URL" },
     "staging": { "databaseUrl": "$STAGING_DB" },
-    "production": { "databaseUrl": "$PRODUCTION_DB" }
+    "production": { "databaseUrl": "$PRODUCTION_DATABASE_URL" }
   }
 }
 ```
@@ -52,6 +53,35 @@ supaschema --env staging migrations            # reconcile files vs staging hist
 ```
 
 Keeping the actual URLs in environment variables (`$STAGING_DB`) means the committed config carries no credentials — the recommended pattern for CI and for teams.
+
+## Sync targets
+
+`sync.targets` names the apply or deploy targets that `supaschema sync` can reconcile. A target must select exactly one URL owner: either `environment` or `databaseUrl`.
+
+```json
+{
+  "sync": {
+    "targets": {
+      "local": {
+        "mode": "auto",
+        "runner": "direct",
+        "environment": "local",
+        "historyTable": "supabase_migrations.schema_migrations"
+      },
+      "remote": {
+        "mode": "manual",
+        "runner": "direct",
+        "environment": "production",
+        "historyTable": "supabase_migrations.schema_migrations",
+        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+        "remote": true
+      }
+    }
+  }
+}
+```
+
+`mode: "auto"` makes a target selectable by bare `supaschema sync` when `workflow.migration_sync` is `"auto"`. The installed default is `"auto"`, so target config decides selection: local, staging, preview, and remote targets all use the same `mode` rule. Remote targets also require a runtime approval variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1` before automatic deploy.
 
 <Warning>
   Do not hard-code connection strings in scripts, config, or CI. Use `$ENV_NAME`

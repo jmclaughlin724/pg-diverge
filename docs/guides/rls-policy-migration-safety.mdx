@@ -13,6 +13,7 @@ Use this when Row Level Security predicates protect tenants or other sensitive b
 - Policy bodies are part of your access-control model.
 - Reviewers need to see tenant-isolation changes.
 - CI should catch drift between policy files and the database.
+- Deploy should block when configured RLS safety rules fail.
 - Supabase projects use `auth.uid()` or platform roles in policies.
 
 ## Do this
@@ -33,6 +34,8 @@ npx supaschema check
 ```
 
 Review whether each predicate broadened reads, weakened writes, or changed role coverage.
+
+For apply workflows, keep `workflow.rls_safety` at `deploy_blocking` so `supaschema sync` refuses to mutate a target when RLS diagnostics fail.
 
 ## Verify
 
@@ -64,11 +67,7 @@ npx supaschema verify --ensure-environment --ensure-roles
   <Card title="Check command" icon="shield-check" href="/commands/check">
     Surface policy changes with safety diagnostics.
   </Card>
-  <Card
-    title="Supabase integration"
-    icon="database"
-    href="/guides/supabase-integration"
-  >
-    Configure managed schemas and environment stubs.
+  <Card title="Sync command" icon="refresh-cw" href="/commands/sync">
+    Block unsafe RLS changes before local or remote apply.
   </Card>
 </CardGroup>

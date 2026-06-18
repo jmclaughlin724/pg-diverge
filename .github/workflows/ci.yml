@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
@@ -30,6 +31,10 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
+      - name: DCO sign-off
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run github:check-dco
       - run: npm ci
       - run: npm audit signatures
       - run: npm run lint:ci

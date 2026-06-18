@@ -1,6 +1,11 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderCheckReport } from "../src/check-reporters.js";
+import { resolveConfig } from "../src/config.js";
 import type { MigrationOperation, MigrationPlan, SchemaModel, SchemaObject } from "../src/core.js";
+import { runRlsSafetyGate } from "../src/pipeline-services.js";
 import {
   grantAllPrivilegesRule,
   grantPolicyRule,
@@ -66,9 +71,9 @@ describe("rule engine (S0)", () => {
   });
 });
 
-function operation(destructive: boolean): MigrationOperation {
+function operation(destructive: boolean, blocked = false): MigrationOperation {
   return {
-    blocked: false,
+    blocked,
     destructive,
     diagnostics: [],
     key: "public.users",
@@ -104,6 +109,14 @@ describe("migration-safety rule (F21 seed)", () => {
     const diagnostics = migrationSafetyRule.check({
       model: model([]),
       plan: plan([operation(false)]),
+    });
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("skips a blocked destructive operation (planner already errors on it)", () => {
+    const diagnostics = migrationSafetyRule.check({
+      model: model([]),
+      plan: plan([operation(true, true)]),
     });
     expect(diagnostics).toHaveLength(0);
   });
@@ -285,5 +298,53 @@ describe("grant role-policy drift rule (P11)", () => {
     const rule = grantPolicyRule([]);
     const diagnostics = rule.check({ model: model([grantObject("anyone", "public.users")]) });
     expect(diagnostics).toHaveLength(0);
+  });
+});
+
+async function sqlSource(sql: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "supa-rls-gate-"));
+  await writeFile(join(root, "001.sql"), sql);
+  return `dir:${root}`;
+}
+
+describe("RLS deploy gate", () => {
+  it("promotes configured RLS findings to errors for deploy_blocking", async () => {
+    const source = await sqlSource(`
+CREATE TABLE public.users (id bigint PRIMARY KEY);
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+`);
+    const config = resolveConfig({
+      sources: { to: source },
+      workflow: { rls_safety: "deploy_blocking" },
+    });
+
+    const result = await runRlsSafetyGate({ config });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingDiagnostics.map((item) => item.code)).toContain(
+      "SUPA_RULE_RLS_NO_POLICY"
+    );
+    expect(
+      result.diagnostics.find((item) => item.code === "SUPA_RULE_RLS_NO_POLICY")?.severity
+    ).toBe("error");
+  });
+
+  it("keeps configured RLS findings nonblocking for report_only", async () => {
+    const source = await sqlSource(`
+CREATE TABLE public.users (id bigint PRIMARY KEY);
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+`);
+    const config = resolveConfig({
+      sources: { to: source },
+      workflow: { rls_safety: "report_only" },
+    });
+
+    const result = await runRlsSafetyGate({ config });
+
+    expect(result.blocked).toBe(false);
+    expect(result.blockingDiagnostics).toHaveLength(0);
+    expect(
+      result.diagnostics.find((item) => item.code === "SUPA_RULE_RLS_NO_POLICY")?.severity
+    ).toBe("warning");
   });
 });

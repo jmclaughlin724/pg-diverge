@@ -92,21 +92,20 @@ Command examples show `supaschema` as CLI syntax. In a project install, run it t
   </Step>
 
   <Step title="Apply">
-    supaschema generates migrations. Your normal PostgreSQL runner applies them.
+    Apply through the guarded sync pipeline. The installed default selects every
+    configured target with `mode: "auto"`:
+
+    ```bash
+    supaschema sync
+    ```
+
+    `sync` runs target reconciliation, replay-safety, type-safety, and RLS-safety
+    gates before it mutates a database. Projects that intentionally keep an
+    external operational runner can still apply the generated SQL directly:
 
     ```bash
     psql "$DATABASE_URL" -f database/migrations/20240101120000_migration.sql
     ```
-
-    Supabase projects can apply generated files with the Supabase CLI:
-
-    ```bash
-    supabase db push
-    ```
-
-    <Note>
-      supaschema never applies migrations to your target database.
-    </Note>
 
   </Step>
 
@@ -132,7 +131,11 @@ Command examples show `supaschema` as CLI syntax. In a project install, run it t
   <Card title="Types" icon="code" href="/commands/types">
     Configure and consume generated TypeScript and Zod outputs.
   </Card>
-  <Card title="CI" icon="circle-check" href="/guides/ci-github-actions">
-    Add drift, safety, and verification checks to CI.
+  <Card
+    title="ORM-free apps"
+    icon="database"
+    href="/concepts/orm-free-applications"
+  >
+    Use generated database contracts without adding an ORM schema layer.
   </Card>
 </CardGroup>

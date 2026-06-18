@@ -65,7 +65,7 @@ After install, read `.agents/prompts/supaschema-install.md` if it exists, inspec
 
 Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, installed agent bundle surfaces, and whether path confirmation is still pending.
 
-Do not apply migrations to any database unless I explicitly ask for that. For schema changes, edit the declarative schema tree and run `<local-runner> diff`; treat generated migrations as build output.
+Do not apply migrations to any database unless I explicitly ask for that or `sync.targets.<name>.mode` selects an approved automatic target under the configured sync workflow. For schema changes, edit the declarative schema tree and run `<local-runner> diff` or the configured `sync` workflow; treat generated migrations as build output.
 
 </Prompt>
 

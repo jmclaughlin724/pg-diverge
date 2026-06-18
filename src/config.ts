@@ -7,9 +7,13 @@ import {
   canonicalSourceTo,
   configFieldMetadata,
   createInstalledConfig,
+  defaultEnvironments,
+  defaultMigrationHistoryTable,
+  defaultSync,
   defaultTypesFile,
   defaultWorkflow,
   defaultZodFile,
+  deploySafetyPolicies,
   generatedOutputPolicies,
   genericMigrationsDir,
   genericSchemaPath,
@@ -20,17 +24,26 @@ import {
   schemaDiffPolicies,
   sourceHint,
   sourceSpecPattern,
+  syncTargetModes,
+  syncTargetRunners,
   typeUsagePolicies,
 } from "./config-contract.js";
-import { diagnostic, diagnosticCatalog, formatDiagnostic, redactSecrets } from "./diagnostics.js";
+import { diagnostic, diagnosticCatalog, formatDiagnostic } from "./diagnostics.js";
+import { redactSecrets } from "./redaction.js";
 
 export type {
+  DeploySafetyPolicy,
   GeneratedOutputPolicy,
   MigrationCheckPolicy,
   MigrationSyncPolicy,
   MigrationVerifyPolicy,
   SchemaDiffPolicy,
+  SupaschemaEnvironment,
+  SupaschemaSync,
+  SupaschemaSyncTarget,
   SupaschemaWorkflow,
+  SyncTargetMode,
+  SyncTargetRunner,
   TypeUsagePolicy,
 } from "./config-contract.js";
 
@@ -59,6 +72,23 @@ const schemaFilterSchema = z
 const environmentSchema = z.strictObject({
   databaseUrl: z.string(),
 });
+const syncTargetBaseSchema = {
+  historyTable: z.string(),
+  mode: z.enum(syncTargetModes),
+  remote: z.boolean().optional(),
+  requireApprovalEnv: z.string().optional(),
+  runner: z.enum(syncTargetRunners),
+};
+const syncTargetSchema = z.strictObject({
+  ...syncTargetBaseSchema,
+  databaseUrl: z.string().optional(),
+  environment: z.string().optional(),
+});
+const syncSchema = z
+  .strictObject({
+    targets: z.record(z.string(), syncTargetSchema).default(defaultSync.targets),
+  })
+  .default(defaultSync);
 
 const sourcesSchema = z
   .strictObject({
@@ -77,24 +107,25 @@ const workflowSchema = z
     migration_check: z.enum(migrationCheckPolicies).default(defaultWorkflow.migration_check),
     migration_verify: z.enum(migrationVerifyPolicies).default(defaultWorkflow.migration_verify),
     migration_sync: z.enum(migrationSyncPolicies).default(defaultWorkflow.migration_sync),
+    type_safety: z.enum(deploySafetyPolicies).default(defaultWorkflow.type_safety),
+    rls_safety: z.enum(deploySafetyPolicies).default(defaultWorkflow.rls_safety),
     type_generation: z.enum(generatedOutputPolicies).default(defaultWorkflow.type_generation),
     zod_generation: z.enum(generatedOutputPolicies).default(defaultWorkflow.zod_generation),
     type_usage: z.enum(typeUsagePolicies).default(defaultWorkflow.type_usage),
   })
   .default(defaultWorkflow);
-const databaseUrlSourcePattern = /(?:database:)?postgres(?:ql)?:\/\//u;
-
 export const supaschemaConfigSchema = z.strictObject({
   $schema: z.string().optional(),
   adapter: adapterSchema,
   cascade: z.literal("never").default("never"),
   destructiveChanges: z.enum(["hint-required", "block", "allow"]).default("hint-required"),
-  environments: z.record(z.string(), environmentSchema).default({}),
+  environments: z.record(z.string(), environmentSchema).default(defaultEnvironments),
   excludedGrantRoles: z.array(z.string()).default([]),
   hints: hintsSchema,
   idempotency: z.literal("required").default("required"),
   lockTimeout: z.string().default("5s"),
   workflow: workflowSchema,
+  sync: syncSchema,
   migrationsDir: z.string().default(genericMigrationsDir),
   typesFile: z.string().default(defaultTypesFile),
   zodFile: z.string().default(defaultZodFile),
@@ -123,12 +154,6 @@ export function resolveConfig(config?: Partial<SupaschemaConfig>): SupaschemaCon
   return finalizeConfigDefaults(supaschemaConfigSchema.parse(input), input);
 }
 
-/**
- * Parse a user-authored config file (e.g. supaschema.config.json) at the trust
- * boundary. On failure this throws a redacted SUPA_CONFIG_INVALID diagnostic so
- * library consumers of loadConfig() get a coded, secret-safe error instead of a
- * raw ZodError. The typed Partial path stays on resolveConfig()/.parse().
- */
 function parseUserConfigFile(input: unknown, path: string): SupaschemaConfig {
   const result = supaschemaConfigSchema.safeParse(input ?? {});
   if (result.success) {
@@ -186,20 +211,35 @@ function isFileMissing(error: unknown): boolean {
 }
 
 function finalizeConfigDefaults(config: SupaschemaConfig, input: unknown): SupaschemaConfig {
-  if (hasExplicitSourcesTo(input)) {
-    return config;
+  let next = config;
+  if (!hasExplicitSourcesTo(input)) {
+    next = {
+      ...next,
+      sources: {
+        ...next.sources,
+        to: canonicalSourceTo(next.schemaPaths),
+      },
+    };
   }
-  return {
-    ...config,
-    sources: {
-      ...config.sources,
-      to: canonicalSourceTo(config.schemaPaths),
-    },
-  };
+  if (hasExplicitEnvironments(input) && !hasExplicitSync(input)) {
+    next = {
+      ...next,
+      sync: { targets: {} },
+    };
+  }
+  return next;
 }
 
 function hasExplicitSourcesTo(input: unknown): boolean {
   return isRecord(input) && isRecord(input.sources) && typeof input.sources.to === "string";
+}
+
+function hasExplicitEnvironments(input: unknown): boolean {
+  return isRecord(input) && "environments" in input;
+}
+
+function hasExplicitSync(input: unknown): boolean {
+  return isRecord(input) && "sync" in input;
 }
 
 export const defaultConfigFile = `${JSON.stringify(createInstalledConfig(), null, 2)}\n`;
@@ -275,6 +315,7 @@ export async function validateConfig(
   for (const [name, environment] of Object.entries(config.environments)) {
     warnIfRawDatabaseUrl(diagnostics, `environments.${name}.databaseUrl`, environment.databaseUrl);
   }
+  validateSyncTargets(diagnostics, config);
 
   const include = new Set(config.schemas.include);
   const overlap = config.schemas.exclude.filter((schema) => include.has(schema));
@@ -423,6 +464,11 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
     environments.description =
       "Named database URL references used by --env. Store credentials in environment variables.";
   }
+  const sync = properties.sync;
+  if (isRecord(sync)) {
+    sync.description =
+      "Named migration sync targets. Each target selects a runner, URL owner, history table, and manual or automatic mode.";
+  }
   const workflow = properties.workflow;
   const workflowProperties =
     isRecord(workflow) && isRecord(workflow.properties) ? workflow.properties : undefined;
@@ -450,7 +496,17 @@ function enrichWorkflowJsonSchema(workflowProperties: Record<string, unknown>): 
   setNestedDescription(
     workflowProperties,
     "migration_sync",
-    "Controls whether supaschema sync may hand off pending migrations to the Supabase CLI when an explicit apply flag is used."
+    'Controls whether supaschema sync refuses apply, only applies explicit --target overrides, or uses sync.targets entries whose mode is "auto".'
+  );
+  setNestedDescription(
+    workflowProperties,
+    "type_safety",
+    "Controls whether sync type-contract diagnostics are disabled, reported only, or block deploy."
+  );
+  setNestedDescription(
+    workflowProperties,
+    "rls_safety",
+    "Controls whether sync RLS and least-privilege diagnostics are disabled, reported only, or block deploy."
   );
   setNestedDescription(
     workflowProperties,
@@ -562,7 +618,7 @@ function warnIfRawDatabaseUrl(
   field: string,
   value: string
 ): void {
-  if (!databaseUrlSourcePattern.test(value)) {
+  if (!isRawDatabaseUrlSource(value)) {
     return;
   }
   if (value.includes("$")) {
@@ -574,6 +630,58 @@ function warnIfRawDatabaseUrl(
     message: `${field} contains an inline database URL: ${redactSecrets(value)}.`,
     severity: "warning",
   });
+}
+
+function isRawDatabaseUrlSource(value: string): boolean {
+  const url = value.startsWith("database:") ? value.slice("database:".length) : value;
+  return url.startsWith("postgres://") || url.startsWith("postgresql://");
+}
+
+function validateSyncTargets(
+  diagnostics: ConfigValidationDiagnostic[],
+  config: SupaschemaConfig
+): void {
+  for (const [name, target] of Object.entries(config.sync.targets)) {
+    if ((target.environment === undefined) === (target.databaseUrl === undefined)) {
+      diagnostics.push({
+        field: `sync.targets.${name}`,
+        hint: "Set exactly one of environment or databaseUrl.",
+        message: `sync target ${name} must define exactly one URL owner.`,
+        severity: "error",
+      });
+    }
+    if (target.environment !== undefined && config.environments[target.environment] === undefined) {
+      diagnostics.push({
+        field: `sync.targets.${name}.environment`,
+        hint: `Add environments.${target.environment}.databaseUrl or use databaseUrl on the target.`,
+        message: `sync target ${name} references unknown environment ${target.environment}.`,
+        severity: "error",
+      });
+    }
+    if (target.databaseUrl !== undefined) {
+      warnIfRawDatabaseUrl(diagnostics, `sync.targets.${name}.databaseUrl`, target.databaseUrl);
+    }
+    if (isRemoteSyncTarget(name, target.remote) && target.requireApprovalEnv === undefined) {
+      diagnostics.push({
+        field: `sync.targets.${name}.requireApprovalEnv`,
+        hint: "Set requireApprovalEnv to SUPASCHEMA_REMOTE_SYNC_APPROVED or another operator approval environment variable.",
+        message: `remote sync target ${name} must require a runtime approval environment variable.`,
+        severity: "error",
+      });
+    }
+    if (target.historyTable.trim().length === 0) {
+      diagnostics.push({
+        field: `sync.targets.${name}.historyTable`,
+        hint: `Use ${defaultMigrationHistoryTable} unless the target has a different migration history table.`,
+        message: `sync target ${name} has an empty historyTable.`,
+        severity: "error",
+      });
+    }
+  }
+}
+
+function isRemoteSyncTarget(name: string, remote: boolean | undefined): boolean {
+  return name === "remote" || remote === true;
 }
 
 async function pathKind(path: string): Promise<"directory" | "file" | "missing"> {

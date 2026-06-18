@@ -63,7 +63,7 @@ describe("Mintlify docs worker", () => {
 
     expect(response.status).toBe(308);
     expect(response.headers.get("Location")).toBe("https://supaschema.com/docs/quickstart");
-    // The apex redirect short-circuits before any origin fetch.
+
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

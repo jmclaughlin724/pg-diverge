@@ -1,0 +1,73 @@
+---
+title: "Liquibase comparison"
+description: "Compare supaschema with Liquibase for PostgreSQL. Liquibase is a multi-database, changelog-driven migration runner whose diff compares two databases. supaschema generates, checks, and can sync migrations from declarative SQL with no database needed for generation."
+keywords:
+  [
+    "liquibase comparison",
+    "changelog",
+    "liquibase diff",
+    "migration runner",
+    "declarative sql",
+  ]
+---
+
+`supaschema` and Liquibase sit at adjacent stages of the migration lifecycle. Liquibase is a mature, multi-database migration runner driven by changelogs (XML, YAML, JSON, or SQL); its `diff` compares two databases. `supaschema` is a Postgres-native generator, checker, and gated sync orchestrator: it renders replay-safe migration SQL from declarative SQL files, proves it, and can apply it to configured PostgreSQL targets.
+
+## Short answer
+
+Use `supaschema` to generate and check a Postgres migration from declarative SQL with no live database. Use Liquibase to apply changelog-managed migrations across many databases. They can work together: generate and check the SQL with `supaschema`, then apply it through Liquibase. Liquibase's `diff` needs two database states; supaschema diffs declarative SQL files directly.
+
+## Comparison
+
+| Capability | supaschema | Liquibase |
+| --- | --- | --- |
+| Primary role | Generate and check migrations | Apply changelog migrations (runner) |
+| Change format | Declarative PostgreSQL SQL | Changelog (XML / YAML / JSON / SQL changesets) |
+| Generate a migration | Diffs declarative SQL parse trees | `diff` / `diff-changelog` compares two databases or snapshots |
+| Live database needed to generate | No | Yes, `diff` compares two database states |
+| Replay-safety and lock-hazard checks | Yes, free (`supaschema check`) | Policy checks are a paid Liquibase Secure feature |
+| Applies migrations | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`liquibase update`) |
+| Database support | Any PostgreSQL database (any provider) | Many database engines |
+| Generated types | TypeScript and Zod from the SQL tree | None |
+| Editions | Free core (open) | Community (free, Functional Source License since 5.0) and Liquibase Secure (paid) |
+
+## Why choose supaschema for generation
+
+- Generation diffs declarative SQL files into a migration with no live database; Liquibase's `diff` needs two database states to compare.
+- The source of truth is PostgreSQL SQL, not a changelog DSL, so there is no XML/YAML changeset layer to maintain.
+- `supaschema check` gates replay-safety and lock hazards for free; Liquibase's policy checks are a paid Liquibase Secure feature.
+- Output includes generated TypeScript and Zod types from the same schema.
+
+## When Liquibase still fits
+
+- Choose Liquibase when one changelog lifecycle must span many database engines.
+- Choose Liquibase when your deployment process depends on contexts, labels, preconditions, rollback changesets, or Liquibase Secure policy surfaces.
+- Use `supaschema sync` when the target is PostgreSQL and you want the package-owned generation, safety, type-output, reconciliation, and apply lane.
+
+A practical setup is `supaschema diff` and `supaschema check` to author and prove the SQL, then either `supaschema sync` for PostgreSQL targets or Liquibase to apply and track it.
+
+<Info>
+  Liquibase editions and licensing are set by Liquibase and can change
+  (Community moved to the Functional Source License in 5.0; the commercial
+  edition was rebranded to Liquibase Secure in 2025). Last verified 2026-06-17;
+  confirm current terms before relying on them.
+</Info>
+
+<CardGroup cols={2}>
+  <Card
+    title="Flyway comparison"
+    icon="plane"
+    href="/comparisons/supaschema-vs-flyway"
+  >
+    How supaschema compares to Flyway's versioned-SQL migration runner.
+  </Card>
+  <Card title="The check command" icon="shield-check" href="/commands/check">
+    The replay-safety and lock-hazard diagnostics supaschema runs for free.
+  </Card>
+</CardGroup>
+
+## Sources
+
+- [Liquibase editions and pricing](https://www.liquibase.com/pricing)
+- [Liquibase Community vs Secure](https://www.liquibase.com/open-source)
+- [Liquibase diff command](https://docs.liquibase.com/commands/inspection/diff.html)

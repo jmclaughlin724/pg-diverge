@@ -1,0 +1,16 @@
+{
+  "workflow": {
+    "use_worktrees": false,
+    "worktree_skip_hooks": false
+  },
+  "git": {
+    "branching_strategy": "none",
+    "use_worktrees": false
+  },
+  "parallelization": {
+    "enabled": true,
+    "plan_level": true,
+    "task_level": false,
+    "max_concurrent_agents": 3
+  }
+}

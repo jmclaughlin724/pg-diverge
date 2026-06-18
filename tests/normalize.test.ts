@@ -31,7 +31,7 @@ describe("deparse normalization (tier 2, opt-in)", () => {
     const tidyOut = renderMigration(planSchemaDiff(from, tidy));
     expect(stripHeader(messyOut)).toBe(stripHeader(tidyOut));
     expect(messyOut).toContain("CREATE TABLE IF NOT EXISTS app.t");
-    expect(messyOut.match(/IF NOT EXISTS t_name_idx/gu)).toHaveLength(1);
+    expect(countOccurrences(messyOut, "IF NOT EXISTS t_name_idx")).toBe(1);
   });
 
   it("does not change object hashes relative to normalize: off", async () => {
@@ -51,6 +51,20 @@ describe("deparse normalization (tier 2, opt-in)", () => {
     expect(onTable?.sql).toContain("varchar(20)");
   });
 });
+
+function countOccurrences(value: string, needle: string): number {
+  let count = 0;
+  let index = 0;
+  while (index < value.length) {
+    const found = value.indexOf(needle, index);
+    if (found === -1) {
+      return count;
+    }
+    count += 1;
+    index = found + needle.length;
+  }
+  return count;
+}
 
 describe("deparse round-trip proof (tier 1, always on)", () => {
   it("reports no fidelity findings for a rendered migration", async () => {

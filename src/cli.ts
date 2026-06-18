@@ -12,7 +12,7 @@ import {
   resolveMigrationsDir,
   resolveSourceDefaults,
 } from "./cli-defaults.js";
-import { filterModel, registerDiffCommands } from "./cli-diff.js";
+import { registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
@@ -24,10 +24,13 @@ import {
 } from "./config.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
-import { diagnosticCatalog, formatDiagnostics, hasErrors, redactSecrets } from "./diagnostics.js";
+import { diagnosticCatalog, formatDiagnostics, hasErrors } from "./diagnostics.js";
+import { filterModel } from "./pipeline-services.js";
+import { redactSecrets } from "./redaction.js";
 import { selfCheckCatalog } from "./selfcheck.js";
 import { extractSourceModel } from "./source.js";
 import { verifyMigration } from "./verify.js";
+import { generatedMigrationEditHookOutput, schemaWriteHookOutput } from "./workflow.js";
 
 interface GlobalOptions {
   config?: string;
@@ -83,10 +86,6 @@ program
   .option("--json", "print the init result as redacted JSON")
   .option("--repair", "rewrite supaschema.config.json from the canonical contract when needed")
   .action(async (options: InitOptions) => {
-    // Resolve the installed package root from the compiled CLI (dist/cli.js -> ../),
-    // the same anchor readPackageVersion uses, then load the shared scaffolder that
-    // ships at <package>/bin/scaffold.mjs. The dynamic, URL-form import is the
-    // OS-safe convention for a computed path that points out of dist into bin/.
     const packageRoot = fileURLToPath(new URL("../", import.meta.url));
     const packageVersion = await readPackageVersion();
     const { scaffoldProject } = await import(
@@ -166,7 +165,13 @@ registerDiffCommands(program, {
   printDiagnostics,
   resolveCliDatabaseUrl,
 });
-registerReportCommands(program, { loadCliConfig, printDiagnostics, resolveCliDatabaseUrl });
+registerReportCommands(program, {
+  cliVersion,
+  globalEnvName: () => program.opts<GlobalOptions>().env,
+  loadCliConfig,
+  printDiagnostics,
+  resolveCliDatabaseUrl,
+});
 registerToolCommands(program, {
   configPath: currentConfigPath,
   loadCliConfig,
@@ -346,6 +351,43 @@ program
     process.stdout.write(`${code.toUpperCase()}: ${summary}\n`);
   });
 
+const hookCommand = program
+  .command("hook", { hidden: true })
+  .description("Internal agent hook entrypoints.");
+
+hookCommand
+  .command("schema-write", { hidden: true })
+  .description("Run the internal schema-write hook workflow.")
+  .action(() =>
+    runHookFailOpen(async () => {
+      const payload = JSON.parse(await readStdin()) as unknown;
+      const output = await schemaWriteHookOutput(payload);
+      if (output !== undefined) {
+        process.stdout.write(`${JSON.stringify(output)}\n`);
+      }
+    })
+  );
+
+hookCommand
+  .command("generated-migration-edit", { hidden: true })
+  .option("--runtime <runtime>", "claude | codex", "claude")
+  .description("Run the internal generated-migration edit guard.")
+  .action((options: { runtime?: string }) =>
+    runHookFailOpen(async () => {
+      const runtime = options.runtime === "codex" ? "codex" : "claude";
+      const payload = JSON.parse(await readStdin()) as unknown;
+      const output = generatedMigrationEditHookOutput(payload, runtime);
+      if (runtime === "codex") {
+        process.stdout.write(`${JSON.stringify(output ?? {})}\n`);
+        return;
+      }
+      if (output?.reason !== undefined) {
+        process.stderr.write(`${output.reason}\n`);
+        process.exitCode = 2;
+      }
+    })
+  );
+
 program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${redactRawError(error)}\n`);
   process.exitCode = 1;
@@ -360,12 +402,14 @@ function currentConfigPath(): string | undefined {
   return program.opts<GlobalOptions>().config;
 }
 
-/**
- * Database URL precedence: explicit flag, then the named --env entry from
- * config.environments, then the shared resolver (SUPASCHEMA_DATABASE_URL,
- * then supabase/config.toml discovery). Environment values support the same
- * $ENV_NAME indirection as the flag.
- */
+async function runHookFailOpen(action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch {
+    return;
+  }
+}
+
 async function resolveCliDatabaseUrl(explicit?: string): Promise<string | undefined> {
   return (await resolveCliDatabaseUrlInfo(explicit)).url;
 }

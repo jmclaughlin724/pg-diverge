@@ -198,10 +198,6 @@ export function isObservableLoad(payload) {
 }
 
 export function isSubagentInvocation(payload) {
-  // Claude Code includes agent_id only when a hook fires inside a subagent call
-  // (https://code.claude.com/docs/en/hooks). PreToolUse fires inside subagents, but
-  // SubagentStart is injection-only and a subagent may run under a restricted tools:
-  // set without Skill/Read, so a hard deny inside a subagent would deadlock it.
   return Boolean(payload?.agent_id ?? payload?.agentId);
 }
 

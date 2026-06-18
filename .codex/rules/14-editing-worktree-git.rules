@@ -24,12 +24,12 @@
 #
 # ## Contract
 #
-# This rule owns edit safety, dirty-worktree handling, generated mirror discipline, deletion/rename sweeps, and git shortcut bans. It prevents agents from overwriting user-owned work or treating a clean worktree as a prerequisite.
+# This rule owns edit safety, dirty-worktree handling, generated mirror discipline, deletion/rename sweeps, and local git shortcut bans. Rule 20 owns the consolidated anti-pattern index. Rule 21 owns GitHub repository settings, PR preflight, merge preflight, canonical merge method, branch cleanup, and post-merge verification.
 #
 # ## Editing rules
 #
 # - Read enough local context before editing.
-# - Keep changes owner-scoped and use the narrowest owner that can satisfy the request.
+# - Keep changes owner-scoped and use the canonical owner that satisfies the requested end state.
 # - Prefer structured edits (`apply_patch`, editor tool, AST/LSP rename, or repo codemod) over shell write tricks for source changes.
 # - Do not use broad replacement on substrings of wider identifiers. Verify uniqueness or use AST/LSP rename.
 # - Do not hand-edit generated artifacts such as `dist/**`, generated config contract outputs, generated migrations, generated docs output, Code Atlas scratch output, or LLM mirrors.
@@ -48,13 +48,14 @@
 # - Commit only when explicitly asked.
 # - Before committing, branch off the default branch if the repo workflow requires it.
 # - Let lefthook/pre-commit/pre-push run. Never use `--no-verify`.
-# - Do not use `git reset --hard`, `git checkout --`, `git restore --source`, `git stash`, force-push, or destructive branch operations without explicit approval.
+# - Do not use `git checkout`; use `git switch` for branch movement and `git show` / `git diff` for read-only comparisons.
+# - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
 # - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.
-# - Before creating or replacing a PR, verify the intended base branch, current head branch, upstream, existing PRs for the head branch, commit count, changed-file count, and mergeability.
-# - Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch that contains commits outside the requested task. Create a clean task branch from the intended base instead.
-# - If a PR was opened from the wrong branch, create and verify a clean replacement PR before closing or superseding the bad PR. Document why the old PR was superseded.
+# - Before creating or replacing a PR, follow Rule 21 and run the GitHub PR preflight.
+# - Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch that contains commits outside the requested task. Rule 21 owns the remote PR checks that prove this.
+# - If a PR was opened from the wrong branch, follow Rule 21 to create and verify a clean replacement PR before closing or superseding the bad PR. Document why the old PR was superseded.
 # - Subagents and workers may edit files only. They must not stage, commit, push, switch branches, create branches, create worktrees, force-push, merge, or open/replace PRs.
-# - Only the main agent may stage, commit, or push, and only on the current branch after explicit user instruction. The main agent owns final integration, branch cleanup, PR creation/replacement, merge, and final verification.
+# - Only the main agent may stage, commit, or push, and only on the current branch after explicit user instruction. The main agent owns final integration, PR creation/replacement, merge, branch cleanup, and final verification through Rule 21.
 #
 # ## Delete, rename, and export-shape sweeps
 #
@@ -78,13 +79,10 @@
 # Before PR creation or replacement:
 #
 # ```bash
-# git status --short --branch
-# git log --oneline --left-right <base>...HEAD
-# git diff --stat <base>...HEAD
-# git merge-tree --write-tree --name-only --messages <base> HEAD
+# npm run github:pr-preflight -- --base main
 # ```
 #
-# Run the owner checks for the changed surface. For source deletion, rename, export, package, or generated-surface work, include Code Atlas or cclsp/source evidence for the consumer sweep.
+# Run the owner checks for the changed surface. For source deletion, rename, export, package, or generated-surface work, include Code Atlas or cclsp/source evidence for the consumer sweep. For anti-pattern changes, update Rule 20 and run its verification path.
 #
 # ## Failure behavior
 #

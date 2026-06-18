@@ -7,11 +7,12 @@ import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
 import { parseSqlAst } from "../src/sql/parser.js";
 import { verifyMigration } from "../src/verify.js";
+import {
+  hasUnqualifiedCatalogName,
+  hasUnqualifiedRegproc,
+} from "./helpers/catalog-qualification.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
-const unqualifiedCatalogPattern =
-  /(?<!pg_catalog\.)\bpg_(?:type|class|namespace|constraint|roles)\b/;
-const unqualifiedRegprocPattern = /(?<!pg_catalog\.)\bto_reg(?:class|procedure)\(/;
 
 interface Scenario {
   config?: Partial<SupaschemaConfig>;
@@ -101,8 +102,16 @@ describe.each(scenarios)("generated migration standards: $name", (scenario) => {
     const diagnosticCodes = diagnostics.map((diagnostic) => diagnostic.code);
 
     expect(diagnosticCodes).not.toContain("SUPA_CHECK_CASCADE");
-    expect(sql).not.toMatch(unqualifiedCatalogPattern);
-    expect(sql).not.toMatch(unqualifiedRegprocPattern);
+    expect(
+      hasUnqualifiedCatalogName(sql, [
+        "pg_type",
+        "pg_class",
+        "pg_namespace",
+        "pg_constraint",
+        "pg_roles",
+      ])
+    ).toBe(false);
+    expect(hasUnqualifiedRegproc(sql)).toBe(false);
   });
 
   it.skipIf(!databaseUrl)(

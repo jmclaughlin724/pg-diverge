@@ -7,10 +7,6 @@ import { generateDatabaseTypes, generateDatabaseTypesFromShapes } from "../src/t
 import { collectSchemaShapes } from "../src/typegen-model.js";
 import { generateZodSchemas, generateZodSchemasFromShapes } from "../src/typegen-zod.js";
 
-const addressCompositePattern =
-  /address:\s*\{\s*street:\s*string \| null;\s*zip:\s*number \| null;/;
-const emptyIntrangePattern = /intrange:\s*\{\s*\}/;
-
 const treeSql = `CREATE SCHEMA app;
 CREATE TYPE app.status AS ENUM ('draft', 'active');
 CREATE TABLE app.accounts (
@@ -46,6 +42,29 @@ async function modelFor(sql: string, prefix: string) {
     throw new Error(`expected source extraction to succeed: ${JSON.stringify(errors)}`);
   }
   return model;
+}
+
+function collapseWhitespace(value: string): string {
+  const words: string[] = [];
+  let current = "";
+  for (const char of value) {
+    if (isWhitespace(char)) {
+      if (current.length > 0) {
+        words.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current.length > 0) {
+    words.push(current);
+  }
+  return words.join(" ");
+}
+
+function isWhitespace(char: string): boolean {
+  return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
 }
 
 describe("database type generation", () => {
@@ -200,13 +219,15 @@ describe("composite and range type typegen", () => {
 
     expect(types).toContain('home: Database["app"]["CompositeTypes"]["address"] | null;');
     expect(types).toContain("CompositeTypes: {");
-    expect(types).toMatch(addressCompositePattern);
+    expect(collapseWhitespace(types)).toContain(
+      "address: { street: string | null; zip: number | null;"
+    );
   });
 
   it("does not emit a range type as an empty composite", async () => {
     const types = await typesFor(compositeSql);
 
-    expect(types).not.toMatch(emptyIntrangePattern);
+    expect(collapseWhitespace(types)).not.toContain("intrange: {}");
   });
 
   it("prefers a schema-local composite over a same-named enum in another schema", async () => {

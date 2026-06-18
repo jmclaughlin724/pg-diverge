@@ -33,7 +33,7 @@ describe("scan core (K0)", () => {
       hygienePack,
     ]);
     expect(result.warningCount).toBe(2);
-    expect(result.score).toBe(94); // 100 - 2*3
+    expect(result.score).toBe(94);
     expect(result.diagnostics).toHaveLength(2);
   });
 

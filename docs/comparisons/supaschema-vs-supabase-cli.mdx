@@ -4,11 +4,11 @@ description: "Compare supaschema with Supabase CLI db diff for declarative schem
 keywords: ["Supabase CLI comparison", "db diff", "Docker-free", "replay safety"]
 ---
 
-`supaschema` is best when you want deterministic PostgreSQL or Supabase migrations from declarative SQL files without Docker, a shadow database, or a hand-edited generated migration. The Supabase CLI remains the standard runner for applying migrations to Supabase; `supaschema` is designed to generate and prove the SQL before that apply step.
+`supaschema` is best when you want deterministic PostgreSQL or Supabase migrations from declarative SQL files without Docker, a shadow database, or a hand-edited generated migration. The Supabase CLI remains a supported runner for Supabase projects; `supaschema sync` can also own the guarded apply pipeline through configured direct PostgreSQL or Supabase CLI targets.
 
 ## Short answer
 
-Use `supaschema` when the schema files are the source of truth and you need a fast, replay-safe migration from those files. Use the Supabase CLI to apply the reviewed migration with `supabase db push` after `supaschema check` and, when possible, `supaschema verify`.
+Use `supaschema` when the schema files are the source of truth and you need a fast, replay-safe migration from those files. Use `supaschema sync` when you want one configured workflow for diff, generated outputs, deploy safety gates, target reconciliation, and apply. Keep `supabase db push` when you want the Supabase CLI to remain the standalone apply step.
 
 ## Comparison
 
@@ -20,7 +20,7 @@ Use `supaschema` when the schema files are the source of truth and you need a fa
 | Replay safety | Generated SQL is guarded and checked | Generated SQL may need manual review for retry safety |
 | RLS policy body changes | Policy expressions are compared structurally | Engines can miss policy-body changes when names stay stable |
 | Destructive change handling | Fails closed until exact hints are approved | Depends on generated output and reviewer discipline |
-| Applies to production | No, generation/proof only | Yes, via Supabase migration commands |
+| Applies to production | Yes, through configured `sync` targets and runner approval gates | Yes, via Supabase migration commands |
 
 ## Why the workflow is different
 
@@ -32,10 +32,10 @@ The practical loop is:
 supaschema diff
 supaschema check
 supaschema verify
-supabase db push
+supaschema sync
 ```
 
-`diff` writes the migration and refreshes generated outputs according to `workflow.type_generation` and `workflow.zod_generation`. `check` catches replay-safety and lock hazards. `verify` applies the migration twice in disposable databases and confirms the result matches the declared target. `supabase db push` remains the apply step.
+`diff` writes the migration and refreshes generated outputs according to `workflow.type_generation` and `workflow.zod_generation`. `check` catches replay-safety and lock hazards. `verify` applies the migration twice in disposable databases and confirms the result matches the declared target. `sync` can run the same chain and apply pending migrations through a configured direct PostgreSQL or Supabase CLI runner. `supabase db push` remains valid when the Supabase CLI is intentionally kept as the external apply step.
 
 ## RLS policy safety
 
@@ -59,9 +59,9 @@ Choose `supaschema` for:
 - Teams that want TypeScript and Zod output before applying a migration.
 - Projects where RLS policy changes need explicit review.
 
-Keep using the Supabase CLI for:
+Keep using the Supabase CLI directly for:
 
-- Applying the final migration to local, staging, or production Supabase databases.
+- Applying the final migration outside the `supaschema sync` orchestration.
 - Managing Supabase platform resources outside the schema migration file.
 - Existing deployment workflows that already call `supabase db push`.
 
@@ -70,7 +70,7 @@ Keep using the Supabase CLI for:
 ```bash
 supaschema diff
 supaschema check
-supabase db push
+supaschema sync
 ```
 
 Install with the package-manager lane from [Installation](/installation). Add `supaschema verify` before merge when CI can reach a disposable PostgreSQL database.

@@ -8,7 +8,7 @@ Turn `$ARGUMENTS` into an execution-ready persistent task system. This skill is 
 
 Hard sequencing rule: complete all applicable research, investigation, code search, ownership tracing, MCP validation, skill loading, and assumption resolution before creating or presenting any plan, implementation wave, persistent task list, or textual fallback task system. A plan or task list is the execution artifact produced after evidence is gathered; it is not a substitute for gathering evidence. Any assumption that would shape scope, order, ownership, verification, risk, or user-visible behavior must be investigated and resolved first.
 
-Default stance: `$tasks` is elegant-first. Unless the user explicitly asks for backwards compatibility, a minimal patch, or preservation of an existing public contract, the task system should assume the simplest correct end state and say so explicitly in the first post-research planning response.
+Default stance: `$tasks` is elegant-only. The task system assumes the simplest correct end state and says so explicitly in the first post-research planning response.
 
 Runtime terminology:
 
@@ -36,9 +36,9 @@ Codex upstream task/persistence basis:
 
 Output contract: the first plan or task-list response, created only after the research gate above is complete, must be expressed through the persistent task list or fallback execution record and explicitly include:
 
-- `Execution lens: elegant` or `Execution lens: compatibility-constrained`
+- `Execution lens: elegant`
 - `Elegant end state: ...`
-- `Compatibility constraint: none` or the exact reason the elegant path is not fully taken
+- `Legacy-surface disposition: delete, merge, rewrite consumers, or none`
 - `Open assumptions: none (all validated)` — required; if this is not true, do not create the plan or task list
 - `Resolved assumptions: ...` — list each assumption that influenced scope, owner choice, sequencing, verification, or behavior, with the evidence or user decision that resolved it
 - `Scope ledger: ...` — list the plan-owned dirty files, generated mirrors, migrations, and external rollout surfaces; classify unrelated dirty files or pending migration manifests as excluded instead of absorbing them into the plan
@@ -109,7 +109,7 @@ If no subagent or delegation tool is exposed after the correct tool-discovery pa
    - for Codex modernization work, stabilize dependency/test evidence before broad refactors and split changes into small validation-backed waves
 8. Use direct reads only for known owning files. Use the Parallel Research Fan-Out contract for broad discovery across multiple surfaces when delegation tooling is exposed. In Codex, discover the delegation tool first and record the result before falling back.
 9. Complete all Code Atlas queries, code search, route discovery, package graph inspection, MCP validation, and applicable skill reads before drafting the implementation plan or task list. Do not create placeholder tasks for research that has not happened yet.
-10. Build an assumption ledger before drafting any plan. Include every assumption needed to choose scope, owners, dependencies, sequencing, compatibility posture, verification, data/security handling, runtime state, external system behavior, or user-visible behavior. Do not limit the ledger to "important" assumptions if a smaller unchecked assumption would still influence the plan.
+10. Build an assumption ledger before drafting any plan. Include every assumption needed to choose scope, owners, dependencies, sequencing, legacy-surface disposition, verification, data/security handling, runtime state, external system behavior, or user-visible behavior. Do not limit the ledger to "important" assumptions if a smaller unchecked assumption would still influence the plan.
 11. Convert every assumption into one of:
 
 - verified fact with evidence from source, command output, logs, MCP data, official docs, or runtime proof
@@ -130,8 +130,7 @@ If no subagent or delegation tool is exposed after the correct tool-discovery pa
 
 16. Feed those DRY findings into the plan instead of treating them as optional commentary. If duplication materially affects the design, create explicit cleanup or consolidation tasks.
 17. After the evidence above is complete, restate the target as if there were no existing consumers and explicitly declare the execution lens:
-    - `elegant` by default
-    - `compatibility-constrained` only when the user explicitly requires it
+    - `elegant`
 
 ## Step 2: Validate against applicable skills and MCP servers
 
@@ -194,7 +193,7 @@ Description shape for the TaskCompleted gate (`policy-taskcompleted-task-complet
 - `wave`
 - `agentType`
 - `executionLens`
-- `compatibilityConstraint`
+- `legacySurfaceDisposition`
 - `requiredSkills`
 - `parallelSafe`
 - `maxConcurrentAgents`
@@ -241,8 +240,8 @@ Description shape for the TaskCompleted gate (`policy-taskcompleted-task-complet
 2. If the work touches routes, confirm the route inventory again with Next DevTools before dispatching implementation agents.
 3. If the work touches bundler or runtime-trace-sensitive behavior, confirm the Turbopack trace plan before dispatching implementation agents.
 4. Do not start implementation until the plan is validated against the applicable skills and MCP evidence.
-5. Before executing implementation waves, ensure the task list records the post-research target, execution lens, and whether the `elegant` path replaces a compatibility-preserving path. If the user explicitly requires backwards compatibility or a minimal patch, record that constraint in the task list.
-6. Do not present an implementation plan without stating which tasks are running under the `elegant` lens and which tasks, if any, are intentionally compatibility-constrained.
+5. Before executing implementation waves, ensure the task list records the post-research target, execution lens, and legacy-surface disposition.
+6. Do not present an implementation plan without stating that every task is running under the `elegant` lens.
 7. If the task list is presented in prose instead of a TaskList UI, each wave summary must call out the elegant effect:
    - what is being deleted
    - what is being consolidated
@@ -259,7 +258,7 @@ Description shape for the TaskCompleted gate (`policy-taskcompleted-task-complet
 7. Every delegated prompt must include:
    - why the task exists
    - whether it is evidence-gathering or may modify files
-   - the task's execution lens: `elegant` or `compatibility-constrained`
+   - the task's execution lens: `elegant`
    - exact files, modules, symbols, or search scope
    - exact inventory slice: files, routes, consumers, dependencies, tests/checks, generated outputs, and rollout surfaces to add, update, remove, or exclude
    - relevant `AGENTS.md` and `.claude/rules/*` owners
@@ -269,10 +268,10 @@ Description shape for the TaskCompleted gate (`policy-taskcompleted-task-complet
    - required verification
    - exact artifact to return
    - a reminder that other agents may be working elsewhere in the repo
-8. For implementation and refactor tasks, require the agent to use the `elegant` skill as the execution lens unless the task metadata explicitly records a compatibility constraint and explains why the elegant path is intentionally not being taken.
+8. For implementation and refactor tasks, require the agent to use the `elegant` skill as the execution lens.
 9. Enforce the `elegant` rules during execution:
    - prefer deletion over adaptation when old paths exist only for legacy consumers
-   - remove wrappers, shims, and transitional branches unless explicitly required
+   - remove wrappers, shims, and transitional branches
    - choose the narrowest owner and simplest clean architecture
    - optimize for directness and maintainability before cleverness
 10. Wait for all delegated agents in the wave, validate the important claims they return, update task status, then move to the next wave.
@@ -294,7 +293,7 @@ Description shape for the TaskCompleted gate (`policy-taskcompleted-task-complet
    - deferred tasks: must be zero — any remaining work is a blocker, not a deferral
    - wave-by-wave task summary
    - DRY findings that changed the task list
-   - where the `elegant` approach replaced a compatibility-preserving option
+   - legacy surfaces deleted, merged, or rewritten through consumers
    - change inventory summary for files, routes, consumers, dependencies, generated outputs, and rollout surfaces
    - which skills and MCP servers validated the plan
    - which routes were validated

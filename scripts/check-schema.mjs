@@ -1,12 +1,5 @@
 #!/usr/bin/env node
-// Drift gate for the generated config contract artifacts.
-//
-// The build (`npm run build`) compiles src/** then runs the generator
-// `node dist/config-schema-gen.js`, which writes supaschema-config.schema.json
-// and bin/config-contract.mjs from src/config.ts + src/config-contract.ts. This
-// check proves the working-tree generated files already match current source.
-//
-// Usage: node scripts/check-schema.mjs   (or `npm run check:schema`)
+
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -15,12 +8,6 @@ import { fileURLToPath } from "node:url";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generatedFiles = ["supaschema-config.schema.json", "bin/config-contract.mjs"];
 
-// Resolve npm cross-platform: spawnSync("npm", ..., {shell:false}) raises ENOENT
-// on Windows (the executable is npm.cmd, which Node will not resolve without a
-// shell or explicit extension). Prefer the exact npm that launched this script
-// (npm_execpath) run through node; fall back to npm.cmd on Windows. This is the
-// same pattern the package-boundary tests use (tests/package-contents.test.ts,
-// tests/database-url.test.ts).
 function npmInvocation(args) {
   const execpath = process.env.npm_execpath;
   return execpath
@@ -53,8 +40,6 @@ function readGeneratedFiles() {
   );
 }
 
-// Rebuild + regenerate so generated config contract files reflect current source.
-// `npm run build` runs `tsc` then `node dist/config-schema-gen.js`.
 const before = readGeneratedFiles();
 const build = npmInvocation(["run", "build"]);
 const buildStatus = run(build.command, build.args, "npm run build");

@@ -1,392 +1,412 @@
-<svg height="502" role="img" viewBox="0 0 1000 502" width="1000" xmlns="http://www.w3.org/2000/svg">
-  <title>50 Tables</title>
+<svg height="648" role="img" viewBox="0 0 1000 648" width="1000" xmlns="http://www.w3.org/2000/svg">
+  <title>supaschema vs diff engines</title>
   <defs>
     <linearGradient id="supaGradient" x1="0" x2="1" y1="0" y2="0">
-      <stop offset="0%" stop-color="#059669" />
-      <stop offset="100%" stop-color="#34d399" />
+      <stop offset="0%" stop-color="#A91616" />
+      <stop offset="100%" stop-color="#FACC15" />
     </linearGradient>
     <linearGradient id="slateGradient" x1="0" x2="1" y1="0" y2="0">
-      <stop offset="0%" stop-color="#3b4757" />
-      <stop offset="100%" stop-color="#526079" />
+      <stop offset="0%" stop-color="#3C241D" />
+      <stop offset="100%" stop-color="#8A6255" />
     </linearGradient>
   </defs>
-  <rect fill="#0b1220" height="100%" rx="14" width="100%" />
+  <rect fill="#160807" height="100%" rx="14" width="100%" />
   <text
-    fill="#f8fafc"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="22"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="34"
     font-weight="700"
     x="36.0"
     y="52.0"
   >
-    50 Tables
-  </text>
-  <text
-    fill="#94a3b8"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="12.5"
-    font-weight="400"
-    x="36.0"
-    y="80.0"
-  >
-    realistic fixture · median diff seconds (linear, lower is better) · whisker marks p95
+    supaschema vs diff engines
   </text>
   <rect
-    fill="rgba(16,185,129,0.12)"
-    height="40"
-    rx="10"
-    stroke="#10b981"
-    stroke-opacity="0.55"
-    width="463"
-    x="501"
-    y="30"
+    fill="#FACC15"
+    height="42"
+    rx="11"
+    stroke="#A91616"
+    stroke-opacity="0.7"
+    width="176"
+    x="788"
+    y="29"
   />
   <text
-    fill="#34d399"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="15"
-    font-weight="700"
+    fill="#160807"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="18"
+    font-weight="800"
     text-anchor="middle"
-    x="732.5"
-    y="56.0"
+    x="876.0"
+    y="56.5"
   >
-    supaschema is up to 21× faster than legacy diff engines
+    50 tables
   </text>
-  <line stroke="#1e293b" stroke-width="1" x1="232.0" x2="232.0" y1="122" y2="426" />
   <text
-    fill="#64748b"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="11"
+    fill="#D8B49C"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="14.5"
+    font-weight="400"
+    x="36.0"
+    y="84.0"
+  >
+    realistic fixture · median diff latency (linear, lower is better) ·
+  </text>
+  <text
+    fill="#D8B49C"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="14.5"
+    font-weight="400"
+    x="36.0"
+    y="102.0"
+  >
+    whisker marks p95
+  </text>
+  <text
+    fill="#FACC15"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="14.5"
+    font-weight="700"
+    x="36.0"
+    y="128.0"
+  >
+    supaschema is up to 21× faster
+  </text>
+  <line stroke="#3B1A15" stroke-width="1" x1="232.0" x2="232.0" y1="142" y2="572" />
+  <text
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="16"
     font-weight="400"
     text-anchor="middle"
     x="232.0"
-    y="448.0"
+    y="594.0"
   >
     0.00s
   </text>
-  <line stroke="#1e293b" stroke-width="1" x1="456.4" x2="456.4" y1="122" y2="426" />
+  <line stroke="#3B1A15" stroke-width="1" x1="456.4" x2="456.4" y1="142" y2="572" />
   <text
-    fill="#64748b"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="11"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="16"
     font-weight="400"
     text-anchor="middle"
     x="456.4"
-    y="448.0"
+    y="594.0"
   >
     2.00s
   </text>
-  <line stroke="#1e293b" stroke-width="1" x1="680.7" x2="680.7" y1="122" y2="426" />
+  <line stroke="#3B1A15" stroke-width="1" x1="680.7" x2="680.7" y1="142" y2="572" />
   <text
-    fill="#64748b"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="11"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="16"
     font-weight="400"
     text-anchor="middle"
     x="680.7"
-    y="448.0"
+    y="594.0"
   >
     4.00s
   </text>
-  <line stroke="#1e293b" stroke-width="1" x1="905.1" x2="905.1" y1="122" y2="426" />
+  <line stroke="#3B1A15" stroke-width="1" x1="905.1" x2="905.1" y1="142" y2="572" />
   <text
-    fill="#64748b"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="11"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="16"
     font-weight="400"
     text-anchor="middle"
     x="905.1"
-    y="448.0"
+    y="594.0"
   >
     6.00s
   </text>
-  <circle cx="41" cy="141" fill="#34d399" r="4" />
+  <circle cx="41" cy="165" fill="#FACC15" r="4" />
   <text
-    fill="#f8fafc"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="13"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="650"
     x="54.0"
-    y="145.0"
+    y="171.1"
   >
     supaschema-db
   </text>
-  <rect fill="url(#supaGradient)" height="20" rx="5" width="26.7" x="232" y="130" />
+  <rect fill="url(#supaGradient)" height="30" rx="7" width="26.9" x="232" y="150" />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="258.7"
-    x2="258.8"
-    y1="140"
-    y2="140"
+    x1="258.9"
+    x2="258.9"
+    y1="165"
+    y2="165"
   />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="258.8"
-    x2="258.8"
-    y1="127"
-    y2="153"
+    x1="258.9"
+    x2="258.9"
+    y1="147"
+    y2="183"
   />
   <text
-    fill="#34d399"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="12"
+    fill="#FACC15"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="700"
-    x="266.8"
-    y="145.0"
+    x="266.9"
+    y="171.1"
   >
     0.24s
   </text>
-  <circle cx="41" cy="185" fill="#34d399" r="4" />
+  <circle cx="41" cy="227" fill="#FACC15" r="4" />
   <text
-    fill="#f8fafc"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="13"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="650"
     x="54.0"
-    y="189.0"
+    y="233.1"
   >
     supaschema-file
   </text>
-  <rect fill="url(#supaGradient)" height="20" rx="5" width="27.7" x="232" y="174" />
+  <rect fill="url(#supaGradient)" height="30" rx="7" width="28.0" x="232" y="212" />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="259.7"
+    x1="260.0"
     x2="260.9"
-    y1="184"
-    y2="184"
+    y1="227"
+    y2="227"
   />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
     x1="260.9"
     x2="260.9"
-    y1="171"
-    y2="197"
+    y1="209"
+    y2="245"
   />
   <text
-    fill="#34d399"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="12"
+    fill="#FACC15"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="700"
     x="268.9"
-    y="189.0"
+    y="233.1"
   >
     0.25s
   </text>
   <text
-    fill="#e2e8f0"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="13"
+    fill="#FFF2E1"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="450"
     x="54.0"
-    y="233.0"
+    y="295.1"
   >
     supabase-pgadmin
   </text>
-  <rect fill="url(#slateGradient)" height="20" rx="5" width="497.8" x="232" y="218" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="498.1" x="232" y="274" />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="729.8"
+    x1="730.1"
     x2="818.9"
-    y1="228"
-    y2="228"
+    y1="289"
+    y2="289"
   />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
     x1="818.9"
     x2="818.9"
-    y1="215"
-    y2="241"
+    y1="271"
+    y2="307"
   />
   <text
-    fill="#f8fafc"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="12"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="721.8"
-    y="232.5"
+    x="722.1"
+    y="295.1"
   >
     4.44s · 17× slower
   </text>
   <text
-    fill="#e2e8f0"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="13"
+    fill="#FFF2E1"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="450"
     x="54.0"
-    y="277.0"
+    y="357.1"
   >
     supabase-pg-schema
   </text>
-  <rect fill="url(#slateGradient)" height="20" rx="5" width="542.3" x="232" y="262" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="541.9" x="232" y="336" />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="774.3"
-    x2="804.6"
-    y1="272"
-    y2="272"
+    x1="773.9"
+    x2="804.7"
+    y1="351"
+    y2="351"
   />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="804.6"
-    x2="804.6"
-    y1="259"
-    y2="285"
+    x1="804.7"
+    x2="804.7"
+    y1="333"
+    y2="369"
   />
   <text
-    fill="#f8fafc"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="12"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="766.3"
-    y="276.5"
+    x="765.9"
+    y="357.1"
   >
     4.83s · 19× slower
   </text>
   <text
-    fill="#e2e8f0"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="13"
+    fill="#FFF2E1"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="450"
     x="54.0"
-    y="321.0"
+    y="419.1"
   >
     supabase-pg-delta
   </text>
-  <rect fill="url(#slateGradient)" height="20" rx="5" width="571.8" x="232" y="306" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="572.1" x="232" y="398" />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="803.8"
+    x1="804.1"
     x2="851.0"
-    y1="316"
-    y2="316"
+    y1="413"
+    y2="413"
   />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
     x1="851.0"
     x2="851.0"
-    y1="303"
-    y2="329"
+    y1="395"
+    y2="431"
   />
   <text
-    fill="#f8fafc"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="12"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="795.8"
-    y="320.5"
+    x="796.1"
+    y="419.1"
   >
     5.10s · 20× slower
   </text>
   <text
-    fill="#e2e8f0"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="13"
+    fill="#FFF2E1"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="450"
     x="54.0"
-    y="365.0"
+    y="481.1"
   >
     supabase-default
   </text>
-  <rect fill="url(#slateGradient)" height="20" rx="5" width="587.3" x="232" y="350" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="587.8" x="232" y="460" />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="819.3"
+    x1="819.8"
     x2="824.0"
-    y1="360"
-    y2="360"
+    y1="475"
+    y2="475"
   />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
     x1="824.0"
     x2="824.0"
-    y1="347"
-    y2="373"
+    y1="457"
+    y2="493"
   />
   <text
-    fill="#f8fafc"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="12"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="811.3"
-    y="364.5"
+    x="811.8"
+    y="481.1"
   >
-    5.24s · 21× slower
+    5.24s · 20× slower
   </text>
   <text
-    fill="#e2e8f0"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="13"
+    fill="#FFF2E1"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="450"
     x="54.0"
-    y="409.0"
+    y="543.1"
   >
     supabase-migra
   </text>
-  <rect fill="url(#slateGradient)" height="20" rx="5" width="602.3" x="232" y="394" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="602.4" x="232" y="522" />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="834.3"
+    x1="834.4"
     x2="935.8"
-    y1="404"
-    y2="404"
+    y1="537"
+    y2="537"
   />
   <line
-    stroke="#f8fafc"
+    stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
     x1="935.8"
     x2="935.8"
-    y1="391"
-    y2="417"
+    y1="519"
+    y2="555"
   />
   <text
-    fill="#f8fafc"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="12"
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="826.3"
-    y="408.5"
+    x="826.4"
+    y="543.1"
   >
     5.37s · 21× slower
   </text>
   <text
-    fill="#64748b"
-    font-family="ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    fill="#9B746A"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="11"
     font-weight="400"
     x="36.0"
-    y="480.0"
+    y="626.0"
   >
     supaschema 0.1.0 · Supabase CLI 2.106.0 · Node v24.14.0 · Apple Silicon · 3 iterations
   </text>

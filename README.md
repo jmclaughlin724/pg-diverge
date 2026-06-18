@@ -8,7 +8,7 @@
 
 [Documentation](https://supaschema.com/docs) · [What's included](https://supaschema.com/docs/whats-included) · [Setup](https://supaschema.com/docs/setup) · [Quickstart](https://supaschema.com/docs/quickstart) · [Benchmarks](https://supaschema.com/docs/benchmarks) · [Supabase CLI comparison](https://supaschema.com/docs/comparisons/supaschema-vs-supabase-cli) · [FAQ](https://supaschema.com/docs/faq)
 
-**Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, and refreshes TypeScript + Zod outputs according to config in the same command — without standing up a database to do it.
+**Declarative Postgres and Supabase migrations in milliseconds — no Docker, no shadow database, no ORM schema layer.** supaschema reads your SQL with PostgreSQL's own parser, shipped as WASM inside the package, so it diffs your schema, writes a replay-safe migration, refreshes TypeScript + Zod outputs, and can run guarded sync according to config — without standing up a database to generate the change.
 
 - **Fast at any scale.** It parses instead of replaying: a full diff of an 8,300-object production schema runs in under two seconds, where the Supabase CLI's shadow-database engines take minutes. The gap widens from ~18× on a single-table change to ~68× at 2,500 tables.
 - **Catches the tenant-isolation regression other tools ship.** An RLS policy's `USING` predicate _is_ the tenant boundary. Every Supabase CLI engine diffs policies by name and silently drops a tightened predicate; supaschema compares policy bodies structurally and catches it before it merges.
@@ -18,7 +18,7 @@
 supaschema diff   # writes the migration; refreshes configured outputs per workflow policy
 ```
 
-![supaschema vs every Supabase CLI engine at 1,000 tables — median diff latency, accuracy F1, and replay-safety side by side](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xl.svg)
+![supaschema vs diff engines at 1,000 tables — median diff latency bars](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xl-bars.svg)
 
 The promise of declarative schema management sounds great: keep your schema in SQL files, edit them in your editor, diff against your database to produce a type-safe, idempotent migration, and get regenerated types back in your repo.
 
@@ -26,7 +26,7 @@ In practice, the existing tooling needs a running database at every step. Diff e
 
 supaschema knows every table, column, type, and enum without a database because it's built on PostgreSQL's own parser. The same system that would normally interpret your SQL inside a Docker container ships inside the package, embedded in your repo.
 
-Migrations diff without an ORM, without Docker, without a shadow database, and without introspection — reading your live catalog directly and read-only, or your schema files and git refs with no database at all. Zod-validated types generate with no database whatsoever. Nothing is applied to your local or remote database. All within milliseconds.
+Migrations diff without an ORM schema layer, without Docker, without a shadow database, and without introspection — reading your live catalog directly and read-only, or your schema files and git refs with no database at all. Zod-validated types generate with no database whatsoever. Apply stays explicit or config-approved through `supaschema sync`, with safety gates before any local or remote mutation. All within milliseconds.
 
 ## Core Concepts
 
@@ -36,7 +36,7 @@ Declarative schema management promises a simple loop: edit your SQL files, diff 
 
 supaschema ships PostgreSQL's own parser inside the package. It reads your SQL into an AST, compares object definitions structurally — policy bodies included, not just their names — and renders a guarded, replay-safe migration, all without a database. Types and Zod validators come from the same parse, in the same command, so they never wait on a deploy.
 
-![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, and emit types plus Zod — no database at any step, then your runner applies the SQL](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/concepts/supaschema-flow.svg)
+![The supaschema workflow: edit, parse with the embedded Postgres parser, compare ASTs, render a guarded migration, emit types plus Zod, and apply through guarded sync or a selected runner](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/concepts/supaschema-flow.svg)
 
 ## Install
 
@@ -89,15 +89,15 @@ END
 $supaschema$;
 ```
 
-Prove the migration, then apply it with your normal runner:
+Prove the migration, then apply it through guarded sync:
 
 ```bash
 supaschema check    # static replay-safety and lock-hazard gate
 supaschema verify   # applies it twice in throwaway databases, compares catalogs
-psql "$DATABASE_URL" -f database/migrations/20260605205117_add_audit_events.sql
+supaschema sync     # applies every configured target with mode: "auto"
 ```
 
-In a Supabase project, keep the Supabase layout and apply with `supabase db push`. supaschema never touches your real databases directly.
+In a Supabase project, keep the Supabase layout and configure `supaschema sync` to call the Supabase CLI or direct PostgreSQL runner with the same safety gates. Use `supabase db push` directly only when a separate deployment process intentionally owns apply.
 
 Types come from the same tree, in the same step. Every successful `diff` creates or refreshes `database.types.ts` and `database.zod.ts` by default, and agents are instructed to use the generated Zod validators for runtime validation. You never wait for a deploy to get correct types.
 
@@ -123,15 +123,15 @@ All numbers are reproducible from this repo (`npm run benchmark`; see the [bench
 
 At 1,000 tables (~7,000 objects), supaschema against each of the five Supabase CLI engines — median diff latency, accuracy (F1 vs a ground-truth change manifest), and whether the migration survives a second apply:
 
-![supaschema vs every Supabase CLI engine at 1,000 tables — latency bars, F1 accuracy, and replay-safety](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xl.svg)
+![supaschema vs diff engines at 1,000 tables — latency bars, F1 accuracy, and replay-safety](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xl.svg)
 
 The gap widens with scale. At 2,500 tables (~17,500 objects) the engines cross three minutes while supaschema stays around three seconds — and every engine still drops the same policy and still fails the second apply:
 
-![supaschema vs every Supabase CLI engine at 2,500 tables — latency bars, F1 accuracy, and replay-safety](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xxl.svg)
+![supaschema vs diff engines at 2,500 tables — latency bars, F1 accuracy, and replay-safety](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-xxl.svg)
 
 The diff is only half the loop. Once type outputs exist, getting a migration **and** refreshed types is one `supaschema diff` — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
 
-![Full workflow at 1,000 tables — supaschema's migration plus generated type outputs in one command vs db diff, apply, and gen types per engine](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-workflow-xl.svg)
+![full workflow vs diff engines at 1,000 tables — supaschema's migration plus generated type outputs in one command vs db diff, apply, and gen types per engine](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/head-to-head-workflow-xl.svg)
 
 Per-fixture latency bar charts at every scale: [additive](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/additive-latency.svg) · [functions-policies](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/functions-policies-latency.svg) · [realistic](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/realistic-latency.svg) · [xl](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xl-latency.svg) · [xxl](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xxl-latency.svg).
 
@@ -145,7 +145,7 @@ That miss matters more than speed. A slow diff costs seconds and an unreplayable
 
 ### Replay safety
 
-![XL fixture correctness](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xl-correctness.svg)
+![migration verification at 1,000 tables across supaschema and Supabase CLI engines](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xl-correctness.svg)
 
 Every engine's migration applies once and reaches the target catalog. Only supaschema's also applies **twice**: the others emit unguarded `ADD COLUMN` and `CREATE INDEX`, which fail on re-run for every fixture containing column or index changes. Per-fixture charts: [additive](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/additive-correctness.svg) · [functions-policies](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/functions-policies-correctness.svg) · [realistic](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/realistic-correctness.svg) · [xxl](https://raw.githubusercontent.com/jmclaughlin724/supaschema/main/docs/images/benchmarks/xxl-correctness.svg).
 
@@ -168,7 +168,7 @@ Every engine's migration applies once and reaches the target catalog. Only supas
 | `types` | Generate Supabase-compatible TypeScript types and Zod validators from the schema tree — no database needed (`--out stdout` to print) |
 | `plan` / `inspect` / `fingerprint` | JSON diff plan · extracted schema model · one-line schema-equality hash |
 | `migrations` | Files on disk vs a database's applied history: applied, pending, ghosts, out-of-order |
-| `sync` | Gate pending migrations, then optionally drive the Supabase CLI (`--local` / `--remote`) |
+| `sync` | Run the guarded sync pipeline: diff, generated outputs, safety gates, configured target reconciliation, and selected runner apply (`--target` and `--runner` are overrides) |
 | `audit` | Coverage report for adopting an existing schema |
 | `corpus` / `selfcheck` | The engine's own correctness oracles ([Corpus oracle](https://supaschema.com/docs/guides/corpus-oracle)) |
 | `doctor` / `init` / `completion` / `explain` | Setup diagnosis · config scaffold · shell completions · offline diagnostic decoder |

@@ -57,14 +57,52 @@ export {
 } from "./db-admin.js";
 export type { MigrationLineage } from "./lineage.js";
 export { latestLineage, lineageLine, parseLineage } from "./lineage.js";
-export type { MigrationsStatusOptions, MigrationsStatusReport } from "./migrations-status.js";
-export { migrationsStatus, renderMigrationsStatus } from "./migrations-status.js";
+export type {
+  DirectMigrationRunnerOptions,
+  MigrationRunnerKind,
+  MigrationRunnerResult,
+  MigrationUnit,
+  SupabaseCliCommand,
+  SupabaseCliCommandOptions,
+  SupabaseCliMigrationRunnerOptions,
+  SupabaseCliOperation,
+  SupabaseCliTargetScope,
+} from "./migration-runners.js";
+export {
+  buildSupabaseCliCommand,
+  groupMigrationUnits,
+  runDirectMigrationRunner,
+  runSupabaseCliMigrationRunner,
+} from "./migration-runners.js";
+export type {
+  MigrationHistoryComparison,
+  MigrationsStatusOptions,
+  MigrationsStatusReport,
+} from "./migrations-status.js";
+export {
+  compareMigrationHistory,
+  migrationFileVersion,
+  migrationFileVersions,
+  migrationsStatus,
+  renderMigrationsStatus,
+} from "./migrations-status.js";
+export type { DeploySafetyGateResult, TypeContractEvaluation } from "./pipeline-services.js";
+export {
+  applyDeploySafetyPolicy,
+  buildSchemaDiffPlan,
+  deployBlockingRlsDiagnosticCodes,
+  evaluateTypeContract,
+  refreshGeneratedOutputs,
+  runRlsSafetyGate,
+  runTypeSafetyGate,
+  scanSchemaSafety,
+} from "./pipeline-services.js";
 export { planSchemaDiff } from "./planner.js";
 export { renderMigration, renderMigrationSplit } from "./render.js";
 export { extractSourceModel } from "./source.js";
-export type { SyncOptions, SyncResult } from "./sync.js";
-export { syncMigrations } from "./sync.js";
 export { generateDatabaseTypes } from "./typegen.js";
 export { generateZodSchemas } from "./typegen-zod.js";
 export { runConfiguredValidators } from "./validators.js";
 export { verifyMigration } from "./verify.js";
+export type { SyncOptions, SyncResult } from "./workflow.js";
+export { syncMigrations } from "./workflow.js";

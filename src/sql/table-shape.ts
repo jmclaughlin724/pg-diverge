@@ -38,16 +38,6 @@ interface CanonicalConstraint {
   type: string;
 }
 
-/**
- * Canonical table identity for hashing. The raw parse tree differs between a
- * declarative source ("id bigint PRIMARY KEY") and a catalog reconstruction
- * ('"id" bigint NOT NULL' plus a separate ADD CONSTRAINT), so the shape
- * carries columns only: every table constraint — inline, in-CREATE, or
- * ALTER-declared — is identity-owned by its own `constraint:` object, making
- * table identity independent of where constraints are declared. Inline and
- * in-CREATE constraints still apply primary-key-implied NOT NULL to columns
- * before exclusion.
- */
 export function canonicalTableShape(node: AstNode): Record<string, unknown> {
   const relation = asRecord(node.relation);
   const columns: CanonicalColumn[] = [];
@@ -127,11 +117,6 @@ function canonicalColumn(columnDef: AstNode, constraints: CanonicalConstraint[])
   return column;
 }
 
-/**
- * pg_get_expr renders a column default as `'x'::type` while declarative
- * sources usually write the bare literal; a cast to the column's own base
- * type is implied, so it is dropped from the canonical default.
- */
 function unwrapColumnTypeCast(expression: unknown, columnTypeName: unknown): unknown {
   const typeCast = asRecord(asRecord(expression)?.TypeCast);
   if (!typeCast) {
@@ -143,12 +128,6 @@ function unwrapColumnTypeCast(expression: unknown, columnTypeName: unknown): unk
   return typeCast.arg;
 }
 
-/**
- * A regclass cast's string literal is an identifier reference, and
- * pg_get_expr renders it unquoted (`ai.seq`) while declarative sources often
- * quote it (`"ai"."seq"`). Both name the same object, so the canonical shape
- * stores the unquoted spelling.
- */
 export function canonicalizeRegclassLiterals(node: unknown): unknown {
   if (Array.isArray(node)) {
     return node.map((item) => canonicalizeRegclassLiterals(item));
@@ -163,9 +142,6 @@ export function canonicalizeRegclassLiterals(node: unknown): unknown {
     const sval = asRecord(constant?.sval);
     const literal = readString(sval?.sval);
     if (literal !== undefined) {
-      // The cast itself is dropped: `'x'::regclass` and bare `'x'` name the
-      // same object inside a default expression, and trees commonly omit the
-      // cast that pg_get_expr always renders.
       return { A_Const: { ...constant, sval: { sval: unquoteQualifiedName(literal) } } };
     }
   }
@@ -208,12 +184,6 @@ const sequenceTypeMax = new Map([
   ["smallint", "32767"],
 ]);
 
-/**
- * Canonical sequence identity: option DefElems normalize to a keyed object
- * with PostgreSQL's ascending defaults dropped, so a declarative
- * `START 100 INCREMENT 5` and the catalog reconstruction hash identically
- * regardless of option order or explicitly-spelled defaults.
- */
 export function canonicalSequenceShape(node: AstNode): Record<string, unknown> {
   const sequence = asRecord(node.sequence);
   const shape: Record<string, unknown> = {
@@ -287,12 +257,6 @@ function sequenceOptionValue(arg: unknown): string | undefined {
 
 const constraintIdentityKeys = new Set(["conname", "contype", "fk_attrs", "keys", "location"]);
 
-/**
- * Canonical constraint identity shared by every declaration site: an
- * ALTER TABLE ADD CONSTRAINT statement, an in-CREATE table-level constraint,
- * an inline column constraint, and a catalog pg_constraint row must all hash
- * to the same shape for the same table.
- */
 export function canonicalConstraintShape(
   constraint: AstNode,
   table: { name: string; schema: string },

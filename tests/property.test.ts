@@ -1,13 +1,20 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { migrationNameSlug } from "../src/cli-defaults.js";
-import { redactSecrets } from "../src/diagnostics.js";
+import { redactSecrets } from "../src/redaction.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { splitSqlStatements } from "../src/sql/split.js";
 
-const identifier = fc.stringMatching(/^[a-z][a-z0-9_]{0,16}$/u).map((value) => `q${value}`);
-const passwordPattern = /^[A-Z][A-Z0-9%_-]{7,23}$/u;
-const slugPattern = /^[a-z0-9_]*$/u;
+const lowercase = fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz");
+const identifierTail = fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz0123456789_");
+const passwordHead = fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+const passwordTail = fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789%_-");
+const identifier = fc
+  .tuple(lowercase, fc.array(identifierTail, { maxLength: 16 }))
+  .map(([first, rest]) => `q${first}${rest.join("")}`);
+const password = fc
+  .tuple(passwordHead, fc.array(passwordTail, { maxLength: 23, minLength: 7 }))
+  .map(([first, rest]) => `${first}${rest.join("")}`);
 
 function randomizeCase(value: string, flips: boolean[]): string {
   return [...value]
@@ -79,7 +86,7 @@ describe("property: migration name slugs", () => {
     fc.assert(
       fc.property(fc.string({ maxLength: 120 }), (value) => {
         const slug = migrationNameSlug(value);
-        expect(slug).toMatch(slugPattern);
+        expect(isSlug(slug)).toBe(true);
         expect(slug.length).toBeLessThanOrEqual(60);
         expect(migrationNameSlug(slug)).toBe(slug);
       })
@@ -89,7 +96,6 @@ describe("property: migration name slugs", () => {
 
 describe("property: secret redaction", () => {
   it("never leaks a URL password through diagnostics text", () => {
-    const password = fc.stringMatching(passwordPattern);
     fc.assert(
       fc.property(identifier, password, (user, secret) => {
         const text = `connection failed for postgresql://${user}:${secret}@db.example.com:5432/app`;
@@ -100,3 +106,17 @@ describe("property: secret redaction", () => {
     );
   });
 });
+
+function isSlug(value: string): boolean {
+  return [...value].every((char) => isLowercaseAscii(char) || isDigit(char) || char === "_");
+}
+
+function isLowercaseAscii(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 97 && code <= 122;
+}
+
+function isDigit(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
+}

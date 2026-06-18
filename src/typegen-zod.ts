@@ -266,8 +266,6 @@ function zodExpr(
   } else if (resolved.kind === "json") {
     mapped = "jsonSchema";
   } else if (resolved.kind === "composite" || resolved.kind === "unknown") {
-    // Composite row shapes are not emitted as standalone Zod schemas; validate
-    // them as unknown rather than producing an invalid z.composite().
     mapped = "z.unknown()";
   } else {
     mapped = `z.${resolved.kind}()`;

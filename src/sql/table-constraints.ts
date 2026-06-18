@@ -48,13 +48,6 @@ export function tableConstraintSyntheses(
   return syntheses;
 }
 
-/**
- * Rebuilds the CREATE TABLE statement without its declared constraints so the
- * table object's SQL matches the columns-only shape the catalog lane emits.
- * Raw-apply consumers (verify, parity tests) then apply the table once and
- * each constraint once instead of creating hoisted constraints twice. Returns
- * undefined when the statement declares no hoistable constraints.
- */
 export function stripDeclaredConstraints(
   createStmt: AstNode,
   sql: string,
@@ -81,10 +74,7 @@ export function stripDeclaredConstraints(
     if (piece.length === 0) {
       continue;
     }
-    // A stripped PRIMARY KEY implied NOT NULL on its columns; spell it
-    // explicitly so the rebuilt statement keeps the same column facts. The
-    // AST is authoritative: the piece retains a NOT NULL span exactly when a
-    // CONSTR_NOTNULL constraint exists, because NOT NULL is never hoisted.
+
     const columnName = readString(element.node.colname);
     if (columnName && primaryColumns.has(columnName) && !hasExplicitNotNull(element.node)) {
       pieces.push(`${piece} NOT NULL`);
@@ -188,9 +178,6 @@ function inlineConstraintSyntheses(
     }
     const conname = readString(item.constraint.conname);
     if (conname) {
-      // The AST already classified this as a named constraint; scanning only
-      // locates where the `CONSTRAINT <name>` prefix ends so the remainder
-      // fits the table-level template for its type.
       text = skipConstraintNamePrefix(text);
     }
     const name = conname ?? defaultConstraintName(table, item.constraint, [column]);
@@ -209,11 +196,6 @@ function inlineConstraintSyntheses(
   return syntheses;
 }
 
-/**
- * Skips a leading `CONSTRAINT <name>` token pair and returns the remainder.
- * Character scanning only — whether the constraint is named comes from the
- * AST (`conname`); this mirrors the render-guard keyword scanner in facts.ts.
- */
 function skipConstraintNamePrefix(text: string): string {
   let index = skipSqlWhitespace(text, 0);
   const keywordEnd = index + "CONSTRAINT".length;
@@ -320,8 +302,6 @@ function defaultConstraintName(
     case "CONSTR_FOREIGN":
       return joined ? `${table}_${joined}_fkey` : undefined;
     case "CONSTR_CHECK": {
-      // PostgreSQL names a check after its column only when the expression
-      // references exactly one column; otherwise the bare `<table>_check`.
       const referenced = columns.length > 0 ? columns : expressionColumns(constraint.raw_expr);
       return referenced.length === 1 ? `${table}_${referenced[0]}_check` : `${table}_check`;
     }

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { SupaschemaConfig } from "./config.js";
 import type { MigrationPlan } from "./core.js";
-import { redactSecrets } from "./diagnostics.js";
+import { redactSecrets } from "./redaction.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -25,13 +25,6 @@ export function resolveMigrationsDir(
   return flagValue ?? config.migrationsDir;
 }
 
-/**
- * Zero-flag source resolution: config.sources owns machine-readable defaults.
- * sources.from="auto" resolves to the database (the applied state), then a
- * valid git:HEAD, then empty:. sources.to falls back to the declarative tree
- * from config.schemaPaths. The notice names every defaulted lane so the chosen
- * sources are never silent.
- */
 export async function resolveSourceDefaults(
   options: { from?: string; to?: string },
   config: SupaschemaConfig,
@@ -85,11 +78,32 @@ export function defaultMigrationName(plan: MigrationPlan): string {
 }
 
 export function migrationNameSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "_")
-    .replace(/^_+|_+$/gu, "")
-    .slice(0, 60);
+  const parts: string[] = [];
+  let current = "";
+  for (const char of value.toLowerCase()) {
+    if (isLowercaseAscii(char) || isDigit(char)) {
+      current += char;
+      continue;
+    }
+    if (current.length > 0) {
+      parts.push(current);
+      current = "";
+    }
+  }
+  if (current.length > 0) {
+    parts.push(current);
+  }
+  return parts.join("_").slice(0, 60);
+}
+
+function isLowercaseAscii(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 97 && code <= 122;
+}
+
+function isDigit(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }
 
 export async function migrationFiles(directory: string): Promise<string[]> {

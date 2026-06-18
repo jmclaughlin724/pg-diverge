@@ -52,7 +52,10 @@ Generic PostgreSQL installs write this full config shape:
   "adapter": "auto",
   "cascade": "never",
   "destructiveChanges": "hint-required",
-  "environments": {},
+  "environments": {
+    "local": { "databaseUrl": "$LOCAL_DATABASE_URL" },
+    "production": { "databaseUrl": "$PRODUCTION_DATABASE_URL" }
+  },
   "excludedGrantRoles": [],
   "hints": {
     "destructive": [],
@@ -64,10 +67,30 @@ Generic PostgreSQL installs write this full config shape:
     "schema_diff": "on_schema_write",
     "migration_check": "after_schema_diff",
     "migration_verify": "suggest_after_check",
-    "migration_sync": "explicit_request_only",
+    "migration_sync": "auto",
+    "type_safety": "deploy_blocking",
+    "rls_safety": "deploy_blocking",
     "type_generation": "create_or_refresh",
     "zod_generation": "create_or_refresh",
     "type_usage": "zod_validated"
+  },
+  "sync": {
+    "targets": {
+      "local": {
+        "mode": "auto",
+        "runner": "direct",
+        "environment": "local",
+        "historyTable": "supabase_migrations.schema_migrations"
+      },
+      "remote": {
+        "mode": "manual",
+        "runner": "direct",
+        "environment": "production",
+        "historyTable": "supabase_migrations.schema_migrations",
+        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+        "remote": true
+      }
+    }
   },
   "migrationsDir": "database/migrations",
   "typesFile": "database.types.ts",
@@ -111,14 +134,16 @@ Legacy adapter values (`postgres`, `supabase`, and `supabase-auto`) are accepted
 
 ## Workflow policy
 
-The `workflow` object is the machine-readable contract used by agent hooks, CLI defaults, generated output refresh, and migration sync handoff.
+The `workflow` object is the machine-readable contract used by agent hooks, CLI defaults, generated output refresh, migration sync automation, and deploy safety gates.
 
 | Field | Default | Allowed values |
 | --- | --- | --- |
 | `workflow.schema_diff` | `"on_schema_write"` | `on_schema_write` runs `diff` from installed hooks after schema-tree SQL writes; `manual` leaves diff to a human or agent command; `disabled` prevents hook-driven diff. |
 | `workflow.migration_check` | `"after_schema_diff"` | `after_schema_diff` runs `check` after hook-generated migrations; `required_before_complete` marks check as required before agents close schema work; `manual` skips hook-driven check. |
 | `workflow.migration_verify` | `"suggest_after_check"` | `suggest_after_check` tells agents to suggest `verify` after check when a database is reachable; `after_schema_diff` allows automation to verify after a generated migration; `manual` leaves verification entirely explicit. |
-| `workflow.migration_sync` | `"explicit_request_only"` | `explicit_request_only` allows `supaschema sync --local` or `--remote` only when the user invoked that command; `disabled` refuses apply handoff flags. No value enables automatic apply. |
+| `workflow.migration_sync` | `"auto"` | `disabled` refuses apply; `manual` leaves bare `sync` on the dry-run gate while allowing explicit `--target <name>` overrides; `auto` allows bare `sync` to use targets whose own `mode` is `"auto"`. |
+| `workflow.type_safety` | `"deploy_blocking"` | `deploy_blocking` fails sync before mutation on type-contract errors; `report_only` keeps diagnostics non-blocking; `disabled` skips the type-safety gate. |
+| `workflow.rls_safety` | `"deploy_blocking"` | `deploy_blocking` fails sync before mutation on RLS and least-privilege errors; `report_only` keeps diagnostics non-blocking; `disabled` skips the RLS-safety gate. |
 | `workflow.type_generation` | `"create_or_refresh"` | `create_or_refresh` creates or updates `typesFile` after `diff`; `refresh_existing` updates it only when the file exists; `disabled` skips automatic TypeScript output refresh. |
 | `workflow.zod_generation` | `"create_or_refresh"` | `create_or_refresh` creates or updates `zodFile` after `diff`; `refresh_existing` updates it only when the file exists; `disabled` skips automatic Zod output refresh. |
 | `workflow.type_usage` | `"zod_validated"` | `zod_validated` tells agents to use the generated Zod validators for runtime boundaries and derived validated types; `typescript_only` tells agents to use only the generated TypeScript shape. |
@@ -131,19 +156,22 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `adapter` | `"auto"` | Provider-neutral adapter sentinel. This is not a provider switch or workflow consent; see [Adapter](#adapter). |
 | `cascade` | `"never"` | `CASCADE` is never emitted. This is not configurable away. |
 | `destructiveChanges` | `"hint-required"` | `hint-required` blocks destructive operations until the object key is listed in `hints.destructive`; `block` always blocks; `allow` permits everything (not recommended). |
-| `environments` | `{}` | Named database targets for the global `--env` flag: `{ "staging": { "databaseUrl": "$STAGING_DB" } }` lets `supaschema --env staging diff ...` resolve the URL (with `$ENV_NAME` indirection) without repeating it per command. |
+| `environments` | `local` and `production` `$ENV` references | Named database targets for the global `--env` flag and sync target references. Use `$ENV_NAME` indirection so committed config carries no credentials. |
 | `excludedGrantRoles` | `[]` | Grants and default privileges whose grantee or `FOR ROLE` matches are removed from extracted models (useful for platform roles such as `supabase_admin`). |
 | `hints.destructive` | `[]` | Exact object keys (or `"*"`) approved for destructive drop/replace. |
 | `hints.renames` | `[]` | `{ "from": "<object key>", "to": "<object key>" }` pairs rendered as guarded `ALTER ... RENAME`. |
 | `idempotency` | `"required"` | Rendered SQL is replay-safe by construction. Not configurable away. |
 | `lockTimeout` | `"5s"` | Value for the `SET lock_timeout` migration preamble. |
-| `workflow.schema_diff` | `"on_schema_write"` | Controls whether installed agent hooks run `diff` after schema-tree SQL writes. |
-| `workflow.migration_check` | `"after_schema_diff"` | Controls whether installed agent hooks run `check` after a generated migration and whether agents treat check as required before completion. |
-| `workflow.migration_verify` | `"suggest_after_check"` | Controls whether verification is suggested or automated after diff/check. |
-| `workflow.migration_sync` | `"explicit_request_only"` | Controls whether `sync --local` / `sync --remote` apply handoff is allowed after explicit invocation or blocked entirely. |
-| `workflow.type_generation` | `"create_or_refresh"` | Controls whether `diff` refreshes, creates, or skips `typesFile` after writing a migration. |
-| `workflow.zod_generation` | `"create_or_refresh"` | Controls whether `diff` refreshes, creates, or skips `zodFile` after writing a migration. |
-| `workflow.type_usage` | `"zod_validated"` | Controls whether agents wire application code to generated Zod validators or use generated TypeScript shapes only. |
+| `workflow.schema_diff` | `"on_schema_write"` | See [Workflow policy](#workflow-policy). |
+| `workflow.migration_check` | `"after_schema_diff"` | See [Workflow policy](#workflow-policy). |
+| `workflow.migration_verify` | `"suggest_after_check"` | See [Workflow policy](#workflow-policy). |
+| `workflow.migration_sync` | `"auto"` | See [Workflow policy](#workflow-policy). |
+| `workflow.type_safety` | `"deploy_blocking"` | See [Workflow policy](#workflow-policy). |
+| `workflow.rls_safety` | `"deploy_blocking"` | See [Workflow policy](#workflow-policy). |
+| `workflow.type_generation` | `"create_or_refresh"` | See [Workflow policy](#workflow-policy). |
+| `workflow.zod_generation` | `"create_or_refresh"` | See [Workflow policy](#workflow-policy). |
+| `workflow.type_usage` | `"zod_validated"` | See [Workflow policy](#workflow-policy) and [ORM-free applications](/concepts/orm-free-applications). |
+| `sync.targets.<name>` | `local` and `remote` targets | Named sync targets. Each target sets `mode`, `runner`, exactly one of `environment` or `databaseUrl`, and `historyTable`; remote targets also set `requireApprovalEnv`. |
 | `managedSchemas` | `[]` for generic installs; Supabase platform set for Supabase installs | Schemas treated as externally managed. Objects inside these schemas cannot be claimed by the declarative tree unless you remove the schema from this list because the project truly owns it. |
 | `migrationsDir` | `"database/migrations"` | Where zero-flag `diff` writes migrations, zero-arg `check` reads them, and `verify` finds the newest pending file. Install can scaffold provider-specific folders; the canonical path table lives in [Setup](/setup#path-selection). The `--migrations-dir` flag overrides per command. |
 | `typesFile` | `"database.types.ts"` | Where `supaschema types` writes generated TypeScript types. Automatic refresh after `diff` is controlled by `workflow.type_generation`. |
@@ -216,7 +244,9 @@ A configured validator that is not installed produces `SUPA_VALIDATOR_UNAVAILABL
     "schema_diff": "on_schema_write",
     "migration_check": "after_schema_diff",
     "migration_verify": "suggest_after_check",
-    "migration_sync": "explicit_request_only",
+    "migration_sync": "auto",
+    "type_safety": "deploy_blocking",
+    "rls_safety": "deploy_blocking",
     "type_generation": "create_or_refresh",
     "zod_generation": "create_or_refresh",
     "type_usage": "zod_validated"

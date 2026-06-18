@@ -1,16 +1,5 @@
 #!/usr/bin/env node
-// Rule 09 (CI/CD efficiency + release governance) enforcement.
-//
-// Rule 01 requires every standard to have an executable enforcement path:
-// "A rule, contract, or STOP gate that no guard or test reaches is incomplete."
-// Rule 09's invariants (least-privilege permissions, SHA-pinned actions,
-// persist-credentials:false, harden-runner + OIDC trusted publishing on the
-// release path, concurrency cancellation on PR-facing workflows, required
-// matrix lanes) were prose-only — no guard read `.github/workflows/**`. This
-// guard parses each workflow with the `yaml` dependency (AST/structured walk,
-// never regex over the workflow text — Rule 07) and asserts those invariants.
-// It also guards the Python `--package supaschema-agent-mcp` selector (Rule 04)
-// so the workspace-env fix cannot silently regress.
+
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -33,6 +22,17 @@ function* eachStep(doc) {
 
 function jobMatrix(doc, jobId, key) {
   return doc?.jobs?.[jobId]?.strategy?.matrix?.[key] ?? [];
+}
+
+function matrixValues(doc, jobId, key) {
+  const matrix = doc?.jobs?.[jobId]?.strategy?.matrix ?? {};
+  if (Array.isArray(matrix[key])) {
+    return matrix[key];
+  }
+  if (Array.isArray(matrix.include)) {
+    return matrix.include.map((entry) => entry?.[key]).filter((value) => value !== undefined);
+  }
+  return [];
 }
 
 function permissionsAreReadOnly(perms) {
@@ -96,13 +96,11 @@ for (const file of files) {
 const packageJson = readJson("package.json");
 
 for (const [file, { doc, raw }] of parsed) {
-  // Least privilege: no top-level write scope on any workflow.
   assert(
     permissionsAreReadOnly(doc?.permissions),
     `${file}: top-level permissions must be read-only (contents: read or read-all); jobs elevate per-need. Got ${JSON.stringify(doc?.permissions)}`
   );
 
-  // No stored npm token anywhere: releases use OIDC trusted publishing.
   assert(
     !(raw.includes("NODE_AUTH_TOKEN") || raw.includes("NPM_TOKEN")),
     `${file}: must not reference a stored npm token (NODE_AUTH_TOKEN/NPM_TOKEN); publishing is OIDC trusted publishing`
@@ -111,7 +109,7 @@ for (const [file, { doc, raw }] of parsed) {
   for (const { step } of eachStep(doc)) {
     const uses = step?.uses;
     if (typeof uses !== "string" || uses.startsWith("./")) {
-      continue; // not an external action pin
+      continue;
     }
     const at = uses.lastIndexOf("@");
     assert(at > 0, `${file}: \`uses: ${uses}\` is not pinned to a ref`);
@@ -130,7 +128,6 @@ for (const [file, { doc, raw }] of parsed) {
   }
 }
 
-// Concurrency: PR-facing workflows cancel superseded runs; the publish path does not.
 for (const file of ["ci.yml", "python.yml", "dependency-review.yml"]) {
   const doc = parsed.get(file)?.doc;
   assert(doc, `${file} must exist`);
@@ -144,7 +141,58 @@ assert(
   "release.yml must not set cancel-in-progress: true (never cancel an in-flight publish)"
 );
 
-// Release publish job: OIDC + harden-runner + provenance, no stored token.
+const codeql = parsed.get("codeql.yml")?.doc;
+assert(codeql, "codeql.yml must exist");
+const codeqlJob = codeql.jobs?.analyze;
+assert(codeqlJob, "codeql.yml must define an analyze job");
+const codeqlLanguages = matrixValues(codeql, "analyze", "language");
+for (const language of ["actions", "javascript-typescript", "python"]) {
+  assert(
+    codeqlLanguages.includes(language),
+    `codeql.yml analyze language matrix must include ${language} (got ${JSON.stringify(codeqlLanguages)})`
+  );
+}
+assert(
+  codeqlJob.permissions?.["security-events"] === "write" &&
+    codeqlJob.permissions?.actions === "read" &&
+    codeqlJob.permissions?.contents === "read",
+  "codeql.yml analyze job must grant security-events: write plus actions: read and contents: read"
+);
+const codeqlSteps = codeqlJob.steps ?? [];
+const codeqlInitIndex = codeqlSteps.findIndex(
+  (step) => stepActionName(step) === "github/codeql-action/init"
+);
+const codeqlInitStep = codeqlSteps[codeqlInitIndex];
+const codeqlLanguageExpression = ["${{", " matrix.language ", "}}"].join("");
+assert(
+  codeqlInitIndex >= 0 &&
+    codeqlInitStep?.with?.languages === codeqlLanguageExpression &&
+    codeqlInitStep.with?.queries === "security-and-quality" &&
+    [undefined, "none"].includes(codeqlInitStep.with?.["build-mode"]),
+  "codeql.yml init must use matrix.language, security-and-quality queries, and no-build analysis"
+);
+const codeqlSetupUvIndex = codeqlSteps.findIndex(
+  (step) => stepIf(step).includes("python") && stepActionName(step) === "astral-sh/setup-uv"
+);
+assert(
+  codeqlSetupUvIndex >= 0 && codeqlSetupUvIndex < codeqlInitIndex,
+  "codeql.yml Python lane must set up uv before CodeQL init"
+);
+const codeqlUvSyncIndex = codeqlSteps.findIndex(
+  (step) =>
+    stepIf(step).includes("python") &&
+    stepRun(step).includes("uv sync --locked") &&
+    stepRun(step).includes("--package supaschema-agent-mcp")
+);
+assert(
+  codeqlUvSyncIndex > codeqlSetupUvIndex && codeqlUvSyncIndex < codeqlInitIndex,
+  "codeql.yml Python lane must sync locked workspace dependencies with --package supaschema-agent-mcp before CodeQL init"
+);
+assert(
+  !codeqlSteps.some((step) => "setup-python-dependencies" in (step?.with ?? {})),
+  "codeql.yml must not use the deprecated CodeQL setup-python-dependencies input"
+);
+
 const release = parsed.get("release.yml");
 assert(release, "release.yml must exist");
 const releaseOn = release.doc?.on ?? {};
@@ -279,7 +327,6 @@ assert(
   "release.yml must not upload extra artifacts to a GitHub Release; create the release/tag only"
 );
 
-// Support-contract matrices must not silently narrow.
 const ci = parsed.get("ci.yml")?.doc;
 assert(ci, "ci.yml must exist");
 const nodes = jobMatrix(ci, "quality", "node-version");
@@ -298,6 +345,18 @@ assert(
   "ci.yml quality job must not run npm run benchmark without a database URL"
 );
 const qualitySteps = ci.jobs?.quality?.steps ?? [];
+const dcoStep = findNamedStep(qualitySteps, "DCO sign-off");
+const githubTokenExpression = ["${{", " github.token ", "}}"].join("");
+assert(
+  packageJson.scripts?.["github:check-dco"] === "node scripts/github/check-dco.mjs",
+  "package.json must expose the DCO checker as npm run github:check-dco"
+);
+assert(
+  dcoStep &&
+    stepRun(dcoStep) === "npm run github:check-dco" &&
+    dcoStep.env?.GH_TOKEN === githubTokenExpression,
+  "ci.yml quality job must enforce DCO signoff with npm run github:check-dco and GH_TOKEN"
+);
 assert(
   packageJson.scripts?.["package:smoke"] === "node scripts/release/package-smoke.mjs",
   "package.json must expose one strict npm run package:smoke consumer tarball smoke"
@@ -394,8 +453,6 @@ assert(
   "ci.yml check-os must use npm run test:matrix so examples failures stay in quality"
 );
 
-// Python lane must keep the workspace-member selector (Rule 04): the root env
-// has no runtime deps, so mypy/pytest need --package or they fail import-not-found.
 const python = parsed.get("python.yml")?.doc;
 assert(python, "python.yml must exist");
 const pythonSteps = python.jobs?.python?.steps ?? [];

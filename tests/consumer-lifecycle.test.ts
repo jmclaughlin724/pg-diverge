@@ -16,19 +16,6 @@ import {
   expectedZodFragments,
 } from "./sample-schema-expectations.js";
 
-// End-to-end consumer lifecycle: pack the real tarball, `npm install` it into a
-// clean throwaway project (which resolves runtime deps AND runs supaschema's
-// postinstall scaffolder via INIT_CWD, exactly like `npm install supaschema`),
-// then EDIT a schema in the scaffolded tree and run the INSTALLED CLI binary to
-// prove it generates an accurate migration + types. This is the "use" proof:
-// it exercises the shipped dist through the installed bin, not the src tree.
-// The install-boundary assertions (full scaffold contents) stay owned by
-// tests/database-url.test.ts; this test owns the download -> install -> use chain.
-//
-// A bare `tar` extract cannot run the CLI (dist/cli.js needs commander/pg/
-// libpg-query/pgsql-deparser/zod), so a real tarball install is required — the
-// npm-documented "install the tarball, run the installed bin" pattern.
-
 const run = promisify(execFile);
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const bunCommand = process.platform === "win32" ? "bun.exe" : "bun";
@@ -66,9 +53,6 @@ function npmExec(args: string[]): Spawn {
     : { args, file: process.platform === "win32" ? "npm.cmd" : "npm" };
 }
 
-// Spawn through `node` (never the node_modules/.bin shim) and never throw on a
-// non-zero exit — the bin's exit code is part of what we assert. This is the
-// cross-platform-safe invocation (the .bin shim mishandles quoted args on Windows).
 async function capture(file: string, args: string[], cwd: string): Promise<CaptureResult> {
   try {
     const { stdout, stderr } = await run(file, args, { cwd, maxBuffer: 64 * 1024 * 1024 });
@@ -94,17 +78,13 @@ async function copySqlTree(sourceDir: string, targetDir: string): Promise<void> 
 
 const repoVersion = (JSON.parse(readFileSync("package.json", "utf8")) as { version: string })
   .version;
-// The shared fixture trees are the single source of the schema edit (the same
-// edit the in-process unit test asserts): `schemas` is the prior state, and
-// `schemas-next` is the edited desired state.
+
 const fixtureFrom = "tests/fixtures/sample-project/supabase/schemas";
 const fixtureTo = "tests/fixtures/sample-project/supabase/schemas-next";
 
 let consumer = "";
 let binPath = "";
-// A second consumer installed WITH --ignore-scripts simulates blocked dependency
-// lifecycle scripts: postinstall never runs, so `supaschema init` must complete
-// setup. Marker-free -> generic layout.
+
 let consumer2 = "";
 let binPath2 = "";
 let tarballPath = "";
@@ -122,22 +102,15 @@ beforeAll(async () => {
     join(consumer, "package.json"),
     `${JSON.stringify({ name: "supaschema-consumer-fixture", private: true, version: "0.0.0" })}\n`
   );
-  // A supabase/config.toml marker makes postinstall scaffold the Supabase layout.
+
   await mkdir(join(consumer, "supabase"), { recursive: true });
   await writeFile(join(consumer, "supabase", "config.toml"), "[db]\nport = 54322\n");
 
-  // Resolves runtime deps and runs supaschema's postinstall with INIT_CWD=consumer.
-  // --prefer-offline uses the local npm cache; --ignore-scripts is intentionally NOT
-  // passed so the real postinstall scaffolder runs as a consumer would experience it.
   const install = npmExec(["install", tarball, "--prefer-offline", "--no-audit", "--no-fund"]);
   await run(install.file, install.args, { cwd: consumer, maxBuffer: 64 * 1024 * 1024 });
 
   binPath = join(consumer, "node_modules", "supaschema", "bin", "supaschema");
 
-  // Second consumer: marker-free (generic layout), installed WITH --ignore-scripts to
-  // simulate blocked dependency lifecycle scripts — postinstall does NOT run, leaving
-  // the project unscaffolded for the `supaschema init` fallback lane to complete. The
-  // same packed tarball is reused (only the pack is shared; this install is independent).
   consumer2 = await mkdtemp(join(tmpdir(), "supa-consumer-init-"));
   await writeFile(
     join(consumer2, "package.json"),
@@ -160,12 +133,10 @@ beforeAll(async () => {
 
 describe("consumer lifecycle: install then use the published package", () => {
   it("npm install of the packed tarball scaffolds the project and ships a runnable CLI", () => {
-    // Install scaffolded the Supabase layout (deep contents are asserted by
-    // database-url.test.ts; here we confirm the preconditions for "use").
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(true);
     expect(existsSync(join(consumer, "supabase", "schemas"))).toBe(true);
     expect(existsSync(join(consumer, "supabase", "migrations"))).toBe(true);
-    // The installed package ships the real dist that the 2-line bin loads.
+
     expect(existsSync(join(consumer, "node_modules", "supaschema", "dist", "cli.js"))).toBe(true);
     expect(existsSync(binPath)).toBe(true);
 
@@ -184,8 +155,6 @@ describe("consumer lifecycle: install then use the published package", () => {
   });
 
   it("turns a schema edit into an accurate migration and generated types via the installed CLI", async () => {
-    // Prior state -> a `baseline` tree; the edit lands in the scaffolded schemaPaths
-    // tree. Both come from the shared fixture, so the expected output is known.
     await copySqlTree(fixtureFrom, join(consumer, "baseline", "schemas"));
     await copySqlTree(fixtureTo, join(consumer, "supabase", "schemas"));
 
@@ -197,8 +166,6 @@ describe("consumer lifecycle: install then use the published package", () => {
     };
     await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
 
-    // `diff` (no --out and no source flags) writes <ts>_<name>.sql into the
-    // install-configured migrationsDir from config-owned source defaults.
     const diff = await capture(process.execPath, [binPath, "diff"], consumer);
     expect(diff.code, diff.stderr).toBe(0);
 
@@ -213,14 +180,12 @@ describe("consumer lifecycle: install then use the published package", () => {
     for (const fragment of expectedMigrationFragments) {
       expect(migrationSql, fragment).toContain(fragment);
     }
-    // Generated migrations carry the lineage marker.
+
     expect(migrationSql).toContain("-- supaschema: lineage");
 
-    // `check` (zero-arg) gates every migration in the configured migrationsDir.
     const check = await capture(process.execPath, [binPath, "check"], consumer);
     expect(check.code, check.stderr).toBe(0);
 
-    // `types` (zero-arg) reads the configured schema tree and writes typesFile + zodFile.
     const types = await capture(process.execPath, [binPath, "types"], consumer);
     expect(types.code, types.stderr).toBe(0);
 
@@ -415,13 +380,11 @@ describe.skipIf(!bunAvailable)("consumer lifecycle: Bun workspace member setup",
 
 describe("consumer lifecycle: ignore-scripts install then supaschema init reaches full parity", () => {
   it("install --ignore-scripts does not scaffold but still ships the CLI and shared scaffolder", () => {
-    // Dependency lifecycle scripts were blocked: postinstall did not run, so nothing scaffolded...
     expect(existsSync(join(consumer2, "supaschema.config.json"))).toBe(false);
     expect(existsSync(join(consumer2, ".supaschema", "install.json"))).toBe(false);
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
     expect(existsSync(join(consumer2, "database", "schemas"))).toBe(false);
-    // ...but the tarball was still extracted, so the bin, its dist, and the shared
-    // scaffolder are present for `supaschema init` to complete setup.
+
     expect(existsSync(binPath2)).toBe(true);
     expect(existsSync(join(consumer2, "node_modules", "supaschema", "dist", "cli.js"))).toBe(true);
     expect(existsSync(join(consumer2, "node_modules", "supaschema", "bin", "scaffold.mjs"))).toBe(
@@ -433,7 +396,6 @@ describe("consumer lifecycle: ignore-scripts install then supaschema init reache
     const first = await capture(process.execPath, [binPath2, "init"], consumer2);
     expect(first.code, first.stderr).toBe(0);
 
-    // Full parity with the postinstall scaffold (generic layout — no provider marker).
     const config = JSON.parse(
       readFileSync(join(consumer2, "supaschema.config.json"), "utf8")
     ) as Record<string, unknown>;
@@ -451,7 +413,6 @@ describe("consumer lifecycle: ignore-scripts install then supaschema init reache
     expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
     expect(agents).toContain("Schema intent belongs in `database/schemas`");
 
-    // Idempotent: a second init must not crash (no EEXIST) and keeps ONE guidance block.
     const second = await capture(process.execPath, [binPath2, "init"], consumer2);
     expect(second.code, second.stderr).toBe(0);
     const agentsAfter = await readFile(join(consumer2, "AGENTS.md"), "utf8");

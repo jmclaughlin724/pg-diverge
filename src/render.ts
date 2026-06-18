@@ -279,11 +279,6 @@ const guardInserts = {
   orReplace: "OR REPLACE ",
 } as const;
 
-/**
- * Splices the replay guard at the AST-located offset carried in
- * metadata.render. No regex rewriting: classification and the splice point
- * both come from extraction-time parse facts.
- */
 function spliceGuard(object: SchemaObject): string {
   const facts = object.metadata.render;
   if (!facts || typeof facts !== "object") {

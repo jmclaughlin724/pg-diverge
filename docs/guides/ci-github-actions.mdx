@@ -40,6 +40,7 @@ jobs:
         with:
           argv: >-
             ["diff","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--out","/tmp/supaschema/migration.sql"]
+
       - name: Check replay safety
         uses: jmclaughlin724/supaschema@<tag>
         with:
@@ -51,12 +52,40 @@ jobs:
             ["verify","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--migration","/tmp/supaschema/migration.sql","--database-url","postgresql://postgres:postgres@localhost:5432/postgres"]
 ```
 
+## Protected sync
+
+Use the same action for a protected deploy job when `supaschema.config.json` defines `workflow.migration_sync`, `sync.targets`, generated output policies, and deploy safety gates. The action passes argv through unchanged; it does not set remote approval for you.
+
+```yaml
+name: schema-sync
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Sync remote schema
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: '["sync","--target","remote"]'
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          SUPASCHEMA_REMOTE_SYNC_APPROVED: "1"
+```
+
 ## Keep
 
 - Use `fetch-depth: 0` so `git:` sources can read the base ref.
 - Pin a PostgreSQL major that matches production, or run a matrix over supported majors.
 - Add `--ensure-roles` when migrations grant to roles that a bare PostgreSQL service does not have.
 - Use `SUPASCHEMA_DATABASE_URL` instead of repeating `--database-url` when multiple steps need the same target.
+- Set a remote approval variable, such as `SUPASCHEMA_REMOTE_SYNC_APPROVED`, only in the protected workflow or environment that is allowed to deploy.
 
 ## Verify
 

@@ -134,7 +134,7 @@ async function ensureVerificationEnvironment(
   if (!environmentEnsured) {
     return;
   }
-  // Stubs land in both databases, so catalog parity is unaffected.
+
   await applySql(migrationUrl, supabaseEnvironmentStubSql, "per-statement");
   await applySql(targetUrl, supabaseEnvironmentStubSql, "per-statement");
 }
@@ -201,7 +201,6 @@ async function pushReconvergenceDiagnostic(
   config: SupaschemaConfig,
   environmentEnsured: boolean
 ): Promise<void> {
-  // Reconvergence catches false drift that symmetric catalog fingerprints miss.
   const reconvergence = planSchemaDiff(afterMigration, to, {
     config: { ...config, hints: { ...config.hints, destructive: ["*"], renames: [] } },
   });
@@ -274,11 +273,7 @@ async function cleanupTempDatabases(
     }
   }
 }
-/**
- * Roles referenced by grants, default privileges, and policies. Roles are
- * cluster-level so models cannot create them; verify pre-creates missing
- * NOLOGIN roles when ensureRoles is set.
- */
+
 async function collectReferencedRoles(models: SchemaModel[]): Promise<string[]> {
   const roles = new Set<string>();
   const add = (value: unknown): void => {
@@ -402,12 +397,7 @@ async function applyModel(databaseUrl: string, model: SchemaModel): Promise<void
     .join(";\n");
   await applySql(databaseUrl, sql, "per-statement");
 }
-/**
- * "per-migration" wraps the whole file in one transaction to mirror runners
- * like `supabase db push`; statement-by-statement autocommit would mask
- * transactional failures such as using an enum value added in the same file
- * or CREATE INDEX CONCURRENTLY inside a transaction block.
- */
+
 async function applySql(
   databaseUrl: string,
   sql: string,

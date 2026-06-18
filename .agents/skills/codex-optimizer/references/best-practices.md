@@ -15,7 +15,7 @@ Use Codex as an engineering teammate with a clear task, the right context, bound
 1. Restate the controlling objective internally.
 2. Read live repo files before assuming local facts.
 3. Identify the owner surface before editing.
-4. Make the narrowest complete change.
+4. Make the change that reaches the smallest correct end state.
 5. Run the closeout command that proves the touched surface.
 6. Report changed owner, proof run, and blockers only inside scope.
 

@@ -11,13 +11,14 @@ keywords:
 
 Use this page to decide whether supaschema fits your schema workflow.
 
-supaschema reads PostgreSQL schema intent from SQL files, compares it with another schema source, and renders a replay-safe migration without Docker, a shadow database, or an ORM. The same run can refresh TypeScript types and Zod validators from the declared schema.
+supaschema reads PostgreSQL schema intent from SQL files, compares it with another schema source, renders replay-safe migration SQL, refreshes TypeScript types and Zod validators, and can apply pending migrations through guarded `sync` targets. It removes the need for an ORM schema layer, Docker, or a shadow database in the schema workflow.
 
 ## When it helps
 
 - Your repository should be the source of truth for PostgreSQL schema changes.
 - You want migrations that can be retried safely after a failed deploy.
 - You need policy, type, and generated-output changes visible before a database catches up.
+- You want typed, validated application boundaries without making an ORM the schema owner.
 - You use plain PostgreSQL or a hosted provider such as Supabase, Neon, RDS/Aurora, Cloud SQL, AlloyDB, or Azure PostgreSQL.
 
 ## Workflow
@@ -29,7 +30,7 @@ supaschema reads PostgreSQL schema intent from SQL files, compares it with anoth
   />
 </Frame>
 
-You edit schema files. `supaschema diff` renders the migration and configured generated outputs. `supaschema check` verifies replay-safety before your normal runner applies the SQL.
+You edit schema files. `supaschema diff` renders the migration and configured generated outputs. `supaschema check` verifies replay-safety. `supaschema sync` can run the guarded apply lane when you select a target or configure approved automatic targets.
 
 For detailed performance, accuracy, and replay-safety results, see [Benchmarks](/benchmarks).
 
@@ -49,7 +50,12 @@ For detailed performance, accuracy, and replay-safety results, see [Benchmarks](
   >
     Set schema paths, sources, migrations, environments, and workflow defaults.
   </Card>
-  <Card title="Evidence" icon="gauge" href="/benchmarks">
-    Review benchmark, accuracy, and replay-safety results.
+  <Card
+    title="ORM-free apps"
+    icon="database"
+    href="/concepts/orm-free-applications"
+  >
+    Use generated TypeScript and Zod contracts without making an ORM the schema
+    owner.
   </Card>
 </CardGroup>

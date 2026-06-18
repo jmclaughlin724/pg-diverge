@@ -47,7 +47,7 @@ export function auditModel(model: SchemaModel): AuditReport {
         .map((item) => item.statement ?? item.hint ?? "")
         .filter(Boolean)
         .slice(0, sampleLimit)
-        .map((sample) => sample.replaceAll(/\s+/gu, " ").slice(0, sampleLength)),
+        .map((sample) => collapseWhitespace(sample).slice(0, sampleLength)),
       severity: group.severity,
     }))
     .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
@@ -63,6 +63,29 @@ export function auditModel(model: SchemaModel): AuditReport {
     supported: errorStatements === 0,
     totalObjects: model.objects.length,
   };
+}
+
+function collapseWhitespace(value: string): string {
+  const words: string[] = [];
+  let current = "";
+  for (const char of value) {
+    if (isWhitespace(char)) {
+      if (current.length > 0) {
+        words.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current.length > 0) {
+    words.push(current);
+  }
+  return words.join(" ");
+}
+
+function isWhitespace(char: string): boolean {
+  return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
 }
 
 export function renderAuditReport(report: AuditReport): string {

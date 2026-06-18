@@ -1,4 +1,9 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveConfig } from "../src/config.js";
+import { runTypeSafetyGate } from "../src/pipeline-services.js";
 import { diffTypeContract } from "../src/type-contract.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes, TableShape } from "../src/typegen-model.js";
 
@@ -91,5 +96,49 @@ describe("type-contract diff (P10)", () => {
     const diagnostics = diffTypeContract(before, after);
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]?.code).toBe("SUPA_TYPE_ENUM_REMOVED");
+  });
+});
+
+async function sqlSource(sql: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "supa-type-contract-"));
+  await writeFile(join(root, "001.sql"), sql);
+  return `dir:${root}`;
+}
+
+describe("type-safety deploy gate", () => {
+  it("blocks deploy when configured as deploy_blocking", async () => {
+    const fromSource = await sqlSource("CREATE TABLE public.users (id bigint, email text);\n");
+    const toSource = await sqlSource("CREATE TABLE public.users (id bigint);\n");
+    const config = resolveConfig({
+      sources: { from: fromSource, to: toSource },
+      workflow: { type_safety: "deploy_blocking" },
+    });
+
+    const result = await runTypeSafetyGate({ config });
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockingDiagnostics.map((item) => item.code)).toContain(
+      "SUPA_TYPE_COLUMN_REMOVED"
+    );
+    expect(
+      result.diagnostics.find((item) => item.code === "SUPA_TYPE_COLUMN_REMOVED")?.severity
+    ).toBe("error");
+  });
+
+  it("keeps diagnostics nonblocking when configured as report_only", async () => {
+    const fromSource = await sqlSource("CREATE TABLE public.users (id bigint, email text);\n");
+    const toSource = await sqlSource("CREATE TABLE public.users (id bigint);\n");
+    const config = resolveConfig({
+      sources: { from: fromSource, to: toSource },
+      workflow: { type_safety: "report_only" },
+    });
+
+    const result = await runTypeSafetyGate({ config });
+
+    expect(result.blocked).toBe(false);
+    expect(result.blockingDiagnostics).toHaveLength(0);
+    expect(
+      result.diagnostics.find((item) => item.code === "SUPA_TYPE_COLUMN_REMOVED")?.severity
+    ).toBe("warning");
   });
 });

@@ -7,7 +7,7 @@ keywords:
 
 Use this when SQL files should be the source of truth for your PostgreSQL schema.
 
-`supaschema` compares a declared schema tree with another schema source and renders the migration needed to move between them. It does not require an ORM, Docker, or a shadow database for generation.
+`supaschema` compares a declared schema tree with another schema source, renders the migration needed to move between them, refreshes generated TypeScript and Zod outputs, and can apply through guarded `sync` targets. It does not require an ORM schema layer, Docker, or a shadow database for the schema workflow.
 
 ## Use this when
 
@@ -54,15 +54,19 @@ npx supaschema diff --fail-on-diff --quiet
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="terminal" href="/quickstart">
-    Generate and check a first migration.
-  </Card>
   <Card
     title="Declarative schema"
     icon="files"
     href="/concepts/declarative-schema"
   >
     Understand the schema tree model.
+  </Card>
+  <Card
+    title="ORM-free apps"
+    icon="database"
+    href="/concepts/orm-free-applications"
+  >
+    Use generated database contracts without adding an ORM schema layer.
   </Card>
   <Card
     title="Destructive hints"

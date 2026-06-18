@@ -1,6 +1,6 @@
 # Testing Methodology for Skills
 
-Skills require testing just like code. Apply Test-Driven Development (TDD) principles: observe failures first, write minimal fixes, verify improvements.
+Skills require testing just like code. Apply Test-Driven Development (TDD) principles: observe failures first, write targeted corrections, verify improvements.
 
 ## TDD for Skills
 
@@ -52,7 +52,7 @@ Build 3+ test scenarios that:
 }
 ```
 
-### Step 3: Write Minimal Skill (GREEN)
+### Step 3: Write Focused Skill (GREEN)
 
 Address ONLY the observed baseline failures. Avoid:
 

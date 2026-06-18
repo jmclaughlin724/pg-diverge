@@ -2,11 +2,22 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/general-guard.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking general Bash safety policy"
+          }
+        ]
+      },
+      {
         "matcher": "^(apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/block-generated-migration-edits.mjs\"",
+            "command": "npx --no-install supaschema hook generated-migration-edit --runtime codex",
             "timeout": 10,
             "statusMessage": "Checking supaschema generated-migration policy"
           }
@@ -19,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/auto-diff-on-schema-change.mjs\"",
+            "command": "npx --no-install supaschema hook schema-write",
             "timeout": 130,
             "statusMessage": "Running supaschema auto-diff on schema change"
           }

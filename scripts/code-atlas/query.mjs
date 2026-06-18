@@ -521,7 +521,7 @@ function regressionVerificationPlan(changedFiles, impactedFiles) {
     commands.push("npm run guard:fastmcp");
   }
   if (paths.some((item) => item.startsWith("scripts/code-atlas/"))) {
-    commands.push("node scripts/guards/check-no-regex-in-scripts.mjs");
+    commands.push("node scripts/guards/check-canonical-surfaces.mjs");
   }
   return {
     commands: uniqueStrings(commands),
@@ -598,7 +598,7 @@ function search(value, sourceAtlas) {
 }
 
 function mcpStatus(sourceAtlas) {
-  const result = spawnSync("node", ["scripts/code-atlas/mcp-wrapper.mjs", "--status"], {
+  const result = spawnSync("node", ["scripts/code-atlas/mcp-launcher.mjs", "--status"], {
     cwd: ROOT,
     encoding: "utf8",
   });

@@ -18,15 +18,10 @@ export function sortedByName<T extends { name: string }>(items: T[]): T[] {
   return [...items].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-// GENERATED columns and GENERATED ALWAYS AS IDENTITY (`identity === "a"`) columns
-// cannot be supplied on Insert or Update: the TS emitter renders them `?: never`
-// and the Zod emitter omits them. Shared so both emitters stay in lockstep.
 export function isNonWritableColumn(column: ColumnShape): boolean {
   return column.generated !== undefined || column.identity === "a";
 }
 
-// A column is optional on Insert when it is nullable, has a default, or is any
-// identity column (the database supplies the value).
 export function isOptionalInsertColumn(column: ColumnShape): boolean {
   return !column.notNull || column.default !== undefined || column.identity !== undefined;
 }
@@ -200,8 +195,6 @@ async function registerViewShape(
 }
 
 async function registerCompositeShape(shapes: SchemaShapes, object: SchemaObject): Promise<void> {
-  // CompositeTypeStmt and CreateRangeStmt both extract to kind "type". Only
-  // composites have a column list; range types must not emit CompositeTypes.
   const columns = await compositeColumns(object);
   if (columns === undefined) {
     return;
@@ -271,10 +264,6 @@ export function resolveColumnType(
   return { arrayDepth, kind: "unknown" };
 }
 
-// Resolve a user-defined type name to a single enum or composite. A schema-local
-// match (qualified by the current schema) wins across all kinds before falling
-// back to a globally unique bare name — so a local composite is not shadowed by
-// a same-named enum in another schema, and vice versa.
 function resolveUserType(
   shapes: SchemaShapes,
   schemaName: string,
@@ -296,9 +285,7 @@ function resolveUserType(
   if (localComposite) {
     return { kind: "composite", ref: localComposite };
   }
-  // Fall back to a bare name only when it is unique across ALL user-defined
-  // types (enums and composites combined). A bare name shared by an enum and a
-  // composite in different schemas is ambiguous and resolves to unknown.
+
   const enumMatches = shapes.enumsByBareName.get(base) ?? [];
   const compositeMatches = shapes.compositesByBareName.get(base) ?? [];
   if (enumMatches.length + compositeMatches.length !== 1) {
@@ -365,7 +352,6 @@ async function compositeColumns(object: SchemaObject): Promise<ColumnShape[] | u
   const statements = readArray(asRecord(parsed.ast)?.stmts);
   const composite = asRecord(asRecord(asRecord(statements[0])?.stmt)?.CompositeTypeStmt);
   if (!composite) {
-    // Not a composite (e.g. CREATE TYPE ... AS RANGE / AS ENUM handled elsewhere).
     return;
   }
   return readArray(composite?.coldeflist).flatMap((item) => {
@@ -409,9 +395,7 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
   const returns = asRecord(object.metadata.returns);
   const scalarType = typeof returns?.type === "string" ? returns.type : undefined;
   const setof = returns?.setof === true || hasTableParam;
-  // A single OUT/INOUT parameter (without RETURNS TABLE) yields that parameter's
-  // scalar type — PostgreSQL only produces a RECORD for multiple output columns
-  // or RETURNS TABLE. Only then is a row shape correct.
+
   const isRowShape = hasTableParam || returnColumns.length > 1;
   if (returnColumns.length > 0 && isRowShape) {
     return {

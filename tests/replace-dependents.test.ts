@@ -104,8 +104,6 @@ describe("replaced relation dependents", () => {
   });
 
   it("does not pre-drop a dependent view/materialized view that is new in the target", async () => {
-    // A materialized view that does not exist yet must not be pre-dropped by the
-    // table replace — that would emit a destructive DROP for a non-existent object.
     const from = await modelFromSql(
       "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n"
     );
@@ -145,9 +143,6 @@ describe("replaced relation dependents", () => {
   });
 
   it("orders nested dependent-view pre-drops by dependency, not source order", async () => {
-    // v_outer depends on v_inner depends on t, but is declared BEFORE v_inner so
-    // its source ordinal is lower. The pre-drops must still drop the dependent
-    // (v_outer) before its dependency (v_inner), independent of ordinals.
     const views =
       "CREATE VIEW app.v_outer AS SELECT id FROM app.v_inner;\n" +
       "CREATE VIEW app.v_inner AS SELECT id, value FROM app.t;";
@@ -168,7 +163,7 @@ describe("replaced relation dependents", () => {
     expect(dropOuter).toBeGreaterThanOrEqual(0);
     expect(dropInner).toBeGreaterThan(dropOuter);
     expect(dropTable).toBeGreaterThan(dropInner);
-    // Re-created in dependency order: inner before outer.
+
     const createInner = sql.indexOf("CREATE OR REPLACE VIEW app.v_inner AS SELECT");
     const createOuter = sql.indexOf("CREATE OR REPLACE VIEW app.v_outer AS SELECT");
     expect(createInner).toBeGreaterThan(0);

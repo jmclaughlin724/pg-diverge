@@ -142,14 +142,20 @@ async function findOnPath(binary) {
       continue;
     }
     const candidate = resolve(segment, binary);
-    try {
-      await access(candidate);
+    if (await canAccess(candidate)) {
       return candidate;
-    } catch {
-      // Continue scanning PATH.
     }
   }
   return;
+}
+
+async function canAccess(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function resolveSupabaseBinary() {

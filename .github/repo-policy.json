@@ -1,0 +1,166 @@
+{
+  "repositoryFullName": "jmclaughlin724/supaschema",
+  "upstreamSources": [
+    "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches",
+    "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/about-merge-methods-on-github",
+    "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets",
+    "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets",
+    "https://docs.github.com/en/rest/branches/branch-protection",
+    "https://docs.github.com/en/rest/actions/permissions",
+    "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/managing-the-commit-signoff-policy-for-your-repository",
+    "https://cli.github.com/manual/gh_pr_merge",
+    "https://cli.github.com/manual/gh_repo_edit"
+  ],
+  "repository": {
+    "allow_auto_merge": true,
+    "allow_merge_commit": false,
+    "allow_rebase_merge": true,
+    "allow_squash_merge": false,
+    "default_branch": "main",
+    "delete_branch_on_merge": true,
+    "web_commit_signoff_required": true
+  },
+  "actions": {
+    "forkPullRequestContributorApproval": {
+      "approval_policy": "first_time_contributors"
+    },
+    "permissions": {
+      "allowed_actions": "all",
+      "enabled": true,
+      "sha_pinning_required": true
+    },
+    "workflowPermissions": {
+      "can_approve_pull_request_reviews": false,
+      "default_workflow_permissions": "read"
+    }
+  },
+  "dco": {
+    "enabled": true,
+    "enforcedBy": "CI quality job",
+    "script": "npm run github:check-dco"
+  },
+  "pullRequests": {
+    "base": "main",
+    "mergeMethod": "rebase",
+    "requiredPreflight": "npm run github:pr-preflight -- --base main",
+    "requiredMergePreflight": "npm run github:merge-preflight -- --pr <number>",
+    "requiredPostMergeVerification": "npm run github:post-merge-verify -- --pr <number>"
+  },
+  "branches": {
+    "main": {
+      "allow_deletions": false,
+      "allow_force_pushes": false,
+      "enforce_admins": true,
+      "required_conversation_resolution": true,
+      "required_signatures": false,
+      "required_linear_history": true,
+      "required_pull_request_reviews": {
+        "dismiss_stale_reviews": true,
+        "require_code_owner_reviews": false,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 0
+      },
+      "required_status_checks": {
+        "strict": true,
+        "app_id": 15368,
+        "contexts": [
+          "quality (22)",
+          "quality (24)",
+          "check (15)",
+          "check (16)",
+          "check (17)",
+          "check-os (macos-latest)",
+          "check-os (windows-latest)",
+          "dependency-review",
+          "analyze (javascript-typescript)",
+          "analyze (python)"
+        ]
+      }
+    }
+  },
+  "rulesets": [
+    {
+      "bypass_actors": [],
+      "conditions": {
+        "ref_name": {
+          "exclude": [],
+          "include": ["~DEFAULT_BRANCH"]
+        }
+      },
+      "enforcement": "active",
+      "name": "main branch policy",
+      "rules": [
+        {
+          "type": "deletion"
+        },
+        {
+          "type": "non_fast_forward"
+        },
+        {
+          "type": "required_linear_history"
+        },
+        {
+          "parameters": {
+            "allowed_merge_methods": ["rebase"],
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_approving_review_count": 0,
+            "required_review_thread_resolution": true
+          },
+          "type": "pull_request"
+        },
+        {
+          "parameters": {
+            "do_not_enforce_on_create": false,
+            "required_status_checks": [
+              {
+                "context": "quality (22)",
+                "integration_id": 15368
+              },
+              {
+                "context": "quality (24)",
+                "integration_id": 15368
+              },
+              {
+                "context": "check (15)",
+                "integration_id": 15368
+              },
+              {
+                "context": "check (16)",
+                "integration_id": 15368
+              },
+              {
+                "context": "check (17)",
+                "integration_id": 15368
+              },
+              {
+                "context": "check-os (macos-latest)",
+                "integration_id": 15368
+              },
+              {
+                "context": "check-os (windows-latest)",
+                "integration_id": 15368
+              },
+              {
+                "context": "dependency-review",
+                "integration_id": 15368
+              },
+              {
+                "context": "analyze (javascript-typescript)",
+                "integration_id": 15368
+              },
+              {
+                "context": "analyze (python)",
+                "integration_id": 15368
+              }
+            ],
+            "strict_required_status_checks_policy": true
+          },
+          "type": "required_status_checks"
+        }
+      ],
+      "target": "branch"
+    }
+  ]
+}

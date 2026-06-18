@@ -74,7 +74,68 @@ export function preview(value) {
 }
 
 export function redactSecrets(value) {
-  return value.replace(/([a-z][a-z0-9+.-]*:\/\/)([^:@/\s]+):([^@/\s]+)@/gi, "$1***:***@");
+  let output = "";
+  let index = 0;
+  while (index < value.length) {
+    const marker = value.indexOf("://", index);
+    if (marker === -1) {
+      output += value.slice(index);
+      break;
+    }
+    const schemeStart = schemeStartIndex(value, marker);
+    if (schemeStart === marker) {
+      output += value.slice(index, marker + 3);
+      index = marker + 3;
+      continue;
+    }
+    output += value.slice(index, marker + 3);
+    const authorityStart = marker + 3;
+    const authorityEnd = authorityEndIndex(value, authorityStart);
+    const at = value.indexOf("@", authorityStart);
+    const colon = value.indexOf(":", authorityStart);
+    if (at !== -1 && at < authorityEnd && colon !== -1 && colon < at) {
+      output += "***:***@";
+      output += value.slice(at + 1, authorityEnd);
+    } else {
+      output += value.slice(authorityStart, authorityEnd);
+    }
+    index = authorityEnd;
+  }
+  return output;
+}
+
+function schemeStartIndex(value, marker) {
+  let index = marker;
+  while (index > 0 && isSchemeChar(value[index - 1])) {
+    index -= 1;
+  }
+  return isAsciiLetter(value[index] ?? "") ? index : marker;
+}
+
+function authorityEndIndex(value, start) {
+  let index = start;
+  while (index < value.length && !isAuthorityTerminator(value[index] ?? "")) {
+    index += 1;
+  }
+  return index;
+}
+
+function isSchemeChar(char) {
+  return isAsciiLetter(char) || isDigit(char) || char === "+" || char === "." || char === "-";
+}
+
+function isAuthorityTerminator(char) {
+  return char === "/" || char === " " || char === "\n" || char === "\r" || char === "\t";
+}
+
+function isAsciiLetter(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isDigit(char) {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }
 
 export function summary(payload) {

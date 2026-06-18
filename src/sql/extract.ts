@@ -281,8 +281,7 @@ function tableObjects(
       tableMetadataFromAst(node, statement.text, statement.byteStart)
     ),
   ];
-  // In-CREATE constraints surface as their own constraint objects so table
-  // identity stays independent of where a constraint is declared.
+
   for (const [index, synthesized] of tableConstraintSyntheses(
     node,
     statement.text,
@@ -311,7 +310,7 @@ function sequenceOwnedByObjects(
   if (!(name && ownedBy !== undefined)) {
     return;
   }
-  // Folded into the owning sequence's canonical shape at model assembly.
+
   return [
     makeObject({ kind: "sequence", ...name }, statement.text, ordinal, file, {
       sequenceOwnedByAmendment: { ownedBy },

@@ -25,18 +25,12 @@ export interface ExtractCatalogOptions {
 type CatalogPool = Pick<Pool, "query">;
 
 export async function extractCatalogModel(options: ExtractCatalogOptions): Promise<SchemaModel> {
-  // Empty search_path (pg_dump's convention) so pg_get_expr renders every
-  // reference schema-qualified; otherwise the session's search_path decides
-  // whether `auth.uid()` reconstructs as `uid()` and the cross-lane hash
-  // silently diverges from the declarative spelling.
   const pool = new Pool({
     connectionString: options.databaseUrl,
     max: 4,
     options: "-c search_path=",
   });
-  pool.on("error", () => {
-    // The main extraction path reports query failures through diagnostics.
-  });
+  pool.on("error", () => undefined);
   try {
     const sections = await Promise.all([
       collectSection((objects) => appendSchemas(pool, objects, 0)),
@@ -98,9 +92,7 @@ async function appendSchemas(
   ordinal: number
 ): Promise<number> {
   let nextOrdinal = ordinal;
-  // `public` is created by initdb in every database; modeling it as a
-  // droppable object would let a tree that never declares it render
-  // DROP SCHEMA public.
+
   const result = await pool.query<Record<string, unknown>>(`
     select nspname as name
     from pg_namespace
@@ -124,9 +116,7 @@ async function appendExtensions(
   ordinal: number
 ): Promise<number> {
   let nextOrdinal = ordinal;
-  // plpgsql is installed by initdb in every database (same class as the
-  // public schema); modeling it would render DROP EXTENSION plpgsql for any
-  // tree that never declares it.
+
   const result = await pool.query<Record<string, unknown>>(`
     select e.extname as name, n.nspname as schema
     from pg_extension e
@@ -180,8 +170,7 @@ async function appendFunctions(
           kind,
           name: stringValue(row.name),
           schema: stringValue(row.schema),
-          // Routine identity is input argument TYPES only (names are not part
-          // of PostgreSQL overload identity), matching the source lane.
+
           signature: functionSignature(stringValue(row.args), row.variadic === true),
         },
         stringValue(row.definition),
@@ -193,8 +182,6 @@ async function appendFunctions(
   return nextOrdinal;
 }
 
-// oidvectortypes joins input argument types with ", "; type names contain no
-// commas, so marking the trailing VARIADIC argument by splitting is safe.
 function functionSignature(args: string, variadic: boolean): string {
   if (!variadic || args.length === 0) {
     return args;
@@ -274,9 +261,7 @@ async function appendIndexes(
   ordinal: number
 ): Promise<number> {
   let nextOrdinal = ordinal;
-  // Constraint-backed indexes (PK/UNIQUE/EXCLUDE) are owned by their
-  // constraint object; emitting them as index objects would double-own them
-  // and plan false index drops against trees that declare the constraint.
+
   const result = await pool.query<Record<string, unknown>>(`
     select i.schemaname, i.tablename, i.indexname, i.indexdef
     from pg_indexes i
@@ -366,9 +351,7 @@ async function appendPoliciesAndRls(
   for (const row of rls.rows) {
     const schema = stringValue(row.schema);
     const name = stringValue(row.name);
-    // ENABLE and FORCE are independent facets of one table's RLS state and
-    // share one rls identity; emit both statements so forced tables render
-    // correctly and hash-match a source tree that declares both.
+
     const statements: string[] = [];
     if (row.rls) {
       statements.push(`ALTER TABLE ${formatQualifiedName(schema, name)} ENABLE ROW LEVEL SECURITY`);
@@ -412,9 +395,7 @@ async function appendPoliciesAndRls(
       `CREATE POLICY ${quoteIdent(name)} ON ${formatQualifiedName(schema, table)}`,
       `AS ${stringValue(row.permissive)}`,
       `FOR ${stringValue(row.cmd)}`,
-      // pg_policies reports PUBLIC as the role name "public"; quoting it
-      // would parse as a named role instead of the ROLESPEC_PUBLIC keyword
-      // and break cross-lane hash parity with `TO PUBLIC` trees.
+
       `TO ${normalizePolicyRoles(row.roles)
         .map((role) => (role === "public" ? "PUBLIC" : quoteIdent(role)))
         .join(", ")}`,

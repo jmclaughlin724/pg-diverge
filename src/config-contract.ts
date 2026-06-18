@@ -54,18 +54,46 @@ export const migrationVerifyPolicies = [
   "suggest_after_check",
   "after_schema_diff",
 ] as const;
-export const migrationSyncPolicies = ["disabled", "explicit_request_only"] as const;
+export const migrationSyncPolicies = ["disabled", "manual", "auto"] as const;
+export const deploySafetyPolicies = ["disabled", "report_only", "deploy_blocking"] as const;
 export const generatedOutputPolicies = [
   "disabled",
   "refresh_existing",
   "create_or_refresh",
 ] as const;
 export const typeUsagePolicies = ["typescript_only", "zod_validated"] as const;
+export const syncTargetModes = ["manual", "auto"] as const;
+export const syncTargetRunners = ["direct", "supabase-cli"] as const;
+export const defaultMigrationHistoryTable = "supabase_migrations.schema_migrations";
+export const defaultEnvironments = {
+  local: { databaseUrl: "$LOCAL_DATABASE_URL" },
+  production: { databaseUrl: "$PRODUCTION_DATABASE_URL" },
+} as const;
+export const defaultSync = {
+  targets: {
+    local: {
+      mode: "auto",
+      runner: "direct",
+      environment: "local",
+      historyTable: defaultMigrationHistoryTable,
+    },
+    remote: {
+      mode: "manual",
+      runner: "direct",
+      environment: "production",
+      historyTable: defaultMigrationHistoryTable,
+      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+      remote: true,
+    },
+  },
+} as const;
 export const defaultWorkflow = {
   schema_diff: "on_schema_write",
   migration_check: "after_schema_diff",
   migration_verify: "suggest_after_check",
-  migration_sync: "explicit_request_only",
+  migration_sync: "auto",
+  type_safety: "deploy_blocking",
+  rls_safety: "deploy_blocking",
   type_generation: "create_or_refresh",
   zod_generation: "create_or_refresh",
   type_usage: "zod_validated",
@@ -75,17 +103,40 @@ export type SchemaDiffPolicy = (typeof schemaDiffPolicies)[number];
 export type MigrationCheckPolicy = (typeof migrationCheckPolicies)[number];
 export type MigrationVerifyPolicy = (typeof migrationVerifyPolicies)[number];
 export type MigrationSyncPolicy = (typeof migrationSyncPolicies)[number];
+export type DeploySafetyPolicy = (typeof deploySafetyPolicies)[number];
 export type GeneratedOutputPolicy = (typeof generatedOutputPolicies)[number];
 export type TypeUsagePolicy = (typeof typeUsagePolicies)[number];
+export type SyncTargetMode = (typeof syncTargetModes)[number];
+export type SyncTargetRunner = (typeof syncTargetRunners)[number];
 
 export interface SupaschemaWorkflow {
   migration_check: MigrationCheckPolicy;
   migration_sync: MigrationSyncPolicy;
   migration_verify: MigrationVerifyPolicy;
+  rls_safety: DeploySafetyPolicy;
   schema_diff: SchemaDiffPolicy;
   type_generation: GeneratedOutputPolicy;
+  type_safety: DeploySafetyPolicy;
   type_usage: TypeUsagePolicy;
   zod_generation: GeneratedOutputPolicy;
+}
+
+export interface SupaschemaEnvironment {
+  databaseUrl: string;
+}
+
+export interface SupaschemaSyncTarget {
+  databaseUrl?: string;
+  environment?: string;
+  historyTable: string;
+  mode: SyncTargetMode;
+  remote?: boolean;
+  requireApprovalEnv?: string;
+  runner: SyncTargetRunner;
+}
+
+export interface SupaschemaSync {
+  targets: Record<string, SupaschemaSyncTarget>;
 }
 
 export type RuntimeSourceKind = "catalog" | "database" | "dir" | "dump" | "empty" | "git";
@@ -302,7 +353,7 @@ export function createInstalledConfig(
     adapter: "auto",
     cascade: "never",
     destructiveChanges: "hint-required",
-    environments: {},
+    environments: defaultEnvironments,
     excludedGrantRoles: [],
     hints: {
       allowedGrantees: [],
@@ -312,6 +363,7 @@ export function createInstalledConfig(
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,
+    sync: defaultSync,
     migrationsDir,
     typesFile: defaultTypesFile,
     zodFile: defaultZodFile,
@@ -343,12 +395,14 @@ export function mergeInstalledConfig(
     return base;
   }
   const schemaPaths = normalizedStringArray(existing.schemaPaths, base.schemaPaths as string[]);
+  const hasExistingEnvironments = "environments" in existing && isRecord(existing.environments);
+  const existingSync = isRecord(existing.sync) ? existing.sync : undefined;
   const merged = {
     ...base,
     ...existing,
     $schema: normalizedString(existing.$schema, base.$schema as string),
     adapter: "auto",
-    environments: isRecord(existing.environments) ? existing.environments : base.environments,
+    environments: hasExistingEnvironments ? existing.environments : base.environments,
     excludedGrantRoles: normalizedStringArray(
       existing.excludedGrantRoles,
       base.excludedGrantRoles as string[]
@@ -368,6 +422,13 @@ export function mergeInstalledConfig(
       ...(base.sources as Record<string, unknown>),
       ...(isRecord(existing.sources) ? existing.sources : {}),
     },
+    sync:
+      hasExistingEnvironments && existingSync === undefined
+        ? { targets: {} }
+        : {
+            ...(base.sync as Record<string, unknown>),
+            ...(existingSync ?? {}),
+          },
     workflow: {
       ...(base.workflow as Record<string, unknown>),
       ...(isRecord(existing.workflow) ? existing.workflow : {}),
@@ -398,6 +459,7 @@ export function orderInstalledConfig(config: Record<string, unknown>): Record<st
     idempotency: config.idempotency,
     lockTimeout: config.lockTimeout,
     workflow: config.workflow,
+    sync: config.sync,
     migrationsDir: config.migrationsDir,
     typesFile: config.typesFile,
     zodFile: config.zodFile,
@@ -443,10 +505,10 @@ export const configFieldMetadata = [
     key: "destructiveChanges",
   },
   {
-    default: {},
+    default: defaultEnvironments,
     description:
       "Named database URL references for --env. Use $ENV_NAME values instead of committed credentials.",
-    examples: [{ staging: { databaseUrl: "$STAGING_DB" } }],
+    examples: [defaultEnvironments, { staging: { databaseUrl: "$STAGING_DB" } }],
     key: "environments",
   },
   {
@@ -475,8 +537,15 @@ export const configFieldMetadata = [
   {
     default: defaultWorkflow,
     description:
-      "Agent and hook workflow policy for schema diffs, migration checks, verification, explicit migration sync, and generated type/Zod output refresh.",
+      "Agent and hook workflow policy for schema diffs, migration checks, verification, sync automation, deploy safety gates, and generated type/Zod output refresh.",
     key: "workflow",
+  },
+  {
+    default: defaultSync,
+    description:
+      "Named migration sync targets. Each target selects a runner, URL owner, history table, and manual or automatic mode.",
+    examples: [defaultSync],
+    key: "sync",
   },
   {
     default: genericMigrationsDir,
@@ -580,9 +649,13 @@ export function configContractModuleText(): string {
     canonicalSchemaId,
     configFieldMetadata,
     configSchemaFileName,
+    defaultEnvironments,
+    defaultMigrationHistoryTable,
+    defaultSync,
     defaultTypesFile,
     defaultZodFile,
     defaultWorkflow,
+    deploySafetyPolicies,
     generatedOutputPolicies,
     genericMigrationsDir,
     genericProviderId,
@@ -603,10 +676,11 @@ export function configContractModuleText(): string {
     sourceSpecPattern,
     supabaseManagedSchemas,
     supportedValidators,
+    syncTargetModes,
+    syncTargetRunners,
     typeUsagePolicies,
   };
-  return `// Generated by src/config-schema-gen.ts from src/config-contract.ts. Do not edit by hand.
-const contract = JSON.parse(\`${JSON.stringify(data, null, 2)}\`);
+  return `const contract = JSON.parse(\`${JSON.stringify(data, null, 2)}\`);
 
 export const configSchemaFileName = contract.configSchemaFileName;
 export const canonicalSchemaId = contract.canonicalSchemaId;
@@ -617,6 +691,9 @@ export const genericSchemaPath = contract.genericSchemaPath;
 export const genericMigrationsDir = contract.genericMigrationsDir;
 export const defaultTypesFile = contract.defaultTypesFile;
 export const defaultZodFile = contract.defaultZodFile;
+export const defaultMigrationHistoryTable = contract.defaultMigrationHistoryTable;
+export const defaultEnvironments = contract.defaultEnvironments;
+export const defaultSync = contract.defaultSync;
 export const adapterInputValues = contract.adapterInputValues;
 export const defaultWorkflow = contract.defaultWorkflow;
 export const supabaseManagedSchemas = contract.supabaseManagedSchemas;
@@ -629,8 +706,11 @@ export const schemaDiffPolicies = contract.schemaDiffPolicies;
 export const migrationCheckPolicies = contract.migrationCheckPolicies;
 export const migrationVerifyPolicies = contract.migrationVerifyPolicies;
 export const migrationSyncPolicies = contract.migrationSyncPolicies;
+export const deploySafetyPolicies = contract.deploySafetyPolicies;
 export const generatedOutputPolicies = contract.generatedOutputPolicies;
 export const typeUsagePolicies = contract.typeUsagePolicies;
+export const syncTargetModes = contract.syncTargetModes;
+export const syncTargetRunners = contract.syncTargetRunners;
 export const providerPresets = contract.providerPresets;
 export const genericProviderPreset = contract.genericProviderPreset;
 export const allProviderPresets = contract.allProviderPresets;
@@ -683,12 +763,13 @@ export function createInstalledConfig(options = {}) {
     adapter: "auto",
     cascade: "never",
     destructiveChanges: "hint-required",
-    environments: {},
+    environments: defaultEnvironments,
     excludedGrantRoles: [],
     hints: { allowedGrantees: [], destructive: [], renames: [] },
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,
+    sync: defaultSync,
     migrationsDir,
     typesFile: defaultTypesFile,
     zodFile: defaultZodFile,
@@ -711,12 +792,14 @@ export function mergeInstalledConfig(existing, options = {}) {
     return base;
   }
   const schemaPaths = normalizedStringArray(existing.schemaPaths, base.schemaPaths);
+  const hasExistingEnvironments = "environments" in existing && isRecord(existing.environments);
+  const existingSync = isRecord(existing.sync) ? existing.sync : undefined;
   const merged = {
     ...base,
     ...existing,
     $schema: normalizedString(existing.$schema, base.$schema),
     adapter: "auto",
-    environments: isRecord(existing.environments) ? existing.environments : base.environments,
+    environments: hasExistingEnvironments ? existing.environments : base.environments,
     excludedGrantRoles: normalizedStringArray(existing.excludedGrantRoles, base.excludedGrantRoles),
     hints: { ...base.hints, ...(isRecord(existing.hints) ? existing.hints : {}) },
     managedSchemas: normalizedStringArray(existing.managedSchemas, base.managedSchemas),
@@ -724,6 +807,10 @@ export function mergeInstalledConfig(existing, options = {}) {
     schemaPaths,
     schemas: { ...base.schemas, ...(isRecord(existing.schemas) ? existing.schemas : {}) },
     sources: { ...base.sources, ...(isRecord(existing.sources) ? existing.sources : {}) },
+    sync:
+      hasExistingEnvironments && existingSync === undefined
+        ? { targets: {} }
+        : { ...base.sync, ...(existingSync ?? {}) },
     workflow: { ...base.workflow, ...(isRecord(existing.workflow) ? existing.workflow : {}) },
     typesFile: normalizedString(existing.typesFile, base.typesFile),
     validators: normalizedStringArray(existing.validators, base.validators),
@@ -750,6 +837,7 @@ export function orderInstalledConfig(config) {
     idempotency: config.idempotency,
     lockTimeout: config.lockTimeout,
     workflow: config.workflow,
+    sync: config.sync,
     migrationsDir: config.migrationsDir,
     typesFile: config.typesFile,
     zodFile: config.zodFile,

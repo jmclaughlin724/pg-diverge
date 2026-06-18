@@ -36,8 +36,9 @@ For a new project setup, copy the agent prompt from [Installation](/installation
   </Step>
   <Step title="Report the result">
     Summarize the generated migration, generated outputs, target runner
-    expectations, and any `SUPA_*` diagnostic. Do not apply migrations unless
-    the human explicitly asks for an apply handoff.
+    expectations, and any `SUPA_*` diagnostic. Apply only through an explicit
+    user request or a config-gated `supaschema sync` workflow with resolved
+    targets and required remote approval.
   </Step>
 </Steps>
 
@@ -55,14 +56,14 @@ The public npm package includes only the consumer-safe surfaces needed for that 
   </Card>
   <Card title="Rule" icon="scale-balanced" href="/coding-agents/agent-bundle">
     Durable migration policy: generated files are not hand-edited, destructive
-    intent must be explicit, and apply is opt-in.
+    intent must be explicit, and apply is config-gated.
   </Card>
   <Card title="Skill" icon="bot" href="/coding-agents/agent-bundle">
     The repeatable schema-change workflow for agents that support skills.
   </Card>
   <Card title="Hooks" icon="webhook" href="/coding-agents/agent-bundle">
-    Write-time guardrails that block generated migration edits, run diff after
-    schema edits, and sync installed LLM surfaces.
+    Write-time guardrails that block generated migration edits, run diff or
+    config-gated sync after schema edits, and sync installed LLM surfaces.
   </Card>
 </CardGroup>
 

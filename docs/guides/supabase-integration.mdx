@@ -1,12 +1,12 @@
 ---
 title: "Supabase integration"
-description: "Use supaschema before the Supabase CLI while keeping config.toml discovery, managed schemas, and runner ownership clear."
+description: "Use supaschema with Supabase paths, managed schemas, guarded sync targets, and the optional Supabase CLI runner adapter."
 keywords: ["Supabase integration", "config.toml", "managed schemas", "sync"]
 ---
 
-Use this when a Supabase project should keep `supabase db push` as the runner while `supaschema` generates and proves migrations.
+Use this when a Supabase project should keep Supabase paths and platform-managed schemas while `supaschema` owns generation, safety gates, generated outputs, and guarded apply orchestration.
 
-In this setup, Supabase owns apply history. `supaschema` owns schema diffing, replay-safety checks, type output, and optional pre-runner orchestration.
+In this setup, `supaschema sync` can call either the direct PostgreSQL runner or the Supabase CLI adapter. Use `supabase db push` directly only when a separate deployment process intentionally owns apply.
 
 ## Use this when
 
@@ -26,20 +26,15 @@ Use the scaffolded Supabase defaults or set the same paths in `supaschema.config
 }
 ```
 
-Generate, check, and apply:
+Generate, check, and apply through guarded sync:
 
 ```bash
 npx supaschema diff
 npx supaschema check
-supabase db push
+npx supaschema sync
 ```
 
-Use `sync` only when you want a guarded wrapper around the Supabase runner:
-
-```bash
-npx supaschema sync --local
-npx supaschema sync --remote
-```
+The installed default lets target config decide selection. For remote deploys, set the remote target to `mode: "auto"` and provide the target's approval environment variable in the deployment job. Supabase compatibility aliases exist for explicit operator overrides, but they are not the standard workflow.
 
 ## Verify
 
@@ -66,7 +61,7 @@ npx supaschema diff --from database:$DATABASE_URL --fail-on-diff
     Generate Supabase migrations without a local stack.
   </Card>
   <Card title="Sync command" icon="refresh-cw" href="/commands/sync">
-    Gate pending migrations before the Supabase CLI runs.
+    Run safety gates, target reconciliation, and selected runner apply.
   </Card>
   <Card title="Migrations command" icon="list-tree" href="/commands/migrations">
     Reconcile disk files with applied history.

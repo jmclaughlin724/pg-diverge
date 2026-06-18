@@ -40,7 +40,7 @@ export interface Diagnostic {
   hint?: string;
   message: string;
   ref?: ObjectRef;
-  /** Schemas the failing statement references, for schema-filter scoping. */
+
   schemas?: string[];
   severity: DiagnosticSeverity;
   statement?: string;
@@ -110,7 +110,6 @@ export interface RenameHint {
 }
 
 export interface SupaschemaHints {
-  /** Roles permitted to receive grants; drives the P11 role-policy drift rule. */
   allowedGrantees?: string[];
   destructive?: string[];
   renames?: RenameHint[];
@@ -137,19 +136,12 @@ export interface VerifyMigrationOptions {
   config?: Partial<SupaschemaConfig>;
   cwd?: string;
   databaseUrl: string;
-  /**
-   * Stub Supabase-provisioned surfaces (auth schema helpers, cron schema) in
-   * the temporary databases so real-world trees apply against bare
-   * PostgreSQL. Defaults to false; enable explicitly with --ensure-environment.
-   */
+
   ensureEnvironment?: boolean;
 
   ensureRoles?: boolean;
   from: string;
-  /**
-   * Keep the temporary databases after the run and report their names —
-   * a failed verify leaves its evidence inspectable instead of dropped.
-   */
+
   keepDatabases?: boolean;
   migrationPath: string;
   to: string;

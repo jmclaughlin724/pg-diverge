@@ -166,16 +166,13 @@ async function prepareFixtureContext(fixture) {
     toSql,
     toSqlPath: fixture.toSqlPath,
   };
-  // Seed each fixture state once into a template database; per-run databases
-  // clone the template (CREATE DATABASE ... TEMPLATE), which turns large-
-  // schema seeding from minutes of statement replay into a file copy.
+
   if (databaseUrl) {
     const urls = await createTemporaryDatabases(databaseUrl, 2);
     context.templateDatabaseUrls = urls;
     context.templateFromName = basename(new URL(urls[0]).pathname);
     context.templateToName = basename(new URL(urls[1]).pathname);
-    // Objects must not be owned by supabase_admin: the Supabase CLI's diff
-    // engines silently omit supabase_admin-owned objects (empty diff, exit 0).
+
     const seedRole = process.env.SUPASCHEMA_COMPARE_SEED_ROLE;
     await applySql(urls[0], fromSql);
     await applySql(urls[1], toSql);
@@ -249,8 +246,7 @@ async function runAdapter(adapter, fixture, context, warmup, iteration) {
     await rm(context.outputPath, { force: true });
     const attemptStarted = performance.now();
     execution = await exec(commandSpec);
-    // Latency claims use the final attempt only; retry sleeps and failed
-    // environmental attempts (port conflicts) land in totalElapsedMs.
+
     elapsedMs = performance.now() - attemptStarted;
     attempts += 1;
     executions.push(execution);

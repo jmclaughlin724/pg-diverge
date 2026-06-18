@@ -1,8 +1,6 @@
 import { watch } from "node:fs";
-import type { FileHandle } from "node:fs/promises";
-import { mkdir, open, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { performance } from "node:perf_hooks";
 import type { Command } from "commander";
 import {
   defaultMigrationName,
@@ -16,18 +14,12 @@ import {
   pendingInstallPathConfirmationDiagnostic,
   type SupaschemaConfig,
 } from "./config.js";
-import type { Diagnostic, MigrationPlan, SchemaModel } from "./core.js";
-import { diagnostic, hasErrors, redactSecrets } from "./diagnostics.js";
+import type { Diagnostic, MigrationPlan } from "./core.js";
+import { diagnostic, hasErrors } from "./diagnostics.js";
 import { latestLineage } from "./lineage.js";
-import { planSchemaDiff } from "./planner.js";
+import { buildSchemaDiffPlan, refreshGeneratedOutputs } from "./pipeline-services.js";
+import { redactSecrets } from "./redaction.js";
 import { renderMigrationSplit } from "./render.js";
-import { extractSourceModel, filterModelBySchemas } from "./source.js";
-import { generateDatabaseTypesFromShapes } from "./typegen.js";
-import type { SchemaShapes } from "./typegen-model.js";
-import { collectSchemaShapes } from "./typegen-model.js";
-import { generateZodSchemasFromShapes } from "./typegen-zod.js";
-
-const sqlExtensionPattern = /\.sql$/u;
 
 interface PlanCommandOptions {
   from?: string;
@@ -232,7 +224,7 @@ function renderDiffOutput(
   const outPath = resolveDiffOutPath(options, plan, migrationsDir);
   const concurrentPath =
     rendered.concurrentSql !== undefined && outPath !== undefined
-      ? `${outPath.replace(sqlExtensionPattern, "")}.concurrent.sql`
+      ? `${stripSqlExtension(outPath)}.concurrent.sql`
       : undefined;
   return {
     concurrentPath,
@@ -241,6 +233,10 @@ function renderDiffOutput(
     rendered,
     shouldSkipEmptyWrite: defaultedOut && plan.operations.length === 0 && !options.json,
   };
+}
+
+function stripSqlExtension(value: string): string {
+  return value.endsWith(".sql") ? value.slice(0, -4) : value;
 }
 
 async function validateLineageChain(
@@ -279,7 +275,11 @@ async function writeOrPrintDiffOutput(
       ? output.payload
       : `${output.outPath}\n${output.concurrentPath === undefined ? "" : `${output.concurrentPath}\n`}`
   );
-  await refreshTypesFile(options.to, config, options.schema);
+  await refreshGeneratedOutputs({
+    config,
+    ...(options.schema === undefined ? {} : { schemaFilter: options.schema }),
+    toSource: options.to,
+  });
   return true;
 }
 
@@ -329,110 +329,6 @@ function handleDiffWriteError(
   throw error;
 }
 
-async function refreshTypesFile(
-  toSource: string,
-  config: SupaschemaConfig,
-  schemaFilter: string | undefined
-): Promise<void> {
-  const targets: {
-    generate: (shapes: SchemaShapes) => string;
-    policy: SupaschemaConfig["workflow"]["type_generation"];
-    relative: string;
-  }[] = [
-    {
-      generate: generateDatabaseTypesFromShapes,
-      policy: config.workflow.type_generation,
-      relative: config.typesFile,
-    },
-    {
-      generate: generateZodSchemasFromShapes,
-      policy: config.workflow.zod_generation,
-      relative: config.zodFile,
-    },
-  ];
-  let model: SchemaModel | undefined;
-  let shapes: SchemaShapes | undefined;
-  let shapesComputed = false;
-  for (const target of targets) {
-    if (target.policy === "disabled") {
-      continue;
-    }
-    try {
-      if (target.policy === "refresh_existing") {
-        await refreshExistingGeneratedOutput(target, getShapes);
-      } else {
-        await createOrRefreshGeneratedOutput(target, getShapes);
-      }
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  async function getModel(): Promise<SchemaModel | undefined> {
-    model = model ?? filterModel(await extractSourceModel(toSource, { config }), schemaFilter);
-    return hasErrors(model.diagnostics) ? undefined : model;
-  }
-
-  // Compute the typegen shapes at most once per refresh and share them across
-  // the TypeScript and Zod targets, instead of re-walking the model per output.
-  async function getShapes(): Promise<SchemaShapes | undefined> {
-    if (shapesComputed) {
-      return shapes;
-    }
-    shapesComputed = true;
-    const resolved = await getModel();
-    shapes = resolved === undefined ? undefined : await collectSchemaShapes(resolved);
-    return shapes;
-  }
-}
-
-async function refreshExistingGeneratedOutput(
-  target: {
-    generate: (shapes: SchemaShapes) => string;
-    relative: string;
-  },
-  getShapes: () => Promise<SchemaShapes | undefined>
-): Promise<void> {
-  let handle: FileHandle;
-  handle = await open(resolve(process.cwd(), target.relative), "r+");
-  try {
-    const shapes = await getShapes();
-    if (shapes === undefined) {
-      return;
-    }
-    const generated = target.generate(shapes);
-    await handle.truncate(0);
-    await handle.write(generated, 0);
-    process.stderr.write(`types: ${target.relative} refreshed from configured workflow\n`);
-  } finally {
-    await handle.close();
-  }
-}
-
-async function createOrRefreshGeneratedOutput(
-  target: {
-    generate: (shapes: SchemaShapes) => string;
-    relative: string;
-  },
-  getShapes: () => Promise<SchemaShapes | undefined>
-): Promise<void> {
-  const shapes = await getShapes();
-  if (shapes === undefined) {
-    return;
-  }
-  const outPath = resolve(process.cwd(), target.relative);
-  await mkdir(dirname(outPath), { recursive: true });
-  await writeFile(outPath, target.generate(shapes));
-  process.stderr.write(`types: ${target.relative} created or refreshed from configured workflow\n`);
-}
-
-/**
- * Editor loop: re-print the drift summary whenever a dir: source changes.
- * Watch never writes files — it forces dry-run summary mode.
- */
 async function watchDiff(
   options: WithSources<DiffOptions>,
   config: SupaschemaConfig,
@@ -496,37 +392,17 @@ async function watchDiff(
   await new Promise(() => undefined);
 }
 
-async function buildPlan(
+function buildPlan(
   options: WithSources<PlanCommandOptions>,
   config: SupaschemaConfig
 ): Promise<MigrationPlan> {
-  const extractStart = performance.now();
-  const from = filterModel(await extractSourceModel(options.from, { config }), options.schema);
-  const fromMs = performance.now() - extractStart;
-  const toStart = performance.now();
-  const to = filterModel(await extractSourceModel(options.to, { config }), options.schema);
-  const toMs = performance.now() - toStart;
-  const planStart = performance.now();
-  const plan = planSchemaDiff(from, to, { config });
-  if (options.timing) {
-    process.stderr.write(
-      `timing: extract-from ${Math.round(fromMs)}ms · extract-to ${Math.round(toMs)}ms · plan ${Math.round(performance.now() - planStart)}ms\n`
-    );
-  }
-  return plan;
-}
-
-export function filterModel(model: SchemaModel, schemaFilter: string | undefined): SchemaModel {
-  if (!schemaFilter) {
-    return model;
-  }
-  const schemas = new Set(
-    schemaFilter
-      .split(",")
-      .map((name) => name.trim().toLowerCase())
-      .filter(Boolean)
-  );
-  return filterModelBySchemas(model, schemas);
+  return buildSchemaDiffPlan({
+    config,
+    from: options.from,
+    ...(options.schema === undefined ? {} : { schema: options.schema }),
+    ...(options.timing === undefined ? {} : { timing: options.timing }),
+    to: options.to,
+  });
 }
 
 function migrationTimestamp(): string {

@@ -6,8 +6,6 @@ const packageJson = readJson("package.json");
 const catalog = readJson("scripts/dependency-catalog.json");
 const biome = readJson("biome.jsonc");
 const vitestConfig = readText("vitest.config.ts");
-const relativeTsImportPattern =
-  /\bfrom\s+["'][.][^"']*\.ts["']|\bimport\s*\(\s*["'][.][^"']*\.ts["']/;
 
 assert(catalog.packageManager === "npm", "tooling stack must keep the npm package contract");
 assert(exists("package-lock.json"), "npm package-lock.json must exist");
@@ -58,8 +56,6 @@ const toolPins = {
   vitest: "4.1.9",
 };
 
-// package.json is the single source of truth for the pinned tooling versions;
-// the dependency catalog no longer mirrors npm deps (see check-dependency-catalog.mjs).
 for (const [name, version] of Object.entries(toolPins)) {
   assert(
     packageJson.devDependencies?.[name] === version,
@@ -159,9 +155,11 @@ assertAgentPackageSurface(packageJson.files ?? []);
 assertRuntimePackageSurface(packageJson.files ?? []);
 assertCclspProxyWiring(readJson(".claude/cclsp.json"));
 
-for (const file of gitFiles().filter((candidate) => candidate.endsWith(".ts"))) {
+for (const file of gitFiles().filter(
+  (candidate) => candidate.endsWith(".ts") && exists(candidate)
+)) {
   assert(
-    !hasRelativeTsImport(readText(file)),
+    !hasRelativeTsImport(file),
     `${file} must use emitted-runtime .js specifiers for relative imports`
   );
 }
@@ -179,8 +177,35 @@ for (const token of [
 
 ok("TOOLING_STACK_OK");
 
-function hasRelativeTsImport(text) {
-  return relativeTsImportPattern.test(text);
+function hasRelativeTsImport(file) {
+  const source = parseScript(readText(file), file);
+  let found = false;
+  forEachNode(source, (node) => {
+    if (isRelativeTsModuleSpecifier(staticModuleSpecifier(node))) {
+      found = true;
+    }
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const [argument] = node.arguments;
+      if (ts.isStringLiteral(argument) && isRelativeTsModuleSpecifier(argument.text)) {
+        found = true;
+      }
+    }
+  });
+  return found;
+}
+
+function staticModuleSpecifier(node) {
+  if (
+    (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+    node.moduleSpecifier !== undefined &&
+    ts.isStringLiteral(node.moduleSpecifier)
+  ) {
+    return node.moduleSpecifier.text;
+  }
+}
+
+function isRelativeTsModuleSpecifier(value) {
+  return typeof value === "string" && value.startsWith(".") && value.endsWith(".ts");
 }
 
 function assertNoShellTrueWithArgs(file) {
@@ -232,13 +257,12 @@ function assertAgentPackageSurface(files) {
   const allowedAgentFiles = new Set([
     ".agents/prompts/supaschema-install.md",
     ".agents/skills/supaschema",
-    ".claude/hooks/auto-diff-on-schema-change.mjs",
-    ".claude/hooks/block-generated-migration-edits.mjs",
+    ".claude/hooks/guards/bash-policy-checks.mjs",
     ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
     ".claude/rules/supaschema.md",
     ".claude/skills/supaschema",
-    ".codex/hooks/auto-diff-on-schema-change.mjs",
-    ".codex/hooks/block-generated-migration-edits.mjs",
+    ".codex/hooks/general-guard.mjs",
+    ".codex/hooks/guards/bash-policy-checks.mjs",
     ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
     ".codex/hooks.json",
     ".codex/rules/supaschema.rules",

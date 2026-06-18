@@ -47,7 +47,7 @@ Stop on a high-confidence root cause (a specific error, a missing env var, a dec
 5. **CI failures** — inspect the remote run first (`gh run view`/`gh pr checks`). The CI surface is the seven workflows under `.github/workflows/` (`ci.yml` quality/check/check-os, `release.yml`, `python.yml`, `codeql.yml`, `scorecard.yml`, `dependency-review.yml`, `docs.yml`) — see Rule 09. Separate Actions failures from external services; do not invent nonexistent workflows as evidence.
 6. **Cloudflare Worker** — `npx wrangler dev` for local repro, `npx wrangler tail` for live logs; the worker is a thin docs reverse-proxy (`cloudflare/mintlify-docs-worker.js`).
 7. **Verify the remediation path** before editing — `cclsp` find-definition/references/implementation for real symbol flow, `git log`/`git blame` for the regression window.
-8. **Apply the smallest root-cause fix**, then re-run the exact gate that failed.
+8. **Apply the root-cause fix to the smallest correct end state**, then re-run the exact gate that failed.
 
 ## Rules
 

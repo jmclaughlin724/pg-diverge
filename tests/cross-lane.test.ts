@@ -66,9 +66,7 @@ async function collectFalseChanges(
       throw new Error(`expected live extraction to succeed: ${JSON.stringify(liveErrors)}`);
     }
     const plan = planSchemaDiff(live, dir);
-    // Live-only environment objects (e.g. the default public schema) diff as
-    // drops; parity asserts the dir tree itself produces no creates,
-    // replaces, or alters for structurally reconstructed kinds.
+
     return plan.operations
       .filter((operation) => operation.kind !== "drop")
       .filter((operation) => strictKinds.has(operation.ref.kind))

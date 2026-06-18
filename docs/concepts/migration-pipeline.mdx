@@ -60,28 +60,30 @@ database or migration state + declarative SQL tree
     Proves the newest pending migration can apply twice against a disposable
     database.
   </Card>
+  <Card title="Sync" icon="refresh-cw" href="/commands/sync">
+    Runs diff, generated-output refresh, safety gates, target reconciliation,
+    and selected runner apply.
+  </Card>
   <Card title="CI drift gate" icon="git-branch" href="/guides/ci-gate">
     Runs `supaschema diff --fail-on-diff --quiet` to fail when the schema tree
     and migrations drift.
   </Card>
-  <Card title="Corpus oracle" icon="database-zap" href="/guides/corpus-oracle">
-    Tests real-world dirty catalogs for reconvergence when a database is
-    reachable.
-  </Card>
 </CardGroup>
+
+Use the [corpus oracle](/guides/corpus-oracle) for real-world reconvergence fixtures, and use [ORM-free applications](/concepts/orm-free-applications) to wire generated TypeScript and Zod outputs into application boundaries.
 
 In projects with the installed coding-agent hooks, schema-tree edits trigger `diff` and `check` automatically after the write. The agent still treats generated migrations as output and reports the migration or diagnostic instead of editing generated SQL.
 
-## Apply handoff
+## Apply orchestration
 
-supaschema intentionally separates generation from deployment. `diff` writes the migration; your runner applies it.
+supaschema keeps generation and deployment as separate workflow stages, but `sync` is the built-in orchestration path. `diff` writes the migration; `sync` can generate or reuse pending SQL, refresh generated outputs, run deploy safety gates, reconcile each selected target, and apply through the configured runner.
 
-For plain PostgreSQL and hosted PostgreSQL providers, apply the checked SQL with the runner you already use: `psql`, a deployment job, Terraform-controlled operations, Flyway, Liquibase, a platform migration service, or another reviewed SQL runner.
+For plain PostgreSQL and hosted PostgreSQL providers, `sync` can use the direct PostgreSQL runner when a target database URL is configured or passed explicitly. For Supabase projects, `sync` can use the Supabase CLI adapter. The installed default lets target config decide selection, so day-to-day apply is `supaschema sync` and every `sync.targets.<name>` entry with `mode: "auto"` is selected. Remote targets use the same `mode` rule and also require their approval environment variable. `--target <name>` is the explicit override path for one configured target.
 
-For Supabase projects, `supaschema sync` is the optional explicit handoff lane. With no apply flag it is a dry run. With `--local` or `--remote`, it runs status and replay-safety gates before delegating the apply or deploy step to the Supabase CLI, and only when the configured workflow allows explicit apply handoff.
+Teams that already use `psql`, a deployment job, Terraform-controlled operations, Flyway, Liquibase, a platform migration service, or another reviewed SQL runner can keep that external apply step. That is an operational boundary, not a reason to duplicate schema ownership or generated types in an ORM.
 
 <Note>
-  The common workflow is still one generation command: `npx supaschema diff`.
-  `check`, `verify`, and `sync` are optional gates for CI, release, and
-  operator-controlled deployment.
+  `sync` is the canonical package-owned apply pipeline. External runners are a
+  deliberate integration choice when a team already has a separate deployment
+  owner.
 </Note>

@@ -13,15 +13,6 @@ const npmExec = (args: string[]): { file: string; args: string[] } => {
     : { file: process.platform === "win32" ? "npm.cmd" : "npm", args };
 };
 
-// Locks the npm publish boundary (package.json `files`) described in
-// docs/reference/package-boundary.mdx. The consumer agent bundle entries are
-// documented in docs/coding-agents/agent-bundle.mdx. The dry-run tarball is the
-// authoritative preview of what `npm publish` ships. This guards two things:
-//   1. the necessary runtime + installer surface stays present, and
-//   2. build caches, sources, maintainer tooling, and secrets never leak in.
-// Public docs/examples live in the GitHub/docs surface, not in the npm install.
-// The tarball stays runtime-first: built CLI/library files, config contract,
-// licenses, README, and the explicit consumer agent bundle.
 describe("npm package contents", () => {
   it("keeps the generated install-time config contract executable", async () => {
     const mirror = (await import(
@@ -67,13 +58,12 @@ describe("npm package contents", () => {
       "supaschema-config.schema.json",
       ".agents/prompts/supaschema-install.md",
       ".agents/skills/supaschema/SKILL.md",
-      ".claude/hooks/auto-diff-on-schema-change.mjs",
-      ".claude/hooks/block-generated-migration-edits.mjs",
+      ".claude/hooks/guards/bash-policy-checks.mjs",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
       ".claude/rules/supaschema.md",
       ".claude/skills/supaschema/SKILL.md",
-      ".codex/hooks/auto-diff-on-schema-change.mjs",
-      ".codex/hooks/block-generated-migration-edits.mjs",
+      ".codex/hooks/general-guard.mjs",
+      ".codex/hooks/guards/bash-policy-checks.mjs",
       ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
       ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
@@ -105,8 +95,9 @@ describe("npm package contents", () => {
     );
     expect(codexHookContents).not.toContain("context-");
     expect(codexHookContents).not.toContain("scripts/agent-hooks");
-    expect(codexHookContents).toContain("block-generated-migration-edits.mjs");
-    expect(codexHookContents).toContain("auto-diff-on-schema-change.mjs");
+    expect(codexHookContents).toContain("general-guard.mjs");
+    expect(codexHookContents).toContain("supaschema hook generated-migration-edit");
+    expect(codexHookContents).toContain("supaschema hook schema-write");
     expect(
       paths.filter((path) => path.startsWith(".codex/skills/")),
       "legacy Codex skills must not ship"

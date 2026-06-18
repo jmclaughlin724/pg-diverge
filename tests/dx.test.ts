@@ -91,6 +91,7 @@ describe("config DX", () => {
       "schemaPaths",
       "schemas",
       "sources",
+      "sync",
       "transactionMode",
       "typesFile",
       "validators",
@@ -106,10 +107,21 @@ describe("config DX", () => {
     const workflow = schema.properties?.workflow as {
       properties?: Record<string, { enum?: string[] }>;
     };
-    expect(workflow.properties?.migration_sync?.enum).toEqual([
+    expect(workflow.properties?.migration_sync?.enum).toEqual(["disabled", "manual", "auto"]);
+    expect(workflow.properties?.type_safety?.enum).toEqual([
       "disabled",
-      "explicit_request_only",
+      "report_only",
+      "deploy_blocking",
     ]);
+    expect(workflow.properties?.rls_safety?.enum).toEqual([
+      "disabled",
+      "report_only",
+      "deploy_blocking",
+    ]);
+    const sync = schema.properties?.sync as {
+      properties?: { targets?: { default?: unknown } };
+    };
+    expect(sync.properties?.targets?.default).toEqual(resolveConfig().sync.targets);
     const sources = schema.properties?.sources as {
       properties?: Record<string, { oneOf?: unknown[]; pattern?: string }>;
     };
@@ -118,6 +130,20 @@ describe("config DX", () => {
       { pattern: sourceSpecPattern, type: "string" },
     ]);
     expect(sources.properties?.to?.pattern).toBe(sourceSpecPattern);
+  });
+
+  it("accepts automatic sync and deploy safety workflow policies", () => {
+    const config = resolveConfig({
+      workflow: {
+        migration_sync: "auto",
+        type_safety: "report_only",
+        rls_safety: "disabled",
+      },
+    });
+
+    expect(config.workflow.migration_sync).toBe("auto");
+    expect(config.workflow.type_safety).toBe("report_only");
+    expect(config.workflow.rls_safety).toBe("disabled");
   });
 
   it("rejects unknown workflow policy values", () => {
@@ -130,11 +156,145 @@ describe("config DX", () => {
       schema_diff: "on_schema_write",
       migration_check: "after_schema_diff",
       migration_verify: "suggest_after_check",
-      migration_sync: "explicit_request_only",
+      migration_sync: "auto",
+      type_safety: "deploy_blocking",
+      rls_safety: "deploy_blocking",
       type_generation: "create_or_refresh",
       zod_generation: "create_or_refresh",
       type_usage: "zod_validated",
     });
+  });
+
+  it("parses sync targets and validates environment-owned target URLs", async () => {
+    const config = resolveConfig({
+      environments: { local: { databaseUrl: "$LOCAL_DB" } },
+      sync: {
+        targets: {
+          local: {
+            mode: "auto",
+            runner: "direct",
+            environment: "local",
+            historyTable: "supabase_migrations.schema_migrations",
+          },
+          remote: {
+            mode: "manual",
+            runner: "supabase-cli",
+            databaseUrl: "$REMOTE_DB",
+            historyTable: "supabase_migrations.schema_migrations",
+            remote: true,
+            requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          },
+        },
+      },
+    });
+
+    expect(config.sync.targets.local?.environment).toBe("local");
+    expect(config.sync.targets.remote?.runner).toBe("supabase-cli");
+
+    const missingEnvironmentDiagnostics = await validateConfig(
+      resolveConfig({
+        sync: {
+          targets: {
+            local: {
+              mode: "auto",
+              runner: "direct",
+              environment: "missing",
+              historyTable: "supabase_migrations.schema_migrations",
+            },
+          },
+        },
+      }),
+      mkdtempSync(join(tmpdir(), "supa-sync-target-env-"))
+    );
+    expect(missingEnvironmentDiagnostics).toContainEqual(
+      expect.objectContaining({
+        field: "sync.targets.local.environment",
+        severity: "error",
+      })
+    );
+  });
+
+  it("rejects malformed sync targets during config validation", async () => {
+    const bothDiagnostics = await validateConfig(
+      resolveConfig({
+        sync: {
+          targets: {
+            local: {
+              mode: "auto",
+              runner: "direct",
+              environment: "local",
+              databaseUrl: "$LOCAL_DB",
+              historyTable: "supabase_migrations.schema_migrations",
+            },
+          },
+        },
+      }),
+      mkdtempSync(join(tmpdir(), "supa-sync-target-both-"))
+    );
+    expect(bothDiagnostics).toContainEqual(
+      expect.objectContaining({
+        field: "sync.targets.local",
+        severity: "error",
+      })
+    );
+
+    const missingDiagnostics = await validateConfig(
+      resolveConfig({
+        sync: {
+          targets: {
+            local: {
+              mode: "auto",
+              runner: "direct",
+              historyTable: "supabase_migrations.schema_migrations",
+            },
+          },
+        },
+      } as never),
+      mkdtempSync(join(tmpdir(), "supa-sync-target-missing-"))
+    );
+    expect(missingDiagnostics).toContainEqual(
+      expect.objectContaining({
+        field: "sync.targets.local",
+        severity: "error",
+      })
+    );
+  });
+
+  it("requires runtime approval configuration for remote sync targets", async () => {
+    const diagnostics = await validateConfig(
+      resolveConfig({
+        sync: {
+          targets: {
+            remote: {
+              mode: "auto",
+              runner: "direct",
+              environment: "production",
+              historyTable: "supabase_migrations.schema_migrations",
+            },
+          },
+        },
+      } as never),
+      mkdtempSync(join(tmpdir(), "supa-sync-target-remote-"))
+    );
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        field: "sync.targets.remote.requireApprovalEnv",
+        severity: "error",
+      })
+    );
+  });
+
+  it("does not attach default sync targets to older configs with explicit empty environments", async () => {
+    const config = resolveConfig({ environments: {} });
+
+    expect(config.sync.targets).toEqual({});
+
+    const diagnostics = await validateConfig(
+      config,
+      mkdtempSync(join(tmpdir(), "supa-sync-target-legacy-"))
+    );
+    expect(diagnostics.map((item) => item.field)).not.toContain("sync.targets.local.environment");
   });
 
   it("validates source defaults and redacts inline database URLs", async () => {
@@ -163,7 +323,9 @@ describe("config DX", () => {
       JSON.stringify({ pathConfirmationNeeded: true })
     );
 
-    const diagnostics = await validateConfig(resolveConfig(), cwd, { includeInstallState: true });
+    const diagnostics = await validateConfig(resolveConfig(), cwd, {
+      includeInstallState: true,
+    });
 
     expect(diagnostics).toContainEqual(
       expect.objectContaining({
@@ -189,7 +351,9 @@ describe("config DX", () => {
       })
     );
 
-    const diagnostics = await validateConfig(resolveConfig(), cwd, { includeInstallState: true });
+    const diagnostics = await validateConfig(resolveConfig(), cwd, {
+      includeInstallState: true,
+    });
 
     expect(diagnostics.map((item) => item.field)).not.toContain(".supaschema/install.json");
   });
@@ -309,7 +473,9 @@ describe("raw CLI errors", () => {
     });
 
     expect(result.status).toBe(0);
-    const parsed = JSON.parse(result.stdout) as { diagnostics: { field: string }[] };
+    const parsed = JSON.parse(result.stdout) as {
+      diagnostics: { field: string }[];
+    };
     expect(parsed.diagnostics.map((item) => item.field)).toContain("schemaPaths[0]");
   });
 });
@@ -371,13 +537,25 @@ describe("pending install path confirmation", () => {
       cwd,
       encoding: "utf8",
     });
-    const doctor = spawnSync(process.execPath, [cliPath, "doctor"], { cwd, encoding: "utf8" });
-    const diff = spawnSync(process.execPath, [cliPath, "diff"], { cwd, encoding: "utf8" });
-    const check = spawnSync(process.execPath, [cliPath, "check"], { cwd, encoding: "utf8" });
+    const doctor = spawnSync(process.execPath, [cliPath, "doctor"], {
+      cwd,
+      encoding: "utf8",
+    });
+    const diff = spawnSync(process.execPath, [cliPath, "diff"], {
+      cwd,
+      encoding: "utf8",
+    });
+    const check = spawnSync(process.execPath, [cliPath, "check"], {
+      cwd,
+      encoding: "utf8",
+    });
 
     expect(validate.status).toBe(2);
     expect(JSON.parse(validate.stdout).diagnostics).toContainEqual(
-      expect.objectContaining({ field: ".supaschema/install.json", severity: "error" })
+      expect.objectContaining({
+        field: ".supaschema/install.json",
+        severity: "error",
+      })
     );
     expect(doctor.status).toBe(2);
     expect(doctor.stdout).toContain("install path confirmation");

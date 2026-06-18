@@ -31,7 +31,7 @@ Use this skill for Claude Code configuration work. Read official platform docs b
 ## Core Rules
 
 - Complete all research and verification in the planning stage before editing or delegating: read the official platform docs, the canonical owner files, and run code-map/AST/LSP for any blast-radius claim. Do not defer research to a downstream agent or wave — a config edit or subagent prompt ships only after its evidence is resolved. Plan production follows the `task-creator` Planning Research Gate.
-- Put guidance in the lowest-noise owner: root `AGENTS.md` for universal repo context, `CLAUDE.md` as the `@AGENTS.md` compatibility stub, rules for scoped policy, skills for reusable workflows, commands for explicit invocations, and hooks for harness-enforced behavior.
+- Put guidance in the lowest-noise owner: root `AGENTS.md` for universal repo context, `CLAUDE.md` as the Claude runtime entry point that imports `AGENTS.md`, rules for scoped policy, skills for reusable workflows, commands for explicit invocations, and hooks for harness-enforced behavior.
 - Claude Code reads `CLAUDE.md`, not `AGENTS.md`, so the `@AGENTS.md` import or symlink is required for the AGENTS-first repo pattern.
 - Durable lessons land in `.claude/rules/**`, hooks, skills, or owner briefs. Persistent recall mechanisms are off-policy here.
 - Keep core files short. Move examples, variants, and long rationale into references.
@@ -69,7 +69,7 @@ When auditing config health, review these surfaces together:
 3. `.claude/commands/**`
 4. `.claude/agents/**`
 5. `.claude/hooks/**` and `.claude/settings*.json` — including `permissions.allow|ask|deny`, `defaultMode`, `additionalDirectories`, `sandbox.*`, and `claudeMdExcludes`
-6. relevant `AGENTS.md` and any `@AGENTS.md` import inside the adjacent `CLAUDE.md` stub
+6. relevant `AGENTS.md` and any `@AGENTS.md` import inside the adjacent `CLAUDE.md` runtime entry point
 
 If a requested skill exists only under `.agents/skills/<name>`, resolve the generated-mirror drift through Rule 12 (skill-loading enforcement) and the Rule 01 `sync:llm` ownership contract before optimizing it.
 

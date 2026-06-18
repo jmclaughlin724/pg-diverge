@@ -31,8 +31,7 @@ describe("split privilege aggregation", () => {
     );
 
     expect(errors(model)).toEqual([]);
-    // PUBLIC holds no built-in schema privilege and nothing granted one, so
-    // the revokes are catalog-invisible no-ops.
+
     expect(model.objects.filter((object) => object.ref.kind === "grant")).toHaveLength(0);
   });
 
@@ -41,8 +40,6 @@ describe("split privilege aggregation", () => {
       "CREATE SCHEMA app;\nGRANT USAGE ON SCHEMA app TO PUBLIC;\nREVOKE USAGE ON SCHEMA app FROM PUBLIC;\n"
     );
 
-    // The catalog records no ACL entry after grant-then-full-revoke, so the
-    // pair nets away on the source lane too.
     expect(model.objects.filter((object) => object.ref.kind === "grant")).toHaveLength(0);
   });
 
@@ -112,7 +109,7 @@ describe("split privilege aggregation", () => {
     );
 
     const defaults = model.objects.filter((object) => object.ref.kind === "default-privilege");
-    // TABLES carry no PUBLIC default (no-op, suppressed); FUNCTIONS do (kept).
+
     expect(defaults).toHaveLength(1);
     expect(defaults[0]?.metadata.objectType).toBe("FUNCTIONS");
   });

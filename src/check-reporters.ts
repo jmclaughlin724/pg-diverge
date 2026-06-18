@@ -92,9 +92,9 @@ function renderSarif(files: FileDiagnostics[]): string {
 }
 
 function escapeGithubData(value: string): string {
-  return value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+  return value.split("%").join("%25").split("\r").join("%0D").split("\n").join("%0A");
 }
 
 function escapeGithubProperty(value: string): string {
-  return escapeGithubData(value).replace(/:/g, "%3A").replace(/,/g, "%2C");
+  return escapeGithubData(value).split(":").join("%3A").split(",").join("%2C");
 }

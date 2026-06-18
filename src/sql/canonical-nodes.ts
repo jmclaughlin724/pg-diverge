@@ -14,13 +14,7 @@ export function canonicalPolicyNode(node: unknown, scopes: Scope[] = []): unknow
   if (typeCast && asRecord(typeCast.arg)?.A_Const !== undefined) {
     return canonicalPolicyNode(typeCast.arg, scopes);
   }
-  // A subquery inside a policy expression is its own SELECT scope. pg_get_expr
-  // qualifies that subquery's columns with its relation (`members.item_id`)
-  // where the declarative source writes them bare (`item_id`); stripping the
-  // sole-from-relation qualifier of the innermost scope converges both lanes,
-  // exactly as canonicalViewNode does. Correlated refs to an outer scope keep
-  // their written qualification (the conservative stance that never masks a
-  // real change).
+
   const selectStmt = asRecord(record.SelectStmt);
   if (selectStmt) {
     const next = [...scopes, soleFromRelation(selectStmt)];

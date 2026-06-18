@@ -6,7 +6,7 @@ keywords: ["CI gate", "drift check", "replay safety", "policy isolation"]
 
 Use this when schema changes should fail before merge instead of failing in a deploy.
 
-The gate is a command set: `diff --fail-on-diff`, `check`, and optional `verify`. This repository ships CLI and GitHub Action gates, not hosted CI, billing, marketplace distribution, or license enforcement.
+The gate is a command set: `diff --fail-on-diff`, `check`, and optional `verify`. Protected deploy jobs can run `sync` with configured targets and an explicit remote approval environment variable. This repository ships CLI and GitHub Action gates, not hosted CI, billing, marketplace distribution, or license enforcement.
 
 ## Use this when
 
@@ -46,8 +46,7 @@ npx supaschema check --reporter sarif
 - Which branches require drift checks.
 - Whether `verify` runs on every PR or only protected branches.
 - Who can approve destructive hints.
-- Whether your organization needs additional policy enforcement outside this
-  repository.
+- Whether your organization needs additional policy enforcement outside this repository.
 
 ## Related
 

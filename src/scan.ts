@@ -2,18 +2,10 @@ import { type CheckReporter, type FileDiagnostics, renderCheckReport } from "./c
 import type { Diagnostic, SchemaModel } from "./core.js";
 import { type RulePack, runRulePacks } from "./rules.js";
 
-/**
- * Scan core (plan `.claude/plans/00-keystone-scan-and-badge.md`, task K0).
- *
- * Runs rule packs over the declarative model and aggregates a 0-100 safety score
- * plus the diagnostics. Pure and local — no DB, no network, no upload. CLI command
- * registration (`supaschema scan`) and the SVG badge build on this core.
- */
-
 export interface ScanResult {
   diagnostics: Diagnostic[];
   errorCount: number;
-  /** 0-100; 100 is clean. */
+
   score: number;
   warningCount: number;
 }
@@ -30,7 +22,6 @@ export function scanModel(model: SchemaModel, packs: RulePack[]): ScanResult {
   return { diagnostics, errorCount, score, warningCount };
 }
 
-/** Letter grade for the badge (A best, F worst). */
 export function scoreGrade(score: number): "A" | "B" | "C" | "D" | "F" {
   if (score >= 90) {
     return "A";
@@ -67,11 +58,6 @@ function gradeColor(grade: string): string {
   }
 }
 
-/**
- * Embeddable SVG badge (plan `00-keystone-scan-and-badge.md`, task K1). The badge
- * is the passive distribution surface — a README badge advertises the tool the way
- * a coverage badge does. Pure string; the Worker/Action just serves it.
- */
 export function scanBadge(result: ScanResult): string {
   const grade = scoreGrade(result.score);
   const value = `${result.score}/100 ${grade}`;

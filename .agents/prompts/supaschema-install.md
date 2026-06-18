@@ -100,7 +100,7 @@ If installed hooks are trusted and fire after a schema-tree write, treat their r
 
 Generated migrations containing `-- supaschema: lineage` are artifacts. Do not hand-edit them; change the schema tree and regenerate.
 
-Do not run `<local-runner> sync --local` or `<local-runner> sync --remote` unless the user explicitly asks to apply migrations.
+Use bare `<local-runner> sync` for the configured workflow. Do not run `<local-runner> sync --target <name>` unless the user explicitly asks to override target selection. `sync.targets.<name>.mode` decides automatic target selection. Never set a remote approval variable on the user's behalf.
 
 ## Completion Report
 

@@ -1,9 +1,3 @@
-// Shared oracle for what a fully scaffolded supaschema consumer project looks
-// like, regardless of whether `postinstall` or `supaschema init` produced it
-// (both call the same bin/scaffold.mjs core). The install and init-parity lanes
-// consume this so the two prove identical output. Keep this in sync with
-// bin/scaffold.mjs's scaffoldConfig.
-
 export const managedSchemas = [
   "auth",
   "storage",
@@ -21,14 +15,38 @@ export const defaultWorkflow = {
   schema_diff: "on_schema_write",
   migration_check: "after_schema_diff",
   migration_verify: "suggest_after_check",
-  migration_sync: "explicit_request_only",
+  migration_sync: "auto",
+  type_safety: "deploy_blocking",
+  rls_safety: "deploy_blocking",
   type_generation: "create_or_refresh",
   zod_generation: "create_or_refresh",
   type_usage: "zod_validated",
 };
 
-// The full config bin/scaffold.mjs writes for a fresh project, parameterized by
-// the detected/selected schema + migrations layout.
+export const defaultEnvironments = {
+  local: { databaseUrl: "$LOCAL_DATABASE_URL" },
+  production: { databaseUrl: "$PRODUCTION_DATABASE_URL" },
+};
+
+export const defaultSync = {
+  targets: {
+    local: {
+      mode: "auto",
+      runner: "direct",
+      environment: "local",
+      historyTable: "supabase_migrations.schema_migrations",
+    },
+    remote: {
+      mode: "manual",
+      runner: "direct",
+      environment: "production",
+      historyTable: "supabase_migrations.schema_migrations",
+      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+      remote: true,
+    },
+  },
+};
+
 export function expectedInstalledConfig(
   schemaPath: string,
   migrationsDir: string
@@ -38,7 +56,7 @@ export function expectedInstalledConfig(
     adapter: "auto",
     cascade: "never",
     destructiveChanges: "hint-required",
-    environments: {},
+    environments: defaultEnvironments,
     excludedGrantRoles: [],
     hints: {
       allowedGrantees: [],
@@ -48,6 +66,7 @@ export function expectedInstalledConfig(
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,
+    sync: defaultSync,
     migrationsDir,
     typesFile: "database.types.ts",
     zodFile: "database.zod.ts",
@@ -70,24 +89,21 @@ export function expectedInstalledConfig(
   };
 }
 
-// Agent-bundle + hook-wiring files a scaffolded consumer must contain.
 export const installedAgentFiles = [
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema/SKILL.md",
-  ".claude/hooks/auto-diff-on-schema-change.mjs",
-  ".claude/hooks/block-generated-migration-edits.mjs",
+  ".claude/hooks/guards/bash-policy-checks.mjs",
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/rules/supaschema.md",
   ".claude/settings.json",
   ".claude/skills/supaschema/SKILL.md",
-  ".codex/hooks/auto-diff-on-schema-change.mjs",
-  ".codex/hooks/block-generated-migration-edits.mjs",
+  ".codex/hooks/general-guard.mjs",
+  ".codex/hooks/guards/bash-policy-checks.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks.json",
   ".codex/rules/supaschema.rules",
 ];
 
-// Maintainer-only workspace files that must NOT be scaffolded into a consumer.
 export const excludedMaintainerFiles = [
   ".vscode/settings.json",
   ".vscode/extensions.json",

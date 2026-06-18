@@ -14,10 +14,8 @@ const claudeHooks = [
   ".claude/hooks/context-task-completed.mjs",
   ".claude/hooks/context-permission-denied.mjs",
   ".claude/hooks/context-session-end.mjs",
-  ".claude/hooks/block-generated-migration-edits.mjs",
-  ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".claude/hooks/pre_tool_guard.sh",
+  ".claude/hooks/guards/bash-policy-checks.mjs",
 ];
 const codexMirrorHookPaths = [
   ".codex/hooks/context-session-start.mjs",
@@ -30,14 +28,19 @@ const codexMirrorHookPaths = [
   ".codex/hooks/context-task-completed.mjs",
   ".codex/hooks/context-permission-denied.mjs",
   ".codex/hooks/context-session-end.mjs",
-  ".codex/hooks/block-generated-migration-edits.mjs",
-  ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".codex/hooks/general-guard.mjs",
+  ".codex/hooks/guards/bash-policy-checks.mjs",
 ];
 const codexRegisteredHookPaths = [
-  ".codex/hooks/block-generated-migration-edits.mjs",
-  ".codex/hooks/auto-diff-on-schema-change.mjs",
+  ".codex/hooks/general-guard.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+];
+const retiredWorkflowHookPaths = [
+  ".claude/hooks/auto-diff-on-schema-change.mjs",
+  ".claude/hooks/block-generated-migration-edits.mjs",
+  ".codex/hooks/auto-diff-on-schema-change.mjs",
+  ".codex/hooks/block-generated-migration-edits.mjs",
 ];
 const skillMatcherText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/skills.mjs"), "utf8");
 const claudeSkillFiles = fs
@@ -53,12 +56,8 @@ const legacyClaudeNodeWrappers = [
 for (const hook of [...claudeHooks, ...codexMirrorHookPaths]) {
   assert(exists(hook), `missing hook ${hook}`);
 }
-for (const hook of claudeHooks.filter((item) => item.endsWith(".sh"))) {
-  try {
-    fs.accessSync(path.join(ROOT, hook), fs.constants.X_OK);
-  } catch {
-    assert(false, `${hook} must be executable`);
-  }
+for (const hook of retiredWorkflowHookPaths) {
+  assert(!exists(hook), `${hook} must not exist; use supaschema hook CLI commands directly`);
 }
 
 const claudeSettings = readJson(".claude/settings.json");
@@ -70,6 +69,19 @@ for (const hook of claudeHooks) {
     `.claude/settings.json does not register ${hook}`
   );
 }
+assert(
+  settingsText.includes('"supaschema"') &&
+    settingsText.includes('"generated-migration-edit"') &&
+    settingsText.includes('"schema-write"'),
+  ".claude/settings.json must register supaschema hook CLI commands directly"
+);
+assert(
+  !(
+    settingsText.includes("auto-diff-on-schema-change.mjs") ||
+    settingsText.includes("block-generated-migration-edits.mjs")
+  ),
+  ".claude/settings.json must not register retired supaschema hook wrapper scripts"
+);
 for (const hook of claudeHooks.filter((item) => item.endsWith(".mjs"))) {
   const expectedArg = `\${CLAUDE_PROJECT_DIR}/${hook}`;
   assert(
@@ -80,15 +92,6 @@ for (const hook of claudeHooks.filter((item) => item.endsWith(".mjs"))) {
         handler.args.includes(expectedArg)
     ),
     `.claude/settings.json must register ${hook} as exec-form node command with args`
-  );
-}
-for (const hook of claudeHooks.filter((item) => item.endsWith(".sh"))) {
-  assert(
-    claudeHandlers.some(
-      (handler) =>
-        handler.command === `\${CLAUDE_PROJECT_DIR}/${hook}` && Array.isArray(handler.args)
-    ),
-    `.claude/settings.json must register ${hook} as exec-form script command`
   );
 }
 assert(
@@ -134,6 +137,18 @@ for (const hook of codexRegisteredHookPaths) {
 assert(
   !(codexHooksJson.includes("context-") || codexHooksJson.includes("scripts/agent-hooks")),
   ".codex/hooks.json must stay consumer-only and must not register repo context enforcement"
+);
+assert(
+  codexHooksJson.includes("supaschema hook generated-migration-edit") &&
+    codexHooksJson.includes("supaschema hook schema-write"),
+  ".codex/hooks.json must register supaschema hook CLI commands directly"
+);
+assert(
+  !(
+    codexHooksJson.includes("auto-diff-on-schema-change.mjs") ||
+    codexHooksJson.includes("block-generated-migration-edits.mjs")
+  ),
+  ".codex/hooks.json must not register retired supaschema hook wrapper scripts"
 );
 for (const eventName of ["PreToolUse", "PostToolUse"]) {
   const entries = codexConfig.hooks?.[eventName];

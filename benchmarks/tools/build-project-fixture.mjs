@@ -83,11 +83,6 @@ process.stdout.write(
   `single-pass ordering: ${firstPass.ordered.length} statements; dropped: ${dropped.length}\n`
 );
 
-// Scope the fixture to supaschema's supported DDL surface so every engine in
-// the comparison diffs the same schema. Statements supaschema fails closed on
-// (FDW objects, DO blocks, unmodeled ALTER subtypes, duplicate object
-// identities such as two partial REVOKEs for one grantee) are excluded and
-// logged, then the fixpoint re-runs so dependents drop with them.
 const kept = [];
 const seenKeys = new Set();
 let excluded = 0;
@@ -212,8 +207,6 @@ function orderedTreeFiles(root) {
 }
 
 async function treeSchemas(sql) {
-  // `public` always exists and is never CREATE'd, but project objects (and
-  // the benchmark change set) live there.
   const names = new Set(["public"]);
   const extraction = await extractObjectsFromSql(sql, { config: { adapter: "postgres" } });
   for (const object of extraction.objects) {

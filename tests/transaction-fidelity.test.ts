@@ -160,9 +160,7 @@ describe.skipIf(!databaseUrl)("transactional verify fidelity", () => {
       migrationPath,
       to: `dump:${join(directory, "to.sql")}`,
     });
-    // The data INSERT does not change the schema fingerprint; the
-    // per-statement runner applies cleanly where the transactional
-    // runner fails on the same file.
+
     expect(perStatement.filter((item) => item.severity === "error")).toEqual([]);
   });
 });

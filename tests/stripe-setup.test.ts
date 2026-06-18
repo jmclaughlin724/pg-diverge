@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { StripeFetch, StripeResponse } from "../services/license-worker/src/stripe-api.js";
 import {
   createStripeCatalog,
   recommendedCatalog,
-  type StripeFetch,
-  type StripeResponse,
 } from "../services/license-worker/src/stripe-setup.js";
 
 function okResponse(id: string): StripeResponse {

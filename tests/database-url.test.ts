@@ -12,14 +12,22 @@ import { expectedInstalledConfig } from "./install-parity-expectations.js";
 const run = promisify(execFile);
 const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const codexGateCommand = `node "${codexProjectDir}/.codex/hooks/block-generated-migration-edits.mjs"`;
-const codexAutoDiffCommand = `node "${codexProjectDir}/.codex/hooks/auto-diff-on-schema-change.mjs"`;
+const codexGateCommand =
+  "npx --no-install supaschema hook generated-migration-edit --runtime codex";
+const codexAutoDiffCommand = "npx --no-install supaschema hook schema-write";
 const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
+const codexGeneralGuardCommand = `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`;
 const legacyClaudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
 const claudeGeneratedGateArgs = [
-  `${claudeProjectDir}/.claude/hooks/block-generated-migration-edits.mjs`,
+  "--no-install",
+  "supaschema",
+  "hook",
+  "generated-migration-edit",
+  "--runtime",
+  "claude",
 ];
-const claudeAutoDiffArgs = [`${claudeProjectDir}/.claude/hooks/auto-diff-on-schema-change.mjs`];
+const claudeBashPolicyArgs = [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`];
+const claudeAutoDiffArgs = ["--no-install", "supaschema", "hook", "schema-write"];
 const claudeLlmSyncArgs = [
   `${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
 ];
@@ -87,14 +95,13 @@ describe("install-time project setup", () => {
     for (const file of [
       ".agents/prompts/supaschema-install.md",
       ".agents/skills/supaschema/SKILL.md",
-      ".claude/hooks/auto-diff-on-schema-change.mjs",
-      ".claude/hooks/block-generated-migration-edits.mjs",
+      ".claude/hooks/guards/bash-policy-checks.mjs",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
       ".claude/rules/supaschema.md",
       ".claude/settings.json",
       ".claude/skills/supaschema/SKILL.md",
-      ".codex/hooks/auto-diff-on-schema-change.mjs",
-      ".codex/hooks/block-generated-migration-edits.mjs",
+      ".codex/hooks/general-guard.mjs",
+      ".codex/hooks/guards/bash-policy-checks.mjs",
       ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
       ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
@@ -148,10 +155,13 @@ describe("install-time project setup", () => {
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(claudeSettings.enabledMcpjsonServers).toBeUndefined();
     expect(commandCount(claudeSettings, legacyClaudeSkillGateCommand)).toBe(0);
-    expect(hookCount(claudeSettings, "node", claudeGeneratedGateArgs)).toBe(1);
-    expect(hookCount(claudeSettings, "node", claudeAutoDiffArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "node", claudeBashPolicyArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "npx", claudeGeneratedGateArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "npx", claudeAutoDiffArgs)).toBe(1);
     expect(hookCount(claudeSettings, "node", claudeLlmSyncArgs)).toBe(1);
+    expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
     expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
   });
@@ -340,11 +350,14 @@ describe("install-time project setup", () => {
       await readFile(join(consumer, ".claude/settings.json"), "utf8")
     );
     expect(hookCount(claudeSettings, "node", ["scripts/local-policy.mjs"])).toBe(1);
-    expect(hookCount(claudeSettings, "node", claudeGeneratedGateArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "node", claudeBashPolicyArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "npx", claudeGeneratedGateArgs)).toBe(1);
     expect(hookCount(claudeSettings, "node", claudeLlmSyncArgs)).toBe(1);
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(commandCount(codexHooks, "echo existing")).toBe(1);
+    expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
     expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
   });
 
@@ -476,8 +489,6 @@ describe("install-time project setup", () => {
 
     await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
 
-    // The CLI loads this sparse config with its static defaults; normal install preserves
-    // the user-owned JSON while guidance and directories stay aligned with what the CLI diffs.
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe("{}\n");
     expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
       "Schema intent belongs in `database/schemas`"
@@ -522,8 +533,6 @@ describe("install-time project setup", () => {
       env: { ...process.env, INIT_CWD: consumer, CI: "1" },
     });
 
-    // Ambiguous detection must not pin a guessed config; "config explicitly defines
-    // schemaPaths" then cleanly means a human confirmed, which the auto-diff hook relies on.
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
     expect(manifest.pathConfirmationNeeded).toBe(true);
@@ -536,6 +545,8 @@ describe("install-time project setup", () => {
       'node "$(git rev-parse --show-toplevel)/.codex/hooks/auto-diff-on-schema-change.mjs"';
     const legacyGate =
       'node "$(git rev-parse --show-toplevel)/.codex/hooks/block-generated-migration-edits.mjs"';
+    const legacyGeneralGuard =
+      'node "$(git rev-parse --show-toplevel)/.codex/hooks/general-guard.mjs"';
     const legacyLlmSync =
       'node "$(git rev-parse --show-toplevel)/.codex/hooks/sync-llm-on-claude-surface-change.mjs"';
     await writeFile(
@@ -547,6 +558,7 @@ describe("install-time project setup", () => {
             { hooks: [{ command: legacyLlmSync, type: "command" }] },
           ],
           PreToolUse: [{ hooks: [{ command: legacyGate, type: "command" }] }],
+          PermissionRequest: [{ hooks: [{ command: legacyGeneralGuard, type: "command" }] }],
         },
       })}\n`
     );
@@ -554,13 +566,14 @@ describe("install-time project setup", () => {
     await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
 
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-    // The old wrapper and the new ${CODEX_PROJECT_DIR} form target the same managed
-    // script; only the new entry survives so diff/check do not run twice per edit.
+
     expect(commandCount(codexHooks, legacyAutoDiff)).toBe(0);
     expect(commandCount(codexHooks, legacyGate)).toBe(0);
+    expect(commandCount(codexHooks, legacyGeneralGuard)).toBe(0);
     expect(commandCount(codexHooks, legacyLlmSync)).toBe(0);
     expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
     expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
   });
 

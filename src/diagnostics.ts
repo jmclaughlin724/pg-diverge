@@ -1,4 +1,5 @@
 import type { Diagnostic, DiagnosticSeverity, ObjectRef } from "./core.js";
+import { redactSecrets } from "./redaction.js";
 
 interface DiagnosticExtras {
   file?: string | undefined;
@@ -49,51 +50,6 @@ export function formatDiagnostic(item: Diagnostic): string {
 
 export function formatDiagnostics(diagnostics: Diagnostic[]): string {
   return diagnostics.map(formatDiagnostic).join("\n");
-}
-
-export function redactSecrets(value: string): string {
-  return redactUrlCredentials(value)
-    .replace(
-      /\b(password|pass|pwd|token|secret|api[_-]?key|service[_-]?role[_-]?key)(\s*[:=]\s*)(["']?)[^"'\s,;)]+/giu,
-      "$1$2$3[redacted]"
-    )
-    .replace(/\b(sb_secret_)[A-Za-z0-9_-]+/g, "$1[redacted]")
-    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]");
-}
-
-function isUserinfoEnd(char: string): boolean {
-  return (
-    char === "@" || char === "/" || char === " " || char === "\t" || char === "\n" || char === "\r"
-  );
-}
-
-function redactUrlCredentials(value: string): string {
-  let result = "";
-  let index = 0;
-  while (index < value.length) {
-    const marker = value.indexOf("://", index);
-    if (marker === -1) {
-      result += value.slice(index);
-      break;
-    }
-    const afterScheme = marker + 3;
-    result += value.slice(index, afterScheme);
-    let cursor = afterScheme;
-    let colon = -1;
-    while (cursor < value.length && !isUserinfoEnd(value[cursor] ?? "")) {
-      if (value[cursor] === ":" && colon === -1) {
-        colon = cursor;
-      }
-      cursor += 1;
-    }
-    if (value[cursor] === "@" && colon > afterScheme && cursor > colon + 1) {
-      result += `${value.slice(afterScheme, colon + 1)}[redacted]`;
-      index = cursor;
-    } else {
-      index = afterScheme;
-    }
-  }
-  return result;
 }
 
 function formatRef(ref: ObjectRef): string {
@@ -161,10 +117,22 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_MIGRATIONS_OUT_OF_ORDER:
     "Pending migration files are older than the target's newest applied version; a runner may skip or misorder them.",
   SUPA_MIGRATIONS_TARGET_UNAVAILABLE: "The migrations target database could not be read.",
+  SUPA_SYNC_DISABLED: "workflow.migration_sync is disabled, so configured apply/deploy is refused.",
+  SUPA_SYNC_ENV_UNKNOWN: "The selected sync environment is not defined in config.environments.",
+  SUPA_SYNC_FINAL_RECONCILE_FAILED:
+    "The selected target did not reconcile after the migration runner completed.",
+  SUPA_SYNC_REMOTE_APPROVAL_REQUIRED:
+    "Automatic remote sync requires the configured runtime approval environment variable.",
   SUPA_SYNC_RUNNER_FAILED:
-    "The migration runner (supabase CLI) exited nonzero during sync; supaschema gates but the runner owns apply/deploy.",
+    "The selected migration runner exited nonzero during sync; supaschema gates but the runner owns apply/deploy.",
   SUPA_SYNC_RUNNER_UNAVAILABLE:
-    "The migration runner (Supabase CLI) could not be launched; it is not installed or not on PATH. supaschema gates and delegates apply to the runner.",
+    "The selected migration runner could not be launched or connected. supaschema gates and delegates apply to the runner.",
+  SUPA_SYNC_TARGET_OVERRIDE_MULTI:
+    "A database URL or environment override can only be used when exactly one sync target is selected.",
+  SUPA_SYNC_TARGET_UNKNOWN: "The selected sync target is not configured.",
+  SUPA_SYNC_TARGET_URL_UNRESOLVED: "The selected sync target's database URL could not be resolved.",
+  SUPA_DIFF_LINEAGE_GAP:
+    "The newest pending supaschema migration does not chain into the next schema diff.",
   SUPA_NORMALIZE_FIDELITY:
     "Deparsed SQL did not reparse to the identical parse tree, so the object kept its source text.",
   SUPA_NORMALIZE_UNSUPPORTED:
@@ -173,6 +141,14 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED:
     "Side-effect statements are not schema objects; keep them in reviewed migrations.",
   SUPA_EXTRACT_UNSUPPORTED: "Unsupported or ambiguous DDL; extend support or hand-author it.",
+  SUPA_INTAKE_MALFORMED:
+    "Customer-supplied intake payload is not a JSON object or exceeds the nesting limit; submit a well-formed object.",
+  SUPA_INTAKE_MISSING_SCOPE:
+    "Customer-supplied intake payload is missing a required scope field; include every required key.",
+  SUPA_INTAKE_SECRET:
+    "Customer-supplied intake payload contains a secret-shaped value; redact credentials before submitting.",
+  SUPA_RULE_DESTRUCTIVE_OP:
+    "A destructive operation will run in this migration; review it for data loss and lock impact before deploy.",
   SUPA_OBJECT_PARSE_FAILED:
     "Object SQL did not parse, so its identity hash fell back to normalized text.",
   SUPA_PARSE_ERROR: "SQL failed to parse with the PostgreSQL parser.",
