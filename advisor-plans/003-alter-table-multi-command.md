@@ -181,13 +181,13 @@ Add cases (in `tests/sql.test.ts` or `tests/table-constraints.test.ts`, matching
 
 ALL must hold:
 
-- [ ] `npm run typecheck` exits 0
-- [ ] `npm test` exits 0, with a new test asserting both objects from a two-command `ALTER TABLE`
-- [ ] `grep -n "\.find(" src/sql/extract-helpers.ts` shows the old first-command-only `.find` over `node.cmds` is gone (the column-default/other `.find` usages elsewhere in the repo are unrelated)
-- [ ] `npm run lint` exits 0
-- [ ] `npm run build` exits 0
-- [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `advisor-plans/README.md` status row updated
+- [x] `npm run typecheck` exits 0
+- [x] `npm test` exits 0, with a new test asserting both objects from a two-command `ALTER TABLE`
+- [x] `grep -n "\.find(" src/sql/extract-helpers.ts` shows the old first-command-only `.find` over `node.cmds` is gone (the column-default/other `.find` usages elsewhere in the repo are unrelated)
+- [x] `npm run lint` exits 0
+- [x] `npm run build` exits 0
+- [x] No files outside the in-scope list are modified (`git status`)
+- [x] `advisor-plans/README.md` status row updated
 
 ## STOP conditions
 

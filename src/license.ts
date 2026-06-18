@@ -7,6 +7,11 @@ export interface LicenseClaims {
   repo: string;
 }
 
+interface LicenseHeader {
+  alg: "EdDSA";
+  typ: "JWT";
+}
+
 export const TRUSTED_LICENSE_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAHQm8wOkw+0KwWtHORh56qzBqpwNj9lIY8RIZtleRil0=
 -----END PUBLIC KEY-----`;
@@ -27,6 +32,14 @@ function isLicenseClaims(value: unknown): value is LicenseClaims {
   );
 }
 
+function isLicenseHeader(value: unknown): value is LicenseHeader {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return record.alg === "EdDSA" && record.typ === "JWT";
+}
+
 export function verifyLicenseToken(token: string, publicKeyPem: string): LicenseClaims | null {
   const parts = token.split(".");
   const [headerPart, payloadPart, signaturePart] = parts;
@@ -41,6 +54,10 @@ export function verifyLicenseToken(token: string, publicKeyPem: string): License
   const signingInput = Buffer.from(`${headerPart}.${payloadPart}`);
   let signatureValid = false;
   try {
+    const header: unknown = JSON.parse(base64UrlToBuffer(headerPart).toString("utf8"));
+    if (!isLicenseHeader(header)) {
+      return null;
+    }
     const publicKey = createPublicKey(publicKeyPem);
 
     if (publicKey.asymmetricKeyType !== "ed25519") {

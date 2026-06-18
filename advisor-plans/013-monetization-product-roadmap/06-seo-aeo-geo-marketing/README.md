@@ -19,8 +19,9 @@ Planned on 2026-06-16 against commit `fb8c461`.
 - Risk: LOW (content/marketing; no runtime behavior change)
 - Depends on: none to start; links to proposal folders `01`-`05` for value props
 - Category: marketing / direction
-- Execution lens: compatibility-constrained (preserve the docs owner model from
-  plans 008-011; do not add competing docs components)
+- Execution lens: elegant canonical-owner execution.
+- Protected invariant: use the docs owner model from plans 008-011 and do not
+  add competing docs components.
 
 ## Why This Matters And Why Now
 
@@ -175,9 +176,9 @@ Cross-surface GEO hygiene:
 
 > Repo resolution notes (resolved 2026-06-16 — do not leave these as guesses):
 > - **Docs domain** is `https://supaschema.com` (docs served under `/docs`;
->   `docs/docs.json` canonical = `https://supaschema.com/docs`). Wherever this plan
->   writes `<docs domain>`, use that. Confirm whether Mintlify serves `llms.txt` at
->   the site root (`/llms.txt`) or under `/docs` and use the path that resolves.
+>   `docs/docs.json` canonical = `https://supaschema.com/docs`). Confirm whether
+>   Mintlify serves `llms.txt` at the site root (`/llms.txt`) or under `/docs` and
+>   use the path that resolves.
 > - **JSON-LD injection** is not standard Mintlify frontmatter. Inject
 >   `<script type="application/ld+json">` via a global head/custom-script setting in
 >   `docs.json` (or a page body where supported). Treat "add JSON-LD" as: first

@@ -12,6 +12,7 @@ import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
 import { generateDatabaseTypes } from "../src/typegen.js";
+import { collectSchemaShapes } from "../src/typegen-model.js";
 import { generateZodSchemas } from "../src/typegen-zod.js";
 import { verifyMigration } from "../src/verify.js";
 import {
@@ -77,13 +78,14 @@ describe("supabase sample project schema-edit migration", () => {
     const config = await loadConfig(sampleRoot);
     const sources = await resolveSourceDefaults({}, config, async () => undefined);
     const model = await modelFor(sources.to, config);
+    const shapes = await collectSchemaShapes(model);
 
-    const types = await generateDatabaseTypes(model);
+    const types = generateDatabaseTypes(shapes);
     for (const fragment of expectedTypesFragments) {
       expect(types, fragment).toContain(fragment);
     }
 
-    const zod = await generateZodSchemas(model);
+    const zod = generateZodSchemas(shapes);
     for (const fragment of expectedZodFragments) {
       expect(zod, fragment).toContain(fragment);
     }

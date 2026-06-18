@@ -19,14 +19,14 @@ billing, hosted infrastructure, or legal terms.
 - Persistent task API: unavailable in this Codex session after tool discovery.
   This file is the durable fallback task artifact.
 - Live progress mirror: `update_plan` tracked the active work during creation.
-- Execution lens: compatibility-constrained.
+- Execution lens: elegant canonical-owner execution.
 - Elegant end state: one public commercial and support funnel; one free OSS CLI
   and package boundary; one docs owner for each paid offer; no billing,
   telemetry, license-key, or customer-data path inside the CLI.
-- Compatibility constraint: preserve AGPL/commercial dual-license baseline,
-  preserve free dev-dependency and internal CI use, preserve package allowlist,
-  preserve generated agent bundle behavior, and avoid hosted CI implementation
-  until auth, tenancy, billing, and data-retention owners exist.
+- Protected invariants: keep AGPL/commercial licensing, free
+  dev-dependency/internal CI use, the package allowlist, and generated agent
+  bundle behavior intact; do not add hosted CI until auth, tenancy, billing, and
+  data-retention owners exist.
 - Open assumptions: none.
 - Resolved assumptions:
   - The current commercial license contact path is broken because
@@ -56,7 +56,7 @@ billing, hosted infrastructure, or legal terms.
   - Plan-owned changes in this task: this file and
     `advisor-plans/README.md`.
   - Execution-owned changes: listed under "Change Inventory".
-- Placeholders / TODOs: none.
+- Deferred markers: none.
 - Deferral budget: zero. Every user-requested opportunity has an implementation
   lane, a non-goal, and an acceptance path in this plan.
 

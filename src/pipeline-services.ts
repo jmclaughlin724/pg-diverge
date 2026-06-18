@@ -18,18 +18,18 @@ import {
 import { type ScanResult, scanModel } from "./scan.js";
 import { extractSourceModel, filterModelBySchemas } from "./source.js";
 import { diffTypeContract } from "./type-contract.js";
-import { generateDatabaseTypesFromShapes } from "./typegen.js";
+import { generateDatabaseTypes } from "./typegen.js";
 import type { SchemaShapes } from "./typegen-model.js";
 import { collectSchemaShapes } from "./typegen-model.js";
-import { generateZodSchemasFromShapes } from "./typegen-zod.js";
+import { generateZodSchemas } from "./typegen-zod.js";
 
-export const deployBlockingRlsDiagnosticCodes = [
+export const deployBlockingRlsDiagnosticCodes: string[] = [
   "SUPA_RULE_RLS_NO_POLICY",
   "SUPA_RULE_POLICY_NO_RLS",
   "SUPA_RULE_GRANT_TO_PUBLIC",
   "SUPA_RULE_GRANT_ALL_PRIVILEGES",
   "SUPA_RULE_GRANT_UNDECLARED_ROLE",
-] as const;
+];
 
 const deployBlockingRlsCodeSet = new Set<string>(deployBlockingRlsDiagnosticCodes);
 
@@ -114,12 +114,12 @@ export async function refreshGeneratedOutputs(options: {
     relative: string;
   }[] = [
     {
-      generate: generateDatabaseTypesFromShapes,
+      generate: generateDatabaseTypes,
       policy: options.config.workflow.type_generation,
       relative: options.config.typesFile,
     },
     {
-      generate: generateZodSchemasFromShapes,
+      generate: generateZodSchemas,
       policy: options.config.workflow.zod_generation,
       relative: options.config.zodFile,
     },
@@ -258,10 +258,12 @@ export function applyDeploySafetyPolicy(
       return item;
     }
     if (policy === "report_only" && item.severity === "error") {
-      return { ...item, severity: "warning" as const };
+      const diagnostic: Diagnostic = { ...item, severity: "warning" };
+      return diagnostic;
     }
     if (policy === "deploy_blocking" && item.severity !== "error") {
-      return { ...item, severity: "error" as const };
+      const diagnostic: Diagnostic = { ...item, severity: "error" };
+      return diagnostic;
     }
     return item;
   });

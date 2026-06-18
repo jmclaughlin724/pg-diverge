@@ -1,6 +1,9 @@
 const MASK = "[redacted]";
 
 export function redactSecrets(text: string): string {
+  if (!mayContainSecret(text)) {
+    return text;
+  }
   return redactJwtTokens(
     redactSupabaseSecrets(redactSecretAssignments(redactUrlCredentials(text)))
   );
@@ -14,6 +17,34 @@ function isUserinfoEnd(char: string): boolean {
   return (
     char === "@" || char === "/" || char === " " || char === "\t" || char === "\n" || char === "\r"
   );
+}
+
+function mayContainSecret(value: string): boolean {
+  if (
+    (value.includes("://") && value.includes("@")) ||
+    value.includes("sb_secret_") ||
+    value.includes("eyJ")
+  ) {
+    return true;
+  }
+  return mayContainSecretAssignment(value);
+}
+
+function mayContainSecretAssignment(value: string): boolean {
+  let cursor = 0;
+  while (cursor < value.length) {
+    const key = readSecretKey(value, cursor);
+    if (key !== undefined) {
+      const separator = skipInlineWhitespace(value, key.end);
+      if (value[separator] === ":" || value[separator] === "=") {
+        return true;
+      }
+      cursor = key.end;
+      continue;
+    }
+    cursor += 1;
+  }
+  return false;
 }
 
 function redactUrlCredentials(value: string): string {
@@ -78,6 +109,9 @@ function readSecretAssignment(
   if (value[secretStart] === `"` || value[secretStart] === "'") {
     secretStart += 1;
   }
+  if (value.startsWith(MASK, secretStart)) {
+    return { end: redactedValueEnd(value, secretStart + MASK.length), secretStart };
+  }
   const end = secretValueEnd(value, secretStart);
   return end > secretStart ? { end, secretStart } : undefined;
 }
@@ -98,25 +132,48 @@ function secretValueEnd(value: string, start: number): number {
   return cursor;
 }
 
+function redactedValueEnd(value: string, start: number): number {
+  let cursor = start;
+  while (value[cursor] === "]") {
+    cursor += 1;
+  }
+  return secretValueEnd(value, cursor);
+}
+
 function readSecretKey(value: string, start: number): { end: number } | undefined {
   if (start > 0 && isKeyChar(value[start - 1] ?? "")) {
     return;
   }
-  let end = start;
+  const quote = readQuote(value[start] ?? "");
+  const keyStart = quote === undefined ? start : start + 1;
+  let end = keyStart;
   while (end < value.length && isKeyChar(value[end] ?? "")) {
     end += 1;
   }
-  if (end === start) {
+  if (end === keyStart) {
     return;
   }
-  const key = value.slice(start, end).toLowerCase();
-  return isSensitiveKey(key) ? { end } : undefined;
+  if (quote !== undefined) {
+    if (value[end] !== quote) {
+      return;
+    }
+    return isSensitiveKey(value.slice(keyStart, end)) ? { end: end + 1 } : undefined;
+  }
+  return isSensitiveKey(value.slice(start, end)) ? { end } : undefined;
+}
+
+function readQuote(char: string): '"' | "'" | undefined {
+  if (char === `"` || char === "'") {
+    return char;
+  }
+  return;
 }
 
 function isSensitiveKey(key: string): boolean {
-  const compact = key.split("_").join("").split("-").join("");
+  const lowerKey = key.toLowerCase();
+  const compact = lowerKey.split("_").join("").split("-").join("");
   return (
-    key === "pwd" ||
+    lowerKey === "pwd" ||
     compact.includes("password") ||
     compact.endsWith("passwd") ||
     compact.endsWith("pass") ||

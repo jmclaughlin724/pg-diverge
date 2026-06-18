@@ -219,14 +219,14 @@ Expected: exit 0.
 
 ## Done criteria
 
-- [ ] Utility command content is no longer hidden inside one long accordion page.
-- [ ] Each public command has a canonical page.
-- [ ] Command pages share a predictable section order.
-- [ ] All flags remain documented with `<ParamField>`.
-- [ ] `docs/docs.json` contains a nested Utilities group or another equally scannable command IA.
-- [ ] `rg -n "commands/other|/commands/other" docs README.md` finds no stale public links except intentional redirects.
-- [ ] `npm run docs:lint` exits 0.
-- [ ] `npm run docs:check` exits 0, or the operator records why Mintlify could not run.
+- [x] Utility command content is no longer hidden inside one long accordion page.
+- [x] Each public command has a canonical page.
+- [x] Command pages share a predictable section order.
+- [x] All flags remain documented with `<ParamField>`.
+- [x] `docs/docs.json` contains a nested Utilities group or another equally scannable command IA.
+- [x] `rg -n "commands/other|/commands/other" docs README.md` finds no stale public links except intentional redirects.
+- [x] `npm run docs:lint` exits 0.
+- [x] `npm run docs:check` exits 0, or the operator records why Mintlify could not run.
 
 ## STOP conditions
 

@@ -15,12 +15,9 @@
       "default": "auto",
       "type": "string",
       "enum": [
-        "auto",
-        "postgres",
-        "supabase",
-        "supabase-auto"
+        "auto"
       ],
-      "description": "Provider-neutral adapter sentinel. Legacy adapter strings are accepted at the input boundary and normalized to auto."
+      "description": "Provider-neutral adapter sentinel."
     },
     "cascade": {
       "default": "never",

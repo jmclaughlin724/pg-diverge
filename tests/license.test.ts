@@ -12,8 +12,12 @@ function base64Url(buffer: Buffer): string {
   return buffer.toString("base64").replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
-function makeToken(claims: LicenseClaims, privateKey: KeyObject): string {
-  const header = base64Url(Buffer.from(JSON.stringify({ alg: "EdDSA", typ: "JWT" })));
+function makeToken(
+  claims: LicenseClaims,
+  privateKey: KeyObject,
+  headerInput: unknown = { alg: "EdDSA", typ: "JWT" }
+): string {
+  const header = base64Url(Buffer.from(JSON.stringify(headerInput)));
   const payload = base64Url(Buffer.from(JSON.stringify(claims)));
   const signingInput = `${header}.${payload}`;
   const signature = base64Url(sign(null, Buffer.from(signingInput), privateKey));
@@ -47,6 +51,16 @@ describe("license entitlement (M30/M32 verify side)", () => {
       .toString();
     const token = makeToken(validClaims, keyPair.privateKey);
     expect(verifyLicenseToken(token, rsaPublicKeyPem)).toBeNull();
+  });
+
+  it("rejects a signed token with a non-EdDSA header", () => {
+    const token = makeToken(validClaims, keyPair.privateKey, { alg: "HS256", typ: "JWT" });
+    expect(verifyLicenseToken(token, publicKeyPem)).toBeNull();
+  });
+
+  it("rejects a signed token with a non-JWT header", () => {
+    const token = makeToken(validClaims, keyPair.privateKey, { alg: "EdDSA", typ: "JWS" });
+    expect(verifyLicenseToken(token, publicKeyPem)).toBeNull();
   });
 
   it("rejects a malformed token", () => {

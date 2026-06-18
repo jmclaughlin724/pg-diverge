@@ -25,9 +25,9 @@ Planned on 2026-06-16 against commit `fb8c461`.
 - Risk: MED
 - Depends on: none
 - Category: adoption / rescue / monetization
-- Execution lens: compatibility-constrained
-- Compatibility constraint: adoption and rescue touch database state. Keep all
-  collection local and redacted until explicit hosted custody decisions exist.
+- Execution lens: elegant canonical-owner execution.
+- Protected invariant: adoption and rescue touch database state. Keep collection
+  local and redacted until explicit hosted custody decisions exist.
 
 ## Why This Matters
 

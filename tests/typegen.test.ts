@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractSourceModel } from "../src/source.js";
-import { generateDatabaseTypes, generateDatabaseTypesFromShapes } from "../src/typegen.js";
+import { generateDatabaseTypes } from "../src/typegen.js";
 import { collectSchemaShapes } from "../src/typegen-model.js";
-import { generateZodSchemas, generateZodSchemasFromShapes } from "../src/typegen-zod.js";
+import { generateZodSchemas } from "../src/typegen-zod.js";
 
 const treeSql = `CREATE SCHEMA app;
 CREATE TYPE app.status AS ENUM ('draft', 'active');
@@ -30,7 +30,7 @@ CREATE VIEW app.account_all AS SELECT * FROM app.accounts;
 
 async function typesFor(sql: string): Promise<string> {
   const model = await modelFor(sql, "supa-typegen-");
-  return await generateDatabaseTypes(model);
+  return generateDatabaseTypes(await collectSchemaShapes(model));
 }
 
 async function modelFor(sql: string, prefix: string) {
@@ -117,12 +117,12 @@ describe("database type generation", () => {
     expect(types).toContain("export type Enums<");
   });
 
-  it("emits identical TypeScript and Zod output from precomputed shapes", async () => {
+  it("emits TypeScript and Zod output from one precomputed shape graph", async () => {
     const model = await modelFor(treeSql, "supa-typegen-shapes-");
     const shapes = await collectSchemaShapes(model);
 
-    expect(generateDatabaseTypesFromShapes(shapes)).toBe(await generateDatabaseTypes(model));
-    expect(generateZodSchemasFromShapes(shapes)).toBe(await generateZodSchemas(model));
+    expect(generateDatabaseTypes(shapes)).toContain("export type Database = {");
+    expect(generateZodSchemas(shapes)).toContain("export const schemas = {");
   });
 });
 
@@ -288,7 +288,7 @@ describe("function return row typegen", () => {
 describe("zod schema generation", () => {
   async function zodFor(sql: string): Promise<string> {
     const model = await modelFor(sql, "supa-zodgen-");
-    return await generateZodSchemas(model);
+    return generateZodSchemas(await collectSchemaShapes(model));
   }
 
   it("emits runtime validators mirroring the generated types", async () => {

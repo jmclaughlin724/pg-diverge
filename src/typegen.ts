@@ -1,4 +1,3 @@
-import type { SchemaModel } from "./core.js";
 import type {
   ColumnShape,
   FunctionShape,
@@ -7,14 +6,13 @@ import type {
   SchemaShapes,
 } from "./typegen-model.js";
 import {
-  collectSchemaShapes,
   isNonWritableColumn,
   isOptionalInsertColumn,
   resolveColumnType,
   sortedByName,
 } from "./typegen-model.js";
 
-export function generateDatabaseTypesFromShapes(shapes: SchemaShapes): string {
+export function generateDatabaseTypes(shapes: SchemaShapes): string {
   const lines: string[] = [
     "export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];",
     "",
@@ -32,10 +30,6 @@ export function generateDatabaseTypesFromShapes(shapes: SchemaShapes): string {
   lines.push("");
   lines.push(...constantsBlock(sortedSchemas));
   return `${lines.join("\n")}\n`;
-}
-
-export async function generateDatabaseTypes(model: SchemaModel): Promise<string> {
-  return generateDatabaseTypesFromShapes(await collectSchemaShapes(model));
 }
 
 function emitDatabaseSchema(

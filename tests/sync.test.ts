@@ -1,8 +1,12 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Command } from "commander";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
+import { registerReportCommands } from "../src/cli-reports.js";
+import { resolveConfig } from "../src/config.js";
+import type { Diagnostic } from "../src/core.js";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 import { diagnosticCatalog } from "../src/diagnostics.js";
 import { syncMigrations } from "../src/workflow.js";
@@ -262,6 +266,39 @@ describe("sync pipeline orchestration", () => {
     expect(messages).not.toContain("SUPASCHEMA_MISSING_LOCAL_URL");
   });
 
+  it("fails an explicit Supabase CLI target when its URL cannot be resolved", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-url-"));
+    const result = await syncMigrations({
+      config: {
+        sync: {
+          targets: {
+            remote: {
+              databaseUrl: "$SUPASCHEMA_MISSING_CLI_TARGET_URL",
+              historyTable: "supabase_migrations.schema_migrations",
+              mode: "manual",
+              remote: true,
+              runner: "supabase-cli",
+            },
+          },
+        },
+        workflow: {
+          rls_safety: "disabled",
+          type_safety: "disabled",
+        },
+      },
+      directory: root,
+      pipeline: true,
+      skipDiff: true,
+      target: "remote",
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_SYNC_TARGET_URL_UNRESOLVED"
+    );
+    expect(result.report).toContain("target resolution failed");
+  });
+
   it("refuses --env override when multiple targets are selected", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-env-multi-"));
     const result = await syncMigrations({
@@ -378,12 +415,187 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     expect(await readFile(zodFile, "utf8")).toContain("accounts");
     expect(result.pending.some((file) => file.endsWith(".sql"))).toBe(true);
   });
+
+  it("resolves auto sources before the sync diff and safety gates run", async () => {
+    const source = await sqlSource(
+      "CREATE TABLE public.auto_sync_source (id bigint PRIMARY KEY);\n"
+    );
+    const cwd = await mkdtemp(join(tmpdir(), "supa-sync-auto-source-cwd-"));
+    const migrationsDir = join(cwd, "migrations");
+    const typesFile = join(cwd, "database.types.ts");
+    const zodFile = join(cwd, "database.zod.ts");
+    const previousCwd = process.cwd();
+    const previousDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+    delete process.env.SUPASCHEMA_DATABASE_URL;
+    process.chdir(cwd);
+    try {
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "auto", to: source },
+          typesFile,
+          workflow: {
+            migration_sync: "manual",
+            rls_safety: "disabled",
+            type_safety: "disabled",
+          },
+          zodFile,
+        },
+        directory: migrationsDir,
+        pipeline: true,
+      });
+
+      expect(result.applied).toBe(false);
+      expect(result.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+      expect(result.report).toContain("diff: wrote");
+    } finally {
+      process.chdir(previousCwd);
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
+
+  it("runs the lineage gate before refreshing generated outputs", async () => {
+    const source = await sqlSource("CREATE TABLE public.accounts (id bigint PRIMARY KEY);\n");
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-lineage-before-outputs-"));
+    const typesFile = join(root, "database.types.ts");
+    const zodFile = join(root, "database.zod.ts");
+    const migrationsDir = join(root, "migrations");
+    await mkdir(migrationsDir);
+    await writeFile(
+      join(migrationsDir, "20260101000000_existing.sql"),
+      "-- supaschema: lineage from=unrelated_from to=unrelated_to\nSELECT 1;\n"
+    );
+
+    const result = await syncMigrations({
+      config: {
+        sources: { from: "empty:", to: source },
+        typesFile,
+        workflow: {
+          migration_sync: "manual",
+          rls_safety: "disabled",
+          type_safety: "disabled",
+        },
+        zodFile,
+      },
+      directory: migrationsDir,
+      pipeline: true,
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_DIFF_LINEAGE_GAP");
+    expect(await pathExists(typesFile)).toBe(false);
+    expect(await pathExists(zodFile)).toBe(false);
+  });
+
+  it("reports no-op configured targets without marking migrations applied", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-noop-target-"));
+
+    const result = await syncMigrations({
+      config: {
+        sync: {
+          targets: {
+            local: {
+              historyTable: "supabase_migrations.schema_migrations",
+              mode: "manual",
+              runner: "supabase-cli",
+            },
+          },
+        },
+        workflow: {
+          rls_safety: "disabled",
+          type_safety: "disabled",
+        },
+      },
+      directory: root,
+      pipeline: true,
+      skipDiff: true,
+      target: "local",
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.report).toContain("nothing to sync on local");
+  });
+
+  it("does not pass an ambient database URL override to bare configured-target sync", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-target-url-"));
+    const program = new Command();
+    program.exitOverride();
+    program.configureOutput({ writeErr: () => undefined, writeOut: () => undefined });
+    let fallbackResolved = false;
+    registerReportCommands(program, {
+      cliVersion: "test",
+      globalEnvName: () => undefined,
+      loadCliConfig: () =>
+        Promise.resolve(
+          resolveConfig({
+            sync: {
+              targets: {
+                local: {
+                  historyTable: "supabase_migrations.schema_migrations",
+                  mode: "auto",
+                  runner: "supabase-cli",
+                },
+              },
+            },
+            workflow: {
+              migration_sync: "auto",
+              rls_safety: "disabled",
+              type_safety: "disabled",
+            },
+          })
+        ),
+      printDiagnostics: (_diagnostics: Diagnostic[]) => undefined,
+      resolveCliDatabaseUrl: () => {
+        fallbackResolved = true;
+        return Promise.resolve("postgresql://ambient.example/postgres");
+      },
+    });
+
+    const previousExitCode = process.exitCode;
+    const write = process.stdout.write;
+    const silenceStdout: typeof process.stdout.write = () => true;
+    process.stdout.write = silenceStdout;
+    try {
+      await program.parseAsync([
+        "node",
+        "supaschema",
+        "sync",
+        "--no-diff",
+        "--migrations-dir",
+        root,
+      ]);
+    } finally {
+      process.stdout.write = write;
+      process.exitCode = previousExitCode;
+    }
+
+    expect(fallbackResolved).toBe(false);
+  });
 });
 
 async function sqlSource(sql: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "supa-sync-source-"));
   await writeFile(join(root, "001.sql"), sql);
   return `dir:${root}`;
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function requiredDatabaseUrl(): string {
+  if (databaseUrl === undefined) {
+    throw new Error("SUPASCHEMA_TEST_DATABASE_URL is required for this test");
+  }
+  return databaseUrl;
 }
 
 describe.skipIf(!databaseUrl)("sync (against a target)", () => {
@@ -393,7 +605,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     const db = `supa_sync_auto_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
     await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
     await admin.query(`CREATE DATABASE ${db}`);
-    const url = new URL(databaseUrl as string);
+    const url = new URL(requiredDatabaseUrl());
     url.pathname = `/${db}`;
     try {
       const root = await mkdtemp(join(tmpdir(), "supa-sync-auto-"));
@@ -445,7 +657,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     const db = `supa_sync_remote_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
     await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
     await admin.query(`CREATE DATABASE ${db}`);
-    const url = new URL(databaseUrl as string);
+    const url = new URL(requiredDatabaseUrl());
     url.pathname = `/${db}`;
     const previousApproval = process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED;
     process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED = "1";
@@ -511,7 +723,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     const db = `supa_sync_direct_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
     await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
     await admin.query(`CREATE DATABASE ${db}`);
-    const url = new URL(databaseUrl as string);
+    const url = new URL(requiredDatabaseUrl());
     url.pathname = `/${db}`;
     try {
       const root = await mkdtemp(join(tmpdir(), "supa-sync-direct-"));
@@ -567,7 +779,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     const db = `supa_sync_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
     await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
     await admin.query(`CREATE DATABASE ${db}`);
-    const url = new URL(databaseUrl as string);
+    const url = new URL(requiredDatabaseUrl());
     url.pathname = `/${db}`;
     try {
       const target = new Client({ connectionString: url.toString() });

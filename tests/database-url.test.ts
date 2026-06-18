@@ -17,7 +17,7 @@ const codexGateCommand =
 const codexAutoDiffCommand = "npx --no-install supaschema hook schema-write";
 const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
 const codexGeneralGuardCommand = `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`;
-const legacyClaudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
+const removedClaudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
 const claudeGeneratedGateArgs = [
   "--no-install",
   "supaschema",
@@ -154,7 +154,7 @@ describe("install-time project setup", () => {
     );
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(claudeSettings.enabledMcpjsonServers).toBeUndefined();
-    expect(commandCount(claudeSettings, legacyClaudeSkillGateCommand)).toBe(0);
+    expect(commandCount(claudeSettings, removedClaudeSkillGateCommand)).toBe(0);
     expect(hookCount(claudeSettings, "node", claudeBashPolicyArgs)).toBe(1);
     expect(hookCount(claudeSettings, "npx", claudeGeneratedGateArgs)).toBe(1);
     expect(hookCount(claudeSettings, "npx", claudeAutoDiffArgs)).toBe(1);
@@ -191,7 +191,7 @@ describe("install-time project setup", () => {
     );
     await writeNestedFile(
       join(consumer, ".codex/skills/supaschema/SKILL.md"),
-      "retired codex skill\n"
+      "noncanonical codex skill\n"
     );
     await writeNestedFile(join(consumer, ".codex/skills/custom/SKILL.md"), "custom skill\n");
 
@@ -536,45 +536,6 @@ describe("install-time project setup", () => {
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
     expect(manifest.pathConfirmationNeeded).toBe(true);
-  });
-
-  it("de-dupes a legacy-format codex hook command on upgrade", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-postinstall-upgrade-"));
-    await mkdir(join(consumer, ".codex"), { recursive: true });
-    const legacyAutoDiff =
-      'node "$(git rev-parse --show-toplevel)/.codex/hooks/auto-diff-on-schema-change.mjs"';
-    const legacyGate =
-      'node "$(git rev-parse --show-toplevel)/.codex/hooks/block-generated-migration-edits.mjs"';
-    const legacyGeneralGuard =
-      'node "$(git rev-parse --show-toplevel)/.codex/hooks/general-guard.mjs"';
-    const legacyLlmSync =
-      'node "$(git rev-parse --show-toplevel)/.codex/hooks/sync-llm-on-claude-surface-change.mjs"';
-    await writeFile(
-      join(consumer, ".codex/hooks.json"),
-      `${JSON.stringify({
-        hooks: {
-          PostToolUse: [
-            { hooks: [{ command: legacyAutoDiff, type: "command" }] },
-            { hooks: [{ command: legacyLlmSync, type: "command" }] },
-          ],
-          PreToolUse: [{ hooks: [{ command: legacyGate, type: "command" }] }],
-          PermissionRequest: [{ hooks: [{ command: legacyGeneralGuard, type: "command" }] }],
-        },
-      })}\n`
-    );
-
-    await run("node", ["bin/postinstall.mjs"], { env: { ...process.env, INIT_CWD: consumer } });
-
-    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-
-    expect(commandCount(codexHooks, legacyAutoDiff)).toBe(0);
-    expect(commandCount(codexHooks, legacyGate)).toBe(0);
-    expect(commandCount(codexHooks, legacyGeneralGuard)).toBe(0);
-    expect(commandCount(codexHooks, legacyLlmSync)).toBe(0);
-    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
   });
 
   it("skips all scaffolding when SUPASCHEMA_SKIP_POSTINSTALL is set", async () => {

@@ -41,18 +41,7 @@ const agentPaths = [
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/rules/supaschema.rules",
 ];
-
-const retiredAgentPaths = [
-  ".codex/skills/supaschema",
-  ".claude/hooks/auto-diff-on-schema-change.mjs",
-  ".claude/hooks/block-generated-migration-edits.mjs",
-  ".codex/hooks/auto-diff-on-schema-change.mjs",
-  ".codex/hooks/block-generated-migration-edits.mjs",
-];
-const retiredHookScripts = new Set([
-  "auto-diff-on-schema-change.mjs",
-  "block-generated-migration-edits.mjs",
-]);
+const nonCanonicalAgentPaths = [".codex/skills/supaschema"];
 
 const hookConfigs = [
   {
@@ -156,7 +145,7 @@ export async function scaffoldProject({
   }
 
   copyAgentBundle({ dryRun, packageRoot, skipped, targetDir });
-  removeRetiredAgentSurfaces({ dryRun, targetDir });
+  removeNonCanonicalAgentSurfaces({ dryRun, targetDir });
   installed.push("agent files");
 
   for (const config of hookConfigs) {
@@ -673,11 +662,11 @@ function copyAgentBundle({ dryRun, packageRoot, skipped, targetDir }) {
   }
 }
 
-function removeRetiredAgentSurfaces({ dryRun, targetDir }) {
+function removeNonCanonicalAgentSurfaces({ dryRun, targetDir }) {
   if (dryRun) {
     return;
   }
-  for (const file of retiredAgentPaths) {
+  for (const file of nonCanonicalAgentPaths) {
     rmSync(join(targetDir, file), { force: true, recursive: true });
   }
   removeEmptyDirectory(join(targetDir, ".codex/skills"));
@@ -819,7 +808,6 @@ function mergeHooks(existing, source) {
       .flatMap((entries) => entries.flatMap(hookDefinitions))
       .map(managedHookScript)
       .filter((name) => name !== undefined),
-    ...retiredHookScripts,
   ]);
 
   for (const [eventName, existingEntries] of Object.entries(mergedHooks)) {

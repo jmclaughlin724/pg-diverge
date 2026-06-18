@@ -1,15 +1,13 @@
-import type { SchemaModel } from "./core.js";
 import { quoteKey } from "./typegen.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes } from "./typegen-model.js";
 import {
-  collectSchemaShapes,
   isNonWritableColumn,
   isOptionalInsertColumn,
   resolveColumnType,
   sortedByName,
 } from "./typegen-model.js";
 
-export function generateZodSchemasFromShapes(shapes: SchemaShapes): string {
+export function generateZodSchemas(shapes: SchemaShapes): string {
   const sortedSchemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
@@ -23,10 +21,6 @@ export function generateZodSchemasFromShapes(shapes: SchemaShapes): string {
   lines.push("} as const;");
   emitValidatedTypeHelpers(lines);
   return `${lines.join("\n")}\n`;
-}
-
-export async function generateZodSchemas(model: SchemaModel): Promise<string> {
-  return generateZodSchemasFromShapes(await collectSchemaShapes(model));
 }
 
 type SortedSchemas = [string, SchemaEntry][];

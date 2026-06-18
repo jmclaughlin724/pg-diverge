@@ -2,10 +2,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const DEFAULT_TOLERANCE_SECONDS = 300;
 
-function parseSignatureHeader(header: string): { timestamp: string; v1: string } | null {
+function parseSignatureHeader(header: string): { signatures: string[]; timestamp: string } | null {
+  const signatures: string[] = [];
   let timestamp: string | undefined;
-  let v1: string | undefined;
-  for (const segment of header.split(",")) {
+  for (const rawSegment of header.split(",")) {
+    const segment = rawSegment.trim();
     const splitAt = segment.indexOf("=");
     if (splitAt <= 0) {
       continue;
@@ -15,13 +16,13 @@ function parseSignatureHeader(header: string): { timestamp: string; v1: string }
     if (key === "t") {
       timestamp = value;
     } else if (key === "v1") {
-      v1 = value;
+      signatures.push(value);
     }
   }
-  if (timestamp === undefined || v1 === undefined) {
+  if (timestamp === undefined || signatures.length === 0) {
     return null;
   }
-  return { timestamp, v1 };
+  return { signatures, timestamp };
 }
 
 export function verifyStripeSignature(
@@ -44,9 +45,10 @@ export function verifyStripeSignature(
     .digest("hex");
 
   const expectedBytes = Buffer.from(expected, "hex");
-  const providedBytes = Buffer.from(parsed.v1, "hex");
-  if (expectedBytes.length !== providedBytes.length) {
-    return false;
-  }
-  return timingSafeEqual(expectedBytes, providedBytes);
+  return parsed.signatures.some((signature) => {
+    const providedBytes = Buffer.from(signature, "hex");
+    return (
+      expectedBytes.length === providedBytes.length && timingSafeEqual(expectedBytes, providedBytes)
+    );
+  });
 }

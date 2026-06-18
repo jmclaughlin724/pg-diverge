@@ -209,12 +209,12 @@ Expected: exit 0. Fix broken anchors caused by removed headings by updating link
 
 ## Done criteria
 
-- [ ] Entry pages each have one clear job and no duplicated first-run narrative.
-- [ ] `docs/quickstart.mdx` is materially shorter and keeps only the first migration loop.
-- [ ] `docs/introduction.mdx` uses one primary workflow diagram and one start card grid.
-- [ ] Guide pages use the same "Do this / Verify / Related" structure.
-- [ ] `npm run docs:lint` exits 0.
-- [ ] `npm run docs:check` exits 0, or the operator records why Mintlify could not run.
+- [x] Entry pages each have one clear job and no duplicated first-run narrative.
+- [x] `docs/quickstart.mdx` is materially shorter and keeps only the first migration loop.
+- [x] `docs/introduction.mdx` uses one primary workflow diagram and one start card grid.
+- [x] Guide pages use the same "Do this / Verify / Related" structure.
+- [x] `npm run docs:lint` exits 0.
+- [x] `npm run docs:check` exits 0, or the operator records why Mintlify could not run.
 
 ## STOP conditions
 

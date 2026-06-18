@@ -88,17 +88,7 @@ export function selectTurnState(payload, state) {
 export function currentTurnState(state) {
   const hasTurns = state.turns && typeof state.turns === "object" && !Array.isArray(state.turns);
   if (!hasTurns) {
-    const legacyTurn = {
-      atlasAdvisories: objectValue(state.atlasAdvisories),
-      corrections: Array.isArray(state.corrections) ? state.corrections : [],
-      evidence: Array.isArray(state.evidence) ? state.evidence : [],
-      lastPrompt: typeof state.lastPrompt === "string" ? state.lastPrompt : "",
-      pendingSkills: objectValue(state.pendingSkills),
-    };
     state.turns = {};
-    if (hasTurnContent(legacyTurn)) {
-      state.turns[fallbackTurnId] = legacyTurn;
-    }
   }
   const id = state.currentTurnId || fallbackTurnId;
   state.currentTurnId = id;
@@ -109,21 +99,13 @@ export function currentTurnState(state) {
 }
 
 export function normalizeState(value) {
-  const legacyTurn = {
-    atlasAdvisories: objectValue(value?.atlasAdvisories),
-    corrections: Array.isArray(value?.corrections) ? value.corrections : [],
-    evidence: Array.isArray(value?.evidence) ? value.evidence : [],
-    lastPrompt: typeof value?.lastPrompt === "string" ? value.lastPrompt : "",
-    pendingSkills: objectValue(value?.pendingSkills),
-  };
   const turns = normalizeTurns(value?.turns);
   const currentTurnId =
     typeof value?.currentTurnId === "string" && value.currentTurnId.length > 0
       ? validateStateKey(value.currentTurnId)
       : fallbackTurnId;
   if (!turns[currentTurnId]) {
-    turns[currentTurnId] =
-      hasTurnContent(legacyTurn) || currentTurnId === fallbackTurnId ? legacyTurn : emptyTurn();
+    turns[currentTurnId] = emptyTurn();
   }
   const currentTurn = turns[currentTurnId] ?? emptyTurn();
   return {
@@ -209,16 +191,6 @@ function turnId(payload) {
 
 function validateStateKey(id) {
   return validateSessionId(id);
-}
-
-function hasTurnContent(turn) {
-  return (
-    turn.corrections.length > 0 ||
-    turn.evidence.length > 0 ||
-    turn.lastPrompt.length > 0 ||
-    Object.keys(turn.atlasAdvisories).length > 0 ||
-    Object.keys(turn.pendingSkills).length > 0
-  );
 }
 
 function integerValue(value) {
