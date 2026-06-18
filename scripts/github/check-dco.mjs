@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 import fs from "node:fs";
-import { request } from "node:https";
-import { argValue, git, repoFullName, reportFailures } from "./policy.mjs";
+import { argValue, git, reportFailures, run } from "./policy.mjs";
 
 const args = process.argv.slice(2);
 const range = argValue(args, "--range");
-const repo = argValue(args, "--repo") ?? process.env.GITHUB_REPOSITORY ?? repoFullName();
 const eventName = process.env.GITHUB_EVENT_NAME;
 const eventPath = process.env.GITHUB_EVENT_PATH;
+const HEX = "0123456789abcdefABCDEF";
 
 function normalizeName(value) {
   return collapseWhitespace(String(value ?? "").trim()).toLowerCase();
@@ -118,63 +117,22 @@ function readEvent() {
   return JSON.parse(fs.readFileSync(eventPath, "utf8"));
 }
 
-function token() {
-  return process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
-}
-
-function githubJson(pathname) {
-  const authToken = token();
-  const headers = {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "supaschema-dco-check",
-    "X-GitHub-Api-Version": "2026-03-10",
-  };
-  if (authToken) {
-    headers.Authorization = `Bearer ${authToken}`;
-  }
-
-  return new Promise((resolve, reject) => {
-    const req = request(
-      {
-        headers,
-        hostname: "api.github.com",
-        method: "GET",
-        path: pathname,
-      },
-      (res) => {
-        let body = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => {
-          body += chunk;
-        });
-        res.on("end", () => {
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(`GitHub API ${pathname} failed with ${res.statusCode}: ${body}`));
-            return;
-          }
-          resolve(JSON.parse(body));
-        });
-      }
-    );
-    req.on("error", reject);
-    req.end();
-  });
-}
-
-async function commitsFromPullRequest(event) {
+function commitsFromPullRequest(event) {
   const pr = event?.pull_request?.number;
   if (!pr) {
     return;
   }
-  const commits = [];
-  for (let page = 1; page <= 10; page += 1) {
-    const batch = await githubJson(`/repos/${repo}/pulls/${pr}/commits?per_page=100&page=${page}`);
-    commits.push(...batch);
-    if (batch.length < 100) {
-      return commits;
-    }
+  if (gitRevisionExists("HEAD^1") && gitRevisionExists("HEAD^2")) {
+    return commitsFromRange("HEAD^1..HEAD^2");
   }
-  throw new Error(`PR ${pr} has more than 1000 commits; split it before DCO verification`);
+  const base = event.pull_request?.base?.sha;
+  const head = event.pull_request?.head?.sha;
+  if (isFullGitSha(base) && isFullGitSha(head)) {
+    return commitsFromRange(`${base}..${head}`);
+  }
+  throw new Error(
+    `PR ${pr} DCO verification requires a full checkout with merge parents or an explicit --range`
+  );
 }
 
 function commitsFromPush(event) {
@@ -202,6 +160,18 @@ function commitsFromRange(value) {
         sha,
       };
     });
+}
+
+function gitRevisionExists(value) {
+  return run("git", ["rev-parse", "--verify", value], { allowFailure: true }).status === 0;
+}
+
+function isFullGitSha(value) {
+  return (
+    typeof value === "string" &&
+    value.length === 40 &&
+    [...value].every((char) => HEX.includes(char))
+  );
 }
 
 function commitsToCheck() {
