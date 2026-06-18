@@ -14,16 +14,19 @@ if (process.argv.length > 2) {
 const packageJson = readJson(join(ROOT, "package.json"));
 const packageVersion = packageJson.version;
 const nodeBinDir = dirname(process.execPath);
+const bunTool = "bun@1.3.14";
+const pnpmTool = "pnpm@10.18.1";
+const yarnTool = "yarn@4.16.0";
 const corepackTools = new Map([
-  ["pnpm", "pnpm@10.18.1"],
-  ["yarn", "yarn@4.12.0"],
+  ["pnpm", pnpmTool],
+  ["yarn", yarnTool],
 ]);
 const tarball = resolveTarball();
 const tools = {
-  bun: detectTool("bun", ["--version"], createProbe("bun", { packageManager: "bun@1.3.14" })),
+  bun: detectTool("bun", ["--version"], createProbe("bun", { packageManager: bunTool })),
   npm: detectTool("npm", ["--version"], ROOT),
-  pnpm: detectTool("pnpm", ["--version"], createProbe("pnpm", { packageManager: "pnpm@10.18.1" })),
-  yarn: detectTool("yarn", ["--version"], createProbe("yarn", { packageManager: "yarn@4.12.0" })),
+  pnpm: detectTool("pnpm", ["--version"], createProbe("pnpm", { packageManager: pnpmTool })),
+  yarn: detectTool("yarn", ["--version"], createProbe("yarn", { packageManager: yarnTool })),
 };
 
 const skipped = [];
@@ -68,7 +71,7 @@ function smokeNpmWorkspaceMember() {
 
 function smokePnpmRoot() {
   const consumer = createProject("supa-smoke-pnpm-root-", "supaschema-pnpm-root", {
-    packageManager: "pnpm@10.18.1",
+    packageManager: pnpmTool,
   });
   runTool("pnpm", ["add", tarball], consumer);
   runTool("pnpm", ["exec", PACKAGE_NAME, "init"], consumer);
@@ -78,7 +81,7 @@ function smokePnpmRoot() {
 
 function smokePnpmWorkspaceMember() {
   const { member, root } = createWorkspace("supa-smoke-pnpm-workspace-", {
-    packageManager: "pnpm@10.18.1",
+    packageManager: pnpmTool,
     workspaceFile: "packages:\n  - packages/*\n",
   });
   runTool("pnpm", ["add", tarball], member);
@@ -92,7 +95,7 @@ function smokePnpmWorkspaceMember() {
 
 function smokeYarnWorkspaceMember() {
   const { member, root } = createWorkspace("supa-smoke-yarn-workspace-", {
-    packageManager: "yarn@4.12.0",
+    packageManager: yarnTool,
     workspaces: ["packages/*"],
   });
   runTool("yarn", ["add", tarball], member);
@@ -106,7 +109,7 @@ function smokeYarnWorkspaceMember() {
 
 function smokeBunRoot() {
   const consumer = createProject("supa-smoke-bun-root-", "supaschema-bun-root", {
-    packageManager: "bun@1.3.14",
+    packageManager: bunTool,
   });
   runTool("bun", ["add", tarball], consumer);
   runTool("bun", ["x", "--no-install", PACKAGE_NAME, "init"], consumer);
@@ -119,7 +122,7 @@ function smokeBunRoot() {
 
 function smokeBunWorkspaceMember() {
   const { member, root } = createWorkspace("supa-smoke-bun-workspace-", {
-    packageManager: "bun@1.3.14",
+    packageManager: bunTool,
     workspaces: ["packages/*"],
   });
   runTool("bun", ["add", tarball], member);

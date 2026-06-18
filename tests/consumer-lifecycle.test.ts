@@ -53,6 +53,24 @@ function npmExec(args: string[]): Spawn {
     : { args, file: process.platform === "win32" ? "npm.cmd" : "npm" };
 }
 
+function installedPackageBinPath(project: string): string {
+  const manifest: unknown = JSON.parse(
+    readFileSync(join(project, "node_modules", "supaschema", "package.json"), "utf8")
+  );
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error("installed supaschema package.json must be an object");
+  }
+  const bin = Reflect.get(manifest, "bin");
+  if (!bin || typeof bin !== "object") {
+    throw new Error("installed supaschema package.json must define bin");
+  }
+  const supaschema = Reflect.get(bin, "supaschema");
+  if (typeof supaschema !== "string") {
+    throw new Error("installed supaschema package.json must define bin.supaschema");
+  }
+  return join(project, "node_modules", "supaschema", supaschema);
+}
+
 async function capture(file: string, args: string[], cwd: string): Promise<CaptureResult> {
   try {
     const { stdout, stderr } = await run(file, args, { cwd, maxBuffer: 64 * 1024 * 1024 });
@@ -109,7 +127,7 @@ beforeAll(async () => {
   const install = npmExec(["install", tarball, "--prefer-offline", "--no-audit", "--no-fund"]);
   await run(install.file, install.args, { cwd: consumer, maxBuffer: 64 * 1024 * 1024 });
 
-  binPath = join(consumer, "node_modules", "supaschema", "bin", "supaschema");
+  binPath = installedPackageBinPath(consumer);
   consumerScaffoldBeforeInit = existsSync(join(consumer, "supaschema.config.json"));
   await run(process.execPath, [binPath, "init"], {
     cwd: consumer,
@@ -126,7 +144,7 @@ beforeAll(async () => {
     cwd: consumer2,
     maxBuffer: 64 * 1024 * 1024,
   });
-  binPath2 = join(consumer2, "node_modules", "supaschema", "bin", "supaschema");
+  binPath2 = installedPackageBinPath(consumer2);
 }, 300_000);
 
 describe("consumer lifecycle: install then use the published package", () => {
@@ -261,9 +279,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
     });
 
     expect(existsSync(join(pnpmConsumer, "supaschema.config.json"))).toBe(false);
-    expect(existsSync(join(pnpmConsumer, "node_modules", "supaschema", "bin", "supaschema"))).toBe(
-      true
-    );
+    expect(existsSync(installedPackageBinPath(pnpmConsumer))).toBe(true);
 
     const init = await capture(pnpmCommand, ["exec", "supaschema", "init"], pnpmConsumer);
     expect(init.code, init.stderr).toBe(0);
@@ -294,9 +310,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
     });
 
     expect(existsSync(join(pnpmConsumer, "supaschema.config.json"))).toBe(false);
-    expect(existsSync(join(pnpmConsumer, "node_modules", "supaschema", "bin", "supaschema"))).toBe(
-      true
-    );
+    expect(existsSync(installedPackageBinPath(pnpmConsumer))).toBe(true);
 
     const init = await capture(pnpmCommand, ["exec", "supaschema", "init"], pnpmConsumer);
     expect(init.code, init.stderr).toBe(0);

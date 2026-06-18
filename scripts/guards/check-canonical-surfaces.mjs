@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { parse as parseShell } from "sh-syntax";
 import { parse as parseJsTs, ts } from "./lib/ast-utils.js";
-import { assert, exists, gitFiles, ok, readJson, readText, run } from "./lib/guard-utils.js";
+import { assert, exists, gitFiles, ok, ROOT, readJson, readText, run } from "./lib/guard-utils.js";
 
 const codeRoots = [
   ".agents/skills/",
@@ -172,25 +172,15 @@ function jsTsAstGrepPatternEngineViolations(candidates) {
     astGrepRule("no-regexp-call-js", "JavaScript", "RegExp($A)"),
   ].join("\n---\n");
   const result = spawnSync(
-    "npx",
-    [
-      "--no-install",
-      "ast-grep",
-      "scan",
-      "--inline-rules",
-      inlineRules,
-      "--json=compact",
-      "--max-results",
-      "20",
-      ...candidates,
-    ],
+    astGrepBinary(),
+    ["scan", "--inline-rules", inlineRules, "--json=compact", "--max-results", "20", ...candidates],
     {
       cwd: process.cwd(),
       encoding: "utf8",
     }
   );
   if (result.status !== 0) {
-    return [`ast-grep regex discovery failed:\n${result.stderr || result.stdout}`];
+    return [`ast-grep regex discovery failed:\n${childProcessDiagnostics(result)}`];
   }
   const matches = JSON.parse(result.stdout || "[]");
   return matches.map(
@@ -201,6 +191,23 @@ function jsTsAstGrepPatternEngineViolations(candidates) {
 
 function astGrepRule(id, language, pattern) {
   return [`id: ${id}`, `language: ${language}`, "rule:", `  pattern: ${pattern}`].join("\n");
+}
+
+function astGrepBinary() {
+  return path.join(
+    ROOT,
+    "node_modules",
+    "@ast-grep",
+    "cli",
+    process.platform === "win32" ? "ast-grep.exe" : "ast-grep"
+  );
+}
+
+function childProcessDiagnostics(result) {
+  return (
+    [result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n") ||
+    "no child-process diagnostics"
+  );
 }
 
 function collectJsTsPatternEngineViolations(node, source, found) {

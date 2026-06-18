@@ -13,6 +13,24 @@ const npmExec = (args: string[]): { file: string; args: string[] } => {
     : { file: process.platform === "win32" ? "npm.cmd" : "npm", args };
 };
 
+function packageBinPath(): string {
+  const manifest: unknown = JSON.parse(
+    readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8")
+  );
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error("package.json must be an object");
+  }
+  const bin = Reflect.get(manifest, "bin");
+  if (!bin || typeof bin !== "object") {
+    throw new Error("package.json must define bin");
+  }
+  const supaschema = Reflect.get(bin, "supaschema");
+  if (typeof supaschema !== "string") {
+    throw new Error("package.json must define bin.supaschema");
+  }
+  return supaschema;
+}
+
 describe("npm package contents", () => {
   it("keeps the generated install-time config contract executable", async () => {
     const mirror = await import(
@@ -45,7 +63,7 @@ describe("npm package contents", () => {
       "dist/cli.js",
       "dist/index.js",
       "dist/index.d.ts",
-      "bin/supaschema",
+      packageBinPath(),
       "bin/scaffold.mjs",
       "bin/config-contract.mjs",
       "supaschema-config.schema.json",
@@ -67,6 +85,7 @@ describe("npm package contents", () => {
     for (const entry of required) {
       expect(paths, `missing required package file: ${entry}`).toContain(entry);
     }
+    expect(paths, "legacy extensionless bin wrapper must not ship").not.toContain("bin/supaschema");
     expect(paths, "postinstall lifecycle setup must not ship").not.toContain("bin/postinstall.mjs");
     const forbiddenInternalAgentPrefixes = [
       ".claude/hooks/context-",
