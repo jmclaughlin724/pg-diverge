@@ -10,6 +10,7 @@ import { resolveDatabaseUrl } from "./database-url.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
 import { latestLineage } from "./lineage.js";
 import {
+  isConcurrentMigrationFile,
   type MigrationRunnerKind,
   type MigrationRunnerResult,
   runDirectMigrationRunner,
@@ -806,6 +807,15 @@ async function runOneTarget(
   if (checkResult !== undefined) {
     return checkResult;
   }
+  const supabaseCliConcurrentResult = supabaseCliConcurrentCompanionResult(
+    target,
+    status.report.pending,
+    diagnostics,
+    lines
+  );
+  if (supabaseCliConcurrentResult !== undefined) {
+    return supabaseCliConcurrentResult;
+  }
   const outcome = await runTargetRunner(options, config, target, status.report.pending);
   lines.push(`running: ${outcome.displayCommand ?? target.runner}`);
   const failure = runnerFailureResult(
@@ -851,6 +861,31 @@ async function runOneTarget(
   }
   lines.push(renderMigrationsStatus(finalStatus.report).trimEnd());
   return { applied: true, diagnostics, pending: [], report: render(lines) };
+}
+
+function supabaseCliConcurrentCompanionResult(
+  target: ResolvedSyncTarget,
+  pending: string[],
+  diagnostics: Diagnostic[],
+  lines: string[]
+): SyncResult | undefined {
+  const companion = pending.find(isConcurrentMigrationFile);
+  if (target.runner !== "supabase-cli" || companion === undefined) {
+    return;
+  }
+  diagnostics.push(
+    diagnostic(
+      "SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION",
+      "error",
+      `sync target ${target.name} uses the Supabase CLI runner, which cannot safely apply concurrent companion migration ${companion} because Supabase migration history keys versions by timestamp`,
+      {
+        file: companion,
+        hint: "Use the direct runner for this target, or apply the concurrent companion through an explicit out-of-transaction operational lane.",
+      }
+    )
+  );
+  lines.push(`refusing to sync ${target.name}: Supabase CLI cannot safely apply ${companion}`);
+  return { applied: false, diagnostics, pending, report: render(lines) };
 }
 
 function runTargetRunner(

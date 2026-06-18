@@ -80,6 +80,7 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_SYNC_REMOTE_APPROVAL_REQUIRED` | error | Automatic remote sync is missing its required runtime approval environment variable. |
 | `SUPA_SYNC_RUNNER_FAILED` | error | The selected migration runner launched or connected, then failed during sync. |
 | `SUPA_SYNC_RUNNER_UNAVAILABLE` | error | The selected migration runner could not be launched or connected. |
+| `SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION` | error | The Supabase CLI runner cannot safely apply a `.concurrent.sql` companion migration. |
 | `SUPA_SYNC_TARGET_OVERRIDE_MULTI` | error | A database URL or environment override was used while multiple sync targets were selected. |
 | `SUPA_SYNC_TARGET_UNKNOWN` | error | The selected named sync target is not configured. |
 | `SUPA_SYNC_TARGET_URL_UNRESOLVED` | error | The selected sync target's database URL could not be resolved. |
