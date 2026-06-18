@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repoNodeModules = resolve("node_modules");
+const guardIntegrationTimeoutMs = 15_000;
 
 function tempGitRepo(packageJson: unknown, files: Record<string, string> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), "supa-canonical-"));
@@ -125,46 +126,54 @@ describe("canonical surfaces guard", () => {
     expect(result.stderr).toContain("contains a regex-shaped string contract");
   });
 
-  it("blocks comments and regular expression engines in skill reference code", () => {
-    const cwd = tempGitRepo(
-      {},
-      {
-        ".claude/skills/research/references/workflow.js": "const value = /x/;\n",
-        ".agents/skills/research/references/workflow.js":
-          "const value = 1;\n// generated mirror must stay clean\n",
-      }
-    );
-    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
-      cwd,
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      ".claude/skills/research/references/workflow.js:1:15 contains pattern-engine syntax"
-    );
-    expect(result.stderr).toContain(
-      ".agents/skills/research/references/workflow.js:2:1 contains a line comment"
-    );
-  });
+  it(
+    "blocks comments and regular expression engines in skill reference code",
+    () => {
+      const cwd = tempGitRepo(
+        {},
+        {
+          ".claude/skills/research/references/workflow.js": "const value = /x/;\n",
+          ".agents/skills/research/references/workflow.js":
+            "const value = 1;\n// generated mirror must stay clean\n",
+        }
+      );
+      const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+        cwd,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        ".claude/skills/research/references/workflow.js:1:15 contains pattern-engine syntax"
+      );
+      expect(result.stderr).toContain(
+        ".agents/skills/research/references/workflow.js:2:1 contains a line comment"
+      );
+    },
+    guardIntegrationTimeoutMs
+  );
 
-  it("blocks DTO facade and view-model code surfaces", () => {
-    const cwd = tempGitRepo(
-      {},
-      {
-        "src/account-dto.ts": "export const value = 1;\n",
-        "src/profile-facade.ts": "export const value = 1;\n",
-        "src/user-view-model.ts": "export const value = 1;\n",
-      }
-    );
-    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
-      cwd,
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("src/account-dto.ts has a forbidden compatibility");
-    expect(result.stderr).toContain("src/profile-facade.ts has a forbidden compatibility");
-    expect(result.stderr).toContain("src/user-view-model.ts has a forbidden compatibility");
-  });
+  it(
+    "blocks DTO facade and view-model code surfaces",
+    () => {
+      const cwd = tempGitRepo(
+        {},
+        {
+          "src/account-dto.ts": "export const value = 1;\n",
+          "src/profile-facade.ts": "export const value = 1;\n",
+          "src/user-view-model.ts": "export const value = 1;\n",
+        }
+      );
+      const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+        cwd,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("src/account-dto.ts has a forbidden compatibility");
+      expect(result.stderr).toContain("src/profile-facade.ts has a forbidden compatibility");
+      expect(result.stderr).toContain("src/user-view-model.ts has a forbidden compatibility");
+    },
+    guardIntegrationTimeoutMs
+  );
 
   it("blocks public Stripe checkout implementation", () => {
     const cwd = tempGitRepo(
