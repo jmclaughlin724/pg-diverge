@@ -1,8 +1,11 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkAgentSurfaces, syncAgentSurfaces } from "../scripts/skills/sync-llm.mjs";
+
+const root = resolve(import.meta.dirname, "..");
 
 function tempSurface(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "supa-sync-llm-"));
@@ -76,5 +79,44 @@ describe("sync:llm", () => {
     expect(existsSync(join(root, "skills/elegant/SKILL.md"))).toBe(false);
     expect(existsSync(join(root, ".codex/rules/stale.rules"))).toBe(false);
     expect(checkAgentSurfaces({ root })).toEqual([]);
+  });
+
+  it("does not sync for read-only Bash commands that mention Claude surfaces", () => {
+    const project = tempSurface({
+      ".claude/agents/worker.md": [
+        "---",
+        "name: worker",
+        "description: Worker.",
+        "---",
+        "",
+        "# Worker",
+        "",
+      ].join("\n"),
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
+      ".claude/rules/supaschema.md": "# Rule\n",
+      ".claude/skills/supaschema/SKILL.md": "# Skill\n",
+      "package.json": `${JSON.stringify({
+        name: "supaschema",
+        scripts: { "sync:llm": 'node -e "process.exit(71)"' },
+      })}\n`,
+    });
+    const payload = {
+      cwd: project,
+      hook_event_name: "PostToolUse",
+      tool_input: { command: "sed -n '1,20p' .claude/rules/supaschema.md" },
+      tool_name: "Bash",
+    };
+
+    const output = execFileSync(
+      process.execPath,
+      [join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
+      {
+        encoding: "utf8",
+        env: { ...process.env, CODEX_PROJECT_DIR: project },
+        input: JSON.stringify(payload),
+      }
+    );
+
+    expect(output).toBe("{}\n");
   });
 });

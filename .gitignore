@@ -28,6 +28,7 @@ benchmarks/results
 # Private maintainer planning, operator, MCP, and deployment surfaces.
 advisor-plans/
 .planning/
+.github/workflows/python.yml
 .mcp.json
 .vscode/
 fastmcp.json

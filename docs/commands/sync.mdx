@@ -6,7 +6,7 @@ keywords: ["sync command", "migration sync", "apply gate", "migrations"]
 
 Use `sync` when you want a guarded migration apply path.
 
-Bare `sync` selects every configured `sync.targets.<name>` entry with `mode: "auto"`, reconciles history, checks pending migrations, runs deploy safety gates, then invokes each selected target's runner. Remote deploy uses the same selection rule; it also requires that target's approval variable before any mutation.
+Bare `sync` selects every configured `sync.targets.<name>` entry with `mode: "auto"`, reconciles history, checks pending migrations, runs deploy safety gates, then invokes each selected target's runner. When a selected target has a resolved database URL, the deploy type-safety gate compares that target's live PostgreSQL catalog with the declarative schema tree. Remote deploy uses the same selection rule; it also requires that target's approval variable before any mutation.
 
 ## Use this when
 

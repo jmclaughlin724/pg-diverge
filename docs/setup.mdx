@@ -48,14 +48,14 @@ Resolved installs do not create `.supaschema/` or supaschema-only credential fil
 
 ## Agent addendum
 
-Install updates `AGENTS.md` and `CLAUDE.md` only inside this managed block:
+Default install does not update `AGENTS.md` or `CLAUDE.md`. The optional AI-agent bundle updates `AGENTS.md` only inside this managed block:
 
 ```text
 <!-- supaschema:agent-guidance:start -->
 <!-- supaschema:agent-guidance:end -->
 ```
 
-Content outside the markers is preserved.
+Content outside the markers is preserved. `CLAUDE.md` stays a pointer entrypoint (`@AGENTS.md`) when the project uses `AGENTS.md` as the canonical brief.
 
 ## Check setup
 

@@ -364,6 +364,7 @@ describe("sync pipeline orchestration", () => {
       config: {
         sources: { from: before, to: after },
         workflow: {
+          migration_sync: "manual",
           rls_safety: "disabled",
           type_safety: "deploy_blocking",
         },
@@ -389,6 +390,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       config: {
         sources: { to: source },
         workflow: {
+          migration_sync: "manual",
           rls_safety: "deploy_blocking",
           type_safety: "disabled",
         },
@@ -630,6 +632,31 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       "SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION"
     );
     expect(result.report).toContain("Supabase CLI cannot safely apply");
+  });
+
+  it("checks pending migrations before dry-run deploy safety gates", async () => {
+    const before = await sqlSource("CREATE TABLE public.users (id bigint, email text);\n");
+    const after = await sqlSource("CREATE TABLE public.users (id bigint);\n");
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-check-before-type-gate-"));
+    await writeFile(join(root, "20260101000000_unsafe.sql"), "DROP TABLE public.users;\n");
+
+    const result = await syncMigrations({
+      config: {
+        sources: { from: before, to: after },
+        workflow: {
+          migration_sync: "manual",
+          rls_safety: "disabled",
+          type_safety: "deploy_blocking",
+        },
+      },
+      directory: root,
+      pipeline: true,
+      skipDiff: true,
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.diagnostics.map((item) => item.code)).not.toContain("SUPA_TYPE_COLUMN_REMOVED");
+    expect(result.report).toContain("fails the replay-safety check");
   });
 });
 
@@ -878,6 +905,57 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(false);
       expect(result.report).toContain("ghost or out-of-order");
+    } finally {
+      await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+      await admin.end();
+    }
+  });
+
+  it("runs deploy type safety from the selected target catalog", async () => {
+    const admin = new Client({ connectionString: databaseUrl });
+    await admin.connect();
+    const db = `supa_sync_type_catalog_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
+    await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${db}`);
+    const url = new URL(requiredDatabaseUrl());
+    url.pathname = `/${db}`;
+    try {
+      const target = new Client({ connectionString: url.toString() });
+      await target.connect();
+      await target.query("CREATE TABLE public.users (id bigint, email text)");
+      await target.end();
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-type-catalog-"));
+      await writeFile(join(root, "20260101000000_noop.sql"), "SELECT 1;\n");
+      const after = await sqlSource("CREATE TABLE public.users (id bigint);\n");
+
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: after },
+          sync: {
+            targets: {
+              local: {
+                databaseUrl: url.toString(),
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "direct",
+              },
+            },
+          },
+          workflow: {
+            rls_safety: "disabled",
+            type_safety: "deploy_blocking",
+          },
+        },
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+        target: "local",
+      });
+
+      expect(result.applied).toBe(false);
+      expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_TYPE_COLUMN_REMOVED");
+      expect(result.report).toContain("checked: 20260101000000_noop.sql (replay-safe)");
+      expect(result.report).toContain("refusing to sync local: deploy safety gates failed");
     } finally {
       await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
       await admin.end();

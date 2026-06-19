@@ -1,6 +1,14 @@
 ---
 name: supaschema
 description: Generate, check, and verify replay-safe PostgreSQL/Supabase migrations from declarative SQL tree diffs with supaschema. Use when schema changes are requested, migrations must be created or validated, schema drift needs detection, or a supaschema diagnostic (SUPA_*) blocks a plan.
+metadata:
+  keywords:
+    - supaschema
+    - schema migration
+    - database migration
+    - declarative SQL
+    - migration drift
+    - SUPA diagnostic
 ---
 
 # supaschema Migration Workflow
@@ -9,13 +17,13 @@ description: Generate, check, and verify replay-safe PostgreSQL/Supabase migrati
 
 This skill is a direct execution contract for producing schema migrations with supaschema. Follow the workflow in order; do not hand-author migration SQL for changes the declarative tree can express, and never edit a generated migration (the `-- supaschema: lineage` marker) by hand.
 
-When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`) and `workflow.schema_diff` / `workflow.migration_check` keep their defaults, a write to a schema-tree `.sql` file auto-runs steps 2–3 — `diff` then `check` — and returns the generated migration name, or the blocking `SUPA_*` diagnostic, as context. If `workflow.migration_sync` allows automatic sync, the hook first confirms every selected `sync.targets` entry is `mode: "auto"`, every database URL reference resolves, and any remote target has its configured approval variable set; only then does it delegate to `supaschema sync` for diff, generated outputs, type/RLS safety gates, apply, and target reconciliation. If `check` or `sync` fails, the hook emits loop-continuation feedback; inspect the diagnostic, identify the canonical root source in the declarative tree, config, or generated migration chain, search for similar or correlated migration failures, fix the canonical owner, and rerun the failing command. Read that context as the workflow result and act on any reported code.
+When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`) and `workflow.schema_diff` / `workflow.migration_check` keep their defaults, a write to a schema-tree `.sql` file auto-runs steps 2–3 — `diff` then `check <generated migration path...>` — and returns the generated migration name, or the blocking `SUPA_*` diagnostic, as context. If `workflow.migration_sync` allows automatic sync, the hook first confirms every selected `sync.targets` entry is `mode: "auto"`, every database URL reference resolves, and any remote target has its configured approval variable set; only then does it delegate to `supaschema sync` for diff, generated outputs, type/RLS safety gates, apply, and target reconciliation. If the generated-migration `check` or `sync` fails, the hook emits loop-continuation feedback; inspect the diagnostic, identify the canonical root source in the declarative tree, config, or generated migration chain, search for similar or correlated migration failures, fix the canonical owner, and rerun the failing command. Read that context as the workflow result and act on any reported code.
 
 ## Installed Setup
 
-The normal consumer setup is package install plus one explicit setup command through the consuming project's package manager. Read `.agents/prompts/supaschema-install.md` before installing, initializing, inspecting, or explaining setup. That prompt owns package-manager detection, workspace targeting, local runner commands, setup commands, and wrong-manager stop conditions. Treat `supaschema.config.json`, installed schema/migration directories, Claude/Codex rule and skill files, hook wiring, and tagged `AGENTS.md` / `CLAUDE.md` addenda as the package-owned setup surface. Run `supaschema init` through the matching local runner from the schema-owning package directory after install; it is idempotent, preserves existing hook entries, appends missing supaschema hook entries at the end of the relevant event array, and uses the package scaffold to refresh managed setup surfaces. The package scaffold installs the full supaschema skill directories directly into `.agents/skills/supaschema` and `.claude/skills/supaschema`; it does not invoke `npx skills`.
+The normal consumer setup is package install plus one explicit setup command through the consuming project's package manager. Default `supaschema init` writes only `supaschema.config.json`, configured schema directories, configured migration directories, and `.supaschema/install.json` when paths need confirmation. It does not write active `.agents`, `.claude`, `.codex`, `AGENTS.md`, or `CLAUDE.md` surfaces. The raw AI-agent bundle ships under `node_modules/supaschema/agent-bundle/`; read `agent-bundle/INSTALL.md` and install it only after the user asks for AI-agent enforcement or approves the bundle. Use `supaschema init --agent-bundle` only for that explicit opt-in path.
 
-If this skill was installed through `npx skills`, treat it as portable workflow context only. Agent Skills installs `SKILL.md`-based folders into a user-selected skill location; it does not create `supaschema.config.json`, schema/migration directories, passive rule files, hook scripts, or hook registration. To install those project enforcement surfaces, install the npm package with the consuming project's manager from the owning package directory, then run `supaschema init` through the same manager's local runner from that directory. The package scaffold installs the rule and hooks; the `npx skills` lane does not.
+If this skill was installed through `npx skills`, treat it as portable workflow context only. Agent Skills installs `SKILL.md`-based folders into a user-selected skill location; it does not create `supaschema.config.json`, schema/migration directories, passive rule files, hook scripts, or hook registration. To install project enforcement surfaces, install the npm package with the consuming project's manager from the owning package directory, review `node_modules/supaschema/agent-bundle/INSTALL.md`, then install the raw bundle on demand.
 
 Before the first schema edit, inspect `supaschema.config.json`. Normal resolved installs do not create `.supaschema/`; if `.supaschema/install.json` exists, treat it as pending path-confirmation state. If it says `"pathConfirmationNeeded": true`, inspect its candidate `schemaPaths` and `migrationsDirs`, ask the user which `schemaPaths`, `sources.to`, and `migrationsDir` to use, update `supaschema.config.json`, then run the workflow. Do not generate a migration from a guessed path; the bundled hooks also skip auto-diff until all three fields are explicit.
 
@@ -70,7 +78,7 @@ Other config fields refine those decisions: `managedSchemas` blocks externally o
 supaschema diff --fail-on-diff --quiet
 ```
 
-Exit 3 means the live database and the tree have diverged; exit 0 means parity. Use this as a CI gate (`docs/guides/ci-github-actions.md` has the full pipeline recipe).
+Exit 3 means the live database and the tree have diverged; exit 0 means parity. Use this as a CI gate and decode any blocking diagnostic with `supaschema explain <SUPA_CODE>`.
 
 When drift is large or blocked, triage before editing:
 
@@ -89,7 +97,7 @@ When drift is large or blocked, triage before editing:
 ## Boundaries
 
 - Sources for either side of a diff: `dir:<tree>`, `git:<ref>`, `database:<url|$ENV>`, `dump:<file.sql>`, `catalog:<snapshot.json>`.
-- Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) and enum reordering/removal are hand-authored migrations — validate them with `check` and `verify`; the enum recipe is in `docs/configuration/hints.md`.
+- Data statements (`INSERT`/`UPDATE`/`DELETE`/`DO`) and enum reordering/removal are hand-authored migrations — validate them with `check` and `verify`; decode blocking diagnostics with `supaschema explain <SUPA_CODE>`.
 - Keep `transactionMode: "per-migration"` for transactional runners; `CREATE INDEX CONCURRENTLY` is blocked in that mode and splits to a `.concurrent.sql` companion only under an explicit `transactionMode: "per-statement"` lane.
 - Database URL resolution for CLI commands is flag (`$ENV` supported) > named `config.environments` via global `--env` > `SUPASCHEMA_DATABASE_URL` > nearest `supabase/config.toml`.
 - `supaschema explain <SUPA_CODE>` decodes any diagnostic offline.

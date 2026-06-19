@@ -23,7 +23,7 @@ Install from the package or workspace that owns your schema workflow, not from a
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` | `yarn exec supaschema <cmd>` |
 | Bun | `bun add supaschema` | `bunx --no-install supaschema init` | `bunx --no-install supaschema <cmd>` |
 
-supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, hooks, and coding-agent bundle are part of the consuming repo's migration workflow.
+supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, and optional coding-agent bundle are part of the consuming repo's migration workflow.
 
 For workspaces, run both install and setup from the package directory that owns `supaschema.config.json` and the schema files. Dependency-targeting flags such as npm `--workspace`, pnpm `--filter`, or Yarn `workspace` can update the member manifest while setup still runs from the command's current directory. Use root-level workspace flags only when the workspace root owns the schema workflow.
 
@@ -47,11 +47,13 @@ Use the matching local runner for every command after install:
 - Yarn: `yarn exec supaschema <cmd>`
 - Bun: `bunx --no-install supaschema <cmd>`
 
-After install, run `<local-runner> init`. It uses the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths together with the packaged supaschema rule, skill, hook, config, and prompt bundle. Then read `.agents/prompts/supaschema-install.md` if it exists, inspect `supaschema.config.json`, and inspect `.supaschema/install.json` only when it exists for pending path confirmation. Then run:
+After install, run `<local-runner> init`. It uses the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths to create config and directories. It does not install active AI-agent rules, hooks, skills, settings, `AGENTS.md`, or `CLAUDE.md` by default. Inspect `supaschema.config.json`, and inspect `.supaschema/install.json` only when it exists for pending path confirmation. Then run:
 
 `<local-runner> --version` `<local-runner> config validate --json`
 
-Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, installed agent bundle surfaces, and whether path confirmation is still pending.
+Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, whether path confirmation is still pending, and that the raw AI-agent bundle is available at `node_modules/supaschema/agent-bundle/INSTALL.md` but not installed by default.
+
+Install AI-agent enforcement only if I explicitly ask for it. In that case, read `node_modules/supaschema/agent-bundle/INSTALL.md`, then run `<local-runner> init --agent-bundle` or manually merge the reviewed raw bundle files.
 
 Do not apply migrations to any database unless I explicitly ask for that or the configured apply policy allows it: `workflow.migration_sync` must permit sync, `sync.targets.<name>.mode` must select the target, and any remote approval variable must be set by the operator. For schema changes, edit the declarative schema tree and run `<local-runner> diff` or the configured `sync` workflow; treat generated migrations as build output.
 
@@ -64,7 +66,7 @@ Do not apply migrations to any database unless I explicitly ask for that or the 
 <local-runner> config validate
 ```
 
-Run setup explicitly through the matching local runner after install. It is idempotent, so it is safe to rerun when managed surfaces need repair:
+Run setup explicitly through the matching local runner after install. It is idempotent, so it is safe to rerun when config or directories need repair:
 
 ```bash
 <local-runner> init
@@ -90,7 +92,7 @@ Use named environments only when you need an additional named target. Do not cre
     Generate and check one migration.
   </Card>
   <Card title="Coding agents" icon="bot" href="/coding-agents">
-    See how installed agent context governs schema changes.
+    Review the optional raw agent bundle.
   </Card>
   <Card
     title="Configuration"

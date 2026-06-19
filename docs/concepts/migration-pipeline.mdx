@@ -76,7 +76,7 @@ In projects with the installed coding-agent hooks, schema-tree edits trigger `di
 
 ## Apply orchestration
 
-supaschema keeps generation and deployment as separate workflow stages, but `sync` is the built-in orchestration path. `diff` writes the migration; `sync` can generate or reuse pending SQL, refresh generated outputs, run deploy safety gates, reconcile each selected target, and apply through the configured runner.
+supaschema keeps generation and deployment as separate workflow stages, but `sync` is the built-in orchestration path. `diff` writes the migration; `sync` can generate or reuse pending SQL, refresh generated outputs, reconcile each selected target, check pending migrations, run deploy safety gates, and apply through the configured runner.
 
 For plain PostgreSQL and hosted PostgreSQL providers, `sync` can use the direct PostgreSQL runner when a target database URL is configured or passed explicitly. For Supabase projects, `sync` can use the Supabase CLI adapter. The installed default lets target config decide selection, so day-to-day apply is `supaschema sync` and every `sync.targets.<name>` entry with `mode: "auto"` is selected. Remote targets use the same `mode` rule and also require their approval environment variable. `--target <name>` is the explicit override path for one configured target.
 

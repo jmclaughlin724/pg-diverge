@@ -16,6 +16,9 @@ const codexGateCommand = "npm exec -- supaschema hook generated-migration-edit -
 const codexAutoDiffCommand = "npm exec -- supaschema hook schema-write";
 const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
 const codexGeneralGuardCommand = `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`;
+const codexToolGateCommand = 'node "$(git rev-parse --show-toplevel)/.codex/hooks/tool-gate.mjs"';
+const codexStopCommand = 'node "$(git rev-parse --show-toplevel)/.codex/hooks/stop.mjs"';
+const codexToolMatcher = ["Bash", "apply_patch", "Edit", "Write", "edit_file"].join("|");
 const codexMutationMatcher = ["Write", "Edit", "MultiEdit", "apply_patch"].join("|");
 const removedClaudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
 const legacyClaudeBashPolicyArgs = [
@@ -42,13 +45,14 @@ function shellParameter(expression: string): string {
 
 async function runScaffold(
   targetDir: string,
-  options: { packageRoot?: string; repair?: boolean } = {}
+  options: { installAgentBundle?: boolean; packageRoot?: string; repair?: boolean } = {}
 ): Promise<void> {
   const { scaffoldProject } = await import(
     pathToFileURL(join(process.cwd(), "bin/scaffold.mjs")).href
   );
   await scaffoldProject({
     interactive: false,
+    installAgentBundle: options.installAgentBundle === true,
     packageRoot: options.packageRoot ?? process.cwd(),
     packageVersion: "test",
     repair: options.repair === true,
@@ -100,7 +104,7 @@ describe("supabase database URL discovery", () => {
 });
 
 describe("init project setup", () => {
-  it("installs config and agent surfaces through explicit init setup", async () => {
+  it("installs config and directories without active agent surfaces by default", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-"));
 
     await runScaffold(consumer);
@@ -126,7 +130,7 @@ describe("init project setup", () => {
       ".codex/hooks.json",
       ".codex/rules/supaschema.rules",
     ]) {
-      expect(existsSync(join(consumer, file)), file).toBe(true);
+      expect(existsSync(join(consumer, file)), file).toBe(false);
     }
     expect(existsSync(join(consumer, ".claude/skills/gitnexus"))).toBe(false);
     for (const file of [
@@ -142,13 +146,27 @@ describe("init project setup", () => {
       expect(existsSync(join(consumer, file)), file).toBe(false);
     }
 
+    const prompt = await readFile(
+      join(process.cwd(), "agent-bundle/agents/prompts/supaschema-install.md"),
+      "utf8"
+    );
+    expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
+    expect(existsSync(join(consumer, "CLAUDE.md"))).toBe(false);
+    expect(prompt).toContain("raw AI-agent rules, hooks, skills, prompts, and settings");
+  });
+
+  it("installs agent surfaces only when explicitly requested", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-agent-bundle-"));
+
+    await runScaffold(consumer, { installAgentBundle: true });
+
     const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
     const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
     const prompt = await readFile(join(consumer, ".agents/prompts/supaschema-install.md"), "utf8");
     expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
     expect(agents).toContain("Schema intent belongs in `database/schemas`");
     expect(agents).toContain(".agents/prompts/supaschema-install.md");
-    expect(claude).toContain("<!-- supaschema:agent-guidance:start -->");
+    expect(claude).toBe("@AGENTS.md\n");
     expect(prompt).toContain("Do not clone `jmclaughlin724/supaschema`");
     expect(prompt).toContain("npm install supaschema");
     expect(prompt).toContain("pnpm add supaschema");
@@ -168,7 +186,7 @@ describe("init project setup", () => {
     expect(prompt).toContain("bunx --no-install supaschema <cmd>");
     expect(prompt).toContain("config validate --json");
 
-    await runScaffold(consumer);
+    await runScaffold(consumer, { installAgentBundle: true });
     const claudeSettings = JSON.parse(
       await readFile(join(consumer, ".claude/settings.json"), "utf8")
     );
@@ -184,6 +202,7 @@ describe("init project setup", () => {
     expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
     expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(2);
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
+    expect(blockCount(await readFile(join(consumer, "CLAUDE.md"), "utf8"))).toBe(0);
   });
 
   it("materializes hook commands with the detected package manager runner", async () => {
@@ -193,7 +212,7 @@ describe("init project setup", () => {
       `${JSON.stringify({ name: "db", packageManager: "pnpm@10.18.1", private: true })}\n`
     );
 
-    await runScaffold(consumer);
+    await runScaffold(consumer, { installAgentBundle: true });
 
     const claudeSettings = JSON.parse(
       await readFile(join(consumer, ".claude/settings.json"), "utf8")
@@ -212,6 +231,117 @@ describe("init project setup", () => {
     expect(commandCount(codexHooks, "pnpm exec supaschema hook schema-write")).toBe(1);
     expect(commandCount(codexHooks, "npm exec -- supaschema hook schema-write")).toBe(0);
     expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(0);
+  });
+
+  it("preserves existing Codex hook dispatchers and hook scripts", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-codex-dispatcher-"));
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({ name: "db", packageManager: "pnpm@10.18.1", private: true })}\n`
+    );
+    await writeNestedFile(join(consumer, ".codex/hooks/general-guard.mjs"), "custom guard\n");
+    await writeNestedFile(
+      join(consumer, ".codex/hooks.json"),
+      `${JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                {
+                  command: codexToolGateCommand,
+                  type: "command",
+                },
+              ],
+            },
+            {
+              matcher: codexToolMatcher,
+              hooks: [
+                {
+                  command: codexGeneralGuardCommand,
+                  type: "command",
+                },
+              ],
+            },
+            {
+              matcher: codexMutationMatcher,
+              hooks: [
+                {
+                  command:
+                    "npx --no-install supaschema hook generated-migration-edit --runtime codex",
+                  type: "command",
+                },
+              ],
+            },
+          ],
+          PostToolUse: [
+            {
+              hooks: [
+                {
+                  command: codexToolGateCommand,
+                  type: "command",
+                },
+              ],
+            },
+            {
+              matcher: codexToolMatcher,
+              hooks: [
+                {
+                  command: codexLlmSyncCommand,
+                  type: "command",
+                },
+              ],
+            },
+            {
+              matcher: codexMutationMatcher,
+              hooks: [
+                {
+                  command: "pnpm exec supaschema hook schema-write",
+                  type: "command",
+                },
+              ],
+            },
+          ],
+          Stop: [
+            {
+              hooks: [
+                {
+                  command: codexStopCommand,
+                  type: "command",
+                },
+              ],
+            },
+            {
+              hooks: [
+                {
+                  command: codexLlmSyncCommand,
+                  type: "command",
+                },
+              ],
+            },
+          ],
+        },
+      })}\n`
+    );
+
+    await runScaffold(consumer, { installAgentBundle: true });
+
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    expect(await readFile(join(consumer, ".codex/hooks/general-guard.mjs"), "utf8")).toBe(
+      "custom guard\n"
+    );
+    expect(commandCount(codexHooks, codexToolGateCommand)).toBe(2);
+    expect(commandCount(codexHooks, codexStopCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(0);
+    expect(commandCount(codexHooks, codexGateCommand)).toBe(0);
+    expect(
+      commandCount(
+        codexHooks,
+        "npx --no-install supaschema hook generated-migration-edit --runtime codex"
+      )
+    ).toBe(0);
+    expect(commandCount(codexHooks, "pnpm exec supaschema hook schema-write")).toBe(0);
+    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(0);
+    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(0);
   });
 
   it("sets pnpm build approval for supaschema when initializing a pnpm workspace member", async () => {
@@ -275,7 +405,7 @@ describe("init project setup", () => {
     );
     await writeFile(join(consumer, "package-lock.json"), '{"lockfileVersion":3}\n');
 
-    await runScaffold(consumer);
+    await runScaffold(consumer, { installAgentBundle: true });
 
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(commandCount(codexHooks, "npm exec -- supaschema hook schema-write")).toBe(1);
@@ -286,23 +416,23 @@ describe("init project setup", () => {
     const packageRoot = await mkdtemp(join(tmpdir(), "supa-package-root-"));
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-skills-"));
     await writeNestedFile(
-      join(packageRoot, ".agents/prompts/supaschema-install.md"),
+      join(packageRoot, "agent-bundle/agents/prompts/supaschema-install.md"),
       "install prompt\n"
     );
     await writeNestedFile(
-      join(packageRoot, ".agents/skills/supaschema/SKILL.md"),
+      join(packageRoot, "agent-bundle/agents/skills/supaschema/SKILL.md"),
       "shared skill\n"
     );
     await writeNestedFile(
-      join(packageRoot, ".agents/skills/supaschema/references/workflow.md"),
+      join(packageRoot, "agent-bundle/agents/skills/supaschema/references/workflow.md"),
       "shared reference\n"
     );
     await writeNestedFile(
-      join(packageRoot, ".claude/skills/supaschema/SKILL.md"),
+      join(packageRoot, "agent-bundle/claude/skills/supaschema/SKILL.md"),
       "claude skill\n"
     );
     await writeNestedFile(
-      join(packageRoot, ".claude/skills/supaschema/references/workflow.md"),
+      join(packageRoot, "agent-bundle/claude/skills/supaschema/references/workflow.md"),
       "claude reference\n"
     );
     await writeNestedFile(
@@ -317,6 +447,7 @@ describe("init project setup", () => {
 
     await scaffoldProject({
       interactive: false,
+      installAgentBundle: true,
       packageRoot,
       packageVersion: "test",
       targetDir: consumer,
@@ -352,6 +483,48 @@ describe("init project setup", () => {
     expect(existsSync(join(consumer, "supabase/schemas"))).toBe(true);
     expect(existsSync(join(consumer, "supabase/migrations"))).toBe(true);
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
+  });
+
+  it("requires path confirmation for Supabase bootstrap inventory trees", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-supabase-bootstrap-"));
+    await writeNestedFile(join(consumer, "supabase/config.toml"), "[db]\nport = 54322\n");
+    await writeNestedFile(
+      join(consumer, "supabase/schemas/_bootstrap/00_roles.sql"),
+      "create role app_runtime;\n"
+    );
+
+    await runScaffold(consumer);
+
+    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
+    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
+    expect(manifest.pathConfirmationNeeded).toBe(true);
+    expect(manifest.candidates.schemaPaths).toContain("supabase/schemas");
+    expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
+  });
+
+  it("requires path confirmation when a Supabase owner marks schemas as inventory", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-supabase-owner-inventory-"));
+    await writeNestedFile(join(consumer, "supabase/config.toml"), "[db]\nport = 54322\n");
+    await writeNestedFile(
+      join(consumer, "supabase/schemas/app/schema.sql"),
+      "create schema app;\n"
+    );
+    await writeNestedFile(
+      join(consumer, "supabase/AGENTS.md"),
+      [
+        "# Supabase",
+        "",
+        "`supabase/schemas/**` is the existing schema-source and contract-inventory surface while it remains in the repo; it is not the routine migration generator input.",
+        "",
+      ].join("\n")
+    );
+
+    await runScaffold(consumer);
+
+    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
+    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
+    expect(manifest.pathConfirmationNeeded).toBe(true);
+    expect(manifest.candidates.schemaPaths).toContain("supabase/schemas");
   });
 
   it("reuses existing database URL env names for generic PostgreSQL sync targets", async () => {
@@ -569,7 +742,7 @@ describe("init project setup", () => {
         },
       })}\n`
     );
-    await runScaffold(consumer);
+    await runScaffold(consumer, { installAgentBundle: true });
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
       '{"adapter":"auto"}\n'
     );
@@ -578,8 +751,7 @@ describe("init project setup", () => {
     const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
     expect(agents).toContain("# Existing agents");
     expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
-    expect(claude).toContain("@AGENTS.md");
-    expect(claude).toContain("<!-- supaschema:agent-guidance:start -->");
+    expect(claude).toBe("@AGENTS.md\n");
 
     const claudeSettings = JSON.parse(
       await readFile(join(consumer, ".claude/settings.json"), "utf8")
@@ -618,6 +790,47 @@ describe("init project setup", () => {
     ).toBe(1);
     expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(1);
     expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(2);
+  });
+
+  it("installs Anilize-compatible context surfaces without active CLAUDE policy or retired backups", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-anilize-context-"));
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({ name: "anilize-like", packageManager: "pnpm@11.1.2", private: true })}\n`
+    );
+    await writeNestedFile(join(consumer, "CLAUDE.md"), "@AGENTS.md\n");
+    await writeNestedFile(join(consumer, "AGENTS.md"), "# Consumer brief\n\nKeep this.\n");
+    await writeNestedFile(join(consumer, "supabase/config.toml"), "[db]\nport = 54322\n");
+    await writeNestedFile(
+      join(consumer, "supabase/schemas/_bootstrap/00_roles.sql"),
+      "create role app_runtime;\n"
+    );
+    await writeNestedFile(join(consumer, ".agents/skills.__backup_20260619T040853/old.md"), "old");
+    await writeNestedFile(join(consumer, ".codex/rules.__backup_20260619T040927/old.rules"), "old");
+
+    await runScaffold(consumer, { installAgentBundle: true });
+
+    const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
+    const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
+    const rule = await readFile(join(consumer, ".claude/rules/supaschema.md"), "utf8");
+    const skill = await readFile(join(consumer, ".claude/skills/supaschema/SKILL.md"), "utf8");
+
+    expect(agents).toContain("# Consumer brief");
+    expect(agents).toContain("Path confirmation is pending");
+    expect(claude).toBe("@AGENTS.md\n");
+    expect(rule).toContain("enforcement:\n  type: enforced\n  bindings:");
+    expect(rule).toContain("paths:\n  - supaschema.config.json");
+    expect(skill).toContain("metadata:\n  keywords:");
+    for (const brokenReference of [
+      "docs/configuration/hints.mdx",
+      "docs/guides/ci-github-actions.md",
+      "docs/configuration/hints.md",
+    ]) {
+      expect(rule).not.toContain(brokenReference);
+      expect(skill).not.toContain(brokenReference);
+    }
+    expect(existsSync(join(consumer, ".agents/skills.__backup_20260619T040853"))).toBe(false);
+    expect(existsSync(join(consumer, ".codex/rules.__backup_20260619T040927"))).toBe(false);
   });
 
   it("repairs removed migration_sync scaffold values to the canonical policy", async () => {
@@ -692,10 +905,7 @@ describe("init project setup", () => {
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
     expect(manifest.pathConfirmationNeeded).toBe(true);
     expect(manifest.candidates.schemaPaths).toEqual(["apps/api/schemas", "packages/db/schemas"]);
-
-    const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
-    expect(agents).toContain("Path confirmation is pending");
-    expect(agents).toContain(".supaschema/install.json");
+    expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
   });
 
   it("runs from the packed npm tarball with all required installer inputs", {
@@ -722,22 +932,28 @@ describe("init project setup", () => {
     ]) {
       expect(existsSync(join(extractDir, "package", file)), file).toBe(false);
     }
+    for (const file of [
+      "agent-bundle/INSTALL.md",
+      "agent-bundle/agents/prompts/supaschema-install.md",
+      "agent-bundle/claude/settings.npm.json",
+      "agent-bundle/codex/hooks.npm.json",
+    ]) {
+      expect(existsSync(join(extractDir, "package", file)), file).toBe(true);
+    }
     await runScaffold(consumer, { packageRoot: join(extractDir, "package") });
 
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(true);
-    expect(existsSync(join(consumer, ".agents/prompts/supaschema-install.md"))).toBe(true);
-    expect(existsSync(join(consumer, ".agents/skills/supaschema/SKILL.md"))).toBe(true);
-    expect(existsSync(join(consumer, ".claude/rules/supaschema.md"))).toBe(true);
-    expect(existsSync(join(consumer, ".codex/hooks.json"))).toBe(true);
+    expect(existsSync(join(consumer, ".agents/prompts/supaschema-install.md"))).toBe(false);
+    expect(existsSync(join(consumer, ".agents/skills/supaschema/SKILL.md"))).toBe(false);
+    expect(existsSync(join(consumer, ".claude/rules/supaschema.md"))).toBe(false);
+    expect(existsSync(join(consumer, ".codex/hooks.json"))).toBe(false);
     expect(existsSync(join(consumer, ".vscode/settings.json"))).toBe(false);
     expect(existsSync(join(consumer, ".mcp.json"))).toBe(false);
     expect(existsSync(join(consumer, ".claude/cclsp.json"))).toBe(false);
     expect(existsSync(join(consumer, "postgres-language-server.jsonc"))).toBe(false);
     expect(existsSync(join(consumer, "pyproject.toml"))).toBe(false);
     expect(existsSync(join(consumer, "components.json"))).toBe(false);
-    expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
-      "<!-- supaschema:agent-guidance:start -->"
-    );
+    expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
   });
 
   it("does not create install state on a no-op resolved re-install", async () => {
@@ -764,9 +980,7 @@ describe("init project setup", () => {
     await runScaffold(consumer);
 
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe("{}\n");
-    expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
-      "Schema intent belongs in `database/schemas`"
-    );
+    expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
     expect(existsSync(join(consumer, "database/schemas"))).toBe(true);
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
@@ -780,9 +994,7 @@ describe("init project setup", () => {
 
     await runScaffold(consumer);
 
-    expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toContain(
-      "Schema intent belongs in `database/schemas`"
-    );
+    expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
     expect(existsSync(join(consumer, "db/sql"))).toBe(false);
     expect(existsSync(join(consumer, "db/changes"))).toBe(false);
     expect(existsSync(join(consumer, "database/schemas"))).toBe(true);

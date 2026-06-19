@@ -19,10 +19,16 @@ assert(
 assert(!exists("biome.json"), "Biome config must be biome.jsonc");
 assert(exists("biome.jsonc"), "missing biome.jsonc");
 assert(Array.isArray(packageJson.files), "package.json must define a files allowlist");
+assert(
+  exists("scripts/cclsp-language-id-proxy.mjs"),
+  "cclsp language-id proxy must exist for .mjs/.cjs TypeScript LSP support"
+);
 const complexityCapIncludes = [
   "benchmarks/compare.js",
   "benchmarks/plot-svg.js",
   "scripts/check-docs-standard.mjs",
+  "scripts/code-atlas/build.mjs",
+  "scripts/code-atlas/query.mjs",
   "src/catalog-foreign.ts",
   "src/check.ts",
   "src/cli-diff.ts",
@@ -81,8 +87,8 @@ assert(
 );
 assert(
   packageJson.scripts?.format ===
-    "npm run format:json && ultracite fix . && npm run format:md && npm run format:toml && npm run format:sh",
-  "format must be the single write command chaining every writer: sort-package-json (format:json), Ultracite (Biome), Prettier (format:md), taplo (format:toml), and shfmt (format:sh)"
+    "npm run format:json && ultracite fix . && npm run format:md && npm run format:toml && npm run format:sh && npm run py:fix",
+  "format must be the single write command chaining every writer: sort-package-json (format:json), Ultracite (Biome), Prettier (format:md), taplo (format:toml), shfmt (format:sh), and ruff (py:fix)"
 );
 assert(
   packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{md,mdx,yml,yaml}"',
@@ -100,6 +106,11 @@ assert(
 assert(
   packageJson.scripts?.["format:json"] === "sort-package-json",
   "format:json must run sort-package-json for canonical package.json key order"
+);
+assert(
+  packageJson.scripts?.["py:fix"] ===
+    "uv run --package supaschema-agent-mcp ruff check --fix services/agent-mcp && uv run --package supaschema-agent-mcp ruff format services/agent-mcp",
+  "py:fix must run ruff --fix then ruff format"
 );
 assert(!("lint:fix" in packageJson.scripts), "format must be the only repo-wide write/fix script");
 assert(
@@ -129,6 +140,10 @@ assert(
   'biome.jsonc must not duplicate Ultracite core\'s "**" include'
 );
 assert(
+  biome.files?.includes?.includes("!agent-bundle"),
+  "biome.jsonc must exclude generated agent-bundle files; npm run sync:llm:check owns that mirror"
+);
+assert(
   biome.linter?.rules?.correctness?.useImportExtensions?.level === "error",
   "Biome must enforce runtime import extensions"
 );
@@ -141,6 +156,7 @@ assertNoDisabledBiomeRules(biome.linter?.rules ?? {});
 assertBiomeOverrides(biome.overrides ?? []);
 assertAgentPackageSurface(packageJson.files ?? []);
 assertRuntimePackageSurface(packageJson.files ?? []);
+assertCclspProxyWiring(readJson(".claude/cclsp.json"));
 
 for (const file of gitFiles().filter(
   (candidate) => candidate.endsWith(".ts") && exists(candidate)
@@ -241,19 +257,7 @@ function propertyName(name) {
 }
 
 function assertAgentPackageSurface(files) {
-  const allowedAgentFiles = new Set([
-    ".agents/prompts/supaschema-install.md",
-    ".agents/skills/supaschema",
-    ".claude/hooks/guards/bash-policy-checks.mjs",
-    ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-    ".claude/rules/supaschema.md",
-    ".claude/skills/supaschema",
-    ".codex/hooks/general-guard.mjs",
-    ".codex/hooks/guards/bash-policy-checks.mjs",
-    ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-    ".codex/hooks.json",
-    ".codex/rules/supaschema.rules",
-  ]);
+  assert(files.includes("agent-bundle"), "package.json must publish raw agent-bundle files");
 
   for (const file of files) {
     const isAgentSurface =
@@ -261,16 +265,7 @@ function assertAgentPackageSurface(files) {
       file.startsWith(".agents/") ||
       file.startsWith(".claude/") ||
       file.startsWith(".codex/");
-    if (isAgentSurface) {
-      assert(
-        allowedAgentFiles.has(file),
-        `package.json must not publish non-Supaschema agent surface ${file}`
-      );
-    }
-  }
-
-  for (const file of allowedAgentFiles) {
-    assert(files.includes(file), `package.json must publish ${file}`);
+    assert(!isAgentSurface, `package.json must not publish active agent surface ${file}`);
   }
 }
 
@@ -351,6 +346,15 @@ function assertBiomeOverrides(overrides) {
   }
 
   assert(foundComplexityCap, "biome.jsonc must preserve the approved complexity migration cap");
+}
+
+function assertCclspProxyWiring(config) {
+  const javascriptServer = config.servers?.find((server) => server.extensions?.includes("mjs"));
+  assert(javascriptServer, ".claude/cclsp.json must map .mjs files");
+  assert(
+    javascriptServer.command?.includes("scripts/cclsp-language-id-proxy.mjs"),
+    ".claude/cclsp.json must route JS-family LSP through cclsp-language-id-proxy.mjs"
+  );
 }
 
 function sameStringSet(left, right) {

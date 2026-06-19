@@ -42,6 +42,7 @@ interface GlobalOptions {
   quiet?: boolean;
 }
 interface InitOptions {
+  agentBundle?: boolean;
   dryRun?: boolean;
   json?: boolean;
   repair?: boolean;
@@ -84,11 +85,12 @@ Exit codes:
 program
   .command("init")
   .description(
-    "Scaffold the full supaschema setup in the current directory — config, schema/migration directories, agent rules/skills/hooks, and AGENTS/CLAUDE guidance. Run it through the consuming project's package-manager local runner after package install. It is idempotent: an existing config is left untouched and the managed guidance block is upserted in place."
+    "Scaffold supaschema config plus schema/migration directories in the current directory. Agent rules, skills, hooks, and settings stay in the packaged raw agent bundle unless --agent-bundle is explicitly passed."
   )
   .option("--dry-run", "print the scaffold/repair plan without writing files")
   .option("--json", "print the init result as redacted JSON")
   .option("--repair", "rewrite supaschema.config.json from the canonical contract when needed")
+  .option("--agent-bundle", "install the reviewed AI-agent rule, skill, hook, and settings bundle")
   .action(async (options: InitOptions) => {
     const packageRoot = fileURLToPath(new URL("../", import.meta.url));
     const packageVersion = await readPackageVersion();
@@ -98,6 +100,7 @@ program
     const result = await scaffoldProject({
       dryRun: options.dryRun === true,
       interactive: true,
+      installAgentBundle: options.agentBundle === true,
       packageRoot,
       packageVersion,
       repair: options.repair === true,
@@ -107,10 +110,23 @@ program
       process.stdout.write(`${JSON.stringify(redactJson(result), null, 2)}\n`);
       return;
     }
-    const { installed, pathConfirmationNeeded, skipped } = result;
+    const { agentBundle, installed, pathConfirmationNeeded, preserved = [], skipped } = result;
     const verb = options.dryRun === true ? "would install" : "installed";
-    const suffix = skipped.length > 0 ? `; skipped ${skipped.join(", ")}` : "";
-    process.stdout.write(`supaschema: ${verb} ${installed.join(", ")}${suffix}\n`);
+    const details = [
+      preserved.length > 0 ? `preserved existing ${preserved.join(", ")}` : undefined,
+      skipped.length > 0 ? `skipped ${skipped.join(", ")}` : undefined,
+    ].filter((detail): detail is string => detail !== undefined);
+    const suffix = details.length > 0 ? `; ${details.join("; ")}` : "";
+    let status = options.dryRun === true ? "would make no changes" : "no changes";
+    if (installed.length > 0) {
+      status = `${verb} ${installed.join(", ")}`;
+    }
+    process.stdout.write(`supaschema: ${status}${suffix}\n`);
+    if (agentBundle?.installed !== true) {
+      process.stdout.write(
+        `supaschema: agent bundle not installed by default; review ${agentBundle?.instructions ?? "node_modules/supaschema/agent-bundle/INSTALL.md"} before installing it on demand\n`
+      );
+    }
     if (pathConfirmationNeeded) {
       process.stdout.write(
         "supaschema: confirm detected schema/migration paths in .supaschema/install.json before the first diff\n"

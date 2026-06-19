@@ -6,9 +6,10 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  activeAgentFiles,
   excludedMaintainerFiles,
   expectedInstalledConfig,
-  installedAgentFiles,
+  rawAgentBundleFiles,
 } from "./install-parity-expectations.js";
 import {
   expectedMigrationFragments,
@@ -317,7 +318,10 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
 
     const config = JSON.parse(readFileSync(join(pnpmConsumer, "supaschema.config.json"), "utf8"));
     expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
-    for (const file of installedAgentFiles) {
+    for (const file of activeAgentFiles) {
+      expect(existsSync(join(pnpmConsumer, file)), file).toBe(false);
+    }
+    for (const file of rawAgentBundleFiles) {
       expect(existsSync(join(pnpmConsumer, file)), file).toBe(true);
     }
     expect(existsSync(join(pnpmConsumer, ".supaschema"))).toBe(false);
@@ -401,7 +405,7 @@ describe.skipIf(!bunAvailable)("consumer lifecycle: Bun workspace member setup",
   }, 300_000);
 });
 
-describe("consumer lifecycle: package install then supaschema init reaches full setup", () => {
+describe("consumer lifecycle: package install then supaschema init reaches config setup", () => {
   it("package install does not scaffold but still ships the CLI and shared scaffolder", () => {
     expect(existsSync(join(consumer2, "supaschema.config.json"))).toBe(false);
     expect(existsSync(join(consumer2, ".supaschema", "install.json"))).toBe(false);
@@ -415,7 +419,7 @@ describe("consumer lifecycle: package install then supaschema init reaches full 
     );
   });
 
-  it("supaschema init scaffolds the full setup idempotently", async () => {
+  it("supaschema init scaffolds config without active agent surfaces by default", async () => {
     const first = await capture(process.execPath, [binPath2, "init"], consumer2);
     expect(first.code, first.stderr).toBe(0);
 
@@ -423,21 +427,66 @@ describe("consumer lifecycle: package install then supaschema init reaches full 
     expect(config).toEqual(expectedInstalledConfig("database/schemas", "database/migrations"));
     expect(existsSync(join(consumer2, "database", "schemas"))).toBe(true);
     expect(existsSync(join(consumer2, "database", "migrations"))).toBe(true);
-    for (const file of installedAgentFiles) {
+    for (const file of activeAgentFiles) {
+      expect(existsSync(join(consumer2, file)), file).toBe(false);
+    }
+    for (const file of rawAgentBundleFiles) {
       expect(existsSync(join(consumer2, file)), file).toBe(true);
     }
     for (const file of excludedMaintainerFiles) {
       expect(existsSync(join(consumer2, file)), file).toBe(false);
     }
     expect(existsSync(join(consumer2, ".supaschema"))).toBe(false);
-    const agents = await readFile(join(consumer2, "AGENTS.md"), "utf8");
-    expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
-    expect(agents).toContain("Schema intent belongs in `database/schemas`");
+    expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
+    expect(first.stdout).toContain("agent bundle not installed by default");
 
     const second = await capture(process.execPath, [binPath2, "init"], consumer2);
     expect(second.code, second.stderr).toBe(0);
-    const agentsAfter = await readFile(join(consumer2, "AGENTS.md"), "utf8");
-    expect(agentsAfter.split("<!-- supaschema:agent-guidance:start -->")).toHaveLength(2);
+    expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
+  });
+
+  it("supaschema init --agent-bundle installs reviewed agent surfaces on demand", async () => {
+    const bundleConsumer = await mkdtemp(join(tmpdir(), "supa-consumer-agent-bundle-"));
+    await writeFile(
+      join(bundleConsumer, "package.json"),
+      `${JSON.stringify({ name: "supaschema-agent-bundle-fixture", private: true, version: "0.0.0" })}\n`
+    );
+    const installOnly = npmExec([
+      "install",
+      tarballPath,
+      "--prefer-offline",
+      "--no-audit",
+      "--no-fund",
+    ]);
+    await run(installOnly.file, installOnly.args, {
+      cwd: bundleConsumer,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    const bundleBinPath = installedPackageBinPath(bundleConsumer);
+
+    const result = await capture(
+      process.execPath,
+      [bundleBinPath, "init", "--agent-bundle"],
+      bundleConsumer
+    );
+    expect(result.code, result.stderr).toBe(0);
+
+    for (const file of activeAgentFiles) {
+      expect(existsSync(join(bundleConsumer, file)), file).toBe(true);
+    }
+    const agents = await readFile(join(bundleConsumer, "AGENTS.md"), "utf8");
+    expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
+    expect(agents).toContain("Schema intent belongs in `database/schemas`");
+
+    const repeat = await capture(
+      process.execPath,
+      [bundleBinPath, "init", "--agent-bundle"],
+      bundleConsumer
+    );
+    expect(repeat.code, repeat.stderr).toBe(0);
+    expect(repeat.stdout).toContain("supaschema: no changes");
+    expect(repeat.stdout).not.toContain("installed agent files");
+    expect(repeat.stdout).not.toContain("hook wiring");
   });
 
   it("generates an accurate migration and types after init, via the installed CLI", {

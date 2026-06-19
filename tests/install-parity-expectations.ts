@@ -102,7 +102,7 @@ export function expectedInstalledConfig(
   };
 }
 
-export const installedAgentFiles = [
+export const activeAgentFiles = [
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema/SKILL.md",
   ".claude/hooks/guards/bash-policy-checks.mjs",
@@ -115,6 +115,16 @@ export const installedAgentFiles = [
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks.json",
   ".codex/rules/supaschema.rules",
+];
+
+export const rawAgentBundleFiles = [
+  "node_modules/supaschema/agent-bundle/INSTALL.md",
+  "node_modules/supaschema/agent-bundle/agents/prompts/supaschema-install.md",
+  "node_modules/supaschema/agent-bundle/agents/skills/supaschema/SKILL.md",
+  "node_modules/supaschema/agent-bundle/claude/rules/supaschema.md",
+  "node_modules/supaschema/agent-bundle/claude/settings.npm.json",
+  "node_modules/supaschema/agent-bundle/codex/hooks.npm.json",
+  "node_modules/supaschema/agent-bundle/codex/rules/supaschema.rules",
 ];
 
 export const excludedMaintainerFiles = [

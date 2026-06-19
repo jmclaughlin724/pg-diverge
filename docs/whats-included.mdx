@@ -11,7 +11,7 @@ keywords:
 
 Use this page to see the package surfaces at a glance.
 
-supaschema is packaged as a PostgreSQL project workflow, not just a binary. Installing it gives your repo the generator, safety checks, generated outputs, and public-safe agent context needed to keep declarative schema changes repeatable across plain PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, and Supabase.
+supaschema is packaged as a PostgreSQL project workflow, not just a binary. Installing it gives your repo the generator, safety checks, generated outputs, and a raw public-safe agent bundle for optional review and installation. The workflow keeps declarative schema changes repeatable across plain PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, and Supabase.
 
 ## Core workflow
 
@@ -91,8 +91,8 @@ supaschema is packaged as a PostgreSQL project workflow, not just a binary. Inst
     icon="bot"
     href="/coding-agents/agent-bundle"
   >
-    Public-safe prompt, rule, skill, and hooks for AI agents working in the
-    consuming repo.
+    Raw public-safe prompt, rule, skill, settings, and hooks for optional
+    AI-agent enforcement in the consuming repo.
   </Card>
   <Card title="GitHub Actions" icon="github" href="/guides/ci-github-actions">
     A ready CI lane for drift, safety, package, docs, corpus, and benchmark
@@ -108,7 +108,11 @@ supaschema is packaged as a PostgreSQL project workflow, not just a binary. Inst
   <Card title="Schema safety scan" icon="shield-alert" href="/commands/scan">
     Scores RLS, grant, and hygiene findings without connecting to a database.
   </Card>
-  <Card title="Type-contract gate" icon="file-warning" href="/commands/type-contract">
+  <Card
+    title="Type-contract gate"
+    icon="file-warning"
+    href="/commands/type-contract"
+  >
     Reports breaking generated TypeScript/Zod contract changes, with licensed
     standalone enforcement.
   </Card>

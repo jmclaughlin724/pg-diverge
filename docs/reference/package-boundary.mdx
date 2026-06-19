@@ -54,21 +54,23 @@ npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/sup
 
 Do not advertise the repository root as the Skills source. The Skills CLI scans standard agent skill directories, including `.agents/skills` and `.claude/skills`; this repository uses those locations for maintainer mirrors while developing supaschema itself.
 
-That command does not install hooks or rules. Agent Skills are `SKILL.md` folders with optional scripts, references, and assets; the supaschema rule and hooks need project files and Claude/Codex hook registration. Those surfaces are installed by adding `supaschema` with the consuming project's package manager, then running `init` through the same manager's local runner. Package install does not invoke the Skills CLI; the scaffold copies the packaged supaschema skill directories directly into `.agents/skills/supaschema` and `.claude/skills/supaschema`.
+That command does not install hooks or rules. Agent Skills are `SKILL.md` folders with optional scripts, references, and assets; the supaschema rule and hooks need project files and Claude/Codex hook registration. Those surfaces ship as raw files under `node_modules/supaschema/agent-bundle/` and are installed only after the user approves AI-agent enforcement. Package install and default `supaschema init` do not invoke the Skills CLI and do not copy active `.agents`, `.claude`, or `.codex` surfaces.
 
 ## Consumer setup
 
 `supaschema init` owns setup for consuming projects after package install. The install contents list lives in [What's included](/whats-included); keep it there instead of duplicating it across release and packaging references.
 
-The `supaschema init` command performs this setup through `bin/scaffold.mjs` (a dist-free module that ships in the `bin` allowlist entry). Run it through the consuming package manager's local runner from the package directory that owns the schema workflow. The command is idempotent, so it is also the repair path when a previous setup needs managed surfaces refreshed. The shared scaffold creates `supaschema.config.json` from the generated config contract when it is absent, rewrites it only for explicit repair, and records unresolved path confirmation in `.supaschema/install.json` only when detected paths still need human confirmation. Resolved installs do not create `.supaschema/`; durable project defaults belong in `supaschema.config.json`.
+The `supaschema init` command performs this setup through `bin/scaffold.mjs` (a dist-free module that ships in the `bin` allowlist entry). Run it through the consuming package manager's local runner from the package directory that owns the schema workflow. The command is idempotent, so it is also the repair path when config needs refresh. The shared scaffold creates `supaschema.config.json` from the generated config contract when it is absent, rewrites it only for explicit repair, and records unresolved path confirmation in `.supaschema/install.json` only when detected paths still need human confirmation. Resolved installs do not create `.supaschema/`; durable project defaults belong in `supaschema.config.json`.
 
-The same scaffold copies the shared agent install prompt into `.agents/prompts/supaschema-install.md` and upserts `AGENTS.md` / `CLAUDE.md` managed addenda that point agents to that prompt before setup or schema work.
+The same scaffold installs no active agent surfaces by default. The raw AI-agent bundle remains available under `agent-bundle/` in the package and can be installed on demand with `supaschema init --agent-bundle` after review.
 
 Do not copy maintainer workspace tooling into consumer projects unless the consumer contract explicitly changes and package tests are updated at the same time.
 
 ## Maintainer workspace
 
 Repo-local editor, language-server, Python, MCP, Code Atlas, FastMCP, lint, test, guard, and release tooling is for developing supaschema itself.
+
+The private Python/FastMCP workflow, when present locally as `.github/workflows/python.yml`, stays untracked with the private FastMCP service. Public GitHub Actions workflows must not require ignored maintainer-only service files that are absent from a clean checkout.
 
 These files stay out of the package allowlist unless they become runtime product assets or consumer install outputs. If any of them are not public-safe, they must be moved to a private repository or intentionally untracked local path before the public repository is pushed.
 

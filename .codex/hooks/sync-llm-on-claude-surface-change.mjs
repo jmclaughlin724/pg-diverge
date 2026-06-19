@@ -30,9 +30,7 @@ try {
   const currentDigest = claudeSurfaceDigest(projectDir);
   const previousDigest = readSyncedDigest(projectDir);
   const targets = editTargets(payload, projectDir);
-  const explicitClaudeChange =
-    targets.some((target) => isClaudeSyncSurface(projectDir, target)) ||
-    commandMentionsClaudeSurface(payload);
+  const explicitClaudeChange = targets.some((target) => isClaudeSyncSurface(projectDir, target));
   const changedSinceLastSync = previousDigest !== undefined && previousDigest !== currentDigest;
   const syncAvailable = hasSyncScript(projectDir);
 
@@ -135,14 +133,6 @@ function patchTargets(patchText, projectDir) {
     }
   }
   return targets;
-}
-
-function commandMentionsClaudeSurface(payload) {
-  return toolPayloads(payload).some((toolPayload) => {
-    const input = toolInputOf(toolPayload);
-    const command = typeof input.command === "string" ? input.command : "";
-    return syncSurfaces.some((surface) => command.includes(`${surface}/`));
-  });
 }
 
 function isClaudeSyncSurface(projectDir, target) {

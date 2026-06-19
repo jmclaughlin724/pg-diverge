@@ -257,7 +257,7 @@ export function schemaWriteHookOutput(payload: unknown): AgentHookOutput | undef
             .map((path) => rel(projectDir, path))
             .join(
               ", "
-            )} through \`supaschema sync\`. ${autoSync.line}. The sync pipeline generated the schema diff, refreshed generated outputs per config, ran type/RLS safety gates, applied configured targets, and reconciled target migration history.`
+            )} through \`supaschema sync\`. ${autoSync.line}. The sync pipeline generated the schema diff, refreshed generated outputs per config, reconciled target migration history, checked pending migrations, ran type/RLS safety gates, and applied configured targets.`
         : `supaschema auto-sync for ${changed
             .map((path) => rel(projectDir, path))
             .join(", ")} did not complete (exit ${sync.code}):\n${diagnostics}`;
@@ -292,7 +292,7 @@ export function schemaWriteHookOutput(payload: unknown): AgentHookOutput | undef
         )} changed but produces no net schema change versus the current state; no migration written.`
     );
   }
-  const checkResult = runConfiguredHookCheck(bin, projectDir, pathState.workflow);
+  const checkResult = runConfiguredHookCheck(bin, projectDir, pathState.workflow, written);
   const verifyLine = runConfiguredHookVerify(
     bin,
     projectDir,
@@ -355,21 +355,14 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   if (disabledResult !== undefined) {
     return disabledResult;
   }
-  const pipelineLines: string[] = [];
-  if (options.pipeline === true) {
-    const pipelineResult = await runPipelineStages(options, config, diagnostics, pipelineLines);
-    if (pipelineResult !== undefined) {
-      return pipelineResult;
-    }
-    const targetResult = await runConfiguredTargets(options, config, diagnostics, pipelineLines);
-    if (targetResult !== undefined) {
-      return targetResult;
-    }
+  const prelude = await runSyncPipelinePrelude(options, config, diagnostics);
+  if (prelude.result !== undefined) {
+    return prelude.result;
   }
   const selectedRunner = options.runner ?? "supabase-cli";
   const status = await loadSyncStatus(options, selectedRunner);
   diagnostics.push(...status.diagnostics);
-  const lines: string[] = [...pipelineLines, renderMigrationsStatus(status.report).trimEnd()];
+  const lines: string[] = [...prelude.lines, renderMigrationsStatus(status.report).trimEnd()];
   if (hasErrors(status.diagnostics)) {
     lines.push("refusing to sync: resolve ghost or out-of-order history first");
     return {
@@ -380,6 +373,14 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
     };
   }
   if (status.report.pending.length === 0) {
+    if (prelude.sources !== undefined) {
+      const gateResult = await runSyncSafetyGates(config, prelude.sources, diagnostics, lines, {
+        pending: status.report.pending,
+      });
+      if (gateResult !== undefined) {
+        return gateResult;
+      }
+    }
     lines.push("nothing to sync: disk and target history match");
     return { applied: false, diagnostics, pending: [], report: render(lines) };
   }
@@ -394,6 +395,14 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
     return checkResult;
   }
   if (options.target === undefined) {
+    if (prelude.sources !== undefined) {
+      const gateResult = await runSyncSafetyGates(config, prelude.sources, diagnostics, lines, {
+        pending: status.report.pending,
+      });
+      if (gateResult !== undefined) {
+        return gateResult;
+      }
+    }
     lines.push(
       `dry run: no sync target was selected by config; set sync.targets.<name>.mode to "auto", or pass --target <name> as an override to apply ${status.report.pending.length} pending migration(s) with the configured runner`
     );
@@ -419,6 +428,24 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
     pending: status.report.pending,
     report: render(lines),
   };
+}
+
+async function runSyncPipelinePrelude(
+  options: SyncOptions,
+  config: SupaschemaConfig,
+  diagnostics: Diagnostic[]
+): Promise<SyncPipelinePrelude> {
+  const lines: string[] = [];
+  if (options.pipeline !== true) {
+    return { lines };
+  }
+  const sources = await resolveSyncSources(options, config);
+  const pipelineResult = await runPipelineStages(options, config, sources, diagnostics, lines);
+  if (pipelineResult !== undefined) {
+    return { lines, result: pipelineResult, sources };
+  }
+  const targetResult = await runConfiguredTargets(options, config, diagnostics, lines, sources);
+  return targetResult === undefined ? { lines, sources } : { lines, result: targetResult, sources };
 }
 
 function disabledSyncResult(
@@ -451,19 +478,15 @@ function disabledSyncResult(
 async function runPipelineStages(
   options: SyncOptions,
   config: SupaschemaConfig,
+  sources: SyncSources,
   diagnostics: Diagnostic[],
   lines: string[]
 ): Promise<SyncResult | undefined> {
-  const sources = await resolveSyncSources(options, config);
   if (options.skipDiff !== true) {
     const diffResult = await runSyncDiffStage(options, config, sources, diagnostics, lines);
     if (diffResult !== undefined) {
       return diffResult;
     }
-  }
-  const gateResult = await runSyncSafetyGates(config, sources, diagnostics, lines);
-  if (gateResult !== undefined) {
-    return gateResult;
   }
   return;
 }
@@ -471,6 +494,12 @@ async function runPipelineStages(
 interface SyncSources {
   from: string;
   to: string;
+}
+
+interface SyncPipelinePrelude {
+  lines: string[];
+  result?: SyncResult;
+  sources?: SyncSources;
 }
 
 function resolveSyncSources(options: SyncOptions, config: SupaschemaConfig): Promise<SyncSources> {
@@ -532,7 +561,8 @@ async function runSyncSafetyGates(
   config: SupaschemaConfig,
   sources: SyncSources,
   diagnostics: Diagnostic[],
-  lines: string[]
+  lines: string[],
+  options: { pending: string[]; targetName?: string }
 ): Promise<SyncResult | undefined> {
   const typeGate = await runTypeSafetyGate({
     config,
@@ -545,8 +575,12 @@ async function runSyncSafetyGates(
   });
   diagnostics.push(...typeGate.diagnostics, ...rlsGate.diagnostics);
   if (typeGate.blocked || rlsGate.blocked) {
-    lines.push("refusing to sync: deploy safety gates failed");
-    return { applied: false, diagnostics, pending: [], report: render(lines) };
+    lines.push(
+      options.targetName === undefined
+        ? "refusing to sync: deploy safety gates failed"
+        : `refusing to sync ${options.targetName}: deploy safety gates failed`
+    );
+    return { applied: false, diagnostics, pending: options.pending, report: render(lines) };
   }
   if (typeGate.diagnostics.length > 0 || rlsGate.diagnostics.length > 0) {
     lines.push("safety: diagnostics reported without blocking");
@@ -573,7 +607,8 @@ async function runConfiguredTargets(
   options: SyncOptions,
   config: SupaschemaConfig,
   diagnostics: Diagnostic[],
-  prefixLines: string[]
+  prefixLines: string[],
+  sources: SyncSources
 ): Promise<SyncResult | undefined> {
   const resolved = resolveSyncTargets(options, config);
   diagnostics.push(...resolved.diagnostics);
@@ -592,7 +627,7 @@ async function runConfiguredTargets(
   const allPending = new Set<string>();
   let applied = false;
   for (const target of resolved.targets) {
-    const targetResult = await runOneTarget(options, config, target, diagnostics, lines);
+    const targetResult = await runOneTarget(options, config, target, sources, diagnostics, lines);
     for (const file of targetResult.pending) {
       allPending.add(file);
     }
@@ -818,6 +853,7 @@ async function runOneTarget(
   options: SyncOptions,
   config: SupaschemaConfig,
   target: ResolvedSyncTarget,
+  sources: SyncSources,
   diagnostics: Diagnostic[],
   lines: string[]
 ): Promise<SyncResult> {
@@ -857,6 +893,16 @@ async function runOneTarget(
   );
   if (supabaseCliConcurrentResult !== undefined) {
     return supabaseCliConcurrentResult;
+  }
+  const gateResult = await runSyncSafetyGates(
+    config,
+    targetSafetySources(sources, target),
+    diagnostics,
+    lines,
+    { pending: status.report.pending, targetName: target.name }
+  );
+  if (gateResult !== undefined) {
+    return gateResult;
   }
   const outcome = await runTargetRunner(options, config, target, status.report.pending);
   lines.push(`running: ${outcome.displayCommand ?? target.runner}`);
@@ -903,6 +949,13 @@ async function runOneTarget(
   }
   lines.push(renderMigrationsStatus(finalStatus.report).trimEnd());
   return { applied: true, diagnostics, pending: [], report: render(lines) };
+}
+
+function targetSafetySources(sources: SyncSources, target: ResolvedSyncTarget): SyncSources {
+  if (target.databaseUrl === undefined) {
+    return sources;
+  }
+  return { from: `database:${target.databaseUrl}`, to: sources.to };
 }
 
 function supabaseCliConcurrentCompanionResult(
@@ -1522,7 +1575,8 @@ function isRemoteSyncTarget(name: string, target: Pick<HookSyncTarget, "remote">
 function runConfiguredHookCheck(
   bin: HookCommand,
   projectDir: string,
-  workflow: SupaschemaConfig["workflow"]
+  workflow: SupaschemaConfig["workflow"],
+  migrationPaths: string[]
 ): HookCheckResult {
   if (
     workflow.migration_check !== "after_schema_diff" &&
@@ -1533,10 +1587,17 @@ function runConfiguredHookCheck(
       passed: true,
     };
   }
-  const check = runHookCommand(bin, ["check"], projectDir);
+  const check = runHookCommand(bin, ["check", ...migrationPaths], projectDir);
   const diagnostics = head(check.stderr || check.stdout);
+  const checked = migrationPaths.join(", ");
   return check.code === 0
-    ? { line: "supaschema check passed (replay-safe)", passed: true }
+    ? {
+        line:
+          migrationPaths.length > 1
+            ? `supaschema check passed for generated migrations: ${checked}`
+            : `supaschema check passed for generated migration: ${checked}`,
+        passed: true,
+      }
     : {
         diagnostics,
         line: `supaschema check reported diagnostics:\n${diagnostics}`,

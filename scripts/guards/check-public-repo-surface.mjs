@@ -28,6 +28,7 @@ const privatePrefixes = [
 ];
 
 const privateExact = new Set([
+  ".github/workflows/python.yml",
   ".mcp.json",
   "fastmcp.json",
   "pyproject.toml",

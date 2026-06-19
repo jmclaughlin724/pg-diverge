@@ -26,6 +26,39 @@ function readText(path: string): string {
   return readFileSync(resolve(root, path), "utf8");
 }
 
+function findHookMatcher(config: unknown, commandFragment: string): string | undefined {
+  if (!(config && typeof config === "object")) {
+    return;
+  }
+  const hooksRoot = Reflect.get(config, "hooks");
+  if (!(hooksRoot && typeof hooksRoot === "object")) {
+    return;
+  }
+  const postToolUse = Reflect.get(hooksRoot, "PostToolUse");
+  if (!Array.isArray(postToolUse)) {
+    return;
+  }
+  for (const entry of postToolUse) {
+    if (!(entry && typeof entry === "object")) {
+      continue;
+    }
+    const hooks = Reflect.get(entry, "hooks");
+    const matcher = Reflect.get(entry, "matcher");
+    if (
+      Array.isArray(hooks) &&
+      hooks.some(
+        (hook) =>
+          hook &&
+          typeof hook === "object" &&
+          typeof Reflect.get(hook, "command") === "string" &&
+          Reflect.get(hook, "command").includes(commandFragment)
+      )
+    ) {
+      return typeof matcher === "string" ? matcher : undefined;
+    }
+  }
+}
+
 function trackedFiles(): string[] {
   return execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
     .split("\n")
@@ -132,31 +165,28 @@ describe("public agent and editor surfaces", () => {
     expect(stageableFiles(privatePrefixes)).toEqual([]);
   });
 
-  it("ships self-contained consumer hook registration", () => {
+  it("ships self-contained raw consumer hook registration", () => {
     const packageJson = readJson<{ files?: string[] }>("package.json");
-    const codexHooks = readText(".codex/hooks.json");
-    const claudeBashGuard = readText(".claude/hooks/guards/bash-policy-checks.mjs");
-    const codexGeneralGuard = readText(".codex/hooks/general-guard.mjs");
+    const codexHooks = readText("agent-bundle/codex/hooks.npm.json");
+    const claudeBashGuard = readText("agent-bundle/claude/hooks/guards/bash-policy-checks.mjs");
+    const codexGeneralGuard = readText("agent-bundle/codex/hooks/general-guard.mjs");
 
-    expect(packageJson.files).toEqual(
-      expect.arrayContaining([
-        ".agents/skills/supaschema",
-        ".claude/hooks/guards/bash-policy-checks.mjs",
-        ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-        ".claude/rules/supaschema.md",
-        ".claude/skills/supaschema",
-        ".codex/hooks/general-guard.mjs",
-        ".codex/hooks/guards/bash-policy-checks.mjs",
-        ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-        ".codex/hooks.json",
-        ".codex/rules/supaschema.rules",
-      ])
+    expect(packageJson.files).toEqual(expect.arrayContaining(["agent-bundle"]));
+    expect(packageJson.files).not.toEqual(
+      expect.arrayContaining([".agents/skills/supaschema", ".claude/rules/supaschema.md"])
     );
     expect(codexHooks).toContain("general-guard.mjs");
     expect(codexHooks).toContain("supaschema hook generated-migration-edit");
     expect(codexHooks).toContain("supaschema hook schema-write");
     expect(codexHooks).not.toContain("context-");
     expect(codexHooks).not.toContain("scripts/agent-hooks");
+    const llmSyncMatcher = findHookMatcher(
+      JSON.parse(codexHooks),
+      "sync-llm-on-claude-surface-change.mjs"
+    );
+    for (const toolName of ["apply_patch", "Edit", "Write", "edit_file"]) {
+      expect(llmSyncMatcher).toContain(toolName);
+    }
     expect(claudeBashGuard).not.toContain("user-codex-skill-policy");
     expect(codexGeneralGuard).not.toContain("user-codex-skill-policy");
   });

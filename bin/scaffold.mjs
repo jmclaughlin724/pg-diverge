@@ -28,7 +28,9 @@ import {
 const manifestPath = ".supaschema/install.json";
 const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
+const claudeAgentsPointer = "@AGENTS.md";
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
+const agentBundleInstructions = "node_modules/supaschema/agent-bundle/INSTALL.md";
 const pnpmWorkspaceFile = "pnpm-workspace.yaml";
 const pnpmBuildApprovalLine = "  supaschema: true";
 const databaseUrlEnvPriority = [
@@ -43,20 +45,53 @@ const databaseUrlEnvPriority = [
   "PGDATABASE_URL",
 ];
 const agentPaths = [
-  ".agents/prompts/supaschema-install.md",
-  ".agents/skills/supaschema",
-  ".claude/hooks/guards/bash-policy-checks.mjs",
-  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".claude/rules/supaschema.md",
-  ".claude/skills/supaschema",
-  ".codex/hooks/general-guard.mjs",
-  ".codex/hooks/guards/bash-policy-checks.mjs",
-  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".codex/rules/supaschema.rules",
+  {
+    source: "agent-bundle/agents/prompts/supaschema-install.md",
+    target: ".agents/prompts/supaschema-install.md",
+  },
+  {
+    source: "agent-bundle/agents/skills/supaschema",
+    target: ".agents/skills/supaschema",
+  },
+  {
+    source: "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
+    target: ".claude/hooks/guards/bash-policy-checks.mjs",
+  },
+  {
+    source: "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
+    target: ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+  },
+  {
+    source: "agent-bundle/claude/rules/supaschema.md",
+    target: ".claude/rules/supaschema.md",
+  },
+  {
+    source: "agent-bundle/claude/skills/supaschema",
+    target: ".claude/skills/supaschema",
+  },
+  {
+    source: "agent-bundle/codex/hooks/general-guard.mjs",
+    target: ".codex/hooks/general-guard.mjs",
+  },
+  {
+    source: "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
+    target: ".codex/hooks/guards/bash-policy-checks.mjs",
+  },
+  {
+    source: "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs",
+    target: ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+  },
+  {
+    source: "agent-bundle/codex/rules/supaschema.rules",
+    target: ".codex/rules/supaschema.rules",
+  },
 ];
 const nonCanonicalAgentPaths = [".codex/skills/supaschema"];
+const preservedExistingAgentPrefixes = [".claude/hooks/", ".codex/hooks/"];
+const generatedBackupSurfaceRoots = [".agents", ".claude", ".codex"];
+const generatedBackupOwners = new Set(["agents", "commands", "rules", "skills"]);
 
-function hookConfigsFor(targetDir, packageManager = detectPackageManager(targetDir)) {
+export function hookConfigsFor(targetDir, packageManager = detectPackageManager(targetDir)) {
   const runner = localRunnerForPackageManager(packageManager);
   return [
     {
@@ -65,7 +100,7 @@ function hookConfigsFor(targetDir, packageManager = detectPackageManager(targetD
     },
     {
       path: ".codex/hooks.json",
-      configFile: ".codex/hooks.json",
+      configFile: "agent-bundle/codex/hooks.npm.json",
       transform: (config) => materializeCodexRunner(config, runner),
     },
   ];
@@ -78,54 +113,52 @@ export async function scaffoldProject({
   interactive = false,
   dryRun = false,
   repair = false,
+  installAgentBundle = false,
 }) {
   const installed = [];
+  const preserved = [];
   const skipped = [];
   const packageManager = detectPackageManager(targetDir);
   const scan = scanProject(targetDir);
   const existingConfig = readExistingConfig(targetDir);
   const selection = await resolvePathSelection(targetDir, scan, existingConfig, interactive);
-  const configContents = selection.pathConfirmationNeeded
-    ? undefined
-    : scaffoldConfig(selection, existingConfig.parsed);
+  const configContents = scaffoldConfigAndDirectories({
+    dryRun,
+    existingConfig,
+    installed,
+    repair,
+    selection,
+    targetDir,
+  });
 
-  if (configContents !== undefined && shouldWriteConfig(existingConfig, repair)) {
-    if (!dryRun) {
-      writeProjectFile(targetDir, "supaschema.config.json", configContents);
-    }
-    installed.push(existingConfig.exists ? "config repair" : "config");
-  }
-
-  if (!selection.pathConfirmationNeeded) {
-    if (!dryRun) {
-      createConfiguredDirectories(targetDir, selection);
-    }
-    installed.push("directories");
-  }
-
-  copyAgentBundle({ dryRun, packageRoot, skipped, targetDir });
-  removeNonCanonicalAgentSurfaces({ dryRun, targetDir });
-  installed.push("agent files");
-
-  for (const config of hookConfigsFor(targetDir, packageManager)) {
-    if (!dryRun) {
-      mergeHookConfig(packageRoot, targetDir, config, skipped);
-    }
-  }
-  installed.push("hook wiring");
+  scaffoldAgentBundle({
+    dryRun,
+    installAgentBundle,
+    installed,
+    packageManager,
+    packageRoot,
+    preserved,
+    selection,
+    skipped,
+    targetDir,
+  });
 
   if (ensurePnpmBuildApproval({ dryRun, packageManager, targetDir })) {
     installed.push("pnpm build approval");
   }
 
-  if (!dryRun) {
-    installAgentGuidance(targetDir, selection);
-  }
-  installed.push("AGENTS/CLAUDE addendum");
-
-  writeInstallState({ dryRun, existingConfig, packageVersion, scan, selection, targetDir });
-  if (selection.pathConfirmationNeeded) {
+  const installStateChanged = writeInstallState({
+    dryRun,
+    existingConfig,
+    packageVersion,
+    scan,
+    selection,
+    targetDir,
+  });
+  if (selection.pathConfirmationNeeded && installStateChanged) {
     installed.push("manifest");
+  } else if (!selection.pathConfirmationNeeded && installStateChanged) {
+    installed.push("manifest cleanup");
   }
 
   return {
@@ -133,10 +166,85 @@ export async function scaffoldProject({
     existingConfig,
     dryRun,
     installed,
+    agentBundle: {
+      installed: installAgentBundle,
+      instructions: agentBundleInstructions,
+    },
     pathConfirmationNeeded: selection.pathConfirmationNeeded,
+    preserved,
     selection,
     skipped,
   };
+}
+
+function scaffoldConfigAndDirectories({
+  dryRun,
+  existingConfig,
+  installed,
+  repair,
+  selection,
+  targetDir,
+}) {
+  const configContents = selection.pathConfirmationNeeded
+    ? undefined
+    : scaffoldConfig(selection, existingConfig.parsed);
+
+  const configChanged =
+    configContents !== undefined &&
+    shouldWriteConfig(existingConfig, repair) &&
+    writeProjectFile(targetDir, "supaschema.config.json", configContents, { dryRun });
+  if (configChanged) {
+    installed.push(existingConfig.exists ? "config repair" : "config");
+  }
+
+  const directoriesChanged =
+    !selection.pathConfirmationNeeded &&
+    createConfiguredDirectories(targetDir, selection, { dryRun });
+  if (directoriesChanged) {
+    installed.push("directories");
+  }
+
+  return configContents;
+}
+
+function scaffoldAgentBundle({
+  dryRun,
+  installAgentBundle,
+  installed,
+  packageManager,
+  packageRoot,
+  preserved,
+  selection,
+  skipped,
+  targetDir,
+}) {
+  if (!installAgentBundle) {
+    return;
+  }
+
+  const copiedAgentFiles = copyAgentBundle({ dryRun, packageRoot, preserved, skipped, targetDir });
+  const removedNonCanonicalAgentFiles = removeNonCanonicalAgentSurfaces({ dryRun, targetDir });
+  const agentFilesChanged = copiedAgentFiles || removedNonCanonicalAgentFiles;
+  const removedBackups = removeRetiredGeneratedBackupSurfaces({ dryRun, targetDir });
+  if (agentFilesChanged) {
+    installed.push("agent files");
+  }
+  if (removedBackups.length > 0) {
+    installed.push("retired backup cleanup");
+  }
+
+  let hookWiringChanged = false;
+  for (const config of hookConfigsFor(targetDir, packageManager)) {
+    hookWiringChanged =
+      mergeHookConfig(packageRoot, targetDir, config, skipped, { dryRun }) || hookWiringChanged;
+  }
+  if (hookWiringChanged) {
+    installed.push("hook wiring");
+  }
+
+  if (installAgentGuidance(targetDir, selection, { dryRun })) {
+    installed.push("AGENTS/CLAUDE addendum");
+  }
 }
 
 function shellParameter(expression) {
@@ -197,7 +305,7 @@ function claudeHookConfig(runner) {
   };
 }
 
-function localRunnerForPackageManager(packageManager) {
+export function localRunnerForPackageManager(packageManager) {
   if (packageManager === "pnpm") {
     return {
       args: ["exec", "supaschema"],
@@ -412,7 +520,7 @@ function pnpmBuildApprovalEntryIndex(lines, start, end) {
   return -1;
 }
 
-function materializeCodexRunner(value, runner) {
+export function materializeCodexRunner(value, runner) {
   if (Array.isArray(value)) {
     return value.map((item) => materializeCodexRunner(item, runner));
   }
@@ -495,12 +603,15 @@ async function resolvePathSelection(target, scan, existingConfig, interactive) {
 
   const schema = selectCandidate(scan.schemaPaths, defaults.schemaPath);
   const migrations = selectCandidate(scan.migrationsDirs, defaults.migrationsDir);
+  const schemaNeedsConfirmation =
+    schema.needsConfirmation ||
+    schemaPathNeedsConfirmation(target, schema.path, defaults.provider?.id);
   let selection = {
     adapter: defaults.adapter,
     candidates: scan,
     databaseUrls: defaults.databaseUrls,
     migrationsDir: migrations.path,
-    pathConfirmationNeeded: schema.needsConfirmation || migrations.needsConfirmation,
+    pathConfirmationNeeded: schemaNeedsConfirmation || migrations.needsConfirmation,
     provider: defaults.provider,
     schemaPaths: [schema.path],
     source: selectionSource(schema, migrations, defaults),
@@ -511,6 +622,24 @@ async function resolvePathSelection(target, scan, existingConfig, interactive) {
   }
 
   return selection;
+}
+
+function schemaPathNeedsConfirmation(projectDir, schemaPath, providerId) {
+  if (providerId !== "supabase") {
+    return false;
+  }
+  if (supabaseOwnerMarksSchemaInventory(projectDir, schemaPath)) {
+    return true;
+  }
+  return existsSync(join(projectDir, schemaPath, "_bootstrap"));
+}
+
+function supabaseOwnerMarksSchemaInventory(projectDir, schemaPath) {
+  const owner = readText(join(projectDir, "supabase", "AGENTS.md"));
+  if (owner === undefined) {
+    return false;
+  }
+  return owner.includes(schemaPath) && owner.includes("not the routine migration generator input");
 }
 
 function selectionSource(schema, migrations, defaults) {
@@ -951,17 +1080,28 @@ function scaffoldConfig(selection, existing) {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-function createConfiguredDirectories(target, selection) {
+function createConfiguredDirectories(target, selection, { dryRun = false } = {}) {
+  let changed = false;
   for (const schemaPath of selection.schemaPaths) {
-    mkdirSync(join(target, schemaPath), { recursive: true });
+    const destination = join(target, schemaPath);
+    changed = !existsSync(destination) || changed;
+    if (!dryRun) {
+      mkdirSync(destination, { recursive: true });
+    }
   }
-  mkdirSync(join(target, selection.migrationsDir), { recursive: true });
+  const migrationsDestination = join(target, selection.migrationsDir);
+  changed = !existsSync(migrationsDestination) || changed;
+  if (!dryRun) {
+    mkdirSync(migrationsDestination, { recursive: true });
+  }
+  return changed;
 }
 
-function installAgentGuidance(target, selection) {
+function installAgentGuidance(target, selection, { dryRun = false } = {}) {
   const block = agentGuidanceBlock(selection);
-  upsertManagedBlock(target, "AGENTS.md", block);
-  upsertManagedBlock(target, "CLAUDE.md", block);
+  const agentsChanged = upsertManagedBlock(target, "AGENTS.md", block, { dryRun });
+  const claudeChanged = installClaudePointer(target, { dryRun });
+  return agentsChanged || claudeChanged;
 }
 
 function agentGuidanceBlock(selection) {
@@ -983,27 +1123,74 @@ ${pathLines}
 - Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
 - Use existing \`$ENV_NAME\` database URL references in \`sync.targets\` or \`environments\`; do not create duplicate supaschema-only credentials or commit credentials.
 - For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, then run \`diff\` and \`check\` through the local runner selected in \`.agents/prompts/supaschema-install.md\`.
-- Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes. When \`workflow.migration_sync\` allows automatic sync, the schema-write hook preflights every \`sync.targets\` entry with \`mode: "auto"\`; if each target resolves and any remote target is approved, it delegates to \`supaschema sync\`. Otherwise it stays on the non-mutating diff/check lane. Check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
+- Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff plus generated-migration check after schema SQL writes. When \`workflow.migration_sync\` allows automatic sync, the schema-write hook preflights every \`sync.targets\` entry with \`mode: "auto"\`; if each target resolves and any remote target is approved, it delegates to \`supaschema sync\`. Otherwise it stays on the non-mutating diff/check lane. Generated-migration check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
 - Use bare \`sync\` for the configured workflow. Do not run \`sync --target <name>\` unless explicitly asked to override target selection. \`sync.targets.<name>.mode\` decides automatic target selection, \`workflow.migration_sync: "manual"\` keeps bare sync on the dry-run gate, and \`workflow.migration_sync: "disabled"\` blocks apply.
 ${guidanceEnd}
 `;
 }
 
-function upsertManagedBlock(target, relativePath, block) {
+function upsertManagedBlock(target, relativePath, block, { dryRun = false } = {}) {
   const path = join(target, relativePath);
   const current = readText(path) ?? "";
   const start = current.indexOf(guidanceStart);
   const end = current.indexOf(guidanceEnd);
   let next;
   if (start !== -1 && end !== -1 && end > start) {
-    next = `${current.slice(0, start)}${block}${current.slice(end + guidanceEnd.length)}`;
+    const before = current.slice(0, start).trimEnd();
+    const after = current.slice(end + guidanceEnd.length).trimStart();
+    next = [before, block.trimEnd(), after].filter((piece) => piece.length > 0).join("\n\n");
   } else {
     next = current.trim().length > 0 ? `${current.trimEnd()}\n\n${block}` : block;
   }
-  writeProjectFile(target, relativePath, next.endsWith("\n") ? next : `${next}\n`);
+  return writeProjectFile(target, relativePath, next.endsWith("\n") ? next : `${next}\n`, {
+    dryRun,
+  });
 }
 
-function writeInstallManifest(target, packageVersion, scan, selection, existingConfig = {}) {
+function installClaudePointer(target, { dryRun = false } = {}) {
+  const current = readText(join(target, "CLAUDE.md"));
+  if (current === undefined) {
+    return writeProjectFile(target, "CLAUDE.md", `${claudeAgentsPointer}\n`, { dryRun });
+  }
+  const withoutManagedBlock = removeManagedGuidanceBlock(current);
+  if (isClaudeAgentsPointer(withoutManagedBlock)) {
+    return writeProjectFile(target, "CLAUDE.md", `${claudeAgentsPointer}\n`, { dryRun });
+  }
+  if (withoutManagedBlock !== current) {
+    return writeProjectFile(
+      target,
+      "CLAUDE.md",
+      withoutManagedBlock.endsWith("\n") ? withoutManagedBlock : `${withoutManagedBlock}\n`,
+      { dryRun }
+    );
+  }
+  return false;
+}
+
+function removeManagedGuidanceBlock(text) {
+  const start = text.indexOf(guidanceStart);
+  const end = text.indexOf(guidanceEnd);
+  if (start === -1 || end === -1 || end <= start) {
+    return text;
+  }
+  const before = text.slice(0, start).trimEnd();
+  const after = text.slice(end + guidanceEnd.length).trimStart();
+  const pieces = [before, after].filter((piece) => piece.length > 0);
+  return pieces.length > 0 ? `${pieces.join("\n\n")}\n` : "";
+}
+
+function isClaudeAgentsPointer(text) {
+  return text.trim() === claudeAgentsPointer;
+}
+
+function writeInstallManifest(
+  target,
+  packageVersion,
+  scan,
+  selection,
+  existingConfig = {},
+  { dryRun = false } = {}
+) {
   const manifest = {
     adapter: selection.adapter ?? "auto",
     candidates: scan,
@@ -1026,13 +1213,21 @@ function writeInstallManifest(target, packageVersion, scan, selection, existingC
   };
   const existing = readJson(join(target, manifestPath));
   if (existing && manifestSelectionUnchanged(existing, manifest)) {
-    return;
+    return false;
   }
-  writeProjectFile(target, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  return writeProjectFile(target, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
+    dryRun,
+  });
 }
 
-function removeInstallManifest(target) {
+function removeInstallManifest(target, { dryRun = false } = {}) {
   const path = join(target, manifestPath);
+  if (!existsSync(path)) {
+    return false;
+  }
+  if (dryRun) {
+    return true;
+  }
   try {
     unlinkSync(path);
   } catch (error) {
@@ -1051,6 +1246,7 @@ function removeInstallManifest(target) {
       throw error;
     }
   }
+  return true;
 }
 
 function manifestSelectionUnchanged(existing, next) {
@@ -1063,87 +1259,191 @@ function manifestSelectionUnchanged(existing, next) {
   );
 }
 
-function writeProjectFile(target, relativePath, contents) {
+function writeProjectFile(target, relativePath, contents, { dryRun = false } = {}) {
   const destination = join(target, relativePath);
-  writeFileAtomic(destination, contents);
+  return writeFileAtomicIfChanged(destination, contents, { dryRun });
 }
 
-function copyAgentBundle({ dryRun, packageRoot, skipped, targetDir }) {
-  if (dryRun) {
-    return;
+function copyAgentBundle({ dryRun, packageRoot, preserved, skipped, targetDir }) {
+  let changed = false;
+  for (const path of agentPaths) {
+    changed =
+      copyProjectPath(packageRoot, targetDir, path, { dryRun, preserved, skipped }) || changed;
   }
-  for (const file of agentPaths) {
-    copyProjectPath(packageRoot, targetDir, file, skipped);
-  }
+  return changed;
 }
 
 function removeNonCanonicalAgentSurfaces({ dryRun, targetDir }) {
-  if (dryRun) {
-    return;
-  }
+  let changed = false;
   for (const file of nonCanonicalAgentPaths) {
-    rmSync(join(targetDir, file), { force: true, recursive: true });
+    const destination = join(targetDir, file);
+    changed = existsSync(destination) || changed;
+    if (!dryRun) {
+      rmSync(destination, { force: true, recursive: true });
+    }
   }
-  removeEmptyDirectory(join(targetDir, ".codex/skills"));
+  changed = removeEmptyDirectory(join(targetDir, ".codex/skills"), { dryRun }) || changed;
+  return changed;
 }
 
-function copyProjectPath(packageRoot, target, relativePath, skipped) {
-  const source = join(packageRoot, relativePath);
+function removeRetiredGeneratedBackupSurfaces({ dryRun, targetDir }) {
+  const removed = [];
+  if (dryRun) {
+    return removed;
+  }
+  for (const surfaceRoot of generatedBackupSurfaceRoots) {
+    const root = join(targetDir, surfaceRoot);
+    let entries;
+    try {
+      entries = readdirSync(root, { withFileTypes: true });
+    } catch (error) {
+      if (!isMissingFile(error)) {
+        throw error;
+      }
+      continue;
+    }
+    for (const entry of entries) {
+      if (!(entry.isDirectory() && isRetiredGeneratedBackupDirName(entry.name))) {
+        continue;
+      }
+      rmSync(join(root, entry.name), { force: true, recursive: true });
+      removed.push(`${surfaceRoot}/${entry.name}`);
+    }
+  }
+  return removed;
+}
+
+function isRetiredGeneratedBackupDirName(name) {
+  const marker = ".__backup_";
+  const markerIndex = name.indexOf(marker);
+  if (markerIndex === -1) {
+    return false;
+  }
+  const owner = name.slice(0, markerIndex);
+  const timestamp = name.slice(markerIndex + marker.length);
+  return generatedBackupOwners.has(owner) && isCompactTimestamp(timestamp);
+}
+
+function isCompactTimestamp(value) {
+  return (
+    value.length === 15 &&
+    value[8] === "T" &&
+    allAsciiDigits(value.slice(0, 8)) &&
+    allAsciiDigits(value.slice(9))
+  );
+}
+
+function allAsciiDigits(value) {
+  return [...value].every((char) => isAsciiDigit(char));
+}
+
+function copyProjectPath(
+  packageRoot,
+  target,
+  mapping,
+  { dryRun = false, preserved = [], skipped = [] } = {}
+) {
+  const sourcePath = typeof mapping === "string" ? mapping : mapping.source;
+  const targetPath = typeof mapping === "string" ? mapping : mapping.target;
+  const source = join(packageRoot, sourcePath);
   if (!existsSync(source)) {
-    skipped.push(relativePath);
-    return;
+    skipped.push(sourcePath);
+    return false;
   }
+  const preserveExisting = shouldPreserveExistingAgentPath(targetPath);
   if (statSync(source).isDirectory()) {
-    copyProjectDirectory(source, join(target, relativePath));
-    return;
+    return copyProjectDirectory(source, join(target, targetPath), {
+      dryRun,
+      preserveExisting,
+      relativePath: targetPath,
+      preserved,
+      skipped,
+    });
   }
-  copyProjectFile(source, join(target, relativePath));
+  return copyProjectFile(source, join(target, targetPath), {
+    dryRun,
+    preserved,
+    preserveExisting,
+    relativePath: targetPath,
+    skipped,
+  });
 }
 
-function copyProjectDirectory(source, destination) {
-  mkdirSync(destination, { recursive: true });
+function shouldPreserveExistingAgentPath(relativePath) {
+  return preservedExistingAgentPrefixes.some((prefix) => relativePath.startsWith(prefix));
+}
+
+function copyProjectDirectory(source, destination, options = {}) {
+  let changed = !existsSync(destination);
+  if (!options.dryRun) {
+    mkdirSync(destination, { recursive: true });
+  }
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     const sourcePath = join(source, entry.name);
     const destinationPath = join(destination, entry.name);
+    const relativePath =
+      typeof options.relativePath === "string"
+        ? `${options.relativePath}/${entry.name}`
+        : entry.name;
     if (entry.isDirectory()) {
-      copyProjectDirectory(sourcePath, destinationPath);
+      changed =
+        copyProjectDirectory(sourcePath, destinationPath, { ...options, relativePath }) || changed;
       continue;
     }
     if (entry.isFile()) {
-      copyProjectFile(sourcePath, destinationPath);
+      changed =
+        copyProjectFile(sourcePath, destinationPath, { ...options, relativePath }) || changed;
     }
   }
+  return changed;
 }
 
-function copyProjectFile(source, destination) {
+function copyProjectFile(source, destination, options = {}) {
+  if (options.preserveExisting === true && existsSync(destination)) {
+    if (Array.isArray(options.preserved) && typeof options.relativePath === "string") {
+      options.preserved.push(options.relativePath);
+    }
+    return false;
+  }
+  const sourceContents = readFileSync(source);
+  const existingContents = readBinaryIfPresent(destination);
+  if (existingContents !== undefined && Buffer.compare(sourceContents, existingContents) === 0) {
+    return false;
+  }
+  if (options.dryRun) {
+    return true;
+  }
   mkdirSync(dirname(destination), { recursive: true });
   copyFileSync(source, destination);
+  return true;
 }
 
-function removeEmptyDirectory(directory) {
+function removeEmptyDirectory(directory, { dryRun = false } = {}) {
   try {
     if (readdirSync(directory).length === 0) {
-      rmdirSync(directory);
+      if (!dryRun) {
+        rmdirSync(directory);
+      }
+      return true;
     }
   } catch (error) {
     if (!isMissingFile(error)) {
       throw error;
     }
   }
+  return false;
 }
 
 function writeInstallState({ dryRun, existingConfig, packageVersion, scan, selection, targetDir }) {
-  if (dryRun) {
-    return;
-  }
   if (selection.pathConfirmationNeeded) {
-    writeInstallManifest(targetDir, packageVersion, scan, selection, existingConfig);
-    return;
+    return writeInstallManifest(targetDir, packageVersion, scan, selection, existingConfig, {
+      dryRun,
+    });
   }
-  removeInstallManifest(targetDir);
+  return removeInstallManifest(targetDir, { dryRun });
 }
 
-function mergeHookConfig(packageRoot, target, hookConfig, skipped) {
+function mergeHookConfig(packageRoot, target, hookConfig, skipped, { dryRun = false } = {}) {
   const source =
     typeof hookConfig.configFile === "string"
       ? readJson(join(packageRoot, hookConfig.configFile))
@@ -1154,11 +1454,22 @@ function mergeHookConfig(packageRoot, target, hookConfig, skipped) {
   const existing = readJsonIfPresent(destination);
   if (!transformedSource || existing === undefined) {
     skipped.push(hookConfig.path);
-    return;
+    return false;
   }
 
   const merged = mergeHooks(existing, transformedSource);
-  writeFileAtomic(destination, `${JSON.stringify(merged, null, 2)}\n`);
+  return writeFileAtomicIfChanged(destination, `${JSON.stringify(merged, null, 2)}\n`, { dryRun });
+}
+
+function readBinaryIfPresent(path) {
+  try {
+    return readFileSync(path);
+  } catch (error) {
+    if (!isMissingFile(error)) {
+      throw error;
+    }
+    return;
+  }
 }
 
 function readText(path) {
@@ -1205,6 +1516,16 @@ function writeFileAtomic(destination, contents) {
   }
 }
 
+function writeFileAtomicIfChanged(destination, contents, { dryRun = false } = {}) {
+  if (readText(destination) === contents) {
+    return false;
+  }
+  if (!dryRun) {
+    writeFileAtomic(destination, contents);
+  }
+  return true;
+}
+
 function removeIfPresent(filePath) {
   try {
     unlinkSync(filePath);
@@ -1220,18 +1541,33 @@ function mergeHooks(existing, source) {
   const mergedHooks = isRecord(merged.hooks) ? merged.hooks : {};
   merged.hooks = mergedHooks;
   const sourceManagedScripts = managedScriptsFromHooks(sourceHooks);
+  const sourceManagedHookKeys = managedHookKeysByEvent(sourceHooks);
+  const dispatcherOwnedEvents = new Set();
 
   for (const [eventName, existingEntries] of Object.entries(mergedHooks)) {
     if (Array.isArray(existingEntries)) {
-      mergedHooks[eventName] = withoutLegacyBrokenClaudeScriptHooks(
+      const withoutLegacy = withoutLegacyBrokenClaudeScriptHooks(
         existingEntries,
         sourceManagedScripts
       );
+      if (hasProjectCodexDispatcher(eventName, withoutLegacy)) {
+        dispatcherOwnedEvents.add(eventName);
+        mergedHooks[eventName] = withoutSourceManagedHooks(
+          withoutLegacy,
+          sourceManagedHookKeys.get(eventName) ?? new Set(),
+          sourceManagedScripts
+        );
+        continue;
+      }
+      mergedHooks[eventName] = withoutLegacy;
     }
   }
 
   for (const [eventName, sourceEntries] of Object.entries(sourceHooks)) {
     if (!Array.isArray(sourceEntries)) {
+      continue;
+    }
+    if (dispatcherOwnedEvents.has(eventName)) {
       continue;
     }
     const existingEntries = Array.isArray(mergedHooks[eventName]) ? mergedHooks[eventName] : [];
@@ -1249,6 +1585,17 @@ function managedScriptsFromHooks(sourceHooks) {
       .map(managedHookScript)
       .filter((name) => name !== undefined)
   );
+}
+
+function managedHookKeysByEvent(sourceHooks) {
+  const keysByEvent = new Map();
+  for (const [eventName, entries] of Object.entries(sourceHooks)) {
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+    keysByEvent.set(eventName, new Set(entries.flatMap(hookDefinitions).map(managedHookKey)));
+  }
+  return keysByEvent;
 }
 
 function mergeHookEntries(existingEntries, sourceEntries) {
@@ -1310,6 +1657,53 @@ function withoutLegacyBrokenClaudeScriptHooks(entries, managedScripts) {
     }
   }
   return kept;
+}
+
+function withoutSourceManagedHooks(entries, sourceManagedKeys, sourceManagedScripts) {
+  const kept = [];
+  for (const entry of entries) {
+    if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
+      if (!isSourceManagedHook(entry, sourceManagedKeys, sourceManagedScripts)) {
+        kept.push(entry);
+      }
+      continue;
+    }
+    const hooks = entry.hooks.filter(
+      (hook) => !isSourceManagedHook(hook, sourceManagedKeys, sourceManagedScripts)
+    );
+    if (hooks.length > 0) {
+      kept.push({ ...entry, hooks });
+    }
+  }
+  return kept;
+}
+
+function isSourceManagedHook(hook, sourceManagedKeys, sourceManagedScripts) {
+  if (!isRecord(hook)) {
+    return false;
+  }
+  if (sourceManagedKeys.has(managedHookKey(hook))) {
+    return true;
+  }
+  const script = managedHookScript(hook);
+  return script !== undefined && sourceManagedScripts.has(script);
+}
+
+function hasProjectCodexDispatcher(eventName, entries) {
+  const dispatcher = codexDispatcherScriptForEvent(eventName);
+  return (
+    dispatcher !== undefined &&
+    entries.flatMap(hookDefinitions).some((hook) => managedHookScript(hook) === dispatcher)
+  );
+}
+
+function codexDispatcherScriptForEvent(eventName) {
+  if (eventName === "PreToolUse" || eventName === "PostToolUse") {
+    return "tool-gate.mjs";
+  }
+  if (eventName === "Stop") {
+    return "stop.mjs";
+  }
 }
 
 function isLegacyBrokenClaudeScriptHook(hook, managedScripts) {

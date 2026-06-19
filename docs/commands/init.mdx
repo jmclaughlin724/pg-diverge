@@ -1,24 +1,24 @@
 ---
 title: "init"
-description: "Scaffold or repair the supaschema setup bundle in the current project."
+description: "Scaffold or repair supaschema config and optionally install the reviewed agent bundle."
 keywords: ["init command", "scaffold", "repair", "setup"]
 ---
 
-Use `init` after package install or when the setup bundle needs repair.
+Use `init` after package install or when setup needs repair.
 
-The command scaffolds config, schema and migration directories, agent rules, skills, hooks, and managed `AGENTS.md` / `CLAUDE.md` addenda.
+The command scaffolds config, schema directories, migration directories, and path-confirmation state. It does not install active AI-agent rules, skills, hooks, settings, `AGENTS.md`, or `CLAUDE.md` by default.
 
 ## Use this when
 
 - supaschema was installed in a project that has not been set up yet.
-- Generated agent surfaces need to be refreshed.
 - `supaschema.config.json` should be repaired from the canonical contract.
-- A project needs config, schema directories, agent guidance, rules, skills, and hook wiring after package install.
+- The user has reviewed `node_modules/supaschema/agent-bundle/INSTALL.md` and explicitly asks to install AI-agent enforcement with `--agent-bundle`.
 
 ## Run it
 
 ```bash
 <local-runner> init
+<local-runner> init --agent-bundle
 <local-runner> init --dry-run --json
 <local-runner> init --repair
 ```
@@ -37,6 +37,12 @@ Existing config files are left untouched unless `--repair` is passed.
 
 <ParamField path="--repair" type="boolean">
   Rewrite `supaschema.config.json` from the canonical contract when needed.
+</ParamField>
+
+<ParamField path="--agent-bundle" type="boolean">
+  Install the reviewed raw AI-agent bundle into `.agents`, `.claude`, `.codex`,
+  `AGENTS.md`, and `CLAUDE.md`. Do not use this flag unless the user asks for
+  AI-agent enforcement or approves the bundle.
 </ParamField>
 
 ## Related

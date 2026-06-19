@@ -8,7 +8,7 @@ Use `type-contract` to inspect breaking changes to the generated type surface.
 
 `type-contract` diffs the type shapes of two schema sources (before vs after). It does not connect to a database.
 
-`supaschema sync` runs deploy-blocking type-safety gates through `workflow.type_safety`; that package-owned deploy gate is separate from the standalone `type-contract --enforce` license path.
+`supaschema sync` runs deploy-blocking type-safety gates through `workflow.type_safety`. When a selected sync target resolves a database URL, the deploy gate compares the target's live PostgreSQL catalog with the declarative schema tree. That package-owned deploy gate is separate from the standalone `type-contract --enforce` license path.
 
 `type-contract --enforce` requires a signed local entitlement token. Without a valid entitlement, the command prints the findings in report-only mode and exits `0`; with a valid entitlement, breaking changes exit `2`.
 

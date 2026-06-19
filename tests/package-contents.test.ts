@@ -74,17 +74,21 @@ describe("npm package contents", () => {
       "bin/scaffold.mjs",
       "bin/config-contract.mjs",
       "supaschema-config.schema.json",
-      ".agents/prompts/supaschema-install.md",
-      ".agents/skills/supaschema/SKILL.md",
-      ".claude/hooks/guards/bash-policy-checks.mjs",
-      ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-      ".claude/rules/supaschema.md",
-      ".claude/skills/supaschema/SKILL.md",
-      ".codex/hooks/general-guard.mjs",
-      ".codex/hooks/guards/bash-policy-checks.mjs",
-      ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-      ".codex/hooks.json",
-      ".codex/rules/supaschema.rules",
+      "agent-bundle/INSTALL.md",
+      "agent-bundle/agents/prompts/supaschema-install.md",
+      "agent-bundle/agents/skills/supaschema/SKILL.md",
+      "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
+      "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
+      "agent-bundle/claude/rules/supaschema.md",
+      "agent-bundle/claude/settings.npm.json",
+      "agent-bundle/claude/settings.pnpm.json",
+      "agent-bundle/claude/skills/supaschema/SKILL.md",
+      "agent-bundle/codex/hooks.npm.json",
+      "agent-bundle/codex/hooks.pnpm.json",
+      "agent-bundle/codex/hooks/general-guard.mjs",
+      "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
+      "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs",
+      "agent-bundle/codex/rules/supaschema.rules",
       "README.md",
       "LICENSE",
       "LICENSE-COMMERCIAL.md",
@@ -106,11 +110,24 @@ describe("npm package contents", () => {
       internalAgentLeaks,
       `internal repo-only agent files reached npm tarball: ${internalAgentLeaks.join(", ")}`
     ).toEqual([]);
-    expect(paths, "pack should include consumer Codex hook registration").toContain(
-      ".codex/hooks.json"
+    for (const activePath of [
+      ".agents/prompts/supaschema-install.md",
+      ".agents/skills/supaschema/SKILL.md",
+      ".claude/rules/supaschema.md",
+      ".claude/settings.json",
+      ".claude/skills/supaschema/SKILL.md",
+      ".codex/hooks.json",
+      ".codex/rules/supaschema.rules",
+    ]) {
+      expect(paths, `active agent path must not ship directly: ${activePath}`).not.toContain(
+        activePath
+      );
+    }
+    expect(paths, "pack should include raw Codex hook registration").toContain(
+      "agent-bundle/codex/hooks.npm.json"
     );
     const codexHookContents = readFileSync(
-      resolve(import.meta.dirname, "../.codex/hooks.json"),
+      resolve(import.meta.dirname, "../agent-bundle/codex/hooks.npm.json"),
       "utf8"
     );
     expect(codexHookContents).not.toContain("context-");

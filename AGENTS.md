@@ -6,6 +6,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 
 ## Rule Map
 
+- Code Atlas routing and repo-wide graph policy: `.claude/rules/10-code-atlas.md`.
 - Supaschema migration policy: `.claude/rules/supaschema.md`.
 - Public repository exposure policy: `npm run guard:public-surface`.
 - GitHub repository settings, PR, merge, and post-merge process: `.github/repo-policy.json`, `.github/PULL_REQUEST_TEMPLATE.md`, `CONTRIBUTING.md`, and `npm run guard:github-process`.
@@ -33,7 +34,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 ### Use
 
 - Be direct.
-- Optimize for clarity, correctness, and verifiability, not for cleverness or brevity.
+- Optimize for the smallest correct end state, not the smallest patch.
 - Prefer editing existing files over creating new abstractions.
 - Do not mark work complete until the relevant checks have run or a blocking reason is stated.
 - Core writing style of short, operational, and enforceable sentences.
@@ -56,7 +57,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 2. Identify the owning app, package, service, or database area.
 3. Verify upstream best practices from the canonical source.
 4. Apply the Repo-Wide Change Discipline below for duplicates, redundancies, and entry points before introducing a new surface.
-5. Identify end state, then make every change required to reach it in the fewest steps. Do not preserve backwards compatibility behavior or paths, duplicate owners, wrappers, aliases, shims, placeholders, TODOs, or redundant or convenience entry points only to keep the patch small.
+5. Choose the smallest correct end state first, then make every change required to reach it. Do not preserve backwards compatibility behavior or paths, duplicate owners, wrappers, aliases, shims, placeholders, TODOs, or redundant or convenience entry points only to keep the patch small.
 
 ### After editing
 
@@ -71,7 +72,7 @@ Root `AGENTS.md` is the only owner of this repo-wide action sequence. Do not res
 
 This sequence applies to every repository change: code, tests, docs, schemas, configs, scripts, prompts, generated surfaces, and verification.
 
-1. Define the requested end state, the concept being changed, the canonical owner, and the single entry point agents or users should use.
+1. Define the requested end state, the smallest correct end state, the concept being changed, the canonical owner, and the single entry point agents or users should use.
 2. Inspect the accepted scope for existing owners, aliases, wrappers, helpers, types, schemas, docs, configs, routes, exports, workflows, commands, prompts, placeholders, TODOs, instructions, and entry points before adding a new surface.
 3. Treat current structure and current consumers as evidence and a worklist, not as proof of the target shape. Burn down avoidable duplication and redundancy in the same change by extending, moving, merging, or deleting in the canonical owner before adding a new surface.
 4. Keep a separate surface only for a genuinely distinct runtime, storage, compliance, lifecycle, or external-contract boundary.
@@ -157,6 +158,6 @@ This project uses supaschema for declarative PostgreSQL migrations. The configur
 - Generated type outputs use `database.types.ts` and `database.zod.ts` unless `typesFile` or `zodFile` is changed in config; default workflow creates or refreshes both after `diff`, and `workflow.type_usage: "zod_validated"` tells agents to use generated Zod validators at runtime boundaries.
 - Use existing `$ENV_NAME` database URL references in `sync.targets` or `environments`; do not create duplicate supaschema-only credentials or commit credentials.
 - For schema changes, read `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file, edit declarative SQL, then run `diff` and `check` through the local runner selected in `.agents/prompts/supaschema-install.md`.
-- Consumer installs generate `.claude/settings.json` and merge `.codex/hooks.json` to enforce generated-migration protection and auto-run diff/check after schema SQL writes. When `workflow.migration_sync` allows automatic sync, the schema-write hook preflights every `sync.targets` entry with `mode: "auto"`; if each target resolves and any remote target is approved, it delegates to `supaschema sync`. Otherwise it stays on the non-mutating diff/check lane. Check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
+- Consumer installs keep AI-agent rules, hooks, skills, prompts, and settings in the raw package bundle until the user explicitly requests `supaschema init --agent-bundle` or a reviewed manual install. The opt-in bundle writes `.claude/settings.json` and merges `.codex/hooks.json` to enforce generated-migration protection and auto-run diff plus generated-migration check after schema SQL writes. When `workflow.migration_sync` allows automatic sync, the schema-write hook preflights every `sync.targets` entry with `mode: "auto"`; if each target resolves and any remote target is approved, it delegates to `supaschema sync`. Otherwise it stays on the non-mutating diff/check lane. Generated-migration check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
 - Use bare `sync` for the configured workflow. Do not run `sync --target <name>` unless explicitly asked to override target selection. `sync.targets.<name>.mode` decides automatic target selection, `workflow.migration_sync: "manual"` keeps bare sync on the dry-run gate, and `workflow.migration_sync: "disabled"` blocks apply.
 <!-- supaschema:agent-guidance:end -->

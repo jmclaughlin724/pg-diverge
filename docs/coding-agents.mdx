@@ -9,9 +9,9 @@ keywords:
   - Claude Code
 ---
 
-supaschema installs agent context into the consuming project so an AI agent can make schema changes without reading the entire source repository or guessing the migration workflow.
+supaschema ships optional agent context for consuming projects so an AI agent can make schema changes without reading the entire source repository or guessing the migration workflow. Default package setup does not activate that context.
 
-For a new project setup, copy the agent prompt from [Installation](/installation#agent-install-prompt). The important instruction is simple: install the package with the consuming project's package manager, inspect the generated config and install manifest, then run schema commands through that same manager's local runner.
+For a new project setup, copy the agent prompt from [Installation](/installation#agent-install-prompt). The important instruction is simple: install the package with the consuming project's package manager, run `supaschema init`, inspect the generated config and install manifest, then run schema commands through that same manager's local runner. Install the raw agent bundle only after the user explicitly approves AI-agent enforcement.
 
 ## Agent workflow
 
@@ -21,9 +21,10 @@ For a new project setup, copy the agent prompt from [Installation](/installation
     workflow. Do not clone the supaschema repository into the project unless you
     are intentionally developing supaschema itself.
   </Step>
-  <Step title="Read installed context">
-    Use `.agents/prompts/supaschema-install.md`, the installed supaschema skill,
-    and the installed rule file as the project-local contract.
+  <Step title="Review optional context">
+    Default setup leaves raw agent files under
+    `node_modules/supaschema/agent-bundle/`. Read `agent-bundle/INSTALL.md` and
+    install them only when the user asks for AI-agent enforcement.
   </Step>
   <Step title="Edit schema intent">
     Change the configured declarative SQL tree, such as `database/schemas/**`,
@@ -42,9 +43,9 @@ For a new project setup, copy the agent prompt from [Installation](/installation
   </Step>
 </Steps>
 
-## Installed agent context
+## Optional agent context
 
-The public npm package includes only the consumer-safe surfaces needed for that workflow:
+The public npm package includes the consumer-safe raw surfaces needed for that workflow:
 
 <CardGroup cols={2}>
   <Card
@@ -89,14 +90,13 @@ Use these only when the agent or documentation client supports them.
     icon="download"
     href="https://github.com/vercel-labs/skills"
   >
-    Installs reusable skill context only; project setup still comes from `npm
-    install supaschema`.
+    Installs reusable skill context only; project setup still comes from the
+    package manager plus `supaschema init`.
   </Card>
 </CardGroup>
 
 <Note>
   The npm package is the project integration path. `npx skills` is useful for
-  reusable agent context, but it cannot replace the project config, hook
-  registration, install manifest, or generated-output workflow installed by the
-  package manager.
+  reusable agent context, but it cannot replace project config,
+  path-confirmation state, or the optional reviewed agent-bundle install.
 </Note>

@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  hookConfigsFor,
+  localRunnerForPackageManager,
+  materializeCodexRunner,
+} from "../../bin/scaffold.mjs";
 import { parseFrontmatter, scalar } from "../lib/frontmatter.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -19,6 +24,9 @@ export const agentSurfaceManifest = {
   publicSkills: {
     sourceRoot: ".claude/skills/supaschema",
     targetRoot: "skills/supaschema",
+  },
+  agentBundle: {
+    targetRoot: "agent-bundle",
   },
   rules: {
     sourceRoot: ".claude/rules",
@@ -50,7 +58,7 @@ export function runCli(argv = process.argv.slice(2), root = ROOT) {
 
   const result = syncAgentSurfaces({ root });
   process.stdout.write(
-    `SYNC_LLM_OK skills=${result.skills} skillTargets=${result.skillTargets} publicSkills=${result.publicSkills} agents=${result.agents} hooks=${result.hooks} rules=${result.rules}\n`
+    `SYNC_LLM_OK skills=${result.skills} skillTargets=${result.skillTargets} publicSkills=${result.publicSkills} agents=${result.agents} hooks=${result.hooks} rules=${result.rules} agentBundle=${result.agentBundle}\n`
   );
 }
 
@@ -60,8 +68,10 @@ export function syncAgentSurfaces({ root = ROOT } = {}) {
   const hookResult = syncDirectoryMirror(root, agentSurfaceManifest.hooks);
   const agentResult = syncCodexAgents(root);
   const ruleResult = syncCodexRules(root);
+  const agentBundleResult = syncAgentBundle(root);
 
   return {
+    agentBundle: agentBundleResult.files,
     agents: agentResult.files,
     hooks: hookResult.files,
     publicSkills: publicSkillResult.files,
@@ -78,6 +88,7 @@ export function checkAgentSurfaces({ root = ROOT } = {}) {
   checkDirectoryMirror(root, agentSurfaceManifest.hooks, errors);
   checkCodexAgents(root, errors);
   checkCodexRules(root, errors);
+  checkAgentBundle(root, errors);
   return errors;
 }
 
@@ -126,6 +137,123 @@ function syncSkills(root) {
 
 function syncPublicSkills(root) {
   return syncDirectoryMirror(root, agentSurfaceManifest.publicSkills);
+}
+
+function syncAgentBundle(root) {
+  const targetRootPath = path.join(root, agentSurfaceManifest.agentBundle.targetRoot);
+  const files = agentBundleFiles(root);
+  syncTextFiles(targetRootPath, files);
+  return { files: files.size };
+}
+
+function checkAgentBundle(root, errors) {
+  const targetRootPath = path.join(root, agentSurfaceManifest.agentBundle.targetRoot);
+  if (!fs.existsSync(targetRootPath)) {
+    errors.push(`missing raw agent bundle dir ${agentSurfaceManifest.agentBundle.targetRoot}`);
+    return;
+  }
+  const expected = safeAgentBundleFiles(root, errors);
+  if (expected.size === 0) {
+    return;
+  }
+  const actualFiles = listFiles(targetRootPath);
+  pushFileSetErrors(
+    { targetRoot: agentSurfaceManifest.agentBundle.targetRoot },
+    [...expected.keys()],
+    actualFiles,
+    errors
+  );
+  for (const [file, expectedText] of expected) {
+    if (!actualFiles.includes(file)) {
+      continue;
+    }
+    const actualText = fs.readFileSync(path.join(targetRootPath, file), "utf8");
+    if (actualText !== expectedText) {
+      errors.push(`raw agent bundle drifted: ${file}`);
+    }
+  }
+}
+
+function safeAgentBundleFiles(root, errors) {
+  try {
+    return agentBundleFiles(root);
+  } catch (error) {
+    errors.push(
+      error instanceof Error ? `raw agent bundle input missing: ${error.message}` : String(error)
+    );
+    return new Map();
+  }
+}
+
+function agentBundleFiles(root) {
+  const files = new Map([
+    ["INSTALL.md", fs.readFileSync(path.join(root, "agent-bundle", "INSTALL.md"), "utf8")],
+    [
+      "agents/prompts/supaschema-install.md",
+      fs.readFileSync(path.join(root, ".agents/prompts/supaschema-install.md"), "utf8"),
+    ],
+    [
+      "agents/skills/supaschema/SKILL.md",
+      fs.readFileSync(path.join(root, ".agents/skills/supaschema/SKILL.md"), "utf8"),
+    ],
+    [
+      "claude/hooks/guards/bash-policy-checks.mjs",
+      fs.readFileSync(path.join(root, ".claude/hooks/guards/bash-policy-checks.mjs"), "utf8"),
+    ],
+    [
+      "claude/hooks/sync-llm-on-claude-surface-change.mjs",
+      fs.readFileSync(
+        path.join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
+        "utf8"
+      ),
+    ],
+    [
+      "claude/rules/supaschema.md",
+      fs.readFileSync(path.join(root, ".claude/rules/supaschema.md"), "utf8"),
+    ],
+    [
+      "claude/skills/supaschema/SKILL.md",
+      fs.readFileSync(path.join(root, ".claude/skills/supaschema/SKILL.md"), "utf8"),
+    ],
+    [
+      "codex/hooks/general-guard.mjs",
+      fs.readFileSync(path.join(root, ".codex/hooks/general-guard.mjs"), "utf8"),
+    ],
+    [
+      "codex/hooks/guards/bash-policy-checks.mjs",
+      fs.readFileSync(path.join(root, ".codex/hooks/guards/bash-policy-checks.mjs"), "utf8"),
+    ],
+    [
+      "codex/hooks/sync-llm-on-claude-surface-change.mjs",
+      fs.readFileSync(
+        path.join(root, ".codex/hooks/sync-llm-on-claude-surface-change.mjs"),
+        "utf8"
+      ),
+    ],
+    [
+      "codex/rules/supaschema.rules",
+      fs.readFileSync(path.join(root, ".codex/rules/supaschema.rules"), "utf8"),
+    ],
+  ]);
+
+  for (const packageManager of ["npm", "pnpm", "yarn", "bun"]) {
+    const runner = localRunnerForPackageManager(packageManager);
+    const claudeSettings = hookConfigsFor(root, packageManager).find(
+      (config) => config.path === ".claude/settings.json"
+    )?.config;
+    const codexHooks = materializeCodexRunner(
+      JSON.parse(fs.readFileSync(path.join(root, ".codex/hooks.json"), "utf8")),
+      runner
+    );
+    files.set(`claude/settings.${packageManager}.json`, jsonText(claudeSettings));
+    files.set(`codex/hooks.${packageManager}.json`, jsonText(codexHooks));
+  }
+
+  return files;
+}
+
+function jsonText(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
 }
 
 function syncDirectoryMirror(root, surface) {

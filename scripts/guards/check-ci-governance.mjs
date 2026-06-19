@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -86,9 +87,19 @@ function findNamedStep(steps, name) {
   return steps.find((step) => stepName(step) === name);
 }
 
-const files = fs
-  .readdirSync(WORKFLOWS_DIR)
-  .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"));
+function trackedWorkflowFiles() {
+  const out = execFileSync("git", ["ls-files", "-z", "--", ".github/workflows"], {
+    cwd: ROOT,
+  }).toString("utf8");
+  return out
+    .split("\0")
+    .filter(Boolean)
+    .map((file) => path.basename(file))
+    .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"))
+    .sort();
+}
+
+const files = trackedWorkflowFiles();
 assert(
   files.length >= 6,
   `expected at least 6 workflows under .github/workflows, found ${files.length}`
@@ -454,6 +465,6 @@ assert(
   "ci.yml check-os must use npm run test:matrix so examples failures stay in quality"
 );
 
-assert(!parsed.has("python.yml"), "python.yml must stay private with the agent MCP service");
+assert(!files.includes("python.yml"), "python.yml must stay private with the agent MCP service");
 
 ok("CI_GOVERNANCE_OK");
