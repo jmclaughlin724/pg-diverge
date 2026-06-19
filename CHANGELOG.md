@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 (2026-06-19)
+
+### Patch Changes
+
+- Restores full local Claude-to-Codex/.agents sync for maintainer rules, agents, hooks, and skills while keeping the public npm and GitHub agent surface limited to the supaschema-owned bundle.
+- Tightens public repository guards and `.gitignore` so non-supaschema `.agents`, `.claude`, and `.codex` files stay local-only instead of being deleted to satisfy exposure checks.
+- Updates GitHub process guidance, hook wiring, and scaffold hook merging so direct-main policy, DCO-safe pushes, and generated surface sync stay consistent across local and installed agent bundles.
+
 ## 0.3.2 (2026-06-18)
 
 ### Patch Changes
