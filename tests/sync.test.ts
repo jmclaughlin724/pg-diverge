@@ -510,10 +510,18 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     expect(result.report).toContain("checked:");
     expect(result.report).toContain("types: wrote");
     expect(result.report).toContain("stage: skipped (not a git worktree)");
-    expect(result.report).toContain("refusing to sync: verify has no database URL");
-    expect(result.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-    );
+    if (databaseUrl) {
+      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
+      expect(result.report).toContain("dry run: no sync target was selected by config");
+      expect(result.diagnostics.map((item) => item.code)).not.toContain(
+        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
+      );
+    } else {
+      expect(result.report).toContain("refusing to sync: verify has no database URL");
+      expect(result.diagnostics.map((item) => item.code)).toContain(
+        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
+      );
+    }
     expect(await pathExists(typesFile)).toBe(true);
     expect(await pathExists(zodFile)).toBe(true);
     expect(result.pending.some((file) => file.endsWith(".sql"))).toBe(true);
@@ -553,10 +561,18 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         .filter(Boolean);
       expect(result.applied).toBe(false);
       expect(result.report).toContain("stage: staged");
-      expect(result.report).toContain("refusing to sync: verify has no database URL");
-      expect(result.diagnostics.map((item) => item.code)).toContain(
-        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-      );
+      if (databaseUrl) {
+        expect(result.report).toContain("verify: 1 pending migration file(s) passed");
+        expect(result.report).toContain("dry run: no sync target was selected by config");
+        expect(result.diagnostics.map((item) => item.code)).not.toContain(
+          "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
+        );
+      } else {
+        expect(result.report).toContain("refusing to sync: verify has no database URL");
+        expect(result.diagnostics.map((item) => item.code)).toContain(
+          "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
+        );
+      }
       expect(staged.some((file) => file.startsWith("database/migrations/"))).toBe(true);
       expect(staged.some((file) => file.endsWith(".sql"))).toBe(true);
     } finally {

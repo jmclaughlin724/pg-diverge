@@ -177,13 +177,11 @@ assert(
 );
 const ciFailureJob = ciFailureReport.jobs?.report;
 assert(ciFailureJob, "ci-failure-report.yml must define a report job");
+const ciFailureIf = String(ciFailureJob.if ?? "");
 assert(
-  String(ciFailureJob.if ?? "").includes("github.event.workflow_run.event == 'pull_request'") &&
-    String(ciFailureJob.if ?? "").includes("action_required") &&
-    String(ciFailureJob.if ?? "").includes("failure") &&
-    String(ciFailureJob.if ?? "").includes("startup_failure") &&
-    String(ciFailureJob.if ?? "").includes("timed_out"),
-  "ci-failure-report.yml must only comment on failed pull_request workflow runs"
+  ciFailureIf.includes("github.event.workflow_run.event == 'pull_request'") &&
+    !["action_required", "startup_failure", "timed_out"].some((term) => ciFailureIf.includes(term)),
+  "ci-failure-report.yml must run on every completed pull_request workflow_run so the reporter can clear current-head markers after non-failure reruns"
 );
 assert(
   ciFailureJob["runs-on"] === "ubuntu-latest" && ciFailureJob["timeout-minutes"] === 10,
@@ -220,6 +218,15 @@ assert(
     stepRun(ciFailureReporter) === "node scripts/github/report-ci-failure.mjs" &&
     ciFailureReporter.env?.GH_TOKEN === githubTokenExpression,
   "ci-failure-report.yml must run scripts/github/report-ci-failure.mjs with GH_TOKEN"
+);
+const ciInboxCore = fs.readFileSync(path.join(ROOT, "scripts/github/ci-inbox-core.mjs"), "utf8");
+assert(
+  ciInboxCore.includes("currentPullRequestHeadSha") &&
+    ciInboxCore.includes("trustedReportAuthors") &&
+    ciInboxCore.includes("reportHasFailureConclusion") &&
+    ciInboxCore.includes('"DELETE"') &&
+    ciInboxCore.includes("no failed job details were available"),
+  "ci-inbox-core.mjs must skip stale reports, trust bot-authored markers, accept empty-job failures, and delete current-head markers for non-failure reruns"
 );
 
 const codeql = parsed.get("codeql.yml")?.doc;

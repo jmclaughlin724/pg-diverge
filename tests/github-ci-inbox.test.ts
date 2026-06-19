@@ -8,6 +8,8 @@ import {
   ciFailureInboxContext,
   parseCiFailureReportComment,
   renderCiFailureReport,
+  reportFromWorkflowRunEvent,
+  upsertCiFailureComment,
 } from "../scripts/github/ci-inbox-core.mjs";
 
 const headSha = "0123456789abcdef0123456789abcdef01234567";
@@ -39,6 +41,25 @@ function report() {
     workflowName: "CI",
     workflowRunId: 1,
     workflowRunUrl: "https://github.com/jmclaughlin724/supaschema/actions/runs/1",
+  };
+}
+
+function markerComment(value: unknown, login = "github-actions[bot]", id = 1) {
+  return { body: renderCiFailureReport(value), id, user: { login } };
+}
+
+function workflowRunEvent(conclusion: string) {
+  return {
+    repository: { full_name: "jmclaughlin724/supaschema" },
+    workflow_run: {
+      conclusion,
+      head_branch: "codex/ci-failure-inbox",
+      head_sha: headSha,
+      html_url: "https://github.com/jmclaughlin724/supaschema/actions/runs/1",
+      id: 1,
+      name: "CI",
+      pull_requests: [{ number: 53 }],
+    },
   };
 }
 
@@ -122,6 +143,101 @@ describe("GitHub CI failure inbox", () => {
     expect(context).toContain("GitHub CI failure report");
     expect(context).toContain("GitHub checks");
     expect(context).toContain("quality (22)");
+  });
+
+  it("falls back to live PR checks when the marker comment is stale", () => {
+    const stale = {
+      ...report(),
+      headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      jobs: [{ ...report().jobs[0], name: "stale quality" }],
+      workflowRunId: 9,
+    };
+    const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-stale-pr-"));
+    const context = ciFailureInboxContext({
+      env: fakeLivePrEnv(stateDir, {
+        SUPASCHEMA_FAKE_CI_INBOX_COMMENTS: JSON.stringify([markerComment(stale)]),
+      }),
+      now: 1000,
+      runtime: "codex",
+    });
+
+    expect(context).toContain("quality (22)");
+    expect(context).not.toContain("stale quality");
+  });
+
+  it("ignores untrusted marker comments before falling back to live PR checks", () => {
+    const forged = {
+      ...report(),
+      jobs: [{ ...report().jobs[0], name: "forged quality" }],
+      workflowRunId: 10,
+    };
+    const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-untrusted-pr-"));
+    const context = ciFailureInboxContext({
+      env: fakeLivePrEnv(stateDir, {
+        SUPASCHEMA_FAKE_CI_INBOX_COMMENTS: JSON.stringify([markerComment(forged, "octocat")]),
+      }),
+      now: 1000,
+      runtime: "codex",
+    });
+
+    expect(context).toContain("quality (22)");
+    expect(context).not.toContain("forged quality");
+  });
+
+  it("surfaces current-head failure reports when job details are unavailable", () => {
+    const noDetails = {
+      ...report(),
+      conclusion: "startup_failure",
+      jobs: [],
+      workflowRunId: 11,
+    };
+    const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-no-details-"));
+    const context = ciFailureInboxContext({
+      env: fakeLivePrEnv(stateDir, {
+        SUPASCHEMA_FAKE_CI_INBOX_COMMENTS: JSON.stringify([markerComment(noDetails)]),
+      }),
+      now: 1000,
+      runtime: "codex",
+    });
+
+    expect(context).toContain("GitHub CI failure report");
+    expect(context).toContain("no failed job details were available");
+  });
+
+  it("skips stale workflow-run reports before mutating the marker comment", () => {
+    const calls: string[][] = [];
+    const result = upsertCiFailureComment(
+      { ...report(), headSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      {
+        comments: [markerComment(report())],
+        currentHeadSha: headSha,
+        ghJson: (args: string[]) => {
+          calls.push(args);
+          return {};
+        },
+      }
+    );
+
+    expect(result).toEqual({ action: "skipped-stale-head" });
+    expect(calls).toEqual([]);
+  });
+
+  it("deletes the current-head marker comment after a successful workflow rerun", () => {
+    const calls: string[][] = [];
+    const success = reportFromWorkflowRunEvent(workflowRunEvent("success"));
+    const result = upsertCiFailureComment(success, {
+      comments: [markerComment(report(), "github-actions[bot]", 77)],
+      currentHeadSha: headSha,
+      ghJson: (args: string[]) => {
+        calls.push(args);
+        return {};
+      },
+    });
+
+    expect(result).toEqual({ action: "deleted", commentId: 77 });
+    const deleteCall = calls[0] ?? [];
+    expect(deleteCall).toContain("DELETE");
+    expect(deleteCall).toContain("repos/jmclaughlin724/supaschema/issues/comments/77");
   });
 
   it.skipIf(!hasAgentHookRunner)(

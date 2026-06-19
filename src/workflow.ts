@@ -1851,22 +1851,23 @@ function generatedMigrationPatchTargets(patchText: string, projectDir: string): 
 
 function hookPatchLineTarget(line: string, projectDir: string): string | undefined {
   if (line.startsWith(addHeader)) {
-    return resolve(projectDir, line.slice(addHeader.length).trim());
+    return resolveHookTarget(projectDir, line.slice(addHeader.length).trim());
   }
   if (line.startsWith(deleteHeader)) {
-    return resolve(projectDir, line.slice(deleteHeader.length).trim());
+    return resolveHookTarget(projectDir, line.slice(deleteHeader.length).trim());
   }
   if (line.startsWith(updateHeader)) {
-    return resolve(projectDir, line.slice(updateHeader.length).trim());
+    return resolveHookTarget(projectDir, line.slice(updateHeader.length).trim());
   }
   if (line.startsWith(moveHeader)) {
-    return resolve(projectDir, line.slice(moveHeader.length).trim());
+    return resolveHookTarget(projectDir, line.slice(moveHeader.length).trim());
   }
   return;
 }
 
 function resolveHookTarget(projectDir: string, path: string): string {
-  return isAbsolute(path) ? resolve(path) : resolve(projectDir, path);
+  const normalized = slashPath(path);
+  return isAbsolute(normalized) ? resolve(normalized) : resolve(projectDir, normalized);
 }
 
 function changedSchemaTargets(
@@ -1904,7 +1905,8 @@ function migrationOutputs(stdout: string): string[] {
     .trim()
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.endsWith(".sql"));
+    .filter((line) => line.endsWith(".sql"))
+    .map(slashPath);
 }
 
 function isGeneratedMigration(path: string): boolean {
@@ -2398,9 +2400,17 @@ function resolveHookBinary(projectDir: string): HookCommand {
     return { args: [], cmd: local };
   }
   if (process.env.SUPASCHEMA_HOOK_BIN) {
-    return { args: [], cmd: process.env.SUPASCHEMA_HOOK_BIN };
+    return hookScriptCommand(process.env.SUPASCHEMA_HOOK_BIN);
   }
   return { args: ["--no-install", "supaschema"], cmd: "npx" };
+}
+
+function hookScriptCommand(path: string): HookCommand {
+  const lowered = path.toLowerCase();
+  if (lowered.endsWith(".js") || lowered.endsWith(".mjs") || lowered.endsWith(".cjs")) {
+    return { args: [path], cmd: process.execPath };
+  }
+  return { args: [], cmd: path };
 }
 
 function runHookCommand(bin: HookCommand, args: string[], cwd: string): HookCommandResult {
@@ -2432,7 +2442,11 @@ function isInside(dir: string, file: string): boolean {
 
 function rel(projectDir: string, path: string): string {
   const relPath = relative(projectDir, path);
-  return relPath.startsWith("..") ? path : relPath;
+  return slashPath(relPath.startsWith("..") ? path : relPath);
+}
+
+function slashPath(path: string): string {
+  return path.replaceAll("\\", "/");
 }
 
 function head(text: string): string {

@@ -13,22 +13,23 @@ const maxJobs = 8;
 const maxAnnotations = 5;
 const maxLogLines = 12;
 const maxCommentLength = 55_000;
+const trustedReportAuthors = new Set(["github-actions[bot]"]);
 
 export function reportFromWorkflowRunEvent(event, env = process.env) {
   const run = event?.workflow_run;
   const repository = env.GITHUB_REPOSITORY ?? event?.repository?.full_name;
   const pullRequest = Array.isArray(run?.pull_requests) ? run.pull_requests[0] : undefined;
-  const failureConclusion = failureConclusions.has(String(run?.conclusion ?? ""));
+  const conclusion = String(run?.conclusion ?? "");
   if (!(run && repository)) {
     return;
   }
-  if (!(failureConclusion && pullRequest?.number)) {
+  if (!(conclusion && pullRequest?.number)) {
     return;
   }
 
-  const jobs = failedWorkflowJobs(repository, run.id);
+  const jobs = failureConclusions.has(conclusion) ? failedWorkflowJobs(repository, run.id) : [];
   return normalizeReport({
-    conclusion: run.conclusion,
+    conclusion,
     headBranch: run.head_branch,
     headSha: run.head_sha,
     pullRequestNumber: pullRequest.number,
@@ -41,22 +42,45 @@ export function reportFromWorkflowRunEvent(event, env = process.env) {
   });
 }
 
-export function upsertCiFailureComment(report) {
-  const comments = ghJson([
-    "api",
-    `repos/${report.repository}/issues/${report.pullRequestNumber}/comments?per_page=100`,
-  ]);
-  const body = renderCiFailureReport(report);
-  const existing = [...comments]
-    .reverse()
-    .find((comment) => typeof comment?.body === "string" && comment.body.includes(ciFailureMarker));
+export function upsertCiFailureComment(report, options = {}) {
+  const normalized = normalizeReport(report);
+  const requestJson = options.ghJson ?? ghJson;
+  const currentHeadSha =
+    options.currentHeadSha ?? currentPullRequestHeadSha(normalized, requestJson);
+  if (currentHeadSha && currentHeadSha !== normalized.headSha) {
+    return { action: "skipped-stale-head" };
+  }
+  const comments =
+    options.comments ??
+    requestJson([
+      "api",
+      `repos/${normalized.repository}/issues/${normalized.pullRequestNumber}/comments?per_page=100`,
+    ]);
+  const trustedComments = trustedCiReportComments(comments);
+  if (!reportHasFailureConclusion(normalized)) {
+    const existing = [...trustedComments]
+      .reverse()
+      .find((comment) => parseCiFailureReportComment(comment.body)?.headSha === normalized.headSha);
+    if (!existing?.id) {
+      return { action: "none" };
+    }
+    requestJson([
+      "api",
+      "--method",
+      "DELETE",
+      `repos/${normalized.repository}/issues/comments/${existing.id}`,
+    ]);
+    return { action: "deleted", commentId: existing.id };
+  }
+  const body = renderCiFailureReport(normalized);
+  const existing = [...trustedComments].reverse()[0];
   if (existing?.id) {
-    ghJson(
+    requestJson(
       [
         "api",
         "--method",
         "PATCH",
-        `repos/${report.repository}/issues/comments/${existing.id}`,
+        `repos/${normalized.repository}/issues/comments/${existing.id}`,
         "--input",
         "-",
       ],
@@ -64,12 +88,12 @@ export function upsertCiFailureComment(report) {
     );
     return { action: "updated", commentId: existing.id };
   }
-  const created = ghJson(
+  const created = requestJson(
     [
       "api",
       "--method",
       "POST",
-      `repos/${report.repository}/issues/${report.pullRequestNumber}/comments`,
+      `repos/${normalized.repository}/issues/${normalized.pullRequestNumber}/comments`,
       "--input",
       "-",
     ],
@@ -181,7 +205,7 @@ function ciFailureInboxContextUnsafe({
 
   const report = localReport(root, env);
   writeInboxState(root, env, state);
-  if (!report || report.headSha !== headSha || report.jobs.length === 0) {
+  if (!report || report.headSha !== headSha || !reportHasFailureConclusion(report)) {
     return;
   }
 
@@ -223,9 +247,9 @@ function localReport(root, env) {
         cwd: root,
       });
   if (Array.isArray(comments)) {
-    for (const comment of [...comments].reverse()) {
+    for (const comment of [...trustedCiReportComments(comments)].reverse()) {
       const report = parseCiFailureReportComment(comment?.body);
-      if (report) {
+      if (report?.headSha === headSha && reportHasFailureConclusion(report)) {
         return report;
       }
     }
@@ -256,6 +280,32 @@ function reportFromStatusCheckRollup({ branch, headSha, pr, repository }) {
     workflowRunId,
     workflowRunUrl: workflowRunId ? actionsRunUrl(jobs) || pr.url : pr.url,
   });
+}
+
+function currentPullRequestHeadSha(report, requestJson) {
+  const pr = requestJson(["api", `repos/${report.repository}/pulls/${report.pullRequestNumber}`], {
+    allowFailure: true,
+  });
+  return String(pr?.head?.sha ?? "");
+}
+
+function trustedCiReportComments(comments) {
+  return Array.isArray(comments) ? comments.filter(trustedCiReportComment) : [];
+}
+
+function trustedCiReportComment(comment) {
+  if (!(typeof comment?.body === "string" && comment.body.includes(ciFailureMarker))) {
+    return false;
+  }
+  return trustedReportAuthors.has(commentAuthorLogin(comment));
+}
+
+function commentAuthorLogin(comment) {
+  return String(comment?.user?.login ?? comment?.author?.login ?? "");
+}
+
+function reportHasFailureConclusion(report) {
+  return failureConclusions.has(String(report?.conclusion ?? "").toLowerCase());
 }
 
 function failedStatusCheckJobs(rollup) {
@@ -409,6 +459,9 @@ function renderInboxContext(report) {
     `- Run: ${report.workflowRunUrl}`,
     "Failed jobs:",
   ];
+  if (report.jobs.length === 0) {
+    lines.push("- Workflow concluded as failure, but no failed job details were available.");
+  }
   for (const job of report.jobs.slice(0, 5)) {
     lines.push(`- ${job.name}: ${job.conclusion}`);
     for (const step of job.steps.slice(0, 4)) {
