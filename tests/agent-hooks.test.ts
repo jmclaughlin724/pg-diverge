@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -9,6 +10,13 @@ const lineageSql =
 const handAuthoredSql = "-- reviewed migration\nINSERT INTO t VALUES (1) ON CONFLICT DO NOTHING;\n";
 const cliPath = resolve(import.meta.dirname, "../dist/cli.js");
 const fakeMigrationPath = "supabase/migrations/20260613000000_fake.sql";
+const hasClaudeSettings = existsSync(resolve(".claude/settings.json"));
+const hasPrivateContextHooks = [
+  ".claude/hooks/context-post-tool-use.mjs",
+  ".claude/hooks/context-pre-tool-use.mjs",
+  ".claude/hooks/context-stop.mjs",
+  ".claude/hooks/context-user-prompt-submit.mjs",
+].every((file) => existsSync(resolve(file)));
 
 interface HookOutput {
   decision?: string;
@@ -229,86 +237,112 @@ function hookEntries(
   return Array.isArray(entries) ? entries.filter(isRecord) : [];
 }
 
+function codexPreToolUseCommandsFor(config: Record<string, unknown>, toolName: string): string[] {
+  return hookEntries(config, "PreToolUse")
+    .filter((entry) => matcherMentionsTool(entry.matcher, toolName))
+    .flatMap((entry) =>
+      hookHandlers(entry)
+        .map((handler) => handler.command)
+        .filter((command): command is string => typeof command === "string")
+    );
+}
+
+function matcherMentionsTool(matcher: unknown, toolName: string): boolean {
+  if (typeof matcher !== "string") {
+    return false;
+  }
+  const parsedEscapedToolName = toolName.split(".").join("\\.");
+  const serializedEscapedToolName = toolName.split(".").join("\\\\.");
+  return (
+    matcher.includes(toolName) ||
+    matcher.includes(parsedEscapedToolName) ||
+    matcher.includes(serializedEscapedToolName)
+  );
+}
+
 function workspaceVariable(name: string): string {
   return ["$", "{", name, "}"].join("");
 }
 
 describe("agent hook configuration", () => {
-  it("registers Claude hooks without retired wrapper scripts", async () => {
-    const settings = jsonRecord(await readFile(".claude/settings.json", "utf8"));
-    const text = JSON.stringify(settings);
-    const handlers = hookHandlers(settings);
+  it.skipIf(!hasClaudeSettings)(
+    "registers Claude hooks without retired wrapper scripts",
+    async () => {
+      const settings = jsonRecord(await readFile(".claude/settings.json", "utf8"));
+      const text = JSON.stringify(settings);
+      const handlers = hookHandlers(settings);
 
-    expect(text).not.toContain(['node "', "$CLAUDE_PROJECT_DIR", '"'].join(""));
-    expect(text).not.toContain(`node "${workspaceVariable("CLAUDE_PROJECT_DIR")}`);
-    for (const script of [
-      "context-session-start.mjs",
-      "context-user-prompt-submit.mjs",
-      "context-pre-tool-use.mjs",
-      "context-post-tool-use.mjs",
-      "context-subagent-start.mjs",
-      "context-subagent-stop.mjs",
-      "context-stop.mjs",
-      "context-task-completed.mjs",
-      "context-permission-denied.mjs",
-      "context-session-end.mjs",
-      "sync-llm-on-claude-surface-change.mjs",
-      "guards/bash-policy-checks.mjs",
-    ]) {
+      expect(text).not.toContain(['node "', "$CLAUDE_PROJECT_DIR", '"'].join(""));
+      expect(text).not.toContain(`node "${workspaceVariable("CLAUDE_PROJECT_DIR")}`);
+      for (const script of [
+        "context-session-start.mjs",
+        "context-user-prompt-submit.mjs",
+        "context-pre-tool-use.mjs",
+        "context-post-tool-use.mjs",
+        "context-subagent-start.mjs",
+        "context-subagent-stop.mjs",
+        "context-stop.mjs",
+        "context-task-completed.mjs",
+        "context-permission-denied.mjs",
+        "context-session-end.mjs",
+        "sync-llm-on-claude-surface-change.mjs",
+        "guards/bash-policy-checks.mjs",
+      ]) {
+        expect(handlers).toContainEqual(
+          expect.objectContaining({
+            args: [`${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/${script}`],
+            command: "node",
+            type: "command",
+          })
+        );
+      }
+      expect(text).not.toContain("block-generated-migration-edits.mjs");
+      expect(text).not.toContain("auto-diff-on-schema-change.mjs");
       expect(handlers).toContainEqual(
         expect.objectContaining({
-          args: [`${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/${script}`],
+          args: [
+            `${workspaceVariable("CLAUDE_PROJECT_DIR")}/bin/supaschema.cjs`,
+            "hook",
+            "generated-migration-edit",
+            "--runtime",
+            "claude",
+          ],
           command: "node",
           type: "command",
         })
       );
+      expect(handlers).toContainEqual(
+        expect.objectContaining({
+          args: [
+            `${workspaceVariable("CLAUDE_PROJECT_DIR")}/bin/supaschema.cjs`,
+            "hook",
+            "schema-write",
+          ],
+          command: "node",
+          type: "command",
+        })
+      );
+      const postToolUseText = JSON.stringify(hookEntries(settings, "PostToolUse"));
+      const postToolBatch = hookEntries(settings, "PostToolBatch");
+      expect(postToolUseText).not.toContain("sync-llm-on-claude-surface-change.mjs");
+      expect(postToolBatch).toEqual([
+        expect.objectContaining({
+          hooks: [
+            expect.objectContaining({
+              args: [
+                `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
+              ],
+              command: "node",
+              type: "command",
+            }),
+          ],
+        }),
+      ]);
+      for (const entry of postToolBatch) {
+        expect(entry).not.toHaveProperty("matcher");
+      }
     }
-    expect(text).not.toContain("block-generated-migration-edits.mjs");
-    expect(text).not.toContain("auto-diff-on-schema-change.mjs");
-    expect(handlers).toContainEqual(
-      expect.objectContaining({
-        args: [
-          `${workspaceVariable("CLAUDE_PROJECT_DIR")}/bin/supaschema.cjs`,
-          "hook",
-          "generated-migration-edit",
-          "--runtime",
-          "claude",
-        ],
-        command: "node",
-        type: "command",
-      })
-    );
-    expect(handlers).toContainEqual(
-      expect.objectContaining({
-        args: [
-          `${workspaceVariable("CLAUDE_PROJECT_DIR")}/bin/supaschema.cjs`,
-          "hook",
-          "schema-write",
-        ],
-        command: "node",
-        type: "command",
-      })
-    );
-    const postToolUseText = JSON.stringify(hookEntries(settings, "PostToolUse"));
-    const postToolBatch = hookEntries(settings, "PostToolBatch");
-    expect(postToolUseText).not.toContain("sync-llm-on-claude-surface-change.mjs");
-    expect(postToolBatch).toEqual([
-      expect.objectContaining({
-        hooks: [
-          expect.objectContaining({
-            args: [
-              `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
-            ],
-            command: "node",
-            type: "command",
-          }),
-        ],
-      }),
-    ]);
-    for (const entry of postToolBatch) {
-      expect(entry).not.toHaveProperty("matcher");
-    }
-  });
+  );
 
   it("uses Codex matchers only on supported tool hook events", async () => {
     const config = jsonRecord(await readFile(".codex/hooks.json", "utf8"));
@@ -321,34 +355,51 @@ describe("agent hook configuration", () => {
       }
     }
     const postToolUseText = JSON.stringify(hookEntries(config, "PostToolUse"));
+    const preToolUseText = JSON.stringify(hookEntries(config, "PreToolUse"));
     const stopEntries = hookEntries(config, "Stop");
     expect(postToolUseText).not.toContain("sync-llm-on-claude-surface-change.mjs");
-    expect(JSON.stringify(config)).not.toContain("context-");
-    expect(JSON.stringify(config)).toContain("general-guard.mjs");
+    expect(JSON.stringify(config)).toContain("context-user-prompt-submit.mjs");
+    expect(JSON.stringify(config)).toContain("context-pre-tool-use.mjs");
+    expect(JSON.stringify(config)).toContain("context-post-tool-use.mjs");
+    expect(JSON.stringify(config)).toContain("context-stop.mjs");
+    expect(JSON.stringify(config)).not.toContain("scripts/agent-hooks");
+    expect(JSON.stringify(config)).not.toContain("general-guard.mjs");
+    expect(JSON.stringify(config)).not.toContain("scripts/github/ci-inbox.mjs");
     expect(JSON.stringify(config)).not.toContain("block-generated-migration-edits.mjs");
     expect(JSON.stringify(config)).not.toContain("auto-diff-on-schema-change.mjs");
     expect(JSON.stringify(config)).toContain("bin/supaschema.cjs");
     expect(JSON.stringify(config)).toContain("functions\\\\.apply_patch");
+    expect(preToolUseText).toContain("functions\\\\.exec_command");
+    expect(preToolUseText).toContain("exec_command");
     expect(JSON.stringify(config)).toContain("hook generated-migration-edit");
     expect(JSON.stringify(config)).toContain("hook schema-write");
     expect(JSON.stringify(config)).not.toContain("npm exec -- supaschema");
     expect(JSON.stringify(config)).not.toContain("pnpm exec supaschema");
     expect(JSON.stringify(config)).not.toContain("npx --no-install supaschema");
-    expect(stopEntries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          hooks: [
-            expect.objectContaining({
-              command: [
-                'node "$',
-                "{CODEX_PROJECT_DIR:-$PWD}",
-                '/.codex/hooks/sync-llm-on-claude-surface-change.mjs"',
-              ].join(""),
-              type: "command",
-            }),
-          ],
-        }),
-      ])
+    for (const toolName of ["Bash", "exec_command", "functions.exec_command"]) {
+      expect(codexPreToolUseCommandsFor(config, toolName)).toEqual([
+        ['node "$', "{CODEX_PROJECT_DIR:-$PWD}", '/.codex/hooks/context-pre-tool-use.mjs"'].join(
+          ""
+        ),
+      ]);
+    }
+    expect(hookHandlers(stopEntries)).toContainEqual(
+      expect.objectContaining({
+        command: ['node "$', "{CODEX_PROJECT_DIR:-$PWD}", '/.codex/hooks/context-stop.mjs"'].join(
+          ""
+        ),
+        type: "command",
+      })
+    );
+    expect(hookHandlers(stopEntries)).toContainEqual(
+      expect.objectContaining({
+        command: [
+          'node "$',
+          "{CODEX_PROJECT_DIR:-$PWD}",
+          '/.codex/hooks/sync-llm-on-claude-surface-change.mjs"',
+        ].join(""),
+        type: "command",
+      })
     );
     for (const entry of stopEntries) {
       expect(entry).not.toHaveProperty("matcher");
@@ -359,6 +410,7 @@ describe("agent hook configuration", () => {
 describe("general Bash blocker policy", () => {
   const claudeScript = ".claude/hooks/guards/bash-policy-checks.mjs";
   const codexScript = ".codex/hooks/general-guard.mjs";
+  const sourceCodexScript = ".codex/hooks/context-pre-tool-use.mjs";
   const preToolBash = (command: string) => ({
     hook_event_name: "PreToolUse",
     tool_input: { command },
@@ -390,6 +442,11 @@ describe("general Bash blocker policy", () => {
 
   it("blocks stateful git shortcuts and diagnostic pushes", async () => {
     for (const command of [
+      "git switch main",
+      "git switch -c feature/demo",
+      "git branch feature/demo",
+      "git branch --show-current",
+      "git worktree add ../demo HEAD",
       "git stash",
       "git merge --squash feature/demo",
       "git reset --hard",
@@ -399,6 +456,11 @@ describe("general Bash blocker policy", () => {
     ]) {
       const result = await runHook(claudeScript, preToolBash(command));
       expect(result.code, command).toBe(2);
+    }
+
+    for (const command of ["git status --short", "git rev-parse --abbrev-ref HEAD"]) {
+      const result = await runHook(claudeScript, preToolBash(command));
+      expect(result.code, command).toBe(0);
     }
   });
 
@@ -449,9 +511,23 @@ describe("general Bash blocker policy", () => {
     expect(blocked.code).toBe(0);
     expect(codexDenial(blocked.stdout)).toContain("recursive+force rm");
 
+    const blockedWorktree = await runHook(
+      codexScript,
+      preToolBash("git worktree add ../demo HEAD")
+    );
+    expect(blockedWorktree.code).toBe(0);
+    expect(codexDenial(blockedWorktree.stdout)).toContain("git worktree is prohibited");
+
     const allowed = await runHook(codexScript, preToolBash("rm -r tmp"));
     expect(allowed.code).toBe(0);
     expect(JSON.parse(allowed.stdout)).toEqual({});
+  });
+
+  it("blocks unsafe Bash through the source Codex context hook path", async () => {
+    const blocked = await runHook(sourceCodexScript, preToolBash("rm -rf tmp"));
+
+    expect(blocked.code).toBe(0);
+    expect(codexDenial(blocked.stdout)).toContain("recursive+force rm");
   });
 });
 
@@ -469,6 +545,34 @@ describe("llm surface sync hook", () => {
         tool_calls: [
           {
             tool_input: { file_path: ".claude/skills/demo/SKILL.md" },
+            tool_name: "Edit",
+          },
+        ],
+      },
+      { cwd: project }
+    );
+
+    expect(result.code).toBe(0);
+    expect(hookJson(result.stdout)).toMatchObject({
+      hookSpecificOutput: expect.objectContaining({
+        additionalContext: "SYNC_LLM_OK",
+        hookEventName: "PostToolBatch",
+      }),
+    });
+    expect(await readFile(log, "utf8")).toBe("sync\n");
+  });
+
+  it("runs sync:llm after direct edits to generated Codex hook registration", async () => {
+    const { log, project } = await syncHookProject();
+
+    const result = await runHook(
+      script,
+      {
+        cwd: project,
+        hook_event_name: "PostToolBatch",
+        tool_calls: [
+          {
+            tool_input: { file_path: ".codex/hooks.json" },
             tool_name: "Edit",
           },
         ],
@@ -724,11 +828,11 @@ describe("codex generated-migration tool gate", () => {
   });
 });
 
-describe("agent-hooks response-evidence recording", () => {
+describe.skipIf(!hasPrivateContextHooks)("agent-hooks response-evidence recording", () => {
   const postToolHook = ".claude/hooks/context-post-tool-use.mjs";
   const stopHook = ".claude/hooks/context-stop.mjs";
   const promptHook = ".claude/hooks/context-user-prompt-submit.mjs";
-  const claimReason = "claims verification without a recorded successful verification command";
+  const claimReason = "response claims verification";
 
   const bashResponse = {
     interrupted: false,
@@ -838,9 +942,45 @@ describe("agent-hooks response-evidence recording", () => {
     );
     expect(stop.stdout).toContain(claimReason);
   });
+
+  it("does not turn source reads containing process.exitCode into Stop blockers", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-evidence-state-"));
+    const env = { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir };
+    const session = "evidence-source-read-exitcode";
+
+    await runHook(promptHook, { prompt: "review these hooks", session_id: session }, { env });
+    for (const cmd of ["sed -n '1,260p' src/cli.ts", "sed -n '1,260p' src/cli-tools.ts"]) {
+      await runHook(
+        postToolHook,
+        {
+          session_id: session,
+          tool_input: { cmd },
+          tool_name: "functions.exec_command",
+          tool_response: {
+            content: [{ text: "process.exitCode = 2" }],
+            exit_code: 0,
+          },
+        },
+        { env }
+      );
+    }
+
+    const stop = await runHook(
+      stopHook,
+      {
+        last_assistant_message:
+          "Architecture: the $elegant owner is the shared response-evidence detector. Verification: implementation checks are not run.",
+        session_id: session,
+      },
+      { env }
+    );
+    expect(hookOutput(stop.stdout).decision).toBeUndefined();
+    expect(stop.stdout).not.toContain("sed -n");
+    expect(stop.stdout).not.toContain("verification command failed");
+  });
 });
 
-describe("agent-hooks PreToolUse subagent downgrade", () => {
+describe.skipIf(!hasPrivateContextHooks)("agent-hooks PreToolUse subagent downgrade", () => {
   it("hard-denies a gated tool in the main session but only advises inside a subagent", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-state-"));
     const env = { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir };
@@ -907,9 +1047,8 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
       );
 
       expect(result.code).toBe(0);
-      expect(hookAdditionalContext(result.stdout)).toContain(
-        "workflow.type_generation=create_or_refresh, workflow.zod_generation=create_or_refresh, workflow.type_usage=zod_validated"
-      );
+      expect(hookAdditionalContext(result.stdout)).toContain("supaschema auto-diff completed");
+      expect(hookAdditionalContext(result.stdout)).toContain("supaschema check passed");
       expect(await readFakeCalls(log)).toEqual([
         ["diff", "--to", "dir:supabase/schemas"],
         ["check", fakeMigrationPath],

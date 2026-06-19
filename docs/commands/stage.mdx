@@ -1,0 +1,42 @@
+---
+title: "stage"
+description: "Git-stage changed supaschema-generated migration files."
+keywords: ["stage command", "git add", "generated migrations"]
+---
+
+Use `stage` after `diff` writes a generated migration and before you commit the migration.
+
+`stage` inspects the configured migrations directory, finds changed `.sql` files containing the `-- supaschema: lineage` marker, and runs `git add` on those files only. Hand-authored SQL is left unstaged.
+
+## Run it
+
+```bash
+npx supaschema stage
+npx supaschema stage --dry-run
+npx supaschema stage --migrations-dir database/migrations
+```
+
+## Flags
+
+<ParamField path="--migrations-dir" type="path">
+  Migration files directory. Defaults to `config.migrationsDir`.
+</ParamField>
+
+<ParamField path="--dry-run" type="boolean">
+  Print generated migration files that would be staged without changing the git index.
+</ParamField>
+
+## Refusal cases
+
+`stage` requires a git worktree. It stages generated migration files only; it does not stage schema files, generated TypeScript/Zod outputs, hand-authored SQL, config, docs, or unrelated changes.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Diff" icon="file-diff" href="/commands/diff">
+    Generate the migration first.
+  </Card>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    Validate replay safety before apply.
+  </Card>
+</CardGroup>

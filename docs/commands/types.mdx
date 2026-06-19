@@ -13,7 +13,7 @@ Use `types` when application code needs the latest database shape before a migra
 - A pull request changes SQL and TypeScript together.
 - You want generated runtime validators at API boundaries.
 - A database connection is not available.
-- `diff` output refresh is disabled or you need an explicit refresh.
+- The schema tree changed and generated contracts need refresh.
 
 ## Run it
 
@@ -24,7 +24,7 @@ npx supaschema types --out src/lib/database.types.ts
 npx supaschema types --out stdout
 ```
 
-`diff` refreshes configured type and Zod outputs after writing a migration according to `workflow.type_generation` and `workflow.zod_generation`.
+`types` is the generated-contract command. `diff` writes migration SQL; it does not refresh TypeScript or Zod outputs.
 
 ## Flags
 
@@ -63,7 +63,7 @@ Commit generated outputs when reviewers should see app-type impact in the same p
     Set output paths and workflow policy.
   </Card>
   <Card title="Diff" icon="file-diff" href="/commands/diff">
-    Refresh generated outputs with migrations.
+    Generate migration SQL from schema changes.
   </Card>
   <Card
     title="ORM-free apps"

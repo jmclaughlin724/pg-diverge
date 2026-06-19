@@ -17,8 +17,8 @@ keywords:
 | --- | --- | --- |
 | Schema tree | `schemaPaths`, `sources.to`, `migrationsDir` | Read every nested `.sql` file under `database/schemas`, diff toward `dir:database/schemas`, and write migrations to `database/migrations`. |
 | Diff baseline | `sources.from`, `sources.to` | Diff from `"auto"` to the configured schema tree. `"auto"` resolves `git:HEAD`, then a database URL, then `empty:`. |
-| Generated contracts | `typesFile`, `zodFile`, `workflow.type_generation`, `workflow.zod_generation`, `workflow.type_usage` | Create or refresh TypeScript and Zod outputs after `diff`, and tell agents to use Zod validators at runtime boundaries. |
-| Apply policy | `workflow.migration_sync`, `sync.targets` | Keep bare `sync` apply-capable by default, but only targets with `mode: "auto"` are selected; remote targets also require their approval environment variable. |
+| Generated contracts | `typesFile`, `zodFile`, `workflow.type_generation`, `workflow.zod_generation`, `workflow.type_usage` | `supaschema types` creates or refreshes TypeScript and Zod outputs, and agents use Zod validators at runtime boundaries when configured. |
+| Apply policy | `workflow.migration_sync`, `sync.targets` | Keep bare `sync` apply-capable by default for one target with `mode: "auto"`; remote targets also require their approval environment variable. |
 
 Use the detailed field reference when the project needs a non-default path, source, generated-output policy, validator, or apply target.
 
@@ -95,7 +95,7 @@ Apply policy:
 }
 ```
 
-`workflow.migration_sync: "auto"` keeps bare `supaschema sync` enabled. Target `mode` decides what is selected. Set a target to `"manual"` to omit it from bare sync, set `workflow.migration_sync` to `"manual"` to require `--target <name>`, or set it to `"disabled"` to block apply.
+`workflow.migration_sync: "auto"` keeps bare `supaschema sync` enabled. Target `mode` decides what is selected, but only one target may be automatic because cross-target apply is not atomic. Set a target to `"manual"` to omit it from bare sync, set `workflow.migration_sync` to `"manual"` to require `--target <name>`, or set it to `"disabled"` to block apply.
 
 Provider detection can change the initial `schemaPaths`, `sources.to`, and `migrationsDir` values during install. Supabase installs also seed `managedSchemas` with the Supabase platform schema list; generic PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, and Azure PostgreSQL installs use `managedSchemas: []` unless you configure otherwise.
 
@@ -115,18 +115,18 @@ The config schema is generated from `src/config.ts` plus the shared contract in 
 
 ## Workflow policy
 
-The `workflow` object is the machine-readable contract used by agent hooks, CLI defaults, generated output refresh, migration sync automation, and deploy safety gates.
+The `workflow` object is the machine-readable contract used by agent hooks, CLI defaults, generated contract guidance, migration automation, and deploy safety gates.
 
 | Field | Default | Allowed values |
 | --- | --- | --- |
 | `workflow.schema_diff` | `"on_schema_write"` | `on_schema_write` runs `diff` from installed hooks after schema-tree SQL writes; `manual` leaves diff to a human or agent command; `disabled` prevents hook-driven diff. |
 | `workflow.migration_check` | `"after_schema_diff"` | `after_schema_diff` runs `check` after hook-generated migrations; `required_before_complete` marks check as required before agents close schema work; `manual` skips hook-driven check. |
 | `workflow.migration_verify` | `"suggest_after_check"` | `suggest_after_check` tells agents to suggest `verify` after check when a database is reachable; `after_schema_diff` allows automation to verify after a generated migration; `manual` leaves verification entirely explicit. |
-| `workflow.migration_sync` | `"auto"` | `disabled` refuses apply; `manual` leaves bare `sync` on the dry-run gate while allowing explicit `--target <name>` overrides; `auto` allows bare `sync` to use targets whose own `mode` is `"auto"`. |
+| `workflow.migration_sync` | `"auto"` | `disabled` refuses apply; `manual` leaves bare `sync` on the dry-run gate while allowing explicit `--target <name>` overrides; `auto` allows bare `sync` to use one target whose own `mode` is `"auto"`. |
 | `workflow.type_safety` | `"deploy_blocking"` | `deploy_blocking` fails sync before mutation on type-contract errors; `report_only` keeps diagnostics non-blocking; `disabled` skips the type-safety gate. |
 | `workflow.rls_safety` | `"deploy_blocking"` | `deploy_blocking` fails sync before mutation on RLS and least-privilege errors; `report_only` keeps diagnostics non-blocking; `disabled` skips the RLS-safety gate. |
-| `workflow.type_generation` | `"create_or_refresh"` | `create_or_refresh` creates or updates `typesFile` after `diff`; `refresh_existing` updates it only when the file exists; `disabled` skips automatic TypeScript output refresh. |
-| `workflow.zod_generation` | `"create_or_refresh"` | `create_or_refresh` creates or updates `zodFile` after `diff`; `refresh_existing` updates it only when the file exists; `disabled` skips automatic Zod output refresh. |
+| `workflow.type_generation` | `"create_or_refresh"` | TypeScript generated-output policy for the package workflow. `supaschema types` is the public command that refreshes `typesFile`. |
+| `workflow.zod_generation` | `"create_or_refresh"` | Zod generated-output policy for the package workflow. `supaschema types` is the public command that refreshes `zodFile`. |
 | `workflow.type_usage` | `"zod_validated"` | `zod_validated` tells agents to use the generated Zod validators for runtime boundaries and derived validated types; `typescript_only` tells agents to use only the generated TypeScript shape. |
 
 ## Options
@@ -145,12 +145,12 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `hints.renames` | `[]` | `{ "from": "<object key>", "to": "<object key>" }` pairs rendered as guarded `ALTER ... RENAME`. |
 | `idempotency` | `"required"` | Rendered SQL is replay-safe by construction. Not configurable away. |
 | `lockTimeout` | `"5s"` | Value for the `SET lock_timeout` migration preamble. |
-| `workflow` | see [Workflow policy](#workflow-policy) | Hook automation, generated output refresh, deploy safety gates, verification guidance, and sync apply policy. |
-| `sync.targets.<name>` | `local` and `remote` targets | Named sync targets. Each target sets `mode`, `runner`, and `historyTable`; it may use `databaseUrl`, use `environment`, or omit both for the runner/default URL fallback. Remote targets also set `requireApprovalEnv`. |
+| `workflow` | see [Workflow policy](#workflow-policy) | Hook automation, deploy safety gates, verification guidance, generated contract guidance, and apply policy. |
+| `sync.targets.<name>` | `local` and `remote` targets | Named sync targets. Each target sets `mode`, `runner`, and `historyTable`; it may use `databaseUrl`, use `environment`, or omit both for the runner/default URL fallback. Keep at most one target in `mode: "auto"`. Remote targets also set `requireApprovalEnv`. |
 | `managedSchemas` | `[]` for generic installs; Supabase platform set for Supabase installs | Schemas treated as externally managed. Objects inside these schemas cannot be claimed by the declarative tree unless you remove the schema from this list because the project truly owns it. |
 | `migrationsDir` | `"database/migrations"` | Where zero-flag `diff` writes migrations, zero-arg `check` reads them, and `verify` finds the newest pending file. Install can scaffold provider-specific folders; the canonical path table lives in [Setup](/setup#path-selection). The `--migrations-dir` flag overrides per command. |
-| `typesFile` | `"database.types.ts"` | Where `supaschema types` writes generated TypeScript types. Automatic refresh after `diff` is controlled by `workflow.type_generation`. |
-| `zodFile` | `"database.zod.ts"` | Where `supaschema types` writes generated runtime Zod validators (requires `zod` in the consuming project). Automatic refresh after `diff` is controlled by `workflow.zod_generation`. |
+| `typesFile` | `"database.types.ts"` | Where `supaschema types` writes generated TypeScript types. |
+| `zodFile` | `"database.zod.ts"` | Where `supaschema types` writes generated runtime Zod validators (requires `zod` in the consuming project). |
 | `normalize` | `"deparse"` | Every object's SQL is rewritten into canonical form via `pgsql-deparser` (the pure-TypeScript companion of the `libpg-query` parser). Fidelity-gated per object: the canonical text is used only when it reparses to the identical location-stripped parse tree, otherwise the source text is kept with a `SUPA_NORMALIZE_*` warning. Hashes never change (identity is AST-based); rendered output is formatting-independent. Set `"off"` to keep source spelling verbatim. `check` always runs the round-trip proof and reports `SUPA_CHECK_DEPARSE_*` findings regardless of this setting. |
 | `postgresVersion` | `"15+"` | Documentation of the supported floor; guards target PostgreSQL 15+ syntax. |
 | `renameDetection` | `"hints-only"` | `hints-only` uses `hints.renames`; `off` disables rename handling entirely. |

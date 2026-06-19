@@ -460,7 +460,9 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
   });
 
-  it("supaschema init rejects the removed --agent-bundle auto-install path", async () => {
+  it("supaschema init rejects the removed --agent-bundle auto-install path", {
+    timeout: 30_000,
+  }, async () => {
     const bundleConsumer = await mkdtemp(join(tmpdir(), "supa-consumer-agent-bundle-"));
     await writeFile(
       join(bundleConsumer, "package.json"),

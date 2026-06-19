@@ -30,15 +30,15 @@ For a new project setup, copy the agent prompt from [Installation](/installation
     Change the configured declarative SQL tree, such as `database/schemas/**`,
     `neon/schemas/**`, `aws-postgresql/schemas/**`, or `supabase/schemas/**`.
   </Step>
-  <Step title="Run one command">
-    Run `diff` through the local runner from the install prompt. The command
-    extracts both sides, plans the change, renders the migration, and refreshes
-    configured TypeScript and Zod outputs.
+  <Step title="Run the workflow commands">
+    Run `diff`, `check`, and `types` through the local runner from the install
+    prompt. `diff` renders the migration, `check` gates replay safety, and
+    `types` regenerates TypeScript and Zod outputs.
   </Step>
   <Step title="Report the result">
     Summarize the generated migration, generated outputs, target runner
     expectations, and any `SUPA_*` diagnostic. Apply only through an explicit
-    user request or a config-gated `supaschema sync` workflow with resolved
+    user request or a config-gated `supaschema apply` workflow with resolved
     targets and required remote approval.
   </Step>
 </Steps>
@@ -64,7 +64,7 @@ The public npm package includes the consumer-safe raw surfaces needed for that w
   </Card>
   <Card title="Hooks" icon="webhook" href="/coding-agents/agent-bundle">
     Write-time guardrails that block generated migration edits, run diff or
-    config-gated sync after schema edits, and sync installed LLM surfaces.
+    config-gated apply after schema edits, and sync installed LLM surfaces.
   </Card>
 </CardGroup>
 

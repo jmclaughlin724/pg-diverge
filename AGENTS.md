@@ -8,6 +8,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 
 - Code Atlas routing and repo-wide graph policy: `.claude/rules/10-code-atlas.md`.
 - Supaschema migration policy: `.claude/rules/supaschema.md`.
+- Generated Claude/Codex/Agents sync ownership: `.claude/rules/22-agent-surface-sync-ownership.md`.
 - Public repository exposure policy: `npm run guard:public-surface`.
 - GitHub repository settings, PR, merge, and post-merge process: `.github/repo-policy.json`, `.github/PULL_REQUEST_TEMPLATE.md`, `CONTRIBUTING.md`, and `npm run guard:github-process`.
 
@@ -21,6 +22,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 - Preserve every user instruction as an acceptance criterion. Do not narrow the requested action, stop at a representative subset, or treat current structure as proof of correctness.
 - Use AST instead of regex for code analysis and generation.
 - DEFAULT TO `$elegant` for every task and action. MUST NOT create or keep backwards compatibility behavior or paths, export-only compatibility files, shims, aliases, wrappers, DTOs, facades, copied enum tuples, casts that patch missing contracts, local view-models, local compatibility layers, broader helper surfaces, allowlist exceptions, comments in code or scripts, redundant or convenience entry points, placeholders, TODOs, regex, duplicate owners, or unverified automation. Typed UI prop containers are allowed only when DB-backed payloads use direct generated contracts without renaming, projection, mirroring, or local ownership. Use AST only for structural analysis. Treat external-contract conflicts as STOP conditions; solve them in the canonical owner.
+- For diagnostic, review, verification, source, why, correctness, best-practice, redundancy, or architecture tasks, final answers MUST separate mechanism, `$elegant` architecture/end-state disposition, and verification disposition. MUST NOT treat upstream-valid runtime behavior as proof of local correctness. VERIFY with the Stop response-shape detector in `scripts/agent-hooks/detectors.mjs` and `npm run guard:agent`. FIX BY revising the answer or running the missing verification before claiming correctness.
 - Do not delete, weaken, bypass, or skip guards without explicit user approval and a documented reason.
 - For anything important, use this chain:
   - Rule file says the requirement.
@@ -28,6 +30,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
   - Guard script performs deterministic validation.
   - CI runs the same guard.
   - Skill tells agent how to fix failures.
+- For hook, context, rule, sync, generated-surface, or package-template changes, keep an enforcement closure ledger before closeout: rule, runtime or hook path, guard, test, CI or script, skill guidance, generated mirrors, consumer or package surface, and explicit Claude/Codex disposition. A docs-only or skill-only update is not complete when runtime, sync, guard, test, generated, or package surfaces are impacted.
 
 ## Working style
 
@@ -155,10 +158,10 @@ This project uses supaschema for declarative PostgreSQL migrations. The configur
 - The agent install prompt lives at `.agents/prompts/supaschema-install.md`; read it before installing, initializing, inspecting, or explaining supaschema setup in this project.
 - Treat `supaschema.config.json` as four decisions: schema tree (`schemaPaths`, `sources.to`, `migrationsDir`), diff baseline (`sources.from`, `sources.to`), generated contracts (`typesFile`, `zodFile`, `workflow.type_generation`, `workflow.zod_generation`, `workflow.type_usage`), and apply policy (`workflow.migration_sync`, `sync.targets`).
 - `schemaPaths` roots are recursive. The default target source is `dir:examples/postgres/schemas`; keep `sources.to` explicit when the diff target is intentionally different.
-- Consumer installs add canonical `supaschema:*` package scripts when `package.json` exists; use `supaschema:diff`, `supaschema:check`, `supaschema:types`, `supaschema:verify`, `supaschema:sync`, and `supaschema:validate` instead of fixture-only repo scripts.
-- Generated type outputs use `database.types.ts` and `database.zod.ts` unless `typesFile` or `zodFile` is changed in config; default workflow creates or refreshes both after `diff`, and `workflow.type_usage: "zod_validated"` tells agents to use generated Zod validators at runtime boundaries.
+- Consumer installs add canonical `supaschema:*` package scripts when `package.json` exists: `supaschema:sync`, `supaschema:diff`, `supaschema:stage`, `supaschema:apply`, `supaschema:types`, and `supaschema:check`.
+- Generated type outputs use `database.types.ts` and `database.zod.ts` unless `typesFile` or `zodFile` is changed in config; run `supaschema types` to refresh them, and use generated Zod validators at runtime boundaries when `workflow.type_usage` is `"zod_validated"`.
 - Use existing `$ENV_NAME` database URL references in `sync.targets` or `environments`; do not create duplicate supaschema-only credentials or commit credentials.
-- For schema changes, read `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file, edit declarative SQL, then run `diff` and `check` through the local runner selected in `.agents/prompts/supaschema-install.md`.
+- For schema changes, read `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file, edit declarative SQL, then use `sync` through the local runner selected in `.agents/prompts/supaschema-install.md`; `sync` owns diff, target selection, history reconciliation, check, generated contracts, stage, safety, verify, runner apply, and final reconciliation.
 - Consumer installs keep AI-agent rules, hooks, skills, prompts, and settings in the raw package bundle. `supaschema init` must not write `.agents`, `.claude`, `.codex`, `.claude/settings.json`, `.codex/hooks.json`, `AGENTS.md`, `CLAUDE.md`, or backup directories; agents use `node_modules/supaschema/agent-bundle/INSTALL.md` for reviewed manual install instructions only.
-- Use bare `sync` for the configured workflow. It runs the ordered apply lanes: policy, source resolution, diff/output refresh, target selection, migration-history reconciliation, pending checks, deploy safety, runner apply, and final reconciliation or dry-run reporting. Do not run `sync --target <name>` unless explicitly asked to override target selection. `sync.targets.<name>.mode` decides automatic target selection, `workflow.migration_sync: "manual"` keeps bare sync on the dry-run gate, and `workflow.migration_sync: "disabled"` blocks apply.
+- Use `sync` as the canonical one-command workflow for schema changes. It refreshes generated contracts even when no migration is pending. Use `apply` only for already-generated pending migrations, and do not use `sync --target <name>` unless explicitly asked to select one target. Multiple automatic sync targets are refused because cross-target apply is not atomic.
 <!-- supaschema:agent-guidance:end -->

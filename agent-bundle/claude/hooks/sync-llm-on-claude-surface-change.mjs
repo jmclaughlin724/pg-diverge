@@ -11,6 +11,14 @@ const syncSurfaces = [
   ".claude/rules",
   ".claude/skills",
 ];
+const syncTriggerFiles = [
+  ".codex/hooks.json",
+  "agent-bundle/codex/hooks.bun.json",
+  "agent-bundle/codex/hooks.npm.json",
+  "agent-bundle/codex/hooks.pnpm.json",
+  "agent-bundle/codex/hooks.yarn.json",
+  "scripts/skills/sync-llm.mjs",
+];
 const updateHeader = "*** Update File: ";
 const deleteHeader = "*** Delete File: ";
 const addHeader = "*** Add File: ";
@@ -30,14 +38,14 @@ try {
   const currentDigest = claudeSurfaceDigest(projectDir);
   const previousDigest = readSyncedDigest(projectDir);
   const targets = editTargets(payload, projectDir);
-  const explicitClaudeChange = targets.some((target) => isClaudeSyncSurface(projectDir, target));
+  const explicitSyncChange = targets.some((target) => isSyncTriggerSurface(projectDir, target));
   const changedSinceLastSync = previousDigest !== undefined && previousDigest !== currentDigest;
   const syncAvailable = hasSyncScript(projectDir);
 
   if (!syncAvailable) {
     emitNoop(hookEventName);
   }
-  if (!explicitClaudeChange && !changedSinceLastSync) {
+  if (!explicitSyncChange && !changedSinceLastSync) {
     writeSyncedDigest(projectDir, currentDigest);
     emitNoop();
   }
@@ -135,12 +143,13 @@ function patchTargets(patchText, projectDir) {
   return targets;
 }
 
-function isClaudeSyncSurface(projectDir, target) {
+function isSyncTriggerSurface(projectDir, target) {
   const relPath = relative(projectDir, target).split(sep).join("/");
   return (
     relPath !== "" &&
     !relPath.startsWith("../") &&
-    syncSurfaces.some((surface) => relPath === surface || relPath.startsWith(`${surface}/`))
+    (syncSurfaces.some((surface) => relPath === surface || relPath.startsWith(`${surface}/`)) ||
+      syncTriggerFiles.includes(relPath))
   );
 }
 

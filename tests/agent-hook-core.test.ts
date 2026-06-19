@@ -1,22 +1,49 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  claimWithoutEvidence,
-  completionClaimWithOpenItems,
-  decisionMenuAfterDirective,
-  deferralLanguage,
-  hedgeDensity,
-  toolFailureWithoutRetry,
-} from "../scripts/agent-hooks/detectors.mjs";
-import { runChecks, shapeHookResult } from "../scripts/agent-hooks/payload.mjs";
-import { handleAgentHookEvent } from "../scripts/agent-hooks/runner.mjs";
-import {
-  currentTurnState,
-  normalizeState,
-  readSessionState,
-} from "../scripts/agent-hooks/state.mjs";
+
+const hasAgentHookSources = [
+  "scripts/agent-hooks/detectors.mjs",
+  "scripts/agent-hooks/payload.mjs",
+  "scripts/agent-hooks/runner.mjs",
+  "scripts/agent-hooks/state.mjs",
+].every((file) => existsSync(join(process.cwd(), file)));
+let claimWithoutEvidence: any;
+let completionClaimWithOpenItems: any;
+let decisionMenuAfterDirective: any;
+let deferralLanguage: any;
+let hedgeDensity: any;
+let mechanismClaimWithoutArchitecture: any;
+let toolFailureWithoutRetry: any;
+let runChecks: any;
+let shapeHookResult: any;
+let handleAgentHookEvent: any;
+let currentTurnState: any;
+let normalizeState: any;
+let readSessionState: any;
+
+function optionalImport(specifier: string): Promise<any> {
+  return import(specifier);
+}
+
+if (hasAgentHookSources) {
+  ({
+    claimWithoutEvidence,
+    completionClaimWithOpenItems,
+    decisionMenuAfterDirective,
+    deferralLanguage,
+    hedgeDensity,
+    mechanismClaimWithoutArchitecture,
+    toolFailureWithoutRetry,
+  } = await optionalImport("../scripts/agent-hooks/detectors.mjs"));
+  ({ runChecks, shapeHookResult } = await optionalImport("../scripts/agent-hooks/payload.mjs"));
+  ({ handleAgentHookEvent } = await optionalImport("../scripts/agent-hooks/runner.mjs"));
+  ({ currentTurnState, normalizeState, readSessionState } = await optionalImport(
+    "../scripts/agent-hooks/state.mjs"
+  ));
+}
 
 interface HookFeedback {
   permissionDecisionReason?: string;
@@ -39,7 +66,7 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-describe("agent hook payload mapping", () => {
+describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
   it("pins model-context output shapes by event", () => {
     for (const eventName of [
       "SessionStart",
@@ -93,7 +120,7 @@ describe("agent hook payload mapping", () => {
   });
 });
 
-describe("agent hook skill matcher state", () => {
+describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
   it("keeps leading-slash skill prompts pending until an observable load", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -457,7 +484,7 @@ describe("agent hook skill matcher state", () => {
   });
 });
 
-describe("agent hook response detectors", () => {
+describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
   it("detects hedge density without flagging decisive verified text", () => {
     expect(
       hedgeDensity(
@@ -507,6 +534,103 @@ describe("agent hook response detectors", () => {
         })
       )
     ).toBeUndefined();
+    expect(
+      claimWithoutEvidence(
+        "The GitHub checks are verified and green.",
+        normalizedHookState({
+          evidence: [{ domains: ["guard"], kind: "verified-command", outcome: "success" }],
+        }),
+        []
+      )
+    ).toMatchObject({ id: "claim-without-evidence" });
+    expect(
+      claimWithoutEvidence(
+        "The GitHub checks are verified and green.",
+        normalizedHookState({
+          evidence: [
+            {
+              at: "2026-06-15T00:00:00.000Z",
+              domains: ["github-checks"],
+              kind: "failed-command",
+              outcome: "failure",
+            },
+            {
+              at: "2026-06-15T00:01:00.000Z",
+              domains: ["guard"],
+              kind: "verified-command",
+              outcome: "success",
+            },
+          ],
+        }),
+        []
+      )
+    ).toMatchObject({ id: "claim-without-evidence" });
+    expect(
+      claimWithoutEvidence(
+        "The GitHub checks are verified and green.",
+        normalizedHookState({
+          evidence: [
+            {
+              at: "2026-06-15T00:00:00.000Z",
+              domains: ["github-checks"],
+              kind: "failed-command",
+              outcome: "failure",
+            },
+            {
+              at: "2026-06-15T00:01:00.000Z",
+              domains: ["github-checks"],
+              kind: "verified-command",
+              outcome: "success",
+            },
+          ],
+        }),
+        []
+      )
+    ).toBeUndefined();
+  });
+
+  it("detects mechanism-only diagnostic answers without end-state verification", () => {
+    expect(
+      mechanismClaimWithoutArchitecture(
+        "This is expected behavior because Codex runs each matching hook.",
+        normalizedHookState({
+          lastPrompt: "verify from upstream Codex sources if this is running correctly",
+        })
+      )
+    ).toMatchObject({ id: "mechanism-claim-without-architecture" });
+    expect(
+      mechanismClaimWithoutArchitecture(
+        "Mechanism: Codex runs each matching hook. Architecture: the $elegant canonical owner keeps one Stop-time response-shape gate. Verification: checked upstream docs and ran npm run guard:agent.",
+        normalizedHookState({
+          lastPrompt: "verify from upstream Codex sources if this is running correctly",
+        })
+      )
+    ).toBeUndefined();
+  });
+
+  it("blocks Claude Stop when response-shape corrections are pending", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt: "verify from upstream Claude sources if this is running correctly",
+      session_id: "claude-stop-response-shape",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+
+    const result = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message:
+          "This is expected behavior because Claude runs the matching Stop hook.",
+        session_id: "claude-stop-response-shape",
+      },
+      { root, runtime: "claude" }
+    );
+
+    expect(result.output).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("architecture/end-state disposition"),
+    });
   });
 
   it("detects decision menus after direct directives", () => {
@@ -557,6 +681,46 @@ describe("agent hook response detectors", () => {
           ],
         })
       )
+    ).toMatchObject({ id: "tool-failure-without-retry" });
+    expect(
+      toolFailureWithoutRetry(
+        normalizedHookState({
+          evidence: [
+            {
+              at: "2026-06-15T00:00:00.000Z",
+              domains: ["github-checks"],
+              kind: "failed-command",
+              outcome: "failure",
+            },
+            {
+              at: "2026-06-15T00:01:00.000Z",
+              domains: ["guard"],
+              kind: "verified-command",
+              outcome: "success",
+            },
+          ],
+        })
+      )
+    ).toMatchObject({ id: "tool-failure-without-retry" });
+    expect(
+      toolFailureWithoutRetry(
+        normalizedHookState({
+          evidence: [
+            {
+              at: "2026-06-15T00:00:00.000Z",
+              domains: ["github-checks"],
+              kind: "failed-command",
+              outcome: "failure",
+            },
+            {
+              at: "2026-06-15T00:01:00.000Z",
+              domains: ["github-checks"],
+              kind: "verified-command",
+              outcome: "success",
+            },
+          ],
+        })
+      )
     ).toBeUndefined();
     expect(
       toolFailureWithoutRetry(
@@ -597,6 +761,40 @@ describe("agent hook response detectors", () => {
     );
   });
 
+  it("records completed GitHub check commands with failing output as failed evidence", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "prove live GitHub checks", session_id: "exec-github-failure" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "exec-github-failure",
+        tool_input: { cmd: "gh pr view --json statusCheckRollup" },
+        tool_name: "functions.exec_command",
+        tool_response: {
+          content: [
+            {
+              text: '{"statusCheckRollup":[{"conclusion":"FAILURE","name":"quality (22)"}]}',
+            },
+          ],
+          exit_code: 0,
+        },
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
+      expect.objectContaining({
+        command: "gh pr view --json statusCheckRollup",
+        domains: ["github-checks"],
+        kind: "failed-command",
+        outcome: "failure",
+      })
+    );
+  });
+
   it("parses nested Codex exec output text before recording command evidence", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -622,6 +820,95 @@ describe("agent hook response detectors", () => {
         kind: "verified-command",
       })
     );
+  });
+
+  it("does not record inventory source reads as verification evidence", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "review these hooks", session_id: "source-read-evidence" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "source-read-evidence",
+        tool_input: { cmd: "sed -n '1,260p' src/cli.ts" },
+        tool_name: "functions.exec_command",
+        tool_response: {
+          content: [{ text: "if (failed) {\n  process.exitCode = 2;\n}" }],
+          exit_code: 0,
+        },
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
+  });
+
+  it("does not block Stop on source-read text that mentions process.exitCode", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "review these hooks", session_id: "source-read-stop" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    for (const cmd of ["sed -n '1,260p' src/cli.ts", "sed -n '1,260p' src/cli-tools.ts"]) {
+      handleAgentHookEvent(
+        "PostToolUse",
+        {
+          session_id: "source-read-stop",
+          tool_input: { cmd },
+          tool_name: "functions.exec_command",
+          tool_response: {
+            content: [{ text: "process.exitCode = 2" }],
+            exit_code: 0,
+          },
+        },
+        { root, runtime: "codex" }
+      );
+    }
+
+    const result = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message:
+          "Architecture: the $elegant owner is the shared response-evidence detector. Verification: implementation checks are not run.",
+        session_id: "source-read-stop",
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(result.output.decision).toBeUndefined();
+    expect(JSON.stringify(result.output)).not.toContain("sed -n");
+  });
+
+  it("does not use transcript inventory reads as verification evidence", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const transcriptPath = join(root, "transcript.jsonl");
+    await writeFile(
+      transcriptPath,
+      `${JSON.stringify({
+        status: "success",
+        tool_input: { cmd: "sed -n '1,260p' src/cli.ts" },
+        tool_name: "functions.exec_command",
+        type: "tool_result",
+      })}\n`
+    );
+
+    const result = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "Verified and clean.",
+        session_id: "transcript-source-read",
+        transcript_path: transcriptPath,
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(result.output).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("response claims verification"),
+    });
   });
 
   it("does not create failed evidence when command outcome is unavailable", async () => {

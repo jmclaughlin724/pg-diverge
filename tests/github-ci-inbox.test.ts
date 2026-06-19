@@ -1,10 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { handleAgentHookEvent } from "../scripts/agent-hooks/runner.mjs";
 import {
   ciFailureInboxContext,
   parseCiFailureReportComment,
@@ -12,6 +11,11 @@ import {
 } from "../scripts/github/ci-inbox-core.mjs";
 
 const headSha = "0123456789abcdef0123456789abcdef01234567";
+const hasAgentHookRunner = existsSync(join(process.cwd(), "scripts/agent-hooks/runner.mjs"));
+
+function optionalImport(specifier: string): Promise<any> {
+  return import(specifier);
+}
 
 function report() {
   return {
@@ -50,6 +54,34 @@ function fakeEnv(stateDir: string, extra: NodeJS.ProcessEnv = {}): NodeJS.Proces
   };
 }
 
+function fakeLivePrEnv(stateDir: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    GITHUB_REPOSITORY: "jmclaughlin724/supaschema",
+    SUPASCHEMA_CI_INBOX_BRANCH: "codex/ci-failure-inbox",
+    SUPASCHEMA_CI_INBOX_FORCE: "1",
+    SUPASCHEMA_CI_INBOX_HEAD_SHA: headSha,
+    SUPASCHEMA_CI_INBOX_STATE_DIR: stateDir,
+    SUPASCHEMA_FAKE_CI_INBOX_COMMENTS: "[]",
+    SUPASCHEMA_FAKE_CI_INBOX_PR: JSON.stringify({
+      headRefName: "codex/ci-failure-inbox",
+      headRefOid: headSha,
+      number: 53,
+      statusCheckRollup: [
+        {
+          conclusion: "FAILURE",
+          detailsUrl: "https://github.com/jmclaughlin724/supaschema/actions/runs/99/job/100",
+          name: "quality (22)",
+          status: "COMPLETED",
+          workflowName: "CI",
+        },
+      ],
+      url: "https://github.com/jmclaughlin724/supaschema/pull/53",
+    }),
+    ...extra,
+  };
+}
+
 describe("GitHub CI failure inbox", () => {
   it("round-trips a failure report through the PR marker comment", () => {
     const body = renderCiFailureReport(report());
@@ -79,26 +111,43 @@ describe("GitHub CI failure inbox", () => {
     expect(codex).toContain("GitHub CI failure report");
   });
 
-  it("surfaces the inbox through the Claude prompt hook runner", () => {
-    const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-claude-"));
-    const original = { ...process.env };
-    Object.assign(process.env, fakeEnv(stateDir));
-    try {
-      const result = handleAgentHookEvent(
-        "UserPromptSubmit",
-        { prompt: "continue", session_id: "ci-inbox-claude" },
-        { root: process.cwd(), runtime: "claude" }
-      );
+  it("falls back to live PR check failures when the marker comment is missing", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-live-pr-"));
+    const context = ciFailureInboxContext({
+      env: fakeLivePrEnv(stateDir),
+      now: 1000,
+      runtime: "codex",
+    });
 
-      expect(result.output.hookSpecificOutput?.additionalContext).toContain(
-        "GitHub CI failure report"
-      );
-    } finally {
-      process.env = original;
-    }
+    expect(context).toContain("GitHub CI failure report");
+    expect(context).toContain("GitHub checks");
+    expect(context).toContain("quality (22)");
   });
 
-  it("surfaces the inbox through the Codex repo-local hook without blocking", () => {
+  it.skipIf(!hasAgentHookRunner)(
+    "surfaces the inbox through the Claude prompt hook runner",
+    async () => {
+      const { handleAgentHookEvent } = await optionalImport("../scripts/agent-hooks/runner.mjs");
+      const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-claude-"));
+      const original = { ...process.env };
+      Object.assign(process.env, fakeEnv(stateDir));
+      try {
+        const result = handleAgentHookEvent(
+          "UserPromptSubmit",
+          { prompt: "continue", session_id: "ci-inbox-claude" },
+          { root: process.cwd(), runtime: "claude" }
+        );
+
+        expect(result.output.hookSpecificOutput?.additionalContext).toContain(
+          "GitHub CI failure report"
+        );
+      } finally {
+        process.env = original;
+      }
+    }
+  );
+
+  it("surfaces the inbox through the standalone Codex CI hook without blocking", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-codex-"));
     const result = spawnSync(
       process.execPath,
@@ -115,4 +164,88 @@ describe("GitHub CI failure inbox", () => {
     expect(output.hookSpecificOutput?.additionalContext).toContain("GitHub CI failure report");
     expect(output.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
+
+  it.skipIf(!hasAgentHookRunner)(
+    "surfaces the inbox through the consolidated Codex PreToolUse runner without blocking",
+    async () => {
+      const { handleAgentHookEvent } = await optionalImport("../scripts/agent-hooks/runner.mjs");
+      const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-codex-runner-"));
+      const original = { ...process.env };
+      Object.assign(process.env, fakeEnv(stateDir));
+      try {
+        const result = handleAgentHookEvent(
+          "PreToolUse",
+          {
+            hook_event_name: "PreToolUse",
+            session_id: "ci-inbox-codex-runner",
+            tool_input: { command: "git status --short" },
+            tool_name: "Bash",
+            turn_id: "t1",
+          },
+          { root: process.cwd(), runtime: "codex" }
+        );
+        const output = JSON.parse(result.stdout);
+
+        expect(output.hookSpecificOutput?.additionalContext).toContain("GitHub CI failure report");
+        expect(output.hookSpecificOutput?.permissionDecision).toBeUndefined();
+      } finally {
+        process.env = original;
+      }
+    }
+  );
+
+  it.skipIf(!hasAgentHookRunner)(
+    "blocks Codex green claims while live PR checks are failing without a marker comment",
+    async () => {
+      const { handleAgentHookEvent } = await optionalImport("../scripts/agent-hooks/runner.mjs");
+      const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-codex-stop-"));
+      const original = { ...process.env };
+      Object.assign(process.env, fakeLivePrEnv(stateDir));
+      try {
+        const result = handleAgentHookEvent(
+          "Stop",
+          {
+            last_assistant_message: "The GitHub checks are verified and green.",
+            session_id: "ci-inbox-codex-stop",
+            turn_id: "t1",
+          },
+          { root: process.cwd(), runtime: "codex" }
+        );
+        const output = JSON.parse(result.stdout);
+
+        expect(output.decision).toBe("block");
+        expect(output.reason).toContain("github-checks");
+      } finally {
+        process.env = original;
+      }
+    }
+  );
+
+  it.skipIf(!hasAgentHookRunner)(
+    "allows Codex closeout that reports live PR checks as a blocker",
+    async () => {
+      const { handleAgentHookEvent } = await optionalImport("../scripts/agent-hooks/runner.mjs");
+      const stateDir = mkdtempSync(join(tmpdir(), "supa-ci-inbox-codex-blocker-"));
+      const original = { ...process.env };
+      Object.assign(process.env, fakeLivePrEnv(stateDir));
+      try {
+        const result = handleAgentHookEvent(
+          "Stop",
+          {
+            last_assistant_message:
+              "GitHub checks are failing: quality (22). Remaining blocker: fix the failing CI job.",
+            session_id: "ci-inbox-codex-blocker",
+            turn_id: "t1",
+          },
+          { root: process.cwd(), runtime: "codex" }
+        );
+        const output = JSON.parse(result.stdout);
+
+        expect(output.decision).toBeUndefined();
+        expect(output.hookSpecificOutput?.additionalContext).toContain("quality (22)");
+      } finally {
+        process.env = original;
+      }
+    }
+  );
 });

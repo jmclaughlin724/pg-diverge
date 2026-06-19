@@ -160,6 +160,8 @@
         "pages": [
           "commands",
           "commands/diff",
+          "commands/stage",
+          "commands/apply",
           "commands/check",
           "commands/verify",
           "commands/types",

@@ -82,7 +82,7 @@ Keeping the actual URLs in environment variables means the committed config carr
 }
 ```
 
-`mode: "auto"` makes a target selectable by bare `supaschema sync` when `workflow.migration_sync` is `"auto"`. The installed default is `"auto"`, so target config decides selection: local, staging, preview, and remote targets all use the same `mode` rule. Remote targets also require a runtime approval variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1` before automatic deploy.
+`mode: "auto"` makes a target selectable by bare `supaschema sync` when `workflow.migration_sync` is `"auto"`. Keep at most one target automatic; `sync` refuses multiple selected targets because cross-target apply is not atomic. Remote targets also require a runtime approval variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1` before automatic deploy.
 
 <Warning>
   Do not hard-code connection strings in scripts, config, or CI. Use existing

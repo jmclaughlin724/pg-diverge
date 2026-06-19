@@ -17,7 +17,7 @@ import {
 import type { Diagnostic, MigrationPlan } from "./core.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
 import { latestLineage } from "./lineage.js";
-import { buildSchemaDiffPlan, refreshGeneratedOutputs } from "./pipeline-services.js";
+import { buildSchemaDiffPlan } from "./pipeline-services.js";
 import { redactSecrets } from "./redaction.js";
 import { renderMigrationSplit } from "./render.js";
 
@@ -163,7 +163,7 @@ async function runDiff(
   if (!(await validateLineageChain(output.outPath, plan, context, options.checkChain))) {
     return;
   }
-  if (!(await writeOrPrintDiffOutput(options, output, config, context))) {
+  if (!(await writeOrPrintDiffOutput(options, output, context))) {
     return;
   }
   if (options.failOnDiff && plan.operations.length > 0) {
@@ -260,7 +260,6 @@ async function validateLineageChain(
 async function writeOrPrintDiffOutput(
   options: WithSources<DiffOptions>,
   output: DiffOutput,
-  config: SupaschemaConfig,
   context: DiffCommandContext
 ): Promise<boolean> {
   if (options.dryRun || output.outPath === undefined) {
@@ -275,10 +274,6 @@ async function writeOrPrintDiffOutput(
       ? output.payload
       : `${output.outPath}\n${output.concurrentPath === undefined ? "" : `${output.concurrentPath}\n`}`
   );
-  await refreshGeneratedOutputs({
-    config,
-    toSource: options.to,
-  });
   return true;
 }
 

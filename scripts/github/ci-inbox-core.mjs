@@ -199,10 +199,12 @@ function localReport(root, env) {
     return normalizeReport(JSON.parse(env.SUPASCHEMA_FAKE_CI_INBOX_REPORT));
   }
 
-  const pr = ghJson(["pr", "view", "--json", "number,headRefOid,url"], {
-    allowFailure: true,
-    cwd: root,
-  });
+  const pr = env.SUPASCHEMA_FAKE_CI_INBOX_PR
+    ? JSON.parse(env.SUPASCHEMA_FAKE_CI_INBOX_PR)
+    : ghJson(["pr", "view", "--json", "number,headRefName,headRefOid,url,statusCheckRollup"], {
+        allowFailure: true,
+        cwd: root,
+      });
   if (!pr?.number) {
     return;
   }
@@ -214,22 +216,102 @@ function localReport(root, env) {
   if (!repository) {
     return;
   }
-  const comments = ghJson(
-    ["api", `repos/${repository}/issues/${pr.number}/comments?per_page=100`],
-    {
-      allowFailure: true,
-      cwd: root,
+  const comments = env.SUPASCHEMA_FAKE_CI_INBOX_COMMENTS
+    ? JSON.parse(env.SUPASCHEMA_FAKE_CI_INBOX_COMMENTS)
+    : ghJson(["api", `repos/${repository}/issues/${pr.number}/comments?per_page=100`], {
+        allowFailure: true,
+        cwd: root,
+      });
+  if (Array.isArray(comments)) {
+    for (const comment of [...comments].reverse()) {
+      const report = parseCiFailureReportComment(comment?.body);
+      if (report) {
+        return report;
+      }
     }
-  );
-  if (!Array.isArray(comments)) {
+  }
+  return reportFromStatusCheckRollup({
+    branch: pr.headRefName,
+    headSha,
+    pr,
+    repository,
+  });
+}
+
+function reportFromStatusCheckRollup({ branch, headSha, pr, repository }) {
+  const jobs = failedStatusCheckJobs(pr?.statusCheckRollup);
+  if (jobs.length === 0) {
     return;
   }
-  for (const comment of [...comments].reverse()) {
-    const report = parseCiFailureReportComment(comment?.body);
-    if (report) {
-      return report;
+  const workflowRunId = workflowRunIdFromJobs(jobs);
+  return normalizeReport({
+    conclusion: "failure",
+    headBranch: branch,
+    headSha,
+    jobs,
+    pullRequestNumber: pr.number,
+    reportedAt: new Date().toISOString(),
+    repository,
+    workflowName: "GitHub checks",
+    workflowRunId,
+    workflowRunUrl: workflowRunId ? actionsRunUrl(jobs) || pr.url : pr.url,
+  });
+}
+
+function failedStatusCheckJobs(rollup) {
+  const checks = Array.isArray(rollup) ? rollup : [];
+  return checks
+    .filter((item) => statusCheckFailed(item))
+    .slice(0, maxJobs)
+    .map((item, index) => ({
+      annotations: [],
+      conclusion: String(item?.conclusion ?? item?.state ?? "failure").toLowerCase(),
+      id: item?.databaseId ?? item?.id ?? index,
+      logExcerpt: [],
+      name: String(item?.name ?? item?.context ?? item?.workflowName ?? "unknown check"),
+      steps: [],
+      url: String(item?.detailsUrl ?? item?.targetUrl ?? ""),
+    }));
+}
+
+function statusCheckFailed(item) {
+  const conclusion = String(item?.conclusion ?? item?.state ?? item?.status ?? "").toLowerCase();
+  return (
+    failureConclusions.has(conclusion) ||
+    conclusion === "error" ||
+    conclusion === "failed" ||
+    conclusion === "failure"
+  );
+}
+
+function workflowRunIdFromJobs(jobs) {
+  for (const job of jobs) {
+    const value = workflowRunIdFromUrl(job.url);
+    if (value) {
+      return value;
     }
   }
+  return 0;
+}
+
+function workflowRunIdFromUrl(value) {
+  const parts = String(value ?? "").split("/");
+  const runsIndex = parts.indexOf("runs");
+  if (runsIndex === -1) {
+    return 0;
+  }
+  const id = Number(parts[runsIndex + 1]);
+  return Number.isInteger(id) ? id : 0;
+}
+
+function actionsRunUrl(jobs) {
+  const jobUrl = jobs.map((job) => job.url).find(Boolean);
+  if (!jobUrl) {
+    return "";
+  }
+  const parts = String(jobUrl).split("/");
+  const runsIndex = parts.indexOf("runs");
+  return runsIndex === -1 ? jobUrl : parts.slice(0, runsIndex + 2).join("/");
 }
 
 function failedWorkflowJobs(repository, runId) {

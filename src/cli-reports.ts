@@ -18,7 +18,7 @@ import { redactSecrets } from "./redaction.js";
 import { buildRemediationPlan } from "./remediation.js";
 import { renderScan, scoreGrade } from "./scan.js";
 import { extractSourceModel } from "./source.js";
-import { syncMigrations } from "./workflow.js";
+import { stageGeneratedMigrations, syncMigrations } from "./workflow.js";
 
 export interface ReportCommandContext {
   cliVersion: string;
@@ -31,9 +31,21 @@ export interface ReportCommandContext {
 interface SyncCommandOptions {
   databaseUrl?: string;
   diff?: boolean;
+  ensureEnvironment?: boolean;
+  ensureRoles?: boolean;
   migrationsDir?: string;
   runner?: string;
   target?: string;
+}
+interface ApplyCommandOptions {
+  databaseUrl?: string;
+  migrationsDir?: string;
+  runner?: string;
+  target?: string;
+}
+interface StageCommandOptions {
+  dryRun?: boolean;
+  migrationsDir?: string;
 }
 
 function resolveReporter(value: string | undefined): CheckReporter | null {
@@ -233,6 +245,27 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     });
 
   program
+    .command("stage")
+    .option("--migrations-dir <dir>", "migration files directory")
+    .option("--dry-run", "print generated migration files that would be staged")
+    .description("Git-stage changed supaschema-generated migration SQL files.")
+    .action((options: StageCommandOptions) => runStageCommand(options, context));
+
+  program
+    .command("apply")
+    .option("--migrations-dir <dir>", "migration files directory")
+    .option(
+      "--database-url <url>",
+      "target whose applied history gates apply (default: configured target, SUPASCHEMA_DATABASE_URL, then the local Supabase stack)"
+    )
+    .option("--target <name>", "operator override for one configured sync target")
+    .option("--runner <runner>", "operator override: direct | supabase-cli")
+    .description(
+      "Apply pending generated migrations through the configured runner without generating a new diff."
+    )
+    .action((options: ApplyCommandOptions) => runApplyCommand(options, context));
+
+  program
     .command("sync")
     .option("--migrations-dir <dir>", "migration files directory")
     .option(
@@ -241,9 +274,21 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     )
     .option("--target <name>", "operator override for one configured sync target")
     .option("--runner <runner>", "operator override: direct | supabase-cli")
-    .option("--no-diff", "skip schema diff generation and generated output refresh")
+    .option("--no-diff", "skip schema diff generation")
+    .option(
+      "--ensure-roles",
+      "create missing NOLOGIN roles referenced by grants/policies on the verification server"
+    )
+    .option(
+      "--ensure-environment",
+      "stub Supabase-provisioned surfaces in verify temporary databases"
+    )
+    .option(
+      "--no-ensure-environment",
+      "disable the Supabase environment stub when another command or config enables it"
+    )
     .description(
-      "Run the ordered sync pipeline: schema diff, generated outputs, target reconciliation, safety gates, selected runner apply/deploy, and final reconciliation."
+      "Run the full sync pipeline: schema diff, replay-safety check, generated contracts, generated migration staging, target gates, verify, selected runner apply/deploy, and final reconciliation."
     )
     .action((options: SyncCommandOptions) => runSyncCommand(options, context));
 }
@@ -288,6 +333,10 @@ async function runSyncCommand(
     config,
     directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
     ...(databaseUrl === undefined ? {} : { databaseUrl }),
+    ...(options.ensureEnvironment === undefined
+      ? {}
+      : { ensureEnvironment: options.ensureEnvironment }),
+    ensureRoles: options.ensureRoles === true,
     ...(envName === undefined ? {} : { envName }),
     pipeline: true,
     ...(runner === undefined ? {} : { runner }),
@@ -298,5 +347,68 @@ async function runSyncCommand(
   process.stdout.write(result.report);
   if (hasErrors(result.diagnostics)) {
     process.exitCode = 2;
+  }
+}
+
+async function runApplyCommand(
+  options: ApplyCommandOptions,
+  context: ReportCommandContext
+): Promise<void> {
+  const config = await context.loadCliConfig();
+  const runner = resolveSyncRunner(options.runner);
+  if (runner === undefined && options.runner !== undefined) {
+    process.stderr.write(
+      `supaschema: unknown --runner "${options.runner}" (use direct|supabase-cli)\n`
+    );
+    process.exitCode = 2;
+    return;
+  }
+  const databaseUrl =
+    options.databaseUrl !== undefined || !syncUsesConfiguredTargets(options, config)
+      ? await context.resolveCliDatabaseUrl(options.databaseUrl)
+      : undefined;
+  const envName = context.globalEnvName();
+  const result = await syncMigrations({
+    cliVersion: context.cliVersion,
+    config,
+    directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
+    ...(databaseUrl === undefined ? {} : { databaseUrl }),
+    ...(envName === undefined ? {} : { envName }),
+    operation: "apply",
+    pipeline: true,
+    ...(runner === undefined ? {} : { runner }),
+    skipDiff: true,
+    ...(options.target === undefined ? {} : { target: options.target }),
+  });
+  context.printDiagnostics(result.diagnostics);
+  process.stdout.write(result.report);
+  if (hasErrors(result.diagnostics)) {
+    process.exitCode = 2;
+  }
+}
+
+async function runStageCommand(
+  options: StageCommandOptions,
+  context: ReportCommandContext
+): Promise<void> {
+  const config = await context.loadCliConfig();
+  const directory = resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir);
+  const result = await stageGeneratedMigrations({
+    directory,
+    ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+    requireGit: true,
+  });
+  if (result.staged.length === 0 && result.wouldStage.length === 0) {
+    process.stdout.write("no generated migration files to stage\n");
+    return;
+  }
+  if (options.dryRun === true) {
+    for (const file of result.wouldStage) {
+      process.stdout.write(`would stage: ${file}\n`);
+    }
+    return;
+  }
+  for (const file of result.staged) {
+    process.stdout.write(`staged: ${file}\n`);
   }
 }

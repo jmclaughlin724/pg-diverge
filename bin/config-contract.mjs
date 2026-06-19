@@ -309,7 +309,7 @@ const contract = JSON.parse(`{
         "zod_generation": "create_or_refresh",
         "type_usage": "zod_validated"
       },
-      "description": "Automation policy for generated outputs, hook diff/check, verification guidance, deploy safety gates, and whether bare sync may apply selected targets.",
+      "description": "Automation policy for hooks, generated contract guidance, verification guidance, deploy safety gates, and whether bare sync may select one apply target.",
       "key": "workflow"
     },
     {
@@ -329,7 +329,7 @@ const contract = JSON.parse(`{
           }
         }
       },
-      "description": "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; each target mode decides whether bare sync selects that target.",
+      "description": "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; bare sync may select at most one target with mode auto.",
       "examples": [
         {
           "targets": {

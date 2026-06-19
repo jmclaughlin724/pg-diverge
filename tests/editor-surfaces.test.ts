@@ -7,15 +7,89 @@ const root = resolve(import.meta.dirname, "..");
 const allowedAgentFiles = [
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema/SKILL.md",
+  ".claude/settings.json",
+  ".claude/hooks/context-permission-denied.mjs",
+  ".claude/hooks/context-post-tool-use.mjs",
+  ".claude/hooks/context-pre-tool-use.mjs",
+  ".claude/hooks/context-session-end.mjs",
+  ".claude/hooks/context-session-start.mjs",
+  ".claude/hooks/context-stop.mjs",
+  ".claude/hooks/context-subagent-start.mjs",
+  ".claude/hooks/context-subagent-stop.mjs",
+  ".claude/hooks/context-task-completed.mjs",
+  ".claude/hooks/context-user-prompt-submit.mjs",
   ".claude/hooks/guards/bash-policy-checks.mjs",
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".claude/rules/01-operating-rules.md",
+  ".claude/rules/02-mintlify-writing-standards.md",
+  ".claude/rules/03-mintlify-component-reference.md",
+  ".claude/rules/04-python-toolchain.md",
+  ".claude/rules/05-decision-protocol.md",
+  ".claude/rules/06-multi-language-toolchain.md",
+  ".claude/rules/07-ast-over-regex.md",
+  ".claude/rules/08-biome-ultracite-policy.md",
+  ".claude/rules/09-ci-cd-efficiency-governance.md",
+  ".claude/rules/10-code-atlas.md",
+  ".claude/rules/11-agent-mcp-fastmcp.md",
+  ".claude/rules/12-skill-loading-enforcement.md",
+  ".claude/rules/13-npm-package-boundary.md",
+  ".claude/rules/14-editing-worktree-git.md",
+  ".claude/rules/15-security.md",
+  ".claude/rules/16-file-size-and-composition.md",
+  ".claude/rules/17-prompt-craft-standards.md",
+  ".claude/rules/18-context-surface-sync.md",
+  ".claude/rules/19-version-control-release.md",
+  ".claude/rules/20-anti-patterns.md",
+  ".claude/rules/21-github-process.md",
+  ".claude/rules/22-agent-surface-sync-ownership.md",
   ".claude/rules/supaschema.md",
   ".claude/skills/supaschema/SKILL.md",
   ".codex/hooks.json",
+  ".codex/hooks/context-permission-denied.mjs",
+  ".codex/hooks/context-post-tool-use.mjs",
+  ".codex/hooks/context-pre-tool-use.mjs",
+  ".codex/hooks/context-session-end.mjs",
+  ".codex/hooks/context-session-start.mjs",
+  ".codex/hooks/context-stop.mjs",
+  ".codex/hooks/context-subagent-start.mjs",
+  ".codex/hooks/context-subagent-stop.mjs",
+  ".codex/hooks/context-task-completed.mjs",
+  ".codex/hooks/context-user-prompt-submit.mjs",
   ".codex/hooks/general-guard.mjs",
   ".codex/hooks/guards/bash-policy-checks.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".codex/rules/01-operating-rules.rules",
+  ".codex/rules/02-mintlify-writing-standards.rules",
+  ".codex/rules/03-mintlify-component-reference.rules",
+  ".codex/rules/04-python-toolchain.rules",
+  ".codex/rules/05-decision-protocol.rules",
+  ".codex/rules/06-multi-language-toolchain.rules",
+  ".codex/rules/07-ast-over-regex.rules",
+  ".codex/rules/08-biome-ultracite-policy.rules",
+  ".codex/rules/09-ci-cd-efficiency-governance.rules",
+  ".codex/rules/10-code-atlas.rules",
+  ".codex/rules/11-agent-mcp-fastmcp.rules",
+  ".codex/rules/12-skill-loading-enforcement.rules",
+  ".codex/rules/13-npm-package-boundary.rules",
+  ".codex/rules/14-editing-worktree-git.rules",
+  ".codex/rules/15-security.rules",
+  ".codex/rules/16-file-size-and-composition.rules",
+  ".codex/rules/17-prompt-craft-standards.rules",
+  ".codex/rules/18-context-surface-sync.rules",
+  ".codex/rules/19-version-control-release.rules",
+  ".codex/rules/20-anti-patterns.rules",
+  ".codex/rules/21-github-process.rules",
+  ".codex/rules/22-agent-surface-sync-ownership.rules",
   ".codex/rules/supaschema.rules",
+];
+
+const sourceRepoAgentRuntimeFiles = [
+  "scripts/agent-hooks/atlas.mjs",
+  "scripts/agent-hooks/detectors.mjs",
+  "scripts/agent-hooks/payload.mjs",
+  "scripts/agent-hooks/runner.mjs",
+  "scripts/agent-hooks/skills.mjs",
+  "scripts/agent-hooks/state.mjs",
 ];
 
 function readJson<T>(path: string): T {
@@ -59,8 +133,44 @@ function findHookMatcher(config: unknown, commandFragment: string): string | und
   }
 }
 
+function findStopHookCommand(config: unknown, commandFragment: string): string | undefined {
+  if (!(config && typeof config === "object")) {
+    return;
+  }
+  const hooksRoot = Reflect.get(config, "hooks");
+  if (!(hooksRoot && typeof hooksRoot === "object")) {
+    return;
+  }
+  const stop = Reflect.get(hooksRoot, "Stop");
+  if (!Array.isArray(stop)) {
+    return;
+  }
+  for (const entry of stop) {
+    if (!(entry && typeof entry === "object")) {
+      continue;
+    }
+    const hooks = Reflect.get(entry, "hooks");
+    if (!Array.isArray(hooks)) {
+      continue;
+    }
+    for (const hook of hooks) {
+      if (
+        hook &&
+        typeof hook === "object" &&
+        typeof Reflect.get(hook, "command") === "string" &&
+        Reflect.get(hook, "command").includes(commandFragment)
+      ) {
+        return Reflect.get(hook, "command");
+      }
+    }
+  }
+}
+
 function trackedFiles(): string[] {
-  return execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
+  return execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    cwd: root,
+    encoding: "utf8",
+  })
     .split("\n")
     .filter((file) => file && existsSync(resolve(root, file)));
 }
@@ -84,16 +194,24 @@ function ignoredFiles(paths: string[]): string[] {
 }
 
 describe("public agent and editor surfaces", () => {
-  it("tracks only the consumer supaschema agent bundle", () => {
+  it("exposes only reviewed source-repo agent surfaces", () => {
     const agentFiles = trackedFiles().filter(
       (file) =>
         file.startsWith(".agents/") || file.startsWith(".claude/") || file.startsWith(".codex/")
     );
+    const agentRuntimeFiles = trackedFiles().filter((file) =>
+      file.startsWith("scripts/agent-hooks/")
+    );
 
     expect(agentFiles.sort()).toEqual([...allowedAgentFiles].sort());
+    expect(agentRuntimeFiles.sort()).toEqual([...sourceRepoAgentRuntimeFiles].sort());
     for (const file of allowedAgentFiles) {
       expect(existsSync(resolve(root, file)), file).toBe(true);
     }
+    for (const file of sourceRepoAgentRuntimeFiles) {
+      expect(existsSync(resolve(root, file)), file).toBe(true);
+    }
+    expect(ignoredFiles([...allowedAgentFiles, ...sourceRepoAgentRuntimeFiles])).toEqual([]);
   });
 
   it("keeps private maintainer and operator files out of the public repository", () => {
@@ -103,37 +221,22 @@ describe("public agent and editor surfaces", () => {
       ".agents/skills/elegant/SKILL.md",
       ".agents/tmp.json",
       ".claude/agents/elegant.md",
-      ".claude/hooks/context-pre-tool-use.mjs",
-      ".claude/rules/21-github-process.md",
-      ".claude/settings.json",
       ".claude/skills/elegant/SKILL.md",
       ".codex/agents/elegant.toml",
       ".codex/config.toml",
-      ".codex/hooks/context-pre-tool-use.mjs",
-      ".codex/rules/21-github-process.rules",
-    ];
-    const publicAgentFiles = [
-      ".agents/prompts/supaschema-install.md",
-      ".agents/skills/supaschema/SKILL.md",
-      ".claude/hooks/guards/bash-policy-checks.mjs",
-      ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-      ".claude/rules/supaschema.md",
-      ".claude/skills/supaschema/SKILL.md",
-      ".codex/hooks.json",
-      ".codex/hooks/general-guard.mjs",
-      ".codex/hooks/guards/bash-policy-checks.mjs",
-      ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-      ".codex/rules/supaschema.rules",
     ];
     expect(ignoredFiles(privateAgentFiles)).toEqual([...privateAgentFiles].sort());
-    expect(ignoredFiles(publicAgentFiles)).toEqual([]);
-    expect(stageableFiles([".agents", ".claude", ".codex"])).toEqual([]);
+    expect(ignoredFiles([...allowedAgentFiles, ...sourceRepoAgentRuntimeFiles])).toEqual([]);
+    expect(
+      stageableFiles([".agents", ".claude", ".codex"]).filter(
+        (file) => !allowedAgentFiles.includes(file)
+      )
+    ).toEqual([]);
     const privateFiles = [
       ".mcp.json",
       ".vscode/settings.json",
       ".vscode/extensions.json",
       ".claude/cclsp.json",
-      ".claude/settings.json",
       ".codex/config.toml",
       "fastmcp.json",
       "pyproject.toml",
@@ -150,7 +253,6 @@ describe("public agent and editor surfaces", () => {
     const privatePrefixes = [
       "advisor-plans/",
       "cloudflare/",
-      "scripts/agent-hooks/",
       "scripts/code-atlas/",
       "scripts/stripe/",
       "services/agent-mcp/",
@@ -180,13 +282,12 @@ describe("public agent and editor surfaces", () => {
     expect(codexHooks).toContain("supaschema hook schema-write");
     expect(codexHooks).not.toContain("context-");
     expect(codexHooks).not.toContain("scripts/agent-hooks");
-    const llmSyncMatcher = findHookMatcher(
-      JSON.parse(codexHooks),
-      "sync-llm-on-claude-surface-change.mjs"
-    );
-    for (const toolName of ["apply_patch", "Edit", "Write", "edit_file"]) {
-      expect(llmSyncMatcher).toContain(toolName);
-    }
+    expect(
+      findHookMatcher(JSON.parse(codexHooks), "sync-llm-on-claude-surface-change.mjs")
+    ).toBeUndefined();
+    expect(
+      findStopHookCommand(JSON.parse(codexHooks), "sync-llm-on-claude-surface-change.mjs")
+    ).toBeDefined();
     expect(claudeBashGuard).not.toContain("user-codex-skill-policy");
     expect(codexGeneralGuard).not.toContain("user-codex-skill-policy");
   });

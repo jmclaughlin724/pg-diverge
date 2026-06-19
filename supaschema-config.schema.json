@@ -193,7 +193,7 @@
             "manual",
             "auto"
           ],
-          "description": "Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select sync.targets entries whose mode is \"auto\"."
+          "description": "Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select one sync.targets entry whose mode is \"auto\"."
         },
         "type_safety": {
           "default": "deploy_blocking",
@@ -246,7 +246,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Automation policy for generated outputs, hook diff/check, verification guidance, deploy safety gates, and whether bare sync may apply selected targets."
+      "description": "Automation policy for hooks, generated contract guidance, verification guidance, deploy safety gates, and whether bare sync may select one apply target."
     },
     "sync": {
       "default": {
@@ -329,7 +329,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; each target mode decides whether bare sync selects that target.",
+      "description": "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; bare sync may select at most one target with mode auto.",
       "examples": [
         {
           "targets": {

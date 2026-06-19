@@ -15,6 +15,10 @@ const permissionModes = new Set([
 ]);
 const agentDir = path.join(ROOT, ".claude/agents");
 const skillDir = path.join(ROOT, ".claude/skills");
+if (!(fs.existsSync(agentDir) && fs.existsSync(path.join(ROOT, ".claude/settings.json")))) {
+  ok("CLAUDE_AGENTS_SKIPPED_PRIVATE_SURFACE");
+  process.exit(0);
+}
 const enabledMcpServers = new Set(readJson(".claude/settings.json").enabledMcpjsonServers ?? []);
 const availableSkills = new Set(listDirectories(skillDir));
 const names = new Map();

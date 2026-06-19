@@ -13,7 +13,7 @@ Use `diff` when schema files changed and you need a migration.
 - You edited the schema tree.
 - CI needs to detect drift.
 - A pull request should render a candidate migration without a live database.
-- Generated TypeScript and Zod outputs should refresh with the migration.
+- A migration should be generated without requiring a database.
 
 ## Run it
 
@@ -38,8 +38,7 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">
-  Write SQL to a specific file or print to stdout. `stdout` skips generated
-  output refresh.
+  Write SQL to a specific file or print to stdout.
 </ParamField>
 
 <ParamField path="--name" type="snake_case">
@@ -115,9 +114,15 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
   <Card title="Check" icon="shield-check" href="/commands/check">
     Validate generated SQL before applying it.
   </Card>
+  <Card title="Types" icon="braces" href="/commands/types">
+    Regenerate TypeScript and Zod outputs from schema files.
+  </Card>
   <Card title="Sources" icon="database" href="/concepts/sources">
     Learn every supported source format.
   </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
   <Card title="Hints" icon="triangle-alert" href="/configuration/hints">
     Approve destructive operations explicitly.
   </Card>

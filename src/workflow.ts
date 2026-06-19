@@ -1,9 +1,11 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import { checkMigrationSql } from "./check.js";
-import { defaultMigrationName, resolveSourceDefaults } from "./cli-defaults.js";
+import { defaultMigrationName, defaultTreeSource, resolveSourceDefaults } from "./cli-defaults.js";
 import { resolveConfig } from "./config.js";
 import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { resolveDatabaseUrl } from "./database-url.js";
@@ -22,23 +24,26 @@ import {
   migrationsStatus,
   renderMigrationsStatus,
 } from "./migrations-status.js";
-import {
-  buildSchemaDiffPlan,
-  refreshGeneratedOutputs,
-  runRlsSafetyGate,
-  runTypeSafetyGate,
-} from "./pipeline-services.js";
+import { buildSchemaDiffPlan, runRlsSafetyGate, runTypeSafetyGate } from "./pipeline-services.js";
 import { redactSecrets } from "./redaction.js";
 import { renderMigrationSplit } from "./render.js";
+import { extractSourceModel } from "./source.js";
+import { generateDatabaseTypes } from "./typegen.js";
+import { collectSchemaShapes } from "./typegen-model.js";
+import { generateZodSchemas } from "./typegen-zod.js";
+import { verifyMigration } from "./verify.js";
 
 export interface SyncOptions {
   cliVersion?: string;
   config?: Partial<SupaschemaConfig>;
   databaseUrl?: string;
   directory: string;
+  ensureEnvironment?: boolean;
+  ensureRoles?: boolean;
   envName?: string;
   from?: string;
   historyTable?: string;
+  operation?: "apply" | "sync";
   pipeline?: boolean;
   runner?: MigrationRunnerKind;
   skipDiff?: boolean;
@@ -68,6 +73,7 @@ const updateHeader = "*** Update File: ";
 const moveHeader = "*** Move to: ";
 const genericSchemaPath = "database/schemas";
 const supabaseSchemaPath = "supabase/schemas";
+const execFileAsync = promisify(execFile);
 const providerSchemaMarkers: {
   markers: { contentTerms?: string[]; fileNames?: string[]; path?: string }[];
   schemaPath: string;
@@ -268,7 +274,7 @@ export function schemaWriteHookOutput(payload: unknown): AgentHookOutput | undef
             .map((path) => rel(projectDir, path))
             .join(
               ", "
-            )} through \`supaschema sync\`. ${autoSync.line}. The sync pipeline generated the schema diff, refreshed generated outputs per config, reconciled target migration history, checked pending migrations, ran type/RLS safety gates, and applied configured targets.`
+            )} through \`supaschema sync\`. ${autoSync.line}. The sync pipeline generated the schema diff, selected one target, reconciled migration history, checked pending migrations, refreshed generated contracts, staged generated migrations when Git was available, ran type/RLS safety gates, verified pending migrations, applied the selected target, and reconciled final history.`
         : `supaschema auto-sync for ${changed
             .map((path) => rel(projectDir, path))
             .join(", ")} did not complete (exit ${sync.code}):\n${diagnostics}`;
@@ -314,9 +320,11 @@ export function schemaWriteHookOutput(payload: unknown): AgentHookOutput | undef
     .map((path) => rel(projectDir, path))
     .join(", ")}: generated ${written
     .map((path) => rel(projectDir, path))
-    .join(", ")}. ${generatedOutputLine(pathState.workflow)}. ${checkResult.line}${
+    .join(
+      ", "
+    )}. Run \`supaschema sync\` for the full diff/check/types/stage/verify/apply workflow. ${checkResult.line}${
     verifyLine === "" ? "" : `. ${verifyLine}`
-  }. Automatic sync skipped: ${autoSync.reason}. Commit the tree change, the migration, and any refreshed generated outputs together before a later apply.`;
+  }. Automatic sync skipped: ${autoSync.reason}. Commit the tree change, generated migration, and generated outputs together before a later apply.`;
   if (!checkResult.passed) {
     return postToolUseHookOutput(additionalContext, {
       decision: "block",
@@ -361,6 +369,7 @@ export function generatedMigrationEditHookOutput(
 
 export async function syncMigrations(options: SyncOptions): Promise<SyncResult> {
   const state: SyncPipelineState = {
+    artifacts: { contractsRefreshed: false, migrationsStaged: false },
     config: resolveConfig(options.config),
     diagnostics: [],
     lines: [],
@@ -381,12 +390,18 @@ interface SyncSources {
 }
 
 interface SyncPipelineState {
+  artifacts: SyncArtifactState;
   config: SupaschemaConfig;
   diagnostics: Diagnostic[];
   lines: string[];
   options: SyncOptions;
   sources?: SyncSources;
   status?: MigrationsStatusReport;
+}
+
+interface SyncArtifactState {
+  contractsRefreshed: boolean;
+  migrationsStaged: boolean;
 }
 
 type SyncPipelineLane = (
@@ -396,13 +411,16 @@ type SyncPipelineLane = (
 const syncPipelineLanes: SyncPipelineLane[] = [
   guardSyncPolicyLane,
   resolveSyncSourcesLane,
-  runSyncDiffAndOutputsLane,
+  runSyncDiffLane,
   runConfiguredTargetsLane,
   loadFallbackHistoryLane,
   guardFallbackHistoryLane,
   checkFallbackPendingMigrationsLane,
-  runFallbackSafetyGatesLane,
+  refreshFallbackGeneratedContractsLane,
+  stageFallbackGeneratedMigrationsLane,
   stopFallbackWhenNothingPendingLane,
+  runFallbackSafetyGatesLane,
+  verifyFallbackPendingMigrationsLane,
   reportFallbackDryRunOrUnknownTargetLane,
 ];
 
@@ -418,9 +436,7 @@ async function resolveSyncSourcesLane(state: SyncPipelineState): Promise<SyncRes
   return;
 }
 
-function runSyncDiffAndOutputsLane(
-  state: SyncPipelineState
-): Promise<SyncResult | undefined> | undefined {
+function runSyncDiffLane(state: SyncPipelineState): Promise<SyncResult | undefined> | undefined {
   if (state.options.pipeline !== true || state.options.skipDiff === true) {
     return;
   }
@@ -444,7 +460,8 @@ function runConfiguredTargetsLane(
     state.config,
     state.diagnostics,
     state.lines,
-    requiredSyncSources(state)
+    requiredSyncSources(state),
+    state.artifacts
   );
 }
 
@@ -482,8 +499,21 @@ function checkFallbackPendingMigrationsLane(
     pending,
     state.config,
     state.diagnostics,
-    state.lines
+    state.lines,
+    operationName(state.options)
   );
+}
+
+function refreshFallbackGeneratedContractsLane(
+  state: SyncPipelineState
+): Promise<SyncResult | undefined> {
+  return refreshGeneratedContractsForSync(state);
+}
+
+function stageFallbackGeneratedMigrationsLane(
+  state: SyncPipelineState
+): Promise<SyncResult | undefined> {
+  return stageGeneratedMigrationsForSync(state);
 }
 
 function runFallbackSafetyGatesLane(
@@ -497,11 +527,28 @@ function runFallbackSafetyGatesLane(
   });
 }
 
+function verifyFallbackPendingMigrationsLane(
+  state: SyncPipelineState
+): Promise<SyncResult | undefined> {
+  if (state.sources === undefined) {
+    return Promise.resolve(undefined);
+  }
+  return verifyPendingMigrationsForSync({
+    config: state.config,
+    diagnostics: state.diagnostics,
+    directory: state.options.directory,
+    lines: state.lines,
+    options: state.options,
+    pending: requiredSyncStatus(state).pending,
+    sources: requiredSyncSources(state),
+  });
+}
+
 function stopFallbackWhenNothingPendingLane(state: SyncPipelineState): SyncResult | undefined {
   if (requiredSyncStatus(state).pending.length > 0) {
     return;
   }
-  state.lines.push("nothing to sync: disk and target history match");
+  state.lines.push(`nothing to ${operationName(state.options)}: disk and target history match`);
   return {
     applied: false,
     diagnostics: state.diagnostics,
@@ -514,7 +561,7 @@ function reportFallbackDryRunOrUnknownTargetLane(state: SyncPipelineState): Sync
   const status = requiredSyncStatus(state);
   if (state.options.target === undefined) {
     state.lines.push(
-      `dry run: no sync target was selected by config; set sync.targets.<name>.mode to "auto", or pass --target <name> as an override to apply ${status.pending.length} pending migration(s) with the configured runner`
+      `dry run: no ${operationTargetLabel(state.options)} was selected by config; set sync.targets.<name>.mode to "auto", or pass --target <name> as an override to apply ${status.pending.length} pending migration(s) with the configured runner`
     );
     return {
       applied: false,
@@ -527,11 +574,11 @@ function reportFallbackDryRunOrUnknownTargetLane(state: SyncPipelineState): Sync
     diagnostic(
       "SUPA_SYNC_TARGET_UNKNOWN",
       "error",
-      `sync target "${state.options.target}" is not configured`,
+      `${operationTargetLabel(state.options)} "${state.options.target}" is not configured`,
       { hint: "Add sync.targets.<name> to supaschema.config.json." }
     )
   );
-  state.lines.push("refusing to sync: target resolution failed");
+  state.lines.push(`refusing to ${operationName(state.options)}: target resolution failed`);
   return {
     applied: false,
     diagnostics: state.diagnostics,
@@ -554,21 +601,32 @@ function requiredSyncStatus(state: SyncPipelineState): MigrationsStatusReport {
   return state.status;
 }
 
+function operationName(options: Pick<SyncOptions, "operation">): "apply" | "sync" {
+  return options.operation ?? "sync";
+}
+
+function operationTargetLabel(options: Pick<SyncOptions, "operation">): string {
+  return operationName(options) === "apply" ? "apply target" : "sync target";
+}
+
 function disabledSyncResult(
-  _options: SyncOptions,
+  options: SyncOptions,
   config: SupaschemaConfig,
   diagnostics: Diagnostic[]
 ): SyncResult | undefined {
   if (config.workflow.migration_sync !== "disabled") {
     return;
   }
+  if (operationName(options) === "sync" && options.target === undefined) {
+    return;
+  }
   diagnostics.push(
     diagnostic(
       "SUPA_SYNC_DISABLED",
       "error",
-      'workflow.migration_sync is "disabled"; change it to an apply-enabled sync policy before sync can apply migrations.',
+      `workflow.migration_sync is "disabled"; change it to an apply-enabled policy before ${operationName(options)} can apply migrations.`,
       {
-        hint: 'Use workflow.migration_sync: "auto" and set sync.targets.<name>.mode to "auto" for the standard bare supaschema sync path.',
+        hint: 'Use workflow.migration_sync: "auto" and set sync.targets.<name>.mode to "auto" for the standard configured apply path.',
       }
     )
   );
@@ -576,8 +634,7 @@ function disabledSyncResult(
     applied: false,
     diagnostics,
     pending: [],
-    report:
-      'refusing to sync: workflow.migration_sync is "disabled"; no apply handoff was attempted\n',
+    report: `refusing to ${operationName(options)}: workflow.migration_sync is "disabled"; no apply handoff was attempted\n`,
   };
 }
 
@@ -597,11 +654,10 @@ async function runSyncDiffStage(
   const plan = await buildSchemaDiffPlan({ config, from: sources.from, to: sources.to });
   diagnostics.push(...plan.diagnostics);
   if (hasErrors(plan.diagnostics)) {
-    lines.push("refusing to sync: schema diff has blocking diagnostics");
+    lines.push(`refusing to ${operationName(options)}: schema diff has blocking diagnostics`);
     return { applied: false, diagnostics, pending: [], report: render(lines) };
   }
   if (plan.operations.length === 0) {
-    await refreshGeneratedOutputs({ config, toSource: sources.to });
     lines.push("diff: no schema changes");
     return;
   }
@@ -612,10 +668,11 @@ async function runSyncDiffStage(
   );
   diagnostics.push(...chainDiagnostics);
   if (hasErrors(chainDiagnostics)) {
-    lines.push("refusing to sync: pending supaschema migration lineage is not contiguous");
+    lines.push(
+      `refusing to ${operationName(options)}: pending supaschema migration lineage is not contiguous`
+    );
     return { applied: false, diagnostics, pending: [], report: render(lines) };
   }
-  await refreshGeneratedOutputs({ config, toSource: sources.to });
   const outPath = resolve(
     process.cwd(),
     options.directory,
@@ -633,6 +690,249 @@ async function runSyncDiffStage(
     await writeFile(concurrentPath, rendered.concurrentSql, { flag: "wx" });
     lines.push(`diff: wrote ${concurrentPath}`);
   }
+  return;
+}
+
+interface GeneratedContractsOptions {
+  config: SupaschemaConfig;
+  honorWorkflowPolicy?: boolean;
+  out?: string;
+  source?: string;
+}
+
+interface GeneratedContractsResult {
+  diagnostics: Diagnostic[];
+  skipped: string[];
+  stdout?: string;
+  written: string[];
+}
+
+export async function generateTypeContracts(
+  options: GeneratedContractsOptions
+): Promise<GeneratedContractsResult> {
+  const source = options.source ?? defaultTreeSource(options.config);
+  const target = options.out ?? options.config.typesFile;
+  const typesPath = target === "stdout" ? "stdout" : resolve(process.cwd(), target);
+  const zodPath = resolve(process.cwd(), options.config.zodFile);
+  const typesPolicy = options.config.workflow.type_generation;
+  const zodPolicy = options.config.workflow.zod_generation;
+  const writeTypes =
+    target !== "stdout" &&
+    (await shouldWriteGeneratedOutput(typesPath, typesPolicy, options.honorWorkflowPolicy));
+  const writeZod =
+    target !== "stdout" &&
+    (await shouldWriteGeneratedOutput(zodPath, zodPolicy, options.honorWorkflowPolicy));
+  if (target !== "stdout" && !writeTypes && !writeZod) {
+    return {
+      diagnostics: [],
+      skipped: skippedGeneratedOutputs(typesPath, typesPolicy, zodPath, zodPolicy),
+      written: [],
+    };
+  }
+  const model = await extractSourceModel(source, { config: options.config });
+  if (hasErrors(model.diagnostics)) {
+    return { diagnostics: model.diagnostics, skipped: [], written: [] };
+  }
+  const shapes = await collectSchemaShapes(model);
+  const types = generateDatabaseTypes(shapes);
+  if (target === "stdout") {
+    return { diagnostics: model.diagnostics, skipped: [], stdout: types, written: [] };
+  }
+  const written: string[] = [];
+  if (writeTypes) {
+    await mkdir(dirname(typesPath), { recursive: true });
+    await writeFile(typesPath, types);
+    written.push(typesPath);
+  }
+  if (writeZod) {
+    await mkdir(dirname(zodPath), { recursive: true });
+    await writeFile(zodPath, generateZodSchemas(shapes));
+    written.push(zodPath);
+  }
+  return { diagnostics: model.diagnostics, skipped: [], written };
+}
+
+async function shouldWriteGeneratedOutput(
+  path: string,
+  policy: SupaschemaConfig["workflow"]["type_generation"],
+  honorWorkflowPolicy: boolean | undefined
+): Promise<boolean> {
+  if (honorWorkflowPolicy !== true) {
+    return true;
+  }
+  if (policy === "disabled") {
+    return false;
+  }
+  if (policy === "create_or_refresh") {
+    return true;
+  }
+  return await pathExists(path);
+}
+
+function skippedGeneratedOutputs(
+  typesPath: string,
+  typesPolicy: SupaschemaConfig["workflow"]["type_generation"],
+  zodPath: string,
+  zodPolicy: SupaschemaConfig["workflow"]["zod_generation"]
+): string[] {
+  const skipped: string[] = [];
+  if (typesPolicy === "disabled") {
+    skipped.push(`types: skipped ${typesPath} because workflow.type_generation is "disabled"`);
+  } else if (typesPolicy === "refresh_existing") {
+    skipped.push(`types: skipped ${typesPath} because it does not exist`);
+  }
+  if (zodPolicy === "disabled") {
+    skipped.push(`zod: skipped ${zodPath} because workflow.zod_generation is "disabled"`);
+  } else if (zodPolicy === "refresh_existing") {
+    skipped.push(`zod: skipped ${zodPath} because it does not exist`);
+  }
+  return skipped;
+}
+
+interface StageGeneratedMigrationsOptions {
+  directory: string;
+  dryRun?: boolean;
+  requireGit?: boolean;
+}
+
+interface StageGeneratedMigrationsResult {
+  skippedReason?: string;
+  staged: string[];
+  wouldStage: string[];
+}
+
+export async function stageGeneratedMigrations(
+  options: StageGeneratedMigrationsOptions
+): Promise<StageGeneratedMigrationsResult> {
+  let changed: string[];
+  try {
+    changed = await changedGitPaths(options.directory);
+  } catch (error) {
+    if (options.requireGit === true) {
+      throw error;
+    }
+    return { skippedReason: "not a git worktree", staged: [], wouldStage: [] };
+  }
+  const generated: string[] = [];
+  for (const file of changed) {
+    if (await isGeneratedMigrationFile(file)) {
+      generated.push(file);
+    }
+  }
+  if (options.dryRun === true) {
+    return { staged: [], wouldStage: generated };
+  }
+  if (generated.length === 0) {
+    return { staged: [], wouldStage: [] };
+  }
+  await execFileAsync("git", ["add", "--", ...generated], { cwd: process.cwd() });
+  return { staged: generated, wouldStage: [] };
+}
+
+async function changedGitPaths(directory: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["status", "--porcelain=v1", "--untracked-files=all", "-z", "--", directory],
+      { cwd: process.cwd(), encoding: "utf8" }
+    );
+    return parsePorcelainStatusPaths(stdout);
+  } catch {
+    throw new Error("supaschema stage requires a git worktree");
+  }
+}
+
+function parsePorcelainStatusPaths(output: string): string[] {
+  const entries = output.split("\0");
+  const paths: string[] = [];
+  let index = 0;
+  while (index < entries.length) {
+    const entry = entries[index];
+    index += 1;
+    if (!entry) {
+      continue;
+    }
+    const status = entry.slice(0, 2);
+    const file = entry.slice(3);
+    if (status.includes("D")) {
+      continue;
+    }
+    if (status.includes("R") || status.includes("C")) {
+      index += 1;
+    }
+    if (file.length > 0 && !paths.includes(file)) {
+      paths.push(file);
+    }
+  }
+  return paths;
+}
+
+async function isGeneratedMigrationFile(file: string): Promise<boolean> {
+  if (!file.endsWith(".sql")) {
+    return false;
+  }
+  const filePath = isAbsolute(file) ? file : resolve(process.cwd(), file);
+  const contents = await readFile(filePath, "utf8").catch(() => undefined);
+  return contents?.slice(0, 4096).includes(lineageMarker) === true;
+}
+
+async function refreshGeneratedContractsForSync(
+  state: Pick<
+    SyncPipelineState,
+    "artifacts" | "config" | "diagnostics" | "lines" | "options" | "sources"
+  >
+): Promise<SyncResult | undefined> {
+  if (state.options.pipeline !== true || operationName(state.options) !== "sync") {
+    return;
+  }
+  if (state.artifacts.contractsRefreshed) {
+    return;
+  }
+  const result = await generateTypeContracts({
+    config: state.config,
+    honorWorkflowPolicy: true,
+    ...(state.sources === undefined ? {} : { source: state.sources.to }),
+  });
+  state.diagnostics.push(...result.diagnostics);
+  if (hasErrors(result.diagnostics)) {
+    state.lines.push("refusing to sync: generated contract refresh failed");
+    return {
+      applied: false,
+      diagnostics: state.diagnostics,
+      pending: [],
+      report: render(state.lines),
+    };
+  }
+  for (const path of result.written) {
+    state.lines.push(`types: wrote ${path}`);
+  }
+  for (const line of result.skipped) {
+    state.lines.push(line);
+  }
+  state.artifacts.contractsRefreshed = true;
+  return;
+}
+
+async function stageGeneratedMigrationsForSync(
+  state: Pick<SyncPipelineState, "artifacts" | "diagnostics" | "lines" | "options">
+): Promise<SyncResult | undefined> {
+  if (state.options.pipeline !== true || operationName(state.options) !== "sync") {
+    return;
+  }
+  if (state.artifacts.migrationsStaged) {
+    return;
+  }
+  const result = await stageGeneratedMigrations({ directory: state.options.directory });
+  if (result.skippedReason !== undefined) {
+    state.lines.push(`stage: skipped (${result.skippedReason})`);
+  } else if (result.staged.length === 0) {
+    state.lines.push("stage: no generated migration files to stage");
+  } else {
+    for (const file of result.staged) {
+      state.lines.push(`stage: staged ${file}`);
+    }
+  }
+  state.artifacts.migrationsStaged = true;
   return;
 }
 
@@ -687,12 +987,16 @@ async function runConfiguredTargets(
   config: SupaschemaConfig,
   diagnostics: Diagnostic[],
   prefixLines: string[],
-  sources: SyncSources
+  sources: SyncSources,
+  artifacts: SyncArtifactState
 ): Promise<SyncResult | undefined> {
   const resolved = resolveSyncTargets(options, config);
   diagnostics.push(...resolved.diagnostics);
   if (hasErrors(resolved.diagnostics)) {
-    const lines = [...prefixLines, "refusing to sync: target resolution failed"];
+    const lines = [
+      ...prefixLines,
+      `refusing to ${operationName(options)}: target resolution failed`,
+    ];
     return {
       applied: false,
       diagnostics,
@@ -704,29 +1008,11 @@ async function runConfiguredTargets(
     return;
   }
   const lines: string[] = [...prefixLines];
-  const allPending = new Set<string>();
-  let applied = false;
-  for (const target of resolved.targets) {
-    const targetResult = await runOneTarget(options, config, target, sources, diagnostics, lines);
-    for (const file of targetResult.pending) {
-      allPending.add(file);
-    }
-    if (hasErrors(diagnostics) || (!targetResult.applied && targetResult.pending.length > 0)) {
-      return {
-        applied,
-        diagnostics,
-        pending: [...allPending].sort(),
-        report: render(lines),
-      };
-    }
-    applied = applied || targetResult.applied;
+  const target = resolved.targets[0];
+  if (target === undefined) {
+    return;
   }
-  return {
-    applied,
-    diagnostics,
-    pending: [...allPending].sort(),
-    report: render(lines),
-  };
+  return await runOneTarget(options, config, target, sources, artifacts, diagnostics, lines);
 }
 
 function resolveSyncTargets(
@@ -745,6 +1031,19 @@ function resolveSyncTargets(
         "error",
         "--env and --database-url can only override sync when exactly one target is selected",
         { hint: "Use --target <name> to select one configured target." }
+      )
+    );
+    return { diagnostics, targets: [] };
+  }
+  if (selected.length > 1) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_SYNC_MULTI_TARGET_APPLY_UNSUPPORTED",
+        "error",
+        `${operationName(options)} selected ${selected.length} targets; cross-target apply is not atomic`,
+        {
+          hint: `Run supaschema ${operationName(options)} --target <name> for one target at a time, or keep only one sync.targets entry in mode "auto".`,
+        }
       )
     );
     return { diagnostics, targets: [] };
@@ -792,7 +1091,7 @@ function resolveSyncTarget(
       diagnostic(
         "SUPA_SYNC_TARGET_UNKNOWN",
         "error",
-        `sync target "${selection.name}" is not configured`,
+        `${operationTargetLabel(options)} "${selection.name}" is not configured`,
         { hint: "Add sync.targets.<name> to supaschema.config.json." }
       )
     );
@@ -934,10 +1233,12 @@ async function runOneTarget(
   config: SupaschemaConfig,
   target: ResolvedSyncTarget,
   sources: SyncSources,
+  artifacts: SyncArtifactState,
   diagnostics: Diagnostic[],
   lines: string[]
 ): Promise<SyncResult> {
   const state: TargetSyncState = {
+    artifacts,
     config,
     diagnostics,
     lines,
@@ -955,6 +1256,7 @@ async function runOneTarget(
 }
 
 interface TargetSyncState {
+  artifacts: SyncArtifactState;
   config: SupaschemaConfig;
   diagnostics: Diagnostic[];
   lines: string[];
@@ -972,10 +1274,13 @@ type TargetSyncLane = (
 const targetSyncLanes: TargetSyncLane[] = [
   loadTargetHistoryLane,
   guardTargetHistoryLane,
-  stopTargetWhenNothingPendingLane,
   checkTargetPendingMigrationsLane,
+  refreshTargetGeneratedContractsLane,
+  stageTargetGeneratedMigrationsLane,
+  stopTargetWhenNothingPendingLane,
   guardTargetConcurrentCompanionsLane,
   runTargetSafetyLane,
+  verifyTargetPendingMigrationsLane,
   applyTargetMigrationsLane,
   reconcileTargetHistoryLane,
 ];
@@ -1000,7 +1305,7 @@ function guardTargetHistoryLane(state: TargetSyncState): SyncResult | undefined 
     return;
   }
   state.lines.push(
-    `refusing to sync ${state.target.name}: resolve ghost or out-of-order history first`
+    `refusing to ${operationName(state.options)} ${state.target.name}: resolve ghost or out-of-order history first`
   );
   return {
     applied: false,
@@ -1014,7 +1319,9 @@ function stopTargetWhenNothingPendingLane(state: TargetSyncState): SyncResult | 
   if (requiredTargetStatus(state).pending.length > 0) {
     return;
   }
-  state.lines.push(`nothing to sync on ${state.target.name}: disk and target history match`);
+  state.lines.push(
+    `nothing to ${operationName(state.options)} on ${state.target.name}: disk and target history match`
+  );
   return {
     applied: false,
     diagnostics: state.diagnostics,
@@ -1029,8 +1336,21 @@ function checkTargetPendingMigrationsLane(state: TargetSyncState): Promise<SyncR
     requiredTargetStatus(state).pending,
     state.config,
     state.diagnostics,
-    state.lines
+    state.lines,
+    operationName(state.options)
   );
+}
+
+function refreshTargetGeneratedContractsLane(
+  state: TargetSyncState
+): Promise<SyncResult | undefined> {
+  return refreshGeneratedContractsForSync(state);
+}
+
+function stageTargetGeneratedMigrationsLane(
+  state: TargetSyncState
+): Promise<SyncResult | undefined> {
+  return stageGeneratedMigrationsForSync(state);
 }
 
 function guardTargetConcurrentCompanionsLane(state: TargetSyncState): SyncResult | undefined {
@@ -1038,7 +1358,8 @@ function guardTargetConcurrentCompanionsLane(state: TargetSyncState): SyncResult
     state.target,
     requiredTargetStatus(state).pending,
     state.diagnostics,
-    state.lines
+    state.lines,
+    operationName(state.options)
   );
 }
 
@@ -1050,6 +1371,21 @@ function runTargetSafetyLane(state: TargetSyncState): Promise<SyncResult | undef
     state.lines,
     { pending: requiredTargetStatus(state).pending, targetName: state.target.name }
   );
+}
+
+function verifyTargetPendingMigrationsLane(
+  state: TargetSyncState
+): Promise<SyncResult | undefined> {
+  return verifyPendingMigrationsForSync({
+    config: state.config,
+    diagnostics: state.diagnostics,
+    directory: state.options.directory,
+    lines: state.lines,
+    options: state.options,
+    pending: requiredTargetStatus(state).pending,
+    sources: state.sources,
+    target: state.target,
+  });
 }
 
 async function applyTargetMigrationsLane(state: TargetSyncState): Promise<SyncResult | undefined> {
@@ -1120,7 +1456,8 @@ function supabaseCliConcurrentCompanionResult(
   target: ResolvedSyncTarget,
   pending: string[],
   diagnostics: Diagnostic[],
-  lines: string[]
+  lines: string[],
+  operation: "apply" | "sync"
 ): SyncResult | undefined {
   const companion = pending.find(isConcurrentMigrationFile);
   if (target.runner !== "supabase-cli" || companion === undefined) {
@@ -1137,7 +1474,9 @@ function supabaseCliConcurrentCompanionResult(
       }
     )
   );
-  lines.push(`refusing to sync ${target.name}: Supabase CLI cannot safely apply ${companion}`);
+  lines.push(
+    `refusing to ${operation} ${target.name}: Supabase CLI cannot safely apply ${companion}`
+  );
   return { applied: false, diagnostics, pending, report: render(lines) };
 }
 
@@ -1175,6 +1514,112 @@ function isRemoteTargetName(
   name: string
 ): boolean {
   return name === "remote" || target.remote === true;
+}
+
+interface VerifyPendingMigrationsForSyncOptions {
+  config: SupaschemaConfig;
+  diagnostics: Diagnostic[];
+  directory: string;
+  lines: string[];
+  options: SyncOptions;
+  pending: string[];
+  sources: SyncSources;
+  target?: ResolvedSyncTarget;
+}
+
+async function verifyPendingMigrationsForSync(
+  options: VerifyPendingMigrationsForSyncOptions
+): Promise<SyncResult | undefined> {
+  if (operationName(options.options) !== "sync" || options.pending.length === 0) {
+    return;
+  }
+  const databaseUrl = resolveSyncVerifyDatabaseUrl(options);
+  if (databaseUrl === undefined) {
+    options.diagnostics.push(
+      diagnostic(
+        "SUPA_SYNC_VERIFY_URL_UNRESOLVED",
+        "error",
+        "sync requires a database URL for verify before apply or dry-run completion",
+        {
+          hint: "Pass --database-url, select a target with databaseUrl/environment, set SUPASCHEMA_DATABASE_URL, or run inside a Supabase project with supabase/config.toml.",
+        }
+      )
+    );
+    options.lines.push("refusing to sync: verify has no database URL");
+    return {
+      applied: false,
+      diagnostics: options.diagnostics,
+      pending: options.pending,
+      report: render(options.lines),
+    };
+  }
+  const prepared = await prepareVerificationMigration(options.directory, options.pending);
+  try {
+    const verifyDiagnostics = await verifyMigration({
+      config: options.config,
+      databaseUrl,
+      ...(options.options.ensureEnvironment === undefined
+        ? {}
+        : { ensureEnvironment: options.options.ensureEnvironment }),
+      ensureRoles: options.options.ensureRoles === true,
+      from: options.sources.from,
+      migrationPath: prepared.path,
+      to: options.sources.to,
+    });
+    options.diagnostics.push(...verifyDiagnostics);
+  } finally {
+    await prepared.cleanup();
+  }
+  if (hasErrors(options.diagnostics)) {
+    options.lines.push("refusing to sync: verify failed for pending migrations");
+    return {
+      applied: false,
+      diagnostics: options.diagnostics,
+      pending: options.pending,
+      report: render(options.lines),
+    };
+  }
+  options.lines.push(`verify: ${options.pending.length} pending migration file(s) passed`);
+  return;
+}
+
+function resolveSyncVerifyDatabaseUrl(
+  options: VerifyPendingMigrationsForSyncOptions
+): string | undefined {
+  try {
+    return options.target?.databaseUrl ?? resolveDatabaseUrl(options.options.databaseUrl);
+  } catch (error) {
+    options.diagnostics.push(
+      diagnostic(
+        "SUPA_SYNC_VERIFY_URL_UNRESOLVED",
+        "error",
+        error instanceof Error ? error.message : String(error),
+        {
+          hint: "Resolve the database URL used by sync verify before applying migrations.",
+        }
+      )
+    );
+    return;
+  }
+}
+
+async function prepareVerificationMigration(
+  directory: string,
+  pending: string[]
+): Promise<{ cleanup: () => Promise<void>; path: string }> {
+  if (pending.length === 1) {
+    return { cleanup: () => Promise.resolve(), path: join(directory, pending[0] ?? "") };
+  }
+  const root = await mkdtemp(join(tmpdir(), "supaschema-sync-verify-"));
+  const path = join(root, "pending-chain.sql");
+  const chunks: string[] = [];
+  for (const file of pending) {
+    chunks.push(
+      `-- supaschema: verify file ${file}\n${await readFile(join(directory, file), "utf8")}`
+    );
+  }
+  await writeFile(path, `${chunks.join("\n\n")}\n`);
+  return { cleanup: () => rm(root, { force: true, recursive: true }), path };
 }
 
 async function checkSyncLineageChain(
@@ -1229,7 +1674,8 @@ async function checkPendingMigrations(
   pending: string[],
   config: SupaschemaConfig,
   diagnostics: Diagnostic[],
-  lines: string[]
+  lines: string[],
+  operation: "apply" | "sync" = "sync"
 ): Promise<SyncResult | undefined> {
   for (const file of pending) {
     const sql = await readFile(join(directory, file), "utf8");
@@ -1237,7 +1683,7 @@ async function checkPendingMigrations(
     const errors = checkDiagnostics.filter((item) => item.severity === "error");
     diagnostics.push(...errors);
     if (errors.length > 0) {
-      lines.push(`refusing to sync: ${file} fails the replay-safety check`);
+      lines.push(`refusing to ${operation}: ${file} fails the replay-safety check`);
       return {
         applied: false,
         diagnostics,
@@ -1299,6 +1745,15 @@ function migrationTimestamp(): string {
 
 function render(lines: string[]): string {
   return `${lines.join("\n")}\n`;
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function hookProjectDir(payload: unknown): string {
@@ -1666,6 +2121,12 @@ function automaticSyncPlan(pathState: SchemaPathState): AutomaticSyncPlan {
       reason: 'no configured sync target is mode "auto"',
     };
   }
+  if (selected.length > 1) {
+    return {
+      enabled: false,
+      reason: `multiple auto sync targets selected (${selected.map(([name]) => name).join(", ")}); run supaschema sync --target <name> for one target at a time`,
+    };
+  }
   const blockers: string[] = [];
   for (const [name, target] of selected) {
     const url = target.databaseUrl ?? pathState.environments[target.environment ?? ""]?.databaseUrl;
@@ -1783,10 +2244,6 @@ function runConfiguredHookVerify(
   return verify.code === 0
     ? "supaschema verify passed"
     : `supaschema verify reported diagnostics:\n${head(verify.stderr || verify.stdout)}`;
-}
-
-function generatedOutputLine(workflow: SupaschemaConfig["workflow"]): string {
-  return `Generated output policy: workflow.type_generation=${workflow.type_generation}, workflow.zod_generation=${workflow.zod_generation}, workflow.type_usage=${workflow.type_usage}`;
 }
 
 function defaultSchemaPath(projectDir: string): string {
@@ -1924,7 +2381,7 @@ function syncFailureLoopReason(projectDir: string, changed: string[], diagnostic
     typeof diagnostics === "string" && diagnostics.length > 0
       ? `\n\nDiagnostics:\n${diagnostics}`
       : "";
-  return `supaschema sync failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, fix the canonical schema/config/migration source, rerun \`supaschema sync\`, and keep iterating until the ordered source, diff/output, target-selection, history, check, safety, runner, and reconciliation lanes pass or report the exact blocker.${diagnosticText}`;
+  return `supaschema sync failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, fix the canonical schema/config/migration source, rerun \`supaschema sync\`, and keep iterating until the ordered source, diff, target-selection, history, check, generated-contract, stage, safety, verify, runner, and reconciliation lanes pass or report the exact blocker.${diagnosticText}`;
 }
 
 function strings(value: unknown): string[] {

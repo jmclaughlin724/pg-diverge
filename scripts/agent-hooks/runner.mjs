@@ -1,0 +1,199 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
+import { ciFailureInboxContext } from "../github/ci-inbox-core.mjs";
+import { preToolEvidenceGate, recordToolEvidence, runResponseDetectors } from "./detectors.mjs";
+import { runChecks, shapeHookResult } from "./payload.mjs";
+import {
+  recordObservableSkillLoad,
+  unresolvedPending,
+  updatePromptSkills,
+  updateToolSkills,
+} from "./skills.mjs";
+import {
+  beginTurnState,
+  clearSessionState,
+  currentTurnState,
+  readSessionState,
+  selectTurnState,
+  sessionStartState,
+  writeSessionState,
+} from "./state.mjs";
+
+export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const commandToolNames = new Set(["Bash", "exec_command", "functions.exec_command"]);
+
+export function runAgentHookEvent(eventName, options = {}) {
+  const payload = readStdinJson();
+  const runtime = options.runtime ?? hookRuntime();
+  const shaped = handleAgentHookEvent(eventName, payload, { root, runtime });
+  if (shaped.stdout) {
+    process.stdout.write(shaped.stdout);
+  }
+  if (shaped.stderr) {
+    process.stderr.write(`${shaped.stderr}\n`);
+  }
+  process.exit(shaped.exitCode);
+}
+
+export function handleAgentHookEvent(eventName, payload, options = {}) {
+  const runtime = options.runtime ?? "claude";
+  let state = readSessionState(payload);
+  const context = { root: options.root ?? root, runtime, state };
+  let result = {};
+
+  if (eventName === "SessionStart") {
+    state = sessionStartState(payload, state);
+    context.state = state;
+    result = runChecks(eventName, payload, [standingContext], context);
+  } else if (eventName === "UserPromptSubmit") {
+    beginTurnState(payload, state);
+    result = runChecks(eventName, payload, [ciInbox, promptSkills], context);
+  } else if (eventName === "PreToolUse") {
+    selectTurnState(payload, state);
+    result = runChecks(
+      eventName,
+      payload,
+      [toolSkills, evidenceGate, bashSafety, commandCiInbox],
+      context
+    );
+  } else if (eventName === "PostToolUse") {
+    selectTurnState(payload, state);
+    result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
+  } else if (eventName === "SubagentStart") {
+    selectTurnState(payload, state);
+    result = runChecks(eventName, payload, [subagentContext], context);
+  } else if (eventName === "Stop" || eventName === "SubagentStop") {
+    selectTurnState(payload, state);
+    result = runChecks(eventName, payload, [ciInbox, responseShape], context);
+  } else if (eventName === "TaskCompleted") {
+    selectTurnState(payload, state);
+    result = runChecks(eventName, payload, [taskCompletionGate], context);
+  } else if (eventName === "PermissionDenied") {
+    selectTurnState(payload, state);
+    result = runChecks(eventName, payload, [permissionDeniedContext], context);
+  } else if (eventName === "SessionEnd") {
+    clearSessionState(payload);
+    result = {};
+  }
+
+  if (eventName !== "SessionEnd") {
+    writeSessionState(payload, state);
+  }
+  return shapeHookResult(eventName, result, runtime);
+}
+
+function standingContext() {
+  return {
+    contextParts: [
+      "Agent hook layer active: load matched skills through observable Skill tool calls or SKILL.md reads, verify claims with tool evidence, and revise final responses when Stop feedback reports shape violations.",
+    ],
+  };
+}
+
+function promptSkills(payload, context) {
+  return updatePromptSkills(payload, context.state, context);
+}
+
+function ciInbox(_payload, context) {
+  const message = ciFailureInboxContext({
+    root: context.root,
+    runtime: context.runtime,
+  });
+  return message ? { contextParts: [message] } : {};
+}
+
+function commandCiInbox(payload, context) {
+  return commandToolNames.has(String(payload?.tool_name ?? "")) ? ciInbox(payload, context) : {};
+}
+
+function toolSkills(payload, context) {
+  return updateToolSkills(payload, context.state, context);
+}
+
+function evidenceGate(payload, context) {
+  return preToolEvidenceGate(payload, context.state);
+}
+
+function bashSafety(payload) {
+  const result = evaluateBashPolicy(payload);
+  return result.action === "block" ? { deny: result.message } : {};
+}
+
+function observableSkillLoad(payload, context) {
+  return recordObservableSkillLoad(payload, context.state, context);
+}
+
+function toolEvidence(payload, context) {
+  return recordToolEvidence(payload, context.state);
+}
+
+function subagentContext(_payload, context) {
+  const pending = unresolvedPending(context.state);
+  if (pending.length === 0) {
+    return {
+      contextParts: [
+        "Subagent starts with isolated context. Preload relevant skills through subagent frontmatter `skills:` or explicitly load them in the subagent before governed work.",
+      ],
+    };
+  }
+  return {
+    contextParts: [
+      [
+        "Subagent starts with isolated context and inherited loaded skills are not assumed.",
+        ...pending.map((item) => `- Pending skill for parent task: ${item.name}: ${item.reason}`),
+      ].join("\n"),
+    ],
+  };
+}
+
+function responseShape(payload, context) {
+  const detectorResult = runResponseDetectors(payload, context.state);
+  if (detectorResult.contextParts?.length > 0) {
+    return {
+      block: detectorResult.contextParts.join("\n\n"),
+    };
+  }
+  return detectorResult;
+}
+
+function taskCompletionGate(_payload, context) {
+  const pending = unresolvedPending(context.state);
+  const corrections = currentTurnState(context.state).corrections;
+  if (pending.length === 0 && corrections.length === 0) {
+    return {};
+  }
+  return {
+    block: [
+      "Task completion blocked by deterministic agent hook state.",
+      ...pending.map((item) => `- Pending skill: ${item.name}: ${item.reason}`),
+      ...corrections.map((item) => `- Pending response correction: ${item.message}`),
+    ].join("\n"),
+  };
+}
+
+function permissionDeniedContext(payload) {
+  const reason = payload?.denial_reason ?? payload?.tool_response?.reason ?? "permission denied";
+  return {
+    block: `Permission denial observed. Re-plan without retrying the same denied action. reason=${reason}`,
+  };
+}
+
+function hookRuntime() {
+  const normalized = String(process.argv[1] ?? "")
+    .split(path.sep)
+    .join("/");
+  return normalized.includes("/.codex/hooks/") || process.env.CODEX_PROJECT_DIR
+    ? "codex"
+    : "claude";
+}
+
+function readStdinJson() {
+  try {
+    const raw = fs.readFileSync(0, "utf8");
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}

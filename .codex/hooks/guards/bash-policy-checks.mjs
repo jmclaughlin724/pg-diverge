@@ -210,7 +210,22 @@ function checkDangerousGitAndShellWrites(command) {
     }
     if (subcommand === "checkout") {
       return block(
-        "BLOCKED: git checkout is prohibited. Use git switch for branches, git diff/git show for comparisons, and direct edits for file changes."
+        "BLOCKED: git checkout is prohibited. Keep work on the current branch and use git diff/git show for comparisons."
+      );
+    }
+    if (subcommand === "switch") {
+      return block(
+        "BLOCKED: git switch is prohibited. Keep work on the current branch."
+      );
+    }
+    if (subcommand === "branch") {
+      return block(
+        "BLOCKED: git branch is prohibited. Keep work on the current branch and use git rev-parse for branch discovery."
+      );
+    }
+    if (subcommand === "worktree") {
+      return block(
+        "BLOCKED: git worktree is prohibited. Use the current worktree only."
       );
     }
     if (subcommand === "reset") {
@@ -272,7 +287,7 @@ function commandSegments(command) {
   return commandSegmentObjects(command).map((segment) => segment.words);
 }
 
-function commandSegmentObjects(command) {
+export function commandSegmentObjects(command) {
   return expandShellSegments(parseShellAst(command));
 }
 
@@ -392,11 +407,11 @@ function commandStart(tokens) {
   return index;
 }
 
-function commandName(tokens) {
+export function commandName(tokens) {
   return tokens[commandStart(tokens)] ?? "";
 }
 
-function commandArgs(tokens) {
+export function commandArgs(tokens) {
   return tokens.slice(commandStart(tokens) + 1);
 }
 

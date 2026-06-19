@@ -77,6 +77,7 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_SYNC_DISABLED` | error | `workflow.migration_sync` disables configured apply/deploy. |
 | `SUPA_SYNC_ENV_UNKNOWN` | error | The selected sync environment is not defined. |
 | `SUPA_SYNC_FINAL_RECONCILE_FAILED` | error | A target still has pending or missing expected versions after the runner completed. |
+| `SUPA_SYNC_MULTI_TARGET_APPLY_UNSUPPORTED` | error | More than one mutation target was selected; cross-target apply is not atomic. |
 | `SUPA_SYNC_REMOTE_APPROVAL_REQUIRED` | error | Automatic remote sync is missing its required runtime approval environment variable. |
 | `SUPA_SYNC_RUNNER_FAILED` | error | The selected migration runner launched or connected, then failed during sync. |
 | `SUPA_SYNC_RUNNER_UNAVAILABLE` | error | The selected migration runner could not be launched or connected. |
@@ -84,6 +85,7 @@ Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `sta
 | `SUPA_SYNC_TARGET_OVERRIDE_MULTI` | error | A database URL or environment override was used while multiple sync targets were selected. |
 | `SUPA_SYNC_TARGET_UNKNOWN` | error | The selected named sync target is not configured. |
 | `SUPA_SYNC_TARGET_URL_UNRESOLVED` | error | The selected sync target's database URL could not be resolved. |
+| `SUPA_SYNC_VERIFY_URL_UNRESOLVED` | error | `sync` could not resolve the database URL required by the verify lane. |
 | `SUPA_VERIFY_CLEANUP_FAILED` | warning | A temporary verification database could not be dropped and may need manual removal. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` hints | — | The mismatch hint names the differing objects: missing from the migration result, not present in the target, and definition differs. |
 | `SUPA_VERIFY_FAILED` | error | Temporary database verification failed. |

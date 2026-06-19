@@ -1,9 +1,18 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-describe("extracted workflow sources", () => {
+const workflowSources = [
+  ".claude/skills/deep-research/references/workflow-backed-deep-research.js",
+  ".claude/skills/code-review/references/workflow-backed-code-review.js",
+  ".claude/skills/batch/SKILL.md",
+  ".claude/agents/worker.md",
+];
+const hasWorkflowSources = workflowSources.every((file) => existsSync(join(process.cwd(), file)));
+
+describe.skipIf(!hasWorkflowSources)("extracted workflow sources", () => {
   it("keeps deep-research resilient to failed searches and bounded fetches", async () => {
     const sourceText = await readFile(
       join(

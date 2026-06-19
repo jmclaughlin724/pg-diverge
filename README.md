@@ -8,15 +8,12 @@
 
 [Documentation](https://supaschema.com/docs) | [Install](https://supaschema.com/docs/installation) | [Quickstart](https://supaschema.com/docs/quickstart) | [Commands](https://supaschema.com/docs/commands) | [Benchmarks](https://supaschema.com/docs/benchmarks) | [Coding agents](https://supaschema.com/docs/coding-agents)
 
-**Declarative PostgreSQL schema management that turns SQL files into replay-safe migrations, generated TypeScript types, Zod validators, and guarded sync. No Docker, no shadow database, no ORM schema layer.**
+**Declarative PostgreSQL schema management that turns SQL files into replay-safe migrations, generated TypeScript types, Zod validators, and guarded apply. No Docker, no shadow database, no ORM schema layer.**
 
 Use it with plain PostgreSQL or hosted providers such as Supabase, Neon, RDS/Aurora, Cloud SQL, AlloyDB, and Azure PostgreSQL.
 
 ```bash
-supaschema diff    # render migration SQL and refresh configured outputs
-supaschema check   # static replay-safety and lock-hazard diagnostics
-supaschema verify  # apply twice in disposable databases and compare catalogs
-supaschema sync    # run guarded apply for configured targets
+supaschema sync  # diff, check, types, stage, safety, verify, apply/dry-run, reconcile
 ```
 
 ![supaschema vs diff engines at 1,000 tables: median diff latency bars](docs/images/benchmarks/head-to-head-xl-bars.svg)
@@ -25,7 +22,7 @@ supaschema sync    # run guarded apply for configured targets
 
 Declarative database workflows usually make the database part of the edit loop: replay a schema into a Docker shadow database, diff that database, apply the result, then introspect again to regenerate application types.
 
-supaschema keeps the schema workflow inside the repository. It ships PostgreSQL's parser in the package, parses SQL files into a structural model, diffs object definitions, renders guarded migration SQL, and refreshes TypeScript and Zod outputs from the same tree.
+supaschema keeps the schema workflow inside the repository. It ships PostgreSQL's parser in the package, parses SQL files into a structural model, diffs object definitions, renders guarded migration SQL, and regenerates TypeScript and Zod outputs from the same tree.
 
 - **Fast feedback:** generating a diff does not require Docker or a shadow database.
 - **One schema owner:** PostgreSQL SQL remains the source of truth; generated migrations, TypeScript types, and Zod validators follow from it.
@@ -50,7 +47,7 @@ npm run benchmark
 
 ## How it fits
 
-supaschema replaces the PostgreSQL schema-management lane: schema diff, migration generation, safety checks, generated contracts, drift gates, and guarded sync. Individual commands stay available for each action, while `sync` runs the ordered apply sequence when a configured target is selected. Keep another tool when its distinct runtime, platform runner, query API, hosted dashboard, or cross-database scope is the part you intentionally want.
+supaschema replaces the PostgreSQL schema-management lane: schema diff, migration generation, safety checks, disposable-database verification, generated contracts, drift gates, staging, and guarded apply. Individual commands stay available for each action. Keep another tool when its distinct runtime, platform runner, query API, hosted dashboard, or cross-database scope is the part you intentionally want.
 
 - Use it beside Supabase when you want Supabase project resources but do not want Docker-backed `db diff` as the migration generator.
 - Use it beside Prisma or Drizzle when you want their query or client APIs but do not want an ORM schema DSL to own PostgreSQL intent.
@@ -76,14 +73,13 @@ Run both install and setup from the package or workspace directory that owns the
 
 ## Workflow
 
-Edit the configured schema SQL files, then run the lane that matches your intent:
+Edit the configured schema SQL files, then run the full workflow:
 
 ```bash
-supaschema diff    # generate the migration and refresh configured outputs
-supaschema check   # check generated or existing migrations
-supaschema verify  # prove retry safety against disposable databases
-supaschema sync    # run ordered diff/check/safety/apply lanes when configured
+supaschema sync
 ```
+
+Use `diff`, `check`, `types`, `stage`, or `apply` only when you need one focused lane. `sync` refreshes generated contracts even when no migration is pending and refuses multiple automatic targets because cross-target apply is not atomic.
 
 Zero-flag commands read `supaschema.config.json`. Diff sources can be schema directories, Git refs, live read-only catalogs, SQL dumps, saved catalog snapshots, or an empty baseline. Full flags, defaults, and exit codes live in the [commands reference](https://supaschema.com/docs/commands) and [sources guide](https://supaschema.com/docs/concepts/sources).
 
@@ -93,8 +89,8 @@ Read config as four decisions: `schemaPaths` / `sources.to` / `migrationsDir` de
 
 | Surface | What it gives you |
 | --- | --- |
-| CLI | `diff`, `check`, `verify`, `sync`, `types`, `migrations`, `config validate`, inspection commands, diagnostics, and shell completion. |
-| Library | Typed ESM exports for the same core pipeline, including extraction, planning, rendering, checking, verification, sync, type generation, and config loading. |
+| CLI | `diff`, `stage`, `apply`, `types`, `check`, `verify`, `sync`, `migrations`, `config validate`, inspection commands, diagnostics, and shell completion. |
+| Library | Typed ESM exports for the same core pipeline, including extraction, planning, rendering, checking, verification, apply/sync, type generation, and config loading. |
 | Agent bundle | A public-safe prompt, rules, skills, and hooks for Claude, Codex, and AGENTS-compatible tools working in a consuming repository. |
 | Docs site | Mintlify task guides, command pages, configuration references, comparison pages, support matrix, diagnostics, and commercial support intake. |
 

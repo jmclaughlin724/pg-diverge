@@ -11,18 +11,17 @@ keywords:
 
 Use this page to see the package surfaces at a glance.
 
-supaschema is packaged as a PostgreSQL project workflow, not just a binary. Installing it gives your repo the generator, safety checks, generated outputs, and a raw public-safe agent bundle for optional review and installation. The workflow keeps declarative schema changes repeatable across plain PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, and Supabase.
+supaschema is packaged as a PostgreSQL project workflow, not just a binary. Installing it gives your repo the generator, safety checks, generated outputs, staging/apply commands, and a raw public-safe agent bundle for optional review and installation. The workflow keeps declarative schema changes repeatable across plain PostgreSQL, Neon, RDS/Aurora, Cloud SQL, AlloyDB, Azure PostgreSQL, and Supabase.
 
 ## Core workflow
 
 <CardGroup cols={2}>
   <Card
-    title="One-command migration generation"
+    title="Migration generation"
     icon="wand-magic-sparkles"
     href="/concepts/migration-pipeline"
   >
-    `supaschema diff` extracts, plans, renders, writes the migration, and
-    refreshes configured generated outputs.
+    `supaschema diff` extracts, plans, renders, and writes the migration.
   </Card>
   <Card
     title="Replay-safety checker"
@@ -40,8 +39,8 @@ supaschema is packaged as a PostgreSQL project workflow, not just a binary. Inst
     `supaschema verify` proves the newest pending migration is replay-safe
     against a disposable database.
   </Card>
-  <Card title="Guarded sync" icon="cloud-upload" href="/commands/sync">
-    `supaschema sync` reconciles target history and applies pending migrations
+  <Card title="Guarded apply" icon="cloud-upload" href="/commands/apply">
+    `supaschema apply` reconciles target history and applies pending migrations
     after replay, type, and RLS gates pass.
   </Card>
 </CardGroup>

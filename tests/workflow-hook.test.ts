@@ -77,7 +77,8 @@ if (command === "check") {
     console.error("zero-arg check scanned stale migration history");
     process.exit(2);
   }
-  if (args.length === 1 && args[0].endsWith("database/migrations/20260101000000_generated.sql")) {
+  const checkPath = args[0]?.replaceAll("\\\\", "/");
+  if (args.length === 1 && checkPath?.endsWith("database/migrations/20260101000000_generated.sql")) {
     console.log("ok");
     process.exit(0);
   }

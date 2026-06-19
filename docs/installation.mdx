@@ -51,13 +51,13 @@ After install, run `<local-runner> init`. It uses the consuming repo's package m
 
 `<local-runner> --version` `<local-runner> config validate --json`
 
-Use the package scripts only for routine schema changes: `supaschema:migration` generates migration SQL, `supaschema:check` validates replay safety, and `supaschema:types` refreshes generated contracts. Use direct CLI commands for setup diagnostics, database execution verification, and apply: `<local-runner> config validate --json`, `<local-runner> verify`, and `<local-runner> sync`.
+Use `supaschema:sync` for routine schema changes. It generates migration SQL, validates replay safety, refreshes generated contracts, stages generated migrations, verifies pending migrations, and applies or dry-runs through one configured target. Use `supaschema:diff`, `supaschema:stage`, `supaschema:apply`, `supaschema:types`, and `supaschema:check` only for focused lanes. Use direct CLI commands for setup diagnostics and database execution verification: `<local-runner> config validate --json` and `<local-runner> verify`.
 
 Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, whether path confirmation is still pending, and that the raw AI-agent bundle is available at `node_modules/supaschema/agent-bundle/INSTALL.md` but not installed by default.
 
 Install AI-agent enforcement only if I explicitly ask for it. In that case, read `node_modules/supaschema/agent-bundle/INSTALL.md`, then manually merge the reviewed raw bundle files.
 
-Do not apply migrations to any database unless I explicitly ask for that or the configured apply policy allows it: `workflow.migration_sync` must permit sync, `sync.targets.<name>.mode` must select the target, and any remote approval variable must be set by the operator. For schema changes, edit the declarative schema tree and run `<local-runner> diff` or the configured `sync` workflow; treat generated migrations as build output.
+Do not apply migrations to any database unless I explicitly ask for that or the configured apply policy allows it: `workflow.migration_sync` must permit apply, exactly one `sync.targets.<name>.mode` must select the target, verify must pass, and any remote approval variable must be set by the operator. For schema changes, edit the declarative schema tree, run `<local-runner> sync`, and treat generated migrations as build output.
 
 </Prompt>
 

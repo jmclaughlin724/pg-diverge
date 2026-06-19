@@ -10,9 +10,8 @@ import { formatDiagnostics, hasErrors } from "./diagnostics.js";
 import { renderDoctorReport, runDoctor } from "./doctor.js";
 import { isSchemaContract, type SchemaContract } from "./schema-contract.js";
 import { extractSourceModel } from "./source.js";
-import { generateDatabaseTypes } from "./typegen.js";
 import { collectSchemaShapes } from "./typegen-model.js";
-import { generateZodSchemas } from "./typegen-zod.js";
+import { generateTypeContracts } from "./workflow.js";
 
 export interface ToolCommandContext {
   configPath: () => string | undefined;
@@ -60,27 +59,21 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     )
     .action(async (options: { from?: string; out?: string }) => {
       const config = await context.loadCliConfig();
-      const source = options.from ?? defaultTreeSource(config);
-      const model = await extractSourceModel(source, { config });
-      context.printDiagnostics(model.diagnostics);
-      if (hasErrors(model.diagnostics)) {
+      const result = await generateTypeContracts({
+        config,
+        ...(options.from === undefined ? {} : { source: options.from }),
+        ...(options.out === undefined ? {} : { out: options.out }),
+      });
+      context.printDiagnostics(result.diagnostics);
+      if (hasErrors(result.diagnostics)) {
         process.exitCode = 2;
         return;
       }
-      const shapes = await collectSchemaShapes(model);
-      const types = generateDatabaseTypes(shapes);
-      const target = options.out ?? config.typesFile;
-      if (target === "stdout") {
-        process.stdout.write(types);
+      if (result.stdout !== undefined) {
+        process.stdout.write(result.stdout);
         return;
       }
-      const outPath = resolve(process.cwd(), target);
-      await mkdir(dirname(outPath), { recursive: true });
-      await writeFile(outPath, types);
-      const zodPath = resolve(process.cwd(), config.zodFile);
-      await mkdir(dirname(zodPath), { recursive: true });
-      await writeFile(zodPath, generateZodSchemas(shapes));
-      process.stdout.write(`${outPath}\n${zodPath}\n`);
+      process.stdout.write(`${result.written.join("\n")}\n`);
     });
 
   program

@@ -1,7 +1,15 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker from "../cloudflare/mintlify-docs-worker.js";
 
+const hasMintlifyWorkerSource = existsSync(resolve("cloudflare/mintlify-docs-worker.js"));
 const originalFetch = globalThis.fetch;
+function optionalImport(specifier: string): Promise<any> {
+  return import(specifier);
+}
+const worker = hasMintlifyWorkerSource
+  ? (await optionalImport("../cloudflare/mintlify-docs-worker.js")).default
+  : undefined;
 
 function setFetchMock(implementation: typeof fetch) {
   const fetchMock = vi.fn(implementation);
@@ -18,7 +26,7 @@ function firstFetchRequest(fetchMock: ReturnType<typeof setFetchMock>): Request 
   return input instanceof Request ? input : new Request(input, init);
 }
 
-describe("Mintlify docs worker", () => {
+describe.skipIf(!hasMintlifyWorkerSource)("Mintlify docs worker", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();

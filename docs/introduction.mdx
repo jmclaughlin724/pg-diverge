@@ -11,7 +11,7 @@ keywords:
 
 Use this page to decide whether supaschema fits your schema workflow.
 
-supaschema reads PostgreSQL schema intent from SQL files, compares it with another schema source, renders replay-safe migration SQL, refreshes TypeScript types and Zod validators, and can apply pending migrations through guarded `sync` targets. It removes the need for an ORM schema layer, Docker, or a shadow database in the schema workflow.
+supaschema reads PostgreSQL schema intent from SQL files, compares it with another schema source, renders replay-safe migration SQL, regenerates TypeScript types and Zod validators, and can apply pending migrations through guarded targets. It removes the need for an ORM schema layer, Docker, or a shadow database in the schema workflow.
 
 ## When it helps
 
@@ -30,7 +30,7 @@ supaschema reads PostgreSQL schema intent from SQL files, compares it with anoth
   />
 </Frame>
 
-You edit schema files. `supaschema diff` renders the migration and configured generated outputs. `supaschema check` verifies replay-safety. `supaschema sync` can run the guarded apply lane when you select a target or configure approved automatic targets.
+You edit schema files. `supaschema sync` renders the migration, checks replay safety, regenerates contracts, stages generated migrations when Git is available, verifies the pending migration set against a disposable database, and runs the guarded apply or dry-run lane for one configured target. `diff`, `check`, `types`, `stage`, and `apply` remain available for focused operation.
 
 For detailed performance, accuracy, and replay-safety results, see [Benchmarks](/benchmarks).
 

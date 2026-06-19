@@ -762,13 +762,13 @@ export const configFieldMetadata: ConfigFieldMetadata[] = [
   {
     default: defaultWorkflow,
     description:
-      "Automation policy for generated outputs, hook diff/check, verification guidance, deploy safety gates, and whether bare sync may apply selected targets.",
+      "Automation policy for hooks, generated contract guidance, verification guidance, deploy safety gates, and whether bare sync may select one apply target.",
     key: "workflow",
   },
   {
     default: defaultSync,
     description:
-      "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; each target mode decides whether bare sync selects that target.",
+      "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; bare sync may select at most one target with mode auto.",
     examples: [defaultSync],
     key: "sync",
   },

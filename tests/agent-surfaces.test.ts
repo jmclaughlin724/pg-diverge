@@ -50,6 +50,7 @@ describe("agent surface sync", () => {
     expect(result).toMatchObject({
       agentBundle: 19,
       agents: 2,
+      codexHookConfig: 1,
       hooks: 5,
       publicSkills: 2,
       rules: 2,
@@ -76,6 +77,22 @@ describe("agent surface sync", () => {
     );
   });
 
+  it("detects and repairs generated Codex hook config drift", async () => {
+    const root = await seedSurfaceRoot();
+    syncAgentSurfaces({ root });
+    await write(root, ".codex/hooks.json", `${JSON.stringify({ hooks: { Stop: [] } }, null, 2)}\n`);
+
+    expect(checkAgentSurfaces({ root })).toEqual(
+      expect.arrayContaining(["generated Codex hook config drifted: .codex/hooks.json"])
+    );
+
+    const result = syncAgentSurfaces({ root });
+
+    expect(result.codexHookConfig).toBe(1);
+    expect(checkAgentSurfaces({ root })).toEqual([]);
+    expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).toContain("context-stop.mjs");
+  });
+
   it("reconciles minimal Claude source directories into generated mirrors", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-agent-surfaces-empty-"));
     await seedRequiredAgentBundleInputs(root);
@@ -86,6 +103,7 @@ describe("agent surface sync", () => {
     expect(result).toMatchObject({
       agentBundle: 19,
       agents: 0,
+      codexHookConfig: 1,
       hooks: 3,
       publicSkills: 1,
       rules: 1,
@@ -246,6 +264,7 @@ async function seedRequiredAgentBundleInputs(root: string): Promise<void> {
   await write(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs", "sync hook\n");
   await write(root, ".claude/rules/supaschema.md", "# Supaschema Rule\n");
   await write(root, ".codex/hooks.json", "{}\n");
+  await write(root, ".codex/hooks/general-guard.mjs", "general guard\n");
 }
 
 async function write(root: string, relativePath: string, text: string): Promise<void> {

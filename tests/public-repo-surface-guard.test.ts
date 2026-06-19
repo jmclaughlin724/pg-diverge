@@ -36,6 +36,30 @@ describe("public repo surface guard", () => {
     expect(result.stdout).toContain("PUBLIC_REPO_SURFACE_OK");
   });
 
+  it("allows reviewed source-repo hook runtime surfaces", () => {
+    const cwd = tempGitRepo({
+      ".claude/settings.json": "{}\n",
+      ".claude/hooks/context-pre-tool-use.mjs": "export {};\n",
+      ".claude/rules/22-agent-surface-sync-ownership.md": "# Rule 22\n",
+      ".codex/hooks/context-pre-tool-use.mjs": "export {};\n",
+      ".codex/rules/22-agent-surface-sync-ownership.rules": "# Rule 22\n",
+      "scripts/agent-hooks/runner.mjs": "export {};\n",
+    });
+    const result = runGuard(cwd);
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(result.stdout).toContain("PUBLIC_REPO_SURFACE_OK");
+  });
+
+  it("blocks unreviewed source-repo hook runtime files", () => {
+    const cwd = tempGitRepo({
+      "scripts/agent-hooks/local-debug.mjs": "export {};\n",
+    });
+    const result = runGuard(cwd);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("tracked public GitHub exposure");
+    expect(result.stderr).toContain("scripts/agent-hooks/local-debug.mjs");
+  });
+
   it("blocks unignored private local skills before they can be staged", () => {
     const cwd = tempGitRepo({
       ".agents/skills/elegant/SKILL.md": "# elegant\n",

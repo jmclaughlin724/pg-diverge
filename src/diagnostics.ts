@@ -121,6 +121,8 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_SYNC_ENV_UNKNOWN: "The selected sync environment is not defined in config.environments.",
   SUPA_SYNC_FINAL_RECONCILE_FAILED:
     "The selected target did not reconcile after the migration runner completed.",
+  SUPA_SYNC_MULTI_TARGET_APPLY_UNSUPPORTED:
+    "sync selected more than one mutation target; cross-target apply is not atomic.",
   SUPA_SYNC_REMOTE_APPROVAL_REQUIRED:
     "Automatic remote sync requires the configured runtime approval environment variable.",
   SUPA_SYNC_RUNNER_FAILED:
@@ -133,6 +135,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "A database URL or environment override can only be used when exactly one sync target is selected.",
   SUPA_SYNC_TARGET_UNKNOWN: "The selected sync target is not configured.",
   SUPA_SYNC_TARGET_URL_UNRESOLVED: "The selected sync target's database URL could not be resolved.",
+  SUPA_SYNC_VERIFY_URL_UNRESOLVED:
+    "sync could not resolve the database URL required by the verify lane.",
   SUPA_DIFF_LINEAGE_GAP:
     "The newest pending supaschema migration does not chain into the next schema diff.",
   SUPA_NORMALIZE_FIDELITY:

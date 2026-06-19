@@ -1,0 +1,52 @@
+---
+title: "apply"
+description: "Apply already-generated pending migrations through the configured runner."
+keywords: ["apply command", "migration apply", "pending migrations"]
+---
+
+Use `apply` when a migration already exists and the configured runner should apply pending files.
+
+`apply` does not generate a new diff and does not regenerate TypeScript or Zod outputs. It reconciles migration history, checks pending migrations, runs deploy safety gates, invokes the selected runner when one target is selected, and reconciles history again.
+
+## Run it
+
+```bash
+npx supaschema apply
+npx supaschema apply --target local
+npx supaschema apply --migrations-dir database/migrations
+```
+
+Bare `apply` may select one configured `sync.targets.<name>` entry whose `mode` is `"auto"` when `workflow.migration_sync` is `"auto"`. If more than one target is selected, `apply` refuses before any runner can mutate a database. If no target is selected, it reports a dry run after history and replay-safety checks.
+
+## Flags
+
+<ParamField path="--migrations-dir" type="path">
+  Directory containing migration files. Defaults to `config.migrationsDir`.
+</ParamField>
+
+<ParamField path="--database-url" type="url">
+  Target database used for history reconciliation and direct-runner apply.
+</ParamField>
+
+<ParamField path="--target" type="name">
+  Override config target selection with one configured `sync.targets.<name>` target.
+</ParamField>
+
+<ParamField path="--runner" type="direct | supabase-cli">
+  Override the configured runner for the selected target.
+</ParamField>
+
+## Refusal cases
+
+`apply` stops before handoff when migration history has ghost or out-of-order versions, more than one target is selected, a pending migration fails `check`, the selected runner is unavailable, `workflow.migration_sync` disables apply, deploy safety gates fail, or a remote automatic target lacks its approval variable.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    See the replay-safety gate apply runs.
+  </Card>
+  <Card title="Migrations" icon="list-checks" href="/commands/migrations">
+    Inspect applied and pending history first.
+  </Card>
+</CardGroup>

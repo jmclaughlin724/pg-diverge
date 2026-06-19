@@ -206,7 +206,7 @@ describe("init project setup", () => {
         name: "db",
         private: true,
         scripts: {
-          "supaschema:migration": "custom migration",
+          "supaschema:stage": "custom stage",
         },
         version: "0.0.0",
       })}\n`
@@ -214,7 +214,7 @@ describe("init project setup", () => {
 
     await runScaffold(consumer);
     let manifest = JSON.parse(await readFile(join(consumer, "package.json"), "utf8"));
-    expect(manifest.scripts["supaschema:migration"]).toBe("custom migration");
+    expect(manifest.scripts["supaschema:stage"]).toBe("custom stage");
     expect(manifest.scripts["supaschema:types"]).toBe("supaschema types");
 
     await runScaffold(consumer, { repair: true });

@@ -34,9 +34,10 @@ advisor-plans/
 fastmcp.json
 services/agent-mcp/
 services/license-worker/
-scripts/agent-hooks/
 scripts/code-atlas/
 scripts/stripe/
+!scripts/agent-hooks/
+!scripts/agent-hooks/*.mjs
 .agents/*
 !.agents/prompts/
 .agents/prompts/*
@@ -50,14 +51,15 @@ scripts/stripe/
 .claude/cclsp.json
 !.claude/hooks/
 .claude/hooks/*
+!.claude/hooks/context-*.mjs
 !.claude/hooks/guards/
 .claude/hooks/guards/*
 !.claude/hooks/guards/bash-policy-checks.mjs
 !.claude/hooks/sync-llm-on-claude-surface-change.mjs
 !.claude/rules/
 .claude/rules/*
-!.claude/rules/supaschema.md
-.claude/settings.json
+!.claude/rules/*.md
+!.claude/settings.json
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/supaschema/
@@ -68,6 +70,7 @@ scripts/stripe/
 !.codex/hooks.json
 !.codex/hooks/
 .codex/hooks/*
+!.codex/hooks/context-*.mjs
 !.codex/hooks/guards/
 .codex/hooks/guards/*
 !.codex/hooks/guards/bash-policy-checks.mjs
@@ -75,7 +78,7 @@ scripts/stripe/
 !.codex/hooks/sync-llm-on-claude-surface-change.mjs
 !.codex/rules/
 .codex/rules/*
-!.codex/rules/supaschema.rules
+!.codex/rules/*.rules
 wrangler.toml
 cloudflare/
 pyproject.toml

@@ -14,9 +14,18 @@ Open the command page when you need exact flags or exit codes.
   <Card title="diff" icon="file-diff" href="/commands/diff">
     Generate a replay-safe migration from two schema sources.
   </Card>
+  <Card title="stage" icon="git-branch-plus" href="/commands/stage">
+    Git-stage changed generated migration files.
+  </Card>
+  <Card title="apply" icon="database-zap" href="/commands/apply">
+    Apply already-generated pending migrations.
+  </Card>
   <Card title="check" icon="shield-check" href="/commands/check">
     Validate migration SQL for replay safety and hazards.
   </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
   <Card title="verify" icon="repeat-2" href="/commands/verify">
     Apply a migration twice in disposable databases.
   </Card>
@@ -41,7 +50,7 @@ Open the command page when you need exact flags or exit codes.
     Reconcile files on disk with applied database history.
   </Card>
   <Card title="sync" icon="refresh-cw" href="/commands/sync">
-    Run safety gates, reconcile targets, and apply pending migrations.
+    Run the full diff, check, types, stage, apply, and reconcile workflow.
   </Card>
   <Card
     title="config validate"

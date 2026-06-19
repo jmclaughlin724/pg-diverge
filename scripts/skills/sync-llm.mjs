@@ -7,6 +7,33 @@ import { parseFrontmatter, scalar } from "../lib/frontmatter.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
+const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
+const codexCommandTools = ["Bash", "exec_command", "functions.exec_command"];
+const codexEditTools = ["apply_patch", "functions.apply_patch", "Edit", "Write", "edit_file"];
+const codexPreToolContextTools = [
+  ...codexCommandTools,
+  ...codexEditTools,
+  "Read",
+  "Glob",
+  "Grep",
+  "Task",
+  "WebFetch",
+  "WebSearch",
+  ["mcp__", [".", "*"].join("")].join(""),
+];
+const codexPostToolContextTools = [
+  ...codexCommandTools,
+  ...codexEditTools,
+  "Read",
+  "Glob",
+  "Grep",
+  "Task",
+  ["mcp__", [".", "*"].join("")].join(""),
+];
+const codexCommandToolMatcher = codexToolMatcher(codexCommandTools);
+const codexEditToolMatcher = codexToolMatcher(codexEditTools);
+const codexPreToolContextMatcher = codexToolMatcher(codexPreToolContextTools);
+const codexPostToolContextMatcher = codexToolMatcher(codexPostToolContextTools);
 
 export const agentSurfaceManifest = {
   agents: {
@@ -55,7 +82,7 @@ export function runCli(argv = process.argv.slice(2), root = ROOT) {
 
   const result = syncAgentSurfaces({ root });
   process.stdout.write(
-    `SYNC_LLM_OK skills=${result.skills} skillTargets=${result.skillTargets} publicSkills=${result.publicSkills} agents=${result.agents} hooks=${result.hooks} rules=${result.rules} agentBundle=${result.agentBundle}\n`
+    `SYNC_LLM_OK skills=${result.skills} skillTargets=${result.skillTargets} publicSkills=${result.publicSkills} agents=${result.agents} hooks=${result.hooks} codexHookConfig=${result.codexHookConfig} rules=${result.rules} agentBundle=${result.agentBundle}\n`
   );
 }
 
@@ -63,6 +90,7 @@ export function syncAgentSurfaces({ root = ROOT } = {}) {
   const skillResult = syncSkills(root);
   const publicSkillResult = syncPublicSkills(root);
   const hookResult = syncDirectoryMirror(root, agentSurfaceManifest.hooks);
+  const codexHookConfigResult = syncCodexHookConfig(root);
   const agentResult = syncCodexAgents(root);
   const ruleResult = syncCodexRules(root);
   const agentBundleResult = syncAgentBundle(root);
@@ -70,6 +98,7 @@ export function syncAgentSurfaces({ root = ROOT } = {}) {
   return {
     agentBundle: agentBundleResult.files,
     agents: agentResult.files,
+    codexHookConfig: codexHookConfigResult.files,
     hooks: hookResult.files,
     publicSkills: publicSkillResult.files,
     rules: ruleResult.files,
@@ -83,6 +112,7 @@ export function checkAgentSurfaces({ root = ROOT } = {}) {
   checkSkills(root, errors);
   checkPublicSkills(root, errors);
   checkDirectoryMirror(root, agentSurfaceManifest.hooks, errors);
+  checkCodexHookConfig(root, errors);
   checkCodexAgents(root, errors);
   checkCodexRules(root, errors);
   checkAgentBundle(root, errors);
@@ -263,6 +293,34 @@ function syncAgentBundle(root) {
   return { files: files.size };
 }
 
+function syncCodexHookConfig(root) {
+  const target = path.join(root, ".codex/hooks.json");
+  writeFileIfChanged(target, jsonText(renderSourceCodexHooks(root)));
+  return { files: 1 };
+}
+
+function checkCodexHookConfig(root, errors) {
+  let expected;
+  try {
+    expected = jsonText(renderSourceCodexHooks(root));
+  } catch (error) {
+    errors.push(
+      error instanceof Error ? `Codex hook config input invalid: ${error.message}` : String(error)
+    );
+    return;
+  }
+
+  const target = path.join(root, ".codex/hooks.json");
+  if (!fs.existsSync(target)) {
+    errors.push("missing generated Codex hook config .codex/hooks.json");
+    return;
+  }
+  const actual = fs.readFileSync(target, "utf8");
+  if (actual !== expected) {
+    errors.push("generated Codex hook config drifted: .codex/hooks.json");
+  }
+}
+
 function checkAgentBundle(root, errors) {
   const targetRootPath = path.join(root, agentSurfaceManifest.agentBundle.targetRoot);
   if (!fs.existsSync(targetRootPath)) {
@@ -303,6 +361,7 @@ function safeAgentBundleFiles(root, errors) {
 }
 
 function agentBundleFiles(root) {
+  const sourceCodexHooks = renderSourceCodexHooks(root);
   const files = new Map([
     ["INSTALL.md", fs.readFileSync(path.join(root, "agent-bundle", "INSTALL.md"), "utf8")],
     [
@@ -356,10 +415,7 @@ function agentBundleFiles(root) {
   for (const packageManager of ["npm", "pnpm", "yarn", "bun"]) {
     const runner = localRunnerForPackageManager(packageManager);
     const claudeSettings = claudeHookConfig(runner);
-    const codexHooks = materializeCodexRunner(
-      consumerCodexHooks(JSON.parse(fs.readFileSync(path.join(root, ".codex/hooks.json"), "utf8"))),
-      runner
-    );
+    const codexHooks = materializeCodexRunner(consumerCodexHooks(sourceCodexHooks), runner);
     files.set(`claude/settings.${packageManager}.json`, jsonText(claudeSettings));
     files.set(`codex/hooks.${packageManager}.json`, jsonText(codexHooks));
   }
@@ -369,6 +425,27 @@ function agentBundleFiles(root) {
 
 function shellParameter(expression) {
   return ["$", "{", expression, "}"].join("");
+}
+
+function codexToolMatcher(tools) {
+  return ["^", "(", tools.map(codexMatcherSegment).join("|"), ")", "$"].join("");
+}
+
+function codexMatcherSegment(tool) {
+  const wildcardSuffix = [".", "*"].join("");
+  if (tool.endsWith(wildcardSuffix)) {
+    return `${escapeCodexMatcherLiteral(tool.slice(0, -wildcardSuffix.length))}.*`;
+  }
+  return escapeCodexMatcherLiteral(tool);
+}
+
+function escapeCodexMatcherLiteral(value) {
+  const special = "\\^$+?.()|[]{}";
+  let out = "";
+  for (const char of value) {
+    out += special.includes(char) ? `\\${char}` : char;
+  }
+  return out;
 }
 
 function claudeHookConfig(runner) {
@@ -423,6 +500,277 @@ function claudeHookConfig(runner) {
       ],
     },
   };
+}
+
+export function renderSourceCodexHooks(root = ROOT) {
+  assertClaudeHookSource(root);
+  return {
+    hooks: {
+      SessionStart: [
+        {
+          matcher: "startup|resume|clear|compact",
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-session-start.mjs",
+              10,
+              "Loading supaschema agent context"
+            ),
+          ],
+        },
+      ],
+      UserPromptSubmit: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-user-prompt-submit.mjs",
+              10,
+              "Checking prompt-scoped supaschema context"
+            ),
+          ],
+        },
+      ],
+      PreToolUse: [
+        {
+          matcher: codexPreToolContextMatcher,
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-pre-tool-use.mjs",
+              10,
+              "Checking required supaschema context"
+            ),
+          ],
+        },
+        {
+          matcher: codexEditToolMatcher,
+          hooks: [
+            codexHookCommand(
+              "bin/supaschema.cjs",
+              10,
+              "Checking supaschema generated-migration policy",
+              "hook generated-migration-edit --runtime codex"
+            ),
+          ],
+        },
+      ],
+      PostToolUse: [
+        {
+          matcher: codexPostToolContextMatcher,
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-post-tool-use.mjs",
+              10,
+              "Recording supaschema hook evidence"
+            ),
+          ],
+        },
+        {
+          matcher: codexEditToolMatcher,
+          hooks: [
+            codexHookCommand(
+              "bin/supaschema.cjs",
+              130,
+              "Running supaschema auto-diff on schema change",
+              "hook schema-write"
+            ),
+          ],
+        },
+      ],
+      SubagentStart: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-subagent-start.mjs",
+              10,
+              "Loading supaschema subagent context"
+            ),
+          ],
+        },
+      ],
+      SubagentStop: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-subagent-stop.mjs",
+              10,
+              "Checking supaschema subagent closeout"
+            ),
+          ],
+        },
+      ],
+      Stop: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-stop.mjs",
+              10,
+              "Checking supaschema final-response evidence"
+            ),
+            codexHookCommand(
+              ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+              130,
+              "Syncing supaschema Claude agent surfaces"
+            ),
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function codexHookCommand(relativePath, timeout, statusMessage, args = "") {
+  const command = `node "${codexProjectDir}/${relativePath}"${args ? ` ${args}` : ""}`;
+  return {
+    type: "command",
+    command,
+    timeout,
+    statusMessage,
+  };
+}
+
+function assertClaudeHookSource(root) {
+  const settingsPath = path.join(root, ".claude/settings.json");
+  if (!fs.existsSync(settingsPath)) {
+    return;
+  }
+  assertClaudeEntrypoint(root);
+  assertClaudeResponseShapeStandard(root);
+  const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+  const hooks = settings?.hooks;
+  if (!hooks || typeof hooks !== "object") {
+    throw new Error(".claude/settings.json missing hooks");
+  }
+
+  for (const [eventName, relativePath] of [
+    ["SessionStart", ".claude/hooks/context-session-start.mjs"],
+    ["UserPromptSubmit", ".claude/hooks/context-user-prompt-submit.mjs"],
+    ["PreToolUse", ".claude/hooks/context-pre-tool-use.mjs"],
+    ["PostToolUse", ".claude/hooks/context-post-tool-use.mjs"],
+    ["SubagentStart", ".claude/hooks/context-subagent-start.mjs"],
+    ["SubagentStop", ".claude/hooks/context-subagent-stop.mjs"],
+    ["Stop", ".claude/hooks/context-stop.mjs"],
+  ]) {
+    assertClaudeNodeHook(hooks, eventName, relativePath);
+  }
+
+  assertClaudeCommand(hooks, "PreToolUse", "generated-migration-edit");
+  assertClaudeCommand(hooks, "PostToolUse", "schema-write");
+  assertClaudeNodeHook(
+    hooks,
+    "PostToolBatch",
+    ".claude/hooks/sync-llm-on-claude-surface-change.mjs"
+  );
+}
+
+function assertClaudeEntrypoint(root) {
+  const claudePath = path.join(root, "CLAUDE.md");
+  if (!fs.existsSync(claudePath)) {
+    throw new Error("CLAUDE.md must exist when .claude/settings.json enables Claude hooks");
+  }
+  const text = fs.readFileSync(claudePath, "utf8");
+  if (!text.includes("@AGENTS.md")) {
+    throw new Error("CLAUDE.md must import @AGENTS.md so Claude receives the repo contract");
+  }
+}
+
+function assertClaudeResponseShapeStandard(root) {
+  assertFileIncludes(root, "scripts/agent-hooks/runner.mjs", [
+    "function responseShape",
+    "block: detectorResult.contextParts.join",
+  ]);
+  assertFileIncludes(root, "scripts/agent-hooks/detectors.mjs", [
+    "mechanismClaimWithoutArchitecture",
+    "mechanism-claim-without-architecture",
+    "architecture/end-state disposition",
+    "verification disposition",
+    "domains.length === 0",
+    "exitCodeFromExecutionStatus",
+    "isExecutionStatusLabel",
+  ]);
+  assertFileExcludes(root, "scripts/agent-hooks/detectors.mjs", ["textMentionsExit"]);
+  assertFileIncludes(root, ".claude/rules/12-skill-loading-enforcement.md", [
+    "mechanism-only correctness answers",
+    'decision: "block"',
+    "$elegant",
+    "verification disposition",
+    "Source and inventory reads",
+    "MUST NOT become verification evidence",
+    "process.exitCode = 2",
+  ]);
+}
+
+function assertFileIncludes(root, relativePath, requiredText) {
+  const file = path.join(root, relativePath);
+  if (!fs.existsSync(file)) {
+    throw new Error(`${relativePath} must exist for Claude response-shape enforcement`);
+  }
+  const text = fs.readFileSync(file, "utf8");
+  for (const required of requiredText) {
+    if (!text.includes(required)) {
+      throw new Error(`${relativePath} must contain ${required}`);
+    }
+  }
+}
+
+function assertFileExcludes(root, relativePath, forbiddenText) {
+  const file = path.join(root, relativePath);
+  if (!fs.existsSync(file)) {
+    throw new Error(`${relativePath} must exist for Claude response-shape enforcement`);
+  }
+  const text = fs.readFileSync(file, "utf8");
+  for (const forbidden of forbiddenText) {
+    if (text.includes(forbidden)) {
+      throw new Error(`${relativePath} must not contain ${forbidden}`);
+    }
+  }
+}
+
+function assertClaudeNodeHook(hooks, eventName, relativePath) {
+  const handlers = hookHandlersForEvent(hooks, eventName);
+  const expectedArg = `${claudeProjectDir}/${relativePath}`;
+  if (
+    !handlers.some(
+      (handler) =>
+        handler.command === "node" &&
+        Array.isArray(handler.args) &&
+        handler.args.includes(expectedArg)
+    )
+  ) {
+    throw new Error(`.claude/settings.json must register ${relativePath} for ${eventName}`);
+  }
+}
+
+function assertClaudeCommand(hooks, eventName, arg) {
+  const handlers = hookHandlersForEvent(hooks, eventName);
+  if (!handlers.some((handler) => Array.isArray(handler.args) && handler.args.includes(arg))) {
+    throw new Error(`.claude/settings.json must register ${arg} for ${eventName}`);
+  }
+}
+
+function hookHandlersForEvent(hooks, eventName) {
+  const entries = hooks[eventName];
+  if (!Array.isArray(entries)) {
+    throw new Error(`.claude/settings.json missing ${eventName} hooks`);
+  }
+  const handlers = [];
+  const visit = (value) => {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item);
+      }
+      return;
+    }
+    if (!isRecord(value)) {
+      return;
+    }
+    if (value.type === "command" && typeof value.command === "string") {
+      handlers.push(value);
+    }
+    for (const item of Object.values(value)) {
+      visit(item);
+    }
+  };
+  visit(entries);
+  return handlers;
 }
 
 function localRunnerForPackageManager(packageManager) {
@@ -504,11 +852,40 @@ function consumerCodexHooks(config) {
     if (!Array.isArray(entries)) {
       continue;
     }
-    hooks[eventName] = entries
+    const consumerEntries = entries
       .map(withoutRepoLocalCodexHooks)
       .filter((entry) => entry !== undefined);
+    if (consumerEntries.length > 0) {
+      hooks[eventName] = consumerEntries;
+    } else {
+      delete hooks[eventName];
+    }
   }
+  ensureConsumerCodexGeneralGuard(hooks);
   return next;
+}
+
+function ensureConsumerCodexGeneralGuard(hooks) {
+  const entries = Array.isArray(hooks.PreToolUse) ? hooks.PreToolUse : [];
+  const hasGuard = entries.some((entry) =>
+    JSON.stringify(entry).includes(".codex/hooks/general-guard.mjs")
+  );
+  if (hasGuard) {
+    return;
+  }
+  hooks.PreToolUse = [
+    {
+      matcher: codexCommandToolMatcher,
+      hooks: [
+        codexHookCommand(
+          ".codex/hooks/general-guard.mjs",
+          10,
+          "Checking general Bash safety policy"
+        ),
+      ],
+    },
+    ...entries,
+  ];
 }
 
 function withoutRepoLocalCodexHooks(entry) {
@@ -532,7 +909,9 @@ function isRepoLocalCodexHook(hook) {
     hook &&
     typeof hook === "object" &&
     typeof hook.command === "string" &&
-    hook.command.includes("scripts/github/ci-inbox.mjs")
+    (hook.command.includes("scripts/github/ci-inbox.mjs") ||
+      hook.command.includes("/.codex/hooks/context-") ||
+      hook.command.includes("scripts/agent-hooks/"))
   );
 }
 
@@ -547,7 +926,7 @@ function consumerCodexHookCommands(entry) {
 }
 
 function consumerSupaschemaCommand(command) {
-  const sourcePrefix = `node "${["$", "{", "CODEX_PROJECT_DIR:-$PWD", "}"].join("")}/bin/supaschema.cjs"`;
+  const sourcePrefix = `node "${codexProjectDir}/bin/supaschema.cjs"`;
   if (command.startsWith(sourcePrefix)) {
     return `npm exec -- supaschema${command.slice(sourcePrefix.length)}`;
   }

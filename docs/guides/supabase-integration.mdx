@@ -34,7 +34,7 @@ npx supaschema check
 npx supaschema sync
 ```
 
-The installed default lets target config decide selection. For remote deploys, set the remote target to `mode: "auto"` and provide the target's approval environment variable in the deployment job. Use `--target <name>` only for an explicit one-target operator override.
+The installed default lets target config select at most one target for bare `sync`. For remote deploys, set one remote target to `mode: "auto"` and provide the target's approval environment variable in the deployment job. Multiple automatic targets are refused before any runner can mutate a database. Use `--target <name>` only for an explicit one-target operator override.
 
 ## Verify
 

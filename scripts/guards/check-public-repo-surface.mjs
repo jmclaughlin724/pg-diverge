@@ -4,6 +4,7 @@ import { assert, exists, ok, run } from "./lib/guard-utils.js";
 const allowed = new Set([
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema/SKILL.md",
+  ".claude/settings.json",
   ".claude/hooks/guards/bash-policy-checks.mjs",
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/rules/supaschema.md",
@@ -15,12 +16,66 @@ const allowed = new Set([
   ".codex/rules/supaschema.rules",
 ]);
 
+const sourceRepoAgentRuntime = new Set([
+  ".claude/hooks/context-permission-denied.mjs",
+  ".claude/hooks/context-post-tool-use.mjs",
+  ".claude/hooks/context-pre-tool-use.mjs",
+  ".claude/hooks/context-session-end.mjs",
+  ".claude/hooks/context-session-start.mjs",
+  ".claude/hooks/context-stop.mjs",
+  ".claude/hooks/context-subagent-start.mjs",
+  ".claude/hooks/context-subagent-stop.mjs",
+  ".claude/hooks/context-task-completed.mjs",
+  ".claude/hooks/context-user-prompt-submit.mjs",
+  ".codex/hooks/context-permission-denied.mjs",
+  ".codex/hooks/context-post-tool-use.mjs",
+  ".codex/hooks/context-pre-tool-use.mjs",
+  ".codex/hooks/context-session-end.mjs",
+  ".codex/hooks/context-session-start.mjs",
+  ".codex/hooks/context-stop.mjs",
+  ".codex/hooks/context-subagent-start.mjs",
+  ".codex/hooks/context-subagent-stop.mjs",
+  ".codex/hooks/context-task-completed.mjs",
+  ".codex/hooks/context-user-prompt-submit.mjs",
+  "scripts/agent-hooks/atlas.mjs",
+  "scripts/agent-hooks/detectors.mjs",
+  "scripts/agent-hooks/payload.mjs",
+  "scripts/agent-hooks/runner.mjs",
+  "scripts/agent-hooks/skills.mjs",
+  "scripts/agent-hooks/state.mjs",
+]);
+
+const publicClaudeRules = new Set([
+  "01-operating-rules.md",
+  "02-mintlify-writing-standards.md",
+  "03-mintlify-component-reference.md",
+  "04-python-toolchain.md",
+  "05-decision-protocol.md",
+  "06-multi-language-toolchain.md",
+  "07-ast-over-regex.md",
+  "08-biome-ultracite-policy.md",
+  "09-ci-cd-efficiency-governance.md",
+  "10-code-atlas.md",
+  "11-agent-mcp-fastmcp.md",
+  "12-skill-loading-enforcement.md",
+  "13-npm-package-boundary.md",
+  "14-editing-worktree-git.md",
+  "15-security.md",
+  "16-file-size-and-composition.md",
+  "17-prompt-craft-standards.md",
+  "18-context-surface-sync.md",
+  "19-version-control-release.md",
+  "20-anti-patterns.md",
+  "21-github-process.md",
+  "22-agent-surface-sync-ownership.md",
+  "supaschema.md",
+]);
+
 const privatePrefixes = [
   ".planning/",
   ".vscode/",
   "advisor-plans/",
   "cloudflare/",
-  "scripts/agent-hooks/",
   "scripts/code-atlas/",
   "scripts/stripe/",
   "services/agent-mcp/",
@@ -44,18 +99,47 @@ function gitPaths(args) {
 }
 
 function isPrivateAgentSurface(file) {
-  if (allowed.has(file)) {
+  if (isPublicAgentSurface(file)) {
     return false;
   }
   return file.startsWith(".agents/") || file.startsWith(".claude/") || file.startsWith(".codex/");
+}
+
+function isPublicAgentSurface(file) {
+  return (
+    allowed.has(file) ||
+    sourceRepoAgentRuntime.has(file) ||
+    isPublicClaudeRule(file) ||
+    isPublicCodexRule(file)
+  );
+}
+
+function isPublicClaudeRule(file) {
+  if (!(file.startsWith(".claude/rules/") && file.endsWith(".md"))) {
+    return false;
+  }
+  return publicClaudeRules.has(file.slice(".claude/rules/".length));
+}
+
+function isPublicCodexRule(file) {
+  if (!(file.startsWith(".codex/rules/") && file.endsWith(".rules"))) {
+    return false;
+  }
+  const basename = file.slice(".codex/rules/".length, -".rules".length);
+  return publicClaudeRules.has(`${basename}.md`);
 }
 
 function isPrivateSurface(file) {
   return (
     privateExact.has(file) ||
     privatePrefixes.some((prefix) => file.startsWith(prefix)) ||
-    isPrivateAgentSurface(file)
+    isPrivateAgentSurface(file) ||
+    isUnreviewedSourceRepoAgentRuntime(file)
   );
+}
+
+function isUnreviewedSourceRepoAgentRuntime(file) {
+  return file.startsWith("scripts/agent-hooks/") && !sourceRepoAgentRuntime.has(file);
 }
 
 function bulletList(files) {

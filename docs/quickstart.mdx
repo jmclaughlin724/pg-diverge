@@ -1,10 +1,10 @@
 ---
 title: "Quickstart"
-description: "Install supaschema, write a declarative schema file, generate a replay-safe PostgreSQL migration from configured sources, and validate it."
-keywords: ["quickstart", "first migration", "diff", "check", "types"]
+description: "Install supaschema, write a declarative schema file, and run the full sync workflow."
+keywords: ["quickstart", "first migration", "sync", "diff", "check", "types"]
 ---
 
-Use this page to generate and check one migration.
+Use this page to generate, check, type, stage, and apply or dry-run one migration.
 
 The examples use the neutral paths `database/schemas` and `database/migrations`. If install selected provider-specific paths, use the values in `supaschema.config.json`.
 
@@ -48,19 +48,23 @@ Command examples show `supaschema` as CLI syntax. In a project install, run it t
 
   </Step>
 
-  <Step title="Generate">
-    Generate the migration:
+  <Step title="Sync">
+    Run the full workflow:
 
     ```bash
-    supaschema diff
+    supaschema sync
     ```
 
     You will see output like this:
 
     ```text
-    Parsed schema tree (3 objects)
-    Computed diff (4 operations)
-    Created: database/migrations/20240101120000_migration.sql
+    diff: wrote database/migrations/20240101120000_migration.sql
+    checked: 20240101120000_migration.sql (replay-safe)
+    types: wrote database.types.ts
+    types: wrote database.zod.ts
+    stage: staged database/migrations/20240101120000_migration.sql
+    verify: 1 pending migration file(s) passed
+    dry run: no sync target was selected by config
     ```
 
     Review the generated file. It should include a lineage marker and guarded SQL:
@@ -75,46 +79,21 @@ Command examples show `supaschema` as CLI syntax. In a project install, run it t
 
   </Step>
 
-  <Step title="Check">
-    Check the migration before applying it:
+  <Step title="Focused lanes">
+    Run a focused lane only when you need to operate one step directly:
 
     ```bash
-    supaschema check database/migrations/20240101120000_migration.sql
+    supaschema diff
+    supaschema check
+    supaschema types
+    supaschema stage
+    supaschema apply
     ```
-
-    A passing check reports that the migration is replay-safe.
 
     <Warning>
       If `check` reports issues, review the flagged statements before applying
       the migration. supaschema fails closed when it cannot prove safety.
     </Warning>
-
-  </Step>
-
-  <Step title="Apply">
-    Apply through the guarded sync pipeline. The installed default selects every
-    configured target with `mode: "auto"`:
-
-    ```bash
-    supaschema sync
-    ```
-
-    `sync` runs target reconciliation, replay-safety, type-safety, and RLS-safety
-    gates before it mutates a database. Projects that intentionally keep an
-    external operational runner can still apply the generated SQL directly:
-
-    ```bash
-    psql "$DATABASE_URL" -f database/migrations/20240101120000_migration.sql
-    ```
-
-  </Step>
-
-  <Step title="Generate types">
-    `diff` refreshes configured TypeScript and Zod outputs by default. Run `types` directly when you need an explicit refresh:
-
-    ```bash
-    supaschema types
-    ```
 
   </Step>
 </Steps>

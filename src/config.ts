@@ -486,7 +486,7 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
   const sync = properties.sync;
   if (isRecord(sync)) {
     sync.description =
-      "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; each target mode decides whether bare sync selects that target.";
+      "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; bare sync may select at most one target with mode auto.";
   }
   const workflow = properties.workflow;
   const workflowProperties =
@@ -515,7 +515,7 @@ function enrichWorkflowJsonSchema(workflowProperties: Record<string, unknown>): 
   setNestedDescription(
     workflowProperties,
     "migration_sync",
-    'Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select sync.targets entries whose mode is "auto".'
+    'Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select one sync.targets entry whose mode is "auto".'
   );
   setNestedDescription(
     workflowProperties,

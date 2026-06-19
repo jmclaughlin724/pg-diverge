@@ -4,11 +4,11 @@ description: "Compare supaschema with Supabase CLI db diff for declarative schem
 keywords: ["Supabase CLI comparison", "db diff", "Docker-free", "replay safety"]
 ---
 
-`supaschema` is best when you want deterministic PostgreSQL or Supabase migrations from declarative SQL files without Docker, a shadow database, or a hand-edited generated migration. The Supabase CLI remains a supported runner for Supabase projects; `supaschema sync` can also own the guarded apply pipeline through configured direct PostgreSQL or Supabase CLI targets.
+`supaschema` is best when you want deterministic PostgreSQL or Supabase migrations from declarative SQL files without Docker, a shadow database, or a hand-edited generated migration. The Supabase CLI remains a supported runner for Supabase projects; `supaschema apply` can also own the guarded apply pipeline through configured direct PostgreSQL or Supabase CLI targets.
 
 ## Short answer
 
-Use `supaschema` when the schema files are the source of truth and you need a fast, replay-safe migration from those files. Use `supaschema sync` when you want one configured workflow for diff, generated outputs, deploy safety gates, target reconciliation, and apply. Keep `supabase db push` when you want the Supabase CLI to remain the standalone apply step.
+Use `supaschema` when the schema files are the source of truth and you need a fast, replay-safe migration from those files. Use `supaschema types` for generated contracts and `supaschema apply` for deploy safety gates, target reconciliation, and apply. Keep `supabase db push` when you want the Supabase CLI to remain the standalone apply step.
 
 ## Comparison
 
@@ -20,7 +20,7 @@ Use `supaschema` when the schema files are the source of truth and you need a fa
 | Replay safety | Generated SQL is guarded and checked | Generated SQL may need manual review for retry safety |
 | RLS policy body changes | Policy expressions are compared structurally | Engines can miss policy-body changes when names stay stable |
 | Destructive change handling | Fails closed until exact hints are approved | Depends on generated output and reviewer discipline |
-| Applies to production | Yes, through configured `sync` targets and runner approval gates | Yes, via Supabase migration commands |
+| Applies to production | Yes, through configured apply targets and runner approval gates | Yes, via Supabase migration commands |
 
 ## Why the workflow is different
 
@@ -31,11 +31,11 @@ The practical loop is:
 ```bash
 supaschema diff
 supaschema check
-supaschema verify
-supaschema sync
+supaschema types
+supaschema apply
 ```
 
-`diff` writes the migration and refreshes generated outputs according to `workflow.type_generation` and `workflow.zod_generation`. `check` catches replay-safety and lock hazards. `verify` applies the migration twice in disposable databases and confirms the result matches the declared target. `sync` can run the same chain and apply pending migrations through a configured direct PostgreSQL or Supabase CLI runner. `supabase db push` remains valid when the Supabase CLI is intentionally kept as the external apply step.
+`diff` writes the migration. `check` catches replay-safety and lock hazards. `types` regenerates TypeScript and Zod outputs from the schema tree. `verify` can apply the migration twice in disposable databases and confirm the result matches the declared target. `apply` applies pending migrations through a configured direct PostgreSQL or Supabase CLI runner. `supabase db push` remains valid when the Supabase CLI is intentionally kept as the external apply step.
 
 ## RLS policy safety
 
@@ -45,7 +45,7 @@ Row Level Security policies are tenant boundaries in many Supabase applications.
 
 ## Benchmark results
 
-The repository benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. On the 1,000-table fixture, `supaschema` generates the migration and type outputs in one command, while database-backed workflows need multiple steps and a database that has already caught up.
+The repository benchmark harness compares `supaschema` with Supabase CLI diff engines on identical fixtures. On the 1,000-table fixture, `supaschema` generates the migration without a database-backed shadow workflow, while database-backed workflows need multiple steps and a database that has already caught up.
 
 See [benchmarks](/benchmarks) for latency, accuracy, and replay-safety charts, and see the [anilize case study](/case-study-anilize) for a production Supabase schema with thousands of objects.
 
@@ -67,7 +67,7 @@ Choose `supaschema` for:
 
 Keep using the Supabase CLI directly for:
 
-- Applying the final migration outside the `supaschema sync` orchestration.
+- Applying the final migration outside the `supaschema apply` lane.
 - Managing Supabase platform resources outside the schema migration file.
 - Existing deployment workflows that already call `supabase db push`.
 
@@ -76,7 +76,8 @@ Keep using the Supabase CLI directly for:
 ```bash
 supaschema diff
 supaschema check
-supaschema sync
+supaschema types
+supaschema apply
 ```
 
 Install with the package-manager lane from [Installation](/installation). Add `supaschema verify` before merge when CI can reach a disposable PostgreSQL database.
