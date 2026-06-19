@@ -17,7 +17,11 @@ import {
   runSupabaseCliMigrationRunner,
   type SupabaseCliOperation,
 } from "./migration-runners.js";
-import { migrationsStatus, renderMigrationsStatus } from "./migrations-status.js";
+import {
+  type MigrationsStatusReport,
+  migrationsStatus,
+  renderMigrationsStatus,
+} from "./migrations-status.js";
 import {
   buildSchemaDiffPlan,
   refreshGeneratedOutputs,
@@ -349,103 +353,198 @@ export function generatedMigrationEditHookOutput(
 }
 
 export async function syncMigrations(options: SyncOptions): Promise<SyncResult> {
-  const config = resolveConfig(options.config);
-  const diagnostics: Diagnostic[] = [];
-  const disabledResult = disabledSyncResult(options, config, diagnostics);
-  if (disabledResult !== undefined) {
-    return disabledResult;
-  }
-  const prelude = await runSyncPipelinePrelude(options, config, diagnostics);
-  if (prelude.result !== undefined) {
-    return prelude.result;
-  }
-  const selectedRunner = options.runner ?? "supabase-cli";
-  const status = await loadSyncStatus(options, selectedRunner);
-  diagnostics.push(...status.diagnostics);
-  const lines: string[] = [...prelude.lines, renderMigrationsStatus(status.report).trimEnd()];
-  if (hasErrors(status.diagnostics)) {
-    lines.push("refusing to sync: resolve ghost or out-of-order history first");
-    return {
-      applied: false,
-      diagnostics,
-      pending: status.report.pending,
-      report: render(lines),
-    };
-  }
-  if (status.report.pending.length === 0) {
-    if (prelude.sources !== undefined) {
-      const gateResult = await runSyncSafetyGates(config, prelude.sources, diagnostics, lines, {
-        pending: status.report.pending,
-      });
-      if (gateResult !== undefined) {
-        return gateResult;
-      }
+  const state: SyncPipelineState = {
+    config: resolveConfig(options.config),
+    diagnostics: [],
+    lines: [],
+    options,
+  };
+  for (const lane of syncPipelineLanes) {
+    const result = await lane(state);
+    if (result !== undefined) {
+      return result;
     }
-    lines.push("nothing to sync: disk and target history match");
-    return { applied: false, diagnostics, pending: [], report: render(lines) };
   }
-  const checkResult = await checkPendingMigrations(
-    options.directory,
-    status.report.pending,
-    config,
-    diagnostics,
-    lines
+  throw new Error("sync pipeline completed without a result");
+}
+
+interface SyncSources {
+  from: string;
+  to: string;
+}
+
+interface SyncPipelineState {
+  config: SupaschemaConfig;
+  diagnostics: Diagnostic[];
+  lines: string[];
+  options: SyncOptions;
+  sources?: SyncSources;
+  status?: MigrationsStatusReport;
+}
+
+type SyncPipelineLane = (
+  state: SyncPipelineState
+) => Promise<SyncResult | undefined> | SyncResult | undefined;
+
+const syncPipelineLanes: SyncPipelineLane[] = [
+  guardSyncPolicyLane,
+  resolveSyncSourcesLane,
+  runSyncDiffAndOutputsLane,
+  runConfiguredTargetsLane,
+  loadFallbackHistoryLane,
+  guardFallbackHistoryLane,
+  checkFallbackPendingMigrationsLane,
+  runFallbackSafetyGatesLane,
+  stopFallbackWhenNothingPendingLane,
+  reportFallbackDryRunOrUnknownTargetLane,
+];
+
+function guardSyncPolicyLane(state: SyncPipelineState): SyncResult | undefined {
+  return disabledSyncResult(state.options, state.config, state.diagnostics);
+}
+
+async function resolveSyncSourcesLane(state: SyncPipelineState): Promise<SyncResult | undefined> {
+  if (state.options.pipeline !== true) {
+    return;
+  }
+  state.sources = await resolveSyncSources(state.options, state.config);
+  return;
+}
+
+function runSyncDiffAndOutputsLane(
+  state: SyncPipelineState
+): Promise<SyncResult | undefined> | undefined {
+  if (state.options.pipeline !== true || state.options.skipDiff === true) {
+    return;
+  }
+  return runSyncDiffStage(
+    state.options,
+    state.config,
+    requiredSyncSources(state),
+    state.diagnostics,
+    state.lines
   );
-  if (checkResult !== undefined) {
-    return checkResult;
+}
+
+function runConfiguredTargetsLane(
+  state: SyncPipelineState
+): Promise<SyncResult | undefined> | undefined {
+  if (state.options.pipeline !== true || state.sources === undefined) {
+    return;
   }
-  if (options.target === undefined) {
-    if (prelude.sources !== undefined) {
-      const gateResult = await runSyncSafetyGates(config, prelude.sources, diagnostics, lines, {
-        pending: status.report.pending,
-      });
-      if (gateResult !== undefined) {
-        return gateResult;
-      }
-    }
-    lines.push(
-      `dry run: no sync target was selected by config; set sync.targets.<name>.mode to "auto", or pass --target <name> as an override to apply ${status.report.pending.length} pending migration(s) with the configured runner`
-    );
-    return {
-      applied: false,
-      diagnostics,
-      pending: status.report.pending,
-      report: render(lines),
-    };
-  }
-  diagnostics.push(
-    diagnostic(
-      "SUPA_SYNC_TARGET_UNKNOWN",
-      "error",
-      `sync target "${options.target}" is not configured`,
-      { hint: "Add sync.targets.<name> to supaschema.config.json." }
-    )
+  return runConfiguredTargets(
+    state.options,
+    state.config,
+    state.diagnostics,
+    state.lines,
+    requiredSyncSources(state)
   );
-  lines.push("refusing to sync: target resolution failed");
+}
+
+async function loadFallbackHistoryLane(state: SyncPipelineState): Promise<SyncResult | undefined> {
+  const selectedRunner = state.options.runner ?? "supabase-cli";
+  const status = await loadSyncStatus(state.options, selectedRunner);
+  state.status = status.report;
+  state.diagnostics.push(...status.diagnostics);
+  state.lines.push(renderMigrationsStatus(status.report).trimEnd());
+  return;
+}
+
+function guardFallbackHistoryLane(state: SyncPipelineState): SyncResult | undefined {
+  if (!hasErrors(state.diagnostics)) {
+    return;
+  }
+  state.lines.push("refusing to sync: resolve ghost or out-of-order history first");
   return {
     applied: false,
-    diagnostics,
-    pending: status.report.pending,
-    report: render(lines),
+    diagnostics: state.diagnostics,
+    pending: requiredSyncStatus(state).pending,
+    report: render(state.lines),
   };
 }
 
-async function runSyncPipelinePrelude(
-  options: SyncOptions,
-  config: SupaschemaConfig,
-  diagnostics: Diagnostic[]
-): Promise<SyncPipelinePrelude> {
-  const lines: string[] = [];
-  if (options.pipeline !== true) {
-    return { lines };
+function checkFallbackPendingMigrationsLane(
+  state: SyncPipelineState
+): Promise<SyncResult | undefined> | undefined {
+  const pending = requiredSyncStatus(state).pending;
+  if (pending.length === 0) {
+    return;
   }
-  const sources = await resolveSyncSources(options, config);
-  const pipelineResult = await runPipelineStages(options, config, sources, diagnostics, lines);
-  if (pipelineResult !== undefined) {
-    return { lines, result: pipelineResult, sources };
+  return checkPendingMigrations(
+    state.options.directory,
+    pending,
+    state.config,
+    state.diagnostics,
+    state.lines
+  );
+}
+
+function runFallbackSafetyGatesLane(
+  state: SyncPipelineState
+): Promise<SyncResult | undefined> | undefined {
+  if (state.sources === undefined) {
+    return;
   }
-  const targetResult = await runConfiguredTargets(options, config, diagnostics, lines, sources);
-  return targetResult === undefined ? { lines, sources } : { lines, result: targetResult, sources };
+  return runSyncSafetyGates(state.config, state.sources, state.diagnostics, state.lines, {
+    pending: requiredSyncStatus(state).pending,
+  });
+}
+
+function stopFallbackWhenNothingPendingLane(state: SyncPipelineState): SyncResult | undefined {
+  if (requiredSyncStatus(state).pending.length > 0) {
+    return;
+  }
+  state.lines.push("nothing to sync: disk and target history match");
+  return {
+    applied: false,
+    diagnostics: state.diagnostics,
+    pending: [],
+    report: render(state.lines),
+  };
+}
+
+function reportFallbackDryRunOrUnknownTargetLane(state: SyncPipelineState): SyncResult {
+  const status = requiredSyncStatus(state);
+  if (state.options.target === undefined) {
+    state.lines.push(
+      `dry run: no sync target was selected by config; set sync.targets.<name>.mode to "auto", or pass --target <name> as an override to apply ${status.pending.length} pending migration(s) with the configured runner`
+    );
+    return {
+      applied: false,
+      diagnostics: state.diagnostics,
+      pending: status.pending,
+      report: render(state.lines),
+    };
+  }
+  state.diagnostics.push(
+    diagnostic(
+      "SUPA_SYNC_TARGET_UNKNOWN",
+      "error",
+      `sync target "${state.options.target}" is not configured`,
+      { hint: "Add sync.targets.<name> to supaschema.config.json." }
+    )
+  );
+  state.lines.push("refusing to sync: target resolution failed");
+  return {
+    applied: false,
+    diagnostics: state.diagnostics,
+    pending: status.pending,
+    report: render(state.lines),
+  };
+}
+
+function requiredSyncSources(state: SyncPipelineState): SyncSources {
+  if (state.sources === undefined) {
+    throw new Error("sync source lane has not run");
+  }
+  return state.sources;
+}
+
+function requiredSyncStatus(state: SyncPipelineState): MigrationsStatusReport {
+  if (state.status === undefined) {
+    throw new Error("sync history lane has not run");
+  }
+  return state.status;
 }
 
 function disabledSyncResult(
@@ -473,33 +572,6 @@ function disabledSyncResult(
     report:
       'refusing to sync: workflow.migration_sync is "disabled"; no apply handoff was attempted\n',
   };
-}
-
-async function runPipelineStages(
-  options: SyncOptions,
-  config: SupaschemaConfig,
-  sources: SyncSources,
-  diagnostics: Diagnostic[],
-  lines: string[]
-): Promise<SyncResult | undefined> {
-  if (options.skipDiff !== true) {
-    const diffResult = await runSyncDiffStage(options, config, sources, diagnostics, lines);
-    if (diffResult !== undefined) {
-      return diffResult;
-    }
-  }
-  return;
-}
-
-interface SyncSources {
-  from: string;
-  to: string;
-}
-
-interface SyncPipelinePrelude {
-  lines: string[];
-  result?: SyncResult;
-  sources?: SyncSources;
 }
 
 function resolveSyncSources(options: SyncOptions, config: SupaschemaConfig): Promise<SyncSources> {
@@ -613,11 +685,12 @@ async function runConfiguredTargets(
   const resolved = resolveSyncTargets(options, config);
   diagnostics.push(...resolved.diagnostics);
   if (hasErrors(resolved.diagnostics)) {
+    const lines = [...prefixLines, "refusing to sync: target resolution failed"];
     return {
       applied: false,
       diagnostics,
       pending: [],
-      report: "refusing to sync: target resolution failed\n",
+      report: render(lines),
     };
   }
   if (resolved.targets.length === 0) {
@@ -857,98 +930,176 @@ async function runOneTarget(
   diagnostics: Diagnostic[],
   lines: string[]
 ): Promise<SyncResult> {
-  const status = await migrationsStatus({
-    allowMissingHistoryTable: target.runner === "direct",
-    directory: options.directory,
-    ...(target.databaseUrl === undefined ? {} : { databaseUrl: target.databaseUrl }),
-    historyTable: target.historyTable,
-    runnerLabel: target.runner,
-    targetLabel: target.name,
-  });
-  diagnostics.push(...status.diagnostics);
-  lines.push(renderMigrationsStatus(status.report).trimEnd());
-  if (hasErrors(status.diagnostics)) {
-    lines.push(`refusing to sync ${target.name}: resolve ghost or out-of-order history first`);
-    return { applied: false, diagnostics, pending: status.report.pending, report: render(lines) };
-  }
-  if (status.report.pending.length === 0) {
-    lines.push(`nothing to sync on ${target.name}: disk and target history match`);
-    return { applied: false, diagnostics, pending: [], report: render(lines) };
-  }
-  const checkResult = await checkPendingMigrations(
-    options.directory,
-    status.report.pending,
+  const state: TargetSyncState = {
     config,
-    diagnostics,
-    lines
-  );
-  if (checkResult !== undefined) {
-    return checkResult;
-  }
-  const supabaseCliConcurrentResult = supabaseCliConcurrentCompanionResult(
-    target,
-    status.report.pending,
-    diagnostics,
-    lines
-  );
-  if (supabaseCliConcurrentResult !== undefined) {
-    return supabaseCliConcurrentResult;
-  }
-  const gateResult = await runSyncSafetyGates(
-    config,
-    targetSafetySources(sources, target),
     diagnostics,
     lines,
-    { pending: status.report.pending, targetName: target.name }
-  );
-  if (gateResult !== undefined) {
-    return gateResult;
+    options,
+    sources,
+    target,
+  };
+  for (const lane of targetSyncLanes) {
+    const result = await lane(state);
+    if (result !== undefined) {
+      return result;
+    }
   }
-  const outcome = await runTargetRunner(options, config, target, status.report.pending);
-  lines.push(`running: ${outcome.displayCommand ?? target.runner}`);
-  const failure = runnerFailureResult(
-    outcome,
-    target.runner,
-    status.report.pending,
-    diagnostics,
-    lines
-  );
-  if (failure !== undefined) {
-    return failure;
-  }
-  const finalStatus = await migrationsStatus({
-    allowMissingHistoryTable: target.runner === "direct",
-    directory: options.directory,
-    ...(target.databaseUrl === undefined ? {} : { databaseUrl: target.databaseUrl }),
-    expectedAppliedVersions: status.report.expectedAppliedVersions,
-    historyTable: target.historyTable,
-    runnerLabel: target.runner,
-    targetLabel: target.name,
+  return { applied: true, diagnostics, pending: [], report: render(lines) };
+}
+
+interface TargetSyncState {
+  config: SupaschemaConfig;
+  diagnostics: Diagnostic[];
+  lines: string[];
+  options: SyncOptions;
+  outcome?: MigrationRunnerResult;
+  sources: SyncSources;
+  status?: MigrationsStatusReport;
+  target: ResolvedSyncTarget;
+}
+
+type TargetSyncLane = (
+  state: TargetSyncState
+) => Promise<SyncResult | undefined> | SyncResult | undefined;
+
+const targetSyncLanes: TargetSyncLane[] = [
+  loadTargetHistoryLane,
+  guardTargetHistoryLane,
+  stopTargetWhenNothingPendingLane,
+  checkTargetPendingMigrationsLane,
+  guardTargetConcurrentCompanionsLane,
+  runTargetSafetyLane,
+  applyTargetMigrationsLane,
+  reconcileTargetHistoryLane,
+];
+
+async function loadTargetHistoryLane(state: TargetSyncState): Promise<SyncResult | undefined> {
+  const status = await migrationsStatus({
+    allowMissingHistoryTable: state.target.runner === "direct",
+    directory: state.options.directory,
+    ...(state.target.databaseUrl === undefined ? {} : { databaseUrl: state.target.databaseUrl }),
+    historyTable: state.target.historyTable,
+    runnerLabel: state.target.runner,
+    targetLabel: state.target.name,
   });
-  diagnostics.push(...finalStatus.diagnostics);
+  state.status = status.report;
+  state.diagnostics.push(...status.diagnostics);
+  state.lines.push(renderMigrationsStatus(status.report).trimEnd());
+  return;
+}
+
+function guardTargetHistoryLane(state: TargetSyncState): SyncResult | undefined {
+  if (!hasErrors(state.diagnostics)) {
+    return;
+  }
+  state.lines.push(
+    `refusing to sync ${state.target.name}: resolve ghost or out-of-order history first`
+  );
+  return {
+    applied: false,
+    diagnostics: state.diagnostics,
+    pending: requiredTargetStatus(state).pending,
+    report: render(state.lines),
+  };
+}
+
+function stopTargetWhenNothingPendingLane(state: TargetSyncState): SyncResult | undefined {
+  if (requiredTargetStatus(state).pending.length > 0) {
+    return;
+  }
+  state.lines.push(`nothing to sync on ${state.target.name}: disk and target history match`);
+  return {
+    applied: false,
+    diagnostics: state.diagnostics,
+    pending: [],
+    report: render(state.lines),
+  };
+}
+
+function checkTargetPendingMigrationsLane(state: TargetSyncState): Promise<SyncResult | undefined> {
+  return checkPendingMigrations(
+    state.options.directory,
+    requiredTargetStatus(state).pending,
+    state.config,
+    state.diagnostics,
+    state.lines
+  );
+}
+
+function guardTargetConcurrentCompanionsLane(state: TargetSyncState): SyncResult | undefined {
+  return supabaseCliConcurrentCompanionResult(
+    state.target,
+    requiredTargetStatus(state).pending,
+    state.diagnostics,
+    state.lines
+  );
+}
+
+function runTargetSafetyLane(state: TargetSyncState): Promise<SyncResult | undefined> {
+  return runSyncSafetyGates(
+    state.config,
+    targetSafetySources(state.sources, state.target),
+    state.diagnostics,
+    state.lines,
+    { pending: requiredTargetStatus(state).pending, targetName: state.target.name }
+  );
+}
+
+async function applyTargetMigrationsLane(state: TargetSyncState): Promise<SyncResult | undefined> {
+  const status = requiredTargetStatus(state);
+  state.outcome = await runTargetRunner(state.options, state.config, state.target, status.pending);
+  state.lines.push(`running: ${state.outcome.displayCommand ?? state.target.runner}`);
+  return runnerFailureResult(
+    state.outcome,
+    state.target.runner,
+    status.pending,
+    state.diagnostics,
+    state.lines
+  );
+}
+
+async function reconcileTargetHistoryLane(state: TargetSyncState): Promise<SyncResult | undefined> {
+  const status = requiredTargetStatus(state);
+  const finalStatus = await migrationsStatus({
+    allowMissingHistoryTable: state.target.runner === "direct",
+    directory: state.options.directory,
+    ...(state.target.databaseUrl === undefined ? {} : { databaseUrl: state.target.databaseUrl }),
+    expectedAppliedVersions: status.expectedAppliedVersions,
+    historyTable: state.target.historyTable,
+    runnerLabel: state.target.runner,
+    targetLabel: state.target.name,
+  });
+  state.diagnostics.push(...finalStatus.diagnostics);
   if (
     hasErrors(finalStatus.diagnostics) ||
     finalStatus.report.pending.length > 0 ||
     finalStatus.report.missingExpectedVersions.length > 0
   ) {
-    diagnostics.push(
+    state.diagnostics.push(
       diagnostic(
         "SUPA_SYNC_FINAL_RECONCILE_FAILED",
         "error",
-        `target ${target.name} did not reconcile after runner completed`,
+        `target ${state.target.name} did not reconcile after runner completed`,
         { hint: "Inspect pending and missing expected migration versions in the sync report." }
       )
     );
-    lines.push(renderMigrationsStatus(finalStatus.report).trimEnd());
+    state.lines.push(renderMigrationsStatus(finalStatus.report).trimEnd());
     return {
       applied: false,
-      diagnostics,
+      diagnostics: state.diagnostics,
       pending: finalStatus.report.pending,
-      report: render(lines),
+      report: render(state.lines),
     };
   }
-  lines.push(renderMigrationsStatus(finalStatus.report).trimEnd());
-  return { applied: true, diagnostics, pending: [], report: render(lines) };
+  state.lines.push(renderMigrationsStatus(finalStatus.report).trimEnd());
+  return;
+}
+
+function requiredTargetStatus(state: TargetSyncState): MigrationsStatusReport {
+  if (state.status === undefined) {
+    throw new Error("target history lane has not run");
+  }
+  return state.status;
 }
 
 function targetSafetySources(sources: SyncSources, target: ResolvedSyncTarget): SyncSources {
@@ -1762,7 +1913,7 @@ function syncFailureLoopReason(projectDir: string, changed: string[], diagnostic
     typeof diagnostics === "string" && diagnostics.length > 0
       ? `\n\nDiagnostics:\n${diagnostics}`
       : "";
-  return `supaschema sync failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, fix the canonical schema/config/migration source, rerun \`supaschema sync\`, and keep iterating until the diff, generated outputs, type/RLS safety gates, apply runner, and target reconciliation pass or report the exact blocker.${diagnosticText}`;
+  return `supaschema sync failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, fix the canonical schema/config/migration source, rerun \`supaschema sync\`, and keep iterating until the ordered source, diff/output, target-selection, history, check, safety, runner, and reconciliation lanes pass or report the exact blocker.${diagnosticText}`;
 }
 
 function strings(value: unknown): string[] {

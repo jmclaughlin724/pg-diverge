@@ -16,9 +16,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bunx",
+            "command": "sh",
             "args": [
-              "--no-install",
+              "-c",
+              "\"${CLAUDE_PROJECT_DIR}/node_modules/.bin/supaschema\" \"$@\"",
               "supaschema",
               "hook",
               "generated-migration-edit",
@@ -36,9 +37,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bunx",
+            "command": "sh",
             "args": [
-              "--no-install",
+              "-c",
+              "\"${CLAUDE_PROJECT_DIR}/node_modules/.bin/supaschema\" \"$@\"",
               "supaschema",
               "hook",
               "schema-write"

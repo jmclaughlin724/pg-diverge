@@ -243,7 +243,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--runner <runner>", "operator override: direct | supabase-cli")
     .option("--no-diff", "skip schema diff generation and generated output refresh")
     .description(
-      "Run the sync pipeline: schema diff, generated outputs, safety gates, target reconciliation, and selected runner apply/deploy."
+      "Run the ordered sync pipeline: schema diff, generated outputs, target reconciliation, safety gates, selected runner apply/deploy, and final reconciliation."
     )
     .action((options: SyncCommandOptions) => runSyncCommand(options, context));
 }

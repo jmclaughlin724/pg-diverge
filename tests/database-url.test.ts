@@ -16,6 +16,8 @@ const codexGateCommand = "npm exec -- supaschema hook generated-migration-edit -
 const codexAutoDiffCommand = "npm exec -- supaschema hook schema-write";
 const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
 const codexGeneralGuardCommand = `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`;
+const bunCodexGateCommand = `"${codexProjectDir}/node_modules/.bin/supaschema" hook generated-migration-edit --runtime codex`;
+const bunCodexAutoDiffCommand = `"${codexProjectDir}/node_modules/.bin/supaschema" hook schema-write`;
 const codexToolGateCommand = 'node "$(git rev-parse --show-toplevel)/.codex/hooks/tool-gate.mjs"';
 const codexStopCommand = 'node "$(git rev-parse --show-toplevel)/.codex/hooks/stop.mjs"';
 const codexToolMatcher = ["Bash", "apply_patch", "Edit", "Write", "edit_file"].join("|");
@@ -39,6 +41,11 @@ const claudeGeneratedGateArgs = [
 const claudeBashPolicyCommand = `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`;
 const claudeAutoDiffArgs = ["exec", "--", "supaschema", "hook", "schema-write"];
 const claudeLlmSyncCommand = `node "${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`;
+const bunClaudeRunnerArgsPrefix = [
+  "-c",
+  `"${claudeProjectDir}/node_modules/.bin/supaschema" "$@"`,
+  "supaschema",
+];
 function shellParameter(expression: string): string {
   return ["$", "{", expression, "}"].join("");
 }
@@ -175,7 +182,7 @@ describe("init project setup", () => {
     expect(prompt).toContain("yarn add supaschema");
     expect(prompt).toContain("yarn exec supaschema init");
     expect(prompt).toContain("bun add supaschema");
-    expect(prompt).toContain("bunx --no-install supaschema init");
+    expect(prompt).toContain("./node_modules/.bin/supaschema init");
     expect(prompt).toContain("Do not run npm in a pnpm, Yarn, or Bun project");
     expect(prompt).toContain("cd` into the owning member package");
     expect(prompt).not.toContain("--workspace <name-or-path>");
@@ -183,7 +190,7 @@ describe("init project setup", () => {
     expect(prompt).not.toContain("--save-dev");
     expect(prompt).toContain("npm exec -- supaschema <cmd>");
     expect(prompt).toContain("pnpm exec supaschema <cmd>");
-    expect(prompt).toContain("bunx --no-install supaschema <cmd>");
+    expect(prompt).toContain("./node_modules/.bin/supaschema <cmd>");
     expect(prompt).toContain("config validate --json");
 
     await runScaffold(consumer, { installAgentBundle: true });
@@ -200,7 +207,7 @@ describe("init project setup", () => {
     expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
     expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(2);
+    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
     expect(blockCount(await readFile(join(consumer, "CLAUDE.md"), "utf8"))).toBe(0);
   });
@@ -231,6 +238,37 @@ describe("init project setup", () => {
     expect(commandCount(codexHooks, "pnpm exec supaschema hook schema-write")).toBe(1);
     expect(commandCount(codexHooks, "npm exec -- supaschema hook schema-write")).toBe(0);
     expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(0);
+  });
+
+  it("materializes Bun hook commands through the installed package bin", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-bun-hooks-"));
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({ name: "db", packageManager: "bun@1.3.14", private: true })}\n`
+    );
+
+    await runScaffold(consumer, { installAgentBundle: true });
+
+    const claudeSettings = JSON.parse(
+      await readFile(join(consumer, ".claude/settings.json"), "utf8")
+    );
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    expect(
+      hookCount(claudeSettings, "sh", [
+        ...bunClaudeRunnerArgsPrefix,
+        "hook",
+        "generated-migration-edit",
+        "--runtime",
+        "claude",
+      ])
+    ).toBe(1);
+    expect(
+      hookCount(claudeSettings, "sh", [...bunClaudeRunnerArgsPrefix, "hook", "schema-write"])
+    ).toBe(1);
+    expect(commandCount(codexHooks, bunCodexGateCommand)).toBe(1);
+    expect(commandCount(codexHooks, bunCodexAutoDiffCommand)).toBe(1);
+    expect(JSON.stringify(claudeSettings)).not.toContain("bunx");
+    expect(JSON.stringify(codexHooks)).not.toContain("bunx");
   });
 
   it("preserves existing Codex hook dispatchers and hook scripts", async () => {
@@ -789,7 +827,7 @@ describe("init project setup", () => {
       )
     ).toBe(1);
     expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(1);
-    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(2);
+    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
   });
 
   it("installs Anilize-compatible context surfaces without active CLAUDE policy or retired backups", async () => {

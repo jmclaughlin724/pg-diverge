@@ -17,6 +17,7 @@ const nodeBinDir = dirname(process.execPath);
 const bunTool = "bun@1.3.14";
 const pnpmTool = "pnpm@10.18.1";
 const yarnTool = "yarn@4.16.0";
+const commandTimeoutMs = 300_000;
 const corepackTools = new Map([
   ["pnpm", pnpmTool],
   ["yarn", yarnTool],
@@ -113,12 +114,9 @@ function smokeBunRoot() {
     packageManager: bunTool,
   });
   runTool("bun", ["add", tarball], consumer);
-  runTool("bun", ["x", "--no-install", PACKAGE_NAME, "init"], consumer);
+  runBunLocalBin(["init"], consumer);
   assertGenericScaffold(consumer);
-  assertVersion(
-    (args, cwd) => runTool("bun", ["x", "--no-install", PACKAGE_NAME, ...args], cwd),
-    consumer
-  );
+  assertVersion(runBunLocalBin, consumer);
 }
 
 function smokeBunWorkspaceMember() {
@@ -129,13 +127,10 @@ function smokeBunWorkspaceMember() {
   runTool("bun", ["add", tarball], member);
   assertNoRootScaffold(root);
   assertNoScaffold(member, "Bun workspace member should wait for explicit init");
-  runTool("bun", ["x", "--no-install", PACKAGE_NAME, "init"], member);
+  runBunLocalBin(["init"], member);
   assertNoRootScaffold(root);
   assertGenericScaffold(member);
-  assertVersion(
-    (args, cwd) => runTool("bun", ["x", "--no-install", PACKAGE_NAME, ...args], cwd),
-    member
-  );
+  assertVersion(runBunLocalBin, member);
 }
 
 function runLane(name, tool, lane) {
@@ -288,14 +283,21 @@ function runRaw(file, args, cwd) {
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", "pipe"],
+      timeout: commandTimeoutMs,
     });
   } catch (error) {
     const stdout = error.stdout?.toString?.() ?? "";
     const stderr = error.stderr?.toString?.() ?? "";
     const detail = [stdout, stderr].filter(Boolean).join("\n").trim();
     const suffix = detail.length > 0 ? `\n${detail}` : "";
-    throw new Error(`command failed in ${cwd}: ${file} ${args.join(" ")}${suffix}`);
+    const reason = error.signal ? ` signal=${error.signal}` : "";
+    throw new Error(`command failed in ${cwd}: ${file} ${args.join(" ")}${reason}${suffix}`);
   }
+}
+
+function runBunLocalBin(args, cwd) {
+  const executable = process.platform === "win32" ? `${PACKAGE_NAME}.cmd` : PACKAGE_NAME;
+  return runRaw(join(cwd, "node_modules", ".bin", executable), args, cwd);
 }
 
 function commandName(name) {

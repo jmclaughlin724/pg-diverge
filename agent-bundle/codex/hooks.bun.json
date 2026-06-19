@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bunx --no-install supaschema hook generated-migration-edit --runtime codex",
+            "command": "\"${CODEX_PROJECT_DIR:-$PWD}/node_modules/.bin/supaschema\" hook generated-migration-edit --runtime codex",
             "timeout": 10,
             "statusMessage": "Checking supaschema generated-migration policy"
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bunx --no-install supaschema hook schema-write",
+            "command": "\"${CODEX_PROJECT_DIR:-$PWD}/node_modules/.bin/supaschema\" hook schema-write",
             "timeout": 130,
             "statusMessage": "Running supaschema auto-diff on schema change"
           }

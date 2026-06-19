@@ -27,7 +27,7 @@ For workspaces, `cd` into the owning member package before install and setup unl
 | npm | `npm install supaschema` | `npm exec -- supaschema init` |
 | pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` |
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` |
-| Bun | `bun add supaschema` | `bunx --no-install supaschema init` |
+| Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` |
 
 Use the matching local runner for every command after install:
 
@@ -36,7 +36,7 @@ Use the matching local runner for every command after install:
 | npm | `npm exec -- supaschema <cmd>` |
 | pnpm | `pnpm exec supaschema <cmd>` |
 | Yarn | `yarn exec supaschema <cmd>` |
-| Bun | `bunx --no-install supaschema <cmd>` |
+| Bun | `./node_modules/.bin/supaschema <cmd>` |
 
 Always run the matching explicit setup command from the owning package directory after install. The command is idempotent and leaves existing config intact. Default `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, and migration paths with the packaged config contract only. It does not install active AI-agent rules, hooks, skills, prompts, or settings. When the user explicitly approves AI-agent enforcement, `<local-runner> init --agent-bundle` installs the reviewed raw bundle, preserves existing hook entries, appends missing supaschema hook entries at the end of the relevant event array, and refreshes the managed agent surfaces.
 
@@ -44,7 +44,7 @@ Always run the matching explicit setup command from the owning package directory
 npm exec -- supaschema init
 pnpm exec supaschema init
 yarn exec supaschema init
-bunx --no-install supaschema init
+./node_modules/.bin/supaschema init
 ```
 
 Use `<local-runner> init --dry-run --json` when you need to preview setup before writing files.

@@ -96,10 +96,10 @@ const INSTALL_PROMPT_REQUIRED_LOCAL_RUNNER_TEXT = [
   "npm exec -- supaschema <cmd>",
   "pnpm exec supaschema <cmd>",
   "yarn exec supaschema <cmd>",
-  "bunx --no-install supaschema <cmd>",
+  "./node_modules/.bin/supaschema <cmd>",
   "pnpm exec supaschema init",
   "yarn exec supaschema init",
-  "bunx --no-install supaschema init",
+  "./node_modules/.bin/supaschema init",
   "Do not run npm in a pnpm, Yarn, or Bun project",
   "cd` into the owning member package",
 ];

@@ -395,7 +395,13 @@ describe.skipIf(!bunAvailable)("consumer lifecycle: Bun workspace member setup",
     expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);
     expect(existsSync(join(member, "supaschema.config.json"))).toBe(false);
 
-    const init = await capture(bunCommand, ["x", "--no-install", "supaschema", "init"], member);
+    const bunBin = join(
+      member,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "supaschema.cmd" : "supaschema"
+    );
+    const init = await capture(bunBin, ["init"], member);
     expect(init.code, init.stderr).toBe(0);
 
     expect(existsSync(join(workspace, "supaschema.config.json"))).toBe(false);

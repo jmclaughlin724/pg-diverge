@@ -434,6 +434,51 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     expect(result.pending.some((file) => file.endsWith(".sql"))).toBe(true);
   });
 
+  it("keeps generated lane output when configured target resolution fails", async () => {
+    const source = await sqlSource(
+      "CREATE TABLE public.target_resolution_report (id bigint PRIMARY KEY);\n"
+    );
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-target-report-"));
+    const typesFile = join(root, "database.types.ts");
+    const zodFile = join(root, "database.zod.ts");
+
+    const result = await syncMigrations({
+      config: {
+        sources: { from: "empty:", to: source },
+        sync: {
+          targets: {
+            local: {
+              databaseUrl: "$SUPASCHEMA_MISSING_TARGET_REPORT_URL",
+              historyTable: "supabase_migrations.schema_migrations",
+              mode: "auto",
+              runner: "direct",
+            },
+          },
+        },
+        typesFile,
+        workflow: {
+          migration_sync: "auto",
+          rls_safety: "disabled",
+          type_safety: "disabled",
+        },
+        zodFile,
+      },
+      directory: join(root, "migrations"),
+      pipeline: true,
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_SYNC_TARGET_URL_UNRESOLVED"
+    );
+    expect(result.report).toContain("diff: wrote");
+    expect(result.report).toContain("refusing to sync: target resolution failed");
+    expect(result.report.indexOf("diff: wrote")).toBeLessThan(
+      result.report.indexOf("refusing to sync: target resolution failed")
+    );
+    expect(result.report).not.toContain("dry run:");
+  });
+
   it("resolves auto sources before the sync diff and safety gates run", async () => {
     const source = await sqlSource(
       "CREATE TABLE public.auto_sync_source (id bigint PRIMARY KEY);\n"

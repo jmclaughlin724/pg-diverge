@@ -50,10 +50,10 @@ const localRunnerPrompt = [
   "npm exec -- supaschema <cmd>",
   "pnpm exec supaschema <cmd>",
   "yarn exec supaschema <cmd>",
-  "bunx --no-install supaschema <cmd>",
+  "./node_modules/.bin/supaschema <cmd>",
   "pnpm exec supaschema init",
   "yarn exec supaschema init",
-  "bunx --no-install supaschema init",
+  "./node_modules/.bin/supaschema init",
   "Do not run npm in a pnpm, Yarn, or Bun project",
   "For workspaces, `cd` into the owning member package before first install.",
 ].join("\n");
@@ -452,7 +452,7 @@ noindex: "no"
     const root = await writeDocs(
       localRunnerFixtureFiles({
         ".agents/prompts/supaschema-install.md": localRunnerPrompt.replace(
-          "bunx --no-install supaschema init",
+          "./node_modules/.bin/supaschema init",
           ""
         ),
         "README.md": "Run `npm install supaschema`\nnpx supaschema diff\n",
@@ -465,7 +465,7 @@ noindex: "no"
       .map((violation) => violation.msg)
       .join("\n");
 
-    expect(localRunnerMessages).toContain("must document bunx --no-install supaschema init");
+    expect(localRunnerMessages).toContain("must document ./node_modules/.bin/supaschema init");
     expect(localRunnerMessages).toContain("must not present npm install as universal");
     expect(localRunnerMessages).toContain("must not present npx supaschema as universal");
   });

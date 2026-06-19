@@ -30,6 +30,7 @@ const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
 const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
 const claudeAgentsPointer = "@AGENTS.md";
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
+const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
 const agentBundleInstructions = "node_modules/supaschema/agent-bundle/INSTALL.md";
 const pnpmWorkspaceFile = "pnpm-workspace.yaml";
 const pnpmBuildApprovalLine = "  supaschema: true";
@@ -322,9 +323,9 @@ export function localRunnerForPackageManager(packageManager) {
   }
   if (packageManager === "bun") {
     return {
-      args: ["--no-install", "supaschema"],
-      command: "bunx",
-      commandString: "bunx --no-install supaschema",
+      args: ["-c", `"${claudeProjectDir}/node_modules/.bin/supaschema" "$@"`, "supaschema"],
+      command: "sh",
+      commandString: `"${codexProjectDir}/node_modules/.bin/supaschema"`,
     };
   }
   return {
@@ -1776,7 +1777,7 @@ function managedSupaschemaHook(hook) {
   if (Array.isArray(hook.args)) {
     tokens.push(...hook.args.filter((arg) => typeof arg === "string"));
   }
-  const binaryIndex = tokens.indexOf("supaschema");
+  const binaryIndex = tokens.findIndex(isSupaschemaBinaryToken);
   if (binaryIndex === -1 || tokens[binaryIndex + 1] !== "hook") {
     return;
   }
@@ -1790,6 +1791,27 @@ function managedSupaschemaHook(hook) {
   const runtimeFlag = tokens.indexOf("--runtime");
   const runtime = runtimeFlag === -1 ? "" : (tokens[runtimeFlag + 1] ?? "");
   return `${hookName}:${runtime}`;
+}
+
+function isSupaschemaBinaryToken(token) {
+  const normalized = trimBoundaryQuotes(token);
+  return normalized === "supaschema" || normalized.endsWith("/supaschema");
+}
+
+function trimBoundaryQuotes(value) {
+  let start = 0;
+  let end = value.length;
+  while (start < end && isQuote(value[start])) {
+    start += 1;
+  }
+  while (end > start && isQuote(value[end - 1])) {
+    end -= 1;
+  }
+  return value.slice(start, end);
+}
+
+function isQuote(value) {
+  return value === '"' || value === "'";
 }
 
 function hookDefinitions(entry) {

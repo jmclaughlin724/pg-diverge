@@ -21,7 +21,7 @@ Install from the package or workspace that owns your schema workflow, not from a
 | npm | `npm install supaschema` | `npm exec -- supaschema init` | `npm exec -- supaschema <cmd>` |
 | pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` | `pnpm exec supaschema <cmd>` |
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` | `yarn exec supaschema <cmd>` |
-| Bun | `bun add supaschema` | `bunx --no-install supaschema init` | `bunx --no-install supaschema <cmd>` |
+| Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` | `./node_modules/.bin/supaschema <cmd>` |
 
 supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, and optional coding-agent bundle are part of the consuming repo's migration workflow.
 
@@ -45,7 +45,7 @@ Use the matching local runner for every command after install:
 - npm: `npm exec -- supaschema <cmd>`
 - pnpm: `pnpm exec supaschema <cmd>`
 - Yarn: `yarn exec supaschema <cmd>`
-- Bun: `bunx --no-install supaschema <cmd>`
+- Bun: `./node_modules/.bin/supaschema <cmd>`
 
 After install, run `<local-runner> init`. It uses the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths to create config and directories. It does not install active AI-agent rules, hooks, skills, settings, `AGENTS.md`, or `CLAUDE.md` by default. Inspect `supaschema.config.json`, and inspect `.supaschema/install.json` only when it exists for pending path confirmation. Then run:
 

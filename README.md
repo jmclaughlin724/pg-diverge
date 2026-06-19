@@ -50,7 +50,7 @@ npm run benchmark
 
 ## How it fits
 
-supaschema replaces the PostgreSQL schema-management lane: schema diff, migration generation, safety checks, generated contracts, drift gates, and guarded sync. Keep another tool when its distinct runtime, platform runner, query API, hosted dashboard, or cross-database scope is the part you intentionally want.
+supaschema replaces the PostgreSQL schema-management lane: schema diff, migration generation, safety checks, generated contracts, drift gates, and guarded sync. Individual commands stay available for each action, while `sync` runs the ordered apply sequence when a configured target is selected. Keep another tool when its distinct runtime, platform runner, query API, hosted dashboard, or cross-database scope is the part you intentionally want.
 
 - Use it beside Supabase when you want Supabase project resources but do not want Docker-backed `db diff` as the migration generator.
 - Use it beside Prisma or Drizzle when you want their query or client APIs but do not want an ORM schema DSL to own PostgreSQL intent.
@@ -68,7 +68,7 @@ Install from the package or workspace directory that owns the schema workflow.
 | npm | `npm install supaschema` | `npm exec -- supaschema init` | `npm exec -- supaschema <cmd>` |
 | pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` | `pnpm exec supaschema <cmd>` |
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` | `yarn exec supaschema <cmd>` |
-| Bun | `bun add supaschema` | `bunx --no-install supaschema init` | `bunx --no-install supaschema <cmd>` |
+| Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` | `./node_modules/.bin/supaschema <cmd>` |
 
 Requires Node 22.12+. Commands that inspect, apply, or verify against a database expect PostgreSQL 15+.
 
@@ -82,7 +82,7 @@ Edit the configured schema SQL files, then run the lane that matches your intent
 supaschema diff    # generate the migration and refresh configured outputs
 supaschema check   # check generated or existing migrations
 supaschema verify  # prove retry safety against disposable databases
-supaschema sync    # run safety gates, reconcile targets, and apply when configured
+supaschema sync    # run ordered diff/check/safety/apply lanes when configured
 ```
 
 Zero-flag commands read `supaschema.config.json`. Diff sources can be schema directories, Git refs, live read-only catalogs, SQL dumps, saved catalog snapshots, or an empty baseline. Full flags, defaults, and exit codes live in the [commands reference](https://supaschema.com/docs/commands) and [sources guide](https://supaschema.com/docs/concepts/sources).

@@ -4,15 +4,27 @@ description: "Gate pending migrations, reconcile configured targets, and apply t
 keywords: ["sync command", "migration sync", "apply gate", "migrations"]
 ---
 
-Use `sync` when you want a guarded migration apply path.
+Use `sync` when you want the guarded migration apply path.
 
-Bare `sync` selects every configured `sync.targets.<name>` entry with `mode: "auto"`, reconciles history, checks pending migrations, runs deploy safety gates, then invokes each selected target's runner. When a selected target has a resolved database URL, the deploy type-safety gate compares that target's live PostgreSQL catalog with the declarative schema tree. Remote deploy uses the same selection rule; it also requires that target's approval variable before any mutation.
+`sync` is an ordered lane runner. It resolves source defaults, generates the schema diff and generated outputs, selects configured targets, reconciles history, checks pending migrations, runs deploy safety gates, invokes each selected target's runner when a target is selected, then reconciles history again. When no target is selected, the same history, check, and safety lanes end in a dry-run report. Bare `sync` selects every configured `sync.targets.<name>` entry with `mode: "auto"`. When a selected target has a resolved database URL, the deploy type-safety gate compares that target's live PostgreSQL catalog with the declarative schema tree. Remote deploy uses the same selection rule and requires that target's approval variable before any mutation.
 
 ## Use this when
 
 - Pending files need `check` before apply.
 - Ghost or out-of-order history should block deployment.
 - A dry run should preview what the runner would apply.
+
+## Lane order
+
+1. Enforce `workflow.migration_sync`.
+2. Resolve source defaults from config and flags.
+3. Generate the diff and refresh configured TypeScript/Zod outputs unless `--no-diff` is set.
+4. Select configured sync targets.
+5. Reconcile migration history.
+6. Check pending migration files.
+7. Run deploy safety gates.
+8. Invoke the selected runner when a target is selected.
+9. Reconcile migration history after the runner completes, or report dry-run/no-op when no target is selected.
 
 ## Run it
 
