@@ -1297,7 +1297,9 @@ function withoutLegacyBrokenClaudeScriptHooks(entries, managedScripts) {
   const kept = [];
   for (const entry of entries) {
     if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
-      kept.push(entry);
+      if (!isLegacyBrokenClaudeScriptHook(entry, managedScripts)) {
+        kept.push(entry);
+      }
       continue;
     }
     const hooks = entry.hooks.filter(
@@ -1397,7 +1399,13 @@ function managedSupaschemaHook(hook) {
 }
 
 function hookDefinitions(entry) {
-  if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
+  if (!isRecord(entry)) {
+    return [];
+  }
+  if (typeof entry.command === "string") {
+    return [entry];
+  }
+  if (!Array.isArray(entry.hooks)) {
     return [];
   }
   return entry.hooks.filter((hook) => isRecord(hook) && typeof hook.command === "string");
