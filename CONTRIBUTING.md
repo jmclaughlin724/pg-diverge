@@ -141,7 +141,7 @@ If the GitHub merge already happened outside the wrapper, run:
 npm run github:post-merge-verify -- --pr <number>
 ```
 
-Release PRs also follow [Release](./docs/release.mdx). All commits must be signed off (`git commit -s`).
+Release changes also follow [Release](./docs/release.mdx). All commits must be signed off (`git commit -s`).
 
 ## Reporting bugs and requesting features
 
