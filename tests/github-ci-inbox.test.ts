@@ -9,7 +9,7 @@ import {
   parseCiFailureReportComment,
   renderCiFailureReport,
   reportFromWorkflowRunEvent,
-  upsertCiFailureComment,
+  syncCiFailureComment,
 } from "../scripts/github/ci-inbox-core.mjs";
 
 const headSha = "0123456789abcdef0123456789abcdef01234567";
@@ -206,7 +206,7 @@ describe("GitHub CI failure inbox", () => {
 
   it("skips stale workflow-run reports before mutating the marker comment", () => {
     const calls: string[][] = [];
-    const result = upsertCiFailureComment(
+    const result = syncCiFailureComment(
       { ...report(), headSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
       {
         comments: [markerComment(report())],
@@ -225,7 +225,7 @@ describe("GitHub CI failure inbox", () => {
   it("deletes the current-head marker comment after a successful workflow rerun", () => {
     const calls: string[][] = [];
     const success = reportFromWorkflowRunEvent(workflowRunEvent("success"));
-    const result = upsertCiFailureComment(success, {
+    const result = syncCiFailureComment(success, {
       comments: [markerComment(report(), "github-actions[bot]", 77)],
       currentHeadSha: headSha,
       ghJson: (args: string[]) => {

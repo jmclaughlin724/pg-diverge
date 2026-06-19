@@ -42,7 +42,7 @@ export function reportFromWorkflowRunEvent(event, env = process.env) {
   });
 }
 
-export function upsertCiFailureComment(report, options = {}) {
+export function syncCiFailureComment(report, options = {}) {
   const normalized = normalizeReport(report);
   const requestJson = options.ghJson ?? ghJson;
   const currentHeadSha =

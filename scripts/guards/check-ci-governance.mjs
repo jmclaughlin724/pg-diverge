@@ -211,7 +211,7 @@ assert(
     ciFailureSetupNode?.with?.["package-manager-cache"] === false,
   "ci-failure-report.yml must use Node 22+ without package-manager caching"
 );
-const ciFailureReporter = findNamedStep(ciFailureSteps, "Report failed workflow run");
+const ciFailureReporter = findNamedStep(ciFailureSteps, "Sync CI failure marker");
 const githubTokenExpression = ["${{", " github.token ", "}}"].join("");
 assert(
   ciFailureReporter &&
@@ -224,6 +224,7 @@ assert(
   ciInboxCore.includes("currentPullRequestHeadSha") &&
     ciInboxCore.includes("trustedReportAuthors") &&
     ciInboxCore.includes("reportHasFailureConclusion") &&
+    ciInboxCore.includes("syncCiFailureComment") &&
     ciInboxCore.includes('"DELETE"') &&
     ciInboxCore.includes("no failed job details were available"),
   "ci-inbox-core.mjs must skip stale reports, trust bot-authored markers, accept empty-job failures, and delete current-head markers for non-failure reruns"

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 
-import { reportFromWorkflowRunEvent, upsertCiFailureComment } from "./ci-inbox-core.mjs";
+import { reportFromWorkflowRunEvent, syncCiFailureComment } from "./ci-inbox-core.mjs";
 
 const eventPath = process.env.GITHUB_EVENT_PATH;
 const event = eventPath ? JSON.parse(readFileSync(eventPath, "utf8")) : {};
@@ -12,7 +12,7 @@ if (!report) {
   process.exit(0);
 }
 
-const result = upsertCiFailureComment(report);
+const result = syncCiFailureComment(report);
 process.stdout.write(
   `CI_FAILURE_REPORT_OK action=${result.action} pr=${report.pullRequestNumber} run=${report.workflowRunId}\n`
 );

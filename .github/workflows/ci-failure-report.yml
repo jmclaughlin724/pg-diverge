@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      - name: Report failed workflow run
+      - name: Sync CI failure marker
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/github/report-ci-failure.mjs
