@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -32,6 +32,24 @@ function trackedFiles(): string[] {
     .filter((file) => file && existsSync(resolve(root, file)));
 }
 
+function stageableFiles(paths: string[]): string[] {
+  return execFileSync("git", ["ls-files", "--others", "--exclude-standard", "--", ...paths], {
+    cwd: root,
+    encoding: "utf8",
+  })
+    .split("\n")
+    .filter(Boolean);
+}
+
+function ignoredFiles(paths: string[]): string[] {
+  const result = spawnSync("git", ["check-ignore", "--no-index", "--stdin"], {
+    cwd: root,
+    encoding: "utf8",
+    input: paths.join("\n"),
+  });
+  return result.stdout.split("\n").filter(Boolean).sort();
+}
+
 describe("public agent and editor surfaces", () => {
   it("tracks only the consumer supaschema agent bundle", () => {
     const agentFiles = trackedFiles().filter(
@@ -47,7 +65,37 @@ describe("public agent and editor surfaces", () => {
 
   it("keeps private maintainer and operator files out of the public repository", () => {
     const files = trackedFiles();
-    for (const file of [
+    const privateAgentFiles = [
+      ".agents/prompts/internal.md",
+      ".agents/skills/elegant/SKILL.md",
+      ".agents/tmp.json",
+      ".claude/agents/elegant.md",
+      ".claude/hooks/context-pre-tool-use.mjs",
+      ".claude/rules/21-github-process.md",
+      ".claude/settings.json",
+      ".claude/skills/elegant/SKILL.md",
+      ".codex/agents/elegant.toml",
+      ".codex/config.toml",
+      ".codex/hooks/context-pre-tool-use.mjs",
+      ".codex/rules/21-github-process.rules",
+    ];
+    const publicAgentFiles = [
+      ".agents/prompts/supaschema-install.md",
+      ".agents/skills/supaschema/SKILL.md",
+      ".claude/hooks/guards/bash-policy-checks.mjs",
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+      ".claude/rules/supaschema.md",
+      ".claude/skills/supaschema/SKILL.md",
+      ".codex/hooks.json",
+      ".codex/hooks/general-guard.mjs",
+      ".codex/hooks/guards/bash-policy-checks.mjs",
+      ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+      ".codex/rules/supaschema.rules",
+    ];
+    expect(ignoredFiles(privateAgentFiles)).toEqual([...privateAgentFiles].sort());
+    expect(ignoredFiles(publicAgentFiles)).toEqual([]);
+    expect(stageableFiles([".agents", ".claude", ".codex"])).toEqual([]);
+    const privateFiles = [
       ".mcp.json",
       ".vscode/settings.json",
       ".vscode/extensions.json",
@@ -58,11 +106,15 @@ describe("public agent and editor surfaces", () => {
       "pyproject.toml",
       "uv.lock",
       "wrangler.toml",
-    ]) {
+    ];
+    for (const file of privateFiles) {
       expect(files, file).not.toContain(file);
-      expect(existsSync(resolve(root, file)), file).toBe(false);
     }
-    for (const prefix of [
+    expect(ignoredFiles(privateFiles.filter((file) => existsSync(resolve(root, file))))).toEqual(
+      privateFiles.filter((file) => existsSync(resolve(root, file))).sort()
+    );
+    expect(stageableFiles(privateFiles)).toEqual([]);
+    const privatePrefixes = [
       "advisor-plans/",
       "cloudflare/",
       "scripts/agent-hooks/",
@@ -70,12 +122,14 @@ describe("public agent and editor surfaces", () => {
       "scripts/stripe/",
       "services/agent-mcp/",
       "services/license-worker/",
-    ]) {
+    ];
+    for (const prefix of privatePrefixes) {
       expect(
         files.some((file) => file.startsWith(prefix)),
         prefix
       ).toBe(false);
     }
+    expect(stageableFiles(privatePrefixes)).toEqual([]);
   });
 
   it("ships self-contained consumer hook registration", () => {

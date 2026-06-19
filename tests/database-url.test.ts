@@ -18,6 +18,12 @@ const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-c
 const codexGeneralGuardCommand = `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`;
 const codexMutationMatcher = ["Write", "Edit", "MultiEdit", "apply_patch"].join("|");
 const removedClaudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
+const legacyClaudeBashPolicyArgs = [
+  `${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`,
+];
+const legacyClaudeLlmSyncArgs = [
+  `${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
+];
 const claudeGeneratedGateArgs = [
   "exec",
   "--",
@@ -27,11 +33,9 @@ const claudeGeneratedGateArgs = [
   "--runtime",
   "claude",
 ];
-const claudeBashPolicyArgs = [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`];
+const claudeBashPolicyCommand = `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`;
 const claudeAutoDiffArgs = ["exec", "--", "supaschema", "hook", "schema-write"];
-const claudeLlmSyncArgs = [
-  `${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
-];
+const claudeLlmSyncCommand = `node "${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`;
 function shellParameter(expression: string): string {
   return ["$", "{", expression, "}"].join("");
 }
@@ -171,14 +175,14 @@ describe("init project setup", () => {
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(claudeSettings.enabledMcpjsonServers).toBeUndefined();
     expect(commandCount(claudeSettings, removedClaudeSkillGateCommand)).toBe(0);
-    expect(hookCount(claudeSettings, "node", claudeBashPolicyArgs)).toBe(1);
+    expect(commandCount(claudeSettings, claudeBashPolicyCommand)).toBe(1);
     expect(hookCount(claudeSettings, "npm", claudeGeneratedGateArgs)).toBe(1);
     expect(hookCount(claudeSettings, "npm", claudeAutoDiffArgs)).toBe(1);
-    expect(hookCount(claudeSettings, "node", claudeLlmSyncArgs)).toBe(1);
+    expect(commandCount(claudeSettings, claudeLlmSyncCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
     expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
     expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(2);
     expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
   });
 
@@ -459,6 +463,25 @@ describe("init project setup", () => {
               hooks: [{ args: ["scripts/local-policy.mjs"], command: "node", type: "command" }],
             },
             {
+              hooks: [
+                {
+                  args: ["scripts/bash-policy-checks.mjs"],
+                  command: "node",
+                  type: "command",
+                },
+              ],
+            },
+            {
+              matcher: "Bash",
+              hooks: [
+                {
+                  args: legacyClaudeBashPolicyArgs,
+                  command: "node",
+                  type: "command",
+                },
+              ],
+            },
+            {
               matcher: codexMutationMatcher,
               hooks: [
                 {
@@ -483,6 +506,17 @@ describe("init project setup", () => {
                 {
                   args: ["--no-install", "supaschema", "hook", "schema-write"],
                   command: "npx",
+                  type: "command",
+                },
+              ],
+            },
+          ],
+          PostToolBatch: [
+            {
+              hooks: [
+                {
+                  args: legacyClaudeLlmSyncArgs,
+                  command: "node",
                   type: "command",
                 },
               ],
@@ -541,7 +575,9 @@ describe("init project setup", () => {
       await readFile(join(consumer, ".claude/settings.json"), "utf8")
     );
     expect(hookCount(claudeSettings, "node", ["scripts/local-policy.mjs"])).toBe(1);
-    expect(hookCount(claudeSettings, "node", claudeBashPolicyArgs)).toBe(1);
+    expect(hookCount(claudeSettings, "node", ["scripts/bash-policy-checks.mjs"])).toBe(1);
+    expect(hookCount(claudeSettings, "node", legacyClaudeBashPolicyArgs)).toBe(0);
+    expect(commandCount(claudeSettings, claudeBashPolicyCommand)).toBe(1);
     expect(
       hookCount(claudeSettings, "npx", [
         "--no-install",
@@ -551,26 +587,27 @@ describe("init project setup", () => {
         "--runtime",
         "claude",
       ])
-    ).toBe(0);
+    ).toBe(1);
     expect(
       hookCount(claudeSettings, "npx", ["--no-install", "supaschema", "hook", "schema-write"])
-    ).toBe(0);
-    expect(hookCount(claudeSettings, "npm", claudeGeneratedGateArgs)).toBe(1);
-    expect(hookCount(claudeSettings, "npm", claudeAutoDiffArgs)).toBe(1);
-    expect(hookCount(claudeSettings, "node", claudeLlmSyncArgs)).toBe(1);
+    ).toBe(1);
+    expect(hookCount(claudeSettings, "npm", claudeGeneratedGateArgs)).toBe(0);
+    expect(hookCount(claudeSettings, "npm", claudeAutoDiffArgs)).toBe(0);
+    expect(hookCount(claudeSettings, "node", legacyClaudeLlmSyncArgs)).toBe(0);
+    expect(commandCount(claudeSettings, claudeLlmSyncCommand)).toBe(1);
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(commandCount(codexHooks, "echo existing")).toBe(1);
     expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
+    expect(commandCount(codexHooks, codexGateCommand)).toBe(0);
+    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(0);
     expect(
       commandCount(
         codexHooks,
         "npx --no-install supaschema hook generated-migration-edit --runtime codex"
       )
-    ).toBe(0);
-    expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(0);
-    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
+    ).toBe(1);
+    expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(1);
+    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(2);
   });
 
   it("repairs removed migration_sync scaffold values to the canonical policy", async () => {

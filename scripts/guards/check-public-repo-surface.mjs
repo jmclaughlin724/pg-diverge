@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { assert, exists, gitFiles, ok } from "./lib/guard-utils.js";
+import { assert, exists, ok, run } from "./lib/guard-utils.js";
 
 const allowed = new Set([
   ".agents/prompts/supaschema-install.md",
@@ -35,6 +35,13 @@ const privateExact = new Set([
   "wrangler.toml",
 ]);
 
+function gitPaths(args) {
+  return run("git", [...args, "-z"])
+    .stdout.split("\0")
+    .filter(Boolean)
+    .sort();
+}
+
 function isPrivateAgentSurface(file) {
   if (allowed.has(file)) {
     return false;
@@ -42,18 +49,44 @@ function isPrivateAgentSurface(file) {
   return file.startsWith(".agents/") || file.startsWith(".claude/") || file.startsWith(".codex/");
 }
 
-const leaked = gitFiles()
-  .filter(exists)
-  .filter(
-    (file) =>
-      privateExact.has(file) ||
-      privatePrefixes.some((prefix) => file.startsWith(prefix)) ||
-      isPrivateAgentSurface(file)
+function isPrivateSurface(file) {
+  return (
+    privateExact.has(file) ||
+    privatePrefixes.some((prefix) => file.startsWith(prefix)) ||
+    isPrivateAgentSurface(file)
   );
+}
 
-assert(
-  leaked.length === 0,
-  `private surfaces are tracked publicly:\n${leaked.map((file) => `- ${file}`).join("\n")}`
-);
+function bulletList(files) {
+  return files.map((file) => `- ${file}`).join("\n");
+}
+
+function failureMessage(tracked, stageable) {
+  const sections = ["private surfaces must stay local-only"];
+  if (tracked.length > 0) {
+    sections.push(`tracked public GitHub exposure:\n${bulletList(tracked)}`);
+  }
+  if (stageable.length > 0) {
+    sections.push(`unignored local files that could be staged:\n${bulletList(stageable)}`);
+  }
+  sections.push(
+    [
+      "FIX BY:",
+      "- keep the local files on disk",
+      "- add or repair .gitignore coverage for unignored private paths",
+      "- remove tracked private paths with git rm --cached -- <path>",
+      "- do not delete local skills, agents, rules, or hooks to satisfy this guard",
+    ].join("\n")
+  );
+  return sections.join("\n\n");
+}
+
+const tracked = gitPaths(["ls-files", "--cached"]).filter(exists).filter(isPrivateSurface);
+
+const stageable = gitPaths(["ls-files", "--others", "--exclude-standard"])
+  .filter(exists)
+  .filter(isPrivateSurface);
+
+assert(tracked.length === 0 && stageable.length === 0, failureMessage(tracked, stageable));
 
 ok("PUBLIC_REPO_SURFACE_OK");

@@ -4,16 +4,27 @@ import { fileURLToPath } from "node:url";
 
 import { evaluateBashPolicy } from "./guards/bash-policy-checks.mjs";
 
-export function evaluateGeneralGuardHook({ payload = {}, env = process.env } = {}) {
+export function evaluateGeneralGuardHook({
+  payload = {},
+  env = process.env,
+} = {}) {
   if ((payload?.hook_event_name ?? "PreToolUse") !== "PreToolUse") {
     return {};
   }
-  const toolName = String(payload?.tool_name ?? "");
-  if (!["Bash", "exec_command", "functions.exec_command"].includes(toolName)) {
+  if (
+    !["Bash", "exec_command", "functions.exec_command"].includes(
+      String(payload?.tool_name ?? "")
+    )
+  ) {
     return {};
   }
+
   const result = evaluateBashPolicy(payload, env);
-  return result.action === "block" ? deny(result.message) : {};
+  if (result.action !== "block") {
+    return {};
+  }
+
+  return deny(result.message);
 }
 
 function deny(reason) {
@@ -39,10 +50,13 @@ function runtimeErrorResult(error) {
 }
 
 async function main() {
+  let payload = {};
   try {
     const raw = readFileSync(0, "utf8");
-    const payload = raw.trim() ? JSON.parse(raw) : {};
-    process.stdout.write(`${JSON.stringify(evaluateGeneralGuardHook({ payload }))}\n`);
+    payload = raw.trim() ? JSON.parse(raw) : {};
+    process.stdout.write(
+      `${JSON.stringify(evaluateGeneralGuardHook({ payload }))}\n`
+    );
   } catch (error) {
     process.stdout.write(`${JSON.stringify(runtimeErrorResult(error))}\n`);
   }

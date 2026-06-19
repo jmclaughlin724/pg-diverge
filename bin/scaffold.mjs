@@ -152,8 +152,7 @@ function claudeHookConfig(runner) {
           hooks: [
             {
               type: "command",
-              command: "node",
-              args: [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`],
+              command: `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`,
               timeout: 10,
             },
           ],
@@ -188,8 +187,7 @@ function claudeHookConfig(runner) {
           hooks: [
             {
               type: "command",
-              command: "node",
-              args: [`${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`],
+              command: `node "${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`,
               timeout: 130,
             },
           ],
@@ -1216,28 +1214,13 @@ function mergeHooks(existing, source) {
   const sourceHooks = isRecord(source.hooks) ? source.hooks : {};
   const mergedHooks = isRecord(merged.hooks) ? merged.hooks : {};
   merged.hooks = mergedHooks;
-  const allManagedScripts = new Set([
-    ...Object.values(sourceHooks)
-      .filter(Array.isArray)
-      .flatMap((entries) => entries.flatMap(hookDefinitions))
-      .map(managedHookScript)
-      .filter((name) => name !== undefined),
-  ]);
-  const allManagedSupaschemaHooks = new Set([
-    ...Object.values(sourceHooks)
-      .filter(Array.isArray)
-      .flatMap((entries) => entries.flatMap(hookDefinitions))
-      .map(managedSupaschemaHook)
-      .filter((name) => name !== undefined),
-  ]);
+  const sourceManagedScripts = managedScriptsFromHooks(sourceHooks);
 
   for (const [eventName, existingEntries] of Object.entries(mergedHooks)) {
     if (Array.isArray(existingEntries)) {
-      mergedHooks[eventName] = withoutManagedHooks(
+      mergedHooks[eventName] = withoutLegacyBrokenClaudeScriptHooks(
         existingEntries,
-        new Set(),
-        allManagedScripts,
-        allManagedSupaschemaHooks
+        sourceManagedScripts
       );
     }
   }
@@ -1246,25 +1229,66 @@ function mergeHooks(existing, source) {
     if (!Array.isArray(sourceEntries)) {
       continue;
     }
-    const sourceHookDefs = sourceEntries.flatMap(hookDefinitions);
-    const signatures = new Set(sourceHookDefs.map(hookSignature));
-    const managedScripts = new Set(
-      sourceHookDefs.map(managedHookScript).filter((name) => name !== undefined)
-    );
-    const managedSupaschemaHooks = new Set(
-      sourceHookDefs.map(managedSupaschemaHook).filter((name) => name !== undefined)
-    );
     const existingEntries = Array.isArray(mergedHooks[eventName]) ? mergedHooks[eventName] : [];
-    mergedHooks[eventName] = [
-      ...withoutManagedHooks(existingEntries, signatures, managedScripts, managedSupaschemaHooks),
-      ...structuredClone(sourceEntries),
-    ];
+    mergedHooks[eventName] = mergeHookEntries(existingEntries, sourceEntries);
   }
 
   return merged;
 }
 
-function withoutManagedHooks(entries, signatures, managedScripts, managedSupaschemaHooks) {
+function managedScriptsFromHooks(sourceHooks) {
+  return new Set(
+    Object.values(sourceHooks)
+      .filter(Array.isArray)
+      .flatMap((entries) => entries.flatMap(hookDefinitions))
+      .map(managedHookScript)
+      .filter((name) => name !== undefined)
+  );
+}
+
+function mergeHookEntries(existingEntries, sourceEntries) {
+  const existingKeys = new Set(existingEntries.flatMap(hookDefinitions).map(managedHookKey));
+  return [...existingEntries, ...missingHookEntries(existingEntries, sourceEntries, existingKeys)];
+}
+
+function missingHookEntries(existingEntries, sourceEntries, existingKeys) {
+  const entries = [];
+  for (const sourceEntry of sourceEntries) {
+    const entry = missingHookEntry(existingEntries, sourceEntry, existingKeys);
+    if (entry !== undefined) {
+      entries.push(entry);
+    }
+  }
+  return entries;
+}
+
+function missingHookEntry(existingEntries, sourceEntry, existingKeys) {
+  if (!(isRecord(sourceEntry) && Array.isArray(sourceEntry.hooks))) {
+    return hasEquivalentHookEntry(existingEntries, sourceEntry)
+      ? undefined
+      : structuredClone(sourceEntry);
+  }
+  const missingHooks = sourceEntry.hooks.filter((hook) => useMissingHookKey(hook, existingKeys));
+  return missingHooks.length > 0
+    ? { ...structuredClone(sourceEntry), hooks: missingHooks }
+    : undefined;
+}
+
+function hasEquivalentHookEntry(existingEntries, sourceEntry) {
+  const signature = hookSignature(sourceEntry);
+  return existingEntries.some((entry) => hookSignature(entry) === signature);
+}
+
+function useMissingHookKey(hook, existingKeys) {
+  const key = managedHookKey(hook);
+  if (existingKeys.has(key)) {
+    return false;
+  }
+  existingKeys.add(key);
+  return true;
+}
+
+function withoutLegacyBrokenClaudeScriptHooks(entries, managedScripts) {
   const kept = [];
   for (const entry of entries) {
     if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
@@ -1272,7 +1296,7 @@ function withoutManagedHooks(entries, signatures, managedScripts, managedSupasch
       continue;
     }
     const hooks = entry.hooks.filter(
-      (hook) => !isSupersededHook(hook, signatures, managedScripts, managedSupaschemaHooks)
+      (hook) => !isLegacyBrokenClaudeScriptHook(hook, managedScripts)
     );
     if (hooks.length > 0) {
       kept.push({ ...entry, hooks });
@@ -1281,19 +1305,27 @@ function withoutManagedHooks(entries, signatures, managedScripts, managedSupasch
   return kept;
 }
 
-function isSupersededHook(hook, signatures, managedScripts, managedSupaschemaHooks) {
+function isLegacyBrokenClaudeScriptHook(hook, managedScripts) {
   if (!isRecord(hook)) {
     return false;
   }
-  if (signatures.has(hookSignature(hook))) {
-    return true;
+  if (hook.command !== "node" || !Array.isArray(hook.args) || hook.args.length !== 1) {
+    return false;
+  }
+  const [scriptPath] = hook.args;
+  if (typeof scriptPath !== "string" || !scriptPath.startsWith(`${claudeProjectDir}/`)) {
+    return false;
   }
   const script = managedHookScript(hook);
-  if (script !== undefined && managedScripts.has(script)) {
-    return true;
-  }
+  return script !== undefined && managedScripts.has(script);
+}
+
+function managedHookKey(hook) {
   const supaschemaHook = managedSupaschemaHook(hook);
-  return supaschemaHook !== undefined && managedSupaschemaHooks.has(supaschemaHook);
+  if (supaschemaHook !== undefined) {
+    return `supaschema:${supaschemaHook}`;
+  }
+  return `signature:${hookSignature(hook)}`;
 }
 
 function managedHookScript(hook) {

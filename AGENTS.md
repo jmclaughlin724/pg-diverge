@@ -33,7 +33,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 ### Use
 
 - Be direct.
-- Optimize for the smallest correct end state, not the smallest patch.
+- Optimize for clarity, correctness, and verifiability, not for cleverness or brevity.
 - Prefer editing existing files over creating new abstractions.
 - Do not mark work complete until the relevant checks have run or a blocking reason is stated.
 - Core writing style of short, operational, and enforceable sentences.
@@ -56,7 +56,7 @@ This file defines the repository-wide operating contract for AI coding agents. K
 2. Identify the owning app, package, service, or database area.
 3. Verify upstream best practices from the canonical source.
 4. Apply the Repo-Wide Change Discipline below for duplicates, redundancies, and entry points before introducing a new surface.
-5. Choose the smallest correct end state first, then make every change required to reach it. Do not preserve backwards compatibility behavior or paths, duplicate owners, wrappers, aliases, shims, placeholders, TODOs, or redundant or convenience entry points only to keep the patch small.
+5. Identify end state, then make every change required to reach it in the fewest steps. Do not preserve backwards compatibility behavior or paths, duplicate owners, wrappers, aliases, shims, placeholders, TODOs, or redundant or convenience entry points only to keep the patch small.
 
 ### After editing
 
@@ -71,7 +71,7 @@ Root `AGENTS.md` is the only owner of this repo-wide action sequence. Do not res
 
 This sequence applies to every repository change: code, tests, docs, schemas, configs, scripts, prompts, generated surfaces, and verification.
 
-1. Define the requested end state, the smallest correct end state, the concept being changed, the canonical owner, and the single entry point agents or users should use.
+1. Define the requested end state, the concept being changed, the canonical owner, and the single entry point agents or users should use.
 2. Inspect the accepted scope for existing owners, aliases, wrappers, helpers, types, schemas, docs, configs, routes, exports, workflows, commands, prompts, placeholders, TODOs, instructions, and entry points before adding a new surface.
 3. Treat current structure and current consumers as evidence and a worklist, not as proof of the target shape. Burn down avoidable duplication and redundancy in the same change by extending, moving, merging, or deleting in the canonical owner before adding a new surface.
 4. Keep a separate surface only for a genuinely distinct runtime, storage, compliance, lifecycle, or external-contract boundary.

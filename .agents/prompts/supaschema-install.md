@@ -38,7 +38,7 @@ Use the matching local runner for every command after install:
 | Yarn | `yarn exec supaschema <cmd>` |
 | Bun | `bunx --no-install supaschema <cmd>` |
 
-Always run the matching explicit setup command from the owning package directory after install. The command is idempotent; it leaves existing config intact and refreshes the managed agent surfaces. `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, and migration paths with the packaged supaschema rule, skill, hook, config, and prompt bundle.
+Always run the matching explicit setup command from the owning package directory after install. The command is idempotent; it leaves existing config intact, preserves existing hook entries, appends missing supaschema hook entries at the end of the relevant event array, and refreshes the managed agent surfaces. `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, and migration paths with the packaged supaschema rule, skill, hook, config, and prompt bundle.
 
 ```bash
 npm exec -- supaschema init
