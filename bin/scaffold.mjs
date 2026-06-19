@@ -621,7 +621,7 @@ function discoverDatabaseUrlEnvs(projectDir) {
 
 function isEnvSourceFile(projectDir, file) {
   const path = rel(projectDir, file);
-  const name = path.split(sep).at(-1) ?? "";
+  const name = path.split("/").at(-1) ?? "";
   if (name === ".env.enc") {
     return false;
   }
@@ -717,9 +717,14 @@ function isPostgresUrl(value) {
 
 function databaseUrlEnvLane(projectDir, file) {
   const path = rel(projectDir, file).toLowerCase();
-  const parts = path.split(sep);
-  const name = path.split(sep).at(-1) ?? "";
-  if (parts.includes(".github") || name.includes("production") || name.includes("prod")) {
+  const parts = path.split("/");
+  const name = parts.at(-1) ?? "";
+  if (
+    parts.includes(".github") ||
+    parts.includes(".vercel") ||
+    name.includes("production") ||
+    name.includes("prod")
+  ) {
     return "remote";
   }
   if (name.includes("example") || name.includes("sample")) {
