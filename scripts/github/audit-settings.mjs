@@ -130,17 +130,21 @@ for (const [branch, branchPolicy] of Object.entries(policy.branches ?? {})) {
     }
   }
 
-  const expectedReviews = branchPolicy.required_pull_request_reviews ?? {};
   const actualReviews = protection.required_pull_request_reviews ?? {};
-  for (const [key, expected] of Object.entries(expectedReviews)) {
-    const actual = actualReviews[key];
-    if (actual !== expected) {
-      failures.push(
-        `branches.${branch}.required_pull_request_reviews.${key} expected ${JSON.stringify(
-          expected
-        )}, got ${JSON.stringify(actual)}`
-      );
+  if ("required_pull_request_reviews" in branchPolicy) {
+    const expectedReviews = branchPolicy.required_pull_request_reviews ?? {};
+    for (const [key, expected] of Object.entries(expectedReviews)) {
+      const actual = actualReviews[key];
+      if (actual !== expected) {
+        failures.push(
+          `branches.${branch}.required_pull_request_reviews.${key} expected ${JSON.stringify(
+            expected
+          )}, got ${JSON.stringify(actual)}`
+        );
+      }
     }
+  } else if (protection.required_pull_request_reviews) {
+    failures.push(`branches.${branch}.required_pull_request_reviews has unowned requirement`);
   }
 
   const expectedStatus = branchPolicy.required_status_checks ?? {};

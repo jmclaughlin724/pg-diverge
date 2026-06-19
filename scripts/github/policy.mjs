@@ -94,16 +94,18 @@ function fakeGhJson(args, options) {
       enforce_admins: { enabled: main.enforce_admins },
       required_conversation_resolution: { enabled: main.required_conversation_resolution },
       required_linear_history: { enabled: main.required_linear_history },
-      required_pull_request_reviews: main.required_pull_request_reviews,
+      required_pull_request_reviews: main.required_pull_request_reviews ?? null,
       required_signatures: { enabled: main.required_signatures },
-      required_status_checks: {
-        checks: main.required_status_checks.contexts.map((context) => ({
-          app_id: main.required_status_checks.app_id,
-          context,
-        })),
-        contexts: main.required_status_checks.contexts,
-        strict: main.required_status_checks.strict,
-      },
+      required_status_checks: main.required_status_checks
+        ? {
+            checks: main.required_status_checks.contexts.map((context) => ({
+              app_id: main.required_status_checks.app_id,
+              context,
+            })),
+            contexts: main.required_status_checks.contexts,
+            strict: main.required_status_checks.strict,
+          }
+        : null,
     };
   }
   if (endpoint === `repos/${repo}/rulesets`) {

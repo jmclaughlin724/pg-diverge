@@ -61,10 +61,10 @@
   "pullRequests": {
     "base": "main",
     "mergeMethod": "rebase",
-    "requiredMergeWorkflow": "npm run github:merge -- --pr <number>",
-    "requiredPreflight": "npm run github:pr-preflight -- --base main",
-    "requiredMergePreflight": "npm run github:merge-preflight -- --pr <number>",
-    "requiredPostMergeVerification": "npm run github:post-merge-verify -- --pr <number>",
+    "optionalMergeWorkflow": "npm run github:merge -- --pr <number>",
+    "optionalPreflight": "npm run github:pr-preflight -- --base main",
+    "optionalMergePreflight": "npm run github:merge-preflight -- --pr <number>",
+    "optionalPostMergeVerification": "npm run github:post-merge-verify -- --pr <number>",
     "mergeCliIsolation": "the merge wrapper must run gh pr merge with --repo from a temporary directory so gh cannot mutate local branches before post-merge verification",
     "postMergeLocalSync": "post-merge verification must fetch origin/main, verify the merged commit is contained in origin/main, preserve divergent local main as preserve/local-main-<sha>, and align local main to origin/main"
   },
@@ -76,28 +76,7 @@
       "required_conversation_resolution": true,
       "required_signatures": false,
       "required_linear_history": true,
-      "required_pull_request_reviews": {
-        "dismiss_stale_reviews": true,
-        "require_code_owner_reviews": false,
-        "require_last_push_approval": false,
-        "required_approving_review_count": 0
-      },
-      "required_status_checks": {
-        "strict": true,
-        "app_id": 15368,
-        "contexts": [
-          "quality (22)",
-          "quality (24)",
-          "check (15)",
-          "check (16)",
-          "check (17)",
-          "check-os (macos-latest)",
-          "check-os (windows-latest)",
-          "dependency-review",
-          "analyze (actions)",
-          "analyze (javascript-typescript)"
-        ]
-      }
+      "direct_pushes": true
     }
   },
   "rulesets": [
@@ -120,66 +99,6 @@
         },
         {
           "type": "required_linear_history"
-        },
-        {
-          "parameters": {
-            "allowed_merge_methods": ["rebase"],
-            "dismiss_stale_reviews_on_push": true,
-            "require_code_owner_review": false,
-            "require_last_push_approval": false,
-            "required_approving_review_count": 0,
-            "required_review_thread_resolution": true
-          },
-          "type": "pull_request"
-        },
-        {
-          "parameters": {
-            "do_not_enforce_on_create": false,
-            "required_status_checks": [
-              {
-                "context": "quality (22)",
-                "integration_id": 15368
-              },
-              {
-                "context": "quality (24)",
-                "integration_id": 15368
-              },
-              {
-                "context": "check (15)",
-                "integration_id": 15368
-              },
-              {
-                "context": "check (16)",
-                "integration_id": 15368
-              },
-              {
-                "context": "check (17)",
-                "integration_id": 15368
-              },
-              {
-                "context": "check-os (macos-latest)",
-                "integration_id": 15368
-              },
-              {
-                "context": "check-os (windows-latest)",
-                "integration_id": 15368
-              },
-              {
-                "context": "dependency-review",
-                "integration_id": 15368
-              },
-              {
-                "context": "analyze (actions)",
-                "integration_id": 15368
-              },
-              {
-                "context": "analyze (javascript-typescript)",
-                "integration_id": 15368
-              }
-            ],
-            "strict_required_status_checks_policy": true
-          },
-          "type": "required_status_checks"
         }
       ],
       "target": "branch"

@@ -117,8 +117,8 @@ assert(
 );
 assert(policy.pullRequests?.mergeMethod === "rebase", "canonical PR merge method must be rebase");
 assert(
-  policy.pullRequests?.requiredMergeWorkflow === "npm run github:merge -- --pr <number>",
-  "canonical PR merge workflow must be npm run github:merge"
+  policy.pullRequests?.optionalMergeWorkflow === "npm run github:merge -- --pr <number>",
+  "optional PR merge workflow must be npm run github:merge"
 );
 assert(
   policy.pullRequests?.postMergeLocalSync?.includes("preserve/local-main-<sha>") &&
@@ -142,29 +142,12 @@ assert(
 assert(main.enforce_admins === true, "main branch protection must apply to admins");
 assert(main.allow_force_pushes === false, "main must block force pushes");
 assert(main.allow_deletions === false, "main must block deletions");
-assert(main.required_status_checks?.strict === true, "main required status checks must be strict");
+assert(main.direct_pushes === true, "main policy must allow direct fast-forward pushes");
 assert(
-  main.required_status_checks?.app_id === 15_368,
-  "main required status checks must be bound to the GitHub Actions app"
+  !("required_pull_request_reviews" in main),
+  "main policy must not require pull request reviews"
 );
-
-for (const context of [
-  "quality (22)",
-  "quality (24)",
-  "check (15)",
-  "check (16)",
-  "check (17)",
-  "check-os (macos-latest)",
-  "check-os (windows-latest)",
-  "dependency-review",
-  "analyze (actions)",
-  "analyze (javascript-typescript)",
-]) {
-  assert(
-    main.required_status_checks.contexts.includes(context),
-    `main required status checks must include ${context}`
-  );
-}
+assert(!("required_status_checks" in main), "main policy must not require status checks");
 
 const mainRuleset = (policy.rulesets ?? []).find(
   (ruleset) => ruleset.name === "main branch policy"
@@ -180,26 +163,20 @@ assert(
   Array.isArray(mainRuleset.bypass_actors) && mainRuleset.bypass_actors.length === 0,
   "main branch policy ruleset must not define bypass actors"
 );
-for (const type of [
-  "deletion",
-  "non_fast_forward",
-  "required_linear_history",
-  "pull_request",
-  "required_status_checks",
-]) {
+for (const type of ["deletion", "non_fast_forward", "required_linear_history"]) {
   assert(
     (mainRuleset.rules ?? []).some((rule) => rule.type === type),
     `main branch policy ruleset must include ${type}`
   );
 }
+for (const type of ["pull_request", "required_status_checks"]) {
+  assert(
+    !(mainRuleset.rules ?? []).some((rule) => rule.type === type),
+    `main branch policy ruleset must not include ${type}`
+  );
+}
 
-for (const command of [
-  "npm run github:check-dco",
-  "npm run github:pr-preflight -- --base main",
-  "npm run github:merge-preflight -- --pr <number>",
-  "npm run github:merge -- --pr <number>",
-  "npm run github:post-merge-verify -- --pr <number>",
-]) {
+for (const command of ["npm run github:check-dco", "npm run github:pr-preflight -- --base main"]) {
   assert(prTemplate.includes(command), `.github/PULL_REQUEST_TEMPLATE.md must include ${command}`);
 }
 

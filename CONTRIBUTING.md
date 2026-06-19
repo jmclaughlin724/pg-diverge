@@ -120,20 +120,20 @@ Use the [PR template](./.github/PULL_REQUEST_TEMPLATE.md) as the current checkli
 npm run github:pr-preflight -- --base main
 ```
 
-Before merge, run:
+Direct fast-forward pushes to `main` are allowed by repository policy. For PR merges, run:
 
 ```bash
 npm run github:audit-settings
 npm run github:merge-preflight -- --pr <number>
 ```
 
-Merge with the canonical wrapper:
+Merge PRs with the canonical wrapper when you use the PR lane:
 
 ```bash
 npm run github:merge -- --pr <number>
 ```
 
-The wrapper runs merge preflight, performs the required rebase merge with an explicit GitHub repository from a temporary directory, deletes the PR branch, and runs post-merge verification. This prevents `gh` from mutating local branches before the verifier runs. Post-merge verification fetches `origin/main`, verifies the merged commit is contained in `origin/main`, preserves any divergent local `main` commit as `preserve/local-main-<sha>`, and aligns local `main` to `origin/main`. It stops if checked-out `main` has uncommitted changes.
+The wrapper runs merge preflight, performs a rebase merge with an explicit GitHub repository from a temporary directory, deletes the PR branch, and runs post-merge verification. This prevents `gh` from mutating local branches before the verifier runs. Post-merge verification fetches `origin/main`, verifies the merged commit is contained in `origin/main`, preserves any divergent local `main` commit as `preserve/local-main-<sha>`, and aligns local `main` to `origin/main`. It stops if checked-out `main` has uncommitted changes.
 
 If the GitHub merge already happened outside the wrapper, run:
 
