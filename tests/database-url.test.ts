@@ -460,6 +460,11 @@ describe("init project setup", () => {
         hooks: {
           PreToolUse: [
             {
+              args: legacyClaudeBashPolicyArgs,
+              command: "node",
+              type: "command",
+            },
+            {
               hooks: [{ args: ["scripts/local-policy.mjs"], command: "node", type: "command" }],
             },
             {
@@ -512,6 +517,11 @@ describe("init project setup", () => {
             },
           ],
           PostToolBatch: [
+            {
+              args: legacyClaudeLlmSyncArgs,
+              command: "node",
+              type: "command",
+            },
             {
               hooks: [
                 {

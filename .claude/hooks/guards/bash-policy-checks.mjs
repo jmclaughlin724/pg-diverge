@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const readCommands = new Set([
@@ -823,6 +823,19 @@ async function main() {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  const modulePath = fileURLToPath(import.meta.url);
+  try {
+    return realpathSync(entry) === realpathSync(modulePath);
+  } catch {
+    return entry === modulePath;
+  }
+}
+
+if (isMainModule()) {
   await main();
 }
