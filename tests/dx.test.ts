@@ -715,7 +715,8 @@ describe("schema diff defaults", () => {
     expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
     expect(result.stderr).toContain("--from git:HEAD");
     expect(result.stderr).not.toContain("SUPA_SUPABASE_MANAGED_SCHEMA");
-    expect(result.stdout).toContain("migrations/");
+    const normalizedStdout = result.stdout.split("\\").join("/");
+    expect(normalizedStdout).toContain("migrations/");
     expect(result.stdout).toContain("add_account_name.sql");
     expect(existsSync(join(cwd, "database.types.ts"))).toBe(false);
     expect(existsSync(join(cwd, "database.zod.ts"))).toBe(false);
