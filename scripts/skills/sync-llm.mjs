@@ -242,7 +242,7 @@ function agentBundleFiles(root) {
       (config) => config.path === ".claude/settings.json"
     )?.config;
     const codexHooks = materializeCodexRunner(
-      JSON.parse(fs.readFileSync(path.join(root, ".codex/hooks.json"), "utf8")),
+      consumerCodexHooks(JSON.parse(fs.readFileSync(path.join(root, ".codex/hooks.json"), "utf8"))),
       runner
     );
     files.set(`claude/settings.${packageManager}.json`, jsonText(claudeSettings));
@@ -254,6 +254,46 @@ function agentBundleFiles(root) {
 
 function jsonText(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function consumerCodexHooks(config) {
+  const next = structuredClone(config);
+  const hooks = next?.hooks;
+  if (!hooks || typeof hooks !== "object") {
+    return next;
+  }
+  for (const [eventName, entries] of Object.entries(hooks)) {
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+    hooks[eventName] = entries
+      .map(withoutRepoLocalCodexHooks)
+      .filter((entry) => entry !== undefined);
+  }
+  return next;
+}
+
+function withoutRepoLocalCodexHooks(entry) {
+  if (!entry || typeof entry !== "object") {
+    return entry;
+  }
+  if (isRepoLocalCodexHook(entry)) {
+    return;
+  }
+  if (!Array.isArray(entry.hooks)) {
+    return entry;
+  }
+  const hooks = entry.hooks.filter((hook) => !isRepoLocalCodexHook(hook));
+  return hooks.length > 0 ? { ...entry, hooks } : undefined;
+}
+
+function isRepoLocalCodexHook(hook) {
+  return (
+    hook &&
+    typeof hook === "object" &&
+    typeof hook.command === "string" &&
+    hook.command.includes("scripts/github/ci-inbox.mjs")
+  );
 }
 
 function syncDirectoryMirror(root, surface) {

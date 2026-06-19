@@ -43,6 +43,8 @@ const retiredWorkflowHookPaths = [
   ".codex/hooks/block-generated-migration-edits.mjs",
 ];
 const skillMatcherText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/skills.mjs"), "utf8");
+const hookRunnerText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/runner.mjs"), "utf8");
+const syncLlmText = fs.readFileSync(path.join(ROOT, "scripts/skills/sync-llm.mjs"), "utf8");
 const claudeSkillFiles = fs
   .readdirSync(path.join(ROOT, ".claude/skills"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -58,6 +60,13 @@ for (const hook of [...claudeHooks, ...codexMirrorHookPaths]) {
 }
 for (const hook of retiredWorkflowHookPaths) {
   assert(!exists(hook), `${hook} must not exist; use supaschema hook CLI commands directly`);
+}
+for (const file of [
+  "scripts/github/ci-inbox-core.mjs",
+  "scripts/github/ci-inbox.mjs",
+  "scripts/github/report-ci-failure.mjs",
+]) {
+  assert(exists(file), `${file} must exist for repo-local CI failure inbox DX`);
 }
 
 const claudeSettings = readJson(".claude/settings.json");
@@ -139,7 +148,12 @@ for (const hook of codexRegisteredHookPaths) {
 }
 assert(
   !(codexHooksJson.includes("context-") || codexHooksJson.includes("scripts/agent-hooks")),
-  ".codex/hooks.json must stay consumer-only and must not register repo context enforcement"
+  ".codex/hooks.json must not register repo context enforcement"
+);
+assert(
+  codexHooksJson.includes("scripts/github/ci-inbox.mjs") &&
+    codexHooksJson.includes("Checking GitHub CI failure inbox"),
+  ".codex/hooks.json must register the repo-local CI failure inbox hook"
 );
 assert(
   codexHooksJson.includes("supaschema hook generated-migration-edit") &&
@@ -192,6 +206,20 @@ for (const forbidden of [
 assert(
   skillMatcherText.includes("isSubagentInvocation") && skillMatcherText.includes("agent_id"),
   "scripts/agent-hooks/skills.mjs must downgrade the PreToolUse skill gate to advisory inside subagents (agent_id)"
+);
+assert(
+  hookRunnerText.includes("../github/ci-inbox-core.mjs") &&
+    hookRunnerText.includes("[ciInbox, promptSkills]") &&
+    hookRunnerText.includes("[ciInbox, responseShape]"),
+  "scripts/agent-hooks/runner.mjs must surface GitHub CI failure inbox context through existing Claude hook events"
+);
+assert(
+  syncLlmText.includes("consumerCodexHooks") &&
+    syncLlmText.includes("scripts/github/ci-inbox.mjs") &&
+    !readJson("agent-bundle/codex/hooks.npm.json").hooks?.PreToolUse?.some((entry) =>
+      JSON.stringify(entry).includes("scripts/github/ci-inbox.mjs")
+    ),
+  "sync:llm must strip repo-local CI inbox hooks from packaged Codex hook templates"
 );
 const evidenceGateText = fs.readFileSync(
   path.join(ROOT, "scripts/agent-hooks/detectors.mjs"),

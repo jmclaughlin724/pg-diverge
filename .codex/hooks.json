@@ -9,6 +9,12 @@
             "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/general-guard.mjs\"",
             "timeout": 10,
             "statusMessage": "Checking general Bash safety policy"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/scripts/github/ci-inbox.mjs\" --runtime codex --event PreToolUse",
+            "timeout": 15,
+            "statusMessage": "Checking GitHub CI failure inbox"
           }
         ]
       },

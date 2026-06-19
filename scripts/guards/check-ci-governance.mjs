@@ -87,10 +87,14 @@ function findNamedStep(steps, name) {
   return steps.find((step) => stepName(step) === name);
 }
 
-function trackedWorkflowFiles() {
-  const out = execFileSync("git", ["ls-files", "-z", "--", ".github/workflows"], {
-    cwd: ROOT,
-  }).toString("utf8");
+function workflowFiles() {
+  const out = execFileSync(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".github/workflows"],
+    {
+      cwd: ROOT,
+    }
+  ).toString("utf8");
   return out
     .split("\0")
     .filter(Boolean)
@@ -99,10 +103,10 @@ function trackedWorkflowFiles() {
     .sort();
 }
 
-const files = trackedWorkflowFiles();
+const files = workflowFiles();
 assert(
-  files.length >= 6,
-  `expected at least 6 workflows under .github/workflows, found ${files.length}`
+  files.length >= 7,
+  `expected at least 7 workflows under .github/workflows, found ${files.length}`
 );
 
 const parsed = new Map();
@@ -156,6 +160,66 @@ for (const file of ["ci.yml", "dependency-review.yml"]) {
 assert(
   parsed.get("release.yml")?.doc?.concurrency?.["cancel-in-progress"] !== true,
   "release.yml must not set cancel-in-progress: true (never cancel an in-flight publish)"
+);
+
+const ciFailureReport = parsed.get("ci-failure-report.yml")?.doc;
+assert(ciFailureReport, "ci-failure-report.yml must exist");
+const ciFailureOn = ciFailureReport.on?.workflow_run;
+for (const workflow of ["CI", "Docs", "CodeQL", "Dependency Review"]) {
+  assert(
+    asArray(ciFailureOn?.workflows).includes(workflow),
+    `ci-failure-report.yml must watch ${workflow} workflow_run completions`
+  );
+}
+assert(
+  asArray(ciFailureOn?.types).includes("completed"),
+  "ci-failure-report.yml must run only on completed workflow_run events"
+);
+const ciFailureJob = ciFailureReport.jobs?.report;
+assert(ciFailureJob, "ci-failure-report.yml must define a report job");
+assert(
+  String(ciFailureJob.if ?? "").includes("github.event.workflow_run.event == 'pull_request'") &&
+    String(ciFailureJob.if ?? "").includes("action_required") &&
+    String(ciFailureJob.if ?? "").includes("failure") &&
+    String(ciFailureJob.if ?? "").includes("startup_failure") &&
+    String(ciFailureJob.if ?? "").includes("timed_out"),
+  "ci-failure-report.yml must only comment on failed pull_request workflow runs"
+);
+assert(
+  ciFailureJob["runs-on"] === "ubuntu-latest" && ciFailureJob["timeout-minutes"] === 10,
+  "ci-failure-report.yml report job must run on ubuntu-latest with a 10 minute timeout"
+);
+assert(
+  ciFailureJob.permissions?.actions === "read" &&
+    ciFailureJob.permissions?.checks === "read" &&
+    ciFailureJob.permissions?.contents === "read" &&
+    ciFailureJob.permissions?.issues === "write" &&
+    ciFailureJob.permissions?.["pull-requests"] === "read",
+  "ci-failure-report.yml report job must grant only actions/checks/contents/pull-requests read plus issues write"
+);
+const ciFailureSteps = ciFailureJob.steps ?? [];
+const ciFailureCheckout = ciFailureSteps.find(
+  (step) => stepActionName(step) === "actions/checkout"
+);
+assert(
+  ciFailureCheckout?.with?.["persist-credentials"] === false,
+  "ci-failure-report.yml checkout must keep persist-credentials: false"
+);
+const ciFailureSetupNode = ciFailureSteps.find(
+  (step) => stepActionName(step) === "actions/setup-node"
+);
+assert(
+  Number(ciFailureSetupNode?.with?.["node-version"]) >= 22 &&
+    ciFailureSetupNode?.with?.["package-manager-cache"] === false,
+  "ci-failure-report.yml must use Node 22+ without package-manager caching"
+);
+const ciFailureReporter = findNamedStep(ciFailureSteps, "Report failed workflow run");
+const githubTokenExpression = ["${{", " github.token ", "}}"].join("");
+assert(
+  ciFailureReporter &&
+    stepRun(ciFailureReporter) === "node scripts/github/report-ci-failure.mjs" &&
+    ciFailureReporter.env?.GH_TOKEN === githubTokenExpression,
+  "ci-failure-report.yml must run scripts/github/report-ci-failure.mjs with GH_TOKEN"
 );
 
 const codeql = parsed.get("codeql.yml")?.doc;
@@ -358,7 +422,6 @@ assert(
   "ci.yml quality job must build generated dist before npm run lint:ci resolves dist imports"
 );
 const dcoStep = findNamedStep(qualitySteps, "DCO sign-off");
-const githubTokenExpression = ["${{", " github.token ", "}}"].join("");
 assert(
   packageJson.scripts?.["github:check-dco"] === "node scripts/github/check-dco.mjs",
   "package.json must expose the DCO checker as npm run github:check-dco"
