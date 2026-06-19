@@ -23,23 +23,35 @@ export const defaultWorkflow = {
   type_usage: "zod_validated",
 };
 
-export const defaultEnvironments = {
-  local: { databaseUrl: "$LOCAL_DATABASE_URL" },
-  production: { databaseUrl: "$PRODUCTION_DATABASE_URL" },
-};
+export const defaultEnvironments = {};
 
 export const defaultSync = {
   targets: {
     local: {
       mode: "auto",
       runner: "direct",
-      environment: "local",
       historyTable: "supabase_migrations.schema_migrations",
     },
     remote: {
       mode: "manual",
       runner: "direct",
-      environment: "production",
+      historyTable: "supabase_migrations.schema_migrations",
+      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+      remote: true,
+    },
+  },
+};
+
+export const supabaseSync = {
+  targets: {
+    local: {
+      mode: "auto",
+      runner: "supabase-cli",
+      historyTable: "supabase_migrations.schema_migrations",
+    },
+    remote: {
+      mode: "manual",
+      runner: "supabase-cli",
       historyTable: "supabase_migrations.schema_migrations",
       requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
       remote: true,
@@ -61,12 +73,13 @@ export function expectedInstalledConfig(
     hints: {
       allowedGrantees: [],
       destructive: [],
+      requiredPolicyColumns: {},
       renames: [],
     },
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,
-    sync: defaultSync,
+    sync: schemaPath === "supabase/schemas" ? supabaseSync : defaultSync,
     migrationsDir,
     typesFile: "database.types.ts",
     zodFile: "database.zod.ts",

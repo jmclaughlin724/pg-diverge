@@ -20,6 +20,8 @@ Install scans the repository before writing config:
 
 - one detected schema folder and one detected migrations folder are used automatically;
 - provider markers seed default folders when no existing folders are found;
+- Supabase projects use Supabase CLI sync targets by default;
+- non-Supabase projects reuse existing database URL environment variable names from `.env*` files when present;
 - generic PostgreSQL projects use `database/schemas` and `database/migrations`;
 - multiple candidates that still need confirmation are recorded in `.supaschema/install.json`;
 - interactive terminals can confirm paths immediately.
@@ -42,7 +44,7 @@ Install scans the repository before writing config:
 
 Commit `supaschema.config.json` after confirming paths. It keeps humans, CI, and coding agents on the same schema tree and migration directory.
 
-Resolved installs do not create `.supaschema/`; `supaschema.config.json` is the durable project state.
+Resolved installs do not create `.supaschema/` or supaschema-only credential files; `supaschema.config.json` is the durable project state.
 
 ## Agent addendum
 

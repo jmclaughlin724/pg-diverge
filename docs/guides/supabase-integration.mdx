@@ -6,7 +6,7 @@ keywords: ["Supabase integration", "config.toml", "managed schemas", "sync"]
 
 Use this when a Supabase project should keep Supabase paths and platform-managed schemas while `supaschema` owns generation, safety gates, generated outputs, and guarded apply orchestration.
 
-In this setup, `supaschema sync` can call either the direct PostgreSQL runner or the Supabase CLI adapter. Use `supabase db push` directly only when a separate deployment process intentionally owns apply.
+In this setup, `supaschema sync` uses the Supabase CLI adapter by default. The existing Supabase CLI project link, access token, project ref, and database password remain the credential lane. Use `supabase db push` directly only when a separate deployment process intentionally owns apply.
 
 ## Use this when
 

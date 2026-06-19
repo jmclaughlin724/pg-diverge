@@ -320,7 +320,7 @@ describe("sync pipeline orchestration", () => {
     const result = await syncMigrations({
       config: {
         environments: {
-          local: { databaseUrl: "$LOCAL_DATABASE_URL" },
+          primary: { databaseUrl: "$DATABASE_URL" },
         },
         workflow: {
           rls_safety: "disabled",
@@ -329,13 +329,13 @@ describe("sync pipeline orchestration", () => {
         sync: {
           targets: {
             local: {
-              environment: "local",
+              environment: "primary",
               historyTable: "supabase_migrations.schema_migrations",
               mode: "auto",
               runner: "direct",
             },
             remote: {
-              environment: "local",
+              environment: "primary",
               historyTable: "supabase_migrations.schema_migrations",
               mode: "auto",
               runner: "direct",
@@ -344,7 +344,7 @@ describe("sync pipeline orchestration", () => {
         },
       },
       directory: root,
-      envName: "local",
+      envName: "primary",
       pipeline: true,
       skipDiff: true,
     });

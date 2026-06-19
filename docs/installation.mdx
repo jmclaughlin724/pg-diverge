@@ -72,13 +72,13 @@ Run setup explicitly through the matching local runner after install. It is idem
 
 ## Database URLs
 
-Database URLs are only needed for commands that inspect or compare a live database.
+Database URLs are only needed for commands that inspect, compare, or directly sync a live database. `init` does not write credential values. Supabase projects use the configured Supabase CLI runner. Other PostgreSQL projects reuse existing database URL variable names from `.env*` files in `sync.targets` when present.
 
 ```bash
 SUPASCHEMA_DATABASE_URL="postgres://..." <local-runner> diff
 ```
 
-Use named environments when you need repeatable targets without repeating connection strings.
+Use named environments only when you need an additional named target. Do not create a second credential variable just for supaschema when an application database URL variable already exists.
 
 ## Next steps
 

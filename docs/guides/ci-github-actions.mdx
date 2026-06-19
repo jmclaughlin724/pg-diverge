@@ -87,7 +87,7 @@ jobs:
         with:
           argv: '["sync","--target","remote"]'
         env:
-          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SUPASCHEMA_REMOTE_SYNC_APPROVED: "1"
 ```
 

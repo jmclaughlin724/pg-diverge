@@ -23,6 +23,8 @@ npx supaschema sync --no-diff
 
 `sync.targets` controls target selection. `workflow.migration_sync` only controls whether apply is allowed and whether bare `sync` may select automatic targets: `disabled` refuses apply, `manual` leaves bare `sync` on the dry-run gate, and `auto` lets bare `sync` use targets whose own `mode` is `"auto"`. `--target <name>` is an explicit override for one configured target.
 
+Supabase targets can use `runner: "supabase-cli"` without a `databaseUrl`; the Supabase CLI owns its project-link and authentication lane. Direct PostgreSQL targets can reuse an existing app database URL variable such as `$DIRECT_URL` or `$DATABASE_URL`. A local direct target with no URL uses the normal CLI fallback resolution.
+
 ## Flags
 
 <ParamField path="--migrations-dir" type="path">
@@ -61,6 +63,7 @@ npx supaschema sync --no-diff
 - `workflow.migration_sync` disables apply;
 - deploy type-safety or RLS-safety gates fail;
 - `--env` or `--database-url` attempts to override more than one selected target;
+- a selected direct remote target has no database URL;
 - a remote automatic target lacks its configured runtime approval environment variable.
 
 ## Exit codes

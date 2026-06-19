@@ -725,27 +725,11 @@ function resolveTargetUrl(
       return resolveDatabaseUrl(options.databaseUrl);
     }
     if (options.envName !== undefined) {
-      const env = config.environments[options.envName];
-      if (env === undefined) {
-        diagnostics.push(
-          diagnostic("SUPA_SYNC_ENV_UNKNOWN", "error", `--env "${options.envName}" is not defined`)
-        );
-        return;
-      }
-      return resolveDatabaseUrl(env.databaseUrl);
+      return resolveTargetEnvOverride(options.envName, config, diagnostics);
     }
     const value = target.databaseUrl ?? config.environments[target.environment ?? ""]?.databaseUrl;
     if (value === undefined) {
-      if (target.environment !== undefined || isRemoteTargetName(target, selection.name)) {
-        pushTargetUrlDiagnostic(
-          diagnostics,
-          selection.name,
-          target.environment === undefined
-            ? `sync target ${selection.name} does not define a database URL`
-            : `sync target ${selection.name} references unknown environment "${target.environment}"`
-        );
-      }
-      return;
+      return resolveMissingTargetUrl(selection, target, diagnostics, runner);
     }
     return resolveDatabaseUrl(value);
   } catch (error) {
@@ -758,6 +742,64 @@ function resolveTargetUrl(
     }
     return;
   }
+}
+
+function resolveTargetEnvOverride(
+  envName: string,
+  config: SupaschemaConfig,
+  diagnostics: Diagnostic[]
+): string | undefined {
+  const env = config.environments[envName];
+  if (env === undefined) {
+    diagnostics.push(
+      diagnostic("SUPA_SYNC_ENV_UNKNOWN", "error", `--env "${envName}" is not defined`)
+    );
+    return;
+  }
+  return resolveDatabaseUrl(env.databaseUrl);
+}
+
+function resolveMissingTargetUrl(
+  selection: SyncTargetSelection,
+  target: SupaschemaConfig["sync"]["targets"][string],
+  diagnostics: Diagnostic[],
+  runner: MigrationRunnerKind
+): string | undefined {
+  if (target.environment !== undefined) {
+    pushTargetUrlDiagnostic(
+      diagnostics,
+      selection.name,
+      `sync target ${selection.name} references unknown environment "${target.environment}"`
+    );
+    return;
+  }
+  if (runner === "supabase-cli") {
+    return;
+  }
+  if (isRemoteTargetName(target, selection.name)) {
+    pushTargetUrlDiagnostic(
+      diagnostics,
+      selection.name,
+      `sync target ${selection.name} does not define a database URL`
+    );
+    return;
+  }
+  return resolveLocalTargetUrlFallback(selection, diagnostics);
+}
+
+function resolveLocalTargetUrlFallback(
+  selection: SyncTargetSelection,
+  diagnostics: Diagnostic[]
+): string | undefined {
+  const fallback = resolveDatabaseUrl();
+  if (fallback === undefined && selection.automatic) {
+    pushTargetUrlDiagnostic(
+      diagnostics,
+      selection.name,
+      `sync target ${selection.name} has no resolved database URL fallback`
+    );
+  }
+  return fallback;
 }
 
 function pushTargetUrlDiagnostic(
@@ -1412,7 +1454,7 @@ function automaticSyncPlan(pathState: SchemaPathState): AutomaticSyncPlan {
   const blockers: string[] = [];
   for (const [name, target] of selected) {
     const url = target.databaseUrl ?? pathState.environments[target.environment ?? ""]?.databaseUrl;
-    const urlBlocker = unresolvedUrlReason(name, url);
+    const urlBlocker = unresolvedSyncUrlReason(name, target, url);
     if (urlBlocker !== undefined) {
       blockers.push(urlBlocker);
     }
@@ -1452,6 +1494,25 @@ function unresolvedUrlReason(name: string, value: string | undefined): string | 
     }
   }
   return;
+}
+
+function unresolvedSyncUrlReason(
+  name: string,
+  target: HookSyncTarget,
+  value: string | undefined
+): string | undefined {
+  if (typeof value === "string" && value.trim() !== "") {
+    return unresolvedUrlReason(name, value);
+  }
+  if (target.runner === "supabase-cli") {
+    return;
+  }
+  if (isRemoteSyncTarget(name, target)) {
+    return `sync target ${name} has no resolvable database URL`;
+  }
+  return resolveDatabaseUrl() === undefined
+    ? `sync target ${name} has no resolvable database URL`
+    : undefined;
 }
 
 function isRemoteSyncTarget(name: string, target: Pick<HookSyncTarget, "remote">): boolean {

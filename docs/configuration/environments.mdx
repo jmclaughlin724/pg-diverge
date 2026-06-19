@@ -15,7 +15,7 @@ This includes:
 - `sync`;
 - `doctor`.
 
-You usually do not need to repeat the URL on every command. Configure each local, staging, preview, or production PostgreSQL target once, then select it with `--env` or reference it from a named `sync.targets` entry.
+You usually do not need to repeat the URL on every command. `supaschema init` reuses existing database URL environment variable names from `.env*` files in `sync.targets` when it can identify them. Configure named environments only when you need an extra named target.
 
 ## Resolution order
 
@@ -28,21 +28,22 @@ Explicit values and named environments support `$ENV_NAME` indirection. If the e
 
 <Note>
   `supabase/config.toml` is read only to discover the local Supabase database
-  URL. Other provider config or infrastructure files are install-time markers
-  only. Schema locations and named database URL references come from
-  `supaschema.config.json`.
+  URL. Supabase installs also default sync targets to the Supabase CLI runner,
+  so existing Supabase CLI project link and authentication state remain the
+  apply credential lane. Other provider config or infrastructure files are
+  install-time markers only. Schema locations and sync target references come
+  from `supaschema.config.json`.
 </Note>
 
 ## Named environments
 
-Define targets once in `supaschema.config.json` and select them per run with `--env`:
+Define extra targets in `supaschema.config.json` and select them per run with `--env`:
 
 ```json
 {
   "environments": {
-    "local": { "databaseUrl": "$LOCAL_DATABASE_URL" },
     "staging": { "databaseUrl": "$STAGING_DB" },
-    "production": { "databaseUrl": "$PRODUCTION_DATABASE_URL" }
+    "production": { "databaseUrl": "$DATABASE_URL" }
   }
 }
 ```
@@ -52,11 +53,11 @@ supaschema --env staging diff --fail-on-diff   # drift gate against staging
 supaschema --env staging migrations            # reconcile files vs staging history
 ```
 
-Keeping the actual URLs in environment variables (`$STAGING_DB`) means the committed config carries no credentials — the recommended pattern for CI and for teams.
+Keeping the actual URLs in environment variables means the committed config carries no credentials. Reuse the application’s existing variable names when they already exist.
 
 ## Sync targets
 
-`sync.targets` names the apply or deploy targets that `supaschema sync` can reconcile. A target must select exactly one URL owner: either `environment` or `databaseUrl`.
+`sync.targets` names the apply or deploy targets that `supaschema sync` can reconcile. A target may set `databaseUrl`, reference a named `environment`, or omit both to use the runner/default database URL fallback.
 
 ```json
 {
@@ -65,13 +66,13 @@ Keeping the actual URLs in environment variables (`$STAGING_DB`) means the commi
       "local": {
         "mode": "auto",
         "runner": "direct",
-        "environment": "local",
+        "databaseUrl": "$DIRECT_URL",
         "historyTable": "supabase_migrations.schema_migrations"
       },
       "remote": {
         "mode": "manual",
         "runner": "direct",
-        "environment": "production",
+        "databaseUrl": "$DATABASE_URL",
         "historyTable": "supabase_migrations.schema_migrations",
         "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
         "remote": true
@@ -84,9 +85,10 @@ Keeping the actual URLs in environment variables (`$STAGING_DB`) means the commi
 `mode: "auto"` makes a target selectable by bare `supaschema sync` when `workflow.migration_sync` is `"auto"`. The installed default is `"auto"`, so target config decides selection: local, staging, preview, and remote targets all use the same `mode` rule. Remote targets also require a runtime approval variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1` before automatic deploy.
 
 <Warning>
-  Do not hard-code connection strings in scripts, config, or CI. Use `$ENV_NAME`
-  indirection or `SUPASCHEMA_DATABASE_URL`, and inject the secret from your CI
-  provider's secret store.
+  Do not hard-code connection strings in scripts, config, or CI. Use existing
+  `$ENV_NAME` indirection, `SUPASCHEMA_DATABASE_URL` as a fallback, or the
+  configured provider runner, and inject secrets from your CI provider's secret
+  store.
 </Warning>
 
 ## Remote targets and `verify`

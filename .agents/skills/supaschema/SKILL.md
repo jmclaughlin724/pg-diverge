@@ -19,7 +19,7 @@ If this skill was installed through `npx skills`, treat it as portable workflow 
 
 Before the first schema edit, inspect `supaschema.config.json`. Normal resolved installs do not create `.supaschema/`; if `.supaschema/install.json` exists, treat it as pending path-confirmation state. If it says `"pathConfirmationNeeded": true`, inspect its candidate `schemaPaths` and `migrationsDirs`, ask the user which `schemaPaths`, `sources.to`, and `migrationsDir` to use, update `supaschema.config.json`, then run the workflow. Do not generate a migration from a guessed path; the bundled hooks also skip auto-diff until all three fields are explicit.
 
-Use the configured `schemaPaths`, `sources`, and `migrationsDir` as the source of truth. Do not create a parallel schema tree, a second migrations directory, or a new config unless the user explicitly asks to change project layout.
+Use the configured `schemaPaths`, `sources`, and `migrationsDir` as the source of truth. Do not create a parallel schema tree, a second migrations directory, duplicate database credentials, or a new config unless the user explicitly asks to change project layout. Supabase installs use the Supabase CLI runner by default; other PostgreSQL installs reuse detected existing database URL environment variable names in `sync.targets` when present.
 
 ## Config Reference
 
@@ -30,7 +30,7 @@ Read `supaschema.config.json` before editing schemas. Treat these four decisions
 - **Generated contracts:** `typesFile`, `zodFile`, `workflow.type_generation`, `workflow.zod_generation`, and `workflow.type_usage`. The default `create_or_refresh` policy creates or updates TypeScript and Zod outputs after `diff`; `zod_validated` means agents should use generated Zod validators at runtime boundaries.
 - **Apply policy:** `workflow.migration_sync` and `sync.targets`. The default `migration_sync: "auto"` keeps bare `supaschema sync` apply-capable, but only targets with `mode: "auto"` are selected. Set a target to `manual` to omit it from bare sync, set `workflow.migration_sync` to `manual` to require `--target <name>`, or set it to `disabled` to block apply. Remote targets also require `requireApprovalEnv`.
 
-Other config fields refine those decisions: `managedSchemas` blocks externally owned schemas, `transactionMode` mirrors the apply runner, `environments` holds `$ENV_NAME` URL references, and `adapter: "auto"` is a provider-neutral sentinel rather than workflow consent.
+Other config fields refine those decisions: `managedSchemas` blocks externally owned schemas, `transactionMode` mirrors the apply runner, `environments` optionally holds extra `$ENV_NAME` URL references, and `adapter: "auto"` is a provider-neutral sentinel rather than workflow consent.
 
 ## Workflow
 

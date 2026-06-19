@@ -36,14 +36,7 @@
       "description": "Controls whether destructive operations require exact hints, always block, or are allowed."
     },
     "environments": {
-      "default": {
-        "local": {
-          "databaseUrl": "$LOCAL_DATABASE_URL"
-        },
-        "production": {
-          "databaseUrl": "$PRODUCTION_DATABASE_URL"
-        }
-      },
+      "default": {},
       "type": "object",
       "propertyNames": {
         "type": "string"
@@ -62,14 +55,7 @@
       },
       "description": "Named database URL references used by --env. Store credentials in environment variables.",
       "examples": [
-        {
-          "local": {
-            "databaseUrl": "$LOCAL_DATABASE_URL"
-          },
-          "production": {
-            "databaseUrl": "$PRODUCTION_DATABASE_URL"
-          }
-        },
+        {},
         {
           "staging": {
             "databaseUrl": "$STAGING_DB"
@@ -268,13 +254,11 @@
           "local": {
             "mode": "auto",
             "runner": "direct",
-            "environment": "local",
             "historyTable": "supabase_migrations.schema_migrations"
           },
           "remote": {
             "mode": "manual",
             "runner": "direct",
-            "environment": "production",
             "historyTable": "supabase_migrations.schema_migrations",
             "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
             "remote": true
@@ -288,13 +272,11 @@
             "local": {
               "mode": "auto",
               "runner": "direct",
-              "environment": "local",
               "historyTable": "supabase_migrations.schema_migrations"
             },
             "remote": {
               "mode": "manual",
               "runner": "direct",
-              "environment": "production",
               "historyTable": "supabase_migrations.schema_migrations",
               "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
               "remote": true
@@ -354,13 +336,11 @@
             "local": {
               "mode": "auto",
               "runner": "direct",
-              "environment": "local",
               "historyTable": "supabase_migrations.schema_migrations"
             },
             "remote": {
               "mode": "manual",
               "runner": "direct",
-              "environment": "production",
               "historyTable": "supabase_migrations.schema_migrations",
               "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
               "remote": true

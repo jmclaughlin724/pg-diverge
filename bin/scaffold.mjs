@@ -31,6 +31,17 @@ const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const pnpmWorkspaceFile = "pnpm-workspace.yaml";
 const pnpmBuildApprovalLine = "  supaschema: true";
+const databaseUrlEnvPriority = [
+  "DIRECT_URL",
+  "DATABASE_DIRECT_URL",
+  "POSTGRES_URL_NON_POOLING",
+  "SUPABASE_DB_URL",
+  "DATABASE_URL",
+  "POSTGRES_URL",
+  "POSTGRES_PRISMA_URL",
+  "POSTGRES_DATABASE_URL",
+  "PGDATABASE_URL",
+];
 const agentPaths = [
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema",
@@ -475,9 +486,10 @@ async function resolvePathSelection(target, scan, existingConfig, interactive) {
     return {
       adapter: existingConfig.adapter,
       candidates: scan,
+      databaseUrls: defaults.databaseUrls,
       migrationsDir: existingConfig.migrationsDir,
       pathConfirmationNeeded: false,
-      provider: existingConfig.provider,
+      provider: existingConfig.provider ?? defaults.provider,
       schemaPaths: existingConfig.schemaPaths,
       source: "existing-config",
     };
@@ -488,6 +500,7 @@ async function resolvePathSelection(target, scan, existingConfig, interactive) {
   let selection = {
     adapter: defaults.adapter,
     candidates: scan,
+    databaseUrls: defaults.databaseUrls,
     migrationsDir: migrations.path,
     pathConfirmationNeeded: schema.needsConfirmation || migrations.needsConfirmation,
     provider: defaults.provider,
@@ -526,6 +539,7 @@ async function promptForSelection(target, selection) {
     );
     return {
       ...selection,
+      databaseUrls: projectDefaults(target).databaseUrls,
       migrationsDir,
       pathConfirmationNeeded: false,
       schemaPaths: [schemaPaths],
@@ -569,6 +583,7 @@ function projectDefaults(projectDir) {
   const preset = detected?.preset ?? genericProviderPreset;
   return {
     adapter: preset.adapter,
+    databaseUrls: discoverDatabaseUrlEnvs(projectDir),
     migrationsDir: preset.migrationsDir,
     provider: detected
       ? {
@@ -594,6 +609,142 @@ function detectProviderPreset(projectDir) {
     }
   }
   return;
+}
+
+function discoverDatabaseUrlEnvs(projectDir) {
+  const entries = walkFiles(projectDir, 5)
+    .filter((file) => isEnvSourceFile(projectDir, file))
+    .flatMap((file) => databaseUrlEnvEntries(projectDir, file));
+  return {
+    local: selectDatabaseUrlEnv(entries, ["local", "sample"]),
+    remote: selectDatabaseUrlEnv(entries, ["remote"]),
+  };
+}
+
+function isEnvSourceFile(projectDir, file) {
+  const path = rel(projectDir, file);
+  const name = path.split(sep).at(-1) ?? "";
+  if (name === ".env.enc") {
+    return false;
+  }
+  return name === ".env" || name.startsWith(".env.") || name.endsWith(".env");
+}
+
+function databaseUrlEnvEntries(projectDir, file) {
+  const content = readText(file);
+  if (content === undefined) {
+    return [];
+  }
+  const lane = databaseUrlEnvLane(projectDir, file);
+  const entries = [];
+  for (const line of content.split("\n")) {
+    const assignment = envAssignment(line);
+    if (assignment === undefined || !isDatabaseUrlEnvAssignment(assignment)) {
+      continue;
+    }
+    entries.push({
+      key: assignment.key,
+      lane,
+      priority: databaseUrlEnvNamePriority(assignment.key),
+      valueHasUrl: isPostgresUrl(assignment.value),
+    });
+  }
+  return entries;
+}
+
+function envAssignment(raw) {
+  let line = raw.trim();
+  if (line.length === 0 || line.startsWith("#")) {
+    return;
+  }
+  if (line.startsWith("export ")) {
+    line = line.slice("export ".length).trimStart();
+  }
+  const separator = line.indexOf("=");
+  if (separator <= 0) {
+    return;
+  }
+  const key = line.slice(0, separator).trim();
+  if (!isEnvName(key)) {
+    return;
+  }
+  return {
+    key,
+    value: line.slice(separator + 1).trim(),
+  };
+}
+
+function isEnvName(value) {
+  if (value.length === 0 || !isEnvFirstChar(value[0])) {
+    return false;
+  }
+  for (const char of value.slice(1)) {
+    if (!isEnvChar(char)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isEnvFirstChar(char) {
+  return char === "_" || isAsciiLetter(char);
+}
+
+function isEnvChar(char) {
+  return char === "_" || isAsciiLetter(char) || isAsciiDigit(char);
+}
+
+function isAsciiLetter(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isAsciiDigit(char) {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
+}
+
+function isDatabaseUrlEnvAssignment(assignment) {
+  const upper = assignment.key.toUpperCase();
+  return (
+    databaseUrlEnvPriority.includes(upper) ||
+    upper.includes("DATABASE_URL") ||
+    isPostgresUrl(assignment.value)
+  );
+}
+
+function isPostgresUrl(value) {
+  return value.startsWith("postgres://") || value.startsWith("postgresql://");
+}
+
+function databaseUrlEnvLane(projectDir, file) {
+  const path = rel(projectDir, file).toLowerCase();
+  const parts = path.split(sep);
+  const name = path.split(sep).at(-1) ?? "";
+  if (parts.includes(".github") || name.includes("production") || name.includes("prod")) {
+    return "remote";
+  }
+  if (name.includes("example") || name.includes("sample")) {
+    return "sample";
+  }
+  return "local";
+}
+
+function selectDatabaseUrlEnv(entries, lanes) {
+  const candidates = entries.filter((entry) => lanes.includes(entry.lane));
+  candidates.sort((left, right) => databaseUrlEnvRank(left) - databaseUrlEnvRank(right));
+  return candidates[0]?.key;
+}
+
+function databaseUrlEnvRank(entry) {
+  const laneRank = entry.lane === "local" || entry.lane === "remote" ? 0 : 100;
+  const valueRank = entry.valueHasUrl ? 0 : 10;
+  return laneRank + valueRank + entry.priority;
+}
+
+function databaseUrlEnvNamePriority(name) {
+  const index = databaseUrlEnvPriority.indexOf(name.toUpperCase());
+  return index === -1 ? databaseUrlEnvPriority.length : index;
 }
 
 function matchingProviderMarkers(projectDir, files, marker) {
@@ -788,8 +939,10 @@ function shouldWriteConfig(existingConfig, repair) {
 
 function scaffoldConfig(selection, existing) {
   const config = mergeInstalledConfig(existing, {
+    localDatabaseUrlEnv: selection.databaseUrls?.local,
     migrationsDir: selection.migrationsDir,
     providerId: selection.provider?.id,
+    remoteDatabaseUrlEnv: selection.databaseUrls?.remote,
     schemaPaths: selection.schemaPaths,
   });
   return `${JSON.stringify(config, null, 2)}\n`;
@@ -825,7 +978,7 @@ ${pathLines}
 - Treat \`supaschema.config.json\` as four decisions: schema tree (\`schemaPaths\`, \`sources.to\`, \`migrationsDir\`), diff baseline (\`sources.from\`, \`sources.to\`), generated contracts (\`typesFile\`, \`zodFile\`, \`workflow.type_generation\`, \`workflow.zod_generation\`, \`workflow.type_usage\`), and apply policy (\`workflow.migration_sync\`, \`sync.targets\`).
 - \`schemaPaths\` roots are recursive. The default target source is \`${sourceTargets}\`; keep \`sources.to\` explicit when the diff target is intentionally different.
 - Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
-- Use \`$ENV_NAME\` database URL references in \`environments\` or \`sync.targets\`; do not commit credentials.
+- Use existing \`$ENV_NAME\` database URL references in \`sync.targets\` or \`environments\`; do not create duplicate supaschema-only credentials or commit credentials.
 - For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, then run \`diff\` and \`check\` through the local runner selected in \`.agents/prompts/supaschema-install.md\`.
 - Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff/check after schema SQL writes. When \`workflow.migration_sync\` allows automatic sync, the schema-write hook preflights every \`sync.targets\` entry with \`mode: "auto"\`; if each target resolves and any remote target is approved, it delegates to \`supaschema sync\`. Otherwise it stays on the non-mutating diff/check lane. Check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
 - Use bare \`sync\` for the configured workflow. Do not run \`sync --target <name>\` unless explicitly asked to override target selection. \`sync.targets.<name>.mode\` decides automatic target selection, \`workflow.migration_sync: "manual"\` keeps bare sync on the dry-run gate, and \`workflow.migration_sync: "disabled"\` blocks apply.
@@ -852,6 +1005,7 @@ function writeInstallManifest(target, packageVersion, scan, selection, existingC
     adapter: selection.adapter ?? "auto",
     candidates: scan,
     configConfirmationNeeded: existingConfig.configConfirmationNeeded === true,
+    databaseUrls: selection.databaseUrls,
     existingConfig:
       existingConfig.exists === true
         ? {

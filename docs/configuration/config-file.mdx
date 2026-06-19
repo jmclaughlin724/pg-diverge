@@ -137,7 +137,7 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `adapter` | `"auto"` | Provider-neutral adapter sentinel. This is not a provider switch or workflow consent; see [Adapter](#adapter). |
 | `cascade` | `"never"` | `CASCADE` is never emitted. This is not configurable away. |
 | `destructiveChanges` | `"hint-required"` | `hint-required` blocks destructive operations until the object key is listed in `hints.destructive`; `block` always blocks; `allow` permits everything (not recommended). |
-| `environments` | `local` and `production` `$ENV` references | Named database targets for the global `--env` flag and sync target references. Use `$ENV_NAME` indirection so committed config carries no credentials. |
+| `environments` | `{}` | Optional named database targets for the global `--env` flag and sync target references. `init` reuses existing database URL env names in `sync.targets` when possible, so do not create duplicate supaschema-only credentials. |
 | `excludedGrantRoles` | `[]` | Grants and default privileges whose grantee or `FOR ROLE` matches are removed from extracted models (useful for platform roles such as `supabase_admin`). |
 | `hints.allowedGrantees` | `[]` | Roles allowed by the free grant least-privilege rule. When non-empty, grants to other roles are reported by `scan` and `workflow.rls_safety`. |
 | `hints.requiredPolicyColumns` | `{}` | Table keys mapped to columns that every effective RLS policy predicate must reference, for example `{ "public.accounts": ["tenant_id"] }`. |
@@ -146,7 +146,7 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `idempotency` | `"required"` | Rendered SQL is replay-safe by construction. Not configurable away. |
 | `lockTimeout` | `"5s"` | Value for the `SET lock_timeout` migration preamble. |
 | `workflow` | see [Workflow policy](#workflow-policy) | Hook automation, generated output refresh, deploy safety gates, verification guidance, and sync apply policy. |
-| `sync.targets.<name>` | `local` and `remote` targets | Named sync targets. Each target sets `mode`, `runner`, exactly one of `environment` or `databaseUrl`, and `historyTable`; remote targets also set `requireApprovalEnv`. |
+| `sync.targets.<name>` | `local` and `remote` targets | Named sync targets. Each target sets `mode`, `runner`, and `historyTable`; it may use `databaseUrl`, use `environment`, or omit both for the runner/default URL fallback. Remote targets also set `requireApprovalEnv`. |
 | `managedSchemas` | `[]` for generic installs; Supabase platform set for Supabase installs | Schemas treated as externally managed. Objects inside these schemas cannot be claimed by the declarative tree unless you remove the schema from this list because the project truly owns it. |
 | `migrationsDir` | `"database/migrations"` | Where zero-flag `diff` writes migrations, zero-arg `check` reads them, and `verify` finds the newest pending file. Install can scaffold provider-specific folders; the canonical path table lives in [Setup](/setup#path-selection). The `--migrations-dir` flag overrides per command. |
 | `typesFile` | `"database.types.ts"` | Where `supaschema types` writes generated TypeScript types. Automatic refresh after `diff` is controlled by `workflow.type_generation`. |

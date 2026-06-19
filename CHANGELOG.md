@@ -7,6 +7,7 @@
 - `sources.from: "auto"` now resolves the previous Git schema tree before database URL fallbacks, so schema diffs work from committed declarative SQL without requiring a running database.
 - `diff --schema` now filters managed-schema and unsupported-object diagnostics to the requested schema while keeping generated TypeScript and Zod outputs full-tree only.
 - Config schema, docs, and agent guidance now match the 0.3.x migration-sync modes and route schema changes through the declarative SQL owner.
+- `supaschema init` now reuses existing database URL environment variable names from consumer `.env*` files for generic PostgreSQL sync targets, defaults Supabase sync targets to the Supabase CLI runner, and no longer scaffolds local/production database credential placeholders.
 
 ## 0.3.1 (2026-06-18)
 

@@ -106,6 +106,7 @@ describe("init project setup", () => {
     expect(existsSync(join(consumer, "database/schemas"))).toBe(true);
     expect(existsSync(join(consumer, "database/migrations"))).toBe(true);
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
+    expect(existsSync(join(consumer, ".env.supaschema.example"))).toBe(false);
 
     for (const file of [
       ".agents/prompts/supaschema-install.md",
@@ -347,6 +348,45 @@ describe("init project setup", () => {
     expect(existsSync(join(consumer, "supabase/schemas"))).toBe(true);
     expect(existsSync(join(consumer, "supabase/migrations"))).toBe(true);
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
+  });
+
+  it("reuses existing database URL env names for generic PostgreSQL sync targets", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-env-"));
+    await writeFile(
+      join(consumer, ".env.local"),
+      "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app\nDIRECT_URL=postgresql://postgres:postgres@127.0.0.1:5432/app\n"
+    );
+    await mkdir(join(consumer, ".vercel"), { recursive: true });
+    await writeFile(
+      join(consumer, ".vercel", ".env.production.local"),
+      "DATABASE_URL=postgresql://postgres:postgres@example.com:5432/app\n"
+    );
+
+    await runScaffold(consumer);
+
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config.environments).toEqual({});
+    expect(config.sync.targets.local.databaseUrl).toBe("$DIRECT_URL");
+    expect(config.sync.targets.remote.databaseUrl).toBe("$DATABASE_URL");
+    expect(existsSync(join(consumer, ".env.supaschema.example"))).toBe(false);
+  });
+
+  it("keeps Supabase sync on the Supabase CLI runner even when database URL envs exist", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-supabase-env-"));
+    await mkdir(join(consumer, "supabase"), { recursive: true });
+    await writeFile(join(consumer, "supabase", "config.toml"), "[db]\nport = 54322\n");
+    await writeFile(
+      join(consumer, ".env.local"),
+      "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app\nDIRECT_URL=postgresql://postgres:postgres@127.0.0.1:5432/app\nSUPABASE_DB_PASSWORD=secret\n"
+    );
+
+    await runScaffold(consumer);
+
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config.sync.targets.local.runner).toBe("supabase-cli");
+    expect(config.sync.targets.remote.runner).toBe("supabase-cli");
+    expect(config.sync.targets.local.databaseUrl).toBeUndefined();
+    expect(config.sync.targets.remote.databaseUrl).toBeUndefined();
   });
 
   it.each([

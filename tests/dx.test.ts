@@ -10,6 +10,7 @@ import {
   resolveConfig,
   validateConfig,
 } from "../src/config.js";
+import { createInstalledConfig, mergeInstalledConfig } from "../src/config-contract.js";
 import type { Diagnostic } from "../src/core.js";
 
 const cliPath = resolve(import.meta.dirname, "../dist/cli.js");
@@ -184,6 +185,8 @@ describe("config DX", () => {
 
     expect(config.sync.targets.local?.environment).toBe("local");
     expect(config.sync.targets.remote?.runner).toBe("supabase-cli");
+    expect(resolveConfig().sync.targets.local?.databaseUrl).toBeUndefined();
+    expect(resolveConfig().sync.targets.local?.environment).toBeUndefined();
 
     const missingEnvironmentDiagnostics = await validateConfig(
       resolveConfig({
@@ -206,6 +209,49 @@ describe("config DX", () => {
         severity: "error",
       })
     );
+  });
+
+  it("scaffolds provider-owned and discovered database URL sync targets", () => {
+    const supabase = createInstalledConfig({ providerId: "supabase" });
+    expect(supabase.sync).toEqual({
+      targets: {
+        local: {
+          mode: "auto",
+          runner: "supabase-cli",
+          historyTable: "supabase_migrations.schema_migrations",
+        },
+        remote: {
+          mode: "manual",
+          runner: "supabase-cli",
+          historyTable: "supabase_migrations.schema_migrations",
+          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          remote: true,
+        },
+      },
+    });
+
+    const postgres = createInstalledConfig({
+      localDatabaseUrlEnv: "DIRECT_URL",
+      remoteDatabaseUrlEnv: "DATABASE_URL",
+    });
+    expect(postgres.sync).toEqual({
+      targets: {
+        local: {
+          mode: "auto",
+          runner: "direct",
+          databaseUrl: "$DIRECT_URL",
+          historyTable: "supabase_migrations.schema_migrations",
+        },
+        remote: {
+          mode: "manual",
+          runner: "direct",
+          databaseUrl: "$DATABASE_URL",
+          historyTable: "supabase_migrations.schema_migrations",
+          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          remote: true,
+        },
+      },
+    });
   });
 
   it("rejects malformed sync targets during config validation", async () => {
@@ -232,7 +278,7 @@ describe("config DX", () => {
       })
     );
 
-    const missingDiagnostics = await validateConfig(
+    const fallbackDiagnostics = await validateConfig(
       resolveConfig({
         sync: {
           targets: {
@@ -246,12 +292,69 @@ describe("config DX", () => {
       }),
       mkdtempSync(join(tmpdir(), "supa-sync-target-missing-"))
     );
-    expect(missingDiagnostics).toContainEqual(
-      expect.objectContaining({
-        field: "sync.targets.local",
-        severity: "error",
-      })
+    expect(fallbackDiagnostics).not.toContainEqual(
+      expect.objectContaining({ field: "sync.targets.local" })
     );
+  });
+
+  it("repairs legacy installed sync env defaults during init merge", () => {
+    const oldLocalUrl = `$${["LOCAL", "DATABASE", "URL"].join("_")}`;
+    const oldProductionUrl = `$${["PRODUCTION", "DATABASE", "URL"].join("_")}`;
+    const merged = mergeInstalledConfig({
+      environments: {
+        local: { databaseUrl: oldLocalUrl },
+        production: { databaseUrl: oldProductionUrl },
+      },
+      sync: {
+        targets: {
+          local: {
+            mode: "auto",
+            runner: "direct",
+            environment: "local",
+            historyTable: "supabase_migrations.schema_migrations",
+          },
+          remote: {
+            mode: "manual",
+            runner: "direct",
+            environment: "production",
+            historyTable: "supabase_migrations.schema_migrations",
+            requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+            remote: true,
+          },
+        },
+      },
+    });
+    expect(merged.environments).toEqual(createInstalledConfig().environments);
+    expect(merged.sync).toEqual(createInstalledConfig().sync);
+
+    const supabaseMerged = mergeInstalledConfig(
+      {
+        environments: {
+          local: { databaseUrl: oldLocalUrl },
+          production: { databaseUrl: oldProductionUrl },
+        },
+        sync: {
+          targets: {
+            local: {
+              mode: "auto",
+              runner: "direct",
+              environment: "local",
+              historyTable: "supabase_migrations.schema_migrations",
+            },
+            remote: {
+              mode: "manual",
+              runner: "direct",
+              environment: "production",
+              historyTable: "supabase_migrations.schema_migrations",
+              requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+              remote: true,
+            },
+          },
+        },
+      },
+      { providerId: "supabase" }
+    );
+    expect(supabaseMerged.sync).toEqual(createInstalledConfig({ providerId: "supabase" }).sync);
   });
 
   it("requires runtime approval configuration for remote sync targets", async () => {

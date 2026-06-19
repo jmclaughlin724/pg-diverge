@@ -201,28 +201,7 @@ export const normalizePolicies = Object.values(NormalizePolicy);
 export const renameDetectionPolicies = Object.values(RenameDetectionPolicy);
 export const transactionModes = Object.values(TransactionMode);
 export const defaultMigrationHistoryTable = "supabase_migrations.schema_migrations";
-export const defaultEnvironments: Record<string, SupaschemaEnvironment> = {
-  local: { databaseUrl: "$LOCAL_DATABASE_URL" },
-  production: { databaseUrl: "$PRODUCTION_DATABASE_URL" },
-};
-export const defaultSync: SupaschemaSync = {
-  targets: {
-    local: {
-      mode: SyncTargetMode.Auto,
-      runner: SyncTargetRunner.Direct,
-      environment: "local",
-      historyTable: defaultMigrationHistoryTable,
-    },
-    remote: {
-      mode: SyncTargetMode.Manual,
-      runner: SyncTargetRunner.Direct,
-      environment: "production",
-      historyTable: defaultMigrationHistoryTable,
-      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-      remote: true,
-    },
-  },
-};
+export const defaultEnvironments: Record<string, SupaschemaEnvironment> = {};
 export const defaultWorkflow: SupaschemaWorkflow = {
   schema_diff: SchemaDiffPolicy.OnSchemaWrite,
   migration_check: MigrationCheckPolicy.AfterSchemaDiff,
@@ -384,8 +363,10 @@ export const cascadePolicies = ["never"];
 export const idempotencyPolicies = ["required"];
 
 export interface InstalledConfigOptions {
+  localDatabaseUrlEnv?: string;
   migrationsDir?: string;
   providerId?: string;
+  remoteDatabaseUrlEnv?: string;
   schemaPaths?: string[];
   schemaRef?: string;
 }
@@ -431,12 +412,67 @@ export function managedSchemasForProvider(providerId?: string): string[] {
   return [...providerPreset(providerId).managedSchemas];
 }
 
+export function syncForInstalledConfig(options: InstalledConfigOptions = {}): SupaschemaSync {
+  if (options.providerId === "supabase") {
+    return {
+      targets: {
+        local: {
+          mode: SyncTargetMode.Auto,
+          runner: SyncTargetRunner.SupabaseCli,
+          historyTable: defaultMigrationHistoryTable,
+        },
+        remote: {
+          mode: SyncTargetMode.Manual,
+          runner: SyncTargetRunner.SupabaseCli,
+          historyTable: defaultMigrationHistoryTable,
+          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          remote: true,
+        },
+      },
+    };
+  }
+  const localDatabaseUrl = databaseUrlEnvReference(options.localDatabaseUrlEnv);
+  const remoteDatabaseUrl = databaseUrlEnvReference(options.remoteDatabaseUrlEnv);
+  return {
+    targets: {
+      local: {
+        mode: SyncTargetMode.Auto,
+        runner: SyncTargetRunner.Direct,
+        ...(localDatabaseUrl === undefined ? {} : { databaseUrl: localDatabaseUrl }),
+        historyTable: defaultMigrationHistoryTable,
+      },
+      remote: {
+        mode: SyncTargetMode.Manual,
+        runner: SyncTargetRunner.Direct,
+        ...(remoteDatabaseUrl === undefined ? {} : { databaseUrl: remoteDatabaseUrl }),
+        historyTable: defaultMigrationHistoryTable,
+        requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+        remote: true,
+      },
+    },
+  };
+}
+
+export const defaultSync: SupaschemaSync = syncForInstalledConfig();
+
+function databaseUrlEnvReference(name: string | undefined): string | undefined {
+  if (typeof name !== "string") {
+    return;
+  }
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    return;
+  }
+  return trimmed.startsWith("$") ? trimmed : `$${trimmed}`;
+}
+
 export function createInstalledConfig(
   options: InstalledConfigOptions = {}
 ): Record<string, unknown> {
   const provider = providerPreset(options.providerId);
   const schemaPaths = normalizedStringArray(options.schemaPaths, [provider.schemaPath]);
   const migrationsDir = normalizedString(options.migrationsDir, provider.migrationsDir);
+  const sync = syncForInstalledConfig({ ...options, providerId: provider.id });
   return orderInstalledConfig({
     $schema: options.schemaRef ?? packageSchemaRef,
     adapter: AdapterInput.Auto,
@@ -453,7 +489,7 @@ export function createInstalledConfig(
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,
-    sync: defaultSync,
+    sync,
     migrationsDir,
     typesFile: defaultTypesFile,
     zodFile: defaultZodFile,
@@ -496,14 +532,20 @@ export function mergeInstalledConfig(
     existing.schemaPaths,
     normalizedStringArray(base.schemaPaths, [genericSchemaPath])
   );
-  const hasExistingEnvironments = "environments" in existing && isRecord(existing.environments);
-  const existingSync = isRecord(existing.sync) ? existing.sync : undefined;
+  const existingEnvironments = isRecord(existing.environments) ? existing.environments : undefined;
+  const hasExistingEnvironments =
+    existingEnvironments !== undefined && !isLegacyDefaultEnvironments(existingEnvironments);
+  const existingSync = normalizeInstalledSync(
+    isRecord(existing.sync) ? existing.sync : undefined,
+    existingEnvironments !== undefined && isLegacyDefaultEnvironments(existingEnvironments),
+    baseSync
+  );
   const merged = {
     ...base,
     ...existing,
     $schema: normalizedString(existing.$schema, normalizedString(base.$schema, packageSchemaRef)),
     adapter: AdapterInput.Auto,
-    environments: hasExistingEnvironments ? existing.environments : base.environments,
+    environments: hasExistingEnvironments ? existingEnvironments : base.environments,
     excludedGrantRoles: normalizedStringArray(
       existing.excludedGrantRoles,
       normalizedStringArray(base.excludedGrantRoles, [])
@@ -566,6 +608,60 @@ function normalizeInstalledWorkflow(workflow: Record<string, unknown>): Record<s
     next.migration_sync = MigrationSyncPolicy.Manual;
   }
   return next;
+}
+
+function isLegacyDefaultEnvironments(environments: Record<string, unknown>): boolean {
+  const entries = Object.entries(environments);
+  if (entries.length !== 2) {
+    return false;
+  }
+  return (
+    environmentDatabaseUrl(environments.local) === "$LOCAL_DATABASE_URL" &&
+    environmentDatabaseUrl(environments.production) === "$PRODUCTION_DATABASE_URL"
+  );
+}
+
+function environmentDatabaseUrl(value: unknown): string | undefined {
+  const record = isRecord(value) ? value : undefined;
+  return typeof record?.databaseUrl === "string" ? record.databaseUrl : undefined;
+}
+
+function normalizeInstalledSync(
+  sync: Record<string, unknown> | undefined,
+  legacyDefaultEnvironments: boolean,
+  baseSync: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  if (sync === undefined || !legacyDefaultEnvironments) {
+    return sync;
+  }
+  const targets = isRecord(sync.targets) ? sync.targets : undefined;
+  if (targets === undefined) {
+    return sync;
+  }
+  const normalizedTargets: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(targets)) {
+    normalizedTargets[name] = normalizeLegacyDefaultSyncTarget(name, value, baseSync);
+  }
+  return { ...sync, targets: normalizedTargets };
+}
+
+function normalizeLegacyDefaultSyncTarget(
+  name: string,
+  value: unknown,
+  baseSync: Record<string, unknown>
+): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+  if (name !== "local" && name !== "remote") {
+    return value;
+  }
+  const legacyEnvironment = name === "local" ? "local" : "production";
+  if (value.environment !== legacyEnvironment || value.databaseUrl !== undefined) {
+    return value;
+  }
+  const baseTargets = isRecord(baseSync.targets) ? baseSync.targets : {};
+  return baseTargets[name] ?? value;
 }
 
 export function orderInstalledConfig(config: Record<string, unknown>): Record<string, unknown> {
@@ -893,10 +989,63 @@ export function managedSchemasForProvider(providerId) {
   return [...providerPreset(providerId).managedSchemas];
 }
 
+export function syncForInstalledConfig(options = {}) {
+  if (options.providerId === "supabase") {
+    return {
+      targets: {
+        local: {
+          mode: "auto",
+          runner: "supabase-cli",
+          historyTable: defaultMigrationHistoryTable,
+        },
+        remote: {
+          mode: "manual",
+          runner: "supabase-cli",
+          historyTable: defaultMigrationHistoryTable,
+          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          remote: true,
+        },
+      },
+    };
+  }
+  const localDatabaseUrl = databaseUrlEnvReference(options.localDatabaseUrlEnv);
+  const remoteDatabaseUrl = databaseUrlEnvReference(options.remoteDatabaseUrlEnv);
+  return {
+    targets: {
+      local: {
+        mode: "auto",
+        runner: "direct",
+        ...(localDatabaseUrl === undefined ? {} : { databaseUrl: localDatabaseUrl }),
+        historyTable: defaultMigrationHistoryTable,
+      },
+      remote: {
+        mode: "manual",
+        runner: "direct",
+        ...(remoteDatabaseUrl === undefined ? {} : { databaseUrl: remoteDatabaseUrl }),
+        historyTable: defaultMigrationHistoryTable,
+        requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+        remote: true,
+      },
+    },
+  };
+}
+
+function databaseUrlEnvReference(name) {
+  if (typeof name !== "string") {
+    return;
+  }
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    return;
+  }
+  return trimmed.startsWith("$") ? trimmed : \`$\${trimmed}\`;
+}
+
 export function createInstalledConfig(options = {}) {
   const provider = providerPreset(options.providerId);
   const schemaPaths = normalizedStringArray(options.schemaPaths, [provider.schemaPath]);
   const migrationsDir = normalizedString(options.migrationsDir, provider.migrationsDir);
+  const sync = syncForInstalledConfig({ ...options, providerId: provider.id });
   return orderInstalledConfig({
     $schema: options.schemaRef ?? packageSchemaRef,
     adapter: "auto",
@@ -904,11 +1053,11 @@ export function createInstalledConfig(options = {}) {
     destructiveChanges: "hint-required",
     environments: defaultEnvironments,
     excludedGrantRoles: [],
-    hints: { allowedGrantees: [], destructive: [], renames: [] },
+    hints: { allowedGrantees: [], destructive: [], requiredPolicyColumns: {}, renames: [] },
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,
-    sync: defaultSync,
+    sync,
     migrationsDir,
     typesFile: defaultTypesFile,
     zodFile: defaultZodFile,
@@ -930,9 +1079,16 @@ export function mergeInstalledConfig(existing, options = {}) {
   if (!isRecord(existing)) {
     return base;
   }
+  const baseSync = isRecord(base.sync) ? base.sync : defaultSync;
   const schemaPaths = normalizedStringArray(existing.schemaPaths, base.schemaPaths);
-  const hasExistingEnvironments = "environments" in existing && isRecord(existing.environments);
-  const existingSync = isRecord(existing.sync) ? existing.sync : undefined;
+  const existingEnvironments = isRecord(existing.environments) ? existing.environments : undefined;
+  const hasExistingEnvironments =
+    existingEnvironments !== undefined && !isLegacyDefaultEnvironments(existingEnvironments);
+  const existingSync = normalizeInstalledSync(
+    isRecord(existing.sync) ? existing.sync : undefined,
+    existingEnvironments !== undefined && isLegacyDefaultEnvironments(existingEnvironments),
+    baseSync
+  );
   const existingWorkflow = isRecord(existing.workflow)
     ? normalizeInstalledWorkflow(existing.workflow)
     : {};
@@ -941,7 +1097,7 @@ export function mergeInstalledConfig(existing, options = {}) {
     ...existing,
     $schema: normalizedString(existing.$schema, base.$schema),
     adapter: "auto",
-    environments: hasExistingEnvironments ? existing.environments : base.environments,
+    environments: hasExistingEnvironments ? existingEnvironments : base.environments,
     excludedGrantRoles: normalizedStringArray(existing.excludedGrantRoles, base.excludedGrantRoles),
     hints: { ...base.hints, ...(isRecord(existing.hints) ? existing.hints : {}) },
     managedSchemas: normalizedStringArray(existing.managedSchemas, base.managedSchemas),
@@ -952,7 +1108,7 @@ export function mergeInstalledConfig(existing, options = {}) {
     sync:
       hasExistingEnvironments && existingSync === undefined
         ? { targets: {} }
-        : { ...base.sync, ...(existingSync ?? {}) },
+        : { ...baseSync, ...(existingSync ?? {}) },
     workflow: { ...base.workflow, ...existingWorkflow },
     typesFile: normalizedString(existing.typesFile, base.typesFile),
     validators: normalizedStringArray(existing.validators, base.validators),
@@ -973,6 +1129,52 @@ function normalizeInstalledWorkflow(workflow) {
     next.migration_sync = "manual";
   }
   return next;
+}
+
+function isLegacyDefaultEnvironments(environments) {
+  const entries = Object.entries(environments);
+  if (entries.length !== 2) {
+    return false;
+  }
+  return (
+    environmentDatabaseUrl(environments.local) === "$LOCAL_DATABASE_URL" &&
+    environmentDatabaseUrl(environments.production) === "$PRODUCTION_DATABASE_URL"
+  );
+}
+
+function environmentDatabaseUrl(value) {
+  const record = isRecord(value) ? value : undefined;
+  return typeof record?.databaseUrl === "string" ? record.databaseUrl : undefined;
+}
+
+function normalizeInstalledSync(sync, legacyDefaultEnvironments, baseSync) {
+  if (sync === undefined || !legacyDefaultEnvironments) {
+    return sync;
+  }
+  const targets = isRecord(sync.targets) ? sync.targets : undefined;
+  if (targets === undefined) {
+    return sync;
+  }
+  const normalizedTargets = {};
+  for (const [name, value] of Object.entries(targets)) {
+    normalizedTargets[name] = normalizeLegacyDefaultSyncTarget(name, value, baseSync);
+  }
+  return { ...sync, targets: normalizedTargets };
+}
+
+function normalizeLegacyDefaultSyncTarget(name, value, baseSync) {
+  if (!isRecord(value)) {
+    return value;
+  }
+  if (name !== "local" && name !== "remote") {
+    return value;
+  }
+  const legacyEnvironment = name === "local" ? "local" : "production";
+  if (value.environment !== legacyEnvironment || value.databaseUrl !== undefined) {
+    return value;
+  }
+  const baseTargets = isRecord(baseSync.targets) ? baseSync.targets : {};
+  return baseTargets[name] ?? value;
 }
 
 export function orderInstalledConfig(config) {

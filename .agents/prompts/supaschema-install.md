@@ -76,7 +76,7 @@ Public docs and examples are hosted in the supaschema documentation and source r
 - `.claude/settings.json` hook wiring;
 - `.codex/rules/supaschema.rules`, the three supaschema Codex hooks, and `.codex/hooks.json`.
 
-Install does not edit schema files, generate migrations, connect to a database, apply migrations, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. The setup scaffold installs the supaschema skill directly into `.agents/skills/supaschema` and `.claude/skills/supaschema`; the public `npx skills` source is only for portable skill context without project setup.
+Install does not edit schema files, generate migrations, connect to a database, apply migrations, write real database credentials, create duplicate supaschema-only database credential files, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. The setup scaffold installs the supaschema skill directly into `.agents/skills/supaschema` and `.claude/skills/supaschema`; the public `npx skills` source is only for portable skill context without project setup.
 
 ## First Tasks After Install
 
@@ -84,8 +84,9 @@ Install does not edit schema files, generate migrations, connect to a database, 
 2. Read `.agents/skills/supaschema/SKILL.md` and the matching rule file for the active agent runtime: `.claude/rules/supaschema.md` or `.codex/rules/supaschema.rules`.
 3. Inspect `supaschema.config.json`.
 4. If `.supaschema/install.json` exists and has `pathConfirmationNeeded: true`, stop before diffing. Ask the user which detected schema and migration paths to use, then update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`; `config validate`, `doctor`, and zero-source `diff` block until those fields are explicit.
-5. Run `<local-runner> --version`.
-6. Run `<local-runner> config validate --json` after config exists or paths are confirmed.
+5. For Supabase projects, use the configured Supabase CLI runner and the existing Supabase project link/authentication lane. For other PostgreSQL providers, use detected existing database URL environment variable names in `sync.targets` when present.
+6. Run `<local-runner> --version`.
+7. Run `<local-runner> config validate --json` after config exists or paths are confirmed.
 
 ## Schema Change Workflow
 

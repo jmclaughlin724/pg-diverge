@@ -661,11 +661,11 @@ function validateSyncTargets(
   config: SupaschemaConfig
 ): void {
   for (const [name, target] of Object.entries(config.sync.targets)) {
-    if ((target.environment === undefined) === (target.databaseUrl === undefined)) {
+    if (target.environment !== undefined && target.databaseUrl !== undefined) {
       diagnostics.push({
         field: `sync.targets.${name}`,
-        hint: "Set exactly one of environment or databaseUrl.",
-        message: `sync target ${name} must define exactly one URL owner.`,
+        hint: "Set at most one of environment or databaseUrl. Omit both to use CLI database URL fallback.",
+        message: `sync target ${name} must not define multiple URL owners.`,
         severity: "error",
       });
     }
