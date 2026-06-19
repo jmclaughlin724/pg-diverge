@@ -7,6 +7,21 @@ import { checkAgentSurfaces, syncAgentSurfaces } from "../scripts/skills/sync-ll
 
 const root = resolve(import.meta.dirname, "..");
 const codexProjectDir = ["$", "{", "CODEX_PROJECT_DIR:-$PWD", "}"].join("");
+const editToolMatcher = [
+  "^",
+  "(",
+  "apply_patch",
+  "|",
+  "functions\\\\.apply_patch",
+  "|",
+  "Edit",
+  "|",
+  "Write",
+  "|",
+  "edit_file",
+  ")",
+  "$",
+].join("");
 
 function tempSurface(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "supa-sync-llm-"));
@@ -54,6 +69,26 @@ describe("sync:llm", () => {
                 },
               ],
             },
+            {
+              matcher: editToolMatcher,
+              hooks: [
+                {
+                  command: `node "${codexProjectDir}/bin/supaschema.cjs" hook generated-migration-edit --runtime codex`,
+                  type: "command",
+                },
+              ],
+            },
+          ],
+          PostToolUse: [
+            {
+              matcher: editToolMatcher,
+              hooks: [
+                {
+                  command: `node "${codexProjectDir}/bin/supaschema.cjs" hook schema-write`,
+                  type: "command",
+                },
+              ],
+            },
           ],
         },
       })}\n`,
@@ -76,6 +111,7 @@ describe("sync:llm", () => {
       ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
       "agent-bundle/INSTALL.md": "# Agent bundle install\n",
       ".codex/agents/stale.toml": 'name = "stale"\n',
+      ".codex/hooks/general-guard.mjs": "process.stdout.write('native');\n",
       ".codex/hooks/stale.mjs": "process.stdout.write('stale');\n",
       ".codex/rules/stale.rules": "# stale\n",
       "skills/stale/SKILL.md": "# stale\n",
@@ -93,6 +129,9 @@ describe("sync:llm", () => {
       skills: 2,
     });
     expect(read(root, ".codex/rules/21-github-process.rules")).toContain(
+      "Canonical rule owner: .claude/rules/21-github-process.md"
+    );
+    expect(read(root, ".codex/rules/21-github-process.rules")).not.toContain(
       "Direct fast-forward pushes to main are allowed by policy."
     );
     expect(read(root, ".codex/agents/ci-debugger.toml")).toContain(
@@ -101,12 +140,40 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks/context-pre-tool-use.mjs")).toBe(
       "process.stdout.write('pre');\n"
     );
+    expect(read(root, ".codex/hooks/general-guard.mjs")).toBe("process.stdout.write('native');\n");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain("general-guard.mjs");
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain(
+      "npm exec -- supaschema hook generated-migration-edit --runtime codex"
+    );
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain(
+      "npm exec -- supaschema hook schema-write"
+    );
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("bin/supaschema.cjs");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("ci-inbox.mjs");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
     expect(read(root, "skills/supaschema/SKILL.md")).toBe("# supaschema\n");
     expect(existsSync(join(root, "skills/elegant/SKILL.md"))).toBe(false);
     expect(existsSync(join(root, ".codex/rules/stale.rules"))).toBe(false);
+    expect(checkAgentSurfaces({ root })).toEqual([]);
+  });
+
+  it("allows public clean checkouts without private Claude agents", () => {
+    const root = tempSurface({
+      ".agents/prompts/supaschema-install.md": "# Install\n",
+      ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
+      ".claude/rules/supaschema.md": "# Supaschema rule\n",
+      ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
+      ".codex/hooks/general-guard.mjs": "process.stdout.write('native');\n",
+      ".codex/hooks.json": `${JSON.stringify({ hooks: {} })}\n`,
+      "agent-bundle/INSTALL.md": "# Agent bundle install\n",
+      ".codex/agents/stale.toml": 'name = "stale"\n',
+    });
+
+    const result = syncAgentSurfaces({ root });
+
+    expect(result.agents).toBe(0);
+    expect(existsSync(join(root, ".codex/agents/stale.toml"))).toBe(false);
     expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 

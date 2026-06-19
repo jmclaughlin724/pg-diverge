@@ -1,12 +1,10 @@
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmdirSync,
-  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -14,8 +12,6 @@ import {
 import { dirname, join, relative, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
 import {
-  defaultTypesFile,
-  defaultZodFile,
   genericMigrationsDir,
   genericProviderPreset,
   genericSchemaPath,
@@ -26,14 +22,14 @@ import {
 } from "./config-contract.mjs";
 
 const manifestPath = ".supaschema/install.json";
-const guidanceStart = "<!-- supaschema:agent-guidance:start -->";
-const guidanceEnd = "<!-- supaschema:agent-guidance:end -->";
-const claudeAgentsPointer = "@AGENTS.md";
-const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
 const agentBundleInstructions = "node_modules/supaschema/agent-bundle/INSTALL.md";
 const pnpmWorkspaceFile = "pnpm-workspace.yaml";
 const pnpmBuildApprovalLine = "  supaschema: true";
+const packageScripts = {
+  "supaschema:check": "supaschema check",
+  "supaschema:migration": "supaschema diff",
+  "supaschema:types": "supaschema types",
+};
 const databaseUrlEnvPriority = [
   "DIRECT_URL",
   "DATABASE_DIRECT_URL",
@@ -45,81 +41,14 @@ const databaseUrlEnvPriority = [
   "POSTGRES_DATABASE_URL",
   "PGDATABASE_URL",
 ];
-const agentPaths = [
-  {
-    source: "agent-bundle/agents/prompts/supaschema-install.md",
-    target: ".agents/prompts/supaschema-install.md",
-  },
-  {
-    source: "agent-bundle/agents/skills/supaschema",
-    target: ".agents/skills/supaschema",
-  },
-  {
-    source: "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
-    target: ".claude/hooks/guards/bash-policy-checks.mjs",
-  },
-  {
-    source: "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
-    target: ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  },
-  {
-    source: "agent-bundle/claude/rules/supaschema.md",
-    target: ".claude/rules/supaschema.md",
-  },
-  {
-    source: "agent-bundle/claude/skills/supaschema",
-    target: ".claude/skills/supaschema",
-  },
-  {
-    source: "agent-bundle/codex/hooks/general-guard.mjs",
-    target: ".codex/hooks/general-guard.mjs",
-  },
-  {
-    source: "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
-    target: ".codex/hooks/guards/bash-policy-checks.mjs",
-  },
-  {
-    source: "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs",
-    target: ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-  },
-  {
-    source: "agent-bundle/codex/rules/supaschema.rules",
-    target: ".codex/rules/supaschema.rules",
-  },
-];
-const nonCanonicalAgentPaths = [".codex/skills/supaschema"];
-const preservedExistingAgentPrefixes = [".claude/hooks/", ".codex/hooks/"];
-const generatedBackupSurfaceRoots = [".agents", ".claude", ".codex"];
-const generatedBackupOwners = new Set(["agents", "commands", "rules", "skills"]);
-
-export function hookConfigsFor(targetDir, packageManager = detectPackageManager(targetDir)) {
-  const runner = localRunnerForPackageManager(packageManager);
-  return [
-    {
-      path: ".claude/settings.json",
-      config: claudeHookConfig(runner),
-    },
-    {
-      path: ".codex/hooks.json",
-      configFile: "agent-bundle/codex/hooks.npm.json",
-      transform: (config) => materializeCodexRunner(config, runner),
-    },
-  ];
-}
-
 export async function scaffoldProject({
   targetDir,
-  packageRoot,
   packageVersion,
   interactive = false,
   dryRun = false,
   repair = false,
-  installAgentBundle = false,
 }) {
   const installed = [];
-  const preserved = [];
-  const skipped = [];
-  const packageManager = detectPackageManager(targetDir);
   const scan = scanProject(targetDir);
   const existingConfig = readExistingConfig(targetDir);
   const selection = await resolvePathSelection(targetDir, scan, existingConfig, interactive);
@@ -132,20 +61,13 @@ export async function scaffoldProject({
     targetDir,
   });
 
-  scaffoldAgentBundle({
-    dryRun,
-    installAgentBundle,
-    installed,
-    packageManager,
-    packageRoot,
-    preserved,
-    selection,
-    skipped,
-    targetDir,
-  });
-
+  const packageManager = detectPackageManager(targetDir);
   if (ensurePnpmBuildApproval({ dryRun, packageManager, targetDir })) {
     installed.push("pnpm build approval");
+  }
+
+  if (ensurePackageScripts({ dryRun, repair, targetDir })) {
+    installed.push("package scripts");
   }
 
   const installStateChanged = writeInstallState({
@@ -168,13 +90,13 @@ export async function scaffoldProject({
     dryRun,
     installed,
     agentBundle: {
-      installed: installAgentBundle,
+      installed: false,
       instructions: agentBundleInstructions,
     },
     pathConfirmationNeeded: selection.pathConfirmationNeeded,
-    preserved,
+    preserved: [],
     selection,
-    skipped,
+    skipped: [],
   };
 }
 
@@ -206,133 +128,6 @@ function scaffoldConfigAndDirectories({
   }
 
   return configContents;
-}
-
-function scaffoldAgentBundle({
-  dryRun,
-  installAgentBundle,
-  installed,
-  packageManager,
-  packageRoot,
-  preserved,
-  selection,
-  skipped,
-  targetDir,
-}) {
-  if (!installAgentBundle) {
-    return;
-  }
-
-  const copiedAgentFiles = copyAgentBundle({ dryRun, packageRoot, preserved, skipped, targetDir });
-  const removedNonCanonicalAgentFiles = removeNonCanonicalAgentSurfaces({ dryRun, targetDir });
-  const agentFilesChanged = copiedAgentFiles || removedNonCanonicalAgentFiles;
-  const removedBackups = removeRetiredGeneratedBackupSurfaces({ dryRun, targetDir });
-  if (agentFilesChanged) {
-    installed.push("agent files");
-  }
-  if (removedBackups.length > 0) {
-    installed.push("retired backup cleanup");
-  }
-
-  let hookWiringChanged = false;
-  for (const config of hookConfigsFor(targetDir, packageManager)) {
-    hookWiringChanged =
-      mergeHookConfig(packageRoot, targetDir, config, skipped, { dryRun }) || hookWiringChanged;
-  }
-  if (hookWiringChanged) {
-    installed.push("hook wiring");
-  }
-
-  if (installAgentGuidance(targetDir, selection, { dryRun })) {
-    installed.push("AGENTS/CLAUDE addendum");
-  }
-}
-
-function shellParameter(expression) {
-  return ["$", "{", expression, "}"].join("");
-}
-
-function claudeHookConfig(runner) {
-  return {
-    hooks: {
-      PreToolUse: [
-        {
-          matcher: "Bash",
-          hooks: [
-            {
-              type: "command",
-              command: `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`,
-              timeout: 10,
-            },
-          ],
-        },
-        {
-          matcher: "Write|Edit|MultiEdit|apply_patch",
-          hooks: [
-            {
-              type: "command",
-              command: runner.command,
-              args: [...runner.args, "hook", "generated-migration-edit", "--runtime", "claude"],
-              timeout: 10,
-            },
-          ],
-        },
-      ],
-      PostToolUse: [
-        {
-          matcher: "Write|Edit|MultiEdit|apply_patch",
-          hooks: [
-            {
-              type: "command",
-              command: runner.command,
-              args: [...runner.args, "hook", "schema-write"],
-              timeout: 130,
-            },
-          ],
-        },
-      ],
-      PostToolBatch: [
-        {
-          hooks: [
-            {
-              type: "command",
-              command: `node "${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`,
-              timeout: 130,
-            },
-          ],
-        },
-      ],
-    },
-  };
-}
-
-export function localRunnerForPackageManager(packageManager) {
-  if (packageManager === "pnpm") {
-    return {
-      args: ["exec", "supaschema"],
-      command: "pnpm",
-      commandString: "pnpm exec supaschema",
-    };
-  }
-  if (packageManager === "yarn") {
-    return {
-      args: ["exec", "supaschema"],
-      command: "yarn",
-      commandString: "yarn exec supaschema",
-    };
-  }
-  if (packageManager === "bun") {
-    return {
-      args: ["-c", `"${claudeProjectDir}/node_modules/.bin/supaschema" "$@"`, "supaschema"],
-      command: "sh",
-      commandString: `"${codexProjectDir}/node_modules/.bin/supaschema"`,
-    };
-  }
-  return {
-    args: ["exec", "--", "supaschema"],
-    command: "npm",
-    commandString: "npm exec -- supaschema",
-  };
 }
 
 function detectPackageManager(projectDir) {
@@ -521,36 +316,29 @@ function pnpmBuildApprovalEntryIndex(lines, start, end) {
   return -1;
 }
 
-export function materializeCodexRunner(value, runner) {
-  if (Array.isArray(value)) {
-    return value.map((item) => materializeCodexRunner(item, runner));
+function ensurePackageScripts({ dryRun, repair, targetDir }) {
+  const path = join(targetDir, "package.json");
+  const manifest = readJson(path);
+  if (!isRecord(manifest)) {
+    return false;
   }
-  if (!isRecord(value)) {
-    return value;
-  }
-  const next = {};
-  for (const [key, item] of Object.entries(value)) {
-    next[key] =
-      key === "command" && typeof item === "string"
-        ? materializeSupaschemaCommand(item, runner)
-        : materializeCodexRunner(item, runner);
-  }
-  return next;
-}
-
-function materializeSupaschemaCommand(command, runner) {
-  for (const prefix of [
-    "npm exec -- supaschema",
-    "pnpm exec supaschema",
-    "yarn exec supaschema",
-    "bunx --no-install supaschema",
-    "npx --no-install supaschema",
-  ]) {
-    if (command.startsWith(prefix)) {
-      return `${runner.commandString}${command.slice(prefix.length)}`;
+  const existingScripts = isRecord(manifest.scripts) ? manifest.scripts : {};
+  const nextScripts = { ...existingScripts };
+  let changed = !isRecord(manifest.scripts);
+  for (const [name, command] of Object.entries(packageScripts)) {
+    if (!(name in existingScripts) || (repair && existingScripts[name] !== command)) {
+      nextScripts[name] = command;
+      changed = true;
     }
   }
-  return command;
+  if (!changed) {
+    return false;
+  }
+  const next = { ...manifest, scripts: nextScripts };
+  if (!dryRun) {
+    writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
+  }
+  return true;
 }
 
 function readExistingConfig(projectDir) {
@@ -1098,92 +886,6 @@ function createConfiguredDirectories(target, selection, { dryRun = false } = {})
   return changed;
 }
 
-function installAgentGuidance(target, selection, { dryRun = false } = {}) {
-  const block = agentGuidanceBlock(selection);
-  const agentsChanged = upsertManagedBlock(target, "AGENTS.md", block, { dryRun });
-  const claudeChanged = installClaudePointer(target, { dryRun });
-  return agentsChanged || claudeChanged;
-}
-
-function agentGuidanceBlock(selection) {
-  const pathLines = selection.pathConfirmationNeeded
-    ? `- Path confirmation is pending: multiple schema/migration path candidates were detected. Inspect \`${manifestPath}\`, ask the user which detected schema and migrations paths to use, then set \`schemaPaths\`, \`sources.to\`, and \`migrationsDir\` in \`supaschema.config.json\` before the first diff.
-- Generated migrations and \`-- supaschema: lineage\` files must not be hand-edited; regenerate from the declarative tree once the paths are confirmed.`
-    : `- Schema intent belongs in \`${selection.schemaPaths.join("`, `")}\`.
-- Generated migrations write to \`${selection.migrationsDir}\`; files containing \`-- supaschema: lineage\` must not be hand-edited.`;
-  const sourceTargets = selection.schemaPaths.map((path) => `dir:${path}`).join("`, `");
-  return `${guidanceStart}
-## supaschema
-
-This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; setup can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
-
-${pathLines}
-- The agent install prompt lives at \`.agents/prompts/supaschema-install.md\`; read it before installing, initializing, inspecting, or explaining supaschema setup in this project.
-- Treat \`supaschema.config.json\` as four decisions: schema tree (\`schemaPaths\`, \`sources.to\`, \`migrationsDir\`), diff baseline (\`sources.from\`, \`sources.to\`), generated contracts (\`typesFile\`, \`zodFile\`, \`workflow.type_generation\`, \`workflow.zod_generation\`, \`workflow.type_usage\`), and apply policy (\`workflow.migration_sync\`, \`sync.targets\`).
-- \`schemaPaths\` roots are recursive. The default target source is \`${sourceTargets}\`; keep \`sources.to\` explicit when the diff target is intentionally different.
-- Generated type outputs use \`${defaultTypesFile}\` and \`${defaultZodFile}\` unless \`typesFile\` or \`zodFile\` is changed in config; default workflow creates or refreshes both after \`diff\`, and \`workflow.type_usage: "zod_validated"\` tells agents to use generated Zod validators at runtime boundaries.
-- Use existing \`$ENV_NAME\` database URL references in \`sync.targets\` or \`environments\`; do not create duplicate supaschema-only credentials or commit credentials.
-- For schema changes, read \`.agents/skills/supaschema/SKILL.md\` and the matching Claude/Codex rule file, edit declarative SQL, then run \`diff\` and \`check\` through the local runner selected in \`.agents/prompts/supaschema-install.md\`.
-- Hooks in \`.claude/settings.json\` and \`.codex/hooks.json\` enforce generated-migration protection and auto-run diff plus generated-migration check after schema SQL writes. When \`workflow.migration_sync\` allows automatic sync, the schema-write hook preflights every \`sync.targets\` entry with \`mode: "auto"\`; if each target resolves and any remote target is approved, it delegates to \`supaschema sync\`. Otherwise it stays on the non-mutating diff/check lane. Generated-migration check or sync failures trigger agent-loop feedback to investigate the root source and correlated migration failures.
-- Use bare \`sync\` for the configured workflow. Do not run \`sync --target <name>\` unless explicitly asked to override target selection. \`sync.targets.<name>.mode\` decides automatic target selection, \`workflow.migration_sync: "manual"\` keeps bare sync on the dry-run gate, and \`workflow.migration_sync: "disabled"\` blocks apply.
-${guidanceEnd}
-`;
-}
-
-function upsertManagedBlock(target, relativePath, block, { dryRun = false } = {}) {
-  const path = join(target, relativePath);
-  const current = readText(path) ?? "";
-  const start = current.indexOf(guidanceStart);
-  const end = current.indexOf(guidanceEnd);
-  let next;
-  if (start !== -1 && end !== -1 && end > start) {
-    const before = current.slice(0, start).trimEnd();
-    const after = current.slice(end + guidanceEnd.length).trimStart();
-    next = [before, block.trimEnd(), after].filter((piece) => piece.length > 0).join("\n\n");
-  } else {
-    next = current.trim().length > 0 ? `${current.trimEnd()}\n\n${block}` : block;
-  }
-  return writeProjectFile(target, relativePath, next.endsWith("\n") ? next : `${next}\n`, {
-    dryRun,
-  });
-}
-
-function installClaudePointer(target, { dryRun = false } = {}) {
-  const current = readText(join(target, "CLAUDE.md"));
-  if (current === undefined) {
-    return writeProjectFile(target, "CLAUDE.md", `${claudeAgentsPointer}\n`, { dryRun });
-  }
-  const withoutManagedBlock = removeManagedGuidanceBlock(current);
-  if (isClaudeAgentsPointer(withoutManagedBlock)) {
-    return writeProjectFile(target, "CLAUDE.md", `${claudeAgentsPointer}\n`, { dryRun });
-  }
-  if (withoutManagedBlock !== current) {
-    return writeProjectFile(
-      target,
-      "CLAUDE.md",
-      withoutManagedBlock.endsWith("\n") ? withoutManagedBlock : `${withoutManagedBlock}\n`,
-      { dryRun }
-    );
-  }
-  return false;
-}
-
-function removeManagedGuidanceBlock(text) {
-  const start = text.indexOf(guidanceStart);
-  const end = text.indexOf(guidanceEnd);
-  if (start === -1 || end === -1 || end <= start) {
-    return text;
-  }
-  const before = text.slice(0, start).trimEnd();
-  const after = text.slice(end + guidanceEnd.length).trimStart();
-  const pieces = [before, after].filter((piece) => piece.length > 0);
-  return pieces.length > 0 ? `${pieces.join("\n\n")}\n` : "";
-}
-
-function isClaudeAgentsPointer(text) {
-  return text.trim() === claudeAgentsPointer;
-}
-
 function writeInstallManifest(
   target,
   packageVersion,
@@ -1265,176 +967,6 @@ function writeProjectFile(target, relativePath, contents, { dryRun = false } = {
   return writeFileAtomicIfChanged(destination, contents, { dryRun });
 }
 
-function copyAgentBundle({ dryRun, packageRoot, preserved, skipped, targetDir }) {
-  let changed = false;
-  for (const path of agentPaths) {
-    changed =
-      copyProjectPath(packageRoot, targetDir, path, { dryRun, preserved, skipped }) || changed;
-  }
-  return changed;
-}
-
-function removeNonCanonicalAgentSurfaces({ dryRun, targetDir }) {
-  let changed = false;
-  for (const file of nonCanonicalAgentPaths) {
-    const destination = join(targetDir, file);
-    changed = existsSync(destination) || changed;
-    if (!dryRun) {
-      rmSync(destination, { force: true, recursive: true });
-    }
-  }
-  changed = removeEmptyDirectory(join(targetDir, ".codex/skills"), { dryRun }) || changed;
-  return changed;
-}
-
-function removeRetiredGeneratedBackupSurfaces({ dryRun, targetDir }) {
-  const removed = [];
-  if (dryRun) {
-    return removed;
-  }
-  for (const surfaceRoot of generatedBackupSurfaceRoots) {
-    const root = join(targetDir, surfaceRoot);
-    let entries;
-    try {
-      entries = readdirSync(root, { withFileTypes: true });
-    } catch (error) {
-      if (!isMissingFile(error)) {
-        throw error;
-      }
-      continue;
-    }
-    for (const entry of entries) {
-      if (!(entry.isDirectory() && isRetiredGeneratedBackupDirName(entry.name))) {
-        continue;
-      }
-      rmSync(join(root, entry.name), { force: true, recursive: true });
-      removed.push(`${surfaceRoot}/${entry.name}`);
-    }
-  }
-  return removed;
-}
-
-function isRetiredGeneratedBackupDirName(name) {
-  const marker = ".__backup_";
-  const markerIndex = name.indexOf(marker);
-  if (markerIndex === -1) {
-    return false;
-  }
-  const owner = name.slice(0, markerIndex);
-  const timestamp = name.slice(markerIndex + marker.length);
-  return generatedBackupOwners.has(owner) && isCompactTimestamp(timestamp);
-}
-
-function isCompactTimestamp(value) {
-  return (
-    value.length === 15 &&
-    value[8] === "T" &&
-    allAsciiDigits(value.slice(0, 8)) &&
-    allAsciiDigits(value.slice(9))
-  );
-}
-
-function allAsciiDigits(value) {
-  return [...value].every((char) => isAsciiDigit(char));
-}
-
-function copyProjectPath(
-  packageRoot,
-  target,
-  mapping,
-  { dryRun = false, preserved = [], skipped = [] } = {}
-) {
-  const sourcePath = typeof mapping === "string" ? mapping : mapping.source;
-  const targetPath = typeof mapping === "string" ? mapping : mapping.target;
-  const source = join(packageRoot, sourcePath);
-  if (!existsSync(source)) {
-    skipped.push(sourcePath);
-    return false;
-  }
-  const preserveExisting = shouldPreserveExistingAgentPath(targetPath);
-  if (statSync(source).isDirectory()) {
-    return copyProjectDirectory(source, join(target, targetPath), {
-      dryRun,
-      preserveExisting,
-      relativePath: targetPath,
-      preserved,
-      skipped,
-    });
-  }
-  return copyProjectFile(source, join(target, targetPath), {
-    dryRun,
-    preserved,
-    preserveExisting,
-    relativePath: targetPath,
-    skipped,
-  });
-}
-
-function shouldPreserveExistingAgentPath(relativePath) {
-  return preservedExistingAgentPrefixes.some((prefix) => relativePath.startsWith(prefix));
-}
-
-function copyProjectDirectory(source, destination, options = {}) {
-  let changed = !existsSync(destination);
-  if (!options.dryRun) {
-    mkdirSync(destination, { recursive: true });
-  }
-  for (const entry of readdirSync(source, { withFileTypes: true })) {
-    const sourcePath = join(source, entry.name);
-    const destinationPath = join(destination, entry.name);
-    const relativePath =
-      typeof options.relativePath === "string"
-        ? `${options.relativePath}/${entry.name}`
-        : entry.name;
-    if (entry.isDirectory()) {
-      changed =
-        copyProjectDirectory(sourcePath, destinationPath, { ...options, relativePath }) || changed;
-      continue;
-    }
-    if (entry.isFile()) {
-      changed =
-        copyProjectFile(sourcePath, destinationPath, { ...options, relativePath }) || changed;
-    }
-  }
-  return changed;
-}
-
-function copyProjectFile(source, destination, options = {}) {
-  if (options.preserveExisting === true && existsSync(destination)) {
-    if (Array.isArray(options.preserved) && typeof options.relativePath === "string") {
-      options.preserved.push(options.relativePath);
-    }
-    return false;
-  }
-  const sourceContents = readFileSync(source);
-  const existingContents = readBinaryIfPresent(destination);
-  if (existingContents !== undefined && Buffer.compare(sourceContents, existingContents) === 0) {
-    return false;
-  }
-  if (options.dryRun) {
-    return true;
-  }
-  mkdirSync(dirname(destination), { recursive: true });
-  copyFileSync(source, destination);
-  return true;
-}
-
-function removeEmptyDirectory(directory, { dryRun = false } = {}) {
-  try {
-    if (readdirSync(directory).length === 0) {
-      if (!dryRun) {
-        rmdirSync(directory);
-      }
-      return true;
-    }
-  } catch (error) {
-    if (!isMissingFile(error)) {
-      throw error;
-    }
-  }
-  return false;
-}
-
 function writeInstallState({ dryRun, existingConfig, packageVersion, scan, selection, targetDir }) {
   if (selection.pathConfirmationNeeded) {
     return writeInstallManifest(targetDir, packageVersion, scan, selection, existingConfig, {
@@ -1444,48 +976,11 @@ function writeInstallState({ dryRun, existingConfig, packageVersion, scan, selec
   return removeInstallManifest(targetDir, { dryRun });
 }
 
-function mergeHookConfig(packageRoot, target, hookConfig, skipped, { dryRun = false } = {}) {
-  const source =
-    typeof hookConfig.configFile === "string"
-      ? readJson(join(packageRoot, hookConfig.configFile))
-      : hookConfig.config;
-  const transformedSource =
-    typeof hookConfig.transform === "function" ? hookConfig.transform(source) : source;
-  const destination = join(target, hookConfig.path);
-  const existing = readJsonIfPresent(destination);
-  if (!transformedSource || existing === undefined) {
-    skipped.push(hookConfig.path);
-    return false;
-  }
-
-  const merged = mergeHooks(existing, transformedSource);
-  return writeFileAtomicIfChanged(destination, `${JSON.stringify(merged, null, 2)}\n`, { dryRun });
-}
-
-function readBinaryIfPresent(path) {
-  try {
-    return readFileSync(path);
-  } catch (error) {
-    if (!isMissingFile(error)) {
-      throw error;
-    }
-    return;
-  }
-}
-
 function readText(path) {
   try {
     return readFileSync(path, "utf8");
   } catch {
     return;
-  }
-}
-
-function readJsonIfPresent(path) {
-  try {
-    return JSON.parse(readFileSync(path, "utf8"));
-  } catch (error) {
-    return isMissingFile(error) ? {} : undefined;
   }
 }
 
@@ -1534,304 +1029,6 @@ function removeIfPresent(filePath) {
   } catch {
     return false;
   }
-}
-
-function mergeHooks(existing, source) {
-  const merged = isRecord(existing) ? structuredClone(existing) : {};
-  const sourceHooks = isRecord(source.hooks) ? source.hooks : {};
-  const mergedHooks = isRecord(merged.hooks) ? merged.hooks : {};
-  merged.hooks = mergedHooks;
-  const sourceManagedScripts = managedScriptsFromHooks(sourceHooks);
-  const sourceManagedHookKeys = managedHookKeysByEvent(sourceHooks);
-  const dispatcherOwnedEvents = new Set();
-
-  for (const [eventName, existingEntries] of Object.entries(mergedHooks)) {
-    if (Array.isArray(existingEntries)) {
-      const withoutLegacy = withoutLegacyBrokenClaudeScriptHooks(
-        existingEntries,
-        sourceManagedScripts
-      );
-      if (hasProjectCodexDispatcher(eventName, withoutLegacy)) {
-        dispatcherOwnedEvents.add(eventName);
-        mergedHooks[eventName] = withoutSourceManagedHooks(
-          withoutLegacy,
-          sourceManagedHookKeys.get(eventName) ?? new Set(),
-          sourceManagedScripts
-        );
-        continue;
-      }
-      mergedHooks[eventName] = withoutLegacy;
-    }
-  }
-
-  for (const [eventName, sourceEntries] of Object.entries(sourceHooks)) {
-    if (!Array.isArray(sourceEntries)) {
-      continue;
-    }
-    if (dispatcherOwnedEvents.has(eventName)) {
-      continue;
-    }
-    const existingEntries = Array.isArray(mergedHooks[eventName]) ? mergedHooks[eventName] : [];
-    mergedHooks[eventName] = mergeHookEntries(existingEntries, sourceEntries);
-  }
-
-  return merged;
-}
-
-function managedScriptsFromHooks(sourceHooks) {
-  return new Set(
-    Object.values(sourceHooks)
-      .filter(Array.isArray)
-      .flatMap((entries) => entries.flatMap(hookDefinitions))
-      .map(managedHookScript)
-      .filter((name) => name !== undefined)
-  );
-}
-
-function managedHookKeysByEvent(sourceHooks) {
-  const keysByEvent = new Map();
-  for (const [eventName, entries] of Object.entries(sourceHooks)) {
-    if (!Array.isArray(entries)) {
-      continue;
-    }
-    keysByEvent.set(eventName, new Set(entries.flatMap(hookDefinitions).map(managedHookKey)));
-  }
-  return keysByEvent;
-}
-
-function mergeHookEntries(existingEntries, sourceEntries) {
-  const existingKeys = new Set(existingEntries.flatMap(hookDefinitions).map(managedHookKey));
-  return [...existingEntries, ...missingHookEntries(existingEntries, sourceEntries, existingKeys)];
-}
-
-function missingHookEntries(existingEntries, sourceEntries, existingKeys) {
-  const entries = [];
-  for (const sourceEntry of sourceEntries) {
-    const entry = missingHookEntry(existingEntries, sourceEntry, existingKeys);
-    if (entry !== undefined) {
-      entries.push(entry);
-    }
-  }
-  return entries;
-}
-
-function missingHookEntry(existingEntries, sourceEntry, existingKeys) {
-  if (!(isRecord(sourceEntry) && Array.isArray(sourceEntry.hooks))) {
-    return hasEquivalentHookEntry(existingEntries, sourceEntry)
-      ? undefined
-      : structuredClone(sourceEntry);
-  }
-  const missingHooks = sourceEntry.hooks.filter((hook) => useMissingHookKey(hook, existingKeys));
-  return missingHooks.length > 0
-    ? { ...structuredClone(sourceEntry), hooks: missingHooks }
-    : undefined;
-}
-
-function hasEquivalentHookEntry(existingEntries, sourceEntry) {
-  const signature = hookSignature(sourceEntry);
-  return existingEntries.some((entry) => hookSignature(entry) === signature);
-}
-
-function useMissingHookKey(hook, existingKeys) {
-  const key = managedHookKey(hook);
-  if (existingKeys.has(key)) {
-    return false;
-  }
-  existingKeys.add(key);
-  return true;
-}
-
-function withoutLegacyBrokenClaudeScriptHooks(entries, managedScripts) {
-  const kept = [];
-  for (const entry of entries) {
-    if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
-      if (!isLegacyBrokenClaudeScriptHook(entry, managedScripts)) {
-        kept.push(entry);
-      }
-      continue;
-    }
-    const hooks = entry.hooks.filter(
-      (hook) => !isLegacyBrokenClaudeScriptHook(hook, managedScripts)
-    );
-    if (hooks.length > 0) {
-      kept.push({ ...entry, hooks });
-    }
-  }
-  return kept;
-}
-
-function withoutSourceManagedHooks(entries, sourceManagedKeys, sourceManagedScripts) {
-  const kept = [];
-  for (const entry of entries) {
-    if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
-      if (!isSourceManagedHook(entry, sourceManagedKeys, sourceManagedScripts)) {
-        kept.push(entry);
-      }
-      continue;
-    }
-    const hooks = entry.hooks.filter(
-      (hook) => !isSourceManagedHook(hook, sourceManagedKeys, sourceManagedScripts)
-    );
-    if (hooks.length > 0) {
-      kept.push({ ...entry, hooks });
-    }
-  }
-  return kept;
-}
-
-function isSourceManagedHook(hook, sourceManagedKeys, sourceManagedScripts) {
-  if (!isRecord(hook)) {
-    return false;
-  }
-  if (sourceManagedKeys.has(managedHookKey(hook))) {
-    return true;
-  }
-  const script = managedHookScript(hook);
-  return script !== undefined && sourceManagedScripts.has(script);
-}
-
-function hasProjectCodexDispatcher(eventName, entries) {
-  const dispatcher = codexDispatcherScriptForEvent(eventName);
-  return (
-    dispatcher !== undefined &&
-    entries.flatMap(hookDefinitions).some((hook) => managedHookScript(hook) === dispatcher)
-  );
-}
-
-function codexDispatcherScriptForEvent(eventName) {
-  if (eventName === "PreToolUse" || eventName === "PostToolUse") {
-    return "tool-gate.mjs";
-  }
-  if (eventName === "Stop") {
-    return "stop.mjs";
-  }
-}
-
-function isLegacyBrokenClaudeScriptHook(hook, managedScripts) {
-  if (!isRecord(hook)) {
-    return false;
-  }
-  if (hook.command !== "node" || !Array.isArray(hook.args) || hook.args.length !== 1) {
-    return false;
-  }
-  const [scriptPath] = hook.args;
-  if (typeof scriptPath !== "string" || !scriptPath.startsWith(`${claudeProjectDir}/`)) {
-    return false;
-  }
-  const script = managedHookScript(hook);
-  return script !== undefined && managedScripts.has(script);
-}
-
-function managedHookKey(hook) {
-  const supaschemaHook = managedSupaschemaHook(hook);
-  if (supaschemaHook !== undefined) {
-    return `supaschema:${supaschemaHook}`;
-  }
-  return `signature:${hookSignature(hook)}`;
-}
-
-function managedHookScript(hook) {
-  if (!isRecord(hook)) {
-    return;
-  }
-  const scriptArg = Array.isArray(hook.args)
-    ? hook.args.find((arg) => typeof arg === "string" && isHookScriptPath(arg))
-    : undefined;
-  if (typeof scriptArg === "string") {
-    return basenameFromCommand(scriptArg);
-  }
-  const command = typeof hook.command === "string" ? hook.command : "";
-  return basenameFromCommand(command);
-}
-
-function isHookScriptPath(value) {
-  return value.endsWith(".mjs") || value.endsWith(".sh");
-}
-
-function basenameFromCommand(command) {
-  const lastSlash = command.lastIndexOf("/");
-  if (lastSlash === -1) {
-    return;
-  }
-  let end = command.length;
-  while (end > 0) {
-    const char = command[end - 1];
-    if (char === '"' || char === "'" || char === " " || char === "\t") {
-      end -= 1;
-      continue;
-    }
-    break;
-  }
-  const name = command.slice(lastSlash + 1, end);
-  return name.endsWith(".mjs") || name.endsWith(".sh") ? name : undefined;
-}
-
-function managedSupaschemaHook(hook) {
-  if (!isRecord(hook)) {
-    return;
-  }
-  const tokens = [];
-  if (typeof hook.command === "string") {
-    tokens.push(...hook.command.split(" ").filter((token) => token.length > 0));
-  }
-  if (Array.isArray(hook.args)) {
-    tokens.push(...hook.args.filter((arg) => typeof arg === "string"));
-  }
-  const binaryIndex = tokens.findIndex(isSupaschemaBinaryToken);
-  if (binaryIndex === -1 || tokens[binaryIndex + 1] !== "hook") {
-    return;
-  }
-  const hookName = tokens[binaryIndex + 2];
-  if (hookName === "schema-write") {
-    return hookName;
-  }
-  if (hookName !== "generated-migration-edit") {
-    return;
-  }
-  const runtimeFlag = tokens.indexOf("--runtime");
-  const runtime = runtimeFlag === -1 ? "" : (tokens[runtimeFlag + 1] ?? "");
-  return `${hookName}:${runtime}`;
-}
-
-function isSupaschemaBinaryToken(token) {
-  const normalized = trimBoundaryQuotes(token);
-  return normalized === "supaschema" || normalized.endsWith("/supaschema");
-}
-
-function trimBoundaryQuotes(value) {
-  let start = 0;
-  let end = value.length;
-  while (start < end && isQuote(value[start])) {
-    start += 1;
-  }
-  while (end > start && isQuote(value[end - 1])) {
-    end -= 1;
-  }
-  return value.slice(start, end);
-}
-
-function isQuote(value) {
-  return value === '"' || value === "'";
-}
-
-function hookDefinitions(entry) {
-  if (!isRecord(entry)) {
-    return [];
-  }
-  if (typeof entry.command === "string") {
-    return [entry];
-  }
-  if (!Array.isArray(entry.hooks)) {
-    return [];
-  }
-  return entry.hooks.filter((hook) => isRecord(hook) && typeof hook.command === "string");
-}
-
-function hookSignature(hook) {
-  return JSON.stringify({
-    args: Array.isArray(hook.args) ? hook.args : undefined,
-    command: typeof hook.command === "string" ? hook.command : "",
-  });
 }
 
 function rel(projectDir, path) {

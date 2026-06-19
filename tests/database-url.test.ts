@@ -7,59 +7,22 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database-url.js";
-import { expectedInstalledConfig } from "./install-parity-expectations.js";
+import {
+  expectedInstalledConfig,
+  expectedSupaschemaScripts,
+} from "./install-parity-expectations.js";
 
 const run = promisify(execFile);
-const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
-const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const codexGateCommand = "npm exec -- supaschema hook generated-migration-edit --runtime codex";
-const codexAutoDiffCommand = "npm exec -- supaschema hook schema-write";
-const codexLlmSyncCommand = `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
-const codexGeneralGuardCommand = `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`;
-const bunCodexGateCommand = `"${codexProjectDir}/node_modules/.bin/supaschema" hook generated-migration-edit --runtime codex`;
-const bunCodexAutoDiffCommand = `"${codexProjectDir}/node_modules/.bin/supaschema" hook schema-write`;
-const codexToolGateCommand = 'node "$(git rev-parse --show-toplevel)/.codex/hooks/tool-gate.mjs"';
-const codexStopCommand = 'node "$(git rev-parse --show-toplevel)/.codex/hooks/stop.mjs"';
-const codexToolMatcher = ["Bash", "apply_patch", "Edit", "Write", "edit_file"].join("|");
-const codexMutationMatcher = ["Write", "Edit", "MultiEdit", "apply_patch"].join("|");
-const removedClaudeSkillGateCommand = `${claudeProjectDir}/.claude/hooks/skill_gate.sh`;
-const legacyClaudeBashPolicyArgs = [
-  `${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`,
-];
-const legacyClaudeLlmSyncArgs = [
-  `${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
-];
-const claudeGeneratedGateArgs = [
-  "exec",
-  "--",
-  "supaschema",
-  "hook",
-  "generated-migration-edit",
-  "--runtime",
-  "claude",
-];
-const claudeBashPolicyCommand = `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`;
-const claudeAutoDiffArgs = ["exec", "--", "supaschema", "hook", "schema-write"];
-const claudeLlmSyncCommand = `node "${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`;
-const bunClaudeRunnerArgsPrefix = [
-  "-c",
-  `"${claudeProjectDir}/node_modules/.bin/supaschema" "$@"`,
-  "supaschema",
-];
-function shellParameter(expression: string): string {
-  return ["$", "{", expression, "}"].join("");
-}
 
 async function runScaffold(
   targetDir: string,
-  options: { installAgentBundle?: boolean; packageRoot?: string; repair?: boolean } = {}
+  options: { packageRoot?: string; repair?: boolean } = {}
 ): Promise<void> {
   const { scaffoldProject } = await import(
     pathToFileURL(join(process.cwd(), "bin/scaffold.mjs")).href
   );
   await scaffoldProject({
     interactive: false,
-    installAgentBundle: options.installAgentBundle === true,
     packageRoot: options.packageRoot ?? process.cwd(),
     packageVersion: "test",
     repair: options.repair === true,
@@ -162,226 +125,6 @@ describe("init project setup", () => {
     expect(prompt).toContain("raw AI-agent rules, hooks, skills, prompts, and settings");
   });
 
-  it("installs agent surfaces only when explicitly requested", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-init-agent-bundle-"));
-
-    await runScaffold(consumer, { installAgentBundle: true });
-
-    const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
-    const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
-    const prompt = await readFile(join(consumer, ".agents/prompts/supaschema-install.md"), "utf8");
-    expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
-    expect(agents).toContain("Schema intent belongs in `database/schemas`");
-    expect(agents).toContain(".agents/prompts/supaschema-install.md");
-    expect(claude).toBe("@AGENTS.md\n");
-    expect(prompt).toContain("Do not clone `jmclaughlin724/supaschema`");
-    expect(prompt).toContain("npm install supaschema");
-    expect(prompt).toContain("pnpm add supaschema");
-    expect(prompt).toContain("npm exec -- supaschema init");
-    expect(prompt).toContain("pnpm exec supaschema init");
-    expect(prompt).toContain("yarn add supaschema");
-    expect(prompt).toContain("yarn exec supaschema init");
-    expect(prompt).toContain("bun add supaschema");
-    expect(prompt).toContain("./node_modules/.bin/supaschema init");
-    expect(prompt).toContain("Do not run npm in a pnpm, Yarn, or Bun project");
-    expect(prompt).toContain("cd` into the owning member package");
-    expect(prompt).not.toContain("--workspace <name-or-path>");
-    expect(prompt).not.toContain("--filter <pkg> add");
-    expect(prompt).not.toContain("--save-dev");
-    expect(prompt).toContain("npm exec -- supaschema <cmd>");
-    expect(prompt).toContain("pnpm exec supaschema <cmd>");
-    expect(prompt).toContain("./node_modules/.bin/supaschema <cmd>");
-    expect(prompt).toContain("config validate --json");
-
-    await runScaffold(consumer, { installAgentBundle: true });
-    const claudeSettings = JSON.parse(
-      await readFile(join(consumer, ".claude/settings.json"), "utf8")
-    );
-    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-    expect(claudeSettings.enabledMcpjsonServers).toBeUndefined();
-    expect(commandCount(claudeSettings, removedClaudeSkillGateCommand)).toBe(0);
-    expect(commandCount(claudeSettings, claudeBashPolicyCommand)).toBe(1);
-    expect(hookCount(claudeSettings, "npm", claudeGeneratedGateArgs)).toBe(1);
-    expect(hookCount(claudeSettings, "npm", claudeAutoDiffArgs)).toBe(1);
-    expect(commandCount(claudeSettings, claudeLlmSyncCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexGateCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
-    expect(blockCount(await readFile(join(consumer, "AGENTS.md"), "utf8"))).toBe(1);
-    expect(blockCount(await readFile(join(consumer, "CLAUDE.md"), "utf8"))).toBe(0);
-  });
-
-  it("materializes hook commands with the detected package manager runner", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-init-pnpm-hooks-"));
-    await writeFile(
-      join(consumer, "package.json"),
-      `${JSON.stringify({ name: "db", packageManager: "pnpm@10.18.1", private: true })}\n`
-    );
-
-    await runScaffold(consumer, { installAgentBundle: true });
-
-    const claudeSettings = JSON.parse(
-      await readFile(join(consumer, ".claude/settings.json"), "utf8")
-    );
-    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-    expect(
-      hookCount(claudeSettings, "pnpm", [
-        "exec",
-        "supaschema",
-        "hook",
-        "generated-migration-edit",
-        "--runtime",
-        "claude",
-      ])
-    ).toBe(1);
-    expect(commandCount(codexHooks, "pnpm exec supaschema hook schema-write")).toBe(1);
-    expect(commandCount(codexHooks, "npm exec -- supaschema hook schema-write")).toBe(0);
-    expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(0);
-  });
-
-  it("materializes Bun hook commands through the installed package bin", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-init-bun-hooks-"));
-    await writeFile(
-      join(consumer, "package.json"),
-      `${JSON.stringify({ name: "db", packageManager: "bun@1.3.14", private: true })}\n`
-    );
-
-    await runScaffold(consumer, { installAgentBundle: true });
-
-    const claudeSettings = JSON.parse(
-      await readFile(join(consumer, ".claude/settings.json"), "utf8")
-    );
-    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-    expect(
-      hookCount(claudeSettings, "sh", [
-        ...bunClaudeRunnerArgsPrefix,
-        "hook",
-        "generated-migration-edit",
-        "--runtime",
-        "claude",
-      ])
-    ).toBe(1);
-    expect(
-      hookCount(claudeSettings, "sh", [...bunClaudeRunnerArgsPrefix, "hook", "schema-write"])
-    ).toBe(1);
-    expect(commandCount(codexHooks, bunCodexGateCommand)).toBe(1);
-    expect(commandCount(codexHooks, bunCodexAutoDiffCommand)).toBe(1);
-    expect(JSON.stringify(claudeSettings)).not.toContain("bunx");
-    expect(JSON.stringify(codexHooks)).not.toContain("bunx");
-  });
-
-  it("preserves existing Codex hook dispatchers and hook scripts", async () => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-init-codex-dispatcher-"));
-    await writeFile(
-      join(consumer, "package.json"),
-      `${JSON.stringify({ name: "db", packageManager: "pnpm@10.18.1", private: true })}\n`
-    );
-    await writeNestedFile(join(consumer, ".codex/hooks/general-guard.mjs"), "custom guard\n");
-    await writeNestedFile(
-      join(consumer, ".codex/hooks.json"),
-      `${JSON.stringify({
-        hooks: {
-          PreToolUse: [
-            {
-              hooks: [
-                {
-                  command: codexToolGateCommand,
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: codexToolMatcher,
-              hooks: [
-                {
-                  command: codexGeneralGuardCommand,
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: codexMutationMatcher,
-              hooks: [
-                {
-                  command:
-                    "npx --no-install supaschema hook generated-migration-edit --runtime codex",
-                  type: "command",
-                },
-              ],
-            },
-          ],
-          PostToolUse: [
-            {
-              hooks: [
-                {
-                  command: codexToolGateCommand,
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: codexToolMatcher,
-              hooks: [
-                {
-                  command: codexLlmSyncCommand,
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: codexMutationMatcher,
-              hooks: [
-                {
-                  command: "pnpm exec supaschema hook schema-write",
-                  type: "command",
-                },
-              ],
-            },
-          ],
-          Stop: [
-            {
-              hooks: [
-                {
-                  command: codexStopCommand,
-                  type: "command",
-                },
-              ],
-            },
-            {
-              hooks: [
-                {
-                  command: codexLlmSyncCommand,
-                  type: "command",
-                },
-              ],
-            },
-          ],
-        },
-      })}\n`
-    );
-
-    await runScaffold(consumer, { installAgentBundle: true });
-
-    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-    expect(await readFile(join(consumer, ".codex/hooks/general-guard.mjs"), "utf8")).toBe(
-      "custom guard\n"
-    );
-    expect(commandCount(codexHooks, codexToolGateCommand)).toBe(2);
-    expect(commandCount(codexHooks, codexStopCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(0);
-    expect(commandCount(codexHooks, codexGateCommand)).toBe(0);
-    expect(
-      commandCount(
-        codexHooks,
-        "npx --no-install supaschema hook generated-migration-edit --runtime codex"
-      )
-    ).toBe(0);
-    expect(commandCount(codexHooks, "pnpm exec supaschema hook schema-write")).toBe(0);
-    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(0);
-    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(0);
-  });
-
   it("sets pnpm build approval for supaschema when initializing a pnpm workspace member", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "supa-init-pnpm-workspace-"));
     const member = join(workspace, "packages", "db");
@@ -432,81 +175,51 @@ describe("init project setup", () => {
     expect(workspaceYaml).toBe("packages:\n  - packages/*\n\nallowBuilds:\n  supaschema: true\n");
   });
 
-  it("does not inherit unrelated ancestor package-manager lockfiles", async () => {
-    const parent = await mkdtemp(join(tmpdir(), "supa-init-parent-lock-"));
-    const consumer = join(parent, "consumer");
-    await mkdir(consumer, { recursive: true });
-    await writeFile(join(parent, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+  it("adds canonical package scripts to the owning package manifest", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-package-scripts-"));
     await writeFile(
       join(consumer, "package.json"),
-      `${JSON.stringify({ name: "db", private: true, version: "0.0.0" })}\n`
+      `${JSON.stringify({
+        name: "db",
+        private: true,
+        scripts: {
+          test: "vitest",
+        },
+        version: "0.0.0",
+      })}\n`
     );
-    await writeFile(join(consumer, "package-lock.json"), '{"lockfileVersion":3}\n');
 
-    await runScaffold(consumer, { installAgentBundle: true });
+    await runScaffold(consumer);
 
-    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-    expect(commandCount(codexHooks, "npm exec -- supaschema hook schema-write")).toBe(1);
-    expect(commandCount(codexHooks, "pnpm exec supaschema hook schema-write")).toBe(0);
+    const manifest = JSON.parse(await readFile(join(consumer, "package.json"), "utf8"));
+    expect(manifest.scripts).toEqual({
+      test: "vitest",
+      ...expectedSupaschemaScripts,
+    });
   });
 
-  it("copies complete packaged skill directories into shared and Claude skill locations", async () => {
-    const packageRoot = await mkdtemp(join(tmpdir(), "supa-package-root-"));
-    const consumer = await mkdtemp(join(tmpdir(), "supa-init-skills-"));
-    await writeNestedFile(
-      join(packageRoot, "agent-bundle/agents/prompts/supaschema-install.md"),
-      "install prompt\n"
-    );
-    await writeNestedFile(
-      join(packageRoot, "agent-bundle/agents/skills/supaschema/SKILL.md"),
-      "shared skill\n"
-    );
-    await writeNestedFile(
-      join(packageRoot, "agent-bundle/agents/skills/supaschema/references/workflow.md"),
-      "shared reference\n"
-    );
-    await writeNestedFile(
-      join(packageRoot, "agent-bundle/claude/skills/supaschema/SKILL.md"),
-      "claude skill\n"
-    );
-    await writeNestedFile(
-      join(packageRoot, "agent-bundle/claude/skills/supaschema/references/workflow.md"),
-      "claude reference\n"
-    );
-    await writeNestedFile(
-      join(consumer, ".codex/skills/supaschema/SKILL.md"),
-      "noncanonical codex skill\n"
-    );
-    await writeNestedFile(join(consumer, ".codex/skills/custom/SKILL.md"), "custom skill\n");
-
-    const { scaffoldProject } = await import(
-      pathToFileURL(join(process.cwd(), "bin/scaffold.mjs")).href
+  it("preserves existing supaschema package scripts unless repair is requested", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-package-scripts-repair-"));
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({
+        name: "db",
+        private: true,
+        scripts: {
+          "supaschema:migration": "custom migration",
+        },
+        version: "0.0.0",
+      })}\n`
     );
 
-    await scaffoldProject({
-      interactive: false,
-      installAgentBundle: true,
-      packageRoot,
-      packageVersion: "test",
-      targetDir: consumer,
-    });
+    await runScaffold(consumer);
+    let manifest = JSON.parse(await readFile(join(consumer, "package.json"), "utf8"));
+    expect(manifest.scripts["supaschema:migration"]).toBe("custom migration");
+    expect(manifest.scripts["supaschema:types"]).toBe("supaschema types");
 
-    expect(await readFile(join(consumer, ".agents/skills/supaschema/SKILL.md"), "utf8")).toBe(
-      "shared skill\n"
-    );
-    expect(
-      await readFile(join(consumer, ".agents/skills/supaschema/references/workflow.md"), "utf8")
-    ).toBe("shared reference\n");
-    expect(await readFile(join(consumer, ".claude/skills/supaschema/SKILL.md"), "utf8")).toBe(
-      "claude skill\n"
-    );
-    expect(
-      await readFile(join(consumer, ".claude/skills/supaschema/references/workflow.md"), "utf8")
-    ).toBe("claude reference\n");
-    expect(existsSync(join(consumer, ".codex/skills/supaschema/SKILL.md"))).toBe(false);
-    expect(await readFile(join(consumer, ".codex/skills/custom/SKILL.md"), "utf8")).toBe(
-      "custom skill\n"
-    );
+    await runScaffold(consumer, { repair: true });
+    manifest = JSON.parse(await readFile(join(consumer, "package.json"), "utf8"));
+    expect(manifest.scripts).toMatchObject(expectedSupaschemaScripts);
   });
 
   it("uses Supabase paths when the project has Supabase local config", async () => {
@@ -659,178 +372,39 @@ describe("init project setup", () => {
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
-  it("preserves an existing config and merges hook wiring", async () => {
+  it("preserves existing config and consumer-owned agent surfaces", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-existing-"));
     await writeFile(join(consumer, "supaschema.config.json"), '{"adapter":"auto"}\n');
     await writeFile(join(consumer, "AGENTS.md"), "# Existing agents\n\nKeep this.\n");
     await writeFile(join(consumer, "CLAUDE.md"), "@AGENTS.md\n");
-    await mkdir(join(consumer, ".claude"), { recursive: true });
-    await writeFile(
-      join(consumer, ".claude/settings.json"),
-      `${JSON.stringify({
-        hooks: {
-          PreToolUse: [
-            {
-              args: legacyClaudeBashPolicyArgs,
-              command: "node",
-              type: "command",
-            },
-            {
-              hooks: [{ args: ["scripts/local-policy.mjs"], command: "node", type: "command" }],
-            },
-            {
-              hooks: [
-                {
-                  args: ["scripts/bash-policy-checks.mjs"],
-                  command: "node",
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: "Bash",
-              hooks: [
-                {
-                  args: legacyClaudeBashPolicyArgs,
-                  command: "node",
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: codexMutationMatcher,
-              hooks: [
-                {
-                  args: [
-                    "--no-install",
-                    "supaschema",
-                    "hook",
-                    "generated-migration-edit",
-                    "--runtime",
-                    "claude",
-                  ],
-                  command: "npx",
-                  type: "command",
-                },
-              ],
-            },
-          ],
-          PostToolUse: [
-            {
-              matcher: codexMutationMatcher,
-              hooks: [
-                {
-                  args: ["--no-install", "supaschema", "hook", "schema-write"],
-                  command: "npx",
-                  type: "command",
-                },
-              ],
-            },
-          ],
-          PostToolBatch: [
-            {
-              args: legacyClaudeLlmSyncArgs,
-              command: "node",
-              type: "command",
-            },
-            {
-              hooks: [
-                {
-                  args: legacyClaudeLlmSyncArgs,
-                  command: "node",
-                  type: "command",
-                },
-              ],
-            },
-          ],
-        },
-      })}\n`
-    );
-    await mkdir(join(consumer, ".codex"), { recursive: true });
-    await writeFile(
-      join(consumer, ".codex/hooks.json"),
-      `${JSON.stringify({
-        hooks: {
-          PreToolUse: [
-            {
-              hooks: [{ command: "echo existing", type: "command" }],
-            },
-            {
-              matcher: "Write|Edit|MultiEdit|apply_patch",
-              hooks: [
-                {
-                  command:
-                    "npx --no-install supaschema hook generated-migration-edit --runtime codex",
-                  type: "command",
-                },
-              ],
-            },
-          ],
-          PostToolUse: [
-            {
-              matcher: "Write|Edit|MultiEdit|apply_patch",
-              hooks: [
-                {
-                  command: "npx --no-install supaschema hook schema-write",
-                  type: "command",
-                },
-              ],
-            },
-          ],
-        },
-      })}\n`
-    );
-    await runScaffold(consumer, { installAgentBundle: true });
+    await writeNestedFile(join(consumer, ".claude/settings.json"), '{"hooks":{"PreToolUse":[]}}\n');
+    await writeNestedFile(join(consumer, ".codex/hooks.json"), '{"hooks":{"Stop":[]}}\n');
+    await writeNestedFile(join(consumer, ".codex/skills/custom/SKILL.md"), "custom skill\n");
+
+    await runScaffold(consumer);
+
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
       '{"adapter":"auto"}\n'
     );
-
-    const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
-    const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
-    expect(agents).toContain("# Existing agents");
-    expect(agents).toContain("<!-- supaschema:agent-guidance:start -->");
-    expect(claude).toBe("@AGENTS.md\n");
-
-    const claudeSettings = JSON.parse(
-      await readFile(join(consumer, ".claude/settings.json"), "utf8")
+    expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toBe(
+      "# Existing agents\n\nKeep this.\n"
     );
-    expect(hookCount(claudeSettings, "node", ["scripts/local-policy.mjs"])).toBe(1);
-    expect(hookCount(claudeSettings, "node", ["scripts/bash-policy-checks.mjs"])).toBe(1);
-    expect(hookCount(claudeSettings, "node", legacyClaudeBashPolicyArgs)).toBe(0);
-    expect(commandCount(claudeSettings, claudeBashPolicyCommand)).toBe(1);
-    expect(
-      hookCount(claudeSettings, "npx", [
-        "--no-install",
-        "supaschema",
-        "hook",
-        "generated-migration-edit",
-        "--runtime",
-        "claude",
-      ])
-    ).toBe(1);
-    expect(
-      hookCount(claudeSettings, "npx", ["--no-install", "supaschema", "hook", "schema-write"])
-    ).toBe(1);
-    expect(hookCount(claudeSettings, "npm", claudeGeneratedGateArgs)).toBe(0);
-    expect(hookCount(claudeSettings, "npm", claudeAutoDiffArgs)).toBe(0);
-    expect(hookCount(claudeSettings, "node", legacyClaudeLlmSyncArgs)).toBe(0);
-    expect(commandCount(claudeSettings, claudeLlmSyncCommand)).toBe(1);
-    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-    expect(commandCount(codexHooks, "echo existing")).toBe(1);
-    expect(commandCount(codexHooks, codexGeneralGuardCommand)).toBe(1);
-    expect(commandCount(codexHooks, codexGateCommand)).toBe(0);
-    expect(commandCount(codexHooks, codexAutoDiffCommand)).toBe(0);
-    expect(
-      commandCount(
-        codexHooks,
-        "npx --no-install supaschema hook generated-migration-edit --runtime codex"
-      )
-    ).toBe(1);
-    expect(commandCount(codexHooks, "npx --no-install supaschema hook schema-write")).toBe(1);
-    expect(commandCount(codexHooks, codexLlmSyncCommand)).toBe(1);
+    expect(await readFile(join(consumer, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    expect(await readFile(join(consumer, ".claude/settings.json"), "utf8")).toBe(
+      '{"hooks":{"PreToolUse":[]}}\n'
+    );
+    expect(await readFile(join(consumer, ".codex/hooks.json"), "utf8")).toBe(
+      '{"hooks":{"Stop":[]}}\n'
+    );
+    expect(await readFile(join(consumer, ".codex/skills/custom/SKILL.md"), "utf8")).toBe(
+      "custom skill\n"
+    );
+    expect(existsSync(join(consumer, ".agents/prompts/supaschema-install.md"))).toBe(false);
+    expect(existsSync(join(consumer, ".claude/rules/supaschema.md"))).toBe(false);
+    expect(existsSync(join(consumer, ".codex/rules/supaschema.rules"))).toBe(false);
   });
 
-  it("installs Anilize-compatible context surfaces without active CLAUDE policy or retired backups", async () => {
+  it("does not add Anilize-style context surfaces, settings, duplicates, or backups", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-anilize-context-"));
     await writeFile(
       join(consumer, "package.json"),
@@ -843,32 +417,33 @@ describe("init project setup", () => {
       join(consumer, "supabase/schemas/_bootstrap/00_roles.sql"),
       "create role app_runtime;\n"
     );
-    await writeNestedFile(join(consumer, ".agents/skills.__backup_20260619T040853/old.md"), "old");
-    await writeNestedFile(join(consumer, ".codex/rules.__backup_20260619T040927/old.rules"), "old");
 
-    await runScaffold(consumer, { installAgentBundle: true });
+    await runScaffold(consumer);
 
-    const agents = await readFile(join(consumer, "AGENTS.md"), "utf8");
-    const claude = await readFile(join(consumer, "CLAUDE.md"), "utf8");
-    const rule = await readFile(join(consumer, ".claude/rules/supaschema.md"), "utf8");
-    const skill = await readFile(join(consumer, ".claude/skills/supaschema/SKILL.md"), "utf8");
-
-    expect(agents).toContain("# Consumer brief");
-    expect(agents).toContain("Path confirmation is pending");
-    expect(claude).toBe("@AGENTS.md\n");
-    expect(rule).toContain("enforcement:\n  type: enforced\n  bindings:");
-    expect(rule).toContain("paths:\n  - supaschema.config.json");
-    expect(skill).toContain("metadata:\n  keywords:");
-    for (const brokenReference of [
-      "docs/configuration/hints.mdx",
-      "docs/guides/ci-github-actions.md",
-      "docs/configuration/hints.md",
+    expect(await readFile(join(consumer, "AGENTS.md"), "utf8")).toBe(
+      "# Consumer brief\n\nKeep this.\n"
+    );
+    expect(await readFile(join(consumer, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
+    expect(existsSync(join(consumer, ".supaschema/install.json"))).toBe(true);
+    for (const file of [
+      ".agents/prompts/supaschema-install.md",
+      ".agents/skills/supaschema/SKILL.md",
+      ".claude/rules/supaschema.md",
+      ".claude/settings.json",
+      ".claude/skills/supaschema/SKILL.md",
+      ".codex/hooks.json",
+      ".codex/rules/supaschema.rules",
     ]) {
-      expect(rule).not.toContain(brokenReference);
-      expect(skill).not.toContain(brokenReference);
+      expect(existsSync(join(consumer, file)), file).toBe(false);
     }
-    expect(existsSync(join(consumer, ".agents/skills.__backup_20260619T040853"))).toBe(false);
-    expect(existsSync(join(consumer, ".codex/rules.__backup_20260619T040927"))).toBe(false);
+    for (const backupDir of [
+      ".agents/skills.__backup_20260619T040853",
+      ".claude/settings.__backup_20260619T040912",
+      ".codex/rules.__backup_20260619T040927",
+    ]) {
+      expect(existsSync(join(consumer, backupDir)), backupDir).toBe(false);
+    }
   });
 
   it("repairs removed migration_sync scaffold values to the canonical policy", async () => {
@@ -985,6 +560,13 @@ describe("init project setup", () => {
     expect(existsSync(join(consumer, ".agents/skills/supaschema/SKILL.md"))).toBe(false);
     expect(existsSync(join(consumer, ".claude/rules/supaschema.md"))).toBe(false);
     expect(existsSync(join(consumer, ".codex/hooks.json"))).toBe(false);
+    for (const backupDir of [
+      ".agents/skills.__backup_20260619T040853",
+      ".claude/settings.__backup_20260619T040912",
+      ".codex/rules.__backup_20260619T040927",
+    ]) {
+      expect(existsSync(join(consumer, backupDir)), backupDir).toBe(false);
+    }
     expect(existsSync(join(consumer, ".vscode/settings.json"))).toBe(false);
     expect(existsSync(join(consumer, ".mcp.json"))).toBe(false);
     expect(existsSync(join(consumer, ".claude/cclsp.json"))).toBe(false);
@@ -1072,42 +654,4 @@ function npmExec(args: string[]): { args: string[]; file: string } {
 async function writeNestedFile(path: string, contents: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, contents);
-}
-
-function commandCount(value: unknown, command: string): number {
-  if (Array.isArray(value)) {
-    return value.reduce((count, item) => count + commandCount(item, command), 0);
-  }
-  if (value && typeof value === "object") {
-    return Object.entries(value).reduce(
-      (count, [key, item]) =>
-        count + (key === "command" && item === command ? 1 : commandCount(item, command)),
-      0
-    );
-  }
-  return 0;
-}
-
-function hookCount(value: unknown, command: string, args: string[]): number {
-  if (Array.isArray(value)) {
-    return value.reduce((count, item) => count + hookCount(item, command, args), 0);
-  }
-  if (value && typeof value === "object") {
-    const record = value;
-    const own =
-      record.command === command &&
-      Array.isArray(record.args) &&
-      JSON.stringify(record.args) === JSON.stringify(args)
-        ? 1
-        : 0;
-    return Object.values(record).reduce(
-      (count, item) => count + hookCount(item, command, args),
-      own
-    );
-  }
-  return 0;
-}
-
-function blockCount(value: string): number {
-  return value.split("<!-- supaschema:agent-guidance:start -->").length - 1;
 }

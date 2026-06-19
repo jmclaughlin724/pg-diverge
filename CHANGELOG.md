@@ -7,6 +7,7 @@
 - Refactors `supaschema sync` into explicit ordered lanes for apply policy, source resolution, diff/output refresh, target selection, migration-history reconciliation, pending checks, deploy safety, runner apply, and final reconciliation or dry-run reporting.
 - Preserves accumulated sync lane output when configured target resolution fails, so operators can see generated diff/output work before the refusal.
 - Updates rule, skill, README, docs, CLI help, tests, and packaged agent-bundle mirrors so `sync` is documented as the composed apply workflow while individual commands remain available for each action lane.
+- Keep default `supaschema init` from installing active AI-agent surfaces, leave the packaged agent bundle as reviewed manual-install files, and remove stale removed-flag documentation.
 
 ## 0.3.3 (2026-06-19)
 

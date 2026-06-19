@@ -1,6 +1,6 @@
 # Supaschema Agent Bundle
 
-This package ships raw AI-agent context files here for review and opt-in installation. `supaschema init` does not install these files unless the user explicitly asks for the agent bundle.
+This package ships raw AI-agent context files here for review and opt-in manual installation. `supaschema init` does not install these files.
 
 ## Default
 
@@ -11,7 +11,7 @@ supaschema init
 supaschema config validate --json
 ```
 
-This creates or repairs `supaschema.config.json`, configured schema directories, configured migration directories, and path-confirmation state when needed. It does not write `.agents`, `.claude`, `.codex`, `AGENTS.md`, or `CLAUDE.md`.
+This creates or repairs `supaschema.config.json`, configured schema directories, configured migration directories, canonical `supaschema:*` package scripts when `package.json` exists, and path-confirmation state when needed. It does not write `.agents`, `.claude`, `.codex`, `AGENTS.md`, or `CLAUDE.md`.
 
 ## Install On Demand
 
@@ -45,7 +45,7 @@ Use the package manager that owns the project:
 - Yarn: `settings.yarn.json` and `hooks.yarn.json`
 - Bun: `settings.bun.json` and `hooks.bun.json`
 
-Merge JSON files. Do not overwrite existing user hooks or settings. If the project already owns a Codex dispatcher such as `.codex/hooks/tool-gate.mjs` or `.codex/hooks/stop.mjs`, keep the dispatcher as the owner and route supaschema checks through that dispatcher instead of registering duplicate direct hooks.
+Merge JSON files. Do not overwrite existing user hooks or settings. Do not register duplicate direct hooks. If the project already owns a Codex dispatcher such as `.codex/hooks/tool-gate.mjs` or `.codex/hooks/stop.mjs`, keep the dispatcher as the owner and route supaschema checks through that dispatcher instead of registering duplicate direct hooks.
 
 ## Verify
 

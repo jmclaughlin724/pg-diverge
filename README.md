@@ -31,7 +31,7 @@ supaschema keeps the schema workflow inside the repository. It ships PostgreSQL'
 - **One schema owner:** PostgreSQL SQL remains the source of truth; generated migrations, TypeScript types, and Zod validators follow from it.
 - **Replay safety:** generated SQL uses guarded operations and can be checked statically or applied twice in disposable databases.
 - **Reviewable risk:** destructive changes and renames fail closed until exact object-level hints approve them.
-- **Agent-ready workflow:** raw Claude/Codex/AGENTS files ship for review, and `supaschema init --agent-bundle` installs the bundle that blocks generated migration edits and runs schema-write checks.
+- **Agent-ready workflow:** raw Claude/Codex/AGENTS files ship for reviewed manual installation so teams can block generated migration edits and run schema-write checks.
 
 ## Proof
 
@@ -72,7 +72,7 @@ Install from the package or workspace directory that owns the schema workflow.
 
 Requires Node 22.12+. Commands that inspect, apply, or verify against a database expect PostgreSQL 15+.
 
-Run both install and setup from the package or workspace directory that owns the schema workflow. `supaschema init` is idempotent. It reads the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths, then writes the config, directories, generated-output paths, and path-confirmation state when needed. Raw AI-agent rules, hooks, skills, prompts, and settings ship under `node_modules/supaschema/agent-bundle/` for review and are installed only when `supaschema init --agent-bundle` is explicitly requested. Workspace caveats live in the [installation guide](https://supaschema.com/docs/installation).
+Run both install and setup from the package or workspace directory that owns the schema workflow. `supaschema init` is idempotent. It reads the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths, then writes the config, directories, generated-output paths, and path-confirmation state when needed. Raw AI-agent rules, hooks, skills, prompts, and settings ship under `node_modules/supaschema/agent-bundle/` for reviewed manual installation only. Workspace caveats live in the [installation guide](https://supaschema.com/docs/installation).
 
 ## Workflow
 

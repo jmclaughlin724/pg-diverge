@@ -9,6 +9,7 @@ const guards = [
   ["node", ["scripts/guards/check-dependency-catalog.mjs"]],
   ["node", ["scripts/guards/check-lsp-coverage.mjs"]],
   ["node", ["scripts/guards/check-agent-hooks.mjs"]],
+  ["node", ["scripts/guards/check-codex-execpolicy.mjs"]],
   ["node", ["scripts/guards/check-agent-policy-standardization.mjs"]],
   ["node", ["scripts/guards/check-canonical-surfaces.mjs"]],
   ["node", ["scripts/guards/check-claude-agents.mjs"]],

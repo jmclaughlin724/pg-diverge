@@ -170,7 +170,7 @@ function checkRawSqlDdlCommand(command) {
 }
 
 function checkDangerousGitAndShellWrites(command) {
-  const ast = parseShellAst(stripHeredocs(command));
+  const ast = { segments: commandSegmentObjects(stripHeredocs(command)) };
   const segments = ast.segments.map((segment) => segment.words);
   if (
     segments.some(
@@ -185,10 +185,17 @@ function checkDangerousGitAndShellWrites(command) {
   }
 
   for (const tokens of segments) {
-    if (commandName(tokens) !== "git") {
+    const name = commandName(tokens);
+    const args = commandArgs(tokens);
+    if (name === "gh") {
+      const result = checkGhPrMerge(args);
+      if (result.action !== "allow") {
+        return result;
+      }
+    }
+    if (name !== "git") {
       continue;
     }
-    const args = commandArgs(tokens);
     const subcommand = args[0] ?? "";
 
     if (subcommand === "stash") {
@@ -237,8 +244,67 @@ function checkDangerousGitAndShellWrites(command) {
   return allowResult();
 }
 
+function checkGhPrMerge(args) {
+  if (args[0] !== "pr" || args[1] !== "merge") {
+    return allowResult();
+  }
+  const mergeArgs = args.slice(2);
+  if (mergeArgs.some((arg) => arg === "--help" || arg === "-h")) {
+    return allowResult();
+  }
+  const blocked = mergeArgs.find((arg) =>
+    ["--merge", "--squash", "--admin", "--disable-auto"].includes(arg)
+  );
+  if (blocked) {
+    return block(
+      `BLOCKED: gh pr merge ${blocked} is prohibited. Run \`npm run github:merge-preflight -- --pr <number>\`, then use \`gh pr merge <number> --rebase --delete-branch\`.`
+    );
+  }
+  if (!(mergeArgs.includes("--rebase") && mergeArgs.includes("--delete-branch"))) {
+    return block(
+      "BLOCKED: gh pr merge must use the repo policy method. Run `npm run github:merge-preflight -- --pr <number>`, then use `gh pr merge <number> --rebase --delete-branch`."
+    );
+  }
+  return allowResult();
+}
+
 function commandSegments(command) {
-  return parseShellAst(command).segments.map((segment) => segment.words);
+  return commandSegmentObjects(command).map((segment) => segment.words);
+}
+
+function commandSegmentObjects(command) {
+  return expandShellSegments(parseShellAst(command));
+}
+
+function expandShellSegments(ast, depth = 0) {
+  const segments = [];
+  for (const segment of ast.segments) {
+    segments.push(segment);
+    if (depth >= 3) {
+      continue;
+    }
+    const nestedCommand = nestedShellCommand(segment.words);
+    if (nestedCommand) {
+      segments.push(...expandShellSegments(parseShellAst(nestedCommand), depth + 1));
+    }
+  }
+  return segments;
+}
+
+function nestedShellCommand(tokens) {
+  if (!["bash", "sh", "zsh"].includes(commandName(tokens))) {
+    return;
+  }
+  const args = commandArgs(tokens);
+  for (let index = 0; index < args.length - 1; index += 1) {
+    if (shellCommandOption(args[index] ?? "")) {
+      return args[index + 1];
+    }
+  }
+}
+
+function shellCommandOption(value) {
+  return value.startsWith("-") && value.slice(1).includes("c");
 }
 
 function parseShellAst(command) {

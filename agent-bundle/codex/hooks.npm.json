@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "^(Bash|apply_patch|Edit|Write|edit_file)$",
+        "matcher": "^(Bash|apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
@@ -13,7 +13,7 @@
         ]
       },
       {
-        "matcher": "^(apply_patch|Edit|Write|edit_file)$",
+        "matcher": "^(apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
@@ -26,7 +26,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(apply_patch|Edit|Write|edit_file)$",
+        "matcher": "^(apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",

@@ -38,7 +38,7 @@ Use the matching local runner for every command after install:
 | Yarn | `yarn exec supaschema <cmd>` |
 | Bun | `./node_modules/.bin/supaschema <cmd>` |
 
-Always run the matching explicit setup command from the owning package directory after install. The command is idempotent and leaves existing config intact. Default `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, and migration paths with the packaged config contract only. It does not install active AI-agent rules, hooks, skills, prompts, or settings. When the user explicitly approves AI-agent enforcement, `<local-runner> init --agent-bundle` installs the reviewed raw bundle, preserves existing hook entries, appends missing supaschema hook entries at the end of the relevant event array, and refreshes the managed agent surfaces.
+Always run the matching explicit setup command from the owning package directory after install. The command is idempotent and leaves existing config intact. Default `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, migration paths, and the three canonical package scripts with the packaged config contract only. It does not install active AI-agent rules, hooks, skills, prompts, settings, `AGENTS.md`, `CLAUDE.md`, or backup directories. When the user explicitly approves AI-agent enforcement, review `node_modules/supaschema/agent-bundle/INSTALL.md` and follow its manual copy/merge instructions.
 
 ```bash
 npm exec -- supaschema init
@@ -48,6 +48,23 @@ yarn exec supaschema init
 ```
 
 Use `<local-runner> init --dry-run --json` when you need to preview setup before writing files.
+
+After setup, use package scripts from the owning package for the routine schema-change workflow:
+
+| Manager | Migration | Check | Types |
+| --- | --- | --- | --- |
+| npm | `npm run supaschema:migration` | `npm run supaschema:check` | `npm run supaschema:types` |
+| pnpm | `pnpm supaschema:migration` | `pnpm supaschema:check` | `pnpm supaschema:types` |
+| Yarn | `yarn supaschema:migration` | `yarn supaschema:check` | `yarn supaschema:types` |
+| Bun | `bun run supaschema:migration` | `bun run supaschema:check` | `bun run supaschema:types` |
+
+Use direct CLI commands for setup diagnostics, database execution verification, and apply:
+
+```bash
+<local-runner> config validate --json
+<local-runner> verify
+<local-runner> sync
+```
 
 ## What Install Provides
 
@@ -64,9 +81,10 @@ Default `supaschema init` writes or merges these project files into the consumin
 
 - `supaschema.config.json` when the project does not already have one;
 - configured schema and migration directories;
+- three canonical `supaschema:*` package scripts when `package.json` exists: `supaschema:migration`, `supaschema:check`, and `supaschema:types`;
 - `.supaschema/install.json` only when detected paths need confirmation.
 
-Install does not edit schema files, generate migrations, connect to a database, apply migrations, write real database credentials, create duplicate supaschema-only database credential files, install active AI-agent rules/hooks/skills/settings by default, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. To install AI-agent enforcement on demand, review `node_modules/supaschema/agent-bundle/INSTALL.md` and run `<local-runner> init --agent-bundle` only when the user approves the bundle.
+Install does not edit schema files, generate migrations, connect to a database, apply migrations, write real database credentials, create duplicate supaschema-only database credential files, install active AI-agent rules/hooks/skills/settings, write `AGENTS.md` or `CLAUDE.md`, create backup directories, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. To install AI-agent enforcement on demand, review `node_modules/supaschema/agent-bundle/INSTALL.md` and apply those instructions only when the user approves the bundle.
 
 ## First Tasks After Install
 

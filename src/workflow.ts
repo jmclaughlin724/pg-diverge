@@ -53,7 +53,14 @@ export interface SyncResult {
   report: string;
 }
 
-const editTools = new Set(["Edit", "MultiEdit", "Write", "edit_file", "apply_patch"]);
+const editTools = new Set([
+  "Edit",
+  "MultiEdit",
+  "Write",
+  "edit_file",
+  "apply_patch",
+  "functions.apply_patch",
+]);
 const lineageMarker = "-- supaschema: lineage ";
 const addHeader = "*** Add File: ";
 const deleteHeader = "*** Delete File: ";
@@ -1309,7 +1316,7 @@ function hookEditTargets(payload: unknown, projectDir: string): string[] {
     return [];
   }
   const input = asObject(property(record, "tool_input"));
-  if (toolName === "apply_patch") {
+  if (isPatchTool(toolName)) {
     return hookPatchTargets(patchTextFromInput(input), projectDir);
   }
   const filePath = property(input, "file_path");
@@ -1327,7 +1334,7 @@ function generatedMigrationEditTargets(payload: unknown, projectDir: string): st
     return [];
   }
   const input = asObject(property(record, "tool_input"));
-  if (toolName === "apply_patch") {
+  if (isPatchTool(toolName)) {
     return generatedMigrationPatchTargets(patchTextFromInput(input), projectDir);
   }
   const filePath = property(input, "file_path");
@@ -1351,6 +1358,10 @@ function patchTextFromInput(input: object): string {
     return inputValue;
   }
   return "";
+}
+
+function isPatchTool(toolName: string): boolean {
+  return toolName === "apply_patch" || toolName === "functions.apply_patch";
 }
 
 function hookPatchTargets(patch: string, projectDir: string): string[] {

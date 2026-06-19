@@ -79,10 +79,14 @@ for (const hook of claudeHooks) {
   );
 }
 assert(
-  settingsText.includes('"supaschema"') &&
+  settingsText.includes("/bin/supaschema.cjs") &&
     settingsText.includes('"generated-migration-edit"') &&
     settingsText.includes('"schema-write"'),
-  ".claude/settings.json must register supaschema hook CLI commands directly"
+  ".claude/settings.json must register source-repo supaschema hook CLI commands directly"
+);
+assert(
+  !(settingsText.includes('"npx"') && settingsText.includes('"supaschema"')),
+  ".claude/settings.json must not use consumer package-manager supaschema commands in this source repo"
 );
 assert(
   !(
@@ -156,9 +160,18 @@ assert(
   ".codex/hooks.json must register the repo-local CI failure inbox hook"
 );
 assert(
-  codexHooksJson.includes("supaschema hook generated-migration-edit") &&
-    codexHooksJson.includes("supaschema hook schema-write"),
-  ".codex/hooks.json must register supaschema hook CLI commands directly"
+  codexHooksJson.includes("bin/supaschema.cjs") &&
+    codexHooksJson.includes("hook generated-migration-edit") &&
+    codexHooksJson.includes("hook schema-write"),
+  ".codex/hooks.json must register source-repo supaschema hook CLI commands directly"
+);
+assert(
+  !(
+    codexHooksJson.includes("npm exec -- supaschema") ||
+    codexHooksJson.includes("pnpm exec supaschema") ||
+    codexHooksJson.includes("npx --no-install supaschema")
+  ),
+  ".codex/hooks.json must not use consumer package-manager supaschema commands in this source repo"
 );
 assert(
   !(

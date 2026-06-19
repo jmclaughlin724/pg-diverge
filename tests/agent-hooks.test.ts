@@ -268,21 +268,24 @@ describe("agent hook configuration", () => {
     expect(handlers).toContainEqual(
       expect.objectContaining({
         args: [
-          "--no-install",
-          "supaschema",
+          `${workspaceVariable("CLAUDE_PROJECT_DIR")}/bin/supaschema.cjs`,
           "hook",
           "generated-migration-edit",
           "--runtime",
           "claude",
         ],
-        command: "npx",
+        command: "node",
         type: "command",
       })
     );
     expect(handlers).toContainEqual(
       expect.objectContaining({
-        args: ["--no-install", "supaschema", "hook", "schema-write"],
-        command: "npx",
+        args: [
+          `${workspaceVariable("CLAUDE_PROJECT_DIR")}/bin/supaschema.cjs`,
+          "hook",
+          "schema-write",
+        ],
+        command: "node",
         type: "command",
       })
     );
@@ -324,8 +327,13 @@ describe("agent hook configuration", () => {
     expect(JSON.stringify(config)).toContain("general-guard.mjs");
     expect(JSON.stringify(config)).not.toContain("block-generated-migration-edits.mjs");
     expect(JSON.stringify(config)).not.toContain("auto-diff-on-schema-change.mjs");
-    expect(JSON.stringify(config)).toContain("supaschema hook generated-migration-edit");
-    expect(JSON.stringify(config)).toContain("supaschema hook schema-write");
+    expect(JSON.stringify(config)).toContain("bin/supaschema.cjs");
+    expect(JSON.stringify(config)).toContain("functions\\\\.apply_patch");
+    expect(JSON.stringify(config)).toContain("hook generated-migration-edit");
+    expect(JSON.stringify(config)).toContain("hook schema-write");
+    expect(JSON.stringify(config)).not.toContain("npm exec -- supaschema");
+    expect(JSON.stringify(config)).not.toContain("pnpm exec supaschema");
+    expect(JSON.stringify(config)).not.toContain("npx --no-install supaschema");
     expect(stopEntries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -391,6 +399,28 @@ describe("general Bash blocker policy", () => {
     ]) {
       const result = await runHook(claudeScript, preToolBash(command));
       expect(result.code, command).toBe(2);
+    }
+  });
+
+  it("blocks non-policy GitHub PR merge commands", async () => {
+    for (const command of [
+      "gh pr merge 53 --squash",
+      "bash -lc 'gh pr merge 53 --squash'",
+      "gh pr merge 53 --merge",
+      "gh pr merge 53 --admin --rebase --delete-branch",
+      "gh pr merge 53 --rebase",
+    ]) {
+      const result = await runHook(claudeScript, preToolBash(command));
+      expect(result.code, command).toBe(2);
+    }
+
+    for (const command of [
+      "gh pr merge 53 --rebase --delete-branch",
+      "bash -lc 'gh pr merge 53 --rebase --delete-branch'",
+      "gh pr merge --help",
+    ]) {
+      const result = await runHook(claudeScript, preToolBash(command));
+      expect(result.code, command).toBe(0);
     }
   });
 
@@ -594,15 +624,17 @@ describe("codex generated-migration tool gate", () => {
   it("denies apply_patch updates to migrations carrying the lineage marker", async () => {
     const { generated } = await fixtures();
     const patch = `*** Begin Patch\n*** Update File: ${generated}\n@@\n-SET lock_timeout = '5s';\n+SET lock_timeout = '1s';\n*** End Patch`;
-    const result = await runHook(script, {
-      tool_input: { patch },
-      tool_name: "apply_patch",
-    });
+    for (const toolName of ["apply_patch", "functions.apply_patch"]) {
+      const result = await runHook(script, {
+        tool_input: { patch },
+        tool_name: toolName,
+      });
 
-    expect(result.code).toBe(0);
-    const output = hookOutput(result.stdout);
-    expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(output.hookSpecificOutput?.permissionDecisionReason).toContain("supaschema diff");
+      expect(result.code).toBe(0);
+      const output = hookOutput(result.stdout);
+      expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+      expect(output.hookSpecificOutput?.permissionDecisionReason).toContain("supaschema diff");
+    }
   });
 
   it("allows hand-authored targets and emits empty output", async () => {
@@ -645,7 +677,7 @@ describe("codex generated-migration tool gate", () => {
       {
         cwd: project,
         tool_input: { patch },
-        tool_name: "apply_patch",
+        tool_name: "functions.apply_patch",
       },
       { cwd: tmpdir() }
     );

@@ -137,3 +137,9 @@ export const excludedMaintainerFiles = [
   "pyproject.toml",
   "styles/globals.css",
 ];
+
+export const expectedSupaschemaScripts = {
+  "supaschema:check": "supaschema check",
+  "supaschema:migration": "supaschema diff",
+  "supaschema:types": "supaschema types",
+};

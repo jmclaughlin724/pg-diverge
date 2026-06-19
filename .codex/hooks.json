@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "^(Bash|apply_patch|Edit|Write|edit_file)$",
+        "matcher": "^(Bash|apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
@@ -19,11 +19,11 @@
         ]
       },
       {
-        "matcher": "^(apply_patch|Edit|Write|edit_file)$",
+        "matcher": "^(apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
-            "command": "npm exec -- supaschema hook generated-migration-edit --runtime codex",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/bin/supaschema.cjs\" hook generated-migration-edit --runtime codex",
             "timeout": 10,
             "statusMessage": "Checking supaschema generated-migration policy"
           }
@@ -32,11 +32,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(apply_patch|Edit|Write|edit_file)$",
+        "matcher": "^(apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
         "hooks": [
           {
             "type": "command",
-            "command": "npm exec -- supaschema hook schema-write",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/bin/supaschema.cjs\" hook schema-write",
             "timeout": 130,
             "statusMessage": "Running supaschema auto-diff on schema change"
           }

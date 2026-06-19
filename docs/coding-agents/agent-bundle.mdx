@@ -7,11 +7,11 @@ keywords: ["agent bundle", "Claude Code", "Codex", "AGENTS.md", "hooks"]
 
 The agent bundle gives coding agents the same migration workflow that humans use: edit declarative SQL, generate with `diff`, check replay safety, and never hand-edit generated migration files.
 
-`supaschema init` does not install this bundle by default. The raw files ship under `node_modules/supaschema/agent-bundle/` for review and opt-in installation.
+`supaschema init` does not install this bundle by default. The raw files ship under `node_modules/supaschema/agent-bundle/` for review and manual installation.
 
 ## Raw surfaces
 
-The downloadable consumer agent bundle is intentionally narrow and inactive until installed on demand.
+The downloadable consumer agent bundle is intentionally narrow and inactive until manually installed.
 
 | Surface | Files |
 | --- | --- |
@@ -22,21 +22,15 @@ The downloadable consumer agent bundle is intentionally narrow and inactive unti
 | Codex rule mirror | `agent-bundle/codex/rules/supaschema.rules` |
 | Codex hooks and settings | `agent-bundle/codex/hooks.<manager>.json`, `agent-bundle/codex/hooks/general-guard.mjs`, `agent-bundle/codex/hooks/guards/bash-policy-checks.mjs`, `agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs` |
 
-## Install on demand
+## Manual install
 
-Read `node_modules/supaschema/agent-bundle/INSTALL.md` before installing the bundle. Install only when the user asks for AI-agent enforcement or approves the bundle:
-
-```bash
-supaschema init --agent-bundle
-```
-
-The opt-in installer preserves existing project hook entries and existing hook script files. It appends missing supaschema hook entries at the end of the relevant event array and does not replace existing commands that already provide the same supaschema hook. When an existing Codex config already owns `PreToolUse` or `PostToolUse` through `.codex/hooks/tool-gate.mjs`, or `Stop` through `.codex/hooks/stop.mjs`, the installer keeps the dispatcher and removes package-owned direct hooks for that event instead of duplicating them.
+Read `node_modules/supaschema/agent-bundle/INSTALL.md` before activating the bundle. Merge the reviewed raw files manually only when the user asks for AI-agent enforcement or approves the bundle.
 
 The default scaffold does not run `npx skills` and does not copy the packaged supaschema skill directories into active consumer paths.
 
 Supabase projects that already carry a `_bootstrap` schema inventory or a `supabase/AGENTS.md` owner brief marking `supabase/schemas/**` as non-generator inventory are left in path-confirmation state. In that state `.supaschema/install.json` records the detected candidates and zero-source `diff` / zero-arg `check` stay blocked until `supaschema.config.json` names the real generator-owned `schemaPaths`, `sources.to`, and `migrationsDir`.
 
-When the bundle is installed on demand, the managed `AGENTS.md` addendum points agents to `.agents/prompts/supaschema-install.md` before setup or schema work. `CLAUDE.md` stays a pointer-style entrypoint (`@AGENTS.md`) when the consumer uses `AGENTS.md` as the canonical brief.
+When the bundle is manually installed, the `AGENTS.md` addendum points agents to `.agents/prompts/supaschema-install.md` before setup or schema work. `CLAUDE.md` stays a pointer-style entrypoint (`@AGENTS.md`) when the consumer uses `AGENTS.md` as the canonical brief.
 
 ## npx skills lane
 
@@ -50,7 +44,7 @@ Do not use the repository root as the Skills source. The Skills CLI scans standa
 
 That source mirrors `.claude/skills/supaschema/SKILL.md` into `skills/supaschema/SKILL.md`. It installs Agent Skill context only into the location selected by the Skills CLI. It does not install passive rule files, hook scripts, hook registration, config, or schema directories.
 
-Rules and hooks are included only in the raw package bundle unless `supaschema init --agent-bundle` or a manual reviewed install copies them into active consumer paths.
+Rules and hooks are included only in the raw package bundle unless a reviewed manual install copies them into active consumer paths.
 
 ## Hook behavior
 
