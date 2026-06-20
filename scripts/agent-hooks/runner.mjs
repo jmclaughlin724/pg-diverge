@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
 import { ciFailureInboxContext } from "../github/ci-inbox-core.mjs";
 import { preToolEvidenceGate, recordToolEvidence, runResponseDetectors } from "./detectors.mjs";
-import { runChecks, shapeHookResult } from "./payload.mjs";
+import { failClosedResult, runChecks, shapeHookResult } from "./payload.mjs";
 import {
   recordObservableSkillLoad,
   unresolvedPending,
@@ -13,12 +13,10 @@ import {
 } from "./skills.mjs";
 import {
   beginTurnState,
-  clearSessionState,
   currentTurnState,
-  readSessionState,
   selectTurnState,
   sessionStartState,
-  writeSessionState,
+  withSessionState,
 } from "./state.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -39,49 +37,55 @@ export function runAgentHookEvent(eventName, options = {}) {
 
 export function handleAgentHookEvent(eventName, payload, options = {}) {
   const runtime = options.runtime ?? "claude";
-  let state = readSessionState(payload);
-  const context = { root: options.root ?? root, runtime, state };
-  let result = {};
+  try {
+    return withSessionState(payload, (state) => {
+      const context = { root: options.root ?? root, runtime, state };
+      let result = {};
+      let clear = false;
 
-  if (eventName === "SessionStart") {
-    state = sessionStartState(payload, state);
-    context.state = state;
-    result = runChecks(eventName, payload, [standingContext], context);
-  } else if (eventName === "UserPromptSubmit") {
-    beginTurnState(payload, state);
-    result = runChecks(eventName, payload, [ciInbox, promptSkills], context);
-  } else if (eventName === "PreToolUse") {
-    selectTurnState(payload, state);
-    result = runChecks(
-      eventName,
-      payload,
-      [toolSkills, evidenceGate, bashSafety, commandCiInbox],
-      context
-    );
-  } else if (eventName === "PostToolUse") {
-    selectTurnState(payload, state);
-    result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
-  } else if (eventName === "SubagentStart") {
-    selectTurnState(payload, state);
-    result = runChecks(eventName, payload, [subagentContext], context);
-  } else if (eventName === "Stop" || eventName === "SubagentStop") {
-    selectTurnState(payload, state);
-    result = runChecks(eventName, payload, [ciInbox, responseShape], context);
-  } else if (eventName === "TaskCompleted") {
-    selectTurnState(payload, state);
-    result = runChecks(eventName, payload, [taskCompletionGate], context);
-  } else if (eventName === "PermissionDenied") {
-    selectTurnState(payload, state);
-    result = runChecks(eventName, payload, [permissionDeniedContext], context);
-  } else if (eventName === "SessionEnd") {
-    clearSessionState(payload);
-    result = {};
-  }
+      if (eventName === "SessionStart") {
+        context.state = sessionStartState(payload, state);
+        result = runChecks(eventName, payload, [standingContext], context);
+      } else if (eventName === "UserPromptSubmit") {
+        beginTurnState(payload, state);
+        result = runChecks(eventName, payload, [ciInbox, promptSkills], context);
+      } else if (eventName === "PreToolUse") {
+        selectTurnState(payload, state);
+        result = runChecks(
+          eventName,
+          payload,
+          [toolSkills, evidenceGate, bashSafety, commandCiInbox],
+          context
+        );
+      } else if (eventName === "PostToolUse") {
+        selectTurnState(payload, state);
+        result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
+      } else if (eventName === "SubagentStart") {
+        selectTurnState(payload, state);
+        result = runChecks(eventName, payload, [subagentContext], context);
+      } else if (eventName === "Stop" || eventName === "SubagentStop") {
+        selectTurnState(payload, state);
+        result = runChecks(eventName, payload, [ciInbox, responseShape], context);
+      } else if (eventName === "TaskCompleted") {
+        selectTurnState(payload, state);
+        result = runChecks(eventName, payload, [taskCompletionGate], context);
+      } else if (eventName === "PermissionDenied") {
+        selectTurnState(payload, state);
+        result = runChecks(eventName, payload, [permissionDeniedContext], context);
+      } else if (eventName === "SessionEnd") {
+        clear = true;
+      }
 
-  if (eventName !== "SessionEnd") {
-    writeSessionState(payload, state);
+      return {
+        clear,
+        state: context.state,
+        value: shapeHookResult(eventName, result, runtime),
+        write: eventName !== "SessionEnd",
+      };
+    });
+  } catch (error) {
+    return shapeHookResult(eventName, failClosedResult(eventName, error, "sessionState"), runtime);
   }
-  return shapeHookResult(eventName, result, runtime);
 }
 
 function standingContext() {

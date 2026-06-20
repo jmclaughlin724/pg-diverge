@@ -31,6 +31,13 @@ codexExecPolicy: |
       "not_match": ["gh pr merge 53 --rebase --delete-branch"]
     },
     {
+      "pattern": ["gh", "pr", "merge"],
+      "decision": "prompt",
+      "justification": "Rule 21 requires Bash hook verification for PR merge commands because Codex prefix_rule cannot match selector-before-flag forms without overblocking the policy merge command.",
+      "match": ["gh pr merge 53 --squash", "gh pr merge 53 --rebase --delete-branch"],
+      "not_match": ["gh pr view 53"]
+    },
+    {
       "pattern": ["git", "push", "origin", "HEAD:main"],
       "decision": "allow",
       "justification": "Rule 21 allows direct fast-forward pushes to main after npm run guard and origin/main preflight.",
@@ -177,7 +184,7 @@ gh pr merge <number> --rebase --delete-branch
 ```
 
 Do not use `--merge`, `--squash`, `--admin`, `--disable-auto`, or a force-push workaround unless the user explicitly approves the exception and the reason is recorded in the PR.
-The Bash safety hook MUST block those forbidden `gh pr merge` flags whether they appear before or after the PR selector, including `gh pr merge --squash 53` and `gh pr merge 53 --squash`. Codex `prefix_rule(...)` entries cover prefix-expressible forms; `.claude/hooks/guards/bash-policy-checks.mjs` is the deterministic enforcement owner for selector-before-flag forms.
+The Bash safety hook MUST block those forbidden `gh pr merge` flags whether they appear before or after the PR selector, including `gh pr merge --squash 53` and `gh pr merge 53 --squash`. Codex `prefix_rule(...)` entries MUST forbid prefix-expressible flag-first forms and MUST prompt for all `gh pr merge` commands so selector-before-flag forms cannot run outside the sandbox without the Bash hook evaluating them. `.claude/hooks/guards/bash-policy-checks.mjs` is the deterministic enforcement owner for selector-before-flag forms because Codex `prefix_rule` is exact-prefix only.
 
 After merge, run:
 

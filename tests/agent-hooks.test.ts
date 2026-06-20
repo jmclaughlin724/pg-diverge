@@ -467,10 +467,15 @@ describe("general Bash blocker policy", () => {
 
   it("blocks non-policy GitHub PR merge commands", async () => {
     for (const command of [
+      "gh pr merge --squash 53",
       "gh pr merge 53 --squash",
       "bash -lc 'gh pr merge 53 --squash'",
+      "gh pr merge --merge 53",
       "gh pr merge 53 --merge",
+      "gh pr merge --admin 53 --rebase --delete-branch",
       "gh pr merge 53 --admin --rebase --delete-branch",
+      "gh pr merge --disable-auto 53 --rebase --delete-branch",
+      "gh pr merge 53 --disable-auto --rebase --delete-branch",
       "gh pr merge 53 --rebase",
     ]) {
       const result = await runHook(claudeScript, preToolBash(command));

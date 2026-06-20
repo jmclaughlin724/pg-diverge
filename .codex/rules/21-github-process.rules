@@ -38,6 +38,14 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["gh", "pr", "merge"],
+    decision = "prompt",
+    justification = "Rule 21 requires Bash hook verification for PR merge commands because Codex prefix_rule cannot match selector-before-flag forms without overblocking the policy merge command.",
+    match = ["gh pr merge 53 --squash", "gh pr merge 53 --rebase --delete-branch"],
+    not_match = ["gh pr view 53"],
+)
+
+prefix_rule(
     pattern = ["git", "push", "origin", "HEAD:main"],
     decision = "allow",
     justification = "Rule 21 allows direct fast-forward pushes to main after npm run guard and origin/main preflight.",

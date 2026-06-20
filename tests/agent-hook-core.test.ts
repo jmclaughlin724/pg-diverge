@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -507,6 +508,52 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       "code-atlas"
     );
     expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
+  });
+
+  it("serializes concurrent Codex PostToolUse skill loads for one session", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt: "$claude-optimizer $codex-optimizer",
+      session_id: "parallel-skill-loads",
+      turn_id: "turn-a",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    await Promise.all([
+      runHookEventInChild(
+        "PostToolUse",
+        {
+          session_id: "parallel-skill-loads",
+          tool_input: {
+            cmd: `sed -n '1,120p' ${join(root, ".claude/skills/claude-optimizer/SKILL.md")}`,
+          },
+          tool_name: "functions.exec_command",
+          turn_id: "turn-a",
+        },
+        root,
+        stateDir
+      ),
+      runHookEventInChild(
+        "PostToolUse",
+        {
+          session_id: "parallel-skill-loads",
+          tool_input: {
+            cmd: `sed -n '1,120p' ${join(root, ".claude/skills/codex-optimizer/SKILL.md")}`,
+          },
+          tool_name: "functions.exec_command",
+          turn_id: "turn-a",
+        },
+        root,
+        stateDir
+      ),
+    ]);
+
+    const state = readSessionState(payload);
+    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("claude-optimizer");
+    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("codex-optimizer");
+    expect(state.invokedSkills).toHaveProperty("claude-optimizer");
+    expect(state.invokedSkills).toHaveProperty("codex-optimizer");
   });
 });
 
@@ -1120,6 +1167,35 @@ metadata:
   );
   await write(root, ".agents/skills/code-atlas/SKILL.md", "# Code Atlas\n");
   return { root, stateDir };
+}
+
+async function runHookEventInChild(
+  eventName: string,
+  payload: Record<string, unknown>,
+  root: string,
+  stateDir: string
+): Promise<void> {
+  const script = [
+    "import { handleAgentHookEvent } from './scripts/agent-hooks/runner.mjs';",
+    "const result = handleAgentHookEvent(process.argv[1], JSON.parse(process.argv[2]), { root: process.argv[3], runtime: 'codex' });",
+    "if (result.stdout) process.stdout.write(result.stdout);",
+    "if (result.stderr) process.stderr.write(result.stderr);",
+    "process.exit(result.exitCode);",
+  ].join("\n");
+  await new Promise<void>((resolvePromise, reject) => {
+    execFile(
+      process.execPath,
+      ["--input-type=module", "-e", script, eventName, JSON.stringify(payload), root],
+      { env: { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir } },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(`${stderr}${stdout}`));
+          return;
+        }
+        resolvePromise();
+      }
+    );
+  });
 }
 
 function normalizedHookState(turn: Record<string, unknown> = {}) {

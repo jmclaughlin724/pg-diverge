@@ -101,6 +101,7 @@ assert(
 );
 const skillMatcherText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/skills.mjs"), "utf8");
 const hookRunnerText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/runner.mjs"), "utf8");
+const hookStateText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/state.mjs"), "utf8");
 const optimizerSkillTexts = hasOptimizerSkills
   ? optimizerSkillFiles.map((file) => [file, optionalLocalText(file)])
   : [];
@@ -370,6 +371,14 @@ assert(
   "scripts/agent-hooks/runner.mjs must block response-shape corrections for both Claude and Codex Stop hooks"
 );
 assert(
+  hookRunnerText.includes("withSessionState") &&
+    hookStateText.includes("export function withSessionState") &&
+    hookStateText.includes("acquireSessionLock") &&
+    hookStateText.includes("fs.mkdirSync(lockPath)") &&
+    hookStateText.includes("clearStaleLock"),
+  "scripts/agent-hooks must serialize session-state mutation so concurrent PostToolUse hooks cannot overwrite skill-load or evidence state"
+);
+assert(
   syncLlmText.includes("renderSourceCodexHooks") &&
     syncLlmText.includes("syncCodexHookConfig") &&
     syncLlmText.includes("checkCodexHookConfig") &&
@@ -514,8 +523,10 @@ if (rule12Text) {
       rule12Text.includes("command-scoped CI failure inbox context") &&
       rule12Text.includes("Source and inventory reads") &&
       rule12Text.includes("MUST NOT become verification evidence") &&
-      rule12Text.includes("process.exitCode = 2"),
-    "Rule 12 must document GitHub check evidence, failed statusCheckRollup evidence, source-read evidence exclusion, same-domain resolution, and single source-repo Codex PreToolUse dispatch"
+      rule12Text.includes("process.exitCode = 2") &&
+      rule12Text.includes("serialize session-state mutation") &&
+      rule12Text.includes("parallel Codex `PostToolUse` skill loads"),
+    "Rule 12 must document GitHub check evidence, failed statusCheckRollup evidence, source-read evidence exclusion, same-domain resolution, single source-repo Codex PreToolUse dispatch, and serialized session-state mutation"
   );
 }
 const rule18Text = localRuleTexts.get(".claude/rules/18-context-surface-sync.md");

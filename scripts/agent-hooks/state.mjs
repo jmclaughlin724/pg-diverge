@@ -3,6 +3,9 @@ import path from "node:path";
 
 const defaultStateDir = path.resolve(".tmp", "agent-hooks");
 const fallbackTurnId = "turn-0";
+const lockPollMs = 20;
+const lockTimeoutMs = 8000;
+const staleLockMs = 30_000;
 const maxTurns = 20;
 
 export function stateDir() {
@@ -47,6 +50,22 @@ export function writeSessionState(payload, state) {
   const file = sessionStatePath(payload);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(normalizeState(state), null, 2)}\n`);
+}
+
+export function withSessionState(payload, callback) {
+  const release = acquireSessionLock(payload);
+  try {
+    const state = readSessionState(payload);
+    const result = callback(state);
+    if (result?.clear) {
+      clearSessionState(payload);
+    } else if (result?.write !== false) {
+      writeSessionState(payload, result?.state ?? state);
+    }
+    return result?.value;
+  } finally {
+    release();
+  }
 }
 
 export function clearSessionState(payload) {
@@ -199,4 +218,42 @@ function integerValue(value) {
 
 function objectValue(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function acquireSessionLock(payload) {
+  const lockPath = `${sessionStatePath(payload)}.lock`;
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  const startedAt = Date.now();
+  while (true) {
+    try {
+      fs.mkdirSync(lockPath);
+      return () => fs.rmSync(lockPath, { force: true, recursive: true });
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+      clearStaleLock(lockPath);
+      if (Date.now() - startedAt > lockTimeoutMs) {
+        throw new Error(`timed out waiting for session state lock: ${path.basename(lockPath)}`);
+      }
+      sleep(lockPollMs);
+    }
+  }
+}
+
+function clearStaleLock(lockPath) {
+  try {
+    const ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
+    if (ageMs > staleLockMs) {
+      fs.rmSync(lockPath, { force: true, recursive: true });
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+function sleep(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }

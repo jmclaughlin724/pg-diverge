@@ -460,47 +460,23 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
   });
 
-  it("supaschema init rejects the removed --agent-bundle auto-install path", {
-    timeout: 30_000,
-  }, async () => {
-    const bundleConsumer = await mkdtemp(join(tmpdir(), "supa-consumer-agent-bundle-"));
-    await writeFile(
-      join(bundleConsumer, "package.json"),
-      `${JSON.stringify({ name: "supaschema-agent-bundle-fixture", private: true, version: "0.0.0" })}\n`
-    );
-    const installOnly = npmExec([
-      "install",
-      tarballPath,
-      "--prefer-offline",
-      "--no-audit",
-      "--no-fund",
-    ]);
-    await run(installOnly.file, installOnly.args, {
-      cwd: bundleConsumer,
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    const bundleBinPath = installedPackageBinPath(bundleConsumer);
-
-    const help = await capture(process.execPath, [bundleBinPath, "init", "--help"], bundleConsumer);
+  it("supaschema init rejects the removed --agent-bundle auto-install path", async () => {
+    const help = await capture(process.execPath, [binPath2, "init", "--help"], consumer2);
     expect(help.code, help.stderr).toBe(0);
     expect(help.stdout).not.toContain("--agent-bundle");
 
-    const result = await capture(
-      process.execPath,
-      [bundleBinPath, "init", "--agent-bundle"],
-      bundleConsumer
-    );
+    const result = await capture(process.execPath, [binPath2, "init", "--agent-bundle"], consumer2);
     expect(result.code).not.toBe(0);
     expect(result.stderr).toContain("unknown option");
 
     for (const file of activeAgentFiles) {
-      expect(existsSync(join(bundleConsumer, file)), file).toBe(false);
+      expect(existsSync(join(consumer2, file)), file).toBe(false);
     }
     for (const file of rawAgentBundleFiles) {
-      expect(existsSync(join(bundleConsumer, file)), file).toBe(true);
+      expect(existsSync(join(consumer2, file)), file).toBe(true);
     }
-    expect(existsSync(join(bundleConsumer, "AGENTS.md"))).toBe(false);
-    expect(existsSync(join(bundleConsumer, "CLAUDE.md"))).toBe(false);
+    expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
+    expect(existsSync(join(consumer2, "CLAUDE.md"))).toBe(false);
   });
 
   it("generates an accurate migration and types after init, via the installed CLI", {
