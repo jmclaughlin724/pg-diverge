@@ -301,7 +301,7 @@ describe("agent hook configuration", () => {
       expect(handlers).toContainEqual(
         expect.objectContaining({
           args: [
-            `${workspaceVariable("CLAUDE_PROJECT_DIR")}/bin/supaschema.cjs`,
+            `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/supaschema-source-hook.mjs`,
             "hook",
             "generated-migration-edit",
             "--runtime",
@@ -314,7 +314,7 @@ describe("agent hook configuration", () => {
       expect(handlers).toContainEqual(
         expect.objectContaining({
           args: [
-            `${workspaceVariable("CLAUDE_PROJECT_DIR")}/bin/supaschema.cjs`,
+            `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/supaschema-source-hook.mjs`,
             "hook",
             "schema-write",
           ],
@@ -367,7 +367,8 @@ describe("agent hook configuration", () => {
     expect(JSON.stringify(config)).not.toContain("scripts/github/ci-inbox.mjs");
     expect(JSON.stringify(config)).not.toContain("block-generated-migration-edits.mjs");
     expect(JSON.stringify(config)).not.toContain("auto-diff-on-schema-change.mjs");
-    expect(JSON.stringify(config)).toContain("bin/supaschema.cjs");
+    expect(JSON.stringify(config)).toContain("supaschema-source-hook.mjs");
+    expect(JSON.stringify(config)).not.toContain("bin/supaschema.cjs");
     expect(JSON.stringify(config)).toContain("functions\\\\.apply_patch");
     expect(preToolUseText).toContain("functions\\\\.exec_command");
     expect(preToolUseText).toContain("exec_command");

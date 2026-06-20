@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { Client } from "pg";
 import { extractCatalogModel } from "./catalog.js";
 import { checkMigrationSql } from "./check.js";
@@ -13,12 +14,14 @@ import type {
 import {
   applyMigrationSql,
   applySql as applyPerStatementSql,
+  applySqlStatements,
   assertLocalDatabaseUrl,
   createDatabaseWithRetry,
   databaseUrlWithDatabase,
   tempDatabaseName,
 } from "./db-admin.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
+import { groupMigrationUnits, type MigrationUnit } from "./migration-runners.js";
 import { planSchemaDiff } from "./planner.js";
 import { extractSourceModel } from "./source.js";
 import { asRecord, astStatements, roleSpecName } from "./sql/ast.js";
@@ -27,16 +30,28 @@ import { quoteIdent } from "./sql/identifiers.js";
 import { parseSqlAst } from "./sql/parser.js";
 import { preflightCapability, supabaseEnvironmentStubSql } from "./verify-environment.js";
 
-export async function verifyMigration(options: VerifyMigrationOptions): Promise<Diagnostic[]> {
+export function verifyMigration(options: VerifyMigrationOptions): Promise<Diagnostic[]> {
+  return verifyMigrationChain({ ...options, migrationPaths: [options.migrationPath] });
+}
+
+export interface VerifyMigrationChainOptions extends Omit<VerifyMigrationOptions, "migrationPath"> {
+  migrationPaths: string[];
+}
+
+export async function verifyMigrationChain(
+  options: VerifyMigrationChainOptions
+): Promise<Diagnostic[]> {
   const config = resolveConfig(options.config);
   const diagnostics: Diagnostic[] = [];
   const databaseDiagnostic = verifyDatabaseUrlDiagnostic(options.databaseUrl);
   if (databaseDiagnostic !== undefined) {
     return [databaseDiagnostic];
   }
-  const migrationSql = await readFile(options.migrationPath, "utf8");
+  const migrations = await migrationSqlByFile(options.migrationPaths);
   const extractOptions = verificationExtractOptions(options);
-  diagnostics.push(...(await checkMigrationSql(migrationSql, extractOptions)));
+  for (const sql of migrations.values()) {
+    diagnostics.push(...(await checkMigrationSql(sql, extractOptions)));
+  }
   if (hasErrors(diagnostics)) {
     return diagnostics;
   }
@@ -62,7 +77,7 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
       await ensureReferencedRoles(admin, [from, to]);
     }
     await ensureVerificationEnvironment(environmentEnsured, migrationUrl, targetUrl);
-    await applyVerificationScenario(migrationUrl, targetUrl, from, to, migrationSql, config);
+    await applyVerificationScenario(migrationUrl, targetUrl, from, to, migrations, config);
     await compareVerificationCatalogs(
       migrationUrl,
       targetUrl,
@@ -80,6 +95,14 @@ export async function verifyMigration(options: VerifyMigrationOptions): Promise<
   return diagnostics;
 }
 
+async function migrationSqlByFile(migrationPaths: string[]): Promise<Map<string, string>> {
+  const migrations = new Map<string, string>();
+  for (const migrationPath of migrationPaths) {
+    migrations.set(basename(migrationPath), await readFile(migrationPath, "utf8"));
+  }
+  return migrations;
+}
+
 function verifyDatabaseUrlDiagnostic(databaseUrl: string): Diagnostic | undefined {
   try {
     assertLocalDatabaseUrl(databaseUrl, "SUPASCHEMA_VERIFY_ALLOW_REMOTE");
@@ -91,7 +114,9 @@ function verifyDatabaseUrlDiagnostic(databaseUrl: string): Diagnostic | undefine
   }
 }
 
-function verificationExtractOptions(options: VerifyMigrationOptions): ExtractOptions {
+function verificationExtractOptions(
+  options: Pick<VerifyMigrationOptions, "config" | "cwd">
+): ExtractOptions {
   const extractOptions: ExtractOptions = {};
   if (options.config !== undefined) {
     extractOptions.config = options.config;
@@ -144,13 +169,71 @@ async function applyVerificationScenario(
   targetUrl: string,
   from: SchemaModel,
   to: SchemaModel,
-  migrationSql: string,
+  migrations: Map<string, string>,
   config: SupaschemaConfig
 ): Promise<void> {
   await applyModel(migrationUrl, from);
-  await applySql(migrationUrl, migrationSql, config.transactionMode);
-  await applySql(migrationUrl, migrationSql, config.transactionMode);
+  await applyMigrationChain(migrationUrl, migrations, config.transactionMode);
+  await applyMigrationChain(migrationUrl, migrations, config.transactionMode);
   await applyModel(targetUrl, to);
+}
+
+async function applyMigrationChain(
+  databaseUrl: string,
+  migrations: Map<string, string>,
+  mode: "per-migration" | "per-statement"
+): Promise<void> {
+  const client = new Client({ connectionString: databaseUrl });
+  try {
+    await client.connect();
+    for (const unit of verificationMigrationUnits(migrations, mode)) {
+      if (unit.transactional) {
+        await client.query("BEGIN");
+        try {
+          await applyMigrationUnitSql(client, migrations, unit.files);
+          await client.query("COMMIT");
+        } catch (error) {
+          await client.query("ROLLBACK").catch(() => undefined);
+          throw error;
+        }
+      } else {
+        await applyMigrationUnitSql(client, migrations, unit.files);
+      }
+    }
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+function verificationMigrationUnits(
+  migrations: Map<string, string>,
+  mode: "per-migration" | "per-statement"
+): MigrationUnit[] {
+  const units = groupMigrationUnits([...migrations.keys()], mode);
+  if (units.length > 0 || migrations.size === 0) {
+    return units;
+  }
+  return [
+    {
+      files: [...migrations.keys()].sort((left, right) => left.localeCompare(right)),
+      transactional: mode === "per-migration",
+      version: "verification",
+    },
+  ];
+}
+
+async function applyMigrationUnitSql(
+  client: Pick<Client, "query">,
+  migrations: Map<string, string>,
+  files: string[]
+): Promise<void> {
+  for (const file of files) {
+    const sql = migrations.get(file);
+    if (sql === undefined) {
+      throw new Error(`missing migration SQL for ${file}`);
+    }
+    await applySqlStatements(client, sql);
+  }
 }
 
 async function compareVerificationCatalogs(

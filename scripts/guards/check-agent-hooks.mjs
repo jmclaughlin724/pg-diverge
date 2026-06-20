@@ -5,6 +5,7 @@ import { assert, exists, gitTrackedFiles, ok, ROOT, readJson } from "./lib/guard
 
 const claudeHooks = [
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".claude/hooks/supaschema-source-hook.mjs",
   ".claude/hooks/guards/bash-policy-checks.mjs",
 ];
 const sourceRepoClaudeContextHooks = [
@@ -21,6 +22,7 @@ const sourceRepoClaudeContextHooks = [
 ];
 const codexMirrorHookPaths = [
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".codex/hooks/supaschema-source-hook.mjs",
   ".codex/hooks/general-guard.mjs",
   ".codex/hooks/guards/bash-policy-checks.mjs",
 ];
@@ -158,10 +160,14 @@ for (const hook of [...claudeHooks, ...sourceRepoClaudeContextHooks]) {
   );
 }
 assert(
-  settingsText.includes("/bin/supaschema.cjs") &&
+  settingsText.includes("/.claude/hooks/supaschema-source-hook.mjs") &&
     settingsText.includes('"generated-migration-edit"') &&
     settingsText.includes('"schema-write"'),
-  ".claude/settings.json must register source-repo supaschema hook CLI commands directly"
+  ".claude/settings.json must register the tracked source-repo supaschema hook launcher"
+);
+assert(
+  !settingsText.includes("/bin/supaschema.cjs"),
+  ".claude/settings.json must not register bin/supaschema.cjs because clean source checkouts may not have dist"
 );
 assert(
   !(settingsText.includes('"npx"') && settingsText.includes('"supaschema"')),
@@ -269,14 +275,19 @@ assert(
   packageCodexHooksJson.includes("general-guard.mjs") &&
     !packageCodexHooksJson.includes("scripts/github/ci-inbox.mjs") &&
     !packageCodexHooksJson.includes("context-") &&
+    !packageCodexHooksJson.includes("supaschema-source-hook.mjs") &&
     !packageCodexHooksJson.includes("scripts/agent-hooks"),
   "agent-bundle/codex/hooks.npm.json must keep the consumer Bash guard and strip source-only Codex hooks"
 );
 assert(
-  codexHooksJson.includes("bin/supaschema.cjs") &&
+  codexHooksJson.includes(".codex/hooks/supaschema-source-hook.mjs") &&
     codexHooksJson.includes("hook generated-migration-edit") &&
     codexHooksJson.includes("hook schema-write"),
-  ".codex/hooks.json must register source-repo supaschema hook CLI commands directly"
+  ".codex/hooks.json must register the tracked source-repo supaschema hook launcher"
+);
+assert(
+  !codexHooksJson.includes("bin/supaschema.cjs"),
+  ".codex/hooks.json must not register bin/supaschema.cjs because clean source checkouts may not have dist"
 );
 assert(
   !(
@@ -560,6 +571,9 @@ assert(
       "scripts/github/ci-inbox.mjs"
     ) &&
     !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json")).includes("context-") &&
+    !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json")).includes(
+      "supaschema-source-hook.mjs"
+    ) &&
     !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json")).includes("scripts/agent-hooks"),
   "sync:llm must strip repo-local CI inbox and context enforcement hooks from packaged Codex hook templates"
 );

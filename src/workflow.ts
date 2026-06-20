@@ -1,7 +1,6 @@
 import { execFile, execFileSync } from "node:child_process";
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { checkMigrationSql } from "./check.js";
@@ -31,7 +30,7 @@ import { extractSourceModel } from "./source.js";
 import { generateDatabaseTypes } from "./typegen.js";
 import { collectSchemaShapes } from "./typegen-model.js";
 import { generateZodSchemas } from "./typegen-zod.js";
-import { verifyMigration } from "./verify.js";
+import { verifyMigrationChain } from "./verify.js";
 
 export interface SyncOptions {
   cliVersion?: string;
@@ -804,7 +803,7 @@ interface StageGeneratedMigrationsResult {
 export async function stageGeneratedMigrations(
   options: StageGeneratedMigrationsOptions
 ): Promise<StageGeneratedMigrationsResult> {
-  let changed: string[];
+  let changed: GitChangedPaths;
   try {
     changed = await changedGitPaths(options.directory);
   } catch (error) {
@@ -814,9 +813,17 @@ export async function stageGeneratedMigrations(
     return { skippedReason: "not a git worktree", staged: [], wouldStage: [] };
   }
   const generated: string[] = [];
-  for (const file of changed) {
-    if (await isGeneratedMigrationFile(file)) {
+  for (const file of changed.paths) {
+    if (await isGeneratedMigrationFile(file, changed.root)) {
       generated.push(file);
+      const companion = concurrentCompanionPath(file);
+      if (
+        companion !== undefined &&
+        changed.paths.includes(companion) &&
+        !generated.includes(companion)
+      ) {
+        generated.push(companion);
+      }
     }
   }
   if (options.dryRun === true) {
@@ -825,18 +832,35 @@ export async function stageGeneratedMigrations(
   if (generated.length === 0) {
     return { staged: [], wouldStage: [] };
   }
-  await execFileAsync("git", ["add", "--", ...generated], { cwd: process.cwd() });
+  await execFileAsync("git", ["add", "--", ...generated], { cwd: changed.root });
   return { staged: generated, wouldStage: [] };
 }
 
-async function changedGitPaths(directory: string): Promise<string[]> {
+interface GitChangedPaths {
+  paths: string[];
+  root: string;
+}
+
+async function changedGitPaths(directory: string): Promise<GitChangedPaths> {
   try {
+    const root = await realpath(
+      await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+      }).then((result) => result.stdout.trim())
+    );
+    const directoryPath = isAbsolute(directory) ? directory : resolve(process.cwd(), directory);
+    const resolvedDirectoryPath = await realpath(directoryPath).catch(() => directoryPath);
+    const gitPath = relative(root, resolvedDirectoryPath) || ".";
+    if (gitPath.startsWith("..") || isAbsolute(gitPath)) {
+      throw new Error("supaschema stage directory must be inside the git worktree");
+    }
     const { stdout } = await execFileAsync(
       "git",
-      ["status", "--porcelain=v1", "--untracked-files=all", "-z", "--", directory],
-      { cwd: process.cwd(), encoding: "utf8" }
+      ["status", "--porcelain=v1", "--untracked-files=all", "-z", "--", gitPath],
+      { cwd: root, encoding: "utf8" }
     );
-    return parsePorcelainStatusPaths(stdout);
+    return { paths: parsePorcelainStatusPaths(stdout), root };
   } catch {
     throw new Error("supaschema stage requires a git worktree");
   }
@@ -867,13 +891,20 @@ function parsePorcelainStatusPaths(output: string): string[] {
   return paths;
 }
 
-async function isGeneratedMigrationFile(file: string): Promise<boolean> {
+async function isGeneratedMigrationFile(file: string, root = process.cwd()): Promise<boolean> {
   if (!file.endsWith(".sql")) {
     return false;
   }
-  const filePath = isAbsolute(file) ? file : resolve(process.cwd(), file);
+  const filePath = isAbsolute(file) ? file : resolve(root, file);
   const contents = await readFile(filePath, "utf8").catch(() => undefined);
   return contents?.slice(0, 4096).includes(lineageMarker) === true;
+}
+
+function concurrentCompanionPath(file: string): string | undefined {
+  if (!file.endsWith(".sql") || file.endsWith(".concurrent.sql")) {
+    return;
+  }
+  return `${file.slice(0, -".sql".length)}.concurrent.sql`;
 }
 
 async function refreshGeneratedContractsForSync(
@@ -1383,7 +1414,7 @@ function verifyTargetPendingMigrationsLane(
     lines: state.lines,
     options: state.options,
     pending: requiredTargetStatus(state).pending,
-    sources: state.sources,
+    sources: targetSafetySources(state.sources, state.target),
     target: state.target,
   });
 }
@@ -1553,23 +1584,18 @@ async function verifyPendingMigrationsForSync(
       report: render(options.lines),
     };
   }
-  const prepared = await prepareVerificationMigration(options.directory, options.pending);
-  try {
-    const verifyDiagnostics = await verifyMigration({
-      config: options.config,
-      databaseUrl,
-      ...(options.options.ensureEnvironment === undefined
-        ? {}
-        : { ensureEnvironment: options.options.ensureEnvironment }),
-      ensureRoles: options.options.ensureRoles === true,
-      from: options.sources.from,
-      migrationPath: prepared.path,
-      to: options.sources.to,
-    });
-    options.diagnostics.push(...verifyDiagnostics);
-  } finally {
-    await prepared.cleanup();
-  }
+  const verifyDiagnostics = await verifyMigrationChain({
+    config: options.config,
+    databaseUrl,
+    ...(options.options.ensureEnvironment === undefined
+      ? {}
+      : { ensureEnvironment: options.options.ensureEnvironment }),
+    ensureRoles: options.options.ensureRoles === true,
+    from: options.sources.from,
+    migrationPaths: options.pending.map((file) => join(options.directory, file)),
+    to: options.sources.to,
+  });
+  options.diagnostics.push(...verifyDiagnostics);
   if (hasErrors(options.diagnostics)) {
     options.lines.push("refusing to sync: verify failed for pending migrations");
     return {
@@ -1601,25 +1627,6 @@ function resolveSyncVerifyDatabaseUrl(
     );
     return;
   }
-}
-
-async function prepareVerificationMigration(
-  directory: string,
-  pending: string[]
-): Promise<{ cleanup: () => Promise<void>; path: string }> {
-  if (pending.length === 1) {
-    return { cleanup: () => Promise.resolve(), path: join(directory, pending[0] ?? "") };
-  }
-  const root = await mkdtemp(join(tmpdir(), "supaschema-sync-verify-"));
-  const path = join(root, "pending-chain.sql");
-  const chunks: string[] = [];
-  for (const file of pending) {
-    chunks.push(
-      `-- supaschema: verify file ${file}\n${await readFile(join(directory, file), "utf8")}`
-    );
-  }
-  await writeFile(path, `${chunks.join("\n\n")}\n`);
-  return { cleanup: () => rm(root, { force: true, recursive: true }), path };
 }
 
 async function checkSyncLineageChain(

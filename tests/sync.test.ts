@@ -10,7 +10,7 @@ import { resolveConfig } from "../src/config.js";
 import type { Diagnostic } from "../src/core.js";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 import { diagnosticCatalog } from "../src/diagnostics.js";
-import { syncMigrations } from "../src/workflow.js";
+import { stageGeneratedMigrations, syncMigrations } from "../src/workflow.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
@@ -915,6 +915,41 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     }
   });
 
+  it("stages generated migration companions from a subdirectory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-stage-subdir-"));
+    const migrationsDir = join(root, "database", "migrations");
+    await mkdir(migrationsDir, { recursive: true });
+    await writeFile(
+      join(migrationsDir, "20260101000000_generated.sql"),
+      "-- supaschema: lineage from=before to=after\nCREATE TABLE IF NOT EXISTS app.generated (id bigint PRIMARY KEY);\n"
+    );
+    await writeFile(
+      join(migrationsDir, "20260101000000_generated.concurrent.sql"),
+      "CREATE INDEX CONCURRENTLY IF NOT EXISTS generated_id_idx ON app.generated (id);\n"
+    );
+    execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
+    const previousCwd = process.cwd();
+    process.chdir(join(root, "database"));
+    try {
+      const result = await stageGeneratedMigrations({ directory: "migrations" });
+      const staged = execFileSync("git", ["diff", "--cached", "--name-only"], {
+        cwd: root,
+        encoding: "utf8",
+      })
+        .trim()
+        .split("\n")
+        .filter(Boolean);
+
+      expect(result.staged).toEqual([
+        "database/migrations/20260101000000_generated.sql",
+        "database/migrations/20260101000000_generated.concurrent.sql",
+      ]);
+      expect([...staged].sort()).toEqual([...result.staged].sort());
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
   it("refuses Supabase CLI targets with concurrent companion migrations", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-concurrent-"));
     await writeFile(
@@ -1188,6 +1223,143 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       await target.end();
       expect(table.rows[0]?.name).toBe("app.direct_sync");
       expect(history.rows.map((row) => row.version)).toEqual(["20260101000000"]);
+    } finally {
+      await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+      await admin.end();
+    }
+  });
+
+  it("verifies target pending files from the selected target catalog", async () => {
+    const admin = new Client({ connectionString: databaseUrl });
+    await admin.connect();
+    const db = `supa_sync_target_verify_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
+    await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${db}`);
+    const url = new URL(requiredDatabaseUrl());
+    url.pathname = `/${db}`;
+    try {
+      const target = new Client({ connectionString: url.toString() });
+      await target.connect();
+      await target.query("CREATE SCHEMA app");
+      await target.query("CREATE TABLE app.account (id bigint PRIMARY KEY)");
+      await target.query("CREATE SCHEMA supabase_migrations");
+      await target.query(
+        "CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY)"
+      );
+      await target.query(
+        "INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20260101000000')"
+      );
+      await target.end();
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-target-verify-"));
+      await writeFile(
+        join(root, "20260101000000_initial.sql"),
+        "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE IF NOT EXISTS app.account (id bigint PRIMARY KEY);\n"
+      );
+      await writeFile(
+        join(root, "20260102000000_add_email.sql"),
+        "ALTER TABLE app.account ADD COLUMN IF NOT EXISTS email text;\n"
+      );
+      const targetSource = await sqlSource(
+        "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE app.account (id bigint PRIMARY KEY, email text);\n"
+      );
+
+      const result = await syncMigrations({
+        config: {
+          schemas: { exclude: ["supabase_migrations"], include: [] },
+          sources: { from: "empty:", to: targetSource },
+          sync: {
+            targets: {
+              local: {
+                databaseUrl: url.toString(),
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "direct",
+              },
+            },
+          },
+          workflow: { rls_safety: "disabled", type_safety: "disabled" },
+        },
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+        target: "local",
+      });
+
+      expect(result.applied).toBe(true);
+      expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
+      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
+      const verified = new Client({ connectionString: url.toString() });
+      await verified.connect();
+      const column = await verified.query<{ column_name: string }>(
+        "select column_name from information_schema.columns where table_schema = 'app' and table_name = 'account' and column_name = 'email'"
+      );
+      await verified.end();
+      expect(column.rows.map((row) => row.column_name)).toEqual(["email"]);
+    } finally {
+      await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+      await admin.end();
+    }
+  });
+
+  it("verifies pending chains without collapsing per-file transaction boundaries", async () => {
+    const admin = new Client({ connectionString: databaseUrl });
+    await admin.connect();
+    const db = `supa_sync_verify_chain_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
+    await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${db}`);
+    const url = new URL(requiredDatabaseUrl());
+    url.pathname = `/${db}`;
+    try {
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-verify-chain-"));
+      await writeFile(
+        join(root, "20260101000000_type.sql"),
+        [
+          "CREATE SCHEMA IF NOT EXISTS app;",
+          "DO $$",
+          "BEGIN",
+          "  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'app' AND t.typname = 'sync_status') THEN",
+          "    CREATE TYPE app.sync_status AS ENUM ('new');",
+          "  END IF;",
+          "END $$;",
+          "",
+        ].join("\n")
+      );
+      await writeFile(
+        join(root, "20260102000000_enum_value.sql"),
+        "ALTER TYPE app.sync_status ADD VALUE IF NOT EXISTS 'done';\n"
+      );
+      await writeFile(
+        join(root, "20260103000000_table.sql"),
+        "CREATE TABLE IF NOT EXISTS app.enum_use (id bigint PRIMARY KEY, status app.sync_status NOT NULL DEFAULT 'done'::app.sync_status);\n"
+      );
+      const targetSource = await sqlSource(
+        "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TYPE app.sync_status AS ENUM ('new', 'done');\nCREATE TABLE app.enum_use (id bigint PRIMARY KEY, status app.sync_status NOT NULL DEFAULT 'done'::app.sync_status);\n"
+      );
+
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: targetSource },
+          sync: {
+            targets: {
+              local: {
+                databaseUrl: url.toString(),
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "direct",
+              },
+            },
+          },
+          workflow: { rls_safety: "disabled", type_safety: "disabled" },
+        },
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+        target: "local",
+      });
+
+      expect(result.applied).toBe(true);
+      expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
+      expect(result.report).toContain("verify: 3 pending migration file(s) passed");
     } finally {
       await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
       await admin.end();

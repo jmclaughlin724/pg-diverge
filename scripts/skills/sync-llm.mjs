@@ -544,7 +544,7 @@ export function renderSourceCodexHooks(root = ROOT) {
           matcher: codexEditToolMatcher,
           hooks: [
             codexHookCommand(
-              "bin/supaschema.cjs",
+              ".codex/hooks/supaschema-source-hook.mjs",
               10,
               "Checking supaschema generated-migration policy",
               "hook generated-migration-edit --runtime codex"
@@ -567,7 +567,7 @@ export function renderSourceCodexHooks(root = ROOT) {
           matcher: codexEditToolMatcher,
           hooks: [
             codexHookCommand(
-              "bin/supaschema.cjs",
+              ".codex/hooks/supaschema-source-hook.mjs",
               130,
               "Running supaschema auto-diff on schema change",
               "hook schema-write"
@@ -926,9 +926,13 @@ function consumerCodexHookCommands(entry) {
 }
 
 function consumerSupaschemaCommand(command) {
-  const sourcePrefix = `node "${codexProjectDir}/bin/supaschema.cjs"`;
-  if (command.startsWith(sourcePrefix)) {
-    return `npm exec -- supaschema${command.slice(sourcePrefix.length)}`;
+  for (const sourcePrefix of [
+    `node "${codexProjectDir}/bin/supaschema.cjs"`,
+    `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs"`,
+  ]) {
+    if (command.startsWith(sourcePrefix)) {
+      return `npm exec -- supaschema${command.slice(sourcePrefix.length)}`;
+    }
   }
   return command;
 }

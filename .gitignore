@@ -55,6 +55,7 @@ scripts/stripe/
 !.claude/hooks/guards/
 .claude/hooks/guards/*
 !.claude/hooks/guards/bash-policy-checks.mjs
+!.claude/hooks/supaschema-source-hook.mjs
 !.claude/hooks/sync-llm-on-claude-surface-change.mjs
 !.claude/rules/
 .claude/rules/*
@@ -75,6 +76,7 @@ scripts/stripe/
 .codex/hooks/guards/*
 !.codex/hooks/guards/bash-policy-checks.mjs
 !.codex/hooks/general-guard.mjs
+!.codex/hooks/supaschema-source-hook.mjs
 !.codex/hooks/sync-llm-on-claude-surface-change.mjs
 !.codex/rules/
 .codex/rules/*

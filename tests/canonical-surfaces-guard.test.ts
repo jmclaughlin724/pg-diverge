@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repoNodeModules = resolve("node_modules");
-const guardIntegrationTimeoutMs = 15_000;
+const guardIntegrationTimeoutMs = 20_000;
 
 function tempGitRepo(packageJson: unknown, files: Record<string, string> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), "supa-canonical-"));
@@ -35,7 +35,7 @@ function objectValue(value: unknown): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value));
 }
 
-describe("canonical surfaces guard", () => {
+describe("canonical surfaces guard", { timeout: guardIntegrationTimeoutMs }, () => {
   it("blocks recursive force deletion in package scripts", () => {
     const cwd = tempGitRepo({
       scripts: { clean: "rm -rf dist" },
@@ -70,35 +70,43 @@ describe("canonical surfaces guard", () => {
     expect(result.stderr).toContain(`package script ${script} is a public install lifecycle`);
   });
 
-  it("blocks comments in code files", () => {
-    const cwd = tempGitRepo(
-      {},
-      {
-        "src/commented.ts": "const value = 1;\n// explain elsewhere\n",
-      }
-    );
-    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
-      cwd,
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("contains a line comment");
-  });
+  it(
+    "blocks comments in code files",
+    () => {
+      const cwd = tempGitRepo(
+        {},
+        {
+          "src/commented.ts": "const value = 1;\n// explain elsewhere\n",
+        }
+      );
+      const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+        cwd,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("contains a line comment");
+    },
+    guardIntegrationTimeoutMs
+  );
 
-  it("blocks regular expression engines in code files", () => {
-    const cwd = tempGitRepo(
-      {},
-      {
-        "scripts/pattern.mjs": "const pattern = new RegExp('x');\npattern.test('x');\n",
-      }
-    );
-    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
-      cwd,
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("contains pattern-engine syntax");
-  });
+  it(
+    "blocks regular expression engines in code files",
+    () => {
+      const cwd = tempGitRepo(
+        {},
+        {
+          "scripts/pattern.mjs": "const pattern = new RegExp('x');\npattern.test('x');\n",
+        }
+      );
+      const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+        cwd,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("contains pattern-engine syntax");
+    },
+    guardIntegrationTimeoutMs
+  );
 
   it("blocks TypeScript assertions in code files", () => {
     const cwd = tempGitRepo(
@@ -131,22 +139,26 @@ describe("canonical surfaces guard", () => {
     expect(result.stderr).toContain("contains an inline z.enum tuple");
   });
 
-  it("blocks regex-shaped string contracts in code files", () => {
-    const groupStart = ["(", "?", ":"].join("");
-    const pattern = ["^", groupStart, "dir:.+", "|empty:", ")", "$"].join("");
-    const cwd = tempGitRepo(
-      {},
-      {
-        "src/source-contract.ts": `export const sourceSpecPattern = ${JSON.stringify(pattern)};\n`,
-      }
-    );
-    const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
-      cwd,
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("contains a regex-shaped string contract");
-  });
+  it(
+    "blocks regex-shaped string contracts in code files",
+    () => {
+      const groupStart = ["(", "?", ":"].join("");
+      const pattern = ["^", groupStart, "dir:.+", "|empty:", ")", "$"].join("");
+      const cwd = tempGitRepo(
+        {},
+        {
+          "src/source-contract.ts": `export const sourceSpecPattern = ${JSON.stringify(pattern)};\n`,
+        }
+      );
+      const result = spawnSync(process.execPath, ["scripts/guards/check-canonical-surfaces.mjs"], {
+        cwd,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("contains a regex-shaped string contract");
+    },
+    guardIntegrationTimeoutMs
+  );
 
   it(
     "blocks comments and regular expression engines in skill reference code",

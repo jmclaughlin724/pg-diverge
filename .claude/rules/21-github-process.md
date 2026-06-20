@@ -177,6 +177,7 @@ gh pr merge <number> --rebase --delete-branch
 ```
 
 Do not use `--merge`, `--squash`, `--admin`, `--disable-auto`, or a force-push workaround unless the user explicitly approves the exception and the reason is recorded in the PR.
+The Bash safety hook MUST block those forbidden `gh pr merge` flags whether they appear before or after the PR selector, including `gh pr merge --squash 53` and `gh pr merge 53 --squash`. Codex `prefix_rule(...)` entries cover prefix-expressible forms; `.claude/hooks/guards/bash-policy-checks.mjs` is the deterministic enforcement owner for selector-before-flag forms.
 
 After merge, run:
 

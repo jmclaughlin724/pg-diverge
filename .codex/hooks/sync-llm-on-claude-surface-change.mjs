@@ -170,6 +170,16 @@ function claudeSurfaceDigest(projectDir) {
       hash.update("\0");
     }
   }
+  for (const file of syncTriggerFiles) {
+    const absolute = join(projectDir, file);
+    hash.update(`${file}\0`);
+    if (!existsSync(absolute)) {
+      hash.update("missing\0");
+      continue;
+    }
+    hash.update(readFileSync(absolute));
+    hash.update("\0");
+  }
   return hash.digest("hex");
 }
 

@@ -20,6 +20,7 @@ const toolGateSet = new Set([
   "apply_patch",
   "edit_file",
   "exec_command",
+  "functions.apply_patch",
   "functions.exec_command",
 ]);
 const patchPrefixes = ["*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "];

@@ -151,6 +151,32 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     });
   });
 
+  it("blocks functions.apply_patch edits while a required skill is pending", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "use $code-atlas for scripts", session_id: "apply-patch-pending" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    const blocked = handleAgentHookEvent(
+      "PreToolUse",
+      {
+        session_id: "apply-patch-pending",
+        tool_input: {
+          patch: "*** Begin Patch\n*** Update File: src/cli.ts\n@@\n export {}\n*** End Patch\n",
+        },
+        tool_name: "functions.apply_patch",
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(blocked.output).toMatchObject({
+      hookSpecificOutput: expect.objectContaining({
+        permissionDecision: "deny",
+        permissionDecisionReason: expect.stringContaining("not an observable skill load"),
+      }),
+    });
+  });
+
   it("clears pending only after a Skill tool load or SKILL.md read", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -791,6 +817,48 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
         domains: ["github-checks"],
         kind: "failed-command",
         outcome: "failure",
+      })
+    );
+  });
+
+  it("does not treat successful GitHub checks as failed because a workflow name contains failure", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "prove live GitHub checks", session_id: "exec-github-success-name" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "exec-github-success-name",
+        tool_input: { cmd: "gh pr view --json statusCheckRollup" },
+        tool_name: "functions.exec_command",
+        tool_response: {
+          content: [
+            {
+              text: JSON.stringify({
+                statusCheckRollup: [
+                  {
+                    conclusion: "SUCCESS",
+                    name: "CI Failure Report",
+                    status: "COMPLETED",
+                  },
+                ],
+              }),
+            },
+          ],
+          exit_code: 0,
+        },
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
+      expect.objectContaining({
+        command: "gh pr view --json statusCheckRollup",
+        domains: ["github-checks"],
+        kind: "verified-command",
+        outcome: "success",
       })
     );
   });

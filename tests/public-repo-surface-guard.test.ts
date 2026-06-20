@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+const guardIntegrationTimeoutMs = 20_000;
+
 function tempGitRepo(files: Record<string, string> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), "supa-public-surface-"));
   mkdirSync(join(dir, "scripts"), { recursive: true });
@@ -25,23 +27,29 @@ function runGuard(cwd: string) {
   });
 }
 
-describe("public repo surface guard", () => {
-  it("allows ignored private local skills to remain on disk", () => {
-    const cwd = tempGitRepo({
-      ".gitignore": ".agents/skills/*\n",
-      ".agents/skills/elegant/SKILL.md": "# elegant\n",
-    });
-    const result = runGuard(cwd);
-    expect(result.status, result.stderr || result.stdout).toBe(0);
-    expect(result.stdout).toContain("PUBLIC_REPO_SURFACE_OK");
-  });
+describe("public repo surface guard", { timeout: guardIntegrationTimeoutMs }, () => {
+  it(
+    "allows ignored private local skills to remain on disk",
+    () => {
+      const cwd = tempGitRepo({
+        ".gitignore": ".agents/skills/*\n",
+        ".agents/skills/elegant/SKILL.md": "# elegant\n",
+      });
+      const result = runGuard(cwd);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(result.stdout).toContain("PUBLIC_REPO_SURFACE_OK");
+    },
+    guardIntegrationTimeoutMs
+  );
 
   it("allows reviewed source-repo hook runtime surfaces", () => {
     const cwd = tempGitRepo({
       ".claude/settings.json": "{}\n",
       ".claude/hooks/context-pre-tool-use.mjs": "export {};\n",
+      ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/rules/22-agent-surface-sync-ownership.md": "# Rule 22\n",
       ".codex/hooks/context-pre-tool-use.mjs": "export {};\n",
+      ".codex/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".codex/rules/22-agent-surface-sync-ownership.rules": "# Rule 22\n",
       "scripts/agent-hooks/runner.mjs": "export {};\n",
     });

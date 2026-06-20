@@ -57,10 +57,14 @@ export function syncCiFailureComment(report, options = {}) {
       `repos/${normalized.repository}/issues/${normalized.pullRequestNumber}/comments?per_page=100`,
     ]);
   const trustedComments = trustedCiReportComments(comments);
+  const trustedReports = trustedComments.map((comment) => ({
+    comment,
+    report: parseCiFailureReportComment(comment.body),
+  }));
   if (!reportHasFailureConclusion(normalized)) {
-    const existing = [...trustedComments]
+    const existing = [...trustedReports]
       .reverse()
-      .find((comment) => parseCiFailureReportComment(comment.body)?.headSha === normalized.headSha);
+      .find(({ report }) => sameWorkflowHeadReport(report, normalized))?.comment;
     if (!existing?.id) {
       return { action: "none" };
     }
@@ -71,6 +75,15 @@ export function syncCiFailureComment(report, options = {}) {
       `repos/${normalized.repository}/issues/comments/${existing.id}`,
     ]);
     return { action: "deleted", commentId: existing.id };
+  }
+  if (
+    trustedReports.some(
+      ({ report }) =>
+        sameWorkflowHeadReport(report, normalized) &&
+        Number(report.workflowRunId) > normalized.workflowRunId
+    )
+  ) {
+    return { action: "skipped-stale-run" };
   }
   const body = renderCiFailureReport(normalized);
   const existing = [...trustedComments].reverse()[0];
@@ -103,8 +116,9 @@ export function syncCiFailureComment(report, options = {}) {
 }
 
 export function renderCiFailureReport(report) {
-  const normalized = normalizeReport(report);
+  const normalized = normalizeReportForComment(report);
   const encoded = Buffer.from(JSON.stringify(normalized), "utf8").toString("base64");
+  const dataLines = [ciFailureMarker, `${dataPrefix}${encoded}${dataSuffix}`, ""];
   const lines = [
     ciFailureMarker,
     `${dataPrefix}${encoded}${dataSuffix}`,
@@ -150,7 +164,12 @@ export function renderCiFailureReport(report) {
   if (body.length <= maxCommentLength) {
     return `${body}\n`;
   }
-  return `${body.slice(0, maxCommentLength)}\n\n_Report truncated to fit a single PR comment._\n`;
+  const data = dataLines.join("\n");
+  const human = lines.slice(dataLines.length).join("\n").trimEnd();
+  const remaining =
+    maxCommentLength - data.length - "\n\n_Report truncated to fit a single PR comment._\n".length;
+  const truncatedHuman = remaining > 0 ? human.slice(0, remaining) : "";
+  return `${data}${truncatedHuman}\n\n_Report truncated to fit a single PR comment._\n`;
 }
 
 export function parseCiFailureReportComment(body) {
@@ -300,8 +319,35 @@ function trustedCiReportComment(comment) {
   return trustedReportAuthors.has(commentAuthorLogin(comment));
 }
 
+function sameWorkflowHeadReport(candidate, report) {
+  return candidate?.headSha === report.headSha && candidate?.workflowName === report.workflowName;
+}
+
 function commentAuthorLogin(comment) {
   return String(comment?.user?.login ?? comment?.author?.login ?? "");
+}
+
+function normalizeReportForComment(report) {
+  const normalized = normalizeReport(report);
+  return {
+    ...normalized,
+    jobs: normalized.jobs.map((job) => ({
+      ...job,
+      annotations: job.annotations.map((annotation) => ({
+        ...annotation,
+        message: oneLine(annotation.message).slice(0, 600),
+        path: oneLine(annotation.path).slice(0, 240),
+        title: oneLine(annotation.title).slice(0, 240),
+      })),
+      logExcerpt: job.logExcerpt.map((line) => oneLine(line).slice(0, 600)),
+      name: oneLine(job.name).slice(0, 240),
+      steps: job.steps.map((step) => ({
+        ...step,
+        name: oneLine(step.name).slice(0, 240),
+      })),
+      url: oneLine(job.url).slice(0, 400),
+    })),
+  };
 }
 
 function reportHasFailureConclusion(report) {

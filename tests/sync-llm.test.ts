@@ -137,7 +137,7 @@ function claudeNodeHook(relativePath: string) {
 
 function claudeSupaschemaHook(command: string) {
   return {
-    args: [`${claudeProjectDir}/bin/supaschema.cjs`, "hook", command],
+    args: [`${claudeProjectDir}/.claude/hooks/supaschema-source-hook.mjs`, "hook", command],
     command: "node",
     type: "command",
   };
@@ -194,7 +194,7 @@ describe("sync:llm", () => {
               matcher: editToolMatcher,
               hooks: [
                 {
-                  command: `node "${codexProjectDir}/bin/supaschema.cjs" hook generated-migration-edit --runtime codex`,
+                  command: `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex`,
                   type: "command",
                 },
               ],
@@ -214,7 +214,7 @@ describe("sync:llm", () => {
               matcher: editToolMatcher,
               hooks: [
                 {
-                  command: `node "${codexProjectDir}/bin/supaschema.cjs" hook schema-write`,
+                  command: `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs" hook schema-write`,
                   type: "command",
                 },
               ],
@@ -239,6 +239,7 @@ describe("sync:llm", () => {
       ".claude/hooks/context-pre-tool-use.mjs": "process.stdout.write('pre');\n",
       ".claude/hooks/general-guard.mjs": "process.stdout.write('guard');\n",
       ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
+      ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
       ".claude/rules/21-github-process.md": [
         "---",
@@ -267,7 +268,7 @@ describe("sync:llm", () => {
       agents: 1,
       agentBundle: 19,
       codexHookConfig: 1,
-      hooks: 4,
+      hooks: 5,
       publicSkills: 1,
       rules: 2,
       skillTargets: 1,
@@ -294,6 +295,9 @@ describe("sync:llm", () => {
       "npm exec -- supaschema hook schema-write"
     );
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("bin/supaschema.cjs");
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain(
+      "supaschema-source-hook.mjs"
+    );
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("ci-inbox.mjs");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("context-");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("scripts/agent-hooks");
@@ -313,6 +317,7 @@ describe("sync:llm", () => {
     const root = tempSurface({
       ".agents/prompts/supaschema-install.md": "# Install\n",
       ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
+      ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
       ".claude/rules/supaschema.md": "# Supaschema rule\n",
       ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
@@ -432,5 +437,59 @@ describe("sync:llm", () => {
     );
 
     expect(output).toBe("{}\n");
+  });
+
+  it("syncs Codex trigger file drift from Stop payloads without edit targets", () => {
+    const project = tempSurface({
+      ".claude/agents/worker.md": [
+        "---",
+        "name: worker",
+        "description: Worker.",
+        "---",
+        "",
+        "# Worker",
+        "",
+      ].join("\n"),
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
+      ".claude/rules/supaschema.md": "# Rule\n",
+      ".claude/skills/supaschema/SKILL.md": "# Skill\n",
+      ".codex/hooks.json": "{}\n",
+      "package.json": `${JSON.stringify({
+        name: "supaschema",
+        scripts: {
+          "sync:llm":
+            "node -e \"const fs=require('node:fs');fs.appendFileSync('sync-count.txt','1')\"",
+        },
+      })}\n`,
+    });
+    const payload = {
+      cwd: project,
+      hook_event_name: "Stop",
+      session_id: "codex-sync-digest",
+    };
+    const env = { ...process.env, CODEX_PROJECT_DIR: project };
+    execFileSync(
+      process.execPath,
+      [join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
+      {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify(payload),
+      }
+    );
+    writeFileSync(join(project, ".codex/hooks.json"), '{"hooks":{"Stop":[]}}\n');
+
+    const output = execFileSync(
+      process.execPath,
+      [join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
+      {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify(payload),
+      }
+    );
+
+    expect(output).toBe("{}\n");
+    expect(read(project, "sync-count.txt")).toBe("1");
   });
 });

@@ -67,7 +67,7 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/bin/supaschema.cjs",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/supaschema-source-hook.mjs",
               "hook",
               "generated-migration-edit",
               "--runtime",
@@ -97,7 +97,7 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/bin/supaschema.cjs",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/supaschema-source-hook.mjs",
               "hook",
               "schema-write"
             ],

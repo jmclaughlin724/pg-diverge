@@ -346,7 +346,7 @@ function commandEvidenceSucceeded(toolSuccess, domains, payload) {
   if (!toolSuccess) {
     return false;
   }
-  if (domains.includes("github-checks") && responseReportsFailure(toolResponseText(payload))) {
+  if (domains.includes("github-checks") && responseReportsFailure(payload)) {
     return false;
   }
   return true;
@@ -632,20 +632,116 @@ function collectText(value) {
   return Object.values(value).flatMap(collectText);
 }
 
-function responseReportsFailure(text) {
-  const normalized = lower(text);
-  return [
-    'conclusion":"failure',
-    "conclusion: failure",
-    " conclusion failure",
-    'status":"failure',
-    'state":"failure',
-    "failure",
-    "failed",
-    "startup_failure",
-    "timed_out",
-    "action_required",
-  ].some((term) => normalized.includes(term));
+function responseReportsFailure(payload) {
+  const response =
+    payload?.tool_response ?? payload?.tool_output ?? payload?.tool_result ?? payload?.response;
+  const structured = structuredGithubFailure(response);
+  if (structured !== undefined) {
+    return structured;
+  }
+  return textGithubFailure(toolResponseText(payload));
+}
+
+function structuredGithubFailure(value) {
+  if (value === null || value === undefined) {
+    return;
+  }
+  if (typeof value === "string") {
+    const parsed = jsonValue(value);
+    return parsed === undefined ? undefined : structuredGithubFailure(parsed);
+  }
+  if (typeof value !== "object") {
+    return;
+  }
+  if (Array.isArray(value)) {
+    return aggregateGithubFailure(value.map(structuredGithubFailure));
+  }
+  for (const key of ["statusCheckRollup", "checkRuns", "checks", "jobs"]) {
+    if (Array.isArray(value[key])) {
+      return aggregateGithubFailure(value[key].map(structuredGithubFailure));
+    }
+  }
+  const status = githubStatusValue(value);
+  if (status !== undefined) {
+    return status;
+  }
+  return aggregateGithubFailure(Object.values(value).map(structuredGithubFailure));
+}
+
+function aggregateGithubFailure(results) {
+  if (results.includes(true)) {
+    return true;
+  }
+  return results.includes(false) ? false : undefined;
+}
+
+function githubStatusValue(value) {
+  for (const key of ["conclusion", "state", "status"]) {
+    if (typeof value?.[key] !== "string") {
+      continue;
+    }
+    const normalized = lower(value[key]);
+    if (
+      ["action_required", "error", "failed", "failure", "startup_failure", "timed_out"].includes(
+        normalized
+      )
+    ) {
+      return true;
+    }
+    if (
+      [
+        "cancelled",
+        "canceled",
+        "completed",
+        "neutral",
+        "pending",
+        "queued",
+        "skipped",
+        "success",
+      ].includes(normalized)
+    ) {
+      return false;
+    }
+  }
+}
+
+function textGithubFailure(text) {
+  for (const line of splitLines(text)) {
+    const fields = line
+      .split("\t")
+      .map((field) => lower(field.trim()))
+      .filter(Boolean);
+    if (
+      fields.some(
+        (field, index) =>
+          index > 0 &&
+          [
+            "fail",
+            "failed",
+            "failure",
+            "error",
+            "startup_failure",
+            "timed_out",
+            "action_required",
+          ].includes(field)
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function jsonValue(text) {
+  const trimmed = text.trim();
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
+    return;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return;
+  }
 }
 
 function directOutcome(value) {

@@ -240,6 +240,71 @@ describe("GitHub CI failure inbox", () => {
     expect(deleteCall).toContain("repos/jmclaughlin724/supaschema/issues/comments/77");
   });
 
+  it("keeps another workflow failure marker after an unrelated workflow succeeds", () => {
+    const calls: string[][] = [];
+    const success = {
+      ...reportFromWorkflowRunEvent(workflowRunEvent("success")),
+      workflowName: "Docs",
+      workflowRunId: 2,
+    };
+    const result = syncCiFailureComment(success, {
+      comments: [markerComment(report(), "github-actions[bot]", 77)],
+      currentHeadSha: headSha,
+      ghJson: (args: string[]) => {
+        calls.push(args);
+        return {};
+      },
+    });
+
+    expect(result).toEqual({ action: "none" });
+    expect(calls).toEqual([]);
+  });
+
+  it("skips stale workflow-run failures for the same workflow and head", () => {
+    const calls: string[][] = [];
+    const result = syncCiFailureComment(
+      { ...report(), workflowRunId: 1 },
+      {
+        comments: [markerComment({ ...report(), workflowRunId: 2 }, "github-actions[bot]", 77)],
+        currentHeadSha: headSha,
+        ghJson: (args: string[]) => {
+          calls.push(args);
+          return {};
+        },
+      }
+    );
+
+    expect(result).toEqual({ action: "skipped-stale-run" });
+    expect(calls).toEqual([]);
+  });
+
+  it("keeps the machine-readable report payload intact when the comment is truncated", () => {
+    const body = renderCiFailureReport({
+      ...report(),
+      jobs: [
+        {
+          ...report().jobs[0],
+          annotations: [
+            {
+              message: "large ".repeat(20_000),
+              path: "tests/large.test.ts",
+            },
+          ],
+          logExcerpt: Array.from(
+            { length: 50 },
+            (_, index) => `${index}: ${"output ".repeat(120)}`
+          ),
+        },
+      ],
+    });
+
+    expect(body).toContain("_Report truncated to fit a single PR comment._");
+    expect(parseCiFailureReportComment(body)).toMatchObject({
+      headSha,
+      jobs: [expect.objectContaining({ name: "quality (22)" })],
+    });
+  });
+
   it.skipIf(!hasAgentHookRunner)(
     "surfaces the inbox through the Claude prompt hook runner",
     async () => {
