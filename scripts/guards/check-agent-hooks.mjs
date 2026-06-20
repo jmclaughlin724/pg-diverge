@@ -84,10 +84,11 @@ const localRuleFiles = [
 const rootAgentsFile = "AGENTS.md";
 const codexHooksReferenceFile = ".claude/skills/codex-optimizer/references/hooks.md";
 const claudeHooksReferenceFile = ".claude/skills/claude-optimizer/references/hooks-reference.md";
-const hasAnyOptimizerSkill = optimizerSkillFiles.some(exists);
-const hasOptimizerSkills = optimizerSkillFiles.every(exists);
-const hasUpdateSkill = exists(updateSkillFile);
-const hasUpdateSkillPlaybook = exists(updateSkillPlaybookFile);
+const publicCheckout = process.env.SUPASCHEMA_PUBLIC_CHECKOUT === "1";
+const hasAnyOptimizerSkill = optimizerSkillFiles.some(optionalLocalExists);
+const hasOptimizerSkills = optimizerSkillFiles.every(optionalLocalExists);
+const hasUpdateSkill = optionalLocalExists(updateSkillFile);
+const hasUpdateSkillPlaybook = optionalLocalExists(updateSkillPlaybookFile);
 assert(
   sourceRepoAgentRuntimeFiles.every(exists),
   `source-repo agent hook runtime is incomplete; missing ${sourceRepoAgentRuntimeFiles.filter((file) => !exists(file)).join(", ")}`
@@ -99,22 +100,20 @@ assert(
 const skillMatcherText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/skills.mjs"), "utf8");
 const hookRunnerText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/runner.mjs"), "utf8");
 const optimizerSkillTexts = hasOptimizerSkills
-  ? optimizerSkillFiles.map((file) => [file, fs.readFileSync(path.join(ROOT, file), "utf8")])
+  ? optimizerSkillFiles.map((file) => [file, optionalLocalText(file)])
   : [];
-const updateSkillText = hasUpdateSkill
-  ? fs.readFileSync(path.join(ROOT, updateSkillFile), "utf8")
-  : "";
+const updateSkillText = hasUpdateSkill ? optionalLocalText(updateSkillFile) : "";
 const updateSkillPlaybookText = hasUpdateSkillPlaybook
-  ? fs.readFileSync(path.join(ROOT, updateSkillPlaybookFile), "utf8")
+  ? optionalLocalText(updateSkillPlaybookFile)
   : "";
 const rootAgentsText = exists(rootAgentsFile)
   ? fs.readFileSync(path.join(ROOT, rootAgentsFile), "utf8")
   : "";
 const codexHooksReferenceText = exists(codexHooksReferenceFile)
-  ? fs.readFileSync(path.join(ROOT, codexHooksReferenceFile), "utf8")
+  ? optionalLocalText(codexHooksReferenceFile)
   : "";
 const claudeHooksReferenceText = exists(claudeHooksReferenceFile)
-  ? fs.readFileSync(path.join(ROOT, claudeHooksReferenceFile), "utf8")
+  ? optionalLocalText(claudeHooksReferenceFile)
   : "";
 const localRuleTexts = new Map(
   localRuleFiles
@@ -445,19 +444,25 @@ if (rule13Text) {
     "Rule 13 must document source CI inbox dispatch through the shared runner and consumer general-guard preservation"
   );
 }
-assert(
-  codexHooksReferenceText.includes("Direct runtime proof is required for hook behavior changes") &&
-    codexHooksReferenceText.includes("npm pack --dry-run --json") &&
-    codexHooksReferenceText.includes("consumer templates keep `.codex/hooks/general-guard.mjs`"),
-  "codex-optimizer hooks reference must require runtime proof, package checks, and consumer guard preservation"
-);
-assert(
-  claudeHooksReferenceText.includes("supaschema shared hook closeout") &&
-    claudeHooksReferenceText.includes("verify both runtime contracts") &&
-    claudeHooksReferenceText.includes("npm run sync:llm:check") &&
-    claudeHooksReferenceText.includes("npm pack --dry-run --json"),
-  "claude-optimizer hooks reference must require shared hook closeout across Claude, Codex, and package templates"
-);
+if (codexHooksReferenceText) {
+  assert(
+    codexHooksReferenceText.includes(
+      "Direct runtime proof is required for hook behavior changes"
+    ) &&
+      codexHooksReferenceText.includes("npm pack --dry-run --json") &&
+      codexHooksReferenceText.includes("consumer templates keep `.codex/hooks/general-guard.mjs`"),
+    "codex-optimizer hooks reference must require runtime proof, package checks, and consumer guard preservation"
+  );
+}
+if (claudeHooksReferenceText) {
+  assert(
+    claudeHooksReferenceText.includes("supaschema shared hook closeout") &&
+      claudeHooksReferenceText.includes("verify both runtime contracts") &&
+      claudeHooksReferenceText.includes("npm run sync:llm:check") &&
+      claudeHooksReferenceText.includes("npm pack --dry-run --json"),
+    "claude-optimizer hooks reference must require shared hook closeout across Claude, Codex, and package templates"
+  );
+}
 const codexOptimizerText = optimizerSkillTexts.find(([file]) =>
   file.includes("codex-optimizer")
 )?.[1];
@@ -639,4 +644,12 @@ function matcherMentionsTool(matcher, toolName) {
     matcher.includes(parsedEscapedToolName) ||
     matcher.includes(serializedEscapedToolName)
   );
+}
+
+function optionalLocalExists(file) {
+  return !publicCheckout && exists(file);
+}
+
+function optionalLocalText(file) {
+  return optionalLocalExists(file) ? fs.readFileSync(path.join(ROOT, file), "utf8") : "";
 }

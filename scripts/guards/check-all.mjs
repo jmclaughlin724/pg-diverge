@@ -23,8 +23,24 @@ const guards = [
   ["node", ["scripts/guards/check-release-version-surfaces.mjs"]],
 ];
 
+const publicCheckoutGuards = [
+  ["node", ["scripts/guards/check-code-atlas.mjs"]],
+  ["node", ["scripts/guards/check-tooling-stack.mjs"]],
+  ["node", ["scripts/guards/check-fastmcp-agent.mjs"]],
+  ["node", ["scripts/guards/check-lsp-coverage.mjs"]],
+  ["node", ["scripts/guards/check-agent-hooks.mjs"]],
+];
+
 for (const [command, args] of guards) {
   run(command, args, { stdio: "inherit" });
+}
+
+if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT !== "1") {
+  const publicCheckoutEnv = { ...process.env, SUPASCHEMA_PUBLIC_CHECKOUT: "1" };
+  for (const [command, args] of publicCheckoutGuards) {
+    run(command, args, { env: publicCheckoutEnv, stdio: "inherit" });
+  }
+  ok("PUBLIC_CHECKOUT_GUARDS_OK");
 }
 
 ok("ALL_GUARDS_OK");

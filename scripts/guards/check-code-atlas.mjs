@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { assert, edgeKey, exists, ok, readJson, readText, run } from "./lib/guard-utils.js";
 
-if (!exists("scripts/code-atlas/build.mjs")) {
+if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT === "1" || !exists("scripts/code-atlas/build.mjs")) {
   ok("CODE_ATLAS_SKIPPED_LOCAL_ONLY");
   process.exit(0);
 }

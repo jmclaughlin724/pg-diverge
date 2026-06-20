@@ -156,7 +156,7 @@ assertNoDisabledBiomeRules(biome.linter?.rules ?? {});
 assertBiomeOverrides(biome.overrides ?? []);
 assertAgentPackageSurface(packageJson.files ?? []);
 assertRuntimePackageSurface(packageJson.files ?? []);
-if (exists(".claude/cclsp.json")) {
+if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT !== "1" && exists(".claude/cclsp.json")) {
   assertCclspProxyWiring(readJson(".claude/cclsp.json"));
 }
 

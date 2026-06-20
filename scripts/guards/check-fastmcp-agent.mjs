@@ -10,7 +10,7 @@ const required = [
   ".codex/config.toml",
 ];
 
-if (!exists(required[0])) {
+if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT === "1" || !exists(required[0])) {
   ok("FASTMCP_AGENT_SKIPPED_LOCAL_ONLY");
   process.exit(0);
 }

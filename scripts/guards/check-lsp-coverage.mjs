@@ -2,7 +2,7 @@
 import path from "node:path";
 import { assert, exists, ok, readJson, run } from "./lib/guard-utils.js";
 
-if (!exists(".claude/cclsp.json")) {
+if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT === "1" || !exists(".claude/cclsp.json")) {
   ok("LSP_COVERAGE_SKIPPED_LOCAL_ONLY");
   process.exit(0);
 }

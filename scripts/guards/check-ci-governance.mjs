@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { assert, ok, ROOT, readJson } from "./lib/guard-utils.js";
+import { assert, ok, ROOT, readJson, readText } from "./lib/guard-utils.js";
 
 const WORKFLOWS_DIR = path.join(ROOT, ".github", "workflows");
 const HEX = "0123456789abcdef";
@@ -115,6 +115,7 @@ for (const file of files) {
   parsed.set(file, { doc: parseYaml(raw), raw });
 }
 const packageJson = readJson("package.json");
+const checkAllText = readText("scripts/guards/check-all.mjs");
 
 for (const [file, { doc, raw }] of parsed) {
   assert(
@@ -428,6 +429,12 @@ assert(
 assert(
   stepRunBefore(qualitySteps, "npm run build", "npm run lint:ci"),
   "ci.yml quality job must build generated dist before npm run lint:ci resolves dist imports"
+);
+assert(
+  checkAllText.includes("SUPASCHEMA_PUBLIC_CHECKOUT") &&
+    checkAllText.includes("PUBLIC_CHECKOUT_GUARDS_OK") &&
+    checkAllText.includes("check-agent-hooks.mjs"),
+  "npm run guard must include a public-checkout pass for local-only agent surfaces"
 );
 assert(
   !packageJson.scripts?.["github:check-dco"],
