@@ -2,13 +2,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { codexExecPolicyEntries } from "../skills/sync-llm.mjs";
-import { assert, ok, ROOT } from "./lib/guard-utils.js";
+import { assert, gitTrackedFiles, ok, ROOT } from "./lib/guard-utils.js";
 
 const oldMirrorText = "Claude Markdown policy is mirrored as comments";
 const claudeRuleRoot = path.join(ROOT, ".claude", "rules");
 const codexRuleRoot = path.join(ROOT, ".codex", "rules");
 
-for (const relativePath of filesUnder(".codex/rules", ".rules")) {
+for (const relativePath of trackedFilesUnder(".codex/rules", ".rules")) {
   const text = fs.readFileSync(path.join(ROOT, relativePath), "utf8");
   assert(
     !text.includes(oldMirrorText),
@@ -16,7 +16,7 @@ for (const relativePath of filesUnder(".codex/rules", ".rules")) {
   );
 }
 
-for (const sourceRelativePath of filesUnder(".claude/rules", ".md")) {
+for (const sourceRelativePath of trackedFilesUnder(".claude/rules", ".md")) {
   const sourcePath = path.join(ROOT, sourceRelativePath);
   const entries = codexExecPolicyEntries(fs.readFileSync(sourcePath, "utf8"), sourceRelativePath);
   if (entries.length === 0) {
@@ -51,25 +51,10 @@ for (const sourceRelativePath of filesUnder(".claude/rules", ".md")) {
 
 ok("CODEX_EXECPOLICY_OK");
 
-function filesUnder(root, extension) {
-  const absoluteRoot = path.join(ROOT, root);
-  if (!fs.existsSync(absoluteRoot)) {
-    return [];
-  }
-  const files = [];
-  walk(root, extension, files);
-  return files.sort();
-}
-
-function walk(relativeDir, extension, files) {
-  for (const entry of fs.readdirSync(path.join(ROOT, relativeDir), { withFileTypes: true })) {
-    const child = path.join(relativeDir, entry.name);
-    if (entry.isDirectory()) {
-      walk(child, extension, files);
-    } else if (entry.name.endsWith(extension)) {
-      files.push(child);
-    }
-  }
+function trackedFilesUnder(root, extension) {
+  return gitTrackedFiles()
+    .filter((file) => file.startsWith(`${root}/`) && file.endsWith(extension))
+    .sort();
 }
 
 function codexRulePathFor(sourceRelativePath) {

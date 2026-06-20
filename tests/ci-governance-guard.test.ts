@@ -19,7 +19,51 @@ describe("CI governance guard", () => {
     expect(args).not.toContain("--others");
     expect(args).not.toContain("--exclude-standard");
   });
+
+  it("scans tracked exec-policy rule files only", () => {
+    const source = ts.createSourceFile(
+      "check-codex-execpolicy.mjs",
+      readFileSync(resolve("scripts/guards/check-codex-execpolicy.mjs"), "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS
+    );
+
+    expect(namedImports(source, "./lib/guard-utils.js")).toContain("gitTrackedFiles");
+    expect(callNames(source)).not.toContain("fs.readdirSync");
+  });
 });
+
+function namedImports(source: ts.SourceFile, moduleSpecifier: string): string[] {
+  const names: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      node.moduleSpecifier.text === moduleSpecifier
+    ) {
+      const bindings = node.importClause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings)) {
+        names.push(...bindings.elements.map((element) => element.name.text));
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return names;
+}
+
+function callNames(source: ts.SourceFile): string[] {
+  const names: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      names.push(node.expression.getText(source));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return names;
+}
 
 function gitWorkflowLsFilesArgs(source: ts.SourceFile): string[] {
   const matches: string[][] = [];

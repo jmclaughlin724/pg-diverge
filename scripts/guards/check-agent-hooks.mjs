@@ -144,14 +144,6 @@ for (const hook of [
 for (const hook of retiredWorkflowHookPaths) {
   assert(!exists(hook), `${hook} must not exist; use supaschema hook CLI commands directly`);
 }
-for (const file of [
-  "scripts/github/ci-inbox-core.mjs",
-  "scripts/github/ci-inbox.mjs",
-  "scripts/github/report-ci-failure.mjs",
-]) {
-  assert(exists(file), `${file} must exist for repo-local CI failure inbox DX`);
-}
-
 const claudeSettings = readJson(".claude/settings.json");
 const settingsText = JSON.stringify(claudeSettings);
 const claudeHandlers = hookHandlers(claudeSettings);
@@ -255,13 +247,6 @@ for (const hook of [
   assert(codexHooksJson.includes(hook), `.codex/hooks.json must register ${hook}`);
 }
 assert(
-  !(
-    codexHooksJson.includes("scripts/github/ci-inbox.mjs") ||
-    codexHooksJson.includes("Checking GitHub CI failure inbox")
-  ),
-  ".codex/hooks.json must not register a separate repo-local CI inbox PreToolUse hook"
-);
-assert(
   !codexHooksJson.includes("general-guard.mjs"),
   ".codex/hooks.json must not register source-repo Codex general-guard fan-out"
 );
@@ -275,7 +260,6 @@ for (const toolName of ["Bash", "exec_command", "functions.exec_command"]) {
 const packageCodexHooksJson = JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json"));
 assert(
   packageCodexHooksJson.includes("general-guard.mjs") &&
-    !packageCodexHooksJson.includes("scripts/github/ci-inbox.mjs") &&
     !packageCodexHooksJson.includes("context-") &&
     !packageCodexHooksJson.includes("supaschema-source-hook.mjs") &&
     !packageCodexHooksJson.includes("scripts/agent-hooks"),
@@ -351,19 +335,12 @@ assert(
   "scripts/agent-hooks/skills.mjs must downgrade the PreToolUse skill gate to advisory inside subagents (agent_id)"
 );
 assert(
-  hookRunnerText.includes("../github/ci-inbox-core.mjs") &&
-    hookRunnerText.includes("[ciInbox, promptSkills]") &&
-    hookRunnerText.includes("[ciInbox, responseShape]"),
-  "scripts/agent-hooks/runner.mjs must surface GitHub CI failure inbox context through existing Claude hook events"
-);
-assert(
   hookRunnerText.includes("../../.claude/hooks/guards/bash-policy-checks.mjs") &&
     hookRunnerText.includes("evaluateBashPolicy") &&
     hookRunnerText.includes("function bashSafety") &&
-    hookRunnerText.includes("function commandCiInbox") &&
-    hookRunnerText.includes("commandToolNames") &&
+    !hookRunnerText.includes("../github/") &&
     !hookRunnerText.includes(".codex/hooks/general-guard.mjs"),
-  "scripts/agent-hooks/runner.mjs must own source-repo Codex PreToolUse Bash safety and command-scoped CI inbox dispatch"
+  "scripts/agent-hooks/runner.mjs must own source-repo Codex PreToolUse Bash safety without GitHub helper dispatch"
 );
 assert(
   hookRunnerText.includes("function responseShape") &&
@@ -402,8 +379,7 @@ for (const [file, text] of optimizerSkillTexts) {
       text.includes("package output") &&
       text.includes(".codex/hooks/context-pre-tool-use.mjs") &&
       text.includes(".codex/hooks/general-guard.mjs") &&
-      text.includes("scripts/agent-hooks/**") &&
-      text.includes("tests/github-ci-inbox.test.ts"),
+      text.includes("scripts/agent-hooks/**"),
     `${file} must enforce Rule 22 sync ownership, Codex hook generation, source/consumer hook topology, tracked source runtime, and package validation`
   );
 }
@@ -455,13 +431,12 @@ const rule13Text = localRuleTexts.get(".claude/rules/13-npm-package-boundary.md"
 if (rule13Text) {
   assert(
     rule13Text.includes(
-      "Command-scoped CI inbox context MUST dispatch inside `scripts/agent-hooks/runner.mjs`"
+      "Source-repo `.codex/hooks.json` may register repo-local context enforcement"
     ) &&
-      rule13Text.includes("not as a separate source `.codex/hooks.json` `PreToolUse` command") &&
       rule13Text.includes(
         "Consumer Codex hook templates MUST keep `.codex/hooks/general-guard.mjs`"
       ),
-    "Rule 13 must document source CI inbox dispatch through the shared runner and consumer general-guard preservation"
+    "Rule 13 must document source context hook topology and consumer general-guard preservation"
   );
 }
 if (codexHooksReferenceText) {
@@ -521,22 +496,37 @@ if (rule12Text) {
       rule12Text.includes("same command or `github-checks` domain") &&
       rule12Text.includes("failed `statusCheckRollup` evidence remains unresolved") &&
       rule12Text.includes("MUST match exactly one `PreToolUse` hook command") &&
-      rule12Text.includes("command-scoped CI failure inbox context") &&
       rule12Text.includes("Source and inventory reads") &&
       rule12Text.includes("MUST NOT become verification evidence") &&
       rule12Text.includes("process.exitCode = 2") &&
       rule12Text.includes("Windows path separators") &&
+      rule12Text.includes("one nested shell reader command that loads multiple pending skills") &&
+      rule12Text.includes("non-reader `SKILL.md` command tokens") &&
+      rule12Text.includes("Explicit `$skill` and `/skill` tokens MUST all remain pending") &&
       rule12Text.includes("serialize session-state mutation") &&
       rule12Text.includes("parallel Codex `PostToolUse` skill loads") &&
-      agentHookCoreText.includes("observes shell SKILL.md reads with Windows separators in Codex"),
-    "Rule 12 must document GitHub check evidence, failed statusCheckRollup evidence, source-read evidence exclusion, same-domain resolution, single source-repo Codex PreToolUse dispatch, serialized session-state mutation, and cross-platform SKILL.md shell-read detection"
+      skillMatcherText.includes("Run this observable skill load now") &&
+      skillMatcherText.includes("commandSegmentObjects") &&
+      agentHookCoreText.includes(
+        "observes shell SKILL.md reads with Windows separators in Codex"
+      ) &&
+      agentHookCoreText.includes(
+        "observes one nested Codex shell reader command loading multiple pending skills"
+      ) &&
+      agentHookCoreText.includes(
+        "ignores non-reader shell SKILL.md tokens when another segment reads a file"
+      ) &&
+      agentHookCoreText.includes(
+        "keeps every explicit skill token even when more than five skills are named"
+      ),
+    "Rule 12 must document GitHub check evidence, failed statusCheckRollup evidence, source-read evidence exclusion, same-domain resolution, single source-repo Codex PreToolUse dispatch, serialized session-state mutation, explicit-token preservation, direct skill-load recovery, and structured cross-platform SKILL.md shell-read detection"
   );
 }
 const rule18Text = localRuleTexts.get(".claude/rules/18-context-surface-sync.md");
 if (rule18Text) {
   assert(
     rule18Text.includes("one generated `PreToolUse` hook command") &&
-      rule18Text.includes("dispatch them inside `scripts/agent-hooks/runner.mjs`") &&
+      rule18Text.includes("dispatch Bash safety inside `scripts/agent-hooks/runner.mjs`") &&
       rule18Text.includes("standalone `.codex/hooks/general-guard.mjs` Bash safety hook"),
     "Rule 18 must document source-repo Codex single-hook dispatch and consumer standalone Bash guard topology"
   );
@@ -544,15 +534,10 @@ if (rule18Text) {
 const rule21Text = localRuleTexts.get(".claude/rules/21-github-process.md");
 if (rule21Text) {
   assert(
-    rule21Text.includes("<!-- supaschema:ci-failure-report -->") &&
-      rule21Text.includes(
-        "gh pr view --json number,headRefName,headRefOid,url,statusCheckRollup"
-      ) &&
-      rule21Text.includes("Rule 12 owns the Stop-time response-evidence gate") &&
-      rule21Text.includes("Do not resolve it by deleting the marker comment") &&
-      rule21Text.includes("shared agent hook runner") &&
-      rule21Text.includes("CI inbox runner/helper/context"),
-    "Rule 21 must document CI inbox marker comments, live statusCheckRollup fallback, and GitHub check evidence resolution"
+    rule21Text.includes("Rule 09 owns GitHub Actions workflow posture") &&
+      rule21Text.includes("Rule 12 response-shape enforcement records GitHub check commands") &&
+      rule21Text.includes("The repo policy, live GitHub settings, direct-main workflow"),
+    "Rule 21 must document GitHub process and direct GitHub check evidence without owning CI workflow reporting"
   );
 }
 const rule20Text = localRuleTexts.get(".claude/rules/20-anti-patterns.md");
@@ -561,8 +546,7 @@ if (rule20Text) {
     rule20Text.includes("Claiming GitHub, CI, PR, branch, or checks are green") &&
       rule20Text.includes("Hiding source-repo runtime") &&
       rule20Text.includes("Hand-authoring `.codex/hooks.json`") &&
-      rule20Text.includes("docs-only or skill-only") &&
-      rule20Text.includes("CI inbox context through `scripts/agent-hooks/runner.mjs`"),
+      rule20Text.includes("docs-only or skill-only"),
     "Rule 20 must list GitHub green-claim, hidden source-runtime, generated Codex hook, and docs-only enforcement anti-patterns"
   );
 }
@@ -580,16 +564,12 @@ if (rule22Text) {
 assert(
   syncLlmText.includes("consumerCodexHooks") &&
     syncLlmText.includes("ensureConsumerCodexGeneralGuard") &&
-    syncLlmText.includes("scripts/github/ci-inbox.mjs") &&
-    !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json")).includes(
-      "scripts/github/ci-inbox.mjs"
-    ) &&
     !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json")).includes("context-") &&
     !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json")).includes(
       "supaschema-source-hook.mjs"
     ) &&
     !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json")).includes("scripts/agent-hooks"),
-  "sync:llm must strip repo-local CI inbox and context enforcement hooks from packaged Codex hook templates"
+  "sync:llm must strip repo-local context enforcement hooks from packaged Codex hook templates"
 );
 const evidenceGateText = fs.readFileSync(
   path.join(ROOT, "scripts/agent-hooks/detectors.mjs"),

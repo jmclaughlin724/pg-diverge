@@ -1434,6 +1434,12 @@ async function applyTargetMigrationsLane(state: TargetSyncState): Promise<SyncRe
 
 async function reconcileTargetHistoryLane(state: TargetSyncState): Promise<SyncResult | undefined> {
   const status = requiredTargetStatus(state);
+  if (state.target.runner === "supabase-cli" && state.target.databaseUrl === undefined) {
+    state.lines.push(
+      `final reconcile: skipped for ${state.target.name} because the Supabase CLI target resolves credentials at runtime`
+    );
+    return;
+  }
   const finalStatus = await migrationsStatus({
     allowMissingHistoryTable: state.target.runner === "direct",
     directory: state.options.directory,
@@ -1576,9 +1582,9 @@ async function verifyPendingMigrationsForSync(
       diagnostic(
         "SUPA_SYNC_VERIFY_URL_UNRESOLVED",
         "error",
-        "sync requires a database URL for verify before apply or dry-run completion",
+        syncVerifyUrlUnresolvedMessage(options),
         {
-          hint: "Pass --database-url, select a target with databaseUrl/environment, set SUPASCHEMA_DATABASE_URL, or run inside a Supabase project with supabase/config.toml.",
+          hint: syncVerifyUrlUnresolvedHint(options),
         }
       )
     );
@@ -1628,20 +1634,28 @@ function resolveSyncVerifyDatabaseUrl(
   options: VerifyPendingMigrationsForSyncOptions
 ): string | undefined {
   try {
+    if (options.target?.remote === true) {
+      const databaseUrl = resolveDatabaseUrl();
+      return databaseUrl === options.target.databaseUrl ? undefined : databaseUrl;
+    }
     return options.target?.databaseUrl ?? resolveDatabaseUrl(options.options.databaseUrl);
-  } catch (error) {
-    options.diagnostics.push(
-      diagnostic(
-        "SUPA_SYNC_VERIFY_URL_UNRESOLVED",
-        "error",
-        error instanceof Error ? error.message : String(error),
-        {
-          hint: "Resolve the database URL used by sync verify before applying migrations.",
-        }
-      )
-    );
+  } catch {
     return;
   }
+}
+
+function syncVerifyUrlUnresolvedMessage(options: VerifyPendingMigrationsForSyncOptions): string {
+  if (options.target?.remote === true) {
+    return `sync requires a separate disposable database URL for verify before applying remote target ${options.target.name}`;
+  }
+  return "sync requires a database URL for verify before apply or dry-run completion";
+}
+
+function syncVerifyUrlUnresolvedHint(options: VerifyPendingMigrationsForSyncOptions): string {
+  if (options.target?.remote === true) {
+    return "Set SUPASCHEMA_DATABASE_URL to a disposable verification database URL or run inside a local Supabase project; remote target databaseUrl and --database-url apply to the target and are not used for verify.";
+  }
+  return "Pass --database-url, select a target with databaseUrl/environment, set SUPASCHEMA_DATABASE_URL, or run inside a Supabase project with supabase/config.toml.";
 }
 
 async function checkSyncLineageChain(

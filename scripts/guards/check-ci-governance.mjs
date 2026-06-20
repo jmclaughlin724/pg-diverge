@@ -94,15 +94,24 @@ function workflowFiles() {
   return out
     .split("\0")
     .filter(Boolean)
+    .filter((file) => fs.existsSync(path.join(ROOT, file)))
     .map((file) => path.basename(file))
     .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"))
     .sort();
 }
 
 const files = workflowFiles();
+const expectedWorkflowFiles = [
+  "ci.yml",
+  "codeql.yml",
+  "dependency-review.yml",
+  "docs.yml",
+  "release.yml",
+  "scorecard.yml",
+];
 assert(
-  files.length >= 7,
-  `expected at least 7 workflows under .github/workflows, found ${files.length}`
+  JSON.stringify(files) === JSON.stringify(expectedWorkflowFiles),
+  `expected tracked workflows ${expectedWorkflowFiles.join(", ")} under .github/workflows, found ${files.join(", ")}`
 );
 
 const parsed = new Map();
@@ -161,74 +170,6 @@ for (const file of ["ci.yml", "dependency-review.yml"]) {
 assert(
   parsed.get("release.yml")?.doc?.concurrency?.["cancel-in-progress"] !== true,
   "release.yml must not set cancel-in-progress: true (never cancel an in-flight publish)"
-);
-
-const ciFailureReport = parsed.get("ci-failure-report.yml")?.doc;
-assert(ciFailureReport, "ci-failure-report.yml must exist");
-const ciFailureOn = ciFailureReport.on?.workflow_run;
-for (const workflow of ["CI", "Docs", "CodeQL", "Dependency Review"]) {
-  assert(
-    asArray(ciFailureOn?.workflows).includes(workflow),
-    `ci-failure-report.yml must watch ${workflow} workflow_run completions`
-  );
-}
-assert(
-  asArray(ciFailureOn?.types).includes("completed"),
-  "ci-failure-report.yml must run only on completed workflow_run events"
-);
-const ciFailureJob = ciFailureReport.jobs?.report;
-assert(ciFailureJob, "ci-failure-report.yml must define a report job");
-const ciFailureIf = String(ciFailureJob.if ?? "");
-assert(
-  ciFailureIf.includes("github.event.workflow_run.event == 'pull_request'") &&
-    !["action_required", "startup_failure", "timed_out"].some((term) => ciFailureIf.includes(term)),
-  "ci-failure-report.yml must run on every completed pull_request workflow_run so the reporter can clear current-head markers after non-failure reruns"
-);
-assert(
-  ciFailureJob["runs-on"] === "ubuntu-latest" && ciFailureJob["timeout-minutes"] === 10,
-  "ci-failure-report.yml report job must run on ubuntu-latest with a 10 minute timeout"
-);
-assert(
-  ciFailureJob.permissions?.actions === "read" &&
-    ciFailureJob.permissions?.checks === "read" &&
-    ciFailureJob.permissions?.contents === "read" &&
-    ciFailureJob.permissions?.issues === "write" &&
-    ciFailureJob.permissions?.["pull-requests"] === "read",
-  "ci-failure-report.yml report job must grant only actions/checks/contents/pull-requests read plus issues write"
-);
-const ciFailureSteps = ciFailureJob.steps ?? [];
-const ciFailureCheckout = ciFailureSteps.find(
-  (step) => stepActionName(step) === "actions/checkout"
-);
-assert(
-  ciFailureCheckout?.with?.["persist-credentials"] === false,
-  "ci-failure-report.yml checkout must keep persist-credentials: false"
-);
-const ciFailureSetupNode = ciFailureSteps.find(
-  (step) => stepActionName(step) === "actions/setup-node"
-);
-assert(
-  Number(ciFailureSetupNode?.with?.["node-version"]) >= 22 &&
-    ciFailureSetupNode?.with?.["package-manager-cache"] === false,
-  "ci-failure-report.yml must use Node 22+ without package-manager caching"
-);
-const ciFailureReporter = findNamedStep(ciFailureSteps, "Sync CI failure marker");
-const githubTokenExpression = ["${{", " github.token ", "}}"].join("");
-assert(
-  ciFailureReporter &&
-    stepRun(ciFailureReporter) === "node scripts/github/report-ci-failure.mjs" &&
-    ciFailureReporter.env?.GH_TOKEN === githubTokenExpression,
-  "ci-failure-report.yml must run scripts/github/report-ci-failure.mjs with GH_TOKEN"
-);
-const ciInboxCore = fs.readFileSync(path.join(ROOT, "scripts/github/ci-inbox-core.mjs"), "utf8");
-assert(
-  ciInboxCore.includes("currentPullRequestHeadSha") &&
-    ciInboxCore.includes("trustedReportAuthors") &&
-    ciInboxCore.includes("reportHasFailureConclusion") &&
-    ciInboxCore.includes("syncCiFailureComment") &&
-    ciInboxCore.includes('"DELETE"') &&
-    ciInboxCore.includes("no failed job details were available"),
-  "ci-inbox-core.mjs must skip stale reports, trust bot-authored markers, accept empty-job failures, and delete current-head markers for non-failure reruns"
 );
 
 const codeql = parsed.get("codeql.yml")?.doc;

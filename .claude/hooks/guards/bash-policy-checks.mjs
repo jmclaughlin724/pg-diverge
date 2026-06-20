@@ -12,6 +12,7 @@ const readCommands = new Set([
   "head",
   "less",
   "more",
+  "nl",
   "rg",
   "sed",
   "tail",
@@ -30,6 +31,10 @@ const safeEnvTemplates = new Set([
   ".env.sample",
   ".env.template",
 ]);
+
+export function isReadCommandName(name) {
+  return readCommands.has(name);
+}
 export function evaluateBashPolicy(input, env = process.env) {
   if (!isBashPayload(input)) {
     return allowResult();
@@ -131,7 +136,7 @@ function checkSecretEnvFileRead(command) {
   const matches = [];
   for (const tokens of commandSegments(stripHeredocs(command))) {
     const start = commandStart(tokens);
-    if (!readCommands.has(tokens[start] ?? "")) {
+    if (!isReadCommandName(tokens[start] ?? "")) {
       continue;
     }
     for (const token of tokens.slice(start + 1)) {
@@ -313,13 +318,22 @@ function nestedShellCommand(tokens) {
   const args = commandArgs(tokens);
   for (let index = 0; index < args.length - 1; index += 1) {
     if (shellCommandOption(args[index] ?? "")) {
-      return args[index + 1];
+      const commandIndex = nestedShellCommandIndex(args, index + 1);
+      return args[commandIndex];
     }
   }
 }
 
 function shellCommandOption(value) {
   return value.startsWith("-") && value.slice(1).includes("c");
+}
+
+function nestedShellCommandIndex(args, start) {
+  let index = start;
+  while (args[index] === "--") {
+    index += 1;
+  }
+  return index;
 }
 
 function parseShellAst(command) {

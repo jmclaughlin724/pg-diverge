@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
-import { ciFailureInboxContext } from "../github/ci-inbox-core.mjs";
 import { preToolEvidenceGate, recordToolEvidence, runResponseDetectors } from "./detectors.mjs";
 import { failClosedResult, runChecks, shapeHookResult } from "./payload.mjs";
 import {
@@ -20,7 +19,6 @@ import {
 } from "./state.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const commandToolNames = new Set(["Bash", "exec_command", "functions.exec_command"]);
 
 export function runAgentHookEvent(eventName, options = {}) {
   const payload = readStdinJson();
@@ -48,15 +46,10 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
         result = runChecks(eventName, payload, [standingContext], context);
       } else if (eventName === "UserPromptSubmit") {
         beginTurnState(payload, state);
-        result = runChecks(eventName, payload, [ciInbox, promptSkills], context);
+        result = runChecks(eventName, payload, [promptSkills], context);
       } else if (eventName === "PreToolUse") {
         selectTurnState(payload, state);
-        result = runChecks(
-          eventName,
-          payload,
-          [toolSkills, evidenceGate, bashSafety, commandCiInbox],
-          context
-        );
+        result = runChecks(eventName, payload, [toolSkills, evidenceGate, bashSafety], context);
       } else if (eventName === "PostToolUse") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
@@ -65,7 +58,7 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
         result = runChecks(eventName, payload, [subagentContext], context);
       } else if (eventName === "Stop" || eventName === "SubagentStop") {
         selectTurnState(payload, state);
-        result = runChecks(eventName, payload, [ciInbox, responseShape], context);
+        result = runChecks(eventName, payload, [responseShape], context);
       } else if (eventName === "TaskCompleted") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [taskCompletionGate], context);
@@ -98,18 +91,6 @@ function standingContext() {
 
 function promptSkills(payload, context) {
   return updatePromptSkills(payload, context.state, context);
-}
-
-function ciInbox(_payload, context) {
-  const message = ciFailureInboxContext({
-    root: context.root,
-    runtime: context.runtime,
-  });
-  return message ? { contextParts: [message] } : {};
-}
-
-function commandCiInbox(payload, context) {
-  return commandToolNames.has(String(payload?.tool_name ?? "")) ? ciInbox(payload, context) : {};
 }
 
 function toolSkills(payload, context) {

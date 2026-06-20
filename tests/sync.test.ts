@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Command } from "commander";
 import { Client } from "pg";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { registerReportCommands } from "../src/cli-reports.js";
 import { resolveConfig } from "../src/config.js";
@@ -220,6 +221,73 @@ describe("sync (no target)", () => {
         expect(result.diagnostics.map((item) => item.code)).not.toContain(
           "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
         );
+      } finally {
+        process.chdir(previousCwd);
+        process.env.PATH = oldPath;
+        if (oldDatabaseUrl === undefined) {
+          delete process.env.SUPASCHEMA_DATABASE_URL;
+        } else {
+          process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+        }
+      }
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not run disk-only final reconcile after URL-less Supabase CLI sync succeeds",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-reconcile-"));
+      const bin = await mkdtemp(join(tmpdir(), "supa-sync-cli-bin-"));
+      const log = join(root, "supabase.log");
+      const supabase = join(bin, "supabase");
+      await writeFile(
+        supabase,
+        `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
+`
+      );
+      await chmod(supabase, 0o755);
+      await writeFile(
+        join(root, "20260101000000_safe.sql"),
+        "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n"
+      );
+      const oldPath = process.env.PATH;
+      const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+      const previousCwd = process.cwd();
+      process.env.PATH = `${bin}:${oldPath ?? ""}`;
+      delete process.env.SUPASCHEMA_DATABASE_URL;
+      process.chdir(root);
+      try {
+        const result = await syncMigrations({
+          config: {
+            sources: { from: "empty:", to: "empty:" },
+            sync: {
+              targets: {
+                local: {
+                  historyTable: "supabase_migrations.schema_migrations",
+                  mode: "manual",
+                  runner: "supabase-cli",
+                },
+              },
+            },
+            workflow: { rls_safety: "disabled", type_safety: "disabled" },
+          },
+          directory: root,
+          pipeline: true,
+          skipDiff: true,
+          target: "local",
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.report).toContain("verify: skipped for local");
+        expect(result.report).toContain("running: supabase migration up");
+        expect(result.report).toContain("final reconcile: skipped for local");
+        expect(result.diagnostics.map((item) => item.code)).not.toContain(
+          "SUPA_SYNC_FINAL_RECONCILE_FAILED"
+        );
+        expect(await readFile(log, "utf8")).toBe("migration up\n");
       } finally {
         process.chdir(previousCwd);
         process.env.PATH = oldPath;
@@ -1073,6 +1141,27 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
   });
 });
 
+describe("sync target verification", () => {
+  it("keeps remote target apply URLs out of verify URL resolution", async () => {
+    const source = ts.createSourceFile(
+      "workflow.ts",
+      await readFile(join(process.cwd(), "src/workflow.ts"), "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS
+    );
+    const resolver = functionDeclaration(source, "resolveSyncVerifyDatabaseUrl");
+    const remoteBranch = findIfStatement(
+      resolver,
+      (node) => node.expression.getText(source) === "options.target?.remote === true"
+    );
+
+    expect(remoteBranch).toBeDefined();
+    expect(callArgCounts(remoteBranch?.thenStatement, source, "resolveDatabaseUrl")).toContain(0);
+    expect(returnCanYieldTargetDatabaseUrl(remoteBranch?.thenStatement, source)).toBe(false);
+  });
+});
+
 async function sqlSource(sql: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "supa-sync-source-"));
   await writeFile(join(root, "001.sql"), sql);
@@ -1093,6 +1182,89 @@ function requiredDatabaseUrl(): string {
     throw new Error("SUPASCHEMA_TEST_DATABASE_URL is required for this test");
   }
   return databaseUrl;
+}
+
+function functionDeclaration(source: ts.SourceFile, name: string): ts.FunctionDeclaration {
+  for (const statement of source.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name?.text === name) {
+      return statement;
+    }
+  }
+  throw new Error(`function ${name} not found`);
+}
+
+function findIfStatement(
+  root: ts.Node,
+  predicate: (node: ts.IfStatement) => boolean
+): ts.IfStatement | undefined {
+  let match: ts.IfStatement | undefined;
+  const visit = (node: ts.Node): void => {
+    if (match !== undefined) {
+      return;
+    }
+    if (ts.isIfStatement(node) && predicate(node)) {
+      match = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return match;
+}
+
+function callArgCounts(root: ts.Node | undefined, source: ts.SourceFile, name: string): number[] {
+  const counts: number[] = [];
+  if (root === undefined) {
+    return counts;
+  }
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.getText(source) === name) {
+      counts.push(node.arguments.length);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return counts;
+}
+
+function returnCanYieldTargetDatabaseUrl(
+  root: ts.Node | undefined,
+  source: ts.SourceFile
+): boolean {
+  let found = false;
+  if (root === undefined) {
+    return found;
+  }
+  const visit = (node: ts.Node): void => {
+    if (found) {
+      return;
+    }
+    if (ts.isReturnStatement(node) && node.expression !== undefined) {
+      found = expressionCanYieldTargetDatabaseUrl(node.expression, source);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return found;
+}
+
+function expressionCanYieldTargetDatabaseUrl(
+  expression: ts.Expression,
+  source: ts.SourceFile
+): boolean {
+  if (ts.isConditionalExpression(expression)) {
+    return (
+      expressionCanYieldTargetDatabaseUrl(expression.whenTrue, source) ||
+      expressionCanYieldTargetDatabaseUrl(expression.whenFalse, source)
+    );
+  }
+  if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)) {
+    return expressionCanYieldTargetDatabaseUrl(expression.expression, source);
+  }
+  return ["options.target.databaseUrl", "options.target?.databaseUrl"].includes(
+    expression.getText(source)
+  );
 }
 
 describe.skipIf(!databaseUrl)("sync (against a target)", () => {
@@ -1218,6 +1390,79 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         delete process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED;
       } else {
         process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED = previousApproval;
+      }
+      await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+      await admin.end();
+    }
+  });
+
+  it("does not use a remote target apply URL as the verify database", async () => {
+    const admin = new Client({ connectionString: databaseUrl });
+    await admin.connect();
+    const db = `supa_sync_remote_verify_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
+    await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${db}`);
+    const url = new URL(requiredDatabaseUrl());
+    url.pathname = `/${db}`;
+    const previousApproval = process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED;
+    const previousDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+    const previousCwd = process.cwd();
+    process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED = "1";
+    delete process.env.SUPASCHEMA_DATABASE_URL;
+    try {
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-remote-verify-"));
+      process.chdir(root);
+      await writeFile(
+        join(root, "20260101000000_one.sql"),
+        "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE IF NOT EXISTS app.remote_verify (id bigint PRIMARY KEY);\n"
+      );
+      const targetSource = await sqlSource(
+        "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE app.remote_verify (id bigint PRIMARY KEY);\n"
+      );
+
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: targetSource },
+          sync: {
+            targets: {
+              remote: {
+                databaseUrl: url.toString(),
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "auto",
+                remote: true,
+                requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+                runner: "direct",
+              },
+            },
+          },
+          workflow: {
+            migration_sync: "auto",
+            rls_safety: "disabled",
+            type_safety: "disabled",
+          },
+        },
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+      });
+
+      expect(result.applied).toBe(false);
+      expect(result.diagnostics.map((item) => item.code)).toContain(
+        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
+      );
+      expect(result.report).toContain("refusing to sync: verify has no database URL");
+      expect(result.report).not.toContain("running: direct");
+    } finally {
+      process.chdir(previousCwd);
+      if (previousApproval === undefined) {
+        delete process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED;
+      } else {
+        process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED = previousApproval;
+      }
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = previousDatabaseUrl;
       }
       await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
       await admin.end();

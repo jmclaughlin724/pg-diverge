@@ -65,6 +65,32 @@ const verificationDispositionTerms = [
   "test",
   "verified",
 ];
+const responseCorrectionEditTools = new Set([
+  "Write",
+  "Edit",
+  "MultiEdit",
+  "NotebookEdit",
+  "apply_patch",
+  "functions.apply_patch",
+  "edit_file",
+]);
+const githubFailureStates = new Set([
+  "action_required",
+  "error",
+  "failed",
+  "failure",
+  "startup_failure",
+  "timed_out",
+]);
+const githubPendingStates = new Set(["in_progress", "pending", "queued", "requested", "waiting"]);
+const githubNonFailureStates = new Set([
+  "cancelled",
+  "canceled",
+  "completed",
+  "neutral",
+  "skipped",
+  "success",
+]);
 
 export function recordToolEvidence(payload, state) {
   const name = toolName(payload);
@@ -140,11 +166,7 @@ export function preToolEvidenceGate(payload, state) {
   if (pending.length === 0 || toolName(payload) === "Bash") {
     return {};
   }
-  if (
-    ["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch", "edit_file"].includes(
-      toolName(payload)
-    )
-  ) {
+  if (responseCorrectionEditTools.has(toolName(payload))) {
     if (isSubagentInvocation(payload)) {
       return {
         contextParts: [
@@ -203,6 +225,13 @@ export function claimWithoutEvidence(message, state, transcript = []) {
     return;
   }
   const evidenceItems = [...currentTurnState(state).evidence, ...transcript];
+  const unresolved = unresolvedFailures(evidenceItems);
+  if (unresolved.length > 0) {
+    return {
+      id: "claim-without-evidence",
+      message: `The response claims verification while failed evidence remains unresolved for: ${failureLabels(unresolved).join(", ")}.`,
+    };
+  }
   const requiredDomains = claimRequiredDomains(message, state);
   const missingDomains = requiredDomains.filter(
     (domain) => !hasSuccessfulDomainEvidence(evidenceItems, domain)
@@ -221,13 +250,6 @@ export function claimWithoutEvidence(message, state, transcript = []) {
       id: "claim-without-evidence",
       message:
         "The response claims verification without a recorded successful verification command.",
-    };
-  }
-  const unresolved = unresolvedFailures(evidenceItems);
-  if (unresolved.length > 0) {
-    return {
-      id: "claim-without-evidence",
-      message: `The response claims verification while failed evidence remains unresolved for: ${failureLabels(unresolved).join(", ")}.`,
     };
   }
 }
@@ -313,20 +335,23 @@ function transcriptEvidence(payload) {
       .filter(Boolean)
       .map((line) => JSON.parse(line))
       .filter((entry) => entry?.type === "tool_result" && entry?.status === "success")
-      .map((entry) => {
+      .flatMap((entry) => {
         const command = transcriptCommand(entry);
         const domains = classifyCommandDomains(command);
-        return command && domains.length > 0
-          ? {
-              command,
-              domains,
-              kind: "verified-command",
-              outcome: "success",
-              summary: String(entry.tool_name ?? "tool_result"),
-            }
-          : undefined;
-      })
-      .filter(Boolean);
+        if (!(command && domains.length > 0)) {
+          return [];
+        }
+        const success = commandEvidenceSucceeded(true, domains, entry);
+        return [
+          {
+            command,
+            domains,
+            kind: success ? "verified-command" : "failed-command",
+            outcome: success ? "success" : "failure",
+            summary: String(entry.tool_name ?? "tool_result"),
+          },
+        ];
+      });
   } catch {
     return [];
   }
@@ -540,6 +565,13 @@ function addNpmDomains(domains, args) {
   if (!script) {
     return;
   }
+  if (script === "check") {
+    domains.add("build");
+    domains.add("lint");
+    domains.add("test");
+    domains.add("typecheck");
+    return;
+  }
   if (script === "guard" || script.startsWith("guard:")) {
     domains.add("guard");
   }
@@ -681,25 +713,10 @@ function githubStatusValue(value) {
       continue;
     }
     const normalized = lower(value[key]);
-    if (
-      ["action_required", "error", "failed", "failure", "startup_failure", "timed_out"].includes(
-        normalized
-      )
-    ) {
+    if (githubFailureStates.has(normalized) || githubPendingStates.has(normalized)) {
       return true;
     }
-    if (
-      [
-        "cancelled",
-        "canceled",
-        "completed",
-        "neutral",
-        "pending",
-        "queued",
-        "skipped",
-        "success",
-      ].includes(normalized)
-    ) {
+    if (githubNonFailureStates.has(normalized)) {
       return false;
     }
   }
@@ -714,16 +731,9 @@ function textGithubFailure(text) {
     if (
       fields.some(
         (field, index) =>
-          index > 0 &&
-          [
-            "fail",
-            "failed",
-            "failure",
-            "error",
-            "startup_failure",
-            "timed_out",
-            "action_required",
-          ].includes(field)
+          (index > 0 && githubFailureStates.has(field)) ||
+          githubPendingStates.has(field) ||
+          field === "fail"
       )
     ) {
       return true;

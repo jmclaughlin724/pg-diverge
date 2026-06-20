@@ -395,6 +395,40 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     expect(currentTurnState(readSessionState(bare)).pendingSkills).toEqual({});
   });
 
+  it("keeps every explicit skill token even when more than five skills are named", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt:
+        "$code-atlas $claude-optimizer $codex-optimizer $adversarial-verification $task-creator $supaschema $update",
+      session_id: "explicit-skill-list",
+    };
+
+    const result = handleAgentHookEvent("UserPromptSubmit", payload, {
+      root,
+      runtime: "claude",
+    });
+    const pending = Object.keys(currentTurnState(readSessionState(payload)).pendingSkills).sort();
+
+    expect(pending).toEqual(
+      [
+        "adversarial-verification",
+        "claude-optimizer",
+        "code-atlas",
+        "codex-optimizer",
+        "supaschema",
+        "task-creator",
+        "update",
+      ].sort()
+    );
+    expect(result.output.hookSpecificOutput?.additionalContext).toContain(
+      "Run this observable skill load now:"
+    );
+    expect(result.output.hookSpecificOutput?.additionalContext).toContain(
+      ".claude/skills/adversarial-verification/SKILL.md"
+    );
+  });
+
   it("does not treat command prose keywords as tool-scope skill signals", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -532,6 +566,87 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       "code-atlas"
     );
     expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
+  });
+
+  it("ignores non-reader shell SKILL.md tokens when another segment reads a file", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt: "use $code-atlas for scripts",
+      session_id: "shell-load-non-reader-token",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "shell-load-non-reader-token",
+        tool_input: {
+          cmd: "echo .agents\\skills\\code-atlas\\SKILL.md && sed -n '1,20p' README.md",
+        },
+        tool_name: "functions.exec_command",
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
+    expect(readSessionState(payload).invokedSkills).not.toHaveProperty("code-atlas");
+  });
+
+  it("observes one nested Codex shell reader command loading multiple pending skills", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt: "$code-atlas $claude-optimizer $codex-optimizer",
+      session_id: "nested-multi-shell-load",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    const loadPayload = {
+      session_id: "nested-multi-shell-load",
+      tool_input: {
+        cmd: [
+          "bash -lc \"sed -n '1,120p'",
+          ".claude/skills/code-atlas/SKILL.md",
+          ".claude/skills/claude-optimizer/SKILL.md",
+          '.claude/skills/codex-optimizer/SKILL.md"',
+        ].join(" "),
+      },
+      tool_name: "functions.exec_command",
+    };
+    const allowedLoad = handleAgentHookEvent("PreToolUse", loadPayload, {
+      root,
+      runtime: "codex",
+    });
+    expect(allowedLoad.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        ...loadPayload,
+        tool_response: { exit_code: 0 },
+      },
+      { root, runtime: "codex" }
+    );
+
+    const state = readSessionState(payload);
+    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("code-atlas");
+    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("claude-optimizer");
+    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("codex-optimizer");
+    expect(state.invokedSkills).toHaveProperty("code-atlas");
+    expect(state.invokedSkills).toHaveProperty("claude-optimizer");
+    expect(state.invokedSkills).toHaveProperty("codex-optimizer");
+
+    const edit = handleAgentHookEvent(
+      "PreToolUse",
+      {
+        session_id: "nested-multi-shell-load",
+        tool_input: { file_path: "src/cli.ts" },
+        tool_name: "Edit",
+      },
+      { root, runtime: "codex" }
+    );
+    expect(edit.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
 
   it("serializes concurrent Codex PostToolUse skill loads for one session", async () => {
@@ -858,6 +973,33 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     );
   });
 
+  it("records npm run check as composite local verification evidence", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "run the umbrella check", session_id: "exec-npm-check-evidence" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "exec-npm-check-evidence",
+        tool_input: { cmd: "npm run check" },
+        tool_name: "functions.exec_command",
+        tool_response: { exit_code: 0 },
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
+      expect.objectContaining({
+        command: "npm run check",
+        domains: ["build", "lint", "test", "typecheck"],
+        kind: "verified-command",
+        outcome: "success",
+      })
+    );
+  });
+
   it("records completed GitHub check commands with failing output as failed evidence", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -932,6 +1074,85 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
         outcome: "success",
       })
     );
+  });
+
+  it("records pending GitHub check commands as unresolved evidence", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "prove live GitHub checks", session_id: "exec-github-pending" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "exec-github-pending",
+        tool_input: { cmd: "gh pr view --json statusCheckRollup" },
+        tool_name: "functions.exec_command",
+        tool_response: {
+          content: [
+            {
+              text: JSON.stringify({
+                statusCheckRollup: [
+                  {
+                    name: "quality (22)",
+                    status: "QUEUED",
+                  },
+                ],
+              }),
+            },
+          ],
+          exit_code: 0,
+        },
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
+      expect.objectContaining({
+        command: "gh pr view --json statusCheckRollup",
+        domains: ["github-checks"],
+        kind: "failed-command",
+        outcome: "failure",
+      })
+    );
+  });
+
+  it("blocks functions.apply_patch edits while response corrections are pending", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt: "verify from upstream Codex sources if this is running correctly",
+      session_id: "codex-correction-apply-patch",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+    handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message:
+          "This is expected behavior because Codex runs the matching Stop hook.",
+        session_id: "codex-correction-apply-patch",
+      },
+      { root, runtime: "codex" }
+    );
+
+    const blocked = handleAgentHookEvent(
+      "PreToolUse",
+      {
+        session_id: "codex-correction-apply-patch",
+        tool_input: {
+          patch: "*** Begin Patch\n*** Update File: src/cli.ts\n@@\n export {}\n*** End Patch\n",
+        },
+        tool_name: "functions.apply_patch",
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(blocked.output).toMatchObject({
+      hookSpecificOutput: expect.objectContaining({
+        permissionDecision: "deny",
+        permissionDecisionReason: expect.stringContaining("Response evidence correction"),
+      }),
+    });
   });
 
   it("parses nested Codex exec output text before recording command evidence", async () => {
@@ -1050,6 +1271,46 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     });
   });
 
+  it("treats transcript GitHub check failures as unresolved evidence", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const transcriptPath = join(root, "transcript-github-failure.jsonl");
+    await writeFile(
+      transcriptPath,
+      `${JSON.stringify({
+        status: "success",
+        tool_input: { cmd: "gh pr view --json statusCheckRollup" },
+        tool_name: "functions.exec_command",
+        tool_response: {
+          content: [
+            {
+              text: JSON.stringify({
+                statusCheckRollup: [{ conclusion: "FAILURE", name: "check-os (windows-latest)" }],
+              }),
+            },
+          ],
+          exit_code: 0,
+        },
+        type: "tool_result",
+      })}\n`
+    );
+
+    const result = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "GitHub checks are green and verified.",
+        session_id: "transcript-github-failure",
+        transcript_path: transcriptPath,
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(result.output).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("failed evidence remains unresolved"),
+    });
+  });
+
   it("does not create failed evidence when command outcome is unavailable", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -1071,13 +1332,26 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
   });
 });
 
+let sharedSkillRoot: Promise<string> | undefined;
+
 async function seededHookRoot(): Promise<{ root: string; stateDir: string }> {
+  const root = await seededSkillRoot();
+  const stateDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-state-"));
+  return { root, stateDir };
+}
+
+function seededSkillRoot(): Promise<string> {
+  sharedSkillRoot ??= createSeededSkillRoot();
+  return sharedSkillRoot;
+}
+
+async function createSeededSkillRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "supa-agent-hook-core-"));
-  const stateDir = join(root, ".state");
-  await writeSkill(
-    root,
-    "code-atlas",
-    `---
+  await Promise.all([
+    writeSkill(
+      root,
+      "code-atlas",
+      `---
 name: code-atlas
 description: Build and query the local Code Atlas.
 metadata:
@@ -1090,11 +1364,11 @@ metadata:
 
 # Code Atlas
 `
-  );
-  await writeSkill(
-    root,
-    "claude-optimizer",
-    `---
+    ),
+    writeSkill(
+      root,
+      "claude-optimizer",
+      `---
 name: claude-optimizer
 description: Optimize Claude Code hooks and rules.
 metadata:
@@ -1109,11 +1383,11 @@ metadata:
 
 # Claude Optimizer
 `
-  );
-  await writeSkill(
-    root,
-    "codex-optimizer",
-    `---
+    ),
+    writeSkill(
+      root,
+      "codex-optimizer",
+      `---
 name: codex-optimizer
 description: Optimize Codex hooks and generated mirrors.
 metadata:
@@ -1128,11 +1402,11 @@ metadata:
 
 # Codex Optimizer
 `
-  );
-  await writeSkill(
-    root,
-    "adversarial-verification",
-    `---
+    ),
+    writeSkill(
+      root,
+      "adversarial-verification",
+      `---
 name: adversarial-verification
 description: Use when verifying implementation work without superficial approval.
 metadata:
@@ -1143,11 +1417,11 @@ metadata:
 
 # Adversarial Verification
 `
-  );
-  await writeSkill(
-    root,
-    "task-creator",
-    `---
+    ),
+    writeSkill(
+      root,
+      "task-creator",
+      `---
 name: task-creator
 description: Create validated task lists and implementation plans.
 metadata:
@@ -1158,11 +1432,11 @@ metadata:
 
 # Task Creator
 `
-  );
-  await writeSkill(
-    root,
-    "supaschema",
-    `---
+    ),
+    writeSkill(
+      root,
+      "supaschema",
+      `---
 name: supaschema
 description: Generate, check, and verify supaschema migrations.
 metadata:
@@ -1173,11 +1447,11 @@ metadata:
 
 # Supaschema
 `
-  );
-  await writeSkill(
-    root,
-    "update",
-    `---
+    ),
+    writeSkill(
+      root,
+      "update",
+      `---
 name: update
 description: Audit and update repo documentation and generated mirrors.
 metadata:
@@ -1188,9 +1462,10 @@ metadata:
 
 # Update
 `
-  );
-  await write(root, ".agents/skills/code-atlas/SKILL.md", "# Code Atlas\n");
-  return { root, stateDir };
+    ),
+    write(root, ".agents/skills/code-atlas/SKILL.md", "# Code Atlas\n"),
+  ]);
+  return root;
 }
 
 async function runHookEventInChild(

@@ -16,9 +16,6 @@ for (const file of [
   "scripts/github/merge-preflight.mjs",
   "scripts/github/post-merge-verify.mjs",
   "scripts/github/audit-settings.mjs",
-  "scripts/github/ci-inbox-core.mjs",
-  "scripts/github/ci-inbox.mjs",
-  "scripts/github/report-ci-failure.mjs",
 ]) {
   assert(exists(file), `${file} must exist`);
 }

@@ -910,8 +910,7 @@ function isRepoLocalCodexHook(hook) {
     hook &&
     typeof hook === "object" &&
     typeof hook.command === "string" &&
-    (hook.command.includes("scripts/github/ci-inbox.mjs") ||
-      hook.command.includes("/.codex/hooks/context-") ||
+    (hook.command.includes("/.codex/hooks/context-") ||
       hook.command.includes("scripts/agent-hooks/"))
   );
 }

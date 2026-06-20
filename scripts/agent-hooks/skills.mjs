@@ -1,5 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  commandArgs,
+  commandName,
+  commandSegmentObjects,
+  isReadCommandName,
+} from "../../.claude/hooks/guards/bash-policy-checks.mjs";
 import { atlasAdvisoryTarget, isCodeAtlasQuery } from "./atlas.mjs";
 import { currentTurnState } from "./state.mjs";
 
@@ -73,23 +79,27 @@ export function updatePromptSkills(payload, state, options = {}) {
   const turn = currentTurnState(state);
   turn.lastPrompt = prompt;
   const matched = scorePrompt(prompt, discoverSkills(options.root, options.runtime));
+  const pendingMatches = [];
   for (const skill of matched) {
     if (!state.invokedSkills[skill.name]) {
+      pendingMatches.push(skill);
       turn.pendingSkills[skill.name] = {
+        path: skill.path,
         reason: skill.reason,
         source: "UserPromptSubmit",
       };
     }
   }
-  if (matched.length === 0) {
+  if (pendingMatches.length === 0) {
     return {};
   }
   return {
     contextParts: [
       [
-        "Deterministic skill loading requested before governed work.",
-        ...matched.map((skill) => `- Load ${skill.name}: ${skill.reason}`),
-        "A slash command or inline token is only a request signal. The next governed tool call may load the skill; otherwise the pending skill clears only after the Skill tool loads it or a SKILL.md file is read.",
+        "Deterministic skill context is required before governed work.",
+        ...pendingMatches.map((skill) => `- Load ${skill.name}: ${skill.reason}`),
+        "Slash commands and inline skill tokens only request context; they do not load it.",
+        observableLoadAction(pendingMatches),
       ].join("\n"),
     ],
   };
@@ -105,6 +115,7 @@ export function updateToolSkills(payload, state, options = {}) {
         newlyPending.push(skill);
       }
       turn.pendingSkills[skill.name] = {
+        path: skill.path,
         reason: skill.reason,
         source: "PreToolUse",
       };
@@ -130,7 +141,8 @@ export function updateToolSkills(payload, state, options = {}) {
         [
           "Skills pending from the parent task are not loaded in this subagent's isolated context:",
           ...pending.map((item) => `- ${item.name}: ${item.reason}`),
-          "Load them with the Skill tool or a SKILL.md read if available; otherwise report findings for the orchestrator to apply in the main session. Subagent skill gating is advisory because PreToolUse fires inside subagents while SubagentStart cannot block and the subagent may lack the Skill/Read tools.",
+          observableLoadAction(pending),
+          "If this subagent lacks a skill-loading tool, report findings for the orchestrator to apply in the main session. Subagent skill gating is advisory because PreToolUse fires inside subagents while SubagentStart cannot block and the subagent may lack the Skill/Read tools.",
         ].join("\n"),
       ],
     };
@@ -140,7 +152,8 @@ export function updateToolSkills(payload, state, options = {}) {
     deny: [
       "Required skills are pending, and this governed tool call was not an observable skill load.",
       ...pending.map((item) => `- ${item.name}: ${item.reason}`),
-      "Load each skill with the Skill tool, read its SKILL.md file, or run the relevant Code Atlas query, then retry the blocked tool.",
+      observableLoadAction(pending),
+      "Retry the blocked tool only after PostToolUse records the skill load.",
     ].join("\n"),
   };
 }
@@ -168,6 +181,7 @@ export function unresolvedPending(state) {
     .filter(([name]) => !state.invokedSkills[name])
     .map(([name, value]) => ({
       name,
+      path: typeof value?.path === "string" ? value.path : "",
       reason: typeof value?.reason === "string" ? value.reason : "Skill is pending.",
     }));
 }
@@ -220,21 +234,34 @@ export function toolName(payload) {
 
 function scorePrompt(prompt, skills) {
   const normalized = prompt.toLowerCase();
-  const out = [];
+  const explicit = [];
+  const keyword = [];
   for (const skill of skills) {
     const hits = [];
-    if (promptNamesSkill(normalized, skill.name)) {
+    const explicitMatch = promptNamesSkill(normalized, skill.name);
+    if (explicitMatch) {
       hits.push(skill.name);
     }
-    hits.push(...matchingKeywords(normalized, skill.keywords));
-    if (hits.length > 0) {
-      out.push({
-        name: skill.name,
-        reason: `matched prompt signal: ${unique(hits).slice(0, 4).join(", ")}`,
-      });
+    const keywordHits = matchingKeywords(normalized, skill.keywords);
+    hits.push(...keywordHits);
+    if (explicitMatch) {
+      explicit.push(promptSkillMatch(skill, hits));
+    } else if (keywordHits.length > 0) {
+      keyword.push(promptSkillMatch(skill, keywordHits));
     }
   }
-  return uniqueByName(out).slice(0, 5);
+  const explicitMatches = uniqueByName(explicit);
+  const explicitNames = new Set(explicitMatches.map((item) => item.name));
+  const keywordMatches = uniqueByName(keyword).filter((item) => !explicitNames.has(item.name));
+  return [...explicitMatches, ...keywordMatches.slice(0, Math.max(0, 5 - explicitMatches.length))];
+}
+
+function promptSkillMatch(skill, hits) {
+  return {
+    name: skill.name,
+    path: skill.relativePath,
+    reason: `matched prompt signal: ${unique(hits).slice(0, 4).join(", ")}`,
+  };
 }
 
 function promptNamesSkill(prompt, name) {
@@ -292,6 +319,7 @@ function scoreTool(payload, skills, root = defaultRoot) {
     if (pathHits.length > 0) {
       out.push({
         name: skill.name,
+        path: skill.relativePath,
         reason: `matched file trigger: ${pathHits.slice(0, 4).join(", ")}`,
       });
     }
@@ -325,9 +353,6 @@ function skillsFromPayloadPaths(payload, root) {
 
 function skillsFromCommand(payload, root) {
   const command = commandText(payload);
-  if (!commandReadsFiles(command)) {
-    return [];
-  }
   return unique(
     commandSkillPaths(command)
       .map((file) => skillFromSkillPath(file, root))
@@ -343,56 +368,59 @@ function commandText(payload) {
   return typeof input.cmd === "string" ? input.cmd : "";
 }
 
-function commandReadsFiles(command) {
-  const first = firstCommandToken(command);
-  return ["bat", "cat", "head", "less", "more", "nl", "sed", "tail"].includes(first);
-}
-
 function commandSkillPaths(command) {
   const paths = [];
-  for (const token of shellTokens(command)) {
-    const normalized = token.split("\\").join("/");
-    if (normalized.includes("/skills/") && normalized.endsWith("/SKILL.md")) {
-      paths.push(normalized);
+  const readerSegments = parsedCommandSegments(command.split("\\").join("/")).filter((segment) =>
+    isReadCommandName(commandName(segment.words))
+  );
+  for (const segment of readerSegments) {
+    for (const token of commandArgs(segment.words)) {
+      appendSkillPaths(paths, token);
     }
   }
   return paths;
 }
 
-function firstCommandToken(command) {
-  return shellTokens(command)[0] ?? "";
+function parsedCommandSegments(command) {
+  try {
+    return commandSegmentObjects(command);
+  } catch {
+    return [];
+  }
 }
 
-function shellTokens(command) {
-  const tokens = [];
-  let token = "";
-  let quote = "";
-  for (const char of command.trim()) {
-    if (quote) {
-      if (char === quote) {
-        quote = "";
-      } else {
-        token += char;
-      }
-      continue;
-    }
-    if (char === "'" || char === '"' || char === "`") {
-      quote = char;
-      continue;
-    }
-    if (isWhitespace(char)) {
-      if (token) {
-        tokens.push(token);
-        token = "";
-      }
-      continue;
-    }
-    token += char;
+function expandSkillPathToken(value) {
+  const normalized = value.split("\\").join("/");
+  const open = normalized.indexOf("{");
+  const close = open === -1 ? -1 : normalized.indexOf("}", open + 1);
+  if (
+    open === -1 ||
+    close === -1 ||
+    !normalized.slice(0, open).includes("/skills/") ||
+    !normalized.slice(close + 1).endsWith("/SKILL.md")
+  ) {
+    return [normalized];
   }
-  if (token) {
-    tokens.push(token);
+  const prefix = normalized.slice(0, open);
+  const suffix = normalized.slice(close + 1);
+  const inner = normalized.slice(open + 1, close);
+  return inner
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => `${prefix}${item}${suffix}`);
+}
+
+function appendSkillPaths(paths, token) {
+  for (const expanded of expandSkillPathToken(token)) {
+    if (isSkillPath(expanded)) {
+      paths.push(expanded);
+    }
   }
-  return tokens;
+}
+
+function isSkillPath(value) {
+  return value.includes("/skills/") && value.endsWith("/SKILL.md");
 }
 
 function patchPaths(text, root) {
@@ -478,6 +506,20 @@ function atlasPreEditContext(payload, turn, root = defaultRoot) {
   return [
     `Code Atlas pre-edit evidence for ${target}: run \`npm run code-atlas:query -- pre-edit ${target} --json\` before broad edits; use \`trace-change\` for wider impact planning.`,
   ];
+}
+
+function observableLoadAction(items) {
+  const paths = unique(items.map((item) => item.path).filter(Boolean));
+  if (paths.length === 0) {
+    return "Run an observable skill load now: use the Skill tool or read each required SKILL.md file before governed work.";
+  }
+  return `Run this observable skill load now: \`sed -n '1,220p' ${paths
+    .map(shellQuote)
+    .join(" ")}\`.`;
+}
+
+function shellQuote(value) {
+  return `'${value.split("'").join("'\"'\"'")}'`;
 }
 
 function isCommandTool(name) {
@@ -583,10 +625,6 @@ function isTermBoundary(char) {
 function isAsciiLetterOrDigit(char) {
   const code = char.charCodeAt(0);
   return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
-}
-
-function isWhitespace(char) {
-  return char === " " || char === "\n" || char === "\r" || char === "\t";
 }
 
 function unique(values) {

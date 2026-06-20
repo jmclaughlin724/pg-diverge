@@ -64,7 +64,7 @@ function editTargets(payload, projectDir) {
 function editTargetsForTool(toolPayload, projectDir) {
   const toolName = toolNameOf(toolPayload);
   const input = toolInputOf(toolPayload);
-  if (toolName === "apply_patch") {
+  if (toolName === "apply_patch" || toolName === "functions.apply_patch") {
     return patchTargets(patchTextFromInput(input), projectDir);
   }
   if (typeof input.file_path === "string" && input.file_path.length > 0) {

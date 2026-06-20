@@ -58,9 +58,9 @@ paths:
 
 ## Contract
 
-This rule owns the GitHub lifecycle after local work exists: repository settings, `main` branch protection, direct fast-forward pushes, optional PR preflight, merge preflight, canonical merge method, branch cleanup, post-merge verification, and repo-local CI failure inbox scripts.
+This rule owns the GitHub lifecycle after local work exists: repository settings, `main` branch protection, direct fast-forward pushes, optional PR preflight, merge preflight, canonical merge method, branch cleanup, and post-merge verification.
 
-Rule 09 owns GitHub Actions workflow posture, including the `ci-failure-report.yml` reporter workflow. Rule 14 owns local edit/worktree/git safety and the main-agent-only staging, commit, and push boundary. Rule 19 owns release-version transactions. This rule owns remote GitHub process state, the repo-local GitHub scripts, and the commands that prove direct pushes and optional PRs can complete without hidden conflicts, stale branch policy, or local-main drift.
+Rule 09 owns GitHub Actions workflow posture. Rule 14 owns local edit/worktree/git safety and the main-agent-only staging, commit, and push boundary. Rule 19 owns release-version transactions. This rule owns remote GitHub process state, the repo-local GitHub scripts, and the commands that prove direct pushes and optional PRs can complete without hidden conflicts, stale branch policy, or local-main drift.
 
 Sources:
 
@@ -194,18 +194,6 @@ npm run github:post-merge-verify -- --pr <number>
 
 The merged PR MUST report `MERGED` from GitHub, the merge commit MUST be contained in `origin/main`, and the local `origin/main` ref MUST be fetched before verification.
 
-## CI failure inbox
-
-Repo-local Claude hooks and the source-repo Codex context runner surface failed PR checks before agents continue or claim a branch is green.
-
-- `.github/workflows/ci-failure-report.yml` owns the reporter workflow under Rule 09.
-- `scripts/github/report-ci-failure.mjs` MUST write or update one PR comment containing `<!-- supaschema:ci-failure-report -->` for failed PR workflow runs.
-- `scripts/github/ci-inbox-core.mjs` MUST read the marker comment when it exists.
-- If no marker comment exists, `scripts/github/ci-inbox-core.mjs` MUST inspect the live PR with `gh pr view --json number,headRefName,headRefOid,url,statusCheckRollup` and render failed `statusCheckRollup` entries as CI failure context.
-- CI inbox context is scoped by runtime, branch, head SHA, and workflow run so the same stale failure is not repeated forever, but a new failed run or head SHA must surface again.
-- Rule 12 owns the Stop-time response-evidence gate. A GitHub, PR, CI, branch-green, or check-green claim MUST NOT pass while failed `github-checks` evidence from the marker comment, live `statusCheckRollup`, or a GitHub check command remains unresolved.
-- Resolve failed GitHub check evidence by fixing the failing checks and recording a later successful `github-checks` command or status result. Do not resolve it by deleting the marker comment, disabling the inbox runner/helper/context, or claiming that a failed command output is green.
-
 ## Enforced by
 
 - `npm run guard:github-process` (`scripts/guards/check-github-process.mjs`) asserts the policy file, Rule 21, package commands, guard wiring, and PR template stay synchronized.
@@ -213,8 +201,6 @@ Repo-local Claude hooks and the source-repo Codex context runner surface failed 
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, and repository rulesets to `.github/repo-policy.json`.
 - `npm run github:audit-settings` also compares live repository topics to `repositoryTopics`. `npm run github:audit-settings -- --apply-topics` reconciles only topics, refuses to run unless `GITHUB_REPOSITORY_TOPICS_APPROVED=1` is already present, and does not apply topics while non-topic repository policy failures exist.
 - `npm run github:pr-preflight`, `npm run github:merge-preflight`, and `npm run github:post-merge-verify` prove the optional PR lifecycle state before PR creation, merge, and closeout.
-- `scripts/github/report-ci-failure.mjs` writes one `<!-- supaschema:ci-failure-report -->` PR comment from failed PR workflow runs. `scripts/github/ci-inbox-core.mjs` plus the shared agent hook runner let active Claude hooks and the source-repo Codex context hook read that comment once per runtime, branch head, and failed workflow run.
-- `scripts/github/ci-inbox-core.mjs` falls back to live `gh pr view --json number,headRefName,headRefOid,url,statusCheckRollup` when the marker comment is missing, so active hooks still surface existing PR check failures.
 - Rule 12 response-shape enforcement records GitHub check commands as `github-checks` evidence and blocks green claims while failed check evidence remains unresolved.
 - `.github/PULL_REQUEST_TEMPLATE.md` records the required operator checklist for PR authors and reviewers.
 
@@ -228,10 +214,10 @@ npm run sync:llm
 npm run sync:llm:check
 ```
 
-For CI failure inbox or GitHub check evidence behavior, also run:
+For GitHub check evidence behavior, also run:
 
 ```bash
-npm test -- tests/github-ci-inbox.test.ts tests/agent-hook-core.test.ts
+npm test -- tests/agent-hook-core.test.ts
 ```
 
 Before direct-main push, also run:
@@ -262,8 +248,8 @@ npm run github:post-merge-verify -- --pr <number>
 
 ## Failure behavior
 
-Fix the branch, PR, policy, GitHub setting, local-main drift, or failing check that failed. If direct push fails because GitHub requires PRs, reviews, or status checks, fix live policy drift against `.github/repo-policy.json`; do not reintroduce required PR or status-check gates unless the user explicitly asks to change the policy. If CI inbox or `statusCheckRollup` evidence reports failed checks, fix the checks and record later successful `github-checks` evidence before claiming green. Do not bypass branch protection, use admin merge to skip checks, force push, change the PR base to avoid conflicts, loosen `.github/repo-policy.json` to make a command pass, delete marker comments to hide failures, or disable CI inbox runner/helper/context to silence failed checks.
+Fix the branch, PR, policy, GitHub setting, local-main drift, or failing check that failed. If direct push fails because GitHub requires PRs, reviews, or status checks, fix live policy drift against `.github/repo-policy.json`; do not reintroduce required PR or status-check gates unless the user explicitly asks to change the policy. If `statusCheckRollup` evidence reports failed checks, fix the checks and record later successful `github-checks` evidence before claiming green. Do not bypass branch protection, use admin merge to skip checks, force push, change the PR base to avoid conflicts, or loosen `.github/repo-policy.json` to make a command pass.
 
 ## Done means
 
-The repo policy, live GitHub settings, direct-main workflow, optional PR template, local guard, preflight scripts, merge method, branch cleanup, CI failure inbox behavior, GitHub check evidence gate, and post-merge verification all agree.
+The repo policy, live GitHub settings, direct-main workflow, optional PR template, local guard, preflight scripts, merge method, branch cleanup, GitHub check evidence gate, and post-merge verification all agree.

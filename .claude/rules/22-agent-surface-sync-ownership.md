@@ -34,9 +34,9 @@ This rule owns source-repo agent runtime as public branch infrastructure. Requir
 - `Stop` and `SubagentStop` response-shape correction paths MUST stay shared across Claude and Codex. Do not add Codex-only or Claude-only response-shape enforcement for mechanism/end-state/verification correctness.
 - `scripts/skills/sync-llm.mjs` MUST write `.codex/hooks.json`, `.codex/hooks/**` mirrors, `.codex/agents/**`, `.codex/rules/**`, `.agents/skills/**`, public `skills/supaschema`, and `agent-bundle/codex/hooks.*.json`.
 - `.codex/hooks.json` MUST NOT be hand-authored as an input. Edit `.claude/settings.json`, `.claude/hooks/**`, or `scripts/skills/sync-llm.mjs`, then run `npm run sync:llm`.
-- Source-repo `.codex/hooks.json` MUST register exactly one `PreToolUse` hook command for each shell command tool (`Bash`, `exec_command`, and `functions.exec_command`): `.codex/hooks/context-pre-tool-use.mjs`. It MUST NOT also register `.codex/hooks/general-guard.mjs` or `scripts/github/ci-inbox.mjs` as source-repo `PreToolUse` command hooks.
-- `scripts/agent-hooks/runner.mjs` MUST own source-repo Codex `PreToolUse` dispatch order for shell command tools: skill/context gate, response-evidence gate, Bash safety through `.claude/hooks/guards/bash-policy-checks.mjs`, then command-scoped CI failure inbox context. Rule 21 owns the CI inbox marker-comment and live `statusCheckRollup` fallback behavior; Rule 12 owns the Stop-time evidence gate that blocks green claims while failed `github-checks` evidence remains unresolved.
-- Consumer Codex hook templates under `agent-bundle/codex/hooks.*.json` MUST be rendered from the same source Codex hook config, MUST strip repo-local context hooks, CI-inbox hooks, `scripts/agent-hooks/**`, and source-repo supaschema hook launcher commands, and MUST keep `.codex/hooks/general-guard.mjs` as the distinct consumer Bash safety boundary.
+- Source-repo `.codex/hooks.json` MUST register exactly one `PreToolUse` hook command for each shell command tool (`Bash`, `exec_command`, and `functions.exec_command`): `.codex/hooks/context-pre-tool-use.mjs`. It MUST NOT also register `.codex/hooks/general-guard.mjs` as a source-repo `PreToolUse` command hook.
+- `scripts/agent-hooks/runner.mjs` MUST own source-repo Codex `PreToolUse` dispatch order for shell command tools: skill/context gate, response-evidence gate, then Bash safety through `.claude/hooks/guards/bash-policy-checks.mjs`. Rule 12 owns the Stop-time evidence gate that blocks green claims while failed `github-checks` evidence remains unresolved.
+- Consumer Codex hook templates under `agent-bundle/codex/hooks.*.json` MUST be rendered from the same source Codex hook config, MUST strip repo-local context hooks, `scripts/agent-hooks/**`, and source-repo supaschema hook launcher commands, and MUST keep `.codex/hooks/general-guard.mjs` as the distinct consumer Bash safety boundary.
 - Generated targets MUST NOT carry unique policy. Durable requirements belong in this rule, the owning Claude rule, the owning skill, or the sync script.
 - `checkAgentSurfaces({ root })` MUST compare generated targets with their rendered output, including `.codex/hooks.json`.
 - `npm run sync:llm:check` MUST fail when `.codex/hooks.json` or generated templates drift.
@@ -58,7 +58,7 @@ This rule owns source-repo agent runtime as public branch infrastructure. Requir
 - Rule: this file states the owner and generated-target contract.
 - Hook: `.claude/hooks/sync-llm-on-claude-surface-change.mjs` runs `npm run sync:llm` when source or generated hook-registration surfaces change.
 - Guard: `scripts/guards/check-agent-hooks.mjs` verifies source `.codex/hooks.json` single-command-hook topology, package stripping, consumer Bash guard preservation, response-shape blocking, and sync-script ownership. `scripts/guards/check-agent-surface-parity.mjs` runs `checkAgentSurfaces`.
-- Test: `tests/sync-llm.test.ts`, `tests/agent-hook-core.test.ts`, `tests/agent-hooks.test.ts`, and `tests/github-ci-inbox.test.ts` cover Claude import validation, source-repo Codex hook topology, source runner Bash blocking, CI inbox context, response-shape drift detection, and Stop/SubagentStop blocking behavior.
+- Test: `tests/sync-llm.test.ts`, `tests/agent-hook-core.test.ts`, `tests/agent-hooks.test.ts`, and `tests/agent-surfaces.test.ts` cover Claude import validation, source-repo Codex hook topology, source runner Bash blocking, response-shape drift detection, generated-surface drift repair, and Stop/SubagentStop blocking behavior.
 - CI: `npm run guard` runs the agent-surface guards.
 - Skill: `.claude/skills/claude-optimizer/SKILL.md` and `.claude/skills/codex-optimizer/SKILL.md` tell agents to edit the sync owner or Claude registration, keep required source-repo runtime tracked, keep consumer package output narrow, run sync, and run the guards.
 
@@ -76,7 +76,7 @@ npm run guard
 Run focused tests for the changed owner:
 
 ```bash
-npm test -- tests/sync-llm.test.ts tests/agent-hook-core.test.ts tests/agent-surfaces.test.ts tests/agent-hooks.test.ts tests/github-ci-inbox.test.ts
+npm test -- tests/sync-llm.test.ts tests/agent-hook-core.test.ts tests/agent-surfaces.test.ts tests/agent-hooks.test.ts
 ```
 
 ## Failure behavior
@@ -96,7 +96,7 @@ If sync or guard validation fails:
 - `npm run sync:llm:check` passes.
 - `npm run guard:agent` passes.
 - Response-shape validation blocks mechanism-only correctness claims without `$elegant` end-state and verification disposition in both Claude and Codex Stop paths.
-- Source-repo Codex shell command tools match exactly one `PreToolUse` hook command, and the shared runner supplies Bash safety plus CI failure inbox context.
+- Source-repo Codex shell command tools match exactly one `PreToolUse` hook command, and the shared runner supplies Bash safety.
 - Consumer hook templates contain only consumer-safe commands and keep the standalone consumer Bash guard.
 - Required source-repo hook runtime and rules are public branch surfaces, while package output still excludes source-only context hooks and `scripts/agent-hooks/**`.
 - Tests cover drift detection and repair for generated Codex hook registration.

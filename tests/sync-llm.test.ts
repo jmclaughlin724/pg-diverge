@@ -184,10 +184,6 @@ describe("sync:llm", () => {
                   command: `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`,
                   type: "command",
                 },
-                {
-                  command: `node "${codexProjectDir}/scripts/github/ci-inbox.mjs" --runtime codex --event PreToolUse`,
-                  type: "command",
-                },
               ],
             },
             {
@@ -307,12 +303,10 @@ describe("sync:llm", () => {
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain(
       "supaschema-source-hook.mjs"
     );
-    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("ci-inbox.mjs");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("context-");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("scripts/agent-hooks");
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
-    expect(read(root, ".codex/hooks.json")).not.toContain("Checking GitHub CI failure inbox");
     expect(read(root, ".codex/hooks.json")).not.toContain("general-guard.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-stop.mjs");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
@@ -446,6 +440,59 @@ describe("sync:llm", () => {
     );
 
     expect(output).toBe("{}\n");
+  });
+
+  it("syncs for Codex apply_patch tool names that edit Claude surfaces", () => {
+    const project = tempSurface({
+      ".claude/agents/worker.md": [
+        "---",
+        "name: worker",
+        "description: Worker.",
+        "---",
+        "",
+        "# Worker",
+        "",
+      ].join("\n"),
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
+      ".claude/rules/supaschema.md": "# Rule\n",
+      ".claude/skills/supaschema/SKILL.md": "# Skill\n",
+      "package.json": `${JSON.stringify({
+        name: "supaschema",
+        scripts: {
+          "sync:llm":
+            "node -e \"const fs=require('node:fs');fs.appendFileSync('sync-count.txt','1')\"",
+        },
+      })}\n`,
+    });
+    const payload = {
+      cwd: project,
+      hook_event_name: "Stop",
+      tool_input: {
+        patch: [
+          "*** Begin Patch",
+          "*** Update File: .claude/rules/supaschema.md",
+          "@@",
+          "-# Rule",
+          "+# Rule changed",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      tool_name: "functions.apply_patch",
+    };
+
+    const output = execFileSync(
+      process.execPath,
+      [join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
+      {
+        encoding: "utf8",
+        env: { ...process.env, CODEX_PROJECT_DIR: project },
+        input: JSON.stringify(payload),
+      }
+    );
+
+    expect(output).toBe("{}\n");
+    expect(read(project, "sync-count.txt")).toBe("1");
   });
 
   it("syncs Codex trigger file drift from Stop payloads without edit targets", () => {

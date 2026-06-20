@@ -94,8 +94,6 @@ if (hasAgentSurfaceSyncRule || hasCodexAgentSurfaceSyncRule) {
         "package output still excludes source-only context hooks"
       ) &&
       agentSurfaceSyncRuleText.includes("Rule 13") &&
-      agentSurfaceSyncRuleText.includes("CI failure inbox context") &&
-      agentSurfaceSyncRuleText.includes("statusCheckRollup") &&
       agentSurfaceSyncRuleText.includes("github-checks") &&
       agentSurfaceSyncRuleText.includes("MUST register exactly one `PreToolUse` hook command") &&
       agentSurfaceSyncRuleText.includes("scripts/agent-hooks/runner.mjs") &&
