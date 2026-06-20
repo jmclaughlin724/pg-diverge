@@ -178,6 +178,61 @@ describe("sync (no target)", () => {
   );
 
   it.skipIf(process.platform === "win32")(
+    "does not require a verify database URL before URL-less Supabase CLI sync targets",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-url-less-"));
+      await writeFile(
+        join(root, "20260101000000_safe.sql"),
+        "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n"
+      );
+      const oldPath = process.env.PATH;
+      const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+      const previousCwd = process.cwd();
+      process.env.PATH = await mkdtemp(join(tmpdir(), "supa-empty-path-"));
+      delete process.env.SUPASCHEMA_DATABASE_URL;
+      process.chdir(root);
+      try {
+        const result = await syncMigrations({
+          config: {
+            sources: { from: "empty:", to: "empty:" },
+            sync: {
+              targets: {
+                local: {
+                  historyTable: "supabase_migrations.schema_migrations",
+                  mode: "manual",
+                  runner: "supabase-cli",
+                },
+              },
+            },
+            workflow: { rls_safety: "disabled", type_safety: "disabled" },
+          },
+          directory: root,
+          pipeline: true,
+          skipDiff: true,
+          target: "local",
+        });
+
+        expect(result.applied).toBe(false);
+        expect(result.report).toContain("verify: skipped for local");
+        expect(result.diagnostics.map((item) => item.code)).toContain(
+          "SUPA_SYNC_RUNNER_UNAVAILABLE"
+        );
+        expect(result.diagnostics.map((item) => item.code)).not.toContain(
+          "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
+        );
+      } finally {
+        process.chdir(previousCwd);
+        process.env.PATH = oldPath;
+        if (oldDatabaseUrl === undefined) {
+          delete process.env.SUPASCHEMA_DATABASE_URL;
+        } else {
+          process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+        }
+      }
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
     "preserves the generic runner-failed diagnostic for a real nonzero exit",
     async () => {
       const root = await mkdtemp(join(tmpdir(), "supa-sync-exit-"));

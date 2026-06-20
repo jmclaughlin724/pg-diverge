@@ -294,6 +294,15 @@ describe("sync:llm", () => {
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain(
       "npm exec -- supaschema hook schema-write"
     );
+    expect(read(root, "agent-bundle/claude/settings.bun.json")).toContain(
+      '"command": "./node_modules/.bin/supaschema"'
+    );
+    expect(read(root, "agent-bundle/codex/hooks.bun.json")).toContain(
+      "./node_modules/.bin/supaschema hook generated-migration-edit --runtime codex"
+    );
+    expect(read(root, "agent-bundle/codex/hooks.bun.json")).not.toContain(
+      "bunx --no-install supaschema"
+    );
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("bin/supaschema.cjs");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain(
       "supaschema-source-hook.mjs"

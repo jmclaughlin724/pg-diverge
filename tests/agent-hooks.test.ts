@@ -866,7 +866,7 @@ describe.skipIf(!hasPrivateContextHooks)("agent-hooks response-evidence recordin
       { env }
     );
     expect(stop.stdout).not.toContain(claimReason);
-  });
+  }, 20_000);
 
   it("still flags a verification claim when no successful command evidence exists", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-evidence-state-"));

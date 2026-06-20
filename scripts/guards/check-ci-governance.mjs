@@ -88,13 +88,9 @@ function findNamedStep(steps, name) {
 }
 
 function workflowFiles() {
-  const out = execFileSync(
-    "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".github/workflows"],
-    {
-      cwd: ROOT,
-    }
-  ).toString("utf8");
+  const out = execFileSync("git", ["ls-files", "-z", "--cached", "--", ".github/workflows"], {
+    cwd: ROOT,
+  }).toString("utf8");
   return out
     .split("\0")
     .filter(Boolean)

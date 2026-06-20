@@ -16,10 +16,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bunx",
+            "command": "./node_modules/.bin/supaschema",
             "args": [
-              "--no-install",
-              "supaschema",
               "hook",
               "generated-migration-edit",
               "--runtime",
@@ -36,10 +34,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bunx",
+            "command": "./node_modules/.bin/supaschema",
             "args": [
-              "--no-install",
-              "supaschema",
               "hook",
               "schema-write"
             ],

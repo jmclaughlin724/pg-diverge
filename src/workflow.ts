@@ -1566,6 +1566,12 @@ async function verifyPendingMigrationsForSync(
   }
   const databaseUrl = resolveSyncVerifyDatabaseUrl(options);
   if (databaseUrl === undefined) {
+    if (shouldSkipSupabaseCliVerify(options)) {
+      options.lines.push(
+        `verify: skipped for ${options.target?.name} because the Supabase CLI target resolves credentials at runtime`
+      );
+      return;
+    }
     options.diagnostics.push(
       diagnostic(
         "SUPA_SYNC_VERIFY_URL_UNRESOLVED",
@@ -1607,6 +1613,15 @@ async function verifyPendingMigrationsForSync(
   }
   options.lines.push(`verify: ${options.pending.length} pending migration file(s) passed`);
   return;
+}
+
+function shouldSkipSupabaseCliVerify(options: VerifyPendingMigrationsForSyncOptions): boolean {
+  return (
+    options.target?.runner === "supabase-cli" &&
+    options.target.databaseUrl === undefined &&
+    options.options.databaseUrl === undefined &&
+    options.options.envName === undefined
+  );
 }
 
 function resolveSyncVerifyDatabaseUrl(

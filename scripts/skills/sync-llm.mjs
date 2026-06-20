@@ -790,9 +790,9 @@ function localRunnerForPackageManager(packageManager) {
   }
   if (packageManager === "bun") {
     return {
-      args: ["--no-install", "supaschema"],
-      command: "bunx",
-      commandString: "bunx --no-install supaschema",
+      args: [],
+      command: "./node_modules/.bin/supaschema",
+      commandString: "./node_modules/.bin/supaschema",
     };
   }
   return {
@@ -825,6 +825,7 @@ function materializeSupaschemaCommand(command, runner) {
     "pnpm exec supaschema",
     "yarn exec supaschema",
     "bunx --no-install supaschema",
+    "./node_modules/.bin/supaschema",
     "npx --no-install supaschema",
   ]) {
     if (command.startsWith(prefix)) {
