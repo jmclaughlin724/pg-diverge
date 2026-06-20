@@ -1,6 +1,6 @@
 # Contributing to supaschema
 
-Thanks for your interest in contributing. supaschema is a Node 22.12+ TypeScript CLI and library that generates deterministic, replay-safe PostgreSQL/Supabase migrations from declarative SQL tree diffs. This guide covers local setup, the engineering contract, how migrations and tests work, the sign-off requirement, and the pull-request checklist.
+Thanks for your interest in contributing. supaschema is a Node 22.12+ TypeScript CLI and library that generates deterministic, replay-safe PostgreSQL/Supabase migrations from declarative SQL tree diffs. This guide covers local setup, the engineering contract, how migrations and tests work, and the pull-request checklist.
 
 By participating you agree to our [Code of Conduct](./CODE_OF_CONDUCT.md).
 
@@ -90,28 +90,6 @@ Pick the semver bump (patch/minor/major) and write a short, user-readable note. 
 
 `main` is the npm release source. Release PRs follow [Release](./docs/release.mdx): run `npm run release:version`, confirm `npm run release:notes -- --version <version>`, and run `npm run release:verify`. The top `CHANGELOG.md` entry is the canonical GitHub Release body.
 
-## Commit sign-off (DCO)
-
-supaschema is **dual-licensed** under [AGPL-3.0-only](./LICENSE) and a separate [commercial license](./LICENSE-COMMERCIAL.md). Because accepted contributions may be distributed under **both** licenses, every commit must be signed off under the [Developer Certificate of Origin (DCO) 1.1](https://developercertificate.org/).
-
-Signing off certifies that you wrote the contribution (or otherwise have the right to submit it) and that you agree it may be distributed under the project's licenses, **including relicensing under the commercial license**.
-
-Add the sign-off trailer to each commit:
-
-```bash
-git commit -s -m "fix: guard concurrent index under per-migration mode"
-```
-
-This appends a line matching your Git author identity:
-
-```
-Signed-off-by: Your Name <you@example.com>
-```
-
-To sign off the last commit you forgot: `git commit --amend -s --no-edit`. To sign off a range during cleanup: `git rebase --signoff <base>`.
-
-PRs whose commits are not all signed off cannot be merged. CI enforces this with `npm run github:check-dco`; before pushing, you can check committed branch work with `npm run github:check-dco -- --range origin/main..HEAD`. We do not require a separate CLA — the DCO sign-off is the contributor agreement.
-
 ## Pull-request checklist
 
 Use the [PR template](./.github/PULL_REQUEST_TEMPLATE.md) as the current checklist. Before opening or replacing a PR, run:
@@ -141,7 +119,7 @@ If the GitHub merge already happened outside the wrapper, run:
 npm run github:post-merge-verify -- --pr <number>
 ```
 
-Release changes also follow [Release](./docs/release.mdx). All commits must be signed off (`git commit -s`).
+Release changes also follow [Release](./docs/release.mdx).
 
 ## Reporting bugs and requesting features
 
@@ -149,4 +127,4 @@ Use the [issue templates](./.github/ISSUE_TEMPLATE). Never paste real connection
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the project's [AGPL-3.0-only](./LICENSE) license and may also be distributed under the [commercial license](./LICENSE-COMMERCIAL.md), as certified by your DCO sign-off.
+By contributing, you agree that your contributions are licensed under the project's [AGPL-3.0-only](./LICENSE) license and may also be distributed under the [commercial license](./LICENSE-COMMERCIAL.md).

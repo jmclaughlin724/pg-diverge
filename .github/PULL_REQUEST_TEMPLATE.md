@@ -31,18 +31,7 @@ What this PR changes and why. Link any related issue (`Closes #123`).
 - [ ] If this is a release PR, the release checklist in `docs/release.mdx` is complete.
 - [ ] For PR merges, `npm run github:audit-settings` and `npm run github:merge-preflight -- --pr <number>` pass.
 - [ ] For PR merges, use `npm run github:merge -- --pr <number>` or run `npm run github:post-merge-verify -- --pr <number>` after a manual merge.
-- [ ] **All commits are signed off** (DCO — see below; `npm run github:check-dco -- --range origin/main..HEAD` passes after commits exist).
 
 ## Rendered SQL / snapshot changes
 
 If this changes generated migration output, paste a before/after of the rendered SQL (or the affected snapshot diff) and explain why it's correct.
-
-## Developer Certificate of Origin (DCO)
-
-This project is dual-licensed (AGPL-3.0-only + a commercial license). By signing off your commits you certify the [DCO](https://developercertificate.org/) — that you wrote the contribution or have the right to submit it under the project's license, **including relicensing under the commercial license**. Sign off with:
-
-```bash
-git commit -s -m "your message"
-```
-
-Every commit must carry a `Signed-off-by: Your Name <you@example.com>` trailer matching your author identity.

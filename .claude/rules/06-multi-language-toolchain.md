@@ -28,7 +28,7 @@ Every language used in this repo is a governed surface: it gets a language serve
 | Markdown/docs | md, markdown, mdx, rules | `vscode-markdown-language-server` |
 | Dockerfile | dockerfile | `docker-langserver` |
 
-`check-lsp-coverage.mjs` walks `git ls-files` and **hard-blocks** if any tracked code extension is neither mapped in `cclsp.json` nor in the guard's `NON_CODE` allowlist. Adding a new language requires a cclsp server first. cclsp keys one server per extension, so a shared extension (e.g. `.css`, `.tsx`) routes to a single server.
+`check-lsp-coverage.mjs` walks `git ls-files` and **hard-blocks** if any tracked code extension is neither mapped in `cclsp.json` nor in the guard's `NON_CODE` allowlist. Adding a new language requires a cclsp server first. cclsp keys one server per extension, so a shared extension (e.g. `.css`, `.tsx`) routes to a single server. In a clean public checkout where `.claude/cclsp.json` is absent by design, `npm run guard:lsp-coverage` MUST emit `LSP_COVERAGE_SKIPPED_LOCAL_ONLY` and pass; local maintainer checkouts with `.claude/cclsp.json` still enforce full coverage.
 
 Root `action.yml` and `action.yaml` are GitHub Action metadata files, not workflow files. `.vscode/settings.json` must keep them associated with the generic `yaml` language plus the `github-action.json` schema so Red Hat YAML owns action metadata validation; the GitHub workflow schema and `github-actions-workflow` language mode belong only to `.github/workflows/*.yml` and `.github/workflows/*.yaml`.
 
@@ -87,6 +87,7 @@ npm run typecheck
 ```
 
 Use `npm run format` for write/fix remediation.
+Public clean-checkout verification accepts `npm run guard:lsp-coverage` returning `LSP_COVERAGE_SKIPPED_LOCAL_ONLY`.
 
 ## Failure behavior
 

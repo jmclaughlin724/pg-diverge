@@ -65,7 +65,6 @@ Sources:
 - GitHub Actions permissions REST API: <https://docs.github.com/en/rest/actions/permissions>
 - GitHub repository topics REST API: <https://docs.github.com/en/rest/repos/repos#get-all-repository-topics>
 - GitHub replace repository topics REST API: <https://docs.github.com/en/rest/repos/repos#replace-all-repository-topics>
-- GitHub commit signoff policy: <https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/managing-the-commit-signoff-policy-for-your-repository>
 - GitHub CLI `gh pr merge`: <https://cli.github.com/manual/gh_pr_merge>
 - GitHub CLI `gh repo edit`: <https://cli.github.com/manual/gh_repo_edit>
 
@@ -82,7 +81,8 @@ Required repository settings:
 - `allow_squash_merge` MUST be `false`.
 - `allow_auto_merge` SHOULD be `true`.
 - `delete_branch_on_merge` MUST be `true`.
-- `web_commit_signoff_required` MUST be `true`.
+- `web_commit_signoff_required` MUST be `false`.
+- Commit signoff MUST NOT be enforced by GitHub settings, CI, package scripts, PR template checklists, or repo guards unless the user explicitly approves a new contributor-certificate policy in the same change.
 
 Required GitHub Actions repository settings:
 
@@ -114,14 +114,6 @@ Required repository ruleset:
 - Ruleset bypass actors MUST remain empty unless the user explicitly approves a break-glass path and the reason is recorded in the rule.
 
 CODEOWNERS is advisory while `required_approving_review_count` is `0` and `require_code_owner_reviews` is `false`. Do not describe code-owner review as enforced unless those settings change.
-
-All commits in pull requests MUST carry a `Signed-off-by:` trailer matching the commit author. CI enforces this with:
-
-```bash
-npm run github:check-dco
-```
-
-All direct commits to `main` SHOULD carry a `Signed-off-by:` trailer matching the commit author.
 
 ## Direct-main workflow
 
@@ -212,7 +204,6 @@ Repo-local Claude hooks and the source-repo Codex context runner surface failed 
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, and repository rulesets to `.github/repo-policy.json`.
 - `npm run github:audit-settings` also compares live repository topics to `repositoryTopics`. `npm run github:audit-settings -- --apply-topics` reconciles only topics, refuses to run unless `GITHUB_REPOSITORY_TOPICS_APPROVED=1` is already present, and does not apply topics while non-topic repository policy failures exist.
-- `npm run github:check-dco` (`scripts/github/check-dco.mjs`) verifies DCO signoff trailers for PR or push commits.
 - `npm run github:pr-preflight`, `npm run github:merge-preflight`, and `npm run github:post-merge-verify` prove the optional PR lifecycle state before PR creation, merge, and closeout.
 - `scripts/github/report-ci-failure.mjs` writes one `<!-- supaschema:ci-failure-report -->` PR comment from failed PR workflow runs. `scripts/github/ci-inbox-core.mjs` plus the shared agent hook runner let active Claude hooks and the source-repo Codex context hook read that comment once per runtime, branch head, and failed workflow run.
 - `scripts/github/ci-inbox-core.mjs` falls back to live `gh pr view --json number,headRefName,headRefOid,url,statusCheckRollup` when the marker comment is missing, so active hooks still surface existing PR check failures.

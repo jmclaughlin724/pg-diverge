@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 import path from "node:path";
-import { assert, ok, readJson, run } from "./lib/guard-utils.js";
+import { assert, exists, ok, readJson, run } from "./lib/guard-utils.js";
+
+if (!exists(".claude/cclsp.json")) {
+  ok("LSP_COVERAGE_SKIPPED_LOCAL_ONLY");
+  process.exit(0);
+}
 
 const config = readJson(".claude/cclsp.json");
 const mapped = new Set();

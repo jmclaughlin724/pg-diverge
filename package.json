@@ -93,7 +93,6 @@
     "format:sh": "node scripts/format-sh.mjs",
     "format:toml": "node scripts/format-toml.mjs",
     "github:audit-settings": "node scripts/github/audit-settings.mjs",
-    "github:check-dco": "node scripts/github/check-dco.mjs",
     "github:merge": "node scripts/github/merge.mjs",
     "github:merge-preflight": "node scripts/github/merge-preflight.mjs",
     "github:post-merge-verify": "node scripts/github/post-merge-verify.mjs",

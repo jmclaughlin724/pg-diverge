@@ -429,16 +429,15 @@ assert(
   stepRunBefore(qualitySteps, "npm run build", "npm run lint:ci"),
   "ci.yml quality job must build generated dist before npm run lint:ci resolves dist imports"
 );
-const dcoStep = findNamedStep(qualitySteps, "DCO sign-off");
 assert(
-  packageJson.scripts?.["github:check-dco"] === "node scripts/github/check-dco.mjs",
-  "package.json must expose the DCO checker as npm run github:check-dco"
+  !packageJson.scripts?.["github:check-dco"],
+  "package.json must not expose a DCO blocker as npm run github:check-dco"
 );
 assert(
-  dcoStep &&
-    stepRun(dcoStep) === "npm run github:check-dco" &&
-    dcoStep.env?.GH_TOKEN === githubTokenExpression,
-  "ci.yml quality job must enforce DCO signoff with npm run github:check-dco and GH_TOKEN"
+  !qualitySteps.some(
+    (step) => step?.name === "DCO sign-off" || String(step?.run ?? "").includes("github:check-dco")
+  ),
+  "ci.yml quality job must not enforce a DCO signoff blocker"
 );
 assert(
   packageJson.scripts?.["package:smoke"] === "node scripts/release/package-smoke.mjs",

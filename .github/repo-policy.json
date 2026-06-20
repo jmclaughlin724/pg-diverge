@@ -37,7 +37,7 @@
     "allow_squash_merge": false,
     "default_branch": "main",
     "delete_branch_on_merge": true,
-    "web_commit_signoff_required": true
+    "web_commit_signoff_required": false
   },
   "actions": {
     "forkPullRequestContributorApproval": {
@@ -52,11 +52,6 @@
       "can_approve_pull_request_reviews": false,
       "default_workflow_permissions": "read"
     }
-  },
-  "dco": {
-    "enabled": true,
-    "enforcedBy": "CI quality job",
-    "script": "npm run github:check-dco"
   },
   "pullRequests": {
     "base": "main",

@@ -156,7 +156,9 @@ assertNoDisabledBiomeRules(biome.linter?.rules ?? {});
 assertBiomeOverrides(biome.overrides ?? []);
 assertAgentPackageSurface(packageJson.files ?? []);
 assertRuntimePackageSurface(packageJson.files ?? []);
-assertCclspProxyWiring(readJson(".claude/cclsp.json"));
+if (exists(".claude/cclsp.json")) {
+  assertCclspProxyWiring(readJson(".claude/cclsp.json"));
+}
 
 for (const file of gitFiles().filter(
   (candidate) => candidate.endsWith(".ts") && exists(candidate)

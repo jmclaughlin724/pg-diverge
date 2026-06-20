@@ -53,7 +53,7 @@ Apply Python fixes locally with `npm run py:fix` (`ruff check --fix` for lint + 
 ## Gates
 
 - `.github/workflows/python.yml`, when present locally, is private with `services/agent-mcp` and must stay untracked. Public CI must not require private FastMCP files that are absent from a clean checkout. The focused local lane remains the `py:*` command set above. The `--package supaschema-agent-mcp` selector is mandatory: the workspace root has no runtime deps (`dependencies = []`, `package = false`) and does not depend on the member, so a bare `uv run mypy`/`pytest` resolves in the root env that lacks `fastmcp`/`mcp`/`pydantic` and fails with `import-not-found`.
-- `npm run guard:lsp-coverage` (`scripts/guards/check-lsp-coverage.mjs`, part of `npm run guard`) hard-blocks if any tracked code extension — including `.py`/`.pyi` — is not mapped in `.claude/cclsp.json`. The cclsp map itself is governed by **Rule 06**.
+- `npm run guard:lsp-coverage` (`scripts/guards/check-lsp-coverage.mjs`, part of `npm run guard`) hard-blocks if any tracked code extension — including `.py`/`.pyi` — is not mapped in `.claude/cclsp.json` when that local map exists. In a clean public checkout where `.claude/cclsp.json` is absent by design, Rule 06 requires the explicit `LSP_COVERAGE_SKIPPED_LOCAL_ONLY` pass. The cclsp map itself is governed by **Rule 06**.
 - `npm run guard:fastmcp` (`scripts/guards/check-fastmcp-agent.mjs`) keeps the FastMCP server surface aligned (owned by **Rule 11**), not the Python toolchain.
 - After changing any dev tool or runtime dependency, run `uv lock` and commit `uv.lock`; the `uv sync --locked` step fails the PR on drift.
 

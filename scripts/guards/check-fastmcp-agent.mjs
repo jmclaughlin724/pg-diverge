@@ -10,6 +10,11 @@ const required = [
   ".codex/config.toml",
 ];
 
+if (!exists(required[0])) {
+  ok("FASTMCP_AGENT_SKIPPED_LOCAL_ONLY");
+  process.exit(0);
+}
+
 for (const file of required) {
   assert(exists(file), `missing ${file}`);
 }

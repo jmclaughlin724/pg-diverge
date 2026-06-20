@@ -5,12 +5,12 @@ const policy = readJson(".github/repo-policy.json");
 const packageJson = readJson("package.json");
 const prTemplate = readText(".github/PULL_REQUEST_TEMPLATE.md");
 const contributing = readText("CONTRIBUTING.md");
+const githubProcessRule = readText(".claude/rules/21-github-process.md");
 const checkAll = readText("scripts/guards/check-all.mjs");
 const auditSettings = readText("scripts/github/audit-settings.mjs");
 
 for (const file of [
   "scripts/github/policy.mjs",
-  "scripts/github/check-dco.mjs",
   "scripts/github/merge.mjs",
   "scripts/github/pr-preflight.mjs",
   "scripts/github/merge-preflight.mjs",
@@ -25,7 +25,6 @@ for (const file of [
 
 for (const [name, command] of Object.entries({
   "github:audit-settings": "node scripts/github/audit-settings.mjs",
-  "github:check-dco": "node scripts/github/check-dco.mjs",
   "github:merge": "node scripts/github/merge.mjs",
   "github:merge-preflight": "node scripts/github/merge-preflight.mjs",
   "github:post-merge-verify": "node scripts/github/post-merge-verify.mjs",
@@ -98,8 +97,8 @@ assert(policy.repository?.allow_squash_merge === false, "squash merges must be d
 assert(policy.repository?.allow_rebase_merge === true, "rebase merges must be enabled");
 assert(policy.repository?.delete_branch_on_merge === true, "merged head branches must auto-delete");
 assert(
-  policy.repository?.web_commit_signoff_required === true,
-  "web commit signoff must be required"
+  policy.repository?.web_commit_signoff_required === false,
+  "web commit signoff must not be required"
 );
 assert(
   policy.actions?.permissions?.sha_pinning_required === true,
@@ -113,11 +112,7 @@ assert(
   policy.actions?.workflowPermissions?.can_approve_pull_request_reviews === false,
   "GitHub Actions must not create or approve pull request reviews"
 );
-assert(policy.dco?.enabled === true, "DCO enforcement must be enabled in policy");
-assert(
-  policy.dco?.script === "npm run github:check-dco",
-  "DCO policy must point at npm run github:check-dco"
-);
+assert(!("dco" in policy), "repo policy must not define DCO enforcement");
 assert(policy.pullRequests?.mergeMethod === "rebase", "canonical PR merge method must be rebase");
 assert(
   policy.pullRequests?.optionalMergeWorkflow === "npm run github:merge -- --pr <number>",
@@ -179,14 +174,22 @@ for (const type of ["pull_request", "required_status_checks"]) {
   );
 }
 
-for (const command of ["npm run github:check-dco", "npm run github:pr-preflight -- --base main"]) {
+for (const command of ["npm run github:pr-preflight -- --base main"]) {
   assert(prTemplate.includes(command), `.github/PULL_REQUEST_TEMPLATE.md must include ${command}`);
 }
 
 assert(
-  contributing.includes("npm run github:check-dco"),
-  "CONTRIBUTING.md must document the DCO checker command"
+  !(packageJson.scripts?.["github:check-dco"] || exists("scripts/github/check-dco.mjs")),
+  "DCO checker must not be exposed as a repo blocker"
 );
+for (const source of [
+  ["CONTRIBUTING.md", contributing],
+  [".github/PULL_REQUEST_TEMPLATE.md", prTemplate],
+  [".claude/rules/21-github-process.md", githubProcessRule],
+]) {
+  assert(!source[1].includes("github:check-dco"), `${source[0]} must not require DCO checks`);
+  assert(!source[1].includes("DCO"), `${source[0]} must not require DCO signoff`);
+}
 assert(
   contributing.includes("npm run github:merge -- --pr <number>") &&
     contributing.includes("temporary directory") &&

@@ -51,6 +51,7 @@ Do not replace this with a hosted-only index. External graph tools may supplemen
 ## Enforcement
 
 - `scripts/code-atlas/**` is ignored by git and protected by the public-surface guard as local-only maintainer tooling.
+- `npm run guard:code-atlas` runs the local atlas checks when `scripts/code-atlas/build.mjs` exists. In a clean public checkout where `scripts/code-atlas/**` is absent by design, the guard MUST emit `CODE_ATLAS_SKIPPED_LOCAL_ONLY` and pass.
 - Rule 11 owns the local MCP registry wiring for Code Atlas access; this rule owns the graph build/query guard and CodeAtlas-Live diagnostic launcher contract.
 - Changes to Code Atlas behavior must update the same-change owner set: `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, `scripts/code-atlas/lib/**`, `scripts/code-atlas/query.mjs`, `scripts/code-atlas/mcp-launcher.mjs`, `.agents/skills/code-atlas/**`, and this rule when operator guidance changes.
 
@@ -58,7 +59,7 @@ STOP if a broad owner, route, consumer, DB, API, worker, generated-surface, or r
 
 ## Verification
 
-Run `node scripts/code-atlas/build.mjs`, the relevant `node scripts/code-atlas/query.mjs <kind> <value> --json`, and `node scripts/code-atlas/query.mjs health --strict --json` after graph behavior changes. Use cclsp/direct reads after the atlas narrows the worklist.
+Run `node scripts/code-atlas/build.mjs`, the relevant `node scripts/code-atlas/query.mjs <kind> <value> --json`, and `node scripts/code-atlas/query.mjs health --strict --json` after graph behavior changes. Use cclsp/direct reads after the atlas narrows the worklist. Public clean-checkout verification is `npm run guard:code-atlas` returning `CODE_ATLAS_SKIPPED_LOCAL_ONLY`.
 
 ## Failure behavior
 

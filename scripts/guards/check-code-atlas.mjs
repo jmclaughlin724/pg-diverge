@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { assert, edgeKey, ok, readJson, readText, run } from "./lib/guard-utils.js";
+import { assert, edgeKey, exists, ok, readJson, readText, run } from "./lib/guard-utils.js";
+
+if (!exists("scripts/code-atlas/build.mjs")) {
+  ok("CODE_ATLAS_SKIPPED_LOCAL_ONLY");
+  process.exit(0);
+}
 
 run("node", ["scripts/code-atlas/build.mjs"]);
 
