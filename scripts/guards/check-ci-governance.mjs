@@ -433,7 +433,8 @@ assert(
 assert(
   checkAllText.includes("SUPASCHEMA_PUBLIC_CHECKOUT") &&
     checkAllText.includes("PUBLIC_CHECKOUT_GUARDS_OK") &&
-    checkAllText.includes("check-agent-hooks.mjs"),
+    checkAllText.includes("check-agent-hooks.mjs") &&
+    checkAllText.includes("check-agent-policy-standardization.mjs"),
   "npm run guard must include a public-checkout pass for local-only agent surfaces"
 );
 assert(

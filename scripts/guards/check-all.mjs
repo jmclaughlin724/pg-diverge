@@ -29,6 +29,7 @@ const publicCheckoutGuards = [
   ["node", ["scripts/guards/check-fastmcp-agent.mjs"]],
   ["node", ["scripts/guards/check-lsp-coverage.mjs"]],
   ["node", ["scripts/guards/check-agent-hooks.mjs"]],
+  ["node", ["scripts/guards/check-agent-policy-standardization.mjs"]],
 ];
 
 for (const [command, args] of guards) {

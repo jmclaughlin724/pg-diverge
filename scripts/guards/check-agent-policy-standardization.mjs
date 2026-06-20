@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { assert, exists, ok, ROOT, readText } from "./lib/guard-utils.js";
+import { assert, exists, ok, ROOT, readText, run } from "./lib/guard-utils.js";
 
 const canonicalPolicyRoots = ["AGENTS.md", ".claude/rules", ".claude/skills"];
+const publicCheckout = process.env.SUPASCHEMA_PUBLIC_CHECKOUT === "1";
+const trackedFiles = publicCheckout
+  ? new Set(run("git", ["ls-files", "-z", "--cached"]).stdout.split("\0").filter(Boolean))
+  : new Set();
 
 const agents = readText("AGENTS.md");
 const rule01 = readText(".claude/rules/01-operating-rules.md");
 const rule07 = readText(".claude/rules/07-ast-over-regex.md");
 const rule20 = readText(".claude/rules/20-anti-patterns.md");
-const elegant = readText(".claude/skills/elegant/SKILL.md");
+const elegant = exists(".claude/skills/elegant/SKILL.md")
+  ? readText(".claude/skills/elegant/SKILL.md")
+  : "";
 
 assertIncludesAll(agents, "AGENTS.md", "Repo-Wide Change Discipline", [
   "smallest correct end state",
@@ -102,17 +108,19 @@ assertIncludesAll(rule20, "Rule 20", "minimal-patch anti-pattern index", [
   "Typed UI prop containers",
 ]);
 
-assertIncludesAll(elegant, "elegant skill", "canonical execution lens", [
-  "one canonical owner per concept",
-  "DTOs",
-  "facades",
-  "copied enum tuples",
-  "casts that patch missing contracts",
-  "local view-models",
-  "allowlist exceptions",
-  "Typed UI prop containers",
-  "Do not patch around missing contracts",
-]);
+if (elegant) {
+  assertIncludesAll(elegant, "elegant skill", "canonical execution lens", [
+    "one canonical owner per concept",
+    "DTOs",
+    "facades",
+    "copied enum tuples",
+    "casts that patch missing contracts",
+    "local view-models",
+    "allowlist exceptions",
+    "Typed UI prop containers",
+    "Do not patch around missing contracts",
+  ]);
+}
 
 assert(!exists(".claude/rules/00-supaschema.md"), "remove compatibility-only Rule 00 pointer");
 assert(!exists(".codex/rules/00-supaschema.rules"), "remove generated Rule 00 pointer mirror");
@@ -172,10 +180,14 @@ function walk(rel, files) {
     const child = path.join(rel, entry.name);
     if (entry.isDirectory()) {
       walk(child, files);
-    } else if (isPolicyFile(entry.name)) {
+    } else if (isPolicyFile(entry.name) && isVisiblePolicyFile(child)) {
       files.push(child);
     }
   }
+}
+
+function isVisiblePolicyFile(rel) {
+  return !publicCheckout || trackedFiles.has(rel);
 }
 
 function isPolicyFile(name) {
