@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { assert, exists, ok, ROOT, readJson } from "./lib/guard-utils.js";
+import { assert, exists, gitTrackedFiles, ok, ROOT, readJson } from "./lib/guard-utils.js";
 
 const claudeHooks = [
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
@@ -84,7 +84,7 @@ const localRuleFiles = [
 const rootAgentsFile = "AGENTS.md";
 const codexHooksReferenceFile = ".claude/skills/codex-optimizer/references/hooks.md";
 const claudeHooksReferenceFile = ".claude/skills/claude-optimizer/references/hooks-reference.md";
-const publicCheckout = process.env.SUPASCHEMA_PUBLIC_CHECKOUT === "1";
+const trackedFiles = new Set(gitTrackedFiles());
 const hasAnyOptimizerSkill = optimizerSkillFiles.some(optionalLocalExists);
 const hasOptimizerSkills = optimizerSkillFiles.every(optionalLocalExists);
 const hasUpdateSkill = optionalLocalExists(updateSkillFile);
@@ -109,10 +109,10 @@ const updateSkillPlaybookText = hasUpdateSkillPlaybook
 const rootAgentsText = exists(rootAgentsFile)
   ? fs.readFileSync(path.join(ROOT, rootAgentsFile), "utf8")
   : "";
-const codexHooksReferenceText = exists(codexHooksReferenceFile)
+const codexHooksReferenceText = optionalLocalExists(codexHooksReferenceFile)
   ? optionalLocalText(codexHooksReferenceFile)
   : "";
-const claudeHooksReferenceText = exists(claudeHooksReferenceFile)
+const claudeHooksReferenceText = optionalLocalExists(claudeHooksReferenceFile)
   ? optionalLocalText(claudeHooksReferenceFile)
   : "";
 const localRuleTexts = new Map(
@@ -120,11 +120,10 @@ const localRuleTexts = new Map(
     .filter(exists)
     .map((file) => [file, fs.readFileSync(path.join(ROOT, file), "utf8")])
 );
-const claudeSkillFiles = fs
-  .readdirSync(path.join(ROOT, ".claude/skills"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => path.join(ROOT, ".claude/skills", entry.name, "SKILL.md"))
-  .filter((file) => fs.existsSync(file));
+const claudeSkillFiles = [...trackedFiles]
+  .filter((file) => file.startsWith(".claude/skills/") && path.basename(file) === "SKILL.md")
+  .filter(exists)
+  .map((file) => path.join(ROOT, file));
 const shellQuotedClaudeNodeCommands = [
   ['node "', "$CLAUDE_PROJECT_DIR", '"'].join(""),
   ['node "', "${", "CLAUDE_PROJECT_DIR", "}"].join(""),
@@ -647,7 +646,7 @@ function matcherMentionsTool(matcher, toolName) {
 }
 
 function optionalLocalExists(file) {
-  return !publicCheckout && exists(file);
+  return trackedFiles.has(file) && exists(file);
 }
 
 function optionalLocalText(file) {

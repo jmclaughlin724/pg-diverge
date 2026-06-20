@@ -47,6 +47,11 @@ export function gitFiles() {
   return result.stdout.split("\0").filter(Boolean).sort();
 }
 
+export function gitTrackedFiles() {
+  const result = run("git", ["ls-files", "-z", "--cached"]);
+  return result.stdout.split("\0").filter(Boolean).sort();
+}
+
 export function edgeKey(edge) {
   return `${edge.from}\0${edge.to}\0${edge.type}\0${edge.evidence ?? ""}`;
 }

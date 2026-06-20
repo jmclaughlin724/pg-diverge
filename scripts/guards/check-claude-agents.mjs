@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { list, parseFrontmatter, scalar } from "../lib/frontmatter.mjs";
-import { assert, ok, ROOT, readJson } from "./lib/guard-utils.js";
+import { assert, gitTrackedFiles, ok, ROOT, readJson } from "./lib/guard-utils.js";
 
 const forbiddenFragments = ["Anilize", "anilize", "@anilize", "anilize-code-map"];
 const permissionModes = new Set([
@@ -15,7 +15,11 @@ const permissionModes = new Set([
 ]);
 const agentDir = path.join(ROOT, ".claude/agents");
 const skillDir = path.join(ROOT, ".claude/skills");
-if (!(fs.existsSync(agentDir) && fs.existsSync(path.join(ROOT, ".claude/settings.json")))) {
+const trackedFiles = gitTrackedFiles();
+const agentFiles = trackedFiles
+  .filter((file) => file.startsWith(".claude/agents/") && file.endsWith(".md"))
+  .sort();
+if (agentFiles.length === 0 || !fs.existsSync(path.join(ROOT, ".claude/settings.json"))) {
   ok("CLAUDE_AGENTS_SKIPPED_PRIVATE_SURFACE");
   process.exit(0);
 }
@@ -25,9 +29,8 @@ const names = new Map();
 
 assert(fs.existsSync(agentDir), ".claude/agents must exist");
 
-for (const fileName of listMarkdownFiles(agentDir)) {
-  const relativePath = `.claude/agents/${fileName}`;
-  const text = fs.readFileSync(path.join(agentDir, fileName), "utf8");
+for (const relativePath of agentFiles) {
+  const text = fs.readFileSync(path.join(ROOT, relativePath), "utf8");
   for (const fragment of forbiddenFragments) {
     assert(!text.includes(fragment), `${relativePath} must not reference ${fragment}`);
   }
@@ -59,19 +62,12 @@ for (const fileName of listMarkdownFiles(agentDir)) {
 
 ok("CLAUDE_AGENTS_OK");
 
-function listMarkdownFiles(dir) {
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => entry.name)
-    .sort();
-}
-
 function listDirectories(dir) {
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
+  const root = path.relative(ROOT, dir);
+  return trackedFiles
+    .filter((file) => file.startsWith(`${root}/`) && path.basename(file) === "SKILL.md")
+    .map((file) => path.relative(root, path.dirname(file)))
+    .filter((name) => !name.includes(path.sep))
     .sort();
 }
 

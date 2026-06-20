@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { assert, ok, ROOT } from "./lib/guard-utils.js";
+import { assert, gitTrackedFiles, ok, ROOT } from "./lib/guard-utils.js";
 
 const ruleDir = path.join(ROOT, ".claude", "rules");
 const validNumbers = new Set();
@@ -17,6 +17,7 @@ assert(validNumbers.size > 0, "no numbered .claude/rules/NN-*.md files found");
 const scanRoots = [".claude/rules", ".claude/skills", ".codex/rules", ".agents/skills"];
 const scanExtensions = [".md", ".rules"];
 const extraFiles = ["AGENTS.md", "CLAUDE.md"];
+const trackedFiles = gitTrackedFiles();
 
 const violations = [];
 
@@ -113,15 +114,11 @@ function isDigit(char) {
 }
 
 function walk(dir) {
-  const abs = path.join(ROOT, dir);
-  if (!fs.existsSync(abs)) {
-    return;
-  }
-  for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
-    const rel = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walk(rel);
-    } else if (scanExtensions.some((ext) => entry.name.endsWith(ext))) {
+  for (const rel of trackedFiles) {
+    if (
+      (rel === dir || rel.startsWith(`${dir}/`)) &&
+      scanExtensions.some((ext) => rel.endsWith(ext))
+    ) {
       scanText(rel, fs.readFileSync(path.join(ROOT, rel), "utf8"));
     }
   }
@@ -131,7 +128,7 @@ for (const root of scanRoots) {
   walk(root);
 }
 for (const file of extraFiles) {
-  if (fs.existsSync(path.join(ROOT, file))) {
+  if (trackedFiles.includes(file) && fs.existsSync(path.join(ROOT, file))) {
     scanText(file, fs.readFileSync(path.join(ROOT, file), "utf8"));
   }
 }

@@ -116,6 +116,10 @@ for (const file of files) {
 }
 const packageJson = readJson("package.json");
 const checkAllText = readText("scripts/guards/check-all.mjs");
+const agentHooksGuardText = readText("scripts/guards/check-agent-hooks.mjs");
+const agentPolicyGuardText = readText("scripts/guards/check-agent-policy-standardization.mjs");
+const ruleCitationsGuardText = readText("scripts/guards/check-rule-citations.mjs");
+const claudeAgentsGuardText = readText("scripts/guards/check-claude-agents.mjs");
 
 for (const [file, { doc, raw }] of parsed) {
   assert(
@@ -437,6 +441,18 @@ assert(
     checkAllText.includes("check-agent-policy-standardization.mjs"),
   "npm run guard must include a public-checkout pass for local-only agent surfaces"
 );
+for (const [file, text] of [
+  ["scripts/guards/check-agent-hooks.mjs", agentHooksGuardText],
+  ["scripts/guards/check-agent-policy-standardization.mjs", agentPolicyGuardText],
+  ["scripts/guards/check-claude-agents.mjs", claudeAgentsGuardText],
+  ["scripts/guards/check-rule-citations.mjs", ruleCitationsGuardText],
+]) {
+  assert(text.includes("gitTrackedFiles"), `${file} must scan tracked policy files only`);
+  assert(
+    !text.includes('readdirSync(path.join(ROOT, ".claude/skills")'),
+    `${file} must not raw-walk ignored .claude/skills`
+  );
+}
 assert(
   !packageJson.scripts?.["github:check-dco"],
   "package.json must not expose a DCO blocker as npm run github:check-dco"
