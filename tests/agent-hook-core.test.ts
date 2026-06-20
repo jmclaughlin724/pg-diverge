@@ -510,6 +510,30 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
   });
 
+  it("observes shell SKILL.md reads with Windows separators in Codex", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "use $code-atlas for scripts", session_id: "shell-load-win-path" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "shell-load-win-path",
+        tool_input: {
+          cmd: "sed -n '1,120p' .agents\\skills\\code-atlas\\SKILL.md",
+        },
+        tool_name: "functions.exec_command",
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
+      "code-atlas"
+    );
+    expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
+  });
+
   it("serializes concurrent Codex PostToolUse skill loads for one session", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;

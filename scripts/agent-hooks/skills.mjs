@@ -351,8 +351,9 @@ function commandReadsFiles(command) {
 function commandSkillPaths(command) {
   const paths = [];
   for (const token of shellTokens(command)) {
-    if (token.includes("/skills/") && token.endsWith("/SKILL.md")) {
-      paths.push(token);
+    const normalized = token.split("\\").join("/");
+    if (normalized.includes("/skills/") && normalized.endsWith("/SKILL.md")) {
+      paths.push(normalized);
     }
   }
   return paths;
