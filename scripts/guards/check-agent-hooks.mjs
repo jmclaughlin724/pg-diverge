@@ -102,6 +102,7 @@ assert(
 const skillMatcherText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/skills.mjs"), "utf8");
 const hookRunnerText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/runner.mjs"), "utf8");
 const hookStateText = fs.readFileSync(path.join(ROOT, "scripts/agent-hooks/state.mjs"), "utf8");
+const agentHookCoreText = fs.readFileSync(path.join(ROOT, "tests/agent-hook-core.test.ts"), "utf8");
 const optimizerSkillTexts = hasOptimizerSkills
   ? optimizerSkillFiles.map((file) => [file, optionalLocalText(file)])
   : [];
@@ -524,9 +525,11 @@ if (rule12Text) {
       rule12Text.includes("Source and inventory reads") &&
       rule12Text.includes("MUST NOT become verification evidence") &&
       rule12Text.includes("process.exitCode = 2") &&
+      rule12Text.includes("Windows path separators") &&
       rule12Text.includes("serialize session-state mutation") &&
-      rule12Text.includes("parallel Codex `PostToolUse` skill loads"),
-    "Rule 12 must document GitHub check evidence, failed statusCheckRollup evidence, source-read evidence exclusion, same-domain resolution, single source-repo Codex PreToolUse dispatch, and serialized session-state mutation"
+      rule12Text.includes("parallel Codex `PostToolUse` skill loads") &&
+      agentHookCoreText.includes("observes shell SKILL.md reads with Windows separators in Codex"),
+    "Rule 12 must document GitHub check evidence, failed statusCheckRollup evidence, source-read evidence exclusion, same-domain resolution, single source-repo Codex PreToolUse dispatch, serialized session-state mutation, and cross-platform SKILL.md shell-read detection"
   );
 }
 const rule18Text = localRuleTexts.get(".claude/rules/18-context-surface-sync.md");
