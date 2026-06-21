@@ -2,24 +2,21 @@ import { watch } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
-import {
-  defaultMigrationName,
-  resolveMigrationsDir,
-  resolveSourceDefaults,
-} from "./cli-defaults.js";
 import type { SummaryTone } from "./cli-tools.js";
 import { colorizeSummaryLine } from "./cli-tools.js";
+import type { SupaschemaConfig } from "./config.js";
 import {
   formatConfigValidationDiagnostics,
   pendingInstallPathConfirmationDiagnostic,
-  type SupaschemaConfig,
-} from "./config.js";
+} from "./config-validate.js";
 import type { Diagnostic, MigrationPlan } from "./core.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
 import { latestLineage } from "./lineage.js";
+import { defaultMigrationName } from "./migration-files.js";
 import { buildSchemaDiffPlan } from "./pipeline-services.js";
 import { redactSecrets } from "./redaction.js";
 import { renderMigrationSplit } from "./render.js";
+import { resolveMigrationsDir, resolveSourceDefaults } from "./source-resolve.js";
 
 interface PlanCommandOptions {
   from?: string;

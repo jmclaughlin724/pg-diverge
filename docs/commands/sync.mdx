@@ -61,11 +61,13 @@ Supabase targets can use `runner: "supabase-cli"` without a `databaseUrl`; the S
 </ParamField>
 
 <ParamField path="--no-diff" type="boolean">
-  Skip schema diff generation. Pending migrations are still reconciled and checked.
+  Skip schema diff generation. Pending migrations are still reconciled and
+  checked.
 </ParamField>
 
 <ParamField path="--ensure-roles" type="boolean">
-  Create missing `NOLOGIN` roles referenced by grants/policies on the verification server.
+  Create missing `NOLOGIN` roles referenced by grants/policies on the
+  verification server.
 </ParamField>
 
 <ParamField path="--ensure-environment" type="boolean">
@@ -73,7 +75,8 @@ Supabase targets can use `runner: "supabase-cli"` without a `databaseUrl`; the S
 </ParamField>
 
 <ParamField path="--no-ensure-environment" type="boolean">
-  Disable the Supabase environment stub when another command or config enables it.
+  Disable the Supabase environment stub when another command or config enables
+  it.
 </ParamField>
 
 <ParamField path="sync.targets.<name>.runner" type="direct | supabase-cli">

@@ -40,6 +40,8 @@ Public docs, examples, benchmarks, corpus fixtures, source files, tests, service
 
 Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package-contents.test.ts` fails if any `.tsbuildinfo`, source file, public-support directory, or maintainer tooling reaches the tarball.
 
+Lower-level helpers that the CLI and tests share internally (in `src/db-admin.ts`, `src/contract-registry.ts`, `src/migration-runners.ts`, `src/migrations-status.ts`, and `src/pipeline-services.ts`) are not part of the public package surface: they are compiled into `dist/` for the CLI to use but are not re-exported from `supaschema` and have no subpath. They may change or be removed in any release. The package has exactly one barrel, `dist/index.js`, for the documented public API; no re-export shims or escape-hatch subpaths are published.
+
 ## Agent bundle boundary
 
 The exact Claude, Codex, and shared agent surfaces live in [Agent bundle](/coding-agents/agent-bundle). Keep that page as the reader-facing owner for agent bundle contents. Keep this page focused on package mechanics, tarball inclusion, consumer setup, and maintainer-only exclusions.
@@ -136,10 +138,9 @@ The published package must not define `preinstall`, `install`, `postinstall`, or
 <Note>
   A local registry (Verdaccio) publish-then-install flow is the optional
   high-fidelity tier for exercising registry resolution, dist-tags, and package
-  manager download behavior. It is intentionally not used by default: this
-  is a single-package CLI whose `bin` is a small launcher of `dist`, so a
-  tarball install is hermetic, offline, and cross-platform without the extra
-  service.
+  manager download behavior. It is intentionally not used by default: this is a
+  single-package CLI whose `bin` is a small launcher of `dist`, so a tarball
+  install is hermetic, offline, and cross-platform without the extra service.
 </Note>
 
 ## Verification

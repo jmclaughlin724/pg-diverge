@@ -33,7 +33,7 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 | Skills | `.claude/skills/**` | `.agents/skills/**` for mirrored skills; `skills/supaschema` for the public `npx skills` source | `npm run sync:llm` |
 | Hooks | `.claude/hooks/**` | `.codex/hooks/**` mirrors or native adapters where supported | edit Claude/shared owner, then sync or update native adapter |
 | Native Codex hook registration | `scripts/skills/sync-llm.mjs` plus `.claude/settings.json`; see Rule 22 | `.codex/hooks.json` and packaged consumer registration | `npm run sync:llm`, `npm run sync:llm:check`, hook/package guards |
-| Response-shape enforcement | `.claude/rules/12-skill-loading-enforcement.md`, `scripts/agent-hooks/detectors.mjs`, `scripts/agent-hooks/runner.mjs`, `.claude/settings.json`; see Rule 22 | Claude and generated Codex `Stop`/`SubagentStop` enforcement | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused hook/sync tests |
+| Response-shape enforcement | `.claude/rules/12-skill-loading-enforcement.md`, `scripts/agent-hooks/response-shape.mjs`, `scripts/agent-hooks/runner.mjs`, `.claude/settings.json`; see Rule 22 | Claude and generated Codex `Stop`/`SubagentStop` enforcement | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused hook/sync tests |
 | MCP registry | `.mcp.json`, `fastmcp.json` | local MCP clients and package docs | `npm run guard:fastmcp`, `npm run guard:agent` |
 | Consumer agent bundle | `.claude/skills/supaschema`, `.claude/rules/supaschema.md`, consumer hook sources, `agent-bundle/INSTALL.md`, `package.json#files`, `bin/scaffold.mjs`, `scripts/skills/sync-llm.mjs` | raw npm tarball bundle and opt-in installed project scaffold | `npm run sync:llm`, `npm run check:package`, `npm pack --dry-run --json`, lifecycle tests |
 
@@ -44,7 +44,7 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 - `CLAUDE.md` MUST import `@AGENTS.md` when maintainer hooks are enabled, so Claude sessions receive the same root operating contract that Codex receives.
 - `.codex/**` and `.agents/**` are generated or native runtime targets only where this rule names them as owners.
 - `scripts/skills/sync-llm.mjs` is the writer for generated LLM mirrors and generated source-repo `.codex/hooks.json`. It MUST validate Claude hook registration, `CLAUDE.md` root-contract import, and response-shape enforcement before rendering Codex hook registration. Do not hand-edit synced copies.
-- Source-repo Codex shell command tools MUST resolve through one generated `PreToolUse` hook command, `.codex/hooks/context-pre-tool-use.mjs`. Do not register overlapping source-repo `PreToolUse` Bash safety hook commands; dispatch Bash safety inside `scripts/agent-hooks/runner.mjs`.
+- Source-repo Claude and Codex shell command tools MUST resolve Bash safety through one context `PreToolUse` hook command: `.claude/hooks/context-pre-tool-use.mjs` for Claude and `.codex/hooks/context-pre-tool-use.mjs` for Codex. Do not register overlapping source-repo `PreToolUse` Bash safety hook commands; dispatch Bash safety inside `scripts/agent-hooks/runner.mjs`.
 - Packaged consumer Codex hook templates MUST keep the standalone `.codex/hooks/general-guard.mjs` Bash safety hook because consumer packages do not include the maintainer context runner path.
 - `skills/supaschema` is a generated public mirror of `.claude/skills/supaschema`. It is the only supported `npx skills` source in this repository.
 - Consumer-bundled surfaces are deliberately narrow and inactive by default. Do not publish maintainer-only context hooks, optimizer skills, Code Atlas internals, FastMCP development tooling, or agent-development infrastructure without changing Rule 13 and package tests in the same change.
@@ -94,5 +94,5 @@ If sync or public/private boundary validation fails:
 - Package-bundled context surfaces match Rule 13.
 - Required source-repo runtime and rules are tracked branch surfaces; personal DX and generated state remain gitignored.
 - Runtime registrations match the hook/MCP surfaces they expose.
-- Source-repo Codex shell tools match one `PreToolUse` hook command, and consumer hook templates retain only their distinct standalone Bash guard.
+- Source-repo Claude and Codex shell tools match one context `PreToolUse` hook command, and consumer hook templates retain only their distinct standalone Bash guard.
 - No generated mirror carries unique policy.

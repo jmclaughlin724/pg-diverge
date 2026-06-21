@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import {
   commandArgs,
   commandName,
@@ -7,9 +5,17 @@ import {
   isReadCommandName,
 } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
 import { atlasAdvisoryTarget, isCodeAtlasQuery } from "./atlas.mjs";
+import { discoverSkills } from "./skill-frontmatter.mjs";
+import {
+  pathMatches,
+  payloadPaths,
+  skillFromSkillPath,
+  unique,
+  uniqueByName,
+} from "./skill-paths.mjs";
 import { currentTurnState } from "./state.mjs";
+import { isCommandTool, toolCommand, toolName } from "./tool-payload.mjs";
 
-const defaultRoot = path.resolve(".");
 const toolGateSet = new Set([
   "Agent",
   "Bash",
@@ -29,7 +35,6 @@ const toolGateSet = new Set([
   "functions.apply_patch",
   "functions.exec_command",
 ]);
-const patchPrefixes = ["*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "];
 const lowSignalPromptTerms = new Set([
   "change",
   "check",
@@ -50,29 +55,6 @@ const lowSignalPromptTerms = new Set([
   "without",
   "work",
 ]);
-
-export function discoverSkills(root = defaultRoot, runtime = "claude") {
-  const skillRoot = path.join(root, runtime === "codex" ? ".codex" : ".claude", "skills");
-  const fallbackRoot = path.join(root, ".claude", "skills");
-  const base = fs.existsSync(skillRoot) ? skillRoot : fallbackRoot;
-  const out = [];
-  for (const file of listSkillFiles(base)) {
-    const source = fs.readFileSync(file, "utf8");
-    const frontmatter = parseFrontmatter(source);
-    const dir = path.dirname(file);
-    const name = stringValue(frontmatter.name) || path.basename(dir);
-    out.push({
-      description: stringValue(frontmatter.description),
-      fileTriggers: stringArray(frontmatter["metadata.file-triggers"]),
-      keywords: stringArray(frontmatter["metadata.keywords"]),
-      name,
-      path: file,
-      relativePath: path.relative(root, file).split(path.sep).join("/"),
-      whenToUse: stringValue(frontmatter.when_to_use),
-    });
-  }
-  return out;
-}
 
 export function updatePromptSkills(payload, state, options = {}) {
   const prompt = promptText(payload);
@@ -186,7 +168,7 @@ export function unresolvedPending(state) {
     }));
 }
 
-export function observedLoadedSkills(payload, root = defaultRoot) {
+export function observedLoadedSkills(payload, root) {
   const name = toolName(payload);
   if (name === "Skill") {
     const value =
@@ -226,10 +208,6 @@ export function promptText(payload) {
   ]
     .filter((item) => typeof item === "string")
     .join("\n");
-}
-
-export function toolName(payload) {
-  return typeof payload?.tool_name === "string" ? payload.tool_name : "";
 }
 
 function scorePrompt(prompt, skills) {
@@ -309,7 +287,7 @@ function promptHasDelimitedTerm(prompt, term) {
   return false;
 }
 
-function scoreTool(payload, skills, root = defaultRoot) {
+function scoreTool(payload, skills, root) {
   const paths = payloadPaths(payload, root);
   const out = [];
   for (const skill of skills) {
@@ -327,22 +305,6 @@ function scoreTool(payload, skills, root = defaultRoot) {
   return uniqueByName(out).slice(0, 5);
 }
 
-function payloadPaths(payload, root = defaultRoot) {
-  const input = payload?.tool_input ?? {};
-  const out = [];
-  for (const key of ["file_path", "notebook_path", "path", "target", "uri"]) {
-    if (typeof input[key] === "string") {
-      out.push(repoRelative(input[key], root));
-    }
-  }
-  const patch = input.command ?? input.patch ?? input.input;
-  if (typeof patch === "string") {
-    out.push(...patchPaths(patch, root));
-  }
-  out.push(...deepPathStrings(input, root));
-  return unique(out.filter(Boolean));
-}
-
 function skillsFromPayloadPaths(payload, root) {
   return unique(
     payloadPaths(payload, root)
@@ -352,20 +314,12 @@ function skillsFromPayloadPaths(payload, root) {
 }
 
 function skillsFromCommand(payload, root) {
-  const command = commandText(payload);
+  const command = toolCommand(payload);
   return unique(
     commandSkillPaths(command)
       .map((file) => skillFromSkillPath(file, root))
       .filter(Boolean)
   );
-}
-
-function commandText(payload) {
-  const input = payload?.tool_input ?? {};
-  if (typeof input.command === "string") {
-    return input.command;
-  }
-  return typeof input.cmd === "string" ? input.cmd : "";
 }
 
 function commandSkillPaths(command) {
@@ -413,80 +367,13 @@ function expandSkillPathToken(value) {
 
 function appendSkillPaths(paths, token) {
   for (const expanded of expandSkillPathToken(token)) {
-    if (isSkillPath(expanded)) {
+    if (expanded.includes("/skills/") && expanded.endsWith("/SKILL.md")) {
       paths.push(expanded);
     }
   }
 }
 
-function isSkillPath(value) {
-  return value.includes("/skills/") && value.endsWith("/SKILL.md");
-}
-
-function patchPaths(text, root) {
-  const out = [];
-  for (const line of text.split("\n")) {
-    for (const prefix of patchPrefixes) {
-      if (line.startsWith(prefix)) {
-        out.push(repoRelative(line.slice(prefix.length).trim(), root));
-      }
-    }
-  }
-  return out;
-}
-
-function skillFromSkillPath(value, root) {
-  const normalized = repoRelative(value, root);
-  const parts = normalized.split("/");
-  const index = parts.lastIndexOf("skills");
-  if (index === -1 || parts.at(-1) !== "SKILL.md") {
-    return;
-  }
-  return parts[index + 1];
-}
-
-function deepPathStrings(value, root) {
-  const out = [];
-  const visit = (item, key = "") => {
-    if (typeof item === "string") {
-      if (key.includes("path") || key === "target" || key === "uri" || item.endsWith("SKILL.md")) {
-        out.push(repoRelative(item, root));
-      }
-      return;
-    }
-    if (!item || typeof item !== "object") {
-      return;
-    }
-    if (Array.isArray(item)) {
-      for (const entry of item) {
-        visit(entry, key);
-      }
-      return;
-    }
-    for (const [nextKey, nextValue] of Object.entries(item)) {
-      visit(nextValue, nextKey.toLowerCase());
-    }
-  };
-  visit(value);
-  return out;
-}
-
-function repoRelative(value, root) {
-  const normalized = value.split(path.sep).join("/");
-  if (!path.isAbsolute(value)) {
-    return normalized;
-  }
-  return path.relative(root, value).split(path.sep).join("/");
-}
-
-function pathMatches(trigger, candidate) {
-  if (trigger.endsWith("/**")) {
-    return candidate.startsWith(trigger.slice(0, -3));
-  }
-  return trigger === candidate;
-}
-
-function atlasPreEditContext(payload, turn, root = defaultRoot) {
+function atlasPreEditContext(payload, turn, root) {
   if (
     !toolGateSet.has(toolName(payload)) ||
     isCodeAtlasQuery(payload) ||
@@ -522,97 +409,6 @@ function shellQuote(value) {
   return `'${value.split("'").join("'\"'\"'")}'`;
 }
 
-function isCommandTool(name) {
-  return ["Bash", "functions.exec_command", "exec_command"].includes(name);
-}
-
-function parseFrontmatter(text) {
-  const lines = text.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
-  if (lines[0] !== "---") {
-    return {};
-  }
-  const out = {};
-  let current = "";
-  for (let index = 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (line === "---") {
-      return out;
-    }
-    current = readFrontmatterLine(line, current, out);
-  }
-  return out;
-}
-
-function readFrontmatterLine(line, current, out) {
-  const trimmed = line.trim();
-  if (trimmed.endsWith(":")) {
-    return trimmed.slice(0, -1);
-  }
-  if (trimmed.startsWith("- ")) {
-    const key = current.startsWith("metadata.") ? current : `metadata.${current}`;
-    out[key] = [...(out[key] ?? []), unquote(trimmed.slice(2).trim())];
-    return current;
-  }
-  const scalar = frontmatterScalar(trimmed);
-  if (!scalar) {
-    return current;
-  }
-  if (current === "metadata" && metadataListKey(scalar.key)) {
-    const key = `metadata.${scalar.key}`;
-    out[key] = scalar.value ? [scalar.value] : [];
-    return key;
-  }
-  out[scalar.key] = scalar.value;
-  return scalar.key;
-}
-
-function frontmatterScalar(trimmed) {
-  const separator = trimmed.indexOf(":");
-  if (separator === -1) {
-    return;
-  }
-  return {
-    key: trimmed.slice(0, separator).trim(),
-    value: unquote(trimmed.slice(separator + 1).trim()),
-  };
-}
-
-function metadataListKey(key) {
-  return key === "keywords" || key === "file-triggers";
-}
-
-function listSkillFiles(root) {
-  if (!fs.existsSync(root)) {
-    return [];
-  }
-  const out = [];
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    const file = path.join(root, entry.name, "SKILL.md");
-    if (entry.isDirectory() && fs.existsSync(file)) {
-      out.push(file);
-    }
-  }
-  return out.sort();
-}
-
-function unquote(value) {
-  const trimmed = value.trim();
-  const first = trimmed[0];
-  const last = trimmed.at(-1);
-  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-}
-
-function stringValue(value) {
-  return typeof value === "string" ? value : "";
-}
-
-function stringArray(value) {
-  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
-}
-
 function cleanSkillToken(value) {
   const cleaned = value.startsWith("$") || value.startsWith("@") ? value.slice(1) : value;
   return cleaned.split("/").filter(Boolean).at(-1) ?? cleaned;
@@ -625,19 +421,4 @@ function isTermBoundary(char) {
 function isAsciiLetterOrDigit(char) {
   const code = char.charCodeAt(0);
   return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
-}
-
-function unique(values) {
-  return [...new Set(values)];
-}
-
-function uniqueByName(items) {
-  const seen = new Set();
-  return items.filter((item) => {
-    if (seen.has(item.name)) {
-      return false;
-    }
-    seen.add(item.name);
-    return true;
-  });
 }

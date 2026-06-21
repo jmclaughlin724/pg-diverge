@@ -3,7 +3,7 @@ import type { SchemaModel } from "../src/core.js";
 import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
-import { hasUnqualifiedCatalogName } from "./helpers/catalog-qualification.js";
+import { hasUnqualifiedCatalogName } from "./catalog-qualification.js";
 
 function emptyModel(): SchemaModel {
   return { diagnostics: [], fingerprint: "empty", objects: [], source: "test:empty" };

@@ -11,7 +11,8 @@ import { resolveConfig } from "../src/config.js";
 import type { Diagnostic } from "../src/core.js";
 import { resolveDatabaseUrl } from "../src/database-url.js";
 import { diagnosticCatalog } from "../src/diagnostics.js";
-import { stageGeneratedMigrations, syncMigrations } from "../src/workflow.js";
+import { stageGeneratedMigrations } from "../src/stage.js";
+import { syncMigrations } from "../src/workflow.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { contractDrift, toContract } from "../src/contract-registry.js";
 import {
   contractRegistryUrl,
   pullContract,
   pushContract,
 } from "../src/contract-registry-client.js";
-import { contractDrift, type SchemaContract, toContract } from "../src/index.js";
+import type { SchemaContract } from "../src/schema-contract.js";
 import type { SchemaShapes, TableShape } from "../src/typegen-model.js";
 
 const usersTable: TableShape = {

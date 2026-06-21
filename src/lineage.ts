@@ -8,7 +8,7 @@ export interface MigrationLineage {
   to: string;
 }
 
-const lineagePrefix = "-- supaschema: lineage ";
+export const lineagePrefix = "-- supaschema: lineage ";
 const headerByteLimit = 4096;
 
 export function lineageLine(plan: MigrationPlan): string {

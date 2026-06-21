@@ -66,4 +66,8 @@ import {
 
 All exports ship TypeScript types, including `SchemaModel`, `MigrationPlan`, `SyncOptions`, and `CorpusReport`.
 
+## Public vs internal surface
+
+The exports above are the semver-stable public library API. Lower-level helpers that the CLI and tests share internally are not part of the public package surface: they are not re-exported from `supaschema` and have no published entry point. These include disposable-database lifecycle, raw apply, and catalog fingerprinting (`src/db-admin.ts`), contract conversion and drift (`src/contract-registry.ts`), migration-unit grouping and Supabase-CLI command building (`src/migration-runners.ts`), migration-file version parsing (`src/migrations-status.ts`), and deploy-safety/scan internals (`src/pipeline-services.ts`). They may change or be removed in any release. Use the documented pipeline exports (`verifyMigration`, `syncMigrations`, `migrationsStatus`) instead of reaching for them.
+
 For generated signatures, run `npm run docs:api` in the repository.

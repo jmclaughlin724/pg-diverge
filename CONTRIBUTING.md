@@ -20,7 +20,7 @@ npm run check     # lint + tests + build (build type-checks via noEmitOnError)
 
 `npm ci` runs the `prepare` script, which builds `dist/` and installs the [lefthook](https://lefthook.dev) git hooks. After that:
 
-- **pre-commit** formats and lints your staged files with Biome.
+- **pre-commit** formats staged files across every language owner in parallel and re-stages the fixes: Biome (JS/TS/JSON/CSS), Prettier (MD/MDX/YAML), taplo (TOML), and sh-syntax (shell). Lanes with no staged files are skipped.
 - **pre-push** runs `npm run typecheck` and `npm run guard` (the repo guard suite).
 
 Do not bypass hooks with `--no-verify` or `LEFTHOOK=0`. Fix the failure locally; CI runs the same gates.
@@ -75,8 +75,7 @@ When changing the planner or renderer, run `supaschema check` (replay-safety gat
 - The two determinism oracles are first-class:
   - `npm run fixture:verify` renders a fixture migration, applies it twice, and compares the resulting catalogs.
   - `npm run corpus:check` runs the dirty-real corpus reconvergence oracle when a database is reachable.
-- `tests/property.test.ts` uses `fast-check` for property-based testing of the planner (parse→deparse round-trips, idempotent replay). New planner/renderer work is a good candidate for property tests.
-For core SQL extraction, planning, rendering, checking, verifying, typegen, or CLI-default changes, run the targeted tests plus `npm run typecheck`. For package/release/agent-surface changes, run `npm run check:package` or `npm pack --dry-run`.
+- `tests/property.test.ts` uses `fast-check` for property-based testing of the planner (parse→deparse round-trips, idempotent replay). New planner/renderer work is a good candidate for property tests. For core SQL extraction, planning, rendering, checking, verifying, typegen, or CLI-default changes, run the targeted tests plus `npm run typecheck`. For package/release/agent-surface changes, run `npm run check:package` or `npm pack --dry-run`.
 
 ## Changesets and releases
 

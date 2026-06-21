@@ -1,0 +1,113 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const LOCAL_RUNNER_CONVENTION_SURFACES = [
+  ".agents/prompts/supaschema-install.md",
+  ".claude/skills/supaschema/SKILL.md",
+  ".claude/rules/supaschema.md",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "README.md",
+  "bin/scaffold.mjs",
+  "docs/coding-agents.mdx",
+  "docs/coding-agents/agent-bundle.mdx",
+  "docs/installation.mdx",
+  "docs/quickstart.mdx",
+  "docs/reference/package-boundary.mdx",
+  "docs/setup.mdx",
+];
+const INSTALL_PROMPT_REQUIRED_LOCAL_RUNNER_TEXT = [
+  "packageManager",
+  "devEngines.packageManager",
+  "pnpm add supaschema",
+  "yarn add supaschema",
+  "bun add supaschema",
+  "npm exec -- supaschema init",
+  "npm exec -- supaschema <cmd>",
+  "pnpm exec supaschema <cmd>",
+  "yarn exec supaschema <cmd>",
+  "./node_modules/.bin/supaschema <cmd>",
+  "pnpm exec supaschema init",
+  "yarn exec supaschema init",
+  "./node_modules/.bin/supaschema init",
+  "Do not run npm in a pnpm, Yarn, or Bun project",
+  "cd` into the owning member package",
+];
+const LOCAL_RUNNER_FORBIDDEN_TEXT = [
+  {
+    text: "Run `npm install supaschema`",
+    msg: "must not present npm install as universal install guidance",
+  },
+  {
+    text: "npx supaschema diff",
+    msg: "must not present npx supaschema as universal schema workflow guidance",
+  },
+  {
+    text: "npx supaschema check",
+    msg: "must not present npx supaschema as universal schema workflow guidance",
+  },
+  {
+    text: "--workspace <name-or-path>",
+    msg: "must not recommend workspace/filter install flags for first install",
+  },
+  {
+    text: "--filter <pkg> add",
+    msg: "must not recommend workspace/filter install flags for first install",
+  },
+];
+
+export function inspectLocalRunnerConvention(rootDir, violations) {
+  const surfaces = new Map();
+  for (const file of LOCAL_RUNNER_CONVENTION_SURFACES) {
+    const text = readRequiredSurface(rootDir, file, violations);
+    if (text !== undefined) {
+      surfaces.set(file, text);
+    }
+  }
+
+  const installPrompt = surfaces.get(".agents/prompts/supaschema-install.md") ?? "";
+  for (const required of INSTALL_PROMPT_REQUIRED_LOCAL_RUNNER_TEXT) {
+    if (!installPrompt.includes(required)) {
+      violations.push({
+        file: ".agents/prompts/supaschema-install.md",
+        line: 1,
+        rule: "local-runner",
+        msg: `must document ${required}`,
+      });
+    }
+  }
+
+  for (const [surface, text] of surfaces) {
+    for (const forbidden of LOCAL_RUNNER_FORBIDDEN_TEXT) {
+      if (text.includes(forbidden.text)) {
+        violations.push({
+          file: surface,
+          line: lineNumberForText(text, forbidden.text),
+          rule: "local-runner",
+          msg: `${forbidden.msg} (${forbidden.text})`,
+        });
+      }
+    }
+  }
+}
+
+function readRequiredSurface(rootDir, file, violations) {
+  try {
+    return readFileSync(join(rootDir, file), "utf8");
+  } catch (error) {
+    violations.push({
+      file,
+      line: 1,
+      rule: "local-runner",
+      msg: `required local-runner convention surface is unreadable: ${error.message}`,
+    });
+  }
+}
+
+function lineNumberForText(text, needle) {
+  const index = text.indexOf(needle);
+  if (index === -1) {
+    return 1;
+  }
+  return text.slice(0, index).split("\n").length;
+}

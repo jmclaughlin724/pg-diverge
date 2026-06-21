@@ -12,8 +12,8 @@ paths:
   - ".codex/hooks.json"
   - ".codex/rules/**"
   - "agent-bundle/codex/hooks.*.json"
-  - "scripts/guards/check-agent-hooks.mjs"
-  - "scripts/guards/check-agent-surface-parity.mjs"
+  - "scripts/guards/agent-surface/check-agent-hooks.mjs"
+  - "scripts/guards/agent-surface/check-agent-surface-parity.mjs"
   - "scripts/skills/sync-llm.mjs"
 ---
 
@@ -30,12 +30,13 @@ This rule owns source-repo agent runtime as public branch infrastructure. Requir
 - `.claude/settings.json` owns maintainer Claude hook registration.
 - `scripts/skills/sync-llm.mjs` MUST validate present Claude hook registration before rendering `.codex/hooks.json`.
 - `CLAUDE.md` MUST import `@AGENTS.md` when `.claude/settings.json` enables maintainer hooks. `scripts/skills/sync-llm.mjs` MUST fail before rendering `.codex/hooks.json` if the import is missing.
-- `scripts/skills/sync-llm.mjs` MUST validate the response-shape standard before rendering `.codex/hooks.json`: Rule 12 documents `decision: "block"` response corrections, `scripts/agent-hooks/detectors.mjs` contains `mechanismClaimWithoutArchitecture`, and `scripts/agent-hooks/runner.mjs` blocks detector `contextParts` for both Claude and Codex Stop hooks.
+- `scripts/skills/sync-llm.mjs` MUST validate the response-shape standard before rendering `.codex/hooks.json`: Rule 12 documents `decision: "block"` response corrections, `scripts/agent-hooks/response-shape.mjs` contains `mechanismClaimWithoutArchitecture`, and `scripts/agent-hooks/runner.mjs` blocks detector `contextParts` for both Claude and Codex Stop hooks.
 - `Stop` and `SubagentStop` response-shape correction paths MUST stay shared across Claude and Codex. Do not add Codex-only or Claude-only response-shape enforcement for mechanism/end-state/verification correctness.
 - `scripts/skills/sync-llm.mjs` MUST write `.codex/hooks.json`, `.codex/hooks/**` mirrors, `.codex/agents/**`, `.codex/rules/**`, `.agents/skills/**`, public `skills/supaschema`, and `agent-bundle/codex/hooks.*.json`.
 - `.codex/hooks.json` MUST NOT be hand-authored as an input. Edit `.claude/settings.json`, `.claude/hooks/**`, or `scripts/skills/sync-llm.mjs`, then run `npm run sync:llm`.
+- Source-repo `.claude/settings.json` MUST register exactly one Bash `PreToolUse` hook command path for source Claude: `.claude/hooks/context-pre-tool-use.mjs`. It MUST NOT also register `.claude/hooks/guards/bash-policy-checks.mjs` as a direct source Claude `PreToolUse` hook.
 - Source-repo `.codex/hooks.json` MUST register exactly one `PreToolUse` hook command for each shell command tool (`Bash`, `exec_command`, and `functions.exec_command`): `.codex/hooks/context-pre-tool-use.mjs`. It MUST NOT also register `.codex/hooks/general-guard.mjs` as a source-repo `PreToolUse` command hook.
-- `scripts/agent-hooks/runner.mjs` MUST own source-repo Codex `PreToolUse` dispatch order for shell command tools: skill/context gate, response-evidence gate, then Bash safety through `.claude/hooks/guards/bash-policy-checks.mjs`. Rule 12 owns the Stop-time evidence gate that blocks green claims while failed `github-checks` evidence remains unresolved.
+- `scripts/agent-hooks/runner.mjs` MUST own source-repo Claude and Codex `PreToolUse` dispatch order for shell command tools: skill/context gate, response-evidence gate, then Bash safety through `.claude/hooks/guards/bash-policy-checks.mjs`. Rule 12 owns the Stop-time evidence gate that blocks green claims while failed `github-checks` evidence remains unresolved.
 - Consumer Codex hook templates under `agent-bundle/codex/hooks.*.json` MUST be rendered from the same source Codex hook config, MUST strip repo-local context hooks, `scripts/agent-hooks/**`, and source-repo supaschema hook launcher commands, and MUST keep `.codex/hooks/general-guard.mjs` as the distinct consumer Bash safety boundary.
 - Generated targets MUST NOT carry unique policy. Durable requirements belong in this rule, the owning Claude rule, the owning skill, or the sync script.
 - `checkAgentSurfaces({ root })` MUST compare generated targets with their rendered output, including `.codex/hooks.json`.
@@ -57,10 +58,10 @@ This rule owns source-repo agent runtime as public branch infrastructure. Requir
 
 - Rule: this file states the owner and generated-target contract.
 - Hook: `.claude/hooks/sync-llm-on-claude-surface-change.mjs` runs `npm run sync:llm` when source or generated hook-registration surfaces change.
-- Guard: `scripts/guards/check-agent-hooks.mjs` verifies source `.codex/hooks.json` single-command-hook topology, package stripping, consumer Bash guard preservation, response-shape blocking, and sync-script ownership. `scripts/guards/check-agent-surface-parity.mjs` runs `checkAgentSurfaces`.
+- Guard: `scripts/guards/agent-surface/check-agent-hooks.mjs` verifies source Claude/Codex single-command-hook topology, package stripping, consumer Bash guard preservation, response-shape blocking, and sync-script ownership. `scripts/guards/agent-surface/check-agent-surface-parity.mjs` runs `checkAgentSurfaces`.
 - Test: `tests/sync-llm.test.ts`, `tests/agent-hook-core.test.ts`, `tests/agent-hooks.test.ts`, and `tests/agent-surfaces.test.ts` cover Claude import validation, source-repo Codex hook topology, source runner Bash blocking, response-shape drift detection, generated-surface drift repair, and Stop/SubagentStop blocking behavior.
 - CI: `npm run guard` runs the agent-surface guards.
-- Skill: `.claude/skills/claude-optimizer/SKILL.md` and `.claude/skills/codex-optimizer/SKILL.md` tell agents to edit the sync owner or Claude registration, keep required source-repo runtime tracked, keep consumer package output narrow, run sync, and run the guards.
+- Skill: `.claude/skills/optimizer/SKILL.md` tells agents to edit the sync owner or Claude registration, keep required source-repo runtime tracked, keep consumer package output narrow, run sync, and run the guards.
 
 ## Verification
 
@@ -96,7 +97,7 @@ If sync or guard validation fails:
 - `npm run sync:llm:check` passes.
 - `npm run guard:agent` passes.
 - Response-shape validation blocks mechanism-only correctness claims without `$elegant` end-state and verification disposition in both Claude and Codex Stop paths.
-- Source-repo Codex shell command tools match exactly one `PreToolUse` hook command, and the shared runner supplies Bash safety.
+- Source-repo Claude and Codex shell command tools match exactly one context `PreToolUse` hook command, and the shared runner supplies Bash safety.
 - Consumer hook templates contain only consumer-safe commands and keep the standalone consumer Bash guard.
 - Required source-repo hook runtime and rules are public branch surfaces, while package output still excludes source-only context hooks and `scripts/agent-hooks/**`.
 - Tests cover drift detection and repair for generated Codex hook registration.

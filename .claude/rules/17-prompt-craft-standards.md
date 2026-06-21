@@ -39,7 +39,7 @@ Every non-stub rule or skill must include:
 - verification and failure behavior when the surface is executable;
 - no unresolved placeholders, no machine-local absolute paths, no stale plan text.
 
-Skill-loading metadata must use the existing Rule 12 hook-enforcement path. For repo-managed skills, use `metadata.keywords` for literal prompt signals and `metadata.file-triggers` for structured file/tool path signals. Do not add `intent-patterns`, regex intent fields, or parallel matcher metadata; if matching behavior changes, update `scripts/agent-hooks/skills.mjs`, `scripts/guards/check-agent-hooks.mjs`, and Rule 12 together.
+Skill-loading metadata must use the existing Rule 12 hook-enforcement path. For repo-managed skills, use `metadata.keywords` for literal prompt signals and `metadata.file-triggers` for structured file/tool path signals. Do not add `intent-patterns`, regex intent fields, or parallel matcher metadata; if matching behavior changes, update `scripts/agent-hooks/skills.mjs`, `scripts/guards/agent-surface/check-agent-hooks.mjs`, and Rule 12 together.
 
 ## Generated prompt contract
 

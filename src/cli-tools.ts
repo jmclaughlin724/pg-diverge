@@ -1,7 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
-import { defaultTreeSource } from "./cli-defaults.js";
 import type { SupaschemaConfig } from "./config.js";
 import { contractDrift, toContract } from "./contract-registry.js";
 import { pullContract, pushContract } from "./contract-registry-client.js";
@@ -10,8 +9,9 @@ import { formatDiagnostics, hasErrors } from "./diagnostics.js";
 import { renderDoctorReport, runDoctor } from "./doctor.js";
 import { isSchemaContract, type SchemaContract } from "./schema-contract.js";
 import { extractSourceModel } from "./source.js";
+import { defaultTreeSource } from "./source-resolve.js";
+import { generateTypeContracts } from "./typegen-contracts.js";
 import { collectSchemaShapes } from "./typegen-model.js";
-import { generateTypeContracts } from "./workflow.js";
 
 export interface ToolCommandContext {
   configPath: () => string | undefined;

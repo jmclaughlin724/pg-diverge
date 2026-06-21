@@ -56,17 +56,6 @@
         ]
       },
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/guards/bash-policy-checks.mjs"],
-            "timeout": 10
-          }
-        ]
-      },
-      {
         "matcher": "Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {

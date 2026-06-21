@@ -12,7 +12,7 @@ Repo-local agent MCP servers are governed surfaces, not throwaway helpers.
 
 - `supaschema` is the canonical supaschema FastMCP server (`services/agent-mcp`, package `supaschema-agent-mcp`) for local repo-agent context. It stays read-only and local stdio.
 - `supaschema` exposes exactly four tools: `server_status`, `code_atlas_query`, `repo_context_query`, and `repo_safety_scan`. Rule 10 owns the Code Atlas query contract. `repo_context_query` reads and searches non-secret repo files on a **deny-list** model (AGENTS instructions, rules, skills, source, schemas, tooling config) and returns nearest agent instructions. `repo_safety_scan` runs the read-only `supaschema scan` over a schema source through a fixed argv (`node dist/cli.js scan --reporter json`, input-validated, no DB, no mutation) and returns the JSON findings. Secrets/credentials (`.env*`, `*.key`/`*.pem`/`*.p12`/`*.pfx`, `secrets/`), `.git`, caches/build output, and archived `plans/` stay blocked. No tool may expose raw SQL, arbitrary shell execution, DB/API mutation, credential reads, external LLM calls, or proxy calls to other MCP servers.
-- `fastmcp.json`, `.mcp.json`, `.codex/config.toml`, `.claude/settings.json`, `services/agent-mcp/supaschema_agent_mcp/server.py`, `services/agent-mcp/tests/`, and `scripts/guards/check-fastmcp-agent.mjs` must stay aligned. Local Code Atlas access is exposed only through `supaschema`, not a standalone `codeatlas` MCP entry; `supaschema-docs` remains the separate remote/public Mintlify docs MCP. The capability index the server advertises must match the docs/research MCP servers actually configured in `.mcp.json`.
+- `fastmcp.json`, `.mcp.json`, `.codex/config.toml`, `.claude/settings.json`, `services/agent-mcp/supaschema_agent_mcp/server.py`, `services/agent-mcp/tests/`, and `scripts/guards/fastmcp/check-fastmcp-agent.mjs` must stay aligned. Local Code Atlas access is exposed only through `supaschema`, not a standalone `codeatlas` MCP entry; `supaschema-docs` remains the separate remote/public Mintlify docs MCP. The capability index the server advertises must match the docs/research MCP servers actually configured in `.mcp.json`.
 - `services/agent-mcp/**` is ignored as local maintainer tooling. `npm run guard:fastmcp` runs the full alignment check when the server exists. In a clean public checkout where the server is absent by design, the guard MUST emit `FASTMCP_AGENT_SKIPPED_LOCAL_ONLY` and pass.
 - Use the FastMCP client CLI for local smoke checks: `npm run fastmcp:inspect`, `npm run fastmcp:list`, and `npm run fastmcp:status`. Use `fastmcp discover` only for local operator diagnostics because it can read user-level MCP client configs.
 - Do not treat MCP output as final proof for repo decisions. `supaschema` shortens context gathering; repo guards, focused tests, local Code Atlas queries, cclsp, and source reads remain the reproducible evidence.
@@ -33,8 +33,7 @@ npm run py:test
 npm run fastmcp:status
 ```
 
-Use `npm run fastmcp:list` or `npm run fastmcp:inspect` for smoke checks.
-Public clean-checkout verification is `npm run guard:fastmcp` returning `FASTMCP_AGENT_SKIPPED_LOCAL_ONLY`.
+Use `npm run fastmcp:list` or `npm run fastmcp:inspect` for smoke checks. Public clean-checkout verification is `npm run guard:fastmcp` returning `FASTMCP_AGENT_SKIPPED_LOCAL_ONLY`.
 
 ## Failure behavior
 

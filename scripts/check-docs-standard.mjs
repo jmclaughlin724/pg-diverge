@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, globSync, readFileSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toString as nodeText } from "mdast-util-to-string";
@@ -11,34 +11,13 @@ import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
 import { parse as parseYaml } from "yaml";
+import { inspectDocsJson } from "./docs-lint/docs-json.mjs";
+import { inspectLocalRunnerConvention } from "./docs-lint/local-runner.mjs";
+import { hasMarkdownExtension, isDigit, routeForDocFile } from "./docs-lint/paths.mjs";
 
 const DOCS_GLOB = "docs/**/*.{md,mdx}";
-const DOCS_CONFIG = "docs/docs.json";
 const COMPARISON_PREFIX = "docs/comparisons/";
 const DOCS_SITE_HOSTS = new Set(["supaschema.com", "www.supaschema.com"]);
-const MINTLIFY_SCHEMA_URL = "https://mintlify.com/docs.json";
-const MINTLIFY_THEMES = new Set([
-  "mint",
-  "maple",
-  "palm",
-  "willow",
-  "linden",
-  "almond",
-  "aspen",
-  "sequoia",
-  "luma",
-]);
-const MINTLIFY_ICON_LIBRARIES = new Set(["lucide", "fontawesome"]);
-const REQUIRED_CONTEXTUAL_OPTIONS = new Set([
-  "copy",
-  "view",
-  "chatgpt",
-  "claude",
-  "mcp",
-  "add-mcp",
-  "cursor",
-  "vscode",
-]);
 const LOCAL_IMAGE_PREFIX = "/images/";
 const FRONTMATTER_MODES = new Set(["default", "wide", "custom", "frame", "center"]);
 const GENERIC_LINK_TEXT = new Set([
@@ -71,61 +50,6 @@ const TITLE_CASE_WORD_ALLOWLIST = new Set([
   "URLs",
   "Zod",
 ]);
-const LOCAL_RUNNER_CONVENTION_SURFACES = [
-  ".agents/prompts/supaschema-install.md",
-  ".claude/skills/supaschema/SKILL.md",
-  ".claude/rules/supaschema.md",
-  "AGENTS.md",
-  "CLAUDE.md",
-  "README.md",
-  "bin/scaffold.mjs",
-  "docs/coding-agents.mdx",
-  "docs/coding-agents/agent-bundle.mdx",
-  "docs/installation.mdx",
-  "docs/quickstart.mdx",
-  "docs/reference/package-boundary.mdx",
-  "docs/setup.mdx",
-];
-const INSTALL_PROMPT_REQUIRED_LOCAL_RUNNER_TEXT = [
-  "packageManager",
-  "devEngines.packageManager",
-  "pnpm add supaschema",
-  "yarn add supaschema",
-  "bun add supaschema",
-  "npm exec -- supaschema init",
-  "npm exec -- supaschema <cmd>",
-  "pnpm exec supaschema <cmd>",
-  "yarn exec supaschema <cmd>",
-  "./node_modules/.bin/supaschema <cmd>",
-  "pnpm exec supaschema init",
-  "yarn exec supaschema init",
-  "./node_modules/.bin/supaschema init",
-  "Do not run npm in a pnpm, Yarn, or Bun project",
-  "cd` into the owning member package",
-];
-const LOCAL_RUNNER_FORBIDDEN_TEXT = [
-  {
-    text: "Run `npm install supaschema`",
-    msg: "must not present npm install as universal install guidance",
-  },
-  {
-    text: "npx supaschema diff",
-    msg: "must not present npx supaschema as universal schema workflow guidance",
-  },
-  {
-    text: "npx supaschema check",
-    msg: "must not present npx supaschema as universal schema workflow guidance",
-  },
-  {
-    text: "--workspace <name-or-path>",
-    msg: "must not recommend workspace/filter install flags for first install",
-  },
-  {
-    text: "--filter <pkg> add",
-    msg: "must not recommend workspace/filter install flags for first install",
-  },
-];
-
 const markdownProcessor = unified()
   .use(remarkParse)
   .use(remarkFrontmatter, ["yaml"])
@@ -167,18 +91,6 @@ const splitWhitespace = (value) => {
 
 const collapseWhitespace = (value) => splitWhitespace(value).join(" ");
 
-const stripDocsPrefix = (file) => (file.startsWith("docs/") ? file.slice(5) : file);
-
-const stripMarkdownExtension = (file) => {
-  if (file.endsWith(".mdx")) {
-    return file.slice(0, -4);
-  }
-  if (file.endsWith(".md")) {
-    return file.slice(0, -3);
-  }
-  return file;
-};
-
 const trimWordEdgePunctuation = (word) => {
   let start = 0;
   let end = word.length;
@@ -214,45 +126,15 @@ const isLowercaseAscii = (char) => {
 
 const isLowercaseOrDigit = (char) => isLowercaseAscii(char) || isDigit(char);
 
-const isDigit = (char) => {
-  const code = char.charCodeAt(0);
-  return code >= 48 && code <= 57;
-};
-
 const isHttpUrl = (value) => value.startsWith("http://") || value.startsWith("https://");
-
-const isHexColor = (value) => {
-  if (!((value.length === 4 || value.length === 7) && value.startsWith("#"))) {
-    return false;
-  }
-  return [...value.slice(1)].every(isHexDigit);
-};
-
-const isHexDigit = (char) => isDigit(char) || "abcdefABCDEF".includes(char);
 
 const isTitleCaseWord = (word) =>
   word.length >= 2 && isUppercaseAscii(word[0] ?? "") && isLowercaseAscii(word[1] ?? "");
-
-const isOpenApiOperationRef = (value) => {
-  const methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"];
-  const space = value.indexOf(" ");
-  return (
-    space > 0 && methods.includes(value.slice(0, space)) && value.slice(space + 1).startsWith("/")
-  );
-};
 
 const isMdxJsxNode = (node) =>
   node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
 
 const isMdxJsxNamed = (node, name) => isMdxJsxNode(node) && node.name === name;
-
-const hasMarkdownExtension = (pathname) => pathname.endsWith(".md") || pathname.endsWith(".mdx");
-
-const routeForDocFile = (file) => stripMarkdownExtension(stripDocsPrefix(file));
-
-const hasDocPageFile = (rootDir, page) =>
-  existsSync(join(rootDir, "docs", `${page}.mdx`)) ||
-  existsSync(join(rootDir, "docs", `${page}.md`));
 
 const isDocsSiteUrl = (url) =>
   (url.protocol === "http:" || url.protocol === "https:") &&
@@ -945,344 +827,6 @@ function visitWithParents(node, visitor, ancestors = []) {
       visitWithParents(child, visitor, [...ancestors, node]);
     }
   }
-}
-
-function inspectDocsJson(
-  rootDir,
-  relativeFiles,
-  frontmatterByRoute,
-  violations,
-  { requireConfig }
-) {
-  const absoluteConfig = join(rootDir, DOCS_CONFIG);
-  if (!existsSync(absoluteConfig)) {
-    if (requireConfig && relativeFiles.some((file) => file.startsWith("docs/"))) {
-      violations.push({
-        file: DOCS_CONFIG,
-        line: 1,
-        rule: "docs-json",
-        msg: "`docs/docs.json` is required for the Mintlify site",
-      });
-    }
-    return;
-  }
-
-  let config;
-  try {
-    config = JSON.parse(readFileSync(absoluteConfig, "utf8"));
-  } catch (error) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: `docs.json is not valid JSON: ${error.message}`,
-    });
-    return;
-  }
-
-  inspectDocsJsonShape(config, violations);
-  inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterByRoute, violations);
-}
-
-function inspectDocsJsonShape(config, violations) {
-  if (typeof config !== "object" || config === null || Array.isArray(config)) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: "`docs.json` must be a JSON object",
-    });
-    return;
-  }
-
-  if (config.$schema !== MINTLIFY_SCHEMA_URL) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: `set "$schema" to "${MINTLIFY_SCHEMA_URL}"`,
-    });
-  }
-  if (typeof config.theme !== "string" || !MINTLIFY_THEMES.has(config.theme)) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: "`theme` must be a supported Mintlify theme",
-    });
-  }
-  if (typeof config.name !== "string" || config.name.trim().length === 0) {
-    violations.push({ file: DOCS_CONFIG, line: 1, rule: "docs-json", msg: "missing `name`" });
-  }
-  if (
-    !config.navigation ||
-    typeof config.navigation !== "object" ||
-    Array.isArray(config.navigation)
-  ) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: "missing `navigation` object",
-    });
-  }
-  if (!config.colors || typeof config.colors !== "object" || Array.isArray(config.colors)) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: "missing `colors.primary`",
-    });
-  } else {
-    for (const key of ["primary", "light", "dark"]) {
-      if (key === "primary" || config.colors[key] !== undefined) {
-        inspectHexColor(config.colors[key], `colors.${key}`, violations);
-      }
-    }
-  }
-  const iconLibrary = config.icons?.library;
-  if (iconLibrary !== undefined && !MINTLIFY_ICON_LIBRARIES.has(iconLibrary)) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: '`icons.library` must be either "lucide" or "fontawesome"',
-    });
-  }
-  inspectContextualOptions(config, violations);
-}
-
-function inspectHexColor(value, path, violations) {
-  if (typeof value !== "string" || !isHexColor(value)) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: `\`${path}\` must be a hex color starting with #`,
-    });
-  }
-}
-
-function inspectLocalRunnerConvention(rootDir, violations) {
-  const surfaces = new Map();
-  for (const file of LOCAL_RUNNER_CONVENTION_SURFACES) {
-    const text = readRequiredSurface(rootDir, file, violations);
-    if (text !== undefined) {
-      surfaces.set(file, text);
-    }
-  }
-
-  const installPrompt = surfaces.get(".agents/prompts/supaschema-install.md") ?? "";
-  for (const required of INSTALL_PROMPT_REQUIRED_LOCAL_RUNNER_TEXT) {
-    if (!installPrompt.includes(required)) {
-      violations.push({
-        file: ".agents/prompts/supaschema-install.md",
-        line: 1,
-        rule: "local-runner",
-        msg: `must document ${required}`,
-      });
-    }
-  }
-
-  for (const [surface, text] of surfaces) {
-    for (const forbidden of LOCAL_RUNNER_FORBIDDEN_TEXT) {
-      if (text.includes(forbidden.text)) {
-        violations.push({
-          file: surface,
-          line: lineNumberForText(text, forbidden.text),
-          rule: "local-runner",
-          msg: `${forbidden.msg} (${forbidden.text})`,
-        });
-      }
-    }
-  }
-}
-
-function readRequiredSurface(rootDir, file, violations) {
-  try {
-    return readFileSync(join(rootDir, file), "utf8");
-  } catch (error) {
-    violations.push({
-      file,
-      line: 1,
-      rule: "local-runner",
-      msg: `required local-runner convention surface is unreadable: ${error.message}`,
-    });
-  }
-}
-
-function lineNumberForText(text, needle) {
-  const index = text.indexOf(needle);
-  if (index === -1) {
-    return 1;
-  }
-  return text.slice(0, index).split("\n").length;
-}
-
-function inspectContextualOptions(config, violations) {
-  if (
-    !config.contextual ||
-    typeof config.contextual !== "object" ||
-    Array.isArray(config.contextual)
-  ) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: "`contextual.options` must be configured for Mintlify AI/MCP actions",
-    });
-    return;
-  }
-  if (!Array.isArray(config.contextual.options)) {
-    violations.push({
-      file: DOCS_CONFIG,
-      line: 1,
-      rule: "docs-json",
-      msg: "`contextual.options` must be an array",
-    });
-    return;
-  }
-
-  const configured = new Set(
-    config.contextual.options.filter((option) => typeof option === "string")
-  );
-  for (const option of REQUIRED_CONTEXTUAL_OPTIONS) {
-    if (!configured.has(option)) {
-      violations.push({
-        file: DOCS_CONFIG,
-        line: 1,
-        rule: "docs-json",
-        msg: `contextual.options is missing "${option}" for Mintlify AI/MCP actions`,
-      });
-    }
-  }
-}
-
-function inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterByRoute, violations) {
-  const pageFiles = new Set(relativeFiles.map(routeForDocFile));
-  const navRefs = collectNavigationPageRefs(config.navigation);
-  const navPages = new Set(navRefs.filter((page) => !isOpenApiOperationRef(page)));
-
-  for (const page of navPages) {
-    if (page.startsWith("/") || page.startsWith("docs/") || hasMarkdownExtension(page)) {
-      violations.push({
-        file: DOCS_CONFIG,
-        line: 1,
-        rule: "navigation",
-        msg: `navigation page "${page}" must be extensionless and relative to docs root`,
-      });
-      continue;
-    }
-    if (!hasDocPageFile(rootDir, page)) {
-      violations.push({
-        file: DOCS_CONFIG,
-        line: 1,
-        rule: "navigation",
-        msg: `navigation page "${page}" does not resolve to docs/${page}.md or docs/${page}.mdx`,
-      });
-    }
-  }
-
-  for (const page of pageFiles) {
-    const frontmatter = frontmatterByRoute.get(page);
-    if (frontmatter?.hidden === true || frontmatter?.url) {
-      continue;
-    }
-    if (!navPages.has(page)) {
-      violations.push({
-        file: `docs/${page}`,
-        line: 1,
-        rule: "navigation",
-        msg: "navigable page is missing from docs.json navigation; add it to navigation or set `hidden: true`",
-      });
-    }
-  }
-
-  for (const label of collectNavigationLabels(config.navigation)) {
-    if (label.value.includes("\n") || label.value.length > 48) {
-      violations.push({
-        file: DOCS_CONFIG,
-        line: 1,
-        rule: "navigation-label",
-        msg: `${label.key} label "${label.value}" must be short enough for a one- or two-line navigation item`,
-      });
-    }
-  }
-}
-
-function collectNavigationPageRefs(value, refs = []) {
-  if (typeof value === "string") {
-    refs.push(value);
-    return refs;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectNavigationPageRefs(item, refs);
-    }
-    return refs;
-  }
-  if (!value || typeof value !== "object") {
-    return refs;
-  }
-  if (typeof value.page === "string") {
-    refs.push(value.page);
-  }
-  if (Array.isArray(value.pages)) {
-    collectNavigationPageRefs(value.pages, refs);
-  }
-  for (const key of [
-    "groups",
-    "tabs",
-    "anchors",
-    "dropdowns",
-    "products",
-    "versions",
-    "languages",
-    "menu",
-  ]) {
-    if (value[key] !== undefined) {
-      collectNavigationPageRefs(value[key], refs);
-    }
-  }
-  if (value.global !== undefined) {
-    collectNavigationPageRefs(value.global, refs);
-  }
-  return refs;
-}
-
-function collectNavigationLabels(value, labels = []) {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectNavigationLabels(item, labels);
-    }
-    return labels;
-  }
-  if (!value || typeof value !== "object") {
-    return labels;
-  }
-  for (const key of ["group", "tab", "anchor", "dropdown", "product", "item", "version"]) {
-    if (typeof value[key] === "string") {
-      labels.push({ key, value: value[key] });
-    }
-  }
-  for (const key of [
-    "groups",
-    "tabs",
-    "anchors",
-    "dropdowns",
-    "products",
-    "versions",
-    "languages",
-    "menu",
-  ]) {
-    if (value[key] !== undefined) {
-      collectNavigationLabels(value[key], labels);
-    }
-  }
-  if (value.global !== undefined) {
-    collectNavigationLabels(value.global, labels);
-  }
-  return labels;
 }
 
 export function formatViolations(violations, pageCount) {

@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { migrationNameSlug } from "../src/cli-defaults.js";
+import { migrationNameSlug } from "../src/migration-files.js";
 import { redactSecrets } from "../src/redaction.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { splitSqlStatements } from "../src/sql/split.js";

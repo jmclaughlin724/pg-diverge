@@ -8,7 +8,7 @@ paths:
   - ".github/workflows/release.yml"
   - "scripts/release/changelog-notes.mjs"
   - "scripts/release/preflight.mjs"
-  - "scripts/guards/check-release-version-surfaces.mjs"
+  - "scripts/guards/ci-release/check-release-version-surfaces.mjs"
   - "scripts/guards/check-all.mjs"
   - "AGENTS.md"
 ---
@@ -55,7 +55,7 @@ When the user asks to stage, commit, push, or create a PR after a version bump:
 
 ## Enforced by
 
-- `npm run guard:release-version` (`scripts/guards/check-release-version-surfaces.mjs`) asserts that:
+- `npm run guard:release-version` (`scripts/guards/ci-release/check-release-version-surfaces.mjs`) asserts that:
   - `package.json`, `package-lock.json`, and the lockfile root package version agree;
   - the first `CHANGELOG.md` version heading matches the package version, uses an ISO date, and contains release notes;
   - `action.yml` leaves `inputs.version.default` unset so the runner defaults from `package.json`;

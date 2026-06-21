@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { checkMigrationSql } from "../src/check.js";
-import { resolveSourceDefaults } from "../src/cli-defaults.js";
 import { loadConfig } from "../src/config.js";
 import type { Diagnostic } from "../src/core.js";
 import { planSchemaDiff } from "../src/planner.js";
 import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
+import { resolveSourceDefaults } from "../src/source-resolve.js";
 
 const errorsOf = (diagnostics: Diagnostic[]): Diagnostic[] =>
   diagnostics.filter((item) => item.severity === "error");

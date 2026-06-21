@@ -1,168 +1,137 @@
-# supaschema Operating Contract
+# Agent operating contract
 
 ## Purpose
 
-This file defines the repository-wide operating contract for AI coding agents. Keep durable repo-wide invariants here and route detailed procedures to the public supaschema rule, hooks, runtime config, or the nearest owner `AGENTS.md`.
+Deliver the requested outcome accurately, efficiently, and safely.
 
-## Rule Map
+Preserve explicit constraints, existing user-authored work, and behavior outside the requested scope.
 
-- Code Atlas routing and repo-wide graph policy: `.claude/rules/10-code-atlas.md`.
-- Supaschema migration policy: `.claude/rules/supaschema.md`.
-- Generated Claude/Codex/Agents sync ownership: `.claude/rules/22-agent-surface-sync-ownership.md`.
-- Public repository exposure policy: `npm run guard:public-surface`.
-- GitHub repository settings, PR, merge, and post-merge process: `.github/repo-policy.json`, `.github/PULL_REQUEST_TEMPLATE.md`, `CONTRIBUTING.md`, and `npm run guard:github-process`.
+## Instruction scope
 
-## Operating Rules
+- Follow all higher-priority instructions.
+- Apply repository instructions active for the target scope.
+- When repository instructions conflict, the closer scoped instruction controls.
+- Follow the latest user direction while preserving earlier requirements that do not conflict.
+- Do not ask for information already available in the active context.
 
-- Repo facts come from live files and command output. External-tech facts come from upstream MCP/docs first, official web fallback second, then installed/live proof.
-- Use MUST, MUST NOT, SHOULD, DEFAULT TO, VERIFY, FIX BY, and STOP IF consistently.
-- Every hard rule must include a verification path.
-- Every verification failure must include corrective action.
-- Use active voice and validated facts, not aspirational language or future-tense plans.
-- Preserve every user instruction as an acceptance criterion. Do not narrow the requested action, stop at a representative subset, or treat current structure as proof of correctness.
-- Use AST instead of regex for code analysis and generation.
-- DEFAULT TO `$elegant` for every task and action. MUST NOT create or keep backwards compatibility behavior or paths, export-only compatibility files, shims, aliases, wrappers, DTOs, facades, copied enum tuples, casts that patch missing contracts, local view-models, local compatibility layers, broader helper surfaces, allowlist exceptions, comments in code or scripts, redundant or convenience entry points, placeholders, TODOs, regex, duplicate owners, or unverified automation. Typed UI prop containers are allowed only when DB-backed payloads use direct generated contracts without renaming, projection, mirroring, or local ownership. Use AST only for structural analysis. Treat external-contract conflicts as STOP conditions; solve them in the canonical owner.
-- For diagnostic, review, verification, source, why, correctness, best-practice, redundancy, or architecture tasks, final answers MUST separate mechanism, `$elegant` architecture/end-state disposition, and verification disposition. MUST NOT treat upstream-valid runtime behavior as proof of local correctness. VERIFY with the Stop response-shape detector in `scripts/agent-hooks/detectors.mjs` and `npm run guard:agent`. FIX BY revising the answer or running the missing verification before claiming correctness.
-- Do not delete, weaken, bypass, or skip guards without explicit user approval and a documented reason.
-- Public or CI guards MUST derive public-surface scans from `git ls-files --cached`. They MUST NOT raw-walk ignored local DX directories such as private agents, skills, MCP servers, Code Atlas, or editor config. Local DX validation must be separate, conditional on the local file existing, or covered by an explicit public-checkout guard pass such as `PUBLIC_CHECKOUT_GUARDS_OK`.
-- For anything important, use this chain:
-  - Rule file says the requirement.
-  - Hook blocks obvious local violations.
-  - Guard script performs deterministic validation.
-  - CI runs the same guard.
-  - Skill tells agent how to fix failures.
-- For hook, context, rule, sync, generated-surface, or package-template changes, keep an enforcement closure ledger before closeout: rule, runtime or hook path, guard, test, CI or script, skill guidance, generated mirrors, consumer or package surface, and explicit Claude/Codex disposition. A docs-only or skill-only update is not complete when runtime, sync, guard, test, generated, or package surfaces are impacted.
+## Rule owners
 
-## Working style
+Durable policy lives in `.claude/rules/**`, not here. Route by concern:
 
-### Use
+- Migration policy: `.claude/rules/supaschema.md`
+- Agent-surface sync ownership: `.claude/rules/22-agent-surface-sync-ownership.md`
+- Code Atlas: `.claude/rules/10-code-atlas.md`
+- Operating rules and the enforcement closure ledger: `.claude/rules/01-operating-rules.md`
 
-- Be direct.
-- Optimize for the smallest correct end state, not the smallest patch.
-- Prefer editing existing files over creating new abstractions.
-- Do not mark work complete until the relevant checks have run or a blocking reason is stated.
-- Core writing style of short, operational, and enforceable sentences.
-- Avoid fluffy, general, aspirational, or unverifiable language. Use the active voice and present tense.
+## Execution
 
-### Do not use
+- Determine the requested outcome, success criteria, constraints, required evidence, allowed side effects, and expected output.
+- Match the requested mode: answer, review, plan, modify, or execute.
+- Do not implement when the user requested only analysis, review, or planning.
+- Do not return only a plan when the user requested implementation or completion.
+- Choose the most effective valid path. Use a fixed process only when that process is itself required.
+- Proceed with reasonable, reversible assumptions when they do not materially affect correctness, safety, authorization, cost, or scope.
+- State assumptions only when they materially affect the result.
+- Ask a narrow question only when missing information would materially change the outcome or create meaningful risk.
+- When one part is blocked, complete all independent unblocked work.
 
-- Motivational language.
-- Long rationale.
-- Unbounded “best practices.”
-- Duplicated rules.
-- Conflicting instructions.
-- Hidden assumptions.
+## Grounding
 
-## Required workflow
+- Inspect supplied materials and the actual relevant project or system state before making claims or changes.
+- Use current, authoritative evidence for facts that are uncertain, niche, consequential, or likely to have changed.
+- Distinguish observed facts, supported inferences, and assumptions.
+- Cite sources actually reviewed when citations are requested or necessary to support material factual claims.
+- Never invent files, APIs, commands, data, citations, identifiers, tool results, test results, capabilities, or completed actions.
+- Treat missing evidence as uncertainty, not proof that something is false.
+- Use the minimum evidence sufficient to complete the request correctly.
+- If retrieval is empty, partial, or suspiciously narrow, retry with a materially different query, source, prerequisite lookup, or tool before concluding that the information is unavailable.
+- Stop researching once the core request is adequately supported.
 
-### Before editing
+## Code map and project context
 
-1. Read this file and the nearest applicable `AGENTS.md` and `.claude/rules/*.md`.
-2. Identify the owning app, package, service, or database area.
-3. Verify upstream best practices from the canonical source.
-4. Apply the Repo-Wide Change Discipline below for duplicates, redundancies, and entry points before introducing a new surface.
-5. Choose the smallest correct end state first, then make every change required to reach it. Do not preserve backwards compatibility behavior or paths, duplicate owners, wrappers, aliases, shims, placeholders, TODOs, or redundant or convenience entry points only to keep the patch small.
+- Before any task and during planning, source all consumers, dependencies, and impacted files from the Code Atlas code map and the project MCP (`supaschema`). Query the map with `node scripts/code-atlas/query.mjs` and the MCP tools `code_atlas_query`, `repo_context_query`, and `repo_safety_scan`. See the `code-atlas` skill and Rule 10.
+- After completing any task, rebuild the code map with `node scripts/code-atlas/build.mjs` so the next session starts from an accurate, current graph.
 
-### After editing
-
-1. Update tests, generated files, docs, and guards affected by the change.
-2. Run targeted checks. Targeted checks include test suites, type checks, lints, formatting, and generated-file diffs related to the changed area.
-3. Run global guards when boundaries, database, auth, tenancy, generated files, CI, hooks, or rules changed.
-4. Summarize changed files, commands run, results, and unresolved risks.
-
-## Repo-Wide Change Discipline
-
-Root `AGENTS.md` is the only owner of this repo-wide action sequence. Do not restate it elsewhere.
-
-This sequence applies to every repository change: code, tests, docs, schemas, configs, scripts, prompts, generated surfaces, and verification.
-
-1. Define the requested end state, the smallest correct end state, the concept being changed, the canonical owner, and the single entry point agents or users should use.
-2. Inspect the accepted scope for existing owners, aliases, wrappers, helpers, types, schemas, docs, configs, routes, exports, workflows, commands, prompts, placeholders, TODOs, instructions, and entry points before adding a new surface.
-3. Treat current structure and current consumers as evidence and a worklist, not as proof of the target shape. Burn down avoidable duplication and redundancy in the same change by extending, moving, merging, or deleting in the canonical owner before adding a new surface.
-4. Keep a separate surface only for a genuinely distinct runtime, storage, compliance, lifecycle, or external-contract boundary.
-5. Use upstream-verified behavior when external technology controls the target shape. Use the elegant end state for every task and action; delete legacy surfaces and rewrite consumers instead of preserving backwards compatibility behavior or paths, compatibility files, shims, aliases, wrappers, placeholders, TODOs, or redundant or convenience entry points.
-6. Use narrow verification only to prove the chosen end state. Do not use a narrow check, narrow owner, or narrow implementation step to shrink the requested end state.
-7. Treat automation, guards, and checks as supporting evidence only; they do not replace owner classification or implementation in the canonical owner.
-
-A task is not complete while any user instruction lacks a disposition, the owner or single entry point is unknown, the requested end state is unmet, avoidable duplication or multiple entry points remain in the accepted scope, the implementation works only because the same concept was copied across multiple owners or entry points, or verification has not covered the canonical owner.
-
-## Rule priority
-
-When instructions conflict, use this order:
-
-1. User’s explicit current task.
-2. Safety, secrets, and data-protection rules.
-3. Tenant isolation and RLS rules.
-4. Database migration/source-of-truth rules.
-5. App/package boundary rules.
-6. Framework-specific rules.
-7. Style preferences.
-
-Never use a lower-priority rule to bypass a higher-priority rule.
-
-## Worktree And Approval
+## Worktree State
 
 - You may be in a dirty worktree. Preserve unrelated, pre-existing work that exists in the worktree.
 - Do not stage, commit, stash, reset, clean, or overwrite changes you did not make unless explicitly requested by the user.
-- Concurrent editing in the same worktree is allowed. Do not treat concurrent editing as a blocker, if you spot it, keep building.
 - Destructive git operations, force-pushes, publishing/deployments, linked or production external-state mutation, deleting user-owned data, rotating secrets, and spending money require explicit user approval.
 
-## Failure behavior
+## Tools and actions
 
-If verification fails:
+- Use available tools when they materially improve correctness, completeness, grounding, or verification.
+- Follow each tool's declared contract and side-effect model.
+- Prefer direct access to the relevant source, repository, document, database, or system over indirect reconstruction.
+- Do not repeat a failed action without changing the strategy.
+- Obtain authorization before destructive, irreversible, externally visible, security-sensitive, or cost-incurring actions that are not already clearly authorized.
+- Verify consequential writes, external actions, and state changes.
+- An intended, attempted, or queued action is not a completed action.
 
-1. Treat the failure as blocking.
-2. Fix failures caused by the current change.
-3. Re-run the failed command.
-4. Do not bypass, delete, weaken, or skip the guard.
-5. If the failure appears unrelated, document the evidence and continue only if the requested change is still verifiable.
+## Changes
 
-## Stop conditions
+- Drive the requested change to the correct end state in the canonical owner.
+- Read enough surrounding context before editing.
+- Reuse established patterns, utilities, components, and abstractions before introducing new ones.
+- Address the underlying requirement rather than only its visible symptom.
+- Preserve unrelated behavior and existing user-authored changes.
+- Do not broaden scope without a demonstrated requirement.
+- Do not add dependencies, abstractions, compatibility layers, fallback paths, or configuration without a concrete need.
+- Do not silently alter public behavior, interfaces, schemas, or contracts outside the requested scope.
+- Respect source-of-truth and generated-file boundaries.
+- Surface failures explicitly rather than masking them with silent defaults or success-shaped fallbacks.
+- For hook, context, rule, sync, generated-surface, or package-template changes, keep an enforcement closure ledger before closeout: the rule, runtime or hook path, guard, test, CI or validation script, skill guidance, generated mirrors, consumer or package surface, and explicit Claude/Codex disposition. A docs-only or skill-only update is not complete when runtime, sync, guard, test, generated, or package surfaces are impacted.
 
-Stop before editing if:
+## Repo-Wide Change Discipline
 
-- The task requires destructive database migration behavior.
-- The correct tenant source is unclear.
-- The change requires a new production dependency.
-- The implementation would expose service-role access to client code.
-- The requested change conflicts with a higher-level rule.
+DEFAULT TO `$elegant` for every task and action. MUST NOT create or keep backwards compatibility behavior or paths, export-only compatibility files, wrappers, aliases, shims, DTOs, facades, copied enum tuples, casts, local view-models, allowlist exceptions, redundant or convenience entry points, comments in code or scripts, or regex. Use AST only for structural analysis. Treat external-contract conflicts as STOP conditions; solve them in the canonical owner with a single entry point; do not keep duplicate owners. Typed UI prop containers are allowed only when DB-backed payloads use direct generated contracts without renaming, projection, mirroring, or local ownership.
 
-## "Done" means
+Treat current consumers as evidence and a worklist, not a veto. When behavior is copied across multiple owners or entry points, consolidate into the canonical owner. Take a narrow check, a narrow owner, and a narrow implementation step.
 
-- Any requested changes, tasks, or plans are fully implemented.
-- The owning tests were added or updated.
-- Required guards passed.
-- Generated files are current.
-- Docs or rules were updated if behavior changed.
-- The final response lists commands run and remaining risks.
+## Verification
 
-## Final response format
+Before finalizing:
 
-When finishing code work, report:
+- Confirm that every requested requirement is satisfied.
+- Confirm that material factual claims are grounded.
+- Confirm that the requested output format is followed.
+- Confirm that consequential side effects match the authorized action.
+- Run the narrowest meaningful validation for the affected behavior or artifact, including tests, type checks, linting, builds, runtime checks,schema validation, integration checks, or rendering as applicable.
+- Render and visually inspect visual artifacts for clipping, layout, spacing, missing content, and consistency.
+- Resolve failures caused by the work when feasible.
+- Never claim that a check passed unless it was run and its successful result was observed.
+- When a relevant check cannot run, state the exact reason and provide the strongest available substitute evidence.
+- Do not describe unexecuted validation as completed verification.
 
-1. What changed.
-2. Files changed.
-3. Commands run.
-4. Results.
-5. Remaining risks or skipped checks.
+## Communication and output
 
-Do not claim success for checks that were not run. Do not say "should work" without verification.
+- For simple tasks, respond directly.
+- For substantial or tool-heavy tasks, provide a brief initial update stating the first meaningful step.
+- Provide further updates only for material progress, discoveries, decisions, risks, changed assumptions, or blockers.
+- Do not narrate routine operations or every tool call.
+- Lead with the requested result and keep explanation proportional to the task.
+- Preserve the requested artifact, structure, length, and genre when editing unless the user asks to change them.
+- Follow any runtime-supplied output schema exactly without adding fields, surrounding prose, or markdown fences.
+- Provide concise rationale and evidence when they help the user evaluate the result.
+- Report completed work, observed verification, material assumptions or decisions, unresolved blockers or risks, and artifact locations when relevant.
 
-<!-- supaschema:agent-guidance:start -->
+## Completion and stopping
 
-## supaschema
+Finish when:
 
-This project uses supaschema for declarative PostgreSQL migrations. The configured paths below are authoritative; setup can seed provider-specific folders for Supabase, Neon, RDS/Aurora PostgreSQL, Cloud SQL, AlloyDB, Azure PostgreSQL, or a neutral PostgreSQL layout.
+- the requested outcome has been delivered;
+- applicable success criteria are satisfied;
+- relevant validation has passed; or
+- a concrete blocker or authorization boundary prevents further work.
 
-- Schema intent belongs in `examples/postgres/schemas`.
-- Generated migrations write to `database/migrations`; files containing `-- supaschema: lineage` must not be hand-edited.
-- The agent install prompt lives at `.agents/prompts/supaschema-install.md`; read it before installing, initializing, inspecting, or explaining supaschema setup in this project.
-- Treat `supaschema.config.json` as four decisions: schema tree (`schemaPaths`, `sources.to`, `migrationsDir`), diff baseline (`sources.from`, `sources.to`), generated contracts (`typesFile`, `zodFile`, `workflow.type_generation`, `workflow.zod_generation`, `workflow.type_usage`), and apply policy (`workflow.migration_sync`, `sync.targets`).
-- `schemaPaths` roots are recursive. The default target source is `dir:examples/postgres/schemas`; keep `sources.to` explicit when the diff target is intentionally different.
-- Consumer installs add canonical `supaschema:*` package scripts when `package.json` exists: `supaschema:sync`, `supaschema:diff`, `supaschema:stage`, `supaschema:apply`, `supaschema:types`, and `supaschema:check`.
-- Generated type outputs use `database.types.ts` and `database.zod.ts` unless `typesFile` or `zodFile` is changed in config; run `supaschema types` to refresh them, and use generated Zod validators at runtime boundaries when `workflow.type_usage` is `"zod_validated"`.
-- Use existing `$ENV_NAME` database URL references in `sync.targets` or `environments`; do not create duplicate supaschema-only credentials or commit credentials.
-- For schema changes, read `.agents/skills/supaschema/SKILL.md` and the matching Claude/Codex rule file, edit declarative SQL, then use `sync` through the local runner selected in `.agents/prompts/supaschema-install.md`; `sync` owns diff, target selection, history reconciliation, check, generated contracts, stage, safety, verify, runner apply, and final reconciliation.
-- Consumer installs keep AI-agent rules, hooks, skills, prompts, and settings in the raw package bundle. `supaschema init` must not write `.agents`, `.claude`, `.codex`, `.claude/settings.json`, `.codex/hooks.json`, `AGENTS.md`, `CLAUDE.md`, or backup directories; agents use `node_modules/supaschema/agent-bundle/INSTALL.md` for reviewed manual install instructions only.
-- Use `sync` as the canonical one-command workflow for schema changes. It refreshes generated contracts even when no migration is pending. Use `apply` only for already-generated pending migrations, and do not use `sync --target <name>` unless explicitly asked to select one target. Multiple automatic sync targets are refused because cross-target apply is not atomic.
-<!-- supaschema:agent-guidance:end -->
+If relevant validation cannot run, do not characterize the result as fully verified. Report the limitation and substitute evidence.
+
+When blocked:
+
+- complete all independent unblocked work;
+- preserve valid partial results;
+- identify the exact missing input, access, evidence, or authorization;
+- distinguish completed work from incomplete work;
+- do not claim complete success.
+
+Stop when further work would be unrelated, repetitive, unauthorized, or unnecessarily risky.

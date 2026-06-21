@@ -15,6 +15,18 @@ pre-commit:
     - name: biome
       # Format + lint only the staged files; no-op when none match.
       run: npx biome check --staged --no-errors-on-unmatched
+    - name: prettier
+      glob: "*.{md,mdx,yml,yaml}"
+      run: npx prettier --write {staged_files}
+      stage_fixed: true
+    - name: taplo
+      glob: "*.toml"
+      run: npm run format:toml -- {staged_files}
+      stage_fixed: true
+    - name: sh
+      glob: "*.sh"
+      run: npm run format:sh -- {staged_files}
+      stage_fixed: true
 
 pre-push:
   parallel: false

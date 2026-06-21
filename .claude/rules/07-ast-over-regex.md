@@ -10,7 +10,9 @@ This rule owns structural analysis policy for repo scripts and hooks: do not use
 
 Guards and hooks that reason about **code structure** parse it with a real **AST/parser** — never a regex. Regex cannot see structure: quote style, whitespace, type parameters, comments, and string contents all create bypasses (an adversarial pass found ~12 in the regex-era shape detector — single/mixed quotes, `z .enum`, `z.enum (`, a marker smuggled inside a string) and false positives. An AST sees the real tree, so that whole class of holes is gone by construction.
 
-Enforced by `scripts/guards/check-canonical-surfaces.mjs` (in `npm run guard` via `scripts/guards/check-all.mjs`). Detection is itself AST-based for JS/TS and Python, and parser-based for shell, so the rule dogfoods.
+Enforced by `scripts/guards/code-shape/check-canonical-surfaces.mjs` (in `npm run guard` via `scripts/guards/check-all.mjs`). Detection is itself AST-based for JS/TS and Python, and parser-based for shell, so the rule dogfoods.
+
+Guards enforce observable structure or behavior — AST shape, file existence, JSON registration, hook topology, or runtime output — never that a documentation file (AGENTS.md, rule, skill, test) contains a specific prose string. Test behavior, or enforce policy at its canonical owner; coupling a guard to doc wording is brittle and circular.
 
 ## Scope
 
@@ -36,11 +38,11 @@ When resolving a regex violation, use `ast-grep` as the first discovery or codem
 
 This is a technical decision — resolve it by Rule 05 (research the upstream best practice), not a guess. Where a first-class parser exists for the language (TypeScript compiler API, libpg_query for Postgres), it is the canonical choice.
 
-STOP if regex ships for code or script analysis where an AST, parser, or literal string operation can express the check.
+STOP if regex ships for code or script analysis where an AST, parser, or literal string operation can express the check. STOP if a guard requires a documentation file to contain a specific prose string instead of testing behavior or structure — let the rule own its wording.
 
 ## Verification
 
-Run `npm run guard` or `node scripts/guards/check-canonical-surfaces.mjs` after changing scripts, hooks, guards, or parser helpers. Detector changes need focused true-positive and false-positive tests.
+Run `npm run guard` or `node scripts/guards/code-shape/check-canonical-surfaces.mjs` after changing scripts, hooks, guards, or parser helpers. Detector changes need focused true-positive and false-positive tests.
 
 ## Failure behavior
 

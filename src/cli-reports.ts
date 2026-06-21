@@ -18,7 +18,8 @@ import { redactSecrets } from "./redaction.js";
 import { buildRemediationPlan } from "./remediation.js";
 import { renderScan, scoreGrade } from "./scan.js";
 import { extractSourceModel } from "./source.js";
-import { stageGeneratedMigrations, syncMigrations } from "./workflow.js";
+import { stageGeneratedMigrations } from "./stage.js";
+import { syncMigrations } from "./workflow.js";
 
 export interface ReportCommandContext {
   cliVersion: string;

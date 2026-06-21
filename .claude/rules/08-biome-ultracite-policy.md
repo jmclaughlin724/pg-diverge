@@ -38,7 +38,7 @@ Biome is the canonical JS/TS/JSX/TSX/JSON/JSONC/CSS/HTML/GraphQL formatter and l
 - `npm run lint`.
 - `npm run lint:doctor`.
 - `npm run guard` (`scripts/guards/check-all.mjs`).
-- `scripts/guards/check-tooling-stack.mjs` (pins `@biomejs/biome` and `ultracite`, asserts the extends presets, the `useImportExtensions` mappings, the `src/index.ts` barrel exception, the 65-point complexity cap file list, and that no Biome rule is disabled outside the approved override zone).
+- `scripts/guards/toolchain/check-tooling-stack.mjs` (pins `@biomejs/biome` and `ultracite`, asserts the extends presets, the `useImportExtensions` mappings, the `src/index.ts` barrel exception, the 65-point complexity cap file list, and that no Biome rule is disabled outside the approved override zone).
 
 STOP if a second Biome config appears without a shared policy, if ESLint returns as a parallel lint surface, if a local suppression comment is introduced, if generated contract/build/dependency artifacts become part of the lint surface, if codemod-generated active source stops passing the normal lint/format gates, if a formatter write/fix entry point other than `npm run format` is added, or if a JS/TS formatter or linter is added that competes with Biome.
 

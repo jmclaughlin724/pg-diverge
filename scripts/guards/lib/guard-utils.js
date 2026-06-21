@@ -18,21 +18,21 @@ export function assert(condition, message) {
   }
 }
 
-export function readJson(file) {
-  return JSON.parse(fs.readFileSync(path.join(ROOT, file), "utf8"));
+export function readJson(file, root) {
+  return JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
 }
 
-export function readText(file) {
-  return fs.readFileSync(path.join(ROOT, file), "utf8");
+export function readText(file, root) {
+  return fs.readFileSync(path.join(root, file), "utf8");
 }
 
-export function exists(file) {
-  return fs.existsSync(path.join(ROOT, file));
+export function exists(file, root) {
+  return fs.existsSync(path.join(root, file));
 }
 
-export function run(command, args, options = {}) {
+export function run(command, args, options, root) {
   const result = spawnSync(command, args, {
-    cwd: ROOT,
+    cwd: root,
     encoding: "utf8",
     ...options,
   });
@@ -42,13 +42,18 @@ export function run(command, args, options = {}) {
   return result;
 }
 
-export function gitFiles() {
-  const result = run("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
+export function gitFiles(root) {
+  const result = run(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    {},
+    root
+  );
   return result.stdout.split("\0").filter(Boolean).sort();
 }
 
-export function gitTrackedFiles() {
-  const result = run("git", ["ls-files", "-z", "--cached"]);
+export function gitTrackedFiles(root) {
+  const result = run("git", ["ls-files", "-z", "--cached"], {}, root);
   return result.stdout.split("\0").filter(Boolean).sort();
 }
 

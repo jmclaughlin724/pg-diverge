@@ -4,13 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderCheckReport } from "../src/check-reporters.js";
-import {
-  configJsonSchema,
-  defaultConfigFile,
-  resolveConfig,
-  validateConfig,
-} from "../src/config.js";
+import { configJsonSchema, defaultConfigFile, resolveConfig } from "../src/config.js";
 import { createInstalledConfig, mergeInstalledConfig } from "../src/config-contract.js";
+import { validateConfig } from "../src/config-validate.js";
 import type { Diagnostic } from "../src/core.js";
 
 const cliPath = resolve(import.meta.dirname, "../dist/cli.js");

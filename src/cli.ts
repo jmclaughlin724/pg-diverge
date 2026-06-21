@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
+import { generatedMigrationEditHookOutput, schemaWriteHookOutput } from "./agent-hook-output.js";
 import { checkMigrationSql } from "./check.js";
 import {
   CHECK_REPORTER_DISPLAY,
@@ -9,32 +10,30 @@ import {
   parseCheckReporter,
   renderCheckReport,
 } from "./check-reporters.js";
-import {
-  defaultTreeSource,
-  latestMigrationFile,
-  migrationFiles,
-  resolveMigrationsDir,
-  resolveSourceDefaults,
-} from "./cli-defaults.js";
 import { registerDiffCommands } from "./cli-diff.js";
 import { registerReportCommands } from "./cli-reports.js";
 import { registerToolCommands } from "./cli-tools.js";
 import type { SupaschemaConfig } from "./config.js";
+import { loadConfig } from "./config.js";
 import {
   formatConfigValidationDiagnostics,
-  loadConfig,
   pendingInstallPathConfirmationDiagnostic,
   validateConfig,
-} from "./config.js";
+} from "./config-validate.js";
 import type { Diagnostic } from "./core.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors } from "./diagnostics.js";
+import { latestMigrationFile, migrationFiles } from "./migration-files.js";
 import { filterModel } from "./pipeline-services.js";
 import { redactSecrets } from "./redaction.js";
 import { selfCheckCatalog } from "./selfcheck.js";
 import { extractSourceModel } from "./source.js";
+import {
+  defaultTreeSource,
+  resolveMigrationsDir,
+  resolveSourceDefaults,
+} from "./source-resolve.js";
 import { verifyMigration } from "./verify.js";
-import { generatedMigrationEditHookOutput, schemaWriteHookOutput } from "./workflow.js";
 
 interface GlobalOptions {
   config?: string;

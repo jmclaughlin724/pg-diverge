@@ -7,10 +7,7 @@ import { renderMigration } from "../src/render.js";
 import { extractSourceModel } from "../src/source.js";
 import { parseSqlAst } from "../src/sql/parser.js";
 import { verifyMigration } from "../src/verify.js";
-import {
-  hasUnqualifiedCatalogName,
-  hasUnqualifiedRegproc,
-} from "./helpers/catalog-qualification.js";
+import { hasUnqualifiedCatalogName, hasUnqualifiedRegproc } from "./catalog-qualification.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 

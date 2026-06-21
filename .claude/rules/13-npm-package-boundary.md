@@ -39,13 +39,13 @@ The published package is an explicit consumer surface. The repository also conta
 - Maintainer workspace surfaces stay repo-only unless the consumer contract explicitly changes. Examples include `.vscode`, `.mcp.json`, `.claude/cclsp.json`, Postgres Language Server config, Python/FastMCP support, Code Atlas, tests, guards, source files, CI support, and lint config.
 - Generated and incremental build artifacts stay out of every allowlisted directory. A broad `files` entry like `dist` sweeps in everything beneath it, so write caches such as a `tsBuildInfoFile` to `.tmp/` (gitignored, not in `files`), never inside `dist/`. A `.tsbuildinfo` must never reach the published tarball.
 - When adding, moving, or deleting a package or consumer install surface, update `docs/reference/package-boundary.mdx`, package tests, and tooling guards in the same change.
-- When changing the public `npx skills` surface, update `skills/README.md`, `docs/coding-agents.mdx`, `docs/coding-agents/agent-bundle.mdx`, `scripts/skills/sync-llm.mjs`, and `scripts/guards/check-agent-surface-parity.mjs` in the same change.
+- When changing the public `npx skills` surface, update `skills/README.md`, `docs/coding-agents.mdx`, `docs/coding-agents/agent-bundle.mdx`, `scripts/skills/sync-llm.mjs`, and `scripts/guards/agent-surface/check-agent-surface-parity.mjs` in the same change.
 - Keep consumer lifecycle proof split by phase: tarball contents, install scaffold, installed CLI use, and cross-manager package smoke. `docs/reference/package-boundary.mdx` owns the reader-facing matrix. `npm run release:verify` is the release-facing entry point.
 
 ## Enforced by
 
 - `npm run guard`.
-- `npm run guard` includes `scripts/guards/check-tooling-stack.mjs`, which AST-checks lifecycle/action runner child-process calls for the `shell: true` plus args shape.
+- `npm run guard` includes `scripts/guards/toolchain/check-tooling-stack.mjs`, which AST-checks lifecycle/action runner child-process calls for the `shell: true` plus args shape.
 - `npm run check:package`.
 - `npm run release:verify`.
 - `npm pack --dry-run --json`.

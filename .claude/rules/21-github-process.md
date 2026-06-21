@@ -48,7 +48,7 @@ codexExecPolicy: |
 paths:
   - ".github/**"
   - "scripts/github/**"
-  - "scripts/guards/check-github-process.mjs"
+  - "scripts/guards/ci-release/check-github-process.mjs"
   - "scripts/guards/check-all.mjs"
   - "package.json"
   - "AGENTS.md"
@@ -183,8 +183,7 @@ Merge only with the policy merge method:
 gh pr merge <number> --rebase --delete-branch
 ```
 
-Do not use `--merge`, `--squash`, `--admin`, `--disable-auto`, or a force-push workaround unless the user explicitly approves the exception and the reason is recorded in the PR.
-The Bash safety hook MUST block those forbidden `gh pr merge` flags whether they appear before or after the PR selector, including `gh pr merge --squash 53` and `gh pr merge 53 --squash`. Codex `prefix_rule(...)` entries MUST forbid prefix-expressible flag-first forms and MUST prompt for all `gh pr merge` commands so selector-before-flag forms cannot run outside the sandbox without the Bash hook evaluating them. `.claude/hooks/guards/bash-policy-checks.mjs` is the deterministic enforcement owner for selector-before-flag forms because Codex `prefix_rule` is exact-prefix only.
+Do not use `--merge`, `--squash`, `--admin`, `--disable-auto`, or a force-push workaround unless the user explicitly approves the exception and records the reason in the PR. The Bash safety hook (`.claude/hooks/guards/bash-policy-checks.mjs`) blocks those flags in either position (`gh pr merge --squash 53` and `gh pr merge 53 --squash`); because Codex `prefix_rule(...)` is exact-prefix only, the rule entries forbid flag-first forms and prompt on every `gh pr merge` so selector-before-flag forms still reach the Bash hook.
 
 After merge, run:
 
@@ -196,7 +195,7 @@ The merged PR MUST report `MERGED` from GitHub, the merge commit MUST be contain
 
 ## Enforced by
 
-- `npm run guard:github-process` (`scripts/guards/check-github-process.mjs`) asserts the policy file, Rule 21, package commands, guard wiring, and PR template stay synchronized.
+- `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, Rule 21, package commands, guard wiring, and PR template stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, and repository rulesets to `.github/repo-policy.json`.
 - `npm run github:audit-settings` also compares live repository topics to `repositoryTopics`. `npm run github:audit-settings -- --apply-topics` reconciles only topics, refuses to run unless `GITHUB_REPOSITORY_TOPICS_APPROVED=1` is already present, and does not apply topics while non-topic repository policy failures exist.

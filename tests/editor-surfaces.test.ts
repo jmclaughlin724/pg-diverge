@@ -87,11 +87,19 @@ const allowedAgentFiles = [
 
 const sourceRepoAgentRuntimeFiles = [
   "scripts/agent-hooks/atlas.mjs",
-  "scripts/agent-hooks/detectors.mjs",
-  "scripts/agent-hooks/payload.mjs",
+  "scripts/agent-hooks/command-evidence.mjs",
+  "scripts/agent-hooks/evidence-gate.mjs",
+  "scripts/agent-hooks/hook-output.mjs",
+  "scripts/agent-hooks/response-claims.mjs",
+  "scripts/agent-hooks/response-evidence.mjs",
+  "scripts/agent-hooks/response-shape.mjs",
   "scripts/agent-hooks/runner.mjs",
+  "scripts/agent-hooks/skill-frontmatter.mjs",
+  "scripts/agent-hooks/skill-paths.mjs",
   "scripts/agent-hooks/skills.mjs",
   "scripts/agent-hooks/state.mjs",
+  "scripts/agent-hooks/tool-payload.mjs",
+  "scripts/agent-hooks/AGENTS.md",
 ];
 
 function readJson<T>(path: string): T {

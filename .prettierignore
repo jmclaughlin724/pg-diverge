@@ -23,6 +23,7 @@ out/
 # byte-identical parity that check-agent-surface-parity enforces.
 .agents/**
 .codex/**
+agent-bundle/**
 
 # Committed reference tree — never reformatted.
 .claude/plans/**

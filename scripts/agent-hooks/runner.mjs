@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
-import { preToolEvidenceGate, recordToolEvidence, runResponseDetectors } from "./detectors.mjs";
-import { failClosedResult, runChecks, shapeHookResult } from "./payload.mjs";
+import { recordToolEvidence } from "./command-evidence.mjs";
+import { preToolEvidenceGate } from "./evidence-gate.mjs";
+import { failClosedResult, runChecks, shapeHookResult } from "./hook-output.mjs";
+import { runResponseDetectors } from "./response-shape.mjs";
 import {
   recordObservableSkillLoad,
   unresolvedPending,
@@ -135,12 +137,15 @@ function subagentContext(_payload, context) {
 
 function responseShape(payload, context) {
   const detectorResult = runResponseDetectors(payload, context.state);
-  if (detectorResult.contextParts?.length > 0) {
-    return {
-      block: detectorResult.contextParts.join("\n\n"),
-    };
+  if (!detectorResult.contextParts?.length) {
+    return detectorResult;
   }
-  return detectorResult;
+  if (payload?.stop_hook_active) {
+    return detectorResult;
+  }
+  return {
+    block: detectorResult.contextParts.join("\n\n"),
+  };
 }
 
 function taskCompletionGate(_payload, context) {

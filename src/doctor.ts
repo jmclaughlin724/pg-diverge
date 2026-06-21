@@ -1,7 +1,8 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Client } from "pg";
-import { pendingInstallPathConfirmationDiagnostic, type SupaschemaConfig } from "./config.js";
+import type { SupaschemaConfig } from "./config.js";
+import { pendingInstallPathConfirmationDiagnostic } from "./config-validate.js";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
 import { migrationsStatus } from "./migrations-status.js";
 import { parseSqlAst } from "./sql/parser.js";

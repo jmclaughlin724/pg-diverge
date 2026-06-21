@@ -1,7 +1,7 @@
 import path from "node:path";
+import { isCommandTool, toolCommand, toolName } from "./tool-payload.mjs";
 
 const defaultRoot = path.resolve(".");
-const commandToolNames = new Set(["Bash", "exec_command", "functions.exec_command"]);
 const pathKeys = ["file_path", "notebook_path", "path", "target", "uri"];
 const patchPrefixes = ["*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "];
 
@@ -22,7 +22,7 @@ export function codeAtlasQueryEvidence(payload) {
       summary: `Code Atlas ${queryKind || "query"} tool call`,
     };
   }
-  if (!commandToolNames.has(name)) {
+  if (!isCommandTool(name)) {
     return;
   }
   const command = toolCommand(payload);
@@ -113,15 +113,6 @@ function isCodeAtlasTool(name) {
     name === "supaschema.code_atlas_query" ||
     name.endsWith("__code_atlas_query")
   );
-}
-
-function toolName(payload) {
-  return typeof payload?.tool_name === "string" ? payload.tool_name : "";
-}
-
-function toolCommand(payload) {
-  const input = payload?.tool_input ?? {};
-  return firstString(input.command, input.cmd);
 }
 
 function firstString(...values) {
