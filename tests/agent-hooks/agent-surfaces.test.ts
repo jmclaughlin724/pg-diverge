@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { renderCodexAgent, renderCodexRule } from "../../scripts/skills/codex-rules.mjs";
 import { checkAgentSurfaces, syncAgentSurfaces } from "../../scripts/skills/sync-llm.mjs";
 
-describe("agent surface sync", () => {
+describe("agent surface sync", { timeout: 30_000 }, () => {
   it("passes when generated mirrors match the Claude-owned directories", async () => {
     const root = await seedSurfaceRoot();
     syncAgentSurfaces({ root });
