@@ -450,6 +450,23 @@ describe("config DX", () => {
 
     expect(diagnostics.map((item) => item.field)).not.toContain(".supaschema/install.json");
   });
+
+  it("rejects a migrationsDir identical to a schemaPaths entry", async () => {
+    const diagnostics = await validateConfig(
+      resolveConfig({
+        migrationsDir: "db/schemas",
+        schemaPaths: ["db/schemas"],
+      }),
+      mkdtempSync(join(tmpdir(), "supa-overlap-config-"))
+    );
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        field: "migrationsDir",
+        severity: "error",
+      })
+    );
+  });
 });
 
 describe("check reporters", () => {

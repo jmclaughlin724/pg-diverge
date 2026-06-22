@@ -38,6 +38,7 @@ export async function validateConfig(
   await validateExistingDirectory(diagnostics, cwd, "migrationsDir", config.migrationsDir);
   for (const schemaPath of config.schemaPaths) {
     if (
+      schemaPath === config.migrationsDir ||
       isInsidePath(schemaPath, config.migrationsDir) ||
       isInsidePath(config.migrationsDir, schemaPath)
     ) {
