@@ -451,18 +451,21 @@ describe("config DX", () => {
     expect(diagnostics.map((item) => item.field)).not.toContain(".supaschema/install.json");
   });
 
-  it("rejects a migrationsDir identical to a schemaPaths entry", async () => {
+  it.each([
+    ["identical", { migrationsDir: "db/schemas", schemaPaths: ["db/schemas"] }],
+    ["trailing-slash migrationsDir", { migrationsDir: "db/schemas/", schemaPaths: ["db/schemas"] }],
+    ["trailing-slash schemaPath", { migrationsDir: "db/schemas", schemaPaths: ["db/schemas/"] }],
+    ["dot-prefix migrationsDir", { migrationsDir: "./db/schemas", schemaPaths: ["db/schemas"] }],
+  ])("rejects a migrationsDir overlapping a schemaPaths entry: %s", async (_name, cfg) => {
     const diagnostics = await validateConfig(
-      resolveConfig({
-        migrationsDir: "db/schemas",
-        schemaPaths: ["db/schemas"],
-      }),
+      resolveConfig(cfg),
       mkdtempSync(join(tmpdir(), "supa-overlap-config-"))
     );
 
     expect(diagnostics).toContainEqual(
       expect.objectContaining({
         field: "migrationsDir",
+        message: expect.stringContaining("overlaps"),
         severity: "error",
       })
     );

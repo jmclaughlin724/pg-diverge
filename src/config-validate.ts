@@ -38,7 +38,6 @@ export async function validateConfig(
   await validateExistingDirectory(diagnostics, cwd, "migrationsDir", config.migrationsDir);
   for (const schemaPath of config.schemaPaths) {
     if (
-      schemaPath === config.migrationsDir ||
       isInsidePath(schemaPath, config.migrationsDir) ||
       isInsidePath(config.migrationsDir, schemaPath)
     ) {
@@ -331,5 +330,5 @@ async function pathKind(path: string): Promise<"directory" | "file" | "missing">
 
 function isInsidePath(parent: string, child: string): boolean {
   const relPath = relative(parent, child);
-  return relPath !== "" && !relPath.startsWith("..") && !isAbsolute(relPath);
+  return !(relPath.startsWith("..") || isAbsolute(relPath));
 }
