@@ -1,3 +1,4 @@
+import { defaultMigrationHistoryTable } from "./config-contract.js";
 import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import { resolveDatabaseUrl } from "./database-url.js";
 import { diagnostic } from "./diagnostics.js";
@@ -34,7 +35,8 @@ export function resolveSyncTargets(
   const diagnostics: Diagnostic[] = [];
   const selected = selectedTargetNames(options, config);
   if (selected.length === 0) {
-    return { diagnostics, targets: [] };
+    const adHoc = adHocDirectApplyTarget(options, diagnostics);
+    return { diagnostics, targets: adHoc === undefined ? [] : [adHoc] };
   }
   if ((options.envName !== undefined || options.databaseUrl !== undefined) && selected.length > 1) {
     diagnostics.push(
@@ -113,7 +115,6 @@ function resolveSyncTarget(
   const runner = options.runner ?? configured.runner;
   const databaseUrl = resolveTargetUrl(selection, configured, options, config, diagnostics, runner);
   if (
-    selection.automatic &&
     remote &&
     configured.requireApprovalEnv !== undefined &&
     process.env[configured.requireApprovalEnv] !== "1"
@@ -122,7 +123,7 @@ function resolveSyncTarget(
       diagnostic(
         "SUPA_SYNC_REMOTE_APPROVAL_REQUIRED",
         "error",
-        `remote sync target ${selection.name} requires ${configured.requireApprovalEnv}=1 before automatic deploy`,
+        `remote ${operationName(options)} target ${selection.name} requires ${configured.requireApprovalEnv}=1 before deploy`,
         { hint: "Set the approval environment variable in an operator-controlled process." }
       )
     );
@@ -245,4 +246,44 @@ function isRemoteTargetName(
   name: string
 ): boolean {
   return name === "remote" || target.remote === true;
+}
+
+function adHocDirectApplyTarget(
+  options: SyncOptions,
+  diagnostics: Diagnostic[]
+): ResolvedSyncTarget | undefined {
+  if (
+    options.operation !== "apply" ||
+    options.runner !== "direct" ||
+    options.databaseUrl === undefined ||
+    options.target !== undefined
+  ) {
+    return;
+  }
+  let databaseUrl: string | undefined;
+  try {
+    databaseUrl = resolveDatabaseUrl(options.databaseUrl);
+  } catch (error) {
+    databaseUrl = undefined;
+    diagnostics.push(
+      diagnostic(
+        "SUPA_SYNC_TARGET_URL_UNRESOLVED",
+        "error",
+        error instanceof Error ? error.message : String(error),
+        { hint: "Resolve the database URL passed to --database-url." }
+      )
+    );
+  }
+  if (databaseUrl === undefined) {
+    return;
+  }
+  return {
+    automatic: false,
+    databaseUrl,
+    historyTable: options.historyTable ?? defaultMigrationHistoryTable,
+    name: "direct",
+    operation: "local",
+    remote: false,
+    runner: "direct",
+  };
 }

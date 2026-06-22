@@ -49,8 +49,8 @@ Durable policy lives in `.claude/rules/**`, not here. Route by concern:
 
 ## Code map and project context
 
-- Before any task and during planning, source all consumers, dependencies, and impacted files from the Code Atlas code map and the project MCP (`supaschema`). Query the map with `node scripts/code-atlas/query.mjs` and the MCP tools `code_atlas_query`, `repo_context_query`, and `repo_safety_scan`. See the `code-atlas` skill and Rule 10.
-- After completing any task, rebuild the code map with `node scripts/code-atlas/build.mjs` so the next session starts from an accurate, current graph.
+- Before any task and during planning, source all consumers, dependencies, and impacted files from the Code Atlas code map and the project MCP (`supaschema`). Query the map with `node scripts/code-atlas/query.mjs` and the MCP tools `code_atlas_query`, `repo_context_query`, and `repo_safety_scan`. See the `code-atlas` skill and Rule 10. The `scripts/code-atlas/**` scripts are local-only maintainer tooling (gitignored); when they are absent in a clean checkout, skip the local query/rebuild and rely on the project MCP, cclsp, and direct source reads (Rule 10 `CODE_ATLAS_SKIPPED_LOCAL_ONLY`).
+- After completing any task, rebuild the code map with `node scripts/code-atlas/build.mjs` so the next session starts from an accurate, current graph, when those local scripts are present.
 
 ## Worktree State
 

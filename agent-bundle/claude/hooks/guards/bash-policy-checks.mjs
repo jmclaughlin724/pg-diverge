@@ -201,14 +201,15 @@ function checkDangerousGitAndShellWrites(command) {
     if (name !== "git") {
       continue;
     }
-    const subcommand = args[0] ?? "";
+    const gitArgs = skipGitGlobalOptions(args);
+    const subcommand = gitArgs[0] ?? "";
 
     if (subcommand === "stash") {
       return block(
         "BLOCKED: git stash is prohibited. Preserve unrelated work without stash."
       );
     }
-    if (subcommand === "merge" && args.includes("--squash")) {
+    if (subcommand === "merge" && gitArgs.includes("--squash")) {
       return block(
         "BLOCKED: local `git merge --squash` is prohibited for PR merges. Use the hosted PR squash flow instead."
       );
@@ -238,22 +239,22 @@ function checkDangerousGitAndShellWrites(command) {
         "BLOCKED: git reset is prohibited. Ask the user before running reset."
       );
     }
-    if (subcommand === "commit" && args.includes("--no-verify")) {
+    if (subcommand === "commit" && gitArgs.includes("--no-verify")) {
       return block(
         "BLOCKED: --no-verify is prohibited. Fix the hook failure instead."
       );
     }
-    if (subcommand === "push" && isForcePushToMain(args)) {
+    if (subcommand === "push" && isForcePushToMain(gitArgs)) {
       return block("BLOCKED: force-push to main is prohibited.");
     }
-    if (subcommand === "push" && isDiagnosticPush(ast, tokens, args)) {
+    if (subcommand === "push" && isDiagnosticPush(ast, tokens, gitArgs)) {
       return block(
         "BLOCKED: Do not use `git push` as a diagnostic or inventory probe. Use the repo pre-push check or `git push --dry-run` only when remote negotiation must be tested."
       );
     }
     if (
       subcommand === "restore" &&
-      args.some((arg) => arg === "-s" || arg.startsWith("--source"))
+      gitArgs.some((arg) => arg === "-s" || arg.startsWith("--source"))
     ) {
       return block(
         "BLOCKED: git restore --source is prohibited. It overwrites local files with content from another branch. Use git diff or git show for read-only comparisons."
@@ -413,12 +414,61 @@ function shellTokens(command) {
   return tokens;
 }
 
+const commandWrappers = new Map([
+  ["env", new Set(["-C", "-S", "-u", "-P"])],
+  ["exec", new Set(["-a"])],
+  ["command", new Set()],
+]);
+
 function commandStart(tokens) {
   let index = 0;
   while (index < tokens.length && envAssignment(tokens[index])) {
     index += 1;
   }
+  while (commandWrappers.has(tokens[index])) {
+    index = skipCommandWrapper(tokens, index);
+  }
   return index;
+}
+
+function skipCommandWrapper(tokens, start) {
+  const valueOptions = commandWrappers.get(tokens[start]);
+  let index = start + 1;
+  while (index < tokens.length) {
+    const token = tokens[index];
+    if (token === "--") {
+      index += 1;
+      break;
+    }
+    if (envAssignment(token)) {
+      index += 1;
+      continue;
+    }
+    if (typeof token === "string" && token.startsWith("-") && token !== "-") {
+      index += 1;
+      if (valueOptions.has(token) && index < tokens.length) {
+        index += 1;
+      }
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function skipGitGlobalOptions(args) {
+  let index = 0;
+  while (index < args.length) {
+    const arg = args[index];
+    if (typeof arg !== "string" || !arg.startsWith("-") || arg === "-") {
+      break;
+    }
+    index += 1;
+    if ((arg === "-C" || arg === "-c") && index < args.length) {
+      index += 1;
+    }
+  }
+  return args.slice(index);
 }
 
 export function commandName(tokens) {

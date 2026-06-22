@@ -108,8 +108,8 @@ const syncPipelineLanes: SyncPipelineLane[] = [
   checkFallbackPendingMigrationsLane,
   refreshFallbackGeneratedContractsLane,
   stageFallbackGeneratedMigrationsLane,
-  stopFallbackWhenNothingPendingLane,
   runFallbackSafetyGatesLane,
+  stopFallbackWhenNothingPendingLane,
   verifyFallbackPendingMigrationsLane,
   reportFallbackDryRunOrUnknownTargetLane,
 ];

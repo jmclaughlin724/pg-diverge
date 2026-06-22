@@ -12,6 +12,7 @@ const syncSurfaces = [
   ".claude/skills",
 ];
 const syncTriggerFiles = [
+  ".claude/settings.json",
   ".codex/hooks.json",
   "agent-bundle/codex/hooks.bun.json",
   "agent-bundle/codex/hooks.npm.json",

@@ -63,16 +63,11 @@ function toolOutcome(value) {
   if (typeof value !== "object") {
     return;
   }
-  const direct = directOutcome(value);
-  if (direct !== undefined) {
-    return direct;
+  const hard = findHardOutcome(value);
+  if (hard !== undefined) {
+    return hard;
   }
-  for (const child of childValues(value)) {
-    const outcome = toolOutcome(child);
-    if (outcome !== undefined) {
-      return outcome;
-    }
-  }
+  return findSoftOutcome(value);
 }
 
 function toolResponseText(payload) {
@@ -175,28 +170,61 @@ function jsonValue(text) {
   }
 }
 
-function directOutcome(value) {
+function findHardOutcome(value) {
+  if (value === null || value === undefined) {
+    return;
+  }
+  if (typeof value === "string") {
+    const exitCode = exitCodeFromExecutionStatus(value);
+    if (exitCode !== undefined) {
+      return exitCode === 0;
+    }
+    return;
+  }
+  if (typeof value !== "object") {
+    return;
+  }
   for (const key of ["exit_code", "exitCode", "exit_code_or_signal", "code"]) {
-    if (typeof value?.[key] === "number") {
+    if (typeof value[key] === "number") {
       return value[key] === 0;
     }
   }
+  if (typeof value.is_error === "boolean") {
+    return !value.is_error;
+  }
+  if (typeof value.interrupted === "boolean" && value.interrupted) {
+    return false;
+  }
+  for (const child of childValues(value)) {
+    const outcome = findHardOutcome(child);
+    if (outcome !== undefined) {
+      return outcome;
+    }
+  }
+}
+
+function findSoftOutcome(value) {
+  if (value === null || value === undefined || typeof value !== "object") {
+    return;
+  }
   for (const key of ["success", "ok"]) {
-    if (typeof value?.[key] === "boolean") {
+    if (typeof value[key] === "boolean") {
       return value[key];
     }
   }
-  if (typeof value?.is_error === "boolean") {
-    return !value.is_error;
+  for (const key of ["status", "outcome"]) {
+    if (typeof value[key] === "string") {
+      const result = statusOutcome(value[key]);
+      if (result !== undefined) {
+        return result;
+      }
+    }
   }
-  if (typeof value?.interrupted === "boolean" && value.interrupted) {
-    return false;
-  }
-  if (typeof value?.status === "string") {
-    return statusOutcome(value.status);
-  }
-  if (typeof value?.outcome === "string") {
-    return statusOutcome(value.outcome);
+  for (const child of childValues(value)) {
+    const outcome = findSoftOutcome(child);
+    if (outcome !== undefined) {
+      return outcome;
+    }
   }
 }
 

@@ -111,7 +111,7 @@ export function updateToolSkills(payload, state, options = {}) {
   if (
     pending.length === 0 ||
     !toolGateSet.has(toolName(payload)) ||
-    isObservableLoad(payload) ||
+    isObservableLoad(payload, options.root) ||
     isCodeAtlasQuery(payload)
   ) {
     return contextParts.length > 0 ? { contextParts } : {};
@@ -190,8 +190,8 @@ export function observedLoadedSkills(payload, root) {
   return [];
 }
 
-export function isObservableLoad(payload) {
-  return observedLoadedSkills(payload).length > 0;
+export function isObservableLoad(payload, root) {
+  return observedLoadedSkills(payload, root).length > 0;
 }
 
 export function isSubagentInvocation(payload) {
@@ -377,7 +377,7 @@ function atlasPreEditContext(payload, turn, root) {
   if (
     !toolGateSet.has(toolName(payload)) ||
     isCodeAtlasQuery(payload) ||
-    isObservableLoad(payload)
+    isObservableLoad(payload, root)
   ) {
     return [];
   }

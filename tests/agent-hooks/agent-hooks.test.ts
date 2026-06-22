@@ -520,6 +520,11 @@ describe("general Bash blocker policy", () => {
     'git commit --no-verify -m "skip"',
     "git push --force origin main",
     "git push | tail -20",
+    "git -C . branch tmp",
+    "git -C . stash",
+    "git -c user.email=a@b.c commit --no-verify -m skip",
+    "command git checkout main",
+    "env git stash",
   ])("blocks stateful git shortcut: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(2);
@@ -528,6 +533,8 @@ describe("general Bash blocker policy", () => {
   it.each([
     "git status --short",
     "git rev-parse --abbrev-ref HEAD",
+    "git -C . status --short",
+    "git --no-pager rev-parse --abbrev-ref HEAD",
   ])("allows stateless git diagnostic: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(0);
@@ -538,6 +545,9 @@ describe("general Bash blocker policy", () => {
     "gh pr merge 53 --squash",
     "bash -lc 'gh pr merge 53 --squash'",
     "bash -lc -- 'gh pr merge 53 --squash'",
+    "env bash -lc 'gh pr merge 53 --squash'",
+    "command gh pr merge 53 --squash",
+    "env gh pr merge 53 --squash",
     "gh pr merge --merge 53",
     "gh pr merge 53 --merge",
     "gh pr merge --admin 53 --rebase --delete-branch",
@@ -553,6 +563,8 @@ describe("general Bash blocker policy", () => {
   it.each([
     "gh pr merge 53 --rebase --delete-branch",
     "bash -lc 'gh pr merge 53 --rebase --delete-branch'",
+    "command gh pr merge 53 --rebase --delete-branch",
+    "env bash -lc 'gh pr merge 53 --rebase --delete-branch'",
     "gh pr merge --help",
   ])("allows policy GitHub PR merge command: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
