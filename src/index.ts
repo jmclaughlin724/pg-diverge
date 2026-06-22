@@ -20,6 +20,7 @@ export {
 } from "./config.js";
 export type { ConfigValidationDiagnostic } from "./config-validate.js";
 export { validateConfig } from "./config-validate.js";
+export { contractDrift, toContract } from "./contract-registry.js";
 export type {
   CheckOptions,
   Diagnostic,
@@ -42,6 +43,17 @@ export type {
 export type { CorpusOptions, CorpusReport } from "./corpus.js";
 export { renderCorpusReport, runCorpus } from "./corpus.js";
 export { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
+export {
+  applyMigrationSql,
+  applySql,
+  assertLocalDatabaseUrl,
+  catalogFingerprint,
+  createTemporaryDatabases,
+  databaseUrlWithDatabase,
+  dropTemporaryDatabases,
+  tempDatabaseName,
+  withTemporaryDatabases,
+} from "./db-admin.js";
 export type { MigrationLineage } from "./lineage.js";
 export { latestLineage, lineageLine, parseLineage } from "./lineage.js";
 export type {
@@ -56,6 +68,8 @@ export type {
   SupabaseCliTargetScope,
 } from "./migration-runners.js";
 export {
+  buildSupabaseCliCommand,
+  groupMigrationUnits,
   runDirectMigrationRunner,
   runSupabaseCliMigrationRunner,
 } from "./migration-runners.js";
@@ -66,14 +80,21 @@ export type {
 } from "./migrations-status.js";
 export {
   compareMigrationHistory,
+  migrationFileVersion,
   migrationFileVersions,
   migrationsStatus,
   renderMigrationsStatus,
 } from "./migrations-status.js";
 export type { DeploySafetyGateResult, TypeContractEvaluation } from "./pipeline-services.js";
 export {
+  applyDeploySafetyPolicy,
+  buildSchemaDiffPlan,
+  deployBlockingRlsDiagnosticCodes,
+  evaluateTypeContract,
+  refreshGeneratedOutputs,
   runRlsSafetyGate,
   runTypeSafetyGate,
+  scanSchemaSafety,
 } from "./pipeline-services.js";
 export { planSchemaDiff } from "./planner.js";
 export { renderMigration, renderMigrationSplit } from "./render.js";
