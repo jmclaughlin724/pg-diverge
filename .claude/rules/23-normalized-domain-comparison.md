@@ -17,14 +17,14 @@ This repo supports Node 22 and Node 24 (Rule 09 CI matrix). A path check that re
 - `src/paths.ts` is the single canonical owner for path containment and overlap. It exports `pathContainsOrEqual(parent, child)` and `pathsOverlap(a, b)`.
 - Both primitives normalize inputs through `path.resolve` before computing `path.relative`. `path.resolve` strips trailing separators and resolves `./` and `..`, so the result is stable across the supported Node range. Never compare paths with raw `path.relative` for the equal/overlap case.
 - Do not compare path values with `===` / `!==` on the raw strings, and do not compare `path.relative(...)` against `""`. Both miss path-equivalent inputs (trailing separator, `./`, `..`) and the latter is version-fragile.
-- New path-containment or overlap checks in `src/**` MUST call `pathContainsOrEqual` or `pathsOverlap`. Inline `relative(...) === ""` / `relative(...) !== ""` patterns are prohibited outside `src/paths.ts`.
+- New path-containment or overlap checks in tracked JS/TS MUST call `pathContainsOrEqual` or `pathsOverlap`. Inline `relative(...) === ""` / `relative(...) !== ""` patterns are prohibited outside `src/paths.ts`.
 - Every change to `src/paths.ts` MUST keep `tests/paths.test.ts` green, including the property tests that assert invariance under trailing-separator and `./`-prefix normalization.
 - When a new normalized domain is introduced (for example SQL identifier folding, URL normalization), add its canonical primitive and equivalence-class test in the same change; do not inline byte comparisons and do not generalize this rule's path primitives to the new domain by copying them.
 
 ## Enforced by
 
 - `tests/paths.test.ts` — explicit overlap/containment cases plus `fast-check` property tests: symmetry, and invariance under trailing-separator and `./`-prefix normalization.
-- `scripts/guards/code-shape/check-path-comparison.mjs` (in `npm run guard`) — AST-scans tracked `src/**/*.ts` (excluding `src/paths.ts`) and fails on any `relative(...)` compared `=== ""` / `!== ""`, directly or via a same-file variable. Emits `PATH_COMPARISON_OK`.
+- `scripts/guards/code-shape/check-path-comparison.mjs` (in `npm run guard`) — AST-scans all tracked JS/TS (`.ts`/`.mts`/`.mjs`/`.js`/`.cjs`, excluding `src/paths.ts`) and fails on any `relative(...)` compared `=== ""` / `!== ""`, directly or via a same-file variable. Emits `PATH_COMPARISON_OK`.
 - Review: a path-containment or overlap change that does not route through `src/paths.ts` or does not add an equivalence-class row is incomplete.
 
 ## Verification

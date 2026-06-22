@@ -67,7 +67,13 @@ function scanFile(file, root) {
 }
 
 const files = gitTrackedFiles(ROOT).filter(
-  (file) => file.endsWith(".ts") && file.startsWith("src/") && !ALLOWED.has(file)
+  (file) =>
+    !ALLOWED.has(file) &&
+    (file.endsWith(".ts") ||
+      file.endsWith(".mts") ||
+      file.endsWith(".mjs") ||
+      file.endsWith(".js") ||
+      file.endsWith(".cjs"))
 );
 for (const file of files) {
   scanFile(file, ROOT);
