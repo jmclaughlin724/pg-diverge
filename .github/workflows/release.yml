@@ -43,7 +43,7 @@ jobs:
           #   fulcio.sigstore.dev:443
           #   rekor.sigstore.dev:443
           #   tuf-repo-cdn.sigstore.dev:443
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
@@ -99,7 +99,7 @@ jobs:
       - name: Attest tarball provenance
         if: env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         id: attest
-        uses: actions/attest@281a49d4cbb0a72c9575a50d18f6deb515a11deb # v4
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-path: ${{ steps.pack.outputs.tarball_path }}
       - name: Prepare GitHub release notes
