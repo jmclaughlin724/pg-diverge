@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isFileMissing, isRecord, type SupaschemaConfig } from "./config.js";
 import {
   canonicalSourceTo,
@@ -7,6 +7,7 @@ import {
   isConfigSource,
   sourceHint,
 } from "./config-contract.js";
+import { pathsOverlap } from "./paths.js";
 import { redactSecrets } from "./redaction.js";
 
 export interface ConfigValidationDiagnostic {
@@ -37,10 +38,7 @@ export async function validateConfig(
   validatePortablePath(diagnostics, "migrationsDir", config.migrationsDir, "directory");
   await validateExistingDirectory(diagnostics, cwd, "migrationsDir", config.migrationsDir);
   for (const schemaPath of config.schemaPaths) {
-    if (
-      isInsidePath(schemaPath, config.migrationsDir) ||
-      isInsidePath(config.migrationsDir, schemaPath)
-    ) {
+    if (pathsOverlap(schemaPath, config.migrationsDir)) {
       diagnostics.push({
         field: "migrationsDir",
         hint: "Keep generated migrations outside every declarative schema tree.",
@@ -326,9 +324,4 @@ async function pathKind(path: string): Promise<"directory" | "file" | "missing">
     return "missing";
   }
   return "missing";
-}
-
-function isInsidePath(parent: string, child: string): boolean {
-  const relPath = relative(parent, child);
-  return !(relPath.startsWith("..") || isAbsolute(relPath));
 }

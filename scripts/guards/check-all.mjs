@@ -13,6 +13,7 @@ const guards = [
   ["node", ["scripts/guards/agent-surface/check-agent-policy-standardization.mjs"]],
   ["node", ["scripts/guards/code-shape/check-canonical-surfaces.mjs"]],
   ["node", ["scripts/guards/code-shape/check-child-process-shell.mjs"]],
+  ["node", ["scripts/guards/code-shape/check-path-comparison.mjs"]],
   ["node", ["scripts/guards/repo-surface/check-repo-layout.mjs"]],
   ["node", ["scripts/guards/agent-surface/check-claude-agents.mjs"]],
   ["node", ["scripts/guards/agent-surface/check-hook-import-graph.mjs"]],

@@ -5,6 +5,7 @@ import { resolveConfig } from "./config.js";
 import type { SupaschemaConfig } from "./core.js";
 import { resolveDatabaseUrl } from "./database-url.js";
 import { lineagePrefix } from "./lineage.js";
+import { pathContainsOrEqual } from "./paths.js";
 import { redactSecrets } from "./redaction.js";
 
 const editTools = new Set([
@@ -453,7 +454,7 @@ function matchedSchemaRoot(
   path: string,
   schemaRoots: { display: string; root: string }[]
 ): { display: string; root: string } | undefined {
-  const matches = schemaRoots.filter((entry) => isInside(entry.root, path));
+  const matches = schemaRoots.filter((entry) => pathContainsOrEqual(entry.root, path));
   return matches.sort((left, right) => right.root.length - left.root.length)[0];
 }
 
@@ -986,11 +987,6 @@ function runHookCommand(bin: HookCommand, args: string[], cwd: string): HookComm
       stdout: typeof stdout === "string" ? stdout : "",
     };
   }
-}
-
-function isInside(dir: string, file: string): boolean {
-  const relPath = relative(dir, file);
-  return relPath !== "" && !relPath.startsWith("..") && !isAbsolute(relPath);
 }
 
 function rel(projectDir: string, path: string): string {

@@ -43,32 +43,6 @@ const sourceRepoAgentRuntime = new Set([
   ".codex/hooks/supaschema-source-hook.mjs",
 ]);
 
-const publicClaudeRules = new Set([
-  "01-operating-rules.md",
-  "02-mintlify-writing-standards.md",
-  "03-mintlify-component-reference.md",
-  "04-python-toolchain.md",
-  "05-decision-protocol.md",
-  "06-multi-language-toolchain.md",
-  "07-ast-over-regex.md",
-  "08-biome-ultracite-policy.md",
-  "09-ci-cd-efficiency-governance.md",
-  "10-code-atlas.md",
-  "11-agent-mcp-fastmcp.md",
-  "12-skill-loading-enforcement.md",
-  "13-npm-package-boundary.md",
-  "14-editing-worktree-git.md",
-  "15-security.md",
-  "16-file-size-and-composition.md",
-  "17-prompt-craft-standards.md",
-  "18-context-surface-sync.md",
-  "19-version-control-release.md",
-  "20-anti-patterns.md",
-  "21-github-process.md",
-  "22-agent-surface-sync-ownership.md",
-  "supaschema.md",
-]);
-
 const privatePrefixes = [
   ".planning/",
   ".vscode/",
@@ -113,18 +87,11 @@ function isPublicAgentSurface(file) {
 }
 
 function isPublicClaudeRule(file) {
-  if (!(file.startsWith(".claude/rules/") && file.endsWith(".md"))) {
-    return false;
-  }
-  return publicClaudeRules.has(file.slice(".claude/rules/".length));
+  return file.startsWith(".claude/rules/") && file.endsWith(".md");
 }
 
 function isPublicCodexRule(file) {
-  if (!(file.startsWith(".codex/rules/") && file.endsWith(".rules"))) {
-    return false;
-  }
-  const basename = file.slice(".codex/rules/".length, -".rules".length);
-  return publicClaudeRules.has(`${basename}.md`);
+  return file.startsWith(".codex/rules/") && file.endsWith(".rules");
 }
 
 function isPrivateSurface(file) {
