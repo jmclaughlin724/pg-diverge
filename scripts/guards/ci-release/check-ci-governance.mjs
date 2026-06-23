@@ -417,12 +417,27 @@ export function check(root = ROOT) {
     "package.json must expose one strict npm run package:smoke consumer tarball smoke"
   );
   assert(
+    packageJson.scripts?.["test:consumer-lifecycle"] ===
+      "vitest run tests/consumer-lifecycle.test.ts",
+    "package.json must expose npm run test:consumer-lifecycle for installed-CLI consumer lifecycle proof"
+  );
+  assert(
     !packageJson.scripts?.["package:smoke:all"],
     "package.json must not expose a second package-smoke entry point"
   );
+  const releaseVerifyScript = String(packageJson.scripts?.["release:verify"] ?? "");
   assert(
-    String(packageJson.scripts?.["release:verify"] ?? "").includes("npm run package:smoke"),
+    releaseVerifyScript.includes("npm run test:consumer-lifecycle"),
+    "release:verify must include npm run test:consumer-lifecycle"
+  );
+  assert(
+    releaseVerifyScript.includes("npm run package:smoke"),
     "release:verify must include npm run package:smoke"
+  );
+  assert(
+    releaseVerifyScript.indexOf("npm run test:consumer-lifecycle") <
+      releaseVerifyScript.indexOf("npm run package:smoke"),
+    "release:verify must run npm run test:consumer-lifecycle before npm run package:smoke"
   );
   assertConsumerPackageSmokeSteps(qualitySteps);
 

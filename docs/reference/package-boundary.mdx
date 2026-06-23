@@ -134,7 +134,7 @@ The "use" proof installs the real tarball rather than extracting it, because a b
 
 The published package must not define `preinstall`, `install`, `postinstall`, or `prepare` scripts. Consumer setup runs through explicit `supaschema init`, so pnpm, Bun, Yarn, and npm installs do not require build-script approval to download the CLI.
 
-`npm run release:verify` is the prepublish release-facing entry point. It calls the package-manager smoke after the package checks, so use that command for release readiness. The release workflow then runs the registry smoke after `npm publish`; that postpublish check proves registry availability and package-manager download behavior that a local tarball cannot prove.
+`npm run release:verify` is the prepublish release-facing entry point. It calls the installed-CLI use proof and then the package-manager smoke after the package checks, so use that command for release readiness. The release workflow then runs the registry smoke after `npm publish`; that postpublish check proves registry availability and package-manager download behavior that a local tarball cannot prove.
 
 <Note>
   A local registry (Verdaccio) publish-then-install flow remains optional for
@@ -149,6 +149,7 @@ Run these checks when packaging or installer behavior changes:
 
 ```bash
 npm run release:verify
+npm run test:consumer-lifecycle
 npm pack --dry-run --json
 npx vitest run tests/editor-surfaces.test.ts tests/database-url.test.ts tests/package-contents.test.ts tests/consumer-lifecycle.test.ts
 ```
