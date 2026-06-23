@@ -20,6 +20,7 @@ const INSTALL_PROMPT_REQUIRED_LOCAL_RUNNER_TEXT = [
   "packageManager",
   "devEngines.packageManager",
   "pnpm add supaschema",
+  "| pnpm | `pnpm add supaschema`",
   "yarn add supaschema",
   "bun add supaschema",
   "npm exec -- supaschema init",

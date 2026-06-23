@@ -18,14 +18,14 @@ Before installing, identify the package manager from this evidence, in order:
 
 STOP IF package-manager signals conflict, the owning workspace package is unclear, or Node is below 22.12. Do not run npm in a pnpm, Yarn, or Bun project. Do not create a second lockfile.
 
-For workspaces, `cd` into the owning member package before install and setup unless the workspace root owns `supaschema.config.json` and the schema workflow. Dependency-targeting flags can update a member manifest while `supaschema init` still writes setup files in the command's current directory. With pnpm, `pnpm add supaschema --config.minimumReleaseAge=0` targets the package in the current directory and allows a just-published supaschema release to resolve immediately; use `pnpm add -w supaschema --config.minimumReleaseAge=0` only when the workspace root owns the schema workflow.
+For workspaces, `cd` into the owning member package before install and setup unless the workspace root owns `supaschema.config.json` and the schema workflow. Dependency-targeting flags can update a member manifest while `supaschema init` still writes setup files in the command's current directory. With pnpm, `pnpm add supaschema` targets the package in the current directory; use `pnpm add -w supaschema` only when the workspace root owns the schema workflow. pnpm 11 defaults `minimumReleaseAge` to one day, so keep that protection for normal installs. Use `--config.minimumReleaseAge=0` only when troubleshooting an immediate install of a just-published supaschema version.
 
 ## Install Command
 
 | Manager | First install | Setup |
 | --- | --- | --- |
 | npm | `npm install supaschema` | `npm exec -- supaschema init` |
-| pnpm | `pnpm add supaschema --config.minimumReleaseAge=0` | `pnpm exec supaschema init` |
+| pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` |
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` |
 | Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` |
 

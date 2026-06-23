@@ -45,7 +45,7 @@ The release workflow uses:
 - a GitHub-hosted Ubuntu runner with Node 24, npm `>=11.5.1`, and `actions/setup-node` with `registry-url: https://registry.npmjs.org`
 - `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`
 - `actions/attest@v4` for tarball provenance attestation
-- `npm run release:registry-smoke` after publish and attestation, which downloads `supaschema@<version>` from the npm registry through npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun
+- `npm run release:registry-smoke` after publish and attestation, and before GitHub Release creation on npm-published repair reruns; it downloads `supaschema@<version>` from the npm registry through npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun
 - `node scripts/release/changelog-notes.mjs --version "$SUPASCHEMA_PACKAGE_VERSION" --out "$RUNNER_TEMP/release-notes.md"`
 - `gh release create "$SUPASCHEMA_RELEASE_TAG" --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"`
 
