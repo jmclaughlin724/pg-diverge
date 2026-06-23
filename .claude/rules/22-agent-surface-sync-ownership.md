@@ -61,7 +61,7 @@ This rule owns source-repo agent runtime as public branch infrastructure. Requir
 - Guard: `scripts/guards/agent-surface/check-agent-hooks.mjs` verifies source Claude/Codex single-command-hook topology, package stripping, consumer Bash guard preservation, response-shape blocking, and sync-script ownership. `scripts/guards/agent-surface/check-agent-surface-parity.mjs` runs `checkAgentSurfaces`.
 - Test: `tests/sync-llm.test.ts`, `tests/agent-hook-core.test.ts`, `tests/agent-hooks.test.ts`, and `tests/agent-surfaces.test.ts` cover Claude import validation, source-repo Codex hook topology, source runner Bash blocking, response-shape drift detection, generated-surface drift repair, and Stop/SubagentStop blocking behavior.
 - CI: `npm run guard` runs the agent-surface guards.
-- Skill: `.claude/skills/optimizer/SKILL.md` tells agents to edit the sync owner or Claude registration, keep required source-repo runtime tracked, keep consumer package output narrow, run sync, and run the guards.
+- Skill (advisory, local-only): `.claude/skills/optimizer/SKILL.md` tells agents to edit the sync owner or Claude registration, keep required source-repo runtime tracked, keep consumer package output narrow, run sync, and run the guards. It is local-only DX, not a deterministic enforcement layer; the Hook, Guard, Test, and CI rows above are the real enforcement.
 
 ## Verification
 

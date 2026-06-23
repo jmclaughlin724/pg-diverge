@@ -1,21 +1,14 @@
 export function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
   let start = 0;
-  const state: SqlScanState = {
-    blockCommentDepth: 0,
-    dollarTag: "",
-    inDoubleQuote: false,
-    inEscapeString: false,
-    inLineComment: false,
-    inSingleQuote: false,
-  };
+  const state = createSqlLexicalScanState();
   for (let index = 0; index < sql.length; index += 1) {
-    const advanced = advanceSqlStatementScan(sql, index, state);
+    const advanced = advanceSqlLexicalScan(sql, index, state);
     if (advanced !== index) {
       index = advanced;
       continue;
     }
-    if (isSqlStatementScanProtected(state)) {
+    if (isSqlLexicalScanProtected(state)) {
       continue;
     }
     if (sql[index] === ";") {
@@ -33,7 +26,7 @@ export function splitSqlStatements(sql: string): string[] {
   return statements;
 }
 
-interface SqlScanState {
+interface SqlLexicalScanState {
   blockCommentDepth: number;
   dollarTag: string;
   inDoubleQuote: boolean;
@@ -42,7 +35,79 @@ interface SqlScanState {
   inSingleQuote: boolean;
 }
 
-function advanceSqlStatementScan(sql: string, index: number, state: SqlScanState): number {
+function createSqlLexicalScanState(): SqlLexicalScanState {
+  return {
+    blockCommentDepth: 0,
+    dollarTag: "",
+    inDoubleQuote: false,
+    inEscapeString: false,
+    inLineComment: false,
+    inSingleQuote: false,
+  };
+}
+
+export interface SqlParenRange {
+  close: number;
+  open: number;
+}
+
+export function findSqlParenRange(input: string, from: number): SqlParenRange | undefined {
+  const open = findSqlChar(input, "(", from);
+  if (open === -1) {
+    return;
+  }
+  const close = findMatchingSqlParen(input, open);
+  if (close === -1) {
+    return;
+  }
+  return { close, open };
+}
+
+function findSqlChar(input: string, target: string, from: number): number {
+  const state = createSqlLexicalScanState();
+  let index = from;
+  while (index < input.length) {
+    const advanced = advanceSqlLexicalScan(input, index, state);
+    if (advanced !== index) {
+      index = advanced + 1;
+      continue;
+    }
+    if (!isSqlLexicalScanProtected(state) && input[index] === target) {
+      return index;
+    }
+    index += 1;
+  }
+  return -1;
+}
+
+function findMatchingSqlParen(input: string, openIndex: number): number {
+  const state = createSqlLexicalScanState();
+  let depth = 0;
+  let index = openIndex;
+  while (index < input.length) {
+    const advanced = advanceSqlLexicalScan(input, index, state);
+    if (advanced !== index) {
+      index = advanced + 1;
+      continue;
+    }
+    if (!isSqlLexicalScanProtected(state)) {
+      const char = input[index] ?? "";
+      if (char === "(") {
+        depth += 1;
+      }
+      if (char === ")") {
+        depth -= 1;
+        if (depth === 0) {
+          return index;
+        }
+      }
+    }
+    index += 1;
+  }
+  return -1;
+}
+
+function advanceSqlLexicalScan(sql: string, index: number, state: SqlLexicalScanState): number {
   return (
     advanceLineComment(sql, index, state) ??
     advanceBlockComment(sql, index, state) ??
@@ -54,7 +119,7 @@ function advanceSqlStatementScan(sql: string, index: number, state: SqlScanState
   );
 }
 
-function isSqlStatementScanProtected(state: SqlScanState): boolean {
+function isSqlLexicalScanProtected(state: SqlLexicalScanState): boolean {
   return (
     state.inLineComment ||
     state.blockCommentDepth > 0 ||
@@ -64,7 +129,11 @@ function isSqlStatementScanProtected(state: SqlScanState): boolean {
   );
 }
 
-function advanceLineComment(sql: string, index: number, state: SqlScanState): number | undefined {
+function advanceLineComment(
+  sql: string,
+  index: number,
+  state: SqlLexicalScanState
+): number | undefined {
   if (!state.inLineComment) {
     return;
   }
@@ -74,7 +143,11 @@ function advanceLineComment(sql: string, index: number, state: SqlScanState): nu
   return index;
 }
 
-function advanceBlockComment(sql: string, index: number, state: SqlScanState): number | undefined {
+function advanceBlockComment(
+  sql: string,
+  index: number,
+  state: SqlLexicalScanState
+): number | undefined {
   if (state.blockCommentDepth === 0) {
     return;
   }
@@ -91,7 +164,11 @@ function advanceBlockComment(sql: string, index: number, state: SqlScanState): n
   return index;
 }
 
-function advanceDollarQuote(sql: string, index: number, state: SqlScanState): number | undefined {
+function advanceDollarQuote(
+  sql: string,
+  index: number,
+  state: SqlLexicalScanState
+): number | undefined {
   if (!state.dollarTag) {
     return;
   }
@@ -103,7 +180,11 @@ function advanceDollarQuote(sql: string, index: number, state: SqlScanState): nu
   return index;
 }
 
-function advanceSingleQuote(sql: string, index: number, state: SqlScanState): number | undefined {
+function advanceSingleQuote(
+  sql: string,
+  index: number,
+  state: SqlLexicalScanState
+): number | undefined {
   if (!state.inSingleQuote) {
     return;
   }
@@ -122,7 +203,11 @@ function advanceSingleQuote(sql: string, index: number, state: SqlScanState): nu
   return index;
 }
 
-function advanceDoubleQuote(sql: string, index: number, state: SqlScanState): number | undefined {
+function advanceDoubleQuote(
+  sql: string,
+  index: number,
+  state: SqlLexicalScanState
+): number | undefined {
   if (!state.inDoubleQuote) {
     return;
   }
@@ -140,7 +225,7 @@ function advanceDoubleQuote(sql: string, index: number, state: SqlScanState): nu
 function enterSqlStatementDelimiter(
   sql: string,
   index: number,
-  state: SqlScanState
+  state: SqlLexicalScanState
 ): number | undefined {
   const char = sql[index] ?? "";
   const next = sql[index + 1] ?? "";
@@ -208,22 +293,19 @@ function readDollarTag(sql: string, index: number): string | undefined {
   }
   return sql[cursor] === "$" ? sql.slice(index, cursor + 1) : undefined;
 }
+
 export function splitTopLevel(input: string, separator = ","): string[] {
   const parts: string[] = [];
   let start = 0;
   let depth = 0;
-  const state: TopLevelScanState = {
-    dollarTag: "",
-    inDoubleQuote: false,
-    inSingleQuote: false,
-  };
+  const state = createSqlLexicalScanState();
   for (let index = 0; index < input.length; index += 1) {
-    const advanced = advanceTopLevelScan(input, index, state);
+    const advanced = advanceSqlLexicalScan(input, index, state);
     if (advanced !== index) {
       index = advanced;
       continue;
     }
-    if (isTopLevelScanProtected(state)) {
+    if (isSqlLexicalScanProtected(state)) {
       continue;
     }
     const char = input[index] ?? "";
@@ -245,100 +327,4 @@ export function splitTopLevel(input: string, separator = ","): string[] {
     parts.push(trailing);
   }
   return parts;
-}
-
-interface TopLevelScanState {
-  dollarTag: string;
-  inDoubleQuote: boolean;
-  inSingleQuote: boolean;
-}
-
-function advanceTopLevelScan(input: string, index: number, state: TopLevelScanState): number {
-  return (
-    advanceTopLevelDollarQuote(input, index, state) ??
-    advanceTopLevelSingleQuote(input, index, state) ??
-    advanceTopLevelDoubleQuote(input, index, state) ??
-    enterTopLevelDelimiter(input, index, state) ??
-    index
-  );
-}
-
-function isTopLevelScanProtected(state: TopLevelScanState): boolean {
-  return Boolean(state.dollarTag) || state.inSingleQuote || state.inDoubleQuote;
-}
-
-function advanceTopLevelDollarQuote(
-  input: string,
-  index: number,
-  state: TopLevelScanState
-): number | undefined {
-  if (!state.dollarTag) {
-    return;
-  }
-  if (input.startsWith(state.dollarTag, index)) {
-    const nextIndex = index + state.dollarTag.length - 1;
-    state.dollarTag = "";
-    return nextIndex;
-  }
-  return index;
-}
-
-function advanceTopLevelSingleQuote(
-  input: string,
-  index: number,
-  state: TopLevelScanState
-): number | undefined {
-  if (!state.inSingleQuote) {
-    return;
-  }
-  const char = input[index] ?? "";
-  const next = input[index + 1] ?? "";
-  if (char === "'" && next === "'") {
-    return index + 1;
-  }
-  if (char === "'") {
-    state.inSingleQuote = false;
-  }
-  return index;
-}
-
-function advanceTopLevelDoubleQuote(
-  input: string,
-  index: number,
-  state: TopLevelScanState
-): number | undefined {
-  if (!state.inDoubleQuote) {
-    return;
-  }
-  const char = input[index] ?? "";
-  const next = input[index + 1] ?? "";
-  if (char === '"' && next === '"') {
-    return index + 1;
-  }
-  if (char === '"') {
-    state.inDoubleQuote = false;
-  }
-  return index;
-}
-
-function enterTopLevelDelimiter(
-  input: string,
-  index: number,
-  state: TopLevelScanState
-): number | undefined {
-  const char = input[index] ?? "";
-  if (char === "'") {
-    state.inSingleQuote = true;
-    return index;
-  }
-  if (char === '"') {
-    state.inDoubleQuote = true;
-    return index;
-  }
-  const tag = readDollarTag(input, index);
-  if (tag) {
-    state.dollarTag = tag;
-    return index + tag.length - 1;
-  }
-  return;
 }

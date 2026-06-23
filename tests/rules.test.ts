@@ -2,25 +2,23 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderCheckReport } from "../src/check-reporters.js";
-import { resolveConfig } from "../src/config.js";
+import { renderCheckReport } from "../src/check/report.js";
+import { resolveConfig } from "../src/config/schema.js";
 import type { MigrationOperation, MigrationPlan, SchemaModel, SchemaObject } from "../src/core.js";
-import { runRlsSafetyGate } from "../src/pipeline-services.js";
+import { runRlsSafetyGate } from "../src/pipeline/deploy-safety.js";
 import {
   grantAllPrivilegesRule,
   grantPolicyRule,
   grantToPublicRule,
   hygienePack,
-  listRulePacks,
   migrationSafetyRule,
   policyMissingPredicateRule,
   policyRequiredColumnsRule,
   policyWithoutRlsRule,
-  registerRulePack,
   rlsEnabledNoPolicyRule,
   runRulePacks,
   tableNamingRule,
-} from "../src/rules.js";
+} from "../src/scan/rules.js";
 
 function tableObject(name: string): SchemaObject {
   return {
@@ -65,11 +63,6 @@ describe("rule engine (S0)", () => {
     const diagnostics = tableNamingRule.check({ model: model([tableObject("BadName")]) });
     const out = renderCheckReport("json", [{ diagnostics, file: "schema.sql" }]);
     expect(out).toContain("SUPA_RULE_TABLE_NAMING");
-  });
-
-  it("round-trips packs through the registry", () => {
-    registerRulePack(hygienePack);
-    expect(listRulePacks().some((pack) => pack.id === "hygiene")).toBe(true);
   });
 });
 

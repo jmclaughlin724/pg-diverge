@@ -2,10 +2,10 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { extractSourceModel } from "../src/source.js";
-import { generateDatabaseTypes } from "../src/typegen.js";
-import { collectSchemaShapes } from "../src/typegen-model.js";
-import { generateZodSchemas } from "../src/typegen-zod.js";
+import { extractSourceModel } from "../src/source/extract.js";
+import { generateDatabaseTypes } from "../src/typegen/database.js";
+import { collectSchemaShapes } from "../src/typegen/model.js";
+import { generateZodSchemas } from "../src/typegen/zod.js";
 
 const treeSql = `CREATE SCHEMA app;
 CREATE TYPE app.status AS ENUM ('draft', 'active');

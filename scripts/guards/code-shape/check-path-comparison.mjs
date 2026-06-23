@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { forEachNode, parse, ts } from "../lib/ast-utils.js";
-import { assert, gitTrackedFiles, ok, ROOT, readText } from "../lib/guard-utils.js";
+import { assert, exists, gitTrackedFiles, ok, ROOT, readText } from "../lib/guard-utils.js";
 
 const ALLOWED = new Set(["src/paths.ts"]);
 
@@ -73,7 +73,8 @@ const files = gitTrackedFiles(ROOT).filter(
       file.endsWith(".mts") ||
       file.endsWith(".mjs") ||
       file.endsWith(".js") ||
-      file.endsWith(".cjs"))
+      file.endsWith(".cjs")) &&
+    exists(file, ROOT)
 );
 for (const file of files) {
   scanFile(file, ROOT);

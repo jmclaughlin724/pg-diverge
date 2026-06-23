@@ -1,14 +1,19 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Diagnostic, SchemaModel, SchemaObject } from "../src/core.js";
-import { hygienePack } from "../src/rules.js";
+import { aggregateScanReportFiles, parseScanAggregateArgs } from "../src/scan/aggregate.js";
 import {
   aggregateOptInScanReports,
+  isScanJsonReport,
   renderScan,
   scanBadge,
   scanJsonReport,
   scanModel,
   scoreGrade,
-} from "../src/scan.js";
+} from "../src/scan/model.js";
+import { hygienePack } from "../src/scan/rules.js";
 
 function tableObject(name: string): SchemaObject {
   return {
@@ -76,6 +81,7 @@ describe("scan core (K0)", () => {
     expect(parsed.score).toBe(97);
     expect(parsed.grade).toBe("A");
     expect(parsed.diagnostics[0]?.code).toBe("SUPA_RULE_TABLE_NAMING");
+    expect(isScanJsonReport(parsed)).toBe(true);
   });
 
   it("maps grades across the band", () => {
@@ -163,5 +169,55 @@ describe("scan core (K0)", () => {
     expect(() => aggregateOptInScanReports([], "2026-06-18T00:00:00Z")).toThrow(
       "aggregate requires at least one opt-in scan report"
     );
+  });
+
+  it("aggregates scan report files through the compiled command owner", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-scan-aggregate-"));
+    const input = join(directory, "scan.json");
+    await writeFile(
+      input,
+      `${JSON.stringify(
+        scanJsonReport(
+          {
+            diagnostics: [
+              {
+                code: "SUPA_RULE_TABLE_NAMING",
+                message: "table name should be snake_case",
+                severity: "warning",
+              },
+            ],
+            errorCount: 0,
+            score: 97,
+            warningCount: 1,
+          },
+          "schema.sql"
+        )
+      )}\n`
+    );
+
+    const aggregate = await aggregateScanReportFiles({
+      generatedAt: "2026-06-18T00:00:00Z",
+      inputs: [input],
+    });
+
+    const parsed = JSON.parse(aggregate);
+    expect(parsed).toMatchObject({
+      averageScore: 97,
+      generatedAt: "2026-06-18T00:00:00Z",
+      gradeCounts: { A: 1, B: 0, C: 0, D: 0, F: 0 },
+      sampleCount: 1,
+    });
+  });
+
+  it("parses aggregate command options", () => {
+    expect(
+      parseScanAggregateArgs(["--generated-at", "now", "--out", "out.json", "scan.json"])
+    ).toEqual({
+      generatedAt: "now",
+      inputs: ["scan.json"],
+      out: "out.json",
+    });
+    expect(() => parseScanAggregateArgs([])).toThrow("provide at least one scan JSON report");
+    expect(() => parseScanAggregateArgs(["--out"])).toThrow("--out requires a value");
   });
 });

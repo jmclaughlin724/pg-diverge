@@ -86,7 +86,7 @@ export function check(root = ROOT) {
     "file:scripts/code-atlas/query.mjs",
     "runs_file"
   );
-  hasEdge("file:src/cli.ts", "file:src/cli-diff.ts", "imports_file");
+  hasEdge("file:src/cli.ts", "file:src/cli/diff.ts", "imports_file");
   hasEdge(
     "file:services/agent-mcp/supaschema_agent_mcp/server.py",
     "file:scripts/code-atlas/query.mjs",
@@ -143,7 +143,7 @@ export function check(root = ROOT) {
     search.nodes.some((node) => node.id === "worker_job:supaschema-docs"),
     "search query missing worker"
   );
-  const impact = query("impact", "src/cli-diff.ts");
+  const impact = query("impact", "src/cli/diff.ts");
   assert(
     impact.impactedFiles.some((node) => node.id === "file:src/cli.ts"),
     "impact query must include importer src/cli.ts"

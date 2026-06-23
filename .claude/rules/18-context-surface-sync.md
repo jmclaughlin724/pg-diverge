@@ -40,12 +40,12 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 ## Rules
 
 - `.claude/**` is the canonical authoring surface for maintainer Claude rules, skills, hooks, and agents.
-- `AGENTS.md` is a navigational index for agent entry. It must point to rule owners instead of duplicating durable policy.
+- `AGENTS.md`'s role (short root route map and rule index, not a policy owner) is defined in Rule 17; in this sync matrix it must point to rule owners instead of duplicating durable policy.
 - `CLAUDE.md` MUST import `@AGENTS.md` when maintainer hooks are enabled, so Claude sessions receive the same root operating contract that Codex receives.
 - `.codex/**` and `.agents/**` are generated or native runtime targets only where this rule names them as owners.
 - `scripts/skills/sync-llm.mjs` is the writer for generated LLM mirrors and generated source-repo `.codex/hooks.json`. It MUST validate Claude hook registration, `CLAUDE.md` root-contract import, and response-shape enforcement before rendering Codex hook registration. Do not hand-edit synced copies.
-- Source-repo Claude and Codex shell command tools MUST resolve Bash safety through one context `PreToolUse` hook command: `.claude/hooks/context-pre-tool-use.mjs` for Claude and `.codex/hooks/context-pre-tool-use.mjs` for Codex. Do not register overlapping source-repo `PreToolUse` Bash safety hook commands; dispatch Bash safety inside `scripts/agent-hooks/runner.mjs`.
-- Packaged consumer Codex hook templates MUST keep the standalone `.codex/hooks/general-guard.mjs` Bash safety hook because consumer packages do not include the maintainer context runner path.
+- Rule 22 owns source-repo Claude/Codex hook topology and generated Codex hook registration. This rule owns the sync matrix and boundary routing.
+- Rule 13 owns packaged consumer hook templates, including the standalone `.codex/hooks/general-guard.mjs` Bash safety hook used because consumer packages do not include the maintainer context runner path.
 - `skills/supaschema` is a generated public mirror of `.claude/skills/supaschema`. It is the only supported `npx skills` source in this repository.
 - Consumer-bundled surfaces are deliberately narrow and inactive by default. Do not publish maintainer-only context hooks, optimizer skills, Code Atlas internals, FastMCP development tooling, or agent-development infrastructure without changing Rule 13 and package tests in the same change.
 - Source-repo hook runtime, Claude rules, generated Codex rule mirrors, and `.claude/settings.json` are public branch surfaces when tracked `.codex/hooks.json`, guards, or `AGENTS.md` route to them. Keep personal overlays, optimizer skills, maintainer-only agents, `.codex/config.toml`, Code Atlas internals, MCP/deployment configs, private services, and generated state gitignored.

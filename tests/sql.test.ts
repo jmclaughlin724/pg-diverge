@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { checkMigrationSql } from "../src/check.js";
+import { checkMigrationSql } from "../src/check/migration.js";
 import { diagnostic, formatDiagnostics } from "../src/diagnostics.js";
-import { planSchemaDiff } from "../src/planner.js";
-import { renderMigration } from "../src/render.js";
-import { extractSourceModel } from "../src/source.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
+import { renderMigration } from "../src/render/migration.js";
+import { extractSourceModel } from "../src/source/extract.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { parseSqlAst } from "../src/sql/parser.js";
 import { splitSqlStatements } from "../src/sql/split.js";

@@ -8,6 +8,30 @@ const hedgeWords = ["maybe", "probably", "possibly", "likely", "might", "could",
 const deferralTerms = ["if you want", "would you like", "i can ", "i could ", "let me know"];
 const menuTerms = ["option 1", "option a", "choose", "which approach", "pick one"];
 const directTerms = ["execute", "implement", "fix", "update", "do it", "make the change"];
+const userDecisionTerms = [
+  "approval",
+  "approve",
+  "authorization",
+  "permission",
+  "product scope",
+  "secret",
+  "credentials",
+  "external",
+  "destructive",
+  "irreversible",
+  "cost",
+  "spend",
+];
+const blockerDispositionTerms = [
+  "blocked",
+  "blocker",
+  "requires",
+  "needs",
+  "cannot proceed",
+  "can't proceed",
+  "cannot continue",
+  "can't continue",
+];
 const diagnosticPromptTerms = [
   "why",
   "verify",
@@ -162,12 +186,21 @@ export function decisionMenuAfterDirective(message, state) {
 }
 
 export function deferralLanguage(message) {
-  return deferralTerms.some((term) => lower(message).includes(term))
+  const response = lower(message);
+  return deferralTerms.some((term) => response.includes(term)) &&
+    !isUserOwnedDecisionDisposition(response)
     ? {
         id: "deferral-language",
         message: "The response defers work instead of reporting concrete action or a blocker.",
       }
     : undefined;
+}
+
+function isUserOwnedDecisionDisposition(response) {
+  return (
+    userDecisionTerms.some((term) => response.includes(term)) &&
+    blockerDispositionTerms.some((term) => response.includes(term))
+  );
 }
 
 export function toolFailureWithoutRetry(state) {

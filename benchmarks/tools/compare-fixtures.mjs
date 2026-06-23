@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
 const { makeRealisticSqlFixture, realisticFixtureManifest } = await import(
-  join(packageRoot, "dist/benchmark-fixtures.js")
+  join(packageRoot, "dist/benchmark/fixtures.js")
 );
 
 export async function discoverFixtures(fixtureRoot) {

@@ -49,13 +49,15 @@ Merge JSON files. Do not overwrite existing user hooks or settings. Do not regis
 
 ## Verify
 
-After opt-in installation, run the consumer repo's context checks when they exist:
+After opt-in installation, run the consumer repo's context checks through the package manager selected above when those scripts exist:
 
 ```bash
-pnpm run claude:check
-pnpm run rules:check
-pnpm run skills:check
+npm run claude:check
+npm run rules:check
+npm run skills:check
 ```
+
+Use the matching `pnpm run`, `yarn run`, or `bun run` prefix for pnpm, Yarn, or Bun projects.
 
 If those commands do not exist, run:
 

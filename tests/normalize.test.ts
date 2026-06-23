@@ -2,10 +2,10 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkMigrationSql } from "../src/check.js";
-import { planSchemaDiff } from "../src/planner.js";
-import { renderMigration } from "../src/render.js";
-import { extractSourceModel } from "../src/source.js";
+import { checkMigrationSql } from "../src/check/migration.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
+import { renderMigration } from "../src/render/migration.js";
+import { extractSourceModel } from "../src/source/extract.js";
 
 const messyTree =
   "create   SCHEMA app;\nCREATE TABLE app.t (\n      id   BIGINT primary key,\n  name VARCHAR(20)   default 'x'\n);\ncreate index if not exists t_name_idx on app.t (name);\nREVOKE   usage ON SCHEMA app FROM public;\nREVOKE create ON SCHEMA app FROM public;\n";

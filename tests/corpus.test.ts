@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runCorpus } from "../src/corpus.js";
-import { resolveDatabaseUrl } from "../src/database-url.js";
+import { resolveDatabaseUrl } from "../src/database/url.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 const committedCorpus = resolve(import.meta.dirname, "../corpus/supabase-style");

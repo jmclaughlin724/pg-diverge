@@ -3,6 +3,7 @@ import { sha256, stableJson } from "../hash.js";
 import type { AstNode } from "./ast.js";
 import { asRecord, columnFacts, readArray, readNumber, readString } from "./ast.js";
 import { normalizeSql, objectKey } from "./identifiers.js";
+import { findSqlParenRange } from "./split.js";
 
 export function makeObject(
   ref: ObjectRef,
@@ -87,12 +88,8 @@ export function tableMetadataFromAst(
 
 export function tableElements(createStmt: AstNode, sql: string, byteOffset = 0): TableElement[] {
   const relationLocation = (readNumber(asRecord(createStmt.relation)?.location) ?? 0) - byteOffset;
-  const open = findCharOutsideQuotes(sql, "(", Math.max(relationLocation, 0));
-  if (open === -1) {
-    return [];
-  }
-  const close = findMatchingParen(sql, open);
-  if (close === -1) {
+  const range = findSqlParenRange(sql, Math.max(relationLocation, 0));
+  if (!range) {
     return [];
   }
   const located: { isColumn: boolean; location: number; node: AstNode }[] = [];
@@ -115,7 +112,7 @@ export function tableElements(createStmt: AstNode, sql: string, byteOffset = 0):
   }
   located.sort((left, right) => left.location - right.location);
   return located.map((element, index) => ({
-    end: located[index + 1]?.location ?? close,
+    end: located[index + 1]?.location ?? range.close,
     isColumn: element.isColumn,
     node: element.node,
     start: element.location,
@@ -229,64 +226,4 @@ function stripLeadingIdentifier(text: string): string {
     length += 1;
   }
   return length > 0 ? text.slice(length).trim() : text;
-}
-
-export function findCharOutsideQuotes(input: string, target: string, from: number): number {
-  let index = from;
-  while (index < input.length) {
-    const char = input[index] ?? "";
-    if (isSqlQuote(char)) {
-      index = skipSqlQuoted(input, index, char);
-      continue;
-    }
-    if (char === target) {
-      return index;
-    }
-    index += 1;
-  }
-  return -1;
-}
-
-export function findMatchingParen(input: string, openIndex: number): number {
-  let depth = 0;
-  let index = openIndex;
-  while (index < input.length) {
-    const char = input[index] ?? "";
-    if (isSqlQuote(char)) {
-      index = skipSqlQuoted(input, index, char);
-      continue;
-    }
-    if (char === "(") {
-      depth += 1;
-    }
-    if (char === ")") {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-    }
-    index += 1;
-  }
-  return -1;
-}
-
-function isSqlQuote(char: string): char is "'" | '"' {
-  return char === "'" || char === '"';
-}
-
-function skipSqlQuoted(input: string, start: number, quote: "'" | '"'): number {
-  let index = start + 1;
-  while (index < input.length) {
-    const char = input[index];
-    const next = input[index + 1];
-    if (char === quote && next === quote) {
-      index += 2;
-      continue;
-    }
-    if (char === quote) {
-      return index + 1;
-    }
-    index += 1;
-  }
-  return input.length;
 }

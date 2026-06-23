@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { resolveConfig } from "./config.js";
+import { resolveConfig } from "./config/schema.js";
 import type { CheckOptions, Diagnostic } from "./core.js";
 import { diagnostic } from "./diagnostics.js";
 

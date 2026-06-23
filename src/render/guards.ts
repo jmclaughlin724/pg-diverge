@@ -1,0 +1,176 @@
+import type { MigrationOperation, ObjectRef, SchemaObject } from "../core.js";
+import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
+
+export function ensureSemicolon(sql: string): string {
+  const trimmed = sql.trim();
+  return trimmed.endsWith(";") ? trimmed : `${trimmed};`;
+}
+
+export function quoteLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+export function qualifiedRef(ref: ObjectRef): string {
+  return formatQualifiedName(ref.schema, ref.name);
+}
+
+export function qualifiedTableRef(ref: ObjectRef): string {
+  return formatQualifiedName(ref.schema, ref.table ?? ref.name);
+}
+
+export function renderRename(operation: MigrationOperation): string {
+  const before = requiredBefore(operation);
+  const after = requiredAfter(operation);
+  const oldExists = existsExpression(before);
+  const newExists = existsExpression(after);
+  const renameSql = renderRenameStatement(before.ref, after.ref);
+  const conflict = quoteLiteral(
+    `supaschema rename conflict: both ${before.key} and ${after.key} exist`
+  );
+  return `DO $supaschema$
+BEGIN
+  IF ${oldExists} AND ${newExists} THEN
+    RAISE EXCEPTION ${conflict};
+  ELSIF ${oldExists} THEN
+    ${renameSql}
+  END IF;
+END
+$supaschema$;`;
+}
+
+function renderRenameStatement(before: ObjectRef, after: ObjectRef): string {
+  switch (after.kind) {
+    case "schema":
+      return `ALTER SCHEMA ${quoteIdent(before.name)} RENAME TO ${quoteIdent(after.name)};`;
+    case "table":
+      return `ALTER TABLE ${qualifiedRef(before)} RENAME TO ${quoteIdent(after.name)};`;
+    case "sequence":
+      return `ALTER SEQUENCE ${qualifiedRef(before)} RENAME TO ${quoteIdent(after.name)};`;
+    case "index":
+      return `ALTER INDEX ${qualifiedRef(before)} RENAME TO ${quoteIdent(after.name)};`;
+    case "view":
+      return `ALTER VIEW ${qualifiedRef(before)} RENAME TO ${quoteIdent(after.name)};`;
+    case "materialized-view":
+      return `ALTER MATERIALIZED VIEW ${qualifiedRef(before)} RENAME TO ${quoteIdent(after.name)};`;
+    case "function":
+      return `ALTER FUNCTION ${qualifiedRef(before)}(${before.signature ?? ""}) RENAME TO ${quoteIdent(after.name)};`;
+    case "procedure":
+      return `ALTER PROCEDURE ${qualifiedRef(before)}(${before.signature ?? ""}) RENAME TO ${quoteIdent(after.name)};`;
+    default:
+      throw new Error(`unsupported rename operation for ${after.kind}`);
+  }
+}
+
+function existsExpression(object: SchemaObject): string {
+  const ref = object.ref;
+  if (ref.kind === "schema") {
+    return `EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = ${quoteLiteral(ref.name)})`;
+  }
+  if (ref.kind === "function" || ref.kind === "procedure") {
+    return `pg_catalog.to_regprocedure(${quoteLiteral(`${qualifiedRef(ref)}(${ref.signature ?? ""})`)}) IS NOT NULL`;
+  }
+  return `pg_catalog.to_regclass(${quoteLiteral(qualifiedRef(ref))}) IS NOT NULL`;
+}
+
+export function renderTypeGuard(object: SchemaObject): string {
+  const schema = object.ref.schema ?? "public";
+  const name = object.ref.name;
+  const catalogCheck = `SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = ${quoteLiteral(schema)} AND t.typname = ${quoteLiteral(name)}`;
+  return `DO $supaschema$
+BEGIN
+  IF NOT EXISTS (${catalogCheck}) THEN
+    ${ensureSemicolon(object.sql)}
+  END IF;
+END
+$supaschema$;`;
+}
+
+export function renderFdwGuard(object: SchemaObject): string {
+  const catalogCheck = `SELECT 1 FROM pg_catalog.pg_foreign_data_wrapper WHERE fdwname = ${quoteLiteral(object.ref.name)}`;
+  return `DO $supaschema$
+BEGIN
+  IF NOT EXISTS (${catalogCheck}) THEN
+    ${ensureSemicolon(object.sql)}
+  END IF;
+END
+$supaschema$;`;
+}
+
+export function renderConstraintGuard(object: SchemaObject): string {
+  const schema = object.ref.schema ?? "public";
+  const table = object.ref.table ?? object.ref.name;
+  const name = object.ref.name;
+  return `DO $supaschema$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint c
+    JOIN pg_catalog.pg_class r ON r.oid = c.conrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+    WHERE n.nspname = ${quoteLiteral(schema)}
+      AND r.relname = ${quoteLiteral(table)}
+      AND c.conname = ${quoteLiteral(name)}
+  ) THEN
+    ${ensureSemicolon(object.sql)}
+  END IF;
+END
+$supaschema$;`;
+}
+
+export function renderGrantDrop(object: SchemaObject): string {
+  const verb = object.metadata.verb;
+  const privileges = object.metadata.privileges;
+  const kindPhrase = object.metadata.kindPhrase;
+  const target = object.metadata.target;
+  const grantee = object.metadata.grantee;
+  if (
+    verb !== "GRANT" ||
+    !Array.isArray(privileges) ||
+    typeof kindPhrase !== "string" ||
+    typeof target !== "string" ||
+    typeof grantee !== "string"
+  ) {
+    return `-- Manual privilege removal required for ${object.key}`;
+  }
+  const role = grantee === "PUBLIC" ? "PUBLIC" : quoteIdent(grantee);
+  return `REVOKE ${privileges.map(String).join(", ")} ON ${kindPhrase} ${target} FROM ${role};`;
+}
+
+export function renderDefaultPrivilegeDrop(object: SchemaObject): string {
+  const verb = object.metadata.verb;
+  const privileges = object.metadata.privileges;
+  const objectType = object.metadata.objectType;
+  const grantee = object.metadata.grantee;
+  if (
+    verb !== "GRANT" ||
+    !Array.isArray(privileges) ||
+    typeof objectType !== "string" ||
+    typeof grantee !== "string"
+  ) {
+    return `-- Manual privilege removal required for ${object.key}`;
+  }
+  const forRole = typeof object.metadata.forRole === "string" ? object.metadata.forRole : undefined;
+  const schema = typeof object.metadata.schema === "string" ? object.metadata.schema : undefined;
+  const role = grantee === "PUBLIC" ? "PUBLIC" : quoteIdent(grantee);
+  const clauses = [
+    "ALTER DEFAULT PRIVILEGES",
+    forRole ? `FOR ROLE ${quoteIdent(forRole)}` : "",
+    schema ? `IN SCHEMA ${quoteIdent(schema)}` : "",
+    `REVOKE ${privileges.map(String).join(", ")} ON ${objectType} FROM ${role}`,
+  ].filter(Boolean);
+  return `${clauses.join(" ")};`;
+}
+
+function requiredBefore(operation: MigrationOperation): SchemaObject {
+  if (!operation.before) {
+    throw new Error(`operation ${operation.key} has no before object`);
+  }
+  return operation.before;
+}
+
+function requiredAfter(operation: MigrationOperation): SchemaObject {
+  if (!operation.after) {
+    throw new Error(`operation ${operation.key} has no after object`);
+  }
+  return operation.after;
+}

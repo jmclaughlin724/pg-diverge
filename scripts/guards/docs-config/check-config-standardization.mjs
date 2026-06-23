@@ -155,36 +155,36 @@ export function check(root = process.cwd()) {
   const mirror = read(root, "bin/config-contract.mjs");
   assert(
     mirror.startsWith("const contract = JSON.parse(`"),
-    "bin/config-contract.mjs must be generated from src/config-contract.ts"
+    "bin/config-contract.mjs must be generated from src/config/contract.ts"
   );
 
-  const configSource = read(root, "src/config.ts");
+  const configSource = read(root, "src/config/schema.ts");
   assert(
     configSource.includes("createInstalledConfig()"),
-    "src/config.ts defaultConfigFile must come from createInstalledConfig()"
+    "src/config/schema.ts defaultConfigFile must come from createInstalledConfig()"
   );
   for (const forbidden of ["normalizeAdapter"]) {
     assert(
       !configSource.includes(forbidden),
-      `src/config.ts must not preserve adapter compatibility (${forbidden})`
+      `src/config/schema.ts must not preserve adapter compatibility (${forbidden})`
     );
   }
   assert(
     !configSource.includes("supaschema.config.mjs"),
-    "src/config.ts must not load JavaScript config files"
+    "src/config/schema.ts must not load JavaScript config files"
   );
 
-  const contractSource = read(root, "src/config-contract.ts");
+  const contractSource = read(root, "src/config/contract.ts");
   for (const forbidden of ["normalizeAdapter", "auto_local", "auto_targets"]) {
     assert(
       !contractSource.includes(forbidden),
-      `src/config-contract.ts must not preserve removed config compatibility (${forbidden})`
+      `src/config/contract.ts must not preserve removed config compatibility (${forbidden})`
     );
   }
   assert(
     contractSource.includes('next.migration_sync === "explicit_request_only"') &&
       contractSource.includes("MigrationSyncPolicy.Manual"),
-    "src/config-contract.ts must repair removed migration_sync scaffold values to manual"
+    "src/config/contract.ts must repair removed migration_sync scaffold values to manual"
   );
   assert(
     mirror.includes('next.migration_sync === "explicit_request_only"') &&
@@ -192,11 +192,11 @@ export function check(root = process.cwd()) {
     "bin/config-contract.mjs must mirror removed migration_sync scaffold repair"
   );
 
-  const cliReportsSource = read(root, "src/cli-reports.ts");
+  const cliReportsSource = read(root, "src/cli/reports.ts");
   for (const forbidden of ['.option("--local"', '.option("--remote"']) {
     assert(
       !cliReportsSource.includes(forbidden),
-      `src/cli-reports.ts must not expose removed sync compatibility alias ${forbidden}`
+      `src/cli/reports.ts must not expose removed sync compatibility alias ${forbidden}`
     );
   }
 }

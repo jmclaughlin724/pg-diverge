@@ -8,7 +8,7 @@ import {
   detectMigrationSystems,
   renderReadiness,
 } from "../src/onboard.js";
-import type { ScanResult } from "../src/scan.js";
+import type { ScanResult } from "../src/scan/model.js";
 
 function scanResult(score: number, findings: number): ScanResult {
   return {

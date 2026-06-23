@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MODEL_FORMAT_VERSION } from "../src/hash.js";
-import { extractSourceModel } from "../src/source.js";
+import { extractSourceModel } from "../src/source/extract.js";
 
 describe("model format versioning", () => {
   it("stamps extracted models with the current format version", async () => {

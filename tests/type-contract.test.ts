@@ -2,10 +2,10 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config.js";
-import { runTypeSafetyGate } from "../src/pipeline-services.js";
-import { diffTypeContract } from "../src/type-contract.js";
-import type { ColumnShape, SchemaEntry, SchemaShapes, TableShape } from "../src/typegen-model.js";
+import { resolveConfig } from "../src/config/schema.js";
+import { diffTypeContract } from "../src/contract/type-diff.js";
+import { runTypeSafetyGate } from "../src/pipeline/type-safety.js";
+import type { ColumnShape, SchemaEntry, SchemaShapes, TableShape } from "../src/typegen/model.js";
 
 function column(name: string, type: string, notNull = false): ColumnShape {
   return { name, notNull, type };

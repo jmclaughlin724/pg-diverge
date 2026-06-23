@@ -43,7 +43,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "supaschema": "bin/supaschema.cjs"
+    "supaschema": "dist/cli.js"
   },
   "directories": {
     "doc": "docs",
@@ -52,7 +52,8 @@
   },
   "files": [
     "agent-bundle",
-    "bin",
+    "bin/config-contract.mjs",
+    "bin/scaffold.mjs",
     "supaschema-config.schema.json",
     "dist",
     "LICENSE",
@@ -64,9 +65,9 @@
     "bench:plot": "node benchmarks/plot.js",
     "bench:plot:docs": "node benchmarks/plot.js benchmarks/results/comparison.json benchmarks/results/comparison-realistic.json benchmarks/results/comparison-xl.json benchmarks/results/comparison-xxl.json --charts-dir docs/images/benchmarks && npm run bench:plot:headtohead",
     "bench:plot:headtohead": "node benchmarks/plot-head-to-head.js --bars-only benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-xl-bars.svg && node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-xl.svg && node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xxl.json docs/images/benchmarks/head-to-head-xxl.svg && node benchmarks/plot-head-to-head.js --workflow benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-workflow-xl.svg",
-    "bench:scan-aggregate": "npm run build && node benchmarks/tools/aggregate-scan-reports.mjs",
-    "benchmark": "npm run build && node dist/benchmark.js",
-    "build": "tsc -p tsconfig.src.json && node dist/config-schema-gen.js",
+    "bench:scan-aggregate": "npm run build && node dist/scan/aggregate.js",
+    "benchmark": "npm run build && node dist/benchmark/run.js",
+    "build": "node scripts/clean-dist.mjs && tsc -b tsconfig.src.json --force && node dist/config/schema-gen.js",
     "catalog:check": "node scripts/guards/deps/check-dependency-catalog.mjs",
     "changeset": "changeset",
     "check": "npm run build && npm run lint && npm run typecheck && npm test",

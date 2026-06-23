@@ -301,7 +301,7 @@ describe("sync:llm", () => {
     expect(read(root, "agent-bundle/codex/hooks.bun.json")).not.toContain(
       "bunx --no-install supaschema"
     );
-    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("bin/supaschema.cjs");
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("/bin/");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain(
       "supaschema-source-hook.mjs"
     );

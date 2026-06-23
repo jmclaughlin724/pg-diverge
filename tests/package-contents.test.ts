@@ -32,6 +32,10 @@ function packageBinPath(): string {
 }
 
 describe("npm package contents", () => {
+  it("publishes the compiled CLI as the package binary", () => {
+    expect(packageBinPath()).toBe("dist/cli.js");
+  });
+
   it("keeps the generated install-time config contract executable", async () => {
     const mirror = await import(
       pathToFileURL(resolve(import.meta.dirname, "../bin/config-contract.mjs")).href
@@ -67,7 +71,6 @@ describe("npm package contents", () => {
     expect(readmes, "only the root README should ship").toEqual(["README.md"]);
 
     const required = [
-      "dist/cli.js",
       "dist/index.js",
       "dist/index.d.ts",
       packageBinPath(),
@@ -96,7 +99,10 @@ describe("npm package contents", () => {
     for (const entry of required) {
       expect(paths, `missing required package file: ${entry}`).toContain(entry);
     }
-    expect(paths, "legacy extensionless bin wrapper must not ship").not.toContain("bin/supaschema");
+    expect(
+      paths.filter((path) => path.startsWith("bin/")).sort(),
+      "package bin directory should only ship install/config helpers"
+    ).toEqual(["bin/config-contract.mjs", "bin/scaffold.mjs"]);
     expect(paths, "postinstall lifecycle setup must not ship").not.toContain("bin/postinstall.mjs");
     const forbiddenInternalAgentPrefixes = [
       ".claude/hooks/context-",

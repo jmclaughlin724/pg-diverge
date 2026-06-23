@@ -67,44 +67,6 @@
           }
         }
       }
-    },
-    {
-      "includes": [
-        "benchmarks/compare.js",
-        "benchmarks/plot-svg.js",
-        "scripts/check-docs-standard.mjs",
-        "scripts/code-atlas/build.mjs",
-        "scripts/code-atlas/query.mjs",
-        "src/catalog-foreign.ts",
-        "src/check.ts",
-        "src/cli-diff.ts",
-        "src/diff-score.ts",
-        "src/doctor.ts",
-        "src/plan-order.ts",
-        "src/planner-table.ts",
-        "src/planner.ts",
-        "src/source-normalize.ts",
-        "src/sql/extract.ts",
-        "src/sql/facts.ts",
-        "src/sql/split.ts",
-        "src/sql/statements.ts",
-        "src/typegen-model.ts",
-        "src/typegen-zod.ts",
-        "src/typegen.ts",
-        "src/verify.ts"
-      ],
-      "linter": {
-        "rules": {
-          "complexity": {
-            "noExcessiveCognitiveComplexity": {
-              "level": "error",
-              "options": {
-                "maxAllowedComplexity": 65
-              }
-            }
-          }
-        }
-      }
     }
   ]
 }

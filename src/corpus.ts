@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { checkMigrationSql } from "./check.js";
-import { resolveConfig } from "./config.js";
+import { checkMigrationSql } from "./check/migration.js";
+import { resolveConfig } from "./config/schema.js";
 import type { Diagnostic, SupaschemaConfig } from "./core.js";
 import {
   applyMigrationSql,
@@ -10,11 +10,11 @@ import {
   catalogFingerprint,
   createTemporaryDatabases,
   dropTemporaryDatabases,
-} from "./db-admin.js";
+} from "./database/admin.js";
 import { diagnostic, hasErrors } from "./diagnostics.js";
-import { planSchemaDiff } from "./planner.js";
-import { renderMigrationSplit } from "./render.js";
-import { extractSourceModel } from "./source.js";
+import { planSchemaDiff } from "./planner/schema.js";
+import { renderMigrationSplit } from "./render/migration.js";
+import { extractSourceModel } from "./source/extract.js";
 
 export interface CorpusOptions {
   corpusDir: string;

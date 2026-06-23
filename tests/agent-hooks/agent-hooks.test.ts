@@ -428,7 +428,7 @@ describe("agent hook configuration", () => {
     expect(JSON.stringify(config)).not.toContain("block-generated-migration-edits.mjs");
     expect(JSON.stringify(config)).not.toContain("auto-diff-on-schema-change.mjs");
     expect(JSON.stringify(config)).toContain("supaschema-source-hook.mjs");
-    expect(JSON.stringify(config)).not.toContain("bin/supaschema.cjs");
+    expect(JSON.stringify(config)).not.toContain("/bin/");
     expect(JSON.stringify(config)).toContain("functions\\\\.apply_patch");
     expect(preToolUseText).toContain("functions\\\\.exec_command");
     expect(preToolUseText).toContain("exec_command");
@@ -805,7 +805,7 @@ describe("claude generated-migration edit hook", () => {
         tool_input: { file_path: `${handAuthored}.missing.sql` },
         tool_name: "Write",
       },
-      { tool_input: { file_path: "src/render.ts" }, tool_name: "Edit" },
+      { tool_input: { file_path: "src/render/migration.ts" }, tool_name: "Edit" },
       { tool_input: { command: "ls" }, tool_name: "Bash" },
     ]) {
       const result = await runHook(script, payload);
@@ -1062,7 +1062,7 @@ describe.skipIf(!hasPrivateContextHooks)("agent-hooks response-evidence recordin
       { prompt: "review these hooks", session_id: session },
       stateDir
     );
-    for (const cmd of ["sed -n '1,260p' src/cli.ts", "sed -n '1,260p' src/cli-tools.ts"]) {
+    for (const cmd of ["sed -n '1,260p' src/cli.ts", "sed -n '1,260p' src/cli/tools.ts"]) {
       runHookEventWithState(
         "PostToolUse",
         {

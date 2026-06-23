@@ -13,7 +13,7 @@ Maintainer scripts: guards, agent-hook runtime, agent-surface sync, docs linting
 ## Top-level scripts
 
 - `check-docs-standard.mjs` — docs authoring standard (`npm run docs:lint`)
-- `check-schema.mjs`, `format-*.mjs` — schema generation and per-language formatters
+- `clean-dist.mjs`, `check-schema.mjs`, `format-*.mjs` — generated output cleanup, schema generation, and per-language formatters
 
 ## Owners
 

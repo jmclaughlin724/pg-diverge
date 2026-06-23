@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../src/core.js";
-import { resolveDatabaseUrl } from "../src/database-url.js";
-import { planSchemaDiff } from "../src/planner.js";
+import { resolveDatabaseUrl } from "../src/database/url.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
-import { verifyMigration } from "../src/verify.js";
+import { verifyMigration } from "../src/verify/migration.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 

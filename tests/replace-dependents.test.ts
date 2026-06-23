@@ -2,9 +2,9 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { planSchemaDiff } from "../src/planner.js";
-import { renderMigration } from "../src/render.js";
-import { extractSourceModel } from "../src/source.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
+import { renderMigration } from "../src/render/migration.js";
+import { extractSourceModel } from "../src/source/extract.js";
 
 const dependents = [
   "ALTER TABLE app.t ADD CONSTRAINT t_value_check CHECK (value > 0);",

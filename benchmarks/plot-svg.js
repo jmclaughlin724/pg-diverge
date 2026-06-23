@@ -178,102 +178,149 @@ function pushHeadToHeadCells(parts, group, { f1ColX, replayColX, y }) {
   parts.push(passFailChip(replayColX, y - 2, group.twice, group.total));
 }
 
-export function renderHeadToHeadSvg(rows, fixture, environments, options = {}) {
-  const groups = headToHeadGroups(rows);
-
+function headToHeadLayout(groups, options) {
   const showMetricColumns = options.showMetricColumns !== false;
-  const showSpeedup = options.showSpeedup !== false;
   const width = 1000;
   const margin = 36;
-  const labelX = margin;
   const x0 = 232;
-  const chartWidth = showMetricColumns ? 400 : width - margin - x0;
-  const f1ColX = 700;
-  const replayColX = 845;
   const headerBottom = 118;
   const top = headerBottom + 32;
-  const barHeight = options.barHeight ?? 20;
-  const barRadius = options.barRadius ?? 5;
-  const badgeText = options.badgeText;
-  const headerSize = options.headerSize ?? 11.5;
   const rowHeight = options.rowHeight ?? 50;
-  const rowLabelSize = options.rowLabelSize ?? 13;
-  const subtitleSize = options.subtitleSize ?? 12.5;
-  const subtitleMaxChars = options.subtitleMaxChars ?? (badgeText ? 72 : 96);
-  const tickFill = options.tickFill ?? theme.muted;
-  const tickSize = options.tickSize ?? 11;
-  const titleSize = options.titleSize ?? 22;
-  const valueLabelSize = options.valueLabelSize ?? 12;
   const plotBottom = top + groups.length * rowHeight - 12;
-  const height = plotBottom + 76;
+  return {
+    barHeight: options.barHeight ?? 20,
+    barRadius: options.barRadius ?? 5,
+    chartWidth: showMetricColumns ? 400 : width - margin - x0,
+    f1ColX: 700,
+    headerSize: options.headerSize ?? 11.5,
+    height: plotBottom + 76,
+    labelX: margin,
+    margin,
+    plotBottom,
+    replayColX: 845,
+    rowHeight,
+    rowLabelSize: options.rowLabelSize ?? 13,
+    showMetricColumns,
+    showSpeedup: options.showSpeedup !== false,
+    subtitleSize: options.subtitleSize ?? 12.5,
+    tickFill: options.tickFill ?? theme.muted,
+    tickSize: options.tickSize ?? 11,
+    titleSize: options.titleSize ?? 22,
+    top,
+    valueLabelSize: options.valueLabelSize ?? 12,
+    width,
+    x0,
+  };
+}
 
-  const { domainMax, slowestSupa, speedup } = latencyMetrics(groups);
-  const xFor = (value) => x0 + (Math.max(0, value) / domainMax) * chartWidth;
+function headToHeadHeaders(layout, options) {
+  if (!layout.showMetricColumns) {
+    return [[options.latencyHeader ?? "median diff", layout.x0, "start"]];
+  }
+  return [
+    [options.latencyHeader ?? "median diff", layout.x0, "start"],
+    ["accuracy (F1)", layout.f1ColX + 60, "middle"],
+    ["replay-safe", layout.replayColX + 60, "middle"],
+  ];
+}
 
-  const title = options.title ?? "supaschema vs diff engines";
-  const subtitleSource =
-    options.subtitle ??
-    (showMetricColumns
-      ? "Median diff latency (linear, lower is better) · accuracy F1 vs ground truth · replay-safe = migration applies twice"
-      : "Median diff latency (linear, lower is better)");
-  const subtitleLines = splitSubtitle(subtitleSource, subtitleMaxChars);
-
-  const parts = [
-    svgHeader(width, height, title),
+function pushHeadToHeadIntro(parts, layout, title, subtitleLines, speedup, options) {
+  parts.push(
+    svgHeader(layout.width, layout.height, title),
     defs(),
     `<rect fill="${theme.bg}" height="100%" rx="14" width="100%" />`,
-    text(labelX, 52, title, { fill: theme.title, size: titleSize, weight: "700" }),
-  ];
-  if (badgeText) {
-    parts.push(tableCountBadge(width - margin, badgeText, options.badgeSize ?? 18));
+    text(layout.labelX, 52, title, { fill: theme.title, size: layout.titleSize, weight: "700" })
+  );
+  if (options.badgeText) {
+    parts.push(
+      tableCountBadge(layout.width - layout.margin, options.badgeText, options.badgeSize ?? 18)
+    );
   }
   for (const [index, line] of subtitleLines.entries()) {
-    parts.push(text(labelX, 84 + index * 18, line, { fill: theme.subtitle, size: subtitleSize }));
-  }
-  if (showSpeedup && speedup >= 2) {
-    parts.push(speedupChip(width - margin, `up to ${speedup}× faster`, 16.5));
-  }
-
-  const headers = showMetricColumns
-    ? [
-        [options.latencyHeader ?? "median diff", x0, "start"],
-        ["accuracy (F1)", f1ColX + 60, "middle"],
-        ["replay-safe", replayColX + 60, "middle"],
-      ]
-    : [[options.latencyHeader ?? "median diff", x0, "start"]];
-  for (const [header, columnX, anchor] of headers) {
     parts.push(
-      text(columnX, top - 18, header, {
+      text(layout.labelX, 84 + index * 18, line, {
+        fill: theme.subtitle,
+        size: layout.subtitleSize,
+      })
+    );
+  }
+  if (layout.showSpeedup && speedup >= 2) {
+    parts.push(speedupChip(layout.width - layout.margin, `up to ${speedup}× faster`, 16.5));
+  }
+}
+
+function pushHeadToHeadHeaders(parts, layout, options) {
+  for (const [header, columnX, anchor] of headToHeadHeaders(layout, options)) {
+    parts.push(
+      text(columnX, layout.top - 18, header, {
         anchor,
         fill: theme.muted,
-        size: headerSize,
+        size: layout.headerSize,
         weight: "600",
       })
     );
   }
+}
 
-  pushTickGrid(parts, { domainMax, plotBottom, tickFill, tickSize, top, xFor });
-
+function pushHeadToHeadRows(parts, groups, layout, slowestSupa, xFor) {
   for (const [index, group] of groups.entries()) {
-    const y = top + index * rowHeight;
+    const y = layout.top + index * layout.rowHeight;
     pushLatencyRow(parts, group, {
-      barHeight,
-      barRadius,
-      labelX,
-      rowLabelSize,
+      barHeight: layout.barHeight,
+      barRadius: layout.barRadius,
+      labelX: layout.labelX,
+      rowLabelSize: layout.rowLabelSize,
       slowestSupa,
-      valueLabelSize,
-      x0,
+      valueLabelSize: layout.valueLabelSize,
+      x0: layout.x0,
       xFor,
       y,
     });
-    if (showMetricColumns) {
-      pushHeadToHeadCells(parts, group, { f1ColX, replayColX, y });
+    if (layout.showMetricColumns) {
+      pushHeadToHeadCells(parts, group, {
+        f1ColX: layout.f1ColX,
+        replayColX: layout.replayColX,
+        y,
+      });
     }
   }
+}
+
+export function renderHeadToHeadSvg(rows, fixture, environments, options = {}) {
+  const groups = headToHeadGroups(rows);
+  const layout = headToHeadLayout(groups, options);
+  const badgeText = options.badgeText;
+  const subtitleMaxChars = options.subtitleMaxChars ?? (badgeText ? 72 : 96);
+
+  const { domainMax, slowestSupa, speedup } = latencyMetrics(groups);
+  const xFor = (value) => layout.x0 + (Math.max(0, value) / domainMax) * layout.chartWidth;
+
+  const title = options.title ?? "supaschema vs diff engines";
+  const subtitleSource =
+    options.subtitle ??
+    (layout.showMetricColumns
+      ? "Median diff latency (linear, lower is better) · accuracy F1 vs ground truth · replay-safe = migration applies twice"
+      : "Median diff latency (linear, lower is better)");
+  const subtitleLines = splitSubtitle(subtitleSource, subtitleMaxChars);
+
+  const parts = [];
+  pushHeadToHeadIntro(parts, layout, title, subtitleLines, speedup, options);
+  pushHeadToHeadHeaders(parts, layout, options);
+  pushTickGrid(parts, {
+    domainMax,
+    plotBottom: layout.plotBottom,
+    tickFill: layout.tickFill,
+    tickSize: layout.tickSize,
+    top: layout.top,
+    xFor,
+  });
+  pushHeadToHeadRows(parts, groups, layout, slowestSupa, xFor);
 
   parts.push(
-    text(labelX, height - 22, envFooter(environments, fixture), { fill: theme.muted, size: 11 }),
+    text(layout.labelX, layout.height - 22, envFooter(environments, fixture), {
+      fill: theme.muted,
+      size: 11,
+    }),
     svgFooter()
   );
   return parts.join("\n");

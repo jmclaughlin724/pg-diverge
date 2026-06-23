@@ -4,31 +4,6 @@ import { fileURLToPath } from "node:url";
 import { forEachNode, parseScript, ts } from "../lib/ast-utils.js";
 import { assert, exists, gitFiles, ok, ROOT, readJson, readText } from "../lib/guard-utils.js";
 
-const complexityCapIncludes = [
-  "benchmarks/compare.js",
-  "benchmarks/plot-svg.js",
-  "scripts/check-docs-standard.mjs",
-  "scripts/code-atlas/build.mjs",
-  "scripts/code-atlas/query.mjs",
-  "src/catalog-foreign.ts",
-  "src/check.ts",
-  "src/cli-diff.ts",
-  "src/diff-score.ts",
-  "src/doctor.ts",
-  "src/plan-order.ts",
-  "src/planner-table.ts",
-  "src/planner.ts",
-  "src/source-normalize.ts",
-  "src/sql/extract.ts",
-  "src/sql/facts.ts",
-  "src/sql/split.ts",
-  "src/sql/statements.ts",
-  "src/typegen-model.ts",
-  "src/typegen-zod.ts",
-  "src/typegen.ts",
-  "src/verify.ts",
-];
-
 const toolPins = {
   "@biomejs/biome": "2.5.0",
   "@vitest/coverage-v8": "4.1.9",
@@ -50,21 +25,27 @@ function isRelativeTsModuleSpecifier(value) {
   return typeof value === "string" && value.startsWith(".") && value.endsWith(".ts");
 }
 
-function hasRelativeTsImport(file, root) {
+function moduleSpecifierFlags(file, root) {
   const source = parseScript(readText(file, root), file);
-  let found = false;
-  forEachNode(source, (node) => {
-    if (isRelativeTsModuleSpecifier(staticModuleSpecifier(node))) {
-      found = true;
+  const flags = { generatedDist: false, relativeTs: false };
+  const visitSpecifier = (value) => {
+    if (isRelativeTsModuleSpecifier(value)) {
+      flags.relativeTs = true;
     }
+    if (isGeneratedDistModuleSpecifier(value)) {
+      flags.generatedDist = true;
+    }
+  };
+  forEachNode(source, (node) => {
+    visitSpecifier(staticModuleSpecifier(node));
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const [argument] = node.arguments;
-      if (ts.isStringLiteral(argument) && isRelativeTsModuleSpecifier(argument.text)) {
-        found = true;
+      if (ts.isStringLiteral(argument)) {
+        visitSpecifier(argument.text);
       }
     }
   });
-  return found;
+  return flags;
 }
 
 function assertAgentPackageSurface(files) {
@@ -81,6 +62,12 @@ function assertAgentPackageSurface(files) {
 }
 
 function assertRuntimePackageSurface(files) {
+  assert(!files.includes("bin"), "package.json must list bin helper files, not the whole bin/");
+  assert(
+    files.includes("bin/config-contract.mjs") && files.includes("bin/scaffold.mjs"),
+    "package.json must publish only the required bin helper files"
+  );
+
   const forbiddenPackagePrefixes = [
     "benchmarks",
     "corpus",
@@ -102,6 +89,18 @@ function assertRuntimePackageSurface(files) {
   }
 }
 
+function isJavascriptSourceFile(file) {
+  return [".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"].includes(path.extname(file));
+}
+
+function isGeneratedDistModuleSpecifier(value) {
+  return (
+    typeof value === "string" &&
+    value.startsWith(".") &&
+    value.split("/").some((segment) => segment === "dist")
+  );
+}
+
 function assertNoDisabledBiomeRules(value, rulePath = "linter.rules") {
   if (!value || typeof value !== "object") {
     return;
@@ -121,8 +120,6 @@ function assertBiomeOverrides(overrides) {
   const allowedDisabled = new Map([
     ["src/index.ts", new Set(["linter.rules.performance.noBarrelFile"])],
   ]);
-  let foundComplexityCap = false;
-
   for (const override of overrides) {
     const includes = override.includes ?? [];
     const disabledPaths = disabledBiomeRulePaths(override.linter?.rules ?? {});
@@ -136,18 +133,10 @@ function assertBiomeOverrides(overrides) {
     }
 
     const complexityRule = override.linter?.rules?.complexity?.noExcessiveCognitiveComplexity;
-    if (complexityRule !== undefined) {
-      foundComplexityCap = true;
-      assert(
-        sameStringSet(includes, complexityCapIncludes),
-        "biome.jsonc complexity cap must use the approved mature-baseline file list"
-      );
-      assert(
-        complexityRule.level === "error" && complexityRule.options?.maxAllowedComplexity === 65,
-        "biome.jsonc complexity cap must stay at error level with maxAllowedComplexity 65"
-      );
-      continue;
-    }
+    assert(
+      complexityRule === undefined,
+      "biome.jsonc must inherit Ultracite noExcessiveCognitiveComplexity without a migration cap"
+    );
 
     const isAllowedBarrelOverride = includes.length === 1 && includes[0] === "src/index.ts";
     assert(
@@ -155,8 +144,6 @@ function assertBiomeOverrides(overrides) {
       `biome.jsonc override is not allowed for ${includes.join(", ") || "(none)"}`
     );
   }
-
-  assert(foundComplexityCap, "biome.jsonc must preserve the approved complexity migration cap");
 }
 
 function assertCclspProxyWiring(config) {
@@ -165,14 +152,6 @@ function assertCclspProxyWiring(config) {
   assert(
     javascriptServer.command?.includes("scripts/cclsp-language-id-proxy.mjs"),
     ".claude/cclsp.json must route JS-family LSP through cclsp-language-id-proxy.mjs"
-  );
-}
-
-function sameStringSet(left, right) {
-  return (
-    left.length === right.length &&
-    left.every((value) => right.includes(value)) &&
-    right.every((value) => left.includes(value))
   );
 }
 
@@ -326,11 +305,18 @@ export function check(root = ROOT) {
   }
 
   for (const file of gitFiles(root).filter(
-    (candidate) => candidate.endsWith(".ts") && exists(candidate, root)
+    (candidate) => isJavascriptSourceFile(candidate) && exists(candidate, root)
   )) {
+    const flags = moduleSpecifierFlags(file, root);
+    if (file.endsWith(".ts")) {
+      assert(
+        !flags.relativeTs,
+        `${file} must use emitted-runtime .js specifiers for relative imports`
+      );
+    }
     assert(
-      !hasRelativeTsImport(file, root),
-      `${file} must use emitted-runtime .js specifiers for relative imports`
+      !flags.generatedDist,
+      `${file} must not import generated dist output from active source`
     );
   }
 

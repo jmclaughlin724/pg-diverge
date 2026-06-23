@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { realisticFixtureManifest } from "../src/benchmark-fixtures.js";
-import { scoreDiffOutput } from "../src/diff-score.js";
+import { scoreDiffOutput } from "../src/benchmark/diff-score.js";
+import { realisticFixtureManifest } from "../src/benchmark/fixtures.js";
 
 const manifest = [
   { change: "create", key: "table:app.audit_events" },

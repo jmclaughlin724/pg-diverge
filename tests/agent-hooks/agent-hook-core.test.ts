@@ -627,9 +627,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       tool_input: {
         cmd: [
           "bash -lc \"sed -n '1,120p'",
-          ".claude/skills/code-atlas/SKILL.md",
-          ".claude/skills/optimizer/SKILL.md",
-          '.claude/skills/update/SKILL.md"',
+          ".agents/skills/code-atlas/SKILL.md",
+          ".agents/skills/optimizer/SKILL.md",
+          '.agents/skills/update/SKILL.md"',
         ].join(" "),
       },
       tool_name: "functions.exec_command",
@@ -685,7 +685,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
         {
           session_id: "parallel-skill-loads",
           tool_input: {
-            cmd: `sed -n '1,120p' ${join(root, ".claude/skills/optimizer/SKILL.md")}`,
+            cmd: `sed -n '1,120p' ${join(root, ".agents/skills/optimizer/SKILL.md")}`,
           },
           tool_name: "functions.exec_command",
           turn_id: "turn-a",
@@ -698,7 +698,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
         {
           session_id: "parallel-skill-loads",
           tool_input: {
-            cmd: `sed -n '1,120p' ${join(root, ".claude/skills/code-atlas/SKILL.md")}`,
+            cmd: `sed -n '1,120p' ${join(root, ".agents/skills/code-atlas/SKILL.md")}`,
           },
           tool_name: "functions.exec_command",
           turn_id: "turn-a",
@@ -979,7 +979,12 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       id: "deferral-language",
     });
     expect(
-      deferralLanguage("Tests failed; the next step is to fix src/config.ts.")
+      deferralLanguage("Tests failed; the next step is to fix src/config/schema.ts.")
+    ).toBeUndefined();
+    expect(
+      deferralLanguage(
+        "Blocked: the external deployment needs your approval before I can continue."
+      )
     ).toBeUndefined();
     expect(
       toolFailureWithoutRetry(
@@ -1325,7 +1330,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     const payload = { prompt: "review these hooks", session_id: "source-read-stop" };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
 
-    for (const cmd of ["sed -n '1,260p' src/cli.ts", "sed -n '1,260p' src/cli-tools.ts"]) {
+    for (const cmd of ["sed -n '1,260p' src/cli.ts", "sed -n '1,260p' src/cli/tools.ts"]) {
       handleAgentHookEvent(
         "PostToolUse",
         {
@@ -1555,9 +1560,22 @@ name: code-atlas
 description: Build and query the local Code Atlas.
 metadata:
   keywords:
+    - code atlas
     - code-atlas
+    - code map
+    - repo graph
+    - graph proof
+    - mcp-status
     - scripts
   file-triggers:
+    - scripts/code-atlas/**
+    - .mcp.json
+    - fastmcp.json
+    - services/agent-mcp/**
+    - .claude/rules/10-code-atlas.md
+    - .claude/rules/11-agent-mcp-fastmcp.md
+    - scripts/guards/code-atlas/**
+    - scripts/guards/fastmcp/**
     - scripts/guards/**
 ---
 
@@ -1572,11 +1590,28 @@ name: optimizer
 description: Optimize Claude and Codex hooks, skills, and sync.
 metadata:
   keywords:
+    - agent surface
+    - skill matcher
+    - skill routing
     - hooks
     - claude hooks
     - codex hooks
+    - sync ownership
+    - generated mirrors
+    - package boundary
+    - fastmcp
+    - code atlas
     - hook enforcer
   file-triggers:
+    - .claude/skills/**
+    - .claude/agents/**
+    - .agents/prompts/**
+    - skills/supaschema/**
+    - agent-bundle/**
+    - services/agent-mcp/**
+    - scripts/code-atlas/**
+    - scripts/guards/fastmcp/**
+    - scripts/guards/code-atlas/**
     - .claude/hooks/**
     - .claude/rules/**
     - .codex/hooks/**
@@ -1584,6 +1619,32 @@ metadata:
 ---
 
 # Optimizer
+`
+    ),
+    writeSkill(
+      root,
+      "fastmcp",
+      `---
+name: fastmcp
+description: Maintain the local FastMCP server.
+metadata:
+  keywords:
+    - fastmcp
+    - mcp
+    - repo mcp
+    - agent mcp
+    - supaschema mcp
+  file-triggers:
+    - services/agent-mcp/**
+    - fastmcp.json
+    - .mcp.json
+    - .codex/config.toml
+    - .claude/rules/11-agent-mcp-fastmcp.md
+    - scripts/guards/fastmcp/**
+    - scripts/code-atlas/**
+---
+
+# FastMCP
 `
     ),
     writeSkill(
@@ -1646,7 +1707,6 @@ metadata:
 # Update
 `
     ),
-    write(root, ".agents/skills/code-atlas/SKILL.md", "# Code Atlas\n"),
   ]);
   return root;
 }
@@ -1690,7 +1750,10 @@ function normalizedHookState(turn: Record<string, unknown> = {}) {
 }
 
 async function writeSkill(root: string, name: string, text: string): Promise<void> {
-  await write(root, `.claude/skills/${name}/SKILL.md`, text);
+  await Promise.all([
+    write(root, `.claude/skills/${name}/SKILL.md`, text),
+    write(root, `.agents/skills/${name}/SKILL.md`, text),
+  ]);
 }
 
 async function write(root: string, relativePath: string, text: string): Promise<void> {

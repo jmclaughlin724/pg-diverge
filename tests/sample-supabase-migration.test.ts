@@ -3,18 +3,18 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkMigrationSql } from "../src/check.js";
-import { loadConfig, type SupaschemaConfig } from "../src/config.js";
+import { checkMigrationSql } from "../src/check/migration.js";
+import { loadConfig, type SupaschemaConfig } from "../src/config/schema.js";
 import type { Diagnostic, SchemaModel } from "../src/core.js";
-import { resolveDatabaseUrl } from "../src/database-url.js";
-import { planSchemaDiff } from "../src/planner.js";
-import { renderMigration } from "../src/render.js";
-import { extractSourceModel } from "../src/source.js";
-import { resolveSourceDefaults } from "../src/source-resolve.js";
-import { generateDatabaseTypes } from "../src/typegen.js";
-import { collectSchemaShapes } from "../src/typegen-model.js";
-import { generateZodSchemas } from "../src/typegen-zod.js";
-import { verifyMigration } from "../src/verify.js";
+import { resolveDatabaseUrl } from "../src/database/url.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
+import { renderMigration } from "../src/render/migration.js";
+import { extractSourceModel } from "../src/source/extract.js";
+import { resolveSourceDefaults } from "../src/source/resolve.js";
+import { generateDatabaseTypes } from "../src/typegen/database.js";
+import { collectSchemaShapes } from "../src/typegen/model.js";
+import { generateZodSchemas } from "../src/typegen/zod.js";
+import { verifyMigration } from "../src/verify/migration.js";
 import {
   expectedMigrationFragments,
   expectedTypesFragments,

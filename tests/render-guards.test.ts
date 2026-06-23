@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SchemaModel } from "../src/core.js";
-import { planSchemaDiff } from "../src/planner.js";
-import { renderMigration } from "../src/render.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
+import { renderMigration } from "../src/render/migration.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 import { hasUnqualifiedCatalogName } from "./catalog-qualification.js";
 

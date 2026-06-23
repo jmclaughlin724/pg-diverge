@@ -256,15 +256,18 @@ const collectMdxDescendants = (node, name, matches = []) => {
   return matches;
 };
 
+const pushFrontmatterViolation = (violations, file, msg) => {
+  violations.push({ file, line: 1, rule: "frontmatter", msg });
+};
+
 const readFrontmatter = (tree, file, violations) => {
   const firstNode = tree.children[0];
   if (firstNode?.type !== "yaml" || lineOf(firstNode) !== 1) {
-    violations.push({
+    pushFrontmatterViolation(
+      violations,
       file,
-      line: 1,
-      rule: "frontmatter",
-      msg: "page must open with a YAML frontmatter block (---)",
-    });
+      "page must open with a YAML frontmatter block (---)"
+    );
     return;
   }
 
@@ -272,79 +275,60 @@ const readFrontmatter = (tree, file, violations) => {
   try {
     data = parseYaml(firstNode.value);
   } catch (error) {
-    violations.push({
-      file,
-      line: 1,
-      rule: "frontmatter",
-      msg: `frontmatter is not valid YAML: ${error.message}`,
-    });
+    pushFrontmatterViolation(violations, file, `frontmatter is not valid YAML: ${error.message}`);
     return;
   }
 
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
-    violations.push({
-      file,
-      line: 1,
-      rule: "frontmatter",
-      msg: "frontmatter must be a YAML mapping",
-    });
+    pushFrontmatterViolation(violations, file, "frontmatter must be a YAML mapping");
     return;
   }
+  validateRequiredFrontmatterFields(data, file, violations);
+  validateFrontmatterFieldTypes(data, file, violations);
+  return data;
+};
+
+const validateRequiredFrontmatterFields = (data, file, violations) => {
   if (typeof data.title !== "string" || data.title.trim().length === 0) {
-    violations.push({ file, line: 1, rule: "frontmatter", msg: "missing `title`" });
+    pushFrontmatterViolation(violations, file, "missing `title`");
   }
   if (typeof data.description !== "string" || data.description.trim().length === 0) {
-    violations.push({ file, line: 1, rule: "frontmatter", msg: "missing `description`" });
+    pushFrontmatterViolation(violations, file, "missing `description`");
   }
   if (
     !Array.isArray(data.keywords) ||
     data.keywords.length === 0 ||
     !data.keywords.every((keyword) => typeof keyword === "string" && keyword.trim().length > 0)
   ) {
-    violations.push({
-      file,
-      line: 1,
-      rule: "frontmatter",
-      msg: "missing or invalid `keywords` array",
-    });
+    pushFrontmatterViolation(violations, file, "missing or invalid `keywords` array");
   }
+};
+
+const validateFrontmatterFieldTypes = (data, file, violations) => {
   for (const field of ["sidebarTitle", "icon", "iconType", "tag", "api", "openapi", "url"]) {
     if (data[field] !== undefined && typeof data[field] !== "string") {
-      violations.push({
-        file,
-        line: 1,
-        rule: "frontmatter",
-        msg: `\`${field}\` must be a string when present`,
-      });
+      pushFrontmatterViolation(violations, file, `\`${field}\` must be a string when present`);
     }
   }
   for (const field of ["noindex", "timestamp"]) {
     if (data[field] !== undefined && typeof data[field] !== "boolean") {
-      violations.push({
-        file,
-        line: 1,
-        rule: "frontmatter",
-        msg: `\`${field}\` must be a boolean when present`,
-      });
+      pushFrontmatterViolation(violations, file, `\`${field}\` must be a boolean when present`);
     }
   }
   if (data.hidden !== undefined && data.hidden !== true) {
-    violations.push({
+    pushFrontmatterViolation(
+      violations,
       file,
-      line: 1,
-      rule: "frontmatter",
-      msg: "`hidden` must be true when present; omit it instead of setting false",
-    });
+      "`hidden` must be true when present; omit it instead of setting false"
+    );
   }
   if (data.mode !== undefined && !FRONTMATTER_MODES.has(data.mode)) {
-    violations.push({
+    pushFrontmatterViolation(
+      violations,
       file,
-      line: 1,
-      rule: "frontmatter",
-      msg: "`mode` must be one of default, wide, custom, frame, or center",
-    });
+      "`mode` must be one of default, wide, custom, frame, or center"
+    );
   }
-  return data;
 };
 
 export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {

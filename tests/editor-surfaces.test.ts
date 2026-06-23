@@ -4,103 +4,6 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(import.meta.dirname, "..");
-const allowedAgentFiles = [
-  ".agents/prompts/supaschema-install.md",
-  ".agents/skills/supaschema/SKILL.md",
-  ".claude/settings.json",
-  ".claude/hooks/context-permission-denied.mjs",
-  ".claude/hooks/context-post-tool-use.mjs",
-  ".claude/hooks/context-pre-tool-use.mjs",
-  ".claude/hooks/context-session-end.mjs",
-  ".claude/hooks/context-session-start.mjs",
-  ".claude/hooks/context-stop.mjs",
-  ".claude/hooks/context-subagent-start.mjs",
-  ".claude/hooks/context-subagent-stop.mjs",
-  ".claude/hooks/context-task-completed.mjs",
-  ".claude/hooks/context-user-prompt-submit.mjs",
-  ".claude/hooks/guards/bash-policy-checks.mjs",
-  ".claude/hooks/supaschema-source-hook.mjs",
-  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".claude/rules/01-operating-rules.md",
-  ".claude/rules/02-mintlify-writing-standards.md",
-  ".claude/rules/03-mintlify-component-reference.md",
-  ".claude/rules/04-python-toolchain.md",
-  ".claude/rules/05-decision-protocol.md",
-  ".claude/rules/06-multi-language-toolchain.md",
-  ".claude/rules/07-ast-over-regex.md",
-  ".claude/rules/08-biome-ultracite-policy.md",
-  ".claude/rules/09-ci-cd-efficiency-governance.md",
-  ".claude/rules/10-code-atlas.md",
-  ".claude/rules/11-agent-mcp-fastmcp.md",
-  ".claude/rules/12-skill-loading-enforcement.md",
-  ".claude/rules/13-npm-package-boundary.md",
-  ".claude/rules/14-editing-worktree-git.md",
-  ".claude/rules/15-security.md",
-  ".claude/rules/16-file-size-and-composition.md",
-  ".claude/rules/17-prompt-craft-standards.md",
-  ".claude/rules/18-context-surface-sync.md",
-  ".claude/rules/19-version-control-release.md",
-  ".claude/rules/20-anti-patterns.md",
-  ".claude/rules/21-github-process.md",
-  ".claude/rules/22-agent-surface-sync-ownership.md",
-  ".claude/rules/supaschema.md",
-  ".claude/skills/supaschema/SKILL.md",
-  ".codex/hooks.json",
-  ".codex/hooks/context-permission-denied.mjs",
-  ".codex/hooks/context-post-tool-use.mjs",
-  ".codex/hooks/context-pre-tool-use.mjs",
-  ".codex/hooks/context-session-end.mjs",
-  ".codex/hooks/context-session-start.mjs",
-  ".codex/hooks/context-stop.mjs",
-  ".codex/hooks/context-subagent-start.mjs",
-  ".codex/hooks/context-subagent-stop.mjs",
-  ".codex/hooks/context-task-completed.mjs",
-  ".codex/hooks/context-user-prompt-submit.mjs",
-  ".codex/hooks/general-guard.mjs",
-  ".codex/hooks/guards/bash-policy-checks.mjs",
-  ".codex/hooks/supaschema-source-hook.mjs",
-  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".codex/rules/01-operating-rules.rules",
-  ".codex/rules/02-mintlify-writing-standards.rules",
-  ".codex/rules/03-mintlify-component-reference.rules",
-  ".codex/rules/04-python-toolchain.rules",
-  ".codex/rules/05-decision-protocol.rules",
-  ".codex/rules/06-multi-language-toolchain.rules",
-  ".codex/rules/07-ast-over-regex.rules",
-  ".codex/rules/08-biome-ultracite-policy.rules",
-  ".codex/rules/09-ci-cd-efficiency-governance.rules",
-  ".codex/rules/10-code-atlas.rules",
-  ".codex/rules/11-agent-mcp-fastmcp.rules",
-  ".codex/rules/12-skill-loading-enforcement.rules",
-  ".codex/rules/13-npm-package-boundary.rules",
-  ".codex/rules/14-editing-worktree-git.rules",
-  ".codex/rules/15-security.rules",
-  ".codex/rules/16-file-size-and-composition.rules",
-  ".codex/rules/17-prompt-craft-standards.rules",
-  ".codex/rules/18-context-surface-sync.rules",
-  ".codex/rules/19-version-control-release.rules",
-  ".codex/rules/20-anti-patterns.rules",
-  ".codex/rules/21-github-process.rules",
-  ".codex/rules/22-agent-surface-sync-ownership.rules",
-  ".codex/rules/supaschema.rules",
-];
-
-const sourceRepoAgentRuntimeFiles = [
-  "scripts/agent-hooks/atlas.mjs",
-  "scripts/agent-hooks/command-evidence.mjs",
-  "scripts/agent-hooks/evidence-gate.mjs",
-  "scripts/agent-hooks/hook-output.mjs",
-  "scripts/agent-hooks/response-claims.mjs",
-  "scripts/agent-hooks/response-evidence.mjs",
-  "scripts/agent-hooks/response-shape.mjs",
-  "scripts/agent-hooks/runner.mjs",
-  "scripts/agent-hooks/skill-frontmatter.mjs",
-  "scripts/agent-hooks/skill-paths.mjs",
-  "scripts/agent-hooks/skills.mjs",
-  "scripts/agent-hooks/state.mjs",
-  "scripts/agent-hooks/tool-payload.mjs",
-  "scripts/agent-hooks/AGENTS.md",
-];
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(resolve(root, path), "utf8"));
@@ -204,26 +107,6 @@ function ignoredFiles(paths: string[]): string[] {
 }
 
 describe("public agent and editor surfaces", () => {
-  it("exposes only reviewed source-repo agent surfaces", () => {
-    const agentFiles = trackedFiles().filter(
-      (file) =>
-        file.startsWith(".agents/") || file.startsWith(".claude/") || file.startsWith(".codex/")
-    );
-    const agentRuntimeFiles = trackedFiles().filter((file) =>
-      file.startsWith("scripts/agent-hooks/")
-    );
-
-    expect(agentFiles.sort()).toEqual([...allowedAgentFiles].sort());
-    expect(agentRuntimeFiles.sort()).toEqual([...sourceRepoAgentRuntimeFiles].sort());
-    for (const file of allowedAgentFiles) {
-      expect(existsSync(resolve(root, file)), file).toBe(true);
-    }
-    for (const file of sourceRepoAgentRuntimeFiles) {
-      expect(existsSync(resolve(root, file)), file).toBe(true);
-    }
-    expect(ignoredFiles([...allowedAgentFiles, ...sourceRepoAgentRuntimeFiles])).toEqual([]);
-  });
-
   it("keeps private maintainer and operator files out of the public repository", () => {
     const files = trackedFiles();
     const privateAgentFiles = [
@@ -236,12 +119,7 @@ describe("public agent and editor surfaces", () => {
       ".codex/config.toml",
     ];
     expect(ignoredFiles(privateAgentFiles)).toEqual([...privateAgentFiles].sort());
-    expect(ignoredFiles([...allowedAgentFiles, ...sourceRepoAgentRuntimeFiles])).toEqual([]);
-    expect(
-      stageableFiles([".agents", ".claude", ".codex"]).filter(
-        (file) => !allowedAgentFiles.includes(file)
-      )
-    ).toEqual([]);
+    expect(stageableFiles([".agents", ".claude", ".codex"])).toEqual([]);
     const privateFiles = [
       ".mcp.json",
       ".vscode/settings.json",

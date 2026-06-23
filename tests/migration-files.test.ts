@@ -8,7 +8,7 @@ import {
   latestMigrationFile,
   migrationFiles,
   migrationNameSlug,
-} from "../src/migration-files.js";
+} from "../src/migrations/files.js";
 
 function planWith(operations: MigrationPlan["operations"]): MigrationPlan {
   return {

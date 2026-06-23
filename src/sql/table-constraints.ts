@@ -1,15 +1,9 @@
 import type { AstNode } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readNumber, readString, stringList } from "./ast.js";
 import { formatQualifiedName, quoteIdent } from "./identifiers.js";
+import { findSqlParenRange } from "./split.js";
 import type { TableElement } from "./statements.js";
-import {
-  elementText,
-  findCharOutsideQuotes,
-  findMatchingParen,
-  fromByteString,
-  tableElements,
-  toByteString,
-} from "./statements.js";
+import { elementText, fromByteString, tableElements, toByteString } from "./statements.js";
 
 export interface SynthesizedConstraint {
   name: string;
@@ -86,16 +80,12 @@ export function stripDeclaredConstraints(
     return;
   }
   const relationLocation = (readNumber(relation?.location) ?? 0) - byteOffset;
-  const open = findCharOutsideQuotes(bytes, "(", Math.max(relationLocation, 0));
-  if (open === -1) {
+  const range = findSqlParenRange(bytes, Math.max(relationLocation, 0));
+  if (!range) {
     return;
   }
-  const close = findMatchingParen(bytes, open);
-  if (close === -1) {
-    return;
-  }
-  const head = bytes.slice(0, open + 1);
-  const tail = bytes.slice(close);
+  const head = bytes.slice(0, range.open + 1);
+  const tail = bytes.slice(range.close);
   return fromByteString(`${head}\n  ${pieces.join(",\n  ")}\n${tail}`);
 }
 

@@ -818,7 +818,6 @@ function consumerCodexHookCommands(entry) {
 
 function consumerSupaschemaCommand(command) {
   for (const sourcePrefix of [
-    `node "${codexProjectDir}/bin/supaschema.cjs"`,
     `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs"`,
   ]) {
     if (command.startsWith(sourcePrefix)) {

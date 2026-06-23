@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { redactSecrets } from "./redaction.js";
-import type { ScanResult } from "./scan.js";
+import type { ScanResult } from "./scan/model.js";
 
 interface MigrationSystemSignature {
   markers: string[];

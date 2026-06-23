@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/config.js";
+import { resolveConfig } from "../src/config/schema.js";
 import {
   defaultTreeSource,
   resolveMigrationsDir,
   resolveSourceDefaults,
-} from "../src/source-resolve.js";
+} from "../src/source/resolve.js";
 
 const config = resolveConfig();
 

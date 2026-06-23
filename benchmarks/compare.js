@@ -29,7 +29,7 @@ import { adapterAvailability, adapters } from "./tools/registry.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "..");
-const { scoreDiffOutput } = await import(join(packageRoot, "dist/diff-score.js"));
+const { scoreDiffOutput } = await import(join(packageRoot, "dist/benchmark/diff-score.js"));
 const fixtureRoot = resolve(here, "fixtures");
 const outputPath = resolve(
   packageRoot,

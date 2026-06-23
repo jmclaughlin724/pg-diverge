@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { planSchemaDiff } from "../src/planner.js";
-import { extractSourceModel, filterModelBySchemas } from "../src/source.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
+import { extractSourceModel, filterModelBySchemas } from "../src/source/extract.js";
 
 async function modelFromSql(sql: string) {
   const root = await mkdtemp(join(tmpdir(), "supa-normalize-"));

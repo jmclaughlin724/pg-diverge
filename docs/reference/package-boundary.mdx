@@ -40,7 +40,7 @@ Public docs, examples, benchmarks, corpus fixtures, source files, tests, service
 
 Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package-contents.test.ts` fails if any `.tsbuildinfo`, source file, public-support directory, or maintainer tooling reaches the tarball.
 
-Lower-level helpers that the CLI and tests share internally (in `src/db-admin.ts`, `src/contract-registry.ts`, `src/migration-runners.ts`, `src/migrations-status.ts`, and `src/pipeline-services.ts`) are not part of the public package surface: they are compiled into `dist/` for the CLI to use but are not re-exported from `supaschema` and have no subpath. They may change or be removed in any release. The package has exactly one barrel, `dist/index.js`, for the documented public API; no re-export shims or escape-hatch subpaths are published.
+Lower-level helpers that the CLI and tests share internally (in `src/database/admin.ts`, `src/migrations/runners.ts`, `src/migrations/status.ts`, `src/pipeline/deploy-safety.ts`, and `src/pipeline/type-safety.ts`) are not part of the public package surface: they are compiled into `dist/` for the CLI to use but have no subpath. They may change or be removed in any release. The package has one documented public entry, `dist/index.js`; no convenience subpaths, shims, or escape-hatch entry points are published.
 
 ## Agent bundle boundary
 
@@ -62,7 +62,7 @@ That command does not install hooks or rules. Agent Skills are `SKILL.md` folder
 
 `supaschema init` owns setup for consuming projects after package install. The install contents list lives in [What's included](/whats-included); keep it there instead of duplicating it across release and packaging references.
 
-The `supaschema init` command performs this setup through `bin/scaffold.mjs` (a dist-free module that ships in the `bin` allowlist entry). Run it through the consuming package manager's local runner from the package directory that owns the schema workflow. The command is idempotent, so it is also the repair path when config needs refresh. The shared scaffold creates `supaschema.config.json` from the generated config contract when it is absent, rewrites it only for explicit repair, and records unresolved path confirmation in `.supaschema/install.json` only when detected paths still need human confirmation. Resolved installs do not create `.supaschema/`; durable project defaults belong in `supaschema.config.json`.
+The `supaschema init` command performs this setup through `bin/scaffold.mjs` (a dist-free module that ships as a narrow package file alongside `bin/config-contract.mjs`). Run it through the consuming package manager's local runner from the package directory that owns the schema workflow. The command is idempotent, so it is also the repair path when config needs refresh. The shared scaffold creates `supaschema.config.json` from the generated config contract when it is absent, rewrites it only for explicit repair, and records unresolved path confirmation in `.supaschema/install.json` only when detected paths still need human confirmation. Resolved installs do not create `.supaschema/`; durable project defaults belong in `supaschema.config.json`.
 
 The same scaffold installs no active agent surfaces by default. The raw AI-agent bundle remains available under `agent-bundle/` in the package for reviewed manual installation.
 

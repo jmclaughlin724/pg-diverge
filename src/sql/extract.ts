@@ -1,4 +1,4 @@
-import { resolveConfig } from "../config.js";
+import { resolveConfig } from "../config/schema.js";
 import type {
   Diagnostic,
   ExtractOptions,

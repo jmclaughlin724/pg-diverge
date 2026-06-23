@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { latestLineage, parseLineage } from "../src/lineage.js";
+import { latestLineage, parseLineage } from "../src/migrations/lineage.js";
 
 const run = promisify(execFile);
 

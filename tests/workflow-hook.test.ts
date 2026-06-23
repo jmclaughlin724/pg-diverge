@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { schemaWriteHookOutput } from "../src/agent-hook-output.js";
+import { schemaWriteHookOutput } from "../src/hooks/output.js";
 
 const previousHookBin = process.env.SUPASCHEMA_HOOK_BIN;
 const previousHookLog = process.env.SUPASCHEMA_HOOK_LOG;

@@ -135,7 +135,7 @@ git fetch origin main
 
 The branch MUST be current with `origin/main`, the update MUST be a fast-forward, and the commit MUST contain only task-owned tracked changes. Preserve unrelated local and ignored maintainer surfaces.
 
-Commit with signoff:
+Commit with voluntary author signoff (GitHub-required or CI-enforced signoff stays prohibited per the repository-settings rule above):
 
 ```bash
 git commit --signoff

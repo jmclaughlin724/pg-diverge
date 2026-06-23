@@ -3,46 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, exists, ok, ROOT, run } from "../lib/guard-utils.js";
 
-const allowed = new Set([
-  ".agents/prompts/supaschema-install.md",
-  ".agents/skills/supaschema/SKILL.md",
-  ".claude/settings.json",
-  ".claude/hooks/guards/bash-policy-checks.mjs",
-  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".claude/rules/supaschema.md",
-  ".claude/skills/supaschema/SKILL.md",
-  ".codex/hooks.json",
-  ".codex/hooks/general-guard.mjs",
-  ".codex/hooks/guards/bash-policy-checks.mjs",
-  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-  ".codex/rules/supaschema.rules",
-]);
-
-const sourceRepoAgentRuntime = new Set([
-  ".claude/hooks/context-permission-denied.mjs",
-  ".claude/hooks/context-post-tool-use.mjs",
-  ".claude/hooks/context-pre-tool-use.mjs",
-  ".claude/hooks/context-session-end.mjs",
-  ".claude/hooks/context-session-start.mjs",
-  ".claude/hooks/context-stop.mjs",
-  ".claude/hooks/context-subagent-start.mjs",
-  ".claude/hooks/context-subagent-stop.mjs",
-  ".claude/hooks/context-task-completed.mjs",
-  ".claude/hooks/context-user-prompt-submit.mjs",
-  ".claude/hooks/supaschema-source-hook.mjs",
-  ".codex/hooks/context-permission-denied.mjs",
-  ".codex/hooks/context-post-tool-use.mjs",
-  ".codex/hooks/context-pre-tool-use.mjs",
-  ".codex/hooks/context-session-end.mjs",
-  ".codex/hooks/context-session-start.mjs",
-  ".codex/hooks/context-stop.mjs",
-  ".codex/hooks/context-subagent-start.mjs",
-  ".codex/hooks/context-subagent-stop.mjs",
-  ".codex/hooks/context-task-completed.mjs",
-  ".codex/hooks/context-user-prompt-submit.mjs",
-  ".codex/hooks/supaschema-source-hook.mjs",
-]);
-
 const privatePrefixes = [
   ".planning/",
   ".vscode/",
@@ -70,36 +30,8 @@ function gitPaths(args, root) {
     .sort();
 }
 
-function isPrivateAgentSurface(file) {
-  if (isPublicAgentSurface(file)) {
-    return false;
-  }
-  return file.startsWith(".agents/") || file.startsWith(".claude/") || file.startsWith(".codex/");
-}
-
-function isPublicAgentSurface(file) {
-  return (
-    allowed.has(file) ||
-    sourceRepoAgentRuntime.has(file) ||
-    isPublicClaudeRule(file) ||
-    isPublicCodexRule(file)
-  );
-}
-
-function isPublicClaudeRule(file) {
-  return file.startsWith(".claude/rules/") && file.endsWith(".md");
-}
-
-function isPublicCodexRule(file) {
-  return file.startsWith(".codex/rules/") && file.endsWith(".rules");
-}
-
 function isPrivateSurface(file) {
-  return (
-    privateExact.has(file) ||
-    privatePrefixes.some((prefix) => file.startsWith(prefix)) ||
-    isPrivateAgentSurface(file)
-  );
+  return privateExact.has(file) || privatePrefixes.some((prefix) => file.startsWith(prefix));
 }
 
 function bulletList(files) {

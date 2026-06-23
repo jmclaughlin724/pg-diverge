@@ -1,8 +1,8 @@
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
-import { resolveDatabaseUrl } from "../src/database-url.js";
-import { planSchemaDiff } from "../src/planner.js";
-import { extractSourceModel } from "../src/source.js";
+import { resolveDatabaseUrl } from "../src/database/url.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
+import { extractSourceModel } from "../src/source/extract.js";
 import { splitSqlStatements } from "../src/sql/split.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();

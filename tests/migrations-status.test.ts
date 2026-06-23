@@ -3,14 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
-import { resolveDatabaseUrl } from "../src/database-url.js";
-import { lineageLine } from "../src/lineage.js";
+import { resolveDatabaseUrl } from "../src/database/url.js";
+import { lineageLine } from "../src/migrations/lineage.js";
 import {
   compareMigrationHistory,
   migrationFileVersions,
   migrationsStatus,
   renderMigrationsStatus,
-} from "../src/migrations-status.js";
+} from "../src/migrations/status.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 

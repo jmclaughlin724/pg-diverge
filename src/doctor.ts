@@ -1,10 +1,10 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Client } from "pg";
-import type { SupaschemaConfig } from "./config.js";
-import { pendingInstallPathConfirmationDiagnostic } from "./config-validate.js";
-import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
-import { migrationsStatus } from "./migrations-status.js";
+import type { SupaschemaConfig } from "./config/schema.js";
+import { pendingInstallPathConfirmationDiagnostic } from "./config/validate.js";
+import { databaseUrlLane, resolveDatabaseUrl } from "./database/url.js";
+import { migrationsStatus } from "./migrations/status.js";
 import { parseSqlAst } from "./sql/parser.js";
 
 export interface DoctorCheck {
@@ -42,7 +42,7 @@ export async function runDoctor(
 
   const explicit = options.databaseUrl;
   const resolved = options.resolvedDatabaseUrl ?? resolveDatabaseUrl(explicit);
-  const lane = options.databaseUrlLane ?? doctorDatabaseUrlLane(explicit);
+  const lane = options.databaseUrlLane ?? databaseUrlLane(explicit);
   checks.push(databaseUrlCheck(resolved, lane), ...(await databaseChecks(resolved)));
 
   const migrationsDir = resolve(cwd, config.migrationsDir);
@@ -181,19 +181,6 @@ export function renderDoctorReport(report: DoctorReport): string {
   });
   lines.push(report.healthy ? "doctor: healthy" : "doctor: issues found");
   return `${lines.join("\n")}\n`;
-}
-
-function doctorDatabaseUrlLane(explicit: string | undefined): string {
-  if (explicit) {
-    return "explicit --database-url";
-  }
-  if (process.env.SUPASCHEMA_DATABASE_URL) {
-    return "SUPASCHEMA_DATABASE_URL";
-  }
-  if (resolveSupabaseLocalDatabaseUrl()) {
-    return "supabase/config.toml auto-discovery";
-  }
-  return "none";
 }
 
 function doctorStatusBadge(status: DoctorReport["checks"][number]["status"]): string {

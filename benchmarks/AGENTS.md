@@ -46,14 +46,11 @@ The harness refuses non-local database hosts by default because it creates and d
 
 Real-project fixtures: `node benchmarks/tools/build-project-fixture.mjs --tree <schemas dir> --out <fixture dir>` turns an actual declarative tree into a fixture (fixpoint statement ordering, Supabase auth stubs, support-surface filtering with a `dropped.log`, and a `fixture.json` carrying the schema list + supaschema adapter). Point the harness at it with `SUPASCHEMA_COMPARE_FIXTURE_DIRS=<fixture dir>` so private schemas never enter the package tree.
 
-When the compare admin URL is `supabase_admin` (required to install most extensions on a local Supabase stack), also set `SUPASCHEMA_COMPARE_SEED_ROLE=postgres`: after seeding, the harness transfers ownership of every user-schema object to that role. This works around two Supabase CLI behaviors found while benchmarking real schemas (CLI 2.105, verified by direct bisection 2026-06-11):
-
-1. **Silent empty diffs for supabase_admin-owned objects.** `supabase db diff --from <db1> --to <db2>` returns an empty diff with exit 0 — no warning — when the differing objects are owned by `supabase_admin`, regardless of the connecting user. The same databases diff correctly after `ALTER ... OWNER TO postgres`. A diff tool reporting "no changes" against databases that differ by a whole table is the failure mode supaschema's `SUPA_PLAN_EMPTY_WITH_DRIFT` invariant exists to make impossible.
-2. **`&sslmode=` URL corruption.** The CLI appends `&sslmode=...` to a bare `--to` URL with no query string, corrupting the database name (`FATAL: database "...&sslmode=" does not exist`) — visible only under `--debug`. Work around it by always passing URLs with an existing query string (e.g. `?sslmode=disable`).
+When the compare admin URL is `supabase_admin` (required to install most extensions on a local Supabase stack), also set `SUPASCHEMA_COMPARE_SEED_ROLE=postgres`: after seeding, the harness transfers ownership of every user-schema object to that role so Supabase diff engines compare seeded user objects consistently. Historical Supabase CLI behavior notes from the 2026-06-11 benchmark investigation live in `benchmarks/REFERENCE_RESULTS.md`.
 
 The default is 10 measured iterations plus 1 warmup per adapter/fixture pair. A full default run across all adapters and fixtures takes tens of minutes because Supabase engines and realistic-fixture seeding dominate; use the filters above for quick local passes.
 
-Fixtures: the on-disk pairs under `benchmarks/fixtures/` (`additive`, `functions-policies`) plus a generated `realistic` fixture — a deterministic 50-table Supabase-shaped schema (FKs, RLS policies, triggers, views, materialized views, functions, grants, comments) with a mixed change set, materialized at run time from the shared `dist/benchmark-fixtures.js` generator. Set `SUPASCHEMA_COMPARE_XL_TABLES` (for example `1000` for ~7000 objects) to add an `xl` fixture at that table count; it is opt-in because shadow-database engines take minutes per run at that scale — raise `SUPASCHEMA_COMPARE_TIMEOUT_MS` accordingly.
+Fixtures: the on-disk pairs under `benchmarks/fixtures/` (`additive`, `functions-policies`) plus a generated `realistic` fixture — a deterministic 50-table Supabase-shaped schema (FKs, RLS policies, triggers, views, materialized views, functions, grants, comments) with a mixed change set, materialized at run time from the shared `dist/benchmark/fixtures.js` generator. Set `SUPASCHEMA_COMPARE_XL_TABLES` (for example `1000` for ~7000 objects) to add an `xl` fixture at that table count; it is opt-in because shadow-database engines take minutes per run at that scale — raise `SUPASCHEMA_COMPARE_TIMEOUT_MS` accordingly.
 
 Adapters:
 
@@ -83,28 +80,6 @@ Verification applies the fixture `from` state per statement, then applies the ge
 
 Do not average all modes together. Source-file diff, live-catalog diff, and replay verification measure different work.
 
-## Measured Results (as of 2026-06-12)
+## Reference Results
 
-Single sequential reference run, 2026-06-12 (`BENCH_ALL_SEQUENTIAL=1 bash benchmarks/tools/bench-all.sh`), with diff-output accuracy scoring active: Apple Silicon (darwin arm64), Node 24, PostgreSQL 17.6 (Supabase local), Supabase CLI 2.106.0, supaschema 0.1.0 with deparse normalization and type generation in the default diff path. Fixture scale: `additive`/`functions-policies` ≈ 1 table; `realistic` = 50 tables (~350 objects); `xl` = 1,000 tables (~7,000 objects); `xxl` = 2,500 tables (~17,500 objects). 3 iterations per cell, single-iteration at `xxl`. Regenerate with `benchmarks/tools/bench-all.sh` (parallel by default; `BENCH_ALL_SEQUENTIAL=1` for publication-grade latency medians free of cross-fixture CPU contention); per-fixture rows live in `<fixture>-results.json` and the generated `summary.md`. All durations are seconds.
-
-| Fixture | supaschema (file / live-db) | Supabase engines | Replay-safe (applies twice) | Output F1 (supaschema / engines) |
-| --- | --- | --- | --- | --- |
-| `additive` | 0.19s / 0.21s | 3.6–4.6s | supaschema only | — (no manifest) |
-| `functions-policies` | 0.18s / 0.21s | 3.3–3.7s | all tools | — (no manifest) |
-| `realistic` | 0.19s / 0.23s | 4.0–4.4s | supaschema only | 1.000 / 0.982 |
-| `xl` | 1.38s / 1.25s | 38.5–39.1s | supaschema only | 1.000 / 0.999 |
-| `xxl` | 3.2s / 2.8s | 204.5–210.0s | supaschema only | 1.000 / 0.999 |
-
-The full-workflow lanes (same run) measure the real-world step of producing the migration **and** regenerated types:
-
-| Fixture | `supaschema-workflow` (migration + TS types + Zod) | `supabase-*-workflow` (db diff + apply + gen types) |
-| --- | --- | --- |
-| `additive` | 0.24s | 5.8–8.1s |
-| `functions-policies` | 0.23s | 5.7–6.2s |
-| `realistic` | 0.26s | 6.4–7.6s |
-| `xl` | 2.25s | 44.8–50.4s |
-| `xxl` | 5.22s | 212.6–229.7s |
-
-Regression with schema size: supaschema stays near three seconds through 2,500 tables because its cost is parse/plan/catalog-read bound. All five Supabase shadow-database engines cluster near ~3.5–4.5s even at one table and grow with schema replay cost to ~39s at 1,000 tables and ~3.4–3.5 minutes at 2,500 — the gap grows from ~20× to ~70×. Verification outcomes are scale-independent: Supabase engines emit unguarded DDL, so apply-twice fails on every fixture whose diff contains `ADD COLUMN`/`CREATE INDEX` statements (`additive`, `realistic`, `xl`, `xxl`); `functions-policies` passes everywhere because its diff is entirely `CREATE OR REPLACE`. Accuracy outcomes: supaschema scores F1 1.000 in both modes on every manifest-scored fixture; every Supabase engine misses the policy-predicate change (recall loss → 0.982 at 50 tables, 0.999 at 1,000/2,500 where the larger manifest dilutes the same miss).
-
-The internal threshold suite (`npm run benchmark`) enforces these as regression gates in CI on PostgreSQL 15/16/17 — every lane fails the build past its `SUPASCHEMA_*_MS` threshold. Reference warm-max values from the same machine: `realisticTreeDiff` 15ms, `noDriftDiff` 15ms, `largeInMemoryDiff` 74ms (250 tables), `liveCatalogDiff` 39ms, `liveCatalogDiffXl` 426ms, `endToEndMigration` 11ms, `endToEndMigrationLarge` 185ms, `endToEndMigrationXl` 692ms, `shadowRoundTripDiff` 1019ms, `replayVerification` 132ms.
+Dated reference runs belong in benchmark reports, not automatic agent context. The archived 2026-06-12 reference run lives in `benchmarks/REFERENCE_RESULTS.md`. Generated per-run tables live in `summary.md` under the selected benchmark output directory. The internal threshold suite remains `npm run benchmark`.

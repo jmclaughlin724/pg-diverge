@@ -1,0 +1,22 @@
+import { writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { configContractModuleText } from "./contract.js";
+import { configJsonSchema } from "./schema.js";
+
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const schema = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  title: "supaschema configuration",
+  ...configJsonSchema(),
+};
+await writeFile(
+  resolve(packageRoot, "supaschema-config.schema.json"),
+  `${JSON.stringify(schema, null, 2)}\n`,
+  "utf8"
+);
+await writeFile(
+  resolve(packageRoot, "bin", "config-contract.mjs"),
+  configContractModuleText(),
+  "utf8"
+);

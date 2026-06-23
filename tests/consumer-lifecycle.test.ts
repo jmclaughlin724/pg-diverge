@@ -156,7 +156,7 @@ describe("consumer lifecycle: install then use the published package", () => {
     expect(existsSync(join(consumer, "supabase", "schemas"))).toBe(true);
     expect(existsSync(join(consumer, "supabase", "migrations"))).toBe(true);
 
-    expect(existsSync(join(consumer, "node_modules", "supaschema", "dist", "cli.js"))).toBe(true);
+    expect(binPath).toBe(join(consumer, "node_modules", "supaschema", "dist", "cli.js"));
     expect(existsSync(binPath)).toBe(true);
 
     const config = JSON.parse(readFileSync(join(consumer, "supaschema.config.json"), "utf8"));

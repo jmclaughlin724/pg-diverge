@@ -79,6 +79,34 @@ ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
     expect(inlineTable?.hash).toBe(alteredTable?.hash);
   });
 
+  it("slices CREATE TABLE elements with PostgreSQL lexical rules", async () => {
+    const extracted = await extractObjectsFromSql(
+      `CREATE TABLE app.lexical /* comment ( before elements */ (
+  body text DEFAULT $$) , not a boundary$$,
+  note text DEFAULT 'literal ) value',
+  CONSTRAINT lexical_body_check CHECK (body <> $$)$$)
+);`,
+      { config: { normalize: "off" }, file: "lexical.sql" }
+    );
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(extracted.objects.map((object) => object.key).sort()).toEqual([
+      "constraint:app.lexical_body_check:lexical",
+      "table:app.lexical",
+    ]);
+    const table = extracted.objects.find((object) => object.key === "table:app.lexical");
+    expect(table?.metadata.columns).toEqual([
+      expect.objectContaining({
+        defaultExpression: "$$) , not a boundary$$",
+        name: "body",
+      }),
+      expect.objectContaining({
+        defaultExpression: "'literal ) value'",
+        name: "note",
+      }),
+    ]);
+  });
+
   it("extracts every supported ALTER TABLE subcommand in one statement", async () => {
     const extracted = await extractObjectsFromSql(
       "ALTER TABLE app.accounts ADD CONSTRAINT accounts_pkey PRIMARY KEY (id), ENABLE ROW LEVEL SECURITY;",

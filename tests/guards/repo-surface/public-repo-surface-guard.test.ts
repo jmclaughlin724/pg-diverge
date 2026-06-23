@@ -4,9 +4,8 @@ import { check } from "../../../scripts/guards/repo-surface/check-public-repo-su
 import { tempGuardRepo } from "../../guard-fixture.js";
 
 describe("public repo surface guard", () => {
-  it("allows ignored private local skills to remain on disk", () => {
+  it("allows agent runtime skill targets without a public-surface catalog", () => {
     const root = tempGuardRepo({
-      ".gitignore": ".agents/skills/*\n",
       ".agents/skills/elegant/SKILL.md": "# elegant\n",
     });
     expect(() => check(root)).not.toThrow();
@@ -26,18 +25,18 @@ describe("public repo surface guard", () => {
     expect(() => check(root)).not.toThrow();
   });
 
-  it("blocks unignored private local skills before they can be staged", () => {
+  it("blocks unignored private local paths before they can be staged", () => {
     const root = tempGuardRepo({
-      ".agents/skills/elegant/SKILL.md": "# elegant\n",
+      "scripts/code-atlas/local.mjs": "export {};\n",
     });
     expect(() => check(root)).toThrow("unignored local files that could be staged");
   });
 
-  it("blocks tracked private local skills with an untrack-only repair", () => {
+  it("blocks tracked private local paths with an untrack-only repair", () => {
     const root = tempGuardRepo({
-      ".agents/skills/elegant/SKILL.md": "# elegant\n",
+      "scripts/code-atlas/local.mjs": "export {};\n",
     });
-    execFileSync("git", ["add", ".agents/skills/elegant/SKILL.md"], {
+    execFileSync("git", ["add", "scripts/code-atlas/local.mjs"], {
       cwd: root,
       stdio: "ignore",
     });

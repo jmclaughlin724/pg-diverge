@@ -1,3 +1,5 @@
+import { chmodSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { check } from "../../../scripts/guards/code-shape/check-canonical-surfaces.mjs";
 import { tempGuardRepo } from "../../guard-fixture.js";
@@ -36,6 +38,16 @@ describe("canonical surfaces guard", () => {
       "scripts/pattern.mjs": "const pattern = new RegExp('x');\npattern.test('x');\n",
     });
     await expect(check(root)).rejects.toThrow("contains pattern-engine syntax");
+  });
+
+  it("does not let a local ast-grep binary affect pattern checks", async () => {
+    const root = tempGuardRepo({
+      "node_modules/.bin/ast-grep":
+        "#!/usr/bin/env node\nprocess.stdout.write('src/clean.ts:1:1 contains pattern-engine syntax\\n');\n",
+      "src/clean.ts": "export const value = 1;\n",
+    });
+    chmodSync(join(root, "node_modules/.bin/ast-grep"), 0o755);
+    await expect(check(root)).resolves.toBeUndefined();
   });
 
   it("blocks TypeScript assertions in code files", async () => {

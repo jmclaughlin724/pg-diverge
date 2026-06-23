@@ -24,7 +24,7 @@ vi.mock("pg", () => {
   return { Client: FakeClient, default: { Client: FakeClient } };
 });
 
-const { verifyMigration } = await import("../src/verify.js");
+const { verifyMigration } = await import("../src/verify/migration.js");
 
 describe("verify admin client lifecycle (plan 004)", () => {
   beforeEach(() => {

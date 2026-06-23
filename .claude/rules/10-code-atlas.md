@@ -53,7 +53,7 @@ Do not replace this with a hosted-only index. External graph tools may supplemen
 - `scripts/code-atlas/**` is ignored by git and protected by the public-surface guard as local-only maintainer tooling.
 - `npm run guard:code-atlas` runs the local atlas checks when `scripts/code-atlas/build.mjs` exists. In a clean public checkout where `scripts/code-atlas/**` is absent by design, the guard MUST emit `CODE_ATLAS_SKIPPED_LOCAL_ONLY` and pass.
 - Rule 11 owns the local MCP registry wiring for Code Atlas access; this rule owns the graph build/query guard and CodeAtlas-Live diagnostic launcher contract.
-- Changes to Code Atlas behavior must update the same-change owner set: `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, `scripts/code-atlas/lib/**`, `scripts/code-atlas/query.mjs`, `scripts/code-atlas/mcp-launcher.mjs`, `.agents/skills/code-atlas/**`, and this rule when operator guidance changes.
+- Changes to tracked Code Atlas behavior must update the same-change owner set: `scripts/code-atlas/build.mjs`, `scripts/code-atlas/build-python.py`, `scripts/code-atlas/lib/**`, `scripts/code-atlas/query.mjs`, `scripts/code-atlas/mcp-launcher.mjs`, and this rule when operator guidance changes. Local maintainer skill overlays such as `.claude/skills/code-atlas/**` and generated `.agents/skills/code-atlas/**` are advisory DX surfaces; refresh them with `npm run sync:llm` when present, but do not make ignored local skills a tracked branch owner.
 
 STOP if a broad owner, route, consumer, DB, API, worker, generated-surface, or rollout claim is made without Code Atlas or cclsp/source evidence; if live MCP output is treated as a final replacement for local atlas/source proof; if generated atlas/cache output is committed; if regex/string heuristics are added where AST/model data is available; or if the atlas guard is weakened instead of fixing the graph source. Do not use CodeAtlas-Live AI review/fix tools unless the user explicitly approves external LLM calls, API spend, and data exposure.
 
@@ -67,4 +67,4 @@ Fix the local atlas builder/query path. Do not commit `.tmp/code-atlas` or `.cod
 
 ## Done means
 
-Broad claims cite local atlas/cclsp/source evidence, generated graph output remains scratch, and atlas changes include builder, query, skill, and rule updates when guidance changed.
+Broad claims cite local atlas/cclsp/source evidence, generated graph output remains scratch, tracked atlas changes include builder, query, and rule updates when guidance changed, and local skill overlays are refreshed only when present.

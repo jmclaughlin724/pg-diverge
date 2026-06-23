@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../src/core.js";
-import { planSchemaDiff } from "../src/planner.js";
-import { renderMigration } from "../src/render.js";
+import { planSchemaDiff } from "../src/planner/schema.js";
+import { renderMigration } from "../src/render/migration.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 
 async function model(sql: string, source: string): Promise<SchemaModel> {

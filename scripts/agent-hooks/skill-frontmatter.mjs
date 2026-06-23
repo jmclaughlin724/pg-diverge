@@ -4,11 +4,9 @@ import path from "node:path";
 const defaultRoot = path.resolve(".");
 
 export function discoverSkills(root = defaultRoot, runtime = "claude") {
-  const skillRoot = path.join(root, runtime === "codex" ? ".codex" : ".claude", "skills");
-  const fallbackRoot = path.join(root, ".claude", "skills");
-  const base = fs.existsSync(skillRoot) ? skillRoot : fallbackRoot;
+  const base = skillRoots(root, runtime).find((candidate) => fs.existsSync(candidate));
   const out = [];
-  for (const file of listSkillFiles(base)) {
+  for (const file of listSkillFiles(base ?? "")) {
     const source = fs.readFileSync(file, "utf8");
     const frontmatter = parseFrontmatter(source);
     const dir = path.dirname(file);
@@ -24,6 +22,12 @@ export function discoverSkills(root = defaultRoot, runtime = "claude") {
     });
   }
   return out;
+}
+
+function skillRoots(root, runtime) {
+  return runtime === "codex"
+    ? [path.join(root, ".agents", "skills"), path.join(root, ".claude", "skills")]
+    : [path.join(root, ".claude", "skills"), path.join(root, ".agents", "skills")];
 }
 
 function parseFrontmatter(text) {

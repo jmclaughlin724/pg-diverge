@@ -6,13 +6,13 @@ import { Command } from "commander";
 import { Client } from "pg";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { registerReportCommands } from "../src/cli-reports.js";
-import { resolveConfig } from "../src/config.js";
+import { registerReportCommands } from "../src/cli/reports.js";
+import { resolveConfig } from "../src/config/schema.js";
 import type { Diagnostic } from "../src/core.js";
-import { resolveDatabaseUrl } from "../src/database-url.js";
+import { resolveDatabaseUrl } from "../src/database/url.js";
 import { diagnosticCatalog } from "../src/diagnostics.js";
-import { stageGeneratedMigrations } from "../src/stage.js";
-import { syncMigrations } from "../src/workflow.js";
+import { stageGeneratedMigrations } from "../src/migrations/stage.js";
+import { syncMigrations } from "../src/workflow/sync.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
@@ -1145,8 +1145,8 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 describe("sync target verification", () => {
   it("keeps remote target apply URLs out of verify URL resolution", async () => {
     const source = ts.createSourceFile(
-      "workflow.ts",
-      await readFile(join(process.cwd(), "src/workflow.ts"), "utf8"),
+      "workflow/verify.ts",
+      await readFile(join(process.cwd(), "src/workflow/verify.ts"), "utf8"),
       ts.ScriptTarget.Latest,
       true,
       ts.ScriptKind.TS

@@ -5,7 +5,7 @@ import { Client } from "pg";
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
 const { quoteIdent } = await import(join(packageRoot, "dist/sql/identifiers.js"));
-const dbAdmin = await import(join(packageRoot, "dist/db-admin.js"));
+const dbAdmin = await import(join(packageRoot, "dist/database/admin.js"));
 
 export const {
   applyMigrationSql,

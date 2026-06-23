@@ -41,6 +41,20 @@ export function hasErrors(diagnostics: Diagnostic[]): boolean {
   return diagnostics.some((item) => item.severity === "error");
 }
 
+export function isDiagnostic(value: unknown): value is Diagnostic {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const code = Reflect.get(value, "code");
+  const message = Reflect.get(value, "message");
+  const severity = Reflect.get(value, "severity");
+  return (
+    typeof code === "string" &&
+    typeof message === "string" &&
+    (severity === "info" || severity === "warning" || severity === "error")
+  );
+}
+
 export function formatDiagnostic(item: Diagnostic): string {
   const location = item.file ? ` ${item.file}` : "";
   const ref = item.ref ? ` ${formatRef(item.ref)}` : "";

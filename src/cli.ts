@@ -1,39 +1,40 @@
+#!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
-import { generatedMigrationEditHookOutput, schemaWriteHookOutput } from "./agent-hook-output.js";
-import { checkMigrationSql } from "./check.js";
+import { checkMigrationSql } from "./check/migration.js";
 import {
   CHECK_REPORTER_DISPLAY,
   type FileDiagnostics,
   parseCheckReporter,
   renderCheckReport,
-} from "./check-reporters.js";
-import { registerDiffCommands } from "./cli-diff.js";
-import { registerReportCommands } from "./cli-reports.js";
-import { registerToolCommands } from "./cli-tools.js";
-import type { SupaschemaConfig } from "./config.js";
-import { loadConfig } from "./config.js";
+} from "./check/report.js";
+import { registerDiffCommands } from "./cli/diff.js";
+import { registerReportCommands } from "./cli/reports.js";
+import { registerToolCommands } from "./cli/tools.js";
+import type { SupaschemaConfig } from "./config/schema.js";
+import { loadConfig } from "./config/schema.js";
 import {
   formatConfigValidationDiagnostics,
   pendingInstallPathConfirmationDiagnostic,
   validateConfig,
-} from "./config-validate.js";
+} from "./config/validate.js";
 import type { Diagnostic } from "./core.js";
-import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database-url.js";
+import { databaseUrlLane, resolveDatabaseUrl } from "./database/url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors } from "./diagnostics.js";
-import { latestMigrationFile, migrationFiles } from "./migration-files.js";
-import { filterModel } from "./pipeline-services.js";
+import { generatedMigrationEditHookOutput, schemaWriteHookOutput } from "./hooks/output.js";
+import { latestMigrationFile, migrationFiles } from "./migrations/files.js";
+import { filterModel } from "./pipeline/diff.js";
 import { redactSecrets } from "./redaction.js";
 import { selfCheckCatalog } from "./selfcheck.js";
-import { extractSourceModel } from "./source.js";
+import { extractSourceModel } from "./source/extract.js";
 import {
   defaultTreeSource,
   resolveMigrationsDir,
   resolveSourceDefaults,
-} from "./source-resolve.js";
-import { verifyMigration } from "./verify.js";
+} from "./source/resolve.js";
+import { verifyMigration } from "./verify/migration.js";
 
 interface GlobalOptions {
   config?: string;
@@ -455,18 +456,8 @@ async function resolveCliDatabaseUrlInfo(
     return { lane: `--env ${globals.env}`, url: resolveDatabaseUrl(entry.databaseUrl) };
   }
   const url = resolveDatabaseUrl();
-  const lane = resolvedDatabaseUrlLane();
+  const lane = databaseUrlLane();
   return { lane, url };
-}
-
-function resolvedDatabaseUrlLane(): string {
-  if (process.env.SUPASCHEMA_DATABASE_URL) {
-    return "SUPASCHEMA_DATABASE_URL";
-  }
-  if (resolveSupabaseLocalDatabaseUrl()) {
-    return "supabase/config.toml auto-discovery";
-  }
-  return "none";
 }
 
 async function readStdin(): Promise<string> {

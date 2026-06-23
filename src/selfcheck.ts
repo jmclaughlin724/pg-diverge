@@ -1,4 +1,4 @@
-import { extractCatalogModel } from "./catalog.js";
+import { extractCatalogModel } from "./catalog/extract.js";
 import type { Diagnostic } from "./core.js";
 import { diagnostic } from "./diagnostics.js";
 import { extractObjectsFromSql } from "./sql/extract.js";

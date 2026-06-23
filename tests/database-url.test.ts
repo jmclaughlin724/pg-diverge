@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database-url.js";
+import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database/url.js";
 import {
   expectedInstalledConfig,
   expectedSupaschemaScripts,

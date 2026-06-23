@@ -1,4 +1,4 @@
-import type { SupaschemaConfig } from "./config.js";
+import type { SupaschemaConfig } from "./config/schema.js";
 
 export type DiagnosticSeverity = "info" | "warning" | "error";
 
@@ -148,4 +148,11 @@ export interface VerifyMigrationOptions {
   to: string;
 }
 
-export type { SupaschemaConfig } from "./config.js";
+export function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    return;
+  }
+  return [...value];
+}
+
+export type { SupaschemaConfig } from "./config/schema.js";

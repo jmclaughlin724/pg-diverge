@@ -1,14 +1,11 @@
-import { spawnSync } from "node:child_process";
-import path from "node:path";
 import { parse as parseShell } from "sh-syntax";
 import { parse as parseJsTs, ts } from "../lib/ast-utils.js";
-import { ROOT, readText, run } from "../lib/guard-utils.js";
+import { readText, run } from "../lib/guard-utils.js";
 import { jsTsStringValue } from "./ast-scan.mjs";
 
 export async function patternEngineViolations(jsTsFiles, pythonFiles, shellFiles, root) {
   return [
     ...jsTsPatternEngineViolations(jsTsFiles, root),
-    ...jsTsAstGrepPatternEngineViolations(jsTsFiles),
     ...jsTsRegexStringContractViolations(jsTsFiles, root),
     ...pythonPatternEngineViolations(pythonFiles, root),
     ...(await shellPatternEngineViolations(shellFiles, root)),
@@ -26,36 +23,6 @@ function jsTsPatternEngineViolations(candidates, root) {
       return `${file}:${location.line + 1}:${location.character + 1} contains pattern-engine syntax; use parser or AST helpers.`;
     });
   });
-}
-
-function jsTsAstGrepPatternEngineViolations(candidates) {
-  if (candidates.length === 0) {
-    return [];
-  }
-  const inlineRules = [
-    astGrepRule("no-regex-literal-ts", "TypeScript", "/$A/"),
-    astGrepRule("no-regexp-new-ts", "TypeScript", "new RegExp($A)"),
-    astGrepRule("no-regexp-call-ts", "TypeScript", "RegExp($A)"),
-    astGrepRule("no-regex-literal-js", "JavaScript", "/$A/"),
-    astGrepRule("no-regexp-new-js", "JavaScript", "new RegExp($A)"),
-    astGrepRule("no-regexp-call-js", "JavaScript", "RegExp($A)"),
-  ].join("\n---\n");
-  const result = spawnSync(
-    astGrepBinary(),
-    ["scan", "--inline-rules", inlineRules, "--json=compact", "--max-results", "20", ...candidates],
-    {
-      cwd: process.cwd(),
-      encoding: "utf8",
-    }
-  );
-  if (result.status !== 0) {
-    return [`ast-grep regex discovery failed:\n${childProcessDiagnostics(result)}`];
-  }
-  const matches = JSON.parse(result.stdout || "[]");
-  return matches.map(
-    (match) =>
-      `${match.file}:${match.range.start.line + 1}:${match.range.start.column + 1} contains pattern-engine syntax found by ast-grep; use parser or AST helpers.`
-  );
 }
 
 function jsTsRegexStringContractViolations(candidates, root) {
@@ -113,27 +80,6 @@ async function shellPatternEngineViolations(candidates, root) {
       })
     )
   ).flat();
-}
-
-function astGrepRule(id, language, pattern) {
-  return [`id: ${id}`, `language: ${language}`, "rule:", `  pattern: ${pattern}`].join("\n");
-}
-
-function astGrepBinary() {
-  return path.join(
-    ROOT,
-    "node_modules",
-    "@ast-grep",
-    "cli",
-    process.platform === "win32" ? "ast-grep.exe" : "ast-grep"
-  );
-}
-
-function childProcessDiagnostics(result) {
-  return (
-    [result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n") ||
-    "no child-process diagnostics"
-  );
 }
 
 function collectJsTsPatternEngineViolations(node, source, found) {

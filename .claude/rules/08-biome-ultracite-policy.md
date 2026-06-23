@@ -24,8 +24,10 @@ Biome is the canonical JS/TS/JSX/TSX/JSON/JSONC/CSS/HTML/GraphQL formatter and l
 - Root `biome.jsonc` extends Ultracite's `core`, `type-aware`, and `vitest` Biome presets (`ultracite/biome/core`, `ultracite/biome/type-aware`, `ultracite/biome/vitest`), then overrides only the repo-approved low-churn defaults.
 - Do not add a duplicate `"**"` to `files.includes`; `ultracite/biome/core` already provides the catch-all, and strict Biome flags duplicate first exceptions.
 - Type-aware/project-scanner Biome rules are part of the required gate for dependency declarations, private imports, JSON import attributes, import cycles, and deprecated imports. Import-extension rewriting is enabled, not disabled: `correctness.useImportExtensions` is set to `error` with the `ts -> js` / `tsx -> js` extension mappings so relative imports carry emitted-runtime `.js` specifiers, as required by this NodeNext package. `npm run typecheck` remains the semantic TypeScript type gate.
-- Complexity remains enforced. Mature parser/planner/typegen/benchmark/doc-tooling files may use the documented 65-point migration cap in `biome.jsonc`; do not add new files to that cap without updating the Ultracite override-zone reference and tooling guard.
+- Complexity remains enforced by the inherited Ultracite preset. Do not add a root, file-, or folder-specific `noExcessiveCognitiveComplexity` migration cap; refactor source or change the shared rule intentionally after a fresh upstream audit.
+- Active source, benchmark, bin, script, and test files must not import generated `dist` output. Package scripts may execute compiled `dist` entrypoints after `npm run build`; source modules must import source-owned modules.
 - `src/index.ts` is the only approved `noBarrelFile` exception because it is the package's public API entrypoint.
+- Exact Biome, Ultracite, and Vitest tool pins live in `package.json`. `scripts/dependency-catalog.json` owns only the package manager metadata and must not retain private tool pins.
 - Keep generated contract/artifact outputs, build output, dependency directories, virtualenvs, caches, and archived plans out of the Biome surface. Codemod-generated active source/docs and tracked HTML references remain governed by the normal Biome/Ultracite gates unless a specific generator documents otherwise.
 - Biome does not own Markdown, MDX, YAML, or SQL. **Prettier** owns Markdown/MDX/YAML (`npm run format:md`), while SQL is governed by supaschema's parser/deparser/model checks and `postgres-language-server`, not a standalone formatter. `docs/` MDX is additionally validated by `npm run docs:lint` + `mint validate` (Rules 02/03). See Rule 06 for the full per-language owner map; do not point Biome at these surfaces.
 - Local Biome suppression comments are forbidden. Investigate the related upstream rule, fix the code, or adjust the shared `biome.jsonc` policy with a repo-wide rationale.
@@ -38,7 +40,8 @@ Biome is the canonical JS/TS/JSX/TSX/JSON/JSONC/CSS/HTML/GraphQL formatter and l
 - `npm run lint`.
 - `npm run lint:doctor`.
 - `npm run guard` (`scripts/guards/check-all.mjs`).
-- `scripts/guards/toolchain/check-tooling-stack.mjs` (pins `@biomejs/biome` and `ultracite`, asserts the extends presets, the `useImportExtensions` mappings, the `src/index.ts` barrel exception, the 65-point complexity cap file list, and that no Biome rule is disabled outside the approved override zone).
+- `scripts/guards/toolchain/check-tooling-stack.mjs` (pins `@biomejs/biome`, `ultracite`, and Vitest packages in `package.json`; asserts the extends presets, the `useImportExtensions` mappings, the `src/index.ts` barrel exception, no complexity migration cap, no active source imports from generated `dist`, and no Biome rule is disabled outside the approved override zone).
+- `scripts/guards/deps/check-dependency-catalog.mjs` (asserts `scripts/dependency-catalog.json` stays package-manager-only).
 
 STOP if a second Biome config appears without a shared policy, if ESLint returns as a parallel lint surface, if a local suppression comment is introduced, if generated contract/build/dependency artifacts become part of the lint surface, if codemod-generated active source stops passing the normal lint/format gates, if a formatter write/fix entry point other than `npm run format` is added, or if a JS/TS formatter or linter is added that competes with Biome.
 

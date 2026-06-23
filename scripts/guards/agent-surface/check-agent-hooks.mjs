@@ -66,6 +66,7 @@ const retiredWorkflowHookPaths = [
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
 ];
+
 function assertClaudeSettings(claudeSettings, root) {
   const settingsText = JSON.stringify(claudeSettings);
   const claudeHandlers = hookHandlers(claudeSettings);
@@ -90,8 +91,8 @@ function assertClaudeSettings(claudeSettings, root) {
     ".claude/settings.json must register the tracked source-repo supaschema hook launcher"
   );
   assert(
-    !settingsText.includes("/bin/supaschema.cjs"),
-    ".claude/settings.json must not register bin/supaschema.cjs because clean source checkouts may not have dist"
+    !settingsText.includes("/bin/"),
+    ".claude/settings.json must use tracked source hook launchers, not package bin wrappers"
   );
   assert(
     !(settingsText.includes('"npx"') && settingsText.includes('"supaschema"')),
@@ -216,8 +217,8 @@ function assertCodexConfig(codexConfig, root) {
     ".codex/hooks.json must register the tracked source-repo supaschema hook launcher"
   );
   assert(
-    !codexHooksJson.includes("bin/supaschema.cjs"),
-    ".codex/hooks.json must not register bin/supaschema.cjs because clean source checkouts may not have dist"
+    !codexHooksJson.includes("bin/"),
+    ".codex/hooks.json must use tracked source hook launchers, not package bin wrappers"
   );
   assert(
     !(
@@ -249,6 +250,7 @@ export function check(root = ROOT) {
     "scripts/agent-hooks/evidence-gate.mjs",
     "scripts/agent-hooks/hook-output.mjs",
     "scripts/agent-hooks/response-claims.mjs",
+    "scripts/agent-hooks/response-evidence.mjs",
     "scripts/agent-hooks/response-shape.mjs",
     "scripts/agent-hooks/runner.mjs",
     "scripts/agent-hooks/skill-frontmatter.mjs",

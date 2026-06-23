@@ -7,7 +7,7 @@ import { Client } from "pg";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
-const { resolveDatabaseUrl } = await import(join(packageRoot, "dist/database-url.js"));
+const { resolveDatabaseUrl } = await import(join(packageRoot, "dist/database/url.js"));
 const { extractObjectsFromSql } = await import(join(packageRoot, "dist/sql/extract.js"));
 const { splitSqlStatements } = await import(join(packageRoot, "dist/sql/split.js"));
 
