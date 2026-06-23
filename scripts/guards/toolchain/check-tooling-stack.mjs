@@ -5,7 +5,7 @@ import { forEachNode, parseScript, ts } from "../lib/ast-utils.js";
 import { assert, exists, gitFiles, ok, ROOT, readJson, readText } from "../lib/guard-utils.js";
 
 const toolPins = {
-  "@biomejs/biome": "2.5.0",
+  "@biomejs/biome": "2.5.1",
   "@vitest/coverage-v8": "4.1.9",
   ultracite: "7.8.3",
   vitest: "4.1.9",
@@ -263,8 +263,8 @@ export function check(root = ROOT) {
   );
 
   assert(
-    biome.$schema === "https://biomejs.dev/schemas/2.5.0/schema.json",
-    "biome.jsonc must use the Biome 2.5.0 schema"
+    biome.$schema === "https://biomejs.dev/schemas/2.5.1/schema.json",
+    "biome.jsonc must use the Biome 2.5.1 schema"
   );
   for (const preset of [
     "ultracite/biome/core",
