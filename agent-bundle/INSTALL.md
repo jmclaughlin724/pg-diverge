@@ -8,10 +8,15 @@ Run normal setup first:
 
 ```bash
 supaschema init
-supaschema config validate --json
 ```
 
 This creates or repairs `supaschema.config.json`, configured schema directories, configured migration directories, canonical `supaschema:*` package scripts when `package.json` exists, and path-confirmation state when needed. It does not write `.agents`, `.claude`, `.codex`, `AGENTS.md`, or `CLAUDE.md`.
+
+If `.supaschema/install.json` exists and says `pathConfirmationNeeded: true`, resolve the detected paths first and create or update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`. After config exists, run:
+
+```bash
+supaschema config validate --json
+```
 
 ## Install On Demand
 

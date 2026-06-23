@@ -5,7 +5,7 @@ keywords: ["release", "trusted publishing", "npm", "checklist"]
 hidden: true
 ---
 
-The package is designed for trusted publishing from GitHub Actions. `main` is the release source: every push to `main` starts the release workflow directly, without waiting for the full CI benchmark matrix.
+The package is designed for trusted publishing from GitHub Actions. `main` is the release source: every push to `main` starts the release workflow directly, without waiting for the full CI benchmark matrix. A push to `main` must carry a package version that is not already released, unless the workflow is repairing a missing GitHub Release for an npm version that already exists.
 
 ## One-time setup
 
@@ -27,7 +27,7 @@ The package is designed for trusted publishing from GitHub Actions. `main` is th
 4. Run `npm run release:verify`.
 5. Push the signed release commit to `main`, or merge it through the optional PR lane.
 
-Do not publish from GitHub Releases or local machines. If npm publish succeeds but GitHub Release creation fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm.
+Do not publish from GitHub Releases or local machines. If npm publish succeeds but GitHub Release creation fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm. If npm and GitHub already have the current version, a `push` to `main` fails preflight so the merge cannot silently skip package publication.
 
 ## Package boundary
 
@@ -44,6 +44,7 @@ The release workflow uses:
 - `push` to `main` plus a main-only `workflow_dispatch` repair path
 - a GitHub-hosted Ubuntu runner with Node 24, npm `>=11.5.1`, and `actions/setup-node` with `registry-url: https://registry.npmjs.org`
 - `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`
+- `npm run release:registry-smoke` after publish, which downloads `supaschema@<version>` from the npm registry through npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun
 - `actions/attest@v4` for tarball provenance attestation
 - `node scripts/release/changelog-notes.mjs --version "$SUPASCHEMA_PACKAGE_VERSION" --out "$RUNNER_TEMP/release-notes.md"`
 - `gh release create "$SUPASCHEMA_RELEASE_TAG" --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"`

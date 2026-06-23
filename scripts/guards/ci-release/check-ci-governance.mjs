@@ -211,6 +211,27 @@ function assertReleaseYaml(parsed) {
     release.raw.includes('npm publish "$SUPASCHEMA_TARBALL"'),
     "release.yml must publish the exact tarball that was smoked"
   );
+  const setupBunRegistrySmokeStep = findNamedStep(
+    publishJob.steps ?? [],
+    "Install Bun for published registry smoke"
+  );
+  assert(
+    setupBunRegistrySmokeStep &&
+      stepIf(setupBunRegistrySmokeStep) === "env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'" &&
+      stepActionName(setupBunRegistrySmokeStep) === "oven-sh/setup-bun" &&
+      String(setupBunRegistrySmokeStep.with?.["bun-version"]) === "1.3.14",
+    "release.yml must install pinned Bun for the post-publish registry smoke"
+  );
+  const registrySmokeStep = findNamedStep(
+    publishJob.steps ?? [],
+    "Smoke published package from npm registry"
+  );
+  assert(
+    registrySmokeStep &&
+      stepIf(registrySmokeStep) === "env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'" &&
+      stepRun(registrySmokeStep) === "npm run release:registry-smoke",
+    "release.yml must verify the just-published package can be installed from npm by supported package managers"
+  );
   assert(
     release.raw.includes("gh release create") &&
       release.raw.includes('--target "$GITHUB_SHA"') &&
@@ -241,7 +262,7 @@ function assertConsumerPackageSmokeSteps(qualitySteps) {
   assert(
     preparePackageManagersStep &&
       stepIf(preparePackageManagersStep) === "matrix.node-version == 22" &&
-      stepRun(preparePackageManagersStep).includes("corepack prepare pnpm@10.18.1 --activate") &&
+      stepRun(preparePackageManagersStep).includes("corepack prepare pnpm@11.1.2 --activate") &&
       stepRun(preparePackageManagersStep).includes("corepack prepare yarn@4.16.0 --activate"),
     "ci.yml must prepare pnpm and Yarn only for the Node 22 consumer package-smoke lane"
   );

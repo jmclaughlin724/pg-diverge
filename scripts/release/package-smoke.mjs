@@ -15,7 +15,7 @@ const packageJson = readJson(join(ROOT, "package.json"));
 const packageVersion = packageJson.version;
 const nodeBinDir = dirname(process.execPath);
 const bunTool = "bun@1.3.14";
-const pnpmTool = "pnpm@10.18.1";
+const pnpmTool = "pnpm@11.1.2";
 const yarnTool = "yarn@4.16.0";
 const commandTimeoutMs = 300_000;
 const corepackTools = new Map([
@@ -74,7 +74,7 @@ function smokePnpmRoot() {
   const consumer = createProject("supa-smoke-pnpm-root-", "supaschema-pnpm-root", {
     packageManager: pnpmTool,
   });
-  runTool("pnpm", ["add", tarball], consumer);
+  runTool("pnpm", ["add", tarball, "--config.minimumReleaseAge=0"], consumer);
   runTool("pnpm", ["exec", PACKAGE_NAME, "init"], consumer);
   assertGenericScaffold(consumer);
   assertVersion((args, cwd) => runTool("pnpm", ["exec", PACKAGE_NAME, ...args], cwd), consumer);
@@ -85,7 +85,7 @@ function smokePnpmWorkspaceMember() {
     packageManager: pnpmTool,
     workspaceFile: "packages:\n  - packages/*\n",
   });
-  runTool("pnpm", ["add", tarball], member);
+  runTool("pnpm", ["add", tarball, "--config.minimumReleaseAge=0"], member);
   assertNoRootScaffold(root);
   assertNoScaffold(member, "pnpm workspace member should wait for explicit init");
   runTool("pnpm", ["exec", PACKAGE_NAME, "init"], member);
@@ -147,7 +147,18 @@ function runLane(name, tool, lane) {
 
 function assertVersion(runner, cwd) {
   const output = runner(["--version"], cwd).trim();
-  assert(output === packageVersion, `expected ${PACKAGE_NAME} ${packageVersion}, got ${output}`);
+  const version = lastNonEmptyLine(output);
+  assert(version === packageVersion, `expected ${PACKAGE_NAME} ${packageVersion}, got ${output}`);
+}
+
+function lastNonEmptyLine(output) {
+  return (
+    output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .at(-1) ?? ""
+  );
 }
 
 function assertGenericScaffold(dir) {

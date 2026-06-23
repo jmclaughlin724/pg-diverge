@@ -1,0 +1,138 @@
+#!/usr/bin/env node
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+
+const ROOT = process.cwd();
+const packageJson = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+const packageName = packageJson.name;
+const packageVersion = packageJson.version;
+const spec = `${packageName}@${packageVersion}`;
+const nodeBinDir = dirname(process.execPath);
+const pnpmTool = "pnpm@11.1.2";
+const bunTool = "bun@1.3.14";
+const commandTimeoutMs = 300_000;
+
+if (typeof packageName !== "string" || packageName.length === 0) {
+  fail("package.json must include a package name");
+}
+if (typeof packageVersion !== "string" || packageVersion.length === 0) {
+  fail("package.json must include a package version");
+}
+
+smokeNpm();
+smokePnpm();
+smokeBun();
+
+console.log(`REGISTRY_SMOKE_OK ${spec}`);
+
+function smokeNpm() {
+  const consumer = createProject("supa-registry-npm-", "supaschema-registry-npm");
+  runNpm(["install", spec, "--no-audit", "--no-fund"], consumer);
+  assertVersion((args, cwd) => runNpm(["exec", "--", packageName, ...args], cwd), consumer);
+}
+
+function smokePnpm() {
+  const consumer = createProject("supa-registry-pnpm-", "supaschema-registry-pnpm", {
+    packageManager: pnpmTool,
+  });
+  runTool("corepack", [pnpmTool, "add", spec, "--config.minimumReleaseAge=0"], consumer);
+  assertVersion(
+    (args, cwd) => runTool("corepack", [pnpmTool, "exec", packageName, ...args], cwd),
+    consumer
+  );
+}
+
+function smokeBun() {
+  const consumer = createProject("supa-registry-bun-", "supaschema-registry-bun", {
+    packageManager: bunTool,
+  });
+  runTool("bun", ["add", spec], consumer);
+  const executable = process.platform === "win32" ? `${packageName}.cmd` : packageName;
+  assertVersion(
+    (args, cwd) => runRaw(join(cwd, "node_modules", ".bin", executable), args, cwd),
+    consumer
+  );
+}
+
+function assertVersion(runner, cwd) {
+  const output = runner(["--version"], cwd).trim();
+  const version = lastNonEmptyLine(output);
+  if (version !== packageVersion) {
+    fail(`expected ${packageName} ${packageVersion}, got ${output}`);
+  }
+}
+
+function lastNonEmptyLine(output) {
+  return (
+    output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .at(-1) ?? ""
+  );
+}
+
+function createProject(prefix, name, extra = {}) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  writeJson(join(dir, "package.json"), {
+    name,
+    private: true,
+    version: "0.0.0",
+    ...extra,
+  });
+  return dir;
+}
+
+function runNpm(args, cwd) {
+  const execpath = process.env.npm_execpath;
+  return execpath
+    ? runRaw(process.execPath, [execpath, ...args], cwd)
+    : runRaw(commandName("npm"), args, cwd);
+}
+
+function runTool(name, args, cwd) {
+  return runRaw(commandName(name), args, cwd);
+}
+
+function runRaw(file, args, cwd) {
+  try {
+    return execFileSync(file, args, {
+      cwd,
+      env: childEnv(),
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: commandTimeoutMs,
+    });
+  } catch (error) {
+    const stdout = error.stdout?.toString?.() ?? "";
+    const stderr = error.stderr?.toString?.() ?? "";
+    const detail = [stdout, stderr].filter(Boolean).join("\n").trim();
+    const suffix = detail.length > 0 ? `\n${detail}` : "";
+    const reason = error.signal ? ` signal=${error.signal}` : "";
+    fail(`command failed in ${cwd}: ${file} ${args.join(" ")}${reason}${suffix}`);
+  }
+}
+
+function commandName(name) {
+  const executable = process.platform === "win32" ? `${name}.cmd` : name;
+  const nodeShim = join(nodeBinDir, executable);
+  return existsSync(nodeShim) ? nodeShim : executable;
+}
+
+function childEnv() {
+  const env = { ...process.env };
+  env.INIT_CWD = undefined;
+  return env;
+}
+
+function writeJson(path, value) {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function fail(message) {
+  console.error(`REGISTRY_SMOKE_FAILED ${message}`);
+  process.exit(1);
+}

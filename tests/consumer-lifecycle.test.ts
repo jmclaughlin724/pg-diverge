@@ -271,13 +271,13 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
       join(pnpmConsumer, "package.json"),
       `${JSON.stringify({
         name: "supaschema-pnpm-consumer-fixture",
-        packageManager: "pnpm@10.18.1",
+        packageManager: "pnpm@11.1.2",
         private: true,
         version: "0.0.0",
       })}\n`
     );
 
-    await run(pnpmCommand, ["add", tarballPath], {
+    await run(pnpmCommand, ["add", tarballPath, "--config.minimumReleaseAge=0"], {
       cwd: pnpmConsumer,
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -302,13 +302,13 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
       join(pnpmConsumer, "package.json"),
       `${JSON.stringify({
         name: "supaschema-pnpm-init-fixture",
-        packageManager: "pnpm@10.18.1",
+        packageManager: "pnpm@11.1.2",
         private: true,
         version: "0.0.0",
       })}\n`
     );
 
-    await run(pnpmCommand, ["add", tarballPath], {
+    await run(pnpmCommand, ["add", tarballPath, "--config.minimumReleaseAge=0"], {
       cwd: pnpmConsumer,
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -340,7 +340,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
       join(workspace, "package.json"),
       `${JSON.stringify({
         name: "supaschema-pnpm-workspace-root",
-        packageManager: "pnpm@10.18.1",
+        packageManager: "pnpm@11.1.2",
         private: true,
         version: "0.0.0",
       })}\n`
@@ -351,7 +351,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
       `${JSON.stringify({ name: "db", private: true, version: "0.0.0" })}\n`
     );
 
-    await run(pnpmCommand, ["add", tarballPath], {
+    await run(pnpmCommand, ["add", tarballPath, "--config.minimumReleaseAge=0"], {
       cwd: member,
       maxBuffer: 64 * 1024 * 1024,
     });

@@ -127,20 +127,20 @@ The test owners and release smoke script prove the package surfaces, and they mo
 | Download | `tests/package-contents.test.ts` | The shipped file list, package-size budget, and broad-directory denylist so docs, examples, benchmarks, corpus fixtures, source, tests, services, and maintainer scripts cannot silently bloat the download. |
 | Setup | `tests/database-url.test.ts` | The shared scaffolder creates the consuming project setup (config, schema/migration dirs, agent bundle, install manifest). |
 | Use | `tests/consumer-lifecycle.test.ts` | The full chain end to end: pack, `npm install` the tarball into a throwaway project, edit a schema in the scaffolded tree, then run the _installed_ `supaschema` binary and confirm an accurate, replay-safe migration and accurate generated types. |
-| Package-manager smoke | `scripts/release/package-smoke.mjs` | The packed tarball installs and initializes through the supported consumer package managers and workspace recovery paths. |
+| Package-manager smoke | `scripts/release/package-smoke.mjs` | The packed tarball installs and initializes through the supported consumer package managers and workspace recovery paths using current supported client behavior. |
+| Registry smoke | `scripts/release/registry-smoke.mjs` | After publish, npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun can download `supaschema@<version>` from the npm registry and execute the installed binary. |
 
 The "use" proof installs the real tarball rather than extracting it, because a bare extract cannot run the CLI — `dist/cli.js` needs its runtime dependencies. This is the npm-documented "install the tarball, run the installed bin" pattern.
 
 The published package must not define `preinstall`, `install`, `postinstall`, or `prepare` scripts. Consumer setup runs through explicit `supaschema init`, so pnpm, Bun, Yarn, and npm installs do not require build-script approval to download the CLI.
 
-`npm run release:verify` is the release-facing entry point. It calls the package-manager smoke after the package checks, so use that command for release readiness.
+`npm run release:verify` is the prepublish release-facing entry point. It calls the package-manager smoke after the package checks, so use that command for release readiness. The release workflow then runs the registry smoke after `npm publish`; that postpublish check proves registry availability and package-manager download behavior that a local tarball cannot prove.
 
 <Note>
-  A local registry (Verdaccio) publish-then-install flow is the optional
-  high-fidelity tier for exercising registry resolution, dist-tags, and package
-  manager download behavior. It is intentionally not used by default: this is a
-  single-package CLI whose `bin` is a small launcher of `dist`, so a tarball
-  install is hermetic, offline, and cross-platform without the extra service.
+  A local registry (Verdaccio) publish-then-install flow remains optional for
+  prepublish rehearsal. Production release uses the real npm registry after
+  publish because dist-tags, registry freshness, and package-manager download
+  behavior cannot be fully proven from a local tarball.
 </Note>
 
 ## Verification
