@@ -44,6 +44,7 @@ const localRunnerPrompt = [
   "packageManager",
   "devEngines.packageManager",
   "pnpm add supaschema",
+  "| pnpm | `pnpm add supaschema`",
   "yarn add supaschema",
   "bun add supaschema",
   "npm exec -- supaschema init",
