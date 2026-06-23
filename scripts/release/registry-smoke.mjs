@@ -13,6 +13,8 @@ const nodeBinDir = dirname(process.execPath);
 const pnpmTool = "pnpm@11.1.2";
 const bunTool = "bun@1.3.14";
 const commandTimeoutMs = 300_000;
+const installAttempts = 12;
+const installRetryDelayMs = 10_000;
 
 if (typeof packageName !== "string" || packageName.length === 0) {
   fail("package.json must include a package name");
@@ -29,7 +31,9 @@ console.log(`REGISTRY_SMOKE_OK ${spec}`);
 
 function smokeNpm() {
   const consumer = createProject("supa-registry-npm-", "supaschema-registry-npm");
-  runNpm(["install", spec, "--no-audit", "--no-fund"], consumer);
+  installWithRegistryRetry("npm install", (options) =>
+    runNpm(["install", spec, "--no-audit", "--no-fund"], consumer, options)
+  );
   assertVersion((args, cwd) => runNpm(["exec", "--", packageName, ...args], cwd), consumer);
 }
 
@@ -37,7 +41,9 @@ function smokePnpm() {
   const consumer = createProject("supa-registry-pnpm-", "supaschema-registry-pnpm", {
     packageManager: pnpmTool,
   });
-  runTool("corepack", [pnpmTool, "add", spec, "--config.minimumReleaseAge=0"], consumer);
+  installWithRegistryRetry("pnpm add", (options) =>
+    runTool("corepack", [pnpmTool, "add", spec, "--config.minimumReleaseAge=0"], consumer, options)
+  );
   assertVersion(
     (args, cwd) => runTool("corepack", [pnpmTool, "exec", packageName, ...args], cwd),
     consumer
@@ -48,7 +54,9 @@ function smokeBun() {
   const consumer = createProject("supa-registry-bun-", "supaschema-registry-bun", {
     packageManager: bunTool,
   });
-  runTool("bun", ["add", spec], consumer);
+  installWithRegistryRetry("bun add", (options) =>
+    runTool("bun", ["add", spec], consumer, options)
+  );
   const executable = process.platform === "win32" ? `${packageName}.cmd` : packageName;
   assertVersion(
     (args, cwd) => runRaw(join(cwd, "node_modules", ".bin", executable), args, cwd),
@@ -85,18 +93,48 @@ function createProject(prefix, name, extra = {}) {
   return dir;
 }
 
-function runNpm(args, cwd) {
+function installWithRegistryRetry(label, install) {
+  let lastError;
+  for (let attempt = 1; attempt <= installAttempts; attempt += 1) {
+    try {
+      return install({ throwOnError: true });
+    } catch (error) {
+      lastError = error;
+      if (attempt === installAttempts) {
+        break;
+      }
+      console.error(
+        `REGISTRY_SMOKE_RETRY ${label} ${spec} attempt=${attempt} nextAttempt=${
+          attempt + 1
+        } delayMs=${installRetryDelayMs}`
+      );
+      sleep(installRetryDelayMs);
+    }
+  }
+
+  fail(
+    `${label} could not install ${spec} after ${installAttempts} attempts\n${String(
+      lastError?.message ?? lastError
+    )}`
+  );
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function runNpm(args, cwd, options) {
   const execpath = process.env.npm_execpath;
   return execpath
-    ? runRaw(process.execPath, [execpath, ...args], cwd)
-    : runRaw(commandName("npm"), args, cwd);
+    ? runRaw(process.execPath, [execpath, ...args], cwd, options)
+    : runRaw(commandName("npm"), args, cwd, options);
 }
 
-function runTool(name, args, cwd) {
-  return runRaw(commandName(name), args, cwd);
+function runTool(name, args, cwd, options) {
+  return runRaw(commandName(name), args, cwd, options);
 }
 
-function runRaw(file, args, cwd) {
+function runRaw(file, args, cwd, options = {}) {
   try {
     return execFileSync(file, args, {
       cwd,
@@ -107,13 +145,21 @@ function runRaw(file, args, cwd) {
       timeout: commandTimeoutMs,
     });
   } catch (error) {
-    const stdout = error.stdout?.toString?.() ?? "";
-    const stderr = error.stderr?.toString?.() ?? "";
-    const detail = [stdout, stderr].filter(Boolean).join("\n").trim();
-    const suffix = detail.length > 0 ? `\n${detail}` : "";
-    const reason = error.signal ? ` signal=${error.signal}` : "";
-    fail(`command failed in ${cwd}: ${file} ${args.join(" ")}${reason}${suffix}`);
+    const message = commandFailureMessage(file, args, cwd, error);
+    if (options.throwOnError) {
+      throw new Error(message);
+    }
+    fail(message);
   }
+}
+
+function commandFailureMessage(file, args, cwd, error) {
+  const stdout = error.stdout?.toString?.() ?? "";
+  const stderr = error.stderr?.toString?.() ?? "";
+  const detail = [stdout, stderr].filter(Boolean).join("\n").trim();
+  const suffix = detail.length > 0 ? `\n${detail}` : "";
+  const reason = error.signal ? ` signal=${error.signal}` : "";
+  return `command failed in ${cwd}: ${file} ${args.join(" ")}${reason}${suffix}`;
 }
 
 function commandName(name) {
