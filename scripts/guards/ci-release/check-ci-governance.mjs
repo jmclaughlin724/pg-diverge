@@ -25,6 +25,7 @@ const SHOULD_PUBLISH_NPM_IF =
   "steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'";
 const SHOULD_CREATE_GITHUB_RELEASE_IF =
   "steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE == 'true'";
+const SHOULD_RUN_REGISTRY_SMOKE_IF = `${SHOULD_PUBLISH_NPM_IF} || (steps.preflight.outputs.SUPASCHEMA_RELEASE_NPM_PUBLISHED == 'true' && ${SHOULD_CREATE_GITHUB_RELEASE_IF})`;
 
 function assertWorkflowBasics(parsed) {
   for (const [file, { doc, raw }] of parsed) {
@@ -113,7 +114,7 @@ function assertReleaseConditionals(release, publishJob) {
   );
   assert(
     setupBunRegistrySmokeStep &&
-      stepIf(setupBunRegistrySmokeStep) === SHOULD_PUBLISH_NPM_IF &&
+      stepIf(setupBunRegistrySmokeStep) === SHOULD_RUN_REGISTRY_SMOKE_IF &&
       stepActionName(setupBunRegistrySmokeStep) === "oven-sh/setup-bun" &&
       String(setupBunRegistrySmokeStep.with?.["bun-version"]) === "1.3.14",
     "release.yml must install pinned Bun for the post-publish registry smoke"
@@ -124,9 +125,9 @@ function assertReleaseConditionals(release, publishJob) {
   );
   assert(
     registrySmokeStep &&
-      stepIf(registrySmokeStep) === SHOULD_PUBLISH_NPM_IF &&
+      stepIf(registrySmokeStep) === SHOULD_RUN_REGISTRY_SMOKE_IF &&
       stepRun(registrySmokeStep) === "npm run release:registry-smoke",
-    "release.yml must verify the just-published package can be installed from npm by supported package managers"
+    "release.yml must verify the npm-published package can be installed from npm by supported package managers before GitHub release creation"
   );
   const prepareReleaseNotesStep = findNamedStep(
     publishJob.steps ?? [],
@@ -153,9 +154,16 @@ function assertReleaseAttestationBeforeRegistrySmoke(publishJob) {
   const registrySmokeIndex = (publishJob.steps ?? []).findIndex(
     (step) => stepName(step) === "Smoke published package from npm registry"
   );
+  const createReleaseIndex = (publishJob.steps ?? []).findIndex(
+    (step) => stepName(step) === "Create GitHub release"
+  );
   assert(
     publishIndex >= 0 && attestIndex > publishIndex && registrySmokeIndex > attestIndex,
     "release.yml must attest the published tarball before post-publish registry smoke can fail the job"
+  );
+  assert(
+    createReleaseIndex > registrySmokeIndex,
+    "release.yml must run registry smoke before GitHub Release creation"
   );
 }
 
