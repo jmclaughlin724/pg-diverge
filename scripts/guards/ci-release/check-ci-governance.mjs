@@ -15,10 +15,16 @@ import {
   permissionsAreReadOnly,
   stepActionName,
   stepIf,
+  stepName,
   stepRun,
   stepRunBefore,
   workflowFiles,
 } from "./ci-yaml-primitives.mjs";
+
+const SHOULD_PUBLISH_NPM_IF =
+  "steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'";
+const SHOULD_CREATE_GITHUB_RELEASE_IF =
+  "steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE == 'true'";
 
 function assertWorkflowBasics(parsed) {
   for (const [file, { doc, raw }] of parsed) {
@@ -93,6 +99,63 @@ function assertCodeql(parsed) {
   assert(
     !codeqlSteps.some((step) => "setup-python-dependencies" in (step?.with ?? {})),
     "codeql.yml must not use the deprecated CodeQL setup-python-dependencies input"
+  );
+}
+
+function assertReleaseConditionals(release, publishJob) {
+  assert(
+    !release.raw.includes("env.SUPASCHEMA_RELEASE_SHOULD_"),
+    "release.yml step conditionals must use preflight step outputs, not dynamic env context"
+  );
+  const setupBunRegistrySmokeStep = findNamedStep(
+    publishJob.steps ?? [],
+    "Install Bun for published registry smoke"
+  );
+  assert(
+    setupBunRegistrySmokeStep &&
+      stepIf(setupBunRegistrySmokeStep) === SHOULD_PUBLISH_NPM_IF &&
+      stepActionName(setupBunRegistrySmokeStep) === "oven-sh/setup-bun" &&
+      String(setupBunRegistrySmokeStep.with?.["bun-version"]) === "1.3.14",
+    "release.yml must install pinned Bun for the post-publish registry smoke"
+  );
+  const registrySmokeStep = findNamedStep(
+    publishJob.steps ?? [],
+    "Smoke published package from npm registry"
+  );
+  assert(
+    registrySmokeStep &&
+      stepIf(registrySmokeStep) === SHOULD_PUBLISH_NPM_IF &&
+      stepRun(registrySmokeStep) === "npm run release:registry-smoke",
+    "release.yml must verify the just-published package can be installed from npm by supported package managers"
+  );
+  const prepareReleaseNotesStep = findNamedStep(
+    publishJob.steps ?? [],
+    "Prepare GitHub release notes"
+  );
+  const createGithubReleaseStep = findNamedStep(publishJob.steps ?? [], "Create GitHub release");
+  assert(
+    prepareReleaseNotesStep && stepIf(prepareReleaseNotesStep) === SHOULD_CREATE_GITHUB_RELEASE_IF,
+    "release.yml must prepare GitHub release notes from preflight create-release output"
+  );
+  assert(
+    createGithubReleaseStep && stepIf(createGithubReleaseStep) === SHOULD_CREATE_GITHUB_RELEASE_IF,
+    "release.yml must create GitHub release from preflight create-release output"
+  );
+}
+
+function assertReleaseAttestationBeforeRegistrySmoke(publishJob) {
+  const publishIndex = (publishJob.steps ?? []).findIndex(
+    (step) => stepRun(step) === 'npm publish "$SUPASCHEMA_TARBALL" --access public --provenance'
+  );
+  const attestIndex = (publishJob.steps ?? []).findIndex(
+    (step) => stepActionName(step) === "actions/attest"
+  );
+  const registrySmokeIndex = (publishJob.steps ?? []).findIndex(
+    (step) => stepName(step) === "Smoke published package from npm registry"
+  );
+  assert(
+    publishIndex >= 0 && attestIndex > publishIndex && registrySmokeIndex > attestIndex,
+    "release.yml must attest the published tarball before post-publish registry smoke can fail the job"
   );
 }
 
@@ -211,27 +274,8 @@ function assertReleaseYaml(parsed) {
     release.raw.includes('npm publish "$SUPASCHEMA_TARBALL"'),
     "release.yml must publish the exact tarball that was smoked"
   );
-  const setupBunRegistrySmokeStep = findNamedStep(
-    publishJob.steps ?? [],
-    "Install Bun for published registry smoke"
-  );
-  assert(
-    setupBunRegistrySmokeStep &&
-      stepIf(setupBunRegistrySmokeStep) === "env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'" &&
-      stepActionName(setupBunRegistrySmokeStep) === "oven-sh/setup-bun" &&
-      String(setupBunRegistrySmokeStep.with?.["bun-version"]) === "1.3.14",
-    "release.yml must install pinned Bun for the post-publish registry smoke"
-  );
-  const registrySmokeStep = findNamedStep(
-    publishJob.steps ?? [],
-    "Smoke published package from npm registry"
-  );
-  assert(
-    registrySmokeStep &&
-      stepIf(registrySmokeStep) === "env.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'" &&
-      stepRun(registrySmokeStep) === "npm run release:registry-smoke",
-    "release.yml must verify the just-published package can be installed from npm by supported package managers"
-  );
+  assertReleaseConditionals(release, publishJob);
+  assertReleaseAttestationBeforeRegistrySmoke(publishJob);
   assert(
     release.raw.includes("gh release create") &&
       release.raw.includes('--target "$GITHUB_SHA"') &&

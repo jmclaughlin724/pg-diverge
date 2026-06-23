@@ -19,7 +19,7 @@ Install from the package or workspace that owns your schema workflow, not from a
 | Manager | Install command | Setup command | Run command |
 | --- | --- | --- | --- |
 | npm | `npm install supaschema` | `npm exec -- supaschema init` | `npm exec -- supaschema <cmd>` |
-| pnpm | `pnpm add supaschema --config.minimumReleaseAge=0` | `pnpm exec supaschema init` | `pnpm exec supaschema <cmd>` |
+| pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` | `pnpm exec supaschema <cmd>` |
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` | `yarn exec supaschema <cmd>` |
 | Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` | `./node_modules/.bin/supaschema <cmd>` |
 
@@ -27,7 +27,7 @@ supaschema is a runtime project dependency because the CLI, config schema, gener
 
 For workspaces, run both install and setup from the package directory that owns `supaschema.config.json` and the schema files. Dependency-targeting flags such as npm `--workspace`, pnpm `--filter`, or Yarn `workspace` can update the member manifest while setup still runs from the command's current directory. Use root-level workspace flags only when the workspace root owns the schema workflow.
 
-For pnpm, `pnpm add supaschema --config.minimumReleaseAge=0` adds the dependency to the package in the current directory and lets a just-published supaschema version resolve immediately. Run `pnpm add -w supaschema --config.minimumReleaseAge=0` only when the workspace root owns the schema workflow. pnpm v11 defaults `minimumReleaseAge` to one day; keep the default only when you intentionally want pnpm to wait before accepting a fresh package version.
+For pnpm, `pnpm add supaschema` adds the dependency to the package in the current directory. Run `pnpm add -w supaschema` only when the workspace root owns the schema workflow. pnpm v11 defaults `minimumReleaseAge` to one day; keep that supply-chain protection for normal installs. Use `--config.minimumReleaseAge=0` only when troubleshooting an immediate install of a just-published supaschema version.
 
 Stop before installing if package-manager signals conflict, the workspace owner is unclear, or Node is below 22.12.
 
