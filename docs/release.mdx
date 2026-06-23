@@ -35,7 +35,7 @@ Package contents are allowlisted with `package.json` `files`. Do not add a root 
 
 Use [Package Boundary](/reference/package-boundary) before adding, moving, or deleting any published file or consumer installer output. Use [Agent bundle](/coding-agents/agent-bundle) before changing shipped agent surfaces or hook behavior.
 
-Before publishing, `npm run release:verify` is the local release proof. It runs release preflight, package checks, tarball inspection, and the package-manager smoke owned by [Package Boundary](/reference/package-boundary).
+Before publishing, `npm run release:verify` is the local release proof. It runs release preflight, package checks, the installed-CLI consumer lifecycle proof, tarball inspection, and the package-manager smoke owned by [Package Boundary](/reference/package-boundary).
 
 The release workflow uses:
 

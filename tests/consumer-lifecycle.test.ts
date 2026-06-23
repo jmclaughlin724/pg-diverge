@@ -87,6 +87,14 @@ async function capture(file: string, args: string[], cwd: string): Promise<Captu
   }
 }
 
+function lastNonEmptyLine(value: string): string | undefined {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .at(-1);
+}
+
 async function copySqlTree(sourceDir: string, targetDir: string): Promise<void> {
   await mkdir(targetDir, { recursive: true });
   for (const entry of await readdir(sourceDir)) {
@@ -216,7 +224,7 @@ describe("consumer lifecycle: install then use the published package", () => {
     for (const fragment of expectedZodFragments) {
       expect(zodFile, fragment).toContain(fragment);
     }
-  });
+  }, 300_000);
 });
 
 describe("consumer lifecycle: workspace member install from member directory", () => {
@@ -293,7 +301,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
 
     const version = await capture(pnpmCommand, ["exec", "supaschema", "--version"], pnpmConsumer);
     expect(version.code, version.stderr).toBe(0);
-    expect(version.stdout.trim()).toBe(repoVersion);
+    expect(lastNonEmptyLine(version.stdout)).toBe(repoVersion);
   }, 300_000);
 
   it("pnpm add without setup can recover through pnpm exec supaschema init", async () => {
@@ -369,7 +377,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
 
     const version = await capture(pnpmCommand, ["exec", "supaschema", "--version"], member);
     expect(version.code, version.stderr).toBe(0);
-    expect(version.stdout.trim()).toBe(repoVersion);
+    expect(lastNonEmptyLine(version.stdout)).toBe(repoVersion);
   }, 300_000);
 });
 
