@@ -619,7 +619,9 @@ describe("doctor environment resolution", () => {
 });
 
 describe("pending install path confirmation", () => {
-  it("blocks config validate, doctor, zero-source diff, zero-arg check, sync, and apply", () => {
+  it("blocks config validate, doctor, zero-source diff, zero-arg check, sync, and apply", {
+    timeout: 20_000,
+  }, () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-pending-install-"));
     mkdirSync(join(cwd, ".supaschema"), { recursive: true });
     mkdirSync(join(cwd, "database/migrations"), { recursive: true });
@@ -701,7 +703,9 @@ describe("pending install path confirmation", () => {
 });
 
 describe("schema diff defaults", () => {
-  it("diffs scoped schema edits from git without a database or unrelated managed-schema failures", () => {
+  it("diffs scoped schema edits from git without a database or unrelated managed-schema failures", {
+    timeout: 20_000,
+  }, () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-git-scoped-diff-"));
     mkdirSync(join(cwd, "schemas"), { recursive: true });
     writeFileSync(

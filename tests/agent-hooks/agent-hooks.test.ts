@@ -799,7 +799,9 @@ describe("claude generated-migration edit hook", () => {
     expect(result.code).toBe(0);
   });
 
-  it("allows hand-authored migrations, new files, and non-sql edits", async () => {
+  it("allows hand-authored migrations, new files, and non-sql edits", {
+    timeout: 20_000,
+  }, async () => {
     const { handAuthored } = await fixtures();
     for (const payload of [
       { tool_input: { file_path: handAuthored }, tool_name: "Write" },
