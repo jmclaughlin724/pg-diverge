@@ -19,7 +19,7 @@ Install from the package or workspace that owns your schema workflow, not from a
 | Manager | Install command | Setup command | Run command |
 | --- | --- | --- | --- |
 | npm | `npm install supaschema` | `npm exec -- supaschema init` | `npm exec -- supaschema <cmd>` |
-| pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` | `pnpm exec supaschema <cmd>` |
+| pnpm | `pnpm add supaschema --config.minimumReleaseAge=0` | `pnpm exec supaschema init` | `pnpm exec supaschema <cmd>` |
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` | `yarn exec supaschema <cmd>` |
 | Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` | `./node_modules/.bin/supaschema <cmd>` |
 
@@ -27,7 +27,7 @@ supaschema is a runtime project dependency because the CLI, config schema, gener
 
 For workspaces, run both install and setup from the package directory that owns `supaschema.config.json` and the schema files. Dependency-targeting flags such as npm `--workspace`, pnpm `--filter`, or Yarn `workspace` can update the member manifest while setup still runs from the command's current directory. Use root-level workspace flags only when the workspace root owns the schema workflow.
 
-For pnpm, `pnpm add supaschema` adds the dependency to the package in the current directory. Run `pnpm add -w supaschema` only when the workspace root owns the schema workflow.
+For pnpm, `pnpm add supaschema --config.minimumReleaseAge=0` adds the dependency to the package in the current directory and lets a just-published supaschema version resolve immediately. Run `pnpm add -w supaschema --config.minimumReleaseAge=0` only when the workspace root owns the schema workflow. pnpm v11 defaults `minimumReleaseAge` to one day; keep the default only when you intentionally want pnpm to wait before accepting a fresh package version.
 
 Stop before installing if package-manager signals conflict, the workspace owner is unclear, or Node is below 22.12.
 
@@ -47,7 +47,7 @@ Use the matching local runner for every command after install:
 - Yarn: `yarn exec supaschema <cmd>`
 - Bun: `./node_modules/.bin/supaschema <cmd>`
 
-After install, run `<local-runner> init`. It uses the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths to create config and directories. It does not install active AI-agent rules, hooks, skills, settings, `AGENTS.md`, or `CLAUDE.md` by default. Inspect `supaschema.config.json`, and inspect `.supaschema/install.json` only when it exists for pending path confirmation. Then run:
+After install, run `<local-runner> init`. It uses the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths to create config and directories. It does not install active AI-agent rules, hooks, skills, settings, `AGENTS.md`, or `CLAUDE.md` by default. If `.supaschema/install.json` exists, inspect it first; when it has `pathConfirmationNeeded: true`, stop before validation or diffing and ask which detected paths to write into `supaschema.config.json`. If no pending install manifest exists, inspect `supaschema.config.json`. Then run:
 
 `<local-runner> --version` `<local-runner> config validate --json`
 

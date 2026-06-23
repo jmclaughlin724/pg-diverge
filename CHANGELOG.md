@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.5 (2026-06-23)
+
+### Patch Changes
+
+- Makes `main` release runs fail closed when the current package version is already published, so release automation cannot silently skip creating a downloadable npm package.
+- Adds post-publish registry smoke coverage that installs `supaschema@<version>` through npm, pnpm 11, and Bun after `npm publish`.
+- Updates pnpm install guidance and package-manager smoke paths to use `--config.minimumReleaseAge=0` when a freshly published supaschema version must be available immediately.
+- Fixes setup and agent guidance so pending `.supaschema/install.json` path confirmation is handled before `supaschema.config.json` validation or schema diffing.
+
 ## 0.3.4 (2026-06-19)
 
 ### Patch Changes

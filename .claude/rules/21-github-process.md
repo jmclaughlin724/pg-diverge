@@ -216,7 +216,7 @@ npm run sync:llm:check
 For GitHub check evidence behavior, also run:
 
 ```bash
-npm test -- tests/agent-hook-core.test.ts
+npm test -- tests/agent-hooks/agent-hook-core.test.ts
 ```
 
 Before direct-main push, also run:

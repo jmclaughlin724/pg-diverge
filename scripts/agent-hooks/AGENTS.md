@@ -17,4 +17,4 @@ Shared Claude and Codex hook runtime, imported by both `.claude/hooks/**` and `.
 
 - Deterministic hook context and skill loading: `.claude/rules/12-skill-loading-enforcement.md`
 - Generated agent-surface sync ownership: `.claude/rules/22-agent-surface-sync-ownership.md`
-- Verify: `npm run guard:agent`, focused tests in `tests/agent-hook-core.test.ts` and `tests/agent-hooks.test.ts`
+- Verify: `npm run guard:agent`, focused tests in `tests/agent-hooks/agent-hook-core.test.ts` and `tests/agent-hooks/agent-hooks.test.ts`

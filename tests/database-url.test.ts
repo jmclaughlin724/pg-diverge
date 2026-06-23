@@ -133,7 +133,7 @@ describe("init project setup", () => {
       join(workspace, "package.json"),
       `${JSON.stringify({
         name: "supaschema-pnpm-workspace-root",
-        packageManager: "pnpm@10.18.1",
+        packageManager: "pnpm@11.1.2",
         private: true,
         version: "0.0.0",
       })}\n`
@@ -162,7 +162,7 @@ describe("init project setup", () => {
       join(consumer, "package.json"),
       `${JSON.stringify({
         name: "supaschema-pnpm-workspace-root",
-        packageManager: "pnpm@10.18.1",
+        packageManager: "pnpm@11.1.2",
         private: true,
         version: "0.0.0",
       })}\n`

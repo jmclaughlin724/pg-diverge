@@ -66,7 +66,9 @@ function runPreflight(
   cwd: string,
   options: {
     githubEnv?: string;
+    githubEventName?: string;
     githubOutput?: string;
+    githubRef?: string;
     githubReleaseExists?: boolean;
     githubSha?: string;
     githubTagTarget?: string;
@@ -79,7 +81,9 @@ function runPreflight(
     env: {
       ...process.env,
       GITHUB_ENV: options.githubEnv,
+      GITHUB_EVENT_NAME: options.githubEventName,
       GITHUB_OUTPUT: options.githubOutput,
+      GITHUB_REF: options.githubRef,
       GITHUB_REPOSITORY: "jmclaughlin724/supaschema",
       GITHUB_SHA: options.githubSha ?? releaseCommit,
       SUPASCHEMA_RELEASE_GITHUB_RELEASE_EXISTS: String(options.githubReleaseExists ?? false),
@@ -151,6 +155,22 @@ describe("release preflight", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
       "RELEASE_PREFLIGHT_OK supaschema@1.2.3 and v1.2.3 are already released"
+    );
+  });
+
+  it("rejects an already complete release on a main push", () => {
+    const cwd = makeProject({});
+
+    const result = runPreflight(cwd, {
+      githubEventName: "push",
+      githubRef: "refs/heads/main",
+      githubReleaseExists: true,
+      publishedVersions: ["1.2.2", "1.2.3"],
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "main pushes must bump package.json, package-lock.json, and CHANGELOG.md"
     );
   });
 

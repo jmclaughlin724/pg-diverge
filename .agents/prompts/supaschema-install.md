@@ -18,14 +18,14 @@ Before installing, identify the package manager from this evidence, in order:
 
 STOP IF package-manager signals conflict, the owning workspace package is unclear, or Node is below 22.12. Do not run npm in a pnpm, Yarn, or Bun project. Do not create a second lockfile.
 
-For workspaces, `cd` into the owning member package before install and setup unless the workspace root owns `supaschema.config.json` and the schema workflow. Dependency-targeting flags can update a member manifest while `supaschema init` still writes setup files in the command's current directory. With pnpm, `pnpm add supaschema` targets the package in the current directory; use `pnpm add -w supaschema` only when the workspace root owns the schema workflow.
+For workspaces, `cd` into the owning member package before install and setup unless the workspace root owns `supaschema.config.json` and the schema workflow. Dependency-targeting flags can update a member manifest while `supaschema init` still writes setup files in the command's current directory. With pnpm, `pnpm add supaschema --config.minimumReleaseAge=0` targets the package in the current directory and allows a just-published supaschema release to resolve immediately; use `pnpm add -w supaschema --config.minimumReleaseAge=0` only when the workspace root owns the schema workflow.
 
 ## Install Command
 
 | Manager | First install | Setup |
 | --- | --- | --- |
 | npm | `npm install supaschema` | `npm exec -- supaschema init` |
-| pnpm | `pnpm add supaschema` | `pnpm exec supaschema init` |
+| pnpm | `pnpm add supaschema --config.minimumReleaseAge=0` | `pnpm exec supaschema init` |
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` |
 | Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` |
 
@@ -89,12 +89,13 @@ Install does not edit schema files, generate migrations, connect to a database, 
 
 ## First Tasks After Install
 
-1. Inspect `supaschema.config.json`.
-2. If `.supaschema/install.json` exists and has `pathConfirmationNeeded: true`, stop before diffing. Ask the user which detected schema and migration paths to use, then update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`; `config validate`, `doctor`, and zero-source `diff` block until those fields are explicit.
-3. For Supabase projects, use the configured Supabase CLI runner and the existing Supabase project link/authentication lane. For other PostgreSQL providers, use detected existing database URL environment variable names in `sync.targets` when present.
-4. Run `<local-runner> --version`.
-5. Run `<local-runner> config validate --json` after config exists or paths are confirmed.
-6. If the user asks for AI-agent enforcement, read `node_modules/supaschema/agent-bundle/INSTALL.md`, then install the raw agent bundle on demand.
+1. Inspect `.supaschema/install.json` first when it exists.
+2. If `.supaschema/install.json` has `pathConfirmationNeeded: true`, stop before diffing or validation. Ask the user which detected schema and migration paths to use, then create or update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`; `config validate`, `doctor`, and zero-source `diff` block until those fields are explicit.
+3. If no pending install manifest exists, inspect `supaschema.config.json`.
+4. For Supabase projects, use the configured Supabase CLI runner and the existing Supabase project link/authentication lane. For other PostgreSQL providers, use detected existing database URL environment variable names in `sync.targets` when present.
+5. Run `<local-runner> --version`.
+6. Run `<local-runner> config validate --json` after config exists or paths are confirmed.
+7. If the user asks for AI-agent enforcement, read `node_modules/supaschema/agent-bundle/INSTALL.md`, then install the raw agent bundle on demand.
 
 ## Schema Change Workflow
 
