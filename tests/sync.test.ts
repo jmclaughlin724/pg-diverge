@@ -892,6 +892,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     let fallbackResolved = false;
     const program = reportProgram({
       cliVersion: "test",
+      configPath: () => undefined,
       globalEnvName: () => undefined,
       loadCliConfig: () =>
         Promise.resolve(
@@ -950,6 +951,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     let fallbackResolved = false;
     const program = reportProgram({
       cliVersion: "test",
+      configPath: () => undefined,
       globalEnvName: () => undefined,
       loadCliConfig: () =>
         Promise.resolve(
@@ -1002,6 +1004,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     try {
       const dryRunProgram = reportProgram({
         cliVersion: "test",
+        configPath: () => undefined,
         globalEnvName: () => undefined,
         loadCliConfig: () =>
           Promise.resolve(resolveConfig({ migrationsDir: "database/migrations" })),
@@ -1016,6 +1019,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
       const stageProgram = reportProgram({
         cliVersion: "test",
+        configPath: () => undefined,
         globalEnvName: () => undefined,
         loadCliConfig: () =>
           Promise.resolve(resolveConfig({ migrationsDir: "database/migrations" })),

@@ -184,6 +184,7 @@ registerDiffCommands(program, {
 });
 registerReportCommands(program, {
   cliVersion,
+  configPath: currentConfigPath,
   globalEnvName: () => program.opts<GlobalOptions>().env,
   loadCliConfig,
   printDiagnostics,

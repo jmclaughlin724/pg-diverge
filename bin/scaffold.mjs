@@ -26,11 +26,9 @@ const agentBundleInstructions = "node_modules/supaschema/agent-bundle/INSTALL.md
 const pnpmWorkspaceFile = "pnpm-workspace.yaml";
 const pnpmBuildApprovalLine = "  supaschema: true";
 const packageScripts = {
-  "supaschema:apply": "supaschema apply",
   "supaschema:check": "supaschema check",
   "supaschema:diff": "supaschema diff",
   "supaschema:stage": "supaschema stage",
-  "supaschema:sync": "supaschema sync",
   "supaschema:types": "supaschema types",
 };
 const databaseUrlEnvPriority = [

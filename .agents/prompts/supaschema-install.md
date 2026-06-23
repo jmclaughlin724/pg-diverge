@@ -38,7 +38,7 @@ Use the matching local runner for every command after install:
 | Yarn | `yarn exec supaschema <cmd>` |
 | Bun | `./node_modules/.bin/supaschema <cmd>` |
 
-Always run the matching explicit setup command from the owning package directory after install. The command is idempotent and leaves existing config intact. Default `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, migration paths, and the six canonical package scripts with the packaged config contract only. It does not install active AI-agent rules, hooks, skills, prompts, settings, `AGENTS.md`, `CLAUDE.md`, or backup directories. When the user explicitly approves AI-agent enforcement, review `node_modules/supaschema/agent-bundle/INSTALL.md` and follow its manual copy/merge instructions.
+Always run the matching explicit setup command from the owning package directory after install. The command is idempotent and leaves existing config intact. Default `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, migration paths, and focused non-apply package scripts with the packaged config contract only. It does not install active AI-agent rules, hooks, skills, prompts, settings, `AGENTS.md`, `CLAUDE.md`, backup directories, or apply-capable package scripts. When the user explicitly approves AI-agent enforcement, review `node_modules/supaschema/agent-bundle/INSTALL.md` and follow its manual copy/merge instructions.
 
 ```bash
 npm exec -- supaschema init
@@ -49,19 +49,21 @@ yarn exec supaschema init
 
 Use `<local-runner> init --dry-run --json` when you need to preview setup before writing files.
 
-After setup, use package scripts from the owning package for the routine schema-change workflow:
+After setup, use package scripts from the owning package for focused non-apply lanes:
 
-| Manager | Sync | Diff | Stage | Apply | Types | Check |
-| --- | --- | --- | --- | --- | --- | --- |
-| npm | `npm run supaschema:sync` | `npm run supaschema:diff` | `npm run supaschema:stage` | `npm run supaschema:apply` | `npm run supaschema:types` | `npm run supaschema:check` |
-| pnpm | `pnpm supaschema:sync` | `pnpm supaschema:diff` | `pnpm supaschema:stage` | `pnpm supaschema:apply` | `pnpm supaschema:types` | `pnpm supaschema:check` |
-| Yarn | `yarn supaschema:sync` | `yarn supaschema:diff` | `yarn supaschema:stage` | `yarn supaschema:apply` | `yarn supaschema:types` | `yarn supaschema:check` |
-| Bun | `bun run supaschema:sync` | `bun run supaschema:diff` | `bun run supaschema:stage` | `bun run supaschema:apply` | `bun run supaschema:types` | `bun run supaschema:check` |
+| Manager | Diff | Stage | Types | Check |
+| --- | --- | --- | --- | --- |
+| npm | `npm run supaschema:diff` | `npm run supaschema:stage` | `npm run supaschema:types` | `npm run supaschema:check` |
+| pnpm | `pnpm supaschema:diff` | `pnpm supaschema:stage` | `pnpm supaschema:types` | `pnpm supaschema:check` |
+| Yarn | `yarn supaschema:diff` | `yarn supaschema:stage` | `yarn supaschema:types` | `yarn supaschema:check` |
+| Bun | `bun run supaschema:diff` | `bun run supaschema:stage` | `bun run supaschema:types` | `bun run supaschema:check` |
 
-Use direct CLI commands for setup diagnostics and database execution verification:
+Use direct CLI commands for setup diagnostics, full sync, apply, and database execution verification:
 
 ```bash
 <local-runner> config validate --json
+<local-runner> sync
+<local-runner> apply
 <local-runner> verify
 ```
 
@@ -80,7 +82,7 @@ Default `supaschema init` writes or merges these project files into the consumin
 
 - `supaschema.config.json` when the project does not already have one;
 - configured schema and migration directories;
-- six canonical `supaschema:*` package scripts when `package.json` exists: `supaschema:sync`, `supaschema:diff`, `supaschema:stage`, `supaschema:apply`, `supaschema:types`, and `supaschema:check`;
+- focused non-apply `supaschema:*` package scripts when `package.json` exists: `supaschema:diff`, `supaschema:stage`, `supaschema:types`, and `supaschema:check`;
 - `.supaschema/install.json` only when detected paths need confirmation.
 
 Install does not edit schema files, generate migrations, connect to a database, apply migrations, write real database credentials, create duplicate supaschema-only database credential files, install active AI-agent rules/hooks/skills/settings, write `AGENTS.md` or `CLAUDE.md`, create backup directories, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. To install AI-agent enforcement on demand, review `node_modules/supaschema/agent-bundle/INSTALL.md` and apply those instructions only when the user approves the bundle.

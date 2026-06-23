@@ -397,13 +397,7 @@ function shellTokens(command) {
       pushToken();
       continue;
     }
-    if (
-      char === ";" ||
-      char === "|" ||
-      char === "&" ||
-      char === "(" ||
-      char === ")"
-    ) {
+    if (char === ";" || char === "|" || char === ">" || char === "&" || char === "(" || char === ")") {
       pushToken();
       tokens.push({ kind: "operator", value: char });
       continue;
@@ -457,6 +451,16 @@ function skipCommandWrapper(tokens, start) {
 }
 
 function skipGitGlobalOptions(args) {
+  const valueOptions = new Set([
+    "--config-env",
+    "--exec-path",
+    "--git-dir",
+    "--namespace",
+    "--super-prefix",
+    "--work-tree",
+    "-C",
+    "-c",
+  ]);
   let index = 0;
   while (index < args.length) {
     const arg = args[index];
@@ -464,7 +468,7 @@ function skipGitGlobalOptions(args) {
       break;
     }
     index += 1;
-    if ((arg === "-C" || arg === "-c") && index < args.length) {
+    if (valueOptions.has(arg) && index < args.length) {
       index += 1;
     }
   }

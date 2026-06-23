@@ -7,6 +7,10 @@ import {
   parseCheckReporter,
   renderCheckReport,
 } from "../check/report.js";
+import {
+  formatConfigValidationDiagnostics,
+  pendingInstallPathConfirmationDiagnostic,
+} from "../config/validate.js";
 import type { Diagnostic, SupaschemaConfig } from "../core.js";
 import { renderCorpusReport, runCorpus } from "../corpus.js";
 import { hasErrors } from "../diagnostics.js";
@@ -24,6 +28,7 @@ import { syncMigrations } from "../workflow/sync.js";
 
 export interface ReportCommandContext {
   cliVersion: string;
+  configPath: () => string | undefined;
   globalEnvName: () => string | undefined;
   loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
@@ -317,6 +322,15 @@ async function runSyncCommand(
   context: ReportCommandContext
 ): Promise<void> {
   const config = await context.loadCliConfig();
+  const pendingInstall = await pendingInstallPathConfirmationDiagnostic(
+    process.cwd(),
+    context.configPath()
+  );
+  if (pendingInstall) {
+    process.stderr.write(formatConfigValidationDiagnostics([pendingInstall]));
+    process.exitCode = 2;
+    return;
+  }
   const runner = resolveSyncRunner(options.runner);
   if (runner === undefined && options.runner !== undefined) {
     process.stderr.write(
@@ -357,6 +371,15 @@ async function runApplyCommand(
   context: ReportCommandContext
 ): Promise<void> {
   const config = await context.loadCliConfig();
+  const pendingInstall = await pendingInstallPathConfirmationDiagnostic(
+    process.cwd(),
+    context.configPath()
+  );
+  if (pendingInstall) {
+    process.stderr.write(formatConfigValidationDiagnostics([pendingInstall]));
+    process.exitCode = 2;
+    return;
+  }
   const runner = resolveSyncRunner(options.runner);
   if (runner === undefined && options.runner !== undefined) {
     process.stderr.write(

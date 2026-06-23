@@ -739,7 +739,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     ).toBeUndefined();
   });
 
-  it("only flags domain verification claims that contradict recorded failures", () => {
+  it("requires successful domain evidence for domain verification claims", () => {
     expect(claimWithoutEvidence("Verified and clean.", normalizedHookState(), [])).toBeUndefined();
     expect(
       claimWithoutEvidence(
@@ -772,7 +772,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
         }),
         []
       )
-    ).toBeUndefined();
+    ).toMatchObject({ id: "claim-without-evidence" });
     expect(
       claimWithoutEvidence(
         "The GitHub checks are verified and green.",
@@ -1274,6 +1274,49 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     });
   });
 
+  it("blocks mutating shell commands while response corrections are pending", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt: "verify from upstream Codex sources if this is running correctly",
+      session_id: "codex-correction-shell-mutation",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+    handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message:
+          "This is expected behavior because Codex runs the matching Stop hook.",
+        session_id: "codex-correction-shell-mutation",
+      },
+      { root, runtime: "codex" }
+    );
+
+    for (const [cmd, session] of [
+      ["python -c \"from pathlib import Path; Path('x').write_text('x')\"", "python"],
+      ["sed -i '' s/a/b/g file.txt", "sed"],
+      ["cat value > file.txt", "redirect"],
+      ["printf value | tee file.txt", "tee"],
+    ]) {
+      const blocked = handleAgentHookEvent(
+        "PreToolUse",
+        {
+          session_id: "codex-correction-shell-mutation",
+          tool_input: { cmd },
+          tool_name: "functions.exec_command",
+        },
+        { root, runtime: "codex" }
+      );
+
+      expect(blocked.output, session).toMatchObject({
+        hookSpecificOutput: expect.objectContaining({
+          permissionDecision: "deny",
+          permissionDecisionReason: expect.stringContaining("Response evidence correction"),
+        }),
+      });
+    }
+  });
+
   it("parses nested Codex exec output text before recording command evidence", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -1297,6 +1340,64 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       expect.objectContaining({
         command: "npm run guard:agent",
         kind: "verified-command",
+      })
+    );
+  });
+
+  it("records transcript command evidence from nested exit output instead of top-level status", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const transcriptPath = join(root, "transcript-nested-failed-command.jsonl");
+    await writeFile(
+      transcriptPath,
+      `${JSON.stringify({
+        status: "success",
+        tool_input: { cmd: "npm run guard" },
+        tool_name: "functions.exec_command",
+        tool_response: { content: [{ text: "Process exited with code 1" }] },
+        type: "tool_result",
+      })}\n`
+    );
+
+    const result = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "Guards passed.",
+        session_id: "transcript-nested-failed-command",
+        transcript_path: transcriptPath,
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(result.output).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("failed evidence remains unresolved"),
+    });
+  });
+
+  it("recognizes verification evidence behind npx options", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "run the tests", session_id: "exec-npx-evidence" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "exec-npx-evidence",
+        tool_input: { cmd: "npx --yes vitest run tests/agent-hooks/agent-hook-core.test.ts" },
+        tool_name: "functions.exec_command",
+        tool_response: { exit_code: 0 },
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
+      expect.objectContaining({
+        command: "npx --yes vitest run tests/agent-hooks/agent-hook-core.test.ts",
+        domains: ["test"],
+        kind: "verified-command",
+        outcome: "success",
       })
     );
   });

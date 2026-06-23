@@ -141,10 +141,8 @@ export const excludedMaintainerFiles = [
 ];
 
 export const expectedSupaschemaScripts = {
-  "supaschema:apply": "supaschema apply",
   "supaschema:check": "supaschema check",
   "supaschema:diff": "supaschema diff",
   "supaschema:stage": "supaschema stage",
-  "supaschema:sync": "supaschema sync",
   "supaschema:types": "supaschema types",
 };

@@ -619,7 +619,7 @@ describe("doctor environment resolution", () => {
 });
 
 describe("pending install path confirmation", () => {
-  it("blocks config validate, doctor, zero-source diff, and zero-arg check", () => {
+  it("blocks config validate, doctor, zero-source diff, zero-arg check, sync, and apply", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-pending-install-"));
     mkdirSync(join(cwd, ".supaschema"), { recursive: true });
     mkdirSync(join(cwd, "database/migrations"), { recursive: true });
@@ -654,6 +654,14 @@ describe("pending install path confirmation", () => {
       cwd,
       encoding: "utf8",
     });
+    const sync = spawnSync(process.execPath, [cliPath, "sync", "--database-url", "empty:"], {
+      cwd,
+      encoding: "utf8",
+    });
+    const apply = spawnSync(process.execPath, [cliPath, "apply", "--database-url", "empty:"], {
+      cwd,
+      encoding: "utf8",
+    });
 
     expect(validate.status).toBe(2);
     expect(JSON.parse(validate.stdout).diagnostics).toContainEqual(
@@ -668,6 +676,10 @@ describe("pending install path confirmation", () => {
     expect(diff.stderr).toContain(".supaschema/install.json");
     expect(check.status).toBe(2);
     expect(check.stderr).toContain(".supaschema/install.json");
+    expect(sync.status).toBe(2);
+    expect(sync.stderr).toContain(".supaschema/install.json");
+    expect(apply.status).toBe(2);
+    expect(apply.stderr).toContain(".supaschema/install.json");
   });
 
   it("allows explicit source diff as a recovery path while install confirmation is pending", () => {

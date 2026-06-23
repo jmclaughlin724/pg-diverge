@@ -1,6 +1,11 @@
+import {
+  commandArgs,
+  commandName,
+  commandSegmentObjects,
+} from "../../.claude/hooks/guards/bash-policy-checks.mjs";
 import { isSubagentInvocation } from "./skills.mjs";
 import { currentTurnState } from "./state.mjs";
-import { toolName } from "./tool-payload.mjs";
+import { isCommandTool, toolCommand, toolName } from "./tool-payload.mjs";
 
 const responseCorrectionEditTools = new Set([
   "Write",
@@ -20,10 +25,10 @@ export function preToolEvidenceGate(payload, state) {
       "tool-failure-without-retry",
     ].includes(item.id)
   );
-  if (pending.length === 0 || toolName(payload) === "Bash") {
+  if (pending.length === 0) {
     return {};
   }
-  if (responseCorrectionEditTools.has(toolName(payload))) {
+  if (isResponseCorrectionMutation(payload)) {
     if (isSubagentInvocation(payload)) {
       return {
         contextParts: [
@@ -44,4 +49,44 @@ export function preToolEvidenceGate(payload, state) {
     };
   }
   return {};
+}
+
+function isResponseCorrectionMutation(payload) {
+  const name = toolName(payload);
+  if (responseCorrectionEditTools.has(name)) {
+    return true;
+  }
+  if (!isCommandTool(name)) {
+    return false;
+  }
+  return shellCommandMayMutate(toolCommand(payload));
+}
+
+function shellCommandMayMutate(command) {
+  let segments = [];
+  try {
+    segments = commandSegmentObjects(command);
+  } catch {
+    return true;
+  }
+  return segments.some((segment) => {
+    if (segment.operatorBefore === ">") {
+      return true;
+    }
+    const name = commandName(segment.words);
+    const args = commandArgs(segment.words);
+    if (name === "tee") {
+      return true;
+    }
+    if (name === "sed" && args.some((arg) => arg === "-i" || arg.startsWith("-i."))) {
+      return true;
+    }
+    if (["python", "python3"].includes(name) && args.includes("-c")) {
+      return true;
+    }
+    if (["perl", "ruby"].includes(name) && args.includes("-e")) {
+      return true;
+    }
+    return name === "node" && args.some((arg) => arg === "-e" || arg === "--eval");
+  });
 }

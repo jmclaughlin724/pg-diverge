@@ -122,12 +122,21 @@ export function claimWithoutEvidence(message, state, transcript = []) {
   }
   const evidenceItems = [...currentTurnState(state).evidence, ...transcript];
   const contradicted = claims.filter((domain) => hasUnresolvedFailure(evidenceItems, domain));
-  if (contradicted.length === 0) {
+  const missing = claims.filter((domain) => !hasSuccessfulEvidence(evidenceItems, domain));
+  if (contradicted.length === 0 && missing.length === 0) {
     return;
   }
+  const details = [
+    contradicted.length > 0
+      ? `failed evidence remains unresolved for: ${contradicted.join(", ")}`
+      : undefined,
+    missing.length > 0
+      ? `no successful evidence was recorded for: ${missing.join(", ")}`
+      : undefined,
+  ].filter((item) => item !== undefined);
   return {
     id: "claim-without-evidence",
-    message: `The response claims verification while failed evidence remains unresolved for: ${contradicted.join(", ")}.`,
+    message: `The response claims verification while ${details.join("; ")}.`,
   };
 }
 
@@ -191,6 +200,15 @@ function hasUnresolvedFailure(evidence, domain) {
           item.at > failure.at
       )
   );
+}
+
+function hasSuccessfulEvidence(evidence, domain) {
+  return evidence.some((item) => {
+    if (domain === "code-atlas" && item.kind === "code-atlas-query" && item.outcome !== "failure") {
+      return true;
+    }
+    return isSuccessEvidence(item) && domainsOf(item).includes(domain);
+  });
 }
 
 function isSuccessEvidence(item) {

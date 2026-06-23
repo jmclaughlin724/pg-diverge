@@ -522,6 +522,8 @@ describe("general Bash blocker policy", () => {
     "git push | tail -20",
     "git -C . branch tmp",
     "git -C . stash",
+    "git --git-dir .git branch tmp",
+    "git --work-tree . branch tmp",
     "git -c user.email=a@b.c commit --no-verify -m skip",
     "command git checkout main",
     "env git stash",

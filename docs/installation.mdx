@@ -51,7 +51,7 @@ After install, run `<local-runner> init`. It uses the consuming repo's package m
 
 `<local-runner> --version` `<local-runner> config validate --json`
 
-Use `supaschema:sync` for routine schema changes. It generates migration SQL, validates replay safety, refreshes generated contracts, stages generated migrations, verifies pending migrations, and applies or dry-runs through one configured target. Use `supaschema:diff`, `supaschema:stage`, `supaschema:apply`, `supaschema:types`, and `supaschema:check` only for focused lanes. Use direct CLI commands for setup diagnostics and database execution verification: `<local-runner> config validate --json` and `<local-runner> verify`.
+Default `supaschema init` installs only focused non-apply scripts: `supaschema:diff`, `supaschema:stage`, `supaschema:types`, and `supaschema:check`. Use direct CLI commands for setup diagnostics, full sync/apply, and database execution verification: `<local-runner> config validate --json`, `<local-runner> sync`, `<local-runner> apply`, and `<local-runner> verify`.
 
 Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, whether path confirmation is still pending, and that the raw AI-agent bundle is available at `node_modules/supaschema/agent-bundle/INSTALL.md` but not installed by default.
 

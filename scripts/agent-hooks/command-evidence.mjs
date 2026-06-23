@@ -56,14 +56,18 @@ export function transcriptEvidence(payload) {
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line))
-      .filter((entry) => entry?.type === "tool_result" && entry?.status === "success")
+      .filter((entry) => entry?.type === "tool_result")
       .flatMap((entry) => {
         const command = transcriptCommand(entry);
         const domains = classifyCommandDomains(command);
         if (!(command && domains.length > 0)) {
           return [];
         }
-        const success = commandEvidenceSucceeded(true, domains, entry);
+        const toolSuccess = transcriptToolSucceeded(entry);
+        if (toolSuccess === undefined) {
+          return [];
+        }
+        const success = commandEvidenceSucceeded(toolSuccess, domains, entry);
         return [
           {
             command,
@@ -77,6 +81,14 @@ export function transcriptEvidence(payload) {
   } catch {
     return [];
   }
+}
+
+function transcriptToolSucceeded(entry) {
+  const nested = toolSucceeded(entry);
+  if (nested !== undefined) {
+    return nested;
+  }
+  return entry?.status === "success" ? true : undefined;
 }
 
 export function unresolvedFailures(evidence) {
@@ -176,12 +188,35 @@ function addSegmentDomains(domains, name, args) {
     addNpmDomains(domains, args);
     return;
   }
-  const unwrapped = name === "npx" || name === "pnpx";
-  const toolName = unwrapped ? (args[0] ?? "") : name;
-  const toolArgs = unwrapped ? args.slice(1) : args;
+  const unwrapped = unwrapPackageRunner(name, args);
+  const toolName = unwrapped.name;
+  const toolArgs = unwrapped.args;
   if (["vitest", "jest", "mocha", "node"].includes(toolName)) {
     addToolDomains(domains, toolName, toolArgs);
   }
+}
+
+function unwrapPackageRunner(name, args) {
+  if (!(name === "npx" || name === "pnpx")) {
+    return { args, name };
+  }
+  const valueOptions = new Set(["--call", "--package", "--userconfig", "-c", "-p"]);
+  let index = 0;
+  while (index < args.length) {
+    const arg = args[index] ?? "";
+    if (arg === "--") {
+      index += 1;
+      break;
+    }
+    if (!arg.startsWith("-") || arg === "-") {
+      break;
+    }
+    index += 1;
+    if (valueOptions.has(arg) && index < args.length) {
+      index += 1;
+    }
+  }
+  return { args: args.slice(index + 1), name: args[index] ?? "" };
 }
 
 function addGithubDomains(domains, args) {
