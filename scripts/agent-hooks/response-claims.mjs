@@ -93,6 +93,24 @@ const subjectBlockers = new Set([
   "at",
   "as",
 ]);
+const negationBlockers = new Set([
+  "not",
+  "never",
+  "no",
+  "neither",
+  "nor",
+  "n't",
+  "cannot",
+  "can't",
+  "won't",
+  "didn't",
+  "doesn't",
+  "isn't",
+  "aren't",
+  "wasn't",
+  "weren't",
+  "without",
+]);
 const wordSegmenter = new Intl.Segmenter("en", { granularity: "word" });
 
 export function tokenize(text) {
@@ -172,15 +190,23 @@ function clauseDomainClaims(clause) {
     if (!successPredicates.has(tokens[predicateIndex])) {
       continue;
     }
+    const predicateClaims = new Set();
     for (let index = predicateIndex - 1; index >= 0; index -= 1) {
       const word = tokens[index];
+      if (negationBlockers.has(word)) {
+        predicateClaims.clear();
+        break;
+      }
       if (subjectBlockers.has(word) || predicateBlockers.has(word)) {
         break;
       }
       const domain = verificationDomainOfWord.get(word);
       if (domain) {
-        claims.add(domain);
+        predicateClaims.add(domain);
       }
+    }
+    for (const claim of predicateClaims) {
+      claims.add(claim);
     }
   }
   return claims;

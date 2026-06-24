@@ -22,7 +22,7 @@ supaschema sync  # diff, check, types, stage, safety, verify, apply/dry-run, rec
 
 Declarative database workflows usually make the database part of the edit loop: replay a schema into a Docker shadow database, diff that database, apply the result, then introspect again to regenerate application types.
 
-supaschema keeps the schema workflow inside the repository. It ships PostgreSQL's parser in the package, parses SQL files into a structural model, diffs object definitions, renders guarded migration SQL, and regenerates TypeScript and Zod outputs from the same tree.
+supaschema keeps the schema workflow inside the repository. It ships PostgreSQL's parser in the package, parses SQL files into a structural model, mines existing migrations for source intent, diffs object definitions, renders guarded migration SQL, and regenerates TypeScript and Zod outputs from the same tree.
 
 - **Fast feedback:** generating a diff does not require Docker or a shadow database.
 - **One schema owner:** PostgreSQL SQL remains the source of truth; generated migrations, TypeScript types, and Zod validators follow from it.
@@ -83,7 +83,7 @@ Use `diff`, `check`, `types`, `stage`, or `apply` only when you need one focused
 
 Zero-flag commands read `supaschema.config.json`. Diff sources can be schema directories, Git refs, live read-only catalogs, SQL dumps, saved catalog snapshots, or an empty baseline. Full flags, defaults, and exit codes live in the [commands reference](https://supaschema.com/docs/commands) and [sources guide](https://supaschema.com/docs/concepts/sources).
 
-Read config as four decisions: `schemaPaths` / `sources.to` / `migrationsDir` define the recursive schema tree and migration output, `sources.from` / `sources.to` define the diff inputs, `typesFile` / `zodFile` plus workflow type policies define generated contracts, and `workflow.migration_sync` plus `sync.targets` defines apply behavior.
+Read config as four decisions: `schemaPaths` / `sources.to` / `migrationsDir` define the recursive schema tree, migration output, and migration-derived source-intent corpus; `sources.from` / `sources.to` define the diff inputs; `typesFile` / `zodFile` plus workflow type policies define generated contracts; and `workflow.migration_sync` plus `sync.targets` defines apply behavior.
 
 ## What ships
 
@@ -98,7 +98,7 @@ See [what's included](https://supaschema.com/docs/whats-included), [library API]
 
 ## Safety model
 
-supaschema is fail-closed. Unsupported DDL blocks instead of passing through. Destructive changes and renames require explicit object-level hints. `CASCADE` is never emitted. Data statements stay outside the declarative schema contract. Diagnostics redact credential-shaped values.
+supaschema is fail-closed. Unsupported DDL blocks instead of passing through. Destructive changes and renames require explicit object-level hints. `CASCADE` is never emitted. Data statements stay outside the declarative schema shape, but existing reviewed migrations are source intent that must be modeled or preserved before blocking. Diagnostics redact credential-shaped values.
 
 The support matrix covers schemas, extensions, types, domains, tables, foreign data wrappers, foreign servers, foreign tables, constraints, indexes, sequences, functions, procedures, views, materialized views, triggers, RLS, policies, grants, default privileges, comments, and intentionally unsupported boundaries.
 

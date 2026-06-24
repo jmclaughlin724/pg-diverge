@@ -84,7 +84,7 @@ Exit codes:
 program
   .command("init")
   .description(
-    "Scaffold supaschema config plus schema/migration directories in the current directory. Agent rules, skills, hooks, and settings stay in the packaged raw agent bundle."
+    "Scaffold supaschema config, schema/migration directories, and active AI-agent enforcement files in the current directory."
   )
   .option("--dry-run", "print the scaffold/repair plan without writing files")
   .option("--json", "print the init result as redacted JSON")
@@ -119,9 +119,9 @@ program
       status = `${verb} ${installed.join(", ")}`;
     }
     process.stdout.write(`supaschema: ${status}${suffix}\n`);
-    if (agentBundle?.installed !== true) {
+    if (agentBundle?.installed === false) {
       process.stdout.write(
-        `supaschema: agent bundle not installed by default; review ${agentBundle?.instructions ?? "node_modules/supaschema/agent-bundle/INSTALL.md"} before manually installing it on demand\n`
+        `supaschema: agent bundle installation incomplete; resolve skipped files, then review ${agentBundle?.instructions ?? "node_modules/supaschema/agent-bundle/INSTALL.md"}\n`
       );
     }
     if (pathConfirmationNeeded) {

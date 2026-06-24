@@ -12,8 +12,10 @@ import {
   grantToPublicRule,
   hygienePack,
   migrationSafetyRule,
+  policyDeprecatedAuthRoleRule,
   policyMissingPredicateRule,
   policyRequiredColumnsRule,
+  policyUnwrappedAuthUidRule,
   policyWithoutRlsRule,
   rlsEnabledNoPolicyRule,
   runRulePacks,
@@ -222,7 +224,7 @@ describe("RLS audit rules (F20)", () => {
     expect(diagnostics[0]?.message).toContain("WITH CHECK");
   });
 
-  it("uses UPDATE USING as the write check fallback", () => {
+  it("flags UPDATE policies that rely on PostgreSQL's implicit USING write-check fallback", () => {
     const diagnostics = policyMissingPredicateRule.check({
       model: model([
         rlsObject("accounts"),
@@ -233,7 +235,40 @@ describe("RLS audit rules (F20)", () => {
       ]),
     });
 
-    expect(diagnostics).toHaveLength(0);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("WITH CHECK");
+  });
+
+  it("flags deprecated Supabase auth.role() policy checks", () => {
+    const diagnostics = policyDeprecatedAuthRoleRule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_select", {
+          command: "select",
+          functionCalls: ["auth.role"],
+          hasUsingPredicate: true,
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_POLICY_AUTH_ROLE_DEPRECATED");
+  });
+
+  it("flags direct auth.uid() calls that are not wrapped in a SELECT initPlan", () => {
+    const diagnostics = policyUnwrappedAuthUidRule.check({
+      model: model([
+        rlsObject("accounts"),
+        policyObject("accounts", "accounts_select", {
+          command: "select",
+          hasUsingPredicate: true,
+          unwrappedFunctionCalls: ["auth.uid"],
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_POLICY_AUTH_UID_UNWRAPPED");
   });
 
   it("flags configured required policy columns missing from the effective predicate", () => {

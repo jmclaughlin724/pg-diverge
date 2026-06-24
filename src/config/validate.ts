@@ -22,6 +22,13 @@ export async function validateConfig(
   cwd: string = process.cwd(),
   options: { configPath?: string; includeInstallState?: boolean } = {}
 ): Promise<ConfigValidationDiagnostic[]> {
+  if (options.includeInstallState === true) {
+    const pendingInstall = await pendingInstallPathConfirmationDiagnostic(cwd, options.configPath);
+    if (pendingInstall) {
+      return [pendingInstall];
+    }
+  }
+
   const diagnostics: ConfigValidationDiagnostic[] = [];
   if (config.schemaPaths.length === 0) {
     diagnostics.push({
@@ -82,13 +89,6 @@ export async function validateConfig(
       severity: "error",
     });
   }
-  if (options.includeInstallState === true) {
-    const pendingInstall = await pendingInstallPathConfirmationDiagnostic(cwd, options.configPath);
-    if (pendingInstall) {
-      diagnostics.push(pendingInstall);
-    }
-  }
-
   return diagnostics;
 }
 
@@ -119,7 +119,7 @@ export async function pendingInstallPathConfirmationDiagnostic(
   }
   return {
     field: ".supaschema/install.json",
-    hint: "Inspect .supaschema/install.json candidates, ask which paths to use, then set schemaPaths, sources.to, and migrationsDir in supaschema.config.json.",
+    hint: "Inspect .supaschema/install.json agentInstructions, choose the owning paths from candidates, then set schemaPaths, sources.to, and migrationsDir in supaschema.config.json.",
     message:
       "Install path confirmation is pending; zero-source migration commands must not use guessed schema or migration paths.",
     severity: "error",

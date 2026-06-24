@@ -11,7 +11,7 @@ keywords:
 
 Use this page to decide whether supaschema fits your schema workflow.
 
-supaschema reads PostgreSQL schema intent from SQL files, compares it with another schema source, renders replay-safe migration SQL, regenerates TypeScript types and Zod validators, and can apply pending migrations through guarded targets. It removes the need for an ORM schema layer, Docker, or a shadow database in the schema workflow.
+supaschema reads PostgreSQL schema intent from SQL files and existing migrations, compares it with another schema source, renders replay-safe migration SQL, regenerates TypeScript types and Zod validators, and can apply pending migrations through guarded targets. The declarative tree owns final schema shape; existing migrations provide source intent for operational facts such as backfills, Vault references, and workload-derived indexes. It removes the need for an ORM schema layer, Docker, or a shadow database in the schema workflow.
 
 ## When it helps
 

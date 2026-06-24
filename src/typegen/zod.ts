@@ -11,12 +11,14 @@ export function generateZodSchemas(shapes: SchemaShapes): string {
   const sortedSchemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
-  const enumIdents = buildEnumIdentifiers(sortedSchemas);
+  const enumIdents = buildTypeIdentifiers(sortedSchemas, "enums");
+  const compositeIdents = buildTypeIdentifiers(sortedSchemas, "composites");
   const lines = zodHeader();
   emitEnumDefinitions(lines, sortedSchemas, enumIdents);
+  emitCompositeDefinitions(lines, sortedSchemas, shapes, enumIdents, compositeIdents);
   lines.push("", "export const schemas = {");
   for (const [schemaName, entry] of sortedSchemas) {
-    emitSchemaZod(lines, schemaName, entry, shapes, enumIdents);
+    emitSchemaZod(lines, schemaName, entry, shapes, enumIdents, compositeIdents);
   }
   lines.push("} as const;");
   emitValidatedTypeHelpers(lines);
@@ -79,7 +81,14 @@ function emitValidatedTypeHelpers(lines: string[]): void {
     "export type EnumValue<",
     "  S extends keyof typeof schemas,",
     '  E extends keyof (typeof schemas)[S]["Enums"],',
-    '> = (typeof schemas)[S]["Enums"][E] extends infer R extends z.ZodType ? z.infer<R> : never;'
+    '> = (typeof schemas)[S]["Enums"][E] extends infer R extends z.ZodType ? z.infer<R> : never;',
+    "",
+    "export type CompositeValue<",
+    "  S extends keyof typeof schemas,",
+    '  C extends keyof (typeof schemas)[S]["CompositeTypes"],',
+    '> = (typeof schemas)[S]["CompositeTypes"][C] extends infer R extends z.ZodType',
+    "  ? z.infer<R>",
+    "  : never;"
   );
 }
 
@@ -100,16 +109,44 @@ function emitEnumDefinitions(
   }
 }
 
+function emitCompositeDefinitions(
+  lines: string[],
+  sortedSchemas: SortedSchemas,
+  shapes: SchemaShapes,
+  enumIdents: Map<string, string>,
+  compositeIdents: Map<string, string>
+): void {
+  for (const [schemaName, entry] of sortedSchemas) {
+    for (const item of sortedByName(entry.composites)) {
+      const ident = compositeIdents.get(`${schemaName}.${item.name}`);
+      if (!ident) {
+        continue;
+      }
+      const zodFor = (sqlType: string) =>
+        zodExpr(shapes, schemaName, enumIdents, compositeIdents, sqlType);
+      lines.push(`const ${ident} = z.object({`);
+      for (const column of item.columns) {
+        const base = zodFor(column.type);
+        lines.push(`  ${quoteKey(column.name)}: ${column.notNull ? base : `${base}.nullable()`},`);
+      }
+      lines.push("});");
+    }
+  }
+}
+
 function emitSchemaZod(
   lines: string[],
   schemaName: string,
   entry: SchemaEntry,
   shapes: SchemaShapes,
-  enumIdents: Map<string, string>
+  enumIdents: Map<string, string>,
+  compositeIdents: Map<string, string>
 ): void {
-  const zodFor = (sqlType: string) => zodExpr(shapes, schemaName, enumIdents, sqlType);
+  const zodFor = (sqlType: string) =>
+    zodExpr(shapes, schemaName, enumIdents, compositeIdents, sqlType);
   lines.push(`  ${quoteKey(schemaName)}: {`);
   emitZodEnums(lines, schemaName, entry, enumIdents);
+  emitZodComposites(lines, schemaName, entry, compositeIdents);
   emitZodTables(lines, entry, zodFor);
   emitZodViews(lines, entry, zodFor);
   lines.push("  },");
@@ -125,6 +162,22 @@ function emitZodEnums(
   for (const item of sortedByName(entry.enums)) {
     const ident = enumIdents.get(`${schemaName}.${item.name}`);
     if (ident && item.values.length > 0) {
+      lines.push(`      ${quoteKey(item.name)}: ${ident},`);
+    }
+  }
+  lines.push("    },");
+}
+
+function emitZodComposites(
+  lines: string[],
+  schemaName: string,
+  entry: SchemaEntry,
+  compositeIdents: Map<string, string>
+): void {
+  lines.push("    CompositeTypes: {");
+  for (const item of sortedByName(entry.composites)) {
+    const ident = compositeIdents.get(`${schemaName}.${item.name}`);
+    if (ident) {
       lines.push(`      ${quoteKey(item.name)}: ${ident},`);
     }
   }
@@ -213,13 +266,14 @@ function emitZodViews(
   lines.push("    },");
 }
 
-function buildEnumIdentifiers(
-  schemas: [string, { enums: { name: string }[] }][]
+function buildTypeIdentifiers(
+  schemas: SortedSchemas,
+  kind: "composites" | "enums"
 ): Map<string, string> {
   const idents = new Map<string, string>();
   const used = new Set<string>();
   for (const [schemaName, entry] of schemas) {
-    for (const item of entry.enums) {
+    for (const item of entry[kind]) {
       let ident = `${sanitizeIdent(schemaName)}_${sanitizeIdent(item.name)}`;
       let suffix = 1;
       while (used.has(ident)) {
@@ -251,15 +305,20 @@ function zodExpr(
   shapes: SchemaShapes,
   schemaName: string,
   enumIdents: Map<string, string>,
+  compositeIdents: Map<string, string>,
   sqlType: string
 ): string {
   const resolved = resolveColumnType(shapes, schemaName, sqlType);
   let mapped: string;
   if (resolved.kind === "enum" && resolved.enumRef) {
     mapped = enumIdents.get(`${resolved.enumRef.schema}.${resolved.enumRef.name}`) ?? "z.unknown()";
+  } else if (resolved.kind === "composite" && resolved.compositeRef) {
+    mapped =
+      compositeIdents.get(`${resolved.compositeRef.schema}.${resolved.compositeRef.name}`) ??
+      "z.unknown()";
   } else if (resolved.kind === "json") {
     mapped = "jsonSchema";
-  } else if (resolved.kind === "composite" || resolved.kind === "unknown") {
+  } else if (resolved.kind === "unknown") {
     mapped = "z.unknown()";
   } else {
     mapped = `z.${resolved.kind}()`;

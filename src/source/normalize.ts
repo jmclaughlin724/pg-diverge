@@ -11,7 +11,7 @@ import {
   builtinPublicDefault,
   isBuiltinDefaultGrant,
 } from "../sql/privileges.js";
-import { makeObject } from "../sql/statements.js";
+import { expressionSql, makeObject } from "../sql/statements.js";
 import { canonicalizeRegclassLiterals } from "../sql/table-shape.js";
 
 export interface SourceNormalizeOptions {
@@ -24,7 +24,10 @@ export async function normalizeSourceObjects(
   options: SourceNormalizeOptions = {}
 ): Promise<SchemaObject[]> {
   const afterDefaults = applyColumnDefaultAmendments(objects, diagnostics);
-  const afterOwnedBy = applySequenceOwnedByAmendments(afterDefaults, diagnostics);
+  const afterIdentity = applyColumnIdentityAmendments(afterDefaults, diagnostics);
+  const afterGenerated = applyColumnGeneratedAmendments(afterIdentity, diagnostics);
+  const afterPartitions = applyTablePartitionAmendments(afterGenerated, diagnostics);
+  const afterOwnedBy = applySequenceOwnedByAmendments(afterPartitions, diagnostics);
   const afterRls = await mergeRlsFacets(afterOwnedBy, options);
   const merged = await mergeSplitPrivileges(afterRls, options);
   return suppressDefaultAclImpliedGrants(suppressDefaultEqualPrivileges(merged));
@@ -155,6 +158,26 @@ interface ColumnDefaultShapeColumn extends Record<string, unknown> {
   name: string;
 }
 
+interface ColumnIdentityAmendment {
+  action: "add" | "drop" | "set";
+  column: string;
+  identity?: string;
+}
+
+interface ColumnGeneratedAmendment {
+  action: "drop" | "set";
+  column: string;
+  expression: unknown;
+}
+
+interface TablePartitionAmendment {
+  bound: unknown;
+  parent: {
+    name: string;
+    schema?: string;
+  };
+}
+
 function columnDefaultAmendment(object: SchemaObject): ColumnDefaultAmendment | undefined {
   const raw = asRecord(object.metadata.columnDefaultAmendment);
   if (!raw) {
@@ -182,6 +205,80 @@ function columnDefaultColumns(value: unknown): ColumnDefaultShapeColumn[] | unde
   return columns;
 }
 
+function columnIdentityAmendment(object: SchemaObject): ColumnIdentityAmendment | undefined {
+  const raw = asRecord(object.metadata.columnIdentityAmendment);
+  if (!raw) {
+    return;
+  }
+  const action = raw.action;
+  const column = raw.column;
+  const identity = raw.identity;
+  if (
+    !(action === "add" || action === "drop" || action === "set") ||
+    typeof column !== "string" ||
+    column.length === 0
+  ) {
+    return;
+  }
+  return {
+    action,
+    column,
+    ...(identity === "a" || identity === "d" ? { identity } : {}),
+  };
+}
+
+function columnGeneratedAmendment(object: SchemaObject): ColumnGeneratedAmendment | undefined {
+  const raw = asRecord(object.metadata.columnGeneratedAmendment);
+  if (!raw) {
+    return;
+  }
+  const action = raw.action;
+  const column = raw.column;
+  if (
+    !(action === "drop" || action === "set") ||
+    typeof column !== "string" ||
+    column.length === 0
+  ) {
+    return;
+  }
+  return { action, column, expression: raw.expression ?? null };
+}
+
+function tablePartitionAmendment(object: SchemaObject): TablePartitionAmendment | undefined {
+  const raw = asRecord(object.metadata.tablePartitionAmendment);
+  const parent = asRecord(raw?.parent);
+  if (!(raw && parent) || typeof parent.name !== "string") {
+    return;
+  }
+  const schema = typeof parent.schema === "string" ? parent.schema : undefined;
+  return {
+    bound: raw.bound ?? null,
+    parent: {
+      name: parent.name,
+      ...(schema ? { schema } : {}),
+    },
+  };
+}
+
+function isTableAmendmentMarker(object: SchemaObject): boolean {
+  return (
+    columnDefaultAmendment(object) !== undefined ||
+    columnIdentityAmendment(object) !== undefined ||
+    columnGeneratedAmendment(object) !== undefined ||
+    tablePartitionAmendment(object) !== undefined
+  );
+}
+
+function tableObjectsByKey(objects: SchemaObject[]): Map<string, SchemaObject> {
+  const tablesByKey = new Map<string, SchemaObject>();
+  for (const object of objects) {
+    if (object.ref.kind === "table" && !isTableAmendmentMarker(object)) {
+      tablesByKey.set(object.key, object);
+    }
+  }
+  return tablesByKey;
+}
+
 function applyColumnDefaultAmendments(
   objects: SchemaObject[],
   diagnostics: Diagnostic[]
@@ -190,12 +287,7 @@ function applyColumnDefaultAmendments(
   if (markers.length === 0) {
     return objects;
   }
-  const tablesByKey = new Map<string, SchemaObject>();
-  for (const object of objects) {
-    if (object.ref.kind === "table" && columnDefaultAmendment(object) === undefined) {
-      tablesByKey.set(object.key, object);
-    }
-  }
+  const tablesByKey = tableObjectsByKey(objects);
   for (const marker of markers) {
     const amendment = columnDefaultAmendment(marker);
     const table = tablesByKey.get(marker.key);
@@ -234,6 +326,184 @@ function applyColumnDefaultAmendments(
     table.dependencies = mergedDependencies([table, marker]);
   }
   return objects.filter((object) => columnDefaultAmendment(object) === undefined);
+}
+
+function applyColumnIdentityAmendments(
+  objects: SchemaObject[],
+  diagnostics: Diagnostic[]
+): SchemaObject[] {
+  const markers = objects.filter((object) => columnIdentityAmendment(object) !== undefined);
+  if (markers.length === 0) {
+    return objects;
+  }
+  const tablesByKey = tableObjectsByKey(objects);
+  for (const marker of markers) {
+    const amendment = columnIdentityAmendment(marker);
+    const table = tablesByKey.get(marker.key);
+    const shape = asRecord(table?.metadata.canonicalShape);
+    const columns = columnDefaultColumns(shape?.columns);
+    const columnIndex = columns?.findIndex((item) => item.name === amendment?.column) ?? -1;
+    if (!(table && shape && columns && columnIndex >= 0 && amendment)) {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_EXTRACT_UNSUPPORTED",
+          "error",
+          "ALTER COLUMN IDENTITY targets a table or column not present in the source model",
+          { file: marker.file, ref: marker.ref, statement: marker.sql }
+        )
+      );
+      continue;
+    }
+    const column = columns[columnIndex];
+    if (column === undefined) {
+      continue;
+    }
+    const nextColumns = [...columns];
+    if (amendment.action === "drop") {
+      const { identity: _identity, ...withoutIdentity } = column;
+      nextColumns[columnIndex] = withoutIdentity;
+    } else {
+      const { default: _default, ...withoutDefault } = column;
+      nextColumns[columnIndex] = {
+        ...withoutDefault,
+        identity: amendment.identity ?? "a",
+      };
+    }
+    const nextShape = { ...shape, columns: nextColumns };
+    table.metadata = {
+      ...table.metadata,
+      canonicalShape: nextShape,
+      columnIdentitySqlByColumn: {
+        ...asRecord(table.metadata.columnIdentitySqlByColumn),
+        [amendment.column]: marker.sql,
+      },
+    };
+    table.hash = shapeHash(nextShape, table.key, table.ref);
+    table.sql = `${table.sql};\n${marker.sql}`;
+    table.dependencies = mergedDependencies([table, marker]);
+  }
+  return objects.filter((object) => columnIdentityAmendment(object) === undefined);
+}
+
+function applyColumnGeneratedAmendments(
+  objects: SchemaObject[],
+  diagnostics: Diagnostic[]
+): SchemaObject[] {
+  const markers = objects.filter((object) => columnGeneratedAmendment(object) !== undefined);
+  if (markers.length === 0) {
+    return objects;
+  }
+  const tablesByKey = tableObjectsByKey(objects);
+  for (const marker of markers) {
+    const amendment = columnGeneratedAmendment(marker);
+    const table = tablesByKey.get(marker.key);
+    const shape = asRecord(table?.metadata.canonicalShape);
+    const columns = columnDefaultColumns(shape?.columns);
+    const columnIndex = columns?.findIndex((item) => item.name === amendment?.column) ?? -1;
+    if (!(table && shape && columns && columnIndex >= 0 && amendment)) {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_EXTRACT_UNSUPPORTED",
+          "error",
+          "ALTER COLUMN EXPRESSION targets a table or column not present in the source model",
+          { file: marker.file, ref: marker.ref, statement: marker.sql }
+        )
+      );
+      continue;
+    }
+    const column = columns[columnIndex];
+    if (column === undefined) {
+      continue;
+    }
+    const nextColumns = [...columns];
+    const generatedExpressions = {
+      ...asRecord(table.metadata.columnGeneratedExpressionSqlByColumn),
+    };
+    if (amendment.action === "drop") {
+      const { generated: _generated, ...withoutGenerated } = column;
+      nextColumns[columnIndex] = withoutGenerated;
+      delete generatedExpressions[amendment.column];
+    } else {
+      const sql = expressionSql(amendment.expression);
+      if (sql === undefined) {
+        diagnostics.push(
+          diagnostic(
+            "SUPA_EXTRACT_UNSUPPORTED",
+            "error",
+            "ALTER COLUMN SET EXPRESSION could not be rendered from the parsed expression",
+            { file: marker.file, ref: marker.ref, statement: marker.sql }
+          )
+        );
+        continue;
+      }
+      const { default: _default, identity: _identity, ...withoutDefaultOrIdentity } = column;
+      nextColumns[columnIndex] = {
+        ...withoutDefaultOrIdentity,
+        generated: stripLocations(amendment.expression),
+      };
+      generatedExpressions[amendment.column] = sql;
+    }
+    const nextShape = { ...shape, columns: nextColumns };
+    table.metadata = {
+      ...table.metadata,
+      canonicalShape: nextShape,
+      columnGeneratedExpressionSqlByColumn: generatedExpressions,
+    };
+    table.hash = shapeHash(nextShape, table.key, table.ref);
+    table.sql = `${table.sql};\n${marker.sql}`;
+    table.dependencies = mergedDependencies([table, marker]);
+  }
+  return objects.filter((object) => columnGeneratedAmendment(object) === undefined);
+}
+
+function applyTablePartitionAmendments(
+  objects: SchemaObject[],
+  diagnostics: Diagnostic[]
+): SchemaObject[] {
+  const markers = objects.filter((object) => tablePartitionAmendment(object) !== undefined);
+  if (markers.length === 0) {
+    return objects;
+  }
+  const tablesByKey = tableObjectsByKey(objects);
+  for (const marker of markers) {
+    const amendment = tablePartitionAmendment(marker);
+    const table = tablesByKey.get(marker.key);
+    const shape = asRecord(table?.metadata.canonicalShape);
+    if (!(table && shape && amendment)) {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_EXTRACT_UNSUPPORTED",
+          "error",
+          "ATTACH PARTITION targets a table not present in the source model",
+          { file: marker.file, ref: marker.ref, statement: marker.sql }
+        )
+      );
+      continue;
+    }
+    const nextShape = {
+      ...shape,
+      inhRelations: [
+        {
+          RangeVar: {
+            ...(amendment.parent.schema ? { schemaname: amendment.parent.schema } : {}),
+            inh: true,
+            relname: amendment.parent.name,
+            relpersistence: "p",
+          },
+        },
+      ],
+      partbound: stripLocations(amendment.bound),
+    };
+    table.metadata = {
+      ...table.metadata,
+      canonicalShape: nextShape,
+      partitionAttachSql: marker.sql,
+    };
+    table.hash = shapeHash(nextShape, table.key, table.ref);
+    table.sql = `${table.sql};\n${marker.sql}`;
+    table.dependencies = mergedDependencies([table, marker]);
+  }
+  return objects.filter((object) => tablePartitionAmendment(object) === undefined);
 }
 
 interface SequenceOwnedByAmendment {

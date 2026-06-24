@@ -5,11 +5,11 @@ keywords:
   ["support matrix", "PostgreSQL objects", "parser coverage", "limitations"]
 ---
 
-Use this page to check whether supaschema models a PostgreSQL object type.
+Use this page to check whether supaschema models a PostgreSQL object type or a migration-derived source-intent class.
 
 supaschema is fail-closed. Unsupported DDL blocks migration generation instead of guessing.
 
-Extraction and checking are AST-only. Statements are classified through the PostgreSQL parser, never regex.
+Extraction and checking are AST-only. Statements are classified through the PostgreSQL parser, never regex. Declarative schema objects become a SchemaModel; existing migrations become a source-intent model for operational facts that cannot be proven from the final schema shape alone.
 
 | Object | Extract | Render | Notes |
 | --- | --- | --- | --- |
@@ -17,11 +17,11 @@ Extraction and checking are AST-only. Statements are classified through the Post
 | Extensions | Yes | `CREATE EXTENSION IF NOT EXISTS` | Extension schema is fingerprint metadata. |
 | Types/enums | Yes | `DO` catalog guard / `DROP TYPE IF EXISTS`; appended enum values render as `ALTER TYPE ... ADD VALUE IF NOT EXISTS` | Enum narrowing, removal, or reordering is destructive. |
 | Domains | Yes | `DO` catalog guard / `DROP DOMAIN IF EXISTS` | Domain replacement is destructive. |
-| Tables | Yes | `CREATE TABLE IF NOT EXISTS`; additive columns use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` | Unsafe column changes, table replacement, and table drop block. Standalone `ALTER COLUMN ... SET/DROP DEFAULT` folds into the table's canonical shape. |
+| Tables | Yes | `CREATE TABLE IF NOT EXISTS`; additive columns use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`; identity/default/not-null/generated-expression changes use `ALTER COLUMN` | Unsafe column drops/type changes, table replacement, and table drop block until hinted. Inline table constraints are hoisted into separate guarded constraint objects. Standalone `ALTER COLUMN ... SET/DROP DEFAULT`, `ADD/SET/DROP IDENTITY`, `SET/DROP EXPRESSION`, and `ATTACH PARTITION` fold into the table's canonical shape. |
 | Foreign data wrappers | Yes (whole-object) | `DO` catalog guard (no `IF NOT EXISTS` form upstream) / `DROP FOREIGN DATA WRAPPER IF EXISTS` | Drops and replaces are destructive-gated. Extension-owned wrappers are excluded from catalogs. |
 | Foreign servers | Yes (whole-object) | `CREATE SERVER IF NOT EXISTS` / `DROP SERVER IF EXISTS` | Drops and replaces are destructive-gated. |
 | Foreign tables | Yes (whole-object) | `CREATE FOREIGN TABLE IF NOT EXISTS` / `DROP FOREIGN TABLE IF EXISTS` | No column-level diffing; user mappings are excluded (credentials). |
-| Constraints | Yes | `DO` catalog guard / `DROP CONSTRAINT IF EXISTS` | External `ALTER TABLE ADD CONSTRAINT` is modeled separately. |
+| Constraints | Yes | `DO` catalog guard / `DROP CONSTRAINT IF EXISTS` | External `ALTER TABLE ADD CONSTRAINT` and inline table constraints are modeled separately from additive column DDL. |
 | Indexes | Yes | `CREATE INDEX IF NOT EXISTS` | `CONCURRENTLY` emits transaction metadata. |
 | Sequences | Yes | `CREATE SEQUENCE IF NOT EXISTS` | Drop requires destructive hint. |
 | Functions/procedures | Yes | `CREATE OR REPLACE` / `DROP ... IF EXISTS` | Return-type incompatible replacements fail verification. |
@@ -32,13 +32,27 @@ Extraction and checking are AST-only. Statements are classified through the Post
 | Policies | Yes | `DROP POLICY IF EXISTS` then create | PostgreSQL has no `CREATE OR REPLACE POLICY`. |
 | Grants/default privileges | Yes (structured per target × grantee) | Canonical `GRANT`; hinted removal renders `REVOKE` / reverse `ALTER DEFAULT PRIVILEGES ... REVOKE` | Split statements for one target × grantee aggregate into one privilege-set identity (full-set unions collapse to `ALL`); mixed `WITH GRANT OPTION` splits stay duplicate errors. |
 | Comments | Yes (keyed by structured descriptor) | `COMMENT ON ...`; removal renders `COMMENT ON ... IS NULL` | Live catalogs extract relation, column, function, and schema comments. |
-| Side-effect statements | Blocks | No | `INSERT`, `UPDATE`, `DELETE`, `DO`, and control-plane `SELECT` statements belong in explicit reviewed migrations. |
+| Side-effect statements | Source-intent only | No direct schema render | `INSERT`, `UPDATE`, `DELETE`, `DO`, and control-plane `SELECT` statements do not belong to the declarative SchemaModel. When present in existing reviewed migrations, they are migration source intent that planning/check/verify must model or preserve; when absent, supaschema must emit an actionable missing-intent diagnostic instead of inventing data work. Schema-source `_bootstrap` directories are treated as provider/bootstrap inventory and skipped by `dir:` and `git:` sources. |
+
+## Migration-derived source intent
+
+These classes are not inferred from the final table shape. They are supported only when the intent is explicit in declarative SQL, existing migrations, config, checked workload artifacts, or reviewed hints.
+
+| Intent class | Required source | Correct behavior |
+| --- | --- | --- |
+| Row backfills and data DML | Existing reviewed migrations or an explicit new migration-intent artifact | Preserve, check, and verify the stated operation. Never invent row values, tenant predicates, or backfill criteria. |
+| Enum rewrite recipes | Existing migrations or reviewed destructive/rename hints plus conversion SQL | Model the recipe as operational intent and require verify. Never treat enum removal/reordering as a simple declarative diff. |
+| Vault references | Schema/migration/config placeholder names or references | Preserve references and redacted placeholder names only. Never generate or print Vault secret material. |
+| Workload-derived indexes | Declarative index SQL, existing migrations, or a checked workload/index-intent artifact | Keep explicit index intent. Never synthesize indexes from table shape, naming conventions, or guessed query patterns. |
+| Provider bootstrap constraints | Existing migrations, provider inventory, `_bootstrap` inventory, or managed-schema config | Keep provider-owned objects out of declarative ownership and model only the references the project explicitly owns. |
+
+When any required source is missing, the planner should block with a diagnostic that tells the agent where to add the missing intent before rerunning `diff`, `plan`, or `sync`.
 
 ## Explicitly unsupported boundaries
 
 | Boundary | Status | Notes |
 | --- | --- | --- |
-| Partitioning | Blocks | Partition topology and attach/detach operations remain explicit reviewed migrations. |
+| Partition detach/complex topology | Blocks | `CREATE TABLE ... PARTITION BY` and `ALTER TABLE ... ATTACH PARTITION` are modeled. Detach and topology rewrites remain explicit reviewed migrations. |
 | Publications/subscriptions | Blocks | Logical replication setup is operational and environment-specific. |
 | Event triggers | Blocks | Cluster-level trigger behavior is outside declarative application schema ownership. |
 | Collations | Blocks | Collation availability and locale behavior are cluster/provider-owned. |
@@ -46,7 +60,7 @@ Extraction and checking are AST-only. Statements are classified through the Post
 
 ## Managed schemas
 
-Objects in configured `managedSchemas` are blocked before rendering. Generic PostgreSQL installs default to `managedSchemas: []`. Supabase installs seed the common Supabase-provisioned schemas: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`.
+Objects in configured `managedSchemas` are blocked before rendering. Generic PostgreSQL installs default to `managedSchemas: []`. Supabase installs seed the common Supabase-provisioned schemas: `auth`, `storage`, `realtime`, `vault`, `extensions`, `cron`, `net`, `supabase_functions`, `graphql`, and `graphql_public`, and also seed those names into `schemas.exclude` so provider-owned inventory does not block normal diffs.
 
 ## Verify environment stub
 

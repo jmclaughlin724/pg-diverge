@@ -62,6 +62,7 @@ export interface TableColumn {
   defaultExpression?: string;
   definition: string;
   generated?: boolean;
+  generatedExpression?: string;
   hasDefault?: boolean;
   hasInlineConstraint?: boolean;
   identity?: boolean;

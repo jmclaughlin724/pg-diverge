@@ -26,7 +26,7 @@ extract-from 1012ms · extract-to 876ms · plan 5ms
 
 A full diff is two extractions plus a plan — **~1.9 seconds over the entire production tree.** The equivalent Supabase CLI diff replays all 8,300 objects into a fresh Docker shadow database on every run, which is minutes at this scale (see the [benchmarks](/benchmarks#speed-and-accuracy)).
 
-The 8,271 figure is what supaschema models; the tree also produced 91 expected fail-closed diagnostics, concentrated in the bootstrap layer (managed-schema declarations for `extensions`/`vault`/roles, which a real adoption excludes via `schemas.exclude`) plus normalize-fidelity warnings. None are engine errors.
+The 8,271 figure is what supaschema models. Supabase-managed declarations are excluded through `schemas.exclude`, role/control-plane bootstrap files under `_bootstrap` are skipped as inventory, and the remaining normalize-fidelity warnings preserve source SQL without changing object identity. None are engine errors.
 
 ## Head-to-head on real schema (bounded slice)
 

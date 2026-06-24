@@ -6,7 +6,7 @@ keywords: ["diff command", "schema diff", "migration generation", "PostgreSQL"]
 
 Use `diff` when schema files changed and you need a migration.
 
-`diff` compares a before-state source with a desired-state source, renders replay-safe SQL, and writes it to the configured migrations directory.
+`diff` compares a before-state source with a desired-state source, reads configured existing migrations as source intent, renders replay-safe SQL, and writes it to the configured migrations directory.
 
 ## Use this when
 
@@ -14,6 +14,7 @@ Use `diff` when schema files changed and you need a migration.
 - CI needs to detect drift.
 - A pull request should render a candidate migration without a live database.
 - A migration should be generated without requiring a database.
+- Existing migrations carry operational intent that must be considered before the planner reports missing intent.
 
 ## Run it
 
@@ -86,6 +87,8 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
 </ParamField>
 
 ## Source specifiers
+
+`--from` and `--to` choose schema sources. The configured `migrationsDir` is a separate source-intent corpus: existing reviewed migrations are parsed for row backfills, explicit DML/`DO` workflows, enum rewrite recipes, Vault references, workload-proven index intent, and provider bootstrap constraints. If that intent is missing, `diff` should block with an actionable diagnostic instead of inventing it.
 
 | Format | Example | Use |
 | --- | --- | --- |

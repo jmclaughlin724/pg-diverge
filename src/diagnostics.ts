@@ -173,14 +173,20 @@ export const diagnosticCatalog: Record<string, string> = {
     "An RLS policy lacks the USING or WITH CHECK predicate needed for its command class.",
   SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN:
     "An RLS policy lacks a configured table column in its effective predicate.",
+  SUPA_RULE_POLICY_AUTH_ROLE_DEPRECATED:
+    "An RLS policy uses Supabase auth.role(); target roles with the policy TO clause instead.",
+  SUPA_RULE_POLICY_AUTH_UID_UNWRAPPED:
+    "An RLS policy calls auth.uid() directly instead of wrapping it in a SELECT initPlan.",
   SUPA_OBJECT_PARSE_FAILED:
     "Object SQL did not parse, so its identity hash fell back to normalized text.",
   SUPA_PARSE_ERROR: "SQL failed to parse with the PostgreSQL parser.",
   SUPA_PARSE_UNAVAILABLE: "libpg-query did not expose a parser entrypoint.",
   SUPA_PLAN_ADD_COLUMN_UNSAFE:
-    "Added column needs review: inline constraint, identity/generated, or NOT NULL without default.",
+    "Added column can fail on populated tables because it is NOT NULL without a default.",
   SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED:
     "Column drops and type changes render data-preserving ALTERs only after a destructive-change hint.",
+  SUPA_PLAN_COLUMN_GENERATED_REVIEW:
+    "A generated column expression changed; review rewrite, lock, and statistics impact before deploy.",
   SUPA_PLAN_COLUMN_TYPE_USING_REVIEW:
     "A column type change renders an identity USING cast; PostgreSQL rejects it unless an assignment cast exists. Review and replace the USING expression for non-trivial conversions.",
   SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED:
