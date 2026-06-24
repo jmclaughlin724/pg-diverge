@@ -9,7 +9,7 @@ import type {
   TableColumn,
 } from "../core.js";
 import { lineageLine } from "../migrations/lineage.js";
-import { normalizeSql, quoteIdent } from "../sql/identifiers.js";
+import { quoteIdent } from "../sql/identifiers.js";
 import {
   ensureSemicolon,
   qualifiedRef,
@@ -389,25 +389,7 @@ function renderAddColumn(table: SchemaObject, column: TableColumn): string {
 }
 
 function renderCreateTable(table: SchemaObject): string {
-  const columns = Array.isArray(table.metadata.columns) ? table.metadata.columns : [];
-  if (columns.length === 0) {
-    return spliceGuard(table);
-  }
-  return [
-    spliceGuard(table),
-    ...columns.map((column) => renderCreateTableColumnGuard(table, columnFromMetadata(column))),
-  ].join("\n");
-}
-
-function renderCreateTableColumnGuard(table: SchemaObject, column: TableColumn): string {
-  if (column.defaultExpression && column.type) {
-    const baseDefinition = `${normalizeSql(column.type)}${column.notNull === true ? " NOT NULL" : ""}`;
-    return [
-      renderAddColumn(table, { ...column, definition: baseDefinition }),
-      `ALTER TABLE ${qualifiedRef(table.ref)} ALTER COLUMN ${quoteIdent(column.name)} SET DEFAULT ${column.defaultExpression};`,
-    ].join("\n");
-  }
-  return renderAddColumn(table, column);
+  return spliceGuard(table);
 }
 
 function renderCreate(object: SchemaObject): string {

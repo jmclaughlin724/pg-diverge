@@ -134,8 +134,12 @@ export function renderGrantDrop(object: SchemaObject): string {
     return `-- Manual privilege removal required for ${object.key}`;
   }
   const direction = verb === "GRANT" ? "REVOKE" : "GRANT";
+  const reversePrivileges = renderReversePrivileges(privileges, kindPhrase, grantee);
+  if (!reversePrivileges) {
+    return manualPrivilegeDropComment(object);
+  }
   const keyword = direction === "GRANT" ? "TO" : "FROM";
-  return `${direction} ${renderReversePrivileges(privileges, kindPhrase, grantee)} ON ${kindPhrase} ${target} ${keyword} ${renderRole(grantee)};`;
+  return `${direction} ${reversePrivileges} ON ${kindPhrase} ${target} ${keyword} ${renderRole(grantee)};`;
 }
 
 export function renderDefaultPrivilegeDrop(object: SchemaObject): string {
@@ -154,12 +158,16 @@ export function renderDefaultPrivilegeDrop(object: SchemaObject): string {
   const forRole = typeof object.metadata.forRole === "string" ? object.metadata.forRole : undefined;
   const schema = typeof object.metadata.schema === "string" ? object.metadata.schema : undefined;
   const direction = verb === "GRANT" ? "REVOKE" : "GRANT";
+  const reversePrivileges = renderReversePrivileges(privileges, objectType, grantee);
+  if (!reversePrivileges) {
+    return manualPrivilegeDropComment(object);
+  }
   const keyword = direction === "GRANT" ? "TO" : "FROM";
   const clauses = [
     "ALTER DEFAULT PRIVILEGES",
     forRole ? `FOR ROLE ${quoteIdent(forRole)}` : "",
     schema ? `IN SCHEMA ${quoteIdent(schema)}` : "",
-    `${direction} ${renderReversePrivileges(privileges, objectType, grantee)} ON ${objectType} ${keyword} ${renderRole(grantee)}`,
+    `${direction} ${reversePrivileges} ON ${objectType} ${keyword} ${renderRole(grantee)}`,
   ].filter(Boolean);
   return `${clauses.join(" ")};`;
 }
@@ -168,11 +176,15 @@ function renderReversePrivileges(
   privileges: unknown[],
   kindPhrase: string,
   grantee: string
-): string {
+): string | undefined {
   if (grantee === "PUBLIC" && privileges.map(String).includes("ALL")) {
-    return (builtinPublicDefault(kindPhrase) ?? ["ALL"]).join(", ");
+    return builtinPublicDefault(kindPhrase)?.join(", ");
   }
   return privileges.map(String).join(", ");
+}
+
+function manualPrivilegeDropComment(object: SchemaObject): string {
+  return `-- Manual privilege reversal required for ${object.key}`;
 }
 
 function renderRole(role: string): string {
