@@ -93,13 +93,17 @@ function expandTarget(target: ViewTarget, context: InferenceContext): ColumnShap
 }
 
 function expandStarTarget(target: ViewTarget, fromInfo: SourceInfo | undefined): ColumnShape[] {
-  if (
-    !fromInfo ||
-    (target.starQualifier !== undefined && !fromInfo.qualifiedColumns.has(target.starQualifier))
-  ) {
+  if (!fromInfo) {
     return [];
   }
-  return fromInfo.columns.map((column) => ({
+  const columns =
+    target.starQualifier === undefined
+      ? fromInfo.columns
+      : fromInfo.qualifiedColumns.get(target.starQualifier);
+  if (!columns) {
+    return [];
+  }
+  return columns.map((column) => ({
     name: column.name,
     notNull: false,
     type: column.type,
@@ -148,7 +152,10 @@ function collectFromClauseSourceInfo(
   }
   const info: SourceInfo = { columns: [], qualifiedColumns: new Map() };
   for (const item of fromClause) {
-    addFromItem(info, item, defaultSchema, tablesByKey, ctes);
+    const source = sourceInfoForFromItem(item, defaultSchema, tablesByKey, ctes);
+    if (source) {
+      mergeSourceInfo(info, source);
+    }
   }
   return info.columns.length > 0 ? info : undefined;
 }
@@ -180,39 +187,34 @@ function collectCteSources(
   return ctes;
 }
 
-function addFromItem(
-  info: SourceInfo,
+function sourceInfoForFromItem(
   item: unknown,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
   ctes: Map<string, ColumnShape[]>
-): void {
+): SourceInfo | undefined {
   const rangeVar = astNodeOf(item, "RangeVar");
   if (rangeVar) {
-    addRangeVar(info, rangeVar, defaultSchema, tablesByKey, ctes);
-    return;
+    return sourceInfoForRangeVar(rangeVar, defaultSchema, tablesByKey, ctes);
   }
 
   const rangeSubselect = astNodeOf(item, "RangeSubselect");
   if (rangeSubselect) {
-    addRangeSubselect(info, rangeSubselect, defaultSchema, tablesByKey, ctes);
-    return;
+    return sourceInfoForRangeSubselect(rangeSubselect, defaultSchema, tablesByKey, ctes);
   }
 
   const join = astNodeOf(item, "JoinExpr");
   if (join) {
-    addFromItem(info, join.larg, defaultSchema, tablesByKey, ctes);
-    addFromItem(info, join.rarg, defaultSchema, tablesByKey, ctes);
+    return sourceInfoForJoin(join, defaultSchema, tablesByKey, ctes);
   }
 }
 
-function addRangeVar(
-  info: SourceInfo,
+function sourceInfoForRangeVar(
   rangeVar: Record<string, unknown>,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
   ctes: Map<string, ColumnShape[]>
-): void {
+): SourceInfo | undefined {
   const relname = readString(rangeVar?.relname);
   if (!relname) {
     return;
@@ -227,16 +229,15 @@ function addRangeVar(
     return;
   }
   const aliasName = readString(asRecord(rangeVar.alias)?.aliasname);
-  addSourceColumns(info, columns, aliasName ? [relname, aliasName] : [relname]);
+  return sourceInfoFromColumns(columns, aliasName ? [relname, aliasName] : [relname]);
 }
 
-function addRangeSubselect(
-  info: SourceInfo,
+function sourceInfoForRangeSubselect(
   rangeSubselect: Record<string, unknown>,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
   ctes: Map<string, ColumnShape[]>
-): void {
+): SourceInfo | undefined {
   const query = selectStatement(rangeSubselect.subquery);
   if (!query) {
     return;
@@ -247,21 +248,113 @@ function addRangeSubselect(
     columnsForSelect(query, defaultSchema, tablesByKey, ctes),
     stringList(alias?.colnames)
   );
-  addSourceColumns(info, columns, aliasName ? [aliasName] : []);
+  return sourceInfoFromColumns(columns, aliasName ? [aliasName] : []);
 }
 
-function addSourceColumns(info: SourceInfo, columns: ColumnShape[], names: string[]): void {
+function sourceInfoForJoin(
+  join: Record<string, unknown>,
+  defaultSchema: string,
+  tablesByKey: Map<string, TableShape>,
+  ctes: Map<string, ColumnShape[]>
+): SourceInfo | undefined {
+  const left = sourceInfoForFromItem(join.larg, defaultSchema, tablesByKey, ctes);
+  const right = sourceInfoForFromItem(join.rarg, defaultSchema, tablesByKey, ctes);
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  const usingNames = joinUsingColumnNames(join, left, right);
+  return {
+    columns:
+      usingNames.length > 0
+        ? mergedUsingJoinColumns(left.columns, right.columns, usingNames)
+        : [...left.columns, ...right.columns],
+    qualifiedColumns: mergedQualifiedColumns(left, right),
+  };
+}
+
+function joinUsingColumnNames(
+  join: Record<string, unknown>,
+  left: SourceInfo,
+  right: SourceInfo
+): string[] {
+  const explicit = uniqueStrings(stringList(join.usingClause));
+  if (explicit.length > 0) {
+    return explicit;
+  }
+  if (join.isNatural === true) {
+    const rightNames = new Set(right.columns.map((column) => column.name));
+    return uniqueStrings(
+      left.columns.map((column) => column.name).filter((name) => rightNames.has(name))
+    );
+  }
+  return [];
+}
+
+function mergedUsingJoinColumns(
+  leftColumns: ColumnShape[],
+  rightColumns: ColumnShape[],
+  usingNames: string[]
+): ColumnShape[] {
+  const using = new Set(usingNames);
+  const leftByName = new Map<string, ColumnShape>();
+  const rightByName = new Map<string, ColumnShape>();
+  for (const column of leftColumns) {
+    leftByName.set(column.name, column);
+  }
+  for (const column of rightColumns) {
+    rightByName.set(column.name, column);
+  }
+  const merged: ColumnShape[] = [];
+  for (const name of usingNames) {
+    const column = leftByName.get(name) ?? rightByName.get(name);
+    if (column) {
+      merged.push(column);
+    }
+  }
+  return [
+    ...merged,
+    ...leftColumns.filter((column) => !using.has(column.name)),
+    ...rightColumns.filter((column) => !using.has(column.name)),
+  ];
+}
+
+function sourceInfoFromColumns(columns: ColumnShape[], names: string[]): SourceInfo | undefined {
   if (columns.length === 0) {
     return;
   }
-  info.columns.push(...columns);
+  const qualifiedColumns = new Map<string, ColumnShape[]>();
   for (const name of names) {
-    info.qualifiedColumns.set(name, columns);
+    qualifiedColumns.set(name, columns);
+  }
+  return { columns: [...columns], qualifiedColumns };
+}
+
+function mergeSourceInfo(target: SourceInfo, source: SourceInfo): void {
+  target.columns.push(...source.columns);
+  for (const [name, columns] of source.qualifiedColumns) {
+    target.qualifiedColumns.set(name, columns);
   }
 }
 
+function mergedQualifiedColumns(...sources: SourceInfo[]): Map<string, ColumnShape[]> {
+  const qualifiedColumns = new Map<string, ColumnShape[]>();
+  for (const source of sources) {
+    for (const [name, columns] of source.qualifiedColumns) {
+      qualifiedColumns.set(name, columns);
+    }
+  }
+  return qualifiedColumns;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
 function applyColumnAliases(columns: ColumnShape[], aliasNames: string[]): ColumnShape[] {
-  if (aliasNames.length !== columns.length) {
+  if (aliasNames.length === 0) {
     return columns;
   }
   return columns.map((column, index) => ({
@@ -407,9 +500,12 @@ function subLinkType(link: Record<string, unknown>, context: InferenceContext): 
 }
 
 function functionReturnType(func: Record<string, unknown>): string | undefined {
-  const name = stringList(func.funcname).join(".");
-  const shortName = name.split(".").at(-1) ?? "";
-  return functionTypeMap.get(name) ?? functionTypeMap.get(shortName);
+  const parts = stringList(func.funcname);
+  if (parts.length === 0) {
+    return;
+  }
+  const name = parts.join(".");
+  return functionTypeMap.get(name);
 }
 
 function selectStatement(value: unknown): Record<string, unknown> | undefined {

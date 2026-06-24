@@ -178,6 +178,11 @@ function emitZodTablesRoot(
       emitZodUpdate(lines, table.columns, zodFor);
       lines.push("    },");
     }
+    for (const view of sortedByName(entry.views)) {
+      lines.push(`    ${quoteKey(view.name)}: {`);
+      emitZodRow(lines, view.columns, zodFor, "      Row");
+      lines.push("    },");
+    }
     lines.push("  },");
   }
   lines.push("} as const;");

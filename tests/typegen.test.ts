@@ -162,6 +162,15 @@ function isWhitespace(char: string): boolean {
   return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
 }
 
+function viewTypeBlock(types: string, name: string): string {
+  const start = types.indexOf(`      ${name}: {`);
+  if (start === -1) {
+    return "";
+  }
+  const end = types.indexOf("\n      };", start);
+  return end === -1 ? types.slice(start) : types.slice(start, end);
+}
+
 async function expectTypeScriptAccepts(source: string): Promise<void> {
   const tmpRoot = join(process.cwd(), ".tmp");
   await mkdir(tmpRoot, { recursive: true });
@@ -263,6 +272,70 @@ SELECT app.source.app_value FROM app.source;
 
     expect(views).toContain("app_value: string | null;");
     expect(views).not.toContain("app_value: unknown | null;");
+  });
+
+  it("keeps qualified star expansion scoped to the matched join source", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint, name text);
+CREATE TABLE app.events (id bigint, account_id bigint, payload jsonb);
+CREATE VIEW app.account_only AS
+SELECT a.* FROM app.accounts a JOIN app.events e ON e.account_id = a.id;
+`);
+    const accountOnly = viewTypeBlock(types, "account_only");
+
+    expect(accountOnly).toContain("id: number | null;");
+    expect(accountOnly).toContain("name: string | null;");
+    expect(accountOnly).not.toContain("account_id:");
+    expect(accountOnly).not.toContain("payload:");
+  });
+
+  it("merges USING and NATURAL join keys once for unqualified stars", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.left_items (id bigint, left_name text);
+CREATE TABLE app.right_items (id bigint, right_name text);
+CREATE VIEW app.using_join AS
+SELECT * FROM app.left_items JOIN app.right_items USING (id);
+CREATE VIEW app.natural_join AS
+SELECT * FROM app.left_items NATURAL JOIN app.right_items;
+`);
+    const usingJoin = viewTypeBlock(types, "using_join");
+    const naturalJoin = viewTypeBlock(types, "natural_join");
+
+    expect(
+      usingJoin.split("\n").filter((line) => line === "          id: number | null;")
+    ).toHaveLength(1);
+    expect(usingJoin).toContain("left_name: string | null;");
+    expect(usingJoin).toContain("right_name: string | null;");
+    expect(
+      naturalJoin.split("\n").filter((line) => line === "          id: number | null;")
+    ).toHaveLength(1);
+  });
+
+  it("applies derived-table column aliases positionally", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint, name text);
+CREATE VIEW app.partial_aliases AS
+SELECT * FROM (SELECT id, name FROM app.accounts) AS source(account_id);
+`);
+    const view = viewTypeBlock(types, "partial_aliases");
+
+    expect(view).toContain("account_id: number | null;");
+    expect(view).toContain("name: string | null;");
+    expect(view).not.toContain("\n          id: number | null;");
+  });
+
+  it("does not infer schema-qualified functions from unqualified builtin names", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint, name text);
+CREATE FUNCTION app.lower(value integer) RETURNS integer LANGUAGE sql AS $$ SELECT value $$;
+CREATE VIEW app.builtin_lower AS SELECT lower(name) AS lowered FROM app.accounts;
+CREATE VIEW app.custom_lower AS SELECT app.lower(1) AS lowered FROM app.accounts;
+`);
+    const builtin = viewTypeBlock(types, "builtin_lower");
+    const custom = viewTypeBlock(types, "custom_lower");
+
+    expect(builtin).toContain("lowered: string | null;");
+    expect(custom).toContain("lowered: unknown | null;");
   });
 
   it("emits the Constants enum tuples and Supabase-compatible helper shorthands", async () => {
@@ -506,6 +579,7 @@ describe("zod schema generation", () => {
     expect(zod).toContain("export const TablesUpdate = {");
     expect(zod).toContain("export const Enums = {");
     expect(zod).toContain("export const CompositeTypes = {");
+    expect(zod).toContain("account_names");
     expect(zod).toContain("export type Tables<");
     expect(zod).toContain("export type TablesInsert<");
     expect(zod).toContain("export type Enums<");
@@ -519,6 +593,7 @@ describe("zod schema generation", () => {
 
     await expectTypeScriptAccepts(`${zod}
 type Movie = Tables<"movies">;
+type MovieView = Tables<"movie_names">;
 type MovieInsert = TablesInsert<"movies">;
 type MovieUpdate = TablesUpdate<"movies">;
 type Visibility = Enums<"visibility">;
@@ -529,6 +604,7 @@ type Status = Enums<{ schema: "app" }, "status">;
 type Address = CompositeTypes<{ schema: "app" }, "address">;
 
 const movie: Movie = Tables.public.movies.Row.parse({ id: 1, name: "Heat", visibility: "public" });
+const movieView: MovieView = Tables.public.movie_names.Row.parse({ id: 1, name: "Heat" });
 const movieInsert: MovieInsert = TablesInsert.public.movies.parse({ name: "Heat" });
 const movieUpdate: MovieUpdate = TablesUpdate.public.movies.parse({ name: "Thief" });
 const visibility: Visibility = Enums.public.visibility.parse("private");
@@ -542,6 +618,7 @@ const accountUpdate: AccountUpdate = TablesUpdate.app.accounts.parse({ state: "a
 const status: Status = Enums.app.status.parse("draft");
 const address: Address = CompositeTypes.app.address.parse({ street: "Main", zip: 1 });
 void movie;
+void movieView;
 void movieInsert;
 void movieUpdate;
 void visibility;
@@ -612,16 +689,17 @@ CREATE TYPE app.a AS (z app.z);
 
   it("derives insert optionality and omits generated columns from writes", async () => {
     const zod = await zodFor(treeSql);
-    const insert = zod.slice(zod.indexOf("Insert: z.object({"), zod.indexOf("Update: z.object({"));
+    const account = zod.slice(zod.indexOf("accounts: {"), zod.indexOf("events: {"));
+    const insert = account.slice(
+      account.indexOf("Insert: z.object({"),
+      account.indexOf("Update: z.object({")
+    );
 
     expect(insert).toContain("id: z.number().optional(),");
     expect(insert).toContain("name: z.string(),");
     expect(insert).toContain("email: z.string().nullable().optional(),");
     expect(insert).not.toContain("doubled");
-    const update = zod.slice(
-      zod.indexOf("Update: z.object({"),
-      zod.indexOf("export const TablesInsert = {")
-    );
+    const update = account.slice(account.indexOf("Update: z.object({"));
     expect(update).toContain("name: z.string().optional(),");
     expect(update).not.toContain("doubled");
   });

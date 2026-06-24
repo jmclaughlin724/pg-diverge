@@ -16,6 +16,7 @@ This directory emits generated database types, Zod schemas, and type-contract sh
 
 - Keep generated output sorted and deterministic.
 - Type inference should use modeled facts, catalog/source metadata, and AST node-kind dispatch, not SQL text guesses or ad hoc wrapper probing when structured facts exist.
+- Preserve PostgreSQL output semantics: CTE sources shadow only unqualified range variables, qualified stars expand only the matched source, `USING`/`NATURAL` joins merge join keys once, and column alias lists apply positionally.
 - Coordinate shape changes with contract diffs and generated snapshot tests.
 
 ## Verification
