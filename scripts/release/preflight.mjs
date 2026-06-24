@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractChangelogEntry } from "./changelog-notes.mjs";
 
@@ -56,7 +57,7 @@ function repositorySlug(packageJson) {
   fail("GITHUB_REPOSITORY or package.json repository.url is required for release preflight");
 }
 
-function npmViewVersions(packageName) {
+function npmViewVersions(packageName, options = {}) {
   if (process.env.SUPASCHEMA_RELEASE_NPM_VIEW_JSON) {
     return normalizeVersions(JSON.parse(process.env.SUPASCHEMA_RELEASE_NPM_VIEW_JSON));
   }
@@ -64,6 +65,7 @@ function npmViewVersions(packageName) {
   try {
     const output = execFileSync("npm", ["view", packageName, "versions", "--json"], {
       encoding: "utf8",
+      env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     return normalizeVersions(JSON.parse(output.trim() || "[]"));
@@ -73,6 +75,38 @@ function npmViewVersions(packageName) {
       return [];
     }
     throw error;
+  }
+}
+
+function githubPackageViewVersions(packageName, owner) {
+  if (process.env.SUPASCHEMA_RELEASE_GITHUB_PACKAGE_VIEW_JSON) {
+    return normalizeVersions(JSON.parse(process.env.SUPASCHEMA_RELEASE_GITHUB_PACKAGE_VIEW_JSON));
+  }
+
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  if (!token) {
+    if (process.env.GITHUB_ACTIONS === "true") {
+      fail("GITHUB_TOKEN or GH_TOKEN is required to inspect GitHub Packages");
+    }
+    return [];
+  }
+
+  const configDir = mkdtempSync(join(tmpdir(), "supaschema-gh-package-npmrc-"));
+  try {
+    const npmrc = join(configDir, ".npmrc");
+    writeFileSync(
+      npmrc,
+      `@${owner}:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}\n`
+    );
+    return npmViewVersions(packageName, {
+      env: {
+        ...process.env,
+        NODE_AUTH_TOKEN: token,
+        NPM_CONFIG_USERCONFIG: npmrc,
+      },
+    });
+  } finally {
+    rmSync(configDir, { force: true, recursive: true });
   }
 }
 
@@ -146,6 +180,27 @@ function githubRepositoryFromUrl(value) {
   return parts.length >= 2 ? `${parts[0]}/${parts.slice(1).join("/")}` : undefined;
 }
 
+function githubPackageName(repo, packageName) {
+  const [owner] = repo.split("/");
+  if (!owner) {
+    fail(`could not derive GitHub Packages owner from repository ${repo}`);
+  }
+  return `@${owner.toLowerCase()}/${unscopedPackageName(packageName).toLowerCase()}`;
+}
+
+function githubPackageOwner(scopedPackageName) {
+  const slash = scopedPackageName.indexOf("/");
+  return slash === -1 ? undefined : scopedPackageName.slice(1, slash);
+}
+
+function unscopedPackageName(packageName) {
+  if (!packageName.startsWith("@")) {
+    return packageName;
+  }
+  const slash = packageName.indexOf("/");
+  return slash === -1 ? packageName : packageName.slice(slash + 1);
+}
+
 function firstWhitespaceToken(value) {
   let token = "";
   for (const char of value.trim()) {
@@ -172,9 +227,12 @@ function exposeReleaseState(state) {
     SUPASCHEMA_PACKAGE_NAME: state.name,
     SUPASCHEMA_PACKAGE_VERSION: state.version,
     SUPASCHEMA_RELEASE_ALREADY_COMPLETE: state.alreadyComplete,
+    SUPASCHEMA_RELEASE_GITHUB_PACKAGE_NAME: state.githubPackageName,
+    SUPASCHEMA_RELEASE_GITHUB_PACKAGE_PUBLISHED: state.githubPackagePublished,
     SUPASCHEMA_RELEASE_GITHUB_RELEASE_EXISTS: state.githubReleaseExists,
     SUPASCHEMA_RELEASE_NPM_PUBLISHED: state.npmPublished,
     SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE: state.shouldCreateGithubRelease,
+    SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE: state.shouldPublishGithubPackage,
     SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM: state.shouldPublishNpm,
     SUPASCHEMA_RELEASE_TAG: state.tag,
   };
@@ -217,6 +275,12 @@ try {
 const published = npmViewVersions(name);
 const npmPublished = published.includes(version);
 const repo = repositorySlug(packageJson);
+const githubScopedName = githubPackageName(repo, name);
+const githubPackageOwnerName = githubPackageOwner(githubScopedName);
+const githubPackagePublished = githubPackageViewVersions(
+  githubScopedName,
+  githubPackageOwnerName
+).includes(version);
 const releaseExists = githubReleaseExists(repo, tag);
 const tagTarget = githubTagTarget(tag);
 const targetSha = process.env.GITHUB_SHA;
@@ -238,23 +302,39 @@ if (!releaseExists && tagTarget !== undefined) {
 
 const shouldPublishNpm = !npmPublished;
 const shouldCreateGithubRelease = !releaseExists;
-const alreadyComplete = npmPublished && releaseExists;
+const shouldPublishGithubPackage = !githubPackagePublished;
+const alreadyComplete = npmPublished && releaseExists && githubPackagePublished;
 
 exposeReleaseState({
   alreadyComplete,
+  githubPackageName: githubScopedName,
+  githubPackagePublished,
   githubReleaseExists: releaseExists,
   name,
   npmPublished,
   shouldCreateGithubRelease,
+  shouldPublishGithubPackage,
   shouldPublishNpm,
   tag,
   version,
 });
 
 if (alreadyComplete) {
-  console.log(`RELEASE_PREFLIGHT_OK ${name}@${version} and ${tag} are already released`);
+  console.log(
+    `RELEASE_PREFLIGHT_OK ${name}@${version}, ${githubScopedName}@${version}, and ${tag} are already released`
+  );
+} else if (githubPackagePublished) {
+  console.log(`RELEASE_PREFLIGHT_OK ${githubScopedName}@${version} is already on GitHub Packages`);
+} else if (npmPublished && releaseExists) {
+  console.log(
+    `RELEASE_PREFLIGHT_OK ${name}@${version} and ${tag} are released; ${githubScopedName}@${version} will publish to GitHub Packages`
+  );
 } else if (npmPublished) {
-  console.log(`RELEASE_PREFLIGHT_OK ${name}@${version} is on npm; ${tag} will be created`);
+  console.log(
+    `RELEASE_PREFLIGHT_OK ${name}@${version} is on npm; ${tag} and ${githubScopedName}@${version} will be created`
+  );
 } else {
-  console.log(`RELEASE_PREFLIGHT_OK ${name}@${version} will publish to npm and create ${tag}`);
+  console.log(
+    `RELEASE_PREFLIGHT_OK ${name}@${version} will publish to npm; ${githubScopedName}@${version} will publish to GitHub Packages; ${tag} will be created`
+  );
 }

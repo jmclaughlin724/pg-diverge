@@ -68,6 +68,7 @@ function runPreflight(
     githubEnv?: string;
     githubEventName?: string;
     githubOutput?: string;
+    githubPackageVersions?: string[];
     githubRef?: string;
     githubReleaseExists?: boolean;
     githubSha?: string;
@@ -86,6 +87,9 @@ function runPreflight(
       GITHUB_REF: options.githubRef,
       GITHUB_REPOSITORY: "jmclaughlin724/supaschema",
       GITHUB_SHA: options.githubSha ?? releaseCommit,
+      SUPASCHEMA_RELEASE_GITHUB_PACKAGE_VIEW_JSON: JSON.stringify(
+        options.githubPackageVersions ?? []
+      ),
       SUPASCHEMA_RELEASE_GITHUB_RELEASE_EXISTS: String(options.githubReleaseExists ?? false),
       SUPASCHEMA_RELEASE_GITHUB_TAG_TARGET: options.githubTagTarget ?? "",
       SUPASCHEMA_RELEASE_NPM_VIEW_JSON: JSON.stringify(options.publishedVersions ?? []),
@@ -107,7 +111,7 @@ describe("release preflight", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      "RELEASE_PREFLIGHT_OK supaschema@1.2.3 will publish to npm and create v1.2.3"
+      "RELEASE_PREFLIGHT_OK supaschema@1.2.3 will publish to npm; @jmclaughlin724/supaschema@1.2.3 will publish to GitHub Packages; v1.2.3 will be created"
     );
   });
 
@@ -127,7 +131,12 @@ describe("release preflight", () => {
       const contents = readFileSync(file, "utf8");
       expect(contents).toContain("SUPASCHEMA_PACKAGE_NAME=supaschema");
       expect(contents).toContain("SUPASCHEMA_PACKAGE_VERSION=1.2.3");
+      expect(contents).toContain(
+        "SUPASCHEMA_RELEASE_GITHUB_PACKAGE_NAME=@jmclaughlin724/supaschema"
+      );
+      expect(contents).toContain("SUPASCHEMA_RELEASE_GITHUB_PACKAGE_PUBLISHED=false");
       expect(contents).toContain("SUPASCHEMA_RELEASE_TAG=v1.2.3");
+      expect(contents).toContain("SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE=true");
       expect(contents).toContain("SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM=true");
       expect(contents).toContain("SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE=true");
     }
@@ -140,11 +149,11 @@ describe("release preflight", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      "RELEASE_PREFLIGHT_OK supaschema@1.2.3 is on npm; v1.2.3 will be created"
+      "RELEASE_PREFLIGHT_OK supaschema@1.2.3 is on npm; v1.2.3 and @jmclaughlin724/supaschema@1.2.3 will be created"
     );
   });
 
-  it("accepts an already complete npm and GitHub release", () => {
+  it("publishes a missing GitHub Packages mirror after npm and GitHub release exist", () => {
     const cwd = makeProject({});
 
     const result = runPreflight(cwd, {
@@ -154,7 +163,22 @@ describe("release preflight", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      "RELEASE_PREFLIGHT_OK supaschema@1.2.3 and v1.2.3 are already released"
+      "RELEASE_PREFLIGHT_OK supaschema@1.2.3 and v1.2.3 are released; @jmclaughlin724/supaschema@1.2.3 will publish to GitHub Packages"
+    );
+  });
+
+  it("accepts an already complete npm, GitHub release, and GitHub Packages mirror", () => {
+    const cwd = makeProject({});
+
+    const result = runPreflight(cwd, {
+      githubPackageVersions: ["1.2.3"],
+      githubReleaseExists: true,
+      publishedVersions: ["1.2.2", "1.2.3"],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "RELEASE_PREFLIGHT_OK supaschema@1.2.3, @jmclaughlin724/supaschema@1.2.3, and v1.2.3 are already released"
     );
   });
 
@@ -163,6 +187,7 @@ describe("release preflight", () => {
 
     const result = runPreflight(cwd, {
       githubEventName: "push",
+      githubPackageVersions: ["1.2.3"],
       githubRef: "refs/heads/main",
       githubReleaseExists: true,
       publishedVersions: ["1.2.2", "1.2.3"],
@@ -170,7 +195,7 @@ describe("release preflight", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      "RELEASE_PREFLIGHT_OK supaschema@1.2.3 and v1.2.3 are already released"
+      "RELEASE_PREFLIGHT_OK supaschema@1.2.3, @jmclaughlin724/supaschema@1.2.3, and v1.2.3 are already released"
     );
   });
 

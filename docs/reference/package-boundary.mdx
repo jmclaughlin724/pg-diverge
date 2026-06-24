@@ -34,6 +34,8 @@ The npm tarball and consumer setup are not the same thing. The tarball is what n
 
 The package allowlist includes only runtime and install assets: the built CLI and library, config schema, README/license files, and the explicit supaschema consumer agent bundle.
 
+The primary public package name is `supaschema` on npmjs.org. Releases also publish the same consumer contents as the scoped GitHub Packages mirror `@jmclaughlin724/supaschema`, because GitHub Packages requires scoped npm package names and uses `npm.pkg.github.com`.
+
 Do not add broad repo directories to the allowlist just because a single file is needed. Add the narrowest file or directory that matches the consumer contract.
 
 Public docs, examples, benchmarks, corpus fixtures, source files, tests, services, and maintainer scripts stay out of the npm tarball. They belong in the public repository or hosted docs when they are product evidence, and in a private maintainer workspace when they are not.

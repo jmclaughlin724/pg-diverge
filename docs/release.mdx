@@ -7,6 +7,8 @@ hidden: true
 
 The package is designed for trusted publishing from GitHub Actions. `main` is the release source: every push to `main` starts the release workflow directly, without waiting for the full CI benchmark matrix. A push to `main` publishes an unreleased package version, repairs a missing GitHub Release for an npm version that already exists, or exits successfully when npm and GitHub already have the current version.
 
+The public install package remains `supaschema` on npmjs.org. The release workflow also publishes a scoped GitHub Packages mirror, `@jmclaughlin724/supaschema`, so the repository Packages surface tracks each release without changing the public npm package name.
+
 ## One-time setup
 
 1. Create the public GitHub repository.
@@ -18,6 +20,7 @@ The package is designed for trusted publishing from GitHub Actions. `main` is th
    - Environment name: `release`
    - Allowed actions: `npm publish`
 3. Configure the GitHub `release` environment so deployment branch policies allow `main`.
+4. Keep the release workflow's `packages: write` permission enabled so `GITHUB_TOKEN` can publish the scoped GitHub Packages mirror.
 
 ## Per-release checklist
 
@@ -41,12 +44,14 @@ The release workflow uses:
 
 - `permissions.id-token: write`
 - `permissions.contents: write` on the publish job
+- `permissions.packages: write` on the publish job
 - `push` to `main` plus a main-only `workflow_dispatch` repair path
 - a GitHub-hosted Ubuntu runner with Node 24, npm `>=11.5.1`, and `actions/setup-node` with `registry-url: https://registry.npmjs.org`
 - `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`
 - `actions/attest@v4` for tarball provenance attestation
 - `node scripts/release/changelog-notes.mjs --version "$SUPASCHEMA_PACKAGE_VERSION" --out "$RUNNER_TEMP/release-notes.md"`
 - `gh release create "$SUPASCHEMA_RELEASE_TAG" --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"`
+- `npm publish "$SUPASCHEMA_GITHUB_PACKAGE_TARBALL" --registry https://npm.pkg.github.com` for the scoped GitHub Packages mirror when it is missing
 
 Run `npm run release:registry-smoke` manually when you need to prove npm, pnpm 11, and Bun can download `supaschema@<version>` from the npm registry after publication.
 

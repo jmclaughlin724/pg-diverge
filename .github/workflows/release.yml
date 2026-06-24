@@ -25,6 +25,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+      packages: write
 
     steps:
       # Egress monitoring on the privileged publish job (holds id-token:write).
@@ -61,20 +62,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release/preflight.mjs
       - name: Confirm npm supports OIDC trusted publishing
-        if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+        if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true' || steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
         run: |
           npm --version
           node -e "const { execFileSync } = require('node:child_process'); const raw = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(); const match = /^(\d+)\.(\d+)\.(\d+)/.exec(raw); if (!match) throw new Error('could not parse npm version: ' + raw); const [major, minor, patch] = match.slice(1).map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) throw new Error('npm >= 11.5.1 is required for trusted publishing, found ' + raw);"
-      - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+      - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true' || steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
         run: npm ci
-      - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+      - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true' || steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
         run: npm audit signatures
-      - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+      - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true' || steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
         run: npm run build
-      - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+      - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true' || steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
         run: npm run check:package
       - name: Pack package
-        if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+        if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true' || steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
         id: pack
         run: |
           tarball="$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" --silent)"
@@ -86,7 +87,7 @@ jobs:
       # so the smoke render must not share $RUNNER_TEMP with the packed tarball,
       # the sigstore bundle, or any future second render.
       - name: Smoke npx from tarball
-        if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
+        if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true' || steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
         run: |
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
@@ -94,6 +95,13 @@ jobs:
             --to dir:tests/fixtures/basic/to \
             --out "$RUNNER_TEMP/smoke/basic.sql"
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema check "$RUNNER_TEMP/smoke/basic.sql"
+      - name: Prepare GitHub Packages tarball
+        if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
+        id: github-pack
+        run: |
+          github_tarball="$(node scripts/release/github-package-tarball.mjs --tarball "$SUPASCHEMA_TARBALL" --pack-destination "$RUNNER_TEMP")"
+          echo "SUPASCHEMA_GITHUB_PACKAGE_TARBALL=$github_tarball" >> "$GITHUB_ENV"
+          echo "tarball_path=$github_tarball" >> "$GITHUB_OUTPUT"
       - if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         run: npm publish "$SUPASCHEMA_TARBALL" --access public --provenance
       - name: Attest tarball provenance
@@ -119,3 +127,12 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$SUPASCHEMA_RELEASE_TAG" \
             --notes-file "$SUPASCHEMA_RELEASE_NOTES_FILE"
+      - name: Publish GitHub Packages mirror
+        if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npmrc="$RUNNER_TEMP/github-packages.npmrc"
+          umask 077
+          printf '@jmclaughlin724:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$GITHUB_TOKEN" > "$npmrc"
+          NPM_CONFIG_USERCONFIG="$npmrc" npm publish "$SUPASCHEMA_GITHUB_PACKAGE_TARBALL" --registry https://npm.pkg.github.com
