@@ -217,8 +217,12 @@ function addRangeVar(
   if (!relname) {
     return;
   }
-  const schemaName = readString(rangeVar?.schemaname) ?? defaultSchema;
-  const columns = ctes.get(relname) ?? tablesByKey.get(`${schemaName}.${relname}`)?.columns;
+  const explicitSchemaName = readString(rangeVar?.schemaname);
+  const schemaName = explicitSchemaName ?? defaultSchema;
+  const columns =
+    explicitSchemaName === undefined
+      ? (ctes.get(relname) ?? tablesByKey.get(`${schemaName}.${relname}`)?.columns)
+      : tablesByKey.get(`${schemaName}.${relname}`)?.columns;
   if (!columns) {
     return;
   }

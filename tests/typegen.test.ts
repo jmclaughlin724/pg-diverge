@@ -252,6 +252,19 @@ describe("database type generation", () => {
     expect(views).toContain("can_send_sms: boolean | null;");
   });
 
+  it("keeps CTE names from shadowing schema-qualified table references", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.source (id bigint, app_value text);
+CREATE VIEW app.v_collision AS
+WITH source AS (SELECT 1::integer AS id, 'cte'::text AS cte_value)
+SELECT app.source.app_value FROM app.source;
+`);
+    const views = types.slice(types.indexOf("Views: {"), types.indexOf("Enums: {"));
+
+    expect(views).toContain("app_value: string | null;");
+    expect(views).not.toContain("app_value: unknown | null;");
+  });
+
   it("emits the Constants enum tuples and Supabase-compatible helper shorthands", async () => {
     const types = await typesFor(treeSql);
 
