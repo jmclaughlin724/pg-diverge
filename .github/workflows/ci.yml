@@ -54,7 +54,9 @@ jobs:
       - name: Smoke npx from tarball
         run: |
           npx --yes --package "$SUPASCHEMA_TARBALL" supaschema --version
-          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema diff \
+          npx --yes --package "$SUPASCHEMA_TARBALL" supaschema \
+            --config tests/fixtures/basic/supaschema.config.json \
+            diff \
             --from dir:tests/fixtures/basic/from \
             --to dir:tests/fixtures/basic/to \
             --out "$RUNNER_TEMP/smoke/basic.sql"
