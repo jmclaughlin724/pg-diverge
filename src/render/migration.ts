@@ -136,7 +136,7 @@ function renderAlter(operation: MigrationOperation): string {
   }
   const statements: string[] = [];
   if (typeof operation.metadata.attachPartitionSql === "string") {
-    statements.push(ensureSemicolon(operation.metadata.attachPartitionSql));
+    statements.push(renderAttachPartitionGuard(after, operation.metadata.attachPartitionSql));
   }
   const addColumns = Array.isArray(operation.metadata.addColumns)
     ? operation.metadata.addColumns
@@ -185,10 +185,14 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
     statements.push(`${prefix} DROP EXPRESSION IF EXISTS;`);
   }
   if (typeof record.addIdentitySql === "string") {
-    statements.push(ensureSemicolon(record.addIdentitySql));
+    statements.push(renderAddIdentityGuard(table, name, record.addIdentitySql));
   } else if (typeof record.addIdentity === "string") {
     statements.push(
-      `${prefix} ADD GENERATED ${identityGeneration(record.addIdentity)} AS IDENTITY;`
+      renderAddIdentityGuard(
+        table,
+        name,
+        `${prefix} ADD GENERATED ${identityGeneration(record.addIdentity)} AS IDENTITY;`
+      )
     );
   }
   if (typeof record.setIdentitySql === "string") {
@@ -216,6 +220,72 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
 
 function identityGeneration(value: string): string {
   return value === "d" ? "BY DEFAULT" : "ALWAYS";
+}
+
+function renderAddIdentityGuard(table: SchemaObject, columnName: string, sql: string): string {
+  return `DO $supaschema$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute a
+    WHERE a.attrelid = pg_catalog.to_regclass(${quoteLiteral(qualifiedRef(table.ref))})
+      AND a.attname = ${quoteLiteral(columnName)}
+      AND a.attidentity <> ''
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+  ) THEN
+    ${ensureSemicolon(sql)}
+  END IF;
+END
+$supaschema$;`;
+}
+
+function renderAttachPartitionGuard(table: SchemaObject, sql: string): string {
+  const parent = partitionParentQualifiedRef(table);
+  if (parent === undefined) {
+    return ensureSemicolon(sql);
+  }
+  return `DO $supaschema$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_inherits i
+    WHERE i.inhrelid = pg_catalog.to_regclass(${quoteLiteral(qualifiedRef(table.ref))})
+      AND i.inhparent = pg_catalog.to_regclass(${quoteLiteral(parent)})
+  ) THEN
+    ${ensureSemicolon(sql)}
+  END IF;
+END
+$supaschema$;`;
+}
+
+function partitionParentQualifiedRef(table: SchemaObject): string | undefined {
+  const canonicalShape = table.metadata.canonicalShape;
+  if (!canonicalShape || typeof canonicalShape !== "object" || Array.isArray(canonicalShape)) {
+    return;
+  }
+  const shape = recordFromObject(canonicalShape);
+  const inhRelations = shape?.inhRelations;
+  if (!Array.isArray(inhRelations) || inhRelations.length === 0) {
+    return;
+  }
+  const relation = inhRelations[0];
+  if (!relation || typeof relation !== "object" || Array.isArray(relation)) {
+    return;
+  }
+  const rangeVar = recordFromObject(relation).RangeVar;
+  if (!rangeVar || typeof rangeVar !== "object" || Array.isArray(rangeVar)) {
+    return;
+  }
+  const parent = recordFromObject(rangeVar);
+  const name = typeof parent?.relname === "string" ? parent.relname : undefined;
+  if (name === undefined) {
+    return;
+  }
+  const schema = typeof parent?.schemaname === "string" ? parent.schemaname : undefined;
+  return qualifiedRef(
+    schema === undefined ? { kind: "table", name } : { kind: "table", name, schema }
+  );
 }
 
 function renderReplace(operation: MigrationOperation): string {

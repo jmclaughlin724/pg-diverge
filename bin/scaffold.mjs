@@ -494,8 +494,8 @@ function mergeHookConfig(existing, incoming) {
     }
     const nextEntries = Array.isArray(existingEntries) ? [...existingEntries] : [];
     for (const incomingEntry of incomingEntries) {
-      if (!nextEntries.some((entry) => JSON.stringify(entry) === JSON.stringify(incomingEntry))) {
-        nextEntries.push(incomingEntry);
+      const mergeResult = mergeHookEntry(nextEntries, incomingEntry);
+      if (mergeResult === "changed") {
         changed = true;
       }
     }
@@ -503,6 +503,84 @@ function mergeHookConfig(existing, incoming) {
   }
   value.hooks = hooks;
   return { changed, skipped, value };
+}
+
+function mergeHookEntry(entries, incomingEntry) {
+  const incomingCommandIds = hookEntryCommandIdentities(incomingEntry);
+  const existingIndex =
+    incomingCommandIds.length > 0
+      ? entries.findIndex((entry) =>
+          hookEntryCommandIdentities(entry).some((id) => incomingCommandIds.includes(id))
+        )
+      : -1;
+  if (existingIndex >= 0) {
+    const merged = mergeMatchingHookEntry(entries[existingIndex], incomingEntry);
+    if (JSON.stringify(entries[existingIndex]) === JSON.stringify(merged)) {
+      return "unchanged";
+    }
+    entries[existingIndex] = merged;
+    return "changed";
+  }
+  if (entries.some((entry) => JSON.stringify(entry) === JSON.stringify(incomingEntry))) {
+    return "unchanged";
+  }
+  entries.push(incomingEntry);
+  return "changed";
+}
+
+function mergeMatchingHookEntry(existingEntry, incomingEntry) {
+  if (!(isRecord(existingEntry) && isRecord(incomingEntry))) {
+    return incomingEntry;
+  }
+  const existingHooks = Array.isArray(existingEntry.hooks) ? existingEntry.hooks : [];
+  const incomingHooks = Array.isArray(incomingEntry.hooks) ? incomingEntry.hooks : [];
+  const hooks = [...existingHooks];
+  for (const incomingHook of incomingHooks) {
+    const incomingId = hookCommandIdentity(incomingHook);
+    const index =
+      incomingId === undefined
+        ? -1
+        : hooks.findIndex((hook) => hookCommandIdentity(hook) === incomingId);
+    if (index >= 0) {
+      hooks[index] = incomingHook;
+    } else {
+      hooks.push(incomingHook);
+    }
+  }
+  return { ...existingEntry, ...incomingEntry, hooks };
+}
+
+function hookEntryCommandIdentities(entry) {
+  if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
+    return [];
+  }
+  return entry.hooks.flatMap((hook) => {
+    const identity = hookCommandIdentity(hook);
+    return identity === undefined ? [] : [identity];
+  });
+}
+
+function hookCommandIdentity(hook) {
+  if (!isRecord(hook) || typeof hook.command !== "string") {
+    return;
+  }
+  const commandLine = [hook.command, ...(Array.isArray(hook.args) ? hook.args.map(String) : [])]
+    .join(" ")
+    .replaceAll('"', "");
+  const supaschemaHook = supaschemaHookIdentity(commandLine);
+  if (supaschemaHook !== undefined) {
+    return supaschemaHook;
+  }
+  return commandLine;
+}
+
+function supaschemaHookIdentity(commandLine) {
+  for (const name of ["generated-migration-edit", "schema-write"]) {
+    if (commandLine.includes(`supaschema hook ${name}`)) {
+      return `supaschema hook ${name}`;
+    }
+  }
+  return;
 }
 
 function readRequiredAgentBundleFile(packageRoot, relativePath) {
@@ -924,29 +1002,39 @@ function fileContainsAny(path, terms) {
 function scanProject(projectDir) {
   const defaults = projectDefaults(projectDir);
   const dirs = walkDirectories(projectDir, 5);
+  const schemaPreference = [
+    defaults.schemaPath,
+    ...providerSchemaPaths,
+    genericSchemaPath,
+    "schemas",
+    "schema",
+    "db/schemas",
+    "db/schema",
+  ];
+  const migrationPreference = [
+    defaults.migrationsDir,
+    ...providerMigrationsDirs,
+    genericMigrationsDir,
+    "migrations",
+    "db/migrations",
+  ];
   const schemaCandidates = pruneNestedCandidates(
-    dirs.filter((dir) => isSchemaCandidate(projectDir, dir)).map((dir) => rel(projectDir, dir))
+    rankCandidates(
+      dirs.filter((dir) => isSchemaCandidate(projectDir, dir)).map((dir) => rel(projectDir, dir)),
+      schemaPreference
+    )
   );
   const migrationCandidates = pruneNestedCandidates(
-    dirs.filter((dir) => isMigrationsCandidate(projectDir, dir)).map((dir) => rel(projectDir, dir))
+    rankCandidates(
+      dirs
+        .filter((dir) => isMigrationsCandidate(projectDir, dir))
+        .map((dir) => rel(projectDir, dir)),
+      migrationPreference
+    )
   );
   return {
-    migrationsDirs: rankCandidates(migrationCandidates, [
-      defaults.migrationsDir,
-      ...providerMigrationsDirs,
-      genericMigrationsDir,
-      "migrations",
-      "db/migrations",
-    ]),
-    schemaPaths: rankCandidates(schemaCandidates, [
-      defaults.schemaPath,
-      ...providerSchemaPaths,
-      genericSchemaPath,
-      "schemas",
-      "schema",
-      "db/schemas",
-      "db/schema",
-    ]),
+    migrationsDirs: rankCandidates(migrationCandidates, migrationPreference),
+    schemaPaths: rankCandidates(schemaCandidates, schemaPreference),
   };
 }
 
@@ -1047,12 +1135,11 @@ function rankCandidates(candidates, preferredOrder) {
 }
 
 function pruneNestedCandidates(candidates) {
-  const sorted = Array.from(new Set(candidates)).sort(
-    (left, right) => left.split("/").length - right.split("/").length || left.localeCompare(right)
-  );
   const roots = [];
-  for (const candidate of sorted) {
-    if (!roots.some((root) => candidate.startsWith(`${root}/`))) {
+  for (const candidate of Array.from(new Set(candidates))) {
+    if (
+      !roots.some((root) => candidate.startsWith(`${root}/`) || root.startsWith(`${candidate}/`))
+    ) {
       roots.push(candidate);
     }
   }

@@ -113,7 +113,7 @@ describe("column-level alter lane", () => {
     expect(sql).toContain('ALTER TABLE "app"."accounts" ALTER COLUMN "score" DROP DEFAULT;');
   });
 
-  it("renders identity changes as ALTER COLUMN identity statements", async () => {
+  it("renders identity additions behind a replay-safe catalog guard", async () => {
     const plan = await diff(
       baseTable,
       "CREATE TABLE app.accounts (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, label varchar(10) NOT NULL, score integer DEFAULT 0);"
@@ -132,6 +132,8 @@ describe("column-level alter lane", () => {
         }),
       ])
     );
+    expect(sql).toContain("FROM pg_catalog.pg_attribute a");
+    expect(sql).toContain("AND a.attidentity <> ''");
     expect(sql).toContain(
       'ALTER TABLE "app"."accounts" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY;'
     );
@@ -239,6 +241,9 @@ describe("column-level alter lane", () => {
 
     expect(operation?.kind).toBe("alter");
     expect(operation?.blocked).toBe(false);
+    expect(sql).toContain("FROM pg_catalog.pg_inherits i");
+    expect(sql).toContain('pg_catalog.to_regclass(\'"app"."events_2026_01"\')');
+    expect(sql).toContain('pg_catalog.to_regclass(\'"app"."events"\')');
     expect(sql).toContain(
       "ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');"
     );

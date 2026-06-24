@@ -403,6 +403,52 @@ describe("init project setup", () => {
     }
   });
 
+  it("replaces package-owned hook entries by command identity instead of duplicating them", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-hook-dedupe-"));
+    await writeNestedFile(
+      join(consumer, ".codex/hooks.json"),
+      `${JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: "Write",
+                hooks: [
+                  {
+                    command:
+                      "pnpm exec -- supaschema hook generated-migration-edit --runtime codex",
+                    statusMessage: "old message",
+                    timeout: 1,
+                    type: "command",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    await runScaffold(consumer);
+
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    const generatedMigrationEntries = codexHooks.hooks.PreToolUse.flatMap(
+      (entry: { hooks?: { command?: string; timeout?: number }[] }) =>
+        Array.isArray(entry.hooks)
+          ? entry.hooks.filter((hook) =>
+              hook.command?.includes("supaschema hook generated-migration-edit")
+            )
+          : []
+    );
+    expect(generatedMigrationEntries).toHaveLength(1);
+    expect(generatedMigrationEntries[0]).toMatchObject({
+      command: "npm exec -- supaschema hook generated-migration-edit --runtime codex",
+      timeout: 10,
+    });
+  });
+
   it("installs only package enforcement surfaces, not Anilize-style context or backups", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-anilize-context-"));
     await writeFile(
@@ -485,6 +531,28 @@ describe("init project setup", () => {
     const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
     expect(config.schemaPaths).toEqual(["database/schema"]);
     expect(config.migrationsDir).toBe("database/migrations");
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
+  });
+
+  it("prefers nested provider schema paths before pruning broad provider SQL directories", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-provider-schema-prune-"));
+    await writeNestedFile(join(consumer, "supabase", "config.toml"), "[db]\nport = 54322\n");
+    await writeNestedFile(join(consumer, "supabase", "seed.sql"), "select 1;\n");
+    await writeNestedFile(
+      join(consumer, "supabase", "schemas", "app", "schema.sql"),
+      "create schema app;\n"
+    );
+    await writeNestedFile(
+      join(consumer, "supabase", "migrations", "20260101000000_init.sql"),
+      "select 1;\n"
+    );
+
+    await runScaffold(consumer);
+
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config.schemaPaths).toEqual(["supabase/schemas"]);
+    expect(config.sources.to).toBe("dir:supabase/schemas");
+    expect(config.migrationsDir).toBe("supabase/migrations");
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
