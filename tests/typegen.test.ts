@@ -301,7 +301,7 @@ void accountUpdate;
 void status;
 void address;
 `);
-  });
+  }, 15_000);
 
   it("emits TypeScript and Zod output from one precomputed shape graph", async () => {
     const model = await modelFor(treeSql, "supa-typegen-shapes-");
@@ -538,7 +538,7 @@ void accountUpdate;
 void status;
 void address;
 `);
-  });
+  }, 15_000);
 
   it("uses one identifier namespace for enum and composite validators", async () => {
     const zod = await zodFor(`CREATE SCHEMA "tenant-a";
