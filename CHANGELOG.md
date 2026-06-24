@@ -6,7 +6,7 @@
 
 - Aligns generated TypeScript helpers with Supabase-shaped table, insert, update, enum, and composite type contracts, including schema-qualified non-public schema usage.
 - Replaces the legacy generated Zod helper surface with direct `Tables`, `TablesInsert`, `TablesUpdate`, `Enums`, and `CompositeTypes` runtime owners plus inferred helper types, including view row validators under `Tables`.
-- Improves parser-backed view type inference for nested sources, CTEs, joins, qualified stars, positional column aliases, schema-qualified table references, JSON operators, arrays, booleans, and conservative unknown fallbacks.
+- Improves parser-backed view type inference for nested sources, CTEs, joins, qualified stars, positional column aliases, schema-qualified relation references, visible function overloads, predicate sublinks, JSON operators, arrays, booleans, and conservative unknown fallbacks.
 - Updates type-generation docs and tests so generated contracts no longer reference retired compatibility helpers.
 
 ## 0.3.8 (2026-06-24)

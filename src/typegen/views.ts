@@ -4,12 +4,13 @@ import {
   astNodeKind,
   astNodeOf,
   readArray,
+  readNumber,
   readString,
   stringList,
   typeNameToSql,
 } from "../sql/ast.js";
 import { parseSqlAst } from "../sql/parser.js";
-import type { ColumnShape, TableShape } from "./model.js";
+import type { ColumnShape, FunctionShape, TableShape } from "./model.js";
 
 interface ViewTarget {
   alias?: string;
@@ -28,19 +29,28 @@ interface InferenceContext {
   ctes: Map<string, ColumnShape[]>;
   defaultSchema: string;
   fromInfo?: SourceInfo;
+  functionsByKey: FunctionShapesByKey;
   tablesByKey: Map<string, TableShape>;
 }
 
+export type FunctionShapesByKey = Map<string, FunctionShape[]>;
+
 export async function collectViewColumns(
   object: SchemaObject,
-  tablesByKey: Map<string, TableShape>
+  tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey = new Map()
 ): Promise<ColumnShape[]> {
   const aliasNames = Array.isArray(object.metadata.viewColumns)
     ? object.metadata.viewColumns.map((value) => String(value))
     : undefined;
   const parsed = await parseSqlAst(object.sql, object.file);
   const select = firstSelect(parsed.ast);
-  const expanded = columnsForSelect(select, object.ref.schema ?? "public", tablesByKey);
+  const expanded = columnsForSelect(
+    select,
+    object.ref.schema ?? "public",
+    tablesByKey,
+    functionsByKey
+  );
   if (aliasNames) {
     return aliasNames.map((name, index) => ({
       name,
@@ -56,18 +66,26 @@ function columnsForSelect(
   select: Record<string, unknown> | undefined,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
   inheritedCtes: Map<string, ColumnShape[]> = new Map()
 ): ColumnShape[] {
   if (!select) {
     return [];
   }
-  const ctes = collectCteSources(select, defaultSchema, tablesByKey, inheritedCtes);
-  const fromInfo = collectFromClauseSourceInfo(select, defaultSchema, tablesByKey, ctes);
+  const ctes = collectCteSources(select, defaultSchema, tablesByKey, functionsByKey, inheritedCtes);
+  const fromInfo = collectFromClauseSourceInfo(
+    select,
+    defaultSchema,
+    tablesByKey,
+    functionsByKey,
+    ctes
+  );
   const targets = readArray(select.targetList).map((target) => parseTarget(target));
   const context: InferenceContext = {
     ctes,
     defaultSchema,
     ...(fromInfo ? { fromInfo } : {}),
+    functionsByKey,
     tablesByKey,
   };
   return targets.flatMap((target) => expandTarget(target, context));
@@ -114,14 +132,15 @@ function parseTarget(target: unknown): ViewTarget {
   const resTarget = astNodeOf(target, "ResTarget");
   const columnRef = astNodeOf(resTarget?.val, "ColumnRef");
   const fields = readArray(columnRef?.fields);
+  const fieldNames = stringList(columnRef?.fields);
   const lastField = fields.at(-1);
   const isStar = astNodeKind(lastField) === "A_Star";
-  const lastName = stringList(columnRef?.fields).at(-1);
+  const lastName = fieldNames.at(-1);
   const alias = readString(resTarget?.name);
   if (isStar) {
     return {
       isStar: true,
-      ...(lastName !== undefined && fields.length > 1 ? { starQualifier: lastName } : {}),
+      ...(fieldNames.length > 0 ? { starQualifier: fieldNames.join(".") } : {}),
     };
   }
   return {
@@ -144,6 +163,7 @@ function collectFromClauseSourceInfo(
   select: Record<string, unknown>,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
   ctes: Map<string, ColumnShape[]>
 ): SourceInfo | undefined {
   const fromClause = readArray(select.fromClause);
@@ -152,7 +172,7 @@ function collectFromClauseSourceInfo(
   }
   const info: SourceInfo = { columns: [], qualifiedColumns: new Map() };
   for (const item of fromClause) {
-    const source = sourceInfoForFromItem(item, defaultSchema, tablesByKey, ctes);
+    const source = sourceInfoForFromItem(item, defaultSchema, tablesByKey, functionsByKey, ctes);
     if (source) {
       mergeSourceInfo(info, source);
     }
@@ -164,6 +184,7 @@ function collectCteSources(
   select: Record<string, unknown> | undefined,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
   inheritedCtes: Map<string, ColumnShape[]>
 ): Map<string, ColumnShape[]> {
   const ctes = new Map(inheritedCtes);
@@ -179,7 +200,7 @@ function collectCteSources(
     }
     const aliasNames = stringList(cte.aliascolnames);
     const columns = applyColumnAliases(
-      columnsForSelect(query, defaultSchema, tablesByKey, ctes),
+      columnsForSelect(query, defaultSchema, tablesByKey, functionsByKey, ctes),
       aliasNames
     );
     ctes.set(name, columns);
@@ -191,6 +212,7 @@ function sourceInfoForFromItem(
   item: unknown,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
   ctes: Map<string, ColumnShape[]>
 ): SourceInfo | undefined {
   const rangeVar = astNodeOf(item, "RangeVar");
@@ -200,12 +222,18 @@ function sourceInfoForFromItem(
 
   const rangeSubselect = astNodeOf(item, "RangeSubselect");
   if (rangeSubselect) {
-    return sourceInfoForRangeSubselect(rangeSubselect, defaultSchema, tablesByKey, ctes);
+    return sourceInfoForRangeSubselect(
+      rangeSubselect,
+      defaultSchema,
+      tablesByKey,
+      functionsByKey,
+      ctes
+    );
   }
 
   const join = astNodeOf(item, "JoinExpr");
   if (join) {
-    return sourceInfoForJoin(join, defaultSchema, tablesByKey, ctes);
+    return sourceInfoForJoin(join, defaultSchema, tablesByKey, functionsByKey, ctes);
   }
 }
 
@@ -229,13 +257,18 @@ function sourceInfoForRangeVar(
     return;
   }
   const aliasName = readString(asRecord(rangeVar.alias)?.aliasname);
-  return sourceInfoFromColumns(columns, aliasName ? [relname, aliasName] : [relname]);
+  const qualifiedName = `${schemaName}.${relname}`;
+  return sourceInfoFromColumns(
+    columns,
+    aliasName ? [relname, aliasName, qualifiedName] : [relname, qualifiedName]
+  );
 }
 
 function sourceInfoForRangeSubselect(
   rangeSubselect: Record<string, unknown>,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
   ctes: Map<string, ColumnShape[]>
 ): SourceInfo | undefined {
   const query = selectStatement(rangeSubselect.subquery);
@@ -245,7 +278,7 @@ function sourceInfoForRangeSubselect(
   const alias = asRecord(rangeSubselect.alias);
   const aliasName = readString(alias?.aliasname);
   const columns = applyColumnAliases(
-    columnsForSelect(query, defaultSchema, tablesByKey, ctes),
+    columnsForSelect(query, defaultSchema, tablesByKey, functionsByKey, ctes),
     stringList(alias?.colnames)
   );
   return sourceInfoFromColumns(columns, aliasName ? [aliasName] : []);
@@ -255,10 +288,11 @@ function sourceInfoForJoin(
   join: Record<string, unknown>,
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
   ctes: Map<string, ColumnShape[]>
 ): SourceInfo | undefined {
-  const left = sourceInfoForFromItem(join.larg, defaultSchema, tablesByKey, ctes);
-  const right = sourceInfoForFromItem(join.rarg, defaultSchema, tablesByKey, ctes);
+  const left = sourceInfoForFromItem(join.larg, defaultSchema, tablesByKey, functionsByKey, ctes);
+  const right = sourceInfoForFromItem(join.rarg, defaultSchema, tablesByKey, functionsByKey, ctes);
   if (!left) {
     return right;
   }
@@ -327,7 +361,7 @@ function sourceInfoFromColumns(columns: ColumnShape[], names: string[]): SourceI
   }
   const qualifiedColumns = new Map<string, ColumnShape[]>();
   for (const name of names) {
-    qualifiedColumns.set(name, columns);
+    setQualifiedColumns(qualifiedColumns, name, columns);
   }
   return { columns: [...columns], qualifiedColumns };
 }
@@ -335,7 +369,7 @@ function sourceInfoFromColumns(columns: ColumnShape[], names: string[]): SourceI
 function mergeSourceInfo(target: SourceInfo, source: SourceInfo): void {
   target.columns.push(...source.columns);
   for (const [name, columns] of source.qualifiedColumns) {
-    target.qualifiedColumns.set(name, columns);
+    setQualifiedColumns(target.qualifiedColumns, name, columns);
   }
 }
 
@@ -343,10 +377,25 @@ function mergedQualifiedColumns(...sources: SourceInfo[]): Map<string, ColumnSha
   const qualifiedColumns = new Map<string, ColumnShape[]>();
   for (const source of sources) {
     for (const [name, columns] of source.qualifiedColumns) {
-      qualifiedColumns.set(name, columns);
+      setQualifiedColumns(qualifiedColumns, name, columns);
     }
   }
   return qualifiedColumns;
+}
+
+function setQualifiedColumns(
+  qualifiedColumns: Map<string, ColumnShape[]>,
+  name: string,
+  columns: ColumnShape[]
+): void {
+  const existing = qualifiedColumns.get(name);
+  if (existing === undefined) {
+    qualifiedColumns.set(name, columns);
+    return;
+  }
+  if (existing !== columns) {
+    qualifiedColumns.set(name, []);
+  }
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -410,9 +459,13 @@ function inferExpressionType(expression: unknown, context: InferenceContext): st
       const columnRef = astNodeOf(expression, "ColumnRef");
       return columnRef ? columnRefType(columnRef, context) : undefined;
     }
+    case "A_Const": {
+      const constant = astNodeOf(expression, "A_Const");
+      return constantType(constant);
+    }
     case "FuncCall": {
       const func = astNodeOf(expression, "FuncCall");
-      return func ? functionReturnType(func) : undefined;
+      return func ? functionReturnType(func, context) : undefined;
     }
     case "SubLink": {
       const subLink = astNodeOf(expression, "SubLink");
@@ -441,7 +494,7 @@ function columnRefType(
     return;
   }
   if (fields.length > 1) {
-    const qualifier = fields.at(-2);
+    const qualifier = fields.slice(0, -1).join(".");
     return fromInfo.qualifiedColumns
       .get(String(qualifier))
       ?.find((column) => column.name === columnName)?.type;
@@ -456,6 +509,24 @@ function firstKnownType(expressions: unknown[], context: InferenceContext): stri
     if (type && type !== "unknown") {
       return type;
     }
+  }
+}
+
+function constantType(constant: Record<string, unknown> | undefined): string | undefined {
+  if (!constant) {
+    return;
+  }
+  if (asRecord(constant.boolval) !== undefined) {
+    return "boolean";
+  }
+  if (readNumber(asRecord(constant.ival)?.ival) !== undefined) {
+    return "integer";
+  }
+  if (asRecord(constant.fval) !== undefined) {
+    return "numeric";
+  }
+  if (asRecord(constant.sval) !== undefined) {
+    return "text";
   }
 }
 
@@ -480,7 +551,7 @@ function aExprType(expr: Record<string, unknown>, context: InferenceContext): st
 
 function subLinkType(link: Record<string, unknown>, context: InferenceContext): string | undefined {
   const kind = readString(link.subLinkType) ?? "";
-  if (kind === "EXISTS_SUBLINK") {
+  if (booleanSubLinkTypes.has(kind)) {
     return "boolean";
   }
   const query = selectStatement(link.subselect);
@@ -491,26 +562,90 @@ function subLinkType(link: Record<string, unknown>, context: InferenceContext): 
     query,
     context.defaultSchema,
     context.tablesByKey,
+    context.functionsByKey,
     context.ctes
   ).at(0);
   if (!(firstColumn?.type && firstColumn.type !== "unknown")) {
     return;
   }
-  return kind === "ARRAY_SUBLINK" ? `${firstColumn.type}[]` : firstColumn.type;
+  if (kind === "ARRAY_SUBLINK") {
+    return `${firstColumn.type}[]`;
+  }
+  return kind === "EXPR_SUBLINK" ? firstColumn.type : undefined;
 }
 
-function functionReturnType(func: Record<string, unknown>): string | undefined {
+function functionReturnType(
+  func: Record<string, unknown>,
+  context: InferenceContext
+): string | undefined {
   const parts = stringList(func.funcname);
   if (parts.length === 0) {
     return;
   }
   const name = parts.join(".");
+  const argTypes = readArray(func.args).map((arg) => inferExpressionType(arg, context));
+  const visibleFunctions =
+    parts.length === 1
+      ? (context.functionsByKey.get(`${context.defaultSchema}.${name}`) ?? [])
+      : (context.functionsByKey.get(name) ?? []);
+  const modeledReturn = matchingFunctionReturnType(visibleFunctions, argTypes);
+  if (modeledReturn) {
+    return modeledReturn;
+  }
+  if (parts.length > 1 || (visibleFunctions.length > 0 && hasUnknownType(argTypes))) {
+    return;
+  }
   return functionTypeMap.get(name);
+}
+
+function matchingFunctionReturnType(
+  functions: FunctionShape[],
+  argTypes: (string | undefined)[]
+): string | undefined {
+  for (const fn of functions) {
+    if (!fn.returns || fn.returns.columns !== undefined) {
+      continue;
+    }
+    if (functionArgsMatch(fn.args, argTypes)) {
+      return fn.returns.type;
+    }
+  }
+}
+
+function functionArgsMatch(args: FunctionShape["args"], argTypes: (string | undefined)[]): boolean {
+  const requiredArgs = args.filter((arg) => !arg.optional).length;
+  if (argTypes.length < requiredArgs || argTypes.length > args.length) {
+    return false;
+  }
+  return argTypes.every((argType, index) => {
+    const expected = args[index]?.type;
+    return (
+      argType !== undefined &&
+      argType !== "unknown" &&
+      expected !== undefined &&
+      normalizeSqlType(argType) === normalizeSqlType(expected)
+    );
+  });
+}
+
+function hasUnknownType(types: (string | undefined)[]): boolean {
+  return types.some((type) => type === undefined || type === "unknown");
+}
+
+function normalizeSqlType(type: string): string {
+  return type.toLowerCase();
 }
 
 function selectStatement(value: unknown): Record<string, unknown> | undefined {
   return astNodeOf(value, "SelectStmt");
 }
+
+const booleanSubLinkTypes = new Set([
+  "ALL_SUBLINK",
+  "ANY_SUBLINK",
+  "EXISTS_SUBLINK",
+  "ROWCOMPARE_SUBLINK",
+]);
 
 const booleanOperators = new Set([
   "=",

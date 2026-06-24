@@ -324,7 +324,44 @@ SELECT * FROM (SELECT id, name FROM app.accounts) AS source(account_id);
     expect(view).not.toContain("\n          id: number | null;");
   });
 
-  it("does not infer schema-qualified functions from unqualified builtin names", async () => {
+  it("preserves schema qualifiers when resolving column references", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE SCHEMA audit;
+CREATE TABLE app.accounts (id bigint);
+CREATE TABLE audit.accounts (id text);
+CREATE VIEW app.qualified_account AS
+SELECT app.accounts.id AS account_id FROM app.accounts JOIN audit.accounts ON true;
+`);
+    const view = viewTypeBlock(types, "qualified_account");
+
+    expect(view).toContain("account_id: number | null;");
+    expect(view).not.toContain("account_id: string | null;");
+  });
+
+  it("treats predicate sublinks as boolean expressions", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint);
+CREATE VIEW app.account_matches AS
+SELECT id IN (SELECT id FROM app.accounts) AS has_match FROM app.accounts;
+`);
+    const view = viewTypeBlock(types, "account_matches");
+
+    expect(view).toContain("has_match: boolean | null;");
+    expect(view).not.toContain("has_match: number | null;");
+  });
+
+  it("resolves visible function overloads before builtin names", async () => {
+    const types =
+      await typesFor(`CREATE FUNCTION public.lower(value integer) RETURNS integer LANGUAGE sql AS $$ SELECT value $$;
+CREATE VIEW public.custom_lower AS SELECT lower(1) AS lowered;
+`);
+    const view = viewTypeBlock(types, "custom_lower");
+
+    expect(view).toContain("lowered: number | null;");
+    expect(view).not.toContain("lowered: string | null;");
+  });
+
+  it("uses exact schema-qualified function metadata instead of unqualified builtin names", async () => {
     const types = await typesFor(`CREATE SCHEMA app;
 CREATE TABLE app.accounts (id bigint, name text);
 CREATE FUNCTION app.lower(value integer) RETURNS integer LANGUAGE sql AS $$ SELECT value $$;
@@ -335,7 +372,7 @@ CREATE VIEW app.custom_lower AS SELECT app.lower(1) AS lowered FROM app.accounts
     const custom = viewTypeBlock(types, "custom_lower");
 
     expect(builtin).toContain("lowered: string | null;");
-    expect(custom).toContain("lowered: unknown | null;");
+    expect(custom).toContain("lowered: number | null;");
   });
 
   it("emits the Constants enum tuples and Supabase-compatible helper shorthands", async () => {
