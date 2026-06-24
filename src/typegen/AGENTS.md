@@ -8,14 +8,14 @@ This directory emits generated database types, Zod schemas, and type-contract sh
 
 - `model.ts` collects typed schema shapes from schema objects.
 - `database.ts` renders TypeScript database types.
-- `views.ts` resolves view column types.
+- `views.ts` resolves view column types from libpg-query AST node kinds plus modeled source facts.
 - `zod.ts` renders Zod schemas.
 - `contracts.ts` emits type-contract files.
 
 ## Working Rules
 
 - Keep generated output sorted and deterministic.
-- Type inference should use modeled facts and catalog/source metadata, not string guesses when structured facts exist.
+- Type inference should use modeled facts, catalog/source metadata, and AST node-kind dispatch, not SQL text guesses or ad hoc wrapper probing when structured facts exist.
 - Coordinate shape changes with contract diffs and generated snapshot tests.
 
 ## Verification

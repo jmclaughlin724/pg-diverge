@@ -2,6 +2,14 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  createProgram,
+  formatDiagnosticsWithColorAndContext,
+  getPreEmitDiagnostics,
+  ModuleKind,
+  ModuleResolutionKind,
+  ScriptTarget,
+} from "typescript";
 import { describe, expect, it } from "vitest";
 import { extractSourceModel } from "../src/source/extract.js";
 import { generateDatabaseTypes } from "../src/typegen/database.js";
@@ -27,6 +35,92 @@ CREATE TABLE app.events (
 );
 CREATE VIEW app.account_names AS SELECT id, name AS label FROM app.accounts;
 CREATE VIEW app.account_all AS SELECT * FROM app.accounts;
+CREATE VIEW app.account_rollups AS
+WITH base AS (
+  SELECT a.id,
+    a.name,
+    COALESCE(a.payload, '{}'::jsonb) AS payload,
+    COALESCE(a.state, 'draft'::app.status) AS state,
+    row_number() OVER (ORDER BY a.id) AS rank
+  FROM app.accounts a
+)
+SELECT id,
+  name AS account_name,
+  payload,
+  state,
+  rank,
+  NULLIF(payload ->> 'note'::text, ''::text) AS note
+FROM base;
+`;
+
+const helperSql = `CREATE SCHEMA app;
+CREATE TYPE public.visibility AS ENUM ('private', 'public');
+CREATE TYPE app.status AS ENUM ('draft', 'active');
+CREATE TYPE app.address AS (street text, zip int);
+CREATE TABLE public.movies (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text NOT NULL,
+  visibility public.visibility NOT NULL DEFAULT 'public'
+);
+CREATE VIEW public.movie_names AS SELECT id, name FROM public.movies;
+CREATE TABLE app.accounts (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  state app.status NOT NULL DEFAULT 'draft',
+  home app.address
+);
+`;
+
+const nestedViewSql = `CREATE SCHEMA messaging;
+CREATE TABLE messaging.threads (
+  id bigint,
+  contact_email text,
+  contact_id text,
+  sms_recipients text[],
+  primary_contact_id bigint
+);
+CREATE VIEW messaging.v_thread_message_summaries AS
+WITH summary_contract AS (
+  SELECT id, contact_email, contact_id, sms_recipients, primary_contact_id
+  FROM messaging.threads
+)
+SELECT
+  reply_recipients,
+  chat_participant_ids,
+  has_sms_consent,
+  cardinality(reply_recipients) > 0 AS can_send_email,
+  cardinality(chat_participant_ids) > 0 AS can_send_chat,
+  primary_contact_id IS NOT NULL
+    AND cardinality(sms_recipients) > 0
+    AND has_sms_consent AS can_send_sms
+FROM (
+  SELECT
+    sc.primary_contact_id,
+    sc.sms_recipients,
+    recipients.reply_recipients,
+    recipients.chat_participant_ids,
+    EXISTS (
+      SELECT 1
+      FROM messaging.threads check_thread
+      WHERE check_thread.id = sc.id
+    ) AS has_sms_consent
+  FROM summary_contract sc
+  LEFT JOIN LATERAL (
+    WITH human_participants AS (
+      SELECT sc.contact_email AS email, sc.contact_id AS id
+    )
+    SELECT
+      COALESCE(ARRAY(
+        SELECT DISTINCT lower(btrim(human_participants.email))
+        FROM human_participants
+        WHERE NULLIF(btrim(human_participants.email), ''::text) IS NOT NULL
+      ), ARRAY[]::text[]) AS reply_recipients,
+      COALESCE(ARRAY(
+        SELECT DISTINCT btrim(human_participants.id)
+        FROM human_participants
+        WHERE NULLIF(btrim(human_participants.id), ''::text) IS NOT NULL
+      ), ARRAY[]::text[]) AS chat_participant_ids
+  ) recipients ON true
+) source_rows;
 `;
 
 async function typesFor(sql: string): Promise<string> {
@@ -66,6 +160,31 @@ function collapseWhitespace(value: string): string {
 
 function isWhitespace(char: string): boolean {
   return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
+}
+
+async function expectTypeScriptAccepts(source: string): Promise<void> {
+  const tmpRoot = join(process.cwd(), ".tmp");
+  await mkdir(tmpRoot, { recursive: true });
+  const root = await mkdtemp(join(tmpRoot, "supa-typegen-ts-"));
+  const file = join(root, "generated-types.ts");
+  await writeFile(file, source);
+  const program = createProgram([file], {
+    module: ModuleKind.NodeNext,
+    moduleResolution: ModuleResolutionKind.NodeNext,
+    noEmit: true,
+    strict: true,
+    target: ScriptTarget.ES2022,
+  });
+  const diagnostics = getPreEmitDiagnostics(program);
+  if (diagnostics.length > 0) {
+    throw new Error(
+      formatDiagnosticsWithColorAndContext(diagnostics, {
+        getCanonicalFileName: (name) => name,
+        getCurrentDirectory: () => root,
+        getNewLine: () => "\n",
+      })
+    );
+  }
 }
 
 describe("database type generation", () => {
@@ -109,13 +228,79 @@ describe("database type generation", () => {
     expect(views).toContain("payload: Json | null;");
   });
 
-  it("emits the Constants enum tuples and helper generics", async () => {
+  it("resolves CTE-backed view columns and typed expressions", async () => {
+    const types = await typesFor(treeSql);
+    const rollup = types.slice(types.indexOf("Views: {"), types.indexOf("Enums: {"));
+
+    expect(rollup).toContain("id: number | null;");
+    expect(rollup).toContain("account_name: string | null;");
+    expect(rollup).toContain("payload: Json | null;");
+    expect(rollup).toContain('state: Database["app"]["Enums"]["status"] | null;');
+    expect(rollup).toContain("rank: number | null;");
+    expect(rollup).toContain("note: string | null;");
+  });
+
+  it("resolves nested view columns from subqueries, array sublinks, and boolean expressions", async () => {
+    const types = await typesFor(nestedViewSql);
+    const views = types.slice(types.indexOf("Views: {"), types.indexOf("Enums: {"));
+
+    expect(views).toContain("reply_recipients: string[] | null;");
+    expect(views).toContain("chat_participant_ids: string[] | null;");
+    expect(views).toContain("has_sms_consent: boolean | null;");
+    expect(views).toContain("can_send_email: boolean | null;");
+    expect(views).toContain("can_send_chat: boolean | null;");
+    expect(views).toContain("can_send_sms: boolean | null;");
+  });
+
+  it("emits the Constants enum tuples and Supabase-compatible helper shorthands", async () => {
     const types = await typesFor(treeSql);
 
     expect(types).toContain("export const Constants = {");
     expect(types).toContain('status: ["draft", "active"],');
+    expect(types).toContain('type PublicSchema = Database[Extract<keyof Database, "public">];');
     expect(types).toContain("export type Tables<");
-    expect(types).toContain("export type Enums<");
+    expect(types).toContain("PublicTableNameOrOptions");
+    expect(types).toContain("export type CompositeTypes<");
+    expect(types).not.toContain("export type Tables<S extends");
+    expect(types).not.toContain("export type Views<");
+  });
+
+  it("type-checks public helper shorthands and schema-qualified non-public helpers", async () => {
+    const types = await typesFor(helperSql);
+
+    await expectTypeScriptAccepts(`${types}
+type Movie = Tables<"movies">;
+type MovieView = Tables<"movie_names">;
+type MovieInsert = TablesInsert<"movies">;
+type MovieUpdate = TablesUpdate<"movies">;
+type Visibility = Enums<"visibility">;
+type Account = Tables<{ schema: "app" }, "accounts">;
+type AccountInsert = TablesInsert<{ schema: "app" }, "accounts">;
+type AccountUpdate = TablesUpdate<{ schema: "app" }, "accounts">;
+type Status = Enums<{ schema: "app" }, "status">;
+type Address = CompositeTypes<{ schema: "app" }, "address">;
+
+const movie: Movie = { id: 1, name: "Heat", visibility: "public" };
+const movieView: MovieView = { id: 1, name: "Heat" };
+const movieInsert: MovieInsert = { name: "Heat" };
+const movieUpdate: MovieUpdate = { name: "Thief" };
+const visibility: Visibility = "private";
+const account: Account = { id: 1, state: "active", home: { street: "Main", zip: 1 } };
+const accountInsert: AccountInsert = { state: "draft" };
+const accountUpdate: AccountUpdate = { state: "active" };
+const status: Status = "draft";
+const address: Address = { street: "Main", zip: 1 };
+void movie;
+void movieView;
+void movieInsert;
+void movieUpdate;
+void visibility;
+void account;
+void accountInsert;
+void accountUpdate;
+void status;
+void address;
+`);
   });
 
   it("emits TypeScript and Zod output from one precomputed shape graph", async () => {
@@ -123,7 +308,7 @@ describe("database type generation", () => {
     const shapes = await collectSchemaShapes(model);
 
     expect(generateDatabaseTypes(shapes)).toContain("export type Database = {");
-    expect(generateZodSchemas(shapes)).toContain("export const schemas = {");
+    expect(generateZodSchemas(shapes)).toContain("export const Tables = {");
   });
 });
 
@@ -303,9 +488,56 @@ describe("zod schema generation", () => {
     expect(zod).toContain("tags: z.array(z.string()),");
     expect(zod).toContain("payload: jsonSchema.nullable(),");
     expect(zod).toContain("state: app_status,");
-    expect(zod).toContain("export type TableRow<");
-    expect(zod).toContain("export type TableInsert<");
-    expect(zod).toContain("export type EnumValue<");
+    expect(zod).toContain("export const Tables = {");
+    expect(zod).toContain("export const TablesInsert = {");
+    expect(zod).toContain("export const TablesUpdate = {");
+    expect(zod).toContain("export const Enums = {");
+    expect(zod).toContain("export const CompositeTypes = {");
+    expect(zod).toContain("export type Tables<");
+    expect(zod).toContain("export type TablesInsert<");
+    expect(zod).toContain("export type Enums<");
+    expect(zod).not.toContain("export const schemas = {");
+    expect(zod).not.toContain("export type TableRow<");
+    expect(zod).not.toContain("export type EnumValue<");
+  });
+
+  it("type-checks direct runtime owners and Supabase-shaped Zod helper aliases", async () => {
+    const zod = await zodFor(helperSql);
+
+    await expectTypeScriptAccepts(`${zod}
+type Movie = Tables<"movies">;
+type MovieInsert = TablesInsert<"movies">;
+type MovieUpdate = TablesUpdate<"movies">;
+type Visibility = Enums<"visibility">;
+type Account = Tables<{ schema: "app" }, "accounts">;
+type AccountInsert = TablesInsert<{ schema: "app" }, "accounts">;
+type AccountUpdate = TablesUpdate<{ schema: "app" }, "accounts">;
+type Status = Enums<{ schema: "app" }, "status">;
+type Address = CompositeTypes<{ schema: "app" }, "address">;
+
+const movie: Movie = Tables.public.movies.Row.parse({ id: 1, name: "Heat", visibility: "public" });
+const movieInsert: MovieInsert = TablesInsert.public.movies.parse({ name: "Heat" });
+const movieUpdate: MovieUpdate = TablesUpdate.public.movies.parse({ name: "Thief" });
+const visibility: Visibility = Enums.public.visibility.parse("private");
+const account: Account = Tables.app.accounts.Row.parse({
+  id: 1,
+  state: "active",
+  home: { street: "Main", zip: 1 },
+});
+const accountInsert: AccountInsert = TablesInsert.app.accounts.parse({ state: "draft" });
+const accountUpdate: AccountUpdate = TablesUpdate.app.accounts.parse({ state: "active" });
+const status: Status = Enums.app.status.parse("draft");
+const address: Address = CompositeTypes.app.address.parse({ street: "Main", zip: 1 });
+void movie;
+void movieInsert;
+void movieUpdate;
+void visibility;
+void account;
+void accountInsert;
+void accountUpdate;
+void status;
+void address;
+`);
   });
 
   it("uses one identifier namespace for enum and composite validators", async () => {
@@ -334,9 +566,9 @@ CREATE TABLE app.people (id bigint, home app.address);
     expect(zod).toContain("const app_address = z.object({");
     expect(zod).toContain("street: z.string().nullable(),");
     expect(zod).toContain("zip: z.number().nullable(),");
-    expect(zod).toContain("CompositeTypes: {");
+    expect(zod).toContain("export const CompositeTypes = {");
     expect(zod).toContain("home: app_address.nullable(),");
-    expect(zod).toContain("export type CompositeValue<");
+    expect(zod).toContain("export type CompositeTypes<");
   });
 
   it("defers composite references so declaration order cannot trigger TDZ", async () => {
@@ -360,7 +592,7 @@ CREATE TYPE app.a AS (z app.z);
     expect(zod).toContain("get z() {");
     await writeFile(modulePath, js);
     const imported = await import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
-    expect(imported.schemas.app.CompositeTypes.a.parse({ z: { value: "ok" } })).toEqual({
+    expect(imported.CompositeTypes.app.a.parse({ z: { value: "ok" } })).toEqual({
       z: { value: "ok" },
     });
   });
@@ -373,7 +605,10 @@ CREATE TYPE app.a AS (z app.z);
     expect(insert).toContain("name: z.string(),");
     expect(insert).toContain("email: z.string().nullable().optional(),");
     expect(insert).not.toContain("doubled");
-    const update = zod.slice(zod.indexOf("Update: z.object({"), zod.indexOf("Views: {"));
+    const update = zod.slice(
+      zod.indexOf("Update: z.object({"),
+      zod.indexOf("export const TablesInsert = {")
+    );
     expect(update).toContain("name: z.string().optional(),");
     expect(update).not.toContain("doubled");
   });

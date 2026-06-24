@@ -43,12 +43,12 @@ npx supaschema types --out src/lib/database.types.ts
 Use the generated helpers as the application contract:
 
 ```ts
-import { schemas, type TableInsert, type TableRow } from "./database.zod";
+import { Tables, type TablesInsert } from "./database.zod";
 
-type Account = TableRow<"app", "accounts">;
-type NewAccount = TableInsert<"app", "accounts">;
+type Account = Tables<{ schema: "app" }, "accounts">;
+type NewAccount = TablesInsert<{ schema: "app" }, "accounts">;
 
-const input: NewAccount = schemas.app.Tables.accounts.Insert.parse(body);
+const input: NewAccount = Tables.app.accounts.Insert.parse(body);
 ```
 
 That covers the shape and validation responsibilities that teams often reach for an ORM-generated client to solve. Query execution can stay SQL-native through your PostgreSQL driver or platform client.

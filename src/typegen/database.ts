@@ -241,11 +241,62 @@ export function quoteKey(name: string): string {
 
 function helperBlock(): string[] {
   return [
-    'export type Tables<S extends keyof Database, T extends keyof Database[S]["Tables"]> = Database[S]["Tables"][T] extends { Row: infer R } ? R : never;',
-    'export type TablesInsert<S extends keyof Database, T extends keyof Database[S]["Tables"]> = Database[S]["Tables"][T] extends { Insert: infer I } ? I : never;',
-    'export type TablesUpdate<S extends keyof Database, T extends keyof Database[S]["Tables"]> = Database[S]["Tables"][T] extends { Update: infer U } ? U : never;',
-    'export type Views<S extends keyof Database, V extends keyof Database[S]["Views"]> = Database[S]["Views"][V] extends { Row: infer R } ? R : never;',
-    'export type Enums<S extends keyof Database, E extends keyof Database[S]["Enums"]> = Database[S]["Enums"][E];',
+    'type PublicSchema = Database[Extract<keyof Database, "public">];',
+    "type PublicTablesAndViews = PublicSchema extends { Tables: infer T; Views: infer V } ? T & V : never;",
+    "type PublicTables = PublicSchema extends { Tables: infer T } ? T : never;",
+    "type PublicEnums = PublicSchema extends { Enums: infer E } ? E : never;",
+    "type PublicCompositeTypes = PublicSchema extends { CompositeTypes: infer C } ? C : never;",
+    "",
+    ...tablesHelperBlock(),
+    "",
+    ...tableWriteHelperBlock("TablesInsert", "Insert", "I"),
+    "",
+    ...tableWriteHelperBlock("TablesUpdate", "Update", "U"),
+    "",
+    ...schemaValueHelperBlock("Enums", "PublicEnumNameOrOptions", "EnumName", "PublicEnums"),
+    "",
+    ...schemaValueHelperBlock(
+      "CompositeTypes",
+      "PublicCompositeTypeNameOrOptions",
+      "CompositeTypeName",
+      "PublicCompositeTypes"
+    ),
+  ];
+}
+
+function tablesHelperBlock(): string[] {
+  return [
+    "export type Tables<",
+    "  PublicTableNameOrOptions extends keyof PublicTablesAndViews | { schema: keyof Database },",
+    '  TableName extends PublicTableNameOrOptions extends { schema: keyof Database } ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] & Database[PublicTableNameOrOptions["schema"]]["Views"]) : never = never,',
+    '> = PublicTableNameOrOptions extends { schema: keyof Database } ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] & Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends { Row: infer R } ? R : never : PublicTableNameOrOptions extends keyof PublicTablesAndViews ? PublicTablesAndViews[PublicTableNameOrOptions] extends { Row: infer R } ? R : never : never;',
+  ];
+}
+
+function tableWriteHelperBlock(
+  name: "TablesInsert" | "TablesUpdate",
+  property: "Insert" | "Update",
+  inferred: "I" | "U"
+): string[] {
+  return [
+    `export type ${name}<`,
+    "  PublicTableNameOrOptions extends keyof PublicTables | { schema: keyof Database },",
+    '  TableName extends PublicTableNameOrOptions extends { schema: keyof Database } ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"] : never = never,',
+    `> = PublicTableNameOrOptions extends { schema: keyof Database } ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends { ${property}: infer ${inferred} } ? ${inferred} : never : PublicTableNameOrOptions extends keyof PublicTables ? PublicTables[PublicTableNameOrOptions] extends { ${property}: infer ${inferred} } ? ${inferred} : never : never;`,
+  ];
+}
+
+function schemaValueHelperBlock(
+  name: "Enums" | "CompositeTypes",
+  optionsName: string,
+  itemName: string,
+  publicAlias: string
+): string[] {
+  return [
+    `export type ${name}<`,
+    `  ${optionsName} extends keyof ${publicAlias} | { schema: keyof Database },`,
+    `  ${itemName} extends ${optionsName} extends { schema: keyof Database } ? keyof Database[${optionsName}["schema"]]["${name}"] : never = never,`,
+    `> = ${optionsName} extends { schema: keyof Database } ? Database[${optionsName}["schema"]]["${name}"][${itemName}] : ${optionsName} extends keyof ${publicAlias} ? ${publicAlias}[${optionsName}] : never;`,
   ];
 }
 
