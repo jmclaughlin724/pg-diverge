@@ -1,6 +1,7 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { extractSourceModel } from "../src/source/extract.js";
 import { generateDatabaseTypes } from "../src/typegen/database.js";
@@ -322,6 +323,32 @@ CREATE TABLE app.people (id bigint, home app.address);
     expect(zod).toContain("CompositeTypes: {");
     expect(zod).toContain("home: app_address.nullable(),");
     expect(zod).toContain("export type CompositeValue<");
+  });
+
+  it("defers composite references so declaration order cannot trigger TDZ", async () => {
+    const zod = await zodFor(
+      `CREATE SCHEMA app;
+CREATE TYPE app.z AS (value text);
+CREATE TYPE app.a AS (z app.z);
+`
+    );
+    const typescript = await import("typescript");
+    const root = join(process.cwd(), ".tmp");
+    await mkdir(root, { recursive: true });
+    const modulePath = join(await mkdtemp(join(root, "supa-zod-runtime-")), "schemas.mjs");
+    const js = typescript.transpileModule(zod, {
+      compilerOptions: {
+        module: typescript.ModuleKind.ES2022,
+        target: typescript.ScriptTarget.ES2022,
+      },
+    }).outputText;
+
+    expect(zod).toContain("get z() {");
+    await writeFile(modulePath, js);
+    const imported = await import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
+    expect(imported.schemas.app.CompositeTypes.a.parse({ z: { value: "ok" } })).toEqual({
+      z: { value: "ok" },
+    });
   });
 
   it("derives insert optionality and omits generated columns from writes", async () => {
