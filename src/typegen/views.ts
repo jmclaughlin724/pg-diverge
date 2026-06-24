@@ -30,6 +30,7 @@ interface InferenceContext {
   defaultSchema: string;
   fromInfo?: SourceInfo;
   functionsByKey: FunctionShapesByKey;
+  outerFromInfo?: SourceInfo;
   tablesByKey: Map<string, TableShape>;
 }
 
@@ -67,7 +68,8 @@ function columnsForSelect(
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
   functionsByKey: FunctionShapesByKey,
-  inheritedCtes: Map<string, ColumnShape[]> = new Map()
+  inheritedCtes: Map<string, ColumnShape[]> = new Map(),
+  outerFromInfo?: SourceInfo
 ): ColumnShape[] {
   if (!select) {
     return [];
@@ -78,7 +80,8 @@ function columnsForSelect(
     defaultSchema,
     tablesByKey,
     functionsByKey,
-    ctes
+    ctes,
+    outerFromInfo
   );
   const targets = readArray(select.targetList).map((target) => parseTarget(target));
   const context: InferenceContext = {
@@ -86,6 +89,7 @@ function columnsForSelect(
     defaultSchema,
     ...(fromInfo ? { fromInfo } : {}),
     functionsByKey,
+    ...(outerFromInfo ? { outerFromInfo } : {}),
     tablesByKey,
   };
   return targets.flatMap((target) => expandTarget(target, context));
@@ -164,7 +168,8 @@ function collectFromClauseSourceInfo(
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
   functionsByKey: FunctionShapesByKey,
-  ctes: Map<string, ColumnShape[]>
+  ctes: Map<string, ColumnShape[]>,
+  outerFromInfo?: SourceInfo
 ): SourceInfo | undefined {
   const fromClause = readArray(select.fromClause);
   if (fromClause.length === 0) {
@@ -172,7 +177,14 @@ function collectFromClauseSourceInfo(
   }
   const info: SourceInfo = { columns: [], qualifiedColumns: new Map() };
   for (const item of fromClause) {
-    const source = sourceInfoForFromItem(item, defaultSchema, tablesByKey, functionsByKey, ctes);
+    const source = sourceInfoForFromItem(
+      item,
+      defaultSchema,
+      tablesByKey,
+      functionsByKey,
+      ctes,
+      combinedSourceInfo(outerFromInfo, info)
+    );
     if (source) {
       mergeSourceInfo(info, source);
     }
@@ -213,7 +225,8 @@ function sourceInfoForFromItem(
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
   functionsByKey: FunctionShapesByKey,
-  ctes: Map<string, ColumnShape[]>
+  ctes: Map<string, ColumnShape[]>,
+  outerFromInfo?: SourceInfo
 ): SourceInfo | undefined {
   const rangeVar = astNodeOf(item, "RangeVar");
   if (rangeVar) {
@@ -227,13 +240,14 @@ function sourceInfoForFromItem(
       defaultSchema,
       tablesByKey,
       functionsByKey,
-      ctes
+      ctes,
+      outerFromInfo
     );
   }
 
   const join = astNodeOf(item, "JoinExpr");
   if (join) {
-    return sourceInfoForJoin(join, defaultSchema, tablesByKey, functionsByKey, ctes);
+    return sourceInfoForJoin(join, defaultSchema, tablesByKey, functionsByKey, ctes, outerFromInfo);
   }
 }
 
@@ -269,7 +283,8 @@ function sourceInfoForRangeSubselect(
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
   functionsByKey: FunctionShapesByKey,
-  ctes: Map<string, ColumnShape[]>
+  ctes: Map<string, ColumnShape[]>,
+  outerFromInfo?: SourceInfo
 ): SourceInfo | undefined {
   const query = selectStatement(rangeSubselect.subquery);
   if (!query) {
@@ -278,7 +293,14 @@ function sourceInfoForRangeSubselect(
   const alias = asRecord(rangeSubselect.alias);
   const aliasName = readString(alias?.aliasname);
   const columns = applyColumnAliases(
-    columnsForSelect(query, defaultSchema, tablesByKey, functionsByKey, ctes),
+    columnsForSelect(
+      query,
+      defaultSchema,
+      tablesByKey,
+      functionsByKey,
+      ctes,
+      rangeSubselect.lateral === true ? outerFromInfo : undefined
+    ),
     stringList(alias?.colnames)
   );
   return sourceInfoFromColumns(columns, aliasName ? [aliasName] : []);
@@ -289,22 +311,53 @@ function sourceInfoForJoin(
   defaultSchema: string,
   tablesByKey: Map<string, TableShape>,
   functionsByKey: FunctionShapesByKey,
-  ctes: Map<string, ColumnShape[]>
+  ctes: Map<string, ColumnShape[]>,
+  outerFromInfo?: SourceInfo
 ): SourceInfo | undefined {
-  const left = sourceInfoForFromItem(join.larg, defaultSchema, tablesByKey, functionsByKey, ctes);
-  const right = sourceInfoForFromItem(join.rarg, defaultSchema, tablesByKey, functionsByKey, ctes);
+  const left = sourceInfoForFromItem(
+    join.larg,
+    defaultSchema,
+    tablesByKey,
+    functionsByKey,
+    ctes,
+    outerFromInfo
+  );
+  const right = sourceInfoForFromItem(
+    join.rarg,
+    defaultSchema,
+    tablesByKey,
+    functionsByKey,
+    ctes,
+    combinedSourceInfo(outerFromInfo, left)
+  );
+  const alias = asRecord(join.alias);
+  const aliasName = readString(alias?.aliasname);
   if (!left) {
-    return right;
+    return aliasName && right
+      ? sourceInfoFromColumns(applyColumnAliases(right.columns, stringList(alias?.colnames)), [
+          aliasName,
+        ])
+      : right;
   }
   if (!right) {
-    return left;
+    return aliasName
+      ? sourceInfoFromColumns(applyColumnAliases(left.columns, stringList(alias?.colnames)), [
+          aliasName,
+        ])
+      : left;
   }
   const usingNames = joinUsingColumnNames(join, left, right);
+  const columns = applyColumnAliases(
+    usingNames.length > 0
+      ? mergedUsingJoinColumns(left.columns, right.columns, usingNames)
+      : [...left.columns, ...right.columns],
+    stringList(alias?.colnames)
+  );
+  if (aliasName) {
+    return sourceInfoFromColumns(columns, [aliasName]);
+  }
   return {
-    columns:
-      usingNames.length > 0
-        ? mergedUsingJoinColumns(left.columns, right.columns, usingNames)
-        : [...left.columns, ...right.columns],
+    columns,
     qualifiedColumns: mergedQualifiedColumns(left, right),
   };
 }
@@ -381,6 +434,16 @@ function mergedQualifiedColumns(...sources: SourceInfo[]): Map<string, ColumnSha
     }
   }
   return qualifiedColumns;
+}
+
+function combinedSourceInfo(...sources: (SourceInfo | undefined)[]): SourceInfo | undefined {
+  const info: SourceInfo = { columns: [], qualifiedColumns: new Map() };
+  for (const source of sources) {
+    if (source) {
+      mergeSourceInfo(info, source);
+    }
+  }
+  return info.columns.length > 0 ? info : undefined;
 }
 
 function setQualifiedColumns(
@@ -485,9 +548,6 @@ function columnRefType(
   context: InferenceContext
 ): string | undefined {
   const fromInfo = context.fromInfo;
-  if (!fromInfo) {
-    return;
-  }
   const fields = stringList(columnRef.fields);
   const columnName = fields.at(-1);
   if (!columnName) {
@@ -495,12 +555,22 @@ function columnRefType(
   }
   if (fields.length > 1) {
     const qualifier = fields.slice(0, -1).join(".");
-    return fromInfo.qualifiedColumns
+    const localColumns = fromInfo?.qualifiedColumns.get(String(qualifier));
+    if (localColumns) {
+      return localColumns.find((column) => column.name === columnName)?.type;
+    }
+    return context.outerFromInfo?.qualifiedColumns
       .get(String(qualifier))
       ?.find((column) => column.name === columnName)?.type;
   }
-  const matches = fromInfo.columns.filter((column) => column.name === columnName);
-  return matches.length === 1 ? matches[0]?.type : undefined;
+  const localMatches = fromInfo?.columns.filter((column) => column.name === columnName);
+  if (localMatches && localMatches.length > 0) {
+    return localMatches.length === 1 ? localMatches[0]?.type : undefined;
+  }
+  const outerMatches = context.outerFromInfo?.columns.filter(
+    (column) => column.name === columnName
+  );
+  return outerMatches?.length === 1 ? outerMatches[0]?.type : undefined;
 }
 
 function firstKnownType(expressions: unknown[], context: InferenceContext): string | undefined {
@@ -563,7 +633,8 @@ function subLinkType(link: Record<string, unknown>, context: InferenceContext): 
     context.defaultSchema,
     context.tablesByKey,
     context.functionsByKey,
-    context.ctes
+    context.ctes,
+    combinedSourceInfo(context.outerFromInfo, context.fromInfo)
   ).at(0);
   if (!(firstColumn?.type && firstColumn.type !== "unknown")) {
     return;
@@ -592,7 +663,7 @@ function functionReturnType(
   if (modeledReturn) {
     return modeledReturn;
   }
-  if (parts.length > 1 || (visibleFunctions.length > 0 && hasUnknownType(argTypes))) {
+  if (parts.length > 1 || visibleFunctions.length > 0) {
     return;
   }
   return functionTypeMap.get(name);
@@ -626,10 +697,6 @@ function functionArgsMatch(args: FunctionShape["args"], argTypes: (string | unde
       normalizeSqlType(argType) === normalizeSqlType(expected)
     );
   });
-}
-
-function hasUnknownType(types: (string | undefined)[]): boolean {
-  return types.some((type) => type === undefined || type === "unknown");
 }
 
 function normalizeSqlType(type: string): string {
