@@ -105,6 +105,12 @@ export interface MigrationPlan {
   toFingerprint: string;
 }
 
+export interface MigrationIntent {
+  destructiveKeys: string[];
+  diagnostics: Diagnostic[];
+  tableColumnDrops: string[];
+}
+
 export interface RenameHint {
   from: string;
   to: string;

@@ -66,10 +66,9 @@ export function tableMetadataFromAst(
       continue;
     }
     const generatedExpression = columnGeneratedExpression(element.node);
+    const definitionText = stripLeadingIdentifier(columnDefinitionText(element, bytes, byteOffset));
     const column: TableColumn = {
-      definition: normalizeSql(
-        stripLeadingIdentifier(columnDefinitionText(element, bytes, byteOffset))
-      ),
+      definition: columnDefinitionSql(definitionText, facts.type),
       generated: facts.generated,
       hasDefault: facts.hasDefault,
       hasInlineConstraint: facts.hasInlineConstraint,
@@ -91,6 +90,37 @@ export function tableMetadataFromAst(
     columns,
     constraintFragments: constraintFragments.sort((left, right) => left.localeCompare(right)),
   };
+}
+
+function columnDefinitionSql(definition: string, type: string | undefined): string {
+  const normalized = normalizeSql(definition);
+  if (type && sameSqlFragment(normalized, type)) {
+    return type;
+  }
+  return normalized;
+}
+
+function sameSqlFragment(left: string, right: string): boolean {
+  return collapseSqlFragment(left).toLowerCase() === collapseSqlFragment(right).toLowerCase();
+}
+
+function collapseSqlFragment(value: string): string {
+  const parts: string[] = [];
+  let current = "";
+  for (const char of value) {
+    if (char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f") {
+      if (current.length > 0) {
+        parts.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current.length > 0) {
+    parts.push(current);
+  }
+  return parts.join(" ");
 }
 
 export function expressionSql(expression: unknown): string | undefined {

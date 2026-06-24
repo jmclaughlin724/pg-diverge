@@ -20,7 +20,12 @@ interface Scenario {
 }
 
 const scenarios: Scenario[] = [
-  { from: "dir:tests/fixtures/basic/from", name: "basic", to: "dir:tests/fixtures/basic/to" },
+  {
+    config: { hints: { destructive: ["function:app.legacy_ping()"] } },
+    from: "dir:tests/fixtures/basic/from",
+    name: "basic",
+    to: "dir:tests/fixtures/basic/to",
+  },
   {
     from: "dir:tests/fixtures/add-column/from",
     name: "add-column",

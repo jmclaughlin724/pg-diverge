@@ -107,7 +107,9 @@ describe("diff rendering", () => {
     const to = await extractSourceModel("dir:tests/fixtures/basic/to", {
       cwd: process.cwd(),
     });
-    const plan = planSchemaDiff(from, to);
+    const plan = planSchemaDiff(from, to, {
+      config: { hints: { destructive: ["function:app.legacy_ping()"] } },
+    });
     const errors = plan.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
 
     expect(errors).toEqual([]);
@@ -126,6 +128,8 @@ describe("diff rendering", () => {
     expect(sql).toContain('DROP FUNCTION IF EXISTS "app"."legacy_ping"()');
     expect(sql).toContain("CREATE OR REPLACE FUNCTION app.greeting()");
     expect(sql).toContain('DROP POLICY IF EXISTS "accounts_select" ON "app"."accounts"');
+    expect(sql).toContain('"disposition":"non-destructive-render-guard"');
+    expect(sql).toContain('"key":"policy:app.accounts_select:accounts"');
     const renderedDiagnostics = await checkMigrationSql(sql);
     expect(renderedDiagnostics.map((item) => item.code)).not.toContain("SUPA_CHECK_CASCADE");
   });
@@ -170,6 +174,112 @@ describe("diff rendering", () => {
     expect(labels.indexOf("create:view:app.z_base")).toBeLessThan(
       labels.indexOf("create:view:app.a_dep")
     );
+  });
+
+  it("quotes qualified SQL-function ORDER BY columns for catalog typecheck", async () => {
+    const from = {
+      diagnostics: [],
+      fingerprint: "",
+      objects: [],
+      source: "empty",
+    };
+    const extracted = await extractObjectsFromSql(`
+      CREATE SCHEMA app;
+      CREATE TABLE app.credentials (
+        id uuid,
+        company_id uuid,
+        updated_at timestamp with time zone
+      );
+      CREATE FUNCTION app.resolve_credential(p_company_id uuid)
+      RETURNS TABLE(id uuid, updated_at timestamp with time zone)
+      LANGUAGE sql STABLE
+      AS $$
+        SELECT c.id, c.updated_at
+        FROM app.credentials c
+        WHERE c.company_id = p_company_id
+        ORDER BY c.updated_at DESC
+        LIMIT 1;
+      $$;
+    `);
+    const to = {
+      diagnostics: extracted.diagnostics,
+      fingerprint: "",
+      objects: extracted.objects,
+      source: "target",
+    };
+
+    const sql = renderMigration(planSchemaDiff(from, to), { includeHeader: false });
+
+    expect(sql).toContain('ORDER BY c."updated_at" DESC');
+  });
+
+  it("renders create-table column guards before dependent indexes", async () => {
+    const from = {
+      diagnostics: [],
+      fingerprint: "",
+      objects: [],
+      source: "empty",
+    };
+    const extracted = await extractObjectsFromSql(`
+      CREATE SCHEMA app;
+      CREATE TABLE app.accounts (
+        id bigint PRIMARY KEY,
+        company_id uuid NOT NULL,
+        owner_id text,
+        created_at timestamp with time zone DEFAULT now() NOT NULL
+      );
+      CREATE INDEX accounts_owner_idx
+        ON app.accounts (company_id, owner_id)
+        WHERE owner_id IS NOT NULL;
+    `);
+    const to = {
+      diagnostics: extracted.diagnostics,
+      fingerprint: "",
+      objects: extracted.objects,
+      source: "target",
+    };
+
+    const sql = renderMigration(planSchemaDiff(from, to), { includeHeader: false });
+    const columnGuard = 'ALTER TABLE "app"."accounts" ADD COLUMN IF NOT EXISTS "owner_id" text;';
+    const timestampGuard =
+      'ALTER TABLE "app"."accounts" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone NOT NULL;';
+    const timestampDefault =
+      'ALTER TABLE "app"."accounts" ALTER COLUMN "created_at" SET DEFAULT now();';
+    const indexSql =
+      "CREATE INDEX IF NOT EXISTS accounts_owner_idx ON app.accounts (company_id, owner_id)";
+
+    expect(sql).toContain(columnGuard);
+    expect(sql).toContain(timestampGuard);
+    expect(sql).toContain(timestampDefault);
+    expect(sql.indexOf(columnGuard)).toBeLessThan(sql.indexOf(indexSql));
+  });
+
+  it("renders compatible create views without dependency-breaking drops", async () => {
+    const from = {
+      diagnostics: [],
+      fingerprint: "",
+      objects: [],
+      source: "empty",
+    };
+    const extracted = await extractObjectsFromSql(`
+      CREATE SCHEMA app;
+      CREATE TABLE app.accounts (id bigint PRIMARY KEY, name text);
+      CREATE VIEW app.account_names AS SELECT id, name FROM app.accounts;
+    `);
+    const to = {
+      diagnostics: extracted.diagnostics,
+      fingerprint: "",
+      objects: extracted.objects,
+      source: "target",
+    };
+
+    const sql = renderMigration(planSchemaDiff(from, to), { includeHeader: false });
+    const dropView = 'DROP VIEW IF EXISTS "app"."account_names";';
+    const createView = "CREATE OR REPLACE VIEW app.account_names AS SELECT";
+
+    expect(sql).not.toContain(dropView);
+    expect(sql).not.toContain('"key":"view:app.account_names"');
+    expect(sql.indexOf(createView)).toBeGreaterThanOrEqual(0);
   });
 
   it("reports dependency cycles instead of guessing an order", async () => {
@@ -478,6 +588,51 @@ describe("grants and default privileges", () => {
       `ALTER DEFAULT PRIVILEGES IN SCHEMA "app" REVOKE SELECT ON TABLES FROM "authenticated";`
     );
   });
+
+  it("renders grant replacements as a convergent revoke then grant", async () => {
+    const before = await extractObjectsFromSql(
+      "GRANT SELECT, INSERT, UPDATE ON TABLE app.accounts TO authenticated;"
+    );
+    const after = await extractObjectsFromSql(
+      "GRANT SELECT ON TABLE app.accounts TO authenticated;"
+    );
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "from", objects: before.objects, source: "from" },
+      { diagnostics: [], fingerprint: "to", objects: after.objects, source: "to" }
+    );
+    const sql = renderMigration(plan);
+
+    expect(sql).toContain(
+      `REVOKE INSERT, SELECT, UPDATE ON TABLE "app"."accounts" FROM "authenticated";`
+    );
+    expect(sql).toContain('GRANT SELECT ON TABLE "app"."accounts" TO "authenticated";');
+  });
+
+  it("renders dropped builtin revokes as restored grants", async () => {
+    const before = await extractObjectsFromSql("REVOKE ALL ON FUNCTION app.f() FROM PUBLIC;");
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
+      { diagnostics: [], fingerprint: "", objects: [], source: "to" },
+      { config: { hints: { destructive: ["*"] } } }
+    );
+
+    expect(renderMigration(plan)).toContain(`GRANT EXECUTE ON FUNCTION "app"."f"() TO PUBLIC;`);
+  });
+
+  it("renders dropped default privilege revokes as restored default grants", async () => {
+    const before = await extractObjectsFromSql(
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE ALL ON FUNCTIONS FROM PUBLIC;"
+    );
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
+      { diagnostics: [], fingerprint: "", objects: [], source: "to" },
+      { config: { hints: { destructive: ["*"] } } }
+    );
+
+    expect(renderMigration(plan)).toContain(
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA "app" GRANT EXECUTE ON FUNCTIONS TO PUBLIC;`
+    );
+  });
 });
 
 describe("comments", () => {
@@ -529,9 +684,10 @@ describe("golden migration output", () => {
     const to = await extractSourceModel("dir:tests/fixtures/basic/to", {
       cwd: process.cwd(),
     });
-    const plan = planSchemaDiff(from, to);
+    const config = { hints: { destructive: ["function:app.legacy_ping()"] } };
+    const plan = planSchemaDiff(from, to, { config });
     const first = renderMigration(plan, { version: "test" });
-    const second = renderMigration(planSchemaDiff(from, to), { version: "test" });
+    const second = renderMigration(planSchemaDiff(from, to, { config }), { version: "test" });
 
     expect(first).toBe(second);
     expect(first).toMatchSnapshot();

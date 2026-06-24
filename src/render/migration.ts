@@ -9,7 +9,7 @@ import type {
   TableColumn,
 } from "../core.js";
 import { lineageLine } from "../migrations/lineage.js";
-import { quoteIdent } from "../sql/identifiers.js";
+import { normalizeSql, quoteIdent } from "../sql/identifiers.js";
 import {
   ensureSemicolon,
   qualifiedRef,
@@ -38,7 +38,9 @@ export function renderMigrationSplit(
   }
   const transactional = plan.operations.filter((operation) => !concurrent.includes(operation));
   const sql = renderMigration({ ...plan, operations: transactional }, options);
-  const concurrentBody = concurrent.map((operation) => renderOperation(operation)).join("\n\n");
+  const concurrentBody = concurrent
+    .map((operation) => renderOperationChunk(operation))
+    .join("\n\n");
   const concurrentSql = `-- supaschema: run each statement outside a transaction block.\n-- CREATE INDEX CONCURRENTLY cannot run inside a transaction.\n${concurrentBody}\n`;
   return { concurrentSql, sql };
 }
@@ -50,13 +52,14 @@ export function renderMigration(plan: MigrationPlan, options: RenderOptions = {}
     chunks.push(renderHeader(plan, config, options.version));
   }
   for (const operation of plan.operations) {
-    if (operation.blocked) {
-      chunks.push(renderBlockedOperation(operation));
-      continue;
-    }
-    chunks.push(renderOperation(operation));
+    chunks.push(renderOperationChunk(operation));
   }
   return `${chunks.filter(Boolean).join("\n\n").trim()}\n`;
+}
+
+function renderOperationChunk(operation: MigrationOperation): string {
+  const sql = operation.blocked ? renderBlockedOperation(operation) : renderOperation(operation);
+  return withOperationDisclosure(operation, sql);
 }
 
 function renderHeader(plan: MigrationPlan, config: SupaschemaConfig, version?: string): string {
@@ -99,6 +102,56 @@ function renderBlockedOperation(operation: MigrationOperation): string {
     .map((item: Diagnostic) => `-- ${item.code}: ${item.message}`)
     .join("\n");
   return `-- BLOCKED ${operation.kind} ${operation.key}\n${diagnostics}`;
+}
+
+function withOperationDisclosure(operation: MigrationOperation, sql: string): string {
+  if (!shouldDiscloseOperation(operation)) {
+    return sql;
+  }
+  return `-- supaschema: operation ${JSON.stringify(operationDisclosure(operation))}\n${sql}`;
+}
+
+function shouldDiscloseOperation(operation: MigrationOperation): boolean {
+  return operation.destructive || operationRendersDropGuard(operation);
+}
+
+function operationRendersDropGuard(operation: MigrationOperation): boolean {
+  const kind = operation.ref.kind;
+  if (operation.kind === "create") {
+    return kind === "policy" || kind === "trigger";
+  }
+  if (operation.kind === "drop") {
+    return nonDestructiveDropKinds.has(kind);
+  }
+  return (
+    operation.kind === "replace" &&
+    (nonDestructiveDropKinds.has(kind) ||
+      kind === "policy" ||
+      kind === "trigger" ||
+      kind === "grant" ||
+      kind === "default-privilege")
+  );
+}
+
+const nonDestructiveDropKinds = new Set(["comment", "constraint", "index", "policy", "trigger"]);
+
+function operationDisclosure(operation: MigrationOperation): Record<string, unknown> {
+  return {
+    blocked: operation.blocked,
+    destructive: operation.destructive,
+    disposition: operationDisposition(operation),
+    key: operation.key,
+    kind: operation.kind,
+    ref: operation.ref,
+  };
+}
+
+function operationDisposition(operation: MigrationOperation): string {
+  const disposition = operation.metadata.destructiveDisposition;
+  if (typeof disposition === "string") {
+    return disposition;
+  }
+  return operation.destructive ? "review-required" : "non-destructive-render-guard";
 }
 
 function renderOperation(operation: MigrationOperation): string {
@@ -322,9 +375,10 @@ function renderReplace(operation: MigrationOperation): string {
       return `${renderDrop(before)}\n${renderCreate(after)}`;
     case "schema":
     case "extension":
+      return renderCreate(after);
     case "grant":
     case "default-privilege":
-      return renderCreate(after);
+      return `${renderDrop(before)}\n${renderCreate(after)}`;
     default:
       throw new Error(`unsupported replace operation for ${after.ref.kind}`);
   }
@@ -334,20 +388,44 @@ function renderAddColumn(table: SchemaObject, column: TableColumn): string {
   return `ALTER TABLE ${qualifiedRef(table.ref)} ADD COLUMN IF NOT EXISTS ${quoteIdent(column.name)} ${column.definition};`;
 }
 
+function renderCreateTable(table: SchemaObject): string {
+  const columns = Array.isArray(table.metadata.columns) ? table.metadata.columns : [];
+  if (columns.length === 0) {
+    return spliceGuard(table);
+  }
+  return [
+    spliceGuard(table),
+    ...columns.map((column) => renderCreateTableColumnGuard(table, columnFromMetadata(column))),
+  ].join("\n");
+}
+
+function renderCreateTableColumnGuard(table: SchemaObject, column: TableColumn): string {
+  if (column.defaultExpression && column.type) {
+    const baseDefinition = `${normalizeSql(column.type)}${column.notNull === true ? " NOT NULL" : ""}`;
+    return [
+      renderAddColumn(table, { ...column, definition: baseDefinition }),
+      `ALTER TABLE ${qualifiedRef(table.ref)} ALTER COLUMN ${quoteIdent(column.name)} SET DEFAULT ${column.defaultExpression};`,
+    ].join("\n");
+  }
+  return renderAddColumn(table, column);
+}
+
 function renderCreate(object: SchemaObject): string {
   switch (object.ref.kind) {
     case "schema":
     case "extension":
     case "sequence":
-    case "table":
     case "foreign-server":
     case "foreign-table":
     case "index":
     case "materialized-view":
-    case "function":
     case "procedure":
     case "view":
       return spliceGuard(object);
+    case "table":
+      return renderCreateTable(object);
+    case "function":
+      return spliceGuard(object, catalogTypecheckSql(object));
     case "enum":
     case "type":
     case "domain":
@@ -374,7 +452,7 @@ const guardInserts: Record<"ifNotExists" | "orReplace", string> = {
   orReplace: "OR REPLACE ",
 };
 
-function spliceGuard(object: SchemaObject): string {
+function spliceGuard(object: SchemaObject, sql = object.sql): string {
   const facts = object.metadata.render;
   if (!facts || typeof facts !== "object") {
     throw new Error(
@@ -387,17 +465,20 @@ function spliceGuard(object: SchemaObject): string {
     throw new Error(`object ${object.key} has unsupported render guard facts`);
   }
   if (record.present === true) {
-    return ensureSemicolon(object.sql);
+    return ensureSemicolon(sql);
   }
   const offset = record.offset;
-  if (typeof offset !== "number" || offset < 0 || offset > object.sql.length) {
+  if (typeof offset !== "number" || offset < 0 || offset > sql.length) {
     throw new Error(
       `object ${object.key} has no render guard offset; re-extract the source model with this supaschema version`
     );
   }
-  return ensureSemicolon(
-    `${object.sql.slice(0, offset)}${guardInserts[guard]}${object.sql.slice(offset)}`
-  );
+  return ensureSemicolon(`${sql.slice(0, offset)}${guardInserts[guard]}${sql.slice(offset)}`);
+}
+
+function catalogTypecheckSql(object: SchemaObject): string {
+  const sql = object.metadata.routineSqlForCatalogTypecheck;
+  return typeof sql === "string" ? sql : object.sql;
 }
 
 function recordFromObject(value: object): Record<string, unknown> {
@@ -467,7 +548,17 @@ function columnFromMetadata(value: unknown): TableColumn {
   if (!(name && definition)) {
     throw new Error("invalid add-column metadata");
   }
-  return { definition, name };
+  const column: TableColumn = { definition, name };
+  if ("defaultExpression" in value && typeof value.defaultExpression === "string") {
+    column.defaultExpression = value.defaultExpression;
+  }
+  if ("notNull" in value && typeof value.notNull === "boolean") {
+    column.notNull = value.notNull;
+  }
+  if ("type" in value && typeof value.type === "string") {
+    column.type = value.type;
+  }
+  return column;
 }
 
 function requiredBefore(operation: MigrationOperation): SchemaObject {

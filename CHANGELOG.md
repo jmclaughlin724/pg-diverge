@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.8 (2026-06-24)
+
+### Patch Changes
+
+- Adds an executable PostgreSQL support contract for parser-backed statement coverage, known `pgsql-deparser` gaps, and support-matrix/audit diagnostics.
+- Preserves reviewed migration intent for routine drops and column drops, so destructive migration output is disclosed without adding redundant blockers after explicit review.
+- Improves replay-safe rendering for owned dependents, reverse privilege changes, SQL routine catalog typecheck rewriting, and compatible view replacement ordering.
+- Extends generated types for explicitly cast view targets and updates docs, rules, skills, packaged agent mirrors, and tests to match the implemented behavior.
+
 ## 0.3.7 (2026-06-24)
 
 ### Patch Changes

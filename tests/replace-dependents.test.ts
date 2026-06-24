@@ -73,7 +73,7 @@ describe("replaced relation dependents", () => {
     expect(sql).toContain("COMMENT ON TABLE app.t IS 'table comment';");
     expect(sql).toContain("COMMENT ON COLUMN app.t.value IS 'value comment';");
     expect(sql).toContain("COMMENT ON VIEW app.t_values IS 'view comment';");
-    expect(sql).toContain("GRANT SELECT ON app.t_values TO authenticated;");
+    expect(sql).toContain('GRANT SELECT ON TABLE "app"."t_values" TO "authenticated";');
   });
 
   it("adds no dependent operations when nothing is replaced", async () => {
@@ -84,6 +84,49 @@ describe("replaced relation dependents", () => {
     const plan = planSchemaDiff(from, to, { config: { destructiveChanges: "allow" } });
 
     expect(plan.operations).toHaveLength(0);
+  });
+
+  it("does not plan owned relation state as independent drops when the relation is dropped", async () => {
+    const from = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE TABLE app.t (id bigint, value bigint);
+      ALTER TABLE app.t ADD CONSTRAINT t_value_check CHECK (value > 0);
+      CREATE INDEX t_value_idx ON app.t (value);
+      ALTER TABLE app.t ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY t_read ON app.t FOR SELECT TO authenticated USING (true);
+      GRANT SELECT ON TABLE app.t TO authenticated;
+      COMMENT ON TABLE app.t IS 'table comment';
+    `);
+    const to = await modelFromSql("CREATE SCHEMA app;");
+
+    const plan = planSchemaDiff(from, to, { config: { hints: { destructive: ["table:app.t"] } } });
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(plan.operations.map((operation) => operation.key)).toEqual(["table:app.t"]);
+    expect(plan.operations[0]).toMatchObject({
+      blocked: false,
+      destructive: true,
+      kind: "drop",
+    });
+  });
+
+  it("keeps function comments owned by dropped functions", async () => {
+    const from = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;
+      COMMENT ON FUNCTION app.f() IS 'old';
+    `);
+    const to = await modelFromSql("CREATE SCHEMA app;");
+
+    const plan = planSchemaDiff(from, to, {
+      config: { hints: { destructive: ["function:app.f()"] } },
+    });
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(plan.operations.map((operation) => operation.key)).toEqual(["function:app.f()"]);
+    expect(sql).toContain('DROP FUNCTION IF EXISTS "app"."f"();');
+    expect(sql).not.toContain("COMMENT ON FUNCTION");
   });
 
   it("does not duplicate dependents that already carry their own operation", async () => {

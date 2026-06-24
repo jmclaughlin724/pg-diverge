@@ -38,6 +38,11 @@ import {
   grantObjectsFromAst,
 } from "./privileges.js";
 import { makeObject, tableMetadataFromAst } from "./statements.js";
+import {
+  ignoredStatementTags,
+  sourceIntentStatementTags,
+  unsupportedStatement,
+} from "./support.js";
 import { stripDeclaredConstraints, tableConstraintSyntheses } from "./table-constraints.js";
 
 type ExtractObjectsOptions = ExtractOptions & {
@@ -50,18 +55,6 @@ interface ExtractObjectsResult {
   nextOrdinal: number;
   objects: SchemaObject[];
 }
-
-const sideEffectTags = new Set([
-  "CallStmt",
-  "DeleteStmt",
-  "DoStmt",
-  "InsertStmt",
-  "RefreshMatViewStmt",
-  "SelectStmt",
-  "UpdateStmt",
-]);
-
-const ignoredTags = new Set(["TransactionStmt"]);
 
 type ObjectBuilder = (
   node: AstNode,
@@ -127,7 +120,7 @@ export async function extractObjectsFromSql(
     return { diagnostics, nextOrdinal: ordinal, objects };
   }
   for (const statement of astStatements(parsedSql.ast, sql)) {
-    if (statement.text.length === 0 || ignoredTags.has(statement.tag)) {
+    if (statement.text.length === 0 || ignoredStatementTags.has(statement.tag)) {
       continue;
     }
     const parsed = parseStatement(statement, ordinal, config, options.file);
@@ -160,7 +153,7 @@ function parseStatement(
   config: SupaschemaConfig,
   file: string | undefined
 ): ParseStatementResult {
-  if (sideEffectTags.has(statement.tag)) {
+  if (sourceIntentStatementTags.has(statement.tag)) {
     return {
       diagnostics: [
         diagnostic(
@@ -170,6 +163,26 @@ function parseStatement(
           {
             file,
             hint: "Keep data/control-plane side effects in an explicit reviewed migration.",
+            schemas: referencedSchemas(statement),
+            statement: statement.text,
+          }
+        ),
+      ],
+      objects: [],
+    };
+  }
+  const node = asRecord(statement.node[statement.tag]) ?? {};
+  const unsupported = unsupportedStatement(statement.tag, node);
+  if (unsupported) {
+    return {
+      diagnostics: [
+        diagnostic(
+          "SUPA_EXTRACT_UNSUPPORTED",
+          "error",
+          `unsupported declarative boundary (${unsupported.boundary}): ${statement.tag}`,
+          {
+            file,
+            hint: unsupported.hint,
             schemas: referencedSchemas(statement),
             statement: statement.text,
           }

@@ -24,6 +24,12 @@ async function cli(args: string[]): Promise<CliResult> {
   }
 }
 
+async function writeBasicFixtureConfig(directory: string): Promise<string> {
+  const path = join(directory, "supaschema.config.json");
+  await writeFile(path, JSON.stringify({ hints: { destructive: ["function:app.legacy_ping()"] } }));
+  return path;
+}
+
 describe("lineage parsing", () => {
   it("parses the embedded lineage marker", () => {
     const lineage = parseLineage("-- header\n-- supaschema: lineage from=abc123 to=def456\nSET x;");
@@ -70,8 +76,11 @@ describe("diff lineage chain gate", () => {
     timeout: 60_000,
   }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "supa-stdout-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")));
 
     const result = await cli([
+      "--config",
+      config,
       "diff",
       "--from",
       fromArg,
@@ -95,14 +104,16 @@ describe("diff lineage chain gate", () => {
     timeout: 60_000,
   }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "supa-chain-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")));
+    const diff = ["--config", config, "diff"];
     const first = join(directory, "0001_first.sql");
 
-    const initial = await cli(["diff", "--from", fromArg, "--to", toArg, "--out", first]);
+    const initial = await cli([...diff, "--from", fromArg, "--to", toArg, "--out", first]);
     expect(initial.code).toBe(0);
     expect(parseLineage(await readFile(first, "utf8"))).toBeDefined();
 
     const duplicate = await cli([
-      "diff",
+      ...diff,
       "--from",
       fromArg,
       "--to",
@@ -114,7 +125,7 @@ describe("diff lineage chain gate", () => {
     expect(duplicate.stderr).toContain("SUPA_DIFF_LINEAGE_DUPLICATE");
 
     const broken = await cli([
-      "diff",
+      ...diff,
       "--from",
       fromArg,
       "--to",
@@ -126,7 +137,7 @@ describe("diff lineage chain gate", () => {
     expect(broken.stderr).toContain("SUPA_DIFF_LINEAGE_BROKEN");
 
     const continued = await cli([
-      "diff",
+      ...diff,
       "--from",
       toArg,
       "--to",
@@ -137,7 +148,7 @@ describe("diff lineage chain gate", () => {
     expect(continued.code).toBe(0);
 
     const bypassed = await cli([
-      "diff",
+      ...diff,
       "--from",
       fromArg,
       "--to",
@@ -149,7 +160,7 @@ describe("diff lineage chain gate", () => {
     expect(bypassed.code).toBe(0);
 
     const clobber = await cli([
-      "diff",
+      ...diff,
       "--from",
       fromArg,
       "--to",
