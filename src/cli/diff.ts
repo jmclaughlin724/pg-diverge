@@ -384,12 +384,13 @@ async function watchDiff(
 }
 
 function buildPlan(
-  options: WithSources<PlanCommandOptions>,
+  options: WithSources<PlanCommandOptions> & { migrationsDir?: string },
   config: SupaschemaConfig
 ): Promise<MigrationPlan> {
   return buildSchemaDiffPlan({
     config,
     from: options.from,
+    ...(options.migrationsDir === undefined ? {} : { migrationsDir: options.migrationsDir }),
     ...(options.schema === undefined ? {} : { schema: options.schema }),
     ...(options.timing === undefined ? {} : { timing: options.timing }),
     to: options.to,

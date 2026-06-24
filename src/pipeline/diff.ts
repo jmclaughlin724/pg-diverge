@@ -10,6 +10,7 @@ interface SchemaDiffPlanOptions {
   config: SupaschemaConfig;
   cwd?: string;
   from: string;
+  migrationsDir?: string;
   schema?: string;
   timing?: boolean;
   to: string;
@@ -27,7 +28,7 @@ export async function buildSchemaDiffPlan(options: SchemaDiffPlanOptions): Promi
   const toStart = performance.now();
   const to = filterModel(await extractSourceModel(options.to, extractOptions), options.schema);
   const migrationIntent = await readMigrationIntent(
-    options.config.migrationsDir,
+    options.migrationsDir ?? options.config.migrationsDir,
     migrationIntentOptions
   );
   const toMs = performance.now() - toStart;

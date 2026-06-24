@@ -78,6 +78,54 @@ describe("migration-derived source intent", () => {
     );
   });
 
+  it("uses the selected migrations directory for source intent", async () => {
+    const root = await migrationIntentFixture({ migrationSql: "" });
+    await mkdir(join(root, "selected-migrations"), { recursive: true });
+    await writeFile(
+      join(root, "selected-migrations", "20260102000000_existing.sql"),
+      "ALTER TABLE app.credentials DROP COLUMN encrypted_value;"
+    );
+
+    const plan = await buildSchemaDiffPlan({
+      config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
+      cwd: root,
+      from: "dir:from",
+      migrationsDir: "selected-migrations",
+      schema: "app",
+      to: "dir:to",
+    });
+
+    expect(plan.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED"
+    );
+    expect(
+      plan.operations.find((operation) => operation.key === "table:app.credentials")
+    ).toMatchObject({
+      blocked: false,
+      metadata: expect.objectContaining({ destructiveDisposition: "migration-intent" }),
+    });
+  });
+
+  it("does not use stale config-dir intent when a different migrations directory is selected", async () => {
+    const root = await migrationIntentFixture({
+      migrationSql: "ALTER TABLE app.credentials DROP COLUMN encrypted_value;",
+    });
+    await mkdir(join(root, "selected-migrations"), { recursive: true });
+
+    const plan = await buildSchemaDiffPlan({
+      config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
+      cwd: root,
+      from: "dir:from",
+      migrationsDir: "selected-migrations",
+      schema: "app",
+      to: "dir:to",
+    });
+
+    expect(plan.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED"
+    );
+  });
+
   it("does not promote migration-intent parse failures to plan errors", async () => {
     const root = await migrationIntentFixture({ migrationSql: "CREATE TABLE" });
 

@@ -213,7 +213,7 @@ describe("diff rendering", () => {
     expect(sql).toContain('ORDER BY c."updated_at" DESC');
   });
 
-  it("renders create-table column guards before dependent indexes", async () => {
+  it("does not render create-table column guards that bypass add-column safety", async () => {
     const from = {
       diagnostics: [],
       fingerprint: "",
@@ -240,18 +240,13 @@ describe("diff rendering", () => {
     };
 
     const sql = renderMigration(planSchemaDiff(from, to), { includeHeader: false });
-    const columnGuard = 'ALTER TABLE "app"."accounts" ADD COLUMN IF NOT EXISTS "owner_id" text;';
-    const timestampGuard =
-      'ALTER TABLE "app"."accounts" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone NOT NULL;';
-    const timestampDefault =
-      'ALTER TABLE "app"."accounts" ALTER COLUMN "created_at" SET DEFAULT now();';
+    const createTable = "CREATE TABLE IF NOT EXISTS app.accounts";
     const indexSql =
       "CREATE INDEX IF NOT EXISTS accounts_owner_idx ON app.accounts (company_id, owner_id)";
 
-    expect(sql).toContain(columnGuard);
-    expect(sql).toContain(timestampGuard);
-    expect(sql).toContain(timestampDefault);
-    expect(sql.indexOf(columnGuard)).toBeLessThan(sql.indexOf(indexSql));
+    expect(sql).toContain(createTable);
+    expect(sql).not.toContain('ALTER TABLE "app"."accounts" ADD COLUMN IF NOT EXISTS');
+    expect(sql.indexOf(createTable)).toBeLessThan(sql.indexOf(indexSql));
   });
 
   it("renders compatible create views without dependency-breaking drops", async () => {
@@ -619,6 +614,19 @@ describe("grants and default privileges", () => {
     expect(renderMigration(plan)).toContain(`GRANT EXECUTE ON FUNCTION "app"."f"() TO PUBLIC;`);
   });
 
+  it("does not turn removed PUBLIC table revokes into GRANT ALL", async () => {
+    const before = await extractObjectsFromSql("REVOKE ALL ON TABLE app.accounts FROM PUBLIC;");
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
+      { diagnostics: [], fingerprint: "", objects: [], source: "to" },
+      { config: { hints: { destructive: ["*"] } } }
+    );
+    const sql = renderMigration(plan);
+
+    expect(sql).toContain("-- Manual privilege reversal required for");
+    expect(sql).not.toContain("GRANT ALL ON TABLE");
+  });
+
   it("renders dropped default privilege revokes as restored default grants", async () => {
     const before = await extractObjectsFromSql(
       "ALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE ALL ON FUNCTIONS FROM PUBLIC;"
@@ -632,6 +640,21 @@ describe("grants and default privileges", () => {
     expect(renderMigration(plan)).toContain(
       `ALTER DEFAULT PRIVILEGES IN SCHEMA "app" GRANT EXECUTE ON FUNCTIONS TO PUBLIC;`
     );
+  });
+
+  it("does not turn removed PUBLIC table default revokes into GRANT ALL", async () => {
+    const before = await extractObjectsFromSql(
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE ALL ON TABLES FROM PUBLIC;"
+    );
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
+      { diagnostics: [], fingerprint: "", objects: [], source: "to" },
+      { config: { hints: { destructive: ["*"] } } }
+    );
+    const sql = renderMigration(plan);
+
+    expect(sql).toContain("-- Manual privilege reversal required for");
+    expect(sql).not.toContain("GRANT ALL ON TABLES");
   });
 });
 
