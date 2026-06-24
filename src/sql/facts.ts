@@ -14,6 +14,7 @@ import {
   typeNameToSql,
 } from "./ast.js";
 import { canonicalPolicyNode, canonicalViewNode } from "./canonical-nodes.js";
+import { quoteIdent } from "./identifiers.js";
 import { normalizeObjectSql } from "./normalize-deparse.js";
 import { astObjectHash, shapeHash } from "./object-hash.js";
 import { parseSqlAst } from "./parser.js";
@@ -125,6 +126,7 @@ export async function finalizeObject(
   }
   object.hash = canonicalHash(object, statements);
   Object.assign(object.metadata, statementFacts(first.tag, first.node, object.sql));
+  await assignRoutineCatalogTypecheckSql(object);
   return diagnostics;
 }
 
@@ -366,6 +368,15 @@ function renderGuardFacts(tag: string, node: AstNode, sql: string): RenderGuardF
 
 function functionFacts(node: AstNode): Record<string, unknown> {
   const facts: Record<string, unknown> = {};
+  const language = functionLanguage(node.options);
+  if (language) {
+    facts.routineLanguage = language.toLowerCase();
+  }
+  const body = functionBody(node.options);
+  if (body) {
+    facts.routineBody = body.text;
+    facts.routineBodyAsOffset = body.asOffset;
+  }
   const returnType = asRecord(node.returnType);
   if (returnType) {
     const returns: RoutineReturnFacts = {
@@ -394,6 +405,209 @@ function functionFacts(node: AstNode): Record<string, unknown> {
     facts.outParams = outParams;
   }
   return facts;
+}
+
+function functionLanguage(options: unknown): string | undefined {
+  for (const item of readArray(options)) {
+    const option = asRecord(asRecord(item)?.DefElem);
+    if (readString(option?.defname) !== "language") {
+      continue;
+    }
+    return stringValue(option?.arg);
+  }
+  return;
+}
+
+function functionBody(options: unknown): { asOffset: number; text: string } | undefined {
+  for (const item of readArray(options)) {
+    const option = asRecord(asRecord(item)?.DefElem);
+    if (readString(option?.defname) !== "as") {
+      continue;
+    }
+    const body = stringValue(readArray(asRecord(asRecord(option?.arg)?.List)?.items)[0]);
+    const asOffset = readNumber(option?.location);
+    if (body !== undefined && asOffset !== undefined) {
+      return { asOffset, text: body };
+    }
+  }
+  return;
+}
+
+async function assignRoutineCatalogTypecheckSql(object: SchemaObject): Promise<void> {
+  if (object.metadata.routineLanguage !== "sql") {
+    return;
+  }
+  const body = object.metadata.routineBody;
+  const asOffset = object.metadata.routineBodyAsOffset;
+  if (typeof body !== "string" || typeof asOffset !== "number") {
+    return;
+  }
+  const rewrittenBody = await quoteQualifiedSortColumns(body, object.file);
+  if (rewrittenBody === body) {
+    return;
+  }
+  const range = dollarQuotedFunctionBodyRange(object.sql, body, asOffset);
+  if (!range) {
+    return;
+  }
+  object.metadata.routineBodyForCatalogTypecheck = rewrittenBody;
+  object.metadata.routineSqlForCatalogTypecheck = `${object.sql.slice(
+    0,
+    range.start
+  )}${rewrittenBody}${object.sql.slice(range.end)}`;
+}
+
+async function quoteQualifiedSortColumns(sql: string, file: string | undefined): Promise<string> {
+  const parsed = await parseSqlAst(sql, file);
+  if (parsed.ast === undefined) {
+    return sql;
+  }
+  const replacements: { end: number; start: number; text: string }[] = [];
+  for (const statement of astStatements(parsed.ast, sql)) {
+    const select = asRecord(statement.node.SelectStmt);
+    if (!select) {
+      continue;
+    }
+    for (const item of readArray(select.sortClause)) {
+      const sortBy = asRecord(asRecord(item)?.SortBy);
+      const columnRef = asRecord(asRecord(sortBy?.node)?.ColumnRef);
+      const location = readNumber(columnRef?.location);
+      const fields = readArray(columnRef?.fields)
+        .map((field) => stringValue(field))
+        .filter((field): field is string => field !== undefined);
+      const replacement = sortColumnReplacement(sql, location, fields);
+      if (replacement) {
+        replacements.push(replacement);
+      }
+    }
+  }
+  return applyReplacements(sql, replacements);
+}
+
+function sortColumnReplacement(
+  sql: string,
+  byteOffset: number | undefined,
+  fields: readonly string[]
+): { end: number; start: number; text: string } | undefined {
+  const column = fields.at(-1);
+  if (byteOffset === undefined || fields.length < 2 || !column || !isLowercaseIdentifier(column)) {
+    return;
+  }
+  const raw = fields.join(".");
+  const start = stringIndexFromByteOffset(sql, byteOffset);
+  if (sql.slice(start, start + raw.length) !== raw) {
+    return;
+  }
+  const columnStart = start + raw.lastIndexOf(".") + 1;
+  return {
+    end: columnStart + column.length,
+    start: columnStart,
+    text: quoteIdent(column),
+  };
+}
+
+function applyReplacements(
+  sql: string,
+  replacements: readonly { end: number; start: number; text: string }[]
+): string {
+  let output = sql;
+  for (const replacement of [...replacements].sort((left, right) => right.start - left.start)) {
+    output = `${output.slice(0, replacement.start)}${replacement.text}${output.slice(
+      replacement.end
+    )}`;
+  }
+  return output;
+}
+
+function dollarQuotedFunctionBodyRange(
+  sql: string,
+  body: string,
+  asByteOffset: number
+): { end: number; start: number } | undefined {
+  const asIndex = stringIndexFromByteOffset(sql, asByteOffset);
+  if (sql.slice(asIndex, asIndex + 2).toUpperCase() !== "AS") {
+    return;
+  }
+  const tagStart = skipWhitespace(sql, asIndex + 2);
+  const tag = dollarQuoteTagAt(sql, tagStart);
+  if (!tag) {
+    return;
+  }
+  const bodyStart = tagStart + tag.length;
+  const bodyEnd = sql.indexOf(tag, bodyStart);
+  if (bodyEnd < 0 || sql.slice(bodyStart, bodyEnd) !== body) {
+    return;
+  }
+  return { end: bodyEnd, start: bodyStart };
+}
+
+function dollarQuoteTagAt(sql: string, start: number): string | undefined {
+  if (sql[start] !== "$") {
+    return;
+  }
+  let index = start + 1;
+  while (index < sql.length && sql[index] !== "$") {
+    const char = sql[index] ?? "";
+    if (!isDollarTagChar(char)) {
+      return;
+    }
+    index += 1;
+  }
+  return sql[index] === "$" ? sql.slice(start, index + 1) : undefined;
+}
+
+function stringIndexFromByteOffset(text: string, byteOffset: number): number {
+  let bytes = 0;
+  let index = 0;
+  for (const char of text) {
+    if (bytes >= byteOffset) {
+      return index;
+    }
+    bytes += Buffer.byteLength(char, "utf8");
+    index += char.length;
+  }
+  return index;
+}
+
+function skipWhitespace(text: string, start: number): number {
+  let index = start;
+  while (index < text.length && isWhitespace(text[index] ?? "")) {
+    index += 1;
+  }
+  return index;
+}
+
+function isDollarTagChar(char: string): boolean {
+  return (
+    (char >= "a" && char <= "z") ||
+    (char >= "A" && char <= "Z") ||
+    (char >= "0" && char <= "9") ||
+    char === "_"
+  );
+}
+
+function isLowercaseIdentifier(value: string): boolean {
+  if (value.length === 0 || !isLowercaseIdentifierStart(value[0] ?? "")) {
+    return false;
+  }
+  for (const char of value.slice(1)) {
+    if (!isLowercaseIdentifierPart(char)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isLowercaseIdentifierStart(char: string): boolean {
+  return (char >= "a" && char <= "z") || char === "_";
+}
+
+function isLowercaseIdentifierPart(char: string): boolean {
+  return isLowercaseIdentifierStart(char) || (char >= "0" && char <= "9");
+}
+
+function isWhitespace(char: string): boolean {
+  return char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f";
 }
 
 function viewFacts(node: AstNode): Record<string, unknown> {

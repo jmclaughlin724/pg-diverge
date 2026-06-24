@@ -1,5 +1,6 @@
 import type { MigrationOperation, ObjectRef, SchemaObject } from "../core.js";
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
+import { builtinPublicDefault } from "../sql/privileges.js";
 
 export function ensureSemicolon(sql: string): string {
   const trimmed = sql.trim();
@@ -124,7 +125,7 @@ export function renderGrantDrop(object: SchemaObject): string {
   const target = object.metadata.target;
   const grantee = object.metadata.grantee;
   if (
-    verb !== "GRANT" ||
+    (verb !== "GRANT" && verb !== "REVOKE") ||
     !Array.isArray(privileges) ||
     typeof kindPhrase !== "string" ||
     typeof target !== "string" ||
@@ -132,8 +133,9 @@ export function renderGrantDrop(object: SchemaObject): string {
   ) {
     return `-- Manual privilege removal required for ${object.key}`;
   }
-  const role = grantee === "PUBLIC" ? "PUBLIC" : quoteIdent(grantee);
-  return `REVOKE ${privileges.map(String).join(", ")} ON ${kindPhrase} ${target} FROM ${role};`;
+  const direction = verb === "GRANT" ? "REVOKE" : "GRANT";
+  const keyword = direction === "GRANT" ? "TO" : "FROM";
+  return `${direction} ${renderReversePrivileges(privileges, kindPhrase, grantee)} ON ${kindPhrase} ${target} ${keyword} ${renderRole(grantee)};`;
 }
 
 export function renderDefaultPrivilegeDrop(object: SchemaObject): string {
@@ -142,7 +144,7 @@ export function renderDefaultPrivilegeDrop(object: SchemaObject): string {
   const objectType = object.metadata.objectType;
   const grantee = object.metadata.grantee;
   if (
-    verb !== "GRANT" ||
+    (verb !== "GRANT" && verb !== "REVOKE") ||
     !Array.isArray(privileges) ||
     typeof objectType !== "string" ||
     typeof grantee !== "string"
@@ -151,14 +153,30 @@ export function renderDefaultPrivilegeDrop(object: SchemaObject): string {
   }
   const forRole = typeof object.metadata.forRole === "string" ? object.metadata.forRole : undefined;
   const schema = typeof object.metadata.schema === "string" ? object.metadata.schema : undefined;
-  const role = grantee === "PUBLIC" ? "PUBLIC" : quoteIdent(grantee);
+  const direction = verb === "GRANT" ? "REVOKE" : "GRANT";
+  const keyword = direction === "GRANT" ? "TO" : "FROM";
   const clauses = [
     "ALTER DEFAULT PRIVILEGES",
     forRole ? `FOR ROLE ${quoteIdent(forRole)}` : "",
     schema ? `IN SCHEMA ${quoteIdent(schema)}` : "",
-    `REVOKE ${privileges.map(String).join(", ")} ON ${objectType} FROM ${role}`,
+    `${direction} ${renderReversePrivileges(privileges, objectType, grantee)} ON ${objectType} ${keyword} ${renderRole(grantee)}`,
   ].filter(Boolean);
   return `${clauses.join(" ")};`;
+}
+
+function renderReversePrivileges(
+  privileges: unknown[],
+  kindPhrase: string,
+  grantee: string
+): string {
+  if (grantee === "PUBLIC" && privileges.map(String).includes("ALL")) {
+    return (builtinPublicDefault(kindPhrase) ?? ["ALL"]).join(", ");
+  }
+  return privileges.map(String).join(", ");
+}
+
+function renderRole(role: string): string {
+  return role === "PUBLIC" ? "PUBLIC" : quoteIdent(role);
 }
 
 function requiredBefore(operation: MigrationOperation): SchemaObject {

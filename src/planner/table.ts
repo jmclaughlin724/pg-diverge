@@ -1,5 +1,6 @@
 import type {
   Diagnostic,
+  MigrationIntent,
   MigrationOperation,
   SchemaObject,
   SupaschemaConfig,
@@ -7,7 +8,7 @@ import type {
 } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 import { stableJson } from "../hash.js";
-import { isDestructiveAllowed } from "./replace.js";
+import { destructiveAllowedDisposition } from "./replace.js";
 
 interface ColumnAlteration {
   addIdentity?: string;
@@ -41,7 +42,8 @@ type CanonicalColumnEntry = Record<string, unknown> & { name: string };
 export function makeTableAlterOperation(
   before: SchemaObject,
   after: SchemaObject,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent?: MigrationIntent
 ): MigrationOperation | undefined {
   if (before.ref.kind !== "table" || after.ref.kind !== "table") {
     return;
@@ -71,23 +73,15 @@ export function makeTableAlterOperation(
     return;
   }
   const diagnostics: Diagnostic[] = [];
-  let blocked = false;
-  for (const column of delta.addColumns) {
-    const unsafeReason = unsafeAddColumnReason(column);
-    if (!unsafeReason) {
-      continue;
-    }
-    blocked = true;
-    diagnostics.push(
-      diagnostic("SUPA_PLAN_ADD_COLUMN_UNSAFE", "error", unsafeReason, {
-        hint: "Use an explicit reviewed migration for column rewrites, backfills, constraints, or table scans.",
-        ref: after.ref,
-      })
-    );
-  }
+  const unsafeAddColumnDiagnostics = addColumnUnsafeDiagnostics(delta.addColumns, after);
+  let blocked = unsafeAddColumnDiagnostics.length > 0;
+  diagnostics.push(...unsafeAddColumnDiagnostics);
   const destructive =
     delta.dropColumns.length > 0 ||
     delta.alterColumns.some((alteration) => alteration.type !== undefined);
+  const destructiveDisposition = destructive
+    ? tableDestructiveDisposition(after.key, delta, config, migrationIntent)
+    : undefined;
   const hasTypeChange = delta.alterColumns.some((alteration) => alteration.type !== undefined);
   const hasIdentityChange = delta.alterColumns.some(
     (alteration) =>
@@ -98,46 +92,10 @@ export function makeTableAlterOperation(
   const hasGeneratedChange = delta.alterColumns.some(
     (alteration) => alteration.dropGenerated === true
   );
-  if (hasTypeChange) {
-    diagnostics.push(
-      diagnostic(
-        "SUPA_PLAN_COLUMN_TYPE_USING_REVIEW",
-        "warning",
-        "column type change renders an identity USING cast; replace the USING expression for non-assignment-cast conversions",
-        {
-          hint: "PostgreSQL rejects ALTER COLUMN TYPE ... USING col::newtype when no assignment cast exists; edit the rendered USING expression after review.",
-          ref: after.ref,
-        }
-      )
-    );
-  }
-  if (hasIdentityChange) {
-    diagnostics.push(
-      diagnostic(
-        "SUPA_PLAN_COLUMN_IDENTITY_REVIEW",
-        "warning",
-        "column identity generation changed; review the rendered ALTER COLUMN identity statement",
-        {
-          hint: "PostgreSQL identity actions affect future generated values and do not recurse to descendants; verify the target column and sequence options.",
-          ref: after.ref,
-        }
-      )
-    );
-  }
-  if (hasGeneratedChange) {
-    diagnostics.push(
-      diagnostic(
-        "SUPA_PLAN_COLUMN_GENERATED_REVIEW",
-        "warning",
-        "generated column expression changed; review lock and rewrite impact before deploy",
-        {
-          hint: "PostgreSQL rewrites stored generated column values when SET EXPRESSION changes; run ANALYZE after deploy when needed.",
-          ref: after.ref,
-        }
-      )
-    );
-  }
-  if (destructive && !isDestructiveAllowed(after.key, config)) {
+  diagnostics.push(
+    ...columnAlterReviewDiagnostics(after, { hasGeneratedChange, hasIdentityChange, hasTypeChange })
+  );
+  if (destructive && !destructiveDisposition) {
     blocked = true;
     diagnostics.push(
       diagnostic(
@@ -159,9 +117,113 @@ export function makeTableAlterOperation(
     diagnostics,
     key: after.key,
     kind: "alter",
-    metadata: delta,
+    metadata: tableAlterMetadata(delta, destructive, blocked, destructiveDisposition),
     ref: after.ref,
   };
+}
+
+function addColumnUnsafeDiagnostics(
+  columns: readonly TableColumn[],
+  table: SchemaObject
+): Diagnostic[] {
+  return columns.flatMap((column) => {
+    const unsafeReason = unsafeAddColumnReason(column);
+    return unsafeReason
+      ? [
+          diagnostic("SUPA_PLAN_ADD_COLUMN_UNSAFE", "error", unsafeReason, {
+            hint: "Use an explicit reviewed migration for column rewrites, backfills, constraints, or table scans.",
+            ref: table.ref,
+          }),
+        ]
+      : [];
+  });
+}
+
+function columnAlterReviewDiagnostics(
+  table: SchemaObject,
+  changes: { hasGeneratedChange: boolean; hasIdentityChange: boolean; hasTypeChange: boolean }
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  if (changes.hasTypeChange) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_PLAN_COLUMN_TYPE_USING_REVIEW",
+        "warning",
+        "column type change renders an identity USING cast; replace the USING expression for non-assignment-cast conversions",
+        {
+          hint: "PostgreSQL rejects ALTER COLUMN TYPE ... USING col::newtype when no assignment cast exists; edit the rendered USING expression after review.",
+          ref: table.ref,
+        }
+      )
+    );
+  }
+  if (changes.hasIdentityChange) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_PLAN_COLUMN_IDENTITY_REVIEW",
+        "warning",
+        "column identity generation changed; review the rendered ALTER COLUMN identity statement",
+        {
+          hint: "PostgreSQL identity actions affect future generated values and do not recurse to descendants; verify the target column and sequence options.",
+          ref: table.ref,
+        }
+      )
+    );
+  }
+  if (changes.hasGeneratedChange) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_PLAN_COLUMN_GENERATED_REVIEW",
+        "warning",
+        "generated column expression changed; review lock and rewrite impact before deploy",
+        {
+          hint: "PostgreSQL rewrites stored generated column values when SET EXPRESSION changes; run ANALYZE after deploy when needed.",
+          ref: table.ref,
+        }
+      )
+    );
+  }
+  return diagnostics;
+}
+
+function tableAlterMetadata(
+  delta: TableColumnDelta,
+  destructive: boolean,
+  blocked: boolean,
+  destructiveDisposition: string | undefined
+): Record<string, unknown> {
+  if (!destructive) {
+    return delta;
+  }
+  return { ...delta, destructiveDisposition: blocked ? "blocked" : destructiveDisposition };
+}
+
+function tableDestructiveDisposition(
+  tableKey: string,
+  delta: TableColumnDelta,
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
+): "destructive-config" | "destructive-hint" | "migration-intent" | undefined {
+  const configDisposition = destructiveAllowedDisposition(tableKey, config);
+  if (configDisposition) {
+    return configDisposition;
+  }
+  if (delta.alterColumns.some((alteration) => alteration.type !== undefined)) {
+    return;
+  }
+  if (delta.dropColumns.length === 0) {
+    return;
+  }
+  const intendedDrops = new Set(migrationIntent?.tableColumnDrops ?? []);
+  return delta.dropColumns.every((column) =>
+    intendedDrops.has(tableColumnDropKey(tableKey, column))
+  )
+    ? "migration-intent"
+    : undefined;
+}
+
+function tableColumnDropKey(tableKey: string, column: string): string {
+  return `${tableKey}.${column}`;
 }
 
 function tableColumnDelta(
