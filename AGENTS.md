@@ -16,6 +16,7 @@ This file is the repository instruction entrypoint and route map. Durable operat
 - Worktree and git operations: `.claude/rules/14-editing-worktree-git.md`
 - Context-surface source of truth: `.claude/rules/18-context-surface-sync.md`
 - Agent-surface sync ownership: `.claude/rules/22-agent-surface-sync-ownership.md`
+- Repo documentation creation and editing: `.claude/rules/24-repo-documentation.md`
 
 ## Personality
 

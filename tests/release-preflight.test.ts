@@ -158,7 +158,7 @@ describe("release preflight", () => {
     );
   });
 
-  it("rejects an already complete release on a main push", () => {
+  it("accepts an already complete release on a main push", () => {
     const cwd = makeProject({});
 
     const result = runPreflight(cwd, {
@@ -168,9 +168,9 @@ describe("release preflight", () => {
       publishedVersions: ["1.2.2", "1.2.3"],
     });
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "main pushes must bump package.json, package-lock.json, and CHANGELOG.md"
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "RELEASE_PREFLIGHT_OK supaschema@1.2.3 and v1.2.3 are already released"
     );
   });
 

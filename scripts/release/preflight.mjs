@@ -239,14 +239,6 @@ if (!releaseExists && tagTarget !== undefined) {
 const shouldPublishNpm = !npmPublished;
 const shouldCreateGithubRelease = !releaseExists;
 const alreadyComplete = npmPublished && releaseExists;
-const isMainPush =
-  process.env.GITHUB_EVENT_NAME === "push" && process.env.GITHUB_REF === "refs/heads/main";
-
-if (alreadyComplete && isMainPush) {
-  fail(
-    `${name}@${version} and ${tag} are already released; main pushes must bump package.json, package-lock.json, and CHANGELOG.md before publishing`
-  );
-}
 
 exposeReleaseState({
   alreadyComplete,

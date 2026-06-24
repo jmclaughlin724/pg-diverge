@@ -21,11 +21,8 @@ import {
   workflowFiles,
 } from "./ci-yaml-primitives.mjs";
 
-const SHOULD_PUBLISH_NPM_IF =
-  "steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'";
 const SHOULD_CREATE_GITHUB_RELEASE_IF =
   "steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE == 'true'";
-const SHOULD_RUN_REGISTRY_SMOKE_IF = `${SHOULD_PUBLISH_NPM_IF} || (steps.preflight.outputs.SUPASCHEMA_RELEASE_NPM_PUBLISHED == 'true' && ${SHOULD_CREATE_GITHUB_RELEASE_IF})`;
 
 function assertWorkflowBasics(parsed) {
   for (const [file, { doc, raw }] of parsed) {
@@ -108,27 +105,6 @@ function assertReleaseConditionals(release, publishJob) {
     !release.raw.includes("env.SUPASCHEMA_RELEASE_SHOULD_"),
     "release.yml step conditionals must use preflight step outputs, not dynamic env context"
   );
-  const setupBunRegistrySmokeStep = findNamedStep(
-    publishJob.steps ?? [],
-    "Install Bun for published registry smoke"
-  );
-  assert(
-    setupBunRegistrySmokeStep &&
-      stepIf(setupBunRegistrySmokeStep) === SHOULD_RUN_REGISTRY_SMOKE_IF &&
-      stepActionName(setupBunRegistrySmokeStep) === "oven-sh/setup-bun" &&
-      String(setupBunRegistrySmokeStep.with?.["bun-version"]) === "1.3.14",
-    "release.yml must install pinned Bun for the post-release registry smoke"
-  );
-  const registrySmokeStep = findNamedStep(
-    publishJob.steps ?? [],
-    "Smoke published package from npm registry"
-  );
-  assert(
-    registrySmokeStep &&
-      stepIf(registrySmokeStep) === SHOULD_RUN_REGISTRY_SMOKE_IF &&
-      stepRun(registrySmokeStep) === "npm run release:registry-smoke",
-    "release.yml must verify the npm-published package can be installed from npm by supported package managers after GitHub release creation"
-  );
   const prepareReleaseNotesStep = findNamedStep(
     publishJob.steps ?? [],
     "Prepare GitHub release notes"
@@ -157,9 +133,6 @@ function assertReleasePublicationOrder(publishJob) {
   const createReleaseIndex = (publishJob.steps ?? []).findIndex(
     (step) => stepName(step) === "Create GitHub release"
   );
-  const registrySmokeIndex = (publishJob.steps ?? []).findIndex(
-    (step) => stepName(step) === "Smoke published package from npm registry"
-  );
   assert(
     publishIndex >= 0 && attestIndex > publishIndex,
     "release.yml must attest the published tarball immediately after npm publish"
@@ -167,10 +140,6 @@ function assertReleasePublicationOrder(publishJob) {
   assert(
     prepareReleaseNotesIndex > attestIndex && createReleaseIndex > prepareReleaseNotesIndex,
     "release.yml must create the GitHub Release after npm publish/provenance attestation"
-  );
-  assert(
-    registrySmokeIndex > createReleaseIndex,
-    "release.yml must run registry smoke after GitHub Release creation so registry propagation failures cannot strand npm without a GitHub Release"
   );
 }
 

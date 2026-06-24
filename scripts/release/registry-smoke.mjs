@@ -13,8 +13,8 @@ const nodeBinDir = dirname(process.execPath);
 const pnpmTool = "pnpm@11.1.2";
 const bunTool = "bun@1.3.14";
 const commandTimeoutMs = 300_000;
-const installAttempts = 12;
-const installRetryDelayMs = 10_000;
+const installAttempts = positiveIntegerEnv("SUPASCHEMA_REGISTRY_SMOKE_INSTALL_ATTEMPTS", 12);
+const installRetryDelayMs = positiveIntegerEnv("SUPASCHEMA_REGISTRY_SMOKE_RETRY_DELAY_MS", 5000);
 
 if (typeof packageName !== "string" || packageName.length === 0) {
   fail("package.json must include a package name");
@@ -31,8 +31,20 @@ console.log(`REGISTRY_SMOKE_OK ${spec}`);
 
 function smokeNpm() {
   const consumer = createProject("supa-registry-npm-", "supaschema-registry-npm");
-  installWithRegistryRetry("npm install", (options) =>
-    runNpm(["install", spec, "--no-audit", "--no-fund"], consumer, options)
+  installWithRegistryRetry("npm install", ({ attempt, throwOnError }) =>
+    runNpm(
+      [
+        "install",
+        spec,
+        "--no-audit",
+        "--no-fund",
+        "--prefer-online",
+        "--cache",
+        join(consumer, `.npm-cache-${attempt}`),
+      ],
+      consumer,
+      { throwOnError }
+    )
   );
   assertVersion((args, cwd) => runNpm(["exec", "--", packageName, ...args], cwd), consumer);
 }
@@ -97,7 +109,7 @@ function installWithRegistryRetry(label, install) {
   let lastError;
   for (let attempt = 1; attempt <= installAttempts; attempt += 1) {
     try {
-      return install({ throwOnError: true });
+      return install({ attempt, throwOnError: true });
     } catch (error) {
       lastError = error;
       if (attempt === installAttempts) {
@@ -117,6 +129,18 @@ function installWithRegistryRetry(label, install) {
       lastError?.message ?? lastError
     )}`
   );
+}
+
+function positiveIntegerEnv(name, fallback) {
+  const value = process.env[name];
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    fail(`${name} must be a positive integer`);
+  }
+  return parsed;
 }
 
 function sleep(ms) {
