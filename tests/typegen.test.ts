@@ -311,6 +311,40 @@ SELECT * FROM app.left_items NATURAL JOIN app.right_items;
     ).toHaveLength(1);
   });
 
+  it("preserves aliases on joined FROM items", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint, email text);
+CREATE TABLE app.profiles (id bigint, display_name text);
+CREATE VIEW app.join_alias AS
+SELECT j.* FROM (app.accounts JOIN app.profiles USING (id)) AS j;
+CREATE VIEW app.join_alias_columns AS
+SELECT j.email, j.display_name FROM (app.accounts JOIN app.profiles USING (id)) AS j;
+`);
+    const star = viewTypeBlock(types, "join_alias");
+    const columns = viewTypeBlock(types, "join_alias_columns");
+
+    expect(star.split("\n").filter((line) => line === "          id: number | null;")).toHaveLength(
+      1
+    );
+    expect(star).toContain("email: string | null;");
+    expect(star).toContain("display_name: string | null;");
+    expect(columns).toContain("email: string | null;");
+    expect(columns).toContain("display_name: string | null;");
+    expect(columns).not.toContain("unknown | null;");
+  });
+
+  it("threads left-side scope into lateral subselects", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint, email text);
+CREATE VIEW app.lateral_email AS
+SELECT x.email FROM app.accounts a LEFT JOIN LATERAL (SELECT a.email AS email) x ON true;
+`);
+    const view = viewTypeBlock(types, "lateral_email");
+
+    expect(view).toContain("email: string | null;");
+    expect(view).not.toContain("email: unknown | null;");
+  });
+
   it("applies derived-table column aliases positionally", async () => {
     const types = await typesFor(`CREATE SCHEMA app;
 CREATE TABLE app.accounts (id bigint, name text);
@@ -361,18 +395,30 @@ CREATE VIEW public.custom_lower AS SELECT lower(1) AS lowered;
     expect(view).not.toContain("lowered: string | null;");
   });
 
-  it("uses exact schema-qualified function metadata instead of unqualified builtin names", async () => {
+  it("falls back to builtin function metadata when no visible project overload exists", async () => {
     const types = await typesFor(`CREATE SCHEMA app;
 CREATE TABLE app.accounts (id bigint, name text);
-CREATE FUNCTION app.lower(value integer) RETURNS integer LANGUAGE sql AS $$ SELECT value $$;
+CREATE FUNCTION app.echo_int(value integer) RETURNS integer LANGUAGE sql AS $$ SELECT value $$;
 CREATE VIEW app.builtin_lower AS SELECT lower(name) AS lowered FROM app.accounts;
-CREATE VIEW app.custom_lower AS SELECT app.lower(1) AS lowered FROM app.accounts;
+CREATE VIEW app.custom_function AS SELECT app.echo_int(1) AS value FROM app.accounts;
 `);
     const builtin = viewTypeBlock(types, "builtin_lower");
-    const custom = viewTypeBlock(types, "custom_lower");
+    const custom = viewTypeBlock(types, "custom_function");
 
     expect(builtin).toContain("lowered: string | null;");
-    expect(custom).toContain("lowered: number | null;");
+    expect(custom).toContain("value: number | null;");
+  });
+
+  it("returns unknown after visible overload mismatch", async () => {
+    const types =
+      await typesFor(`CREATE FUNCTION public.lower(value bigint) RETURNS bigint LANGUAGE sql AS $$ SELECT value $$;
+CREATE VIEW public.custom_lower_mismatch AS SELECT lower(1) AS lowered;
+`);
+    const view = viewTypeBlock(types, "custom_lower_mismatch");
+
+    expect(view).toContain("lowered: unknown | null;");
+    expect(view).not.toContain("lowered: string | null;");
+    expect(view).not.toContain("lowered: number | null;");
   });
 
   it("emits the Constants enum tuples and Supabase-compatible helper shorthands", async () => {
