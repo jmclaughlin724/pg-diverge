@@ -17,11 +17,11 @@ export function generateZodSchemas(shapes: SchemaShapes): string {
   const lines = zodHeader();
   emitEnumDefinitions(lines, sortedSchemas, enumIdents);
   emitCompositeDefinitions(lines, sortedSchemas, shapes, enumIdents, compositeIdents);
-  lines.push("", "export const schemas = {");
-  for (const [schemaName, entry] of sortedSchemas) {
-    emitSchemaZod(lines, schemaName, entry, shapes, enumIdents, compositeIdents);
-  }
-  lines.push("} as const;");
+  emitZodEnumsRoot(lines, sortedSchemas, enumIdents);
+  emitZodCompositeRoot(lines, sortedSchemas, compositeIdents);
+  emitZodTablesRoot(lines, sortedSchemas, shapes, enumIdents, compositeIdents);
+  emitZodWriteRoot(lines, sortedSchemas, "TablesInsert", "Insert");
+  emitZodWriteRoot(lines, sortedSchemas, "TablesUpdate", "Update");
   emitValidatedTypeHelpers(lines);
   return `${lines.join("\n")}\n`;
 }
@@ -51,46 +51,155 @@ function zodHeader(): string[] {
 function emitValidatedTypeHelpers(lines: string[]): void {
   lines.push(
     "",
-    "export type TableRow<",
-    "  S extends keyof typeof schemas,",
-    '  T extends keyof (typeof schemas)[S]["Tables"],',
-    '> = (typeof schemas)[S]["Tables"][T] extends { Row: infer R extends z.ZodType }',
-    "  ? z.infer<R>",
-    "  : never;",
+    'type PublicSchema<T extends object> = Extract<keyof T, "public"> extends never',
+    "  ? Record<never, never>",
+    '  : T[Extract<keyof T, "public">];',
     "",
-    "export type TableInsert<",
-    "  S extends keyof typeof schemas,",
-    '  T extends keyof (typeof schemas)[S]["Tables"],',
-    '> = (typeof schemas)[S]["Tables"][T] extends { Insert: infer R extends z.ZodType }',
-    "  ? z.infer<R>",
-    "  : never;",
+    "type PublicTables = PublicSchema<typeof Tables>;",
+    "type PublicTableInserts = PublicSchema<typeof TablesInsert>;",
+    "type PublicTableUpdates = PublicSchema<typeof TablesUpdate>;",
+    "type PublicEnums = PublicSchema<typeof Enums>;",
+    "type PublicCompositeTypes = PublicSchema<typeof CompositeTypes>;",
     "",
-    "export type TableUpdate<",
-    "  S extends keyof typeof schemas,",
-    '  T extends keyof (typeof schemas)[S]["Tables"],',
-    '> = (typeof schemas)[S]["Tables"][T] extends { Update: infer R extends z.ZodType }',
-    "  ? z.infer<R>",
-    "  : never;",
+    "type InferZod<T> = T extends z.ZodType ? z.infer<T> : never;",
+    "type InferTableRow<T> = T extends { Row: infer R extends z.ZodType } ? z.infer<R> : never;",
     "",
-    "export type ViewRow<",
-    "  S extends keyof typeof schemas,",
-    '  V extends keyof (typeof schemas)[S]["Views"],',
-    '> = (typeof schemas)[S]["Views"][V] extends { Row: infer R extends z.ZodType }',
-    "  ? z.infer<R>",
-    "  : never;",
+    ...zodHelperTypeBlock("Tables", "PublicTables", "PublicTableNameOrOptions", "TableName", {
+      infer: "InferTableRow",
+      root: "Tables",
+    }),
     "",
-    "export type EnumValue<",
-    "  S extends keyof typeof schemas,",
-    '  E extends keyof (typeof schemas)[S]["Enums"],',
-    '> = (typeof schemas)[S]["Enums"][E] extends infer R extends z.ZodType ? z.infer<R> : never;',
+    ...zodHelperTypeBlock(
+      "TablesInsert",
+      "PublicTableInserts",
+      "PublicTableNameOrOptions",
+      "TableName",
+      { infer: "InferZod", root: "TablesInsert" }
+    ),
     "",
-    "export type CompositeValue<",
-    "  S extends keyof typeof schemas,",
-    '  C extends keyof (typeof schemas)[S]["CompositeTypes"],',
-    '> = (typeof schemas)[S]["CompositeTypes"][C] extends infer R extends z.ZodType',
-    "  ? z.infer<R>",
-    "  : never;"
+    ...zodHelperTypeBlock(
+      "TablesUpdate",
+      "PublicTableUpdates",
+      "PublicTableNameOrOptions",
+      "TableName",
+      { infer: "InferZod", root: "TablesUpdate" }
+    ),
+    "",
+    ...zodHelperTypeBlock("Enums", "PublicEnums", "PublicEnumNameOrOptions", "EnumName", {
+      infer: "InferZod",
+      root: "Enums",
+    }),
+    "",
+    ...zodHelperTypeBlock(
+      "CompositeTypes",
+      "PublicCompositeTypes",
+      "PublicCompositeTypeNameOrOptions",
+      "CompositeTypeName",
+      { infer: "InferZod", root: "CompositeTypes" }
+    )
   );
+}
+
+function zodHelperTypeBlock(
+  exportName: string,
+  publicAlias: string,
+  optionsName: string,
+  itemName: string,
+  root: { infer: "InferTableRow" | "InferZod"; root: string }
+): string[] {
+  return [
+    `export type ${exportName}<`,
+    `  ${optionsName} extends keyof ${publicAlias} | { schema: keyof typeof ${root.root} },`,
+    `  ${itemName} extends ${optionsName} extends { schema: keyof typeof ${root.root} }`,
+    `    ? keyof (typeof ${root.root})[${optionsName}["schema"]]`,
+    "    : never = never,",
+    `> = ${optionsName} extends { schema: keyof typeof ${root.root} }`,
+    `  ? ${root.infer}<(typeof ${root.root})[${optionsName}["schema"]][${itemName}]>`,
+    `  : ${optionsName} extends keyof ${publicAlias}`,
+    `    ? ${root.infer}<${publicAlias}[${optionsName}]>`,
+    "    : never;",
+  ];
+}
+
+function emitZodEnumsRoot(
+  lines: string[],
+  sortedSchemas: SortedSchemas,
+  enumIdents: Map<string, string>
+): void {
+  lines.push("", "export const Enums = {");
+  for (const [schemaName, entry] of sortedSchemas) {
+    lines.push(`  ${quoteKey(schemaName)}: {`);
+    for (const item of sortedByName(entry.enums)) {
+      const ident = enumIdents.get(`${schemaName}.${item.name}`);
+      if (ident && item.values.length > 0) {
+        lines.push(`    ${quoteKey(item.name)}: ${ident},`);
+      }
+    }
+    lines.push("  },");
+  }
+  lines.push("} as const;");
+}
+
+function emitZodCompositeRoot(
+  lines: string[],
+  sortedSchemas: SortedSchemas,
+  compositeIdents: Map<string, string>
+): void {
+  lines.push("", "export const CompositeTypes = {");
+  for (const [schemaName, entry] of sortedSchemas) {
+    lines.push(`  ${quoteKey(schemaName)}: {`);
+    for (const item of sortedByName(entry.composites)) {
+      const ident = compositeIdents.get(`${schemaName}.${item.name}`);
+      if (ident) {
+        lines.push(`    ${quoteKey(item.name)}: ${ident},`);
+      }
+    }
+    lines.push("  },");
+  }
+  lines.push("} as const;");
+}
+
+function emitZodTablesRoot(
+  lines: string[],
+  sortedSchemas: SortedSchemas,
+  shapes: SchemaShapes,
+  enumIdents: Map<string, string>,
+  compositeIdents: Map<string, string>
+): void {
+  lines.push("", "export const Tables = {");
+  for (const [schemaName, entry] of sortedSchemas) {
+    const zodFor = (sqlType: string) =>
+      zodExpr(shapes, schemaName, enumIdents, compositeIdents, sqlType);
+    lines.push(`  ${quoteKey(schemaName)}: {`);
+    for (const table of sortedByName(entry.tables)) {
+      lines.push(`    ${quoteKey(table.name)}: {`);
+      emitZodRow(lines, table.columns, zodFor, "      Row");
+      emitZodInsert(lines, table.columns, zodFor);
+      emitZodUpdate(lines, table.columns, zodFor);
+      lines.push("    },");
+    }
+    lines.push("  },");
+  }
+  lines.push("} as const;");
+}
+
+function emitZodWriteRoot(
+  lines: string[],
+  sortedSchemas: SortedSchemas,
+  name: "TablesInsert" | "TablesUpdate",
+  property: "Insert" | "Update"
+): void {
+  lines.push("", `export const ${name} = {`);
+  for (const [schemaName, entry] of sortedSchemas) {
+    lines.push(`  ${quoteKey(schemaName)}: {`);
+    for (const table of sortedByName(entry.tables)) {
+      lines.push(
+        `    ${quoteKey(table.name)}: Tables[${JSON.stringify(schemaName)}][${JSON.stringify(table.name)}].${property},`
+      );
+    }
+    lines.push("  },");
+  }
+  lines.push("} as const;");
 }
 
 function emitEnumDefinitions(
@@ -193,72 +302,6 @@ function isAsciiDigit(char: string | undefined): boolean {
   return char !== undefined && char >= "0" && char <= "9";
 }
 
-function emitSchemaZod(
-  lines: string[],
-  schemaName: string,
-  entry: SchemaEntry,
-  shapes: SchemaShapes,
-  enumIdents: Map<string, string>,
-  compositeIdents: Map<string, string>
-): void {
-  const zodFor = (sqlType: string) =>
-    zodExpr(shapes, schemaName, enumIdents, compositeIdents, sqlType);
-  lines.push(`  ${quoteKey(schemaName)}: {`);
-  emitZodEnums(lines, schemaName, entry, enumIdents);
-  emitZodComposites(lines, schemaName, entry, compositeIdents);
-  emitZodTables(lines, entry, zodFor);
-  emitZodViews(lines, entry, zodFor);
-  lines.push("  },");
-}
-
-function emitZodEnums(
-  lines: string[],
-  schemaName: string,
-  entry: SchemaEntry,
-  enumIdents: Map<string, string>
-): void {
-  lines.push("    Enums: {");
-  for (const item of sortedByName(entry.enums)) {
-    const ident = enumIdents.get(`${schemaName}.${item.name}`);
-    if (ident && item.values.length > 0) {
-      lines.push(`      ${quoteKey(item.name)}: ${ident},`);
-    }
-  }
-  lines.push("    },");
-}
-
-function emitZodComposites(
-  lines: string[],
-  schemaName: string,
-  entry: SchemaEntry,
-  compositeIdents: Map<string, string>
-): void {
-  lines.push("    CompositeTypes: {");
-  for (const item of sortedByName(entry.composites)) {
-    const ident = compositeIdents.get(`${schemaName}.${item.name}`);
-    if (ident) {
-      lines.push(`      ${quoteKey(item.name)}: ${ident},`);
-    }
-  }
-  lines.push("    },");
-}
-
-function emitZodTables(
-  lines: string[],
-  entry: SchemaEntry,
-  zodFor: (sqlType: string) => string
-): void {
-  lines.push("    Tables: {");
-  for (const table of sortedByName(entry.tables)) {
-    lines.push(`      ${quoteKey(table.name)}: {`);
-    emitZodRow(lines, table.columns, zodFor, "        Row");
-    emitZodInsert(lines, table.columns, zodFor);
-    emitZodUpdate(lines, table.columns, zodFor);
-    lines.push("      },");
-  }
-  lines.push("    },");
-}
-
 function emitZodRow(
   lines: string[],
   columns: ColumnShape[],
@@ -305,24 +348,6 @@ function emitZodUpdate(
     lines.push(`          ${quoteKey(column.name)}: ${value}.optional(),`);
   }
   lines.push("        }),");
-}
-
-function emitZodViews(
-  lines: string[],
-  entry: SchemaEntry,
-  zodFor: (sqlType: string) => string
-): void {
-  lines.push("    Views: {");
-  for (const view of sortedByName(entry.views)) {
-    lines.push(`      ${quoteKey(view.name)}: {`);
-    lines.push("        Row: z.object({");
-    for (const column of view.columns) {
-      lines.push(`          ${quoteKey(column.name)}: ${zodFor(column.type)}.nullable(),`);
-    }
-    lines.push("        }),");
-    lines.push("      },");
-  }
-  lines.push("    },");
 }
 
 function buildTypeIdentifiers(

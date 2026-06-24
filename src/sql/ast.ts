@@ -19,6 +19,19 @@ export function asRecord(value: unknown): AstNode | undefined {
   return Object.fromEntries(Object.entries(value));
 }
 
+export function astNodeKind(value: unknown): string | undefined {
+  const record = asRecord(value);
+  if (!record) {
+    return;
+  }
+  const keys = Object.keys(record);
+  return keys.length === 1 ? keys[0] : undefined;
+}
+
+export function astNodeOf(value: unknown, kind: string): AstNode | undefined {
+  return asRecord(asRecord(value)?.[kind]);
+}
+
 export function readArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
