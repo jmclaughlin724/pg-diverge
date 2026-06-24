@@ -7,6 +7,7 @@ import { asRecord, astStatements } from "./ast.js";
 import { normalizeSql } from "./identifiers.js";
 import { stripLocations } from "./object-hash.js";
 import { parseSqlAst } from "./parser.js";
+import { hasKnownObjectDeparseGap, hasKnownStatementDeparseGap } from "./support.js";
 
 export interface NormalizeResult {
   diagnostics: Diagnostic[];
@@ -18,6 +19,10 @@ export async function normalizeObjectSql(
   object: SchemaObject,
   ast: unknown
 ): Promise<NormalizeResult> {
+  const originalStatements = astStatements(ast, object.sql);
+  if (hasKnownObjectDeparseGap(object, originalStatements)) {
+    return { diagnostics: [] };
+  }
   let text: string;
   try {
     text = deparseSync(JSON.parse(JSON.stringify(ast)));
@@ -58,6 +63,9 @@ export async function deparseFidelityDiagnostics(sql: string): Promise<Diagnosti
   }
   const diagnostics: Diagnostic[] = [];
   for (const statement of astStatements(parsed.ast, sql)) {
+    if (hasKnownStatementDeparseGap(statement)) {
+      continue;
+    }
     let text: string;
     try {
       text = deparseSync(

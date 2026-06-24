@@ -35,7 +35,7 @@ Before saying supaschema cannot model a migration, inspect all three configured 
 - `sources.from` for the before-state baseline;
 - `migrationsDir` for existing migration source intent.
 
-Existing migrations are not only history. They are the source-intent corpus for operational facts the schema tree cannot express by shape alone, including row backfills, explicit DML/`DO` workflows, enum rewrite recipes, Vault references or placeholder names, workload-proven index intent, and provider bootstrap constraints. Preserve explicit intent from those files through the planner/check/verify lane. Never invent missing row values, Vault secret material, tenant predicates, conversion expressions, or workload indexes; when the corpus lacks the fact, produce or follow the diagnostic/agent instruction that names the canonical file, config, hint, or workload artifact that must declare it.
+Existing migrations are not only history. They are the source-intent corpus for operational facts the schema tree cannot express by shape alone, including row backfills, explicit DML/`DO` workflows, enum rewrite recipes, Vault references or placeholder names, workload-proven index intent, reviewed routine drops, and provider bootstrap constraints. Preserve explicit intent from those files through the planner/check/verify lane. Never invent missing row values, Vault secret material, tenant predicates, conversion expressions, or workload indexes; when the corpus lacks the fact, produce or follow the diagnostic/agent instruction that names the canonical file, config, hint, or workload artifact that must declare it.
 
 ## Config Reference
 
@@ -58,7 +58,7 @@ Other config fields refine those decisions: `managedSchemas` blocks externally o
    ```
 
    Zero-source-flag defaults come from `config.sources` and are printed to stderr. `sources.from: "auto"` resolves to valid `git:HEAD`, then a database URL, then `empty:`; `sources.to` points at the configured declarative tree. The file lands in `config.migrationsDir` as `<UTC timestamp>_<derived name>.sql`. Pass `--name <snake_case>` only when the human wants a specific file name. The write is no-clobber and chain-gated. If it exits 2, read the diagnostic:
-   - `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` / `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED` / `SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE` / `SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED` — review the rendered `-- BLOCKED` section, then add the exact object key to `hints.destructive` in `supaschema.config.json` and regenerate. Never use `"*"` in committed config.
+   - `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` / `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED` / `SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE` / `SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED` — review the rendered `-- BLOCKED` section, then add the exact object key to `hints.destructive` in `supaschema.config.json` and regenerate. Never use `"*"` in committed config. Rendered `-- supaschema: operation ...` comments disclose destructive or drop-guard intent; disclosure is not a second blocker once the planner has allowed the operation.
    - `SUPA_DIFF_LINEAGE_BROKEN` — a pending generated migration exists; diff from the post-migration state instead: `--from database:<db with pending applied>`.
    - `SUPA_DIFF_LINEAGE_DUPLICATE` — the transition is already pending; apply or remove the pending migration instead of regenerating.
    - Renames: declare `{ "from": "<key>", "to": "<key>" }` in `hints.renames`; renames are never inferred.
@@ -103,6 +103,8 @@ When drift is large or blocked, triage before editing:
 
 - Treat SQL semantics as an AST/model problem. For supaschema implementation work, classify, compare, or mutate DDL through PostgreSQL parse trees (`libpg-query`) and the structured model helpers, not ad hoc regular expressions.
 - Regex is acceptable for outer transport concerns such as finding file markers, parsing hook payload headers, or redacting raw text, but not for deciding whether SQL is safe, equivalent, destructive, or replayable.
+- Treat PostgreSQL support claims as executable contracts. If a docs page, skill, rule, or agent says an object or statement is supported, it must be wired through `src/sql/support.ts`, extraction, catalog extraction when live databases apply, planning, rendering, checking, audit reporting, and focused tests. If a boundary is unsupported, it must be listed in `unsupportedStatementSupport` so parser-backed diagnostics name the boundary.
+- Deparser normalization is fidelity-gated. Known third-party `pgsql-deparser` gaps live in `src/sql/support.ts`; new `SUPA_CHECK_DEPARSE_*` or `SUPA_NORMALIZE_*` findings should be fixed by improving the model/render/deparser contract or documenting an actual unsupported boundary, not by editing generated migrations.
 - Unsupported or ambiguous DDL fails closed with a `SUPA_*` diagnostic. Do not silently pass through statements the model cannot prove safe.
 
 ## Boundaries

@@ -1,12 +1,14 @@
 import { performance } from "node:perf_hooks";
 import type { SupaschemaConfig } from "../config/schema.js";
 import type { MigrationPlan, SchemaModel } from "../core.js";
+import { readMigrationIntent } from "../migrations/intent.js";
 import { planSchemaDiff } from "../planner/schema.js";
 import { migrationSafetyPack, runRulePacks } from "../scan/rules.js";
 import { extractSourceModel, filterModelBySchemas } from "../source/extract.js";
 
 interface SchemaDiffPlanOptions {
   config: SupaschemaConfig;
+  cwd?: string;
   from: string;
   schema?: string;
   timing?: boolean;
@@ -14,20 +16,23 @@ interface SchemaDiffPlanOptions {
 }
 
 export async function buildSchemaDiffPlan(options: SchemaDiffPlanOptions): Promise<MigrationPlan> {
+  const extractOptions = {
+    config: options.config,
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+  };
+  const migrationIntentOptions = options.cwd === undefined ? {} : { cwd: options.cwd };
   const extractStart = performance.now();
-  const from = filterModel(
-    await extractSourceModel(options.from, { config: options.config }),
-    options.schema
-  );
+  const from = filterModel(await extractSourceModel(options.from, extractOptions), options.schema);
   const fromMs = performance.now() - extractStart;
   const toStart = performance.now();
-  const to = filterModel(
-    await extractSourceModel(options.to, { config: options.config }),
-    options.schema
+  const to = filterModel(await extractSourceModel(options.to, extractOptions), options.schema);
+  const migrationIntent = await readMigrationIntent(
+    options.config.migrationsDir,
+    migrationIntentOptions
   );
   const toMs = performance.now() - toStart;
   const planStart = performance.now();
-  const plan = planSchemaDiff(from, to, { config: options.config });
+  const plan = planSchemaDiff(from, to, { config: options.config, migrationIntent });
 
   plan.diagnostics.push(...runRulePacks([migrationSafetyPack], { model: to, plan }));
   if (options.timing) {

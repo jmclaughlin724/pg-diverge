@@ -5,6 +5,7 @@ Postgres parse-tree extract/model/render/check helpers over `libpg-query`. Class
 ## Contents
 
 - `parser.ts` — parse SQL statements to AST nodes
+- `support.ts` — executable support matrix and known deparser-gap contract
 - `extract.ts`, `extract-helpers.ts` — extract schema objects from DDL
 - `facts.ts` — finalize objects, canonical hashes, render-guard facts
 - `ast.ts`, `statements.ts`, `identifiers.ts` — AST and statement helpers

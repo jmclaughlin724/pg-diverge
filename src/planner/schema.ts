@@ -1,6 +1,7 @@
 import { resolveConfig } from "../config/schema.js";
 import type {
   Diagnostic,
+  MigrationIntent,
   MigrationOperation,
   MigrationOperationKind,
   MigrationPlan,
@@ -14,10 +15,10 @@ import type {
 import { diagnostic } from "../diagnostics.js";
 import { sha256, stableJson } from "../hash.js";
 import { sortOperations } from "./order.js";
-import { isDestructiveAllowed, refineReplaceOperation } from "./replace.js";
+import { destructiveAllowedDisposition, refineReplaceOperation } from "./replace.js";
 import { makeTableAlterOperation } from "./table.js";
 
-type DiffOptions = Pick<RenderOptions, "config">;
+type DiffOptions = Pick<RenderOptions, "config"> & { migrationIntent?: MigrationIntent };
 
 export function planSchemaDiff(
   from: SchemaModel,
@@ -32,9 +33,18 @@ export function planSchemaDiff(
   const consumedFrom = new Set<string>();
   const consumedTo = new Set<string>();
   applyRenameHints(fromMap, toMap, consumedFrom, consumedTo, operations, diagnostics, config);
-  appendChangedAndDroppedOperations(fromMap, toMap, consumedFrom, operations, config);
-  appendCreatedOperations(fromMap, toMap, consumedTo, operations, config);
-  appendReplacedRelationDependents(operations, from, to, config);
+  const migrationIntent = options.migrationIntent;
+  diagnostics.push(...(migrationIntent?.diagnostics ?? []));
+  appendChangedAndDroppedOperations(
+    fromMap,
+    toMap,
+    consumedFrom,
+    operations,
+    config,
+    migrationIntent
+  );
+  appendCreatedOperations(fromMap, toMap, consumedTo, operations, config, migrationIntent);
+  appendReplacedRelationDependents(operations, from, to, config, migrationIntent);
   const sortedOperations = sortOperations(operations, diagnostics);
   appendOperationDiagnostics(diagnostics, operations);
   if (sortedOperations.length === 0 && from.fingerprint !== to.fingerprint) {
@@ -101,17 +111,22 @@ function appendChangedAndDroppedOperations(
   toMap: Map<string, SchemaObject>,
   consumedFrom: Set<string>,
   operations: MigrationOperation[],
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
 ): void {
+  const droppedContext = droppedObjectContext(fromMap, toMap, consumedFrom);
   for (const [key, before] of fromMap) {
     if (consumedFrom.has(key)) {
       continue;
     }
     const after = toMap.get(key);
     if (!after) {
-      operations.push(makeOperation("drop", key, before, undefined, config));
+      if (isObjectDroppedWithOwner(before, droppedContext)) {
+        continue;
+      }
+      operations.push(makeOperation("drop", key, before, undefined, config, migrationIntent));
     } else if (before.hash !== after.hash) {
-      operations.push(makeChangedOperation(key, before, after, config));
+      operations.push(makeChangedOperation(key, before, after, config, migrationIntent));
     }
   }
 }
@@ -120,12 +135,16 @@ function makeChangedOperation(
   key: string,
   before: SchemaObject,
   after: SchemaObject,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
 ): MigrationOperation {
   return (
     makeEnumAddValuesOperation(before, after) ??
-    makeTableAlterOperation(before, after, config) ??
-    refineReplaceOperation(makeOperation("replace", key, before, after, config), config)
+    makeTableAlterOperation(before, after, config, migrationIntent) ??
+    refineReplaceOperation(
+      makeOperation("replace", key, before, after, config, migrationIntent),
+      config
+    )
   );
 }
 
@@ -134,13 +153,94 @@ function appendCreatedOperations(
   toMap: Map<string, SchemaObject>,
   consumedTo: Set<string>,
   operations: MigrationOperation[],
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
 ): void {
   for (const [key, after] of toMap) {
     if (!(consumedTo.has(key) || fromMap.has(key))) {
-      operations.push(makeOperation("create", key, undefined, after, config));
+      operations.push(makeOperation("create", key, undefined, after, config, migrationIntent));
     }
   }
+}
+
+interface DroppedObjectContext {
+  affectedRefs: Map<string, ObjectRef>;
+  grantTargetIdentities: Set<string>;
+  relationIdentities: Set<string>;
+}
+
+function droppedObjectContext(
+  fromMap: Map<string, SchemaObject>,
+  toMap: Map<string, SchemaObject>,
+  consumedFrom: Set<string>
+): DroppedObjectContext {
+  const context: DroppedObjectContext = {
+    affectedRefs: new Map(),
+    grantTargetIdentities: new Set(),
+    relationIdentities: new Set(),
+  };
+  for (const [key, object] of fromMap) {
+    if (consumedFrom.has(key) || toMap.has(key)) {
+      continue;
+    }
+    rememberAffectedRef(context.affectedRefs, object.ref);
+    const identity = grantTargetIdentity(object);
+    if (identity !== undefined) {
+      context.grantTargetIdentities.add(identity);
+    }
+    if (isRelationOwner(object.ref)) {
+      context.relationIdentities.add(refIdentity(object.ref));
+    }
+  }
+  return context;
+}
+
+function isObjectDroppedWithOwner(object: SchemaObject, context: DroppedObjectContext): boolean {
+  return (
+    isGrantForDroppedTarget(object, context.grantTargetIdentities) ||
+    isCommentDependent(object, context.affectedRefs) ||
+    isRelationStateForDroppedOwner(object, context.relationIdentities)
+  );
+}
+
+function isGrantForDroppedTarget(
+  object: SchemaObject,
+  droppedTargetIdentities: ReadonlySet<string>
+): boolean {
+  if (object.ref.kind !== "grant" && object.ref.kind !== "default-privilege") {
+    return false;
+  }
+  const targetIdentity = object.metadata.targetIdentity;
+  return typeof targetIdentity === "string" && droppedTargetIdentities.has(targetIdentity);
+}
+
+function grantTargetIdentity(object: SchemaObject): string | undefined {
+  if (object.ref.kind === "schema") {
+    return object.ref.name;
+  }
+  if (object.ref.kind === "function" || object.ref.kind === "procedure") {
+    return `${object.ref.schema ?? "public"}.${object.ref.name}(${object.ref.signature ?? ""})`;
+  }
+  if (object.ref.kind === "grant" || object.ref.kind === "default-privilege") {
+    return;
+  }
+  return `${object.ref.schema ?? "public"}.${object.ref.name}`;
+}
+
+function isRelationOwner(ref: ObjectRef): boolean {
+  return ref.kind === "table" || ref.kind === "foreign-table" || ref.kind === "materialized-view";
+}
+
+function isRelationStateForDroppedOwner(
+  object: SchemaObject,
+  relationIdentities: ReadonlySet<string>
+): boolean {
+  const tableIdentity = tableRefIdentity(object.ref);
+  return (
+    relationDependentKinds.has(object.ref.kind) &&
+    tableIdentity !== undefined &&
+    relationIdentities.has(tableIdentity)
+  );
 }
 
 function appendOperationDiagnostics(
@@ -169,7 +269,8 @@ function appendReplacedRelationDependents(
   operations: MigrationOperation[],
   from: SchemaModel,
   to: SchemaModel,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent?: MigrationIntent
 ): void {
   const replacedRelations = replacedRelationRefs(operations);
   if (replacedRelations.length === 0) {
@@ -177,8 +278,8 @@ function appendReplacedRelationDependents(
   }
 
   const context = replacedDependentContext(from, operations, replacedRelations);
-  expandAffectedRelationDependents(to.objects, operations, context, config);
-  appendAffectedComments(to.objects, operations, context, config);
+  expandAffectedRelationDependents(to.objects, operations, context, config, migrationIntent);
+  appendAffectedComments(to.objects, operations, context, config, migrationIntent);
 }
 
 interface ReplacedDependentContext {
@@ -218,13 +319,14 @@ function expandAffectedRelationDependents(
   objects: SchemaObject[],
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
 ): void {
   let changed = true;
   while (changed) {
     changed = false;
     for (const object of objects) {
-      if (appendAffectedRelationDependent(object, operations, context, config)) {
+      if (appendAffectedRelationDependent(object, operations, context, config, migrationIntent)) {
         changed = true;
       }
     }
@@ -235,18 +337,21 @@ function appendAffectedRelationDependent(
   object: SchemaObject,
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
 ): boolean {
   if (!isRelationDependent(object, context.relationIdentities)) {
     return false;
   }
   let changed = false;
   rememberAffectedRef(context.affectedRefs, object.ref);
-  if (appendBlockingDependentPreDrop(object, operations, context, config)) {
+  if (appendBlockingDependentPreDrop(object, operations, context, config, migrationIntent)) {
     changed = true;
   }
   if (!context.operationKeys.has(object.key)) {
-    operations.push(makeOperation("create", object.key, undefined, object, config));
+    operations.push(
+      makeOperation("create", object.key, undefined, object, config, migrationIntent)
+    );
     context.operationKeys.add(object.key);
     changed = true;
   }
@@ -257,7 +362,8 @@ function appendBlockingDependentPreDrop(
   object: SchemaObject,
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
 ): boolean {
   if (!(blockingRelationDependentKinds.has(object.ref.kind) && context.fromKeys.has(object.key))) {
     return false;
@@ -265,7 +371,7 @@ function appendBlockingDependentPreDrop(
   let changed = rememberRelationIdentity(context.relationIdentities, object.ref);
   const key = preDropKey(object.key);
   if (!context.operationKeys.has(key)) {
-    operations.push(makePreDropOperation(object, config));
+    operations.push(makePreDropOperation(object, config, migrationIntent));
     context.operationKeys.add(key);
     changed = true;
   }
@@ -285,7 +391,8 @@ function appendAffectedComments(
   objects: SchemaObject[],
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
 ): void {
   for (const object of objects) {
     if (
@@ -294,7 +401,9 @@ function appendAffectedComments(
     ) {
       continue;
     }
-    operations.push(makeOperation("create", object.key, undefined, object, config));
+    operations.push(
+      makeOperation("create", object.key, undefined, object, config, migrationIntent)
+    );
     context.operationKeys.add(object.key);
   }
 }
@@ -342,6 +451,10 @@ function commentTargetsRef(descriptor: string, ref: ObjectRef): boolean {
   switch (ref.kind) {
     case "table":
       return descriptor === `table ${identity}` || descriptor.startsWith(`column ${identity}.`);
+    case "foreign-table":
+      return (
+        descriptor === `foreign table ${identity}` || descriptor.startsWith(`column ${identity}.`)
+      );
     case "view":
       return descriptor === `view ${identity}` || descriptor.startsWith(`column ${identity}.`);
     case "materialized-view":
@@ -353,6 +466,20 @@ function commentTargetsRef(descriptor: string, ref: ObjectRef): boolean {
       return descriptor === `constraint ${tableRefIdentity(ref)}.${ref.name}`;
     case "index":
       return descriptor === `index ${identity}`;
+    case "schema":
+      return descriptor === `schema ${ref.name}`;
+    case "extension":
+      return descriptor === `extension ${ref.name}`;
+    case "sequence":
+      return descriptor === `sequence ${identity}`;
+    case "function":
+      return descriptor === `function ${identity}(${ref.signature ?? ""})`;
+    case "procedure":
+      return descriptor === `procedure ${identity}(${ref.signature ?? ""})`;
+    case "type":
+      return descriptor === `type ${identity}`;
+    case "domain":
+      return descriptor === `domain ${identity}`;
     case "policy":
       return descriptor === `policy ${tableRefIdentity(ref)}.${ref.name}`;
     case "trigger":
@@ -377,9 +504,13 @@ function preDropKey(key: string): string {
   return `pre-drop:${key}`;
 }
 
-function makePreDropOperation(object: SchemaObject, config: SupaschemaConfig): MigrationOperation {
+function makePreDropOperation(
+  object: SchemaObject,
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
+): MigrationOperation {
   return {
-    ...makeOperation("drop", object.key, object, undefined, config),
+    ...makeOperation("drop", object.key, object, undefined, config, migrationIntent),
     key: preDropKey(object.key),
   };
 }
@@ -427,7 +558,8 @@ function makeOperation(
   key: string,
   before: SchemaObject | undefined,
   after: SchemaObject | undefined,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
 ): MigrationOperation {
   const object = after ?? before;
   if (!object) {
@@ -435,8 +567,14 @@ function makeOperation(
   }
   const diagnostics: Diagnostic[] = [];
   const destructive = isDestructive(kind, object.ref.kind);
+  const destructiveDisposition = operationDestructiveDisposition(
+    key,
+    destructive,
+    config,
+    migrationIntent
+  );
   let blocked = false;
-  if (destructive && !isDestructiveAllowed(key, config)) {
+  if (destructive && !destructiveDisposition) {
     blocked = true;
     const difference = kind === "replace" ? describeReplaceDifference(before, after) : undefined;
     diagnostics.push(
@@ -489,7 +627,7 @@ function makeOperation(
     diagnostics,
     key,
     kind,
-    metadata: {},
+    metadata: operationMetadata(destructive, blocked, destructiveDisposition),
     ref: object.ref,
   };
   if (before) {
@@ -499,6 +637,39 @@ function makeOperation(
     operation.after = after;
   }
   return operation;
+}
+
+function operationDestructiveDisposition(
+  key: string,
+  destructive: boolean,
+  config: SupaschemaConfig,
+  migrationIntent: MigrationIntent | undefined
+): "destructive-config" | "destructive-hint" | "migration-intent" | undefined {
+  if (!destructive) {
+    return;
+  }
+  if (isMigrationIntentAllowed(key, migrationIntent)) {
+    return "migration-intent";
+  }
+  return destructiveAllowedDisposition(key, config);
+}
+
+function operationMetadata(
+  destructive: boolean,
+  blocked: boolean,
+  destructiveDisposition: string | undefined
+): Record<string, unknown> {
+  if (!destructive) {
+    return {};
+  }
+  return { destructiveDisposition: blocked ? "blocked" : destructiveDisposition };
+}
+
+function isMigrationIntentAllowed(
+  key: string,
+  migrationIntent: MigrationIntent | undefined
+): boolean {
+  return (migrationIntent?.destructiveKeys ?? []).includes(key);
 }
 function makeRenameOperation(before: SchemaObject, after: SchemaObject): MigrationOperation {
   const diagnostics: Diagnostic[] = [];
@@ -681,6 +852,8 @@ function isDestructive(kind: MigrationOperationKind, objectKind: ObjectKind): bo
       "enum",
       "sequence",
       "materialized-view",
+      "function",
+      "procedure",
       "grant",
       "default-privilege",
       "rls",

@@ -2,15 +2,22 @@ import type { MigrationOperation, SchemaObject, SupaschemaConfig } from "../core
 import { diagnostic } from "../diagnostics.js";
 import { stableJson } from "../hash.js";
 
-export function isDestructiveAllowed(key: string, config: SupaschemaConfig): boolean {
+export function destructiveAllowedDisposition(
+  key: string,
+  config: SupaschemaConfig
+): "destructive-config" | "destructive-hint" | undefined {
   if (config.destructiveChanges === "allow") {
-    return true;
+    return "destructive-config";
   }
   if (config.destructiveChanges === "block") {
-    return false;
+    return;
   }
   const hints = config.hints.destructive ?? [];
-  return hints.includes("*") || hints.includes(key);
+  return hints.includes("*") || hints.includes(key) ? "destructive-hint" : undefined;
+}
+
+export function isDestructiveAllowed(key: string, config: SupaschemaConfig): boolean {
+  return destructiveAllowedDisposition(key, config) !== undefined;
 }
 
 export function refineReplaceOperation(
@@ -84,7 +91,8 @@ function markDropRequired(
 ): MigrationOperation {
   operation.metadata[metadataFlag] = true;
   operation.destructive = true;
-  if (!isDestructiveAllowed(operation.key, config)) {
+  const disposition = destructiveAllowedDisposition(operation.key, config);
+  if (!disposition) {
     operation.blocked = true;
     operation.diagnostics.push(
       diagnostic(failure.code, "error", failure.message, {
@@ -93,6 +101,7 @@ function markDropRequired(
       })
     );
   }
+  operation.metadata.destructiveDisposition = disposition ?? "blocked";
   return operation;
 }
 

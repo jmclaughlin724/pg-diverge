@@ -26,6 +26,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_DIFF_LINEAGE_BROKEN` | error | The plan's from-state does not continue the newest pending supaschema migration in the output directory. |
 | `SUPA_DIFF_LINEAGE_DUPLICATE` | error | A pending supaschema migration already covers this exact from/to transition. |
 | `SUPA_DIFF_OUTPUT_EXISTS` | error | The output migration file already exists; supaschema never overwrites migrations. |
+| `SUPA_MIGRATION_INTENT_PARSE_SKIPPED` | warning | A configured migration file could not be fully parsed for source intent; destructive changes in that file may still require explicit hints. |
 | `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` | error | A destructive change lacks an explicit hint. |
 | `SUPA_PLAN_ADD_COLUMN_UNSAFE` | error | An additive column change needs explicit migration review. |
 | `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED` | error | Column drops and type changes render data-preserving ALTERs only after a destructive-change hint. |
@@ -61,10 +62,10 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_CHECK_NONTRANSACTIONAL_REFRESH` | error/warning | `REFRESH MATERIALIZED VIEW CONCURRENTLY` needs transaction wrapping disabled. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
 | `SUPA_CHECK_ALTER_COLUMN_TYPE_REWRITE` | warning | `ALTER COLUMN TYPE` can rewrite the table under an `ACCESS EXCLUSIVE` lock. |
 | `SUPA_CHECK_SET_NOT_NULL_SCAN` | warning | `SET NOT NULL` scans the table unless a validated `CHECK` constraint already proves it. |
-| `SUPA_CHECK_DEPARSE_MISMATCH` | warning | A statement does not round-trip through the deparser to an identical parse tree; `normalize: "deparse"` would keep its source text. |
-| `SUPA_CHECK_DEPARSE_UNSUPPORTED` | warning | A statement cannot be deparsed for the round-trip proof. |
-| `SUPA_NORMALIZE_FIDELITY` | warning | Deparsed SQL did not reparse to the identical parse tree; the object kept its source text under `normalize: "deparse"`. |
-| `SUPA_NORMALIZE_UNSUPPORTED` | warning | The deparser cannot render this object; it kept its source text under `normalize: "deparse"`. |
+| `SUPA_CHECK_DEPARSE_MISMATCH` | warning | A statement does not round-trip through the deparser to an identical parse tree; `normalize: "deparse"` would keep its source text. Known third-party deparser gaps recorded in `src/sql/support.ts` are suppressed. |
+| `SUPA_CHECK_DEPARSE_UNSUPPORTED` | warning | A statement cannot be deparsed for the round-trip proof. Known third-party deparser gaps recorded in `src/sql/support.ts` are suppressed. |
+| `SUPA_NORMALIZE_FIDELITY` | warning | Deparsed SQL did not reparse to the identical parse tree; the object kept its source text under `normalize: "deparse"`. Known object and statement gaps recorded in `src/sql/support.ts` keep source text without warning. |
+| `SUPA_NORMALIZE_UNSUPPORTED` | warning | The deparser cannot render this object; it kept its source text under `normalize: "deparse"`. Known object and statement gaps recorded in `src/sql/support.ts` keep source text without warning. |
 | `SUPA_CORPUS_RECONVERGENCE` | error | The corpus oracle did not converge: residual operations remain after applying the rendered reconciliation to the dirty corpus database, the second apply changed the catalog, or a pipeline stage failed. See [Corpus oracle](/guides/corpus-oracle). |
 | `SUPA_CHECK_VOLATILE_DEFAULT_REWRITE` | warning | `ADD COLUMN` with a volatile default rewrites the whole table. |
 | `SUPA_CHECK_INSERT_ON_CONFLICT` | error | `INSERT` statements in migrations must use `ON CONFLICT` for replay safety. |
