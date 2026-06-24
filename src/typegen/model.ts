@@ -3,7 +3,7 @@ import type { AstNode } from "../sql/ast.js";
 import { asRecord, readArray, readString, stringList, typeNameToSql } from "../sql/ast.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { canonicalColumnType, canonicalTableShape } from "../sql/table-shape.js";
-import { collectViewColumns } from "./views.js";
+import { collectViewColumns, type FunctionShapesByKey } from "./views.js";
 
 export interface ColumnShape {
   default?: unknown;
@@ -87,7 +87,7 @@ export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaSha
   await collectRelationAndFunctionShapes(model, shapes, tablesByKey);
   await applyModelConstraints(model, tablesByKey);
   resolveRelationshipTargets(tablesByKey);
-  await collectViewAndCompositeShapes(model, shapes, tablesByKey);
+  await collectViewAndCompositeShapes(model, shapes, tablesByKey, functionShapesByKey(shapes));
   return shapes;
 }
 
@@ -170,11 +170,12 @@ async function applyModelConstraints(
 async function collectViewAndCompositeShapes(
   model: SchemaModel,
   shapes: SchemaShapes,
-  tablesByKey: Map<string, TableShape>
+  tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey
 ): Promise<void> {
   for (const object of model.objects) {
     if (object.ref.kind === "view" || object.ref.kind === "materialized-view") {
-      await registerViewShape(shapes, tablesByKey, object);
+      await registerViewShape(shapes, tablesByKey, functionsByKey, object);
       continue;
     }
     if (object.ref.kind === "type") {
@@ -186,12 +187,26 @@ async function collectViewAndCompositeShapes(
 async function registerViewShape(
   shapes: SchemaShapes,
   tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
   object: SchemaObject
 ): Promise<void> {
   schemaEntry(shapes, object.ref.schema ?? "public").views.push({
-    columns: await collectViewColumns(object, tablesByKey),
+    columns: await collectViewColumns(object, tablesByKey, functionsByKey),
     name: object.ref.name,
   });
+}
+
+function functionShapesByKey(shapes: SchemaShapes): FunctionShapesByKey {
+  const byKey: FunctionShapesByKey = new Map();
+  for (const [schemaName, entry] of shapes.schemas) {
+    for (const fn of entry.functions) {
+      const key = `${schemaName}.${fn.name}`;
+      const functions = byKey.get(key) ?? [];
+      functions.push(fn);
+      byKey.set(key, functions);
+    }
+  }
+  return byKey;
 }
 
 async function registerCompositeShape(shapes: SchemaShapes, object: SchemaObject): Promise<void> {
