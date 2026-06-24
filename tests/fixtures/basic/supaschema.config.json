@@ -1,0 +1,5 @@
+{
+  "hints": {
+    "destructive": ["function:app.legacy_ping()"]
+  }
+}
