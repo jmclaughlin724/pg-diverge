@@ -205,6 +205,110 @@ function columnDefaultColumns(value: unknown): ColumnDefaultShapeColumn[] | unde
   return columns;
 }
 
+function updateTableColumnMetadata(
+  table: SchemaObject,
+  columnName: string,
+  canonicalColumn: ColumnDefaultShapeColumn,
+  overrides: { defaultExpression?: string; generatedExpression?: string } = {}
+): Record<string, unknown> {
+  const columns = metadataColumns(table.metadata.columns);
+  const columnIndex = columns?.findIndex((item) => item.name === columnName) ?? -1;
+  if (!(columns && columnIndex >= 0)) {
+    return table.metadata;
+  }
+  const nextColumns = [...columns];
+  const current = nextColumns[columnIndex];
+  if (!current) {
+    return table.metadata;
+  }
+  nextColumns[columnIndex] = renderColumnMetadata(current, canonicalColumn, overrides);
+  return { ...table.metadata, columns: nextColumns };
+}
+
+function metadataColumns(value: unknown): ColumnDefaultShapeColumn[] | undefined {
+  return columnDefaultColumns(value);
+}
+
+function renderColumnMetadata(
+  current: ColumnDefaultShapeColumn,
+  canonicalColumn: ColumnDefaultShapeColumn,
+  overrides: { defaultExpression?: string; generatedExpression?: string }
+): ColumnDefaultShapeColumn {
+  let next: ColumnDefaultShapeColumn = {
+    ...current,
+    notNull: canonicalColumn.notNull === true,
+  };
+  if (typeof canonicalColumn.type === "string") {
+    next.type = canonicalColumn.type;
+  }
+  if (canonicalColumn.default === undefined) {
+    const {
+      defaultExpression: _defaultExpression,
+      hasDefault: _hasDefault,
+      ...withoutDefault
+    } = next;
+    next = withoutDefault;
+  } else {
+    next.hasDefault = true;
+    if (overrides.defaultExpression !== undefined) {
+      next.defaultExpression = overrides.defaultExpression;
+    }
+  }
+  if (canonicalColumn.identity === undefined) {
+    const { identity: _identity, ...withoutIdentity } = next;
+    next = withoutIdentity;
+  } else {
+    next.identity = true;
+  }
+  if (canonicalColumn.generated === undefined) {
+    const {
+      generated: _generated,
+      generatedExpression: _generatedExpression,
+      ...withoutGenerated
+    } = next;
+    next = withoutGenerated;
+  } else {
+    next.generated = true;
+    if (overrides.generatedExpression !== undefined) {
+      next.generatedExpression = overrides.generatedExpression;
+    }
+  }
+  const definition = columnDefinitionFromMetadata(next, canonicalColumn);
+  if (definition !== undefined) {
+    next.definition = definition;
+  }
+  return next;
+}
+
+function columnDefinitionFromMetadata(
+  column: ColumnDefaultShapeColumn,
+  canonicalColumn: ColumnDefaultShapeColumn
+): string | undefined {
+  const type = typeof column.type === "string" ? column.type : undefined;
+  if (!type) {
+    return typeof column.definition === "string" ? column.definition : undefined;
+  }
+  let definition = type;
+  if (canonicalColumn.generated !== undefined && typeof column.generatedExpression === "string") {
+    definition += ` GENERATED ALWAYS AS (${column.generatedExpression}) STORED`;
+  } else if (typeof canonicalColumn.identity === "string") {
+    definition += ` GENERATED ${identityGenerationSql(canonicalColumn.identity)} AS IDENTITY`;
+  } else if (
+    canonicalColumn.default !== undefined &&
+    typeof column.defaultExpression === "string"
+  ) {
+    definition += ` DEFAULT ${column.defaultExpression}`;
+  }
+  if (canonicalColumn.notNull === true) {
+    definition += " NOT NULL";
+  }
+  return definition;
+}
+
+function identityGenerationSql(value: string): string {
+  return value === "d" ? "BY DEFAULT" : "ALWAYS";
+}
+
 function columnIdentityAmendment(object: SchemaObject): ColumnIdentityAmendment | undefined {
   const raw = asRecord(object.metadata.columnIdentityAmendment);
   if (!raw) {
@@ -260,6 +364,28 @@ function tablePartitionAmendment(object: SchemaObject): TablePartitionAmendment 
   };
 }
 
+function identityForAmendment(
+  amendment: ColumnIdentityAmendment,
+  column: ColumnDefaultShapeColumn
+): string | undefined {
+  if (amendment.identity !== undefined) {
+    return amendment.identity;
+  }
+  if (amendment.action === "add") {
+    return "a";
+  }
+  return typeof column.identity === "string" ? column.identity : undefined;
+}
+
+function unsupportedIdentityAmendmentDiagnostic(marker: SchemaObject): Diagnostic {
+  return diagnostic(
+    "SUPA_EXTRACT_UNSUPPORTED",
+    "error",
+    "ALTER COLUMN IDENTITY sequence options target a non-identity column in the source model",
+    { file: marker.file, ref: marker.ref, statement: marker.sql }
+  );
+}
+
 function isTableAmendmentMarker(object: SchemaObject): boolean {
   return (
     columnDefaultAmendment(object) !== undefined ||
@@ -310,17 +436,24 @@ function applyColumnDefaultAmendments(
       continue;
     }
     const nextColumns = [...columns];
+    let defaultExpression: string | undefined;
     if (amendment.expression === null) {
       const { default: _default, ...withoutDefault } = column;
       nextColumns[columnIndex] = withoutDefault;
     } else {
+      defaultExpression = expressionSql(amendment.expression);
       nextColumns[columnIndex] = {
         ...column,
         default: canonicalizeRegclassLiterals(stripLocations(amendment.expression)),
       };
     }
     const nextShape = { ...shape, columns: nextColumns };
-    table.metadata = { ...table.metadata, canonicalShape: nextShape };
+    table.metadata = {
+      ...updateTableColumnMetadata(table, amendment.column, nextColumns[columnIndex] ?? column, {
+        ...(defaultExpression === undefined ? {} : { defaultExpression }),
+      }),
+      canonicalShape: nextShape,
+    };
     table.hash = shapeHash(nextShape, table.key, table.ref);
     table.sql = `${table.sql};\n${marker.sql}`;
     table.dependencies = mergedDependencies([table, marker]);
@@ -363,15 +496,20 @@ function applyColumnIdentityAmendments(
       const { identity: _identity, ...withoutIdentity } = column;
       nextColumns[columnIndex] = withoutIdentity;
     } else {
+      const identity = identityForAmendment(amendment, column);
+      if (identity === undefined) {
+        diagnostics.push(unsupportedIdentityAmendmentDiagnostic(marker));
+        continue;
+      }
       const { default: _default, ...withoutDefault } = column;
       nextColumns[columnIndex] = {
         ...withoutDefault,
-        identity: amendment.identity ?? "a",
+        identity,
       };
     }
     const nextShape = { ...shape, columns: nextColumns };
     table.metadata = {
-      ...table.metadata,
+      ...updateTableColumnMetadata(table, amendment.column, nextColumns[columnIndex] ?? column),
       canonicalShape: nextShape,
       columnIdentitySqlByColumn: {
         ...asRecord(table.metadata.columnIdentitySqlByColumn),
@@ -444,8 +582,13 @@ function applyColumnGeneratedAmendments(
       generatedExpressions[amendment.column] = sql;
     }
     const nextShape = { ...shape, columns: nextColumns };
+    const generatedExpression = generatedExpressions[amendment.column];
     table.metadata = {
-      ...table.metadata,
+      ...updateTableColumnMetadata(table, amendment.column, nextColumns[columnIndex] ?? column, {
+        ...(generatedExpression === undefined
+          ? {}
+          : { generatedExpression: String(generatedExpression) }),
+      }),
       canonicalShape: nextShape,
       columnGeneratedExpressionSqlByColumn: generatedExpressions,
     };

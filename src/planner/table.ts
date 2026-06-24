@@ -18,7 +18,6 @@ interface ColumnAlteration {
   dropNotNull?: boolean;
   name: string;
   setDefault?: string;
-  setGenerated?: string;
   setIdentity?: string;
   setIdentitySql?: string;
   setNotNull?: boolean;
@@ -53,10 +52,7 @@ export function makeTableAlterOperation(
     return;
   }
   const attachPartitionSql = partitionAttachSql(beforeShape, afterShape, after);
-  const restChanged =
-    stableJson({ ...beforeShape, columns: undefined }) !==
-    stableJson({ ...afterShape, columns: undefined });
-  if (restChanged && attachPartitionSql === undefined) {
+  if (!restChangeCanUseTableAlterLane(beforeShape, afterShape, attachPartitionSql)) {
     return;
   }
   const beforeColumns = canonicalColumns(beforeShape);
@@ -66,7 +62,6 @@ export function makeTableAlterOperation(
   }
   const delta = tableColumnDelta(beforeColumns, afterColumns, tableColumns(after), {
     ...(attachPartitionSql ? { attachPartitionSql } : {}),
-    generatedExpressionSqlByColumn: generatedExpressionSqlByColumn(after),
     identitySqlByColumn: identitySqlByColumn(after),
   });
   if (!delta) {
@@ -101,7 +96,7 @@ export function makeTableAlterOperation(
       alteration.setIdentity !== undefined
   );
   const hasGeneratedChange = delta.alterColumns.some(
-    (alteration) => alteration.dropGenerated === true || alteration.setGenerated !== undefined
+    (alteration) => alteration.dropGenerated === true
   );
   if (hasTypeChange) {
     diagnostics.push(
@@ -175,7 +170,6 @@ function tableColumnDelta(
   renderedAfterColumns: TableColumn[],
   options: {
     attachPartitionSql?: string;
-    generatedExpressionSqlByColumn: Map<string, string>;
     identitySqlByColumn: Map<string, string>;
   }
 ): TableColumnDelta | undefined {
@@ -189,7 +183,6 @@ function tableColumnDelta(
     beforeByName,
     afterColumns,
     renderedAfterColumns,
-    options.generatedExpressionSqlByColumn,
     options.identitySqlByColumn
   );
   const delta = alterColumns ? { addColumns, alterColumns, dropColumns } : undefined;
@@ -202,7 +195,6 @@ function changedColumnAlterations(
   beforeByName: Map<string, CanonicalColumnEntry>,
   afterColumns: CanonicalColumnEntry[],
   renderedAfterColumns: TableColumn[],
-  generatedExpressionSqlByColumn: Map<string, string>,
   identitySqlByColumn: Map<string, string>
 ): ColumnAlteration[] | undefined {
   const alterations: ColumnAlteration[] = [];
@@ -215,7 +207,6 @@ function changedColumnAlterations(
       previous,
       column,
       renderedAfterColumns,
-      generatedExpressionSqlByColumn,
       identitySqlByColumn
     );
     if (!alteration) {
@@ -239,13 +230,12 @@ function columnAlteration(
   before: CanonicalColumnEntry,
   after: CanonicalColumnEntry,
   afterColumns: TableColumn[],
-  generatedExpressionSqlByColumn: Map<string, string>,
   identitySqlByColumn: Map<string, string>
 ): ColumnAlteration | undefined {
   const alteration: ColumnAlteration = { name: after.name };
   const facets = [
     explainIdentityFacet(before, after, identitySqlByColumn, alteration),
-    explainGeneratedFacet(before, after, afterColumns, generatedExpressionSqlByColumn, alteration),
+    explainGeneratedFacet(before, after, alteration),
     explainTypeFacet(before, after, alteration),
     explainNotNullFacet(before, after, alteration),
     explainDefaultFacet(before, after, afterColumns, alteration),
@@ -263,8 +253,6 @@ function columnAlteration(
 function explainGeneratedFacet(
   before: CanonicalColumnEntry,
   after: CanonicalColumnEntry,
-  afterColumns: TableColumn[],
-  generatedExpressionSqlByColumn: Map<string, string>,
   alteration: ColumnAlteration
 ): ColumnFacetChange {
   if (stableJson(before.generated ?? null) === stableJson(after.generated ?? null)) {
@@ -277,14 +265,7 @@ function explainGeneratedFacet(
   if (before.generated === undefined) {
     return { changed: true, explained: false };
   }
-  const expression =
-    generatedExpressionSqlByColumn.get(after.name) ??
-    afterColumns.find((column) => column.name === after.name)?.generatedExpression;
-  if (expression === undefined) {
-    return { changed: true, explained: false };
-  }
-  alteration.setGenerated = expression;
-  return { changed: true, explained: true };
+  return { changed: true, explained: false };
 }
 
 function explainTypeFacet(
@@ -404,6 +385,37 @@ function partitionAttachSql(
   return typeof sql === "string" && sql.length > 0 ? sql : undefined;
 }
 
+function restChangeCanUseTableAlterLane(
+  beforeShape: Record<string, unknown>,
+  afterShape: Record<string, unknown>,
+  attachPartitionSql: string | undefined
+): boolean {
+  const restChanged =
+    stableJson({ ...beforeShape, columns: undefined }) !==
+    stableJson({ ...afterShape, columns: undefined });
+  return (
+    !restChanged ||
+    (attachPartitionSql !== undefined && onlyPartitionAttachRestChanged(beforeShape, afterShape))
+  );
+}
+
+function onlyPartitionAttachRestChanged(
+  beforeShape: Record<string, unknown>,
+  afterShape: Record<string, unknown>
+): boolean {
+  return (
+    stableJson(restWithoutColumnsOrPartitionAttach(beforeShape)) ===
+    stableJson(restWithoutColumnsOrPartitionAttach(afterShape))
+  );
+}
+
+function restWithoutColumnsOrPartitionAttach(
+  shape: Record<string, unknown>
+): Record<string, unknown> {
+  const { columns: _columns, inhRelations: _inhRelations, partbound: _partbound, ...rest } = shape;
+  return rest;
+}
+
 function canonicalShape(object: SchemaObject): Record<string, unknown> | undefined {
   return recordFromObject(object.metadata.canonicalShape);
 }
@@ -463,24 +475,6 @@ function tableColumns(object: SchemaObject): TableColumn[] {
   });
 }
 
-function generatedExpressionSqlByColumn(object: SchemaObject): Map<string, string> {
-  const raw = recordFromObject(object.metadata.columnGeneratedExpressionSqlByColumn);
-  const map = new Map<string, string>();
-  if (raw) {
-    for (const [column, sql] of Object.entries(raw)) {
-      if (typeof sql === "string") {
-        map.set(column, sql);
-      }
-    }
-  }
-  for (const column of tableColumns(object)) {
-    if (typeof column.generatedExpression === "string") {
-      map.set(column.name, column.generatedExpression);
-    }
-  }
-  return map;
-}
-
 function identitySqlByColumn(object: SchemaObject): Map<string, string> {
   const raw = recordFromObject(object.metadata.columnIdentitySqlByColumn);
   const map = new Map<string, string>();
@@ -505,6 +499,9 @@ function recordFromObject(value: unknown): Record<string, unknown> | undefined {
 function unsafeAddColumnReason(column: TableColumn): string | undefined {
   if (column.notNull === true && column.hasDefault !== true) {
     return `column "${column.name}" is NOT NULL without a default and can fail on populated tables`;
+  }
+  if (column.hasInlineConstraint === true) {
+    return `column "${column.name}" has an inline validating constraint and can fail on populated tables`;
   }
   return;
 }

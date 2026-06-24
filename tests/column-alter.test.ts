@@ -138,30 +138,23 @@ describe("column-level alter lane", () => {
     expect(sql).not.toContain("DROP TABLE");
   });
 
-  it("renders generated expression changes as ALTER COLUMN SET EXPRESSION", async () => {
+  it("replaces generated expression changes instead of rendering PG17-only SET EXPRESSION", async () => {
     const before =
       "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text GENERATED ALWAYS AS (first_name) STORED);";
     const after =
       "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text GENERATED ALWAYS AS (upper(first_name)) STORED);";
-    const plan = await diff(before, after);
+    const plan = await diff(before, after, {
+      hints: { destructive: ["table:app.people"], renames: [] },
+    });
 
     const operation = plan.operations.find((item) => item.key === "table:app.people");
     const sql = renderMigration(plan, { includeHeader: false });
 
-    expect(operation?.kind).toBe("alter");
+    expect(operation?.kind).toBe("replace");
     expect(operation?.blocked).toBe(false);
-    expect(operation?.diagnostics).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: "SUPA_PLAN_COLUMN_GENERATED_REVIEW",
-          severity: "warning",
-        }),
-      ])
-    );
-    expect(sql).toContain(
-      'ALTER TABLE "app"."people" ALTER COLUMN "full_name" SET EXPRESSION AS (upper(first_name));'
-    );
-    expect(sql).not.toContain("DROP TABLE");
+    expect(sql).not.toContain("SET EXPRESSION");
+    expect(sql).toContain('DROP TABLE IF EXISTS "app"."people";');
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS app.people");
   });
 
   it("renders generated expression drops as ALTER COLUMN DROP EXPRESSION", async () => {
@@ -178,22 +171,54 @@ describe("column-level alter lane", () => {
     expect(sql).not.toContain("DROP TABLE");
   });
 
-  it("adds generated columns and hoisted inline constraints without blocking or duplicating constraints", async () => {
+  it("adds generated columns without blocking", async () => {
     const plan = await diff(
       "CREATE TABLE app.people (id bigint PRIMARY KEY);",
-      "CREATE TABLE app.people (id bigint PRIMARY KEY, age integer CHECK (age > 0), doubled integer GENERATED ALWAYS AS (age * 2) STORED);"
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, doubled integer GENERATED ALWAYS AS (id * 2) STORED);"
     );
     const tableOperation = plan.operations.find((item) => item.key === "table:app.people");
     const sql = renderMigration(plan, { includeHeader: false });
 
     expect(tableOperation?.kind).toBe("alter");
     expect(tableOperation?.blocked).toBe(false);
-    expect(sql).toContain('ALTER TABLE "app"."people" ADD COLUMN IF NOT EXISTS "age" integer;');
     expect(sql).toContain(
-      'ALTER TABLE "app"."people" ADD COLUMN IF NOT EXISTS "doubled" integer GENERATED ALWAYS AS (age * 2) STORED;'
+      'ALTER TABLE "app"."people" ADD COLUMN IF NOT EXISTS "doubled" integer GENERATED ALWAYS AS (id * 2) STORED;'
     );
-    expect(sql).not.toContain('ADD COLUMN IF NOT EXISTS "age" integer CHECK');
-    expect(sql).toContain("people_age_check");
+  });
+
+  it("blocks added columns with hoisted inline validating constraints", async () => {
+    const plan = await diff(
+      "CREATE TABLE app.people (id bigint PRIMARY KEY);",
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, age integer CHECK (age > 0));"
+    );
+    const tableOperation = plan.operations.find((item) => item.key === "table:app.people");
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(tableOperation?.kind).toBe("alter");
+    expect(tableOperation?.blocked).toBe(true);
+    expect(tableOperation?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SUPA_PLAN_ADD_COLUMN_UNSAFE",
+          severity: "error",
+        }),
+      ])
+    );
+    expect(sql).toContain("SUPA_PLAN_ADD_COLUMN_UNSAFE");
+    expect(sql).not.toContain('ADD COLUMN IF NOT EXISTS "age"');
+  });
+
+  it("uses amended generated metadata when adding a column", async () => {
+    const plan = await diff(
+      "CREATE TABLE app.people (first_name text);",
+      "CREATE TABLE app.people (first_name text, full_name text GENERATED ALWAYS AS (first_name) STORED); ALTER TABLE app.people ALTER COLUMN full_name SET EXPRESSION AS (upper(first_name));"
+    );
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(sql).toContain(
+      'ALTER TABLE "app"."people" ADD COLUMN IF NOT EXISTS "full_name" text GENERATED ALWAYS AS (upper(first_name)) STORED;'
+    );
+    expect(sql).not.toContain("GENERATED ALWAYS AS (first_name) STORED");
   });
 
   it("renders attached partitions without replacing the partition table", async () => {
@@ -218,6 +243,28 @@ describe("column-level alter lane", () => {
       "ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');"
     );
     expect(sql).not.toContain("DROP TABLE");
+  });
+
+  it("does not hide other table shape changes behind partition attach", async () => {
+    const before = `
+      CREATE SCHEMA app;
+      CREATE TABLE app.events (id bigint NOT NULL, created_at date NOT NULL) PARTITION BY RANGE (created_at);
+      CREATE TABLE app.events_2026_01 (id bigint NOT NULL, created_at date NOT NULL);
+    `;
+    const after = `
+      CREATE SCHEMA app;
+      CREATE TABLE app.events (id bigint NOT NULL, created_at date NOT NULL) PARTITION BY RANGE (created_at);
+      CREATE UNLOGGED TABLE app.events_2026_01 (id bigint NOT NULL, created_at date NOT NULL);
+      ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+    `;
+    const plan = await diff(before, after, {
+      hints: { destructive: ["table:app.events_2026_01"], renames: [] },
+    });
+    const operation = plan.operations.find((item) => item.key === "table:app.events_2026_01");
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(operation?.kind).toBe("replace");
+    expect(sql).toContain('DROP TABLE IF EXISTS "app"."events_2026_01";');
   });
 
   it("plans added table constraints as constraint creates, not table replaces", async () => {

@@ -31,7 +31,7 @@ describe("replaced relation dependents", () => {
       `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n${dependents}\n`
     );
     const to = await modelFromSql(
-      `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\n${dependents}\n`
+      `CREATE SCHEMA app;\nCREATE UNLOGGED TABLE app.t (id bigint, value bigint);\n${dependents}\n`
     );
 
     const plan = planSchemaDiff(from, to, { config: { hints: { destructive: ["table:app.t"] } } });
@@ -64,7 +64,7 @@ describe("replaced relation dependents", () => {
     const sql = renderMigration(plan, { includeHeader: false });
     const dropView = sql.indexOf('DROP VIEW IF EXISTS "app"."t_values";');
     const dropTable = sql.indexOf('DROP TABLE IF EXISTS "app"."t";');
-    const createTable = sql.indexOf("CREATE TABLE IF NOT EXISTS app.t");
+    const createTable = sql.indexOf("CREATE UNLOGGED TABLE IF NOT EXISTS app.t");
     const createView = sql.indexOf("CREATE OR REPLACE VIEW app.t_values AS SELECT");
     expect(dropView).toBeGreaterThanOrEqual(0);
     expect(dropTable).toBeGreaterThan(dropView);
@@ -91,7 +91,7 @@ describe("replaced relation dependents", () => {
       `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n${dependents}\n`
     );
     const to = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\nALTER TABLE app.t ADD CONSTRAINT t_value_check CHECK (value > 1);\nCREATE INDEX t_value_idx ON app.t (value);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\nCREATE POLICY t_read ON app.t FOR SELECT TO authenticated USING (true);\nGRANT SELECT ON TABLE app.t TO authenticated;\n"
+      "CREATE SCHEMA app;\nCREATE UNLOGGED TABLE app.t (id bigint, value bigint);\nALTER TABLE app.t ADD CONSTRAINT t_value_check CHECK (value > 1);\nCREATE INDEX t_value_idx ON app.t (value);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\nCREATE POLICY t_read ON app.t FOR SELECT TO authenticated USING (true);\nGRANT SELECT ON TABLE app.t TO authenticated;\n"
     );
 
     const plan = planSchemaDiff(from, to, { config: { destructiveChanges: "allow" } });
@@ -108,7 +108,7 @@ describe("replaced relation dependents", () => {
       "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n"
     );
     const to = await modelFromSql(
-      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\nCREATE MATERIALIZED VIEW app.m AS SELECT id FROM app.t;\n"
+      "CREATE SCHEMA app;\nCREATE UNLOGGED TABLE app.t (id bigint, value bigint);\nCREATE MATERIALIZED VIEW app.m AS SELECT id FROM app.t;\n"
     );
 
     const plan = planSchemaDiff(from, to, { config: { hints: { destructive: ["table:app.t"] } } });
@@ -127,7 +127,7 @@ describe("replaced relation dependents", () => {
       `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n${base}\n`
     );
     const to = await modelFromSql(
-      `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\n${base}\n`
+      `CREATE SCHEMA app;\nCREATE UNLOGGED TABLE app.t (id bigint, value bigint);\n${base}\n`
     );
 
     const plan = planSchemaDiff(from, to, {
@@ -150,7 +150,7 @@ describe("replaced relation dependents", () => {
       `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint, value bigint);\n${views}\n`
     );
     const to = await modelFromSql(
-      `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY, value bigint);\n${views}\n`
+      `CREATE SCHEMA app;\nCREATE UNLOGGED TABLE app.t (id bigint, value bigint);\n${views}\n`
     );
 
     const plan = planSchemaDiff(from, to, { config: { hints: { destructive: ["table:app.t"] } } });

@@ -181,9 +181,6 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
     );
     statements.push(`${prefix} TYPE ${record.type} USING ${quoteIdent(name)}::${record.type};`);
   }
-  if (typeof record.setGenerated === "string") {
-    statements.push(`${prefix} SET EXPRESSION AS (${record.setGenerated});`);
-  }
   if (record.dropGenerated === true) {
     statements.push(`${prefix} DROP EXPRESSION IF EXISTS;`);
   }

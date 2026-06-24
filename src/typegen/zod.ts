@@ -122,16 +122,74 @@ function emitCompositeDefinitions(
       if (!ident) {
         continue;
       }
-      const zodFor = (sqlType: string) =>
-        zodExpr(shapes, schemaName, enumIdents, compositeIdents, sqlType);
       lines.push(`const ${ident} = z.object({`);
       for (const column of item.columns) {
-        const base = zodFor(column.type);
-        lines.push(`  ${quoteKey(column.name)}: ${column.notNull ? base : `${base}.nullable()`},`);
+        const field = zodCompositeFieldExpr(
+          shapes,
+          schemaName,
+          enumIdents,
+          compositeIdents,
+          column.type
+        );
+        const value = column.notNull ? field.expression : `${field.expression}.nullable()`;
+        if (field.defer) {
+          lines.push(`  get ${getterKey(column.name)}() {`);
+          lines.push(`    return ${value};`);
+          lines.push("  },");
+        } else {
+          lines.push(`  ${quoteKey(column.name)}: ${value},`);
+        }
       }
       lines.push("});");
     }
   }
+}
+
+function zodCompositeFieldExpr(
+  shapes: SchemaShapes,
+  schemaName: string,
+  enumIdents: Map<string, string>,
+  compositeIdents: Map<string, string>,
+  sqlType: string
+): { defer: boolean; expression: string } {
+  const resolved = resolveColumnType(shapes, schemaName, sqlType);
+  return {
+    defer: resolved.kind === "composite",
+    expression: zodExprFromResolved(resolved, enumIdents, compositeIdents),
+  };
+}
+
+function getterKey(value: string): string {
+  return isIdentifierKey(value) ? value : `[${JSON.stringify(value)}]`;
+}
+
+function isIdentifierKey(value: string): boolean {
+  const first = value[0];
+  if (!isIdentifierStart(first)) {
+    return false;
+  }
+  for (let index = 1; index < value.length; index += 1) {
+    if (!isIdentifierContinue(value[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isIdentifierStart(char: string | undefined): boolean {
+  return char === "_" || char === "$" || isAsciiLetter(char);
+}
+
+function isIdentifierContinue(char: string | undefined): boolean {
+  return isIdentifierStart(char) || isAsciiDigit(char);
+}
+
+function isAsciiLetter(char: string | undefined): boolean {
+  return char !== undefined && ((char >= "a" && char <= "z") || (char >= "A" && char <= "Z"));
+}
+
+function isAsciiDigit(char: string | undefined): boolean {
+  return char !== undefined && char >= "0" && char <= "9";
 }
 
 function emitSchemaZod(
@@ -309,6 +367,14 @@ function zodExpr(
   sqlType: string
 ): string {
   const resolved = resolveColumnType(shapes, schemaName, sqlType);
+  return zodExprFromResolved(resolved, enumIdents, compositeIdents);
+}
+
+function zodExprFromResolved(
+  resolved: ReturnType<typeof resolveColumnType>,
+  enumIdents: Map<string, string>,
+  compositeIdents: Map<string, string>
+): string {
   let mapped: string;
   if (resolved.kind === "enum" && resolved.enumRef) {
     mapped = enumIdents.get(`${resolved.enumRef.schema}.${resolved.enumRef.name}`) ?? "z.unknown()";

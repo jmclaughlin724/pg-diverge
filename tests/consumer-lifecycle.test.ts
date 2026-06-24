@@ -552,7 +552,7 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     await run(install.file, install.args, { cwd: project, maxBuffer: 64 * 1024 * 1024 });
 
     const bin = installedPackageBinPath(project);
-    const init = await capture(process.execPath, [bin, "init"], project);
+    const init = await capture(process.execPath, [bin, "init", "--repair"], project);
     expect(init.code, init.stderr).toBe(0);
     expect(init.stdout).toContain("config repair");
 
