@@ -289,7 +289,12 @@ function explainIdentityFacet(
   identitySqlByColumn: Map<string, string>,
   alteration: ColumnAlteration
 ): ColumnFacetChange {
+  const sql = identitySqlByColumn.get(after.name);
   if (stableJson(before.identity ?? null) === stableJson(after.identity ?? null)) {
+    if (sql && stableJson(before.identitySql ?? null) !== stableJson(after.identitySql ?? null)) {
+      alteration.setIdentitySql = sql;
+      return { changed: true, explained: true };
+    }
     return { changed: false, explained: false };
   }
   if (after.identity === undefined) {
@@ -299,7 +304,6 @@ function explainIdentityFacet(
   if (typeof after.identity !== "string") {
     return { changed: true, explained: false };
   }
-  const sql = identitySqlByColumn.get(after.name);
   if (before.identity === undefined) {
     alteration.addIdentity = after.identity;
     if (sql) {
@@ -361,6 +365,7 @@ function residual(entry: CanonicalColumnEntry): string {
     default: _default,
     generated: _generated,
     identity: _identity,
+    identitySql: _identitySql,
     notNull: _notNull,
     type: _type,
     ...rest
