@@ -308,6 +308,20 @@ describe("zod schema generation", () => {
     expect(zod).toContain("export type EnumValue<");
   });
 
+  it("uses one identifier namespace for enum and composite validators", async () => {
+    const zod = await zodFor(`CREATE SCHEMA "tenant-a";
+CREATE SCHEMA tenant_a;
+CREATE TYPE "tenant-a".status AS ENUM ('active');
+CREATE TYPE tenant_a.status AS (value text);
+`);
+
+    expect(zod).toContain('const tenant_a_status = z.enum(["active"]);');
+    expect(zod).toContain("const tenant_a_status_2 = z.object({");
+    const lines = zod.split("\n");
+    expect(lines.filter((line) => line.startsWith("const tenant_a_status ="))).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith("const tenant_a_status_2 ="))).toHaveLength(1);
+  });
+
   it("validates composite-typed columns with generated composite object schemas", async () => {
     const zod = await zodFor(
       `CREATE SCHEMA app;

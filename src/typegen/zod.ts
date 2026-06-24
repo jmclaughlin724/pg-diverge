@@ -11,8 +11,9 @@ export function generateZodSchemas(shapes: SchemaShapes): string {
   const sortedSchemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
-  const enumIdents = buildTypeIdentifiers(sortedSchemas, "enums");
-  const compositeIdents = buildTypeIdentifiers(sortedSchemas, "composites");
+  const typeIdentifiers = new Set<string>();
+  const enumIdents = buildTypeIdentifiers(sortedSchemas, "enums", typeIdentifiers);
+  const compositeIdents = buildTypeIdentifiers(sortedSchemas, "composites", typeIdentifiers);
   const lines = zodHeader();
   emitEnumDefinitions(lines, sortedSchemas, enumIdents);
   emitCompositeDefinitions(lines, sortedSchemas, shapes, enumIdents, compositeIdents);
@@ -326,10 +327,10 @@ function emitZodViews(
 
 function buildTypeIdentifiers(
   schemas: SortedSchemas,
-  kind: "composites" | "enums"
+  kind: "composites" | "enums",
+  used: Set<string>
 ): Map<string, string> {
   const idents = new Map<string, string>();
-  const used = new Set<string>();
   for (const [schemaName, entry] of schemas) {
     for (const item of entry[kind]) {
       let ident = `${sanitizeIdent(schemaName)}_${sanitizeIdent(item.name)}`;

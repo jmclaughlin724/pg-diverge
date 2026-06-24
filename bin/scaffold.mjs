@@ -514,11 +514,11 @@ function mergeHookEntry(entries, incomingEntry) {
         )
       : -1;
   if (existingIndex >= 0) {
-    const merged = mergeMatchingHookEntry(entries[existingIndex], incomingEntry);
-    if (JSON.stringify(entries[existingIndex]) === JSON.stringify(merged)) {
+    const before = JSON.stringify(entries);
+    mergeMatchingHookEntry(entries, existingIndex, incomingEntry, incomingCommandIds);
+    if (before === JSON.stringify(entries)) {
       return "unchanged";
     }
-    entries[existingIndex] = merged;
     return "changed";
   }
   if (entries.some((entry) => JSON.stringify(entry) === JSON.stringify(incomingEntry))) {
@@ -528,26 +528,29 @@ function mergeHookEntry(entries, incomingEntry) {
   return "changed";
 }
 
-function mergeMatchingHookEntry(existingEntry, incomingEntry) {
+function mergeMatchingHookEntry(entries, existingIndex, incomingEntry, incomingCommandIds) {
+  const existingEntry = entries[existingIndex];
   if (!(isRecord(existingEntry) && isRecord(incomingEntry))) {
-    return incomingEntry;
+    entries[existingIndex] = incomingEntry;
+    return;
   }
   const existingHooks = Array.isArray(existingEntry.hooks) ? existingEntry.hooks : [];
-  const incomingHooks = Array.isArray(incomingEntry.hooks) ? incomingEntry.hooks : [];
-  const hooks = [...existingHooks];
-  for (const incomingHook of incomingHooks) {
-    const incomingId = hookCommandIdentity(incomingHook);
-    const index =
-      incomingId === undefined
-        ? -1
-        : hooks.findIndex((hook) => hookCommandIdentity(hook) === incomingId);
-    if (index >= 0) {
-      hooks[index] = incomingHook;
-    } else {
-      hooks.push(incomingHook);
-    }
+  const retainedHooks = existingHooks.filter((hook) => {
+    const id = hookCommandIdentity(hook);
+    return id === undefined || !incomingCommandIds.includes(id);
+  });
+  if (retainedHooks.length === 0) {
+    entries[existingIndex] = incomingEntry;
+    return;
   }
-  return { ...existingEntry, ...incomingEntry, hooks };
+  entries[existingIndex] = { ...existingEntry, hooks: retainedHooks };
+  if (!entries.some((entry, index) => index !== existingIndex && sameJson(entry, incomingEntry))) {
+    entries.splice(existingIndex + 1, 0, incomingEntry);
+  }
+}
+
+function sameJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function hookEntryCommandIdentities(entry) {

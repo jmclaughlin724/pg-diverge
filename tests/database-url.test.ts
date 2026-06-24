@@ -449,6 +449,69 @@ describe("init project setup", () => {
     });
   });
 
+  it("keeps consumer hooks on their original matcher when replacing package hooks", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-hook-split-"));
+    await writeNestedFile(
+      join(consumer, ".codex/hooks.json"),
+      `${JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: "Write",
+                hooks: [
+                  {
+                    command:
+                      "pnpm exec -- supaschema hook generated-migration-edit --runtime codex",
+                    statusMessage: "old message",
+                    timeout: 1,
+                    type: "command",
+                  },
+                  {
+                    command: "node ./custom-hook.mjs",
+                    timeout: 2,
+                    type: "command",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    await runScaffold(consumer);
+
+    interface HookEntry {
+      hooks?: { command?: string; timeout?: number; type?: string }[];
+      matcher?: string;
+    }
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    const preToolUse: HookEntry[] = Array.isArray(codexHooks.hooks.PreToolUse)
+      ? codexHooks.hooks.PreToolUse
+      : [];
+    const customEntries = preToolUse.filter((entry) =>
+      entry.hooks?.some((hook) => hook.command === "node ./custom-hook.mjs")
+    );
+    const packagedCodexHooks = JSON.parse(
+      await readFile(join(process.cwd(), "agent-bundle/codex/hooks.npm.json"), "utf8")
+    );
+    const packagedGeneratedEntry = packagedCodexHooks.hooks.PreToolUse.find((entry: HookEntry) =>
+      entry.hooks?.some((hook) =>
+        hook.command?.includes("supaschema hook generated-migration-edit")
+      )
+    );
+
+    expect(customEntries).toHaveLength(1);
+    expect(customEntries[0]).toMatchObject({ matcher: "Write" });
+    expect(customEntries[0]?.hooks).toEqual([
+      expect.objectContaining({ command: "node ./custom-hook.mjs", timeout: 2 }),
+    ]);
+    expect(preToolUse).toContainEqual(packagedGeneratedEntry);
+  });
+
   it("installs only package enforcement surfaces, not Anilize-style context or backups", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-anilize-context-"));
     await writeFile(
