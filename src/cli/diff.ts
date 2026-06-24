@@ -12,14 +12,16 @@ import { diagnostic, hasErrors } from "../diagnostics.js";
 import { defaultMigrationName } from "../migrations/files.js";
 import { latestLineage } from "../migrations/lineage.js";
 import { buildSchemaDiffPlan } from "../pipeline/diff.js";
+import { resolveGenerationSourceDefaults } from "../planning/context.js";
 import { redactSecrets } from "../redaction.js";
 import { renderMigrationSplit } from "../render/migration.js";
-import { resolveMigrationsDir, resolveSourceDefaults } from "../source/resolve.js";
+import { resolveMigrationsDir } from "../source/resolve.js";
 import type { SummaryTone } from "./tools.js";
 import { colorizeSummaryLine } from "./tools.js";
 
 interface PlanCommandOptions {
   from?: string;
+  migrationsDir?: string;
   schema?: string;
   timing?: boolean;
   to?: string;
@@ -42,7 +44,6 @@ export interface DiffCommandContext {
   configPath: () => string | undefined;
   loadCliConfig: () => Promise<SupaschemaConfig>;
   printDiagnostics: (diagnostics: Diagnostic[]) => void;
-  resolveCliDatabaseUrl: (explicit?: string) => Promise<string | undefined>;
 }
 
 export function registerDiffCommands(program: Command, context: DiffCommandContext): void {
@@ -55,7 +56,11 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
     .description("Print the planned object-level schema diff as JSON (use `diff` to render SQL).")
     .action(async (options: PlanCommandOptions) => {
       const config = await context.loadCliConfig();
-      const plan = await buildPlan(await withSourceDefaults(options, config, context), config);
+      const resolved = await withSourceDefaults(options, config);
+      if (printBlockingSourceDiagnostics(resolved, context)) {
+        return;
+      }
+      const plan = await buildPlan(resolved, config);
       context.printDiagnostics(plan.diagnostics);
       process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
       if (hasErrors(plan.diagnostics)) {
@@ -110,7 +115,10 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
           return;
         }
       }
-      const resolved = await withSourceDefaults(options, config, context);
+      const resolved = await withSourceDefaults(options, config);
+      if (printBlockingSourceDiagnostics(resolved, context)) {
+        return;
+      }
       if (resolved.watch) {
         await watchDiff(resolved, config, context);
         return;
@@ -123,20 +131,37 @@ function isZeroSourceDiff(options: PlanCommandOptions): boolean {
   return options.from === undefined && options.to === undefined;
 }
 
-type WithSources<T> = T & { from: string; to: string };
+type WithSources<T> = T & { from: string; sourceDiagnostics: Diagnostic[]; to: string };
 
 async function withSourceDefaults<T extends PlanCommandOptions>(
   options: T,
-  config: SupaschemaConfig,
-  context: DiffCommandContext
+  config: SupaschemaConfig
 ): Promise<WithSources<T>> {
-  const resolved = await resolveSourceDefaults(options, config, () =>
-    context.resolveCliDatabaseUrl()
-  );
+  const resolved = await resolveGenerationSourceDefaults(options, config);
   if (resolved.notice !== undefined) {
     process.stderr.write(resolved.notice);
   }
-  return { ...options, from: resolved.from, to: resolved.to };
+  return {
+    ...options,
+    from: resolved.from,
+    sourceDiagnostics: resolved.diagnostics,
+    to: resolved.to,
+  };
+}
+
+function printBlockingSourceDiagnostics(
+  options: WithSources<PlanCommandOptions>,
+  context: Pick<DiffCommandContext, "printDiagnostics">
+): boolean {
+  if (options.sourceDiagnostics.length === 0) {
+    return false;
+  }
+  context.printDiagnostics(options.sourceDiagnostics);
+  if (hasErrors(options.sourceDiagnostics)) {
+    process.exitCode = 2;
+    return true;
+  }
+  return false;
 }
 
 async function runDiff(
@@ -486,7 +511,7 @@ async function checkLineageChain(plan: MigrationPlan, directory: string): Promis
         "the plan's from-state does not continue the newest pending supaschema migration",
         {
           file: latest.file,
-          hint: `Pending migration ends at model ${latest.to.slice(0, 12)}… but this plan starts from ${plan.fromFingerprint.slice(0, 12)}…; diff from the post-migration state (e.g. --from database:<applied-db>) or pass --no-check-chain.`,
+          hint: `Pending migration ends at model ${latest.to.slice(0, 12)}… but this plan starts from ${plan.fromFingerprint.slice(0, 12)}…; resolve a source-backed post-migration baseline (for example git:<ref>, dir:<path>, dump:<file>, catalog:<snapshot>, or empty:) or pass --no-check-chain.`,
         }
       ),
     ];

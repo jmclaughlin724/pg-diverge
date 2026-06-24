@@ -1,7 +1,7 @@
 import { resolveConfig } from "../config/schema.js";
 import type {
   Diagnostic,
-  MigrationIntent,
+  MigrationCorpus,
   MigrationOperation,
   MigrationOperationKind,
   MigrationPlan,
@@ -18,7 +18,7 @@ import { sortOperations } from "./order.js";
 import { destructiveAllowedDisposition, refineReplaceOperation } from "./replace.js";
 import { makeTableAlterOperation } from "./table.js";
 
-type DiffOptions = Pick<RenderOptions, "config"> & { migrationIntent?: MigrationIntent };
+type DiffOptions = Pick<RenderOptions, "config"> & { migrationCorpus?: MigrationCorpus };
 
 export function planSchemaDiff(
   from: SchemaModel,
@@ -33,18 +33,18 @@ export function planSchemaDiff(
   const consumedFrom = new Set<string>();
   const consumedTo = new Set<string>();
   applyRenameHints(fromMap, toMap, consumedFrom, consumedTo, operations, diagnostics, config);
-  const migrationIntent = options.migrationIntent;
-  diagnostics.push(...(migrationIntent?.diagnostics ?? []));
+  const migrationCorpus = options.migrationCorpus;
+  diagnostics.push(...(migrationCorpus?.diagnostics ?? []));
   appendChangedAndDroppedOperations(
     fromMap,
     toMap,
     consumedFrom,
     operations,
     config,
-    migrationIntent
+    migrationCorpus
   );
-  appendCreatedOperations(fromMap, toMap, consumedTo, operations, config, migrationIntent);
-  appendReplacedRelationDependents(operations, from, to, config, migrationIntent);
+  appendCreatedOperations(fromMap, toMap, consumedTo, operations, config, migrationCorpus);
+  appendReplacedRelationDependents(operations, from, to, config, migrationCorpus);
   const sortedOperations = sortOperations(operations, diagnostics);
   appendOperationDiagnostics(diagnostics, operations);
   if (sortedOperations.length === 0 && from.fingerprint !== to.fingerprint) {
@@ -112,7 +112,7 @@ function appendChangedAndDroppedOperations(
   consumedFrom: Set<string>,
   operations: MigrationOperation[],
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): void {
   const droppedContext = droppedObjectContext(fromMap, toMap, consumedFrom);
   for (const [key, before] of fromMap) {
@@ -124,9 +124,9 @@ function appendChangedAndDroppedOperations(
       if (isObjectDroppedWithOwner(before, droppedContext)) {
         continue;
       }
-      operations.push(makeOperation("drop", key, before, undefined, config, migrationIntent));
+      operations.push(makeOperation("drop", key, before, undefined, config, migrationCorpus));
     } else if (before.hash !== after.hash) {
-      operations.push(makeChangedOperation(key, before, after, config, migrationIntent));
+      operations.push(makeChangedOperation(key, before, after, config, migrationCorpus));
     }
   }
 }
@@ -136,13 +136,13 @@ function makeChangedOperation(
   before: SchemaObject,
   after: SchemaObject,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): MigrationOperation {
   return (
     makeEnumAddValuesOperation(before, after) ??
-    makeTableAlterOperation(before, after, config, migrationIntent) ??
+    makeTableAlterOperation(before, after, config, migrationCorpus) ??
     refineReplaceOperation(
-      makeOperation("replace", key, before, after, config, migrationIntent),
+      makeOperation("replace", key, before, after, config, migrationCorpus),
       config
     )
   );
@@ -154,11 +154,11 @@ function appendCreatedOperations(
   consumedTo: Set<string>,
   operations: MigrationOperation[],
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): void {
   for (const [key, after] of toMap) {
     if (!(consumedTo.has(key) || fromMap.has(key))) {
-      operations.push(makeOperation("create", key, undefined, after, config, migrationIntent));
+      operations.push(makeOperation("create", key, undefined, after, config, migrationCorpus));
     }
   }
 }
@@ -270,7 +270,7 @@ function appendReplacedRelationDependents(
   from: SchemaModel,
   to: SchemaModel,
   config: SupaschemaConfig,
-  migrationIntent?: MigrationIntent
+  migrationCorpus?: MigrationCorpus
 ): void {
   const replacedRelations = replacedRelationRefs(operations);
   if (replacedRelations.length === 0) {
@@ -278,8 +278,8 @@ function appendReplacedRelationDependents(
   }
 
   const context = replacedDependentContext(from, operations, replacedRelations);
-  expandAffectedRelationDependents(to.objects, operations, context, config, migrationIntent);
-  appendAffectedComments(to.objects, operations, context, config, migrationIntent);
+  expandAffectedRelationDependents(to.objects, operations, context, config, migrationCorpus);
+  appendAffectedComments(to.objects, operations, context, config, migrationCorpus);
 }
 
 interface ReplacedDependentContext {
@@ -320,13 +320,13 @@ function expandAffectedRelationDependents(
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): void {
   let changed = true;
   while (changed) {
     changed = false;
     for (const object of objects) {
-      if (appendAffectedRelationDependent(object, operations, context, config, migrationIntent)) {
+      if (appendAffectedRelationDependent(object, operations, context, config, migrationCorpus)) {
         changed = true;
       }
     }
@@ -338,19 +338,19 @@ function appendAffectedRelationDependent(
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): boolean {
   if (!isRelationDependent(object, context.relationIdentities)) {
     return false;
   }
   let changed = false;
   rememberAffectedRef(context.affectedRefs, object.ref);
-  if (appendBlockingDependentPreDrop(object, operations, context, config, migrationIntent)) {
+  if (appendBlockingDependentPreDrop(object, operations, context, config, migrationCorpus)) {
     changed = true;
   }
   if (!context.operationKeys.has(object.key)) {
     operations.push(
-      makeOperation("create", object.key, undefined, object, config, migrationIntent)
+      makeOperation("create", object.key, undefined, object, config, migrationCorpus)
     );
     context.operationKeys.add(object.key);
     changed = true;
@@ -363,7 +363,7 @@ function appendBlockingDependentPreDrop(
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): boolean {
   if (!(blockingRelationDependentKinds.has(object.ref.kind) && context.fromKeys.has(object.key))) {
     return false;
@@ -371,7 +371,7 @@ function appendBlockingDependentPreDrop(
   let changed = rememberRelationIdentity(context.relationIdentities, object.ref);
   const key = preDropKey(object.key);
   if (!context.operationKeys.has(key)) {
-    operations.push(makePreDropOperation(object, config, migrationIntent));
+    operations.push(makePreDropOperation(object, config, migrationCorpus));
     context.operationKeys.add(key);
     changed = true;
   }
@@ -392,7 +392,7 @@ function appendAffectedComments(
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): void {
   for (const object of objects) {
     if (
@@ -402,7 +402,7 @@ function appendAffectedComments(
       continue;
     }
     operations.push(
-      makeOperation("create", object.key, undefined, object, config, migrationIntent)
+      makeOperation("create", object.key, undefined, object, config, migrationCorpus)
     );
     context.operationKeys.add(object.key);
   }
@@ -507,10 +507,10 @@ function preDropKey(key: string): string {
 function makePreDropOperation(
   object: SchemaObject,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): MigrationOperation {
   return {
-    ...makeOperation("drop", object.key, object, undefined, config, migrationIntent),
+    ...makeOperation("drop", object.key, object, undefined, config, migrationCorpus),
     key: preDropKey(object.key),
   };
 }
@@ -559,7 +559,7 @@ function makeOperation(
   before: SchemaObject | undefined,
   after: SchemaObject | undefined,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): MigrationOperation {
   const object = after ?? before;
   if (!object) {
@@ -571,7 +571,7 @@ function makeOperation(
     key,
     destructive,
     config,
-    migrationIntent
+    migrationCorpus
   );
   let blocked = false;
   if (destructive && !destructiveDisposition) {
@@ -643,12 +643,12 @@ function operationDestructiveDisposition(
   key: string,
   destructive: boolean,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): "destructive-config" | "destructive-hint" | "migration-intent" | undefined {
   if (!destructive) {
     return;
   }
-  if (isMigrationIntentAllowed(key, migrationIntent)) {
+  if (isMigrationCorpusAllowed(key, migrationCorpus)) {
     return "migration-intent";
   }
   return destructiveAllowedDisposition(key, config);
@@ -665,11 +665,11 @@ function operationMetadata(
   return { destructiveDisposition: blocked ? "blocked" : destructiveDisposition };
 }
 
-function isMigrationIntentAllowed(
+function isMigrationCorpusAllowed(
   key: string,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): boolean {
-  return (migrationIntent?.destructiveKeys ?? []).includes(key);
+  return (migrationCorpus?.destructiveKeys ?? []).includes(key);
 }
 function makeRenameOperation(before: SchemaObject, after: SchemaObject): MigrationOperation {
   const diagnostics: Diagnostic[] = [];

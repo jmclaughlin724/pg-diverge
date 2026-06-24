@@ -1,6 +1,6 @@
 import type {
   Diagnostic,
-  MigrationIntent,
+  MigrationCorpus,
   MigrationOperation,
   SchemaObject,
   SupaschemaConfig,
@@ -43,7 +43,7 @@ export function makeTableAlterOperation(
   before: SchemaObject,
   after: SchemaObject,
   config: SupaschemaConfig,
-  migrationIntent?: MigrationIntent
+  migrationCorpus?: MigrationCorpus
 ): MigrationOperation | undefined {
   if (before.ref.kind !== "table" || after.ref.kind !== "table") {
     return;
@@ -80,7 +80,7 @@ export function makeTableAlterOperation(
     delta.dropColumns.length > 0 ||
     delta.alterColumns.some((alteration) => alteration.type !== undefined);
   const destructiveDisposition = destructive
-    ? tableDestructiveDisposition(after.key, delta, config, migrationIntent)
+    ? tableDestructiveDisposition(after.key, delta, config, migrationCorpus)
     : undefined;
   const hasTypeChange = delta.alterColumns.some((alteration) => alteration.type !== undefined);
   const hasIdentityChange = delta.alterColumns.some(
@@ -202,7 +202,7 @@ function tableDestructiveDisposition(
   tableKey: string,
   delta: TableColumnDelta,
   config: SupaschemaConfig,
-  migrationIntent: MigrationIntent | undefined
+  migrationCorpus: MigrationCorpus | undefined
 ): "destructive-config" | "destructive-hint" | "migration-intent" | undefined {
   const configDisposition = destructiveAllowedDisposition(tableKey, config);
   if (configDisposition) {
@@ -214,7 +214,7 @@ function tableDestructiveDisposition(
   if (delta.dropColumns.length === 0) {
     return;
   }
-  const intendedDrops = new Set(migrationIntent?.tableColumnDrops ?? []);
+  const intendedDrops = new Set(migrationCorpus?.tableColumnDrops ?? []);
   return delta.dropColumns.every((column) =>
     intendedDrops.has(tableColumnDropKey(tableKey, column))
   )
@@ -508,38 +508,47 @@ function tableColumns(object: SchemaObject): TableColumn[] {
   if (!Array.isArray(columns)) {
     return [];
   }
-  return columns.flatMap((column) => {
-    const record = recordFromObject(column);
-    if (!record || typeof record.name !== "string" || typeof record.definition !== "string") {
-      return [];
+  const result: TableColumn[] = [];
+  for (const column of columns) {
+    const entry = tableColumnFromMetadata(column);
+    if (entry) {
+      result.push(entry);
     }
-    const entry: TableColumn = { definition: record.definition, name: record.name };
-    if (typeof record.defaultExpression === "string") {
-      entry.defaultExpression = record.defaultExpression;
-    }
-    if (record.generated === true) {
-      entry.generated = true;
-    }
-    if (typeof record.generatedExpression === "string") {
-      entry.generatedExpression = record.generatedExpression;
-    }
-    if (record.hasDefault === true) {
-      entry.hasDefault = true;
-    }
-    if (record.hasInlineConstraint === true) {
-      entry.hasInlineConstraint = true;
-    }
-    if (record.identity === true) {
-      entry.identity = true;
-    }
-    if (record.notNull === true) {
-      entry.notNull = true;
-    }
-    if (typeof record.type === "string") {
-      entry.type = record.type;
-    }
-    return [entry];
-  });
+  }
+  return result;
+}
+
+function tableColumnFromMetadata(column: unknown): TableColumn | undefined {
+  const record = recordFromObject(column);
+  if (!record || typeof record.name !== "string" || typeof record.definition !== "string") {
+    return;
+  }
+  const entry: TableColumn = { definition: record.definition, name: record.name };
+  if (typeof record.defaultExpression === "string") {
+    entry.defaultExpression = record.defaultExpression;
+  }
+  if (record.generated === "stored" || record.generated === "virtual") {
+    entry.generated = record.generated;
+  }
+  if (typeof record.generatedExpression === "string") {
+    entry.generatedExpression = record.generatedExpression;
+  }
+  if (record.hasDefault === true) {
+    entry.hasDefault = true;
+  }
+  if (record.hasInlineConstraint === true) {
+    entry.hasInlineConstraint = true;
+  }
+  if (record.identity === "always" || record.identity === "by-default") {
+    entry.identity = record.identity;
+  }
+  if (record.notNull === true) {
+    entry.notNull = true;
+  }
+  if (typeof record.type === "string") {
+    entry.type = record.type;
+  }
+  return entry;
 }
 
 function identitySqlByColumn(object: SchemaObject): Map<string, string> {

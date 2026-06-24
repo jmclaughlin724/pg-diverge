@@ -67,9 +67,17 @@ export {
 } from "./migrations/status.js";
 export type { DeploySafetyGateResult } from "./pipeline/deploy-safety.js";
 export { runRlsSafetyGate } from "./pipeline/deploy-safety.js";
+export { buildSchemaDiffPlan } from "./pipeline/diff.js";
 export type { TypeContractEvaluation } from "./pipeline/type-safety.js";
 export { runTypeSafetyGate } from "./pipeline/type-safety.js";
 export { planSchemaDiff } from "./planner/schema.js";
+export type {
+  ResolvedGenerationSources,
+  ResolveGenerationSourceOptions,
+  SchemaPlanningContext,
+  SchemaPlanningContextOptions,
+} from "./planning/context.js";
+export { buildSchemaPlanningContext, resolveGenerationSourceDefaults } from "./planning/context.js";
 export { renderMigration, renderMigrationSplit } from "./render/migration.js";
 export { extractSourceModel } from "./source/extract.js";
 export { generateDatabaseTypes } from "./typegen/database.js";

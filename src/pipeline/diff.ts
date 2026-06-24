@@ -1,10 +1,10 @@
 import { performance } from "node:perf_hooks";
 import type { SupaschemaConfig } from "../config/schema.js";
 import type { MigrationPlan, SchemaModel } from "../core.js";
-import { readMigrationIntent } from "../migrations/intent.js";
 import { planSchemaDiff } from "../planner/schema.js";
+import { buildSchemaPlanningContext } from "../planning/context.js";
 import { migrationSafetyPack, runRulePacks } from "../scan/rules.js";
-import { extractSourceModel, filterModelBySchemas } from "../source/extract.js";
+import { filterModelBySchemas } from "../source/extract.js";
 
 interface SchemaDiffPlanOptions {
   config: SupaschemaConfig;
@@ -17,31 +17,42 @@ interface SchemaDiffPlanOptions {
 }
 
 export async function buildSchemaDiffPlan(options: SchemaDiffPlanOptions): Promise<MigrationPlan> {
-  const extractOptions = {
+  const context = await buildSchemaPlanningContext(options);
+  if (context.diagnostics.some((item) => item.severity === "error")) {
+    return blockedPlan(options.from, options.to, context.diagnostics);
+  }
+  if (!(context.from && context.to && context.migrationCorpus)) {
+    return blockedPlan(options.from, options.to, context.diagnostics);
+  }
+  const plan = planSchemaDiff(context.from, context.to, {
     config: options.config,
-    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-  };
-  const migrationIntentOptions = options.cwd === undefined ? {} : { cwd: options.cwd };
-  const extractStart = performance.now();
-  const from = filterModel(await extractSourceModel(options.from, extractOptions), options.schema);
-  const fromMs = performance.now() - extractStart;
-  const toStart = performance.now();
-  const to = filterModel(await extractSourceModel(options.to, extractOptions), options.schema);
-  const migrationIntent = await readMigrationIntent(
-    options.migrationsDir ?? options.config.migrationsDir,
-    migrationIntentOptions
-  );
-  const toMs = performance.now() - toStart;
-  const planStart = performance.now();
-  const plan = planSchemaDiff(from, to, { config: options.config, migrationIntent });
+    migrationCorpus: context.migrationCorpus,
+  });
 
-  plan.diagnostics.push(...runRulePacks([migrationSafetyPack], { model: to, plan }));
+  plan.diagnostics.push(...context.diagnostics);
+  plan.diagnostics.push(...runRulePacks([migrationSafetyPack], { model: context.to, plan }));
   if (options.timing) {
     process.stderr.write(
-      `timing: extract-from ${Math.round(fromMs)}ms · extract-to ${Math.round(toMs)}ms · plan ${Math.round(performance.now() - planStart)}ms\n`
+      `timing: extract-from ${Math.round(context.fromMs)}ms · extract-to ${Math.round(context.toMs)}ms · plan ${Math.round(performance.now() - context.planStart)}ms\n`
     );
   }
   return plan;
+}
+
+function blockedPlan(
+  from: string,
+  to: string,
+  diagnostics: MigrationPlan["diagnostics"]
+): MigrationPlan {
+  return {
+    diagnostics,
+    fingerprint: "blocked",
+    from,
+    fromFingerprint: "",
+    operations: [],
+    to,
+    toFingerprint: "",
+  };
 }
 
 export function filterModel(model: SchemaModel, schemaFilter: string | undefined): SchemaModel {

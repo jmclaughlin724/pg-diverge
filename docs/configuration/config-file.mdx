@@ -16,7 +16,7 @@ keywords:
 | Decision | Config fields | Default meaning |
 | --- | --- | --- |
 | Schema tree and migration corpus | `schemaPaths`, `sources.to`, `migrationsDir` | Read every nested `.sql` file under `database/schemas`, diff toward `dir:database/schemas`, write migrations to `database/migrations`, and read existing migrations there as source intent. |
-| Diff baseline | `sources.from`, `sources.to` | Diff from `"auto"` to the configured schema tree. `"auto"` resolves `git:HEAD`, then a database URL, then `empty:`. |
+| Diff baseline | `sources.from`, `sources.to` | Diff from `"auto"` to the configured schema tree. For generation, `"auto"` resolves `git:HEAD`, then `empty:` only for a first migration with no existing migration corpus. |
 | Generated contracts | `typesFile`, `zodFile`, `workflow.type_generation`, `workflow.zod_generation`, `workflow.type_usage` | `supaschema types` creates or refreshes TypeScript and Zod outputs, and agents use Zod validators at runtime boundaries when configured. |
 | Apply policy | `workflow.migration_sync`, `sync.targets` | Keep bare `sync` apply-capable by default for one target with `mode: "auto"`; remote targets also require their approval environment variable. |
 
@@ -156,7 +156,7 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `renameDetection` | `"hints-only"` | `hints-only` uses `hints.renames`; `off` disables rename handling entirely. |
 | `schemaPaths` | `["database/schemas"]` | Paths read by `git:` sources and the default `--to dir:` target (the first entry). Install can scaffold provider-specific folders; the canonical path table lives in [Setup](/setup#path-selection). Configure the final paths here. `_bootstrap` directories under schema roots are skipped as provider/bootstrap inventory. |
 | `schemas.include` / `schemas.exclude` | `[]` | Persistent schema filters applied to every extracted model (the CLI `--schema` flag composes on top). |
-| `sources.from` | `"auto"` | Default before-state source for zero-source-flag `diff`, `plan`, and `verify`. `"auto"` resolves valid `git:HEAD`, then a database URL, then `empty:` for a first migration in a fresh repository. Pin `dump:`, `dir:`, `git:`, `database:`, `catalog:`, or `empty:` when the project has a specific baseline source. |
+| `sources.from` | `"auto"` | Default before-state source for zero-source-flag `diff`, `plan`, and `verify`. For generation, `"auto"` resolves valid `git:HEAD`, then `empty:` only for a first migration with no existing migration corpus. Pin `dump:`, `dir:`, `git:`, `catalog:`, or `empty:` when the project has a specific generation baseline. Use database-backed workflows for inspect, verify, selfcheck, drift, sync target safety, or catalog snapshot creation. |
 | `sources.to` | scaffolded to `dir:<schemaPaths[0]>` | Default after-state source for zero-source-flag `diff`, `plan`, and `verify`. If omitted, supaschema falls back to `dir:<config.schemaPaths[0]>`. |
 | `statementTimeout` | `"60s"` | Value for the `SET statement_timeout` migration preamble. |
 | `transactionMode` | `"per-migration"` | How `verify` applies the migration and how transaction hazards are graded. `per-migration` mirrors runners like `supabase db push` (one transaction per file); `per-statement` matches autocommit runners. |

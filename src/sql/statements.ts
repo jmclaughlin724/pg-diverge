@@ -69,14 +69,18 @@ export function tableMetadataFromAst(
     const definitionText = stripLeadingIdentifier(columnDefinitionText(element, bytes, byteOffset));
     const column: TableColumn = {
       definition: columnDefinitionSql(definitionText, facts.type),
-      generated: facts.generated,
       hasDefault: facts.hasDefault,
       hasInlineConstraint: facts.hasInlineConstraint,
-      identity: facts.identity,
       name: facts.name,
       notNull: facts.notNull,
       type: facts.type,
     };
+    if (facts.generated !== undefined) {
+      column.generated = facts.generated;
+    }
+    if (facts.identity !== undefined) {
+      column.identity = facts.identity;
+    }
     if (generatedExpression !== undefined) {
       column.generatedExpression = generatedExpression;
     }

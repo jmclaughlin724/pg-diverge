@@ -14,7 +14,7 @@ This directory converts before/after schema models into ordered migration operat
 ## Working Rules
 
 - Planner output should be explicit enough that renderers do not re-decide policy.
-- Destructive operations must carry disposition and diagnostics from config, hints, or migration intent.
+- Destructive operations must carry disposition and diagnostics from config, hints, or migration corpus.
 - Coordinate new operation kinds with render, check, tests, and docs.
 
 ## Verification

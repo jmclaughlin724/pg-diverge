@@ -2,7 +2,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { resolveConfig } from "../config/schema.js";
 import type { Diagnostic, SupaschemaConfig } from "../core.js";
-import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { defaultMigrationName } from "../migrations/files.js";
 import {
@@ -21,8 +20,11 @@ import {
 import { runRlsSafetyGate } from "../pipeline/deploy-safety.js";
 import { buildSchemaDiffPlan } from "../pipeline/diff.js";
 import { runTypeSafetyGate } from "../pipeline/type-safety.js";
+import {
+  type ResolvedGenerationSources,
+  resolveGenerationSourceDefaults,
+} from "../planning/context.js";
 import { renderMigrationSplit } from "../render/migration.js";
-import { resolveSourceDefaults } from "../source/resolve.js";
 import { generateTypeContracts } from "../typegen/contracts.js";
 import { checkPendingMigrations, loadSyncStatus, runnerFailureResult } from "./history.js";
 import { migrationTimestamp, render, stripSqlExtension } from "./report.js";
@@ -124,7 +126,20 @@ async function resolveSyncSourcesLane(state: SyncPipelineState): Promise<SyncRes
   if (state.options.pipeline !== true) {
     return;
   }
-  state.sources = await resolveSyncSources(state.options, state.config);
+  const sources = await resolveSyncSources(state.options, state.config);
+  state.diagnostics.push(...sources.diagnostics);
+  if (hasErrors(sources.diagnostics)) {
+    state.lines.push(
+      `refusing to ${operationName(state.options)}: generation source resolution failed`
+    );
+    return {
+      applied: false,
+      diagnostics: state.diagnostics,
+      pending: [],
+      report: render(state.lines),
+    };
+  }
+  state.sources = { from: sources.from, to: sources.to };
   return;
 }
 
@@ -322,10 +337,11 @@ function disabledSyncResult(
   };
 }
 
-function resolveSyncSources(options: SyncOptions, config: SupaschemaConfig): Promise<SyncSources> {
-  return resolveSourceDefaults(options, config, () =>
-    Promise.resolve(resolveDatabaseUrl(options.databaseUrl))
-  );
+function resolveSyncSources(
+  options: SyncOptions,
+  config: SupaschemaConfig
+): Promise<ResolvedGenerationSources> {
+  return resolveGenerationSourceDefaults({ ...options, migrationsDir: options.directory }, config);
 }
 
 async function runSyncDiffStage(
@@ -335,7 +351,12 @@ async function runSyncDiffStage(
   diagnostics: Diagnostic[],
   lines: string[]
 ): Promise<SyncResult | undefined> {
-  const plan = await buildSchemaDiffPlan({ config, from: sources.from, to: sources.to });
+  const plan = await buildSchemaDiffPlan({
+    config,
+    from: sources.from,
+    migrationsDir: options.directory,
+    to: sources.to,
+  });
   diagnostics.push(...plan.diagnostics);
   if (hasErrors(plan.diagnostics)) {
     lines.push(`refusing to ${operationName(options)}: schema diff has blocking diagnostics`);

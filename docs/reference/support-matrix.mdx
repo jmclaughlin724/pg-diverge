@@ -40,7 +40,7 @@ These classes are not inferred from the final table shape. They are supported on
 
 | Intent class | Required source | Correct behavior |
 | --- | --- | --- |
-| Row backfills and data DML | Existing reviewed migrations or an explicit new migration-intent artifact | Preserve, check, and verify the stated operation. Never invent row values, tenant predicates, or backfill criteria. |
+| Row backfills and data DML | Existing reviewed migrations or an explicit migration-corpus artifact | Preserve, check, and verify the stated operation. Never invent row values, tenant predicates, or backfill criteria. |
 | Enum rewrite recipes | Existing migrations or reviewed destructive/rename hints plus conversion SQL | Model the recipe as operational intent and require verify. Never treat enum removal/reordering as a simple declarative diff. |
 | Vault references | Schema/migration/config placeholder names or references | Preserve references and redacted placeholder names only. Never generate or print Vault secret material. |
 | Workload-derived indexes | Declarative index SQL, existing migrations, or a checked workload/index-intent artifact | Keep explicit index intent. Never synthesize indexes from table shape, naming conventions, or guessed query patterns. |

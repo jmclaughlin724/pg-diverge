@@ -478,7 +478,7 @@
       "properties": {
         "from": {
           "default": "auto",
-          "description": "Default before-state source. Use \"auto\" to resolve git:HEAD first, then a database URL, then empty:.",
+          "description": "Default before-state source. For generation, \"auto\" resolves git:HEAD first, then empty: only for a first migration with no existing migration corpus.",
           "examples": [
             "auto",
             "git:HEAD",

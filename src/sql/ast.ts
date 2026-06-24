@@ -200,10 +200,10 @@ export function objectWithArgsIdentity(value: unknown): FunctionIdentity | undef
 }
 
 export interface ColumnFacts {
-  generated: boolean;
+  generated?: "stored" | "virtual";
   hasDefault: boolean;
   hasInlineConstraint: boolean;
-  identity: boolean;
+  identity?: "always" | "by-default";
   location: number;
   name: string;
   notNull: boolean;
@@ -299,8 +299,8 @@ export function columnFacts(value: unknown): ColumnFacts | undefined {
   }
   let notNull = false;
   let hasDefault = false;
-  let identity = false;
-  let generated = false;
+  let identity: "always" | "by-default" | undefined;
+  let generated: "stored" | "virtual" | undefined;
   let hasInlineConstraint = false;
   for (const item of readArray(column.constraints)) {
     const constraint = asRecord(asRecord(item)?.Constraint);
@@ -313,10 +313,10 @@ export function columnFacts(value: unknown): ColumnFacts | undefined {
         hasDefault = true;
         break;
       case "CONSTR_IDENTITY":
-        identity = true;
+        identity = identityMode(readString(constraint?.generated_when));
         break;
       case "CONSTR_GENERATED":
-        generated = true;
+        generated = generatedColumnKind(readString(constraint?.generated_when));
         break;
       case "CONSTR_NULL":
         break;
@@ -328,13 +328,21 @@ export function columnFacts(value: unknown): ColumnFacts | undefined {
     }
   }
   return {
-    generated,
+    ...(generated === undefined ? {} : { generated }),
     hasDefault,
     hasInlineConstraint,
-    identity,
+    ...(identity === undefined ? {} : { identity }),
     location: readNumber(column.location) ?? -1,
     name,
     notNull,
     type: typeNameToSql(column.typeName),
   };
+}
+
+function identityMode(value: string | undefined): "always" | "by-default" {
+  return value === "d" ? "by-default" : "always";
+}
+
+function generatedColumnKind(value: string | undefined): "stored" | "virtual" {
+  return value === "v" ? "virtual" : "stored";
 }
