@@ -71,7 +71,14 @@ export function canonicalTableShape(node: AstNode): Record<string, unknown> {
       schema: readString(relation?.schemaname) ?? "public",
     },
   };
-  for (const semanticKey of ["inhRelations", "oncommit", "options", "partspec", "tablespacename"]) {
+  for (const semanticKey of [
+    "inhRelations",
+    "oncommit",
+    "options",
+    "partbound",
+    "partspec",
+    "tablespacename",
+  ]) {
     if (node[semanticKey] !== undefined && node[semanticKey] !== null) {
       shape[semanticKey] = stripLocations(node[semanticKey]);
     }

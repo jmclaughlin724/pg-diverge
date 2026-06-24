@@ -1,3 +1,4 @@
+import { deparseSync } from "pgsql-deparser";
 import type { ObjectRef, SchemaObject, TableColumn } from "../core.js";
 import { sha256, stableJson } from "../hash.js";
 import type { AstNode } from "./ast.js";
@@ -64,8 +65,11 @@ export function tableMetadataFromAst(
     if (!facts) {
       continue;
     }
+    const generatedExpression = columnGeneratedExpression(element.node);
     const column: TableColumn = {
-      definition: normalizeSql(stripLeadingIdentifier(text)),
+      definition: normalizeSql(
+        stripLeadingIdentifier(columnDefinitionText(element, bytes, byteOffset))
+      ),
       generated: facts.generated,
       hasDefault: facts.hasDefault,
       hasInlineConstraint: facts.hasInlineConstraint,
@@ -74,6 +78,9 @@ export function tableMetadataFromAst(
       notNull: facts.notNull,
       type: facts.type,
     };
+    if (generatedExpression !== undefined) {
+      column.generatedExpression = generatedExpression;
+    }
     const defaultExpression = columnDefaultExpression(element, bytes, byteOffset);
     if (defaultExpression !== undefined) {
       column.defaultExpression = fromByteString(defaultExpression);
@@ -84,6 +91,17 @@ export function tableMetadataFromAst(
     columns,
     constraintFragments: constraintFragments.sort((left, right) => left.localeCompare(right)),
   };
+}
+
+export function expressionSql(expression: unknown): string | undefined {
+  if (!expression || typeof expression !== "object") {
+    return;
+  }
+  try {
+    return normalizeSql(deparseSync(JSON.parse(JSON.stringify(expression))));
+  } catch {
+    return;
+  }
 }
 
 export function tableElements(createStmt: AstNode, sql: string, byteOffset = 0): TableElement[] {
@@ -117,6 +135,59 @@ export function tableElements(createStmt: AstNode, sql: string, byteOffset = 0):
     node: element.node,
     start: element.location,
   }));
+}
+
+function columnDefinitionText(element: TableElement, bytes: string, byteOffset: number): string {
+  const located = locatedColumnConstraints(element, byteOffset);
+  let piece = "";
+  let cursor = element.start;
+  for (const [index, item] of located.entries()) {
+    const end = located[index + 1]?.location ?? element.end;
+    const contype = readString(item.constraint.contype);
+    if (contype && hoistedInlineConstraintTypes.has(contype)) {
+      piece += bytes.slice(cursor, item.location);
+      cursor = end;
+    }
+  }
+  piece += bytes.slice(cursor, element.end);
+  let text = fromByteString(piece).trim();
+  if (text.endsWith(",")) {
+    text = text.slice(0, -1).trimEnd();
+  }
+  return text;
+}
+
+function locatedColumnConstraints(
+  element: TableElement,
+  byteOffset: number
+): { constraint: AstNode; location: number }[] {
+  return readArray(element.node.constraints)
+    .map((item) => asRecord(asRecord(item)?.Constraint))
+    .filter((item): item is AstNode => item !== undefined)
+    .map((constraint) => ({
+      constraint,
+      location: (readNumber(constraint.location) ?? -1) - byteOffset,
+    }))
+    .filter((item) => item.location >= 0)
+    .sort((left, right) => left.location - right.location);
+}
+
+const hoistedInlineConstraintTypes = new Set([
+  "CONSTR_CHECK",
+  "CONSTR_FOREIGN",
+  "CONSTR_PRIMARY",
+  "CONSTR_UNIQUE",
+]);
+
+function columnGeneratedExpression(columnDef: AstNode): string | undefined {
+  for (const item of readArray(columnDef.constraints)) {
+    const constraint = asRecord(asRecord(item)?.Constraint);
+    if (readString(constraint?.contype) !== "CONSTR_GENERATED") {
+      continue;
+    }
+    return expressionSql(constraint?.raw_expr);
+  }
+  return;
 }
 
 function columnDefaultExpression(

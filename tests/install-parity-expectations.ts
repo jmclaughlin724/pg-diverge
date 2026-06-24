@@ -61,7 +61,8 @@ export const supabaseSync = {
 
 export function expectedInstalledConfig(
   schemaPath: string,
-  migrationsDir: string
+  migrationsDir: string,
+  options: { workflow?: Partial<typeof defaultWorkflow> } = {}
 ): Record<string, unknown> {
   return {
     $schema: "./node_modules/supaschema/supaschema-config.schema.json",
@@ -78,7 +79,7 @@ export function expectedInstalledConfig(
     },
     idempotency: "required",
     lockTimeout: "5s",
-    workflow: defaultWorkflow,
+    workflow: { ...defaultWorkflow, ...(options.workflow ?? {}) },
     sync: schemaPath === "supabase/schemas" ? supabaseSync : defaultSync,
     migrationsDir,
     typesFile: "database.types.ts",
@@ -89,7 +90,7 @@ export function expectedInstalledConfig(
     renameDetection: "hints-only",
     schemaPaths: [schemaPath],
     schemas: {
-      exclude: [],
+      exclude: schemaPath === "supabase/schemas" ? managedSchemas : [],
       include: [],
     },
     sources: {
@@ -106,14 +107,12 @@ export const activeAgentFiles = [
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema/SKILL.md",
   ".claude/hooks/guards/bash-policy-checks.mjs",
-  ".claude/hooks/supaschema-source-hook.mjs",
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/rules/supaschema.md",
   ".claude/settings.json",
   ".claude/skills/supaschema/SKILL.md",
   ".codex/hooks/general-guard.mjs",
   ".codex/hooks/guards/bash-policy-checks.mjs",
-  ".codex/hooks/supaschema-source-hook.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks.json",
   ".codex/rules/supaschema.rules",
@@ -123,9 +122,15 @@ export const rawAgentBundleFiles = [
   "node_modules/supaschema/agent-bundle/INSTALL.md",
   "node_modules/supaschema/agent-bundle/agents/prompts/supaschema-install.md",
   "node_modules/supaschema/agent-bundle/agents/skills/supaschema/SKILL.md",
+  "node_modules/supaschema/agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
+  "node_modules/supaschema/agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
   "node_modules/supaschema/agent-bundle/claude/rules/supaschema.md",
   "node_modules/supaschema/agent-bundle/claude/settings.npm.json",
+  "node_modules/supaschema/agent-bundle/claude/skills/supaschema/SKILL.md",
+  "node_modules/supaschema/agent-bundle/codex/hooks/general-guard.mjs",
+  "node_modules/supaschema/agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
   "node_modules/supaschema/agent-bundle/codex/hooks.npm.json",
+  "node_modules/supaschema/agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs",
   "node_modules/supaschema/agent-bundle/codex/rules/supaschema.rules",
 ];
 

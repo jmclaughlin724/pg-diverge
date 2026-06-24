@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest";
 import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../src/core.js";
 import { planSchemaDiff } from "../src/planner/schema.js";
 import { renderMigration } from "../src/render/migration.js";
+import { normalizeSourceObjects } from "../src/source/normalize.js";
 import { extractObjectsFromSql } from "../src/sql/extract.js";
 
 async function model(sql: string, source: string): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql);
-  const errors = extracted.diagnostics.filter((item) => item.severity === "error");
+  const diagnostics = [...extracted.diagnostics];
+  const objects = await normalizeSourceObjects(extracted.objects, diagnostics);
+  const errors = diagnostics.filter((item) => item.severity === "error");
   if (errors.length > 0) {
     throw new Error(`expected extraction to succeed: ${JSON.stringify(errors)}`);
   }
-  return { diagnostics: [], fingerprint: source, objects: extracted.objects, source };
+  return { diagnostics: [], fingerprint: source, objects, source };
 }
 
 async function diff(
@@ -110,15 +113,111 @@ describe("column-level alter lane", () => {
     expect(sql).toContain('ALTER TABLE "app"."accounts" ALTER COLUMN "score" DROP DEFAULT;');
   });
 
-  it("falls back to the destructive replace lane for identity changes", async () => {
+  it("renders identity changes as ALTER COLUMN identity statements", async () => {
     const plan = await diff(
       baseTable,
       "CREATE TABLE app.accounts (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, label varchar(10) NOT NULL, score integer DEFAULT 0);"
     );
 
     const operation = plan.operations.find((item) => item.key === "table:app.accounts");
-    expect(operation?.kind).toBe("replace");
-    expect(operation?.blocked).toBe(true);
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(operation?.kind).toBe("alter");
+    expect(operation?.blocked).toBe(false);
+    expect(operation?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SUPA_PLAN_COLUMN_IDENTITY_REVIEW",
+          severity: "warning",
+        }),
+      ])
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "app"."accounts" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY;'
+    );
+    expect(sql).not.toContain("DROP TABLE");
+  });
+
+  it("renders generated expression changes as ALTER COLUMN SET EXPRESSION", async () => {
+    const before =
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text GENERATED ALWAYS AS (first_name) STORED);";
+    const after =
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text GENERATED ALWAYS AS (upper(first_name)) STORED);";
+    const plan = await diff(before, after);
+
+    const operation = plan.operations.find((item) => item.key === "table:app.people");
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(operation?.kind).toBe("alter");
+    expect(operation?.blocked).toBe(false);
+    expect(operation?.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SUPA_PLAN_COLUMN_GENERATED_REVIEW",
+          severity: "warning",
+        }),
+      ])
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "app"."people" ALTER COLUMN "full_name" SET EXPRESSION AS (upper(first_name));'
+    );
+    expect(sql).not.toContain("DROP TABLE");
+  });
+
+  it("renders generated expression drops as ALTER COLUMN DROP EXPRESSION", async () => {
+    const before =
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text GENERATED ALWAYS AS (upper(first_name)) STORED);";
+    const after =
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, first_name text, full_name text);";
+    const plan = await diff(before, after);
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(sql).toContain(
+      'ALTER TABLE "app"."people" ALTER COLUMN "full_name" DROP EXPRESSION IF EXISTS;'
+    );
+    expect(sql).not.toContain("DROP TABLE");
+  });
+
+  it("adds generated columns and hoisted inline constraints without blocking or duplicating constraints", async () => {
+    const plan = await diff(
+      "CREATE TABLE app.people (id bigint PRIMARY KEY);",
+      "CREATE TABLE app.people (id bigint PRIMARY KEY, age integer CHECK (age > 0), doubled integer GENERATED ALWAYS AS (age * 2) STORED);"
+    );
+    const tableOperation = plan.operations.find((item) => item.key === "table:app.people");
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(tableOperation?.kind).toBe("alter");
+    expect(tableOperation?.blocked).toBe(false);
+    expect(sql).toContain('ALTER TABLE "app"."people" ADD COLUMN IF NOT EXISTS "age" integer;');
+    expect(sql).toContain(
+      'ALTER TABLE "app"."people" ADD COLUMN IF NOT EXISTS "doubled" integer GENERATED ALWAYS AS (age * 2) STORED;'
+    );
+    expect(sql).not.toContain('ADD COLUMN IF NOT EXISTS "age" integer CHECK');
+    expect(sql).toContain("people_age_check");
+  });
+
+  it("renders attached partitions without replacing the partition table", async () => {
+    const before = `
+      CREATE SCHEMA app;
+      CREATE TABLE app.events (id bigint NOT NULL, created_at date NOT NULL) PARTITION BY RANGE (created_at);
+      CREATE TABLE app.events_2026_01 (id bigint NOT NULL, created_at date NOT NULL);
+    `;
+    const after = `
+      CREATE SCHEMA app;
+      CREATE TABLE app.events (id bigint NOT NULL, created_at date NOT NULL) PARTITION BY RANGE (created_at);
+      CREATE TABLE app.events_2026_01 (id bigint NOT NULL, created_at date NOT NULL);
+      ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+    `;
+    const plan = await diff(before, after);
+    const operation = plan.operations.find((item) => item.key === "table:app.events_2026_01");
+    const sql = renderMigration(plan, { includeHeader: false });
+
+    expect(operation?.kind).toBe("alter");
+    expect(operation?.blocked).toBe(false);
+    expect(sql).toContain(
+      "ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');"
+    );
+    expect(sql).not.toContain("DROP TABLE");
   });
 
   it("plans added table constraints as constraint creates, not table replaces", async () => {

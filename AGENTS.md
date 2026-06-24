@@ -9,7 +9,7 @@ This file is the repository instruction entrypoint and route map. Durable operat
 ## Rule Owners
 
 - Operating discipline, gates, `$elegant`, enforcement closure, npm-only toolchain, and closeout: `.claude/rules/01-operating-rules.md`
-- Migration and generated-surface policy: `.claude/rules/supaschema.md`
+- Migration, source-intent extraction, and generated-surface policy: `.claude/rules/supaschema.md`
 - Code Atlas graph proof standard: `.claude/rules/10-code-atlas.md`
 - Agent MCP/FastMCP surface: `.claude/rules/11-agent-mcp-fastmcp.md`
 - Package and public consumer boundary: `.claude/rules/13-npm-package-boundary.md`

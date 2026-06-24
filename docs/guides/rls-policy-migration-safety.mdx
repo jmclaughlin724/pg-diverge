@@ -8,6 +8,8 @@ Use this when Row Level Security predicates protect tenants or other sensitive b
 
 `supaschema` compares policy definitions structurally. A changed `USING` expression, `WITH CHECK` expression, command, role list, or permissive/restrictive mode is treated as a real schema change.
 
+The RLS safety pack also surfaces Supabase-specific policy issues from parsed policy metadata: `auth.role()` usage, direct `auth.uid()` calls that are not wrapped as `(select auth.uid())`, update-capable policies without explicit `WITH CHECK`, policies without enabled RLS, and enabled RLS tables with no policies.
+
 ## Use this when
 
 - Policy bodies are part of your access-control model.

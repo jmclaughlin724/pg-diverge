@@ -277,6 +277,9 @@ async function readSqlFiles(root: string): Promise<SqlFile[]> {
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const fullPath = join(directory, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name === "_bootstrap") {
+          continue;
+        }
         await walk(fullPath);
         continue;
       }
@@ -306,7 +309,7 @@ async function readGitSqlFiles(
     const paths = stdout
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.endsWith(".sql"));
+      .filter((line) => line.endsWith(".sql") && !isBootstrapInventoryPath(line));
     for (const path of paths) {
       const { stdout: sql } = await execFileAsync("git", ["-C", cwd, "show", `${ref}:${path}`], {
         maxBuffer: 1024 * 1024 * 20,
@@ -316,6 +319,30 @@ async function readGitSqlFiles(
   }
   return files;
 }
+
+function isBootstrapInventoryPath(path: string): boolean {
+  return pathSegments(path).includes("_bootstrap");
+}
+
+function pathSegments(path: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  for (const char of path) {
+    if (char === "/" || char === "\\") {
+      if (current.length > 0) {
+        segments.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current.length > 0) {
+    segments.push(current);
+  }
+  return segments;
+}
+
 function duplicateKeyDiagnostics(objects: SchemaObject[]): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const seen = new Map<string, SchemaObject>();

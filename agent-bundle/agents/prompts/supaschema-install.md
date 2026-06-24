@@ -38,7 +38,7 @@ Use the matching local runner for every command after install:
 | Yarn | `yarn exec supaschema <cmd>` |
 | Bun | `./node_modules/.bin/supaschema <cmd>` |
 
-Always run the matching explicit setup command from the owning package directory after install. The command is idempotent and leaves existing config intact. Default `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, migration paths, and focused non-apply package scripts with the packaged config contract only. It does not install active AI-agent rules, hooks, skills, prompts, settings, `AGENTS.md`, `CLAUDE.md`, backup directories, or apply-capable package scripts. When the user explicitly approves AI-agent enforcement, review `node_modules/supaschema/agent-bundle/INSTALL.md` and follow its manual copy/merge instructions.
+Always run the matching explicit setup command from the owning package directory after install. The command is idempotent and leaves existing config intact. Default `supaschema init` combines the consuming repo's detected package manager, workspace owner, provider markers, schema paths, migration paths, focused non-apply package scripts, and active AI-agent enforcement bundle. It installs missing package-owned `.agents`, `.claude`, and `.codex` prompt/rule/skill/hook files, merges package-manager-specific `.claude/settings.json` and `.codex/hooks.json`, preserves existing non-identical files, and reports skipped non-mergeable hook config. It does not write `AGENTS.md`, `CLAUDE.md`, backup directories, maintainer tooling, or apply-capable package scripts.
 
 ```bash
 npm exec -- supaschema init
@@ -74,7 +74,7 @@ The package provides:
 - the `supaschema` CLI and typed ESM library exports;
 - PostgreSQL parser/deparser runtime dependencies;
 - `supaschema-config.schema.json` for editor and config validation;
-- raw AI-agent rules, hooks, skills, prompts, and settings under `node_modules/supaschema/agent-bundle/`.
+- active AI-agent rules, hooks, skills, prompts, and settings under `node_modules/supaschema/agent-bundle/`.
 
 Public docs and examples are hosted in the supaschema documentation and source repository. They are not part of the normal `node_modules/supaschema` install payload, and you should not clone the source repository just to read them during consumer setup.
 
@@ -83,19 +83,22 @@ Default `supaschema init` writes or merges these project files into the consumin
 - `supaschema.config.json` when the project does not already have one;
 - configured schema and migration directories;
 - focused non-apply `supaschema:*` package scripts when `package.json` exists: `supaschema:diff`, `supaschema:stage`, `supaschema:types`, and `supaschema:check`;
-- `.supaschema/install.json` only when detected paths need confirmation.
+- missing package-owned `.agents`, `.claude`, and `.codex` enforcement files, plus merged `.claude/settings.json` and `.codex/hooks.json` hook entries;
+- `.supaschema/install.json` only when multiple detected paths still need an agent or operator to choose the owning schema and migration directories.
 
-Install does not edit schema files, generate migrations, connect to a database, apply migrations, write real database credentials, create duplicate supaschema-only database credential files, install active AI-agent rules/hooks/skills/settings, write `AGENTS.md` or `CLAUDE.md`, create backup directories, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. To install AI-agent enforcement on demand, review `node_modules/supaschema/agent-bundle/INSTALL.md` and apply those instructions only when the user approves the bundle.
+For Supabase projects whose owner brief marks `supabase/schemas/**` as inventory, or whose schema tree contains `_bootstrap`, `supaschema init` still writes a working config from the detected Supabase paths. In that profile, `workflow.schema_diff` and `workflow.migration_sync` are set to `manual`, so setup is complete but automatic schema-write diffing/apply is not assumed.
+
+Install does not edit schema files, generate migrations, connect to a database, apply migrations, write real database credentials, create duplicate supaschema-only database credential files, write `AGENTS.md` or `CLAUDE.md`, create backup directories, install maintainer editor/MCP/FastMCP tooling, run `npx skills`, or copy supaschema source/test infrastructure into the consumer project. If init reports skipped agent-bundle files or hook config, review `node_modules/supaschema/agent-bundle/INSTALL.md`, repair the skipped surface, then rerun `supaschema init`.
 
 ## First Tasks After Install
 
 1. Inspect `.supaschema/install.json` first when it exists.
-2. If `.supaschema/install.json` has `pathConfirmationNeeded: true`, stop before diffing or validation. Ask the user which detected schema and migration paths to use, then create or update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`; `config validate`, `doctor`, and zero-source `diff` block until those fields are explicit.
+2. If `.supaschema/install.json` has `pathConfirmationNeeded: true`, stop before diffing or validation. Read `agentInstructions`, choose the owning path values from `candidates.schemaPaths` and `candidates.migrationsDirs`, then create or update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`; `config validate`, `doctor`, and zero-source `diff` block until those fields are explicit.
 3. If no pending install manifest exists, inspect `supaschema.config.json`.
 4. For Supabase projects, use the configured Supabase CLI runner and the existing Supabase project link/authentication lane. For other PostgreSQL providers, use detected existing database URL environment variable names in `sync.targets` when present.
 5. Run `<local-runner> --version`.
 6. Run `<local-runner> config validate --json` after config exists or paths are confirmed.
-7. If the user asks for AI-agent enforcement, read `node_modules/supaschema/agent-bundle/INSTALL.md`, then install the raw agent bundle on demand.
+7. If init reports skipped agent-bundle files or hook config, read `node_modules/supaschema/agent-bundle/INSTALL.md`, repair the skipped surface, then rerun `<local-runner> init`.
 
 ## Schema Change Workflow
 

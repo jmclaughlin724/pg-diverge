@@ -222,7 +222,7 @@ export function pathConfirmationMessage(
     .map((path) => rel(projectDir, path))
     .join(
       ", "
-    )} because path confirmation is pending from install. Inspect .supaschema/install.json, ask the user which schemaPaths, sources.to, and migrationsDir to use, update supaschema.config.json, then run \`supaschema diff\` and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
+    )} because path confirmation is pending from install. Inspect .supaschema/install.json agentInstructions, choose the owning schemaPaths, sources.to, and migrationsDir from the detected candidates, update supaschema.config.json, then run \`supaschema config validate\`, \`supaschema diff\`, and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
 }
 
 function readConfigPathFields(projectDir: string): {

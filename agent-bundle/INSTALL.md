@@ -1,6 +1,6 @@
 # Supaschema Agent Bundle
 
-This package ships raw AI-agent context files here for review and opt-in manual installation. `supaschema init` does not install these files.
+This package ships the AI-agent enforcement files that `supaschema init` installs into the consuming repo by default. Use this file to audit what was installed or to repair files that init reported as skipped.
 
 ## Default
 
@@ -10,24 +10,24 @@ Run normal setup first:
 supaschema init
 ```
 
-This creates or repairs `supaschema.config.json`, configured schema directories, configured migration directories, canonical `supaschema:*` package scripts when `package.json` exists, and path-confirmation state when needed. It does not write `.agents`, `.claude`, `.codex`, `AGENTS.md`, or `CLAUDE.md`.
+This creates or repairs `supaschema.config.json`, configured schema directories, configured migration directories, canonical `supaschema:*` package scripts when `package.json` exists, active `.agents`, `.claude`, and `.codex` enforcement surfaces, and path-confirmation state only when multiple detected paths still need an agent or operator to choose the owning schema and migration directories. Supabase inventory or `_bootstrap` projects still receive a working config, with schema diff and migration sync set to manual workflow policy. It does not write `AGENTS.md` or `CLAUDE.md`.
 
-If `.supaschema/install.json` exists and says `pathConfirmationNeeded: true`, resolve the detected paths first and create or update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`. After config exists, run:
+If `.supaschema/install.json` exists and says `pathConfirmationNeeded: true`, follow its `agentInstructions`, choose the owning paths from the detected candidates, and create or update `supaschema.config.json` with explicit `schemaPaths`, `sources.to`, and `migrationsDir`. After config exists, run:
 
 ```bash
 supaschema config validate --json
 ```
 
-## Install On Demand
+## Installed Surfaces
 
-Install these files only after the user asks for AI-agent enforcement or approves the bundle.
+`supaschema init` installs missing text files and merges hook registration JSON. Existing non-identical text files are preserved and listed in the init result. Existing malformed or non-mergeable hook JSON is skipped and listed so the agent can repair it.
 
-Copy the shared files:
+Shared files:
 
 - `agent-bundle/agents/prompts/supaschema-install.md` to `.agents/prompts/supaschema-install.md`
 - `agent-bundle/agents/skills/supaschema` to `.agents/skills/supaschema`
 
-For Claude, copy these files:
+Claude files:
 
 - `agent-bundle/claude/rules/supaschema.md` to `.claude/rules/supaschema.md`
 - `agent-bundle/claude/skills/supaschema` to `.claude/skills/supaschema`
@@ -35,7 +35,7 @@ For Claude, copy these files:
 - `agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs` to `.claude/hooks/sync-llm-on-claude-surface-change.mjs`
 - the matching `agent-bundle/claude/settings.<manager>.json` entries into `.claude/settings.json`
 
-For Codex, copy these files:
+Codex files:
 
 - `agent-bundle/codex/rules/supaschema.rules` to `.codex/rules/supaschema.rules`
 - `agent-bundle/codex/hooks/general-guard.mjs` to `.codex/hooks/general-guard.mjs`
@@ -54,7 +54,7 @@ Merge JSON files. Do not overwrite existing user hooks or settings. Do not regis
 
 ## Verify
 
-After opt-in installation, run the consumer repo's context checks through the package manager selected above when those scripts exist:
+After installation or repair, run the consumer repo's context checks through the package manager selected above when those scripts exist:
 
 ```bash
 npm run claude:check

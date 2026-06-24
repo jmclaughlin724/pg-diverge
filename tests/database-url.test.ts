@@ -8,6 +8,8 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "../src/database/url.js";
 import {
+  activeAgentFiles,
+  excludedMaintainerFiles,
   expectedInstalledConfig,
   expectedSupaschemaScripts,
 } from "./install-parity-expectations.js";
@@ -74,7 +76,7 @@ describe("supabase database URL discovery", () => {
 });
 
 describe("init project setup", () => {
-  it("installs config and directories without active agent surfaces by default", async () => {
+  it("installs config, directories, and active agent enforcement by default", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-"));
 
     await runScaffold(consumer);
@@ -86,33 +88,11 @@ describe("init project setup", () => {
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
     expect(existsSync(join(consumer, ".env.supaschema.example"))).toBe(false);
 
-    for (const file of [
-      ".agents/prompts/supaschema-install.md",
-      ".agents/skills/supaschema/SKILL.md",
-      ".claude/hooks/guards/bash-policy-checks.mjs",
-      ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-      ".claude/rules/supaschema.md",
-      ".claude/settings.json",
-      ".claude/skills/supaschema/SKILL.md",
-      ".codex/hooks/general-guard.mjs",
-      ".codex/hooks/guards/bash-policy-checks.mjs",
-      ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-      ".codex/hooks.json",
-      ".codex/rules/supaschema.rules",
-    ]) {
-      expect(existsSync(join(consumer, file)), file).toBe(false);
+    for (const file of activeAgentFiles) {
+      expect(existsSync(join(consumer, file)), file).toBe(true);
     }
     expect(existsSync(join(consumer, ".claude/skills/gitnexus"))).toBe(false);
-    for (const file of [
-      ".vscode/settings.json",
-      ".vscode/extensions.json",
-      ".mcp.json",
-      ".claude/cclsp.json",
-      "components.json",
-      "postgres-language-server.jsonc",
-      "pyproject.toml",
-      "styles/globals.css",
-    ]) {
+    for (const file of excludedMaintainerFiles) {
       expect(existsSync(join(consumer, file)), file).toBe(false);
     }
 
@@ -122,7 +102,7 @@ describe("init project setup", () => {
     );
     expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
     expect(existsSync(join(consumer, "CLAUDE.md"))).toBe(false);
-    expect(prompt).toContain("raw AI-agent rules, hooks, skills, prompts, and settings");
+    expect(prompt).toContain("active AI-agent rules, hooks, skills, prompts, and settings");
   });
 
   it("sets pnpm build approval for supaschema when initializing a pnpm workspace member", async () => {
@@ -236,7 +216,7 @@ describe("init project setup", () => {
     expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
-  it("requires path confirmation for Supabase bootstrap inventory trees", async () => {
+  it("scaffolds manual workflow config for Supabase bootstrap inventory trees", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-supabase-bootstrap-"));
     await writeNestedFile(join(consumer, "supabase/config.toml"), "[db]\nport = 54322\n");
     await writeNestedFile(
@@ -246,14 +226,17 @@ describe("init project setup", () => {
 
     await runScaffold(consumer);
 
-    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
-    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.pathConfirmationNeeded).toBe(true);
-    expect(manifest.candidates.schemaPaths).toContain("supabase/schemas");
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config).toEqual(
+      expectedInstalledConfig("supabase/schemas", "supabase/migrations", {
+        workflow: { migration_sync: "manual", schema_diff: "manual" },
+      })
+    );
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
     expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
   });
 
-  it("requires path confirmation when a Supabase owner marks schemas as inventory", async () => {
+  it("scaffolds manual workflow config when a Supabase owner marks schemas as inventory", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-supabase-owner-inventory-"));
     await writeNestedFile(join(consumer, "supabase/config.toml"), "[db]\nport = 54322\n");
     await writeNestedFile(
@@ -272,10 +255,13 @@ describe("init project setup", () => {
 
     await runScaffold(consumer);
 
-    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
-    const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
-    expect(manifest.pathConfirmationNeeded).toBe(true);
-    expect(manifest.candidates.schemaPaths).toContain("supabase/schemas");
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config.workflow.schema_diff).toBe("manual");
+    expect(config.workflow.migration_sync).toBe("manual");
+    expect(config.schemaPaths).toEqual(["supabase/schemas"]);
+    expect(config.migrationsDir).toBe("supabase/migrations");
+    expect(config.sources.to).toBe("dir:supabase/schemas");
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
   });
 
   it("reuses existing database URL env names for generic PostgreSQL sync targets", async () => {
@@ -390,21 +376,34 @@ describe("init project setup", () => {
       "# Existing agents\n\nKeep this.\n"
     );
     expect(await readFile(join(consumer, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
-    expect(await readFile(join(consumer, ".claude/settings.json"), "utf8")).toBe(
-      '{"hooks":{"PreToolUse":[]}}\n'
+    const claudeSettings = JSON.parse(
+      await readFile(join(consumer, ".claude/settings.json"), "utf8")
     );
-    expect(await readFile(join(consumer, ".codex/hooks.json"), "utf8")).toBe(
-      '{"hooks":{"Stop":[]}}\n'
+    expect(claudeSettings.hooks.PreToolUse).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ matcher: "Bash" }),
+        expect.objectContaining({ matcher: "Write|Edit|MultiEdit|apply_patch" }),
+      ])
+    );
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    expect(codexHooks.hooks.Stop).toEqual(
+      expect.arrayContaining([expect.objectContaining({ hooks: expect.any(Array) })])
+    );
+    const packagedCodexHooks = JSON.parse(
+      await readFile(join(process.cwd(), "agent-bundle/codex/hooks.npm.json"), "utf8")
+    );
+    expect(codexHooks.hooks.PreToolUse).toEqual(
+      expect.arrayContaining(packagedCodexHooks.hooks.PreToolUse)
     );
     expect(await readFile(join(consumer, ".codex/skills/custom/SKILL.md"), "utf8")).toBe(
       "custom skill\n"
     );
-    expect(existsSync(join(consumer, ".agents/prompts/supaschema-install.md"))).toBe(false);
-    expect(existsSync(join(consumer, ".claude/rules/supaschema.md"))).toBe(false);
-    expect(existsSync(join(consumer, ".codex/rules/supaschema.rules"))).toBe(false);
+    for (const file of activeAgentFiles) {
+      expect(existsSync(join(consumer, file)), file).toBe(true);
+    }
   });
 
-  it("does not add Anilize-style context surfaces, settings, duplicates, or backups", async () => {
+  it("installs only package enforcement surfaces, not Anilize-style context or backups", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-anilize-context-"));
     await writeFile(
       join(consumer, "package.json"),
@@ -424,18 +423,14 @@ describe("init project setup", () => {
       "# Consumer brief\n\nKeep this.\n"
     );
     expect(await readFile(join(consumer, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
-    expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
-    expect(existsSync(join(consumer, ".supaschema/install.json"))).toBe(true);
-    for (const file of [
-      ".agents/prompts/supaschema-install.md",
-      ".agents/skills/supaschema/SKILL.md",
-      ".claude/rules/supaschema.md",
-      ".claude/settings.json",
-      ".claude/skills/supaschema/SKILL.md",
-      ".codex/hooks.json",
-      ".codex/rules/supaschema.rules",
-    ]) {
-      expect(existsSync(join(consumer, file)), file).toBe(false);
+    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+    expect(config.workflow.schema_diff).toBe("manual");
+    expect(config.workflow.migration_sync).toBe("manual");
+    expect(config.schemaPaths).toEqual(["supabase/schemas"]);
+    expect(config.migrationsDir).toBe("supabase/migrations");
+    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
+    for (const file of activeAgentFiles) {
+      expect(existsSync(join(consumer, file)), file).toBe(true);
     }
     for (const backupDir of [
       ".agents/skills.__backup_20260619T040853",
@@ -518,6 +513,13 @@ describe("init project setup", () => {
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
     expect(manifest.pathConfirmationNeeded).toBe(true);
     expect(manifest.candidates.schemaPaths).toEqual(["apps/api/schemas", "packages/db/schemas"]);
+    expect(manifest.agentInstructions.requiredActions).toContain(
+      "Create or update supaschema.config.json with schemaPaths, sources.to, and migrationsDir."
+    );
+    expect(manifest.recommendedConfig.sources.to).toBe("dir:apps/api/schemas");
+    for (const file of activeAgentFiles) {
+      expect(existsSync(join(consumer, file)), file).toBe(true);
+    }
     expect(existsSync(join(consumer, "AGENTS.md"))).toBe(false);
   });
 
@@ -556,10 +558,9 @@ describe("init project setup", () => {
     await runScaffold(consumer, { packageRoot: join(extractDir, "package") });
 
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(true);
-    expect(existsSync(join(consumer, ".agents/prompts/supaschema-install.md"))).toBe(false);
-    expect(existsSync(join(consumer, ".agents/skills/supaschema/SKILL.md"))).toBe(false);
-    expect(existsSync(join(consumer, ".claude/rules/supaschema.md"))).toBe(false);
-    expect(existsSync(join(consumer, ".codex/hooks.json"))).toBe(false);
+    for (const file of activeAgentFiles) {
+      expect(existsSync(join(consumer, file)), file).toBe(true);
+    }
     for (const backupDir of [
       ".agents/skills.__backup_20260619T040853",
       ".claude/settings.__backup_20260619T040912",
@@ -640,6 +641,9 @@ describe("init project setup", () => {
     expect(existsSync(join(consumer, "supaschema.config.json"))).toBe(false);
     const manifest = JSON.parse(await readFile(join(consumer, ".supaschema/install.json"), "utf8"));
     expect(manifest.pathConfirmationNeeded).toBe(true);
+    expect(manifest.agentInstructions.summary).toContain(
+      "supaschema found multiple plausible schema or migration paths"
+    );
   });
 });
 

@@ -6,6 +6,10 @@ keywords: ["diagnostics", "SUPA codes", "recovery", "errors"]
 
 Diagnostics have `code`, `severity`, `message`, and optional `ref`, `file`, `statement`, and `hint` fields.
 
+## Source-intent diagnostics
+
+A missing source-intent diagnostic is useful only when it names the absent source: a schema file, migration file, config field, reviewed hint, or checked workload artifact. Side-effect statements in declarative schema sources still raise extraction diagnostics because they are not schema objects. Side-effect statements in the configured migration corpus are migration source intent and should be modeled or preserved, then validated with `check` and `verify`.
+
 | Code | Severity | Meaning |
 | --- | --- | --- |
 | `SUPA_PARSE_ERROR` | error | `libpg-query` could not parse the SQL. |

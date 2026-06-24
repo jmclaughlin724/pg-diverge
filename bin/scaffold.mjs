@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 import {
   genericMigrationsDir,
   genericProviderPreset,
@@ -21,6 +22,7 @@ import {
   providerSchemaPaths,
 } from "./config-contract.mjs";
 
+const defaultPackageRoot = fileURLToPath(new URL("../", import.meta.url));
 const manifestPath = ".supaschema/install.json";
 const agentBundleInstructions = "node_modules/supaschema/agent-bundle/INSTALL.md";
 const pnpmWorkspaceFile = "pnpm-workspace.yaml";
@@ -31,6 +33,49 @@ const packageScripts = {
   "supaschema:stage": "supaschema stage",
   "supaschema:types": "supaschema types",
 };
+const agentBundleCopies = [
+  ["agents/prompts/supaschema-install.md", ".agents/prompts/supaschema-install.md"],
+  ["agents/skills/supaschema/SKILL.md", ".agents/skills/supaschema/SKILL.md"],
+  ["claude/hooks/guards/bash-policy-checks.mjs", ".claude/hooks/guards/bash-policy-checks.mjs"],
+  [
+    "claude/hooks/sync-llm-on-claude-surface-change.mjs",
+    ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+  ],
+  ["claude/rules/supaschema.md", ".claude/rules/supaschema.md"],
+  ["claude/skills/supaschema/SKILL.md", ".claude/skills/supaschema/SKILL.md"],
+  ["codex/hooks/general-guard.mjs", ".codex/hooks/general-guard.mjs"],
+  ["codex/hooks/guards/bash-policy-checks.mjs", ".codex/hooks/guards/bash-policy-checks.mjs"],
+  [
+    "codex/hooks/sync-llm-on-claude-surface-change.mjs",
+    ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+  ],
+  ["codex/rules/supaschema.rules", ".codex/rules/supaschema.rules"],
+];
+const inventoryWorkflowOverrides = {
+  migration_sync: "manual",
+  schema_diff: "manual",
+};
+const ignoredSqlCandidateDirNames = new Set([
+  "debug",
+  "fixtures",
+  "generated",
+  "logs",
+  "seeds",
+  "snippets",
+  "templates",
+  "tests",
+  "tmp",
+]);
+const skippedDirNames = new Set([
+  ".git",
+  ".next",
+  ".nuxt",
+  ".supaschema",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+]);
 const databaseUrlEnvPriority = [
   "DIRECT_URL",
   "DATABASE_DIRECT_URL",
@@ -44,6 +89,7 @@ const databaseUrlEnvPriority = [
 ];
 export async function scaffoldProject({
   targetDir,
+  packageRoot = defaultPackageRoot,
   packageVersion,
   interactive = false,
   dryRun = false,
@@ -71,6 +117,16 @@ export async function scaffoldProject({
     installed.push("package scripts");
   }
 
+  const agentBundle = installAgentBundle({
+    dryRun,
+    packageManager,
+    packageRoot,
+    targetDir,
+  });
+  if (agentBundle.changed) {
+    installed.push("agent bundle");
+  }
+
   const installStateChanged = writeInstallState({
     dryRun,
     existingConfig,
@@ -90,14 +146,11 @@ export async function scaffoldProject({
     existingConfig,
     dryRun,
     installed,
-    agentBundle: {
-      installed: false,
-      instructions: agentBundleInstructions,
-    },
+    agentBundle,
     pathConfirmationNeeded: selection.pathConfirmationNeeded,
-    preserved: [],
+    preserved: agentBundle.preserved,
     selection,
-    skipped: [],
+    skipped: agentBundle.skipped,
   };
 }
 
@@ -342,6 +395,141 @@ function ensurePackageScripts({ dryRun, repair, targetDir }) {
   return true;
 }
 
+function installAgentBundle({ dryRun, packageManager, packageRoot, targetDir }) {
+  const result = {
+    changed: false,
+    files: [],
+    installed: true,
+    instructions: agentBundleInstructions,
+    preserved: [],
+    skipped: [],
+  };
+  for (const [source, target] of agentBundleCopies) {
+    installAgentBundleTextFile({ dryRun, packageRoot, result, source, target, targetDir });
+  }
+  mergeAgentBundleJsonFile({
+    dryRun,
+    packageRoot,
+    result,
+    source: `claude/settings.${packageManager}.json`,
+    target: ".claude/settings.json",
+    targetDir,
+  });
+  mergeAgentBundleJsonFile({
+    dryRun,
+    packageRoot,
+    result,
+    source: `codex/hooks.${packageManager}.json`,
+    target: ".codex/hooks.json",
+    targetDir,
+  });
+  result.installed = result.skipped.length === 0;
+  return result;
+}
+
+function installAgentBundleTextFile({ dryRun, packageRoot, result, source, target, targetDir }) {
+  const contents = readRequiredAgentBundleFile(packageRoot, source);
+  const destination = join(targetDir, target);
+  const existing = readText(destination);
+  if (existing !== undefined) {
+    if (existing !== contents) {
+      result.preserved.push(target);
+    }
+    return;
+  }
+  if (!dryRun) {
+    writeFileAtomic(destination, contents);
+  }
+  result.changed = true;
+  result.files.push(target);
+}
+
+function mergeAgentBundleJsonFile({ dryRun, packageRoot, result, source, target, targetDir }) {
+  const contents = readRequiredAgentBundleFile(packageRoot, source);
+  const incoming = parseRequiredJson(contents, source);
+  const destination = join(targetDir, target);
+  const existingContents = readText(destination);
+  if (existingContents === undefined) {
+    if (!dryRun) {
+      writeFileAtomic(destination, contents);
+    }
+    result.changed = true;
+    result.files.push(target);
+    return;
+  }
+  const existing = parseOptionalJson(existingContents);
+  if (!isRecord(existing)) {
+    result.skipped.push(`${target} (not a JSON object)`);
+    return;
+  }
+  const merged = mergeHookConfig(existing, incoming);
+  result.skipped.push(...merged.skipped.map((item) => `${target} ${item}`));
+  if (!merged.changed) {
+    return;
+  }
+  if (!dryRun) {
+    writeFileAtomic(destination, `${JSON.stringify(merged.value, null, 2)}\n`);
+  }
+  result.changed = true;
+  result.files.push(target);
+}
+
+function mergeHookConfig(existing, incoming) {
+  if (!(isRecord(incoming) && isRecord(incoming.hooks))) {
+    throw new Error("agent bundle hook config must contain a hooks object");
+  }
+  const value = { ...existing };
+  const existingHooks = isRecord(existing.hooks) ? existing.hooks : {};
+  const hooks = { ...existingHooks };
+  const skipped = [];
+  let changed = !isRecord(existing.hooks);
+  for (const [event, incomingEntries] of Object.entries(incoming.hooks)) {
+    if (!Array.isArray(incomingEntries)) {
+      throw new Error(`agent bundle hooks.${event} must be an array`);
+    }
+    const existingEntries = hooks[event];
+    if (existingEntries !== undefined && !Array.isArray(existingEntries)) {
+      skipped.push(`hooks.${event} is not an array`);
+      continue;
+    }
+    const nextEntries = Array.isArray(existingEntries) ? [...existingEntries] : [];
+    for (const incomingEntry of incomingEntries) {
+      if (!nextEntries.some((entry) => JSON.stringify(entry) === JSON.stringify(incomingEntry))) {
+        nextEntries.push(incomingEntry);
+        changed = true;
+      }
+    }
+    hooks[event] = nextEntries;
+  }
+  value.hooks = hooks;
+  return { changed, skipped, value };
+}
+
+function readRequiredAgentBundleFile(packageRoot, relativePath) {
+  const path = join(packageRoot, "agent-bundle", relativePath);
+  const contents = readText(path);
+  if (contents === undefined) {
+    throw new Error(`missing packaged agent bundle file: agent-bundle/${relativePath}`);
+  }
+  return contents;
+}
+
+function parseRequiredJson(contents, path) {
+  const parsed = parseOptionalJson(contents);
+  if (!isRecord(parsed)) {
+    throw new Error(`agent bundle JSON must be an object: agent-bundle/${path}`);
+  }
+  return parsed;
+}
+
+function parseOptionalJson(contents) {
+  try {
+    return JSON.parse(contents);
+  } catch {
+    return;
+  }
+}
+
 function readExistingConfig(projectDir) {
   const jsonPath = join(projectDir, "supaschema.config.json");
   if (existsSync(jsonPath)) {
@@ -393,18 +581,25 @@ async function resolvePathSelection(target, scan, existingConfig, interactive) {
 
   const schema = selectCandidate(scan.schemaPaths, defaults.schemaPath);
   const migrations = selectCandidate(scan.migrationsDirs, defaults.migrationsDir);
-  const schemaNeedsConfirmation =
-    schema.needsConfirmation ||
-    schemaPathNeedsConfirmation(target, schema.path, defaults.provider?.id);
+  const schemaConfirmationReasons = schemaPathConfirmationReasons(
+    target,
+    schema,
+    defaults.provider?.id
+  );
+  const workflowProfile = schemaConfirmationReasons.length > 0 ? "supabase-inventory" : "default";
   let selection = {
     adapter: defaults.adapter,
     candidates: scan,
     databaseUrls: defaults.databaseUrls,
     migrationsDir: migrations.path,
-    pathConfirmationNeeded: schemaNeedsConfirmation || migrations.needsConfirmation,
+    pathConfirmationNeeded: schema.needsConfirmation || migrations.needsConfirmation,
+    pendingReasons: pendingPathReasons(schema, migrations),
     provider: defaults.provider,
     schemaPaths: [schema.path],
     source: selectionSource(schema, migrations, defaults),
+    workflowOverrides:
+      workflowProfile === "supabase-inventory" ? inventoryWorkflowOverrides : undefined,
+    workflowProfile,
   };
 
   if (selection.pathConfirmationNeeded && interactive && canPrompt()) {
@@ -414,14 +609,29 @@ async function resolvePathSelection(target, scan, existingConfig, interactive) {
   return selection;
 }
 
-function schemaPathNeedsConfirmation(projectDir, schemaPath, providerId) {
-  if (providerId !== "supabase") {
-    return false;
+function pendingPathReasons(schema, migrations) {
+  const reasons = [];
+  if (schema.needsConfirmation) {
+    reasons.push("multiple schema path candidates matched");
   }
-  if (supabaseOwnerMarksSchemaInventory(projectDir, schemaPath)) {
-    return true;
+  if (migrations.needsConfirmation) {
+    reasons.push("multiple migrations directory candidates matched");
   }
-  return existsSync(join(projectDir, schemaPath, "_bootstrap"));
+  return reasons;
+}
+
+function schemaPathConfirmationReasons(projectDir, schema, providerId) {
+  if (providerId !== "supabase" || schema.needsConfirmation) {
+    return [];
+  }
+  const reasons = [];
+  if (supabaseOwnerMarksSchemaInventory(projectDir, schema.path)) {
+    reasons.push("supabase owner marks schema tree as inventory");
+  }
+  if (existsSync(join(projectDir, schema.path, "_bootstrap"))) {
+    reasons.push("supabase schema tree contains _bootstrap inventory");
+  }
+  return reasons;
 }
 
 function supabaseOwnerMarksSchemaInventory(projectDir, schemaPath) {
@@ -714,31 +924,29 @@ function fileContainsAny(path, terms) {
 function scanProject(projectDir) {
   const defaults = projectDefaults(projectDir);
   const dirs = walkDirectories(projectDir, 5);
+  const schemaCandidates = pruneNestedCandidates(
+    dirs.filter((dir) => isSchemaCandidate(projectDir, dir)).map((dir) => rel(projectDir, dir))
+  );
+  const migrationCandidates = pruneNestedCandidates(
+    dirs.filter((dir) => isMigrationsCandidate(projectDir, dir)).map((dir) => rel(projectDir, dir))
+  );
   return {
-    migrationsDirs: rankCandidates(
-      dirs
-        .filter((dir) => isMigrationsCandidate(projectDir, dir))
-        .map((dir) => rel(projectDir, dir)),
-      [
-        defaults.migrationsDir,
-        ...providerMigrationsDirs,
-        genericMigrationsDir,
-        "migrations",
-        "db/migrations",
-      ]
-    ),
-    schemaPaths: rankCandidates(
-      dirs.filter((dir) => isSchemaCandidate(projectDir, dir)).map((dir) => rel(projectDir, dir)),
-      [
-        defaults.schemaPath,
-        ...providerSchemaPaths,
-        genericSchemaPath,
-        "schemas",
-        "schema",
-        "db/schemas",
-        "db/schema",
-      ]
-    ),
+    migrationsDirs: rankCandidates(migrationCandidates, [
+      defaults.migrationsDir,
+      ...providerMigrationsDirs,
+      genericMigrationsDir,
+      "migrations",
+      "db/migrations",
+    ]),
+    schemaPaths: rankCandidates(schemaCandidates, [
+      defaults.schemaPath,
+      ...providerSchemaPaths,
+      genericSchemaPath,
+      "schemas",
+      "schema",
+      "db/schemas",
+      "db/schema",
+    ]),
   };
 }
 
@@ -755,7 +963,7 @@ function walkDirectories(projectDir, maxDepth) {
       return;
     }
     for (const entry of entries) {
-      if (!entry.isDirectory() || shouldSkipDir(entry.name)) {
+      if (!entry.isDirectory() || shouldSkipDir(entry.name) || entry.name.startsWith(".")) {
         continue;
       }
       const child = join(dir, entry.name);
@@ -796,22 +1004,13 @@ function walkFiles(projectDir, maxDepth) {
 }
 
 function shouldSkipDir(name) {
-  return new Set([
-    ".git",
-    ".next",
-    ".nuxt",
-    ".supaschema",
-    "coverage",
-    "dist",
-    "node_modules",
-    "out",
-  ]).has(name);
+  return skippedDirNames.has(name);
 }
 
 function isSchemaCandidate(projectDir, dir) {
   const name = dir.split(sep).at(-1);
   const path = rel(projectDir, dir);
-  if (name === "migrations") {
+  if (name === "migrations" || ignoredSqlCandidateDirNames.has(name)) {
     return false;
   }
   return (
@@ -847,16 +1046,26 @@ function rankCandidates(candidates, preferredOrder) {
   return unique.sort((left, right) => rank(left, preferredOrder) - rank(right, preferredOrder));
 }
 
+function pruneNestedCandidates(candidates) {
+  const sorted = Array.from(new Set(candidates)).sort(
+    (left, right) => left.split("/").length - right.split("/").length || left.localeCompare(right)
+  );
+  const roots = [];
+  for (const candidate of sorted) {
+    if (!roots.some((root) => candidate.startsWith(`${root}/`))) {
+      roots.push(candidate);
+    }
+  }
+  return roots;
+}
+
 function rank(candidate, preferredOrder) {
   const index = preferredOrder.indexOf(candidate);
   return index === -1 ? preferredOrder.length + candidate.split("/").length : index;
 }
 
 function shouldWriteConfig(existingConfig, repair) {
-  if (!existingConfig.exists || repair) {
-    return true;
-  }
-  return false;
+  return !existingConfig.exists || repair;
 }
 
 function scaffoldConfig(selection, existing) {
@@ -867,6 +1076,9 @@ function scaffoldConfig(selection, existing) {
     remoteDatabaseUrlEnv: selection.databaseUrls?.remote,
     schemaPaths: selection.schemaPaths,
   });
+  if (selection.workflowOverrides !== undefined) {
+    config.workflow = { ...config.workflow, ...selection.workflowOverrides };
+  }
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
@@ -911,6 +1123,9 @@ function writeInstallManifest(
     migrationsDir: selection.migrationsDir,
     packageVersion,
     pathConfirmationNeeded: selection.pathConfirmationNeeded,
+    agentInstructions: agentInstructionsForPendingInstall(selection),
+    pendingReasons: selection.pendingReasons,
+    recommendedConfig: recommendedConfigForPendingInstall(selection),
     provider: selection.provider,
     schemaPaths: selection.schemaPaths,
     source: selection.source,
@@ -956,11 +1171,47 @@ function removeInstallManifest(target, { dryRun = false } = {}) {
 function manifestSelectionUnchanged(existing, next) {
   return (
     existing.adapter === next.adapter &&
+    JSON.stringify(existing.candidates) === JSON.stringify(next.candidates) &&
     existing.configConfirmationNeeded === next.configConfirmationNeeded &&
     existing.migrationsDir === next.migrationsDir &&
+    existing.packageVersion === next.packageVersion &&
     existing.pathConfirmationNeeded === next.pathConfirmationNeeded &&
+    JSON.stringify(existing.agentInstructions) === JSON.stringify(next.agentInstructions) &&
+    JSON.stringify(existing.pendingReasons) === JSON.stringify(next.pendingReasons) &&
+    JSON.stringify(existing.recommendedConfig) === JSON.stringify(next.recommendedConfig) &&
     JSON.stringify(existing.schemaPaths) === JSON.stringify(next.schemaPaths)
   );
+}
+
+function agentInstructionsForPendingInstall(selection) {
+  if (!selection.pathConfirmationNeeded) {
+    return;
+  }
+  return {
+    summary:
+      "supaschema found multiple plausible schema or migration paths and needs the owning project paths selected before migration commands run.",
+    requiredActions: [
+      "Inspect candidates.schemaPaths and candidates.migrationsDirs in this manifest.",
+      "Choose the package-owned declarative schema tree and migration directory.",
+      "Create or update supaschema.config.json with schemaPaths, sources.to, and migrationsDir.",
+      "Run the local package-manager command for supaschema config validate --json.",
+    ],
+  };
+}
+
+function recommendedConfigForPendingInstall(selection) {
+  if (!selection.pathConfirmationNeeded) {
+    return;
+  }
+  const schemaPath = selection.schemaPaths[0] ?? "<schema path>";
+  return {
+    migrationsDir: selection.migrationsDir ?? "<migrations dir>",
+    schemaPaths: [schemaPath],
+    sources: {
+      from: "auto",
+      to: `dir:${schemaPath}`,
+    },
+  };
 }
 
 function writeProjectFile(target, relativePath, contents, { dryRun = false } = {}) {

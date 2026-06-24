@@ -135,6 +135,9 @@ function renderAlter(operation: MigrationOperation): string {
     throw new Error(`unsupported alter operation for ${operation.key}`);
   }
   const statements: string[] = [];
+  if (typeof operation.metadata.attachPartitionSql === "string") {
+    statements.push(ensureSemicolon(operation.metadata.attachPartitionSql));
+  }
   const addColumns = Array.isArray(operation.metadata.addColumns)
     ? operation.metadata.addColumns
     : [];
@@ -178,6 +181,27 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
     );
     statements.push(`${prefix} TYPE ${record.type} USING ${quoteIdent(name)}::${record.type};`);
   }
+  if (typeof record.setGenerated === "string") {
+    statements.push(`${prefix} SET EXPRESSION AS (${record.setGenerated});`);
+  }
+  if (record.dropGenerated === true) {
+    statements.push(`${prefix} DROP EXPRESSION IF EXISTS;`);
+  }
+  if (typeof record.addIdentitySql === "string") {
+    statements.push(ensureSemicolon(record.addIdentitySql));
+  } else if (typeof record.addIdentity === "string") {
+    statements.push(
+      `${prefix} ADD GENERATED ${identityGeneration(record.addIdentity)} AS IDENTITY;`
+    );
+  }
+  if (typeof record.setIdentitySql === "string") {
+    statements.push(ensureSemicolon(record.setIdentitySql));
+  } else if (typeof record.setIdentity === "string") {
+    statements.push(`${prefix} SET GENERATED ${identityGeneration(record.setIdentity)};`);
+  }
+  if (record.dropIdentity === true) {
+    statements.push(`${prefix} DROP IDENTITY IF EXISTS;`);
+  }
   if (record.dropDefault === true) {
     statements.push(`${prefix} DROP DEFAULT;`);
   }
@@ -191,6 +215,10 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
     statements.push(`${prefix} DROP NOT NULL;`);
   }
   return statements;
+}
+
+function identityGeneration(value: string): string {
+  return value === "d" ? "BY DEFAULT" : "ALWAYS";
 }
 
 function renderReplace(operation: MigrationOperation): string {

@@ -473,6 +473,8 @@ export function createInstalledConfig(
   const schemaPaths = normalizedStringArray(options.schemaPaths, [provider.schemaPath]);
   const migrationsDir = normalizedString(options.migrationsDir, provider.migrationsDir);
   const sync = syncForInstalledConfig({ ...options, providerId: provider.id });
+  const managedSchemas = managedSchemasForProvider(provider.id);
+  const managedSchemaExcludes = provider.id === "supabase" ? managedSchemas : [];
   return orderInstalledConfig({
     $schema: options.schemaRef ?? packageSchemaRef,
     adapter: AdapterInput.Auto,
@@ -494,12 +496,12 @@ export function createInstalledConfig(
     typesFile: defaultTypesFile,
     zodFile: defaultZodFile,
     normalize: NormalizePolicy.Deparse,
-    managedSchemas: managedSchemasForProvider(provider.id),
+    managedSchemas,
     postgresVersion: "15+",
     renameDetection: RenameDetectionPolicy.HintsOnly,
     schemaPaths,
     schemas: {
-      exclude: [],
+      exclude: managedSchemaExcludes,
       include: [],
     },
     sources: {
@@ -528,6 +530,14 @@ export function mergeInstalledConfig(
   const existingWorkflow = isRecord(existing.workflow)
     ? normalizeInstalledWorkflow(existing.workflow)
     : {};
+  const managedSchemas = normalizedStringArray(
+    existing.managedSchemas,
+    normalizedStringArray(base.managedSchemas, [])
+  );
+  const existingSchemas = recordValue(existing.schemas);
+  const baseManagedExcludes = normalizedStringArray(baseSchemas.exclude, []).filter((schema) =>
+    managedSchemas.includes(schema)
+  );
   const schemaPaths = normalizedStringArray(
     existing.schemaPaths,
     normalizedStringArray(base.schemaPaths, [genericSchemaPath])
@@ -554,10 +564,7 @@ export function mergeInstalledConfig(
       ...baseHints,
       ...(isRecord(existing.hints) ? existing.hints : {}),
     },
-    managedSchemas: normalizedStringArray(
-      existing.managedSchemas,
-      normalizedStringArray(base.managedSchemas, [])
-    ),
+    managedSchemas,
     migrationsDir: normalizedString(
       existing.migrationsDir,
       normalizedString(base.migrationsDir, genericMigrationsDir)
@@ -565,7 +572,15 @@ export function mergeInstalledConfig(
     schemaPaths,
     schemas: {
       ...baseSchemas,
-      ...(isRecord(existing.schemas) ? existing.schemas : {}),
+      ...existingSchemas,
+      exclude: uniqueStrings([
+        ...baseManagedExcludes,
+        ...normalizedStringArray(existingSchemas.exclude, []),
+      ]),
+      include: normalizedStringArray(
+        existingSchemas.include,
+        normalizedStringArray(baseSchemas.include, [])
+      ),
     },
     sources: {
       ...baseSources,
@@ -1046,6 +1061,8 @@ export function createInstalledConfig(options = {}) {
   const schemaPaths = normalizedStringArray(options.schemaPaths, [provider.schemaPath]);
   const migrationsDir = normalizedString(options.migrationsDir, provider.migrationsDir);
   const sync = syncForInstalledConfig({ ...options, providerId: provider.id });
+  const managedSchemas = managedSchemasForProvider(provider.id);
+  const managedSchemaExcludes = provider.id === "supabase" ? managedSchemas : [];
   return orderInstalledConfig({
     $schema: options.schemaRef ?? packageSchemaRef,
     adapter: "auto",
@@ -1062,11 +1079,11 @@ export function createInstalledConfig(options = {}) {
     typesFile: defaultTypesFile,
     zodFile: defaultZodFile,
     normalize: "deparse",
-    managedSchemas: managedSchemasForProvider(provider.id),
+    managedSchemas,
     postgresVersion: "15+",
     renameDetection: "hints-only",
     schemaPaths,
-    schemas: { exclude: [], include: [] },
+    schemas: { exclude: managedSchemaExcludes, include: [] },
     sources: { from: "auto", to: canonicalSourceTo(schemaPaths) },
     statementTimeout: "60s",
     transactionMode: "per-migration",
@@ -1080,6 +1097,7 @@ export function mergeInstalledConfig(existing, options = {}) {
     return base;
   }
   const baseSync = isRecord(base.sync) ? base.sync : defaultSync;
+  const baseSchemas = isRecord(base.schemas) ? base.schemas : {};
   const schemaPaths = normalizedStringArray(existing.schemaPaths, base.schemaPaths);
   const existingEnvironments = isRecord(existing.environments) ? existing.environments : undefined;
   const hasExistingEnvironments =
@@ -1092,6 +1110,11 @@ export function mergeInstalledConfig(existing, options = {}) {
   const existingWorkflow = isRecord(existing.workflow)
     ? normalizeInstalledWorkflow(existing.workflow)
     : {};
+  const managedSchemas = normalizedStringArray(existing.managedSchemas, base.managedSchemas);
+  const existingSchemas = isRecord(existing.schemas) ? existing.schemas : {};
+  const baseManagedExcludes = normalizedStringArray(baseSchemas.exclude, []).filter((schema) =>
+    managedSchemas.includes(schema)
+  );
   const merged = {
     ...base,
     ...existing,
@@ -1100,10 +1123,21 @@ export function mergeInstalledConfig(existing, options = {}) {
     environments: hasExistingEnvironments ? existingEnvironments : base.environments,
     excludedGrantRoles: normalizedStringArray(existing.excludedGrantRoles, base.excludedGrantRoles),
     hints: { ...base.hints, ...(isRecord(existing.hints) ? existing.hints : {}) },
-    managedSchemas: normalizedStringArray(existing.managedSchemas, base.managedSchemas),
+    managedSchemas,
     migrationsDir: normalizedString(existing.migrationsDir, base.migrationsDir),
     schemaPaths,
-    schemas: { ...base.schemas, ...(isRecord(existing.schemas) ? existing.schemas : {}) },
+    schemas: {
+      ...baseSchemas,
+      ...existingSchemas,
+      exclude: uniqueStrings([
+        ...baseManagedExcludes,
+        ...normalizedStringArray(existingSchemas.exclude, []),
+      ]),
+      include: normalizedStringArray(
+        existingSchemas.include,
+        normalizedStringArray(baseSchemas.include, [])
+      ),
+    },
     sources: { ...base.sources, ...(isRecord(existing.sources) ? existing.sources : {}) },
     sync:
       hasExistingEnvironments && existingSync === undefined
@@ -1216,6 +1250,10 @@ function normalizedStringArray(value, fallback) {
     : [...fallback];
 }
 
+function uniqueStrings(values) {
+  return [...new Set(values.filter((value) => value.length > 0))];
+}
+
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1230,6 +1268,10 @@ function normalizedStringArray(value: unknown, fallback: readonly string[]): str
   return Array.isArray(value) && value.length > 0
     ? value.map(String).filter(Boolean)
     : [...fallback];
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.filter((value) => value.length > 0))];
 }
 
 function recordValue(value: unknown): Record<string, unknown> {

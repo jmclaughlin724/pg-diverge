@@ -236,6 +236,54 @@ export const policyMissingPredicateRule: Rule = {
   id: "SEC003",
 };
 
+export const policyDeprecatedAuthRoleRule: Rule = {
+  check: ({ model }) => {
+    const enabled = rlsEnabledTableKeys(model);
+    const diagnostics: Diagnostic[] = [];
+    for (const object of model.objects) {
+      if (object.ref.kind !== "policy" || !enabled.has(tableKey(object.ref))) {
+        continue;
+      }
+      if (!metadataStrings(object.metadata.functionCalls).includes("auth.role")) {
+        continue;
+      }
+      diagnostics.push({
+        code: "SUPA_RULE_POLICY_AUTH_ROLE_DEPRECATED",
+        hint: "Use the policy TO clause for anon/authenticated role targeting and keep row authorization in USING/WITH CHECK",
+        message: `Policy "${object.ref.name}" on "${tableKey(object.ref)}" uses deprecated auth.role()`,
+        ref: object.ref,
+        severity: "warning",
+      });
+    }
+    return diagnostics;
+  },
+  id: "SEC005",
+};
+
+export const policyUnwrappedAuthUidRule: Rule = {
+  check: ({ model }) => {
+    const enabled = rlsEnabledTableKeys(model);
+    const diagnostics: Diagnostic[] = [];
+    for (const object of model.objects) {
+      if (object.ref.kind !== "policy" || !enabled.has(tableKey(object.ref))) {
+        continue;
+      }
+      if (!metadataStrings(object.metadata.unwrappedFunctionCalls).includes("auth.uid")) {
+        continue;
+      }
+      diagnostics.push({
+        code: "SUPA_RULE_POLICY_AUTH_UID_UNWRAPPED",
+        hint: "Wrap auth.uid() as (select auth.uid()) in RLS predicates so PostgreSQL can initPlan the helper call",
+        message: `Policy "${object.ref.name}" on "${tableKey(object.ref)}" calls auth.uid() directly`,
+        ref: object.ref,
+        severity: "warning",
+      });
+    }
+    return diagnostics;
+  },
+  id: "SEC006",
+};
+
 export function policyRequiredColumnsRule(requiredPolicyColumns: Record<string, string[]>): Rule {
   return {
     check: ({ model }) => {
@@ -276,7 +324,7 @@ function missingPolicyPredicates(object: SchemaObject): string[] {
   if (needsUsingPredicate(command) && !hasUsing) {
     missing.push("USING");
   }
-  if (needsCheckPredicate(command) && !hasCheck && !(hasUsing && usesUsingAsCheck(command))) {
+  if (needsCheckPredicate(command) && !hasCheck) {
     missing.push("WITH CHECK");
   }
   return missing;
@@ -340,7 +388,13 @@ function metadataStrings(value: unknown): string[] {
 
 export const rlsPack: RulePack = {
   id: "rls",
-  rules: [rlsEnabledNoPolicyRule, policyWithoutRlsRule, policyMissingPredicateRule],
+  rules: [
+    rlsEnabledNoPolicyRule,
+    policyWithoutRlsRule,
+    policyMissingPredicateRule,
+    policyDeprecatedAuthRoleRule,
+    policyUnwrappedAuthUidRule,
+  ],
   version: "0.1.0",
 };
 

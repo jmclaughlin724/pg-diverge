@@ -5,7 +5,7 @@ keywords:
   ["schema sources", "SQL files", "Git refs", "database URL", "snapshots"]
 ---
 
-Every diff compares two sources:
+Every diff compares two schema sources:
 
 - **from**: current state;
 - **to**: desired state.
@@ -13,6 +13,8 @@ Every diff compares two sources:
 A source is any PostgreSQL schema representation that supaschema can parse into a SchemaModel.
 
 Use the format `<prefix>:<location>`, such as `dir:database/schemas`.
+
+The configured `migrationsDir` is a third input to planning, but it is not a `--from` or `--to` schema source. Existing reviewed migrations form the source-intent corpus for row backfills, explicit DML/`DO` workflows, enum rewrite recipes, Vault references, workload-proven index intent, and provider bootstrap constraints. supaschema should model that intent before blocking; when the intent is absent, the diagnostic should tell an agent where to declare it.
 
 ## Source reference
 
@@ -279,7 +281,7 @@ The table below summarises the most useful source pairings and the workflow each
 | Analyse a legacy dump | `dump:legacy-schema.sql` | `dir:database/schemas` | Diff a dump file against your current schema |
 
 <Tip>
-  Defaults come from `supaschema.config.json`. `sources.from` owns the before-state and `sources.to` owns the after-state for zero-source-flag commands. The scaffolded `"auto"` before-state resolves valid `git:HEAD`, then a database URL, then `empty:`.
+  Defaults come from `supaschema.config.json`. `sources.from` owns the before-state, `sources.to` owns the after-state, and `migrationsDir` owns migration-derived source intent for zero-source-flag commands. The scaffolded `"auto"` before-state resolves valid `git:HEAD`, then a database URL, then `empty:`.
 
 ```json
 {

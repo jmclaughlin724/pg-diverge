@@ -51,7 +51,7 @@ This rule owns source-repo agent runtime as public branch infrastructure. Requir
 
 - Public branch surfaces include tracked product code, tracked guards, tracked tests, `AGENTS.md`, `.claude/settings.json`, source-repo context hook entrypoints, `scripts/agent-hooks/*.mjs`, Claude rules, generated Codex rule mirrors, public supaschema consumer rule/skill surfaces, and consumer-safe `agent-bundle/**` templates.
 - Local-only surfaces include optimizer skills, maintainer-only Claude/Codex agents, personal `.agents` or `.claude` overlays, `.codex/config.toml`, Code Atlas data/support, MCP development tooling, deployment configs, private services, scratch planning, and generated state.
-- Package surfaces include only what `package.json#files` allows and Rule 13 permits. Consumer setup must remain explicit and must not copy active local DX surfaces.
+- Package surfaces include only what `package.json#files` allows and Rule 13 permits. Consumer setup must remain explicit and must not copy maintainer-only local DX surfaces.
 - Source-repo runtime can be public branch code without becoming package code. `package.json#files`, package tests, and `npm pack --dry-run --json` own that second boundary.
 
 ## Enforcement chain

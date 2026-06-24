@@ -6,7 +6,7 @@ keywords: ["sync command", "migration sync", "apply gate", "migrations"]
 
 Use `sync` as the default one-command workflow for schema changes.
 
-`sync` resolves source defaults, generates the schema diff, selects at most one configured target, reconciles history, checks pending migrations, refreshes generated TypeScript/Zod contracts according to workflow policy, stages generated migrations when Git is available, runs deploy safety gates, verifies the ordered pending migration set against a disposable database, invokes the selected target's runner when a target is selected, then reconciles history again. When no target is selected, the same local artifact, safety, and verify lanes end in a dry-run report. Bare `sync` may select one configured `sync.targets.<name>` entry with `mode: "auto"`. Multiple automatic targets are refused because cross-target apply is not atomic. When a selected target has a resolved database URL, the deploy type-safety gate compares that target's live PostgreSQL catalog with the declarative schema tree. Remote deploy uses the same selection rule and requires that target's approval variable before any mutation.
+`sync` resolves source defaults, extracts migration-derived source intent from existing migrations, generates the schema diff, selects at most one configured target, reconciles history, checks pending migrations, refreshes generated TypeScript/Zod contracts according to workflow policy, stages generated migrations when Git is available, runs deploy safety gates, verifies the ordered pending migration set against a disposable database, invokes the selected target's runner when a target is selected, then reconciles history again. When no target is selected, the same local artifact, safety, and verify lanes end in a dry-run report. Bare `sync` may select one configured `sync.targets.<name>` entry with `mode: "auto"`. Multiple automatic targets are refused because cross-target apply is not atomic. When a selected target has a resolved database URL, the deploy type-safety gate compares that target's live PostgreSQL catalog with the declarative schema tree. Remote deploy uses the same selection rule and requires that target's approval variable before any mutation.
 
 ## Use this when
 
@@ -19,17 +19,18 @@ Use `sync` as the default one-command workflow for schema changes.
 
 1. Enforce apply policy for any selected mutation target.
 2. Resolve source defaults from config and flags.
-3. Generate the diff unless `--no-diff` is set.
-4. Select zero or one configured sync target.
-5. Reconcile migration history for the selected target or fallback database URL.
-6. Check pending migration files.
-7. Refresh generated TypeScript/Zod contracts according to workflow policy, even when no migration is pending.
-8. Stage generated migration files when Git is available.
-9. Report no-op when no migration is pending.
-10. Run deploy safety gates.
-11. Verify the ordered pending migration set against a disposable database.
-12. Invoke the selected runner when a target is selected, or report dry-run when no target is selected.
-13. Reconcile migration history after the runner completes.
+3. Extract source intent from the configured migration corpus.
+4. Generate the diff unless `--no-diff` is set.
+5. Select zero or one configured sync target.
+6. Reconcile migration history for the selected target or fallback database URL.
+7. Check pending migration files.
+8. Refresh generated TypeScript/Zod contracts according to workflow policy, even when no migration is pending.
+9. Stage generated migration files when Git is available.
+10. Report no-op when no migration is pending.
+11. Run deploy safety gates.
+12. Verify the ordered pending migration set against a disposable database.
+13. Invoke the selected runner when a target is selected, or report dry-run when no target is selected.
+14. Reconcile migration history after the runner completes.
 
 ## Run it
 

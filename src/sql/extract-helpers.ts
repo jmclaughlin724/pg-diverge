@@ -1,7 +1,7 @@
 import type { Diagnostic, SchemaObject, SupaschemaConfig } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 import type { AstNode, QualifiedName } from "./ast.js";
-import { asRecord, rangeVarName, readArray, readString, stringList } from "./ast.js";
+import { asRecord, rangeVarName, readArray, readNumber, readString, stringList } from "./ast.js";
 import { makeObject } from "./statements.js";
 
 export interface ParseStatementResult {
@@ -79,20 +79,145 @@ function alterTableCommandObject(
     );
   }
   if (subtype === "AT_ColumnDefault") {
-    const column = readString(command?.name);
-    if (!column) {
+    return columnDefaultObject(command, table, statement, ordinal, file);
+  }
+  if (subtype === "AT_SetExpression" || subtype === "AT_DropExpression") {
+    return columnGeneratedObject(command, table, statement, ordinal, file, subtype);
+  }
+  if (
+    subtype === "AT_AddIdentity" ||
+    subtype === "AT_SetIdentity" ||
+    subtype === "AT_DropIdentity"
+  ) {
+    return columnIdentityObject(command, table, statement, ordinal, file, subtype);
+  }
+  if (subtype === "AT_AttachPartition") {
+    const partition = asRecord(asRecord(command?.def)?.PartitionCmd);
+    const child = rangeVarName(partition?.name);
+    if (!child) {
       return;
     }
-
     return makeObject(
-      { kind: "table", name: table.name, schema: table.schema },
+      { kind: "table", name: child.name, schema: child.schema },
       statement,
       ordinal,
       file,
       {
-        columnDefaultAmendment: { column, expression: command?.def ?? null },
+        tablePartitionAmendment: {
+          bound: partition?.bound ?? null,
+          parent: { name: table.name, schema: table.schema },
+        },
       }
     );
+  }
+  return;
+}
+
+function columnDefaultObject(
+  command: AstNode,
+  table: QualifiedName,
+  statement: string,
+  ordinal: number,
+  file: string | undefined
+): SchemaObject | undefined {
+  const column = readString(command?.name);
+  if (!column) {
+    return;
+  }
+  return makeObject(
+    { kind: "table", name: table.name, schema: table.schema },
+    statement,
+    ordinal,
+    file,
+    {
+      columnDefaultAmendment: { column, expression: command?.def ?? null },
+    }
+  );
+}
+
+function columnGeneratedObject(
+  command: AstNode,
+  table: QualifiedName,
+  statement: string,
+  ordinal: number,
+  file: string | undefined,
+  subtype: string
+): SchemaObject | undefined {
+  const column = readString(command?.name);
+  if (!column) {
+    return;
+  }
+  return makeObject(
+    { kind: "table", name: table.name, schema: table.schema },
+    statement,
+    ordinal,
+    file,
+    {
+      columnGeneratedAmendment: {
+        action: subtype === "AT_DropExpression" ? "drop" : "set",
+        column,
+        expression: command?.def ?? null,
+      },
+    }
+  );
+}
+
+function columnIdentityObject(
+  command: AstNode,
+  table: QualifiedName,
+  statement: string,
+  ordinal: number,
+  file: string | undefined,
+  subtype: string
+): SchemaObject | undefined {
+  const column = readString(command?.name);
+  if (!column) {
+    return;
+  }
+  return makeObject(
+    { kind: "table", name: table.name, schema: table.schema },
+    statement,
+    ordinal,
+    file,
+    {
+      columnIdentityAmendment: {
+        action: columnIdentityAction(subtype),
+        column,
+        identity: identityGeneration(command),
+      },
+    }
+  );
+}
+
+function columnIdentityAction(subtype: string): "add" | "drop" | "set" {
+  if (subtype === "AT_DropIdentity") {
+    return "drop";
+  }
+  if (subtype === "AT_SetIdentity") {
+    return "set";
+  }
+  return "add";
+}
+
+function identityGeneration(command: AstNode): string | undefined {
+  const constraint = asRecord(asRecord(command.def)?.Constraint);
+  const generatedWhen = readString(constraint?.generated_when);
+  if (generatedWhen === "a" || generatedWhen === "d") {
+    return generatedWhen;
+  }
+  const list = asRecord(command.def)?.List;
+  for (const item of readArray(list ? asRecord(list)?.items : [])) {
+    const defElem = asRecord(asRecord(item)?.DefElem);
+    if (readString(defElem?.defname) !== "generated") {
+      continue;
+    }
+    const value = readNumber(asRecord(asRecord(defElem?.arg)?.Integer)?.ival);
+    if (value === 97) {
+      return "a";
+    }
+    if (value === 100) {
+      return "d";
+    }
   }
   return;
 }

@@ -25,6 +25,24 @@ describe("split privilege aggregation", () => {
     expect(model.source).toBe("empty:");
   });
 
+  it("skips _bootstrap inventory files when reading schema sources", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-bootstrap-skip-"));
+    await mkdir(join(root, "_bootstrap"), { recursive: true });
+    await writeFile(
+      join(root, "_bootstrap", "00_roles.sql"),
+      "DO $$ BEGIN CREATE ROLE app_runtime NOLOGIN; END $$;\n"
+    );
+    await writeFile(
+      join(root, "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint PRIMARY KEY);\n"
+    );
+
+    const model = await extractSourceModel(`dir:${root}`);
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects.map((object) => object.key)).toContain("table:app.accounts");
+  });
+
   it("filters managed-schema and side-effect diagnostics out of scoped schema diffs", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-filter-"));
     await writeFile(
@@ -190,6 +208,95 @@ describe("standalone column default amendments", () => {
     const model = await modelFromSql("ALTER TABLE app.missing ALTER COLUMN id SET DEFAULT 5;\n");
 
     expect(errors(model).map((item) => item.code)).toContain("SUPA_EXTRACT_UNSUPPORTED");
+  });
+});
+
+describe("standalone column identity amendments", () => {
+  it("hashes ALTER COLUMN ADD IDENTITY identically to the inline declaration", async () => {
+    const altered = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint NOT NULL);\nALTER TABLE app.t ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY;\n"
+    );
+    const inline = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY NOT NULL);\n"
+    );
+
+    expect(errors(altered)).toEqual([]);
+    const alteredTable = altered.objects.find((object) => object.ref.kind === "table");
+    const inlineTable = inline.objects.find((object) => object.ref.kind === "table");
+    expect(alteredTable?.hash).toBe(inlineTable?.hash);
+    expect(alteredTable?.sql).toContain("ADD GENERATED ALWAYS AS IDENTITY");
+  });
+
+  it("DROP IDENTITY cancels an inline identity", async () => {
+    const dropped = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint GENERATED ALWAYS AS IDENTITY NOT NULL);\nALTER TABLE app.t ALTER COLUMN id DROP IDENTITY IF EXISTS;\n"
+    );
+    const bare = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint NOT NULL);\n"
+    );
+
+    const droppedTable = dropped.objects.find((object) => object.ref.kind === "table");
+    const bareTable = bare.objects.find((object) => object.ref.kind === "table");
+    expect(droppedTable?.hash).toBe(bareTable?.hash);
+  });
+});
+
+describe("standalone generated column expression amendments", () => {
+  it("hashes ALTER COLUMN SET EXPRESSION identically to the inline generated expression", async () => {
+    const altered = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (name text, slug text GENERATED ALWAYS AS (lower(name)) STORED);\nALTER TABLE app.t ALTER COLUMN slug SET EXPRESSION AS (upper(name));\n"
+    );
+    const inline = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (name text, slug text GENERATED ALWAYS AS (upper(name)) STORED);\n"
+    );
+
+    expect(errors(altered)).toEqual([]);
+    const alteredTable = altered.objects.find((object) => object.ref.kind === "table");
+    const inlineTable = inline.objects.find((object) => object.ref.kind === "table");
+    expect(alteredTable?.hash).toBe(inlineTable?.hash);
+    expect(alteredTable?.sql).toContain("SET EXPRESSION AS (upper(name))");
+  });
+
+  it("hashes ALTER COLUMN DROP EXPRESSION identically to the base column", async () => {
+    const dropped = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (name text, slug text GENERATED ALWAYS AS (lower(name)) STORED);\nALTER TABLE app.t ALTER COLUMN slug DROP EXPRESSION IF EXISTS;\n"
+    );
+    const bare = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (name text, slug text);\n"
+    );
+
+    const droppedTable = dropped.objects.find((object) => object.ref.kind === "table");
+    const bareTable = bare.objects.find((object) => object.ref.kind === "table");
+    expect(droppedTable?.hash).toBe(bareTable?.hash);
+  });
+});
+
+describe("standalone partition amendments", () => {
+  it("merges ATTACH PARTITION into the child table shape", async () => {
+    const model = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE TABLE app.events (id bigint NOT NULL, created_at date NOT NULL) PARTITION BY RANGE (created_at);
+      CREATE TABLE app.events_2026_01 (id bigint NOT NULL, created_at date NOT NULL);
+      ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+    `);
+
+    expect(errors(model)).toEqual([]);
+    const child = model.objects.find((object) => object.key === "table:app.events_2026_01");
+    const shape = child?.metadata.canonicalShape;
+    expect(child?.sql).toContain("ATTACH PARTITION");
+    expect(shape).toMatchObject({
+      inhRelations: [
+        {
+          RangeVar: {
+            inh: true,
+            relname: "events",
+            relpersistence: "p",
+            schemaname: "app",
+          },
+        },
+      ],
+    });
+    expect(shape).toHaveProperty("partbound");
   });
 });
 

@@ -6,7 +6,7 @@ keywords: ["plan command", "schema plan", "JSON", "diff"]
 
 Use `plan` when you need to inspect schema operations before SQL is rendered.
 
-`plan` runs the same comparison as `diff`, prints the `MigrationPlan` JSON, and leaves the filesystem untouched.
+`plan` runs the same comparison and migration-intent extraction as `diff`, prints the `MigrationPlan` JSON, and leaves the filesystem untouched.
 
 ## Use this when
 
@@ -14,6 +14,7 @@ Use `plan` when you need to inspect schema operations before SQL is rendered.
 - A migration looks surprising and you want the planner view.
 - You want destructive or blocked operations before rendering SQL.
 - Downstream tooling should summarize schema impact.
+- You need to confirm whether existing migrations supplied the source intent for backfills, Vault references, or workload-derived indexes.
 
 ## Run it
 

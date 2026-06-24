@@ -856,6 +856,15 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
         []
       )
     ).toBeUndefined();
+    expect(
+      claimWithoutEvidence("No remote CI checks were verified.", normalizedHookState(), [])
+    ).toBeUndefined();
+    expect(
+      claimWithoutEvidence("No GitHub checks were verified.", normalizedHookState(), [])
+    ).toBeUndefined();
+    expect(
+      claimWithoutEvidence("GitHub checks are verified.", normalizedHookState(), [])
+    ).toMatchObject({ id: "claim-without-evidence" });
   });
 
   it("does not treat a lone parenthetical 'verified' as a domain verification claim", () => {

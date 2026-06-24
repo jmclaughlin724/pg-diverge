@@ -10,6 +10,7 @@ import {
   excludedMaintainerFiles,
   expectedInstalledConfig,
   expectedSupaschemaScripts,
+  managedSchemas,
   rawAgentBundleFiles,
 } from "./install-parity-expectations.js";
 import {
@@ -332,7 +333,7 @@ describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery l
     const manifest = JSON.parse(readFileSync(join(pnpmConsumer, "package.json"), "utf8"));
     expect(manifest.scripts).toMatchObject(expectedSupaschemaScripts);
     for (const file of activeAgentFiles) {
-      expect(existsSync(join(pnpmConsumer, file)), file).toBe(false);
+      expect(existsSync(join(pnpmConsumer, file)), file).toBe(true);
     }
     for (const file of rawAgentBundleFiles) {
       expect(existsSync(join(pnpmConsumer, file)), file).toBe(true);
@@ -440,7 +441,7 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     );
   });
 
-  it("supaschema init scaffolds config without active agent surfaces by default", async () => {
+  it("supaschema init scaffolds config and active agent enforcement by default", async () => {
     const first = await capture(process.execPath, [binPath2, "init"], consumer2);
     expect(first.code, first.stderr).toBe(0);
 
@@ -451,7 +452,7 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     expect(existsSync(join(consumer2, "database", "schemas"))).toBe(true);
     expect(existsSync(join(consumer2, "database", "migrations"))).toBe(true);
     for (const file of activeAgentFiles) {
-      expect(existsSync(join(consumer2, file)), file).toBe(false);
+      expect(existsSync(join(consumer2, file)), file).toBe(true);
     }
     for (const file of rawAgentBundleFiles) {
       expect(existsSync(join(consumer2, file)), file).toBe(true);
@@ -461,12 +462,103 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     }
     expect(existsSync(join(consumer2, ".supaschema"))).toBe(false);
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
-    expect(first.stdout).toContain("agent bundle not installed by default");
+    expect(first.stdout).toContain("agent bundle");
 
     const second = await capture(process.execPath, [binPath2, "init"], consumer2);
     expect(second.code, second.stderr).toBe(0);
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
   });
+
+  it("supaschema init completes a Supabase inventory project without pending path setup", async () => {
+    const project = await mkdtemp(join(tmpdir(), "supa-inventory-consumer-"));
+    await writeFile(
+      join(project, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-inventory-consumer-fixture",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+    await mkdir(join(project, "supabase", "schemas", "_bootstrap"), { recursive: true });
+    await mkdir(join(project, "supabase", "migrations"), { recursive: true });
+    await writeFile(join(project, "supabase", "config.toml"), "[db]\nport = 54322\n");
+    await writeFile(
+      join(project, "supabase", "AGENTS.md"),
+      "`supabase/schemas/**` is the existing schema-source and contract-inventory surface while it remains in the repo; it is not the routine migration generator input.\n"
+    );
+    await writeFile(
+      join(project, "supabase", "schemas", "_bootstrap", "00_roles.sql"),
+      "create schema if not exists app;\n"
+    );
+
+    const install = npmExec([
+      "install",
+      tarballPath,
+      "--prefer-offline",
+      "--no-audit",
+      "--no-fund",
+    ]);
+    await run(install.file, install.args, { cwd: project, maxBuffer: 64 * 1024 * 1024 });
+
+    const bin = installedPackageBinPath(project);
+    const init = await capture(process.execPath, [bin, "init"], project);
+    expect(init.code, init.stderr).toBe(0);
+
+    expect(existsSync(join(project, ".supaschema", "install.json"))).toBe(false);
+    const config = JSON.parse(readFileSync(join(project, "supaschema.config.json"), "utf8"));
+    expect(config).toEqual(
+      expectedInstalledConfig("supabase/schemas", "supabase/migrations", {
+        workflow: { migration_sync: "manual", schema_diff: "manual" },
+      })
+    );
+
+    const validate = await capture(
+      process.execPath,
+      [bin, "config", "validate", "--json"],
+      project
+    );
+    expect(validate.code, validate.stderr).toBe(0);
+    expect(JSON.parse(validate.stdout)).toEqual({ diagnostics: [], ok: true });
+  }, 300_000);
+
+  it("supaschema init repairs existing Supabase managed-schema excludes", async () => {
+    const project = await mkdtemp(join(tmpdir(), "supa-managed-repair-"));
+    await writeFile(
+      join(project, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-managed-repair-fixture",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+    await mkdir(join(project, "supabase", "schemas"), { recursive: true });
+    await mkdir(join(project, "supabase", "migrations"), { recursive: true });
+    await writeFile(join(project, "supabase", "config.toml"), "[db]\nport = 54322\n");
+
+    const existing = expectedInstalledConfig("supabase/schemas", "supabase/migrations");
+    existing.schemas = { exclude: [], include: [] };
+    await writeFile(
+      join(project, "supaschema.config.json"),
+      `${JSON.stringify(existing, null, 2)}\n`
+    );
+
+    const install = npmExec([
+      "install",
+      tarballPath,
+      "--prefer-offline",
+      "--no-audit",
+      "--no-fund",
+    ]);
+    await run(install.file, install.args, { cwd: project, maxBuffer: 64 * 1024 * 1024 });
+
+    const bin = installedPackageBinPath(project);
+    const init = await capture(process.execPath, [bin, "init"], project);
+    expect(init.code, init.stderr).toBe(0);
+    expect(init.stdout).toContain("config repair");
+
+    const config = JSON.parse(readFileSync(join(project, "supaschema.config.json"), "utf8"));
+    expect(config.schemas.exclude).toEqual(managedSchemas);
+  }, 300_000);
 
   it("supaschema init rejects the removed --agent-bundle auto-install path", async () => {
     const help = await capture(process.execPath, [binPath2, "init", "--help"], consumer2);
@@ -478,7 +570,7 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     expect(result.stderr).toContain("unknown option");
 
     for (const file of activeAgentFiles) {
-      expect(existsSync(join(consumer2, file)), file).toBe(false);
+      expect(existsSync(join(consumer2, file)), file).toBe(true);
     }
     for (const file of rawAgentBundleFiles) {
       expect(existsSync(join(consumer2, file)), file).toBe(true);

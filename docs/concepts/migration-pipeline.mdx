@@ -14,11 +14,11 @@ The day-to-day migration workflow uses one command:
 npx supaschema sync
 ```
 
-`sync` reads the configured source, reads the target declarative SQL tree, plans the change, renders the migration, writes it to the configured migration directory, selects at most one target, reconciles history, gates replay safety, refreshes TypeScript and Zod outputs, stages changed generated migrations when Git is available, runs deploy safety gates, verifies the ordered pending migration set, and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
+`sync` reads the configured source, reads the target declarative SQL tree, reads the configured migration corpus for source intent, plans the change, renders the migration, writes it to the configured migration directory, selects at most one target, reconciles history, gates replay safety, refreshes TypeScript and Zod outputs, stages changed generated migrations when Git is available, runs deploy safety gates, verifies the ordered pending migration set, and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
 
 ```text
-database or migration state + declarative SQL tree
-  -> extract structured models
+before-state source + declarative SQL tree + migration source-intent corpus
+  -> extract structured schema and intent models
   -> plan safe operations
   -> render replay-safe SQL
   -> write migration
@@ -28,14 +28,17 @@ database or migration state + declarative SQL tree
 
 <Steps>
   <Step title="Extract">
-    supaschema loads both sides into structured PostgreSQL models. SQL
+    supaschema loads both schema sides into structured PostgreSQL models and
+    loads existing migrations into a structured source-intent model. SQL
     understanding comes from parser-backed models, not raw text comparison.
   </Step>
   <Step title="Plan">
     The planner compares tables, constraints, indexes, functions, triggers,
     views, policies, grants, foreign data wrappers, comments, and supported
-    extension ownership. Unsupported and provider-owned surfaces fail closed
-    instead of being guessed.
+    extension ownership, then applies explicit migration-derived intent for
+    facts the schema tree cannot express by shape alone. Unsupported,
+    provider-owned, or missing-intent surfaces fail closed instead of being
+    guessed.
   </Step>
   <Step title="Render">
     The renderer emits deterministic SQL with idempotent guards, lock and
@@ -47,6 +50,14 @@ database or migration state + declarative SQL tree
     schema intent.
   </Step>
 </Steps>
+
+## Source intent
+
+The declarative tree owns the desired schema shape. Existing migrations in `migrationsDir` are also an input: they carry operational intent that a final schema snapshot cannot prove by itself.
+
+That source-intent lane is required for row backfills, explicit DML or `DO` workflows, enum rewrite recipes, Vault references or placeholder names, workload-proven index intent, and provider bootstrap constraints. supaschema may preserve or transform that intent only when it is present in schema files, existing migrations, config, checked workload artifacts, or reviewed hints.
+
+It must not invent row values, Vault secret material, tenant predicates, conversion expressions, or query-workload indexes from table shape alone. When the source intent is missing, the correct behavior is an actionable diagnostic that names the file, config field, hint, or workload artifact an agent must add before generation can continue.
 
 ## Safety gates
 

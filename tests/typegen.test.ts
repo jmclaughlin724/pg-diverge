@@ -307,7 +307,7 @@ describe("zod schema generation", () => {
     expect(zod).toContain("export type EnumValue<");
   });
 
-  it("validates composite-typed columns as unknown, not z.composite()", async () => {
+  it("validates composite-typed columns with generated composite object schemas", async () => {
     const zod = await zodFor(
       `CREATE SCHEMA app;
 CREATE TYPE app.address AS (street text, zip int);
@@ -316,7 +316,12 @@ CREATE TABLE app.people (id bigint, home app.address);
     );
 
     expect(zod).not.toContain("z.composite()");
-    expect(zod).toContain("home: z.unknown().nullable(),");
+    expect(zod).toContain("const app_address = z.object({");
+    expect(zod).toContain("street: z.string().nullable(),");
+    expect(zod).toContain("zip: z.number().nullable(),");
+    expect(zod).toContain("CompositeTypes: {");
+    expect(zod).toContain("home: app_address.nullable(),");
+    expect(zod).toContain("export type CompositeValue<");
   });
 
   it("derives insert optionality and omits generated columns from writes", async () => {

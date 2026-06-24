@@ -23,7 +23,7 @@ Install from the package or workspace that owns your schema workflow, not from a
 | Yarn | `yarn add supaschema` | `yarn exec supaschema init` | `yarn exec supaschema <cmd>` |
 | Bun | `bun add supaschema` | `./node_modules/.bin/supaschema init` | `./node_modules/.bin/supaschema <cmd>` |
 
-supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, and optional coding-agent bundle are part of the consuming repo's migration workflow.
+supaschema is a runtime project dependency because the CLI, config schema, generated-output workflow, and coding-agent enforcement bundle are part of the consuming repo's migration workflow.
 
 For workspaces, run both install and setup from the package directory that owns `supaschema.config.json` and the schema files. Dependency-targeting flags such as npm `--workspace`, pnpm `--filter`, or Yarn `workspace` can update the member manifest while setup still runs from the command's current directory. Use root-level workspace flags only when the workspace root owns the schema workflow.
 
@@ -47,15 +47,13 @@ Use the matching local runner for every command after install:
 - Yarn: `yarn exec supaschema <cmd>`
 - Bun: `./node_modules/.bin/supaschema <cmd>`
 
-After install, run `<local-runner> init`. It uses the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths to create config and directories. It does not install active AI-agent rules, hooks, skills, settings, `AGENTS.md`, or `CLAUDE.md` by default. If `.supaschema/install.json` exists, inspect it first; when it has `pathConfirmationNeeded: true`, stop before validation or diffing and ask which detected paths to write into `supaschema.config.json`. If no pending install manifest exists, inspect `supaschema.config.json`. Then run:
+After install, run `<local-runner> init`. It uses the consuming repo's package manager, workspace owner, provider markers, schema paths, and migration paths to create config, directories, scripts, and active AI-agent enforcement. It installs missing package-owned `.agents`, `.claude`, and `.codex` files, merges `.claude/settings.json` and `.codex/hooks.json`, preserves existing non-identical files, reports skipped non-mergeable hook config, and does not write `AGENTS.md` or `CLAUDE.md`. If `.supaschema/install.json` exists, inspect it first; when it has `pathConfirmationNeeded: true`, follow `agentInstructions`, choose the owning paths from the detected candidates, and write those paths into `supaschema.config.json`. If no pending install manifest exists, inspect `supaschema.config.json`. Then run:
 
 `<local-runner> --version` `<local-runner> config validate --json`
 
 Default `supaschema init` installs only focused non-apply scripts: `supaschema:diff`, `supaschema:stage`, `supaschema:types`, and `supaschema:check`. Use direct CLI commands for setup diagnostics, full sync/apply, and database execution verification: `<local-runner> config validate --json`, `<local-runner> sync`, `<local-runner> apply`, and `<local-runner> verify`.
 
-Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, whether path confirmation is still pending, and that the raw AI-agent bundle is available at `node_modules/supaschema/agent-bundle/INSTALL.md` but not installed by default.
-
-Install AI-agent enforcement only if I explicitly ask for it. In that case, read `node_modules/supaschema/agent-bundle/INSTALL.md`, then manually merge the reviewed raw bundle files.
+Report the configured schema paths, migration directory, generated TypeScript/Zod outputs, whether path confirmation is still pending, and whether the agent-bundle install completed or reported skipped files to repair from `node_modules/supaschema/agent-bundle/INSTALL.md`. Supabase inventory or `_bootstrap` projects should have config present with manual schema diff and migration sync policy, managed schemas in `schemas.exclude`, and no pending install state. Re-run `supaschema init` after package upgrades to persist config-contract repairs.
 
 Do not apply migrations to any database unless I explicitly ask for that or the configured apply policy allows it: `workflow.migration_sync` must permit apply, exactly one `sync.targets.<name>.mode` must select the target, verify must pass, and any remote approval variable must be set by the operator. For schema changes, edit the declarative schema tree, run `<local-runner> sync`, and treat generated migrations as build output.
 
@@ -94,7 +92,7 @@ Use named environments only when you need an additional named target. Do not cre
     Generate and check one migration.
   </Card>
   <Card title="Coding agents" icon="bot" href="/coding-agents">
-    Review the optional raw agent bundle.
+    Review the installed agent enforcement bundle.
   </Card>
   <Card
     title="Configuration"

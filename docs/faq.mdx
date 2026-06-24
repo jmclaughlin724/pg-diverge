@@ -73,7 +73,7 @@ See [GitHub Actions CI](/guides/ci-github-actions) for a complete workflow.
 
 ## Which PostgreSQL objects are supported?
 
-`supaschema` models schemas, extensions, enum/domain/composite types, tables, constraints, indexes, sequences, functions, procedures, views, materialized views, triggers, RLS, policies, grants, default privileges, comments, and foreign data wrappers. Unsupported DDL and provider-owned surfaces such as publications/subscriptions, partitioning, event triggers, collations, and Supabase-managed storage/auth/realtime internals fail with a diagnostic instead of passing through silently. See the [support matrix](/reference/support-matrix).
+`supaschema` models schemas, extensions, enum/domain/composite types, tables, identity columns, attached partitions, constraints, indexes, sequences, functions, procedures, views, materialized views, triggers, RLS, policies, grants, default privileges, comments, and foreign data wrappers. Unsupported DDL and provider-owned surfaces such as publications/subscriptions, event triggers, collations, and Supabase-managed storage/auth/realtime internals fail with a diagnostic instead of passing through silently. See the [support matrix](/reference/support-matrix).
 
 ## What happens when supaschema blocks a diff?
 

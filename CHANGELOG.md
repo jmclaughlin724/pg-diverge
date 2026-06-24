@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.6 (2026-06-23)
+
+### Patch Changes
+
+- Installs the packaged AI enforcement bundle during `supaschema init`, merging Claude and Codex hook configuration while preserving consumer-owned agent files.
+- Expands setup detection so Supabase inventory schema trees use manual diff and migration-sync policy, and normal `init` preserves existing JSON config unless `--repair` is requested.
+- Extends declarative source extraction, planning, rendering, and tests for more PostgreSQL table changes, including column identity, generated expressions, partition attachment, policies, indexes, and related SQL shape helpers.
+- Adds generated Zod coverage for composite types and fixes the Stop-hook response evidence scanner so negative verification disclaimers are not treated as positive remote-check claims.
+
 ## 0.3.5 (2026-06-23)
 
 ### Patch Changes
