@@ -1,6 +1,6 @@
 ---
 title: "Sources"
-description: "supaschema reads schemas from SQL files on disk, Git refs, a live database, SQL dump files, or saved catalog snapshots. No Docker or shadow database required."
+description: "supaschema reads schemas from SQL files on disk, Git refs, SQL dump files, saved catalog snapshots, or explicit live-database workflows. No Docker or shadow database required."
 keywords:
   ["schema sources", "SQL files", "Git refs", "database URL", "snapshots"]
 ---
@@ -36,7 +36,7 @@ The configured `migrationsDir` is a third input to planning, but it is not a `--
   <Card title="Live database" icon="database">
     **Syntax:** `database:$DATABASE_URL`
 
-    Read-only introspection of a live PostgreSQL connection. Never writes to the database.
+    Read-only introspection of a live PostgreSQL connection. Use this for explicit inspect, verify, selfcheck, drift, target-safety, or catalog-snapshot workflows, not migration generation.
 
   </Card>
 </CardGroup>
@@ -73,7 +73,7 @@ Use `dir:` for schema files on disk.
 supaschema walks the directory, parses `.sql` files, and builds a SchemaModel from supported `CREATE` statements.
 
 ```bash
-supaschema diff --from database:$DATABASE_URL --to dir:database/schemas
+supaschema diff --from git:HEAD --to dir:database/schemas
 ```
 
 **When to use it:**
@@ -281,7 +281,7 @@ The table below summarises the most useful source pairings and the workflow each
 | Analyse a legacy dump | `dump:legacy-schema.sql` | `dir:database/schemas` | Diff a dump file against your current schema |
 
 <Tip>
-  Defaults come from `supaschema.config.json`. `sources.from` owns the before-state, `sources.to` owns the after-state, and `migrationsDir` owns migration-derived source intent for zero-source-flag commands. The scaffolded `"auto"` before-state resolves valid `git:HEAD`, then a database URL, then `empty:`.
+  Defaults come from `supaschema.config.json`. `sources.from` owns the before-state, `sources.to` owns the after-state, and `migrationsDir` owns migration-derived source intent for zero-source-flag commands. For generation, the scaffolded `"auto"` before-state resolves valid `git:HEAD`, then `empty:` only for a first migration with no existing migration corpus.
 
 ```json
 {

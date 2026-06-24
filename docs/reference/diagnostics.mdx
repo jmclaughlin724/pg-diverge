@@ -26,7 +26,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_DIFF_LINEAGE_BROKEN` | error | The plan's from-state does not continue the newest pending supaschema migration in the output directory. |
 | `SUPA_DIFF_LINEAGE_DUPLICATE` | error | A pending supaschema migration already covers this exact from/to transition. |
 | `SUPA_DIFF_OUTPUT_EXISTS` | error | The output migration file already exists; supaschema never overwrites migrations. |
-| `SUPA_MIGRATION_INTENT_PARSE_SKIPPED` | warning | A configured migration file could not be fully parsed for source intent; destructive changes in that file may still require explicit hints. |
+| `SUPA_MIGRATION_CORPUS_PARSE_SKIPPED` | warning | A configured migration file could not be fully parsed for source intent; destructive changes in that file may still require explicit hints. |
 | `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` | error | A destructive change lacks an explicit hint. |
 | `SUPA_PLAN_ADD_COLUMN_UNSAFE` | error | An additive column change needs explicit migration review. |
 | `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED` | error | Column drops and type changes render data-preserving ALTERs only after a destructive-change hint. |
@@ -86,6 +86,8 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_SYNC_REMOTE_APPROVAL_REQUIRED` | error | Automatic remote sync is missing its required runtime approval environment variable. |
 | `SUPA_SYNC_RUNNER_FAILED` | error | The selected migration runner launched or connected, then failed during sync. |
 | `SUPA_SYNC_RUNNER_UNAVAILABLE` | error | The selected migration runner could not be launched or connected. |
+| `SUPA_SOURCE_BASELINE_REQUIRED` | error | Generation could not resolve a source-backed baseline. Pin `sources.from` or review `empty:` for a first migration. |
+| `SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION` | error | Generation was given a live database source. Use a source-backed baseline, or use inspect/verify/selfcheck/drift/sync safety for database-backed workflows. |
 | `SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION` | error | The Supabase CLI runner cannot safely apply a `.concurrent.sql` companion migration. |
 | `SUPA_SYNC_TARGET_OVERRIDE_MULTI` | error | A database URL or environment override was used while multiple sync targets were selected. |
 | `SUPA_SYNC_TARGET_UNKNOWN` | error | The selected named sync target is not configured. |

@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config/schema.js";
-import { readMigrationIntent } from "../src/migrations/intent.js";
+import { readMigrationCorpus } from "../src/migrations/corpus.js";
 import { buildSchemaDiffPlan } from "../src/pipeline/diff.js";
 import { renderMigration } from "../src/render/migration.js";
 
-describe("migration-derived source intent", () => {
+describe("migration-derived source corpus", () => {
   it("uses existing migrations to release reviewed column drops", async () => {
-    const root = await migrationIntentFixture({
+    const root = await migrationCorpusFixture({
       migrationSql: `
         DROP FUNCTION app.legacy_secret(p_ciphertext bytea);
         ALTER TABLE app.credentials DROP COLUMN encrypted_value;
@@ -47,7 +47,7 @@ describe("migration-derived source intent", () => {
   });
 
   it("does not plan independent grant cleanup for dropped function targets", async () => {
-    const root = await migrationIntentFixture({ migrationSql: "" });
+    const root = await migrationCorpusFixture({ migrationSql: "" });
 
     const plan = await buildSchemaDiffPlan({
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
@@ -63,7 +63,7 @@ describe("migration-derived source intent", () => {
   });
 
   it("still blocks column drops when existing migrations do not declare them", async () => {
-    const root = await migrationIntentFixture({ migrationSql: "" });
+    const root = await migrationCorpusFixture({ migrationSql: "" });
 
     const plan = await buildSchemaDiffPlan({
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
@@ -79,7 +79,7 @@ describe("migration-derived source intent", () => {
   });
 
   it("uses the selected migrations directory for source intent", async () => {
-    const root = await migrationIntentFixture({ migrationSql: "" });
+    const root = await migrationCorpusFixture({ migrationSql: "" });
     await mkdir(join(root, "selected-migrations"), { recursive: true });
     await writeFile(
       join(root, "selected-migrations", "20260102000000_existing.sql"),
@@ -107,7 +107,7 @@ describe("migration-derived source intent", () => {
   });
 
   it("does not use stale config-dir intent when a different migrations directory is selected", async () => {
-    const root = await migrationIntentFixture({
+    const root = await migrationCorpusFixture({
       migrationSql: "ALTER TABLE app.credentials DROP COLUMN encrypted_value;",
     });
     await mkdir(join(root, "selected-migrations"), { recursive: true });
@@ -126,33 +126,66 @@ describe("migration-derived source intent", () => {
     );
   });
 
-  it("does not promote migration-intent parse failures to plan errors", async () => {
-    const root = await migrationIntentFixture({ migrationSql: "CREATE TABLE" });
+  it("does not promote migration-corpus parse failures to plan errors", async () => {
+    const root = await migrationCorpusFixture({ migrationSql: "CREATE TABLE" });
 
-    const intent = await readMigrationIntent("migrations", { cwd: root });
+    const corpus = await readMigrationCorpus("migrations", { cwd: root });
 
-    expect(intent.diagnostics).toEqual([
+    expect(corpus.diagnostics).toEqual([
       expect.objectContaining({
-        code: "SUPA_MIGRATION_INTENT_PARSE_SKIPPED",
+        code: "SUPA_MIGRATION_CORPUS_PARSE_SKIPPED",
         severity: "warning",
       }),
     ]);
   });
 
   it("treats standard DROP ROUTINE as function and procedure destructive intent", async () => {
-    const root = await migrationIntentFixture({
+    const root = await migrationCorpusFixture({
       migrationSql: "DROP ROUTINE app.legacy_secret(bytea);",
     });
 
-    const intent = await readMigrationIntent("migrations", { cwd: root });
+    const corpus = await readMigrationCorpus("migrations", { cwd: root });
 
-    expect(intent.destructiveKeys).toContain("function:app.legacy_secret(bytea)");
-    expect(intent.destructiveKeys).toContain("procedure:app.legacy_secret(bytea)");
+    expect(corpus.destructiveKeys).toContain("function:app.legacy_secret(bytea)");
+    expect(corpus.destructiveKeys).toContain("procedure:app.legacy_secret(bytea)");
+  });
+
+  it("records data, DO, generated, identity, default, constraint, type, index, and enum source facts", async () => {
+    const root = await migrationCorpusFixture({
+      migrationSql: `
+        DO $$ begin perform 1; end $$;
+        INSERT INTO app.credentials (id) VALUES (1) ON CONFLICT DO NOTHING;
+        ALTER TYPE app.status ADD VALUE IF NOT EXISTS 'active';
+        ALTER TABLE app.credentials ALTER COLUMN encrypted_value TYPE text;
+        ALTER TABLE app.credentials ALTER COLUMN encrypted_value SET DEFAULT '';
+        ALTER TABLE app.credentials ALTER COLUMN encrypted_value ADD GENERATED ALWAYS AS IDENTITY;
+        ALTER TABLE app.credentials ALTER COLUMN encrypted_value DROP EXPRESSION IF EXISTS;
+        ALTER TABLE app.credentials ADD CONSTRAINT credentials_id_check CHECK (id > 0);
+        CREATE INDEX IF NOT EXISTS credentials_id_idx ON app.credentials (id);
+      `,
+    });
+
+    const corpus = await readMigrationCorpus("migrations", { cwd: root });
+    const kinds = corpus.operations.map((operation) => operation.kind);
+
+    expect(kinds).toEqual(
+      expect.arrayContaining([
+        "constraint",
+        "data-statement",
+        "do-block",
+        "enum-rewrite",
+        "index",
+        "table-column-default",
+        "table-column-generated",
+        "table-column-identity",
+        "table-column-type",
+      ])
+    );
   });
 });
 
-async function migrationIntentFixture(options: { migrationSql: string }): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "supa-migration-intent-"));
+async function migrationCorpusFixture(options: { migrationSql: string }): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "supa-migration-corpus-"));
   await mkdir(join(root, "from"), { recursive: true });
   await mkdir(join(root, "to"), { recursive: true });
   await mkdir(join(root, "migrations"), { recursive: true });

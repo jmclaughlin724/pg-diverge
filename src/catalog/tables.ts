@@ -85,9 +85,13 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
 function columnFromRow(column: Record<string, unknown>): TableColumn {
   const identity = stringValue(column.identity);
   const generated = stringValue(column.generated);
+  const generatedKind = generatedColumnKind(generated);
+  const identityKind = identityMode(identity);
   const parts = [stringValue(column.type)];
-  if (generated === "s" && column.default_expression) {
-    parts.push(`GENERATED ALWAYS AS (${stringValue(column.default_expression)}) STORED`);
+  if (generatedKind !== undefined && column.default_expression) {
+    parts.push(
+      `GENERATED ALWAYS AS (${stringValue(column.default_expression)}) ${generatedKind.toUpperCase()}`
+    );
   } else if (identity === "a") {
     parts.push("GENERATED ALWAYS AS IDENTITY");
   } else if (identity === "d") {
@@ -100,18 +104,42 @@ function columnFromRow(column: Record<string, unknown>): TableColumn {
   }
   const facts: TableColumn = {
     definition: parts.join(" "),
-    generated: generated === "s",
-    hasDefault: Boolean(column.default_expression) && generated !== "s",
+    hasDefault: Boolean(column.default_expression) && generatedKind === undefined,
     hasInlineConstraint: false,
-    identity: identity === "a" || identity === "d",
     name: stringValue(column.name),
     notNull: column.not_null === true,
     type: stringValue(column.type),
   };
+  if (generatedKind !== undefined) {
+    facts.generated = generatedKind;
+  }
+  if (identityKind !== undefined) {
+    facts.identity = identityKind;
+  }
   if (facts.hasDefault && !facts.identity) {
     facts.defaultExpression = stringValue(column.default_expression);
   }
   return facts;
+}
+
+function generatedColumnKind(value: string | undefined): "stored" | "virtual" | undefined {
+  if (value === "s") {
+    return "stored";
+  }
+  if (value === "v") {
+    return "virtual";
+  }
+  return;
+}
+
+function identityMode(value: string | undefined): "always" | "by-default" | undefined {
+  if (value === "a") {
+    return "always";
+  }
+  if (value === "d") {
+    return "by-default";
+  }
+  return;
 }
 
 function groupByOid(rows: Record<string, unknown>[]): Map<string, Record<string, unknown>[]> {

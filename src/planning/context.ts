@@ -1,0 +1,181 @@
+import { resolve } from "node:path";
+import { performance } from "node:perf_hooks";
+import { parseRuntimeSource, RuntimeSourceKind, sourceAuto } from "../config/contract.js";
+import type { Diagnostic, MigrationCorpus, SchemaModel, SupaschemaConfig } from "../core.js";
+import { diagnostic } from "../diagnostics.js";
+import { readMigrationCorpus } from "../migrations/corpus.js";
+import { migrationFiles } from "../migrations/files.js";
+import { redactSecrets } from "../redaction.js";
+import { extractSourceModel, filterModelBySchemas } from "../source/extract.js";
+import {
+  defaultGitHeadExists,
+  defaultTreeSource,
+  type ResolvedSources,
+} from "../source/resolve.js";
+
+export interface ResolvedGenerationSources extends ResolvedSources {
+  diagnostics: Diagnostic[];
+}
+
+export interface ResolveGenerationSourceOptions {
+  cwd?: string;
+  from?: string;
+  migrationsDir?: string;
+  to?: string;
+}
+
+export interface SchemaPlanningContext {
+  diagnostics: Diagnostic[];
+  from?: SchemaModel;
+  fromMs: number;
+  migrationCorpus?: MigrationCorpus;
+  planStart: number;
+  to?: SchemaModel;
+  toMs: number;
+}
+
+export interface SchemaPlanningContextOptions {
+  config: SupaschemaConfig;
+  cwd?: string;
+  from: string;
+  migrationsDir?: string;
+  schema?: string;
+  to: string;
+}
+
+export async function resolveGenerationSourceDefaults(
+  options: ResolveGenerationSourceOptions,
+  config: SupaschemaConfig,
+  gitHeadExists: () => Promise<boolean> = defaultGitHeadExists
+): Promise<ResolvedGenerationSources> {
+  const defaulted: string[] = [];
+  const diagnostics: Diagnostic[] = [];
+  const cwd = options.cwd ?? process.cwd();
+  const migrationsDir = options.migrationsDir ?? config.migrationsDir;
+  const to = options.to ?? config.sources.to ?? defaultTreeSource(config);
+  if (options.to === undefined) {
+    defaulted.push(`--to ${redactSecrets(to)}`);
+  }
+
+  let from = options.from;
+  let fromDefaultBlocked = false;
+  if (from === undefined) {
+    if (config.sources.from === sourceAuto) {
+      if (await gitHeadExists()) {
+        from = "git:HEAD";
+      } else if (await hasMigrationCorpus(cwd, migrationsDir)) {
+        from = "empty:";
+        fromDefaultBlocked = true;
+        diagnostics.push(baselineRequiredDiagnostic(migrationsDir));
+      } else {
+        from = "empty:";
+      }
+    } else {
+      from = config.sources.from;
+    }
+    if (!fromDefaultBlocked) {
+      defaulted.push(`--from ${redactSecrets(from)}`);
+    }
+  }
+
+  diagnostics.push(...generationSourceDiagnostics(from, to));
+  const notice =
+    defaulted.length > 0 ? `defaults: ${defaulted.join(" · ")} (flags override)\n` : undefined;
+  return { diagnostics, from, notice, to };
+}
+
+export async function buildSchemaPlanningContext(
+  options: SchemaPlanningContextOptions
+): Promise<SchemaPlanningContext> {
+  const diagnostics = generationSourceDiagnostics(options.from, options.to);
+  if (diagnostics.some((item) => item.severity === "error")) {
+    return { diagnostics, fromMs: 0, planStart: performance.now(), toMs: 0 };
+  }
+
+  const extractOptions = {
+    config: options.config,
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+  };
+  const corpusOptions = options.cwd === undefined ? {} : { cwd: options.cwd };
+  const extractStart = performance.now();
+  const from = filterModelBySchema(
+    await extractSourceModel(options.from, extractOptions),
+    options.schema
+  );
+  const fromMs = performance.now() - extractStart;
+  const toStart = performance.now();
+  const to = filterModelBySchema(
+    await extractSourceModel(options.to, extractOptions),
+    options.schema
+  );
+  const migrationCorpus = await readMigrationCorpus(
+    options.migrationsDir ?? options.config.migrationsDir,
+    corpusOptions
+  );
+  const toMs = performance.now() - toStart;
+  return { diagnostics, from, fromMs, migrationCorpus, planStart: performance.now(), to, toMs };
+}
+
+export function generationSourceDiagnostics(from: string, to: string): Diagnostic[] {
+  return [
+    ...generationSourceSideDiagnostics("from", from),
+    ...generationSourceSideDiagnostics("to", to),
+  ];
+}
+
+function generationSourceSideDiagnostics(side: "from" | "to", source: string): Diagnostic[] {
+  if (source === sourceAuto) {
+    return [
+      diagnostic(
+        "SUPA_SOURCE_BASELINE_REQUIRED",
+        "error",
+        `generation ${side}-source still resolves to auto`,
+        {
+          hint: "Resolve the source to git:<ref>, dir:<path>, dump:<file>, catalog:<file>, or empty: before planning.",
+        }
+      ),
+    ];
+  }
+  const parsed = parseRuntimeSource(source);
+  if (parsed?.kind !== RuntimeSourceKind.Database) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION",
+      "error",
+      `generation ${side}-source uses a live database catalog`,
+      {
+        hint: "Use git:<ref>, dir:<path>, dump:<file>, catalog:<file>, or empty: for migration generation. Use inspect, verify, selfcheck, audit, or target safety for explicit database-backed workflows.",
+      }
+    ),
+  ];
+}
+
+async function hasMigrationCorpus(cwd: string, migrationsDir: string): Promise<boolean> {
+  return (await migrationFiles(resolve(cwd, migrationsDir))).length > 0;
+}
+
+function baselineRequiredDiagnostic(migrationsDir: string): Diagnostic {
+  return diagnostic(
+    "SUPA_SOURCE_BASELINE_REQUIRED",
+    "error",
+    "sources.from: auto could not resolve a repository baseline for existing migrations",
+    {
+      hint: `Set sources.from to git:<ref>, dir:<path>, dump:<file>, catalog:<file>, or empty: after reviewing ${migrationsDir}.`,
+    }
+  );
+}
+
+function filterModelBySchema(model: SchemaModel, schemaFilter: string | undefined): SchemaModel {
+  if (!schemaFilter) {
+    return model;
+  }
+  const schemas = new Set(
+    schemaFilter
+      .split(",")
+      .map((name) => name.trim().toLowerCase())
+      .filter(Boolean)
+  );
+  return filterModelBySchemas(model, schemas);
+}

@@ -56,7 +56,7 @@ export async function resolveSourceDefaults(
   return { from, notice, to };
 }
 
-async function defaultGitHeadExists(): Promise<boolean> {
+export async function defaultGitHeadExists(): Promise<boolean> {
   try {
     await execFileAsync("git", ["rev-parse", "--verify", "--quiet", "HEAD"], {
       maxBuffer: 1024 * 1024,

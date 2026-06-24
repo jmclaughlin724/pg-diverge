@@ -47,7 +47,7 @@ npx supaschema verify --ensure-environment --ensure-roles
 Before adopting an existing project, confirm the tree and database agree:
 
 ```bash
-npx supaschema diff --from database:$DATABASE_URL --fail-on-diff
+npx supaschema inspect --from "database:$DATABASE_URL" > database.catalog.json
 ```
 
 ## Related

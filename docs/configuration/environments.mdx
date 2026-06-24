@@ -5,11 +5,11 @@ keywords:
   ["environments", "database URL", "SUPASCHEMA_DATABASE_URL", "PostgreSQL"]
 ---
 
-Commands that read a live catalog need a database URL.
+Explicit database-backed workflows need a database URL.
 
 This includes:
 
-- `diff --from database:...`;
+- `inspect` and `selfcheck`;
 - `verify`;
 - `migrations`;
 - `sync`;
@@ -19,7 +19,7 @@ You usually do not need to repeat the URL on every command. `supaschema init` re
 
 ## Resolution order
 
-1. **An explicit value** — the `--database-url` flag or a `database:<url>` source.
+1. **An explicit value** — the `--database-url` flag or a `database:<url>` source in non-generation workflows.
 2. **A named environment** — the global `--env <name>` flag reads `environments.<name>.databaseUrl` from config.
 3. **`SUPASCHEMA_DATABASE_URL`** — the environment variable, when set.
 4. **The local Supabase stack** — for Supabase projects only, the nearest `supabase/config.toml` (searched upward from the working directory) supplies the local URL from its `[db] port`. Other providers should use named environments or `SUPASCHEMA_DATABASE_URL`.

@@ -131,8 +131,12 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_MIGRATIONS_OUT_OF_ORDER:
     "Pending migration files are older than the target's newest applied version; a runner may skip or misorder them.",
   SUPA_MIGRATIONS_TARGET_UNAVAILABLE: "The migrations target database could not be read.",
-  SUPA_MIGRATION_INTENT_PARSE_SKIPPED:
+  SUPA_MIGRATION_CORPUS_PARSE_SKIPPED:
     "A historical migration could not be parsed for source-intent extraction.",
+  SUPA_SOURCE_BASELINE_REQUIRED:
+    "Migration generation could not resolve a repository source baseline.",
+  SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION:
+    "Migration generation cannot use a live database catalog as a source.",
   SUPA_SYNC_DISABLED: "workflow.migration_sync is disabled, so configured apply/deploy is refused.",
   SUPA_SYNC_ENV_UNKNOWN: "The selected sync environment is not defined in config.environments.",
   SUPA_SYNC_FINAL_RECONCILE_FAILED:

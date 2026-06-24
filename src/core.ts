@@ -61,11 +61,11 @@ export interface SchemaObject {
 export interface TableColumn {
   defaultExpression?: string;
   definition: string;
-  generated?: boolean;
+  generated?: "stored" | "virtual";
   generatedExpression?: string;
   hasDefault?: boolean;
   hasInlineConstraint?: boolean;
-  identity?: boolean;
+  identity?: "always" | "by-default";
   name: string;
   notNull?: boolean;
   type?: string;
@@ -105,9 +105,31 @@ export interface MigrationPlan {
   toFingerprint: string;
 }
 
-export interface MigrationIntent {
+export type MigrationCorpusOperationKind =
+  | "constraint"
+  | "data-statement"
+  | "do-block"
+  | "drop"
+  | "enum-rewrite"
+  | "index"
+  | "routine"
+  | "table-column-default"
+  | "table-column-drop"
+  | "table-column-generated"
+  | "table-column-identity"
+  | "table-column-type";
+
+export interface MigrationCorpusOperation {
+  file: string;
+  key?: string;
+  kind: MigrationCorpusOperationKind;
+  statementTag: string;
+}
+
+export interface MigrationCorpus {
   destructiveKeys: string[];
   diagnostics: Diagnostic[];
+  operations: MigrationCorpusOperation[];
   tableColumnDrops: string[];
 }
 

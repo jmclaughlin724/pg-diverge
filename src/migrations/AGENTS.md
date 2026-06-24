@@ -21,4 +21,4 @@ This directory owns migration file discovery, lineage, staging, history status, 
 
 ## Verification
 
-Run focused lineage, migration-intent, or runner tests for changed behavior, then `npm run typecheck`.
+Run focused lineage, migration-corpus, or runner tests for changed behavior, then `npm run typecheck`.
