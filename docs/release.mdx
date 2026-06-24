@@ -27,7 +27,7 @@ The package is designed for trusted publishing from GitHub Actions. `main` is th
 4. Run `npm run release:verify`.
 5. Push the signed release commit to `main`, or merge it through the optional PR lane.
 
-Do not publish from GitHub Releases or local machines. If npm publish succeeds but GitHub Release creation fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm. If npm and GitHub already have the current version, a `push` to `main` fails preflight so the merge cannot silently skip package publication.
+Do not publish from GitHub Releases or local machines. GitHub Release creation runs immediately after npm publish and tarball attestation, before registry smoke, so npm propagation lag cannot leave npm published without the matching GitHub release/tag. If npm publish succeeds but GitHub Release creation itself fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm. If npm and GitHub already have the current version, a `push` to `main` fails preflight so the merge cannot silently skip package publication.
 
 ## Package boundary
 
@@ -45,9 +45,9 @@ The release workflow uses:
 - a GitHub-hosted Ubuntu runner with Node 24, npm `>=11.5.1`, and `actions/setup-node` with `registry-url: https://registry.npmjs.org`
 - `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`
 - `actions/attest@v4` for tarball provenance attestation
-- `npm run release:registry-smoke` after publish and attestation, and before GitHub Release creation on npm-published repair reruns; it downloads `supaschema@<version>` from the npm registry through npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun
 - `node scripts/release/changelog-notes.mjs --version "$SUPASCHEMA_PACKAGE_VERSION" --out "$RUNNER_TEMP/release-notes.md"`
 - `gh release create "$SUPASCHEMA_RELEASE_TAG" --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"`
+- `npm run release:registry-smoke` after GitHub Release creation for fresh publishes and npm-published repair reruns; it downloads `supaschema@<version>` from the npm registry through npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun
 
 With npm trusted publishing, provenance is generated through GitHub Actions OIDC. The explicit `--provenance` flag is kept as release policy.
 

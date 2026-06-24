@@ -117,7 +117,7 @@ function assertReleaseConditionals(release, publishJob) {
       stepIf(setupBunRegistrySmokeStep) === SHOULD_RUN_REGISTRY_SMOKE_IF &&
       stepActionName(setupBunRegistrySmokeStep) === "oven-sh/setup-bun" &&
       String(setupBunRegistrySmokeStep.with?.["bun-version"]) === "1.3.14",
-    "release.yml must install pinned Bun for the post-publish registry smoke"
+    "release.yml must install pinned Bun for the post-release registry smoke"
   );
   const registrySmokeStep = findNamedStep(
     publishJob.steps ?? [],
@@ -127,7 +127,7 @@ function assertReleaseConditionals(release, publishJob) {
     registrySmokeStep &&
       stepIf(registrySmokeStep) === SHOULD_RUN_REGISTRY_SMOKE_IF &&
       stepRun(registrySmokeStep) === "npm run release:registry-smoke",
-    "release.yml must verify the npm-published package can be installed from npm by supported package managers before GitHub release creation"
+    "release.yml must verify the npm-published package can be installed from npm by supported package managers after GitHub release creation"
   );
   const prepareReleaseNotesStep = findNamedStep(
     publishJob.steps ?? [],
@@ -144,26 +144,33 @@ function assertReleaseConditionals(release, publishJob) {
   );
 }
 
-function assertReleaseAttestationBeforeRegistrySmoke(publishJob) {
+function assertReleasePublicationOrder(publishJob) {
   const publishIndex = (publishJob.steps ?? []).findIndex(
     (step) => stepRun(step) === 'npm publish "$SUPASCHEMA_TARBALL" --access public --provenance'
   );
   const attestIndex = (publishJob.steps ?? []).findIndex(
     (step) => stepActionName(step) === "actions/attest"
   );
-  const registrySmokeIndex = (publishJob.steps ?? []).findIndex(
-    (step) => stepName(step) === "Smoke published package from npm registry"
+  const prepareReleaseNotesIndex = (publishJob.steps ?? []).findIndex(
+    (step) => stepName(step) === "Prepare GitHub release notes"
   );
   const createReleaseIndex = (publishJob.steps ?? []).findIndex(
     (step) => stepName(step) === "Create GitHub release"
   );
-  assert(
-    publishIndex >= 0 && attestIndex > publishIndex && registrySmokeIndex > attestIndex,
-    "release.yml must attest the published tarball before post-publish registry smoke can fail the job"
+  const registrySmokeIndex = (publishJob.steps ?? []).findIndex(
+    (step) => stepName(step) === "Smoke published package from npm registry"
   );
   assert(
-    createReleaseIndex > registrySmokeIndex,
-    "release.yml must run registry smoke before GitHub Release creation"
+    publishIndex >= 0 && attestIndex > publishIndex,
+    "release.yml must attest the published tarball immediately after npm publish"
+  );
+  assert(
+    prepareReleaseNotesIndex > attestIndex && createReleaseIndex > prepareReleaseNotesIndex,
+    "release.yml must create the GitHub Release after npm publish/provenance attestation"
+  );
+  assert(
+    registrySmokeIndex > createReleaseIndex,
+    "release.yml must run registry smoke after GitHub Release creation so registry propagation failures cannot strand npm without a GitHub Release"
   );
 }
 
@@ -283,7 +290,7 @@ function assertReleaseYaml(parsed) {
     "release.yml must publish the exact tarball that was smoked"
   );
   assertReleaseConditionals(release, publishJob);
-  assertReleaseAttestationBeforeRegistrySmoke(publishJob);
+  assertReleasePublicationOrder(publishJob);
   assert(
     release.raw.includes("gh release create") &&
       release.raw.includes('--target "$GITHUB_SHA"') &&

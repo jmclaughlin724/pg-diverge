@@ -50,7 +50,7 @@ Anti-patterns are STOP conditions. Do not narrow, bypass, weaken, or treat them 
 | Agent surfaces | Duplicating durable policy across AGENTS, rules, skills, hooks, commands, generated mirrors, or docs; hand-editing generated `.codex/**` / `.agents/**` mirrors. | Rules 12, 17, and 18; `npm run sync:llm`; `npm run guard:agent`. |
 | Agent surfaces | Adding regex intent metadata, unresolved placeholders, invented commands or paths, hidden assumptions, or stale plan text to agent prompts/rules/skills. | Rule 17; docs and agent-surface guards. |
 | Docs | Publishing comparison pages with undated or unsourced external claims. | Rule 02; `scripts/check-docs-standard.mjs`; `npm run docs:lint`. |
-| CI/release | Unpinning actions, adding stored npm publish tokens, weakening OIDC/provenance, running post-publish registry smoke before tarball attestation, path-skipping required gates, moving DB proofs into release, bypassing hooks, or publishing release notes from generated notes instead of the changelog. | Rules 09 and 19; CI and release guards. |
+| CI/release | Unpinning actions, adding stored npm publish tokens, weakening OIDC/provenance, running post-release registry smoke before tarball attestation or GitHub Release/tag creation, path-skipping required gates, moving DB proofs into release, bypassing hooks, or publishing release notes from generated notes instead of the changelog. | Rules 09 and 19; CI and release guards. |
 
 ## Verification
 

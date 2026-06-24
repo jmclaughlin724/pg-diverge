@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7 (2026-06-24)
+
+### Patch Changes
+
+- Moves GitHub Release creation ahead of registry smoke in the main release workflow, so npm propagation lag cannot leave a package published without the matching GitHub release/tag.
+- Updates release governance guards, rules, and docs so CI enforces the publish, attest, release, then registry-smoke order for fresh publishes and repair reruns.
+
 ## 0.3.6 (2026-06-23)
 
 ### Patch Changes
