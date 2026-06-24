@@ -20,7 +20,7 @@ No. `supaschema` is an independent open-source project for PostgreSQL projects o
 
 ## Does supaschema apply migrations to my database?
 
-Yes, through `supaschema sync` when you select an apply target explicitly or configure one approved automatic target. `sync` runs history reconciliation, replay-safety, generated-contract refresh, generated-migration staging, type-safety, RLS-safety, disposable-database verification, target runner, and final-reconciliation lanes before it mutates a database. Remote automatic targets require an approval environment variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1`.
+Yes, through `supaschema sync` when you select an apply target explicitly or configure one approved automatic target. `sync` runs history reconciliation, replay-safety, generated-contract refresh, generated-migration staging, source-model type-safety, source-model RLS-safety, target runner, and final-reconciliation lanes before it mutates a database. Remote automatic targets require an approval environment variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1`.
 
 ## Does supaschema need Docker or a shadow database?
 

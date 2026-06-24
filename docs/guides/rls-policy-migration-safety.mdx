@@ -37,7 +37,7 @@ npx supaschema check
 
 Review whether each predicate broadened reads, weakened writes, or changed role coverage.
 
-For apply workflows, keep `workflow.rls_safety` at `deploy_blocking` so `supaschema sync` refuses to mutate a target when RLS diagnostics fail.
+For apply workflows, the default `workflow.rls_safety` policy reports diagnostics without blocking. Set it to `deploy_blocking` when a project wants RLS diagnostics to refuse target mutation.
 
 ## Verify
 

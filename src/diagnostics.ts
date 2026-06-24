@@ -155,8 +155,6 @@ export const diagnosticCatalog: Record<string, string> = {
     "A database URL or environment override can only be used when exactly one sync target is selected.",
   SUPA_SYNC_TARGET_UNKNOWN: "The selected sync target is not configured.",
   SUPA_SYNC_TARGET_URL_UNRESOLVED: "The selected sync target's database URL could not be resolved.",
-  SUPA_SYNC_VERIFY_URL_UNRESOLVED:
-    "sync could not resolve the database URL required by the verify lane.",
   SUPA_DIFF_LINEAGE_GAP:
     "The newest pending supaschema migration does not chain into the next schema diff.",
   SUPA_NORMALIZE_FIDELITY:
@@ -183,6 +181,16 @@ export const diagnosticCatalog: Record<string, string> = {
     "An RLS policy uses Supabase auth.role(); target roles with the policy TO clause instead.",
   SUPA_RULE_POLICY_AUTH_UID_UNWRAPPED:
     "An RLS policy calls auth.uid() directly instead of wrapping it in a SELECT initPlan.",
+  SUPA_SCAN_CONTRACT_ASSERTION:
+    "A TypeScript assertion appears in a file importing generated database contracts.",
+  SUPA_SCAN_CONTRACT_IMPORT_RENAME: "A generated contract import was renamed locally.",
+  SUPA_SCAN_CONTRACT_OVERRIDE_TYPES:
+    "A Supabase query response override bypasses the generated database contract.",
+  SUPA_SCAN_CONTRACT_RETURNS:
+    "A Supabase query returns override bypasses the generated database contract.",
+  SUPA_SCAN_CONTRACT_RUNTIME_COPY: "A local constant copies a generated runtime contract root.",
+  SUPA_SCAN_CONTRACT_USAGE_PARSE:
+    "A TypeScript file in the generated-contract usage scan could not be fully parsed.",
   SUPA_OBJECT_PARSE_FAILED:
     "Object SQL did not parse, so its identity hash fell back to normalized text.",
   SUPA_PARSE_ERROR: "SQL failed to parse with the PostgreSQL parser.",

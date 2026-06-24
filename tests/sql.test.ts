@@ -176,6 +176,35 @@ describe("diff rendering", () => {
     );
   });
 
+  it("orders composite types after view row-type dependencies", async () => {
+    const from = {
+      diagnostics: [],
+      fingerprint: "",
+      objects: [],
+      source: "empty",
+    };
+    const extracted = await extractObjectsFromSql(`
+      CREATE SCHEMA app;
+      CREATE TYPE app.item_group AS (items app.v_items[]);
+      CREATE VIEW app.v_items AS SELECT 1::integer AS id;
+    `);
+    const composite = extracted.objects.find((object) => object.key === "type:app.item_group");
+    const to = {
+      diagnostics: extracted.diagnostics,
+      fingerprint: "",
+      objects: extracted.objects,
+      source: "target",
+    };
+    const labels = planSchemaDiff(from, to).operations.map(
+      (operation) => `${operation.kind}:${operation.key}`
+    );
+
+    expect(composite?.dependencies).toContain("app.v_items");
+    expect(labels.indexOf("create:view:app.v_items")).toBeLessThan(
+      labels.indexOf("create:type:app.item_group")
+    );
+  });
+
   it("quotes qualified SQL-function ORDER BY columns for catalog typecheck", async () => {
     const from = {
       diagnostics: [],

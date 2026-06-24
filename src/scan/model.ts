@@ -43,6 +43,10 @@ const MAX_SCORE = 100;
 
 export function scanModel(model: SchemaModel, packs: RulePack[]): ScanResult {
   const diagnostics = [...model.diagnostics, ...runRulePacks(packs, { model })];
+  return scanDiagnostics(diagnostics);
+}
+
+export function scanDiagnostics(diagnostics: Diagnostic[]): ScanResult {
   const errorCount = diagnostics.filter((item) => item.severity === "error").length;
   const warningCount = diagnostics.filter((item) => item.severity === "warning").length;
   const score = Math.max(0, MAX_SCORE - errorCount * ERROR_WEIGHT - warningCount * WARNING_WEIGHT);
@@ -84,7 +88,7 @@ export function renderScan(result: ScanResult, reporter: CheckReporter, file: st
   if (reporter === "json") {
     return `${JSON.stringify(scanJsonReport(result, file), null, 2)}\n`;
   }
-  const files: FileDiagnostics[] = [{ diagnostics: result.diagnostics, file }];
+  const files = scanFileDiagnostics(result, file);
   return renderCheckReport(reporter, files);
 }
 
@@ -139,6 +143,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isScanGrade(value: unknown): value is ScanJsonReport["grade"] {
   return typeof value === "string" && Object.hasOwn(SCAN_GRADE_COUNTS, value);
+}
+
+function scanFileDiagnostics(result: ScanResult, fallbackFile: string): FileDiagnostics[] {
+  const grouped = new Map<string, Diagnostic[]>();
+  for (const item of result.diagnostics) {
+    const file = item.file ?? fallbackFile;
+    const diagnostics = grouped.get(file) ?? [];
+    diagnostics.push(groupDiagnostic(item, file));
+    grouped.set(file, diagnostics);
+  }
+  return [...grouped.entries()].map(([file, diagnostics]) => ({ diagnostics, file }));
+}
+
+function groupDiagnostic(item: Diagnostic, file: string): Diagnostic {
+  if (item.file !== file) {
+    return item;
+  }
+  const { file: _file, ...rest } = item;
+  return rest;
 }
 
 function medianScore(scores: readonly number[]): number {

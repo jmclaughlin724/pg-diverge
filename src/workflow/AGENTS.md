@@ -9,7 +9,7 @@ This directory coordinates user-facing sync/apply workflows across targets, hist
 - `sync.ts` orchestrates diff, staging, apply, checks, and reporting.
 - `targets.ts` resolves configured sync targets.
 - `history.ts` checks pending migrations and runner status.
-- `verify.ts` checks lineage and pending migration verification.
+- `verify.ts` checks lineage between pending generated migrations.
 - `report.ts` renders workflow output helpers.
 
 ## Working Rules

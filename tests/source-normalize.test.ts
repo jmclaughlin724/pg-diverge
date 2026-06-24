@@ -349,6 +349,7 @@ describe("standalone partition amendments", () => {
     expect(errors(model)).toEqual([]);
     const child = model.objects.find((object) => object.key === "table:app.events_2026_01");
     const shape = child?.metadata.canonicalShape;
+    expect(child?.dependencies).toContain("app.events");
     expect(child?.sql).toContain("ATTACH PARTITION");
     expect(shape).toMatchObject({
       inhRelations: [
@@ -363,6 +364,30 @@ describe("standalone partition amendments", () => {
       ],
     });
     expect(shape).toHaveProperty("partbound");
+  });
+
+  it("orders attached partitions after their parent table even when source order is reversed", async () => {
+    const from = {
+      diagnostics: [],
+      fingerprint: "",
+      objects: [],
+      source: "empty",
+    };
+    const to = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE TABLE app.events_2026_01 (id bigint NOT NULL, created_at date NOT NULL);
+      CREATE TABLE app.events (id bigint NOT NULL, created_at date NOT NULL) PARTITION BY RANGE (created_at);
+      ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+    `);
+    const sql = renderMigration(planSchemaDiff(from, to), { includeHeader: false });
+    const parent = "CREATE TABLE IF NOT EXISTS app.events (";
+    const child = "CREATE TABLE IF NOT EXISTS app.events_2026_01 (";
+    const attach =
+      "ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');";
+
+    expect(sql.indexOf(parent)).toBeGreaterThanOrEqual(0);
+    expect(sql.indexOf(parent)).toBeLessThan(sql.indexOf(child));
+    expect(sql.indexOf(child)).toBeLessThan(sql.indexOf(attach));
   });
 });
 
@@ -429,6 +454,32 @@ describe("sequence OWNED BY amendments", () => {
     const alteredSeq = altered.objects.find((object) => object.ref.kind === "sequence");
     const inlineSeq = inline.objects.find((object) => object.ref.kind === "sequence");
     expect(alteredSeq?.hash).toBe(inlineSeq?.hash);
+  });
+
+  it("renders sequence ownership after the owned table while keeping sequence defaults valid", async () => {
+    const from = {
+      diagnostics: [],
+      fingerprint: "",
+      objects: [],
+      source: "empty",
+    };
+    const to = await modelFromSql(
+      [
+        "CREATE SCHEMA app;",
+        "CREATE SEQUENCE app.s;",
+        "CREATE TABLE app.t (id bigint);",
+        "ALTER TABLE ONLY app.t ALTER COLUMN id SET DEFAULT nextval('app.s'::regclass);",
+        "ALTER SEQUENCE app.s OWNED BY app.t.id;",
+      ].join("\n")
+    );
+    const sql = renderMigration(planSchemaDiff(from, to), { includeHeader: false });
+    const createSequence = 'CREATE SEQUENCE IF NOT EXISTS "app"."s"';
+    const createTable = "CREATE TABLE IF NOT EXISTS app.t";
+    const ownedBy = 'ALTER SEQUENCE "app"."s" OWNED BY "app"."t"."id";';
+
+    expect(sql.indexOf(createSequence)).toBeGreaterThanOrEqual(0);
+    expect(sql.indexOf(createSequence)).toBeLessThan(sql.indexOf(createTable));
+    expect(sql.indexOf(createTable)).toBeLessThan(sql.indexOf(ownedBy));
   });
 });
 

@@ -73,6 +73,12 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_CHECK_POLICY_REPLACEMENT` | error | `CREATE POLICY` should be paired with an explicit prior drop for replacement. |
 | `SUPA_RULE_POLICY_MISSING_PREDICATE` | warning | An RLS policy lacks the `USING` or `WITH CHECK` predicate needed for its command class. |
 | `SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN` | warning | An RLS policy lacks a column configured in `hints.requiredPolicyColumns` for its table. |
+| `SUPA_SCAN_CONTRACT_ASSERTION` | warning | A TypeScript assertion appears in a file importing generated database contracts. |
+| `SUPA_SCAN_CONTRACT_IMPORT_RENAME` | warning | A generated contract import was renamed locally. |
+| `SUPA_SCAN_CONTRACT_OVERRIDE_TYPES` | warning | A Supabase query response override bypasses the generated database contract. |
+| `SUPA_SCAN_CONTRACT_RETURNS` | warning | A Supabase query returns override bypasses the generated database contract. |
+| `SUPA_SCAN_CONTRACT_RUNTIME_COPY` | warning | A local constant copies a generated runtime contract root. |
+| `SUPA_SCAN_CONTRACT_USAGE_PARSE` | warning | A TypeScript file in the generated-contract usage scan could not be fully parsed. |
 | `SUPA_SELFCHECK_HASH_MISMATCH` | error | A catalog object hashes differently after its rendered SQL is re-extracted; cross-lane diffs would report a false change. |
 | `SUPA_SELFCHECK_MISSING` | error | A catalog object disappeared when its rendered SQL was re-extracted. |
 | `SUPA_SELFCHECK_UNEXPECTED` | error | Re-extraction produced an object the catalog model does not contain. |
@@ -92,7 +98,6 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_SYNC_TARGET_OVERRIDE_MULTI` | error | A database URL or environment override was used while multiple sync targets were selected. |
 | `SUPA_SYNC_TARGET_UNKNOWN` | error | The selected named sync target is not configured. |
 | `SUPA_SYNC_TARGET_URL_UNRESOLVED` | error | The selected sync target's database URL could not be resolved. |
-| `SUPA_SYNC_VERIFY_URL_UNRESOLVED` | error | `sync` could not resolve the database URL required by the verify lane. |
 | `SUPA_VERIFY_CLEANUP_FAILED` | warning | A temporary verification database could not be dropped and may need manual removal. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` hints | — | The mismatch hint names the differing objects: missing from the migration result, not present in the target, and definition differs. |
 | `SUPA_VERIFY_FAILED` | error | Temporary database verification failed. |

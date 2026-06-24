@@ -5,7 +5,7 @@ TypeScript (NodeNext ESM) compiled to `dist/`. Public API surface is `src/index.
 ## Organization
 
 - `cli.ts`, `cli/diff.ts`, `cli/reports.ts`, `cli/tools.ts` — commander command registration and subcommand wiring
-- `workflow/sync.ts`, `workflow/targets.ts`, `workflow/history.ts`, `workflow/report.ts`, `workflow/verify.ts` — sync orchestration, target selection, history reconciliation, reporting, and verification handoff
+- `workflow/sync.ts`, `workflow/targets.ts`, `workflow/history.ts`, `workflow/report.ts`, `workflow/verify.ts` — sync orchestration, target selection, history reconciliation, reporting, and lineage checks
 - `hooks/config.ts`, `hooks/targets.ts`, `hooks/checks.ts`, `hooks/payload.ts`, `hooks/commands.ts`, `hooks/output.ts` — schema-write hook config, payload parsing, target checks, command execution, and output rendering
 - `migrations/files.ts`, `migrations/lineage.ts`, `migrations/stage.ts`, `migrations/status.ts`, `migrations/runners.ts` — migration file discovery, lineage markers, generated migration staging, history reconciliation, and runner execution
 - `config/schema.ts` / `config/validate.ts` — zod config schema, loading, and path/URL validation

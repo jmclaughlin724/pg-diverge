@@ -13,7 +13,7 @@
 Use it with plain PostgreSQL or hosted providers such as Supabase, Neon, RDS/Aurora, Cloud SQL, AlloyDB, and Azure PostgreSQL.
 
 ```bash
-supaschema sync  # diff, check, types, stage, safety, verify, apply/dry-run, reconcile
+supaschema sync  # diff, check, types, stage, safety, apply/dry-run, reconcile
 ```
 
 ![supaschema vs diff engines at 1,000 tables: median diff latency bars](docs/images/benchmarks/head-to-head-xl-bars.svg)
@@ -26,7 +26,7 @@ supaschema keeps the schema workflow inside the repository. It ships PostgreSQL'
 
 - **Fast feedback:** generating a diff does not require Docker or a shadow database.
 - **One schema owner:** PostgreSQL SQL remains the source of truth; generated migrations, TypeScript types, and Zod validators follow from it.
-- **Replay safety:** generated SQL uses guarded operations and can be checked statically or applied twice in disposable databases.
+- **Replay safety:** generated SQL uses guarded operations and is checked statically before apply.
 - **Reviewable risk:** destructive changes and renames fail closed until exact object-level hints approve them.
 - **Agent-ready workflow:** `supaschema init` installs package-owned Claude/Codex/AGENTS enforcement so teams can block generated migration edits and run schema-write checks.
 
@@ -47,7 +47,7 @@ npm run benchmark
 
 ## How it fits
 
-supaschema replaces the PostgreSQL schema-management lane: schema diff, migration generation, safety checks, disposable-database verification, generated contracts, drift gates, staging, and guarded apply. Individual commands stay available for each action. Keep another tool when its distinct runtime, platform runner, query API, hosted dashboard, or cross-database scope is the part you intentionally want.
+supaschema replaces the PostgreSQL schema-management lane: schema diff, migration generation, safety checks, generated contracts, drift gates, staging, and guarded apply. Individual commands stay available for each action, including explicit runtime verification when a disposable database is intentionally available. Keep another tool when its distinct runtime, platform runner, query API, hosted dashboard, or cross-database scope is the part you intentionally want.
 
 - Use it beside Supabase when you want Supabase project resources but do not want Docker-backed `db diff` as the migration generator.
 - Use it beside Prisma or Drizzle when you want their query or client APIs but do not want an ORM schema DSL to own PostgreSQL intent.

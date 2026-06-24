@@ -123,8 +123,8 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `workflow.migration_check` | `"after_schema_diff"` | `after_schema_diff` runs `check` after hook-generated migrations; `required_before_complete` marks check as required before agents close schema work; `manual` skips hook-driven check. |
 | `workflow.migration_verify` | `"suggest_after_check"` | `suggest_after_check` tells agents to suggest `verify` after check when a database is reachable; `after_schema_diff` allows automation to verify after a generated migration; `manual` leaves verification entirely explicit. |
 | `workflow.migration_sync` | `"auto"` | `disabled` refuses apply; `manual` leaves bare `sync` on the dry-run gate while allowing explicit `--target <name>` overrides; `auto` allows bare `sync` to use one target whose own `mode` is `"auto"`. |
-| `workflow.type_safety` | `"deploy_blocking"` | `deploy_blocking` fails sync before mutation on type-contract errors; `report_only` keeps diagnostics non-blocking; `disabled` skips the type-safety gate. |
-| `workflow.rls_safety` | `"deploy_blocking"` | `deploy_blocking` fails sync before mutation on RLS and least-privilege errors; `report_only` keeps diagnostics non-blocking; `disabled` skips the RLS-safety gate. |
+| `workflow.type_safety` | `"report_only"` | `report_only` keeps type-contract diagnostics non-blocking; `deploy_blocking` fails sync before mutation on type-contract errors; `disabled` skips the type-safety gate. |
+| `workflow.rls_safety` | `"report_only"` | `report_only` keeps RLS and least-privilege diagnostics non-blocking; `deploy_blocking` fails sync before mutation on RLS and least-privilege errors; `disabled` skips the RLS-safety gate. |
 | `workflow.type_generation` | `"create_or_refresh"` | TypeScript generated-output policy for the package workflow. `supaschema types` is the public command that refreshes `typesFile`. |
 | `workflow.zod_generation` | `"create_or_refresh"` | Zod generated-output policy for the package workflow. `supaschema types` is the public command that refreshes `zodFile`. |
 | `workflow.type_usage` | `"zod_validated"` | `zod_validated` tells agents to use the generated Zod validators for runtime boundaries and derived validated types; `typescript_only` tells agents to use only the generated TypeScript shape. |
@@ -220,8 +220,8 @@ A configured validator that is not installed produces `SUPA_VALIDATOR_UNAVAILABL
     "migration_check": "after_schema_diff",
     "migration_verify": "suggest_after_check",
     "migration_sync": "auto",
-    "type_safety": "deploy_blocking",
-    "rls_safety": "deploy_blocking",
+    "type_safety": "report_only",
+    "rls_safety": "report_only",
     "type_generation": "create_or_refresh",
     "zod_generation": "create_or_refresh",
     "type_usage": "zod_validated"

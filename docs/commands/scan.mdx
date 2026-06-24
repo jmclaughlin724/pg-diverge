@@ -1,17 +1,25 @@
 ---
 title: "scan"
-description: "Score a declarative schema for Postgres safety with the rule packs and report findings."
-keywords: ["scan command", "postgres safety score", "rule packs", "rls audit"]
+description: "Score a declarative schema and optional generated-contract usage with the scan rule packs."
+keywords:
+  [
+    "scan command",
+    "postgres safety score",
+    "rule packs",
+    "rls audit",
+    "generated contracts",
+  ]
 ---
 
-Use `scan` to grade a declarative schema and surface safety findings without a database.
+Use `scan` to grade a declarative schema and optionally surface generated-contract usage findings without a database.
 
-`scan` reads the declarative tree (or any source) and runs the rule packs. It does not connect to a database.
+`scan` reads the declarative tree (or any source) and runs the schema rule packs. With `--contract-usage`, it also scans TypeScript files for high-signal generated-contract misuse.
 
 ## Use this when
 
 - A repo needs a quick Postgres safety score.
 - CI should surface RLS, grant, and hygiene findings.
+- CI should report generated-contract import renames, query overrides, assertions, or copied runtime roots.
 - An onboarding check wants a baseline grade.
 
 ## Run it
@@ -19,6 +27,7 @@ Use `scan` to grade a declarative schema and surface safety findings without a d
 ```bash
 npx supaschema scan
 npx supaschema scan --from dir:database/schemas
+npx supaschema scan --contract-usage src --reporter json
 npx supaschema scan --reporter json
 ```
 
@@ -28,6 +37,12 @@ With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Ou
 
 <ParamField path="--from" type="source">
   Source to scan. Defaults to the declarative tree (`config.sources.to`).
+</ParamField>
+
+<ParamField path="--contract-usage" type="directory">
+  Also scan TypeScript files under this directory for generated-contract usage
+  diagnostics. The scan uses `typesFile` and `zodFile` from config to identify
+  generated contract imports.
 </ParamField>
 
 <ParamField path="--reporter" type="text | json | github | sarif">
@@ -41,6 +56,8 @@ With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Ou
 - table-naming hygiene;
 - RLS misconfiguration (enabled without a policy; policy without RLS; policy missing the predicate required for its command);
 - over-broad grants (to PUBLIC, ALL privileges, or roles outside `hints.allowedGrantees`).
+
+With `--contract-usage`, it also reports generated import renames, `.overrideTypes()`, `.returns()`, TypeScript assertions in files importing generated contracts, and local constants copied from generated runtime roots such as `Constants`, `Tables`, or `Enums`.
 
 ## Exit codes
 

@@ -156,7 +156,7 @@ function resolveTargetUrl(
     }
     const value = target.databaseUrl ?? config.environments[target.environment ?? ""]?.databaseUrl;
     if (value === undefined) {
-      return resolveMissingTargetUrl(selection, target, diagnostics, runner);
+      return resolveMissingTargetUrl(selection, target, diagnostics);
     }
     return resolveDatabaseUrl(value);
   } catch (error) {
@@ -189,8 +189,7 @@ function resolveTargetEnvOverride(
 function resolveMissingTargetUrl(
   selection: SyncTargetSelection,
   target: SupaschemaConfig["sync"]["targets"][string],
-  diagnostics: Diagnostic[],
-  runner: MigrationRunnerKind
+  diagnostics: Diagnostic[]
 ): string | undefined {
   if (target.environment !== undefined) {
     pushTargetUrlDiagnostic(
@@ -198,9 +197,6 @@ function resolveMissingTargetUrl(
       selection.name,
       `sync target ${selection.name} references unknown environment "${target.environment}"`
     );
-    return;
-  }
-  if (runner === "supabase-cli") {
     return;
   }
   if (isRemoteTargetName(target, selection.name)) {

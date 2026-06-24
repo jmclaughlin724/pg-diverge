@@ -58,19 +58,24 @@ export const adapters = [
   {
     binary: process.execPath,
     id: "supaschema-workflow",
-    mode: "full workflow: diff + migration + TS types + Zod validators",
+    mode: "full workflow: sync + migration + TS types + Zod validators",
     output: "sql",
     requiresDatabase: false,
     async command(context) {
+      const migrationsDir = join(context.runRoot, "migrations");
       const typesFile = join(context.runRoot, "database.types.ts");
       const zodFile = join(context.runRoot, "database.zod.ts");
-      await writeFile(typesFile, "", "utf8");
-      await writeFile(zodFile, "", "utf8");
       const configPath = join(context.runRoot, "supaschema.workflow.config.json");
       await writeFile(
         configPath,
         `${JSON.stringify({
           ...(context.supaschemaAdapter ? { adapter: context.supaschemaAdapter } : {}),
+          migrationsDir,
+          sources: {
+            from: `dump:${context.fromSqlPath}`,
+            to: `dump:${context.toSqlPath}`,
+          },
+          sync: { targets: {} },
           typesFile,
           zodFile,
         })}\n`,
@@ -78,21 +83,10 @@ export const adapters = [
       );
       const spec = {
         diff: {
-          args: [
-            resolve(root, "dist/cli.js"),
-            "--config",
-            configPath,
-            "--quiet",
-            "diff",
-            "--from",
-            `dump:${context.fromSqlPath}`,
-            "--to",
-            `dump:${context.toSqlPath}`,
-            "--out",
-            context.outputPath,
-          ],
+          args: [resolve(root, "dist/cli.js"), "--config", configPath, "--quiet", "sync"],
           command: process.execPath,
         },
+        generatedMigrationDir: migrationsDir,
         migrationPath: context.outputPath,
       };
       const specPath = join(context.runRoot, "workflow.json");

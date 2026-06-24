@@ -22,7 +22,8 @@ import { scanSchemaSafety } from "../pipeline/deploy-safety.js";
 import { evaluateTypeContract } from "../pipeline/type-safety.js";
 import { redactSecrets } from "../redaction.js";
 import { buildRemediationPlan } from "../remediation.js";
-import { renderScan, scoreGrade } from "../scan/model.js";
+import { scanGeneratedContractUsage } from "../scan/generated-contracts.js";
+import { renderScan, scanDiagnostics, scoreGrade } from "../scan/model.js";
 import { extractSourceModel } from "../source/extract.js";
 import { syncMigrations } from "../workflow/sync.js";
 
@@ -38,8 +39,6 @@ export interface ReportCommandContext {
 interface SyncCommandOptions {
   databaseUrl?: string;
   diff?: boolean;
-  ensureEnvironment?: boolean;
-  ensureRoles?: boolean;
   migrationsDir?: string;
   runner?: string;
   target?: string;
@@ -88,32 +87,53 @@ export function registerReportCommands(program: Command, context: ReportCommandC
 
   program
     .command("scan")
+    .option(
+      "--contract-usage <dir>",
+      "also scan TypeScript generated-contract usage under a directory"
+    )
     .option("--from <source>", "source to scan (defaults to the declarative tree)")
     .option("--reporter <reporter>", "text | json | github | sarif", "text")
-    .description("Scan the declarative schema with the rule packs and report a safety score.")
-    .action(async (options: { from?: string; reporter?: CheckReporter }) => {
-      const config = await context.loadCliConfig();
-      const reporter = resolveReporter(options.reporter);
-      if (reporter === null) {
-        process.exitCode = 2;
-        return;
-      }
-      const { result, source } = await scanSchemaSafety(config, options.from);
-      if (reporter === "text") {
-        process.stdout.write(
-          `Postgres safety score: ${result.score}/100 (${scoreGrade(result.score)})\n`
-        );
-        const body = renderScan(result, "text", source);
-        if (body.length > 0) {
-          process.stdout.write(redactSecrets(body));
+    .description(
+      "Scan the declarative schema and optional generated-contract usage with the rule packs."
+    )
+    .action(
+      async (options: { contractUsage?: string; from?: string; reporter?: CheckReporter }) => {
+        const config = await context.loadCliConfig();
+        const reporter = resolveReporter(options.reporter);
+        if (reporter === null) {
+          process.exitCode = 2;
+          return;
         }
-      } else {
-        process.stdout.write(redactSecrets(renderScan(result, reporter, source)));
+        const { result, source } = await scanSchemaSafety(config, options.from);
+        const contractDiagnostics =
+          options.contractUsage === undefined
+            ? []
+            : await scanGeneratedContractUsage({
+                config,
+                root: options.contractUsage,
+              });
+        const combined =
+          contractDiagnostics.length === 0
+            ? result
+            : scanDiagnostics([...result.diagnostics, ...contractDiagnostics]);
+        const reportSource =
+          options.contractUsage === undefined ? source : `${source} + ${options.contractUsage}`;
+        if (reporter === "text") {
+          process.stdout.write(
+            `Postgres safety score: ${combined.score}/100 (${scoreGrade(combined.score)})\n`
+          );
+          const body = renderScan(combined, "text", reportSource);
+          if (body.length > 0) {
+            process.stdout.write(redactSecrets(body));
+          }
+        } else {
+          process.stdout.write(redactSecrets(renderScan(combined, reporter, reportSource)));
+        }
+        if (combined.errorCount > 0) {
+          process.exitCode = 2;
+        }
       }
-      if (result.errorCount > 0) {
-        process.exitCode = 2;
-      }
-    });
+    );
 
   program
     .command("onboard")
@@ -261,10 +281,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
   program
     .command("apply")
     .option("--migrations-dir <dir>", "migration files directory")
-    .option(
-      "--database-url <url>",
-      "target whose applied history gates apply (default: configured target, SUPASCHEMA_DATABASE_URL, then the local Supabase stack)"
-    )
+    .option("--database-url <url>", "explicit target whose applied history gates direct apply")
     .option("--target <name>", "operator override for one configured sync target")
     .option("--runner <runner>", "operator override: direct | supabase-cli")
     .description(
@@ -275,27 +292,12 @@ export function registerReportCommands(program: Command, context: ReportCommandC
   program
     .command("sync")
     .option("--migrations-dir <dir>", "migration files directory")
-    .option(
-      "--database-url <url>",
-      "target whose applied history gates the sync (default: SUPASCHEMA_DATABASE_URL, then the local Supabase stack)"
-    )
+    .option("--database-url <url>", "explicit target whose applied history gates the sync")
     .option("--target <name>", "operator override for one configured sync target")
     .option("--runner <runner>", "operator override: direct | supabase-cli")
     .option("--no-diff", "skip schema diff generation")
-    .option(
-      "--ensure-roles",
-      "create missing NOLOGIN roles referenced by grants/policies on the verification server"
-    )
-    .option(
-      "--ensure-environment",
-      "stub Supabase-provisioned surfaces in verify temporary databases"
-    )
-    .option(
-      "--no-ensure-environment",
-      "disable the Supabase environment stub when another command or config enables it"
-    )
     .description(
-      "Run the full sync pipeline: schema diff, replay-safety check, generated contracts, generated migration staging, target gates, verify, selected runner apply/deploy, and final reconciliation."
+      "Run the full sync pipeline: schema diff, replay-safety check, generated contracts, generated migration staging, source safety gates, selected runner apply/deploy, and final reconciliation."
     )
     .action((options: SyncCommandOptions) => runSyncCommand(options, context));
 }
@@ -305,16 +307,6 @@ function resolveSyncRunner(value: string | undefined): "direct" | "supabase-cli"
     return;
   }
   return value === "direct" || value === "supabase-cli" ? value : undefined;
-}
-
-function syncUsesConfiguredTargets(options: SyncCommandOptions, config: SupaschemaConfig): boolean {
-  if (options.target !== undefined) {
-    return true;
-  }
-  return (
-    config.workflow.migration_sync === "auto" &&
-    Object.values(config.sync.targets).some((target) => target.mode === "auto")
-  );
 }
 
 async function runSyncCommand(
@@ -339,20 +331,16 @@ async function runSyncCommand(
     process.exitCode = 2;
     return;
   }
+  const envName = context.globalEnvName();
   const databaseUrl =
-    options.databaseUrl !== undefined || !syncUsesConfiguredTargets(options, config)
+    options.databaseUrl !== undefined || envName !== undefined
       ? await context.resolveCliDatabaseUrl(options.databaseUrl)
       : undefined;
-  const envName = context.globalEnvName();
   const result = await syncMigrations({
     cliVersion: context.cliVersion,
     config,
     directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
     ...(databaseUrl === undefined ? {} : { databaseUrl }),
-    ...(options.ensureEnvironment === undefined
-      ? {}
-      : { ensureEnvironment: options.ensureEnvironment }),
-    ensureRoles: options.ensureRoles === true,
     ...(envName === undefined ? {} : { envName }),
     pipeline: true,
     ...(runner === undefined ? {} : { runner }),
@@ -388,11 +376,11 @@ async function runApplyCommand(
     process.exitCode = 2;
     return;
   }
+  const envName = context.globalEnvName();
   const databaseUrl =
-    options.databaseUrl !== undefined || !syncUsesConfiguredTargets(options, config)
+    options.databaseUrl !== undefined || envName !== undefined
       ? await context.resolveCliDatabaseUrl(options.databaseUrl)
       : undefined;
-  const envName = context.globalEnvName();
   const result = await syncMigrations({
     cliVersion: context.cliVersion,
     config,

@@ -1,14 +1,17 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveConfig } from "../src/config/schema.js";
 import type { Diagnostic, SchemaModel, SchemaObject } from "../src/core.js";
 import { aggregateScanReportFiles, parseScanAggregateArgs } from "../src/scan/aggregate.js";
+import { scanGeneratedContractUsage } from "../src/scan/generated-contracts.js";
 import {
   aggregateOptInScanReports,
   isScanJsonReport,
   renderScan,
   scanBadge,
+  scanDiagnostics,
   scanJsonReport,
   scanModel,
   scoreGrade,
@@ -82,6 +85,21 @@ describe("scan core (K0)", () => {
     expect(parsed.grade).toBe("A");
     expect(parsed.diagnostics[0]?.code).toBe("SUPA_RULE_TABLE_NAMING");
     expect(isScanJsonReport(parsed)).toBe(true);
+  });
+
+  it("renders source-file diagnostics through grouped reporters", () => {
+    const result = scanDiagnostics([
+      {
+        code: "SUPA_SCAN_CONTRACT_IMPORT_RENAME",
+        file: "src/app.ts",
+        message: "generated contract import was renamed",
+        severity: "warning",
+      },
+    ]);
+
+    expect(renderScan(result, "github", "database/schemas")).toContain(
+      "::warning file=src/app.ts,title=SUPA_SCAN_CONTRACT_IMPORT_RENAME::"
+    );
   });
 
   it("maps grades across the band", () => {
@@ -219,5 +237,59 @@ describe("scan core (K0)", () => {
     });
     expect(() => parseScanAggregateArgs([])).toThrow("provide at least one scan JSON report");
     expect(() => parseScanAggregateArgs(["--out"])).toThrow("--out requires a value");
+  });
+});
+
+describe("generated contract usage scan", () => {
+  it("reports high-signal generated-contract misuse", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-contract-usage-"));
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "database.types.ts"), "export const Constants = {};\n");
+    await writeFile(join(root, "database.zod.ts"), "export const Tables = {};\n");
+    await writeFile(
+      join(root, "src", "app.ts"),
+      [
+        'import { Constants as DatabaseConstants } from "../database.types";',
+        'import { Tables } from "../database.zod";',
+        "const loanStatuses = DatabaseConstants.public.Enums.loan_status;",
+        "const loanTable = Tables.public.loans;",
+        "const typed = {} as { id: string };",
+        'supabase.from("loans").select("*").overrideTypes<{ id: string }>();',
+        'supabase.rpc("calculate").returns<string>();',
+        "void loanStatuses;",
+        "void loanTable;",
+        "void typed;",
+      ].join("\n")
+    );
+
+    const diagnostics = await scanGeneratedContractUsage({
+      config: resolveConfig({ typesFile: "database.types.ts", zodFile: "database.zod.ts" }),
+      cwd: root,
+      root: "src",
+    });
+
+    expect(diagnostics.map((item) => item.code).sort()).toEqual([
+      "SUPA_SCAN_CONTRACT_ASSERTION",
+      "SUPA_SCAN_CONTRACT_IMPORT_RENAME",
+      "SUPA_SCAN_CONTRACT_OVERRIDE_TYPES",
+      "SUPA_SCAN_CONTRACT_RETURNS",
+      "SUPA_SCAN_CONTRACT_RUNTIME_COPY",
+      "SUPA_SCAN_CONTRACT_RUNTIME_COPY",
+    ]);
+    expect(diagnostics.every((item) => item.file === "src/app.ts")).toBe(true);
+  });
+
+  it("ignores files that do not import generated contracts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-contract-ignore-"));
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "src", "app.ts"), "const typed = {} as { id: string };\n");
+
+    const diagnostics = await scanGeneratedContractUsage({
+      config: resolveConfig({ typesFile: "database.types.ts", zodFile: "database.zod.ts" }),
+      cwd: root,
+      root: "src",
+    });
+
+    expect(diagnostics).toEqual([]);
   });
 });
