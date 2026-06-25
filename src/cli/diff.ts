@@ -10,7 +10,7 @@ import {
 import type { Diagnostic, MigrationPlan } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
-import { defaultMigrationName } from "../migrations/files.js";
+import { defaultMigrationName, migrationFiles } from "../migrations/files.js";
 import { latestLineage, parseLineage } from "../migrations/lineage.js";
 import { migrationFileVersion, migrationsStatus } from "../migrations/status.js";
 import { pathContainsOrEqual } from "../paths.js";
@@ -580,6 +580,9 @@ async function validateReplacement(
     );
   }
   if (diagnostics.length === 0) {
+    diagnostics.push(...(await replacementTipDiagnostics(path, migrationsDir)));
+  }
+  if (diagnostics.length === 0) {
     diagnostics.push(...(await replacementAppliedStateDiagnostics(path, migrationsDir, config)));
   }
   if (diagnostics.length > 0) {
@@ -590,6 +593,34 @@ async function validateReplacement(
     }
   }
   return true;
+}
+
+async function replacementTipDiagnostics(
+  path: string,
+  migrationsDir: string
+): Promise<Diagnostic[]> {
+  const latest = (await migrationFiles(migrationsDir))
+    .filter((file) => migrationFileVersion(basename(file)) !== undefined)
+    .filter((file) => !file.endsWith(".concurrent.sql"))
+    .at(-1);
+  if (latest === undefined || samePath(latest, path)) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_DIFF_REPLACE_NOT_LATEST",
+      "error",
+      "diff --replace can only replace the latest migration in the configured migrations directory",
+      {
+        file: path,
+        hint: `Replace or remove newer pending migrations first. Latest migration is ${basename(latest)}.`,
+      }
+    ),
+  ];
+}
+
+function samePath(left: string, right: string): boolean {
+  return pathContainsOrEqual(left, right) && pathContainsOrEqual(right, left);
 }
 
 async function replacementAppliedStateDiagnostics(

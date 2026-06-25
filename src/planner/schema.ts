@@ -313,7 +313,7 @@ function blockUnhintedUnknownRoutines(
       continue;
     }
     for (const operation of relationOrTypeOperations) {
-      if (!routineDependencyOverlapsOperation(object, operation)) {
+      if (!unprovenRoutineMayOverlapOperation(object, operation)) {
         continue;
       }
       if (routineDependencyHintCoversOperation(object, operation)) {
@@ -335,10 +335,17 @@ function blockUnhintedUnknownRoutines(
   }
 }
 
-function routineDependencyOverlapsOperation(
+function unprovenRoutineMayOverlapOperation(
   object: SchemaObject,
   operation: MigrationOperation
 ): boolean {
+  if (
+    routineDependencyConfidence(object.metadata.routineDependencyConfidence) ===
+      "dynamic-sql-unknown" &&
+    object.metadata.routineDependencyHinted !== true
+  ) {
+    return true;
+  }
   const identity = refIdentity(operation.ref);
   const references = [
     ...metadataStrings(object.metadata.routineDependencies),

@@ -196,6 +196,46 @@ describe("diff lineage chain gate", () => {
     expect(parseLineage(await readFile(generated, "utf8"))).toBeDefined();
   });
 
+  it("refuses to replace generated migrations older than the migration tip", {
+    timeout: 60_000,
+  }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-replace-tip-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")));
+    const diff = ["--config", config, "diff"];
+    const generated = join(directory, "20260101000000_generated.sql");
+
+    const initial = await cli([
+      ...diff,
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+      "--out",
+      generated,
+    ]);
+    expect(initial.code, initial.stderr).toBe(0);
+    await writeFile(
+      join(directory, "20260102000000_later.sql"),
+      "-- supaschema: lineage from=abc to=def\nSELECT 1;\n"
+    );
+
+    const replaced = await cli([
+      ...diff,
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+      "--replace",
+      generated,
+    ]);
+    expect(replaced.code).toBe(2);
+    expect(replaced.stderr).toContain("SUPA_DIFF_REPLACE_NOT_LATEST");
+  });
+
   it("replaces generated git-baseline migrations from the original lineage baseline", {
     timeout: 60_000,
   }, async () => {

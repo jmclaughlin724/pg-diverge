@@ -115,6 +115,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "The replacement migration's original lineage baseline could not be proven from the selected source.",
   SUPA_DIFF_REPLACE_HAND_AUTHORED:
     "diff --replace only accepts supaschema-generated migrations with lineage metadata.",
+  SUPA_DIFF_REPLACE_NOT_LATEST:
+    "diff --replace targeted a generated migration older than the configured migration directory tip.",
   SUPA_MIGRATION_BASELINE_MISMATCH:
     "The resolved before-state source does not match the generated migration-tree baseline.",
   SUPA_MIGRATION_BASELINE_UNSUPPORTED:

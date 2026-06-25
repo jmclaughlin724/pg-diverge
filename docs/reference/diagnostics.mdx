@@ -31,6 +31,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED` | warning | `diff --replace` could not resolve a database history target, so applied state was not verified. |
 | `SUPA_DIFF_REPLACE_BASELINE_REQUIRED` | error | `diff --replace` could not prove or match the replacement migration's original lineage baseline. |
 | `SUPA_DIFF_REPLACE_HAND_AUTHORED` | error | `diff --replace` targeted a file without supaschema lineage metadata. |
+| `SUPA_DIFF_REPLACE_NOT_LATEST` | error | `diff --replace` targeted a generated migration older than the configured migration directory tip. |
 | `SUPA_MIGRATION_BASELINE_MISMATCH` | error | The resolved `sources.from` model does not match the generated migration-tree baseline. |
 | `SUPA_MIGRATION_BASELINE_UNSUPPORTED` | error | Existing migrations cannot prove a generated-lineage baseline for source-backed generation. |
 | `SUPA_MIGRATION_CORPUS_PARSE_SKIPPED` | warning | A configured migration file could not be fully parsed for source intent; destructive changes in that file may still require explicit hints. |
