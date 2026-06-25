@@ -7,9 +7,11 @@ import { migrationSafetyPack, runRulePacks } from "../scan/rules.js";
 import { filterModelBySchemas } from "../source/extract.js";
 
 interface SchemaDiffPlanOptions {
+  checkMigrationBaseline?: boolean;
   config: SupaschemaConfig;
   cwd?: string;
   from: string;
+  migrationContextExcludeFiles?: readonly string[];
   migrationsDir?: string;
   schema?: string;
   timing?: boolean;

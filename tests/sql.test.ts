@@ -226,6 +226,7 @@ describe("routine dependency extraction", () => {
     expect(extracted.diagnostics.map((item) => item.code)).toContain(
       "SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY"
     );
+    expect(extracted.diagnostics.map((item) => item.code)).not.toContain("SUPA_PARSE_ERROR");
   });
 
   it("marks unrecognized PL/pgSQL statements with embedded static SQL as partial", async () => {

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import type {
   MigrationContext,
@@ -22,6 +22,7 @@ import { migrationFileVersion } from "./status.js";
 
 interface ReadMigrationContextOptions {
   cwd?: string;
+  excludeFiles?: readonly string[];
 }
 
 export async function readMigrationContext(
@@ -30,7 +31,15 @@ export async function readMigrationContext(
 ): Promise<MigrationContext> {
   const cwd = options.cwd ?? process.cwd();
   const directory = resolve(cwd, migrationsDir);
-  const files = await migrationFiles(directory);
+  const excludedFiles = new Set(
+    await Promise.all((options.excludeFiles ?? []).map((file) => canonicalPath(resolve(cwd, file))))
+  );
+  const files: string[] = [];
+  for (const file of await migrationFiles(directory)) {
+    if (!excludedFiles.has(await canonicalPath(file))) {
+      files.push(file);
+    }
+  }
   const corpus: MigrationCorpus = {
     destructiveKeys: [],
     diagnostics: [],
@@ -51,6 +60,14 @@ export async function readMigrationContext(
     )
   );
   return context;
+}
+
+async function canonicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
 }
 
 async function readMigrationFileContext(

@@ -1,5 +1,5 @@
-import { execFile } from "node:child_process";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { type ExecFileOptions, execFile } from "node:child_process";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { latestLineage, parseLineage } from "../src/migrations/lineage.js";
 
 const run = promisify(execFile);
+const cliPath = join(process.cwd(), "dist/cli.js");
 
 interface CliResult {
   code: number;
@@ -14,14 +15,26 @@ interface CliResult {
   stdout: string;
 }
 
-async function cli(args: string[]): Promise<CliResult> {
+async function cli(args: string[], options: ExecFileOptions = {}): Promise<CliResult> {
   try {
-    const { stdout, stderr } = await run("node", ["dist/cli.js", ...args]);
+    const { stdout, stderr } = await run("node", [cliPath, ...args], options);
     return { code: 0, stderr, stdout };
   } catch (error) {
     const failure = error;
     return { code: failure.code ?? 1, stderr: failure.stderr ?? "", stdout: failure.stdout ?? "" };
   }
+}
+
+async function git(cwd: string, args: string[]): Promise<void> {
+  await run("git", ["-C", cwd, ...args], {
+    env: {
+      ...process.env,
+      GIT_AUTHOR_EMAIL: "test@supaschema.local",
+      GIT_AUTHOR_NAME: "Supaschema Test",
+      GIT_COMMITTER_EMAIL: "test@supaschema.local",
+      GIT_COMMITTER_NAME: "Supaschema Test",
+    },
+  });
 }
 
 async function writeBasicFixtureConfig(directory: string): Promise<string> {
@@ -180,6 +193,63 @@ describe("diff lineage chain gate", () => {
     expect(replaced.code, replaced.stderr).toBe(0);
     expect(replaced.stderr).toContain("SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED");
     expect(replaced.stdout).toContain(generated);
+    expect(parseLineage(await readFile(generated, "utf8"))).toBeDefined();
+  });
+
+  it("replaces generated git-baseline migrations from the original lineage baseline", {
+    timeout: 60_000,
+  }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-replace-git-"));
+    const schemaDir = join(repo, "schemas");
+    const migrationsDir = join(repo, "migrations");
+    await mkdir(schemaDir, { recursive: true });
+    await mkdir(migrationsDir, { recursive: true });
+    const config = join(repo, "supaschema.config.json");
+    await writeFile(
+      config,
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto", to: "dir:schemas" },
+        sync: { targets: {} },
+      })
+    );
+    const schemaFile = join(schemaDir, "app.sql");
+    await writeFile(
+      schemaFile,
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (\n  id bigint PRIMARY KEY\n);\n"
+    );
+    await git(repo, ["init"]);
+    await git(repo, ["add", "schemas", "supaschema.config.json"]);
+    await git(repo, ["commit", "-m", "initial"]);
+    await writeFile(
+      schemaFile,
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (\n  id bigint PRIMARY KEY,\n  name text\n);\n"
+    );
+    await git(repo, ["add", "schemas/app.sql"]);
+    await git(repo, ["commit", "-m", "target"]);
+
+    const generated = join(migrationsDir, "20260101000000_generated.sql");
+    const diff = [
+      "--config",
+      config,
+      "diff",
+      "--from",
+      "git:HEAD^",
+      "--to",
+      "dir:schemas",
+      "--migrations-dir",
+      "migrations",
+    ];
+    const initial = await cli([...diff, "--out", generated], { cwd: repo });
+    expect(initial.code, initial.stderr).toBe(0);
+    await writeFile(join(migrationsDir, "20250101000000_hand_authored.sql"), "SELECT 1;\n");
+
+    const replaced = await cli([...diff, "--replace", generated], { cwd: repo });
+    expect(replaced.code, replaced.stderr).toBe(0);
+    expect(replaced.stderr).not.toContain("SUPA_MIGRATION_BASELINE_MISMATCH");
+    expect(replaced.stderr).not.toContain("SUPA_MIGRATION_BASELINE_UNSUPPORTED");
+    expect(replaced.stderr).toContain("SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED");
     expect(parseLineage(await readFile(generated, "utf8"))).toBeDefined();
   });
 

@@ -471,12 +471,16 @@ async function watchDiff(
 }
 
 function buildPlan(
-  options: WithSources<PlanCommandOptions> & { migrationsDir?: string },
+  options: WithSources<PlanCommandOptions> & { migrationsDir?: string; replace?: string },
   config: SupaschemaConfig
 ): Promise<MigrationPlan> {
   return buildSchemaDiffPlan({
+    ...(options.replace === undefined ? {} : { checkMigrationBaseline: false }),
     config,
     from: options.from,
+    ...(options.replace === undefined
+      ? {}
+      : { migrationContextExcludeFiles: [resolve(process.cwd(), options.replace)] }),
     ...(options.migrationsDir === undefined ? {} : { migrationsDir: options.migrationsDir }),
     ...(options.schema === undefined ? {} : { schema: options.schema }),
     ...(options.timing === undefined ? {} : { timing: options.timing }),

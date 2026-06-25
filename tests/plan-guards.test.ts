@@ -156,6 +156,7 @@ describe("routine dependency proof guards", () => {
     LANGUAGE plpgsql
     AS $$
     BEGIN
+      PERFORM id FROM app.accounts;
       EXECUTE 'select id from app.accounts';
     END;
     $$;
@@ -167,6 +168,7 @@ describe("routine dependency proof guards", () => {
     LANGUAGE plpgsql
     AS $$
     BEGIN
+      PERFORM id FROM app.accounts;
       EXECUTE 'select id from app.accounts';
     END;
     $$;
@@ -210,6 +212,63 @@ describe("routine dependency proof guards", () => {
 
     expect(operation?.blocked).toBe(true);
     expect(plan.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
+    );
+  });
+
+  it("does not block unrelated relation changes for routines without a proven overlap", async () => {
+    const plan = await diff(
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY);
+        CREATE FUNCTION app.dynamic_lookup()
+        RETURNS void
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          EXECUTE 'select 1';
+        END;
+        $$;
+      `,
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY, label text DEFAULT ''::text NOT NULL);
+        CREATE FUNCTION app.dynamic_lookup()
+        RETURNS void
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          EXECUTE 'select 1';
+        END;
+        $$;
+      `
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(operation?.blocked).toBe(false);
+    expect(plan.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
+    );
+  });
+
+  it("does not block relation changes when the overlapping unproven routine is created in the same plan", async () => {
+    const plan = await diff(
+      "CREATE TABLE app.accounts (id bigint PRIMARY KEY);",
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY, label text DEFAULT ''::text NOT NULL);
+        CREATE FUNCTION app.dynamic_lookup()
+        RETURNS void
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          PERFORM label FROM app.accounts;
+          EXECUTE 'select 1';
+        END;
+        $$;
+      `
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(operation?.blocked).toBe(false);
+    expect(plan.diagnostics.map((item) => item.code)).not.toContain(
       "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
     );
   });
