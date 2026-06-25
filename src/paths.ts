@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { isAbsolute, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 
 export function pathContainsOrEqual(parent: string, child: string): boolean {
   const rel = relative(canonicalPath(parent), canonicalPath(child));
@@ -11,9 +11,24 @@ export function pathsOverlap(a: string, b: string): boolean {
 }
 
 function canonicalPath(path: string): string {
+  const absolute = resolve(path);
   try {
-    return realpathSync(path);
+    return realpathSync(absolute);
   } catch {
-    return resolve(path);
+    const missingSegments: string[] = [];
+    let current = absolute;
+    while (true) {
+      const parent = dirname(current);
+      if (parent === current) {
+        return absolute;
+      }
+      missingSegments.unshift(basename(current));
+      current = parent;
+      try {
+        return resolve(realpathSync(current), ...missingSegments);
+      } catch {
+        // Keep walking up until an existing ancestor can be canonicalized.
+      }
+    }
   }
 }
