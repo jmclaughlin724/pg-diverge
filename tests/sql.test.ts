@@ -251,6 +251,30 @@ describe("routine dependency extraction", () => {
     );
   });
 
+  it("does not treat PL/pgSQL distinct-from operators as hidden SQL", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.normalize_status()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        IF NEW.status IS DISTINCT FROM OLD.status THEN
+          NEW.status := lower(NEW.status);
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.normalize_status()"
+    );
+
+    expect(routine?.metadata.routineDependencyConfidence).toBe("plpgsql-static");
+    expect(extracted.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY"
+    );
+  });
+
   it("records explicit routine dependency hints on overloaded routine keys", async () => {
     const extracted = await extractObjectsFromSql(
       `

@@ -265,8 +265,8 @@ function plpgsqlStatementMayContainSql(statement: string): boolean {
     return false;
   }
   const tokens = new Set(tokenSpans(statement).map((token) => token.text));
-  return ["select", "insert", "update", "delete", "merge", "with", "from", "join", "exists"].some(
-    (token) => tokens.has(token)
+  return ["select", "insert", "update", "delete", "merge", "with", "exists"].some((token) =>
+    tokens.has(token)
   );
 }
 
