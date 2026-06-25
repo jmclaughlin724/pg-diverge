@@ -50,6 +50,7 @@ export function sortOperations(
 }
 
 interface DependencyGraph {
+  constraintDependencies: ConstraintDependencyIndex;
   incomingCount: Map<string, number>;
   operationByKey: Map<string, MigrationOperation>;
   outgoing: Map<string, Set<string>>;
@@ -60,14 +61,22 @@ function buildDependencyGraph(base: MigrationOperation[]): DependencyGraph {
 
   const dropKeyByIdentity = identityIndex(base.filter((operation) => operation.kind === "drop"));
   const upsertKeyByIdentity = identityIndex(base.filter((operation) => operation.kind !== "drop"));
+  const constraintDependencies = buildConstraintDependencyIndex(base);
   const outgoing = new Map<string, Set<string>>();
   const incomingCount = new Map<string, number>();
   initializeDependencyGraph(base, outgoing, incomingCount);
   for (const operation of base) {
     const index = operation.kind === "drop" ? dropKeyByIdentity : upsertKeyByIdentity;
-    addOperationDependencies(operation, index, operationByKey, outgoing, incomingCount);
+    addOperationDependencies(
+      operation,
+      index,
+      constraintDependencies,
+      operationByKey,
+      outgoing,
+      incomingCount
+    );
   }
-  return { incomingCount, operationByKey, outgoing };
+  return { constraintDependencies, incomingCount, operationByKey, outgoing };
 }
 
 function initializeDependencyGraph(
@@ -84,11 +93,12 @@ function initializeDependencyGraph(
 function addOperationDependencies(
   operation: MigrationOperation,
   index: Map<string, string>,
+  constraintDependencies: ConstraintDependencyIndex,
   operationByKey: Map<string, MigrationOperation>,
   outgoing: Map<string, Set<string>>,
   incomingCount: Map<string, number>
 ): void {
-  for (const dependencyKey of operationDependencyKeys(operation, index)) {
+  for (const dependencyKey of operationDependencyKeys(operation, index, constraintDependencies)) {
     if (dependencyKey === operation.key || !operationByKey.has(dependencyKey)) {
       continue;
     }
@@ -150,6 +160,59 @@ function identityIndex(operations: MigrationOperation[]): Map<string, string> {
   return index;
 }
 
+interface ConstraintDependencyIndex {
+  keyConstraintsByTableColumns: Map<string, Set<string>>;
+  primaryConstraintsByTable: Map<string, Set<string>>;
+}
+
+function buildConstraintDependencyIndex(
+  operations: MigrationOperation[]
+): ConstraintDependencyIndex {
+  const keyConstraintsByTableColumns = new Map<string, Set<string>>();
+  const primaryConstraintsByTable = new Map<string, Set<string>>();
+  for (const operation of operations) {
+    const object =
+      operation.kind === "drop" ? operation.before : (operation.after ?? operation.before);
+    if (object?.ref.kind !== "constraint") {
+      continue;
+    }
+    const constraintType =
+      typeof object.metadata.constraintType === "string"
+        ? object.metadata.constraintType
+        : undefined;
+    if (constraintType !== "CONSTR_PRIMARY" && constraintType !== "CONSTR_UNIQUE") {
+      continue;
+    }
+    const table = tableIdentity(object.ref);
+    if (!table) {
+      continue;
+    }
+    const columns = stringMetadataArray(object.metadata.constraintColumns);
+    addConstraintDependency(
+      keyConstraintsByTableColumns,
+      tableColumnsIdentity(table, columns),
+      operation.key
+    );
+    if (constraintType === "CONSTR_PRIMARY") {
+      addConstraintDependency(primaryConstraintsByTable, table, operation.key);
+    }
+  }
+  return { keyConstraintsByTableColumns, primaryConstraintsByTable };
+}
+
+function addConstraintDependency(
+  index: Map<string, Set<string>>,
+  key: string,
+  operationKey: string
+): void {
+  const existing = index.get(key);
+  if (existing) {
+    existing.add(operationKey);
+    return;
+  }
+  index.set(key, new Set([operationKey]));
+}
+
 function refIdentity(ref: ObjectRef): string {
   if (ref.kind === "schema") {
     return ref.name;
@@ -159,7 +222,8 @@ function refIdentity(ref: ObjectRef): string {
 
 function operationDependencyKeys(
   operation: MigrationOperation,
-  operationKeyByIdentity: Map<string, string>
+  operationKeyByIdentity: Map<string, string>,
+  constraintDependencies: ConstraintDependencyIndex
 ): string[] {
   const source =
     operation.kind === "drop" ? operation.before : (operation.after ?? operation.before);
@@ -184,7 +248,88 @@ function operationDependencyKeys(
       keys.add(schemaOperationKey);
     }
   }
+  if (source.ref.kind === "constraint") {
+    for (const dependencyKey of constraintOperationDependencyKeys(
+      source,
+      operationKeyByIdentity,
+      constraintDependencies
+    )) {
+      keys.add(dependencyKey);
+    }
+  }
   return [...keys];
+}
+
+function constraintOperationDependencyKeys(
+  source: NonNullable<MigrationOperation["after"]>,
+  operationKeyByIdentity: Map<string, string>,
+  constraintDependencies: ConstraintDependencyIndex
+): string[] {
+  const keys = new Set<string>();
+  const ownTable = tableIdentity(source.ref);
+  if (ownTable) {
+    const tableOperationKey = operationKeyByIdentity.get(ownTable);
+    if (tableOperationKey) {
+      keys.add(tableOperationKey);
+    }
+  }
+  const target = foreignKeyTarget(source.metadata.foreignKeyTarget);
+  if (!target) {
+    return [...keys];
+  }
+  const targetTable = `${target.schema}.${target.table}`;
+  const targetColumns = target.columns;
+  const referencedKeyOperations =
+    targetColumns.length > 0
+      ? constraintDependencies.keyConstraintsByTableColumns.get(
+          tableColumnsIdentity(targetTable, targetColumns)
+        )
+      : constraintDependencies.primaryConstraintsByTable.get(targetTable);
+  for (const operationKey of referencedKeyOperations ?? []) {
+    keys.add(operationKey);
+  }
+  return [...keys];
+}
+
+function tableIdentity(ref: ObjectRef): string | undefined {
+  if (!ref.table) {
+    return;
+  }
+  return `${ref.schema ?? "public"}.${ref.table}`;
+}
+
+function tableColumnsIdentity(table: string, columns: readonly string[]): string {
+  return `${table}:${columns.join(",")}`;
+}
+
+function stringMetadataArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function foreignKeyTarget(
+  value: unknown
+): { columns: string[]; schema: string; table: string } | undefined {
+  const record = recordFromObject(value);
+  if (!record) {
+    return;
+  }
+  if (typeof record.schema !== "string" || typeof record.table !== "string") {
+    return;
+  }
+  return {
+    columns: stringMetadataArray(record.columns),
+    schema: record.schema,
+    table: record.table,
+  };
+}
+
+function recordFromObject(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+  return Object.fromEntries(Object.entries(value));
 }
 
 function addEdge(

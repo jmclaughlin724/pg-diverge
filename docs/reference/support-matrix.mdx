@@ -11,6 +11,8 @@ supaschema is fail-closed. Unsupported DDL blocks migration generation instead o
 
 Extraction and checking are AST-only. Statements are classified through the PostgreSQL parser, never regex. Declarative schema objects become a SchemaModel; existing migrations become a source-intent model for operational facts that cannot be proven from the final schema shape alone.
 
+Generated TypeScript and Zod contracts use the same schema model. A database-backed field that remains `unknown` means the source model is missing a relation, function, extension, or expression fact; the fix belongs in the schema source, supported extension model, extractor, or typegen diagnostic path, not in application casts or copied contracts.
+
 | Object | Extract | Render | Notes |
 | --- | --- | --- | --- |
 | Schemas | Yes | `CREATE SCHEMA IF NOT EXISTS` / `DROP SCHEMA IF EXISTS` | Schemas listed in `managedSchemas` are blocked as declarative source ownership. |

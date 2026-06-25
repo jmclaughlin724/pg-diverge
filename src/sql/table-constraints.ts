@@ -6,6 +6,7 @@ import type { TableElement } from "./statements.js";
 import { elementText, fromByteString, tableElements, toByteString } from "./statements.js";
 
 export interface SynthesizedConstraint {
+  metadata: Record<string, unknown>;
   name: string;
   sql: string;
 }
@@ -37,7 +38,11 @@ export function tableConstraintSyntheses(
       continue;
     }
     const fragment = conname ? text : `CONSTRAINT ${quoteIdent(name)} ${text}`;
-    syntheses.push({ name, sql: `ALTER TABLE ONLY ${qualified} ADD ${fragment}` });
+    syntheses.push({
+      metadata: constraintMetadata(constraint, []),
+      name,
+      sql: `ALTER TABLE ONLY ${qualified} ADD ${fragment}`,
+    });
   }
   return syntheses;
 }
@@ -179,6 +184,7 @@ function inlineConstraintSyntheses(
       continue;
     }
     syntheses.push({
+      metadata: constraintMetadata(item.constraint, [column]),
       name,
       sql: `ALTER TABLE ONLY ${qualified} ADD CONSTRAINT ${quoteIdent(name)} ${body}`,
     });
@@ -258,6 +264,33 @@ const inlineConstraintTypes = new Set([
   "CONSTR_PRIMARY",
   "CONSTR_UNIQUE",
 ]);
+
+export function constraintMetadata(
+  constraint: AstNode,
+  impliedColumns: string[] = []
+): Record<string, unknown> {
+  const contype = readString(constraint.contype);
+  const columns = constraintColumns(
+    stringList(constraint.fk_attrs),
+    stringList(constraint.keys),
+    impliedColumns
+  );
+  const metadata: Record<string, unknown> = {
+    constraintColumns: columns.length > 0 ? columns : expressionColumns(constraint.raw_expr).sort(),
+    constraintType: contype,
+  };
+  if (contype === "CONSTR_FOREIGN") {
+    const target = rangeVarName(constraint.pktable);
+    if (target) {
+      metadata.foreignKeyTarget = {
+        columns: stringList(constraint.pk_attrs),
+        schema: target.schema,
+        table: target.name,
+      };
+    }
+  }
+  return metadata;
+}
 
 function inlineConstraintBody(contype: string, column: string, text: string): string | undefined {
   switch (contype) {

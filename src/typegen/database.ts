@@ -132,6 +132,8 @@ function tsType(shapes: SchemaShapes, schemaName: string, sqlType: string): stri
     mapped = `Database["${resolved.enumRef.schema}"]["Enums"]["${resolved.enumRef.name}"]`;
   } else if (resolved.kind === "composite" && resolved.compositeRef) {
     mapped = `Database["${resolved.compositeRef.schema}"]["CompositeTypes"]["${resolved.compositeRef.name}"]`;
+  } else if (resolved.kind === "relation" && resolved.relationRef) {
+    mapped = `Database["${resolved.relationRef.schema}"]["${resolved.relationRef.collection}"]["${resolved.relationRef.name}"]["Row"]`;
   } else if (resolved.kind === "json") {
     mapped = "Json";
   } else if (resolved.kind === "unknown") {

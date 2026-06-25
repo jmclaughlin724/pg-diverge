@@ -345,6 +345,133 @@ SELECT x.email FROM app.accounts a LEFT JOIN LATERAL (SELECT a.email AS email) x
     expect(view).not.toContain("email: unknown | null;");
   });
 
+  it("resolves schema relation and expression sources used by views", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TYPE app.status AS ENUM ('active', 'inactive');
+CREATE TABLE app.users (id bigint, email text, payload jsonb, created_at timestamp with time zone);
+CREATE TABLE app.embedding_items (id bigint, embedding extensions.vector(3), email extensions.citext);
+CREATE FUNCTION app.current_session_context() RETURNS TABLE (subject_id uuid, access_level text) LANGUAGE sql AS $function$ SELECT NULL::uuid, NULL::text $function$;
+CREATE FUNCTION app.business_day_diff(start_at date, end_at date) RETURNS integer LANGUAGE sql AS $function$ SELECT 1 $function$;
+CREATE FUNCTION app.accept_user(p_user app.users) RETURNS void LANGUAGE sql AS $function$ SELECT NULL::void $function$;
+CREATE VIEW app.from_late_view AS SELECT late.email FROM app.late_view late;
+CREATE VIEW app.v_users AS SELECT id AS user_id, email FROM app.users;
+CREATE TYPE app.user_payload AS (users app.v_users[], owner app.users);
+CREATE VIEW app.from_view AS SELECT v.user_id, v.email FROM app.v_users v;
+CREATE MATERIALIZED VIEW app.mv_users AS SELECT id, email FROM app.users;
+CREATE VIEW app.from_matview AS SELECT m.id, m.email FROM app.mv_users m;
+CREATE VIEW app.from_values AS
+SELECT disclosure_key, display_order
+FROM (VALUES ('credit'::text, 10)) packet(disclosure_key, display_order);
+CREATE VIEW app.from_function AS SELECT g.n FROM generate_series(1, 3) AS g(n);
+CREATE VIEW app.from_table_function AS
+SELECT ctx.subject_id, ctx.access_level FROM app.current_session_context() ctx(subject_id, access_level);
+CREATE VIEW app.from_unnest AS SELECT status FROM unnest(enum_range(NULL::app.status)) statuses(status);
+CREATE VIEW app.from_set_operation AS
+SELECT id, email FROM app.users
+UNION
+SELECT id, email FROM app.users;
+CREATE VIEW app.from_sample AS SELECT users.id FROM app.users TABLESAMPLE SYSTEM (10);
+CREATE VIEW app.from_concat AS SELECT concat(email, ':x'::text) AS membership_id FROM app.users;
+CREATE VIEW app.from_arithmetic AS SELECT id - 1 AS prior_id FROM app.users;
+CREATE VIEW app.from_literals AS SELECT 0 AS emails_sent, true AS enabled, 'label'::text AS label FROM app.users;
+CREATE VIEW app.from_scalar_subquery AS SELECT (SELECT count(*) FROM app.users u WHERE u.id = users.id) AS participant_count FROM app.users;
+CREATE VIEW app.from_expressions AS
+SELECT
+  percentile_cont(0.95::double precision) WITHIN GROUP (ORDER BY id::double precision) AS p95_id,
+  round(avg(id), 2) AS avg_id,
+  (array_agg(email ORDER BY created_at))[1] AS first_email,
+  array_fill(0, ARRAY[30]) AS touchpoints,
+  NULLIF(payload #>> '{contact,id}'::text[], ''::text) AS contact_id,
+  jsonb_array_length(payload #> '{items}'::text[]) AS item_count,
+  format('%s:%s'::text, id, email) AS formatted_id,
+  substr(replace(upper(email), '@', ':'), 1, 4) AS email_prefix,
+  app.business_day_diff(CURRENT_DATE, CURRENT_DATE) AS business_days
+FROM app.users
+GROUP BY id, email, payload;
+CREATE VIEW app.from_pg_catalog AS SELECT c.oid AS object_oid, c.relname AS relation_name FROM pg_class c;
+CREATE VIEW app.from_pg_cron AS SELECT job.jobid, job.jobname FROM cron.job job;
+CREATE VIEW app.late_view AS SELECT email FROM app.users;
+`);
+
+    const fromLateView = viewTypeBlock(types, "from_late_view");
+    const fromView = viewTypeBlock(types, "from_view");
+    const fromMatview = viewTypeBlock(types, "from_matview");
+    const fromValues = viewTypeBlock(types, "from_values");
+    const fromFunction = viewTypeBlock(types, "from_function");
+    const fromTableFunction = viewTypeBlock(types, "from_table_function");
+    const fromUnnest = viewTypeBlock(types, "from_unnest");
+    const fromSetOperation = viewTypeBlock(types, "from_set_operation");
+    const fromSample = viewTypeBlock(types, "from_sample");
+    const fromConcat = viewTypeBlock(types, "from_concat");
+    const fromArithmetic = viewTypeBlock(types, "from_arithmetic");
+    const fromLiterals = viewTypeBlock(types, "from_literals");
+    const fromScalarSubquery = viewTypeBlock(types, "from_scalar_subquery");
+    const fromExpressions = viewTypeBlock(types, "from_expressions");
+    const fromPgCatalog = viewTypeBlock(types, "from_pg_catalog");
+    const fromPgCron = viewTypeBlock(types, "from_pg_cron");
+
+    expect(types).toContain("embedding: number[] | null;");
+    expect(types).toContain("email: string | null;");
+    expect(types).toContain('p_user: Database["app"]["Tables"]["users"]["Row"]');
+    expect(types).toContain("accept_user: { Args:");
+    expect(types).toContain("Returns: void");
+    expect(types).toContain('users: Database["app"]["Views"]["v_users"]["Row"][] | null;');
+    expect(types).toContain('owner: Database["app"]["Tables"]["users"]["Row"] | null;');
+    expect(fromLateView).toContain("email: string | null;");
+    expect(fromView).toContain("user_id: number | null;");
+    expect(fromView).toContain("email: string | null;");
+    expect(fromMatview).toContain("id: number | null;");
+    expect(fromMatview).toContain("email: string | null;");
+    expect(fromValues).toContain("disclosure_key: string | null;");
+    expect(fromValues).toContain("display_order: number | null;");
+    expect(fromFunction).toContain("n: number | null;");
+    expect(fromTableFunction).toContain("subject_id: string | null;");
+    expect(fromTableFunction).toContain("access_level: string | null;");
+    expect(fromUnnest).toContain('status: Database["app"]["Enums"]["status"] | null;');
+    expect(fromSetOperation).toContain("id: number | null;");
+    expect(fromSetOperation).toContain("email: string | null;");
+    expect(fromSample).toContain("id: number | null;");
+    expect(fromConcat).toContain("membership_id: string | null;");
+    expect(fromArithmetic).toContain("prior_id: number | null;");
+    expect(fromLiterals).toContain("emails_sent: number | null;");
+    expect(fromLiterals).toContain("enabled: boolean | null;");
+    expect(fromLiterals).toContain("label: string | null;");
+    expect(fromScalarSubquery).toContain("participant_count: number | null;");
+    expect(fromExpressions).toContain("p95_id: number | null;");
+    expect(fromExpressions).toContain("avg_id: number | null;");
+    expect(fromExpressions).toContain("first_email: string | null;");
+    expect(fromExpressions).toContain("touchpoints: number[] | null;");
+    expect(fromExpressions).toContain("contact_id: string | null;");
+    expect(fromExpressions).toContain("item_count: number | null;");
+    expect(fromExpressions).toContain("formatted_id: string | null;");
+    expect(fromExpressions).toContain("email_prefix: string | null;");
+    expect(fromExpressions).toContain("business_days: number | null;");
+    expect(fromPgCatalog).toContain("object_oid: number | null;");
+    expect(fromPgCatalog).toContain("relation_name: string | null;");
+    expect(fromPgCron).toContain("jobid: number | null;");
+    expect(fromPgCron).toContain("jobname: string | null;");
+    expect(
+      [
+        fromLateView,
+        fromView,
+        fromMatview,
+        fromValues,
+        fromFunction,
+        fromTableFunction,
+        fromUnnest,
+        fromSetOperation,
+        fromSample,
+        fromConcat,
+        fromArithmetic,
+        fromLiterals,
+        fromScalarSubquery,
+        fromExpressions,
+        fromPgCatalog,
+        fromPgCron,
+      ].join("\n")
+    ).not.toContain("unknown | null;");
+  });
+
   it("applies derived-table column aliases positionally", async () => {
     const types = await typesFor(`CREATE SCHEMA app;
 CREATE TABLE app.accounts (id bigint, name text);

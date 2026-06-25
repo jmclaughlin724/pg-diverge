@@ -70,7 +70,17 @@ export interface ResolvedColumnType {
   arrayDepth: number;
   compositeRef?: { name: string; schema: string };
   enumRef?: { name: string; schema: string };
-  kind: "boolean" | "composite" | "enum" | "json" | "number" | "string" | "unknown";
+  kind:
+    | "boolean"
+    | "composite"
+    | "enum"
+    | "json"
+    | "number"
+    | "relation"
+    | "string"
+    | "unknown"
+    | "void";
+  relationRef?: { collection: "Tables" | "Views"; name: string; schema: string };
 }
 
 export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaShapes> {
@@ -83,11 +93,11 @@ export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaSha
     schemas: new Map(),
   };
   await collectEnumAndDomainShapes(model, shapes);
-  const tablesByKey = new Map<string, TableShape>();
-  await collectRelationAndFunctionShapes(model, shapes, tablesByKey);
-  await applyModelConstraints(model, tablesByKey);
-  resolveRelationshipTargets(tablesByKey);
-  await collectViewAndCompositeShapes(model, shapes, tablesByKey, functionShapesByKey(shapes));
+  const relationsByKey = new Map<string, TableShape>();
+  await collectRelationAndFunctionShapes(model, shapes, relationsByKey);
+  await applyModelConstraints(model, relationsByKey);
+  resolveRelationshipTargets(relationsByKey);
+  await collectViewAndCompositeShapes(model, shapes, relationsByKey, functionShapesByKey(shapes));
   return shapes;
 }
 
@@ -170,29 +180,76 @@ async function applyModelConstraints(
 async function collectViewAndCompositeShapes(
   model: SchemaModel,
   shapes: SchemaShapes,
-  tablesByKey: Map<string, TableShape>,
+  relationsByKey: Map<string, TableShape>,
   functionsByKey: FunctionShapesByKey
 ): Promise<void> {
+  const views: SchemaObject[] = [];
+  const composites: SchemaObject[] = [];
   for (const object of model.objects) {
     if (object.ref.kind === "view" || object.ref.kind === "materialized-view") {
-      await registerViewShape(shapes, tablesByKey, functionsByKey, object);
+      views.push(object);
       continue;
     }
     if (object.ref.kind === "type") {
-      await registerCompositeShape(shapes, object);
+      composites.push(object);
     }
+  }
+  for (const object of composites) {
+    await registerCompositeShape(shapes, object);
+  }
+  await registerViewShapes(shapes, relationsByKey, functionsByKey, views);
+}
+
+async function registerViewShapes(
+  shapes: SchemaShapes,
+  relationsByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
+  objects: SchemaObject[]
+): Promise<void> {
+  const columnsByKey = new Map<string, ColumnShape[]>();
+  for (let pass = 0; pass <= objects.length; pass += 1) {
+    let changed = false;
+    for (const object of objects) {
+      const key = relationKey(object);
+      const columns = await collectViewColumns(object, relationsByKey, functionsByKey);
+      if (!sameColumns(columnsByKey.get(key), columns)) {
+        columnsByKey.set(key, columns);
+        relationsByKey.set(key, relationShape(object.ref.name, columns));
+        changed = true;
+      }
+    }
+    if (!changed) {
+      break;
+    }
+  }
+  for (const object of objects) {
+    schemaEntry(shapes, object.ref.schema ?? "public").views.push({
+      columns: columnsByKey.get(relationKey(object)) ?? [],
+      name: object.ref.name,
+    });
   }
 }
 
-async function registerViewShape(
-  shapes: SchemaShapes,
-  tablesByKey: Map<string, TableShape>,
-  functionsByKey: FunctionShapesByKey,
-  object: SchemaObject
-): Promise<void> {
-  schemaEntry(shapes, object.ref.schema ?? "public").views.push({
-    columns: await collectViewColumns(object, tablesByKey, functionsByKey),
-    name: object.ref.name,
+function relationKey(object: SchemaObject): string {
+  return `${object.ref.schema ?? "public"}.${object.ref.name}`;
+}
+
+function relationShape(name: string, columns: ColumnShape[]): TableShape {
+  return {
+    columns,
+    name,
+    relationships: [],
+    uniqueColumnSets: [],
+  };
+}
+
+function sameColumns(left: ColumnShape[] | undefined, right: ColumnShape[]): boolean {
+  if (left === undefined || left.length !== right.length) {
+    return false;
+  }
+  return left.every((column, index) => {
+    const other = right[index];
+    return other !== undefined && column.name === other.name && column.type === other.type;
   });
 }
 
@@ -256,9 +313,35 @@ export function resolveColumnType(
       arrayDepth += 1;
     }
   }
+  const scalar = resolveScalarType(base, arrayDepth);
+  if (scalar) {
+    return scalar;
+  }
+  const userType = resolveUserType(shapes, schemaName, base);
+  if (userType?.kind === "enum") {
+    return { arrayDepth, enumRef: userType.ref, kind: "enum" };
+  }
+  if (userType?.kind === "composite") {
+    return { arrayDepth, compositeRef: userType.ref, kind: "composite" };
+  }
+  const relationType = resolveRelationType(shapes, schemaName, base);
+  if (relationType) {
+    return { arrayDepth, kind: "relation", relationRef: relationType };
+  }
+  const unqualifiedScalar = resolveScalarType(unqualifiedTypeName(base), arrayDepth);
+  if (unqualifiedScalar) {
+    return unqualifiedScalar;
+  }
+  return { arrayDepth, kind: "unknown" };
+}
+
+function resolveScalarType(base: string, arrayDepth: number): ResolvedColumnType | undefined {
   const lowered = base.toLowerCase();
   if (numberTypes.has(lowered)) {
     return { arrayDepth, kind: "number" };
+  }
+  if (vectorTypes.has(lowered)) {
+    return { arrayDepth: arrayDepth + 1, kind: "number" };
   }
   if (stringTypes.has(lowered)) {
     return { arrayDepth, kind: "string" };
@@ -269,14 +352,13 @@ export function resolveColumnType(
   if (lowered === "json" || lowered === "jsonb") {
     return { arrayDepth, kind: "json" };
   }
-  const userType = resolveUserType(shapes, schemaName, base);
-  if (userType?.kind === "enum") {
-    return { arrayDepth, enumRef: userType.ref, kind: "enum" };
+  if (lowered === "void") {
+    return { arrayDepth, kind: "void" };
   }
-  if (userType?.kind === "composite") {
-    return { arrayDepth, compositeRef: userType.ref, kind: "composite" };
-  }
-  return { arrayDepth, kind: "unknown" };
+}
+
+function unqualifiedTypeName(base: string): string {
+  return base.includes(".") ? (base.split(".").at(-1) ?? base) : base;
 }
 
 function resolveUserType(
@@ -312,6 +394,53 @@ function resolveUserType(
   }
   const compositeMatch = compositeMatches[0];
   return compositeMatch ? { kind: "composite", ref: compositeMatch } : undefined;
+}
+
+function resolveRelationType(
+  shapes: SchemaShapes,
+  schemaName: string,
+  base: string
+): { collection: "Tables" | "Views"; name: string; schema: string } | undefined {
+  if (base.includes(".")) {
+    const [schema, ...rest] = base.split(".");
+    const name = rest.join(".");
+    return schema && name ? relationTypeInSchema(shapes, schema, name) : undefined;
+  }
+  const localRelation = relationTypeInSchema(shapes, schemaName, base);
+  if (localRelation) {
+    return localRelation;
+  }
+
+  const matches: { collection: "Tables" | "Views"; name: string; schema: string }[] = [];
+  for (const [schema, entry] of shapes.schemas) {
+    const relation = relationTypeInEntry(entry, schema, base);
+    if (relation) {
+      matches.push(relation);
+    }
+  }
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function relationTypeInSchema(
+  shapes: SchemaShapes,
+  schema: string,
+  name: string
+): { collection: "Tables" | "Views"; name: string; schema: string } | undefined {
+  const entry = shapes.schemas.get(schema);
+  return entry ? relationTypeInEntry(entry, schema, name) : undefined;
+}
+
+function relationTypeInEntry(
+  entry: SchemaEntry,
+  schema: string,
+  name: string
+): { collection: "Tables" | "Views"; name: string; schema: string } | undefined {
+  if (entry.tables.some((table) => table.name === name)) {
+    return { collection: "Tables", name, schema };
+  }
+  if (entry.views.some((view) => view.name === name)) {
+    return { collection: "Views", name, schema };
+  }
 }
 
 function schemaEntry(shapes: SchemaShapes, name: string): SchemaEntry {
@@ -593,6 +722,8 @@ const numberTypes = new Set([
   "decimal",
   "oid",
 ]);
+
+const vectorTypes = new Set(["vector", "halfvec"]);
 
 const stringTypes = new Set([
   "text",

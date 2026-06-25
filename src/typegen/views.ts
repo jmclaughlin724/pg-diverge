@@ -3,8 +3,8 @@ import {
   asRecord,
   astNodeKind,
   astNodeOf,
+  listItems,
   readArray,
-  readNumber,
   readString,
   stringList,
   typeNameToSql,
@@ -74,6 +74,16 @@ function columnsForSelect(
   if (!select) {
     return [];
   }
+  if (readString(select.op) !== "SETOP_NONE" && select.larg !== undefined) {
+    return columnsForSetOperation(
+      select,
+      defaultSchema,
+      tablesByKey,
+      functionsByKey,
+      inheritedCtes,
+      outerFromInfo
+    );
+  }
   const ctes = collectCteSources(select, defaultSchema, tablesByKey, functionsByKey, inheritedCtes);
   const fromInfo = collectFromClauseSourceInfo(
     select,
@@ -92,7 +102,63 @@ function columnsForSelect(
     ...(outerFromInfo ? { outerFromInfo } : {}),
     tablesByKey,
   };
+  const valuesColumns = columnsForValues(select, context);
+  if (valuesColumns) {
+    return valuesColumns;
+  }
   return targets.flatMap((target) => expandTarget(target, context));
+}
+
+function columnsForSetOperation(
+  select: Record<string, unknown>,
+  defaultSchema: string,
+  tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
+  inheritedCtes: Map<string, ColumnShape[]>,
+  outerFromInfo?: SourceInfo
+): ColumnShape[] {
+  const left = columnsForSelect(
+    selectStatement(select.larg),
+    defaultSchema,
+    tablesByKey,
+    functionsByKey,
+    inheritedCtes,
+    outerFromInfo
+  );
+  const right = columnsForSelect(
+    selectStatement(select.rarg),
+    defaultSchema,
+    tablesByKey,
+    functionsByKey,
+    inheritedCtes,
+    outerFromInfo
+  );
+  return left.map((column, index) => ({
+    ...column,
+    type: firstResolvedType([column.type, right[index]?.type]) ?? column.type,
+  }));
+}
+
+function columnsForValues(
+  select: Record<string, unknown>,
+  context: InferenceContext
+): ColumnShape[] | undefined {
+  const rows = readArray(select.valuesLists).map((row) => listItems(row));
+  if (rows.length === 0) {
+    return;
+  }
+  const width = Math.max(...rows.map((row) => row.length));
+  return Array.from({ length: width }, (_, index) => {
+    const expressions = rows.flatMap((row) => {
+      const expression = row[index];
+      return expression === undefined ? [] : [expression];
+    });
+    return {
+      name: `column${index + 1}`,
+      notNull: false,
+      type: firstKnownType(expressions, context) ?? "unknown",
+    };
+  });
 }
 
 function expandTarget(target: ViewTarget, context: InferenceContext): ColumnShape[] {
@@ -100,7 +166,7 @@ function expandTarget(target: ViewTarget, context: InferenceContext): ColumnShap
     return expandStarTarget(target, context.fromInfo);
   }
 
-  const name = target.alias ?? target.sourceColumn;
+  const name = target.alias ?? target.sourceColumn ?? expressionColumnName(target.expression);
   if (!name) {
     return [];
   }
@@ -130,6 +196,18 @@ function expandStarTarget(target: ViewTarget, fromInfo: SourceInfo | undefined):
     notNull: false,
     type: column.type,
   }));
+}
+
+function expressionColumnName(expression: unknown): string | undefined {
+  const func = astNodeOf(expression, "FuncCall");
+  if (func) {
+    return stringList(func.funcname).at(-1);
+  }
+  const indirection = astNodeOf(expression, "A_Indirection");
+  if (indirection) {
+    return expressionColumnName(indirection.arg);
+  }
+  return astNodeKind(expression) === "A_Const" ? "?column?" : undefined;
 }
 
 function parseTarget(target: unknown): ViewTarget {
@@ -245,6 +323,30 @@ function sourceInfoForFromItem(
     );
   }
 
+  const rangeFunction = astNodeOf(item, "RangeFunction");
+  if (rangeFunction) {
+    return sourceInfoForRangeFunction(
+      rangeFunction,
+      defaultSchema,
+      tablesByKey,
+      functionsByKey,
+      ctes,
+      outerFromInfo
+    );
+  }
+
+  const rangeTableSample = astNodeOf(item, "RangeTableSample");
+  if (rangeTableSample) {
+    return sourceInfoForRangeTableSample(
+      rangeTableSample,
+      defaultSchema,
+      tablesByKey,
+      functionsByKey,
+      ctes,
+      outerFromInfo
+    );
+  }
+
   const join = astNodeOf(item, "JoinExpr");
   if (join) {
     return sourceInfoForJoin(join, defaultSchema, tablesByKey, functionsByKey, ctes, outerFromInfo);
@@ -265,8 +367,11 @@ function sourceInfoForRangeVar(
   const schemaName = explicitSchemaName ?? defaultSchema;
   const columns =
     explicitSchemaName === undefined
-      ? (ctes.get(relname) ?? tablesByKey.get(`${schemaName}.${relname}`)?.columns)
-      : tablesByKey.get(`${schemaName}.${relname}`)?.columns;
+      ? (ctes.get(relname) ??
+        tablesByKey.get(`${schemaName}.${relname}`)?.columns ??
+        builtinRelationColumns("pg_catalog", relname))
+      : (tablesByKey.get(`${schemaName}.${relname}`)?.columns ??
+        builtinRelationColumns(schemaName, relname));
   if (!columns) {
     return;
   }
@@ -276,6 +381,15 @@ function sourceInfoForRangeVar(
     columns,
     aliasName ? [relname, aliasName, qualifiedName] : [relname, qualifiedName]
   );
+}
+
+function builtinRelationColumns(schemaName: string, relname: string): ColumnShape[] | undefined {
+  if (schemaName === "pg_catalog") {
+    return builtinPgCatalogRelations.get(relname);
+  }
+  if (schemaName === "cron") {
+    return builtinPgCronRelations.get(relname);
+  }
 }
 
 function sourceInfoForRangeSubselect(
@@ -304,6 +418,54 @@ function sourceInfoForRangeSubselect(
     stringList(alias?.colnames)
   );
   return sourceInfoFromColumns(columns, aliasName ? [aliasName] : []);
+}
+
+function sourceInfoForRangeFunction(
+  rangeFunction: Record<string, unknown>,
+  defaultSchema: string,
+  tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
+  ctes: Map<string, ColumnShape[]>,
+  outerFromInfo?: SourceInfo
+): SourceInfo | undefined {
+  const context: InferenceContext = {
+    ctes,
+    defaultSchema,
+    ...(outerFromInfo ? { fromInfo: outerFromInfo, outerFromInfo } : {}),
+    functionsByKey,
+    tablesByKey,
+  };
+  const functionColumns = readArray(rangeFunction.functions).flatMap((item) =>
+    rangeFunctionColumns(item, context)
+  );
+  const columns =
+    rangeFunction.ordinality === true
+      ? [...functionColumns, { name: "ordinality", notNull: false, type: "bigint" }]
+      : functionColumns;
+  const alias = asRecord(rangeFunction.alias);
+  const aliasName = readString(alias?.aliasname);
+  return sourceInfoFromColumns(
+    applyColumnAliases(columns, stringList(alias?.colnames)),
+    aliasName ? [aliasName] : []
+  );
+}
+
+function sourceInfoForRangeTableSample(
+  rangeTableSample: Record<string, unknown>,
+  defaultSchema: string,
+  tablesByKey: Map<string, TableShape>,
+  functionsByKey: FunctionShapesByKey,
+  ctes: Map<string, ColumnShape[]>,
+  outerFromInfo?: SourceInfo
+): SourceInfo | undefined {
+  return sourceInfoForFromItem(
+    rangeTableSample.relation,
+    defaultSchema,
+    tablesByKey,
+    functionsByKey,
+    ctes,
+    outerFromInfo
+  );
 }
 
 function sourceInfoForJoin(
@@ -475,6 +637,21 @@ function applyColumnAliases(columns: ColumnShape[], aliasNames: string[]): Colum
   }));
 }
 
+function rangeFunctionColumns(item: unknown, context: InferenceContext): ColumnShape[] {
+  const func = astNodeOf(listItems(item)[0], "FuncCall");
+  if (!func) {
+    return [];
+  }
+  const parts = stringList(func.funcname);
+  const fallbackName = parts.at(-1) ?? "value";
+  const returns = matchingFunctionReturn(func, context);
+  if (returns?.columns) {
+    return returns.columns.map((column) => ({ ...column, notNull: false }));
+  }
+  const type = returns?.type ?? functionReturnType(func, context);
+  return type ? [{ name: fallbackName, notNull: false, type }] : [];
+}
+
 function findColumn(fromInfo: SourceInfo, target: ViewTarget): ColumnShape | undefined {
   if (!target.sourceColumn) {
     return;
@@ -498,6 +675,10 @@ function inferExpressionType(expression: unknown, context: InferenceContext): st
     case "A_Expr": {
       const expr = astNodeOf(expression, "A_Expr");
       return expr ? aExprType(expr, context) : undefined;
+    }
+    case "A_Indirection": {
+      const indirection = astNodeOf(expression, "A_Indirection");
+      return indirectionType(indirection, context);
     }
     case "BoolExpr":
     case "BooleanTest":
@@ -529,6 +710,14 @@ function inferExpressionType(expression: unknown, context: InferenceContext): st
     case "FuncCall": {
       const func = astNodeOf(expression, "FuncCall");
       return func ? functionReturnType(func, context) : undefined;
+    }
+    case "MinMaxExpr": {
+      const minMax = astNodeOf(expression, "MinMaxExpr");
+      return firstKnownType(readArray(minMax?.args), context);
+    }
+    case "SQLValueFunction": {
+      const valueFunction = astNodeOf(expression, "SQLValueFunction");
+      return sqlValueFunctionType(valueFunction);
     }
     case "SubLink": {
       const subLink = astNodeOf(expression, "SubLink");
@@ -582,6 +771,23 @@ function firstKnownType(expressions: unknown[], context: InferenceContext): stri
   }
 }
 
+function firstResolvedType(types: (string | undefined)[]): string | undefined {
+  return types.find((type) => type !== undefined && type !== "unknown");
+}
+
+function indirectionType(
+  indirection: Record<string, unknown> | undefined,
+  context: InferenceContext
+): string | undefined {
+  const baseType = inferExpressionType(indirection?.arg, context);
+  if (!baseType) {
+    return;
+  }
+  return readArray(indirection?.indirection).some((item) => astNodeOf(item, "A_Indices"))
+    ? (arrayElementType(baseType) ?? baseType)
+    : baseType;
+}
+
 function constantType(constant: Record<string, unknown> | undefined): string | undefined {
   if (!constant) {
     return;
@@ -589,7 +795,7 @@ function constantType(constant: Record<string, unknown> | undefined): string | u
   if (asRecord(constant.boolval) !== undefined) {
     return "boolean";
   }
-  if (readNumber(asRecord(constant.ival)?.ival) !== undefined) {
+  if (asRecord(constant.ival) !== undefined) {
     return "integer";
   }
   if (asRecord(constant.fval) !== undefined) {
@@ -600,16 +806,57 @@ function constantType(constant: Record<string, unknown> | undefined): string | u
   }
 }
 
+function sqlValueFunctionType(
+  valueFunction: Record<string, unknown> | undefined
+): string | undefined {
+  switch (readString(valueFunction?.op)) {
+    case "SVFOP_CURRENT_DATE":
+      return "date";
+    case "SVFOP_CURRENT_TIME":
+    case "SVFOP_CURRENT_TIME_N":
+      return "time with time zone";
+    case "SVFOP_CURRENT_TIMESTAMP":
+    case "SVFOP_CURRENT_TIMESTAMP_N":
+      return "timestamp with time zone";
+    case "SVFOP_CURRENT_USER":
+    case "SVFOP_SESSION_USER":
+    case "SVFOP_USER":
+      return "text";
+    default:
+      return;
+  }
+}
+
 function aExprType(expr: Record<string, unknown>, context: InferenceContext): string | undefined {
   if (expr.kind === "AEXPR_NULLIF") {
     return inferExpressionType(expr.lexpr, context);
   }
   const operator = stringList(expr.name).at(-1);
-  if (operator === "->>") {
+  if (operator === "->>" || operator === "#>>") {
     return "text";
   }
-  if (operator === "->") {
+  if (operator === "->" || operator === "#>") {
     return "jsonb";
+  }
+  if (operator === "||") {
+    const left = inferExpressionType(expr.lexpr, context);
+    const right = inferExpressionType(expr.rexpr, context);
+    return arrayElementType(left) && left === right
+      ? left
+      : (firstTextType([left, right]) ?? "text");
+  }
+  if (operator && arithmeticOperators.has(operator)) {
+    const left = inferExpressionType(expr.lexpr, context);
+    const right = inferExpressionType(expr.rexpr, context);
+    if (
+      left &&
+      right &&
+      numericTypes.has(normalizeSqlType(left)) &&
+      numericTypes.has(normalizeSqlType(right))
+    ) {
+      return firstResolvedType([left, right]);
+    }
+    return;
   }
   if (operator && booleanOperators.has(operator)) {
     return "boolean";
@@ -654,33 +901,98 @@ function functionReturnType(
     return;
   }
   const name = parts.join(".");
-  const argTypes = readArray(func.args).map((arg) => inferExpressionType(arg, context));
-  const visibleFunctions =
-    parts.length === 1
-      ? (context.functionsByKey.get(`${context.defaultSchema}.${name}`) ?? [])
-      : (context.functionsByKey.get(name) ?? []);
-  const modeledReturn = matchingFunctionReturnType(visibleFunctions, argTypes);
-  if (modeledReturn) {
-    return modeledReturn;
+  const modeledReturn = matchingFunctionReturn(func, context);
+  if (modeledReturn && modeledReturn.columns === undefined) {
+    return modeledReturn.type;
   }
+  const argTypes = readArray(func.args).map((arg) => inferExpressionType(arg, context));
+  const visibleFunctions = visibleFunctionShapes(parts, context);
   if (parts.length > 1 || visibleFunctions.length > 0) {
     return;
+  }
+  const builtin = builtinFunctionReturnType(name, argTypes, func, context);
+  if (builtin) {
+    return builtin;
   }
   return functionTypeMap.get(name);
 }
 
-function matchingFunctionReturnType(
-  functions: FunctionShape[],
-  argTypes: (string | undefined)[]
-): string | undefined {
-  for (const fn of functions) {
-    if (!fn.returns || fn.returns.columns !== undefined) {
+function matchingFunctionReturn(
+  func: Record<string, unknown>,
+  context: InferenceContext
+): FunctionShape["returns"] | undefined {
+  const parts = stringList(func.funcname);
+  const argTypes = readArray(func.args).map((arg) => inferExpressionType(arg, context));
+  const visibleFunctions = visibleFunctionShapes(parts, context);
+  for (const fn of visibleFunctions) {
+    if (!fn.returns) {
       continue;
     }
     if (functionArgsMatch(fn.args, argTypes)) {
-      return fn.returns.type;
+      return fn.returns;
     }
   }
+}
+
+function visibleFunctionShapes(parts: string[], context: InferenceContext): FunctionShape[] {
+  const name = parts.join(".");
+  return parts.length === 1
+    ? (context.functionsByKey.get(`${context.defaultSchema}.${name}`) ?? [])
+    : (context.functionsByKey.get(name) ?? []);
+}
+
+function builtinFunctionReturnType(
+  name: string,
+  argTypes: (string | undefined)[],
+  func: Record<string, unknown>,
+  context: InferenceContext
+): string | undefined {
+  if (arrayReturnFunctions.has(name)) {
+    return argTypes[0] ? `${argTypes[0]}[]` : undefined;
+  }
+  if (name === "enum_range") {
+    return argTypes[0] ? `${argTypes[0]}[]` : undefined;
+  }
+  if (firstArgumentReturnFunctions.has(name)) {
+    return argTypes[0];
+  }
+  if (firstResolvedReturnFunctions.has(name)) {
+    return firstResolvedType(argTypes);
+  }
+  const fixedType = fixedBuiltinFunctionTypes.get(name);
+  if (fixedType) {
+    return fixedType;
+  }
+  if (orderedSetReturnFunctions.has(name)) {
+    return orderedSetReturnType(func, context) ?? argTypes[0];
+  }
+  if (name === "round") {
+    return firstResolvedType(argTypes) ?? "numeric";
+  }
+  if (name === "unnest") {
+    return arrayElementType(argTypes[0]);
+  }
+}
+
+function orderedSetReturnType(
+  func: Record<string, unknown>,
+  context: InferenceContext
+): string | undefined {
+  for (const item of readArray(func.agg_order)) {
+    const sortBy = astNodeOf(item, "SortBy");
+    const type = inferExpressionType(sortBy?.node, context);
+    if (type && type !== "unknown") {
+      return type;
+    }
+  }
+}
+
+function arrayElementType(type: string | undefined): string | undefined {
+  return type?.endsWith("[]") ? type.slice(0, -2) : undefined;
+}
+
+function firstTextType(types: (string | undefined)[]): string | undefined {
+  return types.find((type) => type !== undefined && normalizeSqlType(type) === "text");
 }
 
 function functionArgsMatch(args: FunctionShape["args"], argTypes: (string | undefined)[]): boolean {
@@ -694,9 +1006,18 @@ function functionArgsMatch(args: FunctionShape["args"], argTypes: (string | unde
       argType !== undefined &&
       argType !== "unknown" &&
       expected !== undefined &&
-      normalizeSqlType(argType) === normalizeSqlType(expected)
+      sqlTypesCompatible(argType, expected)
     );
   });
+}
+
+function sqlTypesCompatible(actual: string, expected: string): boolean {
+  const normalizedActual = normalizeSqlType(actual);
+  const normalizedExpected = normalizeSqlType(expected);
+  return (
+    normalizedActual === normalizedExpected ||
+    (normalizedExpected === "numeric" && numericTypes.has(normalizedActual))
+  );
 }
 
 function normalizeSqlType(type: string): string {
@@ -704,7 +1025,18 @@ function normalizeSqlType(type: string): string {
 }
 
 function selectStatement(value: unknown): Record<string, unknown> | undefined {
-  return astNodeOf(value, "SelectStmt");
+  const wrapped = astNodeOf(value, "SelectStmt");
+  if (wrapped) {
+    return wrapped;
+  }
+  const record = asRecord(value);
+  return record &&
+    (record.targetList !== undefined ||
+      record.fromClause !== undefined ||
+      record.valuesLists !== undefined ||
+      record.op !== undefined)
+    ? record
+    : undefined;
 }
 
 const booleanSubLinkTypes = new Set([
@@ -728,6 +1060,8 @@ const booleanOperators = new Set([
   "!~~*",
 ]);
 
+const arithmeticOperators = new Set(["+", "-", "*", "/", "%"]);
+
 const booleanExpressionKinds = new Set([
   "AEXPR_BETWEEN",
   "AEXPR_BETWEEN_SYM",
@@ -743,11 +1077,159 @@ const booleanExpressionKinds = new Set([
   "AEXPR_SIMILAR",
 ]);
 
+const numericTypes = new Set([
+  "bigint",
+  "double precision",
+  "integer",
+  "numeric",
+  "real",
+  "smallint",
+]);
+
+const builtinPgCatalogRelations = new Map<string, ColumnShape[]>([
+  [
+    "pg_class",
+    [
+      { name: "oid", notNull: false, type: "oid" },
+      { name: "relname", notNull: false, type: "name" },
+      { name: "relnamespace", notNull: false, type: "oid" },
+      { name: "relkind", notNull: false, type: '"char"' },
+    ],
+  ],
+  [
+    "pg_depend",
+    [
+      { name: "objid", notNull: false, type: "oid" },
+      { name: "refobjid", notNull: false, type: "oid" },
+      { name: "deptype", notNull: false, type: '"char"' },
+    ],
+  ],
+  [
+    "pg_enum",
+    [
+      { name: "enumtypid", notNull: false, type: "oid" },
+      { name: "enumlabel", notNull: false, type: "name" },
+      { name: "enumsortorder", notNull: false, type: "real" },
+    ],
+  ],
+  [
+    "pg_namespace",
+    [
+      { name: "oid", notNull: false, type: "oid" },
+      { name: "nspname", notNull: false, type: "name" },
+    ],
+  ],
+  [
+    "pg_proc",
+    [
+      { name: "oid", notNull: false, type: "oid" },
+      { name: "proname", notNull: false, type: "name" },
+      { name: "pronamespace", notNull: false, type: "oid" },
+      { name: "provolatile", notNull: false, type: '"char"' },
+      { name: "prosecdef", notNull: false, type: "boolean" },
+    ],
+  ],
+  [
+    "pg_trigger",
+    [
+      { name: "oid", notNull: false, type: "oid" },
+      { name: "tgrelid", notNull: false, type: "oid" },
+      { name: "tgname", notNull: false, type: "name" },
+      { name: "tgfoid", notNull: false, type: "oid" },
+      { name: "tgisinternal", notNull: false, type: "boolean" },
+      { name: "tgenabled", notNull: false, type: '"char"' },
+    ],
+  ],
+  [
+    "pg_type",
+    [
+      { name: "oid", notNull: false, type: "oid" },
+      { name: "typname", notNull: false, type: "name" },
+      { name: "typnamespace", notNull: false, type: "oid" },
+      { name: "typtype", notNull: false, type: '"char"' },
+    ],
+  ],
+]);
+
+const builtinPgCronRelations = new Map<string, ColumnShape[]>([
+  [
+    "job",
+    [
+      { name: "jobid", notNull: false, type: "bigint" },
+      { name: "schedule", notNull: false, type: "text" },
+      { name: "command", notNull: false, type: "text" },
+      { name: "nodename", notNull: false, type: "text" },
+      { name: "nodeport", notNull: false, type: "integer" },
+      { name: "database", notNull: false, type: "text" },
+      { name: "username", notNull: false, type: "text" },
+      { name: "active", notNull: false, type: "boolean" },
+      { name: "jobname", notNull: false, type: "text" },
+    ],
+  ],
+  [
+    "job_run_details",
+    [
+      { name: "jobid", notNull: false, type: "bigint" },
+      { name: "runid", notNull: false, type: "bigint" },
+      { name: "job_pid", notNull: false, type: "integer" },
+      { name: "database", notNull: false, type: "text" },
+      { name: "username", notNull: false, type: "text" },
+      { name: "command", notNull: false, type: "text" },
+      { name: "status", notNull: false, type: "text" },
+      { name: "return_message", notNull: false, type: "text" },
+      { name: "start_time", notNull: false, type: "timestamp with time zone" },
+      { name: "end_time", notNull: false, type: "timestamp with time zone" },
+    ],
+  ],
+]);
+
+const arrayReturnFunctions = new Set(["array_agg", "array_fill"]);
+
+const firstArgumentReturnFunctions = new Set([
+  "first_value",
+  "generate_series",
+  "lag",
+  "last_value",
+  "lead",
+  "max",
+  "min",
+]);
+
+const firstResolvedReturnFunctions = new Set(["greatest", "least", "nullif"]);
+
+const orderedSetReturnFunctions = new Set(["percentile_cont", "percentile_disc"]);
+
+const fixedBuiltinFunctionTypes = new Map([
+  ["avg", "numeric"],
+  ["concat", "text"],
+  ["concat_ws", "text"],
+  ["format", "text"],
+  ["json_agg", "json"],
+  ["json_array_elements", "json"],
+  ["json_array_elements_text", "text"],
+  ["json_array_length", "integer"],
+  ["json_build_array", "json"],
+  ["json_build_object", "json"],
+  ["jsonb_agg", "jsonb"],
+  ["jsonb_array_elements", "jsonb"],
+  ["jsonb_array_elements_text", "text"],
+  ["jsonb_array_length", "integer"],
+  ["jsonb_build_array", "jsonb"],
+  ["jsonb_build_object", "jsonb"],
+  ["replace", "text"],
+  ["split_part", "text"],
+  ["substr", "text"],
+  ["substring", "text"],
+  ["sum", "numeric"],
+]);
+
 const functionTypeMap = new Map([
   ["array_length", "integer"],
   ["btrim", "text"],
   ["cardinality", "integer"],
   ["communication_channel_or_null", "platform.communication_channel"],
+  ["concat", "text"],
+  ["concat_ws", "text"],
   ["count", "bigint"],
   ["lower", "text"],
   ["ltrim", "text"],
