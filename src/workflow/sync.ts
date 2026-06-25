@@ -34,7 +34,7 @@ import {
   type ResolvedSyncTarget,
   resolveSyncTargets,
 } from "./targets.js";
-import { checkSyncLineageChain } from "./verify.js";
+import { checkSyncLineageChain, verifyPendingMigrationsForSync } from "./verify.js";
 
 export interface SyncOptions {
   cliVersion?: string;
@@ -566,6 +566,7 @@ const targetSyncLanes: TargetSyncLane[] = [
   stopTargetWhenNothingPendingLane,
   guardTargetConcurrentCompanionsLane,
   runTargetSafetyLane,
+  verifyTargetPendingMigrationsLane,
   applyTargetMigrationsLane,
   reconcileTargetHistoryLane,
 ];
@@ -657,6 +658,24 @@ function runTargetSafetyLane(state: TargetSyncState): Promise<SyncResult | undef
     pending: pendingMigrationsForTargetSupaschemaGate(state),
     sourceOverride: targetSafetySource(state.target, state.sources.from),
     targetName: state.target.name,
+  });
+}
+
+function verifyTargetPendingMigrationsLane(
+  state: TargetSyncState
+): Promise<SyncResult | undefined> {
+  return verifyPendingMigrationsForSync({
+    config: state.config,
+    diagnostics: state.diagnostics,
+    directory: state.options.directory,
+    lines: state.lines,
+    options: state.options,
+    pending: pendingMigrationsForTargetRunner(state),
+    sources: {
+      from: targetSafetySource(state.target, state.sources.from),
+      to: state.sources.to,
+    },
+    target: state.target,
   });
 }
 

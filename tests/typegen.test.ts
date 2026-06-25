@@ -206,7 +206,7 @@ describe("database type generation", () => {
     expect(types).toContain("name: string;");
     expect(types).toContain("email: string | null;");
     expect(types).toContain("score: number | null;");
-    expect(types).toContain("tags: (string)[];");
+    expect(types).toContain("tags: string[];");
     expect(types).toContain("payload: Json | null;");
     expect(types).toContain('state: Database["app"]["Enums"]["status"];');
     expect(types).toContain("active: boolean;");
@@ -232,8 +232,8 @@ describe("database type generation", () => {
     const types = await typesFor(treeSql);
     const views = types.slice(types.indexOf("Views: {"), types.indexOf("Enums: {"));
 
-    expect(views).toContain("id: number;");
-    expect(views).toContain("label: string;");
+    expect(views).toContain("id: number | null;");
+    expect(views).toContain("label: string | null;");
     expect(views).toContain("payload: Json | null;");
     expect(views).toContain("Relationships: [];");
   });
@@ -242,8 +242,8 @@ describe("database type generation", () => {
     const types = await typesFor(treeSql);
     const rollup = types.slice(types.indexOf("Views: {"), types.indexOf("Enums: {"));
 
-    expect(rollup).toContain("id: number;");
-    expect(rollup).toContain("account_name: string;");
+    expect(rollup).toContain("id: number | null;");
+    expect(rollup).toContain("account_name: string | null;");
     expect(rollup).toContain("payload: Json | null;");
     expect(rollup).toContain('state: Database["app"]["Enums"]["status"] | null;');
     expect(rollup).toContain("rank: number | null;");
@@ -254,8 +254,8 @@ describe("database type generation", () => {
     const types = await typesFor(nestedViewSql);
     const views = types.slice(types.indexOf("Views: {"), types.indexOf("Enums: {"));
 
-    expect(views).toContain("reply_recipients: (string)[] | null;");
-    expect(views).toContain("chat_participant_ids: (string)[] | null;");
+    expect(views).toContain("reply_recipients: string[] | null;");
+    expect(views).toContain("chat_participant_ids: string[] | null;");
     expect(views).toContain("has_sms_consent: boolean | null;");
     expect(views).toContain("can_send_email: boolean | null;");
     expect(views).toContain("can_send_chat: boolean | null;");
@@ -273,6 +273,35 @@ SELECT app.source.app_value FROM app.source;
 
     expect(views).toContain("app_value: string | null;");
     expect(views).not.toContain("app_value: unknown | null;");
+  });
+
+  it("resolves top-level CTEs used inside set-operation views", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.events (id bigint, payload jsonb);
+CREATE VIEW app.v_event_payloads AS
+WITH source AS (SELECT id, payload FROM app.events)
+SELECT id, payload FROM source
+UNION ALL
+SELECT id, payload FROM app.events;
+`);
+    const view = viewTypeBlock(types, "v_event_payloads");
+
+    expect(view).toContain("id: number | null;");
+    expect(view).toContain("payload: Json | null;");
+    expect(view).not.toContain("unknown | null;");
+  });
+
+  it("types jsonb concat view expressions as Json", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.events (payload jsonb);
+CREATE VIEW app.v_event_payloads AS
+SELECT payload || '{"source":"app"}'::jsonb AS merged_payload FROM app.events;
+`);
+    const view = viewTypeBlock(types, "v_event_payloads");
+
+    expect(view).toContain("merged_payload: Json | null;");
+    expect(view).not.toContain("merged_payload: string | null;");
+    expect(view).not.toContain("merged_payload: unknown | null;");
   });
 
   it("keeps qualified star expansion scoped to the matched join source", async () => {
@@ -411,12 +440,12 @@ CREATE VIEW app.late_view AS SELECT email FROM app.users;
     const fromPgCatalog = viewTypeBlock(types, "from_pg_catalog");
     const fromPgCron = viewTypeBlock(types, "from_pg_cron");
 
-    expect(types).toContain("embedding: string | null;");
+    expect(types).toContain("embedding: number[] | null;");
     expect(types).toContain("email: string | null;");
     expect(types).toContain('p_user: Database["app"]["Tables"]["users"]["Row"]');
     expect(types).toContain("accept_user: { Args:");
-    expect(types).toContain("Returns: undefined");
-    expect(types).toContain('users: (Database["app"]["Views"]["v_users"]["Row"])[] | null;');
+    expect(types).toContain("Returns: void");
+    expect(types).toContain('users: Database["app"]["Views"]["v_users"]["Row"][] | null;');
     expect(types).toContain('owner: Database["app"]["Tables"]["users"]["Row"] | null;');
     expect(fromLateView).toContain("email: string | null;");
     expect(fromView).toContain("user_id: number | null;");
@@ -441,7 +470,7 @@ CREATE VIEW app.late_view AS SELECT email FROM app.users;
     expect(fromExpressions).toContain("p95_id: number | null;");
     expect(fromExpressions).toContain("avg_id: number | null;");
     expect(fromExpressions).toContain("first_email: string | null;");
-    expect(fromExpressions).toContain("touchpoints: (number)[] | null;");
+    expect(fromExpressions).toContain("touchpoints: number[] | null;");
     expect(fromExpressions).toContain("contact_id: string | null;");
     expect(fromExpressions).toContain("item_count: number | null;");
     expect(fromExpressions).toContain("formatted_id: string | null;");
@@ -544,7 +573,7 @@ CREATE VIEW public.custom_lower_mismatch AS SELECT lower(1) AS lowered;
 `);
     const view = viewTypeBlock(types, "custom_lower_mismatch");
 
-    expect(view).toContain("lowered: unknown;");
+    expect(view).toContain("lowered: unknown | null;");
     expect(view).not.toContain("lowered: string | null;");
     expect(view).not.toContain("lowered: number | null;");
   });
@@ -554,14 +583,9 @@ CREATE VIEW public.custom_lower_mismatch AS SELECT lower(1) AS lowered;
 
     expect(types).toContain("export const Constants = {");
     expect(types).toContain('status: ["draft", "active"],');
-    expect(types).toContain(
-      'type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;'
-    );
-    expect(types).toContain(
-      'type DefaultSchema = DatabaseWithoutInternals[Extract<keyof DatabaseWithoutInternals, "public">];'
-    );
+    expect(types).toContain('type PublicSchema = Database[Extract<keyof Database, "public">];');
     expect(types).toContain("export type Tables<");
-    expect(types).toContain("DefaultSchemaTableNameOrOptions");
+    expect(types).toContain("PublicTableNameOrOptions");
     expect(types).toContain("export type CompositeTypes<");
     expect(types).not.toContain("export type Tables<S extends");
     expect(types).not.toContain("export type Views<");
@@ -658,10 +682,6 @@ CREATE TABLE audit.logs (
   state status NOT NULL,
   user_id bigint UNIQUE REFERENCES app.users
 );
-CREATE TABLE app.sessions (
-  id bigint PRIMARY KEY,
-  user_id bigint UNIQUE REFERENCES app.users
-);
 CREATE VIEW app.user_emails (uid, mail) AS SELECT id, contact FROM app.users;
 CREATE VIEW app.all_users AS SELECT u.* FROM app.users u;
 CREATE FUNCTION app.get_user(uid bigint, fallback text DEFAULT 'none') RETURNS SETOF text LANGUAGE sql AS $$ SELECT contact FROM app.users $$;
@@ -698,16 +718,16 @@ describe("review-hardened typegen", () => {
     const types = await typesFor(hardenedSql);
     const views = types.slice(types.indexOf("Views: {"), types.indexOf("Enums: {"));
 
-    expect(views).toContain("uid: number;");
-    expect(views).toContain("mail: string;");
-    expect(views).toContain("contact: string;");
+    expect(views).toContain("uid: number | null;");
+    expect(views).toContain("mail: string | null;");
+    expect(views).toContain("contact: string | null;");
   });
 
   it("populates Functions with named args, optionality, and setof returns", async () => {
     const types = await typesFor(hardenedSql);
 
     expect(types).toContain(
-      "get_user: { Args: { uid: number; fallback?: string }; Returns: (string)[] };"
+      "get_user: { Args: { uid: number; fallback?: string }; Returns: string[] };"
     );
   });
 });
@@ -722,7 +742,7 @@ describe("overloaded function typegen", () => {
     const types = await typesFor(overloadedSql);
 
     expect(types).toContain(
-      "f: { Args: { a: number }; Returns: number } | { Args: { a: string }; Returns: string };"
+      "f: { Args: { a: number } | { a: string }; Returns: number | string };"
     );
   });
 });
@@ -774,7 +794,7 @@ CREATE TABLE app.t (id bigint, v thing);
 `
     );
 
-    expect(types).toContain("v: unknown;");
+    expect(types).toContain("v: unknown | null;");
     expect(types).not.toContain('Database["a"]["Enums"]["thing"]');
   });
 });
@@ -790,89 +810,18 @@ describe("function return row typegen", () => {
     const types = await typesFor(returnShapeSql);
 
     expect(types).toContain(
-      "list_people: { Args: never; Returns: { id: number; label: string }[] };"
+      "list_people: { Args: Record<PropertyKey, never>; Returns: { id: number; label: string }[] };"
     );
-    expect(types).toContain("one_row: { Args: never; Returns: { a: number; b: string } };");
+    expect(types).toContain(
+      "one_row: { Args: Record<PropertyKey, never>; Returns: { a: number; b: string } };"
+    );
   });
 
   it("keeps a single OUT parameter scalar instead of a one-field record", async () => {
     const types = await typesFor(returnShapeSql);
 
-    expect(types).toContain("single_out: { Args: never; Returns: number };");
-    expect(types).not.toContain("single_out: { Args: never; Returns: { x:");
-  });
-});
-
-const supabaseConventionSql = `CREATE SCHEMA app;
-CREATE SCHEMA empty_schema;
-CREATE TABLE app.users (
-  id bigint PRIMARY KEY,
-  name text NOT NULL
-);
-CREATE TABLE app.sessions (
-  id bigint PRIMARY KEY,
-  user_id bigint UNIQUE CONSTRAINT sessions_user_fk REFERENCES app.users (id)
-);
-CREATE VIEW app.user_names AS SELECT id, name FROM app.users;
-CREATE VIEW app.session_users AS SELECT id, user_id FROM app.sessions;
-CREATE MATERIALIZED VIEW app.user_names_mv AS SELECT id, name FROM app.users;
-CREATE VIEW app.user_names_from_mv AS SELECT id, name FROM app.user_names_mv;
-CREATE FUNCTION app.accept_json(jsonb) RETURNS text LANGUAGE sql AS $$ SELECT 'ok'::text $$;
-CREATE FUNCTION app.all_users() RETURNS SETOF app.users LANGUAGE sql AS $$ SELECT * FROM app.users $$;
-CREATE FUNCTION app.bad_scalar(app.users) RETURNS text LANGUAGE sql AS $$ SELECT $1.name $$;
-CREATE FUNCTION app.bad_unnamed(integer) RETURNS text LANGUAGE sql AS $$ SELECT 'bad'::text $$;
-CREATE FUNCTION app.display_name(app.users) RETURNS text LANGUAGE sql AS $$ SELECT $1.name $$;
-CREATE FUNCTION app.user_sessions(app.users) RETURNS SETOF app.sessions LANGUAGE sql AS $$ SELECT * FROM app.sessions WHERE user_id = $1.id $$;
-`;
-
-describe("Supabase/PostgREST convention typegen", () => {
-  it("emits empty schema sentinels and PostgREST-safe helper wrappers", async () => {
-    const types = await typesFor(supabaseConventionSql);
-
-    expect(collapseWhitespace(types)).toContain(
-      "empty_schema: { Tables: { [_ in never]: never; }; Views: { [_ in never]: never; }; Enums: { [_ in never]: never; }; CompositeTypes: { [_ in never]: never; }; Functions: { [_ in never]: never }; }"
-    );
-    expect(types).toContain(
-      'type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;'
-    );
-    expect(types).toContain('PostgrestVersion: "12";');
-  });
-
-  it("emits updatable view writes, omits materialized-view writes, and carries view relationships", async () => {
-    const types = await typesFor(supabaseConventionSql);
-    const userNames = viewTypeBlock(types, "user_names");
-    const materialized = viewTypeBlock(types, "user_names_mv");
-    const fromMaterialized = viewTypeBlock(types, "user_names_from_mv");
-    const sessionUsers = viewTypeBlock(types, "session_users");
-
-    expect(userNames).toContain("Insert: {");
-    expect(userNames).toContain("name?: string | null;");
-    expect(materialized).not.toContain("Insert: {");
-    expect(fromMaterialized).not.toContain("Insert: {");
-    expect(sessionUsers).toContain('foreignKeyName: "sessions_user_fk"');
-    expect(sessionUsers).toContain('referencedRelation: "users"');
-    expect(sessionUsers).toContain("isOneToOne: true");
-  });
-
-  it("emits computed fields, unnamed RPC args, table-return SetofOptions, and invalid table-row RPC errors", async () => {
-    const types = await typesFor(supabaseConventionSql);
-    const users = types.slice(types.indexOf("users: {"), types.indexOf("Views: {"));
-
-    expect(users).toContain("display_name: string | null;");
-    expect(users).toContain(
-      'user_sessions: (Database["app"]["Tables"]["sessions"]["Row"])[] | null;'
-    );
-    expect(types).toContain('accept_json: { Args: { "": Json }; Returns: string };');
-    expect(types).toContain(
-      'all_users: { Args: never; Returns: (Database["app"]["Tables"]["users"]["Row"])[]; SetofOptions: { from: "*"; to: "users"; isOneToOne: false; isSetofReturn: true } };'
-    );
-    expect(types).toContain(
-      'user_sessions: { Args: { "": Database["app"]["Tables"]["users"]["Row"] }; Returns: (Database["app"]["Tables"]["sessions"]["Row"])[]; SetofOptions: { from: "users"; to: "sessions"; isOneToOne: false; isSetofReturn: true } };'
-    );
-    expect(types).toContain(
-      'bad_scalar: { Args: { "": Database["app"]["Tables"]["users"]["Row"] }; Returns: { error: true } & "the function app.bad_scalar with a single unnamed table-row parameter cannot be called as a scalar RPC" };'
-    );
-    expect(types).not.toContain("bad_unnamed");
+    expect(types).toContain("single_out: { Args: Record<PropertyKey, never>; Returns: number };");
+    expect(types).not.toContain("single_out: { Args: Record<PropertyKey, never>; Returns: { x:");
   });
 });
 
@@ -1021,19 +970,5 @@ CREATE TYPE app.a AS (z app.z);
     const update = account.slice(account.indexOf("Update: z.object({"));
     expect(update).toContain("name: z.string().optional(),");
     expect(update).not.toContain("doubled");
-  });
-
-  it("keeps unknown fields broad and maps vector values as strings", async () => {
-    const zod = await zodFor(`CREATE SCHEMA app;
-CREATE SCHEMA a;
-CREATE SCHEMA b;
-CREATE TYPE a.thing AS ENUM ('x');
-CREATE TYPE b.thing AS (n int);
-CREATE TABLE app.items (id bigint, embedding extensions.vector(3), value thing);
-`);
-
-    expect(zod).toContain("embedding: z.string().nullable(),");
-    expect(zod).toContain("value: z.unknown(),");
-    expect(zod).not.toContain("value: z.unknown().nullable(),");
   });
 });

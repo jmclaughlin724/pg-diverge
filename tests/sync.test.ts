@@ -484,6 +484,7 @@ describe("sync diagnostics", () => {
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_OVERRIDE_MULTI).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_UNKNOWN).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_URL_UNRESOLVED).toBeDefined();
+    expect(diagnosticCatalog.SUPA_SYNC_VERIFY_URL_UNRESOLVED).toBeDefined();
     expect(diagnosticCatalog.SUPA_DIFF_LINEAGE_GAP).toBeDefined();
   });
 });
@@ -1512,7 +1513,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     }
   });
 
-  it("applies an approved remote target without a separate verify database", async () => {
+  it("refuses an approved remote target without a separate verify database", async () => {
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
     const db = `supa_sync_remote_verify_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
@@ -1562,9 +1563,12 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         skipDiff: true,
       });
 
-      expect(result.applied).toBe(true);
-      expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
-      expect(result.report).toContain("running: direct");
+      expect(result.applied).toBe(false);
+      expect(result.diagnostics.map((item) => item.code)).toContain(
+        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
+      );
+      expect(result.report).toContain("refusing to sync: verify has no database URL");
+      expect(result.report).not.toContain("running: direct");
     } finally {
       process.chdir(previousCwd);
       if (previousApproval === undefined) {
@@ -1623,6 +1627,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(true);
       expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
+      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
       expect(result.report).toContain("running: direct");
       const target = new Client({ connectionString: url.toString() });
       await target.connect();
@@ -1699,6 +1704,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(true);
       expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
+      expect(result.report).toContain("verify: 3 pending migration file(s) passed");
       expect(result.report).toContain("running: direct");
       const verified = new Client({ connectionString: url.toString() });
       await verified.connect();

@@ -76,17 +76,17 @@ function columnsForSelect(
   if (!select) {
     return [];
   }
+  const ctes = collectCteSources(select, defaultSchema, tablesByKey, functionsByKey, inheritedCtes);
   if (readString(select.op) !== "SETOP_NONE" && select.larg !== undefined) {
     return columnsForSetOperation(
       select,
       defaultSchema,
       tablesByKey,
       functionsByKey,
-      inheritedCtes,
+      ctes,
       outerFromInfo
     );
   }
-  const ctes = collectCteSources(select, defaultSchema, tablesByKey, functionsByKey, inheritedCtes);
   const fromInfo = collectFromClauseSourceInfo(
     select,
     defaultSchema,
@@ -845,9 +845,7 @@ function aExprType(expr: Record<string, unknown>, context: InferenceContext): st
   if (operator === "||") {
     const left = inferExpressionType(expr.lexpr, context);
     const right = inferExpressionType(expr.rexpr, context);
-    return arrayElementType(left) && left === right
-      ? left
-      : (firstTextType([left, right]) ?? "text");
+    return concatExpressionType(left, right);
   }
   if (operator && arithmeticOperators.has(operator)) {
     const left = inferExpressionType(expr.lexpr, context);
@@ -997,6 +995,20 @@ function arrayElementType(type: string | undefined): string | undefined {
 
 function firstTextType(types: (string | undefined)[]): string | undefined {
   return types.find((type) => type !== undefined && normalizeSqlType(type) === "text");
+}
+
+function concatExpressionType(left: string | undefined, right: string | undefined): string {
+  if (left !== undefined && arrayElementType(left) && left === right) {
+    return left;
+  }
+  if (isJsonType(left) && isJsonType(right)) {
+    return "jsonb";
+  }
+  return firstTextType([left, right]) ?? "text";
+}
+
+function isJsonType(type: string | undefined): boolean {
+  return type !== undefined && ["json", "jsonb"].includes(normalizeSqlType(type));
 }
 
 function functionArgsMatch(args: FunctionShape["args"], argTypes: (string | undefined)[]): boolean {
