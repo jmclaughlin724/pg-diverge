@@ -17,8 +17,11 @@ export function shapeHookResult(eventName, result = {}, runtime = "claude") {
   const context = joinParts(result.contextParts);
   let exitCode = 0;
   let stderr = "";
+  const supportsModelContext =
+    modelContextEvents.has(eventName) &&
+    !(runtime === "codex" && (eventName === "Stop" || eventName === "SubagentStop"));
 
-  if (context && modelContextEvents.has(eventName)) {
+  if (context && supportsModelContext) {
     output.hookSpecificOutput = {
       ...(output.hookSpecificOutput ?? {}),
       additionalContext: context,

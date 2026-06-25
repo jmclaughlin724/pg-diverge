@@ -10,6 +10,8 @@ This rule owns the deterministic repo-wide Code Atlas graph and proof standard u
 
 Code Atlas is the canonical repo-wide graph for agents. Use it to map owners, routes, imports, consumers, package edges, DB objects, DB policies, API routers, worker jobs, generated surfaces, and deploy surfaces before broad source claims or multi-surface edits.
 
+For codebase and repo research, make Code Atlas or the `supaschema` repo MCP the first move before broad shell searches or source walks. Known-file reads are fine when the target is already explicit; ownership, dependency, consumer, route, DB, API, worker, generated-surface, or rollout claims still require Code Atlas/cclsp/source evidence before reporting.
+
 The repo uses a two-tier Code Atlas model. `scripts/code-atlas/**` is the deterministic local-only atlas and remains outside the public package surface. CodeAtlas-Live is an optional MCP/editor accelerator for live context packs, impact analysis, health reports, and snapshot queries when installed; use the public docs at `https://www.codeatlas.live/docs`, the VS Code Marketplace listing `codeatlaslive.codeatlas-live`, and the npm package `@codeatlas/mcp` as the upstream reference surfaces. The live tier is never authoritative, and `npx` fallback requires explicit `CODEATLAS_MCP_ALLOW_NPX=1`.
 
 ## Canonical commands
@@ -27,6 +29,7 @@ The generated `.tmp/code-atlas/atlas.json` file is scratch output. `.codeatlas/`
 
 Run Code Atlas before:
 
+- starting codebase or repo research that would otherwise require broad `rg`, `find`, directory walks, or cross-surface source inspection
 - claiming module/export ownership, consumers, or generated-surface provenance
 - deleting, moving, privatizing, or renaming exported files, package subpaths, route files, generated surfaces, API routers, worker commands, DB objects, or DB policies
 - estimating blast radius across `src/`, `services/agent-mcp/`, `scripts/`, `bin/`, or `tests/`
@@ -34,6 +37,8 @@ Run Code Atlas before:
 - preparing task lists, implementation waves, or review scopes that depend on exact owners, dependencies, consumers, or generated outputs
 
 When an MCP client needs code-map access, use `supaschema.code_atlas_query` for the same fixed query shape as the local CLI. Do not add or auto-install a standalone `codeatlas` MCP server in repo config. Rule 11 owns the local MCP wiring; this rule owns the Code Atlas query contract and proof standard. Reproduce plan-owned inventory with the local atlas before editing or reporting final scope.
+
+When an MCP client needs repo-context reads or search, use the `supaschema` repo MCP before broad manual file scanning. The MCP path is a context-gathering accelerator; direct source reads remain the final proof for behavior and text-sensitive claims.
 
 Use cclsp for precise symbol navigation and diagnostics after Code Atlas has identified the likely owner files. Use direct source reads for the final claim.
 

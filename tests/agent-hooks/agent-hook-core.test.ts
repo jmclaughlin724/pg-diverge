@@ -113,6 +113,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
     });
     expect(shapeHookResult("SessionEnd", {}, "claude").stdout).toBe("");
     expect(shapeHookResult("Stop", {}, "codex").stdout).toBe("{}\n");
+    expect(shapeHookResult("Stop", { contextParts: ["ctx"] }, "codex").stdout).toBe("{}\n");
+    expect(shapeHookResult("SubagentStop", { contextParts: ["ctx"] }, "codex").stdout).toBe("{}\n");
   });
 
   it("formats thrown checks as fail-closed hook feedback", () => {
@@ -966,6 +968,41 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     expect(continuedStop.output.hookSpecificOutput?.additionalContext).toContain(
       "Final response correction required"
     );
+  });
+
+  it("suppresses Codex Stop advisory context when stop_hook_active is set", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt: "verify from upstream Codex sources if this is running correctly",
+      session_id: "codex-stop-active",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    const firstStop = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message:
+          "This is expected behavior because Codex runs the matching Stop hook.",
+        session_id: "codex-stop-active",
+      },
+      { root, runtime: "codex" }
+    );
+    expect(firstStop.output).toMatchObject({ decision: "block" });
+
+    const continuedStop = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message:
+          "This is expected behavior because Codex runs the matching Stop hook.",
+        session_id: "codex-stop-active",
+        stop_hook_active: true,
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(continuedStop.stdout).toBe("{}\n");
+    expect(continuedStop.output).toEqual({});
   });
 
   it("detects decision menus after direct directives", () => {
