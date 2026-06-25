@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { resolveConfig } from "../config/schema.js";
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
+import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../core.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { defaultMigrationName } from "../migrations/files.js";
 import {
@@ -664,10 +664,12 @@ function runTargetSafetyLane(state: TargetSyncState): Promise<SyncResult | undef
 function verifyTargetPendingMigrationsLane(
   state: TargetSyncState
 ): Promise<SyncResult | undefined> {
+  const historyTable = targetHistoryTableRef(state.target);
   return verifyPendingMigrationsForSync({
     config: state.config,
     diagnostics: state.diagnostics,
     directory: state.options.directory,
+    ...(historyTable === undefined ? {} : { ignoredObjects: [historyTable] }),
     lines: state.lines,
     options: state.options,
     pending: pendingMigrationsForTargetRunner(state),
@@ -677,6 +679,14 @@ function verifyTargetPendingMigrationsLane(
     },
     target: state.target,
   });
+}
+
+function targetHistoryTableRef(target: ResolvedSyncTarget): ObjectRef | undefined {
+  const [schema, name, extra] = target.historyTable.split(".");
+  if (!(schema && name) || extra !== undefined) {
+    return;
+  }
+  return { kind: "table", name, schema };
 }
 
 async function applyTargetMigrationsLane(state: TargetSyncState): Promise<SyncResult | undefined> {

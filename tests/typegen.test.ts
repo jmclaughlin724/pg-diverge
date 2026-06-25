@@ -848,6 +848,7 @@ describe("zod schema generation", () => {
     expect(zod).toContain("export const Enums = {");
     expect(zod).toContain("export const CompositeTypes = {");
     expect(zod).toContain("account_names");
+    expect(zod).toContain("label: z.string().nullable(),");
     expect(zod).toContain("export type Tables<");
     expect(zod).toContain("export type TablesInsert<");
     expect(zod).toContain("export type Enums<");

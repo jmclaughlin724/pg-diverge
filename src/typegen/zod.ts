@@ -180,7 +180,7 @@ function emitZodTablesRoot(
     }
     for (const view of sortedByName(entry.views)) {
       lines.push(`    ${quoteKey(view.name)}: {`);
-      emitZodRow(lines, view.columns, zodFor, "      Row");
+      emitZodRow(lines, view.columns, zodFor, "      Row", { forceNullable: true });
       lines.push("    },");
     }
     lines.push("  },");
@@ -311,14 +311,14 @@ function emitZodRow(
   lines: string[],
   columns: ColumnShape[],
   zodFor: (sqlType: string) => string,
-  label: string
+  label: string,
+  options: { forceNullable?: boolean } = {}
 ): void {
   lines.push(`${label}: z.object({`);
   for (const column of columns) {
     const base = zodFor(column.type);
-    lines.push(
-      `          ${quoteKey(column.name)}: ${column.notNull ? base : `${base}.nullable()`},`
-    );
+    const nullable = options.forceNullable === true || !column.notNull;
+    lines.push(`          ${quoteKey(column.name)}: ${nullable ? `${base}.nullable()` : base},`);
   }
   lines.push("        }),");
 }

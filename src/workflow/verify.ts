@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
+import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { latestLineage } from "../migrations/lineage.js";
@@ -13,6 +13,7 @@ interface VerifyPendingMigrationsForSyncOptions {
   config: SupaschemaConfig;
   diagnostics: Diagnostic[];
   directory: string;
+  ignoredObjects?: ObjectRef[];
   lines: string[];
   options: SyncOptions;
   pending: string[];
@@ -23,7 +24,8 @@ interface VerifyPendingMigrationsForSyncOptions {
 export async function verifyPendingMigrationsForSync(
   options: VerifyPendingMigrationsForSyncOptions
 ): Promise<SyncResult | undefined> {
-  if (operationName(options.options) !== "sync" || options.pending.length === 0) {
+  const operation = operationName(options.options);
+  if (options.pending.length === 0) {
     return;
   }
   const databaseUrl = resolveSyncVerifyDatabaseUrl(options);
@@ -44,7 +46,7 @@ export async function verifyPendingMigrationsForSync(
         }
       )
     );
-    options.lines.push("refusing to sync: verify has no database URL");
+    options.lines.push(`refusing to ${operation}: verify has no database URL`);
     return {
       applied: false,
       diagnostics: options.diagnostics,
@@ -56,12 +58,13 @@ export async function verifyPendingMigrationsForSync(
     config: options.config,
     databaseUrl,
     from: options.sources.from,
+    ...(options.ignoredObjects === undefined ? {} : { ignoredObjects: options.ignoredObjects }),
     migrationPaths: options.pending.map((file) => join(options.directory, file)),
     to: options.sources.to,
   });
   options.diagnostics.push(...verifyDiagnostics);
   if (hasErrors(options.diagnostics)) {
-    options.lines.push("refusing to sync: verify failed for pending migrations");
+    options.lines.push(`refusing to ${operation}: verify failed for pending migrations`);
     return {
       applied: false,
       diagnostics: options.diagnostics,
@@ -135,10 +138,11 @@ function resolveSyncVerifyDatabaseUrl(
 }
 
 function syncVerifyUrlUnresolvedMessage(options: VerifyPendingMigrationsForSyncOptions): string {
+  const operation = operationName(options.options);
   if (options.target?.remote === true) {
-    return `sync requires a separate disposable database URL for verify before applying remote target ${options.target.name}`;
+    return `${operation} requires a separate disposable database URL for verify before applying remote target ${options.target.name}`;
   }
-  return "sync requires a database URL for verify before apply or dry-run completion";
+  return `${operation} requires a database URL for verify before apply or dry-run completion`;
 }
 
 function syncVerifyUrlUnresolvedHint(options: VerifyPendingMigrationsForSyncOptions): string {

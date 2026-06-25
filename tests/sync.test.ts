@@ -1586,6 +1586,81 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     }
   });
 
+  it("runs verify before applying an approved remote target", async () => {
+    const admin = new Client({ connectionString: databaseUrl });
+    await admin.connect();
+    const db = `supa_apply_remote_verify_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
+    await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${db}`);
+    const url = new URL(requiredDatabaseUrl());
+    url.pathname = `/${db}`;
+    const previousApproval = process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED;
+    const previousDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+    const previousCwd = process.cwd();
+    process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED = "1";
+    delete process.env.SUPASCHEMA_DATABASE_URL;
+    try {
+      const root = await mkdtemp(join(tmpdir(), "supa-apply-remote-verify-"));
+      process.chdir(root);
+      await writeFile(
+        join(root, "20260101000000_one.sql"),
+        "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE IF NOT EXISTS app.remote_apply_verify (id bigint PRIMARY KEY);\n"
+      );
+      const targetSource = await sqlSource(
+        "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE app.remote_apply_verify (id bigint PRIMARY KEY);\n"
+      );
+
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: targetSource },
+          sync: {
+            targets: {
+              remote: {
+                databaseUrl: url.toString(),
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                remote: true,
+                requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+                runner: "direct",
+              },
+            },
+          },
+          workflow: {
+            migration_sync: "auto",
+            rls_safety: "disabled",
+            type_safety: "disabled",
+          },
+        },
+        directory: root,
+        operation: "apply",
+        pipeline: true,
+        skipDiff: true,
+        target: "remote",
+      });
+
+      expect(result.applied).toBe(false);
+      expect(result.diagnostics.map((item) => item.code)).toContain(
+        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
+      );
+      expect(result.report).toContain("refusing to apply: verify has no database URL");
+      expect(result.report).not.toContain("running: direct");
+    } finally {
+      process.chdir(previousCwd);
+      if (previousApproval === undefined) {
+        delete process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED;
+      } else {
+        process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED = previousApproval;
+      }
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = previousDatabaseUrl;
+      }
+      await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+      await admin.end();
+    }
+  });
+
   it("applies pending files with the direct PostgreSQL runner", async () => {
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
@@ -1682,7 +1757,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       const result = await syncMigrations({
         config: {
-          schemas: { exclude: ["supabase_migrations"], include: [] },
           sources: { from: "empty:", to: targetSource },
           sync: {
             targets: {
