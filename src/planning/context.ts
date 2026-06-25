@@ -42,9 +42,11 @@ export interface SchemaPlanningContext {
 }
 
 export interface SchemaPlanningContextOptions {
+  checkMigrationBaseline?: boolean;
   config: SupaschemaConfig;
   cwd?: string;
   from: string;
+  migrationContextExcludeFiles?: readonly string[];
   migrationsDir?: string;
   schema?: string;
   to: string;
@@ -112,14 +114,21 @@ export async function buildSchemaPlanningContext(
   const fromMs = performance.now() - extractStart;
   const migrationContext = await readMigrationContext(
     options.migrationsDir ?? options.config.migrationsDir,
-    corpusOptions
+    {
+      ...corpusOptions,
+      ...(options.migrationContextExcludeFiles === undefined
+        ? {}
+        : { excludeFiles: options.migrationContextExcludeFiles }),
+    }
   );
   const toStart = performance.now();
   const to = filterModelBySchema(
     await extractSourceModel(options.to, extractOptions),
     options.schema
   );
-  diagnostics.push(...migrationBaselineDiagnostics(options.from, from, migrationContext));
+  if (options.checkMigrationBaseline !== false) {
+    diagnostics.push(...migrationBaselineDiagnostics(options.from, from, migrationContext));
+  }
   const toMs = performance.now() - toStart;
   return {
     diagnostics,

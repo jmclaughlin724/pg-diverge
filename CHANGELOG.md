@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.13 (2026-06-25)
+
+### Patch Changes
+
+- Fixes generated migration replacement from a Git lineage baseline so `diff --replace` excludes the target migration from the source-intent corpus and does not compare against its own replacement output.
+- Narrows routine dependency blocking to routines that actually overlap the changed relation or type, while allowing routines created or replaced in the same plan to carry their own dependency proof.
+- Keeps partial PL/pgSQL dependency diagnostics actionable without leaking parser diagnostics as unrelated top-level parse errors.
+
 ## 0.3.12 (2026-06-25)
 
 ### Patch Changes

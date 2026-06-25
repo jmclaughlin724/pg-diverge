@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { pathContainsOrEqual, pathsOverlap } from "../src/paths.js";
@@ -34,6 +37,21 @@ describe("path overlap primitives", () => {
     expect(pathContainsOrEqual("db/schemas/migrations", "db/schemas")).toBe(false);
     expect(pathContainsOrEqual("db/schemas", "db/schemas")).toBe(true);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "matches missing children below symlinked existing parents",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "supa-paths-"));
+      const realRoot = join(directory, "real");
+      const linkRoot = join(directory, "link");
+      await mkdir(join(realRoot, "schemas"), { recursive: true });
+      await symlink(realRoot, linkRoot);
+
+      expect(
+        pathContainsOrEqual(join(linkRoot, "schemas"), join(linkRoot, "schemas", "missing.sql"))
+      ).toBe(true);
+    }
+  );
 
   it("pathsOverlap is symmetric for arbitrary path pairs", () => {
     fc.assert(fc.property(relPath, relPath, (a, b) => pathsOverlap(a, b) === pathsOverlap(b, a)));

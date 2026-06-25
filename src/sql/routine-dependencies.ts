@@ -174,7 +174,6 @@ async function parsePlpgsqlBodies(
             }
           )
         );
-        diagnostics.push(...parsed.diagnostics);
       }
     }
   }

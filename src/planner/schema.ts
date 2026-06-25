@@ -294,20 +294,28 @@ function appendDependencyProofDiagnostics(
     relationOrTypeChangeKinds.has(operation.ref.kind)
   );
   if (relationOrTypeOperations.length > 0) {
-    blockUnhintedUnknownRoutines(relationOrTypeOperations, to.objects);
+    blockUnhintedUnknownRoutines(relationOrTypeOperations, to.objects, operations);
   }
   appendColumnDependentRewriteDiagnostics(operations, from, to);
 }
 
 function blockUnhintedUnknownRoutines(
   relationOrTypeOperations: MigrationOperation[],
-  objects: readonly SchemaObject[]
+  objects: readonly SchemaObject[],
+  operations: readonly MigrationOperation[]
 ): void {
+  const operationByKey = new Map(operations.map((operation) => [operation.key, operation]));
   for (const object of objects) {
     if (!(routineKinds.has(object.ref.kind) && routineDependencyIsUnproven(object))) {
       continue;
     }
+    if (operationByKey.has(object.key)) {
+      continue;
+    }
     for (const operation of relationOrTypeOperations) {
+      if (!unprovenRoutineMayOverlapOperation(object, operation)) {
+        continue;
+      }
       if (routineDependencyHintCoversOperation(object, operation)) {
         continue;
       }
@@ -325,6 +333,32 @@ function blockUnhintedUnknownRoutines(
       );
     }
   }
+}
+
+function unprovenRoutineMayOverlapOperation(
+  object: SchemaObject,
+  operation: MigrationOperation
+): boolean {
+  if (
+    routineDependencyConfidence(object.metadata.routineDependencyConfidence) ===
+      "dynamic-sql-unknown" &&
+    object.metadata.routineDependencyHinted !== true
+  ) {
+    return true;
+  }
+  const identity = refIdentity(operation.ref);
+  const references = [
+    ...metadataStrings(object.metadata.routineDependencies),
+    ...metadataStrings(object.metadata.routineDependencyHintReferences),
+  ];
+  if (references.includes(identity)) {
+    return true;
+  }
+  const columnPrefix = `${identity}.`;
+  return [
+    ...metadataStrings(object.metadata.routineColumnDependencies),
+    ...metadataStrings(object.metadata.routineDependencyHintColumns),
+  ].some((reference) => reference === identity || reference.startsWith(columnPrefix));
 }
 
 function routineDependencyHintCoversOperation(
