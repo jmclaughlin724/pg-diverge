@@ -274,16 +274,16 @@ function checkGhPrMerge(args) {
     return allowResult();
   }
   const blocked = mergeArgs.find((arg) =>
-    ["--merge", "--squash", "--admin", "--disable-auto"].includes(arg)
+    ["--merge", "--rebase", "--admin", "--disable-auto"].includes(arg)
   );
   if (blocked) {
     return block(
-      `BLOCKED: gh pr merge ${blocked} is prohibited. Run \`npm run github:merge-preflight -- --pr <number>\`, then use \`gh pr merge <number> --rebase --delete-branch\`.`
+      `BLOCKED: gh pr merge ${blocked} is prohibited. Use \`gh pr merge <number> --squash --delete-branch\`.`
     );
   }
-  if (!(mergeArgs.includes("--rebase") && mergeArgs.includes("--delete-branch"))) {
+  if (!(mergeArgs.includes("--squash") && mergeArgs.includes("--delete-branch"))) {
     return block(
-      "BLOCKED: gh pr merge must use the repo policy method. Run `npm run github:merge-preflight -- --pr <number>`, then use `gh pr merge <number> --rebase --delete-branch`."
+      "BLOCKED: gh pr merge must use the repo policy method: `gh pr merge <number> --squash --delete-branch`."
     );
   }
   return allowResult();

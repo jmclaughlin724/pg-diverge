@@ -552,21 +552,22 @@ describe("general Bash blocker policy", () => {
     "env gh pr merge 53 --squash",
     "gh pr merge --merge 53",
     "gh pr merge 53 --merge",
-    "gh pr merge --admin 53 --rebase --delete-branch",
-    "gh pr merge 53 --admin --rebase --delete-branch",
-    "gh pr merge --disable-auto 53 --rebase --delete-branch",
-    "gh pr merge 53 --disable-auto --rebase --delete-branch",
+    "gh pr merge --rebase 53",
     "gh pr merge 53 --rebase",
+    "gh pr merge --admin 53 --squash --delete-branch",
+    "gh pr merge 53 --admin --squash --delete-branch",
+    "gh pr merge --disable-auto 53 --squash --delete-branch",
+    "gh pr merge 53 --disable-auto --squash --delete-branch",
   ])("blocks non-policy GitHub PR merge command: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(2);
   });
 
   it.each([
-    "gh pr merge 53 --rebase --delete-branch",
-    "bash -lc 'gh pr merge 53 --rebase --delete-branch'",
-    "command gh pr merge 53 --rebase --delete-branch",
-    "env bash -lc 'gh pr merge 53 --rebase --delete-branch'",
+    "gh pr merge 53 --squash --delete-branch",
+    "bash -lc 'gh pr merge 53 --squash --delete-branch'",
+    "command gh pr merge 53 --squash --delete-branch",
+    "env bash -lc 'gh pr merge 53 --squash --delete-branch'",
     "gh pr merge --help",
   ])("allows policy GitHub PR merge command: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));

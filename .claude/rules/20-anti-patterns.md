@@ -33,6 +33,7 @@ Anti-patterns are STOP conditions. Do not narrow, bypass, weaken, or treat them 
 | Editing | Broad substring replacement over identifiers, shell write tricks for source edits, or generated-surface hand edits. | Rules 07, 14, and 18; Code Atlas, cclsp, sync guards. |
 | Git | `git checkout`, `git switch`, `git branch`, `git worktree`, `git reset`, `git restore --source`, `git stash`, local `git merge --squash`, destructive branch operations, and force-push without explicit approval. | Rule 14; Bash blocker; worktree closeout checks. |
 | Git | `git commit --no-verify`, `git push` as a diagnostic probe, and force-push to `main`. | Rules 14 and 19; Bash blocker; release/version guards. |
+| Git | `gh pr merge` with a non-policy merge method, admin bypass, disabled auto-merge workaround, or missing branch deletion. | Rule 21; Bash blocker; `npm run guard:github-process`. |
 | Shell delete | `rm -rf` and equivalent recursive-plus-force deletion. Plain recursive `rm -r` is not blocked by the generic Bash blocker, but deleting user-owned data still requires approval. | Rule 14; Bash blocker. |
 | Secrets | Hardcoded API keys, JWTs, database URLs with passwords, access tokens, private keys, session cookies, provider credentials, or complete fake credentials in tests. | Rule 15; secret scanners; package/docs checks. |
 | Secrets | Reading `.env*`, key, certificate, or secret directories just to inspect configuration. | Rule 15; Bash blocker; FastMCP deny-list. |

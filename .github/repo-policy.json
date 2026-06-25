@@ -33,8 +33,8 @@
   "repository": {
     "allow_auto_merge": true,
     "allow_merge_commit": false,
-    "allow_rebase_merge": true,
-    "allow_squash_merge": false,
+    "allow_rebase_merge": false,
+    "allow_squash_merge": true,
     "default_branch": "main",
     "delete_branch_on_merge": true,
     "web_commit_signoff_required": false
@@ -55,13 +55,7 @@
   },
   "pullRequests": {
     "base": "main",
-    "mergeMethod": "rebase",
-    "optionalMergeWorkflow": "npm run github:merge -- --pr <number>",
-    "optionalPreflight": "npm run github:pr-preflight -- --base main",
-    "optionalMergePreflight": "npm run github:merge-preflight -- --pr <number>",
-    "optionalPostMergeVerification": "npm run github:post-merge-verify -- --pr <number>",
-    "mergeCliIsolation": "the merge wrapper must run gh pr merge with --repo from a temporary directory so gh cannot mutate local branches before post-merge verification",
-    "postMergeLocalSync": "post-merge verification must fetch origin/main, verify the merged commit is contained in origin/main, preserve divergent local main as preserve/local-main-<sha>, and align local main to origin/main"
+    "mergeMethod": "squash"
   },
   "branches": {
     "main": {

@@ -114,7 +114,7 @@ paths:
 
 ## Contract
 
-This rule owns edit safety, dirty-worktree handling, generated mirror discipline, deletion/rename sweeps, and local git shortcut bans. Rule 20 owns the consolidated anti-pattern index. Rule 21 owns GitHub repository settings, PR preflight, merge preflight, canonical merge method, branch cleanup, and post-merge verification.
+This rule owns edit safety, dirty-worktree handling, generated mirror discipline, deletion/rename sweeps, and local git shortcut bans. Rule 20 owns the consolidated anti-pattern index. Rule 21 owns GitHub repository settings, direct-main pushes, canonical PR merge method, branch cleanup, and settings audit.
 
 ## Editing rules
 
@@ -141,7 +141,7 @@ This rule owns edit safety, dirty-worktree handling, generated mirror discipline
 - Do not use `git checkout`, `git switch`, `git branch`, or `git worktree`. Use `git show`, `git diff`, `git status --short --branch`, or `git rev-parse --abbrev-ref HEAD` for read-only comparisons and branch discovery.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
 - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.
-- Before creating or replacing a PR, follow Rule 21 and run the GitHub PR preflight.
+- Before creating or replacing a PR, follow Rule 21 and preserve the current branch/worktree boundary.
 - Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch that contains commits outside the requested task. Rule 21 owns the remote PR checks that prove this.
 - If a PR was opened from the wrong branch, follow Rule 21 to create and verify a clean replacement PR before closing or superseding the bad PR. Document why the old PR was superseded.
 - Subagents and workers may edit files only. They must not stage, commit, push, switch branches, create branches, create worktrees, force-push, merge, or open/replace PRs.
@@ -164,12 +164,6 @@ Before closeout or staging:
 ```bash
 git status --short
 git diff -- <touched files>
-```
-
-Before PR creation or replacement:
-
-```bash
-npm run github:pr-preflight -- --base main
 ```
 
 Run the owner checks for the changed surface. For source deletion, rename, export, package, or generated-surface work, include Code Atlas or cclsp/source evidence for the consumer sweep. For anti-pattern changes, update Rule 20 and run its verification path.

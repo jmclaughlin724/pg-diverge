@@ -19,7 +19,6 @@ What this PR changes and why. Link any related issue (`Closes #123`).
 
 - [ ] `npm run check` passes (lint + test + build; build type-checks via `noEmitOnError`).
 - [ ] `npm run typecheck` passes (or is covered by the pre-push hook).
-- [ ] `npm run github:pr-preflight -- --base main` passes before PR creation or replacement.
 - [ ] Source changes live in `src/**`; `dist/**` is not hand-edited.
 - [ ] No generated migration (`.sql` containing `-- supaschema: lineage`) was hand-edited.
 - [ ] SQL semantics go through the AST / model (`libpg-query`), not ad hoc regex.
@@ -29,8 +28,7 @@ What this PR changes and why. Link any related issue (`Closes #123`).
 - [ ] Config changes keep `supaschema-config.schema.json`, docs, and examples aligned.
 - [ ] A `.changeset/` entry is included for any user-facing change (run `npm run changeset`).
 - [ ] If this is a release PR, the release checklist in `docs/release.mdx` is complete.
-- [ ] For PR merges, `npm run github:audit-settings` and `npm run github:merge-preflight -- --pr <number>` pass.
-- [ ] For PR merges, use `npm run github:merge -- --pr <number>` or run `npm run github:post-merge-verify -- --pr <number>` after a manual merge.
+- [ ] For PR merges, `npm run github:audit-settings` passes and GitHub squash merge is used.
 
 ## Rendered SQL / snapshot changes
 

@@ -6,19 +6,19 @@
 # codexExecPolicy entries generated below.
 
 prefix_rule(
-    pattern = ["gh", "pr", "merge", "--squash"],
+    pattern = ["gh", "pr", "merge", "--rebase"],
     decision = "forbidden",
-    justification = "Rule 21 requires rebase merges with branch cleanup; use gh pr merge <number> --rebase --delete-branch after merge preflight.",
-    match = ["gh pr merge --squash 53"],
-    not_match = ["gh pr merge 53 --rebase --delete-branch"],
+    justification = "Rule 21 uses GitHub squash merges with branch cleanup; use gh pr merge <number> --squash --delete-branch.",
+    match = ["gh pr merge --rebase 53"],
+    not_match = ["gh pr merge 53 --squash --delete-branch"],
 )
 
 prefix_rule(
     pattern = ["gh", "pr", "merge", "--merge"],
     decision = "forbidden",
-    justification = "Rule 21 forbids merge commits; use gh pr merge <number> --rebase --delete-branch after merge preflight.",
+    justification = "Rule 21 forbids merge commits; use gh pr merge <number> --squash --delete-branch.",
     match = ["gh pr merge --merge 53"],
-    not_match = ["gh pr merge 53 --rebase --delete-branch"],
+    not_match = ["gh pr merge 53 --squash --delete-branch"],
 )
 
 prefix_rule(
@@ -26,7 +26,7 @@ prefix_rule(
     decision = "forbidden",
     justification = "Rule 21 forbids admin merge bypasses unless the user explicitly approves and records the exception.",
     match = ["gh pr merge --admin 53"],
-    not_match = ["gh pr merge 53 --rebase --delete-branch"],
+    not_match = ["gh pr merge 53 --squash --delete-branch"],
 )
 
 prefix_rule(
@@ -34,14 +34,14 @@ prefix_rule(
     decision = "forbidden",
     justification = "Rule 21 forbids disabling auto-merge as a merge workaround.",
     match = ["gh pr merge --disable-auto 53"],
-    not_match = ["gh pr merge 53 --rebase --delete-branch"],
+    not_match = ["gh pr merge 53 --squash --delete-branch"],
 )
 
 prefix_rule(
     pattern = ["gh", "pr", "merge"],
     decision = "prompt",
     justification = "Rule 21 requires Bash hook verification for PR merge commands because Codex prefix_rule cannot match selector-before-flag forms without overblocking the policy merge command.",
-    match = ["gh pr merge 53 --squash", "gh pr merge 53 --rebase --delete-branch"],
+    match = ["gh pr merge 53 --rebase", "gh pr merge 53 --squash --delete-branch"],
     not_match = ["gh pr view 53"],
 )
 

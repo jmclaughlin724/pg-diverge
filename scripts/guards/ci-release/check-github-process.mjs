@@ -3,37 +3,61 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, exists, ok, ROOT, readJson, readText } from "../lib/guard-utils.js";
 
+const deletedGithubWorkflowFiles = [
+  "scripts/github/merge.mjs",
+  "scripts/github/merge-preflight.mjs",
+  "scripts/github/post-merge-verify.mjs",
+  "scripts/github/pr-preflight.mjs",
+];
+
+const deletedGithubWorkflowScripts = [
+  "github:merge",
+  "github:merge-preflight",
+  "github:post-merge-verify",
+  "github:pr-preflight",
+];
+
+const obsoleteWorkflowText = [
+  "npm run github:merge",
+  "npm run github:merge-preflight",
+  "npm run github:post-merge-verify",
+  "npm run github:pr-preflight",
+  "--rebase --delete-branch",
+  "merge preflight",
+  "post-merge verification",
+];
+
 export function check(root = ROOT) {
   const policy = readJson(".github/repo-policy.json", root);
   const packageJson = readJson("package.json", root);
   const prTemplate = readText(".github/PULL_REQUEST_TEMPLATE.md", root);
   const contributing = readText("CONTRIBUTING.md", root);
   const githubProcessRule = readText(".claude/rules/21-github-process.md", root);
+  const bashPolicyChecks = readText(".claude/hooks/guards/bash-policy-checks.mjs", root);
+  const antiPatterns = readText(".claude/rules/20-anti-patterns.md", root);
   const checkAll = readText("scripts/guards/check-all.mjs", root);
   const auditSettings = readText("scripts/github/audit-settings.mjs", root);
 
-  for (const file of [
-    "scripts/github/policy.mjs",
-    "scripts/github/merge.mjs",
-    "scripts/github/pr-preflight.mjs",
-    "scripts/github/merge-preflight.mjs",
-    "scripts/github/post-merge-verify.mjs",
-    "scripts/github/audit-settings.mjs",
-  ]) {
+  for (const file of ["scripts/github/policy.mjs", "scripts/github/audit-settings.mjs"]) {
     assert(exists(file, root), `${file} must exist`);
   }
+  for (const file of deletedGithubWorkflowFiles) {
+    assert(!exists(file, root), `${file} must not exist`);
+  }
 
-  for (const [name, command] of Object.entries({
-    "github:audit-settings": "node scripts/github/audit-settings.mjs",
-    "github:merge": "node scripts/github/merge.mjs",
-    "github:merge-preflight": "node scripts/github/merge-preflight.mjs",
-    "github:post-merge-verify": "node scripts/github/post-merge-verify.mjs",
-    "github:pr-preflight": "node scripts/github/pr-preflight.mjs",
-    "guard:github-process": "node scripts/guards/ci-release/check-github-process.mjs",
-  })) {
+  assert(
+    packageJson.scripts?.["github:audit-settings"] === "node scripts/github/audit-settings.mjs",
+    "package.json#scripts.github:audit-settings must be node scripts/github/audit-settings.mjs"
+  );
+  assert(
+    packageJson.scripts?.["guard:github-process"] ===
+      "node scripts/guards/ci-release/check-github-process.mjs",
+    "package.json#scripts.guard:github-process must be node scripts/guards/ci-release/check-github-process.mjs"
+  );
+  for (const script of deletedGithubWorkflowScripts) {
     assert(
-      packageJson.scripts?.[name] === command,
-      `package.json#scripts.${name} must be ${command}`
+      !(script in (packageJson.scripts ?? {})),
+      `package.json#scripts.${script} must not exist`
     );
   }
 
@@ -91,10 +115,11 @@ export function check(root = ROOT) {
     auditSettings.includes('"PUT"'),
     "audit-settings topic apply must use the GitHub replace-topics endpoint"
   );
+
   assert(policy.repository?.default_branch === "main", "default branch must be main");
   assert(policy.repository?.allow_merge_commit === false, "merge commits must be disabled");
-  assert(policy.repository?.allow_squash_merge === false, "squash merges must be disabled");
-  assert(policy.repository?.allow_rebase_merge === true, "rebase merges must be enabled");
+  assert(policy.repository?.allow_squash_merge === true, "squash merges must be enabled");
+  assert(policy.repository?.allow_rebase_merge === false, "rebase merges must be disabled");
   assert(
     policy.repository?.delete_branch_on_merge === true,
     "merged head branches must auto-delete"
@@ -116,21 +141,17 @@ export function check(root = ROOT) {
     "GitHub Actions must not create or approve pull request reviews"
   );
   assert(!("dco" in policy), "repo policy must not define DCO enforcement");
-  assert(policy.pullRequests?.mergeMethod === "rebase", "canonical PR merge method must be rebase");
-  assert(
-    policy.pullRequests?.optionalMergeWorkflow === "npm run github:merge -- --pr <number>",
-    "optional PR merge workflow must be npm run github:merge"
-  );
-  assert(
-    policy.pullRequests?.postMergeLocalSync?.includes("preserve/local-main-<sha>") &&
-      policy.pullRequests.postMergeLocalSync.includes("align local main to origin/main"),
-    "post-merge policy must require preserving divergent local main and aligning it to origin/main"
-  );
-  assert(
-    policy.pullRequests?.mergeCliIsolation?.includes("temporary directory") &&
-      policy.pullRequests.mergeCliIsolation.includes("gh cannot mutate local branches"),
-    "post-merge policy must require isolating gh merge from local branch mutation"
-  );
+  assert(policy.pullRequests?.mergeMethod === "squash", "canonical PR merge method must be squash");
+  for (const key of [
+    "optionalMergeWorkflow",
+    "optionalPreflight",
+    "optionalMergePreflight",
+    "optionalPostMergeVerification",
+    "mergeCliIsolation",
+    "postMergeLocalSync",
+  ]) {
+    assert(!(key in (policy.pullRequests ?? {})), `pullRequests.${key} must not exist`);
+  }
 
   const main = policy.branches?.main;
   assert(main, "repo policy must define branches.main");
@@ -139,10 +160,7 @@ export function check(root = ROOT) {
     main.required_conversation_resolution === true,
     "main must require conversation resolution"
   );
-  assert(
-    main.required_signatures === false,
-    "required signatures must stay disabled with rebase-only merges"
-  );
+  assert(main.required_signatures === false, "required signatures must stay disabled");
   assert(main.enforce_admins === true, "main branch protection must apply to admins");
   assert(main.allow_force_pushes === false, "main must block force pushes");
   assert(main.allow_deletions === false, "main must block deletions");
@@ -180,12 +198,29 @@ export function check(root = ROOT) {
     );
   }
 
-  for (const command of ["npm run github:pr-preflight -- --base main"]) {
-    assert(
-      prTemplate.includes(command),
-      `.github/PULL_REQUEST_TEMPLATE.md must include ${command}`
-    );
+  for (const source of [
+    [".github/PULL_REQUEST_TEMPLATE.md", prTemplate],
+    ["CONTRIBUTING.md", contributing],
+    [".claude/rules/21-github-process.md", githubProcessRule],
+    [".claude/hooks/guards/bash-policy-checks.mjs", bashPolicyChecks],
+  ]) {
+    for (const text of obsoleteWorkflowText) {
+      assert(
+        !source[1].includes(text),
+        `${source[0]} must not reference obsolete PR workflow text`
+      );
+    }
   }
+  assert(
+    bashPolicyChecks.includes('"--merge", "--rebase", "--admin", "--disable-auto"') &&
+      bashPolicyChecks.includes('mergeArgs.includes("--squash")') &&
+      bashPolicyChecks.includes('mergeArgs.includes("--delete-branch")'),
+    "Bash policy must enforce squash PR merges with branch deletion"
+  );
+  assert(
+    antiPatterns.includes("`gh pr merge` with a non-policy merge method"),
+    "Rule 20 must index non-policy gh pr merge commands"
+  );
 
   assert(
     !(packageJson.scripts?.["github:check-dco"] || exists("scripts/github/check-dco.mjs", root)),
@@ -198,38 +233,6 @@ export function check(root = ROOT) {
   ]) {
     assert(!source[1].includes("github:check-dco"), `${source[0]} must not require DCO checks`);
     assert(!source[1].includes("DCO"), `${source[0]} must not require DCO signoff`);
-  }
-  assert(
-    contributing.includes("npm run github:merge -- --pr <number>") &&
-      contributing.includes("temporary directory") &&
-      contributing.includes("prevents `gh` from mutating local branches") &&
-      contributing.includes("preserve/local-main-<sha>") &&
-      contributing.includes("aligns local `main` to `origin/main`"),
-    "CONTRIBUTING.md must document the canonical merge wrapper and local main reconciliation"
-  );
-  const postMergeVerify = readText("scripts/github/post-merge-verify.mjs", root);
-  assert(
-    postMergeVerify.includes("syncLocalBase(base, head, failures)") &&
-      postMergeVerify.includes("const backup = `preserve/local-") &&
-      postMergeVerify.includes("branchSegment(base)") &&
-      postMergeVerify.includes("localOid") &&
-      postMergeVerify.includes('"reset", "--hard"') &&
-      postMergeVerify.includes("`origin/"),
-    "post-merge verify must reconcile local main after remote merge verification"
-  );
-  const mergeWorkflow = readText("scripts/github/merge.mjs", root);
-  for (const term of [
-    "mkdtempSync",
-    "repoFullName(policy)",
-    "scripts/github/merge-preflight.mjs",
-    '"pr", "merge"',
-    "--repo",
-    "--rebase",
-    "--delete-branch",
-    "rmSync",
-    "scripts/github/post-merge-verify.mjs",
-  ]) {
-    assert(mergeWorkflow.includes(term), `github merge workflow must include ${term}`);
   }
 }
 
