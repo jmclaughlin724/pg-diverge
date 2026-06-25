@@ -450,6 +450,9 @@ export const rlsPack: RulePack = {
 };
 
 function grantTarget(object: SchemaObject): string {
+  if (typeof object.metadata.targetIdentity === "string") {
+    return object.metadata.targetIdentity;
+  }
   return typeof object.metadata.target === "string" ? object.metadata.target : object.ref.name;
 }
 

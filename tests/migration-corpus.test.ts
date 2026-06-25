@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config/schema.js";
 import { readMigrationContext } from "../src/migrations/context.js";
@@ -100,6 +100,27 @@ describe("migration-derived source corpus", () => {
     ).toMatchObject({
       blocked: true,
     });
+  });
+
+  it("does not use unrelated data statements as storage transition proof", async () => {
+    const root = await migrationCorpusFixture({
+      migrationSql: `
+        INSERT INTO app.audit_log (id) VALUES (1);
+        ALTER TABLE app.credentials DROP COLUMN encrypted_value;
+      `,
+    });
+
+    const plan = await buildSchemaDiffPlan({
+      config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
+      cwd: root,
+      from: "dir:from",
+      schema: "app",
+      to: "dir:to",
+    });
+
+    expect(plan.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_PLAN_DATA_TRANSITION_REQUIRED"
+    );
   });
 
   it("uses the selected migrations directory for source intent", async () => {
@@ -219,7 +240,7 @@ describe("migration-derived source corpus", () => {
       fingerprint: "def",
       version: "20260101000000",
     });
-    expect(context.unprovenBaselineFiles.map((file) => file.split("/").at(-1))).toEqual([
+    expect(context.unprovenBaselineFiles.map((file) => basename(file))).toEqual([
       "20260102000000_hand.sql",
     ]);
   });

@@ -7,6 +7,7 @@ import {
   astStatements,
   columnFacts,
   functionIdentity,
+  objectWithArgsIdentity,
   rangeVarName,
   readArray,
   readBoolean,
@@ -271,7 +272,7 @@ function recordPublicRoutine(
   const node = asRecord(statement.node.CreateFunctionStmt);
   const identity = functionIdentity(node?.funcname, node?.parameters);
   if (identity?.schema === "public") {
-    publicRoutines.set(`${identity.schema}.${identity.name}`, statement);
+    publicRoutines.set(routineIdentityKey(identity), statement);
   }
 }
 
@@ -295,13 +296,15 @@ function recordPublicExecuteRevoke(statement: AstStatement, revoked: Set<string>
 }
 
 function objectWithArgsRoutineIdentity(value: unknown): string | undefined {
-  const args = asRecord(asRecord(value)?.ObjectWithArgs);
-  const names = stringList(args?.objname);
-  const name = names.at(-1);
-  if (!name) {
+  const identity = objectWithArgsIdentity(value);
+  if (!identity) {
     return;
   }
-  return `${names.at(-2) ?? "public"}.${name}`;
+  return routineIdentityKey(identity);
+}
+
+function routineIdentityKey(identity: { name: string; schema: string; signature: string }): string {
+  return `${identity.schema}.${identity.name}(${identity.signature})`;
 }
 
 function grantTouchesPublicExecute(node: AstNode): boolean {

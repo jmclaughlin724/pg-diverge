@@ -228,6 +228,29 @@ describe("routine dependency extraction", () => {
     );
   });
 
+  it("marks unrecognized PL/pgSQL statements with embedded static SQL as partial", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.partial_assignment()
+      RETURNS void
+      LANGUAGE plpgsql
+      AS $$
+      DECLARE
+        found_secret uuid;
+      BEGIN
+        found_secret := (SELECT secret_id FROM app.accounts LIMIT 1);
+      END;
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.partial_assignment()"
+    );
+
+    expect(routine?.metadata.routineDependencyConfidence).toBe("plpgsql-partial");
+    expect(extracted.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY"
+    );
+  });
+
   it("records explicit routine dependency hints on overloaded routine keys", async () => {
     const extracted = await extractObjectsFromSql(
       `
@@ -678,6 +701,28 @@ describe("migration checks", () => {
 
     expect(unsafe.map((item) => item.code)).toContain("SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE");
     expect(safe.map((item) => item.code)).not.toContain("SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE");
+  });
+
+  it("matches PUBLIC EXECUTE revokes by full routine signature", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION public.overloaded(value integer)
+      RETURNS integer
+      LANGUAGE sql
+      AS $$ SELECT value $$;
+
+      CREATE OR REPLACE FUNCTION public.overloaded(value text)
+      RETURNS text
+      LANGUAGE sql
+      AS $$ SELECT value $$;
+
+      REVOKE EXECUTE ON FUNCTION public.overloaded(integer) FROM PUBLIC;
+    `);
+    const publicExecuteDiagnostics = diagnostics.filter(
+      (item) => item.code === "SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE"
+    );
+
+    expect(publicExecuteDiagnostics).toHaveLength(1);
+    expect(publicExecuteDiagnostics[0]?.statement).toContain("public.overloaded(value text)");
   });
 
   it("rejects routine references to columns created later in the same migration", async () => {

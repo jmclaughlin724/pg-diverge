@@ -90,7 +90,7 @@ async function readMigrationFileContext(
     if (statement.tag === "AlterTableStmt") {
       collectAlterTableStmtCorpus(node, file, tableColumnDrops, context.corpus.operations);
     }
-    collectStatementCorpus(statement.tag, file, context.corpus.operations);
+    collectStatementCorpus(statement.tag, node, file, context.corpus.operations);
   }
 }
 
@@ -182,13 +182,33 @@ function collectAlterTableStmtCorpus(
 
 function collectStatementCorpus(
   statementTag: string,
+  node: Record<string, unknown>,
   file: string,
   operations: MigrationCorpusOperation[]
 ): void {
   const kind = statementCorpusKind(statementTag);
   if (kind) {
-    operations.push({ file, kind, statementTag });
+    const key = dataStatementTableKey(statementTag, node);
+    operations.push(
+      key === undefined ? { file, kind, statementTag } : { file, key, kind, statementTag }
+    );
   }
+}
+
+function dataStatementTableKey(
+  statementTag: string,
+  node: Record<string, unknown>
+): string | undefined {
+  if (
+    statementTag !== "InsertStmt" &&
+    statementTag !== "UpdateStmt" &&
+    statementTag !== "DeleteStmt" &&
+    statementTag !== "MergeStmt"
+  ) {
+    return;
+  }
+  const relation = rangeVarName(node.relation);
+  return relation ? `table:${relation.schema}.${relation.name}` : undefined;
 }
 
 function alterTableCorpusKind(
@@ -225,6 +245,7 @@ function statementCorpusKind(statementTag: string): MigrationCorpusOperationKind
     case "InsertStmt":
     case "UpdateStmt":
     case "DeleteStmt":
+    case "MergeStmt":
       return "data-statement";
     case "AlterEnumStmt":
       return "enum-rewrite";

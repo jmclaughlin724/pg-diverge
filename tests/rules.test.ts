@@ -22,6 +22,7 @@ import {
   runRulePacks,
   tableNamingRule,
 } from "../src/scan/rules.js";
+import { extractObjectsFromSql } from "../src/sql/extract.js";
 
 function tableObject(name: string): SchemaObject {
   return {
@@ -207,6 +208,17 @@ describe("RLS audit rules (F20)", () => {
 
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]?.code).toBe("SUPA_RULE_EXPOSED_TABLE_WITHOUT_RLS");
+  });
+
+  it("flags parsed public grants whose rendered target is quoted", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE TABLE public.users (id bigint PRIMARY KEY);
+      GRANT SELECT ON TABLE public.users TO authenticated;
+    `);
+
+    const diagnostics = exposedTableWithoutRlsRule.check({ model: extracted });
+
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_RULE_EXPOSED_TABLE_WITHOUT_RLS");
   });
 
   it("passes exposed public tables when RLS is enabled", () => {

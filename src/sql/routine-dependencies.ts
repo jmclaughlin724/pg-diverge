@@ -26,6 +26,11 @@ interface StaticSqlFragment {
   sql: string;
 }
 
+interface PlpgsqlFragments {
+  fragments: StaticSqlFragment[];
+  unrecognized: string[];
+}
+
 export async function extractStatementDependencies(
   statement: AstStatement,
   file?: string
@@ -133,7 +138,25 @@ async function parsePlpgsqlBodies(
   let partial = false;
   for (const body of bodies) {
     dynamic ||= hasToken(body, "execute");
-    for (const fragment of plpgsqlStaticSqlFragments(body)) {
+    const extracted = plpgsqlStaticSqlFragments(body);
+    if (extracted.unrecognized.length > 0) {
+      partial = true;
+      for (const statement of extracted.unrecognized) {
+        diagnostics.push(
+          diagnostic(
+            "SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY",
+            "warning",
+            "could not prove all PL/pgSQL dependencies in an unrecognized statement form",
+            {
+              file,
+              hint: "Rewrite this statement as a supported static query form or add explicit routine dependency hints before changing referenced relations.",
+              statement,
+            }
+          )
+        );
+      }
+    }
+    for (const fragment of extracted.fragments) {
       const parsed = await parseStaticSql(fragment.sql, file);
       addAll(references, parsed.references);
       addAll(columnReferences, parsed.columnReferences);
@@ -204,33 +227,46 @@ async function parseStaticSql(
   };
 }
 
-function plpgsqlStaticSqlFragments(body: string): StaticSqlFragment[] {
+function plpgsqlStaticSqlFragments(body: string): PlpgsqlFragments {
   const fragments: StaticSqlFragment[] = [];
+  const unrecognized: string[] = [];
   for (const statement of splitPlpgsqlStatements(body)) {
-    const fragment = plpgsqlStatementFragment(statement);
+    const normalized = trimPlpgsqlStatement(statement);
+    const fragment = plpgsqlStatementFragment(normalized);
     if (fragment) {
       fragments.push(fragment);
+    } else if (plpgsqlStatementMayContainSql(normalized)) {
+      unrecognized.push(normalized);
     }
   }
-  return fragments;
+  return { fragments, unrecognized };
 }
 
 function plpgsqlStatementFragment(statement: string): StaticSqlFragment | undefined {
-  const normalized = trimPlpgsqlStatement(statement);
-  if (normalized.length === 0) {
+  if (statement.length === 0) {
     return;
   }
-  const cursorSql = afterKeywordSequence(normalized, ["cursor", "for"]);
+  const cursorSql = afterKeywordSequence(statement, ["cursor", "for"]);
   if (cursorSql) {
     return { source: "cursor query", sql: cursorSql };
   }
   return (
-    forLoopStatementFragment(normalized) ??
-    performStatementFragment(normalized) ??
-    returnStatementFragment(normalized) ??
-    openStatementFragment(normalized) ??
-    selectStatementFragment(normalized) ??
-    dmlStatementFragment(normalized)
+    forLoopStatementFragment(statement) ??
+    performStatementFragment(statement) ??
+    returnStatementFragment(statement) ??
+    openStatementFragment(statement) ??
+    selectStatementFragment(statement) ??
+    dmlStatementFragment(statement)
+  );
+}
+
+function plpgsqlStatementMayContainSql(statement: string): boolean {
+  if (statement.length === 0) {
+    return false;
+  }
+  const tokens = new Set(tokenSpans(statement).map((token) => token.text));
+  return ["select", "insert", "update", "delete", "merge", "with", "from", "join", "exists"].some(
+    (token) => tokens.has(token)
   );
 }
 

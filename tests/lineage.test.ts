@@ -26,7 +26,13 @@ async function cli(args: string[]): Promise<CliResult> {
 
 async function writeBasicFixtureConfig(directory: string): Promise<string> {
   const path = join(directory, "supaschema.config.json");
-  await writeFile(path, JSON.stringify({ hints: { destructive: ["function:app.legacy_ping()"] } }));
+  await writeFile(
+    path,
+    JSON.stringify({
+      hints: { destructive: ["function:app.legacy_ping()"] },
+      sync: { targets: {} },
+    })
+  );
   return path;
 }
 
@@ -175,6 +181,64 @@ describe("diff lineage chain gate", () => {
     expect(replaced.stderr).toContain("SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED");
     expect(replaced.stdout).toContain(generated);
     expect(parseLineage(await readFile(generated, "utf8"))).toBeDefined();
+  });
+
+  it("removes stale concurrent companions when replacement no longer renders concurrent SQL", {
+    timeout: 60_000,
+  }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-replace-concurrent-"));
+    const config = join(directory, "supaschema.config.json");
+    const from = join(directory, "from.sql");
+    const toConcurrent = join(directory, "to-concurrent.sql");
+    const toTransactional = join(directory, "to-transactional.sql");
+    const generated = join(directory, "20260101000000_generated.sql");
+    const companion = join(directory, "20260101000000_generated.concurrent.sql");
+    await writeFile(
+      config,
+      JSON.stringify({ sync: { targets: {} }, transactionMode: "per-statement" })
+    );
+    await writeFile(from, "CREATE SCHEMA app;\nCREATE TABLE app.items (id integer);\n");
+    await writeFile(
+      toConcurrent,
+      "CREATE SCHEMA app;\nCREATE TABLE app.items (id integer);\nCREATE INDEX CONCURRENTLY items_id_idx ON app.items (id);\n"
+    );
+    await writeFile(
+      toTransactional,
+      "CREATE SCHEMA app;\nCREATE TABLE app.items (id integer, name text);\n"
+    );
+
+    const initial = await cli([
+      "--config",
+      config,
+      "diff",
+      "--from",
+      `dump:${from}`,
+      "--to",
+      `dump:${toConcurrent}`,
+      "--migrations-dir",
+      directory,
+      "--out",
+      generated,
+    ]);
+    expect(initial.code, initial.stderr).toBe(0);
+    expect(await readdir(directory)).toContain("20260101000000_generated.concurrent.sql");
+
+    const replaced = await cli([
+      "--config",
+      config,
+      "diff",
+      "--from",
+      `dump:${from}`,
+      "--to",
+      `dump:${toTransactional}`,
+      "--migrations-dir",
+      directory,
+      "--replace",
+      generated,
+    ]);
+    expect(replaced.code, replaced.stderr).toBe(0);
+    expect(await readdir(directory)).not.toContain("20260101000000_generated.concurrent.sql");
+    await expect(readFile(companion, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects hand-authored replacement migrations", { timeout: 60_000 }, async () => {

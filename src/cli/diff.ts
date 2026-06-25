@@ -1,5 +1,5 @@
 import { watch } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import type { SupaschemaConfig } from "../config/schema.js";
@@ -365,6 +365,8 @@ async function writeDiffFiles(
     await writeSqlFile(output.outPath, output.rendered.sql, replace);
     if (output.rendered.concurrentSql !== undefined && output.concurrentPath !== undefined) {
       await writeSqlFile(output.concurrentPath, output.rendered.concurrentSql, replace);
+    } else if (replace) {
+      await rm(`${stripSqlExtension(output.outPath)}.concurrent.sql`, { force: true });
     }
     return true;
   } catch (error) {

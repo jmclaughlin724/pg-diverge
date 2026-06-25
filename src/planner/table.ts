@@ -199,10 +199,7 @@ function missingDataTransitionDiagnostics(
   if (!(delta.dropColumns.length > 0 && delta.addColumns.length > 0)) {
     return [];
   }
-  const hasDataIntent = migrationCorpus?.operations.some(
-    (operation) => operation.kind === "data-statement" || operation.kind === "do-block"
-  );
-  if (hasDataIntent) {
+  if (hasReviewedDataTransitionIntent(table.key, delta, migrationCorpus)) {
     return [];
   }
   return [
@@ -216,6 +213,34 @@ function missingDataTransitionDiagnostics(
       }
     ),
   ];
+}
+
+function hasReviewedDataTransitionIntent(
+  tableKey: string,
+  delta: TableColumnDelta,
+  migrationCorpus: MigrationCorpus | undefined
+): boolean {
+  const operations = migrationCorpus?.operations ?? [];
+  return delta.dropColumns.every((column) => {
+    const dropKey = tableColumnDropKey(tableKey, column);
+    const dropFiles = operations
+      .filter((operation) => operation.kind === "table-column-drop" && operation.key === dropKey)
+      .map((operation) => operation.file);
+    return dropFiles.some((file) => fileHasReviewedDataIntent(operations, file, tableKey));
+  });
+}
+
+function fileHasReviewedDataIntent(
+  operations: readonly MigrationCorpus["operations"][number][],
+  file: string,
+  tableKey: string
+): boolean {
+  return operations.some(
+    (operation) =>
+      operation.file === file &&
+      (operation.kind === "do-block" ||
+        (operation.kind === "data-statement" && operation.key === tableKey))
+  );
 }
 
 function tableAlterMetadata(
