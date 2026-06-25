@@ -98,6 +98,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_SYNC_TARGET_OVERRIDE_MULTI` | error | A database URL or environment override was used while multiple sync targets were selected. |
 | `SUPA_SYNC_TARGET_UNKNOWN` | error | The selected named sync target is not configured. |
 | `SUPA_SYNC_TARGET_URL_UNRESOLVED` | error | The selected sync target's database URL could not be resolved. |
+| `SUPA_SYNC_VERIFY_URL_UNRESOLVED` | error | Sync could not resolve the disposable database URL required to verify pending migrations before apply. |
 | `SUPA_VERIFY_CLEANUP_FAILED` | warning | A temporary verification database could not be dropped and may need manual removal. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` hints | — | The mismatch hint names the differing objects: missing from the migration result, not present in the target, and definition differs. |
 | `SUPA_VERIFY_FAILED` | error | Temporary database verification failed. |

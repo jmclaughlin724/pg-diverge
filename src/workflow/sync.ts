@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { resolveConfig } from "../config/schema.js";
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
+import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../core.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { defaultMigrationName } from "../migrations/files.js";
 import {
@@ -34,7 +34,7 @@ import {
   type ResolvedSyncTarget,
   resolveSyncTargets,
 } from "./targets.js";
-import { checkSyncLineageChain } from "./verify.js";
+import { checkSyncLineageChain, verifyPendingMigrationsForSync } from "./verify.js";
 
 export interface SyncOptions {
   cliVersion?: string;
@@ -566,6 +566,7 @@ const targetSyncLanes: TargetSyncLane[] = [
   stopTargetWhenNothingPendingLane,
   guardTargetConcurrentCompanionsLane,
   runTargetSafetyLane,
+  verifyTargetPendingMigrationsLane,
   applyTargetMigrationsLane,
   reconcileTargetHistoryLane,
 ];
@@ -658,6 +659,34 @@ function runTargetSafetyLane(state: TargetSyncState): Promise<SyncResult | undef
     sourceOverride: targetSafetySource(state.target, state.sources.from),
     targetName: state.target.name,
   });
+}
+
+function verifyTargetPendingMigrationsLane(
+  state: TargetSyncState
+): Promise<SyncResult | undefined> {
+  const historyTable = targetHistoryTableRef(state.target);
+  return verifyPendingMigrationsForSync({
+    config: state.config,
+    diagnostics: state.diagnostics,
+    directory: state.options.directory,
+    ...(historyTable === undefined ? {} : { ignoredObjects: [historyTable] }),
+    lines: state.lines,
+    options: state.options,
+    pending: pendingMigrationsForTargetRunner(state),
+    sources: {
+      from: targetSafetySource(state.target, state.sources.from),
+      to: state.sources.to,
+    },
+    target: state.target,
+  });
+}
+
+function targetHistoryTableRef(target: ResolvedSyncTarget): ObjectRef | undefined {
+  const [schema, name, extra] = target.historyTable.split(".");
+  if (!(schema && name) || extra !== undefined) {
+    return;
+  }
+  return { kind: "table", name, schema };
 }
 
 async function applyTargetMigrationsLane(state: TargetSyncState): Promise<SyncResult | undefined> {

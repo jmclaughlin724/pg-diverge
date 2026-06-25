@@ -275,6 +275,35 @@ SELECT app.source.app_value FROM app.source;
     expect(views).not.toContain("app_value: unknown | null;");
   });
 
+  it("resolves top-level CTEs used inside set-operation views", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.events (id bigint, payload jsonb);
+CREATE VIEW app.v_event_payloads AS
+WITH source AS (SELECT id, payload FROM app.events)
+SELECT id, payload FROM source
+UNION ALL
+SELECT id, payload FROM app.events;
+`);
+    const view = viewTypeBlock(types, "v_event_payloads");
+
+    expect(view).toContain("id: number | null;");
+    expect(view).toContain("payload: Json | null;");
+    expect(view).not.toContain("unknown | null;");
+  });
+
+  it("types jsonb concat view expressions as Json", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.events (payload jsonb);
+CREATE VIEW app.v_event_payloads AS
+SELECT payload || '{"source":"app"}'::jsonb AS merged_payload FROM app.events;
+`);
+    const view = viewTypeBlock(types, "v_event_payloads");
+
+    expect(view).toContain("merged_payload: Json | null;");
+    expect(view).not.toContain("merged_payload: string | null;");
+    expect(view).not.toContain("merged_payload: unknown | null;");
+  });
+
   it("keeps qualified star expansion scoped to the matched join source", async () => {
     const types = await typesFor(`CREATE SCHEMA app;
 CREATE TABLE app.accounts (id bigint, name text);
@@ -819,6 +848,7 @@ describe("zod schema generation", () => {
     expect(zod).toContain("export const Enums = {");
     expect(zod).toContain("export const CompositeTypes = {");
     expect(zod).toContain("account_names");
+    expect(zod).toContain("label: z.string().nullable(),");
     expect(zod).toContain("export type Tables<");
     expect(zod).toContain("export type TablesInsert<");
     expect(zod).toContain("export type Enums<");

@@ -155,6 +155,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "A database URL or environment override can only be used when exactly one sync target is selected.",
   SUPA_SYNC_TARGET_UNKNOWN: "The selected sync target is not configured.",
   SUPA_SYNC_TARGET_URL_UNRESOLVED: "The selected sync target's database URL could not be resolved.",
+  SUPA_SYNC_VERIFY_URL_UNRESOLVED:
+    "Sync could not resolve the disposable database URL required to verify pending migrations before apply.",
   SUPA_DIFF_LINEAGE_GAP:
     "The newest pending supaschema migration does not chain into the next schema diff.",
   SUPA_NORMALIZE_FIDELITY:

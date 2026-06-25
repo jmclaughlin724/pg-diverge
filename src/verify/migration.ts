@@ -8,6 +8,7 @@ import type {
   Diagnostic,
   ExtractOptions,
   MigrationOperation,
+  ObjectRef,
   SchemaModel,
   VerifyMigrationOptions,
 } from "../core.js";
@@ -21,6 +22,7 @@ import {
   tempDatabaseName,
 } from "../database/admin.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
+import { fingerprintObjects } from "../hash.js";
 import { groupMigrationUnits, type MigrationUnit } from "../migrations/runners.js";
 import { planSchemaDiff } from "../planner/schema.js";
 import { renderMigration } from "../render/migration.js";
@@ -36,6 +38,7 @@ export function verifyMigration(options: VerifyMigrationOptions): Promise<Diagno
 }
 
 export interface VerifyMigrationChainOptions extends Omit<VerifyMigrationOptions, "migrationPath"> {
+  ignoredObjects?: ObjectRef[];
   migrationPaths: string[];
 }
 
@@ -56,8 +59,14 @@ export async function verifyMigrationChain(
   if (hasErrors(diagnostics)) {
     return diagnostics;
   }
-  const from = await extractSourceModel(options.from, extractOptions);
-  const to = await extractSourceModel(options.to, extractOptions);
+  const from = filterIgnoredObjects(
+    await extractSourceModel(options.from, extractOptions),
+    options.ignoredObjects ?? []
+  );
+  const to = filterIgnoredObjects(
+    await extractSourceModel(options.to, extractOptions),
+    options.ignoredObjects ?? []
+  );
   diagnostics.push(...from.diagnostics, ...to.diagnostics);
   if (hasErrors(diagnostics)) {
     return diagnostics;
@@ -94,6 +103,68 @@ export async function verifyMigrationChain(
     await admin.end().catch(() => undefined);
   }
   return diagnostics;
+}
+
+function filterIgnoredObjects(model: SchemaModel, ignoredObjects: ObjectRef[]): SchemaModel {
+  if (ignoredObjects.length === 0) {
+    return model;
+  }
+  const withoutIgnoredObjects = model.objects.filter(
+    (object) => !ignoredObjects.some((ignored) => objectMatchesIgnoredRef(object, ignored))
+  );
+  const ignoredSchemas = new Set(
+    ignoredObjects
+      .map((object) => object.schema)
+      .filter((schema): schema is string => schema !== undefined)
+  );
+  const objects = withoutIgnoredObjects.filter(
+    (object) =>
+      !(
+        object.ref.kind === "schema" &&
+        ignoredSchemas.has(object.ref.name) &&
+        !withoutIgnoredObjects.some(
+          (candidate) => candidate !== object && objectSchemaName(candidate.ref) === object.ref.name
+        )
+      )
+  );
+  if (objects.length === model.objects.length) {
+    return model;
+  }
+  return { ...model, fingerprint: fingerprintObjects(objects), objects };
+}
+
+function objectMatchesIgnoredRef(
+  object: { dependencies: string[]; ref: ObjectRef },
+  ignored: ObjectRef
+): boolean {
+  if (sameObjectRef(object.ref, ignored)) {
+    return true;
+  }
+  if (ignored.kind !== "table") {
+    return false;
+  }
+  return (
+    (object.ref.schema === ignored.schema && object.ref.table === ignored.name) ||
+    (ignored.schema !== undefined &&
+      object.dependencies.includes(`${ignored.schema}.${ignored.name}`))
+  );
+}
+
+function sameObjectRef(left: ObjectRef, right: ObjectRef): boolean {
+  return (
+    left.kind === right.kind &&
+    left.name === right.name &&
+    left.schema === right.schema &&
+    left.signature === right.signature &&
+    left.table === right.table
+  );
+}
+
+function objectSchemaName(ref: ObjectRef): string {
+  if (ref.kind === "schema") {
+    return ref.name;
+  }
+  return ref.schema ?? "public";
 }
 
 async function migrationSqlByFile(migrationPaths: string[]): Promise<Map<string, string>> {

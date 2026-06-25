@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.11 (2026-06-25)
+
+### Patch Changes
+
+- Extends parser-backed type generation for Supabase-shaped contracts, including set-operation CTE views, JSONB concat expressions, alias-preserving view columns, computed fields, and cross-schema relationship metadata.
+- Restores target sync verification before migration handoff, so configured apply targets run disposable migration verification before the selected runner mutates the target database.
+- Keeps generated TypeScript and Zod contract behavior aligned with the source schema model after the 0.3.10 release branch merge.
+
 ## 0.3.10 (2026-06-24)
 
 ### Patch Changes
