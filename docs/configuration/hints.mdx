@@ -10,6 +10,7 @@ Use hints for four cases:
 
 - a destructive change that a human already reviewed;
 - a rename that would otherwise look like drop plus create;
+- dynamic SQL or unsupported routine bodies whose dependencies must be declared;
 - roles allowed by the free grant least-privilege rule;
 - table columns required by the free RLS policy-column rule.
 
@@ -83,6 +84,29 @@ Type changes also emit `SUPA_PLAN_COLUMN_TYPE_USING_REVIEW` and add an inline SQ
 
 Identity changes emit `SUPA_PLAN_COLUMN_IDENTITY_REVIEW` because PostgreSQL identity actions affect future generated values. Generated-expression changes emit `SUPA_PLAN_COLUMN_GENERATED_REVIEW` because stored generated values can be rewritten and statistics may need refresh. Table-constraint changes render as separate guarded constraint operations. A hinted table **replace** drops and recreates the table — it is not data-preserving; prefer the column lane or hand-author the migration.
 
+If a routine, view, policy, or trigger depends on a column being dropped or type-changed, the dependent object must be dropped or replaced before the table alter. If the source still references the changed column, the planner blocks with `SUPA_PLAN_COLUMN_DEPENDENT_REWRITE_REQUIRED`.
+
+## Routine dependencies
+
+supaschema extracts routine dependencies from SQL-standard function bodies, SQL string bodies, and common static PL/pgSQL statements such as `SELECT`, `PERFORM`, DML, `RETURN QUERY`, `RETURN (SELECT ...)`, cursor queries, and `FOR ... IN query` loops.
+
+Dynamic SQL (`EXECUTE`), partially parsed PL/pgSQL, and unsupported routine languages fail closed when the same plan changes relations or types. Declare exact dependencies in `hints.routineDependencies`:
+
+```json
+{
+  "hints": {
+    "routineDependencies": {
+      "function:app.dynamic_lookup()": [
+        "app.accounts",
+        "app.accounts.secret_id"
+      ]
+    }
+  }
+}
+```
+
+Relation identities use `schema.object`. Column identities use `schema.table.column`. Hints are treated as reviewed dependency proof; do not use them to hide unknown data movement or storage conversion intent.
+
 ## Incompatible view and routine replacements
 
 PostgreSQL rejects `CREATE OR REPLACE` when a view drops/renames/reorders output columns, or when supaschema cannot prove the output columns (`SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE`). A routine replacement also blocks when the return type or OUT parameters change (`SUPA_PLAN_ROUTINE_RETURN_TYPE_CHANGED`). Hinting the object key renders a guarded `DROP ... IF EXISTS` followed by the new definition. Dependent objects (views over views) must be hinted and recreated in the same plan.
@@ -138,5 +162,7 @@ Validate it with `supaschema check` and `supaschema verify` like any hand-author
 ## Changes that require source intent
 
 Data backfills have no broad hint lane because the package must not invent row values, predicates, or conversion expressions. Put that intent in an explicit reviewed migration or another checked source-intent artifact, then validate it with `supaschema check` and `supaschema verify`.
+
+When one table change drops columns and adds columns in the same transition, supaschema treats it as a possible storage rewrite. If the configured migration corpus has no reviewed DML or `DO` intent, planning blocks with `SUPA_PLAN_DATA_TRANSITION_REQUIRED` even when the destructive table key is hinted.
 
 `CASCADE` drops have no hint lane by design.

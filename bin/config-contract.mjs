@@ -279,9 +279,10 @@ const contract = JSON.parse(`{
         "allowedGrantees": [],
         "destructive": [],
         "requiredPolicyColumns": {},
+        "routineDependencies": {},
         "renames": []
       },
-      "description": "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
+      "description": "Reviewed grant, routine-dependency, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, relation/column identities, or role names.",
       "key": "hints"
     },
     {
@@ -352,7 +353,7 @@ const contract = JSON.parse(`{
     },
     {
       "default": "database/migrations",
-      "description": "Directory where diff writes migrations and zero-arg check/verify read pending migrations.",
+      "description": "Directory where diff writes migrations, check/verify read pending migrations, and planning reads existing migrations for source intent plus generated-lineage baseline proof.",
       "examples": [
         "database/migrations",
         "supabase/migrations",
@@ -452,7 +453,7 @@ const contract = JSON.parse(`{
         "from": "auto",
         "to": "dir:database/schemas"
       },
-      "description": "Default before/after sources for zero-source-flag diff, plan, and verify. Keep sources.to explicit even when it matches schemaPaths[0].",
+      "description": "Default before/after sources for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist; sources.to is the desired schema tree.",
       "examples": [
         {
           "from": "auto",
@@ -1005,7 +1006,13 @@ export function createInstalledConfig(options = {}) {
     destructiveChanges: "hint-required",
     environments: defaultEnvironments,
     excludedGrantRoles: [],
-    hints: { allowedGrantees: [], destructive: [], requiredPolicyColumns: {}, renames: [] },
+    hints: {
+      allowedGrantees: [],
+      destructive: [],
+      requiredPolicyColumns: {},
+      routineDependencies: {},
+      renames: [],
+    },
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,

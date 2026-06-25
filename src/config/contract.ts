@@ -486,6 +486,7 @@ export function createInstalledConfig(
       allowedGrantees: [],
       destructive: [],
       requiredPolicyColumns: {},
+      routineDependencies: {},
       renames: [],
     },
     idempotency: "required",
@@ -758,9 +759,15 @@ export const configFieldMetadata: ConfigFieldMetadata[] = [
     key: "excludedGrantRoles",
   },
   {
-    default: { allowedGrantees: [], destructive: [], requiredPolicyColumns: {}, renames: [] },
+    default: {
+      allowedGrantees: [],
+      destructive: [],
+      requiredPolicyColumns: {},
+      routineDependencies: {},
+      renames: [],
+    },
     description:
-      "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
+      "Reviewed grant, routine-dependency, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, relation/column identities, or role names.",
     key: "hints",
   },
   {
@@ -790,7 +797,7 @@ export const configFieldMetadata: ConfigFieldMetadata[] = [
   {
     default: genericMigrationsDir,
     description:
-      "Directory where diff writes migrations and zero-arg check/verify read pending migrations.",
+      "Directory where diff writes migrations, check/verify read pending migrations, and planning reads existing migrations for source intent plus generated-lineage baseline proof.",
     examples: [
       genericMigrationsDir,
       "supabase/migrations",
@@ -857,7 +864,7 @@ export const configFieldMetadata: ConfigFieldMetadata[] = [
   {
     default: { from: sourceAuto, to: canonicalSourceTo([genericSchemaPath]) },
     description:
-      "Default before/after sources for zero-source-flag diff, plan, and verify. Keep sources.to explicit even when it matches schemaPaths[0].",
+      "Default before/after sources for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist; sources.to is the desired schema tree.",
     examples: [
       { from: sourceAuto, to: "dir:database/schemas" },
       { from: "dir:baseline/schemas", to: "dir:database/schemas" },
@@ -1070,7 +1077,13 @@ export function createInstalledConfig(options = {}) {
     destructiveChanges: "hint-required",
     environments: defaultEnvironments,
     excludedGrantRoles: [],
-    hints: { allowedGrantees: [], destructive: [], requiredPolicyColumns: {}, renames: [] },
+    hints: {
+      allowedGrantees: [],
+      destructive: [],
+      requiredPolicyColumns: {},
+      routineDependencies: {},
+      renames: [],
+    },
     idempotency: "required",
     lockTimeout: "5s",
     workflow: defaultWorkflow,

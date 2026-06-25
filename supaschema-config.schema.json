@@ -76,6 +76,7 @@
         "allowedGrantees": [],
         "destructive": [],
         "requiredPolicyColumns": {},
+        "routineDependencies": {},
         "renames": []
       },
       "type": "object",
@@ -95,6 +96,19 @@
           }
         },
         "requiredPolicyColumns": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "routineDependencies": {
           "default": {},
           "type": "object",
           "propertyNames": {
@@ -128,7 +142,7 @@
           }
         }
       },
-      "description": "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names."
+      "description": "Reviewed grant, routine-dependency, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, relation/column identities, or role names."
     },
     "idempotency": {
       "default": "required",
@@ -352,7 +366,7 @@
     "migrationsDir": {
       "default": "database/migrations",
       "type": "string",
-      "description": "Directory where diff writes migrations and zero-arg check/verify read pending migrations.",
+      "description": "Directory where diff writes migrations, check/verify read pending migrations, and planning reads existing migrations for source intent plus generated-lineage baseline proof.",
       "examples": [
         "database/migrations",
         "supabase/migrations",
@@ -478,7 +492,7 @@
       "properties": {
         "from": {
           "default": "auto",
-          "description": "Default before-state source. For generation, \"auto\" resolves git:HEAD first, then empty: only for a first migration with no existing migration corpus.",
+          "description": "Default before-state source. For generation, \"auto\" resolves git:HEAD as a candidate baseline, then empty: only for a first migration with no existing migration corpus. Existing generated migrations must prove the same baseline through lineage.",
           "examples": [
             "auto",
             "git:HEAD",
@@ -511,7 +525,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Default before/after sources for zero-source-flag diff, plan, and verify. Keep sources.to explicit even when it matches schemaPaths[0].",
+      "description": "Default before/after sources for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist; sources.to is the desired schema tree.",
       "examples": [
         {
           "from": "auto",

@@ -5,6 +5,9 @@ import type { AstNode, AstStatement } from "../sql/ast.js";
 import {
   asRecord,
   astStatements,
+  columnFacts,
+  functionIdentity,
+  rangeVarName,
   readArray,
   readBoolean,
   readString,
@@ -12,6 +15,7 @@ import {
 } from "../sql/ast.js";
 import { deparseFidelityDiagnostics } from "../sql/normalize-deparse.js";
 import { parseSqlAst } from "../sql/parser.js";
+import { extractStatementDependencies } from "../sql/routine-dependencies.js";
 import { runConfiguredValidators } from "../validators.js";
 import {
   enumValueUseDiagnostics,
@@ -85,6 +89,8 @@ export async function checkMigrationSql(
         );
         recordEnumAdditions(statement, enumAdditions);
       }
+      diagnostics.push(...(await forwardReferenceOrderDiagnostics(statements)));
+      diagnostics.push(...functionPublicExecuteDiagnostics(statements));
       diagnostics.push(...(await deparseFidelityDiagnostics(sql)));
     }
   }
@@ -97,6 +103,227 @@ export async function checkMigrationSql(
   }
   diagnostics.push(...(await runConfiguredValidators(sql, validatorOptions)));
   return diagnostics;
+}
+
+interface StatementOrderFacts {
+  columnReferences: Set<string>;
+  createdColumns: Set<string>;
+  createdRelations: Set<string>;
+  references: Set<string>;
+  statement: AstStatement;
+}
+
+async function forwardReferenceOrderDiagnostics(
+  statements: readonly AstStatement[]
+): Promise<Diagnostic[]> {
+  const facts: StatementOrderFacts[] = [];
+  const diagnostics: Diagnostic[] = [];
+  for (const statement of statements) {
+    const dependencies = await extractStatementDependencies(statement);
+    diagnostics.push(...dependencies.diagnostics);
+    facts.push({
+      columnReferences: new Set(dependencies.columnReferences),
+      createdColumns: createdColumnIdentities(statement),
+      createdRelations: createdRelationIdentities(statement),
+      references: new Set(dependencies.references),
+      statement,
+    });
+  }
+  const laterRelations = new Set<string>();
+  const laterColumns = new Set<string>();
+  for (let index = facts.length - 1; index >= 0; index -= 1) {
+    const current = facts[index];
+    if (!current) {
+      continue;
+    }
+    const forwardRelations = [...current.references].filter((reference) =>
+      laterRelations.has(reference)
+    );
+    const forwardColumns = [...current.columnReferences].filter((reference) =>
+      laterColumns.has(reference)
+    );
+    if (forwardRelations.length > 0 || forwardColumns.length > 0) {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_CHECK_FORWARD_REFERENCE_ORDER",
+          "error",
+          "migration statement references an object or column created later in the same file",
+          {
+            hint: [...forwardRelations, ...forwardColumns].sort().join(", "),
+            statement: current.statement.text,
+          }
+        )
+      );
+    }
+    addAll(laterRelations, current.createdRelations);
+    addAll(laterColumns, current.createdColumns);
+  }
+  return diagnostics;
+}
+
+function createdRelationIdentities(statement: AstStatement): Set<string> {
+  const node = asRecord(statement.node[statement.tag]);
+  const identities = new Set<string>();
+  if (!node) {
+    return identities;
+  }
+  if (statement.tag === "CreateStmt") {
+    addRangeVarIdentity(identities, node.relation);
+  }
+  if (statement.tag === "ViewStmt") {
+    addRangeVarIdentity(identities, node.view);
+  }
+  if (statement.tag === "CreateTableAsStmt") {
+    addRangeVarIdentity(identities, asRecord(node.into)?.rel);
+  }
+  return identities;
+}
+
+function createdColumnIdentities(statement: AstStatement): Set<string> {
+  const node = asRecord(statement.node[statement.tag]);
+  const identities = new Set<string>();
+  if (!node) {
+    return identities;
+  }
+  if (statement.tag === "CreateStmt") {
+    const relation = relationIdentity(node.relation);
+    if (!relation) {
+      return identities;
+    }
+    for (const item of readArray(node.tableElts)) {
+      const facts = columnFacts(asRecord(item));
+      if (facts) {
+        identities.add(`${relation}.${facts.name}`);
+      }
+    }
+  }
+  if (statement.tag === "AlterTableStmt") {
+    const relation = relationIdentity(node.relation);
+    if (!relation) {
+      return identities;
+    }
+    for (const item of readArray(node.cmds)) {
+      const command = asRecord(asRecord(item)?.AlterTableCmd);
+      if (readString(command?.subtype) !== "AT_AddColumn") {
+        continue;
+      }
+      const facts = columnFacts(asRecord(command?.def));
+      if (facts) {
+        identities.add(`${relation}.${facts.name}`);
+      }
+    }
+  }
+  return identities;
+}
+
+function addRangeVarIdentity(into: Set<string>, value: unknown): void {
+  const identity = relationIdentity(value);
+  if (identity) {
+    into.add(identity);
+  }
+}
+
+function relationIdentity(value: unknown): string | undefined {
+  const name = rangeVarName(value);
+  return name ? `${name.schema}.${name.name}` : undefined;
+}
+
+function addAll<T>(into: Set<T>, values: Iterable<T>): void {
+  for (const value of values) {
+    into.add(value);
+  }
+}
+
+function functionPublicExecuteDiagnostics(statements: readonly AstStatement[]): Diagnostic[] {
+  const publicRoutines = new Map<string, AstStatement>();
+  const revoked = new Set<string>();
+  for (const statement of statements) {
+    recordPublicRoutine(statement, publicRoutines);
+    recordPublicExecuteRevoke(statement, revoked);
+  }
+  const diagnostics: Diagnostic[] = [];
+  for (const [identity, statement] of publicRoutines) {
+    if (revoked.has(identity)) {
+      continue;
+    }
+    diagnostics.push(
+      diagnostic(
+        "SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE",
+        "warning",
+        "public-schema function does not revoke default PUBLIC EXECUTE in this migration",
+        {
+          hint: "Add REVOKE EXECUTE ON FUNCTION ... FROM PUBLIC before granting only intended roles.",
+          statement: statement.text,
+        }
+      )
+    );
+  }
+  return diagnostics;
+}
+
+function recordPublicRoutine(
+  statement: AstStatement,
+  publicRoutines: Map<string, AstStatement>
+): void {
+  if (statement.tag !== "CreateFunctionStmt") {
+    return;
+  }
+  const node = asRecord(statement.node.CreateFunctionStmt);
+  const identity = functionIdentity(node?.funcname, node?.parameters);
+  if (identity?.schema === "public") {
+    publicRoutines.set(`${identity.schema}.${identity.name}`, statement);
+  }
+}
+
+function recordPublicExecuteRevoke(statement: AstStatement, revoked: Set<string>): void {
+  if (statement.tag !== "GrantStmt") {
+    return;
+  }
+  const node = asRecord(statement.node.GrantStmt);
+  if (!node || readBoolean(node.is_grant) || readString(node.objtype) !== "OBJECT_FUNCTION") {
+    return;
+  }
+  if (!grantTouchesPublicExecute(node)) {
+    return;
+  }
+  for (const object of readArray(node.objects)) {
+    const identity = objectWithArgsRoutineIdentity(object);
+    if (identity) {
+      revoked.add(identity);
+    }
+  }
+}
+
+function objectWithArgsRoutineIdentity(value: unknown): string | undefined {
+  const args = asRecord(asRecord(value)?.ObjectWithArgs);
+  const names = stringList(args?.objname);
+  const name = names.at(-1);
+  if (!name) {
+    return;
+  }
+  return `${names.at(-2) ?? "public"}.${name}`;
+}
+
+function grantTouchesPublicExecute(node: AstNode): boolean {
+  return grantHasPublicGrantee(node) && grantHasExecutePrivilege(node);
+}
+
+function grantHasPublicGrantee(node: AstNode): boolean {
+  return readArray(node.grantees).some((item) => {
+    const role = asRecord(asRecord(item)?.RoleSpec);
+    return readString(role?.roletype) === "ROLESPEC_PUBLIC";
+  });
+}
+
+function grantHasExecutePrivilege(node: AstNode): boolean {
+  const privileges = readArray(node.privileges);
+  if (privileges.length === 0) {
+    return true;
+  }
+  return privileges.some((item) => {
+    const privilege = asRecord(asRecord(item)?.AccessPriv);
+    return readString(privilege?.priv_name)?.toLowerCase() === "execute";
+  });
 }
 
 function checkStatement(statement: AstStatement, previous: AstStatement | undefined): Diagnostic[] {

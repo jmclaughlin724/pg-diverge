@@ -58,6 +58,22 @@ export interface SchemaObject {
   sql: string;
 }
 
+export type RoutineDependencyConfidence =
+  | "sql-body"
+  | "sql-string-partial"
+  | "sql-string-parsed"
+  | "plpgsql-static"
+  | "plpgsql-partial"
+  | "dynamic-sql-unknown"
+  | "unsupported-language";
+
+export interface RoutineDependencyResult {
+  columnReferences: string[];
+  confidence: RoutineDependencyConfidence;
+  diagnostics: Diagnostic[];
+  references: string[];
+}
+
 export interface TableColumn {
   defaultExpression?: string;
   definition: string;
@@ -133,6 +149,20 @@ export interface MigrationCorpus {
   tableColumnDrops: string[];
 }
 
+export interface MigrationBaselineProof {
+  file: string;
+  fingerprint: string;
+  source: string;
+  version?: string;
+}
+
+export interface MigrationContext {
+  corpus: MigrationCorpus;
+  files: string[];
+  latestGeneratedBaseline?: MigrationBaselineProof;
+  unprovenBaselineFiles: string[];
+}
+
 export interface RenameHint {
   from: string;
   to: string;
@@ -143,6 +173,7 @@ export interface SupaschemaHints {
   destructive?: string[];
   renames?: RenameHint[];
   requiredPolicyColumns?: Record<string, string[]>;
+  routineDependencies?: Record<string, string[]>;
 }
 
 export interface ExtractOptions {

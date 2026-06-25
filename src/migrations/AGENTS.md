@@ -10,8 +10,8 @@ This directory owns migration file discovery, lineage, staging, history status, 
 - `lineage.ts` reads and writes supaschema lineage markers.
 - `stage.ts` stages generated migrations.
 - `status.ts` compares local files and database migration history.
+- `context.ts` reads migration files into source-intent and lineage-baseline context.
 - `runners.ts` runs direct and Supabase CLI migration flows.
-- `intent.ts` reads reviewed destructive intent from existing migration SQL.
 
 ## Working Rules
 

@@ -52,6 +52,9 @@ Explicit directory arguments are not expanded. Use a shell glob such as `databas
 - lock hazards such as table rewrites and non-concurrent indexes;
 - transaction-incompatible statements;
 - `search_path` hazards;
+- `SECURITY DEFINER` functions without function-local `search_path`;
+- public-schema functions that do not explicitly revoke default `PUBLIC` `EXECUTE`;
+- same-file forward references to objects or columns created later in the migration;
 - DML that cannot be proven idempotent.
 
 ## Exit codes

@@ -8,6 +8,7 @@ import type {
   ObjectKind,
   ObjectRef,
   RenderOptions,
+  RoutineDependencyConfidence,
   SchemaModel,
   SchemaObject,
   SupaschemaConfig,
@@ -45,6 +46,7 @@ export function planSchemaDiff(
   );
   appendCreatedOperations(fromMap, toMap, consumedTo, operations, config, migrationCorpus);
   appendReplacedRelationDependents(operations, from, to, config, migrationCorpus);
+  appendDependencyProofDiagnostics(operations, from, to);
   const sortedOperations = sortOperations(operations, diagnostics);
   appendOperationDiagnostics(diagnostics, operations);
   if (sortedOperations.length === 0 && from.fingerprint !== to.fingerprint) {
@@ -264,6 +266,238 @@ const relationDependentKinds = new Set<ObjectKind>([
   "trigger",
 ]);
 const blockingRelationDependentKinds = new Set<ObjectKind>(["view", "materialized-view"]);
+const routineKinds = new Set<ObjectKind>(["function", "procedure"]);
+const proofDependentKinds = new Set<ObjectKind>([
+  "function",
+  "procedure",
+  "view",
+  "materialized-view",
+  "policy",
+  "trigger",
+]);
+const relationOrTypeChangeKinds = new Set<ObjectKind>([
+  "domain",
+  "enum",
+  "foreign-table",
+  "materialized-view",
+  "table",
+  "type",
+  "view",
+]);
+
+function appendDependencyProofDiagnostics(
+  operations: MigrationOperation[],
+  from: SchemaModel,
+  to: SchemaModel
+): void {
+  const relationOrTypeOperations = operations.filter((operation) =>
+    relationOrTypeChangeKinds.has(operation.ref.kind)
+  );
+  if (relationOrTypeOperations.length > 0) {
+    blockUnhintedUnknownRoutines(relationOrTypeOperations, to.objects);
+  }
+  appendColumnDependentRewriteDiagnostics(operations, from, to);
+}
+
+function blockUnhintedUnknownRoutines(
+  relationOrTypeOperations: MigrationOperation[],
+  objects: readonly SchemaObject[]
+): void {
+  for (const object of objects) {
+    if (!(routineKinds.has(object.ref.kind) && routineDependencyIsUnproven(object))) {
+      continue;
+    }
+    for (const operation of relationOrTypeOperations) {
+      if (routineDependencyHintCoversOperation(object, operation)) {
+        continue;
+      }
+      blockOperation(
+        operation,
+        diagnostic(
+          "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED",
+          "error",
+          "routine dependencies are not fully proven while this plan changes relations or types",
+          {
+            hint: `Add exhaustive dependencies to hints.routineDependencies["${object.key}"] or split this relation/type change from the routine.`,
+            ref: object.ref,
+          }
+        )
+      );
+    }
+  }
+}
+
+function routineDependencyHintCoversOperation(
+  object: SchemaObject,
+  operation: MigrationOperation
+): boolean {
+  if (object.metadata.routineDependencyHinted !== true) {
+    return false;
+  }
+  const identity = refIdentity(operation.ref);
+  const references = metadataStrings(object.metadata.routineDependencyHintReferences);
+  if (references.includes(identity)) {
+    return true;
+  }
+  const columnPrefix = `${identity}.`;
+  return metadataStrings(object.metadata.routineDependencyHintColumns).some(
+    (reference) => reference === identity || reference.startsWith(columnPrefix)
+  );
+}
+
+function routineDependencyIsUnproven(object: SchemaObject): boolean {
+  const confidence = routineDependencyConfidence(object.metadata.routineDependencyConfidence);
+  return confidence === undefined ? false : routineConfidenceIsUnproven(confidence);
+}
+
+function routineDependencyConfidence(value: unknown): RoutineDependencyConfidence | undefined {
+  switch (value) {
+    case "sql-body":
+    case "sql-string-parsed":
+    case "plpgsql-static":
+    case "dynamic-sql-unknown":
+    case "plpgsql-partial":
+    case "sql-string-partial":
+    case "unsupported-language":
+      return value;
+    default:
+      return;
+  }
+}
+
+function metadataStrings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function routineConfidenceIsUnproven(confidence: RoutineDependencyConfidence): boolean {
+  switch (confidence) {
+    case "sql-body":
+    case "sql-string-parsed":
+    case "plpgsql-static":
+      return false;
+    case "dynamic-sql-unknown":
+    case "plpgsql-partial":
+    case "sql-string-partial":
+    case "unsupported-language":
+      return true;
+    default:
+      return assertNever(confidence);
+  }
+}
+
+function appendColumnDependentRewriteDiagnostics(
+  operations: MigrationOperation[],
+  from: SchemaModel,
+  to: SchemaModel
+): void {
+  const operationByKey = new Map(operations.map((operation) => [operation.key, operation]));
+  const targetByKey = new Map(to.objects.map((object) => [object.key, object]));
+  for (const tableOperation of operations) {
+    if (!(tableOperation.kind === "alter" && tableOperation.ref.kind === "table")) {
+      continue;
+    }
+    const changedColumns = destructiveChangedColumnIdentities(tableOperation);
+    if (changedColumns.size === 0) {
+      continue;
+    }
+    for (const before of from.objects) {
+      if (
+        !(proofDependentKinds.has(before.ref.kind) && dependsOnAnyColumn(before, changedColumns))
+      ) {
+        continue;
+      }
+      const dependentOperation = operationByKey.get(before.key);
+      const after = targetByKey.get(before.key);
+      if (!dependentOperation || (after && dependsOnAnyColumn(after, changedColumns))) {
+        blockOperation(
+          tableOperation,
+          diagnostic(
+            "SUPA_PLAN_COLUMN_DEPENDENT_REWRITE_REQUIRED",
+            "error",
+            "a dependent object references a column being dropped or type-changed",
+            {
+              hint: `${before.key} must be dropped, replaced, or split into a reviewed explicit migration before altering ${tableOperation.key}.`,
+              ref: before.ref,
+            }
+          )
+        );
+        continue;
+      }
+      dependentOperation.diagnostics.push(
+        diagnostic(
+          "SUPA_PLAN_DEPENDENT_ROUTINE_REORDERED",
+          "warning",
+          "dependent object replacement is ordered before the destructive column alter",
+          {
+            hint: `${dependentOperation.key} must stop referencing the changed column before ${tableOperation.key} is altered.`,
+            ref: dependentOperation.ref,
+          }
+        )
+      );
+    }
+  }
+}
+
+function destructiveChangedColumnIdentities(operation: MigrationOperation): Set<string> {
+  const table = refIdentity(operation.ref);
+  const identities = new Set<string>();
+  for (const column of stringMetadataArray(operation.metadata.dropColumns)) {
+    identities.add(`${table}.${column}`);
+  }
+  for (const alteration of objectMetadataArray(operation.metadata.alterColumns)) {
+    if (typeof alteration.name === "string" && typeof alteration.type === "string") {
+      identities.add(`${table}.${alteration.name}`);
+    }
+  }
+  return identities;
+}
+
+function dependsOnAnyColumn(object: SchemaObject, columnIdentities: ReadonlySet<string>): boolean {
+  for (const dependency of columnDependencyIdentities(object)) {
+    if (columnIdentities.has(dependency)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function columnDependencyIdentities(object: SchemaObject): string[] {
+  return [
+    ...stringMetadataArray(object.metadata.columnDependencies),
+    ...stringMetadataArray(object.metadata.routineColumnDependencies),
+  ];
+}
+
+function blockOperation(operation: MigrationOperation, item: Diagnostic): void {
+  operation.blocked = true;
+  if (operation.destructive) {
+    operation.metadata.destructiveDisposition = "blocked";
+  }
+  if (!operation.diagnostics.some((diagnosticItem) => sameDiagnostic(diagnosticItem, item))) {
+    operation.diagnostics.push(item);
+  }
+}
+
+function sameDiagnostic(left: Diagnostic, right: Diagnostic): boolean {
+  return left.code === right.code && left.message === right.message && left.hint === right.hint;
+}
+
+function objectMetadataArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null && !Array.isArray(item)
+      )
+    : [];
+}
+
+function stringMetadataArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
 
 function appendReplacedRelationDependents(
   operations: MigrationOperation[],
@@ -837,39 +1071,48 @@ function shapeColumns(shape: Record<string, unknown>): Map<string, Record<string
 }
 
 function isDestructive(kind: MigrationOperationKind, objectKind: ObjectKind): boolean {
-  if (kind === "alter" || kind === "create" || kind === "rename") {
-    return false;
+  switch (kind) {
+    case "alter":
+    case "create":
+    case "rename":
+      return false;
+    case "drop":
+      return [
+        "schema",
+        "table",
+        "foreign-data-wrapper",
+        "foreign-server",
+        "foreign-table",
+        "type",
+        "domain",
+        "enum",
+        "sequence",
+        "materialized-view",
+        "function",
+        "procedure",
+        "grant",
+        "default-privilege",
+        "rls",
+      ].includes(objectKind);
+    case "replace":
+      return [
+        "table",
+        "foreign-data-wrapper",
+        "foreign-server",
+        "foreign-table",
+        "type",
+        "domain",
+        "enum",
+        "materialized-view",
+        "rls",
+      ].includes(objectKind);
+    default:
+      return assertNever(kind);
   }
-  if (kind === "drop") {
-    return [
-      "schema",
-      "table",
-      "foreign-data-wrapper",
-      "foreign-server",
-      "foreign-table",
-      "type",
-      "domain",
-      "enum",
-      "sequence",
-      "materialized-view",
-      "function",
-      "procedure",
-      "grant",
-      "default-privilege",
-      "rls",
-    ].includes(objectKind);
-  }
-  return [
-    "table",
-    "foreign-data-wrapper",
-    "foreign-server",
-    "foreign-table",
-    "type",
-    "domain",
-    "enum",
-    "materialized-view",
-    "rls",
-  ].includes(objectKind);
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled variant: ${value}`);
 }
 function isSupportedRenameKind(kind: ObjectKind): boolean {
   return [

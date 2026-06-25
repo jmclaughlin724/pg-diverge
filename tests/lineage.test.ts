@@ -100,6 +100,107 @@ describe("diff lineage chain gate", () => {
     expect(await readdir(directory)).toEqual([]);
   });
 
+  it("refuses named empty migration writes", { timeout: 60_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-empty-diff-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")));
+
+    const result = await cli([
+      "--config",
+      config,
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      fromArg,
+      "--name",
+      "schema_diff",
+      "--migrations-dir",
+      directory,
+    ]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("SUPA_DIFF_EMPTY_PLAN");
+    expect(await readdir(directory)).toEqual([]);
+  });
+
+  it("replaces generated migrations only from the original lineage baseline", {
+    timeout: 60_000,
+  }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-replace-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")));
+    const diff = ["--config", config, "diff"];
+    const generated = join(directory, "20260101000000_generated.sql");
+
+    const initial = await cli([
+      ...diff,
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+      "--out",
+      generated,
+    ]);
+    expect(initial.code, initial.stderr).toBe(0);
+    const original = await readFile(generated, "utf8");
+    expect(parseLineage(original)).toBeDefined();
+
+    const wrongBaseline = await cli([
+      ...diff,
+      "--from",
+      toArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+      "--replace",
+      generated,
+    ]);
+    expect(wrongBaseline.code).toBe(2);
+    expect(wrongBaseline.stderr).toContain("SUPA_DIFF_REPLACE_BASELINE_REQUIRED");
+
+    const replaced = await cli([
+      ...diff,
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+      "--replace",
+      generated,
+    ]);
+    expect(replaced.code, replaced.stderr).toBe(0);
+    expect(replaced.stderr).toContain("SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED");
+    expect(replaced.stdout).toContain(generated);
+    expect(parseLineage(await readFile(generated, "utf8"))).toBeDefined();
+  });
+
+  it("rejects hand-authored replacement migrations", { timeout: 60_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-replace-hand-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")));
+    const handAuthored = join(directory, "0001_hand.sql");
+    await writeFile(handAuthored, "CREATE TABLE app.hand_authored (id bigint);\n");
+
+    const result = await cli([
+      "--config",
+      config,
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+      "--replace",
+      handAuthored,
+    ]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("SUPA_DIFF_REPLACE_HAND_AUTHORED");
+  });
+
   it("blocks duplicate transitions, broken chains, and overwrites; --no-check-chain bypasses", {
     timeout: 60_000,
   }, async () => {
@@ -145,7 +246,8 @@ describe("diff lineage chain gate", () => {
       "--out",
       join(directory, "0004_next.sql"),
     ]);
-    expect(continued.code).toBe(0);
+    expect(continued.code).toBe(2);
+    expect(continued.stderr).toContain("SUPA_DIFF_EMPTY_PLAN");
 
     const bypassed = await cli([
       ...diff,

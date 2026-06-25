@@ -23,9 +23,10 @@ npx supaschema diff
 npx supaschema diff --summary
 npx supaschema diff --fail-on-diff --quiet
 npx supaschema diff --from "git:origin/main" --to dir:database/schemas --out /tmp/migration.sql
+npx supaschema diff --replace database/migrations/20260101000000_schema_diff.sql
 ```
 
-If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
+If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file. If a disk write is explicitly requested with `--name`, file `--out`, or `--replace`, an empty plan is refused with `SUPA_DIFF_EMPTY_PLAN`.
 
 ## Flags
 
@@ -48,6 +49,13 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
 
 <ParamField path="--migrations-dir" type="path">
   Override the directory where timestamped migrations are written.
+</ParamField>
+
+<ParamField path="--replace" type="path">
+  Replace one unapplied supaschema-generated migration in the selected
+  migrations directory. The file must contain lineage metadata, the planned
+  `--from` fingerprint must match the file's original lineage baseline, and any
+  resolvable configured target must not record the migration version as applied.
 </ParamField>
 
 <ParamField path="--schema" type="names">
@@ -88,7 +96,9 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file.
 
 ## Source specifiers
 
-`--from` and `--to` choose schema sources. The configured `migrationsDir` is a separate source-intent corpus: existing reviewed migrations are parsed for row backfills, explicit DML/`DO` workflows, enum rewrite recipes, Vault references, workload-proven index intent, and provider bootstrap constraints. If that intent is missing, `diff` should block with an actionable diagnostic instead of inventing it.
+`--from` and `--to` choose schema sources. The configured `migrationsDir` is a separate migration-tree input: existing reviewed migrations are parsed for source intent, and generated migration lineage proves the current migration-tree baseline. If `sources.from:auto` resolves to `git:HEAD` but generated migrations prove a different baseline, `diff` blocks with `SUPA_MIGRATION_BASELINE_MISMATCH` instead of writing a misleading migration.
+
+Use `--replace` for a generated migration that has not been applied and needs to be regenerated from the same original baseline. Git only proves the source snapshot; applied state is checked from configured database migration history when a target is resolvable.
 
 | Format | Example | Use |
 | --- | --- | --- |

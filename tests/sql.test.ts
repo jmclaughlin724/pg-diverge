@@ -99,6 +99,184 @@ describe("parse cache", () => {
   });
 });
 
+describe("routine dependency extraction", () => {
+  it("extracts SQL-standard function body relation and column dependencies", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.account_secret()
+      RETURNS uuid
+      LANGUAGE SQL
+      BEGIN ATOMIC
+        SELECT secret_id FROM app.accounts;
+      END;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.account_secret()"
+    );
+
+    expect(routine?.dependencies).toContain("app.accounts");
+    expect(routine?.metadata.routineDependencyConfidence).toBe("sql-body");
+    expect(routine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
+  });
+
+  it("parses SQL string function bodies without relying on PostgreSQL dependency tracking", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.account_secret_string()
+      RETURNS uuid
+      LANGUAGE sql
+      AS $$
+        SELECT secret_id FROM app.accounts
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.account_secret_string()"
+    );
+
+    expect(routine?.dependencies).toContain("app.accounts");
+    expect(routine?.metadata.routineDependencyConfidence).toBe("sql-string-parsed");
+    expect(routine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
+  });
+
+  it("extracts static PL/pgSQL statements and detects dynamic SQL", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.touch_secret()
+      RETURNS void
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        PERFORM secret_id FROM app.accounts WHERE id = 1;
+      END;
+      $$;
+
+      CREATE FUNCTION app.dynamic_lookup()
+      RETURNS void
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        EXECUTE 'select secret_id from app.accounts';
+      END;
+      $$;
+    `);
+    const staticRoutine = extracted.objects.find(
+      (object) => object.key === "function:app.touch_secret()"
+    );
+    const dynamicRoutine = extracted.objects.find(
+      (object) => object.key === "function:app.dynamic_lookup()"
+    );
+
+    expect(staticRoutine?.dependencies).toContain("app.accounts");
+    expect(staticRoutine?.metadata.routineDependencyConfidence).toBe("plpgsql-static");
+    expect(staticRoutine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
+    expect(dynamicRoutine?.metadata.routineDependencyConfidence).toBe("dynamic-sql-unknown");
+    expect(extracted.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN"
+    );
+  });
+
+  it("extracts common static PL/pgSQL query forms", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.static_forms()
+      RETURNS SETOF uuid
+      LANGUAGE plpgsql
+      AS $$
+      DECLARE
+        account_cursor CURSOR FOR SELECT secret_id FROM app.accounts;
+        row_value record;
+        found_secret uuid;
+      BEGIN
+        SELECT secret_id INTO found_secret FROM app.accounts LIMIT 1;
+        INSERT INTO app.audit(account_id) SELECT id FROM app.accounts;
+        UPDATE app.audit SET account_id = accounts.id FROM app.accounts WHERE audit.account_id = accounts.id;
+        RETURN QUERY SELECT secret_id FROM app.accounts;
+        FOR row_value IN SELECT secret_id FROM app.accounts LOOP
+          PERFORM row_value.secret_id;
+        END LOOP;
+      END;
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.static_forms()"
+    );
+
+    expect(routine?.dependencies).toEqual(expect.arrayContaining(["app.accounts", "app.audit"]));
+    expect(routine?.metadata.routineDependencyConfidence).toBe("plpgsql-static");
+    expect(routine?.metadata.routineColumnDependencies).toEqual(
+      expect.arrayContaining(["app.accounts.id", "app.accounts.secret_id"])
+    );
+  });
+
+  it("keeps proven dependencies when a PL/pgSQL body is only partially parsed", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.partial_forms()
+      RETURNS void
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        PERFORM secret_id FROM app.accounts;
+        PERFORM FROM;
+      END;
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.partial_forms()"
+    );
+
+    expect(routine?.dependencies).toContain("app.accounts");
+    expect(routine?.metadata.routineDependencyConfidence).toBe("plpgsql-partial");
+    expect(routine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
+    expect(extracted.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY"
+    );
+  });
+
+  it("records explicit routine dependency hints on overloaded routine keys", async () => {
+    const extracted = await extractObjectsFromSql(
+      `
+        CREATE FUNCTION app.dynamic_lookup(input_id bigint)
+        RETURNS void
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          EXECUTE 'select secret_id from app.accounts where id = $1';
+        END;
+        $$;
+      `,
+      {
+        config: {
+          hints: {
+            routineDependencies: {
+              "function:app.dynamic_lookup(bigint)": ["app.accounts.secret_id"],
+            },
+          },
+        },
+      }
+    );
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.dynamic_lookup(bigint)"
+    );
+
+    expect(routine?.dependencies).toContain("app.accounts");
+    expect(routine?.metadata.routineDependencyHinted).toBe(true);
+    expect(routine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
+  });
+
+  it("marks unsupported routine languages as unproven dependencies", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.python_lookup()
+      RETURNS int
+      LANGUAGE plpython3u
+      AS $$ return 1 $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.python_lookup()"
+    );
+
+    expect(routine?.metadata.routineDependencyConfidence).toBe("unsupported-language");
+    expect(extracted.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_ROUTINE_BODY_DEPENDENCY_UNKNOWN"
+    );
+  });
+});
+
 describe("diff rendering", () => {
   it("renders deterministic replay-safe SQL for the basic fixture", async () => {
     const from = await extractSourceModel("dir:tests/fixtures/basic/from", {
@@ -481,6 +659,42 @@ describe("migration checks", () => {
 
     expect(unsafe.map((item) => item.code)).toContain("SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH");
     expect(safe.map((item) => item.code)).not.toContain("SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH");
+  });
+
+  it("warns when public functions do not explicitly revoke PUBLIC EXECUTE", async () => {
+    const unsafe = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION public.unsafe()
+      RETURNS int
+      LANGUAGE sql
+      AS $$ SELECT 1 $$;
+    `);
+    const safe = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION public.safe()
+      RETURNS int
+      LANGUAGE sql
+      AS $$ SELECT 1 $$;
+      REVOKE EXECUTE ON FUNCTION public.safe() FROM PUBLIC;
+    `);
+
+    expect(unsafe.map((item) => item.code)).toContain("SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE");
+    expect(safe.map((item) => item.code)).not.toContain("SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE");
+  });
+
+  it("rejects routine references to columns created later in the same migration", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.read_secret()
+      RETURNS uuid
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        RETURN (SELECT secret_id FROM app.accounts LIMIT 1);
+      END;
+      $$;
+
+      ALTER TABLE app.accounts ADD COLUMN secret_id uuid;
+    `);
+
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_FORWARD_REFERENCE_ORDER");
   });
 
   it("reports unknown configured validators", async () => {

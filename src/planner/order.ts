@@ -99,12 +99,24 @@ function addOperationDependencies(
   incomingCount: Map<string, number>
 ): void {
   for (const dependencyKey of operationDependencyKeys(operation, index, constraintDependencies)) {
-    if (dependencyKey === operation.key || !operationByKey.has(dependencyKey)) {
+    if (dependencyKey === operation.key) {
       continue;
     }
-    const [from, to] =
-      operation.kind === "drop" ? [operation.key, dependencyKey] : [dependencyKey, operation.key];
+    const dependencyOperation = operationByKey.get(dependencyKey);
+    if (!dependencyOperation) {
+      continue;
+    }
+    const edge = operationDependencyEdge(operation, dependencyOperation);
+    if (!edge) {
+      continue;
+    }
+    const [from, to] = edge;
     addEdge(from, to, outgoing, incomingCount);
+  }
+  for (const dependencyKey of columnRewriteDependencyKeys(operation, index, operationByKey)) {
+    if (dependencyKey !== operation.key && operationByKey.has(dependencyKey)) {
+      addEdge(operation.key, dependencyKey, outgoing, incomingCount);
+    }
   }
 }
 
@@ -260,6 +272,131 @@ function operationDependencyKeys(
   return [...keys];
 }
 
+function operationDependencyEdge(
+  operation: MigrationOperation,
+  dependencyOperation: MigrationOperation
+): [string, string] | undefined {
+  if (isTableAlterDependency(dependencyOperation)) {
+    if (isDestructiveTableAlterRewriteDependency(operation, dependencyOperation)) {
+      return [operation.key, dependencyOperation.key];
+    }
+    const source =
+      operation.kind === "drop" ? operation.before : (operation.after ?? operation.before);
+    if (source && !dependsOnAddedTableAlterColumns(source, dependencyOperation)) {
+      return;
+    }
+  }
+  return operation.kind === "drop"
+    ? [operation.key, dependencyOperation.key]
+    : [dependencyOperation.key, operation.key];
+}
+
+function columnRewriteDependencyKeys(
+  operation: MigrationOperation,
+  operationKeyByIdentity: Map<string, string>,
+  operationByKey: Map<string, MigrationOperation>
+): string[] {
+  if (!(operation.kind === "replace" && operation.before)) {
+    return [];
+  }
+  const keys = new Set<string>();
+  for (const reference of operation.before.dependencies) {
+    const key = operationKeyByIdentity.get(reference);
+    const dependencyOperation = key ? operationByKey.get(key) : undefined;
+    if (
+      key &&
+      dependencyOperation &&
+      isDestructiveTableAlterRewriteDependency(operation, dependencyOperation)
+    ) {
+      keys.add(key);
+    }
+  }
+  return [...keys];
+}
+
+function isTableAlterDependency(operation: MigrationOperation): boolean {
+  return operation.kind === "alter" && operation.ref.kind === "table";
+}
+
+function isDestructiveTableAlterRewriteDependency(
+  operation: MigrationOperation,
+  dependencyOperation: MigrationOperation
+): boolean {
+  if (!(isTableAlterDependency(dependencyOperation) && operation.before)) {
+    return false;
+  }
+  if (!columnDependentKinds.has(operation.before.ref.kind)) {
+    return false;
+  }
+  return hasColumnDependency(
+    operation.before,
+    destructiveChangedColumnIdentities(dependencyOperation)
+  );
+}
+
+function dependsOnAddedTableAlterColumns(
+  source: NonNullable<MigrationOperation["after"]>,
+  dependencyOperation: MigrationOperation
+): boolean {
+  const addedColumns = addedColumnIdentities(dependencyOperation);
+  if (addedColumns.size === 0) {
+    return false;
+  }
+  if (!columnDependentKinds.has(source.ref.kind)) {
+    return true;
+  }
+  const dependencies = columnDependencyIdentities(source);
+  return dependencies.length === 0 || dependencies.some((item) => addedColumns.has(item));
+}
+
+const columnDependentKinds = new Set<ObjectKind>([
+  "function",
+  "materialized-view",
+  "policy",
+  "procedure",
+  "trigger",
+  "view",
+]);
+
+function addedColumnIdentities(operation: MigrationOperation): Set<string> {
+  const table = refIdentity(operation.ref);
+  const identities = new Set<string>();
+  for (const column of objectMetadataArray(operation.metadata.addColumns)) {
+    if (typeof column.name === "string") {
+      identities.add(`${table}.${column.name}`);
+    }
+  }
+  return identities;
+}
+
+function destructiveChangedColumnIdentities(operation: MigrationOperation): Set<string> {
+  const table = refIdentity(operation.ref);
+  const identities = new Set<string>();
+  for (const column of stringMetadataArray(operation.metadata.dropColumns)) {
+    identities.add(`${table}.${column}`);
+  }
+  for (const alteration of objectMetadataArray(operation.metadata.alterColumns)) {
+    if (typeof alteration.name === "string" && typeof alteration.type === "string") {
+      identities.add(`${table}.${alteration.name}`);
+    }
+  }
+  return identities;
+}
+
+function hasColumnDependency(
+  source: NonNullable<MigrationOperation["after"]>,
+  columns: ReadonlySet<string>
+): boolean {
+  return columnDependencyIdentities(source).some((dependency) => columns.has(dependency));
+}
+
+function columnDependencyIdentities(source: NonNullable<MigrationOperation["after"]>): string[] {
+  return [
+    ...stringMetadataArray(source.metadata.columnDependencies),
+    ...stringMetadataArray(source.metadata.routineColumnDependencies),
+  ];
+}
+
 function constraintOperationDependencyKeys(
   source: NonNullable<MigrationOperation["after"]>,
   operationKeyByIdentity: Map<string, string>,
@@ -305,6 +442,15 @@ function tableColumnsIdentity(table: string, columns: readonly string[]): string
 function stringMetadataArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function objectMetadataArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null && !Array.isArray(item)
+      )
     : [];
 }
 

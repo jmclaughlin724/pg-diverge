@@ -386,6 +386,56 @@ function metadataStrings(value: unknown): string[] {
     : [];
 }
 
+export const exposedTableWithoutRlsRule: Rule = {
+  check: ({ model }) => {
+    const enabled = rlsEnabledTableKeys(model);
+    const exposedTargets = exposedTableGrantTargets(model);
+    const diagnostics: Diagnostic[] = [];
+    for (const object of model.objects) {
+      if (object.ref.kind !== "table" || (object.ref.schema ?? "public") !== "public") {
+        continue;
+      }
+      const key = tableKey(object.ref);
+      if (!exposedTargets.has(key) || enabled.has(key)) {
+        continue;
+      }
+      diagnostics.push({
+        code: "SUPA_RULE_EXPOSED_TABLE_WITHOUT_RLS",
+        hint: "Enable RLS with reviewed policies, or revoke API-facing grants before exposing this table.",
+        message: `Table "${key}" is exposed by grants without RLS enabled`,
+        ref: object.ref,
+        severity: "warning",
+      });
+    }
+    return diagnostics;
+  },
+  id: "SEC007",
+};
+
+function exposedTableGrantTargets(model: SchemaModel): Set<string> {
+  const targets = new Set<string>();
+  for (const object of model.objects) {
+    if (object.ref.kind !== "grant" || object.metadata.verb !== "GRANT") {
+      continue;
+    }
+    const grantee = object.metadata.grantee;
+    if (!isApiFacingGrantee(grantee)) {
+      continue;
+    }
+    const target = grantTarget(object);
+    if (target.startsWith("public.")) {
+      targets.add(target);
+    }
+  }
+  return targets;
+}
+
+function isApiFacingGrantee(value: unknown): boolean {
+  return (
+    value === "PUBLIC" || value === "anon" || value === "authenticated" || value === "service_role"
+  );
+}
+
 export const rlsPack: RulePack = {
   id: "rls",
   rules: [
@@ -394,6 +444,7 @@ export const rlsPack: RulePack = {
     policyMissingPredicateRule,
     policyDeprecatedAuthRoleRule,
     policyUnwrappedAuthUidRule,
+    exposedTableWithoutRlsRule,
   ],
   version: "0.1.0",
 };

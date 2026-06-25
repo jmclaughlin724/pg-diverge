@@ -14,11 +14,11 @@ The day-to-day migration workflow uses one command:
 npx supaschema sync
 ```
 
-`sync` reads the configured source, reads the target declarative SQL tree, reads the configured migration corpus for source intent, plans the change, renders the migration, writes it to the configured migration directory, selects at most one target, reconciles history, gates replay safety, refreshes TypeScript and Zod outputs, stages changed generated migrations when Git is available, runs source-model deploy safety gates, and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
+`sync` reads the configured source, reads the target declarative SQL tree, reads the configured migration context for source intent and generated-lineage baseline proof, plans the change, renders the migration, writes it to the configured migration directory, selects at most one target, reconciles history, gates replay safety, refreshes TypeScript and Zod outputs, stages changed generated migrations when Git is available, runs source-model deploy safety gates, and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
 
 ```text
-before-state source + declarative SQL tree + migration source-intent corpus
-  -> extract structured schema and intent models
+before-state source + declarative SQL tree + migration context
+  -> extract structured schema, source intent, and generated-lineage baseline proof
   -> plan safe operations
   -> render replay-safe SQL
   -> write migration
@@ -29,8 +29,9 @@ before-state source + declarative SQL tree + migration source-intent corpus
 <Steps>
   <Step title="Extract">
     supaschema loads both schema sides into structured PostgreSQL models and
-    loads existing migrations into a structured migration corpus. SQL
-    understanding comes from parser-backed models, not raw text comparison.
+    loads existing migrations into one structured migration context for source
+    intent plus generated-lineage baseline proof. SQL understanding comes from
+    parser-backed models, not raw text comparison.
   </Step>
   <Step title="Plan">
     The planner compares tables, constraints, indexes, functions, triggers,
@@ -38,7 +39,10 @@ before-state source + declarative SQL tree + migration source-intent corpus
     extension ownership, then applies explicit migration-derived intent for
     facts the schema tree cannot express by shape alone. Unsupported,
     provider-owned, or missing-intent surfaces fail closed instead of being
-    guessed.
+    guessed. Routine bodies feed the same dependency graph: SQL-standard bodies,
+    SQL string bodies, and static PL/pgSQL statements produce relation/column
+    dependencies, while dynamic SQL and unsupported languages require explicit
+    `hints.routineDependencies` before relation or type changes proceed.
   </Step>
   <Step title="Render">
     The renderer emits deterministic SQL with idempotent guards, lock and
@@ -53,11 +57,13 @@ before-state source + declarative SQL tree + migration source-intent corpus
 
 ## Source intent
 
-The declarative tree owns the desired schema shape. Existing migrations in `migrationsDir` are also an input: they carry operational intent that a final schema snapshot cannot prove by itself.
+The declarative tree owns the desired schema shape. Existing migrations in `migrationsDir` are also an input: they carry operational intent that a final schema snapshot cannot prove by itself, and generated lineage proves the migration-tree baseline that `sources.from` must match for source-backed generation.
 
 That source-intent lane is required for row backfills, explicit DML or `DO` workflows, enum rewrite recipes, Vault references or placeholder names, workload-proven index intent, and provider bootstrap constraints. supaschema may preserve or transform that intent only when it is present in schema files, existing migrations, config, checked workload artifacts, or reviewed hints.
 
 It must not invent row values, Vault secret material, tenant predicates, conversion expressions, or query-workload indexes from table shape alone. When the source intent is missing, the correct behavior is an actionable diagnostic that names the file, config field, hint, or workload artifact an agent must add before generation can continue.
+
+Column-level dependencies are ordered through the planner. Dependents that use newly added columns render after the table alter. Dependents that still use dropped or type-changed columns block until the routine, view, policy, or trigger is rewritten or split into a reviewed migration.
 
 ## Safety gates
 

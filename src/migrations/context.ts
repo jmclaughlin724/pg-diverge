@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import type {
+  MigrationContext,
   MigrationCorpus,
   MigrationCorpusOperation,
   MigrationCorpusOperationKind,
@@ -16,15 +17,17 @@ import {
 } from "../sql/ast.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { migrationFiles } from "./files.js";
+import { parseLineage } from "./lineage.js";
+import { migrationFileVersion } from "./status.js";
 
-interface ReadMigrationCorpusOptions {
+interface ReadMigrationContextOptions {
   cwd?: string;
 }
 
-export async function readMigrationCorpus(
+export async function readMigrationContext(
   migrationsDir: string,
-  options: ReadMigrationCorpusOptions = {}
-): Promise<MigrationCorpus> {
+  options: ReadMigrationContextOptions = {}
+): Promise<MigrationContext> {
   const cwd = options.cwd ?? process.cwd();
   const directory = resolve(cwd, migrationsDir);
   const files = await migrationFiles(directory);
@@ -36,8 +39,9 @@ export async function readMigrationCorpus(
   };
   const destructiveKeys = new Set<string>();
   const tableColumnDrops = new Set<string>();
+  const context: MigrationContext = { corpus, files, unprovenBaselineFiles: [] };
   for (const file of files) {
-    await readMigrationFileCorpus(file, destructiveKeys, tableColumnDrops, corpus);
+    await readMigrationFileContext(file, migrationsDir, destructiveKeys, tableColumnDrops, context);
   }
   corpus.destructiveKeys = [...destructiveKeys].sort((left, right) => left.localeCompare(right));
   corpus.tableColumnDrops = [...tableColumnDrops].sort((left, right) => left.localeCompare(right));
@@ -46,18 +50,32 @@ export async function readMigrationCorpus(
       `${right.file}:${right.kind}:${right.key ?? ""}:${right.statementTag}`
     )
   );
-  return corpus;
+  return context;
 }
 
-async function readMigrationFileCorpus(
+async function readMigrationFileContext(
   file: string,
+  migrationsDir: string,
   destructiveKeys: Set<string>,
   tableColumnDrops: Set<string>,
-  corpus: MigrationCorpus
+  context: MigrationContext
 ): Promise<void> {
   const sql = await readFile(file, "utf8");
+  const lineage = parseLineage(sql.slice(0, 4096));
+  if (lineage) {
+    const version = migrationFileVersion(basename(file));
+    context.latestGeneratedBaseline = {
+      file,
+      fingerprint: lineage.to,
+      source: `migrations:${migrationsDir}${version === undefined ? "" : `@${version}`}`,
+      ...(version === undefined ? {} : { version }),
+    };
+    context.unprovenBaselineFiles = [];
+  } else {
+    context.unprovenBaselineFiles.push(file);
+  }
   const parsed = await parseSqlAst(sql, file);
-  corpus.diagnostics.push(...migrationCorpusParseDiagnostics(parsed.diagnostics, file));
+  context.corpus.diagnostics.push(...migrationCorpusParseDiagnostics(parsed.diagnostics, file));
   if (parsed.ast === undefined) {
     return;
   }
@@ -67,12 +85,12 @@ async function readMigrationFileCorpus(
       continue;
     }
     if (statement.tag === "DropStmt") {
-      collectDropStmtCorpus(node, file, destructiveKeys, corpus.operations);
+      collectDropStmtCorpus(node, file, destructiveKeys, context.corpus.operations);
     }
     if (statement.tag === "AlterTableStmt") {
-      collectAlterTableStmtCorpus(node, file, tableColumnDrops, corpus.operations);
+      collectAlterTableStmtCorpus(node, file, tableColumnDrops, context.corpus.operations);
     }
-    collectStatementCorpus(statement.tag, file, corpus.operations);
+    collectStatementCorpus(statement.tag, file, context.corpus.operations);
   }
 }
 

@@ -16,7 +16,6 @@ import {
   functionIdentity,
   qualifiedName,
   rangeVarName,
-  readArray,
   readBoolean,
   readString,
   stringList,
@@ -37,6 +36,7 @@ import {
   defaultPrivilegesFromAst,
   grantObjectsFromAst,
 } from "./privileges.js";
+import { extractStatementDependencies } from "./routine-dependencies.js";
 import { makeObject, tableMetadataFromAst } from "./statements.js";
 import {
   ignoredStatementTags,
@@ -126,12 +126,9 @@ export async function extractObjectsFromSql(
     const parsed = parseStatement(statement, ordinal, config, options.file);
     diagnostics.push(...parsed.diagnostics);
     if (parsed.objects.length > 0) {
-      const references = await statementReferences(statement);
-      for (const object of parsed.objects) {
-        object.dependencies = [...references]
-          .filter((reference) => reference !== objectIdentity(object.ref))
-          .sort((left, right) => left.localeCompare(right));
-      }
+      const dependency = await extractStatementDependencies(statement, options.file);
+      diagnostics.push(...dependency.diagnostics);
+      applyStatementDependencies(parsed.objects, dependency, config);
       diagnostics.push(
         ...(await finalizeObjects(parsed.objects, { normalize: config.normalize === "deparse" }))
       );
@@ -145,6 +142,84 @@ export async function extractObjectsFromSql(
     nextOrdinal: ordinal,
     objects,
   };
+}
+
+type StatementDependency = Awaited<ReturnType<typeof extractStatementDependencies>>;
+
+function applyStatementDependencies(
+  objects: readonly SchemaObject[],
+  dependency: StatementDependency,
+  config: SupaschemaConfig
+): void {
+  for (const object of objects) {
+    object.dependencies = dependency.references
+      .filter((reference) => reference !== objectIdentity(object.ref))
+      .sort((left, right) => left.localeCompare(right));
+    if (dependency.columnReferences.length > 0) {
+      object.metadata.columnDependencies = dependency.columnReferences;
+    }
+    if (dependency.routine && isRoutineObject(object)) {
+      object.metadata.routineDependencyConfidence = dependency.routine.confidence;
+      object.metadata.routineDependencies = dependency.routine.references;
+      object.metadata.routineColumnDependencies = dependency.routine.columnReferences;
+    }
+    applyRoutineDependencyHints(object, config);
+  }
+}
+
+function isRoutineObject(object: SchemaObject): boolean {
+  return object.ref.kind === "function" || object.ref.kind === "procedure";
+}
+
+function applyRoutineDependencyHints(object: SchemaObject, config: SupaschemaConfig): void {
+  if (!isRoutineObject(object)) {
+    return;
+  }
+  const hinted = config.hints.routineDependencies[object.key] ?? [];
+  if (hinted.length === 0) {
+    return;
+  }
+  const references = hinted.filter((item) => !isColumnIdentity(item));
+  const columnReferences = hinted.filter(isColumnIdentity);
+  const columnRelationReferences = columnReferences.flatMap(columnRelationIdentity);
+  object.dependencies = sortedUnique([
+    ...object.dependencies,
+    ...references,
+    ...columnRelationReferences,
+  ]);
+  object.metadata.routineDependencies = sortedUnique([
+    ...metadataStrings(object.metadata.routineDependencies),
+    ...references,
+  ]);
+  object.metadata.routineColumnDependencies = sortedUnique([
+    ...metadataStrings(object.metadata.routineColumnDependencies),
+    ...columnReferences,
+  ]);
+  object.metadata.routineDependencyHintReferences = references;
+  object.metadata.routineDependencyHintColumns = columnReferences;
+  object.metadata.routineDependencyHinted = true;
+}
+
+function metadataStrings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function sortedUnique(values: readonly string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function isColumnIdentity(value: string): boolean {
+  return value.split(".").length >= 3;
+}
+
+function columnRelationIdentity(value: string): string[] {
+  const parts = value.split(".");
+  if (parts.length < 3) {
+    return [];
+  }
+  return [`${parts[0]}.${parts[1]}`];
 }
 
 function parseStatement(
@@ -538,32 +613,6 @@ function referencedSchemas(statement: AstStatement): string[] {
     }
   }
   return [...schemas].sort((left, right) => left.localeCompare(right));
-}
-
-async function statementReferences(statement: AstStatement): Promise<Set<string>> {
-  const references = collectReferences(statement.node);
-  if (statement.tag === "CreateFunctionStmt") {
-    const node = asRecord(statement.node.CreateFunctionStmt);
-    for (const body of functionBodyStrings(node?.options)) {
-      const parsedBody = await parseSqlAst(body);
-      if (parsedBody.ast !== undefined) {
-        collectReferences(parsedBody.ast, references);
-      }
-    }
-  }
-  return references;
-}
-
-function functionBodyStrings(options: unknown): string[] {
-  const bodies: string[] = [];
-  for (const item of readArray(options)) {
-    const defElem = asRecord(asRecord(item)?.DefElem);
-    if (readString(defElem?.defname) !== "as") {
-      continue;
-    }
-    bodies.push(...stringList(defElem?.arg));
-  }
-  return bodies;
 }
 
 function objectIdentity(ref: ObjectRef): string {

@@ -95,6 +95,11 @@ export function makeTableAlterOperation(
   diagnostics.push(
     ...columnAlterReviewDiagnostics(after, { hasGeneratedChange, hasIdentityChange, hasTypeChange })
   );
+  const dataTransitionDiagnostics = missingDataTransitionDiagnostics(delta, after, migrationCorpus);
+  if (dataTransitionDiagnostics.length > 0) {
+    blocked = true;
+    diagnostics.push(...dataTransitionDiagnostics);
+  }
   if (destructive && !destructiveDisposition) {
     blocked = true;
     diagnostics.push(
@@ -184,6 +189,33 @@ function columnAlterReviewDiagnostics(
     );
   }
   return diagnostics;
+}
+
+function missingDataTransitionDiagnostics(
+  delta: TableColumnDelta,
+  table: SchemaObject,
+  migrationCorpus: MigrationCorpus | undefined
+): Diagnostic[] {
+  if (!(delta.dropColumns.length > 0 && delta.addColumns.length > 0)) {
+    return [];
+  }
+  const hasDataIntent = migrationCorpus?.operations.some(
+    (operation) => operation.kind === "data-statement" || operation.kind === "do-block"
+  );
+  if (hasDataIntent) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_PLAN_DATA_TRANSITION_REQUIRED",
+      "error",
+      "column drop plus column add looks like a storage transition without reviewed data intent",
+      {
+        hint: "Add reviewed backfill/transition DML or a DO block to the migration corpus, or use an explicit reviewed migration.",
+        ref: table.ref,
+      }
+    ),
+  ];
 }
 
 function tableAlterMetadata(

@@ -25,12 +25,20 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_CATALOG_SNAPSHOT_VERSION` | warning | A `catalog:` snapshot was produced by a different supaschema model version; regenerate it to keep hashes comparable. |
 | `SUPA_DIFF_LINEAGE_BROKEN` | error | The plan's from-state does not continue the newest pending supaschema migration in the output directory. |
 | `SUPA_DIFF_LINEAGE_DUPLICATE` | error | A pending supaschema migration already covers this exact from/to transition. |
-| `SUPA_DIFF_OUTPUT_EXISTS` | error | The output migration file already exists; supaschema never overwrites migrations. |
+| `SUPA_DIFF_EMPTY_PLAN` | error | A disk write was explicitly requested, but the diff planned no operations. |
+| `SUPA_DIFF_OUTPUT_EXISTS` | error | The output migration file already exists; supaschema does not overwrite migrations outside `diff --replace`. |
+| `SUPA_DIFF_REPLACE_APPLIED` | error | `diff --replace` targeted a migration version already recorded in a configured database history table. |
+| `SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED` | warning | `diff --replace` could not resolve a database history target, so applied state was not verified. |
+| `SUPA_DIFF_REPLACE_BASELINE_REQUIRED` | error | `diff --replace` could not prove or match the replacement migration's original lineage baseline. |
+| `SUPA_DIFF_REPLACE_HAND_AUTHORED` | error | `diff --replace` targeted a file without supaschema lineage metadata. |
+| `SUPA_MIGRATION_BASELINE_MISMATCH` | error | The resolved `sources.from` model does not match the generated migration-tree baseline. |
+| `SUPA_MIGRATION_BASELINE_UNSUPPORTED` | error | Existing migrations cannot prove a generated-lineage baseline for source-backed generation. |
 | `SUPA_MIGRATION_CORPUS_PARSE_SKIPPED` | warning | A configured migration file could not be fully parsed for source intent; destructive changes in that file may still require explicit hints. |
 | `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` | error | A destructive change lacks an explicit hint. |
 | `SUPA_PLAN_ADD_COLUMN_UNSAFE` | error | An additive column change needs explicit migration review. |
 | `SUPA_PLAN_COLUMN_ALTER_HINT_REQUIRED` | error | Column drops and type changes render data-preserving ALTERs only after a destructive-change hint. |
 | `SUPA_PLAN_COLUMN_TYPE_USING_REVIEW` | warning | A column type change rendered an identity `USING` cast; review and replace it for non-trivial conversions. |
+| `SUPA_PLAN_DATA_TRANSITION_REQUIRED` | error | A column drop plus column add looks like a storage transition without reviewed data movement intent in the migration corpus. |
 | `SUPA_PLAN_DEPENDENCY_CYCLE` | error | Dependency ordering produced a cycle. |
 | `SUPA_PLAN_EMPTY_WITH_DRIFT` | error | The plan has no operations but the model fingerprints differ; an empty migration would silently mask real drift. |
 | `SUPA_PLAN_RENAME_HINT_UNMATCHED` | error | A rename hint did not match both source and target objects. |
@@ -42,6 +50,12 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_PLAN_VIEW_REPLACE_INCOMPATIBLE` | error | The view drops, renames, reorders, or cannot prove output columns; `CREATE OR REPLACE VIEW` cannot apply it without review. |
 | `SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED` | warning | View output columns are statically unknowable; verify the replacement against PostgreSQL rules. |
 | `SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED` | error | `CREATE INDEX CONCURRENTLY` cannot run inside the transaction the migration runner uses. |
+| `SUPA_PLAN_COLUMN_DEPENDENT_REWRITE_REQUIRED` | error | A routine, view, policy, or trigger still depends on a dropped or type-changed column. |
+| `SUPA_PLAN_DEPENDENT_ROUTINE_REORDERED` | warning | A dependent object replacement was ordered before the destructive column alter it must stop referencing. |
+| `SUPA_ROUTINE_BODY_DEPENDENCY_UNKNOWN` | warning | A routine language or body form cannot be statically analyzed for dependencies. |
+| `SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY` | warning | A PL/pgSQL body was only partially parsed; proven references were kept but dependency confidence is degraded. |
+| `SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN` | warning | A PL/pgSQL body contains dynamic SQL whose relation and column dependencies cannot be proven statically. |
+| `SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED` | error | A relation or type changed while an unhinted routine has unproven dependencies. Add exact `hints.routineDependencies` or split the migration. |
 | `SUPA_CHECK_CASCADE` | error | `CASCADE` appears in migration SQL. |
 | `SUPA_CHECK_DROP_IF_EXISTS` | error | A `DROP` statement lacks `IF EXISTS`. |
 | `SUPA_CHECK_CREATE_SCHEMA_GUARD` | error | `CREATE SCHEMA` lacks `IF NOT EXISTS` or a catalog guard. |
@@ -57,6 +71,8 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_CHECK_CREATE_TRIGGER_REPLACEMENT` | error | `CREATE TRIGGER` is not preceded by `DROP TRIGGER IF EXISTS`. |
 | `SUPA_CHECK_SEARCH_PATH` | error | Migration SQL depends on session `search_path`. |
 | `SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH` | warning | A `SECURITY DEFINER` function lacks function-local `SET search_path`. |
+| `SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE` | warning | A public-schema function does not explicitly revoke default `PUBLIC` `EXECUTE`. |
+| `SUPA_CHECK_FORWARD_REFERENCE_ORDER` | error | A migration statement references an object or column created later in the same file. |
 | `SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION` | error/warning | An enum value added in this migration is used later in the same file; transactional runners fail. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
 | `SUPA_CHECK_NONTRANSACTIONAL_INDEX` | error/warning | `CREATE INDEX CONCURRENTLY` needs transaction wrapping disabled. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
 | `SUPA_CHECK_NONTRANSACTIONAL_REFRESH` | error/warning | `REFRESH MATERIALIZED VIEW CONCURRENTLY` needs transaction wrapping disabled. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
@@ -73,6 +89,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_CHECK_POLICY_REPLACEMENT` | error | `CREATE POLICY` should be paired with an explicit prior drop for replacement. |
 | `SUPA_RULE_POLICY_MISSING_PREDICATE` | warning | An RLS policy lacks the `USING` or `WITH CHECK` predicate needed for its command class. |
 | `SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN` | warning | An RLS policy lacks a column configured in `hints.requiredPolicyColumns` for its table. |
+| `SUPA_RULE_EXPOSED_TABLE_WITHOUT_RLS` | warning | A public table is exposed by API-facing grants without RLS enabled. |
 | `SUPA_SCAN_CONTRACT_ASSERTION` | warning | A TypeScript assertion appears in a file importing generated database contracts. |
 | `SUPA_SCAN_CONTRACT_IMPORT_RENAME` | warning | A generated contract import was renamed locally. |
 | `SUPA_SCAN_CONTRACT_OVERRIDE_TYPES` | warning | A Supabase query response override bypasses the generated database contract. |

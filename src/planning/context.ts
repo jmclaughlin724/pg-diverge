@@ -1,9 +1,15 @@
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { parseRuntimeSource, RuntimeSourceKind, sourceAuto } from "../config/contract.js";
-import type { Diagnostic, MigrationCorpus, SchemaModel, SupaschemaConfig } from "../core.js";
+import type {
+  Diagnostic,
+  MigrationContext,
+  MigrationCorpus,
+  SchemaModel,
+  SupaschemaConfig,
+} from "../core.js";
 import { diagnostic } from "../diagnostics.js";
-import { readMigrationCorpus } from "../migrations/corpus.js";
+import { readMigrationContext } from "../migrations/context.js";
 import { migrationFiles } from "../migrations/files.js";
 import { redactSecrets } from "../redaction.js";
 import { extractSourceModel, filterModelBySchemas } from "../source/extract.js";
@@ -28,6 +34,7 @@ export interface SchemaPlanningContext {
   diagnostics: Diagnostic[];
   from?: SchemaModel;
   fromMs: number;
+  migrationContext?: MigrationContext;
   migrationCorpus?: MigrationCorpus;
   planStart: number;
   to?: SchemaModel;
@@ -103,17 +110,27 @@ export async function buildSchemaPlanningContext(
     options.schema
   );
   const fromMs = performance.now() - extractStart;
+  const migrationContext = await readMigrationContext(
+    options.migrationsDir ?? options.config.migrationsDir,
+    corpusOptions
+  );
   const toStart = performance.now();
   const to = filterModelBySchema(
     await extractSourceModel(options.to, extractOptions),
     options.schema
   );
-  const migrationCorpus = await readMigrationCorpus(
-    options.migrationsDir ?? options.config.migrationsDir,
-    corpusOptions
-  );
+  diagnostics.push(...migrationBaselineDiagnostics(options.from, from, migrationContext));
   const toMs = performance.now() - toStart;
-  return { diagnostics, from, fromMs, migrationCorpus, planStart: performance.now(), to, toMs };
+  return {
+    diagnostics,
+    from,
+    fromMs,
+    migrationContext,
+    migrationCorpus: migrationContext.corpus,
+    planStart: performance.now(),
+    to,
+    toMs,
+  };
 }
 
 export function generationSourceDiagnostics(from: string, to: string): Diagnostic[] {
@@ -165,6 +182,47 @@ function baselineRequiredDiagnostic(migrationsDir: string): Diagnostic {
       hint: `Set sources.from to git:<ref>, dir:<path>, dump:<file>, catalog:<file>, or empty: after reviewing ${migrationsDir}.`,
     }
   );
+}
+
+function migrationBaselineDiagnostics(
+  fromSource: string,
+  from: SchemaModel,
+  migrationContext: MigrationContext
+): Diagnostic[] {
+  if (!fromSource.startsWith("git:")) {
+    return [];
+  }
+  if (migrationContext.files.length === 0) {
+    return [];
+  }
+  const baseline = migrationContext.latestGeneratedBaseline;
+  if (baseline === undefined || migrationContext.unprovenBaselineFiles.length > 0) {
+    return [
+      diagnostic(
+        "SUPA_MIGRATION_BASELINE_UNSUPPORTED",
+        "error",
+        "existing migrations do not expose a generated lineage baseline for git source generation",
+        {
+          file: migrationContext.unprovenBaselineFiles.at(-1) ?? migrationContext.files.at(-1),
+          hint: "Use a source-backed baseline that matches the current migration tree, or regenerate through diff --replace for a generated migration.",
+        }
+      ),
+    ];
+  }
+  if (baseline.fingerprint === from.fingerprint) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_MIGRATION_BASELINE_MISMATCH",
+      "error",
+      "sources.from does not match the current generated migration-tree baseline",
+      {
+        file: baseline.file,
+        hint: `${fromSource} is ${from.fingerprint.slice(0, 12)}..., but ${baseline.source} ends at ${baseline.fingerprint.slice(0, 12)}.... Use the source state that produced the migration baseline, or use diff --replace for generated migration replacement.`,
+      }
+    ),
+  ];
 }
 
 function filterModelBySchema(model: SchemaModel, schemaFilter: string | undefined): SchemaModel {

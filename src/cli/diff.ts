@@ -1,6 +1,6 @@
 import { watch } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import type { SupaschemaConfig } from "../config/schema.js";
 import {
@@ -8,9 +8,12 @@ import {
   pendingInstallPathConfirmationDiagnostic,
 } from "../config/validate.js";
 import type { Diagnostic, MigrationPlan } from "../core.js";
+import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { defaultMigrationName } from "../migrations/files.js";
-import { latestLineage } from "../migrations/lineage.js";
+import { latestLineage, parseLineage } from "../migrations/lineage.js";
+import { migrationFileVersion, migrationsStatus } from "../migrations/status.js";
+import { pathContainsOrEqual } from "../paths.js";
 import { buildSchemaDiffPlan } from "../pipeline/diff.js";
 import { resolveGenerationSourceDefaults } from "../planning/context.js";
 import { redactSecrets } from "../redaction.js";
@@ -34,6 +37,7 @@ type DiffOptions = PlanCommandOptions & {
   migrationsDir?: string;
   name?: string;
   out?: string;
+  replace?: string;
   summary?: boolean;
   watch?: boolean;
   writeHints?: string;
@@ -78,6 +82,10 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
     )
     .option("--name <snake_case>", "migration name (default: derived from the planned operations)")
     .option("--migrations-dir <dir>", "migrations directory (default: config.migrationsDir)")
+    .option(
+      "--replace <file>",
+      "replace an unapplied generated migration in the migrations directory"
+    )
     .option("--schema <names>", "comma-separated schema filter")
     .option("--dry-run", "print the migration and target path without writing")
     .option("--json", "print a JSON payload (fingerprint, operations, sql) instead of raw SQL")
@@ -182,7 +190,27 @@ async function runDiff(
     process.stderr.write("no schema changes\n");
     return;
   }
-  if (!(await validateLineageChain(output.outPath, plan, context, options.checkChain))) {
+  if (!(await validateReplacement(options, plan, config, context))) {
+    return;
+  }
+  if (
+    !(await validateLineageChain(
+      output.outPath,
+      plan,
+      context,
+      options.checkChain && options.replace === undefined
+    ))
+  ) {
+    return;
+  }
+  if (output.shouldRefuseEmptyWrite) {
+    context.printDiagnostics([
+      diagnostic("SUPA_DIFF_EMPTY_PLAN", "error", "refusing to write an empty migration", {
+        file: output.outPath,
+        hint: "No schema operations were planned. Use a read-only output such as --dry-run, --json, or --out stdout to inspect an empty plan.",
+      }),
+    ]);
+    process.exitCode = 2;
     return;
   }
   if (!(await writeOrPrintDiffOutput(options, output, context))) {
@@ -227,6 +255,7 @@ interface DiffOutput {
   outPath: string | undefined;
   payload: string;
   rendered: ReturnType<typeof renderMigrationSplit>;
+  shouldRefuseEmptyWrite: boolean;
   shouldSkipEmptyWrite: boolean;
 }
 
@@ -242,7 +271,8 @@ function renderDiffOutput(
     process.stderr.write(`timing: render ${Math.round(performance.now() - renderStart)}ms\n`);
   }
   const migrationsDir = resolveMigrationsDir(options.migrationsDir, config);
-  const defaultedOut = options.name === undefined && options.out === undefined;
+  const defaultedOut =
+    options.name === undefined && options.out === undefined && options.replace === undefined;
   const outPath = resolveDiffOutPath(options, plan, migrationsDir);
   const concurrentPath =
     rendered.concurrentSql !== undefined && outPath !== undefined
@@ -253,8 +283,24 @@ function renderDiffOutput(
     outPath,
     payload: renderDiffPayload(options, plan, rendered, outPath, concurrentPath),
     rendered,
+    shouldRefuseEmptyWrite: shouldRefuseEmptyWrite(options, plan, outPath),
     shouldSkipEmptyWrite: defaultedOut && plan.operations.length === 0 && !options.json,
   };
+}
+
+function shouldRefuseEmptyWrite(
+  options: WithSources<DiffOptions>,
+  plan: MigrationPlan,
+  outPath: string | undefined
+): boolean {
+  if (plan.operations.length > 0 || outPath === undefined || options.dryRun || options.json) {
+    return false;
+  }
+  return (
+    options.replace !== undefined ||
+    options.name !== undefined ||
+    (options.out !== undefined && options.out !== "stdout")
+  );
 }
 
 function stripSqlExtension(value: string): string {
@@ -288,7 +334,7 @@ async function writeOrPrintDiffOutput(
     printDryRunOutput(output);
     return true;
   }
-  if (!(await writeDiffFiles(output, context))) {
+  if (!(await writeDiffFiles(output, context, options.replace !== undefined))) {
     return false;
   }
   process.stdout.write(
@@ -306,20 +352,34 @@ function printDryRunOutput(output: DiffOutput): void {
   process.stdout.write(output.payload);
 }
 
-async function writeDiffFiles(output: DiffOutput, context: DiffCommandContext): Promise<boolean> {
+async function writeDiffFiles(
+  output: DiffOutput,
+  context: DiffCommandContext,
+  replace: boolean
+): Promise<boolean> {
   if (output.outPath === undefined) {
     return true;
   }
   try {
     await mkdir(dirname(output.outPath), { recursive: true });
-    await writeFile(output.outPath, output.rendered.sql, { flag: "wx" });
+    await writeSqlFile(output.outPath, output.rendered.sql, replace);
     if (output.rendered.concurrentSql !== undefined && output.concurrentPath !== undefined) {
-      await writeFile(output.concurrentPath, output.rendered.concurrentSql, { flag: "wx" });
+      await writeSqlFile(output.concurrentPath, output.rendered.concurrentSql, replace);
     }
     return true;
   } catch (error) {
     return handleDiffWriteError(error, output.outPath, context);
   }
+}
+
+async function writeSqlFile(path: string, sql: string, replace: boolean): Promise<void> {
+  if (!replace) {
+    await writeFile(path, sql, { flag: "wx" });
+    return;
+  }
+  const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tmpPath, sql, { flag: "wx" });
+  await rename(tmpPath, path);
 }
 
 function handleDiffWriteError(
@@ -332,7 +392,7 @@ function handleDiffWriteError(
       diagnostic(
         "SUPA_DIFF_OUTPUT_EXISTS",
         "error",
-        "the output migration file already exists; supaschema never overwrites migrations",
+        "the output migration file already exists; supaschema does not overwrite migrations outside diff --replace",
         {
           file: outPath,
           hint: "Choose a new --out path or --name, or remove the stale file.",
@@ -440,6 +500,9 @@ function resolveDiffOutPath(
   plan: MigrationPlan,
   migrationsDir: string
 ): string | undefined {
+  if (options.replace !== undefined) {
+    return resolve(process.cwd(), options.replace);
+  }
   if (options.out === "stdout") {
     return;
   }
@@ -451,6 +514,155 @@ function resolveDiffOutPath(
     migrationsDir,
     `${migrationTimestamp()}_${options.name ?? defaultMigrationName(plan)}.sql`
   );
+}
+
+async function validateReplacement(
+  options: WithSources<DiffOptions>,
+  plan: MigrationPlan,
+  config: SupaschemaConfig,
+  context: DiffCommandContext
+): Promise<boolean> {
+  if (options.replace === undefined) {
+    return true;
+  }
+  const migrationsDir = resolve(process.cwd(), resolveMigrationsDir(options.migrationsDir, config));
+  const path = resolve(process.cwd(), options.replace);
+  const diagnostics: Diagnostic[] = [];
+  if (!pathContainsOrEqual(migrationsDir, path)) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_DIFF_REPLACE_BASELINE_REQUIRED",
+        "error",
+        "replacement migration must be inside the configured migrations directory",
+        { file: path, hint: `Use a migration under ${migrationsDir}.` }
+      )
+    );
+  }
+  const sql = await readFile(path, "utf8").catch((error: unknown) => {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_DIFF_REPLACE_BASELINE_REQUIRED",
+        "error",
+        error instanceof Error ? error.message : String(error),
+        { file: path, hint: "Pass the generated migration file that should be replaced." }
+      )
+    );
+    return;
+  });
+  const lineage = sql === undefined ? undefined : parseLineage(sql.slice(0, 4096));
+  if (sql !== undefined && lineage === undefined) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_DIFF_REPLACE_HAND_AUTHORED",
+        "error",
+        "diff --replace only replaces supaschema-generated migrations",
+        { file: path, hint: "Create a forward migration for hand-authored SQL." }
+      )
+    );
+  }
+  if (lineage !== undefined && plan.fromFingerprint !== lineage.from) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_DIFF_REPLACE_BASELINE_REQUIRED",
+        "error",
+        "replacement baseline does not match the generated migration lineage",
+        {
+          file: path,
+          hint: `The replacement starts at ${plan.fromFingerprint.slice(0, 12)}..., but ${basename(path)} starts at ${lineage.from.slice(0, 12)}.... Use the source baseline that produced the original migration.`,
+        }
+      )
+    );
+  }
+  if (diagnostics.length === 0) {
+    diagnostics.push(...(await replacementAppliedStateDiagnostics(path, migrationsDir, config)));
+  }
+  if (diagnostics.length > 0) {
+    context.printDiagnostics(diagnostics);
+    if (diagnostics.some((item) => item.severity === "error")) {
+      process.exitCode = 2;
+      return false;
+    }
+  }
+  return true;
+}
+
+async function replacementAppliedStateDiagnostics(
+  path: string,
+  migrationsDir: string,
+  config: SupaschemaConfig
+): Promise<Diagnostic[]> {
+  const version = migrationFileVersion(basename(path));
+  if (version === undefined) {
+    return [
+      diagnostic(
+        "SUPA_DIFF_REPLACE_BASELINE_REQUIRED",
+        "error",
+        "replacement migration filename does not start with a migration version",
+        { file: path }
+      ),
+    ];
+  }
+  const targets = replacementHistoryTargets(config);
+  if (targets.length === 0) {
+    return [
+      diagnostic(
+        "SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED",
+        "warning",
+        "no database migration history target was available for replacement gating",
+        {
+          file: path,
+          hint: "Supaschema can only prove unapplied state from a resolved database history table.",
+        }
+      ),
+    ];
+  }
+  const diagnostics: Diagnostic[] = [];
+  for (const target of targets) {
+    const status = await migrationsStatus({
+      allowMissingHistoryTable: true,
+      databaseUrl: target.databaseUrl,
+      directory: migrationsDir,
+      historyTable: target.historyTable,
+      targetLabel: target.label,
+    });
+    diagnostics.push(...status.diagnostics.filter((item) => item.severity === "error"));
+    if (status.report.applied.some((file) => migrationFileVersion(file) === version)) {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_DIFF_REPLACE_APPLIED",
+          "error",
+          "refusing to replace a migration that is already applied on a configured target",
+          {
+            file: path,
+            hint: `Version ${version} is recorded in ${target.label} (${target.historyTable}). Create a forward migration instead.`,
+          }
+        )
+      );
+    }
+  }
+  return diagnostics;
+}
+
+function replacementHistoryTargets(
+  config: SupaschemaConfig
+): { databaseUrl: string; historyTable: string; label: string }[] {
+  const targets = new Map<string, { databaseUrl: string; historyTable: string; label: string }>();
+  for (const [label, target] of Object.entries(config.sync.targets)) {
+    const configured =
+      target.databaseUrl ?? config.environments[target.environment ?? ""]?.databaseUrl;
+    let databaseUrl: string | undefined;
+    try {
+      databaseUrl = resolveDatabaseUrl(configured);
+    } catch {
+      continue;
+    }
+    if (databaseUrl === undefined) {
+      continue;
+    }
+    const key = `${databaseUrl}\n${target.historyTable}`;
+    targets.set(key, { databaseUrl, historyTable: target.historyTable, label });
+  }
+  return [...targets.values()];
 }
 
 function renderDiffPayload(

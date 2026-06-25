@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config/schema.js";
-import { readMigrationCorpus } from "../src/migrations/corpus.js";
+import { readMigrationContext } from "../src/migrations/context.js";
 import { buildSchemaDiffPlan } from "../src/pipeline/diff.js";
 import { renderMigration } from "../src/render/migration.js";
 
@@ -12,6 +12,7 @@ describe("migration-derived source corpus", () => {
     const root = await migrationCorpusFixture({
       migrationSql: `
         DROP FUNCTION app.legacy_secret(p_ciphertext bytea);
+        UPDATE app.credentials SET encrypted_value = encrypted_value;
         ALTER TABLE app.credentials DROP COLUMN encrypted_value;
       `,
     });
@@ -78,12 +79,35 @@ describe("migration-derived source corpus", () => {
     );
   });
 
+  it("blocks storage transitions when the corpus lacks reviewed data movement intent", async () => {
+    const root = await migrationCorpusFixture({
+      migrationSql: "ALTER TABLE app.credentials DROP COLUMN encrypted_value;",
+    });
+
+    const plan = await buildSchemaDiffPlan({
+      config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
+      cwd: root,
+      from: "dir:from",
+      schema: "app",
+      to: "dir:to",
+    });
+
+    expect(plan.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_PLAN_DATA_TRANSITION_REQUIRED"
+    );
+    expect(
+      plan.operations.find((operation) => operation.key === "table:app.credentials")
+    ).toMatchObject({
+      blocked: true,
+    });
+  });
+
   it("uses the selected migrations directory for source intent", async () => {
     const root = await migrationCorpusFixture({ migrationSql: "" });
     await mkdir(join(root, "selected-migrations"), { recursive: true });
     await writeFile(
       join(root, "selected-migrations", "20260102000000_existing.sql"),
-      "ALTER TABLE app.credentials DROP COLUMN encrypted_value;"
+      "UPDATE app.credentials SET encrypted_value = encrypted_value;\nALTER TABLE app.credentials DROP COLUMN encrypted_value;"
     );
 
     const plan = await buildSchemaDiffPlan({
@@ -129,7 +153,7 @@ describe("migration-derived source corpus", () => {
   it("does not promote migration-corpus parse failures to plan errors", async () => {
     const root = await migrationCorpusFixture({ migrationSql: "CREATE TABLE" });
 
-    const corpus = await readMigrationCorpus("migrations", { cwd: root });
+    const { corpus } = await readMigrationContext("migrations", { cwd: root });
 
     expect(corpus.diagnostics).toEqual([
       expect.objectContaining({
@@ -144,7 +168,7 @@ describe("migration-derived source corpus", () => {
       migrationSql: "DROP ROUTINE app.legacy_secret(bytea);",
     });
 
-    const corpus = await readMigrationCorpus("migrations", { cwd: root });
+    const { corpus } = await readMigrationContext("migrations", { cwd: root });
 
     expect(corpus.destructiveKeys).toContain("function:app.legacy_secret(bytea)");
     expect(corpus.destructiveKeys).toContain("procedure:app.legacy_secret(bytea)");
@@ -165,7 +189,7 @@ describe("migration-derived source corpus", () => {
       `,
     });
 
-    const corpus = await readMigrationCorpus("migrations", { cwd: root });
+    const { corpus } = await readMigrationContext("migrations", { cwd: root });
     const kinds = corpus.operations.map((operation) => operation.kind);
 
     expect(kinds).toEqual(
@@ -181,6 +205,23 @@ describe("migration-derived source corpus", () => {
         "table-column-type",
       ])
     );
+  });
+
+  it("tracks generated lineage as baseline proof and later hand-authored files as unproven", async () => {
+    const root = await migrationCorpusFixture({
+      migrationSql: "-- supaschema: lineage from=abc to=def\nSELECT 1;",
+    });
+    await writeFile(join(root, "migrations", "20260102000000_hand.sql"), "SELECT 2;");
+
+    const context = await readMigrationContext("migrations", { cwd: root });
+
+    expect(context.latestGeneratedBaseline).toMatchObject({
+      fingerprint: "def",
+      version: "20260101000000",
+    });
+    expect(context.unprovenBaselineFiles.map((file) => file.split("/").at(-1))).toEqual([
+      "20260102000000_hand.sql",
+    ]);
   });
 });
 

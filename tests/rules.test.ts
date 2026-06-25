@@ -7,6 +7,7 @@ import { resolveConfig } from "../src/config/schema.js";
 import type { MigrationOperation, MigrationPlan, SchemaModel, SchemaObject } from "../src/core.js";
 import { runRlsSafetyGate } from "../src/pipeline/deploy-safety.js";
 import {
+  exposedTableWithoutRlsRule,
   grantAllPrivilegesRule,
   grantPolicyRule,
   grantToPublicRule,
@@ -197,6 +198,27 @@ describe("RLS audit rules (F20)", () => {
     expect(
       rlsEnabledNoPolicyRule.check({ model: model([catalogRlsObject("users")]) })
     ).toHaveLength(1);
+  });
+
+  it("flags public tables exposed by API-facing grants without RLS", () => {
+    const diagnostics = exposedTableWithoutRlsRule.check({
+      model: model([tableObject("users"), grantObject("authenticated", "public.users")]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_EXPOSED_TABLE_WITHOUT_RLS");
+  });
+
+  it("passes exposed public tables when RLS is enabled", () => {
+    const diagnostics = exposedTableWithoutRlsRule.check({
+      model: model([
+        tableObject("users"),
+        rlsObject("users"),
+        grantObject("authenticated", "public.users"),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(0);
   });
 
   it("flags enabled-table SELECT policies without USING predicates", () => {

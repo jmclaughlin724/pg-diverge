@@ -54,7 +54,7 @@ With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Ou
 
 - a composite safety score (0-100) and letter grade A-F;
 - table-naming hygiene;
-- RLS misconfiguration (enabled without a policy; policy without RLS; policy missing the predicate required for its command);
+- RLS misconfiguration (enabled without a policy; policy without RLS; policy missing the predicate required for its command; public tables exposed by API-facing grants without RLS);
 - over-broad grants (to PUBLIC, ALL privileges, or roles outside `hints.allowedGrantees`).
 
 With `--contract-usage`, it also reports generated import renames, `.overrideTypes()`, `.returns()`, TypeScript assertions in files importing generated contracts, and local constants copied from generated runtime roots such as `Constants`, `Tables`, or `Enums`.

@@ -7,7 +7,7 @@ TypeScript (NodeNext ESM) compiled to `dist/`. Public API surface is `src/index.
 - `cli.ts`, `cli/diff.ts`, `cli/reports.ts`, `cli/tools.ts` — commander command registration and subcommand wiring
 - `workflow/sync.ts`, `workflow/targets.ts`, `workflow/history.ts`, `workflow/report.ts`, `workflow/verify.ts` — sync orchestration, target selection, history reconciliation, reporting, and lineage checks
 - `hooks/config.ts`, `hooks/targets.ts`, `hooks/checks.ts`, `hooks/payload.ts`, `hooks/commands.ts`, `hooks/output.ts` — schema-write hook config, payload parsing, target checks, command execution, and output rendering
-- `migrations/files.ts`, `migrations/lineage.ts`, `migrations/stage.ts`, `migrations/status.ts`, `migrations/runners.ts` — migration file discovery, lineage markers, generated migration staging, history reconciliation, and runner execution
+- `migrations/files.ts`, `migrations/lineage.ts`, `migrations/context.ts`, `migrations/stage.ts`, `migrations/status.ts`, `migrations/runners.ts` — migration file discovery, lineage markers, generated migration context, generated migration staging, history reconciliation, and runner execution
 - `config/schema.ts` / `config/validate.ts` — zod config schema, loading, and path/URL validation
 - `config/contract.ts` — canonical config constants and enum contracts mirrored to `bin/config-contract.mjs`
 - `catalog/query.ts`, `catalog/extract.ts`, `catalog/types.ts`, `catalog/tables.ts`, `catalog/sequences.ts`, `catalog/foreign.ts`, `catalog/grants.ts`, `catalog/comments.ts` — read-only catalog extraction and live database model construction

@@ -148,6 +148,73 @@ describe("cross-schema dependency ordering", () => {
   });
 });
 
+describe("routine dependency proof guards", () => {
+  const fromSql = `
+    CREATE TABLE app.accounts (id bigint PRIMARY KEY);
+    CREATE FUNCTION app.dynamic_lookup()
+    RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      EXECUTE 'select id from app.accounts';
+    END;
+    $$;
+  `;
+  const toSql = `
+    CREATE TABLE app.accounts (id bigint PRIMARY KEY, label text DEFAULT ''::text NOT NULL);
+    CREATE FUNCTION app.dynamic_lookup()
+    RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      EXECUTE 'select id from app.accounts';
+    END;
+    $$;
+  `;
+
+  it("blocks relation changes when dynamic routine dependencies are unhinted", async () => {
+    const plan = await diff(fromSql, toSql);
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(operation?.blocked).toBe(true);
+    expect(plan.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
+    );
+  });
+
+  it("allows relation changes when dynamic routine dependencies are explicit", async () => {
+    const plan = await diff(fromSql, toSql, {
+      hints: {
+        routineDependencies: {
+          "function:app.dynamic_lookup()": ["app.accounts"],
+        },
+      },
+    });
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(operation?.blocked).toBe(false);
+    expect(plan.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
+    );
+  });
+
+  it("blocks relation changes when dynamic routine hints miss the changed relation", async () => {
+    const plan = await diff(fromSql, toSql, {
+      hints: {
+        routineDependencies: {
+          "function:app.dynamic_lookup()": ["app.other"],
+        },
+      },
+    });
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(operation?.blocked).toBe(true);
+    expect(plan.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
+    );
+  });
+});
+
 describe("managed schema policy", () => {
   const managedSql = "CREATE TABLE auth.mirror (id integer);";
 

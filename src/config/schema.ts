@@ -58,6 +58,7 @@ const hintsSchema = z
     allowedGrantees: z.array(z.string()).default([]),
     destructive: z.array(z.string()).default([]),
     requiredPolicyColumns: z.record(z.string(), z.array(z.string())).default({}),
+    routineDependencies: z.record(z.string(), z.array(z.string())).default({}),
     renames: z
       .array(
         z.strictObject({
@@ -67,7 +68,13 @@ const hintsSchema = z
       )
       .default([]),
   })
-  .default({ allowedGrantees: [], destructive: [], requiredPolicyColumns: {}, renames: [] });
+  .default({
+    allowedGrantees: [],
+    destructive: [],
+    requiredPolicyColumns: {},
+    routineDependencies: {},
+    renames: [],
+  });
 
 const schemaFilterSchema = z
   .strictObject({
@@ -295,7 +302,7 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
     const to = sourceProperties.to;
     if (isRecord(from)) {
       from.description =
-        'Default before-state source. For generation, "auto" resolves git:HEAD first, then empty: only for a first migration with no existing migration corpus.';
+        'Default before-state source. For generation, "auto" resolves git:HEAD as a candidate baseline, then empty: only for a first migration with no existing migration corpus. Existing generated migrations must prove the same baseline through lineage.';
       from.examples = [
         "auto",
         "git:HEAD",

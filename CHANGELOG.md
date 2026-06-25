@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.12 (2026-06-25)
+
+### Patch Changes
+
+- Adds parser-backed routine dependency proof for SQL and PL/pgSQL routines, including fail-closed diagnostics for dynamic SQL and exact `hints.routineDependencies` coverage.
+- Uses the existing migration corpus as source intent for storage transitions, so destructive table-shape changes require reviewed DML or `DO` evidence instead of relying on destructive hints alone.
+- Tightens generated migration safety with baseline, replacement, empty-plan, column-dependent rewrite, and Supabase security diagnostics across `diff`, `check`, rules, docs, and packaged agent guidance.
+
 ## 0.3.11 (2026-06-25)
 
 ### Patch Changes

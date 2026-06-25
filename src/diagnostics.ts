@@ -96,15 +96,33 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_CHECK_CREATE_VIEW_REPLACE: "VIEW creation must use OR REPLACE.",
   SUPA_CHECK_DML_REVIEW: "Data-modifying statements need explicit idempotency review.",
   SUPA_CHECK_DROP_IF_EXISTS: "DROP statements must use IF EXISTS.",
+  SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE:
+    "Public-schema functions are executable by PUBLIC unless the migration explicitly revokes EXECUTE.",
   SUPA_CHECK_INSERT_ON_CONFLICT: "INSERT statements in migrations must use ON CONFLICT.",
   SUPA_DIFF_LINEAGE_BROKEN:
     "The plan's from-state does not continue the newest pending supaschema migration; regenerate from the post-migration state.",
   SUPA_DIFF_LINEAGE_DUPLICATE:
     "A pending supaschema migration already covers this exact from/to transition.",
+  SUPA_DIFF_EMPTY_PLAN:
+    "A disk write was explicitly requested, but the schema diff planned no operations.",
   SUPA_DIFF_OUTPUT_EXISTS:
-    "The output migration file already exists; supaschema never overwrites migrations.",
+    "The output migration file already exists; use diff --replace only for an unapplied generated migration replacement.",
+  SUPA_DIFF_REPLACE_APPLIED:
+    "The replacement migration version is already recorded in a configured database history table.",
+  SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED:
+    "No database history target was available, so replacement applied state could not be verified.",
+  SUPA_DIFF_REPLACE_BASELINE_REQUIRED:
+    "The replacement migration's original lineage baseline could not be proven from the selected source.",
+  SUPA_DIFF_REPLACE_HAND_AUTHORED:
+    "diff --replace only accepts supaschema-generated migrations with lineage metadata.",
+  SUPA_MIGRATION_BASELINE_MISMATCH:
+    "The resolved before-state source does not match the generated migration-tree baseline.",
+  SUPA_MIGRATION_BASELINE_UNSUPPORTED:
+    "Existing migrations cannot prove a generated-lineage baseline for source-backed generation.",
   SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION:
     "An enum value added in this migration is used later in the same file; transactional runners fail.",
+  SUPA_CHECK_FORWARD_REFERENCE_ORDER:
+    "A migration statement references an object or column before the migration creates it.",
   SUPA_CHECK_NONTRANSACTIONAL_INDEX:
     "CREATE INDEX CONCURRENTLY cannot run inside a transaction block.",
   SUPA_CHECK_NONTRANSACTIONAL_REFRESH:
@@ -183,6 +201,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "An RLS policy uses Supabase auth.role(); target roles with the policy TO clause instead.",
   SUPA_RULE_POLICY_AUTH_UID_UNWRAPPED:
     "An RLS policy calls auth.uid() directly instead of wrapping it in a SELECT initPlan.",
+  SUPA_RULE_EXPOSED_TABLE_WITHOUT_RLS:
+    "An exposed-schema table grants access without an enabled RLS posture.",
   SUPA_SCAN_CONTRACT_ASSERTION:
     "A TypeScript assertion appears in a file importing generated database contracts.",
   SUPA_SCAN_CONTRACT_IMPORT_RENAME: "A generated contract import was renamed locally.",
@@ -207,7 +227,13 @@ export const diagnosticCatalog: Record<string, string> = {
     "A column type change renders an identity USING cast; PostgreSQL rejects it unless an assignment cast exists. Review and replace the USING expression for non-trivial conversions.",
   SUPA_PLAN_CONCURRENT_INDEX_UNSUPPORTED:
     "CREATE INDEX CONCURRENTLY cannot run inside the transaction the migration runner uses.",
+  SUPA_PLAN_DATA_TRANSITION_REQUIRED:
+    "A storage-shape transition needs reviewed migration-corpus data movement intent.",
+  SUPA_PLAN_COLUMN_DEPENDENT_REWRITE_REQUIRED:
+    "Column drops or type changes require dependent objects to be removed or rewritten before the ALTER.",
   SUPA_PLAN_DEPENDENCY_CYCLE: "Dependency ordering found a reference cycle between objects.",
+  SUPA_PLAN_DEPENDENT_ROUTINE_REORDERED:
+    "A dependent routine, view, policy, or trigger was ordered before a destructive column ALTER.",
   SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED:
     "Destructive change requires the object key in hints.destructive.",
   SUPA_PLAN_EMPTY_WITH_DRIFT:
@@ -223,6 +249,14 @@ export const diagnosticCatalog: Record<string, string> = {
     "View replacement drops, renames, or reorders output columns; CREATE OR REPLACE VIEW cannot apply it.",
   SUPA_PLAN_VIEW_REPLACE_VERIFY_REQUIRED:
     "CREATE OR REPLACE VIEW only allows compatible column shapes; verify before release.",
+  SUPA_ROUTINE_BODY_DEPENDENCY_UNKNOWN:
+    "A routine body uses a language or form whose dependencies cannot be fully proven statically.",
+  SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY:
+    "A PL/pgSQL routine body was only partially parsed for dependency extraction.",
+  SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED:
+    "A routine with unproven dependencies requires explicit dependency hints before relation or type changes.",
+  SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN:
+    "A PL/pgSQL routine contains dynamic SQL whose relation and column dependencies cannot be proven statically.",
   SUPA_SELFCHECK_HASH_MISMATCH:
     "A catalog object hashes differently after its rendered SQL is re-extracted; cross-lane diffs would report a false change.",
   SUPA_SELFCHECK_MISSING: "A catalog object disappeared when its rendered SQL was re-extracted.",

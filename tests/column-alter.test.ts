@@ -210,6 +210,135 @@ describe("column-level alter lane", () => {
     expect(sql).not.toContain('ADD COLUMN IF NOT EXISTS "age"');
   });
 
+  it("orders routines using added columns after the table alter", async () => {
+    const plan = await diff(
+      "CREATE TABLE app.accounts (id bigint PRIMARY KEY);",
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY, secret_id uuid);
+        CREATE FUNCTION app.read_secret()
+        RETURNS uuid
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          RETURN (SELECT secret_id FROM app.accounts LIMIT 1);
+        END;
+        $$;
+      `
+    );
+    const order = plan.operations.map((operation) => operation.key);
+
+    expect(order.indexOf("table:app.accounts")).toBeLessThan(
+      order.indexOf("function:app.read_secret()")
+    );
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  });
+
+  it("blocks destructive column alters when an existing dependent still references the column", async () => {
+    const plan = await diff(
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY, secret_id uuid);
+        CREATE FUNCTION app.read_secret()
+        RETURNS uuid
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          RETURN (SELECT secret_id FROM app.accounts LIMIT 1);
+        END;
+        $$;
+      `,
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY);
+        CREATE FUNCTION app.read_secret()
+        RETURNS uuid
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          RETURN (SELECT secret_id FROM app.accounts LIMIT 1);
+        END;
+        $$;
+      `,
+      hinted
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(operation?.blocked).toBe(true);
+    expect(operation?.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_PLAN_COLUMN_DEPENDENT_REWRITE_REQUIRED"
+    );
+  });
+
+  it("orders dependent routine replacements before destructive column alters", async () => {
+    const plan = await diff(
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY, secret_id uuid);
+        CREATE FUNCTION app.read_secret()
+        RETURNS uuid
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          RETURN (SELECT secret_id FROM app.accounts LIMIT 1);
+        END;
+        $$;
+      `,
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY);
+        CREATE FUNCTION app.read_secret()
+        RETURNS uuid
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          RETURN (SELECT id::uuid FROM app.accounts LIMIT 1);
+        END;
+        $$;
+      `,
+      hinted
+    );
+    const order = plan.operations.map((operation) => operation.key);
+    const routine = plan.operations.find((item) => item.key === "function:app.read_secret()");
+    const table = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(table?.blocked).toBe(false);
+    expect(routine?.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_PLAN_DEPENDENT_ROUTINE_REORDERED"
+    );
+    expect(order.indexOf("function:app.read_secret()")).toBeLessThan(
+      order.indexOf("table:app.accounts")
+    );
+  });
+
+  it("blocks destructive column alters when view, policy, or trigger dependents still reference the column", async () => {
+    const fromSql = `
+      CREATE TABLE app.accounts (id bigint PRIMARY KEY, secret_id uuid);
+      CREATE VIEW app.account_secrets AS SELECT id, secret_id FROM app.accounts;
+      ALTER TABLE app.accounts ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY accounts_secret ON app.accounts FOR SELECT USING (secret_id IS NOT NULL);
+      CREATE FUNCTION app.audit_accounts()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        RETURN NEW;
+      END;
+      $$;
+      CREATE TRIGGER accounts_secret_touch
+      AFTER UPDATE ON app.accounts
+      FOR EACH ROW
+      WHEN (OLD.secret_id IS DISTINCT FROM NEW.secret_id)
+      EXECUTE FUNCTION app.audit_accounts();
+    `;
+    const plan = await diff(
+      fromSql,
+      fromSql.replace("id bigint PRIMARY KEY, secret_id uuid", "id bigint PRIMARY KEY"),
+      hinted
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(operation?.blocked).toBe(true);
+    expect(operation?.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_PLAN_COLUMN_DEPENDENT_REWRITE_REQUIRED"
+    );
+  });
+
   it("uses amended generated metadata when adding a column", async () => {
     const plan = await diff(
       "CREATE TABLE app.people (first_name text);",
