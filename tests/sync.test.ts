@@ -1451,7 +1451,9 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     const url = new URL(requiredDatabaseUrl());
     url.pathname = `/${db}`;
     const previousApproval = process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED;
+    const previousDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
     process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED = "1";
+    process.env.SUPASCHEMA_DATABASE_URL = requiredDatabaseUrl();
     try {
       const root = await mkdtemp(join(tmpdir(), "supa-sync-remote-"));
       await writeFile(
@@ -1507,6 +1509,11 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         delete process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED;
       } else {
         process.env.SUPASCHEMA_REMOTE_SYNC_APPROVED = previousApproval;
+      }
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = previousDatabaseUrl;
       }
       await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
       await admin.end();

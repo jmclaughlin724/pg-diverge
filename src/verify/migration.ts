@@ -109,8 +109,23 @@ function filterIgnoredObjects(model: SchemaModel, ignoredObjects: ObjectRef[]): 
   if (ignoredObjects.length === 0) {
     return model;
   }
-  const objects = model.objects.filter(
+  const withoutIgnoredObjects = model.objects.filter(
     (object) => !ignoredObjects.some((ignored) => objectMatchesIgnoredRef(object, ignored))
+  );
+  const ignoredSchemas = new Set(
+    ignoredObjects
+      .map((object) => object.schema)
+      .filter((schema): schema is string => schema !== undefined)
+  );
+  const objects = withoutIgnoredObjects.filter(
+    (object) =>
+      !(
+        object.ref.kind === "schema" &&
+        ignoredSchemas.has(object.ref.name) &&
+        !withoutIgnoredObjects.some(
+          (candidate) => candidate !== object && objectSchemaName(candidate.ref) === object.ref.name
+        )
+      )
   );
   if (objects.length === model.objects.length) {
     return model;
@@ -143,6 +158,13 @@ function sameObjectRef(left: ObjectRef, right: ObjectRef): boolean {
     left.signature === right.signature &&
     left.table === right.table
   );
+}
+
+function objectSchemaName(ref: ObjectRef): string {
+  if (ref.kind === "schema") {
+    return ref.name;
+  }
+  return ref.schema ?? "public";
 }
 
 async function migrationSqlByFile(migrationPaths: string[]): Promise<Map<string, string>> {
