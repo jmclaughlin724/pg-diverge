@@ -50,7 +50,7 @@
     x="36.0"
     y="84.0"
   >
-    Median full-workflow latency: migration + regenerated types in one
+    Median full-workflow latency: sync migration + regenerated contracts
   </text>
   <text
     fill="#D8B49C"
@@ -60,7 +60,7 @@
     x="36.0"
     y="102.0"
   >
-    command vs db diff + apply + gen types · F1 vs ground truth ·
+    vs db diff + apply + gen types · F1 vs ground truth ·
   </text>
   <text
     fill="#D8B49C"

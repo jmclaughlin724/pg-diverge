@@ -269,7 +269,7 @@ function zodCompositeFieldExpr(
 ): { defer: boolean; expression: string } {
   const resolved = resolveColumnType(shapes, schemaName, sqlType);
   return {
-    defer: resolved.kind === "composite",
+    defer: resolved.kind === "composite" || resolved.kind === "relation",
     expression: zodExprFromResolved(resolved, enumIdents, compositeIdents),
   };
 }
@@ -413,6 +413,8 @@ function zodExprFromResolved(
     mapped =
       compositeIdents.get(`${resolved.compositeRef.schema}.${resolved.compositeRef.name}`) ??
       "z.unknown()";
+  } else if (resolved.kind === "relation" && resolved.relationRef) {
+    mapped = `Tables[${JSON.stringify(resolved.relationRef.schema)}][${JSON.stringify(resolved.relationRef.name)}].Row`;
   } else if (resolved.kind === "json") {
     mapped = "jsonSchema";
   } else if (resolved.kind === "unknown") {

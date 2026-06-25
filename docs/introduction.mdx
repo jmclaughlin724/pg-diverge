@@ -30,7 +30,7 @@ supaschema reads PostgreSQL schema intent from SQL files and existing migrations
   />
 </Frame>
 
-You edit schema files. `supaschema sync` renders the migration, checks replay safety, regenerates contracts, stages generated migrations when Git is available, verifies the pending migration set against a disposable database, and runs the guarded apply or dry-run lane for one configured target. `diff`, `check`, `types`, `stage`, and `apply` remain available for focused operation.
+You edit schema files. `supaschema sync` renders the migration, checks replay safety, regenerates contracts, stages generated migrations when Git is available, runs source-model safety gates, and runs the guarded apply or dry-run lane for one configured target. `diff`, `check`, `types`, `stage`, and `apply` remain available for focused operation.
 
 For detailed performance, accuracy, and replay-safety results, see [Benchmarks](/benchmarks).
 

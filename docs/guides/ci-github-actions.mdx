@@ -64,6 +64,15 @@ jobs:
 
 The scan step writes the job summary, creates a `supaschema scan` check run on the pull-request head SHA, and updates one PR comment with the score and top issues. It requires `checks: write` for the check run and `issues: write` because GitHub stores pull-request timeline comments through the Issues comments API.
 
+To include generated-contract usage diagnostics in that same scan report, pass the source directory explicitly:
+
+```yaml
+- name: Scan schema and generated-contract usage
+  uses: jmclaughlin724/supaschema@<tag>
+  with:
+    argv: '["scan","--contract-usage","src","--reporter","json"]'
+```
+
 ## Protected sync
 
 Use the same action for a protected deploy job when `supaschema.config.json` defines `workflow.migration_sync`, `sync.targets`, generated output policies, and deploy safety gates. The action passes argv through unchanged; it does not set remote approval for you.

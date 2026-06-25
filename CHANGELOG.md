@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.10 (2026-06-24)
+
+### Patch Changes
+
+- Fixes configured local Supabase CLI apply targets so they resolve the local `supabase/config.toml` database URL for history, safety, verification, and reconciliation instead of falling back to no-target disk-only status.
+- Changes default type-safety and RLS-safety apply policies to `report_only`, keeping safety diagnostics visible without blocking normal apply unless a project explicitly opts into `deploy_blocking`.
+- Fixes `verify` model materialization so disposable databases apply schema objects through the planner's dependency ordering rather than raw schema-file order.
+- Improves AST reference collection and migration rendering for composite row-type dependencies, partition parents, and owned sequences so generated schema diffs replay in dependency order.
+
 ## 0.3.9 (2026-06-24)
 
 ### Patch Changes

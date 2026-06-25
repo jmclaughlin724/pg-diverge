@@ -42,12 +42,12 @@ The gap widens with scale. At 2,500 tables (~17,500 objects) the engines cross t
 
 ## Full workflow
 
-The diff is only half the loop. Once type outputs exist, getting a migration **and** refreshed types is one `supaschema diff` — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
+The diff is only half the loop. Getting a migration **and** refreshed TypeScript/Zod contracts is one `supaschema sync` dry-run workflow — against the CLI it takes three commands (`db diff`, apply, `gen types`) and a database that has already caught up. End to end at 1,000 tables:
 
 <Frame>
   <img
     src="/images/benchmarks/head-to-head-workflow-xl.svg"
-    alt="full workflow vs diff engines at 1,000 tables: supaschema migration plus refreshed type outputs in one command versus db diff, apply, and gen types per engine"
+    alt="full workflow vs diff engines at 1,000 tables: supaschema sync migration plus refreshed contract outputs in one command versus db diff, apply, and gen types per engine"
   />
 </Frame>
 

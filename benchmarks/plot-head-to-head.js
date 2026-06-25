@@ -65,7 +65,7 @@ function chartOptions() {
       ...readableHeadToHeadOptions(),
       latencyHeader: "median workflow",
       subtitle:
-        "Median full-workflow latency: migration + regenerated types in one command vs db diff + apply + gen types · F1 vs ground truth · replay-safe = migration applies twice",
+        "Median full-workflow latency: sync migration + regenerated contracts vs db diff + apply + gen types · F1 vs ground truth · replay-safe = migration applies twice",
       title: "full workflow vs diff engines",
     };
   }

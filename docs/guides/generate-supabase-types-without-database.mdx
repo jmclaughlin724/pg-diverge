@@ -38,7 +38,7 @@ npx supaschema types --from dir:database/schemas
 npx supaschema types --out src/lib/database.types.ts
 ```
 
-`supaschema diff` refreshes configured TypeScript and Zod outputs after writing a migration, so the schema, migration, and app types can be reviewed together.
+`supaschema sync` refreshes configured TypeScript and Zod outputs as part of the full workflow. For the focused lane, run `supaschema types` after `supaschema diff` so schema, migration, and app types can be reviewed together.
 
 Use the generated helpers as the application contract:
 

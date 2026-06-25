@@ -11,7 +11,7 @@ The benchmark harness uses `SUPASCHEMA_COMPARE_SEED_ROLE=postgres` with `supabas
 
 ## Archived Reference Results (as of 2026-06-12)
 
-Single sequential reference run, 2026-06-12 (`BENCH_ALL_SEQUENTIAL=1 bash benchmarks/tools/bench-all.sh`), with diff-output accuracy scoring active: Apple Silicon (darwin arm64), Node 24, PostgreSQL 17.6 (Supabase local), Supabase CLI 2.106.0, supaschema 0.1.0 with deparse normalization and type generation in the default diff path. Fixture scale: `additive`/`functions-policies` approximately 1 table; `realistic` = 50 tables (~350 objects); `xl` = 1,000 tables (~7,000 objects); `xxl` = 2,500 tables (~17,500 objects). 3 iterations per cell, single-iteration at `xxl`. Regenerate with `benchmarks/tools/bench-all.sh` (parallel by default; `BENCH_ALL_SEQUENTIAL=1` for publication-grade latency medians free of cross-fixture CPU contention); per-fixture rows live in `<fixture>-results.json` and the generated `summary.md`. All durations are seconds.
+Single sequential reference run, 2026-06-12 (`BENCH_ALL_SEQUENTIAL=1 bash benchmarks/tools/bench-all.sh`), with diff-output accuracy scoring active: Apple Silicon (darwin arm64), Node 24, PostgreSQL 17.6 (Supabase local), Supabase CLI 2.106.0, supaschema 0.1.0 with deparse normalization and generated contracts measured in the workflow lane. Fixture scale: `additive`/`functions-policies` approximately 1 table; `realistic` = 50 tables (~350 objects); `xl` = 1,000 tables (~7,000 objects); `xxl` = 2,500 tables (~17,500 objects). 3 iterations per cell, single-iteration at `xxl`. Regenerate with `benchmarks/tools/bench-all.sh` (parallel by default; `BENCH_ALL_SEQUENTIAL=1` for publication-grade latency medians free of cross-fixture CPU contention); per-fixture rows live in `<fixture>-results.json` and the generated `summary.md`. All durations are seconds.
 
 | Fixture | supaschema (file / live-db) | Supabase engines | Replay-safe (applies twice) | Output F1 (supaschema / engines) |
 | --- | --- | --- | --- | --- |
@@ -23,7 +23,7 @@ Single sequential reference run, 2026-06-12 (`BENCH_ALL_SEQUENTIAL=1 bash benchm
 
 The full-workflow lanes from the same run measure the real-world step of producing the migration and regenerated types:
 
-| Fixture | `supaschema-workflow` (migration + TS types + Zod) | `supabase-*-workflow` (db diff + apply + gen types) |
+| Fixture | `supaschema-workflow` (sync migration + TS types + Zod) | `supabase-*-workflow` (db diff + apply + gen types) |
 | --- | --- | --- |
 | `additive` | 0.24s | 5.8-8.1s |
 | `functions-policies` | 0.23s | 5.7-6.2s |

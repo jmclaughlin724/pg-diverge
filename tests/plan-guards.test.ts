@@ -96,6 +96,56 @@ describe("cross-schema dependency ordering", () => {
       order.indexOf("view:reporting.account_rollup")
     );
   });
+
+  it("creates referenced key constraints before dependent foreign keys", async () => {
+    const plan = await diff(
+      "",
+      [
+        "CREATE SCHEMA commissions;",
+        "CREATE TABLE commissions.commission_plan_versions (id uuid PRIMARY KEY, template_id uuid REFERENCES commissions.commission_templates(id));",
+        "CREATE TABLE commissions.commission_templates (id uuid PRIMARY KEY);",
+      ].join("\n")
+    );
+    const order = plan.operations.map((operation) => operation.key);
+
+    expect(order.indexOf("table:commissions.commission_templates")).toBeLessThan(
+      order.indexOf("constraint:commissions.commission_templates_pkey:commission_templates")
+    );
+    expect(
+      order.indexOf("constraint:commissions.commission_templates_pkey:commission_templates")
+    ).toBeLessThan(
+      order.indexOf(
+        "constraint:commissions.commission_plan_versions_template_id_fkey:commission_plan_versions"
+      )
+    );
+  });
+
+  it("adds table columns before constraints that reference those columns", async () => {
+    const plan = await diff(
+      [
+        "CREATE SCHEMA credentials;",
+        "CREATE TABLE credentials.service_operator_oauth_credentials (id uuid PRIMARY KEY);",
+      ].join("\n"),
+      [
+        "CREATE SCHEMA credentials;",
+        [
+          "CREATE TABLE credentials.service_operator_oauth_credentials (",
+          "id uuid PRIMARY KEY,",
+          "secret_id text,",
+          "token_hash text,",
+          "CONSTRAINT credentials_secret_xor_hash CHECK ((secret_id IS NULL) <> (token_hash IS NULL))",
+          ");",
+        ].join("\n"),
+      ].join("\n")
+    );
+    const order = plan.operations.map((operation) => operation.key);
+
+    expect(order.indexOf("table:credentials.service_operator_oauth_credentials")).toBeLessThan(
+      order.indexOf(
+        "constraint:credentials.credentials_secret_xor_hash:service_operator_oauth_credentials"
+      )
+    );
+  });
 });
 
 describe("managed schema policy", () => {

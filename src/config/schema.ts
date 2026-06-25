@@ -371,12 +371,12 @@ function enrichWorkflowJsonSchema(workflowProperties: Record<string, unknown>): 
   setNestedDescription(
     workflowProperties,
     "type_generation",
-    "Controls whether diff refreshes the configured TypeScript output after it writes a migration."
+    "Controls whether sync refreshes the configured TypeScript output during the full workflow."
   );
   setNestedDescription(
     workflowProperties,
     "zod_generation",
-    "Controls whether diff refreshes the configured Zod validator output after it writes a migration."
+    "Controls whether sync refreshes the configured Zod validator output during the full workflow."
   );
   setNestedDescription(
     workflowProperties,

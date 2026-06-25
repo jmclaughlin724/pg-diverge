@@ -54,6 +54,7 @@ export function renderMigration(plan: MigrationPlan, options: RenderOptions = {}
   for (const operation of plan.operations) {
     chunks.push(renderOperationChunk(operation));
   }
+  chunks.push(...renderDeferredSequenceOwnership(plan.operations));
   return `${chunks.filter(Boolean).join("\n\n").trim()}\n`;
 }
 
@@ -396,7 +397,6 @@ function renderCreate(object: SchemaObject): string {
   switch (object.ref.kind) {
     case "schema":
     case "extension":
-    case "sequence":
     case "foreign-server":
     case "foreign-table":
     case "index":
@@ -404,6 +404,8 @@ function renderCreate(object: SchemaObject): string {
     case "procedure":
     case "view":
       return spliceGuard(object);
+    case "sequence":
+      return renderCreateSequence(object);
     case "table":
       return renderCreateTable(object);
     case "function":
@@ -427,6 +429,68 @@ function renderCreate(object: SchemaObject): string {
     default:
       throw new Error(`unsupported create operation for ${object.ref.kind}`);
   }
+}
+
+function renderDeferredSequenceOwnership(operations: MigrationOperation[]): string[] {
+  return operations
+    .filter((operation) => !operation.blocked && operation.kind !== "drop")
+    .map((operation) => operation.after)
+    .filter((object): object is SchemaObject => object?.ref.kind === "sequence")
+    .map((object) => sequenceOwnershipSql(object))
+    .filter((sql): sql is string => sql !== undefined);
+}
+
+function renderCreateSequence(object: SchemaObject): string {
+  const shape = recordFromObject(object.metadata.canonicalShape ?? {});
+  if (typeof shape.ownedBy !== "string") {
+    return spliceGuard(object);
+  }
+  return spliceGuard(object, sequenceCreateSql(object, shape));
+}
+
+function sequenceCreateSql(object: SchemaObject, shape: Record<string, unknown>): string {
+  const clauses = [`CREATE SEQUENCE ${qualifiedRef(object.ref)}`];
+  const dataType = stringShapeValue(shape.as);
+  if (dataType !== undefined) {
+    clauses.push(`AS ${dataType}`);
+  }
+  const sequenceClauses: [string, string][] = [
+    ["start", "START"],
+    ["increment", "INCREMENT"],
+    ["minvalue", "MINVALUE"],
+    ["maxvalue", "MAXVALUE"],
+    ["cache", "CACHE"],
+  ];
+  for (const [key, keyword] of sequenceClauses) {
+    const value = stringShapeValue(shape[key]);
+    if (value !== undefined) {
+      clauses.push(`${keyword} ${value}`);
+    }
+  }
+  if (shape.cycle === true) {
+    clauses.push("CYCLE");
+  }
+  return clauses.join(" ");
+}
+
+function sequenceOwnershipSql(object: SchemaObject): string | undefined {
+  const shape = recordFromObject(object.metadata.canonicalShape ?? {});
+  const ownedBy = stringShapeValue(shape.ownedBy);
+  if (ownedBy === undefined) {
+    return;
+  }
+  const parts = ownedBy.split(".");
+  const column = parts.pop();
+  const table = parts.pop();
+  const schema = parts.length === 0 ? "public" : parts.join(".");
+  if (!(column && table)) {
+    return;
+  }
+  return `ALTER SEQUENCE ${qualifiedRef(object.ref)} OWNED BY ${quoteIdent(schema)}.${quoteIdent(table)}.${quoteIdent(column)};`;
+}
+
+function stringShapeValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 const guardInserts: Record<"ifNotExists" | "orReplace", string> = {

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
@@ -57,6 +57,77 @@ describe("concurrent index split rendering", () => {
 });
 
 describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
+  it("materializes schema models in dependency order instead of file order", {
+    timeout: 60_000,
+  }, async () => {
+    if (!databaseUrl) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), "supa-verify-model-order-"));
+    const fromDir = join(directory, "from");
+    const toDir = join(directory, "to");
+    await mkdir(fromDir, { recursive: true });
+    await mkdir(toDir, { recursive: true });
+    const files: [string, string][] = [
+      [
+        "constraints.sql",
+        "ALTER TABLE ONLY app.items ADD CONSTRAINT items_id_check CHECK (id > 0);\n",
+      ],
+      ["schema.sql", "CREATE SCHEMA app;\n"],
+      ["tables.sql", "CREATE TABLE app.items (id integer NOT NULL);\n"],
+    ];
+    for (const [file, sql] of files) {
+      await writeFile(join(fromDir, file), sql);
+      await writeFile(join(toDir, file), sql);
+    }
+    const migrationPath = join(directory, "migration.sql");
+    await writeFile(migrationPath, "CREATE SCHEMA IF NOT EXISTS app;\n");
+
+    const diagnostics = await verifyMigration({
+      config: { managedSchemas: [] },
+      databaseUrl,
+      from: `dir:${fromDir}`,
+      migrationPath,
+      to: `dir:${toDir}`,
+    });
+
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  });
+
+  it("materializes composite types after view row-type dependencies", {
+    timeout: 60_000,
+  }, async () => {
+    if (!databaseUrl) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), "supa-verify-composite-view-"));
+    const fromDir = join(directory, "from");
+    const toDir = join(directory, "to");
+    await mkdir(fromDir, { recursive: true });
+    await mkdir(toDir, { recursive: true });
+    const files: [string, string][] = [
+      ["schema.sql", "CREATE SCHEMA app;\n"],
+      ["types.sql", "CREATE TYPE app.item_group AS (items app.v_items[]);\n"],
+      ["views.sql", "CREATE VIEW app.v_items AS SELECT 1::integer AS id;\n"],
+    ];
+    for (const [file, sql] of files) {
+      await writeFile(join(fromDir, file), sql);
+      await writeFile(join(toDir, file), sql);
+    }
+    const migrationPath = join(directory, "migration.sql");
+    await writeFile(migrationPath, "CREATE SCHEMA IF NOT EXISTS app;\n");
+
+    const diagnostics = await verifyMigration({
+      config: { managedSchemas: [] },
+      databaseUrl,
+      from: `dir:${fromDir}`,
+      migrationPath,
+      to: `dir:${toDir}`,
+    });
+
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  });
+
   it("fails without --ensure-roles and passes with it for grants to missing roles", {
     timeout: 60_000,
   }, async () => {

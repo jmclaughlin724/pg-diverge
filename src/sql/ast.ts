@@ -221,7 +221,7 @@ export function collectReferences(value: unknown, into: Set<string> = new Set())
   if (!record) {
     return into;
   }
-  const rangeVar = asRecord(record.RangeVar);
+  const rangeVar = asRecord(record.RangeVar) ?? rawRangeVarRecord(record);
   if (rangeVar) {
     const name = rangeVarName(rangeVar);
     if (name) {
@@ -235,7 +235,8 @@ export function collectReferences(value: unknown, into: Set<string> = new Set())
       into.add(`${name.schema}.${name.name}`);
     }
   }
-  const typeName = asRecord(record.TypeName);
+  const typeName =
+    asRecord(record.TypeName) ?? asRecord(record.typeName) ?? rawTypeNameRecord(record);
   if (typeName) {
     const name = qualifiedNameWhenQualified(typeName.names);
     if (name && name.schema !== "pg_catalog") {
@@ -248,6 +249,23 @@ export function collectReferences(value: unknown, into: Set<string> = new Set())
     }
   }
   return into;
+}
+
+function rawTypeNameRecord(record: AstNode): AstNode | undefined {
+  if (record.names === undefined || !("typemod" in record || "typmods" in record)) {
+    return;
+  }
+  return record;
+}
+
+function rawRangeVarRecord(record: AstNode): AstNode | undefined {
+  if (
+    typeof record.relname !== "string" ||
+    !("schemaname" in record || "inh" in record || "relpersistence" in record)
+  ) {
+    return;
+  }
+  return record;
 }
 
 export function collectColumnReferences(

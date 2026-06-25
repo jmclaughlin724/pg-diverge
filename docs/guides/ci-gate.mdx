@@ -35,10 +35,13 @@ Compose required checks from the CLI:
 
 ```bash
 npx supaschema scan --reporter json
+npx supaschema scan --contract-usage src --reporter json
 npx supaschema diff --fail-on-diff --quiet
 npx supaschema check --reporter github
 npx supaschema verify
 ```
+
+Use `--contract-usage <dir>` when the repository wants the scan report to include generated-contract import renames, query response overrides, assertions, and local copies of generated runtime roots.
 
 Use SARIF when the organization wants findings in GitHub code scanning:
 

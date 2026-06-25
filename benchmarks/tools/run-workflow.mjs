@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { copyFile, readdir, readFile, writeFile } from "node:fs/promises";
 import { applyMigrationSql } from "./compare-db.mjs";
 
 const specPath = process.argv[2];
@@ -14,6 +14,19 @@ const diff = await run(spec.diff);
 if (diff.exitCode !== 0) {
   process.stderr.write(`workflow diff failed (exit ${diff.exitCode})\n`);
   process.exit(diff.exitCode || 1);
+}
+
+if (spec.generatedMigrationDir) {
+  const migrations = (await readdir(spec.generatedMigrationDir))
+    .filter((entry) => entry.endsWith(".sql"))
+    .sort();
+  if (migrations.length !== 1) {
+    process.stderr.write(
+      `workflow generated ${migrations.length} migration files; expected exactly one\n`
+    );
+    process.exit(1);
+  }
+  await copyFile(`${spec.generatedMigrationDir}/${migrations[0]}`, spec.migrationPath);
 }
 
 if (spec.applyDatabaseUrl) {

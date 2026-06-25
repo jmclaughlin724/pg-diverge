@@ -57,7 +57,7 @@ Adapters:
 - `supaschema-file` — `diff` between two SQL dumps (diff only)
 - `supaschema-db` — `diff` between two live catalogs (diff only)
 - `supabase-default` / `supabase-migra` / `supabase-pg-delta` / `supabase-pg-schema` / `supabase-pgadmin` — `supabase db diff` per engine (diff only)
-- `supaschema-workflow` — the full real-world step measured as one command: `diff` writes the migration and refreshes seeded `database.types.ts` + `database.zod.ts` (TypeScript types **and** runtime Zod validators) in the same invocation
+- `supaschema-workflow` — the full real-world step measured as one command: `sync` writes the migration and refreshes `database.types.ts` + `database.zod.ts` (TypeScript types **and** runtime Zod validators) in the same invocation
 - `supabase-*-workflow` — the same real-world step for each Supabase engine: `db diff`, apply the generated migration to the database (types cannot regenerate from unapplied SQL), then `supabase gen types --lang=typescript --db-url` (TypeScript only; no validators)
 
 Both workflow lanes are spawned through the same `tools/run-workflow.mjs` wrapper, so per-process overhead is identical on both sides. Workflow rows are charted separately (the `head-to-head-workflow-xl.svg` chart, via `plot-head-to-head.js --workflow`) and excluded from the diff-only charts; never average the two lanes together. The captured output of a workflow run is still the generated migration, so verification and accuracy scoring apply to workflow rows unchanged.

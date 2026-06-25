@@ -8,7 +8,7 @@ This directory implements the product hook commands used by editor and agent wor
 
 - `config.ts` resolves schema path state and automatic sync plans.
 - `targets.ts` identifies changed hook targets.
-- `checks.ts` runs configured check and verify gates.
+- `checks.ts` runs configured migration check gates and verify suggestions.
 - `payload.ts` parses hook payloads.
 - `commands.ts` resolves and runs the supaschema binary.
 - `output.ts` renders agent/editor hook responses.

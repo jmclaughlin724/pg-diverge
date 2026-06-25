@@ -23,6 +23,7 @@ import {
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { groupMigrationUnits, type MigrationUnit } from "../migrations/runners.js";
 import { planSchemaDiff } from "../planner/schema.js";
+import { renderMigration } from "../render/migration.js";
 import { extractSourceModel } from "../source/extract.js";
 import { asRecord, astStatements, roleSpecName } from "../sql/ast.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
@@ -475,11 +476,19 @@ function fingerprintMismatchHint(migration: SchemaModel, target: SchemaModel): s
 }
 
 async function applyModel(databaseUrl: string, model: SchemaModel): Promise<void> {
-  const sql = model.objects
-    .sort((left, right) => left.ordinal - right.ordinal)
-    .map((object) => object.sql)
-    .join(";\n");
+  const sql = renderMigration(planSchemaDiff(emptySchemaModel(model.source), model), {
+    includeHeader: false,
+  });
   await applySql(databaseUrl, sql, "per-statement");
+}
+
+function emptySchemaModel(source: string): SchemaModel {
+  return {
+    diagnostics: [],
+    fingerprint: "empty",
+    objects: [],
+    source: `${source}:empty`,
+  };
 }
 
 async function applySql(

@@ -34,15 +34,13 @@ import {
   type ResolvedSyncTarget,
   resolveSyncTargets,
 } from "./targets.js";
-import { checkSyncLineageChain, verifyPendingMigrationsForSync } from "./verify.js";
+import { checkSyncLineageChain } from "./verify.js";
 
 export interface SyncOptions {
   cliVersion?: string;
   config?: Partial<SupaschemaConfig>;
   databaseUrl?: string;
   directory: string;
-  ensureEnvironment?: boolean;
-  ensureRoles?: boolean;
   envName?: string;
   from?: string;
   historyTable?: string;
@@ -114,7 +112,6 @@ const syncPipelineLanes: SyncPipelineLane[] = [
   stageFallbackGeneratedMigrationsLane,
   runFallbackSafetyGatesLane,
   stopFallbackWhenNothingPendingLane,
-  verifyFallbackPendingMigrationsLane,
   reportFallbackDryRunOrUnknownTargetLane,
 ];
 
@@ -197,7 +194,7 @@ function guardFallbackHistoryLane(state: SyncPipelineState): SyncResult | undefi
 function checkFallbackPendingMigrationsLane(
   state: SyncPipelineState
 ): Promise<SyncResult | undefined> | undefined {
-  const pending = requiredSyncStatus(state).pending;
+  const pending = pendingMigrationsForFallbackCheck(state);
   if (pending.length === 0) {
     return;
   }
@@ -209,6 +206,14 @@ function checkFallbackPendingMigrationsLane(
     state.lines,
     operationName(state.options)
   );
+}
+
+function pendingMigrationsForFallbackCheck(state: SyncPipelineState): string[] {
+  const status = requiredSyncStatus(state);
+  if (status.target !== undefined) {
+    return status.pending;
+  }
+  return status.pendingLineage.map((item) => item.file);
 }
 
 function refreshFallbackGeneratedContractsLane(
@@ -231,23 +236,6 @@ function runFallbackSafetyGatesLane(
   }
   return runSyncSafetyGates(state.config, state.sources, state.diagnostics, state.lines, {
     pending: requiredSyncStatus(state).pending,
-  });
-}
-
-function verifyFallbackPendingMigrationsLane(
-  state: SyncPipelineState
-): Promise<SyncResult | undefined> {
-  if (state.sources === undefined) {
-    return Promise.resolve(undefined);
-  }
-  return verifyPendingMigrationsForSync({
-    config: state.config,
-    diagnostics: state.diagnostics,
-    directory: state.options.directory,
-    lines: state.lines,
-    options: state.options,
-    pending: requiredSyncStatus(state).pending,
-    sources: requiredSyncSources(state),
   });
 }
 
@@ -463,11 +451,11 @@ async function runSyncSafetyGates(
   sources: SyncSources,
   diagnostics: Diagnostic[],
   lines: string[],
-  options: { pending: string[]; targetName?: string }
+  options: { pending: string[]; sourceOverride?: string; targetName?: string }
 ): Promise<SyncResult | undefined> {
   const typeGate = await runTypeSafetyGate({
     config,
-    fromSource: sources.from,
+    fromSource: options.sourceOverride ?? sources.from,
     toSource: sources.to,
   });
   const rlsGate = await runRlsSafetyGate({
@@ -487,6 +475,10 @@ async function runSyncSafetyGates(
     lines.push("safety: diagnostics reported without blocking");
   }
   return;
+}
+
+function targetSafetySource(target: ResolvedSyncTarget, fallbackSource: string): string {
+  return target.databaseUrl === undefined ? fallbackSource : `database:${target.databaseUrl}`;
 }
 
 async function runConfiguredTargets(
@@ -574,7 +566,6 @@ const targetSyncLanes: TargetSyncLane[] = [
   stopTargetWhenNothingPendingLane,
   guardTargetConcurrentCompanionsLane,
   runTargetSafetyLane,
-  verifyTargetPendingMigrationsLane,
   applyTargetMigrationsLane,
   reconcileTargetHistoryLane,
 ];
@@ -625,9 +616,13 @@ function stopTargetWhenNothingPendingLane(state: TargetSyncState): SyncResult | 
 }
 
 function checkTargetPendingMigrationsLane(state: TargetSyncState): Promise<SyncResult | undefined> {
+  const pending = pendingMigrationsForTargetSupaschemaGate(state);
+  if (pending.length === 0) {
+    return Promise.resolve(undefined);
+  }
   return checkPendingMigrations(
     state.options.directory,
-    requiredTargetStatus(state).pending,
+    pending,
     state.config,
     state.diagnostics,
     state.lines,
@@ -650,7 +645,7 @@ function stageTargetGeneratedMigrationsLane(
 function guardTargetConcurrentCompanionsLane(state: TargetSyncState): SyncResult | undefined {
   return supabaseCliConcurrentCompanionResult(
     state.target,
-    requiredTargetStatus(state).pending,
+    pendingMigrationsForTargetSupaschemaGate(state),
     state.diagnostics,
     state.lines,
     operationName(state.options)
@@ -658,38 +653,21 @@ function guardTargetConcurrentCompanionsLane(state: TargetSyncState): SyncResult
 }
 
 function runTargetSafetyLane(state: TargetSyncState): Promise<SyncResult | undefined> {
-  return runSyncSafetyGates(
-    state.config,
-    targetSafetySources(state.sources, state.target),
-    state.diagnostics,
-    state.lines,
-    { pending: requiredTargetStatus(state).pending, targetName: state.target.name }
-  );
-}
-
-function verifyTargetPendingMigrationsLane(
-  state: TargetSyncState
-): Promise<SyncResult | undefined> {
-  return verifyPendingMigrationsForSync({
-    config: state.config,
-    diagnostics: state.diagnostics,
-    directory: state.options.directory,
-    lines: state.lines,
-    options: state.options,
-    pending: requiredTargetStatus(state).pending,
-    sources: targetSafetySources(state.sources, state.target),
-    target: state.target,
+  return runSyncSafetyGates(state.config, state.sources, state.diagnostics, state.lines, {
+    pending: pendingMigrationsForTargetSupaschemaGate(state),
+    sourceOverride: targetSafetySource(state.target, state.sources.from),
+    targetName: state.target.name,
   });
 }
 
 async function applyTargetMigrationsLane(state: TargetSyncState): Promise<SyncResult | undefined> {
-  const status = requiredTargetStatus(state);
-  state.outcome = await runTargetRunner(state.options, state.config, state.target, status.pending);
+  const pending = pendingMigrationsForTargetRunner(state);
+  state.outcome = await runTargetRunner(state.options, state.config, state.target, pending);
   state.lines.push(`running: ${state.outcome.displayCommand ?? state.target.runner}`);
   return runnerFailureResult(
     state.outcome,
     state.target.runner,
-    status.pending,
+    pending,
     state.diagnostics,
     state.lines
   );
@@ -745,11 +723,23 @@ function requiredTargetStatus(state: TargetSyncState): MigrationsStatusReport {
   return state.status;
 }
 
-function targetSafetySources(sources: SyncSources, target: ResolvedSyncTarget): SyncSources {
-  if (target.databaseUrl === undefined) {
-    return sources;
+function pendingMigrationsForTargetSupaschemaGate(state: TargetSyncState): string[] {
+  const status = requiredTargetStatus(state);
+  if (isRuntimeResolvedSupabaseCliTarget(state.target)) {
+    return status.pendingLineage.map((item) => item.file);
   }
-  return { from: `database:${target.databaseUrl}`, to: sources.to };
+  return status.pending;
+}
+
+function pendingMigrationsForTargetRunner(state: TargetSyncState): string[] {
+  if (isRuntimeResolvedSupabaseCliTarget(state.target)) {
+    return pendingMigrationsForTargetSupaschemaGate(state);
+  }
+  return requiredTargetStatus(state).pending;
+}
+
+function isRuntimeResolvedSupabaseCliTarget(target: ResolvedSyncTarget): boolean {
+  return target.runner === "supabase-cli" && target.databaseUrl === undefined;
 }
 
 function supabaseCliConcurrentCompanionResult(

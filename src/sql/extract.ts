@@ -306,7 +306,8 @@ function tableObjects(
         { kind: "constraint", name: synthesized.name, schema: name.schema, table: name.name },
         synthesized.sql,
         ordinal + 1 + index,
-        file
+        file,
+        synthesized.metadata
       )
     );
   }

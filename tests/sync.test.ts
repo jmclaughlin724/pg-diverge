@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Command } from "commander";
 import { Client } from "pg";
-import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { registerReportCommands } from "../src/cli/reports.js";
 import { resolveConfig } from "../src/config/schema.js";
@@ -13,6 +12,7 @@ import { resolveDatabaseUrl } from "../src/database/url.js";
 import { diagnosticCatalog } from "../src/diagnostics.js";
 import { stageGeneratedMigrations } from "../src/migrations/stage.js";
 import { syncMigrations } from "../src/workflow/sync.js";
+import { resolveSyncTargets } from "../src/workflow/targets.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 
@@ -41,7 +41,7 @@ function reportProgram(context: Parameters<typeof registerReportCommands>[1]): C
 }
 
 describe("sync (no target)", () => {
-  it("dry-runs pending files after the replay-safety gate", async () => {
+  it("dry-runs disk history without replay-checking hand-authored files", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-"));
     await writeFile(
       join(root, "20260101000000_safe.sql"),
@@ -53,12 +53,27 @@ describe("sync (no target)", () => {
     expect(result.applied).toBe(false);
     expect(result.pending).toEqual(["20260101000000_safe.sql"]);
     expect(result.report).toContain("dry run");
-    expect(result.report).toContain("replay-safe");
+    expect(result.report).not.toContain("replay-safe");
   });
 
-  it("refuses when a pending migration fails the replay-safety check", async () => {
+  it("does not block no-target sync on hand-authored historical failures", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-bad-"));
     await writeFile(join(root, "20260101000000_unsafe.sql"), "DROP TABLE app.t;\n");
+
+    const result = await syncMigrations({ directory: root });
+
+    expect(result.applied).toBe(false);
+    expect(result.report).toContain("dry run");
+    expect(result.report).not.toContain("fails the replay-safety check");
+    expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
+  });
+
+  it("refuses when a generated pending migration fails the replay-safety check", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-generated-bad-"));
+    await writeFile(
+      join(root, "20260101000000_unsafe.sql"),
+      "-- supaschema: lineage from=before to=after\nDROP TABLE app.t;\n"
+    );
 
     const result = await syncMigrations({ directory: root });
 
@@ -143,7 +158,9 @@ describe("sync (no target)", () => {
         "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n"
       );
       const oldPath = process.env.PATH;
+      const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
       process.env.PATH = await mkdtemp(join(tmpdir(), "supa-empty-path-"));
+      delete process.env.SUPASCHEMA_DATABASE_URL;
       try {
         const result = await syncMigrations({
           config: {
@@ -175,6 +192,11 @@ describe("sync (no target)", () => {
         );
       } finally {
         process.env.PATH = oldPath;
+        if (oldDatabaseUrl === undefined) {
+          delete process.env.SUPASCHEMA_DATABASE_URL;
+        } else {
+          process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+        }
       }
     }
   );
@@ -215,13 +237,10 @@ describe("sync (no target)", () => {
         });
 
         expect(result.applied).toBe(false);
-        expect(result.report).toContain("verify: skipped for local");
         expect(result.diagnostics.map((item) => item.code)).toContain(
           "SUPA_SYNC_RUNNER_UNAVAILABLE"
         );
-        expect(result.diagnostics.map((item) => item.code)).not.toContain(
-          "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-        );
+        expect(result.report).not.toContain("verify:");
       } finally {
         process.chdir(previousCwd);
         process.env.PATH = oldPath;
@@ -233,6 +252,102 @@ describe("sync (no target)", () => {
       }
     }
   );
+
+  it.skipIf(process.platform === "win32")(
+    "does not replay-check hand-authored history before URL-less Supabase CLI targets",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-history-"));
+      const binDir = await mkdtemp(join(tmpdir(), "supa-sync-cli-history-bin-"));
+      await writeFile(join(binDir, "supabase"), "#!/bin/sh\nexit 0\n");
+      await chmod(join(binDir, "supabase"), 0o755);
+      await writeFile(join(root, "20260101000000_unsafe.sql"), "DROP TABLE app.t;\n");
+      const oldPath = process.env.PATH;
+      const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+      const previousCwd = process.cwd();
+      process.env.PATH = `${binDir}:${oldPath ?? ""}`;
+      delete process.env.SUPASCHEMA_DATABASE_URL;
+      process.chdir(root);
+      try {
+        const result = await syncMigrations({
+          config: {
+            sources: { from: "empty:", to: "empty:" },
+            sync: {
+              targets: {
+                local: {
+                  historyTable: "supabase_migrations.schema_migrations",
+                  mode: "manual",
+                  runner: "supabase-cli",
+                },
+              },
+            },
+            workflow: { rls_safety: "disabled", type_safety: "disabled" },
+          },
+          directory: root,
+          pipeline: true,
+          skipDiff: true,
+          target: "local",
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.report).toContain("running: supabase migration up");
+        expect(result.report).not.toContain("fails the replay-safety check");
+        expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
+      } finally {
+        process.chdir(previousCwd);
+        process.env.PATH = oldPath;
+        if (oldDatabaseUrl === undefined) {
+          delete process.env.SUPASCHEMA_DATABASE_URL;
+        } else {
+          process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+        }
+      }
+    }
+  );
+
+  it("replay-checks generated lineage before URL-less Supabase CLI targets", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-generated-"));
+    const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+    const previousCwd = process.cwd();
+    await writeFile(
+      join(root, "20260101000000_unsafe.sql"),
+      "-- supaschema: lineage from=before to=after\nDROP TABLE app.t;\n"
+    );
+    delete process.env.SUPASCHEMA_DATABASE_URL;
+    process.chdir(root);
+    try {
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: "empty:" },
+          sync: {
+            targets: {
+              local: {
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "supabase-cli",
+              },
+            },
+          },
+          workflow: { rls_safety: "disabled", type_safety: "disabled" },
+        },
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+        target: "local",
+      });
+
+      expect(result.applied).toBe(false);
+      expect(result.report).toContain("fails the replay-safety check");
+      expect(result.report).not.toContain("running: supabase migration up");
+      expect(result.diagnostics.some((item) => item.severity === "error")).toBe(true);
+    } finally {
+      process.chdir(previousCwd);
+      if (oldDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+      }
+    }
+  });
 
   it.skipIf(process.platform === "win32")(
     "does not run disk-only final reconcile after URL-less Supabase CLI sync succeeds",
@@ -282,7 +397,6 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
         });
 
         expect(result.applied).toBe(true);
-        expect(result.report).toContain("verify: skipped for local");
         expect(result.report).toContain("running: supabase migration up");
         expect(result.report).toContain("final reconcile: skipped for local");
         expect(result.diagnostics.map((item) => item.code)).not.toContain(
@@ -312,7 +426,9 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
       const binDir = await mkdtemp(join(tmpdir(), "supa-sync-bin-"));
       await writeFile(join(binDir, "supabase"), "#!/bin/sh\nexit 42\n", { mode: 0o755 });
       const oldPath = process.env.PATH;
+      const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
       process.env.PATH = binDir;
+      delete process.env.SUPASCHEMA_DATABASE_URL;
       try {
         const result = await syncMigrations({
           config: {
@@ -345,6 +461,11 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
         ).toContain("exited with code 42");
       } finally {
         process.env.PATH = oldPath;
+        if (oldDatabaseUrl === undefined) {
+          delete process.env.SUPASCHEMA_DATABASE_URL;
+        } else {
+          process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+        }
       }
     }
   );
@@ -363,12 +484,47 @@ describe("sync diagnostics", () => {
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_OVERRIDE_MULTI).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_UNKNOWN).toBeDefined();
     expect(diagnosticCatalog.SUPA_SYNC_TARGET_URL_UNRESOLVED).toBeDefined();
-    expect(diagnosticCatalog.SUPA_SYNC_VERIFY_URL_UNRESOLVED).toBeDefined();
     expect(diagnosticCatalog.SUPA_DIFF_LINEAGE_GAP).toBeDefined();
   });
 });
 
 describe("sync pipeline orchestration", () => {
+  it("resolves local URL fallback for configured Supabase CLI targets", async () => {
+    const previous = process.env.SUPASCHEMA_DATABASE_URL;
+    process.env.SUPASCHEMA_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+    try {
+      const resolved = resolveSyncTargets(
+        {
+          directory: await mkdtemp(join(tmpdir(), "supa-sync-local-cli-url-")),
+          operation: "apply",
+          pipeline: true,
+          skipDiff: true,
+          target: "local",
+        },
+        resolveConfig({
+          sync: {
+            targets: {
+              local: {
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "supabase-cli",
+              },
+            },
+          },
+        })
+      );
+
+      expect(resolved.diagnostics).toEqual([]);
+      expect(resolved.targets[0]?.databaseUrl).toBe(process.env.SUPASCHEMA_DATABASE_URL);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = previous;
+      }
+    }
+  });
+
   it("requires runtime approval before automatic remote deploy", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-remote-approval-"));
     const result = await syncMigrations({
@@ -634,18 +790,8 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     expect(result.report).toContain("checked:");
     expect(result.report).toContain("types: wrote");
     expect(result.report).toContain("stage: skipped (not a git worktree)");
-    if (databaseUrl) {
-      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
-      expect(result.report).toContain("dry run: no sync target was selected by config");
-      expect(result.diagnostics.map((item) => item.code)).not.toContain(
-        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-      );
-    } else {
-      expect(result.report).toContain("refusing to sync: verify has no database URL");
-      expect(result.diagnostics.map((item) => item.code)).toContain(
-        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-      );
-    }
+    expect(result.report).toContain("dry run: no sync target was selected by config");
+    expect(result.report).not.toContain("verify:");
     expect(await pathExists(typesFile)).toBe(true);
     expect(await pathExists(zodFile)).toBe(true);
     expect(result.pending.some((file) => file.endsWith(".sql"))).toBe(true);
@@ -685,18 +831,8 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         .filter(Boolean);
       expect(result.applied).toBe(false);
       expect(result.report).toContain("stage: staged");
-      if (databaseUrl) {
-        expect(result.report).toContain("verify: 1 pending migration file(s) passed");
-        expect(result.report).toContain("dry run: no sync target was selected by config");
-        expect(result.diagnostics.map((item) => item.code)).not.toContain(
-          "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-        );
-      } else {
-        expect(result.report).toContain("refusing to sync: verify has no database URL");
-        expect(result.diagnostics.map((item) => item.code)).toContain(
-          "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-        );
-      }
+      expect(result.report).toContain("dry run: no sync target was selected by config");
+      expect(result.report).not.toContain("verify:");
       expect(staged.some((file) => file.startsWith("database/migrations/"))).toBe(true);
       expect(staged.some((file) => file.endsWith(".sql"))).toBe(true);
     } finally {
@@ -749,7 +885,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     expect(result.report).not.toContain("dry run:");
   });
 
-  it("resolves auto sources before the sync diff and verify gate run", async () => {
+  it("resolves auto sources before sync reports the generated dry-run", async () => {
     const source = await sqlSource(
       "CREATE TABLE public.auto_sync_source (id bigint PRIMARY KEY);\n"
     );
@@ -778,11 +914,9 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       });
 
       expect(result.applied).toBe(false);
-      expect(result.diagnostics.map((item) => item.code)).toContain(
-        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-      );
       expect(result.report).toContain("diff: wrote");
-      expect(result.report).toContain("refusing to sync: verify has no database URL");
+      expect(result.report).toContain("dry run: no sync target was selected by config");
+      expect(result.report).not.toContain("verify:");
     } finally {
       process.chdir(previousCwd);
       if (previousDatabaseUrl === undefined) {
@@ -828,32 +962,42 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
   it("reports no-op configured targets without marking migrations applied", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-noop-target-"));
+    const previousDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+    delete process.env.SUPASCHEMA_DATABASE_URL;
 
-    const result = await syncMigrations({
-      config: {
-        sources: { from: "empty:", to: "empty:" },
-        sync: {
-          targets: {
-            local: {
-              historyTable: "supabase_migrations.schema_migrations",
-              mode: "manual",
-              runner: "supabase-cli",
+    try {
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: "empty:" },
+          sync: {
+            targets: {
+              local: {
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "supabase-cli",
+              },
             },
           },
+          workflow: {
+            rls_safety: "disabled",
+            type_safety: "disabled",
+          },
         },
-        workflow: {
-          rls_safety: "disabled",
-          type_safety: "disabled",
-        },
-      },
-      directory: root,
-      pipeline: true,
-      skipDiff: true,
-      target: "local",
-    });
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+        target: "local",
+      });
 
-    expect(result.applied).toBe(false);
-    expect(result.report).toContain("nothing to sync on local");
+      expect(result.applied).toBe(false);
+      expect(result.report).toContain("nothing to sync on local");
+    } finally {
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = previousDatabaseUrl;
+      }
+    }
   });
 
   it("refreshes generated contracts even when no migration is pending", async () => {
@@ -979,7 +1123,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       }
     });
 
-    expect(fallbackResolved).toBe(true);
+    expect(fallbackResolved).toBe(false);
     expect(output).toContain("dry run: no apply target was selected by config");
     expect(output).toContain("20260101000000_safe.sql");
     expect(output).not.toContain("diff: wrote");
@@ -1078,53 +1222,124 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     }
   });
 
-  it("refuses Supabase CLI targets with concurrent companion migrations", async () => {
+  it.skipIf(process.platform === "win32")(
+    "does not block hand-authored concurrent history before URL-less Supabase CLI targets",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-history-concurrent-"));
+      const binDir = await mkdtemp(join(tmpdir(), "supa-sync-cli-history-concurrent-bin-"));
+      await writeFile(join(binDir, "supabase"), "#!/bin/sh\nexit 0\n");
+      await chmod(join(binDir, "supabase"), 0o755);
+      await writeFile(
+        join(root, "20260101000000_history.concurrent.sql"),
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS items_id_idx ON app.items (id);\n"
+      );
+      const oldPath = process.env.PATH;
+      const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+      const previousCwd = process.cwd();
+      process.env.PATH = `${binDir}:${oldPath ?? ""}`;
+      delete process.env.SUPASCHEMA_DATABASE_URL;
+      process.chdir(root);
+      try {
+        const result = await syncMigrations({
+          config: {
+            sources: { from: "empty:", to: "empty:" },
+            sync: {
+              targets: {
+                local: {
+                  historyTable: "supabase_migrations.schema_migrations",
+                  mode: "manual",
+                  runner: "supabase-cli",
+                },
+              },
+            },
+            transactionMode: "per-statement",
+            workflow: {
+              rls_safety: "disabled",
+              type_safety: "disabled",
+            },
+          },
+          directory: root,
+          pipeline: true,
+          skipDiff: true,
+          target: "local",
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.diagnostics.map((item) => item.code)).not.toContain(
+          "SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION"
+        );
+      } finally {
+        process.chdir(previousCwd);
+        process.env.PATH = oldPath;
+        if (oldDatabaseUrl === undefined) {
+          delete process.env.SUPASCHEMA_DATABASE_URL;
+        } else {
+          process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+        }
+      }
+    }
+  );
+
+  it("refuses Supabase CLI targets with generated concurrent companion migrations", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-cli-concurrent-"));
     await writeFile(
       join(root, "20260101000000_concurrent.sql"),
-      "CREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE IF NOT EXISTS app.items (id bigint PRIMARY KEY);\n"
+      "-- supaschema: lineage from=before to=after\nCREATE SCHEMA IF NOT EXISTS app;\nCREATE TABLE IF NOT EXISTS app.items (id bigint PRIMARY KEY);\n"
     );
     await writeFile(
       join(root, "20260101000000_concurrent.concurrent.sql"),
-      "CREATE INDEX CONCURRENTLY IF NOT EXISTS items_id_idx ON app.items (id);\n"
+      "-- supaschema: lineage from=before to=after\nCREATE INDEX CONCURRENTLY IF NOT EXISTS items_id_idx ON app.items (id);\n"
     );
+    const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+    delete process.env.SUPASCHEMA_DATABASE_URL;
 
-    const result = await syncMigrations({
-      config: {
-        sources: { from: "empty:", to: "empty:" },
-        sync: {
-          targets: {
-            local: {
-              historyTable: "supabase_migrations.schema_migrations",
-              mode: "manual",
-              runner: "supabase-cli",
+    try {
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: "empty:" },
+          sync: {
+            targets: {
+              local: {
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "supabase-cli",
+              },
             },
           },
+          transactionMode: "per-statement",
+          workflow: {
+            rls_safety: "disabled",
+            type_safety: "disabled",
+          },
         },
-        transactionMode: "per-statement",
-        workflow: {
-          rls_safety: "disabled",
-          type_safety: "disabled",
-        },
-      },
-      directory: root,
-      pipeline: true,
-      skipDiff: true,
-      target: "local",
-    });
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+        target: "local",
+      });
 
-    expect(result.applied).toBe(false);
-    expect(result.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION"
-    );
-    expect(result.report).toContain("Supabase CLI cannot safely apply");
+      expect(result.applied).toBe(false);
+      expect(result.diagnostics.map((item) => item.code)).toContain(
+        "SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION"
+      );
+      expect(result.report).toContain("Supabase CLI cannot safely apply");
+    } finally {
+      if (oldDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+      }
+    }
   });
 
   it("checks pending migrations before dry-run deploy safety gates", async () => {
     const before = await sqlSource("CREATE TABLE public.users (id bigint, email text);\n");
     const after = await sqlSource("CREATE TABLE public.users (id bigint);\n");
     const root = await mkdtemp(join(tmpdir(), "supa-sync-check-before-type-gate-"));
-    await writeFile(join(root, "20260101000000_unsafe.sql"), "DROP TABLE public.users;\n");
+    await writeFile(
+      join(root, "20260101000000_unsafe.sql"),
+      "-- supaschema: lineage from=before to=after\nDROP TABLE public.users;\n"
+    );
 
     const result = await syncMigrations({
       config: {
@@ -1143,27 +1358,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     expect(result.applied).toBe(false);
     expect(result.diagnostics.map((item) => item.code)).not.toContain("SUPA_TYPE_COLUMN_REMOVED");
     expect(result.report).toContain("fails the replay-safety check");
-  });
-});
-
-describe("sync target verification", () => {
-  it("keeps remote target apply URLs out of verify URL resolution", async () => {
-    const source = ts.createSourceFile(
-      "workflow/verify.ts",
-      await readFile(join(process.cwd(), "src/workflow/verify.ts"), "utf8"),
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS
-    );
-    const resolver = functionDeclaration(source, "resolveSyncVerifyDatabaseUrl");
-    const remoteBranch = findIfStatement(
-      resolver,
-      (node) => node.expression.getText(source) === "options.target?.remote === true"
-    );
-
-    expect(remoteBranch).toBeDefined();
-    expect(callArgCounts(remoteBranch?.thenStatement, source, "resolveDatabaseUrl")).toContain(0);
-    expect(returnCanYieldTargetDatabaseUrl(remoteBranch?.thenStatement, source)).toBe(false);
   });
 });
 
@@ -1187,89 +1381,6 @@ function requiredDatabaseUrl(): string {
     throw new Error("SUPASCHEMA_TEST_DATABASE_URL is required for this test");
   }
   return databaseUrl;
-}
-
-function functionDeclaration(source: ts.SourceFile, name: string): ts.FunctionDeclaration {
-  for (const statement of source.statements) {
-    if (ts.isFunctionDeclaration(statement) && statement.name?.text === name) {
-      return statement;
-    }
-  }
-  throw new Error(`function ${name} not found`);
-}
-
-function findIfStatement(
-  root: ts.Node,
-  predicate: (node: ts.IfStatement) => boolean
-): ts.IfStatement | undefined {
-  let match: ts.IfStatement | undefined;
-  const visit = (node: ts.Node): void => {
-    if (match !== undefined) {
-      return;
-    }
-    if (ts.isIfStatement(node) && predicate(node)) {
-      match = node;
-      return;
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(root);
-  return match;
-}
-
-function callArgCounts(root: ts.Node | undefined, source: ts.SourceFile, name: string): number[] {
-  const counts: number[] = [];
-  if (root === undefined) {
-    return counts;
-  }
-  const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && node.expression.getText(source) === name) {
-      counts.push(node.arguments.length);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(root);
-  return counts;
-}
-
-function returnCanYieldTargetDatabaseUrl(
-  root: ts.Node | undefined,
-  source: ts.SourceFile
-): boolean {
-  let found = false;
-  if (root === undefined) {
-    return found;
-  }
-  const visit = (node: ts.Node): void => {
-    if (found) {
-      return;
-    }
-    if (ts.isReturnStatement(node) && node.expression !== undefined) {
-      found = expressionCanYieldTargetDatabaseUrl(node.expression, source);
-      return;
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(root);
-  return found;
-}
-
-function expressionCanYieldTargetDatabaseUrl(
-  expression: ts.Expression,
-  source: ts.SourceFile
-): boolean {
-  if (ts.isConditionalExpression(expression)) {
-    return (
-      expressionCanYieldTargetDatabaseUrl(expression.whenTrue, source) ||
-      expressionCanYieldTargetDatabaseUrl(expression.whenFalse, source)
-    );
-  }
-  if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)) {
-    return expressionCanYieldTargetDatabaseUrl(expression.expression, source);
-  }
-  return ["options.target.databaseUrl", "options.target?.databaseUrl"].includes(
-    expression.getText(source)
-  );
 }
 
 describe.skipIf(!databaseUrl)("sync (against a target)", () => {
@@ -1316,7 +1427,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(true);
       expect(result.report).toContain("migrations [local / direct]");
-      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
+      expect(result.report).toContain("running: direct");
       const target = new Client({ connectionString: url.toString() });
       await target.connect();
       const table = await target.query<{ name: string | null }>(
@@ -1378,7 +1489,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(true);
       expect(result.report).toContain("migrations [remote / direct]");
-      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
+      expect(result.report).toContain("running: direct");
       const target = new Client({ connectionString: url.toString() });
       await target.connect();
       const table = await target.query<{ name: string | null }>(
@@ -1401,7 +1512,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     }
   });
 
-  it("does not use a remote target apply URL as the verify database", async () => {
+  it("applies an approved remote target without a separate verify database", async () => {
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
     const db = `supa_sync_remote_verify_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
@@ -1451,12 +1562,9 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         skipDiff: true,
       });
 
-      expect(result.applied).toBe(false);
-      expect(result.diagnostics.map((item) => item.code)).toContain(
-        "SUPA_SYNC_VERIFY_URL_UNRESOLVED"
-      );
-      expect(result.report).toContain("refusing to sync: verify has no database URL");
-      expect(result.report).not.toContain("running: direct");
+      expect(result.applied).toBe(true);
+      expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
+      expect(result.report).toContain("running: direct");
     } finally {
       process.chdir(previousCwd);
       if (previousApproval === undefined) {
@@ -1515,7 +1623,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(true);
       expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
-      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
       expect(result.report).toContain("running: direct");
       const target = new Client({ connectionString: url.toString() });
       await target.connect();
@@ -1534,7 +1641,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     }
   });
 
-  it("verifies target pending files from the selected target catalog", async () => {
+  it("applies target pending files from the selected target history", async () => {
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
     const db = `supa_sync_target_verify_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
@@ -1592,7 +1699,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(true);
       expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
-      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
+      expect(result.report).toContain("running: direct");
       const verified = new Client({ connectionString: url.toString() });
       await verified.connect();
       const column = await verified.query<{ column_name: string }>(
@@ -1606,7 +1713,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     }
   });
 
-  it("verifies pending chains without collapsing per-file transaction boundaries", async () => {
+  it("applies pending chains without collapsing per-file transaction boundaries", async () => {
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
     const db = `supa_sync_verify_chain_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
@@ -1664,7 +1771,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(true);
       expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
-      expect(result.report).toContain("verify: 3 pending migration file(s) passed");
+      expect(result.report).toContain("running: direct");
     } finally {
       await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
       await admin.end();

@@ -147,8 +147,8 @@
         "migration_check": "after_schema_diff",
         "migration_verify": "suggest_after_check",
         "migration_sync": "auto",
-        "type_safety": "deploy_blocking",
-        "rls_safety": "deploy_blocking",
+        "type_safety": "report_only",
+        "rls_safety": "report_only",
         "type_generation": "create_or_refresh",
         "zod_generation": "create_or_refresh",
         "type_usage": "zod_validated"
@@ -196,7 +196,7 @@
           "description": "Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select one sync.targets entry whose mode is \"auto\"."
         },
         "type_safety": {
-          "default": "deploy_blocking",
+          "default": "report_only",
           "type": "string",
           "enum": [
             "disabled",
@@ -206,7 +206,7 @@
           "description": "Controls whether sync type-contract diagnostics are disabled, reported only, or block deploy."
         },
         "rls_safety": {
-          "default": "deploy_blocking",
+          "default": "report_only",
           "type": "string",
           "enum": [
             "disabled",
@@ -223,7 +223,7 @@
             "refresh_existing",
             "create_or_refresh"
           ],
-          "description": "Controls whether diff refreshes the configured TypeScript output after it writes a migration."
+          "description": "Controls whether sync refreshes the configured TypeScript output during the full workflow."
         },
         "zod_generation": {
           "default": "create_or_refresh",
@@ -233,7 +233,7 @@
             "refresh_existing",
             "create_or_refresh"
           ],
-          "description": "Controls whether diff refreshes the configured Zod validator output after it writes a migration."
+          "description": "Controls whether sync refreshes the configured Zod validator output during the full workflow."
         },
         "type_usage": {
           "default": "zod_validated",

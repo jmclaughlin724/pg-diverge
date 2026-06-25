@@ -3,6 +3,7 @@ import { diagnostic } from "../diagnostics.js";
 import type { AstNode, QualifiedName } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readNumber, readString, stringList } from "./ast.js";
 import { makeObject } from "./statements.js";
+import { constraintMetadata } from "./table-constraints.js";
 
 export interface ParseStatementResult {
   diagnostics: Diagnostic[];
@@ -49,7 +50,7 @@ function alterTableCommandObject(
   if (subtype === "AT_AddConstraint") {
     const constraint = asRecord(asRecord(command?.def)?.Constraint);
     const name = readString(constraint?.conname);
-    if (!name) {
+    if (!(constraint && name)) {
       return;
     }
     return makeObject(
@@ -61,7 +62,8 @@ function alterTableCommandObject(
       },
       statement,
       ordinal,
-      file
+      file,
+      constraintMetadata(constraint)
     );
   }
   if (
