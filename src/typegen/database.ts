@@ -82,6 +82,7 @@ function emitViewTypes(
       view.columns,
       (column) => `${quoteKey(column.name)}: ${typeOf(column.type)} | null;`
     );
+    lines.push("        Relationships: [];");
     lines.push("      };");
   }
   lines.push("    };");

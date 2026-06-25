@@ -451,11 +451,11 @@ async function runSyncSafetyGates(
   sources: SyncSources,
   diagnostics: Diagnostic[],
   lines: string[],
-  options: { pending: string[]; targetName?: string }
+  options: { pending: string[]; sourceOverride?: string; targetName?: string }
 ): Promise<SyncResult | undefined> {
   const typeGate = await runTypeSafetyGate({
     config,
-    fromSource: sources.from,
+    fromSource: options.sourceOverride ?? sources.from,
     toSource: sources.to,
   });
   const rlsGate = await runRlsSafetyGate({
@@ -475,6 +475,10 @@ async function runSyncSafetyGates(
     lines.push("safety: diagnostics reported without blocking");
   }
   return;
+}
+
+function targetSafetySource(target: ResolvedSyncTarget, fallbackSource: string): string {
+  return target.databaseUrl === undefined ? fallbackSource : `database:${target.databaseUrl}`;
 }
 
 async function runConfiguredTargets(
@@ -651,6 +655,7 @@ function guardTargetConcurrentCompanionsLane(state: TargetSyncState): SyncResult
 function runTargetSafetyLane(state: TargetSyncState): Promise<SyncResult | undefined> {
   return runSyncSafetyGates(state.config, state.sources, state.diagnostics, state.lines, {
     pending: pendingMigrationsForTargetSupaschemaGate(state),
+    sourceOverride: targetSafetySource(state.target, state.sources.from),
     targetName: state.target.name,
   });
 }

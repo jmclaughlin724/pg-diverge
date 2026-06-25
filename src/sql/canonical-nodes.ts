@@ -55,6 +55,10 @@ export function canonicalViewNode(node: unknown, scopes: Scope[]): unknown {
   if (!record) {
     return node;
   }
+  const typeCast = asRecord(record.TypeCast);
+  if (typeCast && asRecord(typeCast.arg)?.A_Const !== undefined) {
+    return canonicalViewNode(typeCast.arg, scopes);
+  }
   const selectStmt = asRecord(record.SelectStmt);
   if (selectStmt) {
     const next = [...scopes, soleFromRelation(selectStmt)];

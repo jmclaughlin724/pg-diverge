@@ -235,6 +235,7 @@ describe("database type generation", () => {
     expect(views).toContain("id: number | null;");
     expect(views).toContain("label: string | null;");
     expect(views).toContain("payload: Json | null;");
+    expect(views).toContain("Relationships: [];");
   });
 
   it("resolves CTE-backed view columns and typed expressions", async () => {
@@ -575,6 +576,32 @@ type AccountInsert = TablesInsert<{ schema: "app" }, "accounts">;
 type AccountUpdate = TablesUpdate<{ schema: "app" }, "accounts">;
 type Status = Enums<{ schema: "app" }, "status">;
 type Address = CompositeTypes<{ schema: "app" }, "address">;
+type GenericRelationship = {
+  foreignKeyName: string;
+  columns: string[];
+  isOneToOne?: boolean;
+  referencedRelation: string;
+  referencedColumns: string[];
+};
+type GenericTable = {
+  Row: Record<string, unknown>;
+  Insert: Record<string, unknown>;
+  Update: Record<string, unknown>;
+  Relationships: GenericRelationship[];
+};
+type GenericView = {
+  Row: Record<string, unknown>;
+  Relationships: GenericRelationship[];
+};
+type GenericFunction = {
+  Args: Record<string, unknown> | never;
+  Returns: unknown;
+};
+type GenericSchema = {
+  Tables: Record<string, GenericTable>;
+  Views: Record<string, GenericView>;
+  Functions: Record<string, GenericFunction>;
+};
 
 const movie: Movie = { id: 1, name: "Heat", visibility: "public" };
 const movieView: MovieView = { id: 1, name: "Heat" };
@@ -586,6 +613,7 @@ const accountInsert: AccountInsert = { state: "draft" };
 const accountUpdate: AccountUpdate = { state: "active" };
 const status: Status = "draft";
 const address: Address = { street: "Main", zip: 1 };
+const appSchema: GenericSchema = null as unknown as Database["app"];
 void movie;
 void movieView;
 void movieInsert;
@@ -596,6 +624,7 @@ void accountInsert;
 void accountUpdate;
 void status;
 void address;
+void appSchema;
 `);
   }, 15_000);
 

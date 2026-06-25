@@ -158,7 +158,9 @@ describe("sync (no target)", () => {
         "CREATE TABLE IF NOT EXISTS app.t (id bigint PRIMARY KEY);\n"
       );
       const oldPath = process.env.PATH;
+      const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
       process.env.PATH = await mkdtemp(join(tmpdir(), "supa-empty-path-"));
+      delete process.env.SUPASCHEMA_DATABASE_URL;
       try {
         const result = await syncMigrations({
           config: {
@@ -190,6 +192,11 @@ describe("sync (no target)", () => {
         );
       } finally {
         process.env.PATH = oldPath;
+        if (oldDatabaseUrl === undefined) {
+          delete process.env.SUPASCHEMA_DATABASE_URL;
+        } else {
+          process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+        }
       }
     }
   );
@@ -419,7 +426,9 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
       const binDir = await mkdtemp(join(tmpdir(), "supa-sync-bin-"));
       await writeFile(join(binDir, "supabase"), "#!/bin/sh\nexit 42\n", { mode: 0o755 });
       const oldPath = process.env.PATH;
+      const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
       process.env.PATH = binDir;
+      delete process.env.SUPASCHEMA_DATABASE_URL;
       try {
         const result = await syncMigrations({
           config: {
@@ -452,6 +461,11 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
         ).toContain("exited with code 42");
       } finally {
         process.env.PATH = oldPath;
+        if (oldDatabaseUrl === undefined) {
+          delete process.env.SUPASCHEMA_DATABASE_URL;
+        } else {
+          process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+        }
       }
     }
   );
@@ -948,32 +962,42 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
   it("reports no-op configured targets without marking migrations applied", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-noop-target-"));
+    const previousDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+    delete process.env.SUPASCHEMA_DATABASE_URL;
 
-    const result = await syncMigrations({
-      config: {
-        sources: { from: "empty:", to: "empty:" },
-        sync: {
-          targets: {
-            local: {
-              historyTable: "supabase_migrations.schema_migrations",
-              mode: "manual",
-              runner: "supabase-cli",
+    try {
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: "empty:" },
+          sync: {
+            targets: {
+              local: {
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "supabase-cli",
+              },
             },
           },
+          workflow: {
+            rls_safety: "disabled",
+            type_safety: "disabled",
+          },
         },
-        workflow: {
-          rls_safety: "disabled",
-          type_safety: "disabled",
-        },
-      },
-      directory: root,
-      pipeline: true,
-      skipDiff: true,
-      target: "local",
-    });
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+        target: "local",
+      });
 
-    expect(result.applied).toBe(false);
-    expect(result.report).toContain("nothing to sync on local");
+      expect(result.applied).toBe(false);
+      expect(result.report).toContain("nothing to sync on local");
+    } finally {
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = previousDatabaseUrl;
+      }
+    }
   });
 
   it("refreshes generated contracts even when no migration is pending", async () => {
@@ -1266,36 +1290,46 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       join(root, "20260101000000_concurrent.concurrent.sql"),
       "-- supaschema: lineage from=before to=after\nCREATE INDEX CONCURRENTLY IF NOT EXISTS items_id_idx ON app.items (id);\n"
     );
+    const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
+    delete process.env.SUPASCHEMA_DATABASE_URL;
 
-    const result = await syncMigrations({
-      config: {
-        sources: { from: "empty:", to: "empty:" },
-        sync: {
-          targets: {
-            local: {
-              historyTable: "supabase_migrations.schema_migrations",
-              mode: "manual",
-              runner: "supabase-cli",
+    try {
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: "empty:" },
+          sync: {
+            targets: {
+              local: {
+                historyTable: "supabase_migrations.schema_migrations",
+                mode: "manual",
+                runner: "supabase-cli",
+              },
             },
           },
+          transactionMode: "per-statement",
+          workflow: {
+            rls_safety: "disabled",
+            type_safety: "disabled",
+          },
         },
-        transactionMode: "per-statement",
-        workflow: {
-          rls_safety: "disabled",
-          type_safety: "disabled",
-        },
-      },
-      directory: root,
-      pipeline: true,
-      skipDiff: true,
-      target: "local",
-    });
+        directory: root,
+        pipeline: true,
+        skipDiff: true,
+        target: "local",
+      });
 
-    expect(result.applied).toBe(false);
-    expect(result.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION"
-    );
-    expect(result.report).toContain("Supabase CLI cannot safely apply");
+      expect(result.applied).toBe(false);
+      expect(result.diagnostics.map((item) => item.code)).toContain(
+        "SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION"
+      );
+      expect(result.report).toContain("Supabase CLI cannot safely apply");
+    } finally {
+      if (oldDatabaseUrl === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
+      }
+    }
   });
 
   it("checks pending migrations before dry-run deploy safety gates", async () => {
