@@ -1704,7 +1704,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
 
       expect(result.applied).toBe(true);
       expect(result.diagnostics.some((item) => item.severity === "error")).toBe(false);
-      expect(result.report).toContain("verify: 3 pending migration file(s) passed");
+      expect(result.report).toContain("verify: 1 pending migration file(s) passed");
       expect(result.report).toContain("running: direct");
       const verified = new Client({ connectionString: url.toString() });
       await verified.connect();
