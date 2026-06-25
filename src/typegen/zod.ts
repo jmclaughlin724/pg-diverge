@@ -181,6 +181,10 @@ function emitZodTablesRoot(
     for (const view of sortedByName(entry.views)) {
       lines.push(`    ${quoteKey(view.name)}: {`);
       emitZodRow(lines, view.columns, zodFor, "      Row");
+      if (view.updatable && !view.materialized) {
+        emitZodInsert(lines, view.columns, zodFor);
+        emitZodUpdate(lines, view.columns, zodFor);
+      }
       lines.push("    },");
     }
     lines.push("  },");
@@ -316,9 +320,7 @@ function emitZodRow(
   lines.push(`${label}: z.object({`);
   for (const column of columns) {
     const base = zodFor(column.type);
-    lines.push(
-      `          ${quoteKey(column.name)}: ${column.notNull ? base : `${base}.nullable()`},`
-    );
+    lines.push(`          ${quoteKey(column.name)}: ${nullableZodExpr(base, !column.notNull)},`);
   }
   lines.push("        }),");
 }
@@ -330,6 +332,9 @@ function emitZodInsert(
 ): void {
   lines.push("        Insert: z.object({");
   for (const column of columns) {
+    if (column.updatable === false) {
+      continue;
+    }
     const field = zodInsertField(column, zodFor);
     if (field) {
       lines.push(`          ${field}`);
@@ -345,11 +350,11 @@ function emitZodUpdate(
 ): void {
   lines.push("        Update: z.object({");
   for (const column of columns) {
-    if (isNonWritableColumn(column)) {
+    if (column.updatable === false || isNonWritableColumn(column)) {
       continue;
     }
     const base = zodFor(column.type);
-    const value = column.notNull ? base : `${base}.nullable()`;
+    const value = nullableZodExpr(base, !column.notNull);
     lines.push(`          ${quoteKey(column.name)}: ${value}.optional(),`);
   }
   lines.push("        }),");
@@ -417,8 +422,12 @@ function zodExprFromResolved(
     mapped = `Tables[${JSON.stringify(resolved.relationRef.schema)}][${JSON.stringify(resolved.relationRef.name)}].Row`;
   } else if (resolved.kind === "json") {
     mapped = "jsonSchema";
+  } else if (resolved.kind === "record") {
+    mapped = "z.record(z.string(), z.unknown())";
   } else if (resolved.kind === "unknown") {
     mapped = "z.unknown()";
+  } else if (resolved.kind === "void") {
+    mapped = "z.undefined()";
   } else {
     mapped = `z.${resolved.kind}()`;
   }
@@ -436,7 +445,11 @@ function zodInsertField(
     return;
   }
   const base = zodFor(column.type);
-  const value = column.notNull ? base : `${base}.nullable()`;
+  const value = nullableZodExpr(base, !column.notNull);
   const optional = isOptionalInsertColumn(column);
   return `${quoteKey(column.name)}: ${optional ? `${value}.optional()` : value},`;
+}
+
+function nullableZodExpr(base: string, nullable: boolean): string {
+  return nullable && base !== "z.unknown()" ? `${base}.nullable()` : base;
 }

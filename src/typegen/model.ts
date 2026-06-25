@@ -12,6 +12,7 @@ export interface ColumnShape {
   name: string;
   notNull: boolean;
   type: string;
+  updatable?: boolean;
 }
 
 export function sortedByName<T extends { name: string }>(items: T[]): T[] {
@@ -43,10 +44,12 @@ export interface FunctionShape {
 
 export interface TableShape {
   columns: ColumnShape[];
+  materialized?: boolean;
   name: string;
   primaryKey?: string[];
   relationships: RelationshipShape[];
   uniqueColumnSets: string[][];
+  updatable?: boolean;
 }
 
 export interface SchemaEntry {
@@ -54,7 +57,7 @@ export interface SchemaEntry {
   enums: { name: string; values: string[] }[];
   functions: FunctionShape[];
   tables: TableShape[];
-  views: { columns: ColumnShape[]; name: string }[];
+  views: (TableShape & { materialized: boolean; updatable: boolean })[];
 }
 
 export interface SchemaShapes {
@@ -76,6 +79,7 @@ export interface ResolvedColumnType {
     | "enum"
     | "json"
     | "number"
+    | "record"
     | "relation"
     | "string"
     | "unknown"
@@ -103,6 +107,10 @@ export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaSha
 
 async function collectEnumAndDomainShapes(model: SchemaModel, shapes: SchemaShapes): Promise<void> {
   for (const object of model.objects) {
+    if (object.ref.kind === "schema") {
+      schemaEntry(shapes, object.ref.name);
+      continue;
+    }
     if (object.ref.kind === "enum") {
       registerEnumShape(shapes, object);
       continue;
@@ -137,10 +145,11 @@ async function collectRelationAndFunctionShapes(
   for (const object of model.objects) {
     if (object.ref.kind === "table" || object.ref.kind === "foreign-table") {
       await registerTableShape(shapes, tablesByKey, object);
-      continue;
     }
+  }
+  for (const object of model.objects) {
     if (object.ref.kind === "function") {
-      const shape = await functionShape(object);
+      const shape = await functionShape(object, shapes);
       if (shape) {
         schemaEntry(shapes, object.ref.schema ?? "public").functions.push(shape);
       }
@@ -214,7 +223,7 @@ async function registerViewShapes(
       const columns = await collectViewColumns(object, relationsByKey, functionsByKey);
       if (!sameColumns(columnsByKey.get(key), columns)) {
         columnsByKey.set(key, columns);
-        relationsByKey.set(key, relationShape(object.ref.name, columns));
+        relationsByKey.set(key, relationShape(object.ref.name, columns, object.ref.kind));
         changed = true;
       }
     }
@@ -223,22 +232,174 @@ async function registerViewShapes(
     }
   }
   for (const object of objects) {
+    const columns = columnsByKey.get(relationKey(object)) ?? [];
+    const writeColumnNames = await viewWriteColumnNames(object, relationsByKey);
     schemaEntry(shapes, object.ref.schema ?? "public").views.push({
-      columns: columnsByKey.get(relationKey(object)) ?? [],
+      columns: markViewWriteColumns(columns, writeColumnNames),
+      materialized: object.ref.kind === "materialized-view",
       name: object.ref.name,
+      relationships: await viewRelationships(object, columns, relationsByKey),
+      uniqueColumnSets: [],
+      updatable: object.ref.kind === "view" && writeColumnNames !== undefined,
     });
   }
+}
+
+function markViewWriteColumns(
+  columns: ColumnShape[],
+  writeColumnNames: Set<string> | undefined
+): ColumnShape[] {
+  return columns.map((column) => ({
+    ...column,
+    updatable: writeColumnNames?.has(column.name) === true,
+  }));
+}
+
+async function viewRelationships(
+  object: SchemaObject,
+  columns: ColumnShape[],
+  relationsByKey: Map<string, TableShape>
+): Promise<RelationshipShape[]> {
+  const source = await singleRangeSource(object, relationsByKey);
+  if (!source || source.schema !== (object.ref.schema ?? "public")) {
+    return [];
+  }
+  const columnNames = new Set(columns.map((column) => column.name));
+  return source.relation.relationships
+    .filter(
+      (relationship) =>
+        relationship.referencedSchema === source.schema &&
+        relationship.columns.every((column) => columnNames.has(column))
+    )
+    .map((relationship) => ({ ...relationship }));
+}
+
+async function viewWriteColumnNames(
+  object: SchemaObject,
+  relationsByKey: Map<string, TableShape>
+): Promise<Set<string> | undefined> {
+  if (object.ref.kind !== "view") {
+    return;
+  }
+  const source = await singleRangeSource(object, relationsByKey);
+  if (!(source && isSimpleSelect(source.select))) {
+    return;
+  }
+  if (source.relation.materialized || source.relation.updatable === false) {
+    return;
+  }
+  const names = new Set<string>();
+  for (const item of readArray(source.select.targetList)) {
+    const target = asRecord(asRecord(item)?.ResTarget);
+    if (!target) {
+      return;
+    }
+    const columnName = directColumnName(target, source.rangeNames);
+    if (columnName === "*") {
+      for (const column of source.relation.columns) {
+        names.add(column.name);
+      }
+      continue;
+    }
+    if (columnName) {
+      names.add(readString(target.name) ?? columnName);
+    }
+  }
+  return names.size > 0 ? names : undefined;
+}
+
+async function singleRangeSource(
+  object: SchemaObject,
+  relationsByKey: Map<string, TableShape>
+): Promise<
+  | {
+      rangeNames: Set<string>;
+      relation: TableShape;
+      schema: string;
+      select: AstNode;
+    }
+  | undefined
+> {
+  const parsed = await parseSqlAst(object.sql, object.file);
+  const statement = asRecord(asRecord(readArray(asRecord(parsed.ast)?.stmts)[0])?.stmt);
+  const view = asRecord(statement?.ViewStmt);
+  const tableAs = asRecord(statement?.CreateTableAsStmt);
+  const select = asRecord(asRecord(view?.query ?? tableAs?.query)?.SelectStmt);
+  const fromClause = readArray(select?.fromClause);
+  const rangeVar = asRecord(asRecord(fromClause[0])?.RangeVar);
+  const relname = readString(rangeVar?.relname);
+  if (!select || fromClause.length !== 1 || !rangeVar || !relname) {
+    return;
+  }
+  const schema = readString(rangeVar.schemaname) ?? object.ref.schema ?? "public";
+  const relation = relationsByKey.get(`${schema}.${relname}`);
+  if (!relation) {
+    return;
+  }
+  const alias = readString(asRecord(rangeVar.alias)?.aliasname);
+  return {
+    rangeNames: new Set([relname, ...(alias ? [alias] : [])]),
+    relation,
+    schema,
+    select,
+  };
+}
+
+function isSimpleSelect(select: AstNode): boolean {
+  return !(
+    select.distinctClause !== undefined ||
+    select.groupClause !== undefined ||
+    select.havingClause !== undefined ||
+    select.larg !== undefined ||
+    select.rarg !== undefined ||
+    select.valuesLists !== undefined ||
+    select.withClause !== undefined
+  );
+}
+
+function directColumnName(target: AstNode, rangeNames: Set<string>): string | undefined {
+  const columnRef = asRecord(asRecord(target.val)?.ColumnRef);
+  const parts = columnRefParts(columnRef);
+  if (parts.at(-1) === "*") {
+    if (parts.length === 1 || rangeNames.has(parts.at(-2) ?? "")) {
+      return "*";
+    }
+    return;
+  }
+  if (parts.length === 1) {
+    return parts[0];
+  }
+  if (parts.length === 2 && rangeNames.has(parts[0] ?? "")) {
+    return parts[1];
+  }
+  return;
+}
+
+function columnRefParts(columnRef: AstNode | undefined): string[] {
+  return readArray(columnRef?.fields).flatMap((field) => {
+    if (asRecord(field)?.A_Star) {
+      return ["*"];
+    }
+    const value = stringList([field])[0];
+    return value ? [value] : [];
+  });
 }
 
 function relationKey(object: SchemaObject): string {
   return `${object.ref.schema ?? "public"}.${object.ref.name}`;
 }
 
-function relationShape(name: string, columns: ColumnShape[]): TableShape {
+function relationShape(
+  name: string,
+  columns: ColumnShape[],
+  kind?: SchemaObject["ref"]["kind"]
+): TableShape {
   return {
     columns,
+    materialized: kind === "materialized-view",
     name,
     relationships: [],
+    updatable: kind !== "materialized-view",
     uniqueColumnSets: [],
   };
 }
@@ -340,9 +501,6 @@ function resolveScalarType(base: string, arrayDepth: number): ResolvedColumnType
   if (numberTypes.has(lowered)) {
     return { arrayDepth, kind: "number" };
   }
-  if (vectorTypes.has(lowered)) {
-    return { arrayDepth: arrayDepth + 1, kind: "number" };
-  }
   if (stringTypes.has(lowered)) {
     return { arrayDepth, kind: "string" };
   }
@@ -354,6 +512,9 @@ function resolveScalarType(base: string, arrayDepth: number): ResolvedColumnType
   }
   if (lowered === "void") {
     return { arrayDepth, kind: "void" };
+  }
+  if (lowered === "record") {
+    return { arrayDepth, kind: "record" };
   }
 }
 
@@ -515,7 +676,10 @@ async function domainBaseType(object: SchemaObject): Promise<string | undefined>
   return domain ? canonicalColumnType(domain.typeName) : undefined;
 }
 
-async function functionShape(object: SchemaObject): Promise<FunctionShape | undefined> {
+async function functionShape(
+  object: SchemaObject,
+  shapes: SchemaShapes
+): Promise<FunctionShape | undefined> {
   const parsed = await parseSqlAst(object.sql, object.file);
   const statements = readArray(asRecord(parsed.ast)?.stmts);
   const fn = asRecord(asRecord(asRecord(statements[0])?.stmt)?.CreateFunctionStmt);
@@ -527,7 +691,7 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
   let hasTableParam = false;
   for (const item of readArray(fn.parameters)) {
     const parameter = asRecord(asRecord(item)?.FunctionParameter);
-    const result = applyFunctionParameter(parameter, args, returnColumns);
+    const result = applyFunctionParameter(parameter, args, returnColumns, object, shapes);
     if (result === "skip") {
       continue;
     }
@@ -562,7 +726,9 @@ type FunctionParameterResult = "abort" | "skip" | "table" | "value";
 function applyFunctionParameter(
   parameter: AstNode | undefined,
   args: FunctionShape["args"],
-  returnColumns: { name: string; type: string }[]
+  returnColumns: { name: string; type: string }[],
+  object: SchemaObject,
+  shapes: SchemaShapes
 ): FunctionParameterResult {
   if (!parameter) {
     return "skip";
@@ -573,13 +739,14 @@ function applyFunctionParameter(
     return mode === "FUNC_PARAM_TABLE" ? "table" : "skip";
   }
   const name = readString(parameter.name);
-  if (!name) {
+  const type = typeNameToSql(parameter.argType);
+  if (!(name || allowsUnnamedInputType(type, object.ref.schema ?? "public", shapes))) {
     return "abort";
   }
   args.push({
-    name,
+    name: name ?? "",
     optional: parameter.defexpr !== undefined,
-    type: typeNameToSql(parameter.argType),
+    type,
   });
   return mode === "FUNC_PARAM_TABLE" ? "table" : "value";
 }
@@ -603,7 +770,24 @@ function isOutputParameter(mode: string): boolean {
 }
 
 function isInputParameter(mode: string): boolean {
-  return mode === "FUNC_PARAM_DEFAULT" || mode === "FUNC_PARAM_IN" || mode === "FUNC_PARAM_INOUT";
+  return (
+    mode === "FUNC_PARAM_DEFAULT" ||
+    mode === "FUNC_PARAM_IN" ||
+    mode === "FUNC_PARAM_INOUT" ||
+    mode === "FUNC_PARAM_VARIADIC"
+  );
+}
+
+function allowsUnnamedInputType(type: string, schemaName: string, shapes: SchemaShapes): boolean {
+  const lowered = type.toLowerCase();
+  const parenIndex = lowered.indexOf("(");
+  const base = lowered.slice(0, parenIndex === -1 ? undefined : parenIndex).trim();
+  return (
+    base === "json" ||
+    base === "jsonb" ||
+    base === "text" ||
+    resolveRelationType(shapes, schemaName, type) !== undefined
+  );
 }
 
 async function applyConstraint(
@@ -723,8 +907,6 @@ const numberTypes = new Set([
   "oid",
 ]);
 
-const vectorTypes = new Set(["vector", "halfvec"]);
-
 const stringTypes = new Set([
   "text",
   "character varying",
@@ -751,4 +933,7 @@ const stringTypes = new Set([
   "timestamp with time zone",
   "timestamp without time zone",
   "xml",
+  "vector",
+  "halfvec",
+  "sparsevec",
 ]);

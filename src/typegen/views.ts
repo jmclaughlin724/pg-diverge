@@ -53,12 +53,14 @@ export async function collectViewColumns(
     functionsByKey
   );
   if (aliasNames) {
-    return aliasNames.map((name, index) => ({
-      name,
-      notNull: false,
-      type:
-        aliasNames.length === expanded.length ? (expanded[index]?.type ?? "unknown") : "unknown",
-    }));
+    return aliasNames.map((name, index) => {
+      const expandedColumn = aliasNames.length === expanded.length ? expanded[index] : undefined;
+      return {
+        name,
+        notNull: expandedColumn?.notNull === true,
+        type: expandedColumn?.type ?? "unknown",
+      };
+    });
   }
   return expanded;
 }
@@ -177,7 +179,13 @@ function expandTarget(target: ViewTarget, context: InferenceContext): ColumnShap
       ? undefined
       : findColumn(context.fromInfo, target);
   const type = expressionType && expressionType !== "unknown" ? expressionType : match?.type;
-  return [{ name, notNull: false, type: type ?? "unknown" }];
+  return [
+    {
+      name,
+      notNull: match?.notNull === true && astNodeKind(target.expression) === "ColumnRef",
+      type: type ?? "unknown",
+    },
+  ];
 }
 
 function expandStarTarget(target: ViewTarget, fromInfo: SourceInfo | undefined): ColumnShape[] {
@@ -191,11 +199,7 @@ function expandStarTarget(target: ViewTarget, fromInfo: SourceInfo | undefined):
   if (!columns) {
     return [];
   }
-  return columns.map((column) => ({
-    name: column.name,
-    notNull: false,
-    type: column.type,
-  }));
+  return columns.map((column) => ({ ...column }));
 }
 
 function expressionColumnName(expression: unknown): string | undefined {
