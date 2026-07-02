@@ -144,7 +144,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.3",
     "@ast-grep/cli": "0.44.0",
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.2",
     "@changesets/cli": "^2.31.0",
     "@postgres-language-server/cli": "0.25.5",
     "@taplo/cli": "0.7.0",
