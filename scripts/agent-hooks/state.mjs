@@ -148,11 +148,11 @@ export function addEvidence(state, evidence) {
 
 export function setCorrections(state, findings) {
   const turn = currentTurnState(state);
-  const existing = new Map(turn.corrections.map((item) => [item.id, item]));
+  const blockedIds = new Set(
+    turn.corrections.filter((item) => item.blocked).map((item) => item.id)
+  );
   turn.corrections = findings.map((finding) => ({
-    blocked: existing.get(finding.id)?.blocked ?? false,
-    firstSeenAt: existing.get(finding.id)?.firstSeenAt ?? new Date().toISOString(),
-    lastSeenAt: new Date().toISOString(),
+    blocked: blockedIds.has(finding.id),
     ...finding,
   }));
 }
