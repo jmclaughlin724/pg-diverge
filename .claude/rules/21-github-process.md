@@ -167,6 +167,16 @@ gh pr merge <number> --squash --delete-branch
 
 Do not use `--merge`, `--rebase`, `--admin`, `--disable-auto`, local squash merges, force-push workarounds, or repo-local merge wrappers unless the user explicitly approves the exception and the reason is recorded in the PR.
 
+## PR review and check resolution
+
+Address every PR review comment and failing check before merge, and mark each resolved only when its correction lands — never before, and never for a valid finding left unaddressed.
+
+1. Verify the finding against upstream canonical sources before acting (Rule 05): official docs, the repo's own rules, or the installed dependency. An unverified review claim is a blocker, not a directive. When a suggestion conflicts with repo policy or upstream guidance, resolve it with the upstream-correct action and note the conflict rather than following the literal suggestion.
+2. Fix the finding in the canonical owner, or record an owner-scoped not-applicable reason with evidence, and commit that correction.
+3. Only then resolve the review thread (`gh api graphql` `resolveReviewThread`) or re-run the failing check to success. Resolving a thread or dismissing a check before its correction is committed, or resolving a valid unaddressed finding, is prohibited.
+
+`required_conversation_resolution` is enforced on `main` PRs, so unresolved threads block merge; do not resolve threads prematurely to unblock a merge.
+
 ## Enforced by
 
 - `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, Rule 21, Bash hook, and PR template stay synchronized.
