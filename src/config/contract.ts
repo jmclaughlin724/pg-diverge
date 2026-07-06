@@ -486,7 +486,6 @@ export function createInstalledConfig(
       allowedGrantees: [],
       destructive: [],
       requiredPolicyColumns: {},
-      routineDependencies: {},
       renames: [],
     },
     idempotency: "required",
@@ -763,11 +762,10 @@ export const configFieldMetadata: ConfigFieldMetadata[] = [
       allowedGrantees: [],
       destructive: [],
       requiredPolicyColumns: {},
-      routineDependencies: {},
       renames: [],
     },
     description:
-      "Reviewed grant, routine-dependency, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, relation/column identities, or role names.",
+      "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
     key: "hints",
   },
   {
@@ -1081,7 +1079,6 @@ export function createInstalledConfig(options = {}) {
       allowedGrantees: [],
       destructive: [],
       requiredPolicyColumns: {},
-      routineDependencies: {},
       renames: [],
     },
     idempotency: "required",

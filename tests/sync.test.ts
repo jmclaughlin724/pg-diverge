@@ -10,6 +10,7 @@ import { resolveConfig } from "../src/config/schema.js";
 import type { Diagnostic } from "../src/core.js";
 import { resolveDatabaseUrl } from "../src/database/url.js";
 import { diagnosticCatalog } from "../src/diagnostics.js";
+import { MODEL_FORMAT_VERSION } from "../src/hash.js";
 import { stageGeneratedMigrations } from "../src/migrations/stage.js";
 import { syncMigrations } from "../src/workflow/sync.js";
 import { resolveSyncTargets } from "../src/workflow/targets.js";
@@ -937,7 +938,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     await mkdir(migrationsDir);
     await writeFile(
       join(migrationsDir, "20260101000000_existing.sql"),
-      "-- supaschema: lineage from=unrelated_from to=unrelated_to\nSELECT 1;\n"
+      `-- supaschema: lineage format=${MODEL_FORMAT_VERSION} from=unrelated_from to=unrelated_to\nSELECT 1;\n`
     );
 
     const result = await syncMigrations({

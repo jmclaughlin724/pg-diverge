@@ -5,6 +5,7 @@ import type { SupaschemaConfig } from "./config/schema.js";
 import { pendingInstallPathConfirmationDiagnostic } from "./config/validate.js";
 import { databaseUrlLane, resolveDatabaseUrl } from "./database/url.js";
 import { migrationsStatus } from "./migrations/status.js";
+import { currentBaselineFingerprints } from "./source/resolve.js";
 import { parseSqlAst } from "./sql/parser.js";
 
 export interface DoctorCheck {
@@ -49,7 +50,7 @@ export async function runDoctor(
   const hasMigrationsDir = await access(migrationsDir)
     .then(() => true)
     .catch(() => false);
-  checks.push(await migrationsHistoryCheck(migrationsDir, hasMigrationsDir, resolved));
+  checks.push(await migrationsHistoryCheck(config, migrationsDir, hasMigrationsDir, resolved, cwd));
 
   const tree = config.schemaPaths[0] ?? "database/schemas";
   const hasTree = await access(resolve(cwd, tree))
@@ -146,21 +147,35 @@ async function databaseChecks(resolved: string | undefined): Promise<DoctorCheck
 }
 
 async function migrationsHistoryCheck(
+  config: SupaschemaConfig,
   migrationsDir: string,
   hasMigrationsDir: boolean,
-  resolved: string | undefined
+  resolved: string | undefined,
+  cwd: string
 ): Promise<DoctorCheck> {
-  if (!(hasMigrationsDir && resolved)) {
+  if (!hasMigrationsDir) {
     return {
-      detail: hasMigrationsDir ? "no database to compare against" : `${migrationsDir} not found`,
+      detail: `${migrationsDir} not found`,
       name: "migrations history",
       status: "skip",
     };
   }
-  const { report } = await migrationsStatus({ databaseUrl: resolved, directory: migrationsDir });
-  const broken = report.ghosts.length + report.outOfOrder.length;
+  const { report } = await migrationsStatus({
+    currentFingerprints: await currentBaselineFingerprints(config, cwd),
+    directory: migrationsDir,
+    ...(resolved === undefined ? {} : { databaseUrl: resolved }),
+  });
+  const stale = report.staleBaseline.length;
+  if (!resolved) {
+    return {
+      detail: `${report.pending.length} pending on disk, ${stale} stale-baseline (no database to compare against)`,
+      name: "migrations history",
+      status: stale === 0 ? "skip" : "fail",
+    };
+  }
+  const broken = report.ghosts.length + report.outOfOrder.length + stale;
   return {
-    detail: `${report.applied.length} applied, ${report.pending.length} pending, ${report.ghosts.length} ghosts, ${report.outOfOrder.length} out-of-order`,
+    detail: `${report.applied.length} applied, ${report.pending.length} pending, ${report.ghosts.length} ghosts, ${report.outOfOrder.length} out-of-order, ${stale} stale-baseline`,
     name: "migrations history",
     status: broken === 0 ? "pass" : "fail",
   };

@@ -141,7 +141,6 @@ The `workflow` object is the machine-readable contract used by agent hooks, CLI 
 | `excludedGrantRoles` | `[]` | Grants and default privileges whose grantee or `FOR ROLE` matches are removed from extracted models (useful for platform roles such as `supabase_admin`). |
 | `hints.allowedGrantees` | `[]` | Roles allowed by the free grant least-privilege rule. When non-empty, grants to other roles are reported by `scan` and `workflow.rls_safety`. |
 | `hints.requiredPolicyColumns` | `{}` | Table keys mapped to columns that every effective RLS policy predicate must reference, for example `{ "public.accounts": ["tenant_id"] }`. |
-| `hints.routineDependencies` | `{}` | Routine object keys mapped to explicit relation or column dependencies for dynamic SQL or unsupported routine languages, for example `{ "function:app.lookup()": ["app.accounts", "app.accounts.secret_id"] }`. |
 | `hints.destructive` | `[]` | Exact object keys (or `"*"`) approved for destructive drop/replace. |
 | `hints.renames` | `[]` | `{ "from": "<object key>", "to": "<object key>" }` pairs rendered as guarded `ALTER ... RENAME`. |
 | `idempotency` | `"required"` | Rendered SQL is replay-safe by construction. Not configurable away. |

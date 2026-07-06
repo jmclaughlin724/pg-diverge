@@ -174,69 +174,72 @@ describe("routine dependency proof guards", () => {
     $$;
   `;
 
-  it("blocks relation changes when dynamic routine dependencies are unhinted", async () => {
+  it("does not block additive relation changes when dynamic SQL dependencies are parsed", async () => {
     const plan = await diff(fromSql, toSql);
     const operation = plan.operations.find((item) => item.key === "table:app.accounts");
 
-    expect(operation?.blocked).toBe(true);
-    expect(plan.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
-    );
-  });
-
-  it("allows relation changes when dynamic routine dependencies are explicit", async () => {
-    const plan = await diff(fromSql, toSql, {
-      hints: {
-        routineDependencies: {
-          "function:app.dynamic_lookup()": ["app.accounts"],
-        },
-      },
-    });
-    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
-
     expect(operation?.blocked).toBe(false);
     expect(plan.diagnostics.map((item) => item.code)).not.toContain(
-      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
+      "SUPA_ROUTINE_DEPENDENCY_PROOF_REQUIRED"
     );
   });
 
-  it("blocks relation changes when dynamic routine hints miss the changed relation", async () => {
-    const plan = await diff(fromSql, toSql, {
-      hints: {
-        routineDependencies: {
-          "function:app.dynamic_lookup()": ["app.other"],
-        },
-      },
-    });
-    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
-
-    expect(operation?.blocked).toBe(true);
-    expect(plan.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
-    );
-  });
-
-  it("blocks relation changes for pure dynamic routines without explicit dependency hints", async () => {
+  it("does not block unrelated relation changes for pure dynamic routines without structural proof", async () => {
     const plan = await diff(
       `
         CREATE TABLE app.accounts (id bigint PRIMARY KEY);
-        CREATE FUNCTION app.dynamic_lookup()
+        CREATE FUNCTION app.dynamic_lookup(query_sql text)
         RETURNS void
         LANGUAGE plpgsql
         AS $$
         BEGIN
-          EXECUTE 'select 1';
+          EXECUTE query_sql;
         END;
         $$;
       `,
       `
         CREATE TABLE app.accounts (id bigint PRIMARY KEY, label text DEFAULT ''::text NOT NULL);
-        CREATE FUNCTION app.dynamic_lookup()
+        CREATE FUNCTION app.dynamic_lookup(query_sql text)
         RETURNS void
         LANGUAGE plpgsql
         AS $$
         BEGIN
-          EXECUTE 'select 1';
+          EXECUTE query_sql;
+        END;
+        $$;
+      `
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+
+    expect(operation?.blocked).toBe(false);
+    expect(plan.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_ROUTINE_DEPENDENCY_PROOF_REQUIRED"
+    );
+  });
+
+  it("blocks overlapping relation changes when an existing routine has unproven dynamic SQL", async () => {
+    const plan = await diff(
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY);
+        CREATE FUNCTION app.dynamic_lookup(query_sql text)
+        RETURNS void
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          PERFORM id FROM app.accounts;
+          EXECUTE query_sql;
+        END;
+        $$;
+      `,
+      `
+        CREATE TABLE app.accounts (id bigint PRIMARY KEY, label text DEFAULT ''::text NOT NULL);
+        CREATE FUNCTION app.dynamic_lookup(query_sql text)
+        RETURNS void
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          PERFORM id FROM app.accounts;
+          EXECUTE query_sql;
         END;
         $$;
       `
@@ -245,47 +248,7 @@ describe("routine dependency proof guards", () => {
 
     expect(operation?.blocked).toBe(true);
     expect(plan.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
-    );
-  });
-
-  it("allows relation changes for pure dynamic routines when hints prove they are unrelated", async () => {
-    const plan = await diff(
-      `
-        CREATE TABLE app.accounts (id bigint PRIMARY KEY);
-        CREATE FUNCTION app.dynamic_lookup()
-        RETURNS void
-        LANGUAGE plpgsql
-        AS $$
-        BEGIN
-          EXECUTE 'select 1';
-        END;
-        $$;
-      `,
-      `
-        CREATE TABLE app.accounts (id bigint PRIMARY KEY, label text DEFAULT ''::text NOT NULL);
-        CREATE FUNCTION app.dynamic_lookup()
-        RETURNS void
-        LANGUAGE plpgsql
-        AS $$
-        BEGIN
-          EXECUTE 'select 1';
-        END;
-        $$;
-      `,
-      {
-        hints: {
-          routineDependencies: {
-            "function:app.dynamic_lookup()": ["app.other"],
-          },
-        },
-      }
-    );
-    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
-
-    expect(operation?.blocked).toBe(false);
-    expect(plan.diagnostics.map((item) => item.code)).not.toContain(
-      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
+      "SUPA_ROUTINE_DEPENDENCY_PROOF_REQUIRED"
     );
   });
 
@@ -309,7 +272,7 @@ describe("routine dependency proof guards", () => {
 
     expect(operation?.blocked).toBe(false);
     expect(plan.diagnostics.map((item) => item.code)).not.toContain(
-      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED"
+      "SUPA_ROUTINE_DEPENDENCY_PROOF_REQUIRED"
     );
   });
 });

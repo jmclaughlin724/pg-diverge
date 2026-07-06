@@ -84,6 +84,9 @@ async function readMigrationFileContext(
     context.latestGeneratedBaseline = {
       file,
       fingerprint: lineage.to,
+      ...(lineage.modelFormatVersion === undefined
+        ? {}
+        : { modelFormatVersion: lineage.modelFormatVersion }),
       source: `migrations:${migrationsDir}${version === undefined ? "" : `@${version}`}`,
       ...(version === undefined ? {} : { version }),
     };

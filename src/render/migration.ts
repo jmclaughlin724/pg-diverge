@@ -229,6 +229,9 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
   }
   const prefix = `ALTER TABLE ${qualifiedRef(table.ref)} ALTER COLUMN ${quoteIdent(name)}`;
   const statements: string[] = [];
+  if (record.dropDefault === true && typeof record.type === "string") {
+    statements.push(`${prefix} DROP DEFAULT;`);
+  }
   if (typeof record.type === "string") {
     statements.push(
       `-- review: USING is an identity cast (${quoteIdent(name)}::${record.type}); replace it for non-assignment-cast conversions`
@@ -257,7 +260,7 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
   if (record.dropIdentity === true) {
     statements.push(`${prefix} DROP IDENTITY IF EXISTS;`);
   }
-  if (record.dropDefault === true) {
+  if (record.dropDefault === true && typeof record.type !== "string") {
     statements.push(`${prefix} DROP DEFAULT;`);
   }
   if (typeof record.setDefault === "string") {
@@ -345,6 +348,9 @@ function partitionParentQualifiedRef(table: SchemaObject): string | undefined {
 function renderReplace(operation: MigrationOperation): string {
   const before = requiredBefore(operation);
   const after = requiredAfter(operation);
+  if (operation.metadata.preDropped === true) {
+    return renderCreate(after);
+  }
   switch (after.ref.kind) {
     case "function":
     case "procedure":

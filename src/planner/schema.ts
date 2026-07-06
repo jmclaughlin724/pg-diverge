@@ -45,7 +45,8 @@ export function planSchemaDiff(
     migrationCorpus
   );
   appendCreatedOperations(fromMap, toMap, consumedTo, operations, config, migrationCorpus);
-  appendReplacedRelationDependents(operations, from, to, config, migrationCorpus);
+  appendReplacedObjectDependents(operations, from, to, config, migrationCorpus);
+  appendChangedColumnBlockingDependents(operations, from, to, config, migrationCorpus);
   appendDependencyProofDiagnostics(operations, from, to);
   const sortedOperations = sortOperations(operations, diagnostics);
   appendOperationDiagnostics(diagnostics, operations);
@@ -257,7 +258,13 @@ function objectMap(objects: SchemaObject[]): Map<string, SchemaObject> {
   return new Map(objects.map((object) => [object.key, object]));
 }
 
-const replacedRelationKinds = new Set<ObjectKind>(["table", "materialized-view"]);
+const replacedDependencyKinds = new Set<ObjectKind>([
+  "domain",
+  "materialized-view",
+  "table",
+  "type",
+  "view",
+]);
 const relationDependentKinds = new Set<ObjectKind>([
   "constraint",
   "index",
@@ -265,10 +272,24 @@ const relationDependentKinds = new Set<ObjectKind>([
   "policy",
   "trigger",
 ]);
-const blockingRelationDependentKinds = new Set<ObjectKind>(["view", "materialized-view"]);
+const blockingObjectDependentKinds = new Set<ObjectKind>([
+  "function",
+  "index",
+  "materialized-view",
+  "procedure",
+  "view",
+]);
+const blockingColumnDependentKinds = new Set<ObjectKind>(["index", "materialized-view", "view"]);
+const targetOnlyReplayPreDropKinds = new Set<ObjectKind>([
+  "function",
+  "index",
+  "procedure",
+  "view",
+]);
 const routineKinds = new Set<ObjectKind>(["function", "procedure"]);
 const proofDependentKinds = new Set<ObjectKind>([
   "function",
+  "index",
   "procedure",
   "view",
   "materialized-view",
@@ -294,12 +315,12 @@ function appendDependencyProofDiagnostics(
     relationOrTypeChangeKinds.has(operation.ref.kind)
   );
   if (relationOrTypeOperations.length > 0) {
-    blockUnhintedUnknownRoutines(relationOrTypeOperations, to.objects, operations);
+    blockUnprovenUnknownRoutines(relationOrTypeOperations, to.objects, operations);
   }
   appendColumnDependentRewriteDiagnostics(operations, from, to);
 }
 
-function blockUnhintedUnknownRoutines(
+function blockUnprovenUnknownRoutines(
   relationOrTypeOperations: MigrationOperation[],
   objects: readonly SchemaObject[],
   operations: readonly MigrationOperation[]
@@ -316,17 +337,14 @@ function blockUnhintedUnknownRoutines(
       if (!unprovenRoutineMayOverlapOperation(object, operation)) {
         continue;
       }
-      if (routineDependencyHintCoversOperation(object, operation)) {
-        continue;
-      }
       blockOperation(
         operation,
         diagnostic(
-          "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED",
+          "SUPA_ROUTINE_DEPENDENCY_PROOF_REQUIRED",
           "error",
           "routine dependencies are not fully proven while this plan changes relations or types",
           {
-            hint: `Add exhaustive dependencies to hints.routineDependencies["${object.key}"] or split this relation/type change from the routine.`,
+            hint: `Rewrite ${object.key} so dependencies are statically extractable, include the routine rewrite in this plan, or split this relation/type change into a reviewed explicit migration.`,
             ref: object.ref,
           }
         )
@@ -339,42 +357,13 @@ function unprovenRoutineMayOverlapOperation(
   object: SchemaObject,
   operation: MigrationOperation
 ): boolean {
-  if (
-    routineDependencyConfidence(object.metadata.routineDependencyConfidence) ===
-      "dynamic-sql-unknown" &&
-    object.metadata.routineDependencyHinted !== true
-  ) {
-    return true;
-  }
   const identity = refIdentity(operation.ref);
-  const references = [
-    ...metadataStrings(object.metadata.routineDependencies),
-    ...metadataStrings(object.metadata.routineDependencyHintReferences),
-  ];
+  const references = metadataStrings(object.metadata.routineDependencies);
   if (references.includes(identity)) {
     return true;
   }
   const columnPrefix = `${identity}.`;
-  return [
-    ...metadataStrings(object.metadata.routineColumnDependencies),
-    ...metadataStrings(object.metadata.routineDependencyHintColumns),
-  ].some((reference) => reference === identity || reference.startsWith(columnPrefix));
-}
-
-function routineDependencyHintCoversOperation(
-  object: SchemaObject,
-  operation: MigrationOperation
-): boolean {
-  if (object.metadata.routineDependencyHinted !== true) {
-    return false;
-  }
-  const identity = refIdentity(operation.ref);
-  const references = metadataStrings(object.metadata.routineDependencyHintReferences);
-  if (references.includes(identity)) {
-    return true;
-  }
-  const columnPrefix = `${identity}.`;
-  return metadataStrings(object.metadata.routineDependencyHintColumns).some(
+  return metadataStrings(object.metadata.routineColumnDependencies).some(
     (reference) => reference === identity || reference.startsWith(columnPrefix)
   );
 }
@@ -388,6 +377,7 @@ function routineDependencyConfidence(value: unknown): RoutineDependencyConfidenc
   switch (value) {
     case "sql-body":
     case "sql-string-parsed":
+    case "plpgsql-dynamic-parsed":
     case "plpgsql-static":
     case "dynamic-sql-unknown":
     case "plpgsql-partial":
@@ -409,6 +399,7 @@ function routineConfidenceIsUnproven(confidence: RoutineDependencyConfidence): b
   switch (confidence) {
     case "sql-body":
     case "sql-string-parsed":
+    case "plpgsql-dynamic-parsed":
     case "plpgsql-static":
       return false;
     case "dynamic-sql-unknown":
@@ -436,42 +427,157 @@ function appendColumnDependentRewriteDiagnostics(
     if (changedColumns.size === 0) {
       continue;
     }
-    for (const before of from.objects) {
-      if (
-        !(proofDependentKinds.has(before.ref.kind) && dependsOnAnyColumn(before, changedColumns))
-      ) {
-        continue;
-      }
-      const dependentOperation = operationByKey.get(before.key);
-      const after = targetByKey.get(before.key);
-      if (!dependentOperation || (after && dependsOnAnyColumn(after, changedColumns))) {
-        blockOperation(
-          tableOperation,
-          diagnostic(
-            "SUPA_PLAN_COLUMN_DEPENDENT_REWRITE_REQUIRED",
-            "error",
-            "a dependent object references a column being dropped or type-changed",
-            {
-              hint: `${before.key} must be dropped, replaced, or split into a reviewed explicit migration before altering ${tableOperation.key}.`,
-              ref: before.ref,
-            }
-          )
-        );
-        continue;
-      }
-      dependentOperation.diagnostics.push(
+    appendColumnDependentDiagnosticsForAlter(
+      tableOperation,
+      changedColumns,
+      from,
+      operationByKey,
+      targetByKey
+    );
+  }
+}
+
+function appendColumnDependentDiagnosticsForAlter(
+  tableOperation: MigrationOperation,
+  changedColumns: Set<string>,
+  from: SchemaModel,
+  operationByKey: Map<string, MigrationOperation>,
+  targetByKey: Map<string, SchemaObject>
+): void {
+  for (const before of from.objects) {
+    if (!(proofDependentKinds.has(before.ref.kind) && dependsOnAnyColumn(before, changedColumns))) {
+      continue;
+    }
+    const dependentOperation = operationByKey.get(before.key);
+    const preDropOperation = operationByKey.get(preDropKey(before.key));
+    const after = targetByKey.get(before.key);
+    if (preDropOperation && blockingColumnDependentKinds.has(before.ref.kind)) {
+      continue;
+    }
+    if (!dependentOperation || (after && dependsOnAnyColumn(after, changedColumns))) {
+      blockOperation(
+        tableOperation,
         diagnostic(
-          "SUPA_PLAN_DEPENDENT_ROUTINE_REORDERED",
-          "warning",
-          "dependent object replacement is ordered before the destructive column alter",
+          "SUPA_PLAN_COLUMN_DEPENDENT_REWRITE_REQUIRED",
+          "error",
+          "a dependent object references a column being dropped or type-changed",
           {
-            hint: `${dependentOperation.key} must stop referencing the changed column before ${tableOperation.key} is altered.`,
-            ref: dependentOperation.ref,
+            hint: `${before.key} must be dropped, replaced, or split into a reviewed explicit migration before altering ${tableOperation.key}.`,
+            ref: before.ref,
           }
         )
       );
+      continue;
+    }
+    dependentOperation.diagnostics.push(
+      diagnostic(
+        "SUPA_PLAN_DEPENDENT_ROUTINE_REORDERED",
+        "warning",
+        "dependent object replacement is ordered before the destructive column alter",
+        {
+          hint: `${dependentOperation.key} must stop referencing the changed column before ${tableOperation.key} is altered.`,
+          ref: dependentOperation.ref,
+        }
+      )
+    );
+  }
+}
+
+function appendChangedColumnBlockingDependents(
+  operations: MigrationOperation[],
+  from: SchemaModel,
+  to: SchemaModel,
+  config: SupaschemaConfig,
+  migrationCorpus?: MigrationCorpus
+): void {
+  const fromByKey = new Map(from.objects.map((object) => [object.key, object]));
+  const context: ReplacedDependentContext = {
+    affectedRefs: new Map(),
+    dependencyIdentities: new Set(),
+    fromKeys: new Set(from.objects.map((object) => object.key)),
+    operationKeys: new Set(operations.map((operation) => operation.key)),
+  };
+  for (const tableOperation of operations) {
+    if (!(tableOperation.kind === "alter" && tableOperation.ref.kind === "table")) {
+      continue;
+    }
+    const changedColumns = destructiveAlteredColumnIdentities(tableOperation);
+    if (changedColumns.size === 0) {
+      continue;
+    }
+    expandChangedColumnBlockingDependents(
+      to.objects,
+      fromByKey,
+      changedColumns,
+      operations,
+      context,
+      config,
+      migrationCorpus
+    );
+  }
+  appendAffectedComments(to.objects, operations, context, config, migrationCorpus);
+}
+
+function expandChangedColumnBlockingDependents(
+  objects: SchemaObject[],
+  fromByKey: ReadonlyMap<string, SchemaObject>,
+  changedColumns: ReadonlySet<string>,
+  operations: MigrationOperation[],
+  context: ReplacedDependentContext,
+  config: SupaschemaConfig,
+  migrationCorpus: MigrationCorpus | undefined
+): void {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const object of objects) {
+      if (
+        appendChangedColumnBlockingDependent(
+          object,
+          fromByKey,
+          changedColumns,
+          operations,
+          context,
+          config,
+          migrationCorpus
+        )
+      ) {
+        changed = true;
+      }
     }
   }
+}
+
+function appendChangedColumnBlockingDependent(
+  object: SchemaObject,
+  fromByKey: ReadonlyMap<string, SchemaObject>,
+  changedColumns: ReadonlySet<string>,
+  operations: MigrationOperation[],
+  context: ReplacedDependentContext,
+  config: SupaschemaConfig,
+  migrationCorpus: MigrationCorpus | undefined
+): boolean {
+  if (!blockingColumnDependentKinds.has(object.ref.kind)) {
+    return false;
+  }
+  const before = fromByKey.get(object.key);
+  const directlyAffected = before !== undefined && dependsOnAnyColumn(before, changedColumns);
+  if (!(directlyAffected || isAffectedDependent(object, context.dependencyIdentities))) {
+    return false;
+  }
+  let changed = false;
+  rememberAffectedRef(context.affectedRefs, object.ref);
+  if (appendBlockingDependentPreDrop(object, operations, context, config, migrationCorpus)) {
+    changed = true;
+  }
+  if (!context.operationKeys.has(object.key)) {
+    operations.push(
+      makeOperation("create", object.key, undefined, object, config, migrationCorpus)
+    );
+    context.operationKeys.add(object.key);
+    changed = true;
+  }
+  return changed;
 }
 
 function destructiveChangedColumnIdentities(operation: MigrationOperation): Set<string> {
@@ -480,6 +586,17 @@ function destructiveChangedColumnIdentities(operation: MigrationOperation): Set<
   for (const column of stringMetadataArray(operation.metadata.dropColumns)) {
     identities.add(`${table}.${column}`);
   }
+  for (const alteration of objectMetadataArray(operation.metadata.alterColumns)) {
+    if (typeof alteration.name === "string" && typeof alteration.type === "string") {
+      identities.add(`${table}.${alteration.name}`);
+    }
+  }
+  return identities;
+}
+
+function destructiveAlteredColumnIdentities(operation: MigrationOperation): Set<string> {
+  const table = refIdentity(operation.ref);
+  const identities = new Set<string>();
   for (const alteration of objectMetadataArray(operation.metadata.alterColumns)) {
     if (typeof alteration.name === "string" && typeof alteration.type === "string") {
       identities.add(`${table}.${alteration.name}`);
@@ -533,34 +650,34 @@ function stringMetadataArray(value: unknown): string[] {
     : [];
 }
 
-function appendReplacedRelationDependents(
+function appendReplacedObjectDependents(
   operations: MigrationOperation[],
   from: SchemaModel,
   to: SchemaModel,
   config: SupaschemaConfig,
   migrationCorpus?: MigrationCorpus
 ): void {
-  const replacedRelations = replacedRelationRefs(operations);
-  if (replacedRelations.length === 0) {
+  const replacedObjects = replacedDependencyRefs(operations);
+  if (replacedObjects.length === 0) {
     return;
   }
 
-  const context = replacedDependentContext(from, operations, replacedRelations);
-  expandAffectedRelationDependents(to.objects, operations, context, config, migrationCorpus);
+  const context = replacedDependentContext(from, operations, replacedObjects);
+  expandAffectedDependents(to.objects, operations, context, config, migrationCorpus);
   appendAffectedComments(to.objects, operations, context, config, migrationCorpus);
 }
 
 interface ReplacedDependentContext {
   affectedRefs: Map<string, ObjectRef>;
+  dependencyIdentities: Set<string>;
   fromKeys: Set<string>;
   operationKeys: Set<string>;
-  relationIdentities: Set<string>;
 }
 
-function replacedRelationRefs(operations: MigrationOperation[]): ObjectRef[] {
+function replacedDependencyRefs(operations: MigrationOperation[]): ObjectRef[] {
   return operations
     .filter(
-      (operation) => operation.kind === "replace" && replacedRelationKinds.has(operation.ref.kind)
+      (operation) => operation.kind === "replace" && replacedDependencyKinds.has(operation.ref.kind)
     )
     .map((operation) => operation.ref);
 }
@@ -568,22 +685,22 @@ function replacedRelationRefs(operations: MigrationOperation[]): ObjectRef[] {
 function replacedDependentContext(
   from: SchemaModel,
   operations: MigrationOperation[],
-  replacedRelations: ObjectRef[]
+  replacedObjects: ObjectRef[]
 ): ReplacedDependentContext {
   const context: ReplacedDependentContext = {
     affectedRefs: new Map(),
+    dependencyIdentities: new Set(),
     fromKeys: new Set(from.objects.map((object) => object.key)),
     operationKeys: new Set(operations.map((operation) => operation.key)),
-    relationIdentities: new Set(),
   };
-  for (const relation of replacedRelations) {
-    rememberAffectedRef(context.affectedRefs, relation);
-    context.relationIdentities.add(refIdentity(relation));
+  for (const object of replacedObjects) {
+    rememberAffectedRef(context.affectedRefs, object);
+    context.dependencyIdentities.add(refIdentity(object));
   }
   return context;
 }
 
-function expandAffectedRelationDependents(
+function expandAffectedDependents(
   objects: SchemaObject[],
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
@@ -594,21 +711,21 @@ function expandAffectedRelationDependents(
   while (changed) {
     changed = false;
     for (const object of objects) {
-      if (appendAffectedRelationDependent(object, operations, context, config, migrationCorpus)) {
+      if (appendAffectedDependent(object, operations, context, config, migrationCorpus)) {
         changed = true;
       }
     }
   }
 }
 
-function appendAffectedRelationDependent(
+function appendAffectedDependent(
   object: SchemaObject,
   operations: MigrationOperation[],
   context: ReplacedDependentContext,
   config: SupaschemaConfig,
   migrationCorpus: MigrationCorpus | undefined
 ): boolean {
-  if (!isRelationDependent(object, context.relationIdentities)) {
+  if (!isAffectedDependent(object, context.dependencyIdentities)) {
     return false;
   }
   let changed = false;
@@ -633,20 +750,31 @@ function appendBlockingDependentPreDrop(
   config: SupaschemaConfig,
   migrationCorpus: MigrationCorpus | undefined
 ): boolean {
-  if (!(blockingRelationDependentKinds.has(object.ref.kind) && context.fromKeys.has(object.key))) {
+  if (!blockingObjectDependentKinds.has(object.ref.kind)) {
     return false;
   }
-  let changed = rememberRelationIdentity(context.relationIdentities, object.ref);
+  if (!(context.fromKeys.has(object.key) || targetOnlyReplayPreDropKinds.has(object.ref.kind))) {
+    return false;
+  }
+  let changed = rememberDependencyIdentity(context.dependencyIdentities, object.ref);
   const key = preDropKey(object.key);
   if (!context.operationKeys.has(key)) {
     operations.push(makePreDropOperation(object, config, migrationCorpus));
     context.operationKeys.add(key);
     changed = true;
   }
+  markPreDroppedReplacement(object.key, operations);
   return changed;
 }
 
-function rememberRelationIdentity(identities: Set<string>, ref: ObjectRef): boolean {
+function markPreDroppedReplacement(key: string, operations: MigrationOperation[]): void {
+  const operation = operations.find((item) => item.key === key);
+  if (operation?.kind === "replace") {
+    operation.metadata.preDropped = true;
+  }
+}
+
+function rememberDependencyIdentity(identities: Set<string>, ref: ObjectRef): boolean {
   const identity = refIdentity(ref);
   if (identities.has(identity)) {
     return false;
@@ -676,25 +804,25 @@ function appendAffectedComments(
   }
 }
 
-function isRelationDependent(object: SchemaObject, relationIdentities: Set<string>): boolean {
+function isAffectedDependent(object: SchemaObject, dependencyIdentities: Set<string>): boolean {
   const tableIdentity = tableRefIdentity(object.ref);
   if (
     relationDependentKinds.has(object.ref.kind) &&
     tableIdentity !== undefined &&
-    relationIdentities.has(tableIdentity)
+    dependencyIdentities.has(tableIdentity)
   ) {
     return true;
   }
   if (
-    blockingRelationDependentKinds.has(object.ref.kind) &&
-    object.dependencies.some((dependency) => relationIdentities.has(dependency))
+    blockingObjectDependentKinds.has(object.ref.kind) &&
+    object.dependencies.some((dependency) => dependencyIdentities.has(dependency))
   ) {
     return true;
   }
   return (
     object.ref.kind === "grant" &&
     typeof object.metadata.targetIdentity === "string" &&
-    relationIdentities.has(object.metadata.targetIdentity)
+    dependencyIdentities.has(object.metadata.targetIdentity)
   );
 }
 
@@ -777,10 +905,23 @@ function makePreDropOperation(
   config: SupaschemaConfig,
   migrationCorpus: MigrationCorpus | undefined
 ): MigrationOperation {
+  const operation = makeOperation("drop", object.key, object, undefined, config, migrationCorpus);
+  if (isReplayPreDrop(object.ref.kind)) {
+    operation.blocked = false;
+    operation.destructive = false;
+    operation.diagnostics = operation.diagnostics.filter(
+      (item) => item.code !== "SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED"
+    );
+    operation.metadata.destructiveDisposition = undefined;
+  }
   return {
-    ...makeOperation("drop", object.key, object, undefined, config, migrationCorpus),
+    ...operation,
     key: preDropKey(object.key),
   };
+}
+
+function isReplayPreDrop(kind: ObjectKind): boolean {
+  return kind === "function" || kind === "procedure";
 }
 
 function rememberAffectedRef(affectedRefs: Map<string, ObjectRef>, ref: ObjectRef): void {

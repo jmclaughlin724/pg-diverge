@@ -4,7 +4,7 @@ import type { MigrationPlan, SchemaModel } from "../core.js";
 import { planSchemaDiff } from "../planner/schema.js";
 import { buildSchemaPlanningContext } from "../planning/context.js";
 import { migrationSafetyPack, runRulePacks } from "../scan/rules.js";
-import { filterModelBySchemas } from "../source/extract.js";
+import { filterModelBySchemas, parseSchemaFilter } from "../source/extract.js";
 
 interface SchemaDiffPlanOptions {
   checkMigrationBaseline?: boolean;
@@ -58,14 +58,5 @@ function blockedPlan(
 }
 
 export function filterModel(model: SchemaModel, schemaFilter: string | undefined): SchemaModel {
-  if (!schemaFilter) {
-    return model;
-  }
-  const schemas = new Set(
-    schemaFilter
-      .split(",")
-      .map((name) => name.trim().toLowerCase())
-      .filter(Boolean)
-  );
-  return filterModelBySchemas(model, schemas);
+  return filterModelBySchemas(model, parseSchemaFilter(schemaFilter));
 }

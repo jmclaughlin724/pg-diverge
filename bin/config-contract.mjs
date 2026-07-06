@@ -279,10 +279,9 @@ const contract = JSON.parse(`{
         "allowedGrantees": [],
         "destructive": [],
         "requiredPolicyColumns": {},
-        "routineDependencies": {},
         "renames": []
       },
-      "description": "Reviewed grant, routine-dependency, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, relation/column identities, or role names.",
+      "description": "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
       "key": "hints"
     },
     {
@@ -1010,7 +1009,6 @@ export function createInstalledConfig(options = {}) {
       allowedGrantees: [],
       destructive: [],
       requiredPolicyColumns: {},
-      routineDependencies: {},
       renames: [],
     },
     idempotency: "required",

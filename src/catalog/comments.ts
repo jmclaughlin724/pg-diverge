@@ -1,11 +1,13 @@
 import type { SchemaObject } from "../core.js";
 import { sha256 } from "../hash.js";
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
+import { isInitdbDefaultComment } from "../sql/privileges.js";
 import { makeObject } from "../sql/statements.js";
-import { type CatalogQuery, managedSchemaFilter, text } from "./query.js";
+import { type CatalogQuery, managedSchemaFilter, notExtensionMember, text } from "./query.js";
 
 const relationCommentWords = new Map([
   ["S", "sequence"],
+  ["f", "foreign table"],
   ["i", "index"],
   ["m", "materialized view"],
   ["p", "table"],
@@ -36,7 +38,9 @@ async function collectRelationComments(pool: CatalogQuery): Promise<SchemaObject
     join pg_class c on c.oid = d.objoid
     join pg_namespace n on n.oid = c.relnamespace
     left join pg_attribute a on a.attrelid = c.oid and a.attnum = d.objsubid and d.objsubid > 0
-    where d.classoid = 'pg_class'::regclass and ${managedSchemaFilter}
+    where d.classoid = 'pg_class'::regclass
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname, d.objsubid
   `);
   for (const row of rows.rows) {
@@ -68,7 +72,9 @@ async function collectFunctionComments(pool: CatalogQuery): Promise<SchemaObject
     from pg_description d
     join pg_proc p on p.oid = d.objoid
     join pg_namespace n on n.oid = p.pronamespace
-    where d.classoid = 'pg_proc'::regclass and ${managedSchemaFilter}
+    where d.classoid = 'pg_proc'::regclass
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("p", "pg_proc")}
     order by n.nspname, p.proname
   `);
   return rows.rows.map((row) => {
@@ -91,13 +97,18 @@ async function collectSchemaComments(pool: CatalogQuery): Promise<SchemaObject[]
     join pg_namespace n on n.oid = d.objoid
     where d.classoid = 'pg_namespace'::regclass
       and ${managedSchemaFilter}
-      and n.nspname <> 'public'
     order by n.nspname
   `);
-  return rows.rows.map((row) => {
+  const objects: SchemaObject[] = [];
+  for (const row of rows.rows) {
     const name = text(row.name);
-    return commentObject(`schema ${name}`, `SCHEMA ${name}`, undefined, text(row.description));
-  });
+    const description = text(row.description);
+    if (isInitdbDefaultComment(`schema ${name}`, description)) {
+      continue;
+    }
+    objects.push(commentObject(`schema ${name}`, `SCHEMA ${name}`, undefined, description));
+  }
+  return objects;
 }
 
 async function collectTypeComments(pool: CatalogQuery): Promise<SchemaObject[]> {
@@ -107,7 +118,9 @@ async function collectTypeComments(pool: CatalogQuery): Promise<SchemaObject[]> 
     from pg_description d
     join pg_type t on t.oid = d.objoid
     join pg_namespace n on n.oid = t.typnamespace
-    where d.classoid = 'pg_type'::regclass and ${managedSchemaFilter}
+    where d.classoid = 'pg_type'::regclass
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("t", "pg_type")}
     order by n.nspname, t.typname
   `);
   return rows.rows.map((row) => {
@@ -131,7 +144,9 @@ async function collectPolicyComments(pool: CatalogQuery): Promise<SchemaObject[]
     join pg_policy p on p.oid = d.objoid
     join pg_class c on c.oid = p.polrelid
     join pg_namespace n on n.oid = c.relnamespace
-    where d.classoid = 'pg_policy'::regclass and ${managedSchemaFilter}
+    where d.classoid = 'pg_policy'::regclass
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname, p.polname
   `);
   return rows.rows.map((row) => {
@@ -158,6 +173,7 @@ async function collectTriggerComments(pool: CatalogQuery): Promise<SchemaObject[
     where d.classoid = 'pg_trigger'::regclass
       and not t.tgisinternal
       and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname, t.tgname
   `);
   return rows.rows.map((row) => {
@@ -181,7 +197,9 @@ async function collectConstraintComments(pool: CatalogQuery): Promise<SchemaObje
     join pg_constraint c on c.oid = d.objoid
     join pg_class r on r.oid = c.conrelid
     join pg_namespace n on n.oid = r.relnamespace
-    where d.classoid = 'pg_constraint'::regclass and ${managedSchemaFilter}
+    where d.classoid = 'pg_constraint'::regclass
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("r", "pg_class")}
     order by n.nspname, r.relname, c.conname
   `);
   return rows.rows.map((row) => {
@@ -202,8 +220,10 @@ async function collectExtensionComments(pool: CatalogQuery): Promise<SchemaObjec
     select e.extname as name, d.description as description
     from pg_description d
     join pg_extension e on e.oid = d.objoid
+    join pg_namespace n on n.oid = e.extnamespace
     where d.classoid = 'pg_extension'::regclass
       and e.extname <> 'plpgsql'
+      and ${managedSchemaFilter}
     order by e.extname
   `);
   return rows.rows.map((row) => {
@@ -231,5 +251,5 @@ function commentObject(
   if (schema) {
     ref.schema = schema;
   }
-  return makeObject(ref, sql, 0, undefined, { descriptor });
+  return makeObject(ref, sql, 0, undefined, { description, descriptor });
 }

@@ -1,9 +1,10 @@
 import { type ExecFileOptions, execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { MODEL_FORMAT_VERSION } from "../src/hash.js";
 import { latestLineage, parseLineage } from "../src/migrations/lineage.js";
 
 const run = promisify(execFile);
@@ -54,6 +55,14 @@ describe("lineage parsing", () => {
     const lineage = parseLineage("-- header\n-- supaschema: lineage from=abc123 to=def456\nSET x;");
 
     expect(lineage).toEqual({ from: "abc123", to: "def456" });
+  });
+
+  it("parses model format metadata from new lineage markers", () => {
+    const lineage = parseLineage(
+      "-- header\n-- supaschema: lineage format=3 from=abc123 to=def456\nSET x;"
+    );
+
+    expect(lineage).toEqual({ from: "abc123", modelFormatVersion: 3, to: "def456" });
   });
 
   it("returns undefined for hand-authored migrations", () => {
@@ -373,6 +382,350 @@ describe("diff lineage chain gate", () => {
 
     expect(result.code).toBe(2);
     expect(result.stderr).toContain("SUPA_DIFF_REPLACE_HAND_AUTHORED");
+  });
+
+  it("allows replacement of legacy-format generated migrations while warning", {
+    timeout: 60_000,
+  }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-replace-legacy-format-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")));
+    const generated = join(directory, "20260101000000_generated.sql");
+    await writeFile(generated, "-- supaschema: lineage from=legacy-from to=legacy-to\nSELECT 1;\n");
+
+    const replaced = await cli([
+      "--config",
+      config,
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+      "--replace",
+      generated,
+    ]);
+
+    expect(replaced.code, replaced.stderr).toBe(0);
+    expect(replaced.stderr).toContain("SUPA_MIGRATION_BASELINE_FORMAT_DRIFT");
+    expect(parseLineage(await readFile(generated, "utf8"))?.modelFormatVersion).toBe(
+      MODEL_FORMAT_VERSION
+    );
+  });
+
+  it("blocks replacement when current-format lineage mismatches the selected baseline", {
+    timeout: 60_000,
+  }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-replace-current-format-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")));
+    const generated = join(directory, "20260101000000_generated.sql");
+    await writeFile(
+      generated,
+      `-- supaschema: lineage format=${MODEL_FORMAT_VERSION} from=wrong-from to=wrong-to\nSELECT 1;\n`
+    );
+
+    const replaced = await cli([
+      "--config",
+      config,
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+      "--replace",
+      generated,
+    ]);
+
+    expect(replaced.code).toBe(2);
+    expect(replaced.stderr).toContain("SUPA_DIFF_REPLACE_BASELINE_REQUIRED");
+  });
+
+  it("warns across legacy generated baselines and re-establishes versioned lineage", {
+    timeout: 120_000,
+  }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-legacy-baseline-format-"));
+    const schemaFile = join(repo, "schemas", "app.sql");
+    const migrationsDir = join(repo, "migrations");
+    await mkdir(join(repo, "schemas"), { recursive: true });
+    await mkdir(migrationsDir, { recursive: true });
+    await writeFile(
+      join(repo, "supaschema.config.json"),
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto", to: "dir:schemas" },
+        sync: { targets: {} },
+      })
+    );
+    await writeFile(schemaFile, "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n");
+    await git(repo, ["init"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v1"]);
+    await writeFile(
+      join(migrationsDir, "20260101000000_legacy_generated.sql"),
+      "-- supaschema: lineage from=legacy-from to=legacy-to\nSELECT 1;\n"
+    );
+    await git(repo, ["add", "migrations/20260101000000_legacy_generated.sql"]);
+    await git(repo, ["commit", "-m", "legacy generated migration"]);
+    await writeFile(
+      schemaFile,
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint, name text);\n"
+    );
+
+    const noDbEnv: NodeJS.ProcessEnv = { ...process.env };
+    noDbEnv.SUPASCHEMA_DATABASE_URL = undefined;
+    const generated = await cli(["diff", "--name", "after_format_change"], {
+      cwd: repo,
+      env: noDbEnv,
+    });
+
+    expect(generated.code, generated.stderr).toBe(0);
+    expect(generated.stderr).toContain("SUPA_MIGRATION_BASELINE_FORMAT_DRIFT");
+    const lineage = parseLineage(await readFile(generated.stdout.trim(), "utf8"));
+    expect(lineage?.modelFormatVersion).toBe(MODEL_FORMAT_VERSION);
+  });
+
+  it("warns on dirty trees, blocks stale baselines, classifies them, and recovers by prune + regenerate", {
+    timeout: 120_000,
+  }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-baseline-incident-"));
+    const schemaFile = join(repo, "schemas", "app.sql");
+    const migrationsDir = join(repo, "migrations");
+    await mkdir(join(repo, "schemas"), { recursive: true });
+    await mkdir(migrationsDir, { recursive: true });
+    await writeFile(
+      join(repo, "supaschema.config.json"),
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto", to: "dir:schemas" },
+        sync: { targets: {} },
+      })
+    );
+    const noDbEnv: NodeJS.ProcessEnv = { ...process.env };
+    noDbEnv.SUPASCHEMA_DATABASE_URL = undefined;
+    const runOptions: ExecFileOptions = { cwd: repo, env: noDbEnv };
+    const table = (columns: string) =>
+      `CREATE SCHEMA app;\nCREATE TABLE app.accounts (\n  id bigint PRIMARY KEY${columns}\n);\n`;
+
+    await writeFile(schemaFile, table(""));
+    await git(repo, ["init"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v1"]);
+
+    await writeFile(schemaFile, table(",\n  name text"));
+    const first = await cli(["diff", "--name", "first"], runOptions);
+    expect(first.code, first.stderr).toBe(0);
+    expect(first.stderr).toContain("SUPA_DIFF_TREE_UNCOMMITTED");
+    const pendingMigration = first.stdout.trim();
+    expect(basename(pendingMigration)).toContain("first");
+
+    await writeFile(schemaFile, table(",\n  email text"));
+    await git(repo, ["add", "schemas/app.sql"]);
+    await git(repo, ["commit", "-m", "v3 without the pending migration"]);
+
+    const blocked = await cli(["diff", "--name", "second"], runOptions);
+    expect(blocked.code).toBe(2);
+    expect(blocked.stderr).toContain("SUPA_DIFF_MIGRATIONS_DIRTY");
+
+    const report = await cli(["migrations", "--json"], runOptions);
+    expect(report.stderr).toContain("SUPA_MIGRATIONS_STALE_BASELINE");
+    const parsed: { staleBaseline: string[] } = JSON.parse(report.stdout);
+    expect(parsed.staleBaseline).toEqual([basename(pendingMigration)]);
+
+    const prune = await cli(["migrations", "--prune-stale", "--force", "--json"], runOptions);
+    expect(prune.code, prune.stderr).toBe(0);
+    const pruned: { prunedStaleBaseline: string[] } = JSON.parse(prune.stdout);
+    expect(pruned.prunedStaleBaseline).toEqual([basename(pendingMigration)]);
+    expect(await readdir(migrationsDir)).not.toContain(basename(pendingMigration));
+
+    await writeFile(schemaFile, table(",\n  email text,\n  phone text"));
+    const recovered = await cli(["diff", "--name", "recovered"], runOptions);
+    expect(recovered.code, recovered.stderr).toBe(0);
+    expect(recovered.stderr).toContain("SUPA_DIFF_TREE_UNCOMMITTED");
+    const regenerated = recovered.stdout.trim();
+
+    await git(repo, ["add", "schemas/app.sql", regenerated]);
+    await git(repo, ["commit", "-m", "atomic tree + migration commit"]);
+    const clean = await cli(["diff"], runOptions);
+    expect(clean.code, clean.stderr).toBe(0);
+    expect(clean.stderr).not.toContain("SUPA_DIFF_TREE_UNCOMMITTED");
+    expect(clean.stderr).toContain("no schema changes");
+  });
+
+  it("keeps the lineage chain continuous across scoped --schema diffs", {
+    timeout: 120_000,
+  }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-scoped-chain-"));
+    const appFile = join(repo, "schemas", "app.sql");
+    const billingFile = join(repo, "schemas", "billing.sql");
+    await mkdir(join(repo, "schemas"), { recursive: true });
+    await mkdir(join(repo, "migrations"), { recursive: true });
+    await writeFile(
+      join(repo, "supaschema.config.json"),
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto", to: "dir:schemas" },
+        sync: { targets: {} },
+      })
+    );
+    const noDbEnv: NodeJS.ProcessEnv = { ...process.env };
+    noDbEnv.SUPASCHEMA_DATABASE_URL = undefined;
+    const runOptions: ExecFileOptions = { cwd: repo, env: noDbEnv };
+
+    await writeFile(
+      appFile,
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (\n  id bigint PRIMARY KEY\n);\n"
+    );
+    await writeFile(
+      billingFile,
+      "CREATE SCHEMA billing;\nCREATE TABLE billing.invoices (\n  id bigint PRIMARY KEY\n);\n"
+    );
+    await git(repo, ["init"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v1"]);
+
+    await writeFile(
+      appFile,
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (\n  id bigint PRIMARY KEY,\n  name text\n);\n"
+    );
+
+    const scoped = await cli(["diff", "--schema", "app", "--name", "app_change"], runOptions);
+    expect(scoped.code, scoped.stderr).toBe(0);
+    const scopedPath = scoped.stdout.trim();
+    const scopedSql = await readFile(scopedPath, "utf8");
+    expect(scopedSql).toContain('"app"."accounts"');
+    expect(scopedSql).not.toContain("billing");
+    const scopedLineage = parseLineage(scopedSql);
+    expect(scopedLineage).toBeDefined();
+
+    await git(repo, ["add", "schemas/app.sql", scopedPath]);
+    await git(repo, ["commit", "-m", "scoped atomic commit: app schema + migration"]);
+
+    await writeFile(
+      billingFile,
+      "CREATE SCHEMA billing;\nCREATE TABLE billing.invoices (\n  id bigint PRIMARY KEY,\n  total numeric\n);\n"
+    );
+    const remaining = await cli(["diff", "--name", "billing_change"], runOptions);
+    expect(remaining.code, remaining.stderr).toBe(0);
+    expect(remaining.stderr).not.toContain("ERROR SUPA_MIGRATION_BASELINE_MISMATCH");
+    expect(remaining.stderr).not.toContain("ERROR SUPA_DIFF_LINEAGE_BROKEN");
+    const remainingSql = await readFile(remaining.stdout.trim(), "utf8");
+    expect(remainingSql).toContain('"billing"."invoices"');
+    expect(remainingSql).not.toContain('"app"."accounts"');
+    const remainingLineage = parseLineage(remainingSql);
+    expect(remainingLineage?.from).toBe(scopedLineage?.to);
+  });
+
+  it("blocks scoped diffs when another schema is dirty", { timeout: 120_000 }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-scoped-dirty-schema-"));
+    await mkdir(join(repo, "schemas"), { recursive: true });
+    await mkdir(join(repo, "migrations"), { recursive: true });
+    await writeFile(
+      join(repo, "supaschema.config.json"),
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto", to: "dir:schemas" },
+        sync: { targets: {} },
+      })
+    );
+    await writeFile(
+      join(repo, "schemas", "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint PRIMARY KEY);\n"
+    );
+    await writeFile(
+      join(repo, "schemas", "billing.sql"),
+      "CREATE SCHEMA billing;\nCREATE TABLE billing.invoices (id bigint PRIMARY KEY);\n"
+    );
+    await git(repo, ["init"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v1"]);
+
+    await writeFile(
+      join(repo, "schemas", "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint PRIMARY KEY, name text);\n"
+    );
+    await writeFile(
+      join(repo, "schemas", "billing.sql"),
+      "CREATE SCHEMA billing;\nCREATE TABLE billing.invoices (id bigint PRIMARY KEY, total numeric);\n"
+    );
+
+    const noDbEnv: NodeJS.ProcessEnv = { ...process.env };
+    noDbEnv.SUPASCHEMA_DATABASE_URL = undefined;
+    const result = await cli(["diff", "--schema", "app", "--name", "app_change"], {
+      cwd: repo,
+      env: noDbEnv,
+    });
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("SUPA_DIFF_SCOPED_DIRTY_SCHEMA");
+    expect(await readdir(join(repo, "migrations"))).toEqual([]);
+  });
+
+  it("blocks diffs when migration, config, or generated contract closures are already dirty", {
+    timeout: 120_000,
+  }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-dirty-closure-"));
+    await mkdir(join(repo, "schemas"), { recursive: true });
+    await mkdir(join(repo, "migrations"), { recursive: true });
+    await mkdir(join(repo, "types"), { recursive: true });
+    const configPath = join(repo, "supaschema.config.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto", to: "dir:schemas" },
+        sync: { targets: {} },
+        typesFile: "types/database.generated.ts",
+        zodFile: "types/database.zod.generated.ts",
+      })
+    );
+    await writeFile(
+      join(repo, "schemas", "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint PRIMARY KEY);\n"
+    );
+    await writeFile(join(repo, "types", "database.generated.ts"), "export type Database = {};\n");
+    await writeFile(join(repo, "types", "database.zod.generated.ts"), "export const zod = {};\n");
+    await git(repo, ["init"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v1"]);
+
+    await writeFile(
+      configPath,
+      `${JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto", to: "dir:schemas" },
+        sync: { targets: {} },
+        typesFile: "types/database.generated.ts",
+        zodFile: "types/database.zod.generated.ts",
+      })}\n`
+    );
+    await writeFile(
+      join(repo, "types", "database.generated.ts"),
+      "export type Database = { dirty: true };\n"
+    );
+    await writeFile(
+      join(repo, "migrations", "20260101000000_pending.sql"),
+      "-- hand-authored pending migration\nSELECT 1;\n"
+    );
+
+    const noDbEnv: NodeJS.ProcessEnv = { ...process.env };
+    noDbEnv.SUPASCHEMA_DATABASE_URL = undefined;
+    const result = await cli(["diff", "--schema", "app", "--name", "blocked"], {
+      cwd: repo,
+      env: noDbEnv,
+    });
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("SUPA_DIFF_CONFIG_DIRTY");
+    expect(result.stderr).toContain("SUPA_DIFF_GENERATED_CONTRACT_DIRTY");
+    expect(result.stderr).toContain("SUPA_DIFF_MIGRATIONS_DIRTY");
   });
 
   it("blocks duplicate transitions, broken chains, and overwrites; --no-check-chain bypasses", {

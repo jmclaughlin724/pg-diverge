@@ -1,10 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { MigrationPlan } from "../core.js";
+import { MODEL_FORMAT_VERSION } from "../hash.js";
 
 export interface MigrationLineage {
   file: string;
   from: string;
+  modelFormatVersion?: number;
   to: string;
 }
 
@@ -12,10 +14,12 @@ export const lineagePrefix = "-- supaschema: lineage ";
 const headerByteLimit = 4096;
 
 export function lineageLine(plan: MigrationPlan): string {
-  return `${lineagePrefix}from=${plan.fromFingerprint} to=${plan.toFingerprint}`;
+  return `${lineagePrefix}format=${MODEL_FORMAT_VERSION} from=${plan.fromFingerprint} to=${plan.toFingerprint}`;
 }
 
-export function parseLineage(content: string): { from: string; to: string } | undefined {
+export function parseLineage(
+  content: string
+): { from: string; modelFormatVersion?: number; to: string } | undefined {
   for (const line of content.split("\n")) {
     if (!line.startsWith(lineagePrefix)) {
       continue;
@@ -30,10 +34,28 @@ export function parseLineage(content: string): { from: string; to: string } | un
     const from = fields.get("from");
     const to = fields.get("to");
     if (from && to) {
-      return { from, to };
+      const format = fields.get("format");
+      const modelFormatVersion = parseModelFormatVersion(format);
+      return {
+        from,
+        ...(modelFormatVersion === undefined ? {} : { modelFormatVersion }),
+        to,
+      };
     }
   }
   return;
+}
+
+function parseModelFormatVersion(value: string | undefined): number | undefined {
+  if (value === undefined || value.length === 0) {
+    return;
+  }
+  for (const char of value) {
+    if (char < "0" || char > "9") {
+      return;
+    }
+  }
+  return Number(value);
 }
 
 function splitWhitespace(value: string): string[] {
@@ -77,7 +99,7 @@ export async function latestLineage(directory: string): Promise<MigrationLineage
     const content = await readFile(path, "utf8");
     const lineage = parseLineage(content.slice(0, headerByteLimit));
     if (lineage) {
-      return { file: path, from: lineage.from, to: lineage.to };
+      return { file: path, ...lineage };
     }
   }
   return;

@@ -57,6 +57,26 @@ describe("migrations status (disk only)", () => {
     expect(renderMigrationsStatus(report)).toContain("migrations [local / direct]:");
   });
 
+  it("marks stale generated-lineage descendants as stale too", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-migrations-stale-chain-"));
+    await writeFile(
+      join(root, "20260101000000_first.sql"),
+      `${lineageLine({ fromFingerprint: "head", toFingerprint: "stale" })}\nSELECT 1;\n`
+    );
+    await writeFile(
+      join(root, "20260102000000_second.sql"),
+      `${lineageLine({ fromFingerprint: "stale", toFingerprint: "tree" })}\nSELECT 2;\n`
+    );
+
+    const { diagnostics, report } = await migrationsStatus({
+      currentFingerprints: { head: "head", tree: "tree" },
+      directory: root,
+    });
+
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_MIGRATIONS_STALE_BASELINE");
+    expect(report.staleBaseline).toEqual(["20260101000000_first.sql", "20260102000000_second.sql"]);
+  });
+
   it("compares applied history against an expected final version set", () => {
     expect(
       compareMigrationHistory(

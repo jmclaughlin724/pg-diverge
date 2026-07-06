@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { SupaschemaConfig } from "../config/schema.js";
+import type { CurrentBaselineFingerprints } from "../migrations/status.js";
 import { redactSecrets } from "../redaction.js";
+import { extractSourceModel } from "./extract.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -54,6 +56,32 @@ export async function resolveSourceDefaults(
   const notice =
     defaulted.length > 0 ? `defaults: ${defaulted.join(" · ")} (flags override)\n` : undefined;
   return { from, notice, to };
+}
+
+export async function currentBaselineFingerprints(
+  config: SupaschemaConfig,
+  cwd: string = process.cwd()
+): Promise<CurrentBaselineFingerprints> {
+  const head = (await defaultGitHeadExists())
+    ? await sourceFingerprint("git:HEAD", config, cwd)
+    : undefined;
+  const tree = await sourceFingerprint(config.sources.to ?? defaultTreeSource(config), config, cwd);
+  return {
+    ...(head === undefined ? {} : { head }),
+    ...(tree === undefined ? {} : { tree }),
+  };
+}
+
+async function sourceFingerprint(
+  source: string,
+  config: SupaschemaConfig,
+  cwd: string
+): Promise<string | undefined> {
+  try {
+    return (await extractSourceModel(source, { config, cwd })).fingerprint;
+  } catch {
+    return;
+  }
 }
 
 export async function defaultGitHeadExists(): Promise<boolean> {

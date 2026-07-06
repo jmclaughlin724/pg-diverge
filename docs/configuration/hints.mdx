@@ -1,16 +1,15 @@
 ---
 title: "Hints"
-description: "How to approve reviewed destructive changes and renames without weakening fail-closed planning."
+description: "How to approve reviewed destructive changes, renames, grants, and RLS policy-column intent without weakening fail-closed planning."
 keywords: ["hints", "destructive changes", "renames", "recovery"]
 ---
 
-`supaschema` fails closed when intent cannot be proven from the SQL parse tree. Hints are the explicit, reviewable way to state intent.
+`supaschema` fails closed when intent cannot be proven from the SQL parse tree. Hints are the explicit, reviewable way to state supported source intent.
 
 Use hints for four cases:
 
 - a destructive change that a human already reviewed;
 - a rename that would otherwise look like drop plus create;
-- dynamic SQL or unsupported routine bodies whose dependencies must be declared;
 - roles allowed by the free grant least-privilege rule;
 - table columns required by the free RLS policy-column rule.
 
@@ -90,22 +89,7 @@ If a routine, view, policy, or trigger depends on a column being dropped or type
 
 supaschema extracts routine dependencies from SQL-standard function bodies, SQL string bodies, and common static PL/pgSQL statements such as `SELECT`, `PERFORM`, DML, `RETURN QUERY`, `RETURN (SELECT ...)`, cursor queries, and `FOR ... IN query` loops.
 
-Dynamic SQL (`EXECUTE`), partially parsed PL/pgSQL, and unsupported routine languages fail closed when the same plan changes relations or types. Declare exact dependencies in `hints.routineDependencies`:
-
-```json
-{
-  "hints": {
-    "routineDependencies": {
-      "function:app.dynamic_lookup()": [
-        "app.accounts",
-        "app.accounts.secret_id"
-      ]
-    }
-  }
-}
-```
-
-Relation identities use `schema.object`. Column identities use `schema.table.column`. Hints are treated as reviewed dependency proof; do not use them to hide unknown data movement or storage conversion intent.
+Dynamic SQL (`EXECUTE`), partially parsed PL/pgSQL, and unsupported routine languages fail closed when the same plan changes relations or types. Supaschema no longer accepts config-supplied routine dependency hints for this path because they are not structural proof. Rewrite the routine so dependencies are statically extractable, include the routine rewrite in the same plan, split the relation/type change, or use a reviewed explicit migration.
 
 ## Incompatible view and routine replacements
 

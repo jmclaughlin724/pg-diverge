@@ -26,6 +26,24 @@ describe("split privilege aggregation", () => {
     expect(model.source).toBe("empty:");
   });
 
+  it("keeps comments on pre-existing schemas", async () => {
+    const model = await modelFromSql("COMMENT ON SCHEMA public IS 'workspace docs';\n");
+
+    expect(errors(model)).toEqual([]);
+    expect(
+      model.objects.some(
+        (object) => object.ref.kind === "comment" && object.metadata.descriptor === "schema public"
+      )
+    ).toBe(true);
+  });
+
+  it("treats the initdb default public schema comment as default state", async () => {
+    const model = await modelFromSql("COMMENT ON SCHEMA public IS 'standard public schema';\n");
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects).toEqual([]);
+  });
+
   it("skips _bootstrap inventory files when reading schema sources", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-bootstrap-skip-"));
     await mkdir(join(root, "_bootstrap"), { recursive: true });
@@ -388,6 +406,37 @@ describe("standalone partition amendments", () => {
     expect(sql.indexOf(parent)).toBeGreaterThanOrEqual(0);
     expect(sql.indexOf(parent)).toBeLessThan(sql.indexOf(child));
     expect(sql.indexOf(child)).toBeLessThan(sql.indexOf(attach));
+  });
+
+  it("orders attached partition constraints and indexes after the child table", async () => {
+    const from = {
+      diagnostics: [],
+      fingerprint: "",
+      objects: [],
+      source: "empty",
+    };
+    const to = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE TABLE app.events (id bigint NOT NULL, created_at date NOT NULL) PARTITION BY RANGE (created_at);
+      CREATE TABLE app.events_2026_01 (id bigint NOT NULL, created_at date NOT NULL);
+      ALTER TABLE ONLY app.events ATTACH PARTITION app.events_2026_01 FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+      ALTER TABLE ONLY app.events_2026_01 ADD CONSTRAINT events_2026_01_id_positive CHECK (id > 0);
+      CREATE INDEX events_2026_01_created_at_idx ON app.events_2026_01 (created_at);
+      ALTER TABLE app.events_2026_01 ENABLE ROW LEVEL SECURITY;
+    `);
+    const order = planSchemaDiff(from, to).operations.map((operation) => operation.key);
+    const child = order.indexOf("table:app.events_2026_01");
+    const constraint = order.indexOf("constraint:app.events_2026_01_id_positive:events_2026_01");
+    const index = order.indexOf("index:app.events_2026_01_created_at_idx:events_2026_01");
+    const rls = order.indexOf("rls:app.events_2026_01:events_2026_01");
+
+    expect(child).toBeGreaterThanOrEqual(0);
+    expect(constraint).toBeGreaterThanOrEqual(0);
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(rls).toBeGreaterThanOrEqual(0);
+    expect(child).toBeLessThan(constraint);
+    expect(child).toBeLessThan(index);
+    expect(child).toBeLessThan(rls);
   });
 });
 

@@ -5,7 +5,13 @@ import {
   buildGrantObject,
   isBuiltinDefaultGrant,
 } from "../sql/privileges.js";
-import { type CatalogQuery, managedSchemaFilter, text, textArray } from "./query.js";
+import {
+  type CatalogQuery,
+  managedSchemaFilter,
+  notExtensionMember,
+  text,
+  textArray,
+} from "./query.js";
 
 const defaultPrivilegeObjectTypes = new Map([
   ["S", "SEQUENCES"],
@@ -27,6 +33,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     where c.relacl is not null
       and c.relkind in ('r', 'p', 'v', 'm', 'S')
       and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
       and acl.grantee <> c.relowner
       and not exists (
         select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
@@ -96,6 +103,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     lateral aclexplode(p.proacl) as acl
     where p.proacl is not null
       and ${managedSchemaFilter}
+      and ${notExtensionMember("p", "pg_proc")}
       and acl.grantee <> p.proowner
       and not exists (
         select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
@@ -134,6 +142,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     join pg_namespace n on n.oid = p.pronamespace
     where p.proacl is not null
       and ${managedSchemaFilter}
+      and ${notExtensionMember("p", "pg_proc")}
       and not exists (
         select 1 from aclexplode(p.proacl) acl
         where acl.grantee = 0 and acl.privilege_type = 'EXECUTE'
@@ -167,6 +176,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     where t.typacl is not null
       and t.typtype in ('e', 'd', 'c', 'r')
       and ${managedSchemaFilter}
+      and ${notExtensionMember("t", "pg_type")}
       and acl.grantee <> t.typowner
       and not exists (
         select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
@@ -212,6 +222,13 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     from pg_default_acl d
     left join pg_namespace n on n.oid = d.defaclnamespace,
     lateral aclexplode(d.defaclacl) as acl
+    where (d.defaclnamespace = 0 or (${managedSchemaFilter}))
+      and ${notExtensionMember("d", "pg_default_acl")}
+      and not exists (
+        select 1
+        from pg_extension ext
+        where ext.extnamespace = d.defaclnamespace
+      )
     group by d.defaclrole, schema, d.defaclobjtype, acl.grantee
     order by for_role, schema, d.defaclobjtype, grantee
   `);
@@ -247,6 +264,13 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     from pg_default_acl d
     left join pg_namespace n on n.oid = d.defaclnamespace
     where d.defaclobjtype in ('f', 'T')
+      and (d.defaclnamespace = 0 or (${managedSchemaFilter}))
+      and ${notExtensionMember("d", "pg_default_acl")}
+      and not exists (
+        select 1
+        from pg_extension ext
+        where ext.extnamespace = d.defaclnamespace
+      )
       and not exists (
         select 1 from aclexplode(d.defaclacl) acl where acl.grantee = 0
       )

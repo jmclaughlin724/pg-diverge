@@ -107,6 +107,16 @@ export const diagnosticCatalog: Record<string, string> = {
     "A disk write was explicitly requested, but the schema diff planned no operations.",
   SUPA_DIFF_OUTPUT_EXISTS:
     "The output migration file already exists; use diff --replace only for an unapplied generated migration replacement.",
+  SUPA_DIFF_CONFIG_DIRTY:
+    "A scoped migration diff cannot prove ownership while supaschema.config.json has uncommitted changes.",
+  SUPA_DIFF_GENERATED_CONTRACT_DIRTY:
+    "Generated TypeScript/Zod contract outputs have uncommitted changes before migration generation.",
+  SUPA_DIFF_MIGRATIONS_DIRTY:
+    "The migrations directory has uncommitted files before migration generation.",
+  SUPA_DIFF_SCOPED_DIRTY_SCHEMA:
+    "A scoped migration diff cannot run while schema files outside the requested schema filter are dirty.",
+  SUPA_DIFF_TREE_UNCOMMITTED:
+    "The to-source tree has uncommitted changes, so this migration's lineage end-state fingerprints uncommitted schema-tree state; commit the tree change together with the generated migration and its generated outputs, or the next git-baseline generation blocks with SUPA_MIGRATION_BASELINE_MISMATCH.",
   SUPA_DIFF_REPLACE_APPLIED:
     "The replacement migration version is already recorded in a configured database history table.",
   SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED:
@@ -118,7 +128,9 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_DIFF_REPLACE_NOT_LATEST:
     "diff --replace targeted a generated migration older than the configured migration directory tip.",
   SUPA_MIGRATION_BASELINE_MISMATCH:
-    "The resolved before-state source does not match the generated migration-tree baseline.",
+    "The resolved before-state source does not match the generated migration-tree baseline. Recover by regenerating from the source state that produced the baseline, using diff --replace for a generated migration replacement, or — when the pending generated migration's end-state was never committed and no target records it as applied — reviewing and deleting that pending migration, then regenerating from the current tree.",
+  SUPA_MIGRATION_BASELINE_FORMAT_DRIFT:
+    "Generated migration-tree lineage was produced by a different model format, so old and current fingerprints are not directly comparable. Review the generated migration normally; same-format mismatches still block.",
   SUPA_MIGRATION_BASELINE_UNSUPPORTED:
     "Existing migrations cannot prove a generated-lineage baseline for source-backed generation.",
   SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION:
@@ -150,6 +162,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "No database URL resolved; the migrations report covers disk files only.",
   SUPA_MIGRATIONS_OUT_OF_ORDER:
     "Pending migration files are older than the target's newest applied version; a runner may skip or misorder them.",
+  SUPA_MIGRATIONS_STALE_BASELINE:
+    "A pending generated migration's lineage end-state matches neither the current git:HEAD schema fingerprint nor the current tree fingerprint; its baseline is unreproducible. If no target records it as applied, review and delete the pending migration, then regenerate from the current tree.",
   SUPA_MIGRATIONS_TARGET_UNAVAILABLE: "The migrations target database could not be read.",
   SUPA_MIGRATION_CORPUS_PARSE_SKIPPED:
     "A historical migration could not be parsed for source-intent extraction.",
@@ -255,8 +269,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "A routine body uses a language or form whose dependencies cannot be fully proven statically.",
   SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY:
     "A PL/pgSQL routine body was only partially parsed for dependency extraction.",
-  SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED:
-    "A routine with unproven dependencies requires explicit dependency hints before relation or type changes.",
+  SUPA_ROUTINE_DEPENDENCY_PROOF_REQUIRED:
+    "A routine with unproven dependencies blocks relation or type changes until the dependency proof is structural.",
   SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN:
     "A PL/pgSQL routine contains dynamic SQL whose relation and column dependencies cannot be proven statically.",
   SUPA_SELFCHECK_HASH_MISMATCH:

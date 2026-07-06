@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
+import { MODEL_FORMAT_VERSION } from "../hash.js";
 import { latestLineage } from "../migrations/lineage.js";
 import { verifyMigrationChain } from "../verify/migration.js";
 import { render } from "./report.js";
@@ -99,6 +100,22 @@ export async function checkSyncLineageChain(
     ];
   }
   if (latest.to !== fromFingerprint) {
+    if (
+      latest.modelFormatVersion === undefined ||
+      latest.modelFormatVersion !== MODEL_FORMAT_VERSION
+    ) {
+      return [
+        diagnostic(
+          "SUPA_MIGRATION_BASELINE_FORMAT_DRIFT",
+          "warning",
+          "newest supaschema migration lineage was produced by a different model format; continuing because the old and current fingerprints are not directly comparable",
+          {
+            file: latest.file,
+            hint: `${latest.file} records model format ${latest.modelFormatVersion ?? "legacy"}, while the current extractor uses model format ${MODEL_FORMAT_VERSION}. Same-format lineage gaps still block.`,
+          }
+        ),
+      ];
+    }
     return [
       diagnostic(
         "SUPA_DIFF_LINEAGE_GAP",

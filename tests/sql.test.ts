@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkMigrationSql } from "../src/check/migration.js";
+import { resolveConfig } from "../src/config/schema.js";
 import { diagnostic, formatDiagnostics } from "../src/diagnostics.js";
 import { planSchemaDiff } from "../src/planner/schema.js";
 import { renderMigration } from "../src/render/migration.js";
@@ -100,6 +101,27 @@ describe("parse cache", () => {
 });
 
 describe("routine dependency extraction", () => {
+  it("extracts joined view column dependencies through raw table aliases", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE VIEW app.account_summary AS
+      SELECT a.id, a.status, jsonb_build_object('secret', s.secret_id) AS summary
+      FROM app.accounts a
+      LEFT JOIN app.secrets s ON s.account_id = a.id
+      GROUP BY a.id, a.status, s.secret_id;
+    `);
+    const view = extracted.objects.find((object) => object.key === "view:app.account_summary");
+
+    expect(view?.dependencies).toEqual(expect.arrayContaining(["app.accounts", "app.secrets"]));
+    expect(view?.metadata.columnDependencies).toEqual(
+      expect.arrayContaining([
+        "app.accounts.id",
+        "app.accounts.status",
+        "app.secrets.account_id",
+        "app.secrets.secret_id",
+      ])
+    );
+  });
+
   it("extracts SQL-standard function body relation and column dependencies", async () => {
     const extracted = await extractObjectsFromSql(`
       CREATE FUNCTION app.account_secret()
@@ -136,7 +158,7 @@ describe("routine dependency extraction", () => {
     expect(routine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
   });
 
-  it("extracts static PL/pgSQL statements and detects dynamic SQL", async () => {
+  it("extracts static PL/pgSQL statements and parseable dynamic SQL", async () => {
     const extracted = await extractObjectsFromSql(`
       CREATE FUNCTION app.touch_secret()
       RETURNS void
@@ -166,7 +188,53 @@ describe("routine dependency extraction", () => {
     expect(staticRoutine?.dependencies).toContain("app.accounts");
     expect(staticRoutine?.metadata.routineDependencyConfidence).toBe("plpgsql-static");
     expect(staticRoutine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
-    expect(dynamicRoutine?.metadata.routineDependencyConfidence).toBe("dynamic-sql-unknown");
+    expect(dynamicRoutine?.dependencies).toContain("app.accounts");
+    expect(dynamicRoutine?.metadata.routineDependencyConfidence).toBe("plpgsql-dynamic-parsed");
+    expect(dynamicRoutine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
+    expect(extracted.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN"
+    );
+  });
+
+  it("parses PL/pgSQL EXECUTE format templates whose SQL shape is static", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.dynamic_format_lookup()
+      RETURNS void
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        EXECUTE format('select secret_id from app.accounts order by %I %s', 'created_at', 'desc');
+      END;
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.dynamic_format_lookup()"
+    );
+
+    expect(routine?.dependencies).toContain("app.accounts");
+    expect(routine?.metadata.routineDependencyConfidence).toBe("plpgsql-dynamic-parsed");
+    expect(routine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
+    expect(extracted.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN"
+    );
+  });
+
+  it("marks variable PL/pgSQL dynamic SQL as unproven", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.variable_dynamic_lookup(query_sql text)
+      RETURNS void
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        EXECUTE query_sql;
+      END;
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.variable_dynamic_lookup(text)"
+    );
+
+    expect(routine?.metadata.routineDependencyConfidence).toBe("dynamic-sql-unknown");
     expect(extracted.diagnostics.map((item) => item.code)).toContain(
       "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN"
     );
@@ -276,35 +344,16 @@ describe("routine dependency extraction", () => {
     );
   });
 
-  it("records explicit routine dependency hints on overloaded routine keys", async () => {
-    const extracted = await extractObjectsFromSql(
-      `
-        CREATE FUNCTION app.dynamic_lookup(input_id bigint)
-        RETURNS void
-        LANGUAGE plpgsql
-        AS $$
-        BEGIN
-          EXECUTE 'select secret_id from app.accounts where id = $1';
-        END;
-        $$;
-      `,
-      {
-        config: {
-          hints: {
-            routineDependencies: {
-              "function:app.dynamic_lookup(bigint)": ["app.accounts.secret_id"],
-            },
+  it("rejects config-supplied routine dependency hints", () => {
+    expect(() =>
+      resolveConfig({
+        hints: {
+          routineDependencies: {
+            "function:app.dynamic_lookup(bigint)": ["app.accounts.secret_id"],
           },
         },
-      }
-    );
-    const routine = extracted.objects.find(
-      (object) => object.key === "function:app.dynamic_lookup(bigint)"
-    );
-
-    expect(routine?.dependencies).toContain("app.accounts");
-    expect(routine?.metadata.routineDependencyHinted).toBe(true);
-    expect(routine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
+      })
+    ).toThrow("routineDependencies");
   });
 
   it("marks unsupported routine languages as unproven dependencies", async () => {
@@ -978,6 +1027,120 @@ describe("comments", () => {
     expect(extracted.objects).toHaveLength(1);
     expect(extracted.objects[0]?.metadata.descriptor).toBe("table app.accounts");
     expect(extracted.objects[0]?.ref.schema).toBe("app");
+  });
+
+  it("hashes function comments by normalized descriptor and comment text", async () => {
+    const first = await extractObjectsFromSql(
+      "COMMENT ON FUNCTION app.f(p_value int) IS 'normalizes target syntax';"
+    );
+    const second = await extractObjectsFromSql(
+      "COMMENT ON FUNCTION app.f(integer) IS 'normalizes target syntax';"
+    );
+
+    expect(first.objects[0]?.key).toBe(second.objects[0]?.key);
+    expect(first.objects[0]?.hash).toBe(second.objects[0]?.hash);
+  });
+});
+
+describe("AST canonicalization", () => {
+  it("normalizes qualified columns inside set-operation view branches", async () => {
+    const first = await extractObjectsFromSql(`
+      CREATE VIEW app.v_status AS
+      SELECT id, 'a'::text AS source FROM app.a
+      UNION ALL
+      SELECT id, 'b'::text FROM app.b;
+    `);
+    const second = await extractObjectsFromSql(`
+      CREATE VIEW app.v_status AS
+      SELECT a.id, 'a'::text AS source FROM app.a
+      UNION ALL
+      SELECT b.id, 'b'::text FROM app.b;
+    `);
+
+    expect(first.objects[0]?.hash).toBe(second.objects[0]?.hash);
+  });
+
+  it("ignores nested deparser aliases without hiding view output column changes", async () => {
+    const nestedAlias = await extractObjectsFromSql(`
+      CREATE VIEW app.v_counts AS
+      SELECT (SELECT count(*) AS count FROM app.items) AS item_count;
+    `);
+    const nestedNoAlias = await extractObjectsFromSql(`
+      CREATE VIEW app.v_counts AS
+      SELECT (SELECT count(*) FROM app.items) AS item_count;
+    `);
+    const outputRename = await extractObjectsFromSql(`
+      CREATE VIEW app.v_counts AS
+      SELECT (SELECT count(*) FROM app.items) AS total_count;
+    `);
+
+    expect(nestedAlias.objects[0]?.hash).toBe(nestedNoAlias.objects[0]?.hash);
+    expect(nestedNoAlias.objects[0]?.hash).not.toBe(outputRename.objects[0]?.hash);
+  });
+
+  it("normalizes policy role ordering", async () => {
+    const first = await extractObjectsFromSql(
+      "CREATE POLICY p ON app.items FOR INSERT TO anon, authenticated WITH CHECK (id IS NOT NULL);"
+    );
+    const second = await extractObjectsFromSql(
+      "CREATE POLICY p ON app.items FOR INSERT TO authenticated, anon WITH CHECK (id IS NOT NULL);"
+    );
+
+    expect(first.objects[0]?.hash).toBe(second.objects[0]?.hash);
+  });
+
+  it("normalizes associative boolean grouping in view predicates", async () => {
+    const first = await extractObjectsFromSql(`
+      CREATE VIEW app.v_items AS
+      SELECT id FROM app.items
+      WHERE ready AND score >= 0 AND score <= 10;
+    `);
+    const second = await extractObjectsFromSql(`
+      CREATE VIEW app.v_items AS
+      SELECT id FROM app.items
+      WHERE ready AND (score >= 0 AND score <= 10);
+    `);
+
+    expect(first.objects[0]?.hash).toBe(second.objects[0]?.hash);
+  });
+
+  it("normalizes not-distinct policy spellings", async () => {
+    const first = await extractObjectsFromSql(
+      "CREATE POLICY p ON app.items FOR INSERT TO authenticated WITH CHECK (NOT (owner_id IS DISTINCT FROM auth.uid()));"
+    );
+    const second = await extractObjectsFromSql(
+      "CREATE POLICY p ON app.items FOR INSERT TO authenticated WITH CHECK (owner_id IS NOT DISTINCT FROM auth.uid());"
+    );
+
+    expect(first.objects[0]?.hash).toBe(second.objects[0]?.hash);
+  });
+
+  it("normalizes range-function alias column lists in policies", async () => {
+    const first = await extractObjectsFromSql(`
+      CREATE POLICY p ON app.items FOR INSERT TO authenticated
+      WITH CHECK (owner_id = (SELECT ctx.user_id FROM app.current_context() AS ctx(user_id, company_id)));
+    `);
+    const second = await extractObjectsFromSql(`
+      CREATE POLICY p ON app.items FOR INSERT TO authenticated
+      WITH CHECK (owner_id = (SELECT ctx.user_id FROM app.current_context() AS ctx));
+    `);
+
+    expect(first.objects[0]?.hash).toBe(second.objects[0]?.hash);
+  });
+
+  it("normalizes redundant jsonb_populate_record result casts", async () => {
+    const first = await extractObjectsFromSql(`
+      CREATE VIEW app.v_reviews AS
+      SELECT jsonb_populate_record(NULL::app.review, payload) AS review
+      FROM app.reviews;
+    `);
+    const second = await extractObjectsFromSql(`
+      CREATE VIEW app.v_reviews AS
+      SELECT jsonb_populate_record(NULL::app.review, payload)::app.review AS review
+      FROM app.reviews;
+    `);
+
+    expect(first.objects[0]?.hash).toBe(second.objects[0]?.hash);
   });
 });
 

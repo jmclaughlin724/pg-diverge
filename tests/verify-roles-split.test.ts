@@ -57,6 +57,37 @@ describe("concurrent index split rendering", () => {
 });
 
 describe.skipIf(!databaseUrl)("verify role pre-creation", () => {
+  it("applies bootstrap inventory statements as SQL text", { timeout: 60_000 }, async () => {
+    if (!databaseUrl) {
+      return;
+    }
+    const directory = await mkdtemp(join(tmpdir(), "supa-verify-bootstrap-"));
+    const schemaRoot = join(directory, "schemas");
+    const bootstrapDir = join(schemaRoot, "_bootstrap");
+    await mkdir(bootstrapDir, { recursive: true });
+    await writeFile(
+      join(bootstrapDir, "inventory.sql"),
+      [
+        "CREATE SCHEMA IF NOT EXISTS bootstrap_probe;",
+        "CREATE TABLE IF NOT EXISTS bootstrap_probe.inventory (id integer);",
+      ].join("\n")
+    );
+    await writeFile(join(directory, "from.sql"), "CREATE SCHEMA app;");
+    await writeFile(join(directory, "to.sql"), "CREATE SCHEMA app;");
+    const migrationPath = join(directory, "migration.sql");
+    await writeFile(migrationPath, "CREATE SCHEMA IF NOT EXISTS app;\n");
+
+    const diagnostics = await verifyMigration({
+      config: { managedSchemas: [], schemaPaths: [schemaRoot] },
+      databaseUrl,
+      from: `dump:${join(directory, "from.sql")}`,
+      migrationPath,
+      to: `dump:${join(directory, "to.sql")}`,
+    });
+
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  });
+
   it("materializes schema models in dependency order instead of file order", {
     timeout: 60_000,
   }, async () => {

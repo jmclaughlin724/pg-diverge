@@ -12,10 +12,12 @@ import type { AstNode, AstStatement } from "./ast.js";
 import {
   asRecord,
   astStatements,
+  collectColumnReferences,
   collectReferences,
   functionIdentity,
   qualifiedName,
   rangeVarName,
+  readArray,
   readBoolean,
   readString,
   stringList,
@@ -35,6 +37,7 @@ import {
   commentObjectFromAst,
   defaultPrivilegesFromAst,
   grantObjectsFromAst,
+  isInitdbDefaultComment,
 } from "./privileges.js";
 import { extractStatementDependencies } from "./routine-dependencies.js";
 import { makeObject, tableMetadataFromAst } from "./statements.js";
@@ -128,7 +131,7 @@ export async function extractObjectsFromSql(
     if (parsed.objects.length > 0) {
       const dependency = await extractStatementDependencies(statement, options.file);
       diagnostics.push(...dependency.diagnostics);
-      applyStatementDependencies(parsed.objects, dependency, config);
+      applyStatementDependencies(parsed.objects, dependency);
       diagnostics.push(
         ...(await finalizeObjects(parsed.objects, { normalize: config.normalize === "deparse" }))
       );
@@ -148,22 +151,26 @@ type StatementDependency = Awaited<ReturnType<typeof extractStatementDependencie
 
 function applyStatementDependencies(
   objects: readonly SchemaObject[],
-  dependency: StatementDependency,
-  config: SupaschemaConfig
+  dependency: StatementDependency
 ): void {
   for (const object of objects) {
     object.dependencies = dependency.references
       .filter((reference) => reference !== objectIdentity(object.ref))
       .sort((left, right) => left.localeCompare(right));
-    if (dependency.columnReferences.length > 0) {
-      object.metadata.columnDependencies = dependency.columnReferences;
+    const columnDependencies = [
+      ...metadataStrings(object.metadata.columnDependencies),
+      ...dependency.columnReferences,
+    ];
+    if (columnDependencies.length > 0) {
+      object.metadata.columnDependencies = [...new Set(columnDependencies)].sort((left, right) =>
+        left.localeCompare(right)
+      );
     }
     if (dependency.routine && isRoutineObject(object)) {
       object.metadata.routineDependencyConfidence = dependency.routine.confidence;
       object.metadata.routineDependencies = dependency.routine.references;
       object.metadata.routineColumnDependencies = dependency.routine.columnReferences;
     }
-    applyRoutineDependencyHints(object, config);
   }
 }
 
@@ -171,55 +178,10 @@ function isRoutineObject(object: SchemaObject): boolean {
   return object.ref.kind === "function" || object.ref.kind === "procedure";
 }
 
-function applyRoutineDependencyHints(object: SchemaObject, config: SupaschemaConfig): void {
-  if (!isRoutineObject(object)) {
-    return;
-  }
-  const hinted = config.hints.routineDependencies[object.key] ?? [];
-  if (hinted.length === 0) {
-    return;
-  }
-  const references = hinted.filter((item) => !isColumnIdentity(item));
-  const columnReferences = hinted.filter(isColumnIdentity);
-  const columnRelationReferences = columnReferences.flatMap(columnRelationIdentity);
-  object.dependencies = sortedUnique([
-    ...object.dependencies,
-    ...references,
-    ...columnRelationReferences,
-  ]);
-  object.metadata.routineDependencies = sortedUnique([
-    ...metadataStrings(object.metadata.routineDependencies),
-    ...references,
-  ]);
-  object.metadata.routineColumnDependencies = sortedUnique([
-    ...metadataStrings(object.metadata.routineColumnDependencies),
-    ...columnReferences,
-  ]);
-  object.metadata.routineDependencyHintReferences = references;
-  object.metadata.routineDependencyHintColumns = columnReferences;
-  object.metadata.routineDependencyHinted = true;
-}
-
 function metadataStrings(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
-}
-
-function sortedUnique(values: readonly string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
-}
-
-function isColumnIdentity(value: string): boolean {
-  return value.split(".").length >= 3;
-}
-
-function columnRelationIdentity(value: string): string[] {
-  const parts = value.split(".");
-  if (parts.length < 3) {
-    return [];
-  }
-  return [`${parts[0]}.${parts[1]}`];
 }
 
 function parseStatement(
@@ -452,9 +414,44 @@ function indexObjects(
       statement.text,
       ordinal,
       file,
-      { concurrent: readBoolean(node.concurrent) }
+      indexMetadataFromAst(node, tableName)
     ),
   ];
+}
+
+function indexMetadataFromAst(
+  node: AstNode,
+  tableName: { name: string; schema: string }
+): Record<string, unknown> {
+  const metadata: Record<string, unknown> = { concurrent: readBoolean(node.concurrent) };
+  const columns = indexColumnDependencies(node, tableName);
+  if (columns.length > 0) {
+    metadata.columnDependencies = columns;
+  }
+  return metadata;
+}
+
+function indexColumnDependencies(
+  node: AstNode,
+  tableName: { name: string; schema: string }
+): string[] {
+  const columns = new Set<string>();
+  for (const item of [...readArray(node.indexParams), ...readArray(node.indexIncludingParams)]) {
+    const element = asRecord(asRecord(item)?.IndexElem);
+    const directColumn = readString(element?.name);
+    if (directColumn) {
+      columns.add(directColumn);
+    }
+    for (const column of collectColumnReferences(element?.expr)) {
+      columns.add(column);
+    }
+  }
+  for (const column of collectColumnReferences(node.whereClause)) {
+    columns.add(column);
+  }
+  return [...columns]
+    .map((column) => `${tableName.schema}.${tableName.name}.${column}`)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function functionObjects(
@@ -542,7 +539,16 @@ function commentObjects(
   file: string | undefined
 ): SchemaObject[] | undefined {
   const object = commentObjectFromAst(node, statement.text, ordinal, file);
-  return object ? [object] : undefined;
+  if (!object) {
+    return;
+  }
+  const description = object.metadata.description;
+  return isInitdbDefaultComment(
+    String(object.metadata.descriptor ?? ""),
+    typeof description === "string" ? description : null
+  )
+    ? []
+    : [object];
 }
 
 function singleNamedObject(

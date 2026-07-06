@@ -31,7 +31,14 @@ export async function extractSourceModel(
 ): Promise<SchemaModel> {
   const cwd = options.cwd ?? process.cwd();
   const config = resolveConfig(options.config);
-  return applyConfigModelFilters(await extractRawModel(source, cwd, config), config);
+  const model = applyConfigModelFilters(await extractRawModel(source, cwd, config), config);
+  return isDatabaseSource(source)
+    ? await filterBootstrapInventoryObjects(model, cwd, config)
+    : model;
+}
+
+function isDatabaseSource(source: string): boolean {
+  return parseRuntimeSource(source)?.kind === "database";
 }
 
 async function extractRawModel(
@@ -87,6 +94,18 @@ const schemaScopedDiagnosticCodes = new Set([
   "SUPA_SUPABASE_MANAGED_SCHEMA",
 ]);
 
+export function parseSchemaFilter(schemaFilter: string | undefined): Set<string> {
+  if (!schemaFilter) {
+    return new Set();
+  }
+  return new Set(
+    schemaFilter
+      .split(",")
+      .map((name) => name.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
 export function filterModelBySchemas(model: SchemaModel, schemas: Set<string>): SchemaModel {
   if (schemas.size === 0) {
     return model;
@@ -135,7 +154,7 @@ function applyConfigModelFilters(model: SchemaModel, config: SupaschemaConfig): 
       current.objects.filter((object) => !isExcludedGrant(object, roles))
     );
   }
-  return current;
+  return pruneFilteredCommentTargets(current);
 }
 
 function withObjects(model: SchemaModel, objects: SchemaObject[]): SchemaModel {
@@ -145,7 +164,98 @@ function withObjects(model: SchemaModel, objects: SchemaObject[]): SchemaModel {
   return { ...model, fingerprint: fingerprintObjects(objects), objects };
 }
 
-function objectSchema(object: SchemaObject): string {
+function pruneFilteredCommentTargets(model: SchemaModel): SchemaModel {
+  const objectKeys = new Set(model.objects.map((object) => object.key));
+  return withObjects(
+    model,
+    model.objects.filter((object) => {
+      const targetKey = filteredCommentTargetKey(object);
+      return targetKey === undefined || objectKeys.has(targetKey);
+    })
+  );
+}
+
+async function filterBootstrapInventoryObjects(
+  model: SchemaModel,
+  cwd: string,
+  config: SupaschemaConfig
+): Promise<SchemaModel> {
+  const bootstrap = await bootstrapInventoryModel(cwd, config);
+  if (bootstrap.objects.length === 0) {
+    return model;
+  }
+  const bootstrapKeys = new Set(bootstrap.objects.map((object) => object.key));
+  const bootstrapExtensionSchemas = new Set(
+    model.objects
+      .filter((object) => object.ref.kind === "extension" && bootstrapKeys.has(object.key))
+      .map((object) => object.metadata.schema)
+      .filter((schema): schema is string => typeof schema === "string")
+  );
+  const bootstrapCommentDescriptors = new Set(
+    bootstrap.objects
+      .map(bootstrapCommentDescriptor)
+      .filter((descriptor): descriptor is string => descriptor !== undefined)
+  );
+  return withObjects(
+    model,
+    model.objects.filter((object) => {
+      if (bootstrapKeys.has(object.key)) {
+        return false;
+      }
+      if (object.ref.kind === "schema" && bootstrapExtensionSchemas.has(object.ref.name)) {
+        return false;
+      }
+      const descriptor =
+        object.ref.kind === "comment" && typeof object.metadata.descriptor === "string"
+          ? object.metadata.descriptor
+          : undefined;
+      return descriptor === undefined || !bootstrapCommentDescriptors.has(descriptor);
+    })
+  );
+}
+
+async function bootstrapInventoryModel(
+  cwd: string,
+  config: SupaschemaConfig
+): Promise<SchemaModel> {
+  const files: SqlFile[] = [];
+  for (const schemaPath of config.schemaPaths) {
+    const root = resolve(cwd, schemaPath, "_bootstrap");
+    const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.isFile() && extname(entry.name) === ".sql") {
+        const path = join(root, entry.name);
+        files.push({ path: relative(cwd, path), sql: await readFile(path, "utf8") });
+      }
+    }
+  }
+  return modelFromSqlFiles(files, "bootstrap:inventory", config);
+}
+
+function bootstrapCommentDescriptor(object: SchemaObject): string | undefined {
+  const ref = object.ref;
+  if (ref.kind === "schema") {
+    return `schema ${ref.name}`;
+  }
+  if (ref.kind === "extension") {
+    return `extension ${ref.name}`;
+  }
+  return;
+}
+
+function filteredCommentTargetKey(object: SchemaObject): string | undefined {
+  if (object.ref.kind !== "comment" || typeof object.metadata.descriptor !== "string") {
+    return;
+  }
+  const descriptor = object.metadata.descriptor;
+  const extensionPrefix = "extension ";
+  if (descriptor.startsWith(extensionPrefix)) {
+    return `extension:${descriptor.slice(extensionPrefix.length)}`;
+  }
+  return;
+}
+
+export function objectSchema(object: SchemaObject): string {
   if (object.ref.kind === "schema") {
     return object.ref.name;
   }

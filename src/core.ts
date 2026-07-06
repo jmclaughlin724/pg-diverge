@@ -62,6 +62,7 @@ export type RoutineDependencyConfidence =
   | "sql-body"
   | "sql-string-partial"
   | "sql-string-parsed"
+  | "plpgsql-dynamic-parsed"
   | "plpgsql-static"
   | "plpgsql-partial"
   | "dynamic-sql-unknown"
@@ -152,6 +153,7 @@ export interface MigrationCorpus {
 export interface MigrationBaselineProof {
   file: string;
   fingerprint: string;
+  modelFormatVersion?: number;
   source: string;
   version?: string;
 }
@@ -173,7 +175,6 @@ export interface SupaschemaHints {
   destructive?: string[];
   renames?: RenameHint[];
   requiredPolicyColumns?: Record<string, string[]>;
-  routineDependencies?: Record<string, string[]>;
 }
 
 export interface ExtractOptions {

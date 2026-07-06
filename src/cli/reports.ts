@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import type { Command } from "commander";
 import { auditModel, renderAuditReport } from "../audit.js";
 import {
@@ -13,10 +14,15 @@ import {
 } from "../config/validate.js";
 import type { Diagnostic, SupaschemaConfig } from "../core.js";
 import { renderCorpusReport, runCorpus } from "../corpus.js";
-import { hasErrors } from "../diagnostics.js";
+import { diagnostic, hasErrors } from "../diagnostics.js";
 import { isEntitledFromEnv } from "../license.js";
 import { stageGeneratedMigrations } from "../migrations/stage.js";
-import { migrationsStatus, renderMigrationsStatus } from "../migrations/status.js";
+import {
+  type MigrationsStatusOptions,
+  type MigrationsStatusReport,
+  migrationsStatus,
+  renderMigrationsStatus,
+} from "../migrations/status.js";
 import { buildReadinessReport, classifyMigrationSystems, renderReadiness } from "../onboard.js";
 import { scanSchemaSafety } from "../pipeline/deploy-safety.js";
 import { evaluateTypeContract } from "../pipeline/type-safety.js";
@@ -25,6 +31,7 @@ import { buildRemediationPlan } from "../remediation.js";
 import { scanGeneratedContractUsage } from "../scan/generated-contracts.js";
 import { renderScan, scanDiagnostics, scoreGrade } from "../scan/model.js";
 import { extractSourceModel } from "../source/extract.js";
+import { currentBaselineFingerprints } from "../source/resolve.js";
 import { syncMigrations } from "../workflow/sync.js";
 
 export interface ReportCommandContext {
@@ -214,30 +221,42 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     )
     .option("--history-table <schema.table>", "migration history table", undefined)
     .option("--json", "print the report as JSON")
+    .option(
+      "--prune-stale",
+      "delete pending supaschema-generated migrations whose lineage end-state is not reproducible from git:HEAD or the current tree"
+    )
+    .option("--force", "allow --prune-stale without a target history check")
     .description("Reconcile migration files on disk against a target's applied history.")
     .action(
       async (options: {
         databaseUrl?: string;
+        force?: boolean;
         historyTable?: string;
         json?: boolean;
         migrationsDir?: string;
+        pruneStale?: boolean;
       }) => {
         const config = await context.loadCliConfig();
         const databaseUrl = await context.resolveCliDatabaseUrl(options.databaseUrl);
-        const { diagnostics, report } = await migrationsStatus({
-          directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
+        const directory = resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir);
+        const statusOptions = {
+          currentFingerprints: await currentBaselineFingerprints(config),
+          directory,
           ...(databaseUrl === undefined ? {} : { databaseUrl }),
           ...(options.historyTable === undefined ? {} : { historyTable: options.historyTable }),
-        });
-        context.printDiagnostics(diagnostics);
-        process.stdout.write(
-          options.json === true
-            ? `${JSON.stringify(report, null, 2)}\n`
-            : renderMigrationsStatus(report)
-        );
-        if (hasErrors(diagnostics)) {
-          process.exitCode = 2;
+        };
+        let status = await migrationsStatus(statusOptions);
+        let prunedStaleBaseline: string[] = [];
+        if (options.pruneStale === true) {
+          const pruned = await pruneStaleMigrations(status, statusOptions, {
+            databaseUrl,
+            directory,
+            force: options.force === true,
+          });
+          status = pruned.status;
+          prunedStaleBaseline = pruned.prunedStaleBaseline;
         }
+        writeMigrationsReport(context, status, prunedStaleBaseline, options.json === true);
       }
     );
 
@@ -300,6 +319,61 @@ export function registerReportCommands(program: Command, context: ReportCommandC
       "Run the full sync pipeline: schema diff, replay-safety check, generated contracts, generated migration staging, source safety gates, selected runner apply/deploy, and final reconciliation."
     )
     .action((options: SyncCommandOptions) => runSyncCommand(options, context));
+}
+
+interface MigrationsCommandStatus {
+  diagnostics: Diagnostic[];
+  report: MigrationsStatusReport;
+}
+
+async function pruneStaleMigrations(
+  status: MigrationsCommandStatus,
+  statusOptions: MigrationsStatusOptions,
+  options: { databaseUrl: string | undefined; directory: string; force: boolean }
+): Promise<{ prunedStaleBaseline: string[]; status: MigrationsCommandStatus }> {
+  if (options.databaseUrl === undefined && !options.force) {
+    status.diagnostics.push(
+      diagnostic(
+        "SUPA_MIGRATIONS_NO_TARGET",
+        "error",
+        "cannot prune stale generated migrations without a target history check",
+        {
+          hint: "Pass --database-url or set SUPASCHEMA_DATABASE_URL so supaschema can confirm the stale files are pending, not applied.",
+        }
+      )
+    );
+  }
+  if (hasErrors(status.diagnostics)) {
+    return { prunedStaleBaseline: [], status };
+  }
+  const prunedStaleBaseline = [...status.report.staleBaseline];
+  for (const file of prunedStaleBaseline) {
+    await rm(join(options.directory, file));
+  }
+  return {
+    prunedStaleBaseline,
+    status: prunedStaleBaseline.length > 0 ? await migrationsStatus(statusOptions) : status,
+  };
+}
+
+function writeMigrationsReport(
+  context: ReportCommandContext,
+  status: MigrationsCommandStatus,
+  prunedStaleBaseline: string[],
+  json: boolean
+): void {
+  context.printDiagnostics(status.diagnostics);
+  if (json) {
+    process.stdout.write(`${JSON.stringify({ ...status.report, prunedStaleBaseline }, null, 2)}\n`);
+  } else {
+    process.stdout.write(renderMigrationsStatus(status.report));
+    for (const file of prunedStaleBaseline) {
+      process.stdout.write(`  pruned-stale: ${file}\n`);
+    }
+  }
+  if (hasErrors(status.diagnostics)) {
+    process.exitCode = 2;
+  }
 }
 
 function resolveSyncRunner(value: string | undefined): "direct" | "supabase-cli" | undefined {

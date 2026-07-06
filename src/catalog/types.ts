@@ -1,7 +1,14 @@
 import type { SchemaObject } from "../core.js";
 import { formatQualifiedName } from "../sql/identifiers.js";
 import { makeObject } from "../sql/statements.js";
-import { type CatalogQuery, managedSchemaFilter, text, textArray } from "./query.js";
+import {
+  type CatalogQuery,
+  managedSchemaFilter,
+  notExtensionMember,
+  notExtensionMemberOid,
+  text,
+  textArray,
+} from "./query.js";
 
 export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> {
   const objects: SchemaObject[] = [];
@@ -11,7 +18,9 @@ export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> 
     from pg_type t
     join pg_namespace n on n.oid = t.typnamespace
     join pg_enum e on e.enumtypid = t.oid
-    where t.typtype = 'e' and ${managedSchemaFilter}
+    where t.typtype = 'e'
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("t", "pg_type")}
     group by n.nspname, t.typname
     order by n.nspname, t.typname
   `);
@@ -41,7 +50,9 @@ export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> 
       ) as constraints
     from pg_type t
     join pg_namespace n on n.oid = t.typnamespace
-    where t.typtype = 'd' and ${managedSchemaFilter}
+    where t.typtype = 'd'
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("t", "pg_type")}
     order by n.nspname, t.typname
   `);
   for (const row of domains.rows) {
@@ -62,24 +73,46 @@ export async function collectTypes(pool: CatalogQuery): Promise<SchemaObject[]> 
       string_agg(
         quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod),
         ', ' order by a.attnum
-      ) as columns
+      ) as columns,
+      coalesce(
+        array_remove(
+          array_agg(distinct dep_n.nspname || '.' || dep_t.typname)
+          filter (
+            where dep_t.typtype in ('c', 'd', 'e')
+              and dep_t.oid <> c.reltype
+              and left(dep_n.nspname, 3) <> 'pg_'
+              and dep_n.nspname <> 'information_schema'
+              and ${notExtensionMember("dep_t", "pg_type")}
+          ),
+          null
+        ),
+        array[]::text[]
+      ) as dependencies
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
-    where c.relkind = 'c' and ${managedSchemaFilter}
+    join pg_type raw_t on raw_t.oid = a.atttypid
+    join pg_type dep_t on dep_t.oid = coalesce(nullif(raw_t.typelem, 0), raw_t.oid)
+    join pg_namespace dep_n on dep_n.oid = dep_t.typnamespace
+    where c.relkind = 'c'
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
+      and ${notExtensionMemberOid("pg_type", "c.reltype")}
     group by n.nspname, c.relname
     order by n.nspname, c.relname
   `);
   for (const row of composites.rows) {
     const schema = text(row.schema);
     const name = text(row.name);
-    objects.push(
-      makeObject(
-        { kind: "type", name, schema },
-        `CREATE TYPE ${formatQualifiedName(schema, name)} AS (${text(row.columns)})`,
-        0
-      )
+    const object = makeObject(
+      { kind: "type", name, schema },
+      `CREATE TYPE ${formatQualifiedName(schema, name)} AS (${text(row.columns)})`,
+      0
     );
+    object.dependencies = textArray(row.dependencies).sort((left, right) =>
+      left.localeCompare(right)
+    );
+    objects.push(object);
   }
   return objects;
 }

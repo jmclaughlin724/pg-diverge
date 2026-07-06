@@ -306,6 +306,105 @@ describe("column-level alter lane", () => {
     );
   });
 
+  it("pre-drops and recreates dependent views around destructive column type changes", async () => {
+    const fromSql = `
+      CREATE TABLE app.accounts (id bigint PRIMARY KEY, label varchar(10) NOT NULL);
+      CREATE VIEW app.account_labels AS SELECT id, label FROM app.accounts;
+    `;
+    const plan = await diff(
+      fromSql,
+      fromSql.replace("label varchar(10)", "label varchar(20)"),
+      hinted
+    );
+    const operation = plan.operations.find((item) => item.key === "table:app.accounts");
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropView = sql.indexOf('DROP VIEW IF EXISTS "app"."account_labels";');
+    const alterTable = sql.indexOf(
+      'ALTER TABLE "app"."accounts" ALTER COLUMN "label" TYPE character varying(20)'
+    );
+    const createView = sql.indexOf("CREATE OR REPLACE VIEW app.account_labels AS SELECT");
+
+    expect(operation?.blocked).toBe(false);
+    expect(dropView).toBeGreaterThanOrEqual(0);
+    expect(alterTable).toBeGreaterThan(dropView);
+    expect(createView).toBeGreaterThan(alterTable);
+  });
+
+  it("orders pre-dropped dependent view replacements after destructive column type changes", async () => {
+    const fromSql = `
+      CREATE TABLE app.accounts (id bigint PRIMARY KEY, label varchar(10) NOT NULL);
+      CREATE VIEW app.account_labels AS SELECT id, label FROM app.accounts;
+    `;
+    const toSql = `
+      CREATE TABLE app.accounts (id bigint PRIMARY KEY, label varchar(20) NOT NULL);
+      CREATE VIEW app.account_labels AS SELECT id, label::text AS label FROM app.accounts;
+    `;
+    const plan = await diff(fromSql, toSql, {
+      hints: { destructive: ["table:app.accounts", "view:app.account_labels"], renames: [] },
+    });
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropView = sql.indexOf('DROP VIEW IF EXISTS "app"."account_labels";');
+    const alterTable = sql.indexOf(
+      'ALTER TABLE "app"."accounts" ALTER COLUMN "label" TYPE character varying(20)'
+    );
+    const createView = sql.indexOf("CREATE OR REPLACE VIEW app.account_labels AS SELECT");
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(dropView).toBeGreaterThanOrEqual(0);
+    expect(alterTable).toBeGreaterThan(dropView);
+    expect(createView).toBeGreaterThan(alterTable);
+  });
+
+  it("pre-drops and recreates partial indexes around destructive column type changes", async () => {
+    const fromSql = `
+      CREATE TABLE app.jobs (id bigint PRIMARY KEY, status text NOT NULL);
+      CREATE INDEX jobs_status_active_idx ON app.jobs (status, id) WHERE status = ANY (ARRAY['pending'::text, 'failed'::text]);
+    `;
+    const toSql = `
+      CREATE TYPE app.job_status AS ENUM ('pending', 'failed');
+      CREATE TABLE app.jobs (id bigint PRIMARY KEY, status app.job_status NOT NULL);
+      CREATE INDEX jobs_status_active_idx ON app.jobs (status, id) WHERE status = ANY (ARRAY['pending'::app.job_status, 'failed'::app.job_status]);
+    `;
+    const plan = await diff(fromSql, toSql, {
+      hints: { destructive: ["table:app.jobs"], renames: [] },
+    });
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropIndex = sql.indexOf('DROP INDEX IF EXISTS "app"."jobs_status_active_idx";');
+    const alterTable = sql.indexOf(
+      'ALTER TABLE "app"."jobs" ALTER COLUMN "status" TYPE app.job_status'
+    );
+    const createIndex = sql.indexOf("CREATE INDEX IF NOT EXISTS jobs_status_active_idx");
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(dropIndex).toBeGreaterThanOrEqual(0);
+    expect(alterTable).toBeGreaterThan(dropIndex);
+    expect(createIndex).toBeGreaterThan(alterTable);
+    expect(sql.slice(dropIndex, alterTable)).not.toContain("CREATE INDEX");
+  });
+
+  it("drops and restores defaults around destructive column type changes", async () => {
+    const plan = await diff(
+      "CREATE TABLE app.jobs (id bigint PRIMARY KEY, status text DEFAULT 'pending'::text NOT NULL);",
+      `
+        CREATE TYPE app.job_status AS ENUM ('pending', 'failed');
+        CREATE TABLE app.jobs (id bigint PRIMARY KEY, status app.job_status DEFAULT 'pending'::app.job_status NOT NULL);
+      `,
+      { hints: { destructive: ["table:app.jobs"], renames: [] } }
+    );
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropDefault = sql.indexOf('ALTER TABLE "app"."jobs" ALTER COLUMN "status" DROP DEFAULT;');
+    const alterType = sql.indexOf(
+      'ALTER TABLE "app"."jobs" ALTER COLUMN "status" TYPE app.job_status'
+    );
+    const setDefault = sql.indexOf('ALTER TABLE "app"."jobs" ALTER COLUMN "status" SET DEFAULT');
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(dropDefault).toBeGreaterThanOrEqual(0);
+    expect(alterType).toBeGreaterThan(dropDefault);
+    expect(setDefault).toBeGreaterThan(alterType);
+    expect(sql.slice(setDefault)).toContain("app.job_status");
+  });
+
   it("blocks destructive column alters when view, policy, or trigger dependents still reference the column", async () => {
     const fromSql = `
       CREATE TABLE app.accounts (id bigint PRIMARY KEY, secret_id uuid);

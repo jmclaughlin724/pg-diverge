@@ -86,6 +86,77 @@ describe("replaced relation dependents", () => {
     expect(plan.operations).toHaveLength(0);
   });
 
+  it("pre-drops unchanged views that depend on a replaced composite type", async () => {
+    const from = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE TYPE app.item_detail AS (status text);
+      CREATE VIEW app.item_details AS SELECT ROW('pending')::app.item_detail AS item;
+    `);
+    const to = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE TYPE app.item_status AS ENUM ('pending');
+      CREATE TYPE app.item_detail AS (status app.item_status);
+      CREATE VIEW app.item_details AS SELECT ROW('pending')::app.item_detail AS item;
+    `);
+
+    const plan = planSchemaDiff(from, to, {
+      config: { hints: { destructive: ["type:app.item_detail"] } },
+    });
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(
+      plan.operations.some(
+        (operation) =>
+          operation.kind === "drop" &&
+          operation.key === "pre-drop:view:app.item_details" &&
+          operation.ref.kind === "view"
+      )
+    ).toBe(true);
+
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropView = sql.indexOf('DROP VIEW IF EXISTS "app"."item_details";');
+    const dropType = sql.indexOf('DROP TYPE IF EXISTS "app"."item_detail";');
+    const createType = sql.indexOf("CREATE TYPE app.item_detail AS");
+    const createView = sql.indexOf("CREATE OR REPLACE VIEW app.item_details AS SELECT");
+    expect(dropView).toBeGreaterThanOrEqual(0);
+    expect(dropType).toBeGreaterThan(dropView);
+    expect(createType).toBeGreaterThan(dropType);
+    expect(createView).toBeGreaterThan(createType);
+  });
+
+  it("pre-drops target-only routines that depend on a replaced composite type for replay", async () => {
+    const from = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE TYPE app.item_detail AS (status text);
+    `);
+    const to = await modelFromSql(`
+      CREATE SCHEMA app;
+      CREATE TYPE app.item_status AS ENUM ('pending');
+      CREATE TYPE app.item_detail AS (status app.item_status);
+      CREATE FUNCTION app.item_detail_api()
+      RETURNS app.item_detail
+      LANGUAGE sql
+      AS $$
+        SELECT ROW('pending'::app.item_status)::app.item_detail
+      $$;
+    `);
+
+    const plan = planSchemaDiff(from, to, {
+      config: { hints: { destructive: ["type:app.item_detail"] } },
+    });
+    const sql = renderMigration(plan, { includeHeader: false });
+    const dropRoutine = sql.indexOf('DROP FUNCTION IF EXISTS "app"."item_detail_api"();');
+    const dropType = sql.indexOf('DROP TYPE IF EXISTS "app"."item_detail";');
+    const createType = sql.indexOf("CREATE TYPE app.item_detail AS");
+    const createRoutine = sql.indexOf("CREATE OR REPLACE FUNCTION app.item_detail_api()");
+
+    expect(plan.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(dropRoutine).toBeGreaterThanOrEqual(0);
+    expect(dropType).toBeGreaterThan(dropRoutine);
+    expect(createType).toBeGreaterThan(dropType);
+    expect(createRoutine).toBeGreaterThan(createType);
+  });
+
   it("does not plan owned relation state as independent drops when the relation is dropped", async () => {
     const from = await modelFromSql(`
       CREATE SCHEMA app;

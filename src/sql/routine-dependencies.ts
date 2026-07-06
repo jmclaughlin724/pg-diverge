@@ -27,6 +27,7 @@ interface StaticSqlFragment {
 }
 
 interface PlpgsqlFragments {
+  dynamicUnknown: string[];
   fragments: StaticSqlFragment[];
   unrecognized: string[];
 }
@@ -86,7 +87,7 @@ export async function extractRoutineDependencies(
         `routine language "${language ?? "unknown"}" is not statically analyzed for dependencies`,
         {
           file,
-          hint: "Add explicit routine dependency hints before changing relations or types this routine may reference.",
+          hint: "Rewrite the routine in a statically analyzable language/form before changing relations or types it may reference.",
           statement: statement.text,
         }
       ),
@@ -134,11 +135,27 @@ async function parsePlpgsqlBodies(
   const references = new Set<string>();
   const columnReferences = new Set<string>();
   const diagnostics: Diagnostic[] = [];
-  let dynamic = false;
+  let parsedDynamic = false;
+  let dynamicUnknown = false;
   let partial = false;
   for (const body of bodies) {
-    dynamic ||= hasToken(body, "execute");
     const extracted = plpgsqlStaticSqlFragments(body);
+    parsedDynamic ||= extracted.fragments.some((fragment) => fragment.source === "EXECUTE");
+    dynamicUnknown ||= extracted.dynamicUnknown.length > 0;
+    for (const statement of extracted.dynamicUnknown) {
+      diagnostics.push(
+        diagnostic(
+          "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN",
+          "warning",
+          "routine contains dynamic SQL whose relation and column dependencies cannot be proven statically",
+          {
+            file,
+            hint: "Rewrite dynamic SQL to static SQL before relation/type changes, or move the change to a reviewed explicit migration.",
+            statement,
+          }
+        )
+      );
+    }
     if (extracted.unrecognized.length > 0) {
       partial = true;
       for (const statement of extracted.unrecognized) {
@@ -149,7 +166,7 @@ async function parsePlpgsqlBodies(
             "could not prove all PL/pgSQL dependencies in an unrecognized statement form",
             {
               file,
-              hint: "Rewrite this statement as a supported static query form or add explicit routine dependency hints before changing referenced relations.",
+              hint: "Rewrite this statement as a supported static query form before changing referenced relations.",
               statement,
             }
           )
@@ -169,7 +186,7 @@ async function parsePlpgsqlBodies(
             `could not prove all PL/pgSQL dependencies in ${fragment.source}`,
             {
               file,
-              hint: "Keep proven dependencies, but add explicit hints before changing referenced relations.",
+              hint: "Keep proven dependencies and rewrite the unproven statement before changing referenced relations.",
               statement: fragment.sql,
             }
           )
@@ -177,36 +194,27 @@ async function parsePlpgsqlBodies(
       }
     }
   }
-  if (dynamic) {
-    diagnostics.push(
-      diagnostic(
-        "SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN",
-        "warning",
-        "routine contains dynamic SQL whose relation and column dependencies cannot be proven statically",
-        {
-          file,
-          hint: "Rewrite dynamic SQL to static SQL or add explicit routine dependency hints before relation/type changes.",
-        }
-      )
-    );
-  }
   return {
     columnReferences: sorted(columnReferences),
-    confidence: plpgsqlConfidence(dynamic, partial),
+    confidence: plpgsqlConfidence(parsedDynamic, dynamicUnknown, partial),
     diagnostics,
     references: sorted(references),
   };
 }
 
 function plpgsqlConfidence(
-  dynamic: boolean,
+  parsedDynamic: boolean,
+  dynamicUnknown: boolean,
   partial: boolean
 ): RoutineDependencyResult["confidence"] {
-  if (dynamic) {
+  if (dynamicUnknown) {
     return "dynamic-sql-unknown";
   }
   if (partial) {
     return "plpgsql-partial";
+  }
+  if (parsedDynamic) {
+    return "plpgsql-dynamic-parsed";
   }
   return "plpgsql-static";
 }
@@ -228,9 +236,19 @@ async function parseStaticSql(
 
 function plpgsqlStaticSqlFragments(body: string): PlpgsqlFragments {
   const fragments: StaticSqlFragment[] = [];
+  const dynamicUnknown: string[] = [];
   const unrecognized: string[] = [];
   for (const statement of splitPlpgsqlStatements(body)) {
     const normalized = trimPlpgsqlStatement(statement);
+    const dynamicFragment = dynamicExecuteStatementFragment(normalized);
+    if (dynamicFragment) {
+      fragments.push(dynamicFragment);
+      continue;
+    }
+    if (isExecuteStatement(normalized)) {
+      dynamicUnknown.push(normalized);
+      continue;
+    }
     const fragment = plpgsqlStatementFragment(normalized);
     if (fragment) {
       fragments.push(fragment);
@@ -238,7 +256,7 @@ function plpgsqlStaticSqlFragments(body: string): PlpgsqlFragments {
       unrecognized.push(normalized);
     }
   }
-  return { fragments, unrecognized };
+  return { dynamicUnknown, fragments, unrecognized };
 }
 
 function plpgsqlStatementFragment(statement: string): StaticSqlFragment | undefined {
@@ -317,6 +335,275 @@ function dmlStatementFragment(sql: string): StaticSqlFragment | undefined {
     return { source: "DML statement", sql: stripReturningInto(sql) };
   }
   return;
+}
+
+function dynamicExecuteStatementFragment(statement: string): StaticSqlFragment | undefined {
+  if (!isExecuteStatement(statement)) {
+    return;
+  }
+  const tokens = tokenSpans(statement);
+  const executeToken = tokens[0];
+  if (!executeToken) {
+    return;
+  }
+  const end = dynamicSqlExpressionEnd(statement, executeToken.end);
+  const expression = statement.slice(executeToken.end, end).trim();
+  const sql = dynamicSqlFromExpression(expression);
+  return sql ? { source: "EXECUTE", sql } : undefined;
+}
+
+function isExecuteStatement(statement: string): boolean {
+  return tokenSpans(statement)[0]?.text === "execute";
+}
+
+function dynamicSqlExpressionEnd(statement: string, start: number): number {
+  let depth = 0;
+  let index = start;
+  while (index < statement.length) {
+    const char = statement[index] ?? "";
+    const skipped = skipNonCodeSpan(statement, index);
+    if (skipped !== undefined) {
+      index = skipped;
+      continue;
+    }
+    if (char === "(") {
+      depth += 1;
+      index += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      index += 1;
+      continue;
+    }
+    if (depth === 0 && isIdentifierStart(char)) {
+      const wordEnd = identifierEnd(statement, index);
+      const token = statement.slice(index, wordEnd).toLowerCase();
+      if (token === "into" || token === "using") {
+        return index;
+      }
+      index = wordEnd;
+      continue;
+    }
+    index += 1;
+  }
+  return statement.length;
+}
+
+function skipNonCodeSpan(statement: string, index: number): number | undefined {
+  const char = statement[index] ?? "";
+  if (char === "'") {
+    return skipSingleQuoted(statement, index);
+  }
+  if (char === "$") {
+    return skipDollarQuoted(statement, index);
+  }
+  if (char === "-" && statement[index + 1] === "-") {
+    return skipLineComment(statement, index);
+  }
+  if (char === "/" && statement[index + 1] === "*") {
+    return skipBlockComment(statement, index);
+  }
+  return;
+}
+
+function identifierEnd(statement: string, start: number): number {
+  let index = start + 1;
+  while (index < statement.length && isIdentifierPart(statement[index] ?? "")) {
+    index += 1;
+  }
+  return index;
+}
+
+function dynamicSqlFromExpression(expression: string): string | undefined {
+  const literal = stringLiteralFromExpression(expression);
+  if (literal !== undefined) {
+    return literal;
+  }
+  return formatTemplateFromExpression(expression);
+}
+
+function stringLiteralFromExpression(expression: string): string | undefined {
+  const start = firstNonWhitespace(expression);
+  if (start === undefined) {
+    return;
+  }
+  const literal = sqlStringLiteralAt(expression, start);
+  if (!literal) {
+    return;
+  }
+  return expression.slice(literal.end).trim().length === 0 ? literal.value : undefined;
+}
+
+function formatTemplateFromExpression(expression: string): string | undefined {
+  const start = firstNonWhitespace(expression);
+  if (start === undefined || !keywordAt(expression, start, "format")) {
+    return;
+  }
+  const parenStart = firstNonWhitespace(expression, start + "format".length);
+  if (parenStart === undefined || expression[parenStart] !== "(") {
+    return;
+  }
+  const parenEnd = matchingParenEnd(expression, parenStart);
+  if (parenEnd === undefined || expression.slice(parenEnd).trim().length > 0) {
+    return;
+  }
+  const args = expression.slice(parenStart + 1, parenEnd - 1);
+  const firstArgStart = firstNonWhitespace(args);
+  if (firstArgStart === undefined) {
+    return;
+  }
+  const literal = sqlStringLiteralAt(args, firstArgStart);
+  if (!literal) {
+    return;
+  }
+  return normalizeFormatTemplate(literal.value);
+}
+
+function normalizeFormatTemplate(template: string): string {
+  let sql = "";
+  let index = 0;
+  while (index < template.length) {
+    const char = template[index] ?? "";
+    if (char !== "%") {
+      sql += char;
+      index += 1;
+      continue;
+    }
+    const next = template[index + 1] ?? "";
+    if (next === "%") {
+      sql += "%";
+      index += 2;
+      continue;
+    }
+    const specifier = formatSpecifier(template, index + 1);
+    sql += specifier.value;
+    index = specifier.end;
+  }
+  return sql;
+}
+
+const formatSpecifierSubstitutions = new Map([
+  ["I", "__supaschema_identifier"],
+  ["L", "'__supaschema_literal'"],
+  ["s", "ASC"],
+]);
+
+function formatSpecifier(template: string, start: number): { end: number; value: string } {
+  let index = start;
+  while (isDigit(template[index] ?? "")) {
+    index += 1;
+  }
+  if (template[index] === "$") {
+    index += 1;
+  }
+  while ("-+ 0#".includes(template[index] ?? "")) {
+    index += 1;
+  }
+  while (isDigit(template[index] ?? "")) {
+    index += 1;
+  }
+  if (template[index] === ".") {
+    index += 1;
+    while (isDigit(template[index] ?? "")) {
+      index += 1;
+    }
+  }
+  const value = formatSpecifierSubstitutions.get(template[index] ?? "") ?? "__supaschema_value";
+  return { end: index + 1, value };
+}
+
+function sqlStringLiteralAt(
+  sql: string,
+  start: number
+): { end: number; value: string } | undefined {
+  const char = sql[start] ?? "";
+  if ((char === "e" || char === "E") && sql[start + 1] === "'") {
+    return singleQuotedLiteralAt(sql, start + 1);
+  }
+  if (char === "'") {
+    return singleQuotedLiteralAt(sql, start);
+  }
+  if (char === "$") {
+    const tag = dollarTagAt(sql, start);
+    if (!tag) {
+      return;
+    }
+    const end = sql.indexOf(tag, start + tag.length);
+    if (end < 0) {
+      return;
+    }
+    return {
+      end: end + tag.length,
+      value: sql.slice(start + tag.length, end),
+    };
+  }
+  return;
+}
+
+function singleQuotedLiteralAt(sql: string, start: number): { end: number; value: string } {
+  let index = start + 1;
+  let value = "";
+  while (index < sql.length) {
+    const char = sql[index] ?? "";
+    if (char === "'" && sql[index + 1] === "'") {
+      value += "'";
+      index += 2;
+      continue;
+    }
+    if (char === "'") {
+      return { end: index + 1, value };
+    }
+    value += char;
+    index += 1;
+  }
+  return { end: sql.length, value };
+}
+
+function matchingParenEnd(sql: string, start: number): number | undefined {
+  let depth = 0;
+  let index = start;
+  while (index < sql.length) {
+    const char = sql[index] ?? "";
+    if (char === "'") {
+      index = skipSingleQuoted(sql, index);
+      continue;
+    }
+    if (char === "$") {
+      const end = skipDollarQuoted(sql, index);
+      if (end !== undefined) {
+        index = end;
+        continue;
+      }
+    }
+    if (char === "(") {
+      depth += 1;
+    } else if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+    index += 1;
+  }
+  return;
+}
+
+function firstNonWhitespace(value: string, start = 0): number | undefined {
+  let index = start;
+  while (index < value.length && isWhitespace(value[index] ?? "")) {
+    index += 1;
+  }
+  return index < value.length ? index : undefined;
+}
+
+function keywordAt(value: string, start: number, keyword: string): boolean {
+  if (value.slice(start, start + keyword.length).toLowerCase() !== keyword) {
+    return false;
+  }
+  const before = start === 0 ? "" : (value[start - 1] ?? "");
+  const after = value[start + keyword.length] ?? "";
+  return !(isIdentifierPart(before) || isIdentifierPart(after));
 }
 
 function returnExpressionQuery(value: string): string | undefined {
@@ -457,10 +744,6 @@ function afterKeywordSequence(sql: string, sequence: readonly string[]): string 
   return;
 }
 
-function hasToken(sql: string, token: string): boolean {
-  return tokenSpans(sql).some((item) => item.text === token);
-}
-
 function tokenSpans(sql: string): { end: number; start: number; text: string }[] {
   const tokens: { end: number; start: number; text: string }[] = [];
   let index = 0;
@@ -513,7 +796,7 @@ function collectRangeVars(
       const identity = `${name.schema}.${name.name}`;
       relationIdentities.add(identity);
       relationByName.set(name.name, identity);
-      const alias = readString(asRecord(asRecord(rangeVar.alias)?.Alias)?.aliasname);
+      const alias = aliasName(rangeVar.alias);
       if (alias) {
         relationByName.set(alias, identity);
       }
@@ -524,6 +807,11 @@ function collectRangeVars(
       collectRangeVars(child, relationByName, relationIdentities);
     }
   }
+}
+
+function aliasName(value: unknown): string | undefined {
+  const alias = asRecord(asRecord(value)?.Alias) ?? asRecord(value);
+  return readString(alias?.aliasname);
 }
 
 function collectColumnRefs(
@@ -676,4 +964,8 @@ function isIdentifierStart(char: string): boolean {
 
 function isIdentifierPart(char: string): boolean {
   return isIdentifierStart(char) || (char >= "0" && char <= "9") || char === "$";
+}
+
+function isDigit(char: string): boolean {
+  return char >= "0" && char <= "9";
 }

@@ -27,13 +27,20 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_DIFF_LINEAGE_DUPLICATE` | error | A pending supaschema migration already covers this exact from/to transition. |
 | `SUPA_DIFF_EMPTY_PLAN` | error | A disk write was explicitly requested, but the diff planned no operations. |
 | `SUPA_DIFF_OUTPUT_EXISTS` | error | The output migration file already exists; supaschema does not overwrite migrations outside `diff --replace`. |
+| `SUPA_DIFF_CONFIG_DIRTY` | error | A scoped diff cannot prove ownership while `supaschema.config.json` has uncommitted changes. Close the config change with its migration or run an unscoped diff that owns it. |
+| `SUPA_DIFF_GENERATED_CONTRACT_DIRTY` | error | Generated TypeScript/Zod outputs changed before migration generation. Close the existing migration unit before running another diff. |
+| `SUPA_DIFF_MIGRATIONS_DIRTY` | error | The migrations directory has uncommitted files before migration generation. Apply, replace, prune, or close that migration unit first. |
+| `SUPA_DIFF_SCOPED_DIRTY_SCHEMA` | error | A scoped diff found dirty schema files outside the requested schema filter. Close that schema unit before generating the scoped migration. |
+| `SUPA_DIFF_TREE_UNCOMMITTED` | warning | The `dir:` to-source has uncommitted changes, so the generated migration's lineage end-state fingerprints uncommitted tree state; commit the tree change together with the migration and generated outputs, or the next git-baseline generation blocks with `SUPA_MIGRATION_BASELINE_MISMATCH`. |
 | `SUPA_DIFF_REPLACE_APPLIED` | error | `diff --replace` targeted a migration version already recorded in a configured database history table. |
 | `SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED` | warning | `diff --replace` could not resolve a database history target, so applied state was not verified. |
 | `SUPA_DIFF_REPLACE_BASELINE_REQUIRED` | error | `diff --replace` could not prove or match the replacement migration's original lineage baseline. |
 | `SUPA_DIFF_REPLACE_HAND_AUTHORED` | error | `diff --replace` targeted a file without supaschema lineage metadata. |
 | `SUPA_DIFF_REPLACE_NOT_LATEST` | error | `diff --replace` targeted a generated migration older than the configured migration directory tip. |
-| `SUPA_MIGRATION_BASELINE_MISMATCH` | error | The resolved `sources.from` model does not match the generated migration-tree baseline. |
+| `SUPA_MIGRATION_BASELINE_MISMATCH` | error | The resolved `sources.from` model does not match the generated migration-tree baseline. Recover from the source state that produced the baseline, use `diff --replace`, or — when the pending migration's end-state was never committed and no target records it as applied — review and delete the pending migration, then regenerate from the current tree. |
+| `SUPA_MIGRATION_BASELINE_FORMAT_DRIFT` | warning | The latest generated migration-tree lineage was produced by a different model format, so old and current fingerprints are not directly comparable. Same-format mismatches still block. |
 | `SUPA_MIGRATION_BASELINE_UNSUPPORTED` | error | Existing migrations cannot prove a generated-lineage baseline for source-backed generation. |
+| `SUPA_MIGRATIONS_STALE_BASELINE` | warning | A pending generated migration's lineage end-state matches neither the current `git:HEAD` schema fingerprint nor the current tree fingerprint; its baseline is unreproducible. If no target records the version as applied, review and delete it, then regenerate. |
 | `SUPA_MIGRATION_CORPUS_PARSE_SKIPPED` | warning | A configured migration file could not be fully parsed for source intent; destructive changes in that file may still require explicit hints. |
 | `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` | error | A destructive change lacks an explicit hint. |
 | `SUPA_PLAN_ADD_COLUMN_UNSAFE` | error | An additive column change needs explicit migration review. |
@@ -56,7 +63,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_ROUTINE_BODY_DEPENDENCY_UNKNOWN` | warning | A routine language or body form cannot be statically analyzed for dependencies. |
 | `SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY` | warning | A PL/pgSQL body was only partially parsed; proven references were kept but dependency confidence is degraded. |
 | `SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_UNKNOWN` | warning | A PL/pgSQL body contains dynamic SQL whose relation and column dependencies cannot be proven statically. |
-| `SUPA_ROUTINE_DYNAMIC_SQL_DEPENDENCY_HINT_REQUIRED` | error | A relation or type changed while an unhinted routine has unproven dependencies. Add exact `hints.routineDependencies` or split the migration. |
+| `SUPA_ROUTINE_DEPENDENCY_PROOF_REQUIRED` | error | A relation or type changed while a routine has unproven dependencies. Rewrite the routine, include its rewrite in the same plan, split the migration, or use a reviewed explicit migration. |
 | `SUPA_CHECK_CASCADE` | error | `CASCADE` appears in migration SQL. |
 | `SUPA_CHECK_DROP_IF_EXISTS` | error | A `DROP` statement lacks `IF EXISTS`. |
 | `SUPA_CHECK_CREATE_SCHEMA_GUARD` | error | `CREATE SCHEMA` lacks `IF NOT EXISTS` or a catalog guard. |

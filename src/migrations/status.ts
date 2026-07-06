@@ -10,12 +10,18 @@ import { parseLineage } from "./lineage.js";
 
 export interface MigrationsStatusOptions {
   allowMissingHistoryTable?: boolean;
+  currentFingerprints?: CurrentBaselineFingerprints;
   databaseUrl?: string;
   directory: string;
   expectedAppliedVersions?: string[];
   historyTable?: string;
   runnerLabel?: string;
   targetLabel?: string;
+}
+
+export interface CurrentBaselineFingerprints {
+  head?: string;
+  tree?: string;
 }
 
 export interface MigrationHistoryComparison {
@@ -40,6 +46,7 @@ export interface MigrationsStatusReport {
 
   pendingLineage: MigrationLineage[];
   runnerLabel?: string;
+  staleBaseline: string[];
   target?: string;
   targetLabel?: string;
 
@@ -73,6 +80,7 @@ export async function migrationsStatus(
     pending: [],
     pendingLineage: [],
     ...(options.runnerLabel === undefined ? {} : { runnerLabel: options.runnerLabel }),
+    staleBaseline: [],
     ...(options.targetLabel === undefined ? {} : { targetLabel: options.targetLabel }),
     unexpectedAppliedVersions: [],
   };
@@ -88,6 +96,7 @@ export async function migrationsStatus(
       )
     );
     await annotateLineage(options.directory, report);
+    diagnostics.push(...classifyStaleBaselines(report, options.currentFingerprints));
     return { diagnostics, report };
   }
   report.target = databaseTargetLabel(options.databaseUrl);
@@ -115,6 +124,7 @@ export async function migrationsStatus(
   }
   report.ghosts = [...appliedVersions].filter((version) => !diskVersions.has(version)).sort();
   await annotateLineage(options.directory, report);
+  diagnostics.push(...classifyStaleBaselines(report, options.currentFingerprints));
   if (report.ghosts.length > 0) {
     diagnostics.push(
       diagnostic(
@@ -149,7 +159,10 @@ export function renderMigrationsStatus(report: MigrationsStatusReport): string {
   );
   for (const file of report.pending) {
     const lineage = report.pendingLineage.find((item) => item.file === file);
-    lines.push(`  pending: ${file}${lineage ? " (supaschema lineage)" : ""}`);
+    const stale = report.staleBaseline.includes(file);
+    lines.push(
+      `  pending: ${file}${lineage ? ` (supaschema lineage${stale ? ", stale baseline" : ""})` : ""}`
+    );
   }
   for (const version of report.ghosts) {
     lines.push(`  ghost: ${version} (applied on target, no file on disk)`);
@@ -257,6 +270,47 @@ async function readHistory(
   } finally {
     await client.end().catch(() => undefined);
   }
+}
+
+function classifyStaleBaselines(
+  report: MigrationsStatusReport,
+  currentFingerprints: CurrentBaselineFingerprints | undefined
+): Diagnostic[] {
+  if (currentFingerprints === undefined) {
+    return [];
+  }
+  const known = new Set(
+    [currentFingerprints.head, currentFingerprints.tree].filter(
+      (fingerprint): fingerprint is string => fingerprint !== undefined
+    )
+  );
+  if (known.size === 0) {
+    return [];
+  }
+  const staleFiles = new Set<string>();
+  const staleFingerprints = new Set<string>();
+  for (const lineage of report.pendingLineage) {
+    if (known.has(lineage.to) && !staleFingerprints.has(lineage.from)) {
+      continue;
+    }
+    staleFiles.add(lineage.file);
+    staleFingerprints.add(lineage.to);
+  }
+  report.staleBaseline = [...staleFiles].sort((left, right) => left.localeCompare(right));
+  if (report.staleBaseline.length === 0) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_MIGRATIONS_STALE_BASELINE",
+      "warning",
+      `${report.staleBaseline.length} pending generated migration(s) record a lineage end-state that matches neither git:HEAD nor the current tree`,
+      {
+        file: report.staleBaseline[0],
+        hint: "The recorded end-state is unreproducible (likely generated from an uncommitted tree that has since moved). If no target records the version as applied, review and delete the pending migration, then regenerate from the current tree.",
+      }
+    ),
+  ];
 }
 
 async function annotateLineage(directory: string, report: MigrationsStatusReport): Promise<void> {

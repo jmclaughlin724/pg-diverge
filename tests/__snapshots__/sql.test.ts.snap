@@ -5,8 +5,8 @@ exports[`golden migration output > renders the basic fixture migration determini
 -- From: dir:tests/fixtures/basic/from
 -- To: dir:tests/fixtures/basic/to
 -- Operations: 1 create constraint, 1 create table, 1 drop function, 1 replace comment, 1 replace function, 1 replace policy, 1 replace view
--- Fingerprint: 738a9618d21892f2ecde3409f859b956b3544d1b6f5e83fbbf8ac0d6ff975043
--- supaschema: lineage from=a145201bcaa397f64f7dc4a10cd2019cf086acd6150b95b580657ba5a5f548e7 to=4db806bc9b786ea2efe34d398496f40ecc1ce7849d369d6bbd2057fcd588b282
+-- Fingerprint: cb19902dad976f944a341ae3e95f57c01312051ece98c03b3c0e7d60bd15863c
+-- supaschema: lineage format=3 from=9b448f7d524959e18cf71c018de475f2d95bfd1d1234db2ba7e84edc9482ca11 to=998b9cb03a01b058386bfe468692cc2c90a5c96d7d2bf514974e8702cc468fa6
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';
 

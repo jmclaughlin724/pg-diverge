@@ -5,6 +5,7 @@ import type { AstNode } from "./ast.js";
 import {
   asRecord,
   astStatements,
+  rangeVarName,
   readArray,
   readBoolean,
   readNumber,
@@ -16,7 +17,7 @@ import {
 import { canonicalPolicyNode, canonicalViewNode } from "./canonical-nodes.js";
 import { quoteIdent } from "./identifiers.js";
 import { normalizeObjectSql } from "./normalize-deparse.js";
-import { astObjectHash, shapeHash } from "./object-hash.js";
+import { astObjectHash, shapeHash, stripLocations } from "./object-hash.js";
 import { parseSqlAst } from "./parser.js";
 import {
   canonicalConstraintShape,
@@ -132,7 +133,7 @@ export async function finalizeObject(
 
 function canonicalHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
   const first = statements[0];
-  const statementShapeHash = canonicalStatementShapeHash(object, first);
+  const statementShapeHash = canonicalStatementShapeHash(object, first, statements);
   if (statementShapeHash !== undefined) {
     return statementShapeHash;
   }
@@ -149,10 +150,11 @@ function canonicalHash(object: SchemaObject, statements: { node: AstNode; tag: s
 
 function canonicalStatementShapeHash(
   object: SchemaObject,
-  first: { node: AstNode; tag: string } | undefined
+  first: { node: AstNode; tag: string } | undefined,
+  statements: { node: AstNode; tag: string; text?: string }[]
 ): string | undefined {
   if (first?.tag === "CreateStmt") {
-    return tableShapeHash(object, asRecord(first.node.CreateStmt));
+    return tableShapeHash(object, asRecord(first.node.CreateStmt), statements);
   }
   if (first?.tag === "CreateSeqStmt") {
     return sequenceShapeHash(object, asRecord(first.node.CreateSeqStmt));
@@ -163,14 +165,78 @@ function canonicalStatementShapeHash(
   return;
 }
 
-function tableShapeHash(object: SchemaObject, createStmt: AstNode | undefined): string | undefined {
+function tableShapeHash(
+  object: SchemaObject,
+  createStmt: AstNode | undefined,
+  statements: { node: AstNode; tag: string; text?: string }[]
+): string | undefined {
   if (!createStmt) {
     return;
   }
-  const shape = canonicalTableShape(createStmt);
+  let shape = canonicalTableShape(createStmt);
+  const partition = tablePartitionAttachment(object, statements);
+  if (partition !== undefined) {
+    shape = {
+      ...shape,
+      inhRelations: [
+        {
+          RangeVar: {
+            ...(partition.parent.schema ? { schemaname: partition.parent.schema } : {}),
+            inh: true,
+            relname: partition.parent.name,
+            relpersistence: "p",
+          },
+        },
+      ],
+      partbound: stripLocations(partition.bound),
+    };
+    object.metadata.partitionAttachSql = partition.sql;
+  }
 
   object.metadata.canonicalShape = shape;
   return shapeHash(shape, object.key, object.ref);
+}
+
+function tablePartitionAttachment(
+  object: SchemaObject,
+  statements: { node: AstNode; tag: string; text?: string }[]
+):
+  | {
+      bound: unknown;
+      parent: { name: string; schema: string };
+      sql: string;
+    }
+  | undefined {
+  if (object.ref.kind !== "table") {
+    return;
+  }
+  for (const statement of statements) {
+    if (statement.tag !== "AlterTableStmt") {
+      continue;
+    }
+    const alter = asRecord(statement.node.AlterTableStmt);
+    const parent = rangeVarName(alter?.relation);
+    if (!parent) {
+      continue;
+    }
+    for (const rawCommand of readArray(alter?.cmds)) {
+      const command = asRecord(asRecord(rawCommand)?.AlterTableCmd);
+      if (readString(command?.subtype) !== "AT_AttachPartition") {
+        continue;
+      }
+      const partition = asRecord(asRecord(command?.def)?.PartitionCmd);
+      const child = rangeVarName(partition?.name);
+      if (child?.name !== object.ref.name || child.schema !== (object.ref.schema ?? "public")) {
+        continue;
+      }
+      return {
+        bound: partition?.bound ?? null,
+        parent,
+        sql: statement.text ?? object.sql,
+      };
+    }
+  }
+  return;
 }
 
 function sequenceShapeHash(
@@ -216,6 +282,9 @@ function canonicalObjectKindHash(
   }
   if (object.ref.kind === "policy") {
     return policyHash(object, statements);
+  }
+  if (object.ref.kind === "comment") {
+    return commentHash(object);
   }
   if (object.ref.kind === "view" || object.ref.kind === "materialized-view") {
     return viewHash(object, statements);
@@ -267,9 +336,26 @@ function policyHash(object: SchemaObject, statements: { node: AstNode; tag: stri
   );
 }
 
+function commentHash(object: SchemaObject): string {
+  return shapeHash(
+    {
+      description: object.metadata.description ?? null,
+      descriptor: String(object.metadata.descriptor ?? ""),
+    },
+    object.key,
+    object.ref
+  );
+}
+
 function viewHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
-  return astObjectHash(
-    statements.map((item) => canonicalViewNode(item.node, [])),
+  const viewNode = asRecord(statements[0]?.node.ViewStmt);
+  const facts = viewNode ? viewFacts(viewNode) : object.metadata;
+  return shapeHash(
+    {
+      node: stripLocations(statements.map((item) => canonicalViewNode(item.node, []))),
+      securityInvoker: facts.securityInvoker ?? null,
+      viewColumns: Array.isArray(facts.viewColumns) ? facts.viewColumns : [],
+    },
     object.key,
     object.ref
   );
@@ -626,7 +712,15 @@ function viewFacts(node: AstNode): Record<string, unknown> {
 
 function viewTargetColumns(query: unknown): string[] | undefined {
   const select = asRecord(asRecord(query)?.SelectStmt);
-  if (!select || asRecord(select.larg) || asRecord(select.rarg)) {
+  return select ? selectOutputColumns(select) : undefined;
+}
+
+function selectOutputColumns(select: AstNode): string[] | undefined {
+  const larg = asRecord(select.larg);
+  if (larg) {
+    return selectOutputColumns(larg);
+  }
+  if (asRecord(select.rarg)) {
     return;
   }
   const columns: string[] = [];

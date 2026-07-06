@@ -41,8 +41,9 @@ before-state source + declarative SQL tree + migration context
     provider-owned, or missing-intent surfaces fail closed instead of being
     guessed. Routine bodies feed the same dependency graph: SQL-standard bodies,
     SQL string bodies, and static PL/pgSQL statements produce relation/column
-    dependencies, while dynamic SQL and unsupported languages require explicit
-    `hints.routineDependencies` before relation or type changes proceed.
+    dependencies, while dynamic SQL and unsupported languages block relation or
+    type changes until the routine is structurally extractable or the change is
+    moved to a reviewed explicit migration.
   </Step>
   <Step title="Render">
     The renderer emits deterministic SQL with idempotent guards, lock and
@@ -54,6 +55,12 @@ before-state source + declarative SQL tree + migration context
     schema intent.
   </Step>
 </Steps>
+
+## Baseline contract
+
+Generated lineage proves the migration-tree baseline that `sources.from` must match for source-backed generation, and the contract behind it is atomic: a generated migration's lineage end-state fingerprints the on-disk tree at generation time, uncommitted edits included. Commit the schema-tree change, the generated migration, and regenerated outputs together. A pending generated migration whose end-state was never committed becomes unreproducible as soon as the tree moves — the next git-baseline generation blocks with `SUPA_MIGRATION_BASELINE_MISMATCH`, generation into a dirty tree warns with `SUPA_DIFF_TREE_UNCOMMITTED`, and `supaschema migrations` classifies the pending file as stale-baseline. Recovery for an unreproducible, unapplied pending migration is review, delete, and regenerate from the current tree.
+
+Diff generation also refuses to start when another migration unit is already open: dirty generated TypeScript/Zod outputs, dirty migration files, dirty scoped config, or dirty schema files outside a scoped `--schema` filter are blockers. These are ownership diagnostics, not destructive-change hints.
 
 ## Source intent
 

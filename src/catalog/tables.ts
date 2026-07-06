@@ -1,17 +1,28 @@
 import type { SchemaObject, TableColumn } from "../core.js";
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
 import { makeObject } from "../sql/statements.js";
-import type { CatalogQuery } from "./query.js";
+import { type CatalogQuery, managedSchemaFilter, notExtensionMember } from "./query.js";
 
 export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]> {
   const tables = await pool.query<Record<string, unknown>>(`
-    select c.oid::text as oid, n.nspname as schema, c.relname as name
+    select
+      c.oid::text as oid,
+      n.nspname as schema,
+      c.relname as name,
+      c.relkind as relkind,
+      c.relispartition as is_partition,
+      pn.nspname as parent_schema,
+      pc.relname as parent_name,
+      pg_get_expr(c.relpartbound, c.oid, true) as partition_bound,
+      pg_get_partkeydef(c.oid) as partition_key
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
+    left join pg_inherits i on i.inhrelid = c.oid
+    left join pg_class pc on pc.oid = i.inhparent
+    left join pg_namespace pn on pn.oid = pc.relnamespace
     where c.relkind in ('r', 'p')
-      and not c.relispartition
-      and n.nspname !~ '^pg_'
-      and n.nspname <> 'information_schema'
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname
   `);
   if (tables.rows.length === 0) {
@@ -60,12 +71,17 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
     );
     const schema = stringValue(table.schema);
     const name = stringValue(table.name);
-    const sql = `CREATE TABLE ${formatQualifiedName(schema, name)} (\n${lines.join(",\n")}\n)`;
-    objects.push(
-      makeObject({ kind: "table", name, schema }, sql, 0, undefined, {
-        columns: columnDefinitions,
-      })
-    );
+    const createSql = `CREATE TABLE ${formatQualifiedName(schema, name)} (\n${lines.join(",\n")}\n)${partitionClause(table)}`;
+    const attachSql = partitionAttachSql(table, schema, name);
+    const sql = attachSql === undefined ? createSql : `${createSql};\n${attachSql}`;
+    const tableObject = makeObject({ kind: "table", name, schema }, sql, 0, undefined, {
+      columns: columnDefinitions,
+      ...(attachSql === undefined ? {} : { partitionAttachSql: attachSql }),
+    });
+    if (typeof table.parent_schema === "string" && typeof table.parent_name === "string") {
+      tableObject.dependencies.push(`${table.parent_schema}.${table.parent_name}`);
+    }
+    objects.push(tableObject);
 
     for (const constraint of constraintsByOid.get(oid) ?? []) {
       const constraintName = stringValue(constraint.name);
@@ -80,6 +96,31 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
     }
   }
   return objects;
+}
+
+function partitionAttachSql(
+  table: Record<string, unknown>,
+  schema: string,
+  name: string
+): string | undefined {
+  if (
+    table.is_partition !== true ||
+    typeof table.parent_schema !== "string" ||
+    typeof table.parent_name !== "string" ||
+    typeof table.partition_bound !== "string" ||
+    table.partition_bound.length === 0
+  ) {
+    return;
+  }
+  return `ALTER TABLE ONLY ${formatQualifiedName(table.parent_schema, table.parent_name)} ATTACH PARTITION ${formatQualifiedName(schema, name)} ${table.partition_bound}`;
+}
+
+function partitionClause(table: Record<string, unknown>): string {
+  if (table.relkind !== "p" || typeof table.partition_key !== "string") {
+    return "";
+  }
+  const partitionKey = table.partition_key.trim();
+  return partitionKey.length === 0 ? "" : ` PARTITION BY ${partitionKey}`;
 }
 
 function columnFromRow(column: Record<string, unknown>): TableColumn {

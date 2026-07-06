@@ -10,6 +10,7 @@ import { makeObject } from "../sql/statements.js";
 import { collectComments } from "./comments.js";
 import { collectForeignObjects } from "./foreign.js";
 import { collectDefaultPrivileges, collectGrants } from "./grants.js";
+import { managedSchemaFilter, notExtensionMember } from "./query.js";
 import { collectSequences } from "./sequences.js";
 import { collectTables } from "./tables.js";
 import { collectTypes } from "./types.js";
@@ -92,10 +93,10 @@ async function appendSchemas(
   let nextOrdinal = ordinal;
 
   const result = await pool.query<Record<string, unknown>>(`
-    select nspname as name
-    from pg_namespace
-    where nspname !~ '^pg_'
-      and nspname not in ('information_schema', 'public')
+    select n.nspname as name
+    from pg_namespace n
+    where ${managedSchemaFilter}
+      and n.nspname <> 'public'
     order by nspname
   `);
   for (const row of result.rows) {
@@ -120,6 +121,7 @@ async function appendExtensions(
     from pg_extension e
     join pg_namespace n on n.oid = e.extnamespace
     where e.extname <> 'plpgsql'
+      and ${managedSchemaFilter}
     order by e.extname
   `);
   for (const row of result.rows) {
@@ -155,8 +157,8 @@ async function appendFunctions(
       pg_get_functiondef(p.oid) as definition
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname !~ '^pg_'
-      and n.nspname <> 'information_schema'
+    where ${managedSchemaFilter}
+      and ${notExtensionMember("p", "pg_proc")}
       and p.prokind in ('f', 'p')
     order by n.nspname, p.proname, oidvectortypes(p.proargtypes)
   `);
@@ -200,13 +202,14 @@ async function appendViews(
       n.nspname as schema,
       c.relname as name,
       c.relkind as relkind,
+      c.relispopulated as relispopulated,
       c.reloptions as reloptions,
       pg_get_viewdef(c.oid, true) as definition
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where c.relkind in ('v', 'm')
-      and n.nspname !~ '^pg_'
-      and n.nspname <> 'information_schema'
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname
   `);
   for (const row of result.rows) {
@@ -218,16 +221,28 @@ async function appendViews(
       kind === "view" && reloptionEnabled(row.reloptions, "security_invoker")
         ? " WITH (security_invoker = true)"
         : "";
+    const dataClause =
+      kind === "materialized-view" && row.relispopulated === false ? " WITH NO DATA" : "";
+    const definition = trimCatalogDefinition(stringValue(row.definition));
     objects.push(
       makeObject(
         { kind, name, schema },
-        `${prefix} ${formatQualifiedName(schema, name)}${withClause} AS\n${stringValue(row.definition)}`,
-        nextOrdinal
+        `${prefix} ${formatQualifiedName(schema, name)}${withClause} AS\n${definition}${dataClause}`,
+        nextOrdinal,
+        undefined,
+        kind === "materialized-view"
+          ? { withNoData: row.relispopulated === false ? true : undefined }
+          : undefined
       )
     );
     nextOrdinal += 1;
   }
   return nextOrdinal;
+}
+
+function trimCatalogDefinition(definition: string): string {
+  const trimmed = definition.trimEnd();
+  return trimmed.endsWith(";") ? trimmed.slice(0, -1).trimEnd() : trimmed;
 }
 
 function reloptionEnabled(reloptions: unknown, option: string): boolean {
@@ -261,32 +276,39 @@ async function appendIndexes(
   let nextOrdinal = ordinal;
 
   const result = await pool.query<Record<string, unknown>>(`
-    select i.schemaname, i.tablename, i.indexname, i.indexdef
-    from pg_indexes i
-    where i.schemaname !~ '^pg_'
-      and i.schemaname <> 'information_schema'
+    select
+      n.nspname as schemaname,
+      table_class.relname as tablename,
+      index_class.relname as indexname,
+      pg_get_indexdef(index_class.oid) as indexdef
+    from pg_class index_class
+    join pg_namespace n on n.oid = index_class.relnamespace
+    join pg_index i on i.indexrelid = index_class.oid
+    join pg_class table_class on table_class.oid = i.indrelid
+    where index_class.relkind in ('i', 'I')
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("index_class", "pg_class")}
+      and ${notExtensionMember("table_class", "pg_class")}
       and not exists (
         select 1
         from pg_constraint con
-        join pg_class ic on ic.oid = con.conindid
-        join pg_namespace icn on icn.oid = ic.relnamespace
-        where icn.nspname = i.schemaname and ic.relname = i.indexname
+        where con.conindid = index_class.oid
       )
-    order by i.schemaname, i.indexname
+    order by n.nspname, index_class.relname
   `);
   for (const row of result.rows) {
-    objects.push(
-      makeObject(
-        {
-          kind: "index",
-          name: stringValue(row.indexname),
-          schema: stringValue(row.schemaname),
-          table: stringValue(row.tablename),
-        },
-        stringValue(row.indexdef),
-        nextOrdinal
-      )
+    const object = makeObject(
+      {
+        kind: "index",
+        name: stringValue(row.indexname),
+        schema: stringValue(row.schemaname),
+        table: stringValue(row.tablename),
+      },
+      stringValue(row.indexdef),
+      nextOrdinal
     );
+    object.dependencies.push(`${stringValue(row.schemaname)}.${stringValue(row.tablename)}`);
+    objects.push(object);
     nextOrdinal += 1;
   }
   return nextOrdinal;
@@ -308,8 +330,8 @@ async function appendTriggers(
     join pg_class c on c.oid = t.tgrelid
     join pg_namespace n on n.oid = c.relnamespace
     where not t.tgisinternal
-      and n.nspname !~ '^pg_'
-      and n.nspname <> 'information_schema'
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname, t.tgname
   `);
   for (const row of result.rows) {
@@ -342,8 +364,8 @@ async function appendPoliciesAndRls(
     join pg_namespace n on n.oid = c.relnamespace
     where c.relkind in ('r', 'p')
       and (c.relrowsecurity or c.relforcerowsecurity)
-      and n.nspname !~ '^pg_'
-      and n.nspname <> 'information_schema'
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname
   `);
   for (const row of rls.rows) {
@@ -383,6 +405,15 @@ async function appendPoliciesAndRls(
       qual,
       with_check
     from pg_policies
+    where exists (
+      select 1
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = pg_policies.schemaname
+        and c.relname = pg_policies.tablename
+        and ${managedSchemaFilter}
+        and ${notExtensionMember("c", "pg_class")}
+    )
     order by schemaname, tablename, policyname
   `);
   for (const row of policies.rows) {

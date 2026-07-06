@@ -106,7 +106,7 @@ function addOperationDependencies(
     if (!dependencyOperation) {
       continue;
     }
-    const edge = operationDependencyEdge(operation, dependencyOperation);
+    const edge = operationDependencyEdge(operation, dependencyOperation, operationByKey);
     if (!edge) {
       continue;
     }
@@ -161,15 +161,45 @@ function cyclicOperationKeys(
 
 function identityIndex(operations: MigrationOperation[]): Map<string, string> {
   const index = new Map<string, string>();
+  const owners = new Set<string>();
   for (const operation of operations) {
     for (const object of [operation.before, operation.after]) {
       if (!object) {
         continue;
       }
-      index.set(refIdentity(object.ref), operation.key);
+      const identity = refIdentity(object.ref);
+      const owner = isDependencyOwner(object.ref);
+      if (!index.has(identity) || (owner && !owners.has(identity))) {
+        index.set(identity, operation.key);
+      }
+      if (owner) {
+        owners.add(identity);
+      }
     }
   }
   return index;
+}
+
+function isDependencyOwner(ref: ObjectRef): boolean {
+  switch (ref.kind) {
+    case "schema":
+    case "extension":
+    case "enum":
+    case "type":
+    case "domain":
+    case "sequence":
+    case "foreign-data-wrapper":
+    case "foreign-server":
+    case "table":
+    case "foreign-table":
+    case "function":
+    case "procedure":
+    case "view":
+    case "materialized-view":
+      return true;
+    default:
+      return false;
+  }
 }
 
 interface ConstraintDependencyIndex {
@@ -260,12 +290,15 @@ function operationDependencyKeys(
       keys.add(schemaOperationKey);
     }
   }
+  const ownTable = tableIdentity(source.ref);
+  if (ownTable) {
+    const tableOperationKey = operationKeyByIdentity.get(ownTable);
+    if (tableOperationKey) {
+      keys.add(tableOperationKey);
+    }
+  }
   if (source.ref.kind === "constraint") {
-    for (const dependencyKey of constraintOperationDependencyKeys(
-      source,
-      operationKeyByIdentity,
-      constraintDependencies
-    )) {
+    for (const dependencyKey of constraintOperationDependencyKeys(source, constraintDependencies)) {
       keys.add(dependencyKey);
     }
   }
@@ -274,14 +307,25 @@ function operationDependencyKeys(
 
 function operationDependencyEdge(
   operation: MigrationOperation,
-  dependencyOperation: MigrationOperation
+  dependencyOperation: MigrationOperation,
+  operationByKey: ReadonlyMap<string, MigrationOperation>
 ): [string, string] | undefined {
   if (isTableAlterDependency(dependencyOperation)) {
-    if (isDestructiveTableAlterRewriteDependency(operation, dependencyOperation)) {
-      return [operation.key, dependencyOperation.key];
-    }
     const source =
       operation.kind === "drop" ? operation.before : (operation.after ?? operation.before);
+    if (isDestructiveTableAlterRewriteDependency(operation, dependencyOperation)) {
+      if (
+        source &&
+        isPreDroppedBlockingColumnDependent(operation, operationByKey) &&
+        dependsOnAlteredTableColumns(source, dependencyOperation)
+      ) {
+        return [dependencyOperation.key, operation.key];
+      }
+      return [operation.key, dependencyOperation.key];
+    }
+    if (source && dependsOnAlteredTableColumns(source, dependencyOperation)) {
+      return [dependencyOperation.key, operation.key];
+    }
     if (source && !dependsOnAddedTableAlterColumns(source, dependencyOperation)) {
       return;
     }
@@ -289,6 +333,18 @@ function operationDependencyEdge(
   return operation.kind === "drop"
     ? [operation.key, dependencyOperation.key]
     : [dependencyOperation.key, operation.key];
+}
+
+function isPreDroppedBlockingColumnDependent(
+  operation: MigrationOperation,
+  operationByKey: ReadonlyMap<string, MigrationOperation>
+): boolean {
+  const object = operation.before ?? operation.after;
+  return (
+    object !== undefined &&
+    blockingColumnDependentKinds.has(object.ref.kind) &&
+    operationByKey.has(`pre-drop:${operation.key}`)
+  );
 }
 
 function columnRewriteDependencyKeys(
@@ -308,6 +364,13 @@ function columnRewriteDependencyKeys(
       dependencyOperation &&
       isDestructiveTableAlterRewriteDependency(operation, dependencyOperation)
     ) {
+      if (
+        operation.after &&
+        isPreDroppedBlockingColumnDependent(operation, operationByKey) &&
+        dependsOnAlteredTableColumns(operation.after, dependencyOperation)
+      ) {
+        continue;
+      }
       keys.add(key);
     }
   }
@@ -351,12 +414,14 @@ function dependsOnAddedTableAlterColumns(
 
 const columnDependentKinds = new Set<ObjectKind>([
   "function",
+  "index",
   "materialized-view",
   "policy",
   "procedure",
   "trigger",
   "view",
 ]);
+const blockingColumnDependentKinds = new Set<ObjectKind>(["index", "materialized-view", "view"]);
 
 function addedColumnIdentities(operation: MigrationOperation): Set<string> {
   const table = refIdentity(operation.ref);
@@ -383,6 +448,27 @@ function destructiveChangedColumnIdentities(operation: MigrationOperation): Set<
   return identities;
 }
 
+function alteredColumnIdentities(operation: MigrationOperation): Set<string> {
+  const table = refIdentity(operation.ref);
+  const identities = new Set<string>();
+  for (const alteration of objectMetadataArray(operation.metadata.alterColumns)) {
+    if (typeof alteration.name === "string" && typeof alteration.type === "string") {
+      identities.add(`${table}.${alteration.name}`);
+    }
+  }
+  return identities;
+}
+
+function dependsOnAlteredTableColumns(
+  source: NonNullable<MigrationOperation["after"]>,
+  dependencyOperation: MigrationOperation
+): boolean {
+  if (!columnDependentKinds.has(source.ref.kind)) {
+    return false;
+  }
+  return hasColumnDependency(source, alteredColumnIdentities(dependencyOperation));
+}
+
 function hasColumnDependency(
   source: NonNullable<MigrationOperation["after"]>,
   columns: ReadonlySet<string>
@@ -399,17 +485,9 @@ function columnDependencyIdentities(source: NonNullable<MigrationOperation["afte
 
 function constraintOperationDependencyKeys(
   source: NonNullable<MigrationOperation["after"]>,
-  operationKeyByIdentity: Map<string, string>,
   constraintDependencies: ConstraintDependencyIndex
 ): string[] {
   const keys = new Set<string>();
-  const ownTable = tableIdentity(source.ref);
-  if (ownTable) {
-    const tableOperationKey = operationKeyByIdentity.get(ownTable);
-    if (tableOperationKey) {
-      keys.add(tableOperationKey);
-    }
-  }
   const target = foreignKeyTarget(source.metadata.foreignKeyTarget);
   if (!target) {
     return [...keys];

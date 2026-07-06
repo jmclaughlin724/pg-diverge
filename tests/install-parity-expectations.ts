@@ -75,7 +75,6 @@ export function expectedInstalledConfig(
       allowedGrantees: [],
       destructive: [],
       requiredPolicyColumns: {},
-      routineDependencies: {},
       renames: [],
     },
     idempotency: "required",

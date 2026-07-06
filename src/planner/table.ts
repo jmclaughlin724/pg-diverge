@@ -460,6 +460,17 @@ function explainDefaultFacet(
   alteration: ColumnAlteration
 ): ColumnFacetChange {
   if (stableJson(before.default ?? null) === stableJson(after.default ?? null)) {
+    if (alteration.type !== undefined && after.default !== undefined) {
+      const expression = afterColumns.find(
+        (column) => column.name === after.name
+      )?.defaultExpression;
+      if (expression === undefined) {
+        return { changed: true, explained: false };
+      }
+      alteration.dropDefault = true;
+      alteration.setDefault = expression;
+      return { changed: true, explained: true };
+    }
     return { changed: false, explained: false };
   }
   if (after.default === undefined) {
@@ -469,6 +480,9 @@ function explainDefaultFacet(
   const expression = afterColumns.find((column) => column.name === after.name)?.defaultExpression;
   if (expression === undefined) {
     return { changed: true, explained: false };
+  }
+  if (alteration.type !== undefined && before.default !== undefined) {
+    alteration.dropDefault = true;
   }
   alteration.setDefault = expression;
   return { changed: true, explained: true };

@@ -54,11 +54,10 @@ export type {
 } from "./contract.js";
 
 const hintsSchema = z
-  .object({
+  .strictObject({
     allowedGrantees: z.array(z.string()).default([]),
     destructive: z.array(z.string()).default([]),
     requiredPolicyColumns: z.record(z.string(), z.array(z.string())).default({}),
-    routineDependencies: z.record(z.string(), z.array(z.string())).default({}),
     renames: z
       .array(
         z.strictObject({
@@ -72,7 +71,6 @@ const hintsSchema = z
     allowedGrantees: [],
     destructive: [],
     requiredPolicyColumns: {},
-    routineDependencies: {},
     renames: [],
   });
 

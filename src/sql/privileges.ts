@@ -318,6 +318,13 @@ const commentObjectKinds = new Map([
   ["OBJECT_VIEW", "view"],
 ]);
 
+export function isInitdbDefaultComment(
+  descriptor: string,
+  description: string | null | undefined
+): boolean {
+  return descriptor === "schema public" && description === "standard public schema";
+}
+
 export function commentObjectFromAst(
   node: AstNode,
   statement: string,
@@ -338,7 +345,10 @@ export function commentObjectFromAst(
   if (target.schema) {
     ref.schema = target.schema;
   }
-  return makeObject(ref, statement, ordinal, file, { descriptor });
+  return makeObject(ref, statement, ordinal, file, {
+    description: readString(node.comment) ?? stringValue(node.comment) ?? null,
+    descriptor,
+  });
 }
 
 function commentTarget(

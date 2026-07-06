@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { watch } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
 import type { Command } from "commander";
 import type { SupaschemaConfig } from "../config/schema.js";
 import {
@@ -10,6 +12,7 @@ import {
 import type { Diagnostic, MigrationPlan } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
+import { MODEL_FORMAT_VERSION } from "../hash.js";
 import { defaultMigrationName, migrationFiles } from "../migrations/files.js";
 import { latestLineage, parseLineage } from "../migrations/lineage.js";
 import { migrationFileVersion, migrationsStatus } from "../migrations/status.js";
@@ -18,9 +21,12 @@ import { buildSchemaDiffPlan } from "../pipeline/diff.js";
 import { resolveGenerationSourceDefaults } from "../planning/context.js";
 import { redactSecrets } from "../redaction.js";
 import { renderMigrationSplit } from "../render/migration.js";
+import { parseSchemaFilter } from "../source/extract.js";
 import { resolveMigrationsDir } from "../source/resolve.js";
 import type { SummaryTone } from "./tools.js";
 import { colorizeSummaryLine } from "./tools.js";
+
+const execFileAsync = promisify(execFile);
 
 interface PlanCommandOptions {
   from?: string;
@@ -177,6 +183,18 @@ async function runDiff(
   config: SupaschemaConfig,
   context: DiffCommandContext
 ): Promise<void> {
+  const preflightDiagnostics = await diffWorkspacePreflightDiagnostics(
+    options,
+    config,
+    context.configPath()
+  );
+  if (preflightDiagnostics.length > 0) {
+    context.printDiagnostics(preflightDiagnostics);
+    if (hasErrors(preflightDiagnostics)) {
+      process.exitCode = 2;
+      return;
+    }
+  }
   const plan = await buildPlan(options, config);
   context.printDiagnostics(plan.diagnostics);
   printDiffSummary(options, plan);
@@ -321,8 +339,11 @@ async function validateLineageChain(
     return true;
   }
   context.printDiagnostics(chainDiagnostics);
-  process.exitCode = 2;
-  return false;
+  if (hasErrors(chainDiagnostics)) {
+    process.exitCode = 2;
+    return false;
+  }
+  return true;
 }
 
 async function writeOrPrintDiffOutput(
@@ -488,6 +509,227 @@ function buildPlan(
   });
 }
 
+interface GitStatusEntry {
+  indexStatus: string;
+  originalPath?: string;
+  path: string;
+  worktreeStatus: string;
+}
+
+async function diffWorkspacePreflightDiagnostics(
+  options: WithSources<DiffOptions>,
+  config: SupaschemaConfig,
+  configPath: string | undefined
+): Promise<Diagnostic[]> {
+  if (!(options.from.startsWith("git:") && options.to.startsWith("dir:"))) {
+    return [];
+  }
+  const toDir = normalizeGitPath(options.to.slice("dir:".length));
+  const migrationsDir = normalizeGitPath(resolveMigrationsDir(options.migrationsDir, config));
+  const generatedContractPaths = [config.typesFile, config.zodFile].map(normalizeGitPath);
+  const normalizedConfigPath = normalizeGitPath(configPath ?? "supaschema.config.json");
+  const entries = await gitStatusEntries([
+    toDir,
+    migrationsDir,
+    ...generatedContractPaths,
+    normalizedConfigPath,
+  ]);
+  const dirtyEntries = entries.filter(hasDirtyGitState);
+  if (dirtyEntries.length === 0) {
+    return [];
+  }
+
+  const diagnostics: Diagnostic[] = [];
+  const dirtyMigrations = dirtyEntries.filter((entry) => entryTouchesPath(entry, migrationsDir));
+  const allowedReplacePath =
+    options.replace === undefined ? undefined : normalizeGitPath(options.replace);
+  const blockingMigrations = dirtyMigrations.filter(
+    (entry) => allowedReplacePath === undefined || !entryTouchesPath(entry, allowedReplacePath)
+  );
+  if (blockingMigrations.length > 0) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_DIFF_MIGRATIONS_DIRTY",
+        "error",
+        "migration generation cannot run while the migrations directory has uncommitted files",
+        {
+          file: blockingMigrations[0]?.path,
+          hint: `Close the existing migration closure before generating another one. Dirty migration files: ${formatPathList(entryPaths(blockingMigrations))}.`,
+        }
+      )
+    );
+  }
+
+  const dirtyGeneratedContracts = dirtyEntries.filter((entry) =>
+    generatedContractPaths.some((path) => entryTouchesPath(entry, path))
+  );
+  if (dirtyGeneratedContracts.length > 0) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_DIFF_GENERATED_CONTRACT_DIRTY",
+        "error",
+        "generated contract outputs are dirty before migration generation",
+        {
+          file: dirtyGeneratedContracts[0]?.path,
+          hint: `Generated TypeScript/Zod contracts must be refreshed after a migration closure, not before it. Dirty generated outputs: ${formatPathList(entryPaths(dirtyGeneratedContracts))}.`,
+        }
+      )
+    );
+  }
+
+  if (
+    options.schema !== undefined &&
+    dirtyEntries.some((entry) => entryTouchesPath(entry, normalizedConfigPath))
+  ) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_DIFF_CONFIG_DIRTY",
+        "error",
+        "scoped migration generation cannot run while supaschema.config.json is dirty",
+        {
+          file: normalizedConfigPath,
+          hint: "Close the config change with the migration it belongs to, or run an unscoped diff that owns the config change.",
+        }
+      )
+    );
+  }
+
+  const outOfScopeSchemaPaths = scopedDirtySchemaPaths(dirtyEntries, toDir, options.schema);
+  if (outOfScopeSchemaPaths.length > 0) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_DIFF_SCOPED_DIRTY_SCHEMA",
+        "error",
+        "scoped migration generation cannot run while out-of-scope schema files are dirty",
+        {
+          file: outOfScopeSchemaPaths[0],
+          hint: `The scoped diff requested schema(s) ${formatPathList([...parseSchemaFilter(options.schema)])}, but these schema files are dirty outside that scope: ${formatPathList(outOfScopeSchemaPaths)}.`,
+        }
+      )
+    );
+  }
+  return diagnostics;
+}
+
+async function gitStatusEntries(paths: string[]): Promise<GitStatusEntry[]> {
+  const pathSpecs = [...new Set(paths.filter((path) => path.length > 0))];
+  if (pathSpecs.length === 0) {
+    return [];
+  }
+  try {
+    const result = await execFileAsync(
+      "git",
+      ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ...pathSpecs],
+      { maxBuffer: 1024 * 1024 }
+    );
+    return parseGitStatusPorcelain(result.stdout);
+  } catch {
+    return [];
+  }
+}
+
+function parseGitStatusPorcelain(raw: string): GitStatusEntry[] {
+  const tokens = raw.split("\0");
+  const entries: GitStatusEntry[] = [];
+  let index = 0;
+  while (index < tokens.length) {
+    const token = tokens[index];
+    index += 1;
+    if (!token || token.length < 4) {
+      continue;
+    }
+    const entry: GitStatusEntry = {
+      indexStatus: token[0] ?? " ",
+      path: normalizeGitPath(token.slice(3)),
+      worktreeStatus: token[1] ?? " ",
+    };
+    if (entry.indexStatus === "R" || entry.indexStatus === "C") {
+      entry.originalPath = normalizeGitPath(tokens[index] ?? "");
+      index += 1;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
+function hasDirtyGitState(entry: GitStatusEntry): boolean {
+  return entry.indexStatus !== " " || entry.worktreeStatus !== " ";
+}
+
+function scopedDirtySchemaPaths(
+  entries: GitStatusEntry[],
+  schemaRoot: string,
+  schemaFilter: string | undefined
+): string[] {
+  const schemas = parseSchemaFilter(schemaFilter);
+  if (schemas.size === 0) {
+    return [];
+  }
+  return [
+    ...new Set(
+      entries.flatMap((entry) => {
+        const affected = entryPaths([entry]).filter((path) => pathContains(schemaRoot, path));
+        if (affected.length === 0) {
+          return [];
+        }
+        return affected.every((path) => schemaPathMatchesScope(schemaRoot, path, schemas))
+          ? []
+          : affected;
+      })
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
+function schemaPathMatchesScope(
+  schemaRoot: string,
+  path: string,
+  schemas: ReadonlySet<string>
+): boolean {
+  const schema = schemaFromPath(schemaRoot, path);
+  return schema !== undefined && schemas.has(schema);
+}
+
+function schemaFromPath(schemaRoot: string, path: string): string | undefined {
+  if (!pathContains(schemaRoot, path) || path === schemaRoot) {
+    return;
+  }
+  const suffix = path.slice(schemaRoot.length + 1);
+  const firstSegment = suffix.split("/").find(Boolean);
+  if (!firstSegment) {
+    return;
+  }
+  return firstSegment.endsWith(".sql")
+    ? firstSegment.slice(0, -".sql".length).toLowerCase()
+    : firstSegment.toLowerCase();
+}
+
+function entryTouchesPath(entry: GitStatusEntry, path: string): boolean {
+  return entryPaths([entry]).some((entryPath) => pathContains(path, entryPath));
+}
+
+function entryPaths(entries: GitStatusEntry[]): string[] {
+  return entries.flatMap((entry) =>
+    [entry.path, entry.originalPath].filter((path): path is string => Boolean(path))
+  );
+}
+
+function pathContains(parent: string, child: string): boolean {
+  return child === parent || child.startsWith(`${parent}/`);
+}
+
+function normalizeGitPath(path: string): string {
+  const relativePath = isAbsolute(path) ? relative(process.cwd(), path) : path;
+  return relativePath.split(sep).join("/");
+}
+
+function formatPathList(paths: string[], limit = 6): string {
+  const values = [...new Set(paths.filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right)
+  );
+  const visible = values.slice(0, limit).join(", ");
+  return values.length > limit ? `${visible}, +${values.length - limit} more` : visible;
+}
+
 function migrationTimestamp(): string {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -566,7 +808,11 @@ async function validateReplacement(
       )
     );
   }
-  if (lineage !== undefined && plan.fromFingerprint !== lineage.from) {
+  if (
+    lineage !== undefined &&
+    plan.fromFingerprint !== lineage.from &&
+    !lineageFormatDiffers(lineage)
+  ) {
     diagnostics.push(
       diagnostic(
         "SUPA_DIFF_REPLACE_BASELINE_REQUIRED",
@@ -575,6 +821,23 @@ async function validateReplacement(
         {
           file: path,
           hint: `The replacement starts at ${plan.fromFingerprint.slice(0, 12)}..., but ${basename(path)} starts at ${lineage.from.slice(0, 12)}.... Use the source baseline that produced the original migration.`,
+        }
+      )
+    );
+  }
+  if (
+    lineage !== undefined &&
+    plan.fromFingerprint !== lineage.from &&
+    lineageFormatDiffers(lineage)
+  ) {
+    diagnostics.push(
+      diagnostic(
+        "SUPA_MIGRATION_BASELINE_FORMAT_DRIFT",
+        "warning",
+        "replacement migration lineage was produced by a different model format; continuing because the old and current fingerprints are not directly comparable",
+        {
+          file: path,
+          hint: `${basename(path)} records model format ${lineage.modelFormatVersion ?? "legacy"}, while the current extractor uses model format ${MODEL_FORMAT_VERSION}. Applied-state checks still run before replacement.`,
         }
       )
     );
@@ -593,6 +856,12 @@ async function validateReplacement(
     }
   }
   return true;
+}
+
+function lineageFormatDiffers(lineage: { modelFormatVersion?: number }): boolean {
+  return (
+    lineage.modelFormatVersion === undefined || lineage.modelFormatVersion !== MODEL_FORMAT_VERSION
+  );
 }
 
 async function replacementTipDiagnostics(
@@ -753,6 +1022,19 @@ async function checkLineageChain(plan: MigrationPlan, directory: string): Promis
     ];
   }
   if (latest.to !== plan.fromFingerprint) {
+    if (lineageFormatDiffers(latest)) {
+      return [
+        diagnostic(
+          "SUPA_MIGRATION_BASELINE_FORMAT_DRIFT",
+          "warning",
+          "newest supaschema migration lineage was produced by a different model format; continuing because the old and current fingerprints are not directly comparable",
+          {
+            file: latest.file,
+            hint: `${basename(latest.file)} records model format ${latest.modelFormatVersion ?? "legacy"}, while the current extractor uses model format ${MODEL_FORMAT_VERSION}. Same-format lineage gaps still block.`,
+          }
+        ),
+      ];
+    }
     return [
       diagnostic(
         "SUPA_DIFF_LINEAGE_BROKEN",

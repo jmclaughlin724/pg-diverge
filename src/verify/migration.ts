@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
 import { Client } from "pg";
 import { extractCatalogModel } from "../catalog/extract.js";
 import { checkMigrationSql } from "../check/migration.js";
@@ -21,14 +21,15 @@ import {
   databaseUrlWithDatabase,
   tempDatabaseName,
 } from "../database/admin.js";
-import { diagnostic, hasErrors } from "../diagnostics.js";
+import { diagnostic, formatDiagnostics, hasErrors } from "../diagnostics.js";
 import { fingerprintObjects } from "../hash.js";
 import { groupMigrationUnits, type MigrationUnit } from "../migrations/runners.js";
 import { planSchemaDiff } from "../planner/schema.js";
 import { renderMigration } from "../render/migration.js";
 import { extractSourceModel } from "../source/extract.js";
-import { asRecord, astStatements, roleSpecName } from "../sql/ast.js";
+import { type AstStatement, asRecord, astStatements, roleSpecName } from "../sql/ast.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
+import { extensionSchemaOption } from "../sql/extract-helpers.js";
 import { quoteIdent } from "../sql/identifiers.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { preflightCapability, supabaseEnvironmentStubSql } from "./environment.js";
@@ -87,12 +88,14 @@ export async function verifyMigrationChain(
       await ensureReferencedRoles(admin, [from, to]);
     }
     await ensureVerificationEnvironment(environmentEnsured, migrationUrl, targetUrl);
+    await applyBootstrapInventory(config, options.cwd, migrationUrl, targetUrl);
     await applyVerificationScenario(migrationUrl, targetUrl, from, to, migrations, config);
     await compareVerificationCatalogs(
       migrationUrl,
       targetUrl,
       to,
       config,
+      options.cwd,
       environmentEnsured,
       diagnostics
     );
@@ -236,6 +239,62 @@ async function ensureVerificationEnvironment(
   await applySql(targetUrl, supabaseEnvironmentStubSql, "per-statement");
 }
 
+async function applyBootstrapInventory(
+  config: SupaschemaConfig,
+  cwd: string | undefined,
+  migrationUrl: string,
+  targetUrl: string
+): Promise<void> {
+  const sql = await bootstrapInventorySql(config, cwd);
+  if (sql.trim().length === 0) {
+    return;
+  }
+  await applySql(migrationUrl, sql, "per-statement");
+  await applySql(targetUrl, sql, "per-statement");
+}
+
+async function bootstrapInventorySql(
+  config: SupaschemaConfig,
+  cwd: string | undefined
+): Promise<string> {
+  const root = cwd ?? process.cwd();
+  const chunks: string[] = [];
+  for (const schemaPath of config.schemaPaths) {
+    const bootstrapDir = resolve(root, schemaPath, "_bootstrap");
+    const entries = await readdir(bootstrapDir, { withFileTypes: true }).catch(() => []);
+    const files = entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
+      .map((entry) => entry.name)
+      .sort((left, right) => left.localeCompare(right));
+    for (const file of files) {
+      const path = join(bootstrapDir, file);
+      chunks.push(await filterBootstrapInventorySql(await readFile(path, "utf8"), path));
+    }
+  }
+  return chunks.join("\n");
+}
+
+async function filterBootstrapInventorySql(sql: string, file: string): Promise<string> {
+  const parsed = await parseSqlAst(sql, file);
+  if (parsed.ast === undefined || hasErrors(parsed.diagnostics)) {
+    throw new Error(
+      `failed to parse bootstrap inventory ${file}\n${formatDiagnostics(parsed.diagnostics)}`
+    );
+  }
+  return astStatements(parsed.ast, sql)
+    .filter((statement) => !isPgCatalogExtensionStatement(statement))
+    .map((statement) => `${statement.text};`)
+    .join("\n");
+}
+
+function isPgCatalogExtensionStatement(statement: AstStatement): boolean {
+  if (statement.tag !== "CreateExtensionStmt") {
+    return false;
+  }
+  const node = asRecord(statement.node.CreateExtensionStmt);
+  return extensionSchemaOption(node?.options) === "pg_catalog";
+}
+
 async function applyVerificationScenario(
   migrationUrl: string,
   targetUrl: string,
@@ -313,6 +372,7 @@ async function compareVerificationCatalogs(
   targetUrl: string,
   to: SchemaModel,
   config: SupaschemaConfig,
+  cwd: string | undefined,
   environmentEnsured: boolean,
   diagnostics: Diagnostic[]
 ): Promise<void> {
@@ -324,9 +384,23 @@ async function compareVerificationCatalogs(
     databaseUrl: targetUrl,
     source: "verify:target",
   });
-  diagnostics.push(...afterMigration.diagnostics, ...expectedTarget.diagnostics);
+  const reconvergenceSource = await extractSourceModel(`database:${migrationUrl}`, {
+    config,
+    ...(cwd === undefined ? {} : { cwd }),
+  });
+  diagnostics.push(
+    ...afterMigration.diagnostics,
+    ...expectedTarget.diagnostics,
+    ...reconvergenceSource.diagnostics
+  );
   pushFingerprintMismatchDiagnostic(diagnostics, afterMigration, expectedTarget);
-  await pushReconvergenceDiagnostic(diagnostics, afterMigration, to, config, environmentEnsured);
+  await pushReconvergenceDiagnostic(
+    diagnostics,
+    reconvergenceSource,
+    to,
+    config,
+    environmentEnsured
+  );
 }
 
 function pushFingerprintMismatchDiagnostic(

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.14 (2026-07-06)
+
+### Patch Changes
+
+- Blocks migration generation on dirty workspace closures: `diff` now fails with `SUPA_DIFF_MIGRATIONS_DIRTY` or `SUPA_DIFF_GENERATED_CONTRACT_DIRTY` when the migrations directory or generated TypeScript/Zod contracts have uncommitted changes, scoped `--schema` diffs fail with `SUPA_DIFF_CONFIG_DIRTY` or `SUPA_DIFF_SCOPED_DIRTY_SCHEMA` when config or out-of-scope schema files are dirty, and an uncommitted to-source tree warns with `SUPA_DIFF_TREE_UNCOMMITTED` before it can strand the lineage chain.
+
+  Detects unreproducible pending baselines and adds a reviewed recovery lane: `supaschema migrations` classifies pending generated migrations whose lineage end-state matches neither `git:HEAD` nor the current tree (`SUPA_MIGRATIONS_STALE_BASELINE`), and `supaschema migrations --prune-stale` removes them after a target history check (`--force` for explicitly reviewed no-target recovery). `SUPA_MIGRATION_BASELINE_MISMATCH` now names its recovery paths.
+
+  Bumps generated lineage markers to model format v3. Baselines recorded by an older model format warn with `SUPA_MIGRATION_BASELINE_FORMAT_DRIFT` instead of hard-blocking, while same-format mismatches still block; the next generated migration re-establishes versioned chain proof.
+
+  Removes the `hints.routineDependencies` config allowlist and makes the `hints` schema strict. Routine dependency proof is now parser/model-owned: static SQL and PL/pgSQL bodies feed proven dependencies into planning, dynamic `EXECUTE` statements with provable string-literal or `format()` templates are statically extracted, and remaining unproven routines fail closed with `SUPA_ROUTINE_DEPENDENCY_PROOF_REQUIRED` when the same plan changes relations or types.
+
+  Fixes catalog extraction for extension-owned objects, partitioned tables, materialized views, grants and default ACLs, comments, sequences, and composite types so live-database sources match declarative-tree extraction.
+
+  Plans dependent-object rebuilds structurally: views, routines, partial indexes, composite/type replacements, and destructive column alters now order and rebuild their dependents from model-proven references.
+
 ## 0.3.13 (2026-06-25)
 
 ### Patch Changes
@@ -12,7 +28,7 @@
 
 ### Patch Changes
 
-- Adds parser-backed routine dependency proof for SQL and PL/pgSQL routines, including fail-closed diagnostics for dynamic SQL and exact `hints.routineDependencies` coverage.
+- Adds parser-backed routine dependency proof for SQL and PL/pgSQL routines, including fail-closed diagnostics for dynamic SQL.
 - Uses the existing migration corpus as source intent for storage transitions, so destructive table-shape changes require reviewed DML or `DO` evidence instead of relying on destructive hints alone.
 - Tightens generated migration safety with baseline, replacement, empty-plan, column-dependent rewrite, and Supabase security diagnostics across `diff`, `check`, rules, docs, and packaged agent guidance.
 

@@ -1,23 +1,34 @@
+import { execFile } from "node:child_process";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
+import { promisify } from "node:util";
 import { parseRuntimeSource, RuntimeSourceKind, sourceAuto } from "../config/contract.js";
 import type {
   Diagnostic,
+  MigrationBaselineProof,
   MigrationContext,
   MigrationCorpus,
   SchemaModel,
   SupaschemaConfig,
 } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
+import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { readMigrationContext } from "../migrations/context.js";
 import { migrationFiles } from "../migrations/files.js";
 import { redactSecrets } from "../redaction.js";
-import { extractSourceModel, filterModelBySchemas } from "../source/extract.js";
+import {
+  extractSourceModel,
+  filterModelBySchemas,
+  objectSchema,
+  parseSchemaFilter,
+} from "../source/extract.js";
 import {
   defaultGitHeadExists,
   defaultTreeSource,
   type ResolvedSources,
 } from "../source/resolve.js";
+
+const execFileAsync = promisify(execFile);
 
 export interface ResolvedGenerationSources extends ResolvedSources {
   diagnostics: Diagnostic[];
@@ -107,10 +118,7 @@ export async function buildSchemaPlanningContext(
   };
   const corpusOptions = options.cwd === undefined ? {} : { cwd: options.cwd };
   const extractStart = performance.now();
-  const from = filterModelBySchema(
-    await extractSourceModel(options.from, extractOptions),
-    options.schema
-  );
+  const fullFrom = await extractSourceModel(options.from, extractOptions);
   const fromMs = performance.now() - extractStart;
   const migrationContext = await readMigrationContext(
     options.migrationsDir ?? options.config.migrationsDir,
@@ -122,14 +130,15 @@ export async function buildSchemaPlanningContext(
     }
   );
   const toStart = performance.now();
-  const to = filterModelBySchema(
-    await extractSourceModel(options.to, extractOptions),
-    options.schema
-  );
+  const fullTo = await extractSourceModel(options.to, extractOptions);
   if (options.checkMigrationBaseline !== false) {
-    diagnostics.push(...migrationBaselineDiagnostics(options.from, from, migrationContext));
+    diagnostics.push(...migrationBaselineDiagnostics(options.from, fullFrom, migrationContext));
   }
+  diagnostics.push(
+    ...(await uncommittedTreeDiagnostics(options.from, options.to, options.cwd ?? process.cwd()))
+  );
   const toMs = performance.now() - toStart;
+  const { from, to } = scopePlanningModels(fullFrom, fullTo, options.schema);
   return {
     diagnostics,
     from,
@@ -221,6 +230,13 @@ function migrationBaselineDiagnostics(
   if (baseline.fingerprint === from.fingerprint) {
     return [];
   }
+  const formatDriftDiagnostic = migrationBaselineFormatDriftDiagnostic(
+    baseline,
+    from.formatVersion ?? MODEL_FORMAT_VERSION
+  );
+  if (formatDriftDiagnostic !== undefined) {
+    return [formatDriftDiagnostic];
+  }
   return [
     diagnostic(
       "SUPA_MIGRATION_BASELINE_MISMATCH",
@@ -228,21 +244,86 @@ function migrationBaselineDiagnostics(
       "sources.from does not match the current generated migration-tree baseline",
       {
         file: baseline.file,
-        hint: `${fromSource} is ${from.fingerprint.slice(0, 12)}..., but ${baseline.source} ends at ${baseline.fingerprint.slice(0, 12)}.... Use the source state that produced the migration baseline, or use diff --replace for generated migration replacement.`,
+        hint: `${fromSource} is ${from.fingerprint.slice(0, 12)}..., but ${baseline.source} ends at ${baseline.fingerprint.slice(0, 12)}.... Use the source state that produced the migration baseline, or use diff --replace for generated migration replacement. If the pending generated migration's end-state was never committed and no target records it as applied, review and delete that pending migration, then regenerate from the current tree.`,
       }
     ),
   ];
 }
 
-function filterModelBySchema(model: SchemaModel, schemaFilter: string | undefined): SchemaModel {
-  if (!schemaFilter) {
-    return model;
+function migrationBaselineFormatDriftDiagnostic(
+  baseline: MigrationBaselineProof,
+  currentModelFormatVersion: number
+): Diagnostic | undefined {
+  if (
+    baseline.modelFormatVersion !== undefined &&
+    baseline.modelFormatVersion === currentModelFormatVersion
+  ) {
+    return;
   }
-  const schemas = new Set(
-    schemaFilter
-      .split(",")
-      .map((name) => name.trim().toLowerCase())
-      .filter(Boolean)
+  const baselineFormat = baseline.modelFormatVersion ?? "legacy";
+  return diagnostic(
+    "SUPA_MIGRATION_BASELINE_FORMAT_DRIFT",
+    "warning",
+    "generated migration-tree lineage was produced by a different model format; continuing so the next generated migration can re-establish comparable lineage",
+    {
+      file: baseline.file,
+      hint: `${baseline.source} records model format ${baselineFormat}, while the current extractor uses model format ${currentModelFormatVersion}. Review the generated migration normally; same-format baseline mismatches still block.`,
+    }
   );
-  return filterModelBySchemas(model, schemas);
+}
+
+async function uncommittedTreeDiagnostics(
+  fromSource: string,
+  toSource: string,
+  cwd: string
+): Promise<Diagnostic[]> {
+  if (!(fromSource.startsWith("git:") && toSource.startsWith("dir:"))) {
+    return [];
+  }
+  const treePath = toSource.slice("dir:".length);
+  let status: string;
+  try {
+    const result = await execFileAsync(
+      "git",
+      ["-C", cwd, "status", "--porcelain", "--", treePath],
+      { maxBuffer: 1024 * 1024 }
+    );
+    status = result.stdout;
+  } catch {
+    return [];
+  }
+  if (status.trim().length === 0) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_DIFF_TREE_UNCOMMITTED",
+      "warning",
+      `the to-source tree ${treePath} has uncommitted changes; this migration's lineage end-state fingerprints uncommitted schema-tree state`,
+      {
+        hint: "Commit the schema-tree change together with this generated migration and its generated outputs before further schema edits; otherwise the next git-baseline generation blocks with SUPA_MIGRATION_BASELINE_MISMATCH.",
+      }
+    ),
+  ];
+}
+
+function scopePlanningModels(
+  fullFrom: SchemaModel,
+  fullTo: SchemaModel,
+  schemaFilter: string | undefined
+): { from: SchemaModel; to: SchemaModel } {
+  const schemas = parseSchemaFilter(schemaFilter);
+  if (schemas.size === 0) {
+    return { from: fullFrom, to: fullTo };
+  }
+  const scopedFrom = filterModelBySchemas(fullFrom, schemas);
+  const scopedTo = filterModelBySchemas(fullTo, schemas);
+  const intermediateObjects = [
+    ...fullFrom.objects.filter((object) => !schemas.has(objectSchema(object))),
+    ...fullTo.objects.filter((object) => schemas.has(objectSchema(object))),
+  ];
+  return {
+    from: { ...scopedFrom, fingerprint: fullFrom.fingerprint },
+    to: { ...scopedTo, fingerprint: fingerprintObjects(intermediateObjects) },
+  };
 }

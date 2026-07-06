@@ -76,7 +76,6 @@
         "allowedGrantees": [],
         "destructive": [],
         "requiredPolicyColumns": {},
-        "routineDependencies": {},
         "renames": []
       },
       "type": "object",
@@ -96,19 +95,6 @@
           }
         },
         "requiredPolicyColumns": {
-          "default": {},
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "routineDependencies": {
           "default": {},
           "type": "object",
           "propertyNames": {
@@ -142,7 +128,8 @@
           }
         }
       },
-      "description": "Reviewed grant, routine-dependency, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, relation/column identities, or role names."
+      "additionalProperties": false,
+      "description": "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names."
     },
     "idempotency": {
       "default": "required",
