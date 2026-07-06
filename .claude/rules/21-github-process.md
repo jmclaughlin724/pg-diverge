@@ -157,6 +157,8 @@ If GitHub rejects the push because a PR, review, or required status check is req
 
 Use this path when the user asks for a PR or when an external contribution requires review flow.
 
+Create the PR branch before any commit lands on it, so local `main` never carries PR commits (Rule 14). Use the harness worktree tool (Claude `EnterWorktree`, which branches from `origin/main`) and commit, push, and open the PR from that worktree. Do not build the PR by committing onto local `main` and pushing a branch ref.
+
 Merge PRs with GitHub's squash merge path:
 
 ```bash
