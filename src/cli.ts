@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { Command } from "commander";
 import { checkMigrationSql } from "./check/migration.js";
 import {
@@ -46,6 +48,14 @@ interface InitOptions {
   json?: boolean;
   repair?: boolean;
 }
+interface CheckOptions {
+  allowEmpty?: boolean;
+  base?: string;
+  changed?: boolean;
+  reporter: string;
+  since?: string;
+  staged?: boolean;
+}
 interface InspectOptions {
   from?: string;
   schema?: string;
@@ -62,6 +72,7 @@ interface VerifyOptions {
 }
 
 const cliVersion = await readPackageVersion();
+const execFileAsync = promisify(execFile);
 const program = new Command();
 program
   .name("supaschema")
@@ -201,62 +212,17 @@ program
   .command("check")
   .argument("[migrations...]", "migration files (default: every .sql in config.migrationsDir)")
   .option("--allow-empty", "exit 0 when config.migrationsDir contains no .sql files")
+  .option("--changed", "check changed migration files in the working tree and index")
+  .option("--staged", "check staged migration files")
+  .option("--base <ref>", "check migration files changed against a base ref")
+  .option("--since <ref>", "check migration files changed since a ref")
   .option("--reporter <name>", "text | github | sarif | json", "text")
   .description(
     "Validate replay-safety and parser diagnostics for migration files (shell globs expand to a directory gate; `-` reads stdin; zero args checks the migrations directory)."
   )
-  .action(async (migrationArgs: string[], options: { allowEmpty?: boolean; reporter: string }) => {
-    const config = await loadCliConfig();
-    if (migrationArgs.length === 0) {
-      const pendingInstall = await pendingInstallPathConfirmationDiagnostic(
-        process.cwd(),
-        currentConfigPath()
-      );
-      if (pendingInstall) {
-        process.stderr.write(formatConfigValidationDiagnostics([pendingInstall]));
-        process.exitCode = 2;
-        return;
-      }
-    }
-    const migrationPaths =
-      migrationArgs.length > 0
-        ? migrationArgs
-        : await migrationFiles(resolve(process.cwd(), config.migrationsDir));
-    if (migrationPaths.length === 0) {
-      process.stderr.write(`no migrations found in ${config.migrationsDir}\n`);
-      if (options.allowEmpty !== true) {
-        process.exitCode = 1;
-      }
-      return;
-    }
-    const results: FileDiagnostics[] = [];
-    for (const migrationPath of migrationPaths) {
-      const sql = migrationPath === "-" ? await readStdin() : await readFile(migrationPath, "utf8");
-      const diagnostics = await checkMigrationSql(sql, { config, cwd: process.cwd() });
-      results.push({ diagnostics, file: migrationPath === "-" ? "<stdin>" : migrationPath });
-    }
-    const reporter = parseCheckReporter(options.reporter);
-    if (reporter === undefined) {
-      process.stderr.write(
-        `supaschema: unknown --reporter "${options.reporter}" (use ${CHECK_REPORTER_DISPLAY})\n`
-      );
-      process.exitCode = 2;
-      return;
-    }
-    const report = renderCheckReport(reporter, results);
-    if (report.length > 0) {
-      process.stdout.write(report);
-    }
-    if (results.some((entry) => hasErrors(entry.diagnostics))) {
-      process.exitCode = 2;
-      return;
-    }
-    if (reporter === "text") {
-      process.stdout.write(
-        migrationPaths.length > 1 ? `ok (${migrationPaths.length} files)\n` : "ok\n"
-      );
-    }
-  });
+  .action((migrationArgs: string[], options: CheckOptions) =>
+    runCheckCommand(migrationArgs, options)
+  );
 
 program
   .command("verify")
@@ -416,6 +382,274 @@ program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${redactRawError(error)}\n`);
   process.exitCode = 1;
 });
+
+async function runCheckCommand(migrationArgs: string[], options: CheckOptions): Promise<void> {
+  const config = await loadCliConfig();
+  const selectionMode = checkSelectionMode(options);
+  if (await blockInvalidCheckSelection(migrationArgs, options, selectionMode)) {
+    return;
+  }
+  const migrationPaths = await resolveCheckMigrationPaths(config, migrationArgs, selectionMode);
+  if (
+    writeEmptyCheckSelection(config, migrationPaths, selectionMode, options.allowEmpty === true)
+  ) {
+    return;
+  }
+  const results = await checkMigrationPaths(config, migrationPaths);
+  writeCheckResults(migrationPaths, results, options.reporter);
+}
+
+async function blockInvalidCheckSelection(
+  migrationArgs: string[],
+  options: CheckOptions,
+  selectionMode: CheckSelectionMode | undefined
+): Promise<boolean> {
+  if (selectionMode !== undefined && migrationArgs.length > 0) {
+    process.stderr.write(
+      "supaschema: check git-selection flags cannot be combined with explicit migration files\n"
+    );
+    process.exitCode = 1;
+    return true;
+  }
+  if (hasConflictingCheckSelection(options)) {
+    process.stderr.write("supaschema: use only one of --changed, --staged, --base, or --since\n");
+    process.exitCode = 1;
+    return true;
+  }
+  if (migrationArgs.length > 0) {
+    return false;
+  }
+  const pendingInstall = await pendingInstallPathConfirmationDiagnostic(
+    process.cwd(),
+    currentConfigPath()
+  );
+  if (!pendingInstall) {
+    return false;
+  }
+  process.stderr.write(formatConfigValidationDiagnostics([pendingInstall]));
+  process.exitCode = 2;
+  return true;
+}
+
+async function resolveCheckMigrationPaths(
+  config: SupaschemaConfig,
+  migrationArgs: string[],
+  selectionMode: CheckSelectionMode | undefined
+): Promise<string[]> {
+  if (migrationArgs.length > 0) {
+    return migrationArgs;
+  }
+  if (selectionMode === undefined) {
+    return await migrationFiles(resolve(process.cwd(), config.migrationsDir));
+  }
+  return await selectedCheckMigrationPaths(config, selectionMode);
+}
+
+function writeEmptyCheckSelection(
+  config: SupaschemaConfig,
+  migrationPaths: string[],
+  selectionMode: CheckSelectionMode | undefined,
+  allowEmpty: boolean
+): boolean {
+  if (migrationPaths.length > 0) {
+    return false;
+  }
+  process.stderr.write(
+    selectionMode === undefined
+      ? `no migrations found in ${config.migrationsDir}\n`
+      : `no selected migration files found in ${config.migrationsDir}\n`
+  );
+  if (!allowEmpty) {
+    process.exitCode = 1;
+  }
+  return true;
+}
+
+async function checkMigrationPaths(
+  config: SupaschemaConfig,
+  migrationPaths: string[]
+): Promise<FileDiagnostics[]> {
+  const results: FileDiagnostics[] = [];
+  for (const migrationPath of migrationPaths) {
+    const sql = migrationPath === "-" ? await readStdin() : await readFile(migrationPath, "utf8");
+    const diagnostics = await checkMigrationSql(sql, { config, cwd: process.cwd() });
+    results.push({ diagnostics, file: migrationPath === "-" ? "<stdin>" : migrationPath });
+  }
+  return results;
+}
+
+function writeCheckResults(
+  migrationPaths: string[],
+  results: FileDiagnostics[],
+  reporterName: string
+): void {
+  const reporter = parseCheckReporter(reporterName);
+  if (reporter === undefined) {
+    process.stderr.write(
+      `supaschema: unknown --reporter "${reporterName}" (use ${CHECK_REPORTER_DISPLAY})\n`
+    );
+    process.exitCode = 2;
+    return;
+  }
+  const report = renderCheckReport(reporter, results);
+  if (report.length > 0) {
+    process.stdout.write(report);
+  }
+  if (results.some((entry) => hasErrors(entry.diagnostics))) {
+    process.exitCode = 2;
+    return;
+  }
+  if (reporter === "text") {
+    process.stdout.write(
+      migrationPaths.length > 1 ? `ok (${migrationPaths.length} files)\n` : "ok\n"
+    );
+  }
+}
+
+type CheckSelectionMode =
+  | { kind: "base"; ref: string }
+  | { kind: "changed" }
+  | { kind: "since"; ref: string }
+  | { kind: "staged" };
+
+function checkSelectionMode(options: CheckOptions): CheckSelectionMode | undefined {
+  if (options.changed === true) {
+    return { kind: "changed" };
+  }
+  if (options.staged === true) {
+    return { kind: "staged" };
+  }
+  if (options.base !== undefined) {
+    return { kind: "base", ref: options.base };
+  }
+  if (options.since !== undefined) {
+    return { kind: "since", ref: options.since };
+  }
+  return;
+}
+
+function hasConflictingCheckSelection(options: CheckOptions): boolean {
+  return (
+    [
+      options.changed === true,
+      options.staged === true,
+      options.base !== undefined,
+      options.since !== undefined,
+    ].filter(Boolean).length > 1
+  );
+}
+
+async function selectedCheckMigrationPaths(
+  config: SupaschemaConfig,
+  mode: CheckSelectionMode
+): Promise<string[]> {
+  const gitRoot = await gitRootPath();
+  const migrationsDir = migrationDirGitPath(gitRoot, config);
+  let selected: string[];
+  if (mode.kind === "changed") {
+    selected = await changedGitCheckPaths(gitRoot, migrationsDir);
+  } else if (mode.kind === "staged") {
+    selected = await namedGitDiffCheckPaths(gitRoot, ["diff", "--cached"], migrationsDir);
+  } else {
+    selected = await namedGitDiffCheckPaths(gitRoot, ["diff", mode.ref], migrationsDir);
+  }
+  const unique = [
+    ...new Set(selected.filter((item) => isSelectedMigrationPath(item, migrationsDir))),
+  ];
+  unique.sort((left, right) => left.localeCompare(right));
+  return unique.map((item) => resolve(gitRoot, item));
+}
+
+async function gitRootPath(): Promise<string> {
+  const root = (await gitOutput(["rev-parse", "--show-toplevel"], process.cwd())).trim();
+  if (root.length === 0) {
+    throw new Error("supaschema check git selection requires a git worktree");
+  }
+  return resolve(root);
+}
+
+function migrationDirGitPath(gitRoot: string, config: SupaschemaConfig): string {
+  const migrationsDir = resolve(process.cwd(), config.migrationsDir);
+  const relativePath = relative(gitRoot, migrationsDir);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new Error("supaschema check migrationsDir must be inside the git worktree");
+  }
+  return normalizeGitPath(relativePath);
+}
+
+async function namedGitDiffCheckPaths(
+  gitRoot: string,
+  args: string[],
+  migrationsDir: string
+): Promise<string[]> {
+  const output = await gitOutput(
+    [...args, "--name-only", "--diff-filter=ACMR", "--", migrationsDir || "."],
+    gitRoot
+  );
+  return output
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map(normalizeGitPath);
+}
+
+async function changedGitCheckPaths(gitRoot: string, migrationsDir: string): Promise<string[]> {
+  const output = await gitOutput(
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", migrationsDir],
+    gitRoot
+  );
+  return parsePorcelainStatusPaths(output).map(normalizeGitPath);
+}
+
+function parsePorcelainStatusPaths(output: string): string[] {
+  const entries = output.split("\0").filter(Boolean);
+  const paths: string[] = [];
+  let skipRenameSource = false;
+  for (const entry of entries) {
+    if (skipRenameSource) {
+      skipRenameSource = false;
+      continue;
+    }
+    const x = entry.at(0) ?? " ";
+    const y = entry.at(1) ?? " ";
+    const path = entry.slice(3);
+    if (x !== "D" && y !== "D" && path.length > 0) {
+      paths.push(path);
+    }
+    if (x === "R" || y === "R" || x === "C" || y === "C") {
+      skipRenameSource = true;
+    }
+  }
+  return paths;
+}
+
+function isSelectedMigrationPath(path: string, migrationsDir: string): boolean {
+  if (extname(path).toLowerCase() !== ".sql") {
+    return false;
+  }
+  return migrationsDir.length === 0 || path.startsWith(`${migrationsDir}/`);
+}
+
+function normalizeGitPath(path: string): string {
+  let normalized = path.split(sep).join("/");
+  while (normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized === "." ? "" : normalized;
+}
+
+async function gitOutput(args: string[], cwd: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("git", args, { cwd, encoding: "utf8" });
+    return stdout;
+  } catch (error) {
+    const stderr =
+      error !== null && typeof error === "object" && "stderr" in error
+        ? String(error.stderr).trim()
+        : "";
+    throw new Error(stderr || "supaschema check git selection failed");
+  }
+}
 
 function loadCliConfig(): Promise<SupaschemaConfig> {
   const globals = program.opts<GlobalOptions>();

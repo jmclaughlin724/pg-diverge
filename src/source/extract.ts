@@ -17,6 +17,7 @@ import { diagnostic, isDiagnostic } from "../diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
 import { normalizeSourceObjects } from "./normalize.js";
+import { reconstructModelFromMigrations } from "./replay.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -74,6 +75,10 @@ async function extractRawModel(
     const root = resolve(cwd, parsed.payload);
     const files = await readSqlFiles(root);
     return modelFromSqlFiles(files, source, config);
+  }
+  if (parsed.kind === "migrations") {
+    const directory = resolve(cwd, parsed.payload);
+    return reconstructModelFromMigrations(directory, source, config);
   }
   if (parsed.kind === "empty") {
     return modelFromSqlFiles([], source, config);

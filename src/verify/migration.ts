@@ -27,6 +27,7 @@ import { groupMigrationUnits, type MigrationUnit } from "../migrations/runners.j
 import { planSchemaDiff } from "../planner/schema.js";
 import { renderMigration } from "../render/migration.js";
 import { extractSourceModel } from "../source/extract.js";
+import { migrationsTypegenOnlyDiagnostic } from "../source/policy.js";
 import { type AstStatement, asRecord, astStatements, roleSpecName } from "../sql/ast.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
 import { extensionSchemaOption } from "../sql/extract-helpers.js";
@@ -51,6 +52,15 @@ export async function verifyMigrationChain(
   const databaseDiagnostic = verifyDatabaseUrlDiagnostic(options.databaseUrl);
   if (databaseDiagnostic !== undefined) {
     return [databaseDiagnostic];
+  }
+  diagnostics.push(
+    ...[
+      migrationsTypegenOnlyDiagnostic("verify", "from", options.from),
+      migrationsTypegenOnlyDiagnostic("verify", "to", options.to),
+    ].filter((item): item is Diagnostic => item !== undefined)
+  );
+  if (hasErrors(diagnostics)) {
+    return diagnostics;
   }
   const migrations = await migrationSqlByFile(options.migrationPaths);
   const extractOptions = verificationExtractOptions(options);

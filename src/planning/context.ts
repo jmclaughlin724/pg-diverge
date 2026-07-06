@@ -22,6 +22,7 @@ import {
   objectSchema,
   parseSchemaFilter,
 } from "../source/extract.js";
+import { migrationsTypegenOnlyDiagnostic } from "../source/policy.js";
 import {
   defaultGitHeadExists,
   defaultTreeSource,
@@ -170,6 +171,10 @@ function generationSourceSideDiagnostics(side: "from" | "to", source: string): D
         }
       ),
     ];
+  }
+  const migrationsDiagnostic = migrationsTypegenOnlyDiagnostic("generation", side, source);
+  if (migrationsDiagnostic !== undefined) {
+    return [migrationsDiagnostic];
   }
   const parsed = parseRuntimeSource(source);
   if (parsed?.kind !== RuntimeSourceKind.Database) {

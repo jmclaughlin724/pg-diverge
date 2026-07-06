@@ -15,6 +15,7 @@ This directory contains CLI wiring around the core library. It is included so co
 - CLI code should parse inputs, load config, call the owning module, and render results.
 - Do not put planner, renderer, catalog, or typegen behavior here.
 - Preserve exit-code semantics when adding diagnostics or command branches.
+- Keep scaffolded `supaschema:check` as the full-directory/default lane; changed-only checks are explicit CLI selections such as `check --changed`.
 
 ## Verification
 

@@ -51,36 +51,82 @@ export function transcriptEvidence(payload) {
     return [];
   }
   try {
-    return fs
+    const entries = fs
       .readFileSync(file, "utf8")
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line))
-      .filter((entry) => entry?.type === "tool_result")
-      .flatMap((entry) => {
-        const command = transcriptCommand(entry);
-        const domains = classifyCommandDomains(command);
-        if (!(command && domains.length > 0)) {
-          return [];
-        }
-        const toolSuccess = transcriptToolSucceeded(entry);
-        if (toolSuccess === undefined) {
-          return [];
-        }
-        const success = commandEvidenceSucceeded(toolSuccess, domains, entry);
-        return [
-          {
-            command,
-            domains,
-            kind: success ? "verified-command" : "failed-command",
-            outcome: success ? "success" : "failure",
-            summary: String(entry.tool_name ?? "tool_result"),
-          },
-        ];
-      });
+      .filter((entry) => entry && typeof entry === "object");
+    return [
+      ...entries.flatMap(transcriptToolResultEvidence),
+      ...transcriptFunctionCallEvidence(entries),
+    ];
   } catch {
     return [];
   }
+}
+
+function transcriptToolResultEvidence(entry) {
+  if (entry?.type !== "tool_result") {
+    return [];
+  }
+  const command = transcriptCommand(entry);
+  const domains = classifyCommandDomains(command);
+  if (!(command && domains.length > 0)) {
+    return [];
+  }
+  const toolSuccess = transcriptToolSucceeded(entry);
+  if (toolSuccess === undefined) {
+    return [];
+  }
+  const success = commandEvidenceSucceeded(toolSuccess, domains, entry);
+  return [
+    {
+      at: transcriptTimestamp(entry),
+      command,
+      domains,
+      kind: success ? "verified-command" : "failed-command",
+      outcome: success ? "success" : "failure",
+      summary: String(entry.tool_name ?? "tool_result"),
+    },
+  ];
+}
+
+function transcriptFunctionCallEvidence(entries) {
+  const calls = new Map();
+  const evidence = [];
+  for (const entry of entries) {
+    const payload = entry?.payload;
+    if (payload?.type === "function_call" && typeof payload.call_id === "string") {
+      calls.set(payload.call_id, payload);
+      continue;
+    }
+    if (payload?.type !== "function_call_output" || typeof payload.call_id !== "string") {
+      continue;
+    }
+    const call = calls.get(payload.call_id);
+    const command = transcriptFunctionCommand(call);
+    const domains = classifyCommandDomains(command);
+    if (!(command && domains.length > 0)) {
+      continue;
+    }
+    const toolSuccess = toolSucceeded({ tool_response: payload.output });
+    if (toolSuccess === undefined) {
+      continue;
+    }
+    const success = commandEvidenceSucceeded(toolSuccess, domains, {
+      tool_response: payload.output,
+    });
+    evidence.push({
+      at: transcriptTimestamp(entry),
+      command,
+      domains,
+      kind: success ? "verified-command" : "failed-command",
+      outcome: success ? "success" : "failure",
+      summary: String(call?.name ?? "function_call"),
+    });
+  }
+  return evidence;
 }
 
 function transcriptToolSucceeded(entry) {
@@ -109,6 +155,43 @@ function transcriptCommand(entry) {
     return entry.tool_input.cmd;
   }
   return "";
+}
+
+function transcriptFunctionCommand(call) {
+  if (!call || typeof call !== "object") {
+    return "";
+  }
+  const name = typeof call.name === "string" ? call.name : "";
+  if (!isCommandTool(name)) {
+    return "";
+  }
+  const args = jsonObject(call.arguments);
+  if (typeof args.command === "string") {
+    return args.command;
+  }
+  if (typeof args.cmd === "string") {
+    return args.cmd;
+  }
+  return "";
+}
+
+function transcriptTimestamp(entry) {
+  return typeof entry?.timestamp === "string" ? entry.timestamp : undefined;
+}
+
+function jsonObject(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function commandEvidenceSucceeded(toolSuccess, domains, payload) {

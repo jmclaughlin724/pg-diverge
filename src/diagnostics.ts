@@ -171,6 +171,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "Migration generation could not resolve a repository source baseline.",
   SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION:
     "Migration generation cannot use a live database catalog as a source.",
+  SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY:
+    "Migration-history replay is a typegen-only source in v1; do not use migrations: for generation or verification sources.",
   SUPA_SYNC_DISABLED: "workflow.migration_sync is disabled, so configured apply/deploy is refused.",
   SUPA_SYNC_ENV_UNKNOWN: "The selected sync environment is not defined in config.environments.",
   SUPA_SYNC_FINAL_RECONCILE_FAILED:
@@ -201,6 +203,10 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED:
     "Side-effect statements are not schema objects; keep them in reviewed migrations.",
   SUPA_EXTRACT_UNSUPPORTED: "Unsupported or ambiguous DDL; extend support or hand-author it.",
+  SUPA_REPLAY_UNSUPPORTED:
+    "A migration history statement cannot be replayed into the model; the migrations: source fails closed and never introspects.",
+  SUPA_REPLAY_ORDER_GAP:
+    "Migration history could not be replayed in filename order; an ALTER/DROP targets an absent object or a CREATE duplicates one.",
   SUPA_INTAKE_MALFORMED:
     "Customer-supplied intake payload is not a JSON object or exceeds the nesting limit; submit a well-formed object.",
   SUPA_INTAKE_MISSING_SCOPE:

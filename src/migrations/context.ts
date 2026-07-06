@@ -87,7 +87,7 @@ async function readMigrationFileContext(
       ...(lineage.modelFormatVersion === undefined
         ? {}
         : { modelFormatVersion: lineage.modelFormatVersion }),
-      source: `migrations:${migrationsDir}${version === undefined ? "" : `@${version}`}`,
+      source: `migration-baseline:${migrationsDir}${version === undefined ? "" : `@${version}`}`,
       ...(version === undefined ? {} : { version }),
     };
     context.unprovenBaselineFiles = [];

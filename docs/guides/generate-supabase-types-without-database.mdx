@@ -1,6 +1,6 @@
 ---
 title: "Type generation"
-description: "Generate PostgreSQL TypeScript types and Zod validators from declarative SQL files before applying a migration."
+description: "Generate PostgreSQL TypeScript types and Zod validators from declarative SQL files or migration history before applying a migration."
 keywords:
   [
     "type generation",
@@ -13,7 +13,7 @@ keywords:
 
 Use this when application code needs database types and runtime validators before the migration is applied.
 
-`supaschema types` reads declarative PostgreSQL files and emits TypeScript database types plus runtime Zod validators from the same schema model used for migrations.
+`supaschema types` reads a PostgreSQL source and emits TypeScript database types plus runtime Zod validators. The source can be the configured declarative tree or a filename-ordered migration history.
 
 ## Use this when
 
@@ -34,9 +34,17 @@ npx supaschema types
 Override the source or output when needed:
 
 ```bash
-npx supaschema types --from dir:database/schemas
+npx supaschema types --source dir:database/schemas
 npx supaschema types --out src/lib/database.types.ts
 ```
+
+For projects whose migration history is the reviewed schema source, generate from that history without introspection:
+
+```bash
+npx supaschema types --source migrations:supabase/migrations
+```
+
+`migrations:` is v1 typegen-only. Use it for `types`, not as `sources.to` for `diff`, `verify`, or drift gates.
 
 `supaschema sync` refreshes configured TypeScript and Zod outputs as part of the full workflow. For the focused lane, run `supaschema types` after `supaschema diff` so schema, migration, and app types can be reviewed together.
 

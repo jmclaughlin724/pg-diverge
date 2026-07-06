@@ -2,6 +2,7 @@ import type { SupaschemaConfig } from "../config/schema.js";
 import { diffTypeContract } from "../contract/type-diff.js";
 import type { Diagnostic } from "../core.js";
 import { extractSourceModel } from "../source/extract.js";
+import { migrationsTypegenOnlyDiagnostic } from "../source/policy.js";
 import { collectSchemaShapes } from "../typegen/model.js";
 import {
   applyDeploySafetyPolicy,
@@ -28,6 +29,26 @@ export async function evaluateTypeContract(options: {
   fromSource: string;
   toSource: string;
 }): Promise<TypeContractEvaluation> {
+  const beforePolicyDiagnostic = migrationsTypegenOnlyDiagnostic(
+    "type-contract drift",
+    "from",
+    options.fromSource
+  );
+  const afterPolicyDiagnostic = migrationsTypegenOnlyDiagnostic(
+    "type-contract drift",
+    "to",
+    options.toSource
+  );
+  if (beforePolicyDiagnostic !== undefined || afterPolicyDiagnostic !== undefined) {
+    const beforeDiagnostics = beforePolicyDiagnostic === undefined ? [] : [beforePolicyDiagnostic];
+    const afterDiagnostics = afterPolicyDiagnostic === undefined ? [] : [afterPolicyDiagnostic];
+    return {
+      afterDiagnostics,
+      beforeDiagnostics,
+      diagnostics: [],
+      sourceDiagnostics: [...beforeDiagnostics, ...afterDiagnostics],
+    };
+  }
   const [beforeModel, afterModel] = await Promise.all([
     extractSourceModel(options.fromSource, { config: options.config }),
     extractSourceModel(options.toSource, { config: options.config }),

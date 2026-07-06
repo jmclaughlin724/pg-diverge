@@ -2,6 +2,16 @@
 
 TypeScript (NodeNext ESM) compiled to `dist/`. Public API surface is `src/index.ts`.
 
+## Command source routing
+
+| Command lane | Model source owner | Introspection boundary |
+| --- | --- | --- |
+| `diff` / `plan` / `sync` | `config.sources.from` and `config.sources.to`, resolved through `source/resolve.ts` and extracted by `source/extract.ts`; `migrationsDir` contributes generated-lineage proof and migration source intent. | No live database read unless an operator explicitly selects a `database:` source or an apply-capable sync target runs its target/history lane. |
+| `check` | Migration SQL files only, either explicit paths, every `.sql` in `config.migrationsDir`, or the git-selected subset from `--changed`, `--staged`, `--base`, or `--since`. | Never introspects. |
+| `types` | The configured type source or explicit `--source`; supported source kinds include `dir:`, `git:`, `dump:`, `catalog:`, `empty:`, `database:`, and typegen-only `migrations:` replay. | `database:` is explicit catalog introspection; `migrations:` reconstructs from ordered migration files and must not fall back to a database. |
+| `verify` | `from`/`to` source models plus the selected migration file. | Uses disposable databases for execution proof after source resolution; it is not a typegen or planning fallback. |
+| `inspect` / `selfcheck` / `doctor` | Explicit source inspection, live catalog parity checks, or environment diagnostics. | These are the intentional catalog/connection diagnostic lanes, not defaults for generation or typegen. |
+
 ## Organization
 
 - `cli.ts`, `cli/diff.ts`, `cli/reports.ts`, `cli/tools.ts` — commander command registration and subcommand wiring

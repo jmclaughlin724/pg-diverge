@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.16 (2026-07-06)
+
+### Patch Changes
+
+- Adds `migrations:` as a type-generation source for projects whose reviewed migration history is the schema source of truth. `supaschema types --source migrations:supabase/migrations` reconstructs table and enum contracts without a database connection, while unsupported replay gaps emit named `SUPA_REPLAY_*` diagnostics instead of falling through to introspection or `unknown` types.
+
+  Adds git-based migration selection to `supaschema check`: `--changed`, `--staged`, `--base <ref>`, and `--since <ref>` restrict checks to changed `.sql` files under `config.migrationsDir` while excluding deletions.
+
 ## 0.3.15 (2026-07-06)
 
 ### Patch Changes

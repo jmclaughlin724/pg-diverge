@@ -51,9 +51,7 @@ const diagnosticPromptTerms = [
 ];
 const mechanismClaimTerms = [
   "as designed",
-  "documented",
-  "expected",
-  "correct",
+  "expected behavior",
   "running correctly",
   "supposed to be",
   "upstream says",
