@@ -136,7 +136,9 @@ This rule owns edit safety, dirty-worktree handling, generated mirror discipline
 ## Git safety
 
 - Commit only when explicitly asked.
-- Keep work in the current branch and current worktree. Do not switch branches, create branches, or create worktrees.
+- Keep work in the current branch and current worktree. Do not switch, create, or delete branches or worktrees with the git CLI.
+- Direct-`main` work (Rule 21) commits on `main` and pushes `git push origin HEAD:main`, so local `main` stays in sync with `origin/main`. For PR or feature-branch work the branch MUST exist before any commit lands on it: never commit PR-scoped work onto local `main` and push it to a branch ref (`git push origin HEAD:refs/heads/<branch>`), which strands those commits on local `main` (diverged from `origin/main`, shown as "outgoing changes on main"). Create the isolated branch with the harness worktree tool (Claude `EnterWorktree`, which branches from `origin/main`); commit, push, and open the PR from that worktree, then `ExitWorktree`. If the session has no worktree tool, do not silently branch off `main`; tell the user and have them run `git switch -c <branch> origin/main`.
+- If PR commits already landed on local `main`, realign after the branch exists: `git switch <branch>`, then `git branch --force main origin/main` (switch first; `--force` refuses to move a checked-out branch). These use the branch/switch commands the Bash guard blocks for the agent, so the user runs them.
 - Let lefthook/pre-commit/pre-push run. Never use `--no-verify`.
 - Do not use `git checkout`, `git switch`, `git branch`, or `git worktree`. Use `git show`, `git diff`, `git status --short --branch`, or `git rev-parse --abbrev-ref HEAD` for read-only comparisons and branch discovery.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.

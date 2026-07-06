@@ -1,16 +1,11 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const syncSurfaces = [
-  ".claude/agents",
-  ".claude/hooks",
-  ".claude/rules",
-  ".claude/skills",
-];
+const syncSurfaces = [".claude/agents", ".claude/hooks", ".claude/rules", ".claude/skills"];
 const syncTriggerFiles = [
   ".claude/settings.json",
   ".codex/hooks.json",
@@ -46,7 +41,7 @@ try {
   if (!syncAvailable) {
     emitNoop(hookEventName);
   }
-  if (!explicitSyncChange && !changedSinceLastSync) {
+  if (!(explicitSyncChange || changedSinceLastSync)) {
     writeSyncedDigest(projectDir, currentDigest);
     emitNoop();
   }
@@ -59,7 +54,9 @@ try {
 }
 
 function editTargets(payload, projectDir) {
-  return toolPayloads(payload).flatMap((toolPayload) => editTargetsForTool(toolPayload, projectDir));
+  return toolPayloads(payload).flatMap((toolPayload) =>
+    editTargetsForTool(toolPayload, projectDir)
+  );
 }
 
 function editTargetsForTool(toolPayload, projectDir) {
@@ -102,13 +99,12 @@ function toolPayloads(payload) {
 }
 
 function toolNameOf(toolPayload) {
-  return typeof toolPayload?.tool_name === "string"
-    ? toolPayload.tool_name
-    : typeof toolPayload?.toolName === "string"
-      ? toolPayload.toolName
-      : typeof toolPayload?.name === "string"
-        ? toolPayload.name
-        : "";
+  for (const value of [toolPayload?.tool_name, toolPayload?.toolName, toolPayload?.name]) {
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return "";
 }
 
 function toolInputOf(toolPayload) {
@@ -203,7 +199,9 @@ function listFiles(root) {
 function hasSyncScript(projectDir) {
   try {
     const packageJson = JSON.parse(readFileSync(join(projectDir, "package.json"), "utf8"));
-    return packageJson?.name === "supaschema" && typeof packageJson?.scripts?.["sync:llm"] === "string";
+    return (
+      packageJson?.name === "supaschema" && typeof packageJson?.scripts?.["sync:llm"] === "string"
+    );
   } catch {
     return false;
   }
@@ -219,14 +217,18 @@ function runSync(projectDir) {
       timeout: 120_000,
     });
   } catch (error) {
-    const detail =
-      error && typeof error === "object" && "stderr" in error && typeof error.stderr === "string"
-        ? error.stderr
-        : error instanceof Error
-          ? error.message
-          : String(error);
-    throw new Error(`npm run sync:llm failed: ${detail.trim()}`);
+    throw new Error(`npm run sync:llm failed: ${syncErrorDetail(error).trim()}`);
   }
+}
+
+function syncErrorDetail(error) {
+  if (error && typeof error === "object" && "stderr" in error && typeof error.stderr === "string") {
+    return error.stderr;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 function npmInvocation(args) {
@@ -259,7 +261,9 @@ function resolveTarget(projectDir, targetPath) {
 }
 
 function hookRuntime() {
-  const normalized = fileURLToPath(import.meta.url).split(sep).join("/");
+  const normalized = fileURLToPath(import.meta.url)
+    .split(sep)
+    .join("/");
   return normalized.includes("/.codex/hooks/") || process.env.CODEX_PROJECT_DIR
     ? "codex"
     : "claude";

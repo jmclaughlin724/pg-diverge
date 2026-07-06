@@ -157,6 +157,8 @@ If GitHub rejects the push because a PR, review, or required status check is req
 
 Use this path when the user asks for a PR or when an external contribution requires review flow.
 
+Create the PR branch before any commit lands on it, so local `main` never carries PR commits (Rule 14). Use the harness worktree tool (Claude `EnterWorktree`, which branches from `origin/main`) and commit, push, and open the PR from that worktree. Do not build the PR by committing onto local `main` and pushing a branch ref.
+
 Merge PRs with GitHub's squash merge path:
 
 ```bash
@@ -164,6 +166,16 @@ gh pr merge <number> --squash --delete-branch
 ```
 
 Do not use `--merge`, `--rebase`, `--admin`, `--disable-auto`, local squash merges, force-push workarounds, or repo-local merge wrappers unless the user explicitly approves the exception and the reason is recorded in the PR.
+
+## PR review and check resolution
+
+Address every PR review comment and failing check before merge, and mark each resolved only when its correction lands — never before, and never for a valid finding left unaddressed.
+
+1. Verify the finding against upstream canonical sources before acting (Rule 05): official docs, the repo's own rules, or the installed dependency. An unverified review claim is a blocker, not a directive. When a suggestion conflicts with repo policy or upstream guidance, resolve it with the upstream-correct action and note the conflict rather than following the literal suggestion.
+2. Fix the finding in the canonical owner, or record an owner-scoped not-applicable reason with evidence, and commit that correction.
+3. Only then resolve the review thread (`gh api graphql` `resolveReviewThread`) or re-run the failing check to success. Resolving a thread or dismissing a check before its correction is committed, or resolving a valid unaddressed finding, is prohibited.
+
+`required_conversation_resolution` is enforced on `main` PRs, so unresolved threads block merge; do not resolve threads prematurely to unblock a merge.
 
 ## Enforced by
 

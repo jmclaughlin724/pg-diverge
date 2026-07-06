@@ -1638,6 +1638,85 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     expect(stop.output.decision).toBeUndefined();
   });
 
+  it("blocks a response correction once per turn, then downgrades repeats to advisory", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "did the guard pass", session_id: "loop-breaker" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+
+    const first = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "The guard run passed and is verified.",
+        session_id: "loop-breaker",
+      },
+      { root, runtime: "claude" }
+    );
+    expect(first.output.decision).toBe("block");
+
+    const second = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "The guard run passed and is verified.",
+        session_id: "loop-breaker",
+      },
+      { root, runtime: "claude" }
+    );
+    expect(second.output.decision).toBeUndefined();
+  });
+
+  it("re-blocks a correction whose specifics change on revision", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "did the gates pass", session_id: "changed-correction" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+
+    const first = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "The guard run passed and is verified.",
+        session_id: "changed-correction",
+      },
+      { root, runtime: "claude" }
+    );
+    expect(first.output.decision).toBe("block");
+
+    const second = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "The lint run passed and is verified.",
+        session_id: "changed-correction",
+      },
+      { root, runtime: "claude" }
+    );
+    expect(second.output.decision).toBe("block");
+  });
+
+  it("lets TaskCompleted proceed once its corrections are downgraded to advisory", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "note the outcome", session_id: "task-complete" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+
+    const claim = {
+      last_assistant_message: "The guard run passed and is verified.",
+      session_id: "task-complete",
+    };
+    expect(handleAgentHookEvent("Stop", claim, { root, runtime: "claude" }).output.decision).toBe(
+      "block"
+    );
+    expect(
+      handleAgentHookEvent("Stop", claim, { root, runtime: "claude" }).output.decision
+    ).toBeUndefined();
+
+    const done = handleAgentHookEvent(
+      "TaskCompleted",
+      { session_id: "task-complete" },
+      { root, runtime: "claude" }
+    );
+    expect(done.exitCode).toBe(0);
+  });
+
   it("records Codex documented Bash success end-to-end and does not false-block Stop", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;

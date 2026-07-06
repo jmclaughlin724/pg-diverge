@@ -140,8 +140,12 @@ function responseShape(payload, context) {
   if (!detectorResult.contextParts?.length) {
     return detectorResult;
   }
-  if (payload?.stop_hook_active) {
+  const corrections = currentTurnState(context.state).corrections;
+  if (payload?.stop_hook_active || !corrections.some((correction) => !correction.blocked)) {
     return detectorResult;
+  }
+  for (const correction of corrections) {
+    correction.blocked = true;
   }
   return {
     block: detectorResult.contextParts.join("\n\n"),
@@ -150,7 +154,7 @@ function responseShape(payload, context) {
 
 function taskCompletionGate(_payload, context) {
   const pending = unresolvedPending(context.state);
-  const corrections = currentTurnState(context.state).corrections;
+  const corrections = currentTurnState(context.state).corrections.filter((item) => !item.blocked);
   if (pending.length === 0 && corrections.length === 0) {
     return {};
   }
