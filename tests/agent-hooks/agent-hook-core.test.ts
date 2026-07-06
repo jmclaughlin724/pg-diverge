@@ -1665,6 +1665,33 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     expect(second.output.decision).toBeUndefined();
   });
 
+  it("re-blocks a correction whose specifics change on revision", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "did the gates pass", session_id: "changed-correction" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+
+    const first = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "The guard run passed and is verified.",
+        session_id: "changed-correction",
+      },
+      { root, runtime: "claude" }
+    );
+    expect(first.output.decision).toBe("block");
+
+    const second = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "The lint run passed and is verified.",
+        session_id: "changed-correction",
+      },
+      { root, runtime: "claude" }
+    );
+    expect(second.output.decision).toBe("block");
+  });
+
   it("records Codex documented Bash success end-to-end and does not false-block Stop", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;

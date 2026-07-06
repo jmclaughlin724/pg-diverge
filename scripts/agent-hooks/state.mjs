@@ -148,13 +148,17 @@ export function addEvidence(state, evidence) {
 
 export function setCorrections(state, findings) {
   const turn = currentTurnState(state);
-  const blockedIds = new Set(
-    turn.corrections.filter((item) => item.blocked).map((item) => item.id)
+  const blocked = new Set(
+    turn.corrections.filter((item) => item.blocked).map((item) => correctionSignature(item))
   );
   turn.corrections = findings.map((finding) => ({
-    blocked: blockedIds.has(finding.id),
+    blocked: blocked.has(correctionSignature(finding)),
     ...finding,
   }));
+}
+
+function correctionSignature(item) {
+  return JSON.stringify([item.id, item.message ?? ""]);
 }
 
 function resetContextEpoch(state) {
