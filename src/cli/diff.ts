@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { watch } from "node:fs";
+import { realpathSync, watch } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -540,12 +540,10 @@ async function diffWorkspacePreflightDiagnostics(
   }
 
   const diagnostics: Diagnostic[] = [];
-  const dirtyMigrations = dirtyEntries.filter((entry) => entryTouchesPath(entry, migrationsDir));
-  const allowedReplacePath =
-    options.replace === undefined ? undefined : normalizeGitPath(options.replace);
-  const blockingMigrations = dirtyMigrations.filter(
-    (entry) => allowedReplacePath === undefined || !entryTouchesPath(entry, allowedReplacePath)
-  );
+  const blockingMigrations =
+    options.replace === undefined
+      ? dirtyEntries.filter((entry) => entryTouchesPath(entry, migrationsDir))
+      : [];
   if (blockingMigrations.length > 0) {
     diagnostics.push(
       diagnostic(
@@ -612,7 +610,9 @@ async function diffWorkspacePreflightDiagnostics(
 }
 
 async function gitStatusEntries(paths: string[]): Promise<GitStatusEntry[]> {
-  const pathSpecs = [...new Set(paths.filter((path) => path.length > 0))];
+  const pathSpecs = [
+    ...new Set(paths.filter((path) => path.length > 0 && !isOutsideWorkingDirectory(path))),
+  ];
   if (pathSpecs.length === 0) {
     return [];
   }
@@ -718,8 +718,22 @@ function pathContains(parent: string, child: string): boolean {
 }
 
 function normalizeGitPath(path: string): string {
-  const relativePath = isAbsolute(path) ? relative(process.cwd(), path) : path;
+  const relativePath = isAbsolute(path)
+    ? relative(realPathOrSelf(process.cwd()), realPathOrSelf(path))
+    : path;
   return relativePath.split(sep).join("/");
+}
+
+function realPathOrSelf(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return path;
+  }
+}
+
+function isOutsideWorkingDirectory(path: string): boolean {
+  return path === ".." || path.startsWith("../");
 }
 
 function formatPathList(paths: string[], limit = 6): string {

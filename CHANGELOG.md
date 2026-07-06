@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.15 (2026-07-06)
+
+### Patch Changes
+
+- Fixes the workspace preflight for `diff --replace`: replacing a pending generated migration no longer fails with `SUPA_DIFF_MIGRATIONS_DIRTY` when other uncommitted files exist in the migrations directory, matching the documented recovery path where replace closes an open migration unit.
+
+  Fixes preflight path normalization across symlinked working directories (such as macOS `/var` → `/private/var`): absolute paths are resolved through their real paths and repo-escaping pathspecs are dropped, so `git status` cannot spuriously fail and silently disable the dirty-workspace preflight.
+
 ## 0.3.14 (2026-07-06)
 
 ### Patch Changes
