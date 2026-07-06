@@ -30,10 +30,7 @@
       "!agent-bundle",
       "!tests/fixtures/sample-project/supabase/functions",
       "!.agents",
-      "!.codex",
-      ".codex/hooks/*.mjs",
-      ".codex/hooks.json",
-      ".codex/rules/supaschema.rules"
+      "!.codex"
     ]
   },
   "formatter": {

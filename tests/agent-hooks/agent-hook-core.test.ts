@@ -1692,6 +1692,31 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     expect(second.output.decision).toBe("block");
   });
 
+  it("lets TaskCompleted proceed once its corrections are downgraded to advisory", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "note the outcome", session_id: "task-complete" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+
+    const claim = {
+      last_assistant_message: "The guard run passed and is verified.",
+      session_id: "task-complete",
+    };
+    expect(handleAgentHookEvent("Stop", claim, { root, runtime: "claude" }).output.decision).toBe(
+      "block"
+    );
+    expect(
+      handleAgentHookEvent("Stop", claim, { root, runtime: "claude" }).output.decision
+    ).toBeUndefined();
+
+    const done = handleAgentHookEvent(
+      "TaskCompleted",
+      { session_id: "task-complete" },
+      { root, runtime: "claude" }
+    );
+    expect(done.exitCode).toBe(0);
+  });
+
   it("records Codex documented Bash success end-to-end and does not false-block Stop", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;

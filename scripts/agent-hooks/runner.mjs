@@ -154,7 +154,7 @@ function responseShape(payload, context) {
 
 function taskCompletionGate(_payload, context) {
   const pending = unresolvedPending(context.state);
-  const corrections = currentTurnState(context.state).corrections;
+  const corrections = currentTurnState(context.state).corrections.filter((item) => !item.blocked);
   if (pending.length === 0 && corrections.length === 0) {
     return {};
   }
