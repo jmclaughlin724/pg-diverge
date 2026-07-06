@@ -9,6 +9,8 @@ import { responseReportsFailure, toolSucceeded } from "./response-evidence.mjs";
 import { addEvidence } from "./state.mjs";
 import { isCommandTool, toolCommand, toolName } from "./tool-payload.mjs";
 
+export const prePushDomains = ["typecheck", "guard"];
+
 export function recordToolEvidence(payload, state) {
   const name = toolName(payload);
   const command = toolCommand(payload);
@@ -29,6 +31,15 @@ export function recordToolEvidence(payload, state) {
   }
   if (!(isCommandTool(name) && command)) {
     return {};
+  }
+  if (toolSuccess && isPrePushCommand(command)) {
+    addEvidence(state, {
+      command,
+      domains: prePushDomains,
+      kind: "verified-command",
+      outcome: "success",
+      summary: "git push pre-push verification passed",
+    });
   }
   const domains = classifyCommandDomains(command);
   if (domains.length === 0) {
@@ -162,7 +173,24 @@ function successfulCommandEvidence(item) {
   );
 }
 
-function classifyCommandDomains(command) {
+function isPrePushCommand(command) {
+  let segments = [];
+  try {
+    segments = commandSegmentObjects(command);
+  } catch {
+    return false;
+  }
+  return segments.some((segment) => {
+    const tokens = segment.words ?? [];
+    if (commandName(tokens) !== "git") {
+      return false;
+    }
+    const args = commandArgs(tokens);
+    return args[0] === "push" && !(args.includes("--dry-run") || args.includes("--no-verify"));
+  });
+}
+
+export function classifyCommandDomains(command) {
   const domains = new Set();
   let segments = [];
   try {
