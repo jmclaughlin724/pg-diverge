@@ -160,8 +160,10 @@ Prefer direct edits with the available patch tool. Patch the narrow failing path
 ## Patterns to Avoid
 
 - Avoid single-use abstractions.
-- Prefer inline types and direct logic when a helper, wrapper, map, or named type is used only once.
 - Avoid wrapper functions that simply call another function.
+- Avoid moving too fast to complete a task instead of stopping to understand the context.
+- Avoid duplicate owners.
+- Prefer inline types and direct logic when a helper, wrapper, map, or named type is used only once.
 
 ## Validation
 
