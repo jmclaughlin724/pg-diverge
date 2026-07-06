@@ -150,6 +150,7 @@ export function setCorrections(state, findings) {
   const turn = currentTurnState(state);
   const existing = new Map(turn.corrections.map((item) => [item.id, item]));
   turn.corrections = findings.map((finding) => ({
+    blocked: existing.get(finding.id)?.blocked ?? false,
     firstSeenAt: existing.get(finding.id)?.firstSeenAt ?? new Date().toISOString(),
     lastSeenAt: new Date().toISOString(),
     ...finding,
