@@ -17,13 +17,7 @@ const readCommands = new Set([
   "sed",
   "tail",
 ]);
-const secretFlagNames = new Set([
-  "--api-key",
-  "--password",
-  "--secret",
-  "--token",
-  "--value",
-]);
+const secretFlagNames = new Set(["--api-key", "--password", "--secret", "--token", "--value"]);
 const safeEnvTemplates = new Set([
   ".env.default",
   ".env.defaults",
@@ -75,9 +69,7 @@ function commandFromPayload(input) {
     return toolInput.cmd;
   }
   if (Array.isArray(toolInput.command)) {
-    return toolInput.command
-      .filter((part) => typeof part === "string")
-      .join(" ");
+    return toolInput.command.filter((part) => typeof part === "string").join(" ");
   }
   return "";
 }
@@ -101,22 +93,14 @@ function checkSecretArgv(command) {
         hits.push(describeHit("DB connection URL with inline password", token));
       }
       const assignment = envAssignment(token);
-      if (
-        assignment &&
-        secretName(assignment.name) &&
-        literalSecretValue(assignment.value)
-      ) {
-        hits.push(
-          describeHit(`inline secret env ${assignment.name}=<literal>`, token)
-        );
+      if (assignment && secretName(assignment.name) && literalSecretValue(assignment.value)) {
+        hits.push(describeHit(`inline secret env ${assignment.name}=<literal>`, token));
         continue;
       }
 
       const flagHit = secretFlagValue(tokens, index);
       if (flagHit && literalSecretValue(flagHit.value)) {
-        hits.push(
-          describeHit(`${flagHit.name} literal in argv`, flagHit.preview)
-        );
+        hits.push(describeHit(`${flagHit.name} literal in argv`, flagHit.preview));
       }
     }
   }
@@ -174,14 +158,60 @@ function checkRawSqlDdlCommand(command) {
   return allowResult();
 }
 
+const simpleGitWriteBlocks = new Map([
+  ["stash", "BLOCKED: git stash is prohibited. Preserve unrelated work without stash."],
+  [
+    "checkout",
+    "BLOCKED: git checkout is prohibited. Keep work on the current branch and use git diff/git show for comparisons.",
+  ],
+  ["switch", "BLOCKED: git switch is prohibited. Keep work on the current branch."],
+  [
+    "branch",
+    "BLOCKED: git branch is prohibited. Keep work on the current branch and use git rev-parse for branch discovery.",
+  ],
+  ["worktree", "BLOCKED: git worktree is prohibited. Use the current worktree only."],
+  ["reset", "BLOCKED: git reset is prohibited. Ask the user before running reset."],
+]);
+
+function checkGitWriteSubcommand(gitArgs, ast, tokens) {
+  const subcommand = gitArgs[0] ?? "";
+  const simple = simpleGitWriteBlocks.get(subcommand);
+  if (simple) {
+    return block(simple);
+  }
+  if (subcommand === "merge" && gitArgs.includes("--squash")) {
+    return block(
+      "BLOCKED: local `git merge --squash` is prohibited for PR merges. Use the hosted PR squash flow instead."
+    );
+  }
+  if (subcommand === "commit" && gitArgs.includes("--no-verify")) {
+    return block("BLOCKED: --no-verify is prohibited. Fix the hook failure instead.");
+  }
+  if (subcommand === "push" && isForcePushToMain(gitArgs)) {
+    return block("BLOCKED: force-push to main is prohibited.");
+  }
+  if (subcommand === "push" && isDiagnosticPush(ast, tokens, gitArgs)) {
+    return block(
+      "BLOCKED: Do not use `git push` as a diagnostic or inventory probe. Use the repo pre-push check or `git push --dry-run` only when remote negotiation must be tested."
+    );
+  }
+  if (
+    subcommand === "restore" &&
+    gitArgs.some((arg) => arg === "-s" || arg.startsWith("--source"))
+  ) {
+    return block(
+      "BLOCKED: git restore --source is prohibited. It overwrites local files with content from another branch. Use git diff or git show for read-only comparisons."
+    );
+  }
+  return allowResult();
+}
+
 function checkDangerousGitAndShellWrites(command) {
   const ast = { segments: commandSegmentObjects(stripHeredocs(command)) };
   const segments = ast.segments.map((segment) => segment.words);
   if (
     segments.some(
-      (tokens) =>
-        commandName(tokens) === "rm" &&
-        rmArgsIncludeRecursiveForce(commandArgs(tokens))
+      (tokens) => commandName(tokens) === "rm" && rmArgsIncludeRecursiveForce(commandArgs(tokens))
     )
   ) {
     return block(
@@ -198,67 +228,11 @@ function checkDangerousGitAndShellWrites(command) {
         return result;
       }
     }
-    if (name !== "git") {
-      continue;
-    }
-    const gitArgs = skipGitGlobalOptions(args);
-    const subcommand = gitArgs[0] ?? "";
-
-    if (subcommand === "stash") {
-      return block(
-        "BLOCKED: git stash is prohibited. Preserve unrelated work without stash."
-      );
-    }
-    if (subcommand === "merge" && gitArgs.includes("--squash")) {
-      return block(
-        "BLOCKED: local `git merge --squash` is prohibited for PR merges. Use the hosted PR squash flow instead."
-      );
-    }
-    if (subcommand === "checkout") {
-      return block(
-        "BLOCKED: git checkout is prohibited. Keep work on the current branch and use git diff/git show for comparisons."
-      );
-    }
-    if (subcommand === "switch") {
-      return block(
-        "BLOCKED: git switch is prohibited. Keep work on the current branch."
-      );
-    }
-    if (subcommand === "branch") {
-      return block(
-        "BLOCKED: git branch is prohibited. Keep work on the current branch and use git rev-parse for branch discovery."
-      );
-    }
-    if (subcommand === "worktree") {
-      return block(
-        "BLOCKED: git worktree is prohibited. Use the current worktree only."
-      );
-    }
-    if (subcommand === "reset") {
-      return block(
-        "BLOCKED: git reset is prohibited. Ask the user before running reset."
-      );
-    }
-    if (subcommand === "commit" && gitArgs.includes("--no-verify")) {
-      return block(
-        "BLOCKED: --no-verify is prohibited. Fix the hook failure instead."
-      );
-    }
-    if (subcommand === "push" && isForcePushToMain(gitArgs)) {
-      return block("BLOCKED: force-push to main is prohibited.");
-    }
-    if (subcommand === "push" && isDiagnosticPush(ast, tokens, gitArgs)) {
-      return block(
-        "BLOCKED: Do not use `git push` as a diagnostic or inventory probe. Use the repo pre-push check or `git push --dry-run` only when remote negotiation must be tested."
-      );
-    }
-    if (
-      subcommand === "restore" &&
-      gitArgs.some((arg) => arg === "-s" || arg.startsWith("--source"))
-    ) {
-      return block(
-        "BLOCKED: git restore --source is prohibited. It overwrites local files with content from another branch. Use git diff or git show for read-only comparisons."
-      );
+    if (name === "git") {
+      const result = checkGitWriteSubcommand(skipGitGlobalOptions(args), ast, tokens);
+      if (result.action !== "allow") {
+        return result;
+      }
     }
   }
 
@@ -362,7 +336,7 @@ function shellTokens(command) {
   const tokens = [];
   let token = "";
   let quote = "";
-  let escape = false;
+  let escaped = false;
 
   const pushToken = () => {
     if (token.length > 0) {
@@ -372,13 +346,13 @@ function shellTokens(command) {
   };
 
   for (const char of command) {
-    if (escape) {
+    if (escaped) {
       token += char;
-      escape = false;
+      escaped = false;
       continue;
     }
     if (char === "\\") {
-      escape = true;
+      escaped = true;
       continue;
     }
     if (quote) {
@@ -397,7 +371,14 @@ function shellTokens(command) {
       pushToken();
       continue;
     }
-    if (char === ";" || char === "|" || char === ">" || char === "&" || char === "(" || char === ")") {
+    if (
+      char === ";" ||
+      char === "|" ||
+      char === ">" ||
+      char === "&" ||
+      char === "(" ||
+      char === ")"
+    ) {
       pushToken();
       tokens.push({ kind: "operator", value: char });
       continue;
@@ -534,11 +515,7 @@ function secretFlagValue(tokens, index) {
 function envFileName(token) {
   const cleaned = trimShellPunctuation(token);
   const fileName = cleaned.split("/").pop() ?? "";
-  if (
-    fileName === ".envrc" ||
-    fileName === ".env" ||
-    fileName.startsWith(".env.")
-  ) {
+  if (fileName === ".envrc" || fileName === ".env" || fileName.startsWith(".env.")) {
     return fileName;
   }
 }
@@ -561,10 +538,7 @@ function rawSqlPayload(tokens) {
   const command = tokens[start] ?? "";
   for (let index = start + 1; index < tokens.length; index += 1) {
     const token = tokens[index] ?? "";
-    if (
-      (command === "psql" && ["-c", "--command"].includes(token)) ||
-      token === "--sql"
-    ) {
+    if ((command === "psql" && ["-c", "--command"].includes(token)) || token === "--sql") {
       return tokens[index + 1] ?? "";
     }
     const sqlFlag = "--sql=";
@@ -604,14 +578,8 @@ function isForcePushToMain(args) {
   return (
     args.some(
       (arg) =>
-        arg === "--force" ||
-        arg === "--force-with-lease" ||
-        arg.startsWith("--force-with-lease=")
-    ) &&
-    args.some(
-      (arg) =>
-        arg === "main" || arg === "refs/heads/main" || arg.endsWith(":main")
-    )
+        arg === "--force" || arg === "--force-with-lease" || arg.startsWith("--force-with-lease=")
+    ) && args.some((arg) => arg === "main" || arg === "refs/heads/main" || arg.endsWith(":main"))
   );
 }
 
@@ -619,18 +587,14 @@ function isDiagnosticPush(ast, gitPushTokens, args) {
   if (args.some((arg) => arg === "--dry-run" || arg === "-n")) {
     return false;
   }
-  const index = ast.segments.findIndex(
-    (segment) => segment.words === gitPushTokens
-  );
+  const index = ast.segments.findIndex((segment) => segment.words === gitPushTokens);
   if (index === -1) {
     return false;
   }
   const next = ast.segments[index + 1];
   return (
     next?.operatorBefore === "|" &&
-    ["awk", "grep", "head", "sed", "tail", "wc"].includes(
-      commandName(next.words)
-    )
+    ["awk", "grep", "head", "sed", "tail", "wc"].includes(commandName(next.words))
   );
 }
 
@@ -671,8 +635,7 @@ function looksMasked(value) {
 }
 
 function describeHit(kind, match) {
-  const preview =
-    match.length > 44 ? `${match.slice(0, 16)}...${match.slice(-6)}` : match;
+  const preview = match.length > 44 ? `${match.slice(0, 16)}...${match.slice(-6)}` : match;
   return `${kind}: ${preview}`;
 }
 
@@ -691,10 +654,7 @@ function hasDbUrlWithInlinePassword(value) {
   }
   const authorityStart = schemeEnd + 3;
   const authorityEnd = firstIndexOfAny(value, ["/", "?", "#"], authorityStart);
-  const authority = value.slice(
-    authorityStart,
-    authorityEnd === -1 ? value.length : authorityEnd
-  );
+  const authority = value.slice(authorityStart, authorityEnd === -1 ? value.length : authorityEnd);
   const at = authority.lastIndexOf("@");
   if (at <= 0) {
     return false;
@@ -718,12 +678,7 @@ function sqlDdlKeyword(sql) {
     if (token === "GRANT" || token === "REVOKE" || token === "TRUNCATE") {
       return token;
     }
-    if (
-      token === "ENABLE" &&
-      next === "ROW" &&
-      third === "LEVEL" &&
-      fourth === "SECURITY"
-    ) {
+    if (token === "ENABLE" && next === "ROW" && third === "LEVEL" && fourth === "SECURITY") {
       return "ENABLE ROW LEVEL SECURITY";
     }
     if (token === "CREATE" && createKinds(tokens, index + 1)) {
@@ -763,15 +718,7 @@ function createKinds(tokens, index) {
 
 function alterKinds(tokens, index) {
   const first = tokens[index] ?? "";
-  return [
-    "FUNCTION",
-    "POLICY",
-    "ROLE",
-    "SCHEMA",
-    "SEQUENCE",
-    "TABLE",
-    "TYPE",
-  ].includes(first)
+  return ["FUNCTION", "POLICY", "ROLE", "SCHEMA", "SEQUENCE", "TABLE", "TYPE"].includes(first)
     ? first
     : "";
 }
@@ -810,8 +757,7 @@ function sqlTokens(sql) {
     }
   };
 
-  for (let index = 0; index < sql.length; index += 1) {
-    const char = sql[index] ?? "";
+  for (const char of sql) {
     if (quote) {
       if (char === quote) {
         quote = "";
@@ -833,6 +779,22 @@ function sqlTokens(sql) {
   return tokens;
 }
 
+function skipSqlLineComment(sql, start) {
+  let index = start + 2;
+  while (index < sql.length && !["\n", "\r"].includes(sql[index] ?? "")) {
+    index += 1;
+  }
+  return index;
+}
+
+function skipSqlBlockComment(sql, start) {
+  let index = start + 2;
+  while (index < sql.length && !((sql[index] ?? "") === "*" && (sql[index + 1] ?? "") === "/")) {
+    index += 1;
+  }
+  return index + 2;
+}
+
 function stripSqlComments(sql) {
   let out = "";
   let index = 0;
@@ -840,22 +802,12 @@ function stripSqlComments(sql) {
     const char = sql[index] ?? "";
     const next = sql[index + 1] ?? "";
     if (char === "-" && next === "-") {
-      index += 2;
-      while (index < sql.length && !["\n", "\r"].includes(sql[index] ?? "")) {
-        index += 1;
-      }
+      index = skipSqlLineComment(sql, index);
       out += " ";
       continue;
     }
     if (char === "/" && next === "*") {
-      index += 2;
-      while (
-        index < sql.length &&
-        !((sql[index] ?? "") === "*" && (sql[index + 1] ?? "") === "/")
-      ) {
-        index += 1;
-      }
-      index += 2;
+      index = skipSqlBlockComment(sql, index);
       out += " ";
       continue;
     }
@@ -954,7 +906,7 @@ function firstIndexOfAny(value, chars, start) {
   return found;
 }
 
-async function main() {
+function main() {
   let payload = {};
   try {
     const raw = readFileSync(0, "utf8");
@@ -986,5 +938,5 @@ function isMainModule() {
 }
 
 if (isMainModule()) {
-  await main();
+  main();
 }

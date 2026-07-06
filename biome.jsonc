@@ -6,6 +6,11 @@
     "ultracite/biome/type-aware",
     "ultracite/biome/vitest"
   ],
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "ignoreUnknown": true,
     "includes": [
@@ -25,10 +30,6 @@
       "!agent-bundle",
       "!tests/fixtures/sample-project/supabase/functions",
       "!.agents",
-      "!.claude",
-      ".claude/hooks/*.mjs",
-      ".claude/rules/supaschema.md",
-      ".claude/skills/supaschema/**",
       "!.codex",
       ".codex/hooks/*.mjs",
       ".codex/hooks.json",
