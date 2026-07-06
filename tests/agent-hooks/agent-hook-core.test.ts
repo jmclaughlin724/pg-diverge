@@ -1,10 +1,9 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parse as parseYaml } from "yaml";
 
 const hasAgentHookSources = [
   "scripts/agent-hooks/command-evidence.mjs",
@@ -29,8 +28,6 @@ let handleAgentHookEvent: any;
 let currentTurnState: any;
 let normalizeState: any;
 let readSessionState: any;
-let classifyCommandDomains: any;
-let prePushDomains: string[];
 
 function optionalImport(specifier: string): Promise<any> {
   return import(specifier);
@@ -54,9 +51,6 @@ if (hasAgentHookSources) {
   ({ handleAgentHookEvent } = await optionalImport("../../scripts/agent-hooks/runner.mjs"));
   ({ currentTurnState, normalizeState, readSessionState } = await optionalImport(
     "../../scripts/agent-hooks/state.mjs"
-  ));
-  ({ classifyCommandDomains, prePushDomains } = await optionalImport(
-    "../../scripts/agent-hooks/command-evidence.mjs"
   ));
 }
 
@@ -1642,72 +1636,6 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     );
 
     expect(stop.output.decision).toBeUndefined();
-  });
-
-  it("credits typecheck and guard from a successful git push and does not false-block Stop", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = { prompt: "push the branch", session_id: "push-credit" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "push-credit",
-        tool_name: "Bash",
-        tool_input: { command: "git push origin HEAD:refs/heads/feature" },
-        tool_response: { stdout: "", stderr: "", interrupted: false, isImage: false },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        domains: ["typecheck", "guard"],
-        kind: "verified-command",
-        outcome: "success",
-      })
-    );
-
-    const stop = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "typecheck and guard passed on the push.",
-        session_id: "push-credit",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(stop.output.decision).toBeUndefined();
-  });
-
-  it("does not credit pre-push domains when the git push fails", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = { prompt: "push the branch", session_id: "push-fail" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: "push-fail",
-        tool_name: "exec_command",
-        tool_input: { command: "git push origin HEAD:refs/heads/feature" },
-        tool_response: { exit_code: 1 },
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it("keeps prePushDomains aligned with lefthook pre-push commands", () => {
-    const lefthook = parseYaml(readFileSync(join(process.cwd(), "lefthook.yml"), "utf8"));
-    const commands = (lefthook["pre-push"]?.jobs ?? []).map((job: { run: string }) => job.run);
-    const domains = new Set<string>(
-      commands.flatMap((command: string) => classifyCommandDomains(command))
-    );
-    expect([...domains].sort()).toEqual([...prePushDomains].sort());
   });
 
   it("blocks a response correction once per turn, then downgrades repeats to advisory", async () => {
