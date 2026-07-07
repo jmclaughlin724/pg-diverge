@@ -572,10 +572,42 @@ async function gitRootPath(): Promise<string> {
 function migrationDirGitPath(gitRoot: string, config: SupaschemaConfig): string {
   const migrationsDir = resolvedNativePath(resolve(process.cwd(), config.migrationsDir));
   const relativePath = relative(gitRoot, migrationsDir);
-  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+  if (!isPathInsideOrEqual(gitRoot, migrationsDir)) {
     throw new Error("supaschema check migrationsDir must be inside the git worktree");
   }
-  return normalizeGitPath(relativePath);
+  if (!(relativePath.startsWith("..") || isAbsolute(relativePath))) {
+    return normalizeGitPath(relativePath);
+  }
+  return normalizedInsidePath(gitRoot, migrationsDir);
+}
+
+function isPathInsideOrEqual(parent: string, child: string): boolean {
+  const parentPath = comparablePath(parent);
+  const childPath = comparablePath(child);
+  return childPath === parentPath || childPath.startsWith(`${parentPath}/`);
+}
+
+function normalizedInsidePath(parent: string, child: string): string {
+  const parentPath = comparablePath(parent);
+  const childPath = comparablePath(child);
+  if (childPath === parentPath) {
+    return "";
+  }
+  return childPath.slice(parentPath.length + 1);
+}
+
+function comparablePath(path: string): string {
+  let normalized = nativeGitPath(path).replaceAll("\\", "/");
+  if (normalized.startsWith("//?/")) {
+    normalized = normalized.slice(4);
+  }
+  while (normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  if (process.platform === "win32") {
+    return normalized.toLowerCase();
+  }
+  return normalized;
 }
 
 function resolvedNativePath(path: string): string {

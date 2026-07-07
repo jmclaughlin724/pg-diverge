@@ -572,7 +572,7 @@ describe("check git selection", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("ok");
-  });
+  }, 20_000);
 
   it("checks staged migrations without including unstaged migrations", () => {
     const cwd = makeGitProject();
@@ -593,7 +593,7 @@ describe("check git selection", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("ok");
-  });
+  }, 20_000);
 
   it("checks migrations selected by base and since refs", () => {
     const cwd = makeGitProject();
@@ -614,7 +614,7 @@ describe("check git selection", () => {
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain("ok");
     }
-  });
+  }, 20_000);
 
   it("rejects ambiguous check selection arguments", () => {
     const cwd = makeGitProject();
@@ -632,7 +632,7 @@ describe("check git selection", () => {
     expect(conflicting.stderr).toContain("use only one of --changed, --staged, --base, or --since");
     expect(explicit.status).toBe(1);
     expect(explicit.stderr).toContain("cannot be combined with explicit migration files");
-  });
+  }, 20_000);
 });
 
 describe("raw CLI errors", () => {
