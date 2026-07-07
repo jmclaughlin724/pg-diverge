@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -565,16 +566,45 @@ async function gitRootPath(): Promise<string> {
   if (root.length === 0) {
     throw new Error("supaschema check git selection requires a git worktree");
   }
-  return resolve(root);
+  return resolvedNativePath(root);
 }
 
 function migrationDirGitPath(gitRoot: string, config: SupaschemaConfig): string {
-  const migrationsDir = resolve(process.cwd(), config.migrationsDir);
+  const migrationsDir = resolvedNativePath(resolve(process.cwd(), config.migrationsDir));
   const relativePath = relative(gitRoot, migrationsDir);
   if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
     throw new Error("supaschema check migrationsDir must be inside the git worktree");
   }
   return normalizeGitPath(relativePath);
+}
+
+function resolvedNativePath(path: string): string {
+  const resolved = resolve(nativeGitPath(path));
+  try {
+    return realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+function nativeGitPath(path: string): string {
+  if (process.platform !== "win32") {
+    return path;
+  }
+  const normalized = path.replaceAll("\\", "/");
+  if (
+    normalized.length < 3 ||
+    normalized[0] !== "/" ||
+    normalized[2] !== "/" ||
+    !isAsciiLetter(normalized.charCodeAt(1))
+  ) {
+    return path;
+  }
+  return `${normalized[1]}:/${normalized.slice(3)}`;
+}
+
+function isAsciiLetter(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
 async function namedGitDiffCheckPaths(
