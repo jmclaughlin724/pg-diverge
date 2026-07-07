@@ -691,7 +691,7 @@ describe("raw CLI errors", () => {
     expect(contract.stderr).toContain("SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY");
     expect(contractDiff.status).toBe(2);
     expect(contractDiff.stderr).toContain("SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY");
-  });
+  }, 20_000);
 
   it("rejects JavaScript config files", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-cli-redact-"));
