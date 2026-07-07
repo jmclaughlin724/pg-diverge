@@ -238,6 +238,7 @@ describe("migration-derived source corpus", () => {
 
     expect(context.latestGeneratedBaseline).toMatchObject({
       fingerprint: "def",
+      source: "migration-baseline:migrations@20260101000000",
       version: "20260101000000",
     });
     expect(context.unprovenBaselineFiles.map((file) => basename(file))).toEqual([

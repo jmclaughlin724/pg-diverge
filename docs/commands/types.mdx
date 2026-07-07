@@ -23,7 +23,8 @@ If a schema-backed field is generated as `unknown`, treat that as unresolved sou
 
 ```bash
 npx supaschema types
-npx supaschema types --from dir:database/schemas
+npx supaschema types --source dir:database/schemas
+npx supaschema types --source migrations:supabase/migrations
 npx supaschema types --out src/lib/database.types.ts
 npx supaschema types --out stdout
 ```
@@ -32,8 +33,12 @@ npx supaschema types --out stdout
 
 ## Flags
 
-<ParamField path="--from" type="source">
+<ParamField path="--source" type="source">
   Schema source to parse. Defaults to the configured schema tree.
+</ParamField>
+
+<ParamField path="--from" type="source">
+  Existing alias for `--source`. Do not pass both flags.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">

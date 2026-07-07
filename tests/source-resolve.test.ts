@@ -9,6 +9,7 @@ import {
   resolveMigrationsDir,
   resolveSourceDefaults,
 } from "../src/source/resolve.js";
+import { verifyMigration } from "../src/verify/migration.js";
 
 const config = resolveConfig();
 
@@ -100,6 +101,30 @@ describe("generation source defaults", () => {
       expect.objectContaining({ code: "SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION" }),
     ]);
   });
+
+  it("rejects migrations sources for generation", async () => {
+    const resolved = await resolveGenerationSourceDefaults(
+      { to: "migrations:supabase/migrations" },
+      config
+    );
+
+    expect(resolved.diagnostics).toEqual([
+      expect.objectContaining({ code: "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY" }),
+    ]);
+  });
+
+  it("rejects configured migrations to-sources for generation", async () => {
+    const custom = resolveConfig({
+      sources: { from: "empty:", to: "migrations:supabase/migrations" },
+    });
+
+    const resolved = await resolveGenerationSourceDefaults({}, custom);
+
+    expect(resolved.to).toBe("migrations:supabase/migrations");
+    expect(resolved.diagnostics).toEqual([
+      expect.objectContaining({ code: "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY" }),
+    ]);
+  });
 });
 
 describe("generic source defaults", () => {
@@ -114,6 +139,26 @@ describe("generic source defaults", () => {
     expect(resolved.from).toBe("database:postgresql://postgres:secret@127.0.0.1:5432/postgres");
     expect(resolved.notice).toContain("[redacted]");
     expect(resolved.notice).not.toContain("secret");
+  });
+});
+
+describe("migrations source scope", () => {
+  it("rejects migrations sources for verify before connecting to a database", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-scope-"));
+    const migrationPath = join(root, "migration.sql");
+    await writeFile(migrationPath, "select 1;\n");
+
+    const diagnostics = await verifyMigration({
+      config,
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5432/postgres",
+      from: "empty:",
+      migrationPath,
+      to: "migrations:supabase/migrations",
+    });
+
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ code: "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY" }),
+    ]);
   });
 });
 

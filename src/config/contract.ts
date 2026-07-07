@@ -24,6 +24,7 @@ export const RuntimeSourceKind = literalContract({
   Dump: "dump",
   Empty: "empty",
   Git: "git",
+  Migrations: "migrations",
 });
 export type RuntimeSourceKind = (typeof RuntimeSourceKind)[keyof typeof RuntimeSourceKind];
 
@@ -184,6 +185,7 @@ const runtimeSourcePrefixEntries: readonly [RuntimeSourceKind, string][] = [
   [RuntimeSourceKind.Dump, "dump:"],
   [RuntimeSourceKind.Catalog, "catalog:"],
   [RuntimeSourceKind.Empty, "empty:"],
+  [RuntimeSourceKind.Migrations, "migrations:"],
 ];
 export const runtimeSourcePrefixes = runtimeSourcePrefixEntries.map((entry) => entry[1]);
 export const sourcePrefixes = [sourceAuto, ...runtimeSourcePrefixes];

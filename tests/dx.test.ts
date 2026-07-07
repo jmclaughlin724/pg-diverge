@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -533,7 +533,219 @@ describe("stdin sources", () => {
   });
 });
 
+describe("check git selection", () => {
+  function git(cwd: string, args: string[]): void {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+    if (result.status !== 0) {
+      throw new Error(result.stderr);
+    }
+  }
+
+  function makeGitProject(): string {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-check-git-"));
+    mkdirSync(join(cwd, "database/migrations"), { recursive: true });
+    writeFileSync(
+      join(cwd, "database/migrations", "20260101000000_base.sql"),
+      "CREATE TABLE IF NOT EXISTS app.base (id bigint);\n"
+    );
+    git(cwd, ["init"]);
+    git(cwd, ["config", "user.email", "test@example.com"]);
+    git(cwd, ["config", "user.name", "Test User"]);
+    git(cwd, ["add", "."]);
+    git(cwd, ["commit", "-m", "baseline"]);
+    return cwd;
+  }
+
+  it("checks changed migration SQL and excludes deleted files", () => {
+    const cwd = makeGitProject();
+    rmSync(join(cwd, "database/migrations", "20260101000000_base.sql"));
+    writeFileSync(
+      join(cwd, "database/migrations", "20260102000000_changed.sql"),
+      "CREATE TABLE IF NOT EXISTS app.changed (id bigint);\n"
+    );
+    writeFileSync(join(cwd, "outside.sql"), "CREATE TABLE app.bad (id bigint);\n");
+
+    const result = spawnSync(process.execPath, [cliPath, "check", "--changed"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("ok");
+  }, 20_000);
+
+  it("checks staged migrations without including unstaged migrations", () => {
+    const cwd = makeGitProject();
+    writeFileSync(
+      join(cwd, "database/migrations", "20260102000000_staged.sql"),
+      "CREATE TABLE IF NOT EXISTS app.staged (id bigint);\n"
+    );
+    git(cwd, ["add", "database/migrations/20260102000000_staged.sql"]);
+    writeFileSync(
+      join(cwd, "database/migrations", "20260103000000_unstaged.sql"),
+      "CREATE TABLE app.unstaged (id bigint);\n"
+    );
+
+    const result = spawnSync(process.execPath, [cliPath, "check", "--staged"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("ok");
+  }, 20_000);
+
+  it("checks staged migration content from the index instead of the worktree", () => {
+    const cwd = makeGitProject();
+    const path = join(cwd, "database/migrations", "20260102000000_staged.sql");
+    writeFileSync(path, "CREATE TABLE IF NOT EXISTS app.staged (id bigint);\n");
+    git(cwd, ["add", "database/migrations/20260102000000_staged.sql"]);
+    writeFileSync(path, "CREATE TABLE app.staged (id bigint);\n");
+
+    const result = spawnSync(process.execPath, [cliPath, "check", "--staged"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("ok");
+  }, 20_000);
+
+  it("checks renamed migrations by their porcelain destination path", () => {
+    const cwd = makeGitProject();
+    git(cwd, [
+      "mv",
+      "database/migrations/20260101000000_base.sql",
+      "database/migrations/20260101000000_renamed.sql",
+    ]);
+
+    const result = spawnSync(process.execPath, [cliPath, "check", "--changed"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("ok");
+  }, 20_000);
+
+  it("checks changed migrations when migrationsDir is the git root", () => {
+    const cwd = makeGitProject();
+    writeFileSync(
+      join(cwd, "supaschema.config.json"),
+      `${JSON.stringify({ migrationsDir: ".", schemaPaths: ["database/schemas"] })}\n`
+    );
+    writeFileSync(
+      join(cwd, "20260102000000_root.sql"),
+      "CREATE TABLE IF NOT EXISTS app.root_selected (id bigint);\n"
+    );
+
+    const result = spawnSync(process.execPath, [cliPath, "check", "--changed"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("ok");
+  }, 20_000);
+
+  it("checks migrations selected by base and since refs", () => {
+    const cwd = makeGitProject();
+    writeFileSync(
+      join(cwd, "database/migrations", "20260102000000_base_diff.sql"),
+      "CREATE TABLE IF NOT EXISTS app.base_diff (id bigint);\n"
+    );
+    git(cwd, ["add", "database/migrations/20260102000000_base_diff.sql"]);
+
+    for (const args of [
+      ["check", "--base", "HEAD"],
+      ["check", "--since", "HEAD"],
+    ]) {
+      const result = spawnSync(process.execPath, [cliPath, ...args], {
+        cwd,
+        encoding: "utf8",
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain("ok");
+    }
+  }, 20_000);
+
+  it("rejects ambiguous check selection arguments", () => {
+    const cwd = makeGitProject();
+    const conflicting = spawnSync(process.execPath, [cliPath, "check", "--changed", "--staged"], {
+      cwd,
+      encoding: "utf8",
+    });
+    const explicit = spawnSync(
+      process.execPath,
+      [cliPath, "check", "--changed", "database/migrations/20260101000000_base.sql"],
+      { cwd, encoding: "utf8" }
+    );
+
+    expect(conflicting.status).toBe(1);
+    expect(conflicting.stderr).toContain("use only one of --changed, --staged, --base, or --since");
+    expect(explicit.status).toBe(1);
+    expect(explicit.stderr).toContain("cannot be combined with explicit migration files");
+  }, 20_000);
+});
+
 describe("raw CLI errors", () => {
+  it("keeps migrations replay scoped to types instead of drift commands", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supa-cli-migrations-source-"));
+    mkdirSync(join(cwd, "supabase", "migrations"), { recursive: true });
+    mkdirSync(join(cwd, "supabase", "schemas"), { recursive: true });
+    writeFileSync(
+      join(cwd, "supabase", "migrations", "20260101000000_init.sql"),
+      "create table public.todos (id bigint primary key);\n"
+    );
+    writeFileSync(
+      join(cwd, "supaschema.config.json"),
+      `${JSON.stringify({
+        migrationsDir: "supabase/migrations",
+        schemaPaths: ["supabase/schemas"],
+        sources: { from: "empty:", to: "dir:supabase/schemas" },
+      })}\n`
+    );
+
+    const source = "migrations:supabase/migrations";
+    const types = spawnSync(
+      process.execPath,
+      [cliPath, "types", "--source", source, "--out", "stdout"],
+      {
+        cwd,
+        encoding: "utf8",
+      }
+    );
+    const fingerprint = spawnSync(process.execPath, [cliPath, "fingerprint", "--from", source], {
+      cwd,
+      encoding: "utf8",
+    });
+    const contract = spawnSync(
+      process.execPath,
+      [cliPath, "contracts", "export", "--from", source],
+      {
+        cwd,
+        encoding: "utf8",
+      }
+    );
+    const contractDiff = spawnSync(
+      process.execPath,
+      [cliPath, "contracts", "diff", "--from", "missing.json", "--to", source],
+      {
+        cwd,
+        encoding: "utf8",
+      }
+    );
+
+    expect(types.status).toBe(0);
+    expect(types.stdout).toContain("todos");
+    expect(fingerprint.status).toBe(2);
+    expect(fingerprint.stderr).toContain("SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY");
+    expect(contract.status).toBe(2);
+    expect(contract.stderr).toContain("SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY");
+    expect(contractDiff.status).toBe(2);
+    expect(contractDiff.stderr).toContain("SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY");
+  }, 20_000);
+
   it("rejects JavaScript config files", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-cli-redact-"));
     writeFileSync(

@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.3.15",
+  "version": "0.3.16",
   "description": "Declarative PostgreSQL schema management for replay-safe migrations, guarded sync, TypeScript types, and Zod validators without an ORM, Docker, or a shadow database.",
   "keywords": [
     "ai-coding-agents",

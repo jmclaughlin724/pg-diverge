@@ -807,7 +807,8 @@ const contract = JSON.parse(`{
     "database:",
     "dump:",
     "catalog:",
-    "empty:"
+    "empty:",
+    "migrations:"
   ],
   "schemaDiffPolicies": [
     "disabled",
@@ -822,7 +823,8 @@ const contract = JSON.parse(`{
     "database:",
     "dump:",
     "catalog:",
-    "empty:"
+    "empty:",
+    "migrations:"
   ],
   "supabaseManagedSchemas": [
     "auth",

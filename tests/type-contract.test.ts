@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/config/schema.js";
 import { diffTypeContract } from "../src/contract/type-diff.js";
-import { runTypeSafetyGate } from "../src/pipeline/type-safety.js";
+import { evaluateTypeContract, runTypeSafetyGate } from "../src/pipeline/type-safety.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes, TableShape } from "../src/typegen/model.js";
 
 function column(name: string, type: string, notNull = false): ColumnShape {
@@ -106,6 +106,21 @@ async function sqlSource(sql: string): Promise<string> {
 }
 
 describe("type-safety deploy gate", () => {
+  it("rejects migrations replay sources for drift evaluation", async () => {
+    const config = resolveConfig();
+
+    const result = await evaluateTypeContract({
+      config,
+      fromSource: "git:HEAD",
+      toSource: "migrations:supabase/migrations",
+    });
+
+    expect(result.sourceDiagnostics).toEqual([
+      expect.objectContaining({ code: "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY" }),
+    ]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("blocks deploy when configured as deploy_blocking", async () => {
     const fromSource = await sqlSource("CREATE TABLE public.users (id bigint, email text);\n");
     const toSource = await sqlSource("CREATE TABLE public.users (id bigint);\n");

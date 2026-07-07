@@ -832,7 +832,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     ).toMatchObject({ id: "mechanism-claim-without-architecture" });
     expect(
       mechanismClaimWithoutArchitecture(
-        "Mechanism: Codex runs each matching hook. Architecture: the $elegant canonical owner keeps one Stop-time response-shape gate. Verification: checked upstream docs and ran npm run guard:agent.",
+        "This is expected behavior: Codex runs each matching hook. Architecture: the $elegant canonical owner keeps one Stop-time response-shape gate. Verification: checked upstream docs and ran npm run guard:agent.",
         normalizedHookState({
           lastPrompt: "verify from upstream Codex sources if this is running correctly",
         })
@@ -881,6 +881,17 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
         "Setup complete: Codex CLI 0.141.0 is active and authenticated.",
         normalizedHookState({
           lastPrompt: "review the codex setup and verify it is correct",
+        })
+      )
+    ).toBeUndefined();
+  });
+
+  it("does not flag a status report that uses generic correctness words without a mechanism claim", () => {
+    expect(
+      mechanismClaimWithoutArchitecture(
+        "The plan's upstream contract is correct; the implementation has not begun. Every dispatch target is correctly named. No guard applies to .claude/plans/.",
+        normalizedHookState({
+          lastPrompt: "verify the upstream parser contract is correct",
         })
       )
     ).toBeUndefined();
@@ -1419,6 +1430,54 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       decision: "block",
       reason: expect.stringContaining("failed evidence remains unresolved"),
     });
+  });
+
+  it("uses Codex function-call transcript evidence after compacted state loses command history", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const transcriptPath = join(root, "transcript-codex-function-call.jsonl");
+    await writeFile(
+      transcriptPath,
+      `${[
+        {
+          payload: {
+            arguments: JSON.stringify({
+              cmd: "npx vitest run tests/source-replay.test.ts tests/typegen-migrations.test.ts",
+            }),
+            call_id: "call_test",
+            name: "exec_command",
+            type: "function_call",
+          },
+          timestamp: "2026-07-06T23:00:00.000Z",
+          type: "response_item",
+        },
+        {
+          payload: {
+            call_id: "call_test",
+            output:
+              "Chunk ID: test\nProcess exited with code 0\nOutput:\nPASS tests/source-replay.test.ts",
+            type: "function_call_output",
+          },
+          timestamp: "2026-07-06T23:00:01.000Z",
+          type: "response_item",
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n")}\n`
+    );
+
+    const result = handleAgentHookEvent(
+      "Stop",
+      {
+        last_assistant_message: "Tests passed.",
+        session_id: "transcript-codex-function-call",
+        transcript_path: transcriptPath,
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(result.output.decision).toBeUndefined();
+    expect(JSON.stringify(result.output)).not.toContain("response claims verification");
   });
 
   it("recognizes verification evidence behind npx options", async () => {
