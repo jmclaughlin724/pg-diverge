@@ -242,9 +242,9 @@ npx supaschema types --source migrations:supabase/migrations
 
 supaschema reads filename-sorted `.sql` files, replays supported DDL in memory, and emits a schema model without a database connection. The v1 replay model is for the `types` command. Do not set `sources.to` to `migrations:` for `diff`, `verify`, or drift gates until reconstructed fingerprints are planner-grade.
 
-Replay is fail-closed for shape-corrupting gaps. Missing directories, duplicate `CREATE` objects, absent non-optional `DROP` targets, and absent enum neighbors raise `SUPA_REPLAY_ORDER_GAP` and return no objects. Unsupported rename targets raise `SUPA_REPLAY_UNSUPPORTED` and return no objects.
+Replay is fail-closed for shape-corrupting gaps. Missing directories, duplicate `CREATE` objects, absent non-optional `DROP` targets, absent non-ignored `ALTER TABLE` targets, and absent enum neighbors raise `SUPA_REPLAY_ORDER_GAP` and return no objects. Unsupported top-level DDL, unsupported `ALTER TABLE` subtypes, unsupported `DROP` kinds, and unsupported rename targets raise `SUPA_REPLAY_UNSUPPORTED` and return no objects.
 
-Unsupported top-level DDL, unsupported non-column `ALTER TABLE` subtypes, unsupported `DROP` kinds, and absent `ALTER TABLE` targets raise `SUPA_REPLAY_UNSUPPORTED` warnings and are skipped. This keeps v1 typegen usable for Supabase histories that alter managed or external tables whose `CREATE` statement is not present in the project history. The omission is type-safe because skipped shape is not emitted as `unknown`. Data and control-plane statements such as DML and `DO` blocks do not change the schema model and are ignored.
+Replay skips configured managed or excluded schemas before planner input, so Supabase-managed history noise such as `auth` DDL can be omitted without emitting `unknown` shapes. Simple schema DDL inside idempotent `DO` blocks is replayed from the block body when it can be parsed; other data and control-plane statements remain outside the schema model.
 
 Generated migration lineage uses `migration-baseline:<dir>@<version>` as a display label. That label is not a runtime source; `migrations:<dir>` is the runtime typegen input.
 

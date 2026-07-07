@@ -595,6 +595,59 @@ describe("check git selection", () => {
     expect(result.stdout).toContain("ok");
   }, 20_000);
 
+  it("checks staged migration content from the index instead of the worktree", () => {
+    const cwd = makeGitProject();
+    const path = join(cwd, "database/migrations", "20260102000000_staged.sql");
+    writeFileSync(path, "CREATE TABLE IF NOT EXISTS app.staged (id bigint);\n");
+    git(cwd, ["add", "database/migrations/20260102000000_staged.sql"]);
+    writeFileSync(path, "CREATE TABLE app.staged (id bigint);\n");
+
+    const result = spawnSync(process.execPath, [cliPath, "check", "--staged"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("ok");
+  }, 20_000);
+
+  it("checks renamed migrations by their porcelain destination path", () => {
+    const cwd = makeGitProject();
+    git(cwd, [
+      "mv",
+      "database/migrations/20260101000000_base.sql",
+      "database/migrations/20260101000000_renamed.sql",
+    ]);
+
+    const result = spawnSync(process.execPath, [cliPath, "check", "--changed"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("ok");
+  }, 20_000);
+
+  it("checks changed migrations when migrationsDir is the git root", () => {
+    const cwd = makeGitProject();
+    writeFileSync(
+      join(cwd, "supaschema.config.json"),
+      `${JSON.stringify({ migrationsDir: ".", schemaPaths: ["database/schemas"] })}\n`
+    );
+    writeFileSync(
+      join(cwd, "20260102000000_root.sql"),
+      "CREATE TABLE IF NOT EXISTS app.root_selected (id bigint);\n"
+    );
+
+    const result = spawnSync(process.execPath, [cliPath, "check", "--changed"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("ok");
+  }, 20_000);
+
   it("checks migrations selected by base and since refs", () => {
     const cwd = makeGitProject();
     writeFileSync(

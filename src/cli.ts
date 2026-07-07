@@ -390,14 +390,14 @@ async function runCheckCommand(migrationArgs: string[], options: CheckOptions): 
   if (await blockInvalidCheckSelection(migrationArgs, options, selectionMode)) {
     return;
   }
-  const migrationPaths = await resolveCheckMigrationPaths(config, migrationArgs, selectionMode);
+  const migrationInputs = await resolveCheckMigrationPaths(config, migrationArgs, selectionMode);
   if (
-    writeEmptyCheckSelection(config, migrationPaths, selectionMode, options.allowEmpty === true)
+    writeEmptyCheckSelection(config, migrationInputs, selectionMode, options.allowEmpty === true)
   ) {
     return;
   }
-  const results = await checkMigrationPaths(config, migrationPaths);
-  writeCheckResults(migrationPaths, results, options.reporter);
+  const results = await checkMigrationPaths(config, migrationInputs);
+  writeCheckResults(migrationInputs, results, options.reporter);
 }
 
 async function blockInvalidCheckSelection(
@@ -436,23 +436,26 @@ async function resolveCheckMigrationPaths(
   config: SupaschemaConfig,
   migrationArgs: string[],
   selectionMode: CheckSelectionMode | undefined
-): Promise<string[]> {
+): Promise<CheckMigrationInput[]> {
   if (migrationArgs.length > 0) {
-    return migrationArgs;
+    return migrationArgs.map((file) => ({ file, staged: false }));
   }
   if (selectionMode === undefined) {
-    return await migrationFiles(resolve(process.cwd(), config.migrationsDir));
+    return (await migrationFiles(resolve(process.cwd(), config.migrationsDir))).map((file) => ({
+      file,
+      staged: false,
+    }));
   }
   return await selectedCheckMigrationPaths(config, selectionMode);
 }
 
 function writeEmptyCheckSelection(
   config: SupaschemaConfig,
-  migrationPaths: string[],
+  migrationInputs: CheckMigrationInput[],
   selectionMode: CheckSelectionMode | undefined,
   allowEmpty: boolean
 ): boolean {
-  if (migrationPaths.length > 0) {
+  if (migrationInputs.length > 0) {
     return false;
   }
   process.stderr.write(
@@ -468,19 +471,33 @@ function writeEmptyCheckSelection(
 
 async function checkMigrationPaths(
   config: SupaschemaConfig,
-  migrationPaths: string[]
+  migrationInputs: CheckMigrationInput[]
 ): Promise<FileDiagnostics[]> {
   const results: FileDiagnostics[] = [];
-  for (const migrationPath of migrationPaths) {
-    const sql = migrationPath === "-" ? await readStdin() : await readFile(migrationPath, "utf8");
+  for (const input of migrationInputs) {
+    const sql = await readCheckMigrationSql(input);
     const diagnostics = await checkMigrationSql(sql, { config, cwd: process.cwd() });
-    results.push({ diagnostics, file: migrationPath === "-" ? "<stdin>" : migrationPath });
+    results.push({ diagnostics, file: input.file === "-" ? "<stdin>" : input.file });
   }
   return results;
 }
 
+async function readCheckMigrationSql(input: CheckMigrationInput): Promise<string> {
+  if (input.file === "-") {
+    return await readStdin();
+  }
+  if (input.staged) {
+    if (input.gitRoot === undefined) {
+      throw new Error("supaschema check staged selection requires a git worktree");
+    }
+    const gitPath = normalizeGitPath(relative(input.gitRoot, input.file));
+    return await gitOutput(["show", `:${gitPath}`], input.gitRoot);
+  }
+  return await readFile(input.file, "utf8");
+}
+
 function writeCheckResults(
-  migrationPaths: string[],
+  migrationInputs: CheckMigrationInput[],
   results: FileDiagnostics[],
   reporterName: string
 ): void {
@@ -501,9 +518,8 @@ function writeCheckResults(
     return;
   }
   if (reporter === "text") {
-    process.stdout.write(
-      migrationPaths.length > 1 ? `ok (${migrationPaths.length} files)\n` : "ok\n"
-    );
+    const fileCount = migrationInputs.length;
+    process.stdout.write(fileCount > 1 ? `ok (${fileCount} files)\n` : "ok\n");
   }
 }
 
@@ -512,6 +528,12 @@ type CheckSelectionMode =
   | { kind: "changed" }
   | { kind: "since"; ref: string }
   | { kind: "staged" };
+
+interface CheckMigrationInput {
+  file: string;
+  gitRoot?: string;
+  staged: boolean;
+}
 
 function checkSelectionMode(options: CheckOptions): CheckSelectionMode | undefined {
   if (options.changed === true) {
@@ -543,7 +565,7 @@ function hasConflictingCheckSelection(options: CheckOptions): boolean {
 async function selectedCheckMigrationPaths(
   config: SupaschemaConfig,
   mode: CheckSelectionMode
-): Promise<string[]> {
+): Promise<CheckMigrationInput[]> {
   const gitRoot = await gitRootPath();
   const migrationsDir = migrationDirGitPath(gitRoot, config);
   let selected: string[];
@@ -558,7 +580,11 @@ async function selectedCheckMigrationPaths(
     ...new Set(selected.filter((item) => isSelectedMigrationPath(item, migrationsDir))),
   ];
   unique.sort((left, right) => left.localeCompare(right));
-  return unique.map((item) => resolve(gitRoot, item));
+  return unique.map((item) => ({
+    file: resolve(gitRoot, item),
+    gitRoot,
+    staged: mode.kind === "staged",
+  }));
 }
 
 async function gitRootPath(): Promise<string> {
@@ -657,7 +683,7 @@ async function namedGitDiffCheckPaths(
 
 async function changedGitCheckPaths(gitRoot: string, migrationsDir: string): Promise<string[]> {
   const output = await gitOutput(
-    ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", migrationsDir],
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", migrationsDir || "."],
     gitRoot
   );
   return parsePorcelainStatusPaths(output).map(normalizeGitPath);

@@ -170,6 +170,28 @@ CREATE INDEX IF NOT EXISTS accounts_id_idx ON app.accounts (id);`,
     ).toHaveLength(1);
   });
 
+  it("skips every object synthesized from a duplicate CREATE TABLE IF NOT EXISTS", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_if_not_exists_constraints.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer PRIMARY KEY,
+  email text UNIQUE
+);
+CREATE TABLE IF NOT EXISTS app.accounts (
+  id integer PRIMARY KEY,
+  email text UNIQUE,
+  ignored text UNIQUE
+);`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(columnNames(table(model, "table:app.accounts"))).toEqual(["id", "email"]);
+    expect(table(model, "constraint:app.accounts_ignored_key:accounts")).toBeUndefined();
+  });
+
   it("replaces CREATE OR REPLACE objects instead of treating them as duplicate creates", async () => {
     const model = await extractMigrations([
       [
@@ -230,6 +252,20 @@ ALTER TYPE app.status ADD VALUE IF NOT EXISTS 'archived' AFTER 'active';`,
     expect(enumValues(model, "enum:app.status")).toEqual(["draft", "queued", "active", "archived"]);
   });
 
+  it("renames enum values without changing enum ordering", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_enum_rename.sql",
+        `CREATE SCHEMA app;
+CREATE TYPE app.status AS ENUM ('draft', 'queued', 'active');
+ALTER TYPE app.status RENAME VALUE 'queued' TO 'waiting';`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(enumValues(model, "enum:app.status")).toEqual(["draft", "waiting", "active"]);
+  });
+
   it("replays simple DDL embedded in idempotent DO blocks", async () => {
     const model = await extractMigrations([
       [
@@ -255,6 +291,35 @@ ALTER TYPE app.status ADD VALUE IF NOT EXISTS 'queued' BEFORE 'active';`,
 
     expect(errors(model.diagnostics)).toEqual([]);
     expect(enumValues(model, "enum:app.status")).toEqual(["draft", "queued", "active"]);
+  });
+
+  it("preserves one DO-block idempotency guard across multiple guarded DDL statements", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_do_guard.sql",
+        `CREATE SCHEMA app;
+DO $schema_replay$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'status') THEN
+    CREATE TYPE app.status AS ENUM ('draft', 'active');
+    CREATE TYPE app.priority AS ENUM ('low', 'high');
+  END IF;
+END
+$schema_replay$;
+DO $schema_replay$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'status') THEN
+    CREATE TYPE app.status AS ENUM ('draft', 'active');
+    CREATE TYPE app.priority AS ENUM ('low', 'high');
+  END IF;
+END
+$schema_replay$;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(enumValues(model, "enum:app.status")).toEqual(["draft", "active"]);
+    expect(enumValues(model, "enum:app.priority")).toEqual(["low", "high"]);
   });
 
   it("keeps modeled ALTER TABLE subtypes from the same multi-command statement", async () => {
@@ -286,6 +351,21 @@ CREATE TABLE app.accounts (id integer);`,
     );
   });
 
+  it("synthesizes constraints from ADD COLUMN inline constraints", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_add_column_unique.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+ALTER TABLE app.accounts ADD COLUMN email text UNIQUE;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(columnNames(table(model, "table:app.accounts"))).toEqual(["id", "email"]);
+    expect(table(model, "constraint:app.accounts_email_key:accounts")).toBeDefined();
+  });
+
   it("skips duplicate ADD COLUMN IF NOT EXISTS statements", async () => {
     const model = await extractMigrations([
       [
@@ -298,6 +378,54 @@ ALTER TABLE app.accounts ADD COLUMN IF NOT EXISTS id integer;`,
 
     expect(errors(model.diagnostics)).toEqual([]);
     expect(columnNames(table(model, "table:app.accounts"))).toEqual(["id"]);
+  });
+
+  it("removes column-scoped indexes when a column is dropped", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_drop_indexed_column.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, email text);
+CREATE INDEX accounts_email_idx ON app.accounts (email);
+ALTER TABLE app.accounts DROP COLUMN email;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(columnNames(table(model, "table:app.accounts"))).toEqual(["id"]);
+    expect(table(model, "index:app.accounts_email_idx:accounts")).toBeUndefined();
+  });
+
+  it("rebinds constraint SQL when a constrained column is renamed", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_constrained_column.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, email text UNIQUE);
+ALTER TABLE app.accounts RENAME COLUMN email TO contact_email;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const constraint = table(model, "constraint:app.accounts_email_key:accounts");
+    expect(constraint?.metadata.constraintColumns).toEqual(["contact_email"]);
+    expect(constraint?.sql).toContain("contact_email");
+  });
+
+  it("rebinds dependent view SQL when a table is renamed", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_view_source.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids AS SELECT id FROM app.accounts;
+ALTER TABLE app.accounts RENAME TO customers;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(table(model, "table:app.customers")).toBeDefined();
+    expect(table(model, "view:app.account_ids")?.sql).toContain("customers");
   });
 
   it("hard-fails unsupported rename types without returning partial objects", async () => {
@@ -376,6 +504,39 @@ DROP TABLE app.missing;`,
 
     expect(model.objects).toEqual([]);
     expect(errors(model.diagnostics).map((item) => item.code)).toEqual(["SUPA_REPLAY_ORDER_GAP"]);
+  });
+
+  it("drops table-owned sequences with their owning table", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_drop_owned_sequence.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE SEQUENCE app.accounts_id_seq;
+ALTER SEQUENCE app.accounts_id_seq OWNED BY app.accounts.id;
+DROP TABLE app.accounts;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(table(model, "table:app.accounts")).toBeUndefined();
+    expect(table(model, "sequence:app.accounts_id_seq")).toBeUndefined();
+  });
+
+  it("drops dependent views when DROP TABLE uses CASCADE", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_drop_cascade.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids AS SELECT id FROM app.accounts;
+DROP TABLE app.accounts CASCADE;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(table(model, "table:app.accounts")).toBeUndefined();
+    expect(table(model, "view:app.account_ids")).toBeUndefined();
   });
 
   it("replays drop-and-recreate indexes and constraints", async () => {

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { deparseSync } from "pgsql-deparser";
 import type {
   Diagnostic,
   ObjectKind,
@@ -31,6 +32,7 @@ import { shapeHash, stripLocations } from "../sql/object-hash.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { expressionSql, makeObject } from "../sql/statements.js";
 import { ignoredStatementTags, sourceIntentStatementTags } from "../sql/support.js";
+import { columnConstraintSyntheses } from "../sql/table-constraints.js";
 import { canonicalColumnType, canonicalizeRegclassLiterals } from "../sql/table-shape.js";
 import { normalizeSourceObjects } from "./normalize.js";
 
@@ -56,6 +58,8 @@ interface DropTarget {
   display: string;
   refs: ObjectRef[];
 }
+
+type MutableRecord = object;
 
 interface DoBlockDdlFragment {
   idempotentCreate: boolean;
@@ -115,11 +119,15 @@ const normalizedAmendmentKeys = new Set([
 ]);
 
 const supportedColumnConstraintTypes = new Set([
+  "CONSTR_CHECK",
   "CONSTR_DEFAULT",
+  "CONSTR_FOREIGN",
   "CONSTR_GENERATED",
   "CONSTR_IDENTITY",
   "CONSTR_NOTNULL",
   "CONSTR_NULL",
+  "CONSTR_PRIMARY",
+  "CONSTR_UNIQUE",
 ]);
 
 const typegenNeutralStatementTags = new Set([
@@ -267,7 +275,7 @@ async function applyStatement(
     return applyAlterEnum(statement, node, objects, file);
   }
   if (statement.tag === "RenameStmt") {
-    return applyRename(statement, node, objects, file);
+    return await applyRename(statement, node, objects, file);
   }
   if (statement.tag === "DropStmt") {
     return applyDrop(statement, node, objects, file);
@@ -353,6 +361,9 @@ async function applyExtractedStatement(
   }
 
   const nextOrdinal = extracted.nextOrdinal;
+  if (isIdempotentDuplicateCreateStatement(statement, extracted.objects, objects, context)) {
+    return { diagnostics, hardFail: false, nextOrdinal };
+  }
   for (const object of extracted.objects) {
     const result = await applyExtractedObject(statement, object, objects, context, file);
     diagnostics.push(...result.diagnostics);
@@ -361,6 +372,23 @@ async function applyExtractedStatement(
     }
   }
   return { diagnostics, hardFail: false, nextOrdinal };
+}
+
+function isIdempotentDuplicateCreateStatement(
+  statement: AstStatement,
+  extracted: SchemaObject[],
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext
+): boolean {
+  if (!createDuplicateGapTags.has(statement.tag)) {
+    return false;
+  }
+  if (context.idempotentCreate !== true && !isIfNotExistsStatement(statement)) {
+    return false;
+  }
+  return extracted.some(
+    (object) => !isNormalizedAmendmentMarker(object) && objects.has(object.key)
+  );
 }
 
 async function applyExtractedObject(
@@ -476,16 +504,18 @@ async function applyAlterTableCommand(options: {
   }
 
   const subtype = readString(command.subtype);
-  const custom = applyColumnMutation(
+  const custom = await applyColumnMutation(
     options.statement,
     subtype,
     command,
     options.table,
     options.objects,
-    options.file
+    options.context,
+    options.file,
+    options.ordinal
   );
   if (custom !== undefined) {
-    return { ...custom, nextOrdinal: options.ordinal };
+    return custom.nextOrdinal === undefined ? { ...custom, nextOrdinal: options.ordinal } : custom;
   }
 
   const extracted = alterTableObjects(
@@ -553,16 +583,18 @@ function qualifiedDisplayName(name: QualifiedName): string {
   return name.schema === undefined ? name.name : `${name.schema}.${name.name}`;
 }
 
-function applyColumnMutation(
+async function applyColumnMutation(
   statement: AstStatement,
   subtype: string | undefined,
   command: AstNode,
   table: SchemaObject,
   objects: Map<string, SchemaObject>,
-  file: string
-): ReplayResult | undefined {
+  context: ReplayContext,
+  file: string,
+  ordinal: number
+): Promise<ReplayResult | undefined> {
   if (subtype === "AT_AddColumn") {
-    return applyAddColumn(statement, command, table, file);
+    return await applyAddColumn(statement, command, table, objects, context, file, ordinal);
   }
   if (subtype === "AT_DropColumn") {
     return applyDropColumn(statement, command, table, objects, file);
@@ -579,12 +611,15 @@ function applyColumnMutation(
   return;
 }
 
-function applyAddColumn(
+async function applyAddColumn(
   statement: AstStatement,
   command: AstNode,
   table: SchemaObject,
-  file: string
-): ReplayResult {
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext,
+  file: string,
+  ordinal: number
+): Promise<ReplayResult> {
   const columnDef = asRecord(asRecord(command.def)?.ColumnDef);
   const facts = columnFacts(command.def);
   if (!(columnDef && facts)) {
@@ -628,7 +663,41 @@ function applyAddColumn(
     ...tableMetadataColumns(table),
     metadataColumnFromFacts(facts, columnDef),
   ];
-  return emptyResult();
+  const tableName: QualifiedName = {
+    name: table.ref.name,
+    schema: table.ref.schema ?? "public",
+  };
+  const extracted = columnConstraintSyntheses(
+    columnDef,
+    tableName,
+    statement.text,
+    statement.byteStart
+  ).map((synthesized, index) =>
+    makeObject(
+      {
+        kind: "constraint",
+        name: synthesized.name,
+        schema: tableName.schema,
+        table: tableName.name,
+      },
+      synthesized.sql,
+      ordinal + index,
+      file,
+      synthesized.metadata
+    )
+  );
+  if (extracted.length === 0) {
+    return emptyResult();
+  }
+  const diagnostics = await finalizeObjects(extracted, { normalize: context.normalize });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: ordinal };
+  }
+  return applyExtractedObjects(
+    { context, file, objects, ordinal, statement },
+    extracted,
+    diagnostics
+  );
 }
 
 function applyDropColumn(
@@ -798,13 +867,46 @@ function applyAlterEnum(
   const enumObject = objects.get(objectKey({ kind: "enum", ...name }));
   if (!enumObject) {
     return orderGap(
-      `ALTER TYPE ADD VALUE targets absent enum ${qualifiedObjectName(name)}`,
+      `ALTER TYPE targets absent enum ${qualifiedObjectName(name)}`,
       file,
       statement.text,
       { kind: "enum", ...name }
     );
   }
   const values = enumValues(enumObject);
+  const oldValue = stringNode(node.oldVal);
+  if (oldValue !== undefined) {
+    const nextValue = stringNode(node.newVal);
+    if (nextValue === undefined) {
+      return unsupportedStatement(
+        statement,
+        file,
+        "ALTER TYPE RENAME VALUE target could not be resolved"
+      );
+    }
+    const index = values.indexOf(oldValue);
+    if (index === -1) {
+      return orderGap(
+        `ALTER TYPE RENAME VALUE targets absent enum value ${oldValue}`,
+        file,
+        statement.text,
+        enumObject.ref
+      );
+    }
+    if (oldValue !== nextValue && values.includes(nextValue)) {
+      return orderGap(
+        `ALTER TYPE RENAME VALUE would duplicate enum value ${nextValue}`,
+        file,
+        statement.text,
+        enumObject.ref
+      );
+    }
+    values[index] = nextValue;
+    enumObject.metadata = { ...enumObject.metadata, values };
+    enumObject.hash = shapeHash({ values }, enumObject.key, enumObject.ref);
+    enumObject.sql = `${enumObject.sql};\n${statement.text}`;
+    return emptyResult();
+  }
   const value = stringNode(node.newVal);
   if (value === undefined) {
     return unsupportedStatement(
@@ -837,18 +939,18 @@ function applyAlterEnum(
   return emptyResult();
 }
 
-function applyRename(
+async function applyRename(
   statement: AstStatement,
   node: AstNode,
   objects: Map<string, SchemaObject>,
   file: string
-): ReplayResult {
+): Promise<ReplayResult> {
   const renameType = readString(node.renameType);
   if (renameType === "OBJECT_COLUMN") {
-    return applyColumnRename(statement, node, objects, file);
+    return await applyColumnRename(statement, node, objects, file);
   }
   if (renameType === "OBJECT_TABLE" || renameType === "OBJECT_FOREIGN_TABLE") {
-    return applyTableRename(statement, node, objects, renameType, file);
+    return await applyTableRename(statement, node, objects, renameType, file);
   }
   if (renameType === "OBJECT_INDEX") {
     return applyObjectRename(statement, node, objects, "index", file);
@@ -860,12 +962,12 @@ function applyRename(
   );
 }
 
-function applyColumnRename(
+async function applyColumnRename(
   statement: AstStatement,
   node: AstNode,
   objects: Map<string, SchemaObject>,
   file: string
-): ReplayResult {
+): Promise<ReplayResult> {
   const tableName = rangeVarName(node.relation);
   const oldName = stringNode(node.subname);
   const newName = stringNode(node.newname);
@@ -906,16 +1008,23 @@ function applyColumnRename(
     column.name === oldName ? { ...column, name: newName } : column
   );
   updateColumnScopedMetadata(objects, tableName, oldName, newName);
-  return emptyResult();
+  return await rebindTableScopedColumnSql(
+    objects,
+    tableName,
+    oldName,
+    newName,
+    file,
+    statement.text
+  );
 }
 
-function applyTableRename(
+async function applyTableRename(
   statement: AstStatement,
   node: AstNode,
   objects: Map<string, SchemaObject>,
   renameType: string,
   file: string
-): ReplayResult {
+): Promise<ReplayResult> {
   const oldTable = rangeVarName(node.relation);
   const newName = stringNode(node.newname);
   if (!(oldTable && newName)) {
@@ -934,7 +1043,11 @@ function applyTableRename(
   }
   objects.delete(oldKey);
   objects.set(nextKey, renamedObject(target, nextRef, statement.text));
-  return rekeyTableScopedObjects(objects, oldTable, newName, file, statement.text);
+  const rekeyed = rekeyTableScopedObjects(objects, oldTable, newName, file, statement.text);
+  if (rekeyed.hardFail) {
+    return rekeyed;
+  }
+  return await rebindTableReferences(objects, oldTable, newName, file, statement.text);
 }
 
 function applyDrop(
@@ -954,8 +1067,9 @@ function applyDrop(
   }
   const diagnostics: Diagnostic[] = [];
   const missingOk = readBoolean(node.missing_ok) === true;
+  const cascade = readString(node.behavior) === "DROP_CASCADE";
   for (const target of targets) {
-    if (!removeDropTarget(objects, target)) {
+    if (!removeDropTarget(objects, target, cascade)) {
       if (missingOk) {
         continue;
       }
@@ -1197,11 +1311,44 @@ function removeColumnDependents(
     if (object.ref.schema !== table.ref.schema || object.ref.table !== table.ref.name) {
       continue;
     }
-    const columns = object.metadata.constraintColumns;
-    if (Array.isArray(columns) && columns.includes(columnName)) {
+    if (metadataReferencesColumn(object.metadata, table.ref, columnName)) {
       objects.delete(key);
     }
   }
+}
+
+function metadataReferencesColumn(
+  metadata: Record<string, unknown>,
+  table: ObjectRef,
+  columnName: string
+): boolean {
+  for (const key of ["constraintColumns", "columnDependencies", "routineColumnDependencies"]) {
+    const values = metadataStringArray(metadata[key]);
+    if (values.some((value) => columnReferenceMatches(value, table, columnName))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function metadataStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function columnReferenceMatches(value: string, table: ObjectRef, columnName: string): boolean {
+  if (value === columnName) {
+    return true;
+  }
+  const parts = value.split(".");
+  if (parts.at(-1) !== columnName) {
+    return false;
+  }
+  if (parts.length < 3) {
+    return true;
+  }
+  return parts.at(-2) === table.name && parts.at(-3) === (table.schema ?? "public");
 }
 
 function renamedObject(object: SchemaObject, ref: ObjectRef, statement: string): SchemaObject {
@@ -1248,6 +1395,302 @@ function rekeyTableScopedObjects(
     objects.set(nextKey, renamedObject(object, ref, statement));
   }
   return emptyResult();
+}
+
+async function rebindTableScopedColumnSql(
+  objects: Map<string, SchemaObject>,
+  table: QualifiedName,
+  oldName: string,
+  newName: string,
+  file: string,
+  statement: string
+): Promise<ReplayResult> {
+  for (const object of objects.values()) {
+    if (object.ref.schema !== table.schema || object.ref.table !== table.name) {
+      continue;
+    }
+    const rewritten = await rewriteObjectSql(object, file, statement, (ast) =>
+      renameColumnReferencesInTableScopedSql(ast, table, oldName, newName)
+    );
+    if (rewritten.hardFail) {
+      return rewritten;
+    }
+  }
+  return emptyResult();
+}
+
+async function rebindTableReferences(
+  objects: Map<string, SchemaObject>,
+  oldTable: QualifiedName,
+  newName: string,
+  file: string,
+  statement: string
+): Promise<ReplayResult> {
+  const oldIdentity = qualifiedObjectName(oldTable);
+  const nextTable = { ...oldTable, name: newName };
+  const newIdentity = qualifiedObjectName(nextTable);
+  for (const object of objects.values()) {
+    const dependsOnOldTable = object.dependencies.includes(oldIdentity);
+    object.dependencies = object.dependencies.map((dependency) =>
+      dependency === oldIdentity ? newIdentity : dependency
+    );
+    object.metadata = renameTableColumnDependencyMetadata(
+      object.metadata,
+      oldIdentity,
+      newIdentity
+    );
+    if (!shouldRewriteTableReferenceSql(object, newName, dependsOnOldTable)) {
+      continue;
+    }
+    const rewritten = await rewriteObjectSql(object, file, statement, (ast) =>
+      renameRangeVarReferences(ast, oldTable, newName)
+    );
+    if (rewritten.hardFail) {
+      return rewritten;
+    }
+  }
+  return emptyResult();
+}
+
+function renameTableColumnDependencyMetadata(
+  metadata: Record<string, unknown>,
+  oldIdentity: string,
+  newIdentity: string
+): Record<string, unknown> {
+  const next = { ...metadata };
+  for (const key of ["columnDependencies", "routineColumnDependencies"]) {
+    if (Array.isArray(next[key])) {
+      next[key] = next[key].map((value) =>
+        typeof value === "string" && value.startsWith(`${oldIdentity}.`)
+          ? `${newIdentity}.${value.slice(oldIdentity.length + 1)}`
+          : value
+      );
+    }
+  }
+  return next;
+}
+
+function shouldRewriteTableReferenceSql(
+  object: SchemaObject,
+  newTableName: string,
+  dependsOnOldTable: boolean
+): boolean {
+  if (object.ref.kind === "table" || object.ref.kind === "foreign-table") {
+    return false;
+  }
+  if (object.ref.table === newTableName) {
+    return true;
+  }
+  return dependsOnOldTable;
+}
+
+async function rewriteObjectSql(
+  object: SchemaObject,
+  file: string,
+  statement: string,
+  rewrite: (ast: unknown) => boolean
+): Promise<ReplayResult> {
+  const parsed = await parseSqlAst(object.sql, object.file);
+  if (parsed.ast === undefined || hasErrors(parsed.diagnostics)) {
+    return unsupportedStatement(
+      { byteStart: 0, node: {}, tag: "ReplaySqlRewrite", text: statement },
+      file,
+      `could not parse ${object.key} while rebinding migration replay SQL`
+    );
+  }
+  const ast = structuredClone(parsed.ast);
+  if (!rewrite(ast)) {
+    return emptyResult();
+  }
+  try {
+    replaceObjectSql(object, deparseSync(JSON.parse(JSON.stringify(ast))));
+    return emptyResult();
+  } catch {
+    return unsupportedStatement(
+      { byteStart: 0, node: {}, tag: "ReplaySqlRewrite", text: statement },
+      file,
+      `could not deparse ${object.key} while rebinding migration replay SQL`
+    );
+  }
+}
+
+function replaceObjectSql(object: SchemaObject, sql: string): void {
+  const next = makeObject(object.ref, sql, object.ordinal, object.file, object.metadata);
+  object.hash = next.hash;
+  object.normalizedSql = next.normalizedSql;
+  object.sql = next.sql;
+}
+
+function renameColumnReferencesInTableScopedSql(
+  ast: unknown,
+  table: QualifiedName,
+  oldName: string,
+  newName: string
+): boolean {
+  let changed = false;
+  visitMutableAst(ast, (node) => {
+    changed ||= renameAlterTableColumnReferences(node, table, oldName, newName);
+    changed ||= renameIndexColumnReferences(node, table, oldName, newName);
+    changed ||= renamePolicyColumnReferences(node, table, oldName, newName);
+  });
+  return changed;
+}
+
+function renameAlterTableColumnReferences(
+  node: MutableRecord,
+  table: QualifiedName,
+  oldName: string,
+  newName: string
+): boolean {
+  const alter = mutableRecord(mutableGet(node, "AlterTableStmt"));
+  if (!(alter && rangeVarMatches(mutableGet(alter, "relation"), table))) {
+    return false;
+  }
+  let changed = false;
+  for (const rawCommand of readArray(mutableGet(alter, "cmds"))) {
+    const command = mutableRecord(mutableGet(mutableRecord(rawCommand), "AlterTableCmd"));
+    const constraint = mutableRecord(
+      mutableGet(mutableRecord(mutableGet(command, "def")), "Constraint")
+    );
+    if (!constraint) {
+      continue;
+    }
+    changed ||= renameStringList(mutableGet(constraint, "keys"), oldName, newName);
+    changed ||= renameStringList(mutableGet(constraint, "fk_attrs"), oldName, newName);
+    changed ||= renameColumnRefNodes(mutableGet(constraint, "raw_expr"), oldName, newName);
+  }
+  return changed;
+}
+
+function renameIndexColumnReferences(
+  node: MutableRecord,
+  table: QualifiedName,
+  oldName: string,
+  newName: string
+): boolean {
+  const index = mutableRecord(mutableGet(node, "IndexStmt"));
+  if (!(index && rangeVarMatches(mutableGet(index, "relation"), table))) {
+    return false;
+  }
+  let changed = false;
+  for (const item of [
+    ...readArray(mutableGet(index, "indexParams")),
+    ...readArray(mutableGet(index, "indexIncludingParams")),
+  ]) {
+    const element = mutableRecord(mutableGet(mutableRecord(item), "IndexElem"));
+    if (element && mutableGet(element, "name") === oldName) {
+      mutableSet(element, "name", newName);
+      changed = true;
+    }
+    changed ||= renameColumnRefNodes(mutableGet(element, "expr"), oldName, newName);
+  }
+  changed ||= renameColumnRefNodes(mutableGet(index, "whereClause"), oldName, newName);
+  return changed;
+}
+
+function renamePolicyColumnReferences(
+  node: MutableRecord,
+  table: QualifiedName,
+  oldName: string,
+  newName: string
+): boolean {
+  const policy = mutableRecord(mutableGet(node, "CreatePolicyStmt"));
+  if (!(policy && rangeVarMatches(mutableGet(policy, "table"), table))) {
+    return false;
+  }
+  return (
+    renameColumnRefNodes(mutableGet(policy, "qual"), oldName, newName) ||
+    renameColumnRefNodes(mutableGet(policy, "with_check"), oldName, newName)
+  );
+}
+
+function renameRangeVarReferences(ast: unknown, oldTable: QualifiedName, newName: string): boolean {
+  let changed = false;
+  visitMutableAst(ast, (node) => {
+    const rangeVar = mutableRecord(mutableGet(node, "RangeVar"));
+    if (rangeVar && mutableRangeVarMatches(rangeVar, oldTable)) {
+      mutableSet(rangeVar, "relname", newName);
+      changed = true;
+    }
+    if (mutableRangeVarMatches(node, oldTable)) {
+      mutableSet(node, "relname", newName);
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function visitMutableAst(value: unknown, visit: (node: MutableRecord) => void): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      visitMutableAst(item, visit);
+    }
+    return;
+  }
+  const node = mutableRecord(value);
+  if (!node) {
+    return;
+  }
+  visit(node);
+  for (const child of Object.values(node)) {
+    if (child && typeof child === "object") {
+      visitMutableAst(child, visit);
+    }
+  }
+}
+
+function renameColumnRefNodes(value: unknown, oldName: string, newName: string): boolean {
+  let changed = false;
+  visitMutableAst(value, (node) => {
+    const columnRef = mutableRecord(mutableGet(node, "ColumnRef"));
+    const fields = readArray(mutableGet(columnRef, "fields"));
+    const last = mutableRecord(fields.at(-1));
+    const string = mutableRecord(mutableGet(last, "String"));
+    if (string && mutableGet(string, "sval") === oldName) {
+      mutableSet(string, "sval", newName);
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function renameStringList(value: unknown, oldName: string, newName: string): boolean {
+  let changed = false;
+  for (const item of readArray(value)) {
+    const string = mutableRecord(mutableGet(mutableRecord(item), "String"));
+    if (string && mutableGet(string, "sval") === oldName) {
+      mutableSet(string, "sval", newName);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function rangeVarMatches(value: unknown, table: QualifiedName): boolean {
+  const record = mutableRecord(value);
+  const rangeVar = mutableRecord(mutableGet(record, "RangeVar")) ?? record;
+  return rangeVar ? mutableRangeVarMatches(rangeVar, table) : false;
+}
+
+function mutableRangeVarMatches(value: MutableRecord, table: QualifiedName): boolean {
+  return (
+    mutableGet(value, "relname") === table.name &&
+    (typeof mutableGet(value, "schemaname") === "string"
+      ? mutableGet(value, "schemaname")
+      : "public") === table.schema
+  );
+}
+
+function mutableRecord(value: unknown): MutableRecord | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+}
+
+function mutableGet(value: MutableRecord | undefined, key: string): unknown {
+  return value === undefined ? undefined : Reflect.get(value, key);
+}
+
+function mutableSet(value: MutableRecord, key: string, next: unknown): void {
+  Reflect.set(value, key, next);
 }
 
 function applyObjectRename(
@@ -1395,34 +1838,53 @@ function tableScopedDropTargets(node: AstNode, kind: "policy" | "trigger"): Drop
   });
 }
 
-function removeDropTarget(objects: Map<string, SchemaObject>, target: DropTarget): boolean {
+function removeDropTarget(
+  objects: Map<string, SchemaObject>,
+  target: DropTarget,
+  cascade: boolean
+): boolean {
   for (const ref of target.refs) {
-    const key = objectKey(ref);
-    if (!objects.has(key)) {
+    const removed = removeObjectsForDropRef(objects, ref);
+    if (removed.length === 0) {
       continue;
     }
-    objects.delete(key);
-    if (ref.kind === "table" || ref.kind === "foreign-table") {
-      removeTableOwnedObjects(objects, ref);
-    }
-    if (ref.kind === "schema") {
-      removeSchemaObjects(objects, ref.name);
-    }
+    const owned = removeOwnedObjectsAfterDrop(objects, removed);
+    removeCascadeDependents(objects, [...removed, ...owned], cascade);
     return true;
   }
   for (const ref of target.refs) {
-    let removed = false;
-    for (const [key, object] of objects) {
-      if (matchesDropRef(object.ref, ref)) {
-        objects.delete(key);
-        removed = true;
-      }
-    }
-    if (removed) {
+    const removed = removeObjectsMatchingDropRef(objects, ref);
+    if (removed.length > 0) {
+      const owned = removeOwnedObjectsAfterDrop(objects, removed);
+      removeCascadeDependents(objects, [...removed, ...owned], cascade);
       return true;
     }
   }
   return false;
+}
+
+function removeObjectsForDropRef(objects: Map<string, SchemaObject>, ref: ObjectRef): ObjectRef[] {
+  const key = objectKey(ref);
+  const object = objects.get(key);
+  if (!object) {
+    return [];
+  }
+  objects.delete(key);
+  return [object.ref];
+}
+
+function removeObjectsMatchingDropRef(
+  objects: Map<string, SchemaObject>,
+  ref: ObjectRef
+): ObjectRef[] {
+  const removed: ObjectRef[] = [];
+  for (const [key, object] of [...objects]) {
+    if (matchesDropRef(object.ref, ref)) {
+      objects.delete(key);
+      removed.push(object.ref);
+    }
+  }
+  return removed;
 }
 
 function matchesDropRef(candidate: ObjectRef, ref: ObjectRef): boolean {
@@ -1435,20 +1897,92 @@ function matchesDropRef(candidate: ObjectRef, ref: ObjectRef): boolean {
   );
 }
 
-function removeTableOwnedObjects(objects: Map<string, SchemaObject>, ref: ObjectRef): void {
-  for (const [key, object] of objects) {
-    if (object.ref.schema === ref.schema && object.ref.table === ref.name) {
+function removeOwnedObjectsAfterDrop(
+  objects: Map<string, SchemaObject>,
+  refs: ObjectRef[]
+): ObjectRef[] {
+  const removed: ObjectRef[] = [];
+  for (const ref of refs) {
+    if (ref.kind === "table" || ref.kind === "foreign-table") {
+      removed.push(...removeTableOwnedObjects(objects, ref));
+    }
+    if (ref.kind === "schema") {
+      removed.push(...removeSchemaObjects(objects, ref.name));
+    }
+  }
+  return removed;
+}
+
+function removeTableOwnedObjects(objects: Map<string, SchemaObject>, ref: ObjectRef): ObjectRef[] {
+  const removed: ObjectRef[] = [];
+  for (const [key, object] of [...objects]) {
+    if (
+      (object.ref.schema === ref.schema && object.ref.table === ref.name) ||
+      sequenceOwnedByTable(object, ref)
+    ) {
       objects.delete(key);
+      removed.push(object.ref);
+    }
+  }
+  return removed;
+}
+
+function removeSchemaObjects(objects: Map<string, SchemaObject>, schema: string): ObjectRef[] {
+  const removed: ObjectRef[] = [];
+  for (const [key, object] of [...objects]) {
+    if (object.ref.schema === schema) {
+      objects.delete(key);
+      removed.push(object.ref);
+    }
+  }
+  return removed;
+}
+
+function removeCascadeDependents(
+  objects: Map<string, SchemaObject>,
+  initialRefs: ObjectRef[],
+  cascade: boolean
+): void {
+  if (!cascade || initialRefs.length === 0) {
+    return;
+  }
+  const removedIdentities = new Set(initialRefs.map(objectIdentity));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const removed: ObjectRef[] = [];
+    for (const [key, object] of [...objects]) {
+      if (object.dependencies.some((dependency) => removedIdentities.has(dependency))) {
+        objects.delete(key);
+        removed.push(object.ref);
+        changed = true;
+      }
+    }
+    if (removed.length === 0) {
+      continue;
+    }
+    for (const ref of [...removed, ...removeOwnedObjectsAfterDrop(objects, removed)]) {
+      removedIdentities.add(objectIdentity(ref));
     }
   }
 }
 
-function removeSchemaObjects(objects: Map<string, SchemaObject>, schema: string): void {
-  for (const [key, object] of objects) {
-    if (object.ref.schema === schema) {
-      objects.delete(key);
-    }
+function sequenceOwnedByTable(object: SchemaObject, table: ObjectRef): boolean {
+  if (object.ref.kind !== "sequence") {
+    return false;
   }
+  const shape = asRecord(object.metadata.canonicalShape);
+  const ownedBy = readString(shape?.ownedBy);
+  if (ownedBy === undefined) {
+    return false;
+  }
+  const parts = ownedBy.split(".");
+  if (parts.length < 2) {
+    return false;
+  }
+  const tableName = parts.at(-2);
+  const schemaName = parts.length >= 3 ? parts.at(-3) : "public";
+  return tableName === table.name && schemaName === (table.schema ?? "public");
 }
 
 function enumValues(object: SchemaObject): string[] {
@@ -1481,20 +2015,43 @@ function doBlockBody(node: AstNode): string | undefined {
 }
 
 function doBlockDdlFragments(body: string): DoBlockDdlFragment[] {
-  return splitDoBlockStatements(body).flatMap((statement) => {
-    const fragment = doBlockDdlFragment(statement);
+  const fragments: DoBlockDdlFragment[] = [];
+  let idempotentGuardDepth = 0;
+  for (const statement of splitDoBlockStatements(body)) {
+    const tokens = tokenSpans(statement);
+    const startTokenIndex = tokens.findIndex((token) => doBlockDdlStartTokens.has(token.text));
+    const localGuard = isIdempotentGuard(tokens, startTokenIndex);
+    const fragment = doBlockDdlFragment(
+      statement,
+      tokens,
+      startTokenIndex,
+      localGuard || idempotentGuardDepth > 0
+    );
     if (fragment === undefined) {
-      return [];
+      if (isEndIfStatement(tokens)) {
+        idempotentGuardDepth = Math.max(0, idempotentGuardDepth - 1);
+      }
+      continue;
     }
-    return [fragment];
-  });
+    fragments.push(fragment);
+    if (localGuard) {
+      idempotentGuardDepth += 1;
+    }
+    if (isEndIfStatement(tokens)) {
+      idempotentGuardDepth = Math.max(0, idempotentGuardDepth - 1);
+    }
+  }
+  return fragments;
 }
 
 const doBlockDdlStartTokens = new Set(["alter", "comment", "create", "drop", "grant", "revoke"]);
 
-function doBlockDdlFragment(statement: string): DoBlockDdlFragment | undefined {
-  const tokens = tokenSpans(statement);
-  const startTokenIndex = tokens.findIndex((token) => doBlockDdlStartTokens.has(token.text));
+function doBlockDdlFragment(
+  statement: string,
+  tokens: { end: number; start: number; text: string }[],
+  startTokenIndex: number,
+  idempotentCreate: boolean
+): DoBlockDdlFragment | undefined {
   const start = tokens[startTokenIndex]?.start;
   if (start === undefined) {
     return;
@@ -1503,12 +2060,24 @@ function doBlockDdlFragment(statement: string): DoBlockDdlFragment | undefined {
   if (sql.length === 0) {
     return;
   }
-  const guardTokens = tokens.slice(0, startTokenIndex).map((token) => token.text);
   return {
-    idempotentCreate:
-      guardTokens.includes("if") && guardTokens.includes("not") && guardTokens.includes("exists"),
+    idempotentCreate,
     sql,
   };
+}
+
+function isIdempotentGuard(tokens: { text: string }[], startTokenIndex: number): boolean {
+  if (startTokenIndex <= 0) {
+    return false;
+  }
+  const guardTokens = tokens.slice(0, startTokenIndex).map((token) => token.text);
+  return (
+    guardTokens.includes("if") && guardTokens.includes("not") && guardTokens.includes("exists")
+  );
+}
+
+function isEndIfStatement(tokens: { text: string }[]): boolean {
+  return tokens[0]?.text === "end" && tokens[1]?.text === "if";
 }
 
 function splitDoBlockStatements(body: string): string[] {
@@ -1701,6 +2270,13 @@ function orderGap(
 
 function qualifiedObjectName(name: QualifiedName): string {
   return `${name.schema}.${name.name}`;
+}
+
+function objectIdentity(ref: ObjectRef): string {
+  if (ref.kind === "schema") {
+    return ref.name;
+  }
+  return `${ref.schema ?? "public"}.${ref.name}`;
 }
 
 function emptyResult(): ReplayResult {

@@ -1,4 +1,4 @@
-import type { AstNode } from "./ast.js";
+import type { AstNode, QualifiedName } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readNumber, readString, stringList } from "./ast.js";
 import { formatQualifiedName, quoteIdent } from "./identifiers.js";
 import { findSqlParenRange } from "./split.js";
@@ -45,6 +45,31 @@ export function tableConstraintSyntheses(
     });
   }
   return syntheses;
+}
+
+export function columnConstraintSyntheses(
+  columnDef: AstNode,
+  table: QualifiedName,
+  sql: string,
+  byteOffset = 0
+): SynthesizedConstraint[] {
+  const location = readNumber(columnDef.location);
+  if (location === undefined) {
+    return [];
+  }
+  const bytes = toByteString(sql);
+  return inlineConstraintSyntheses(
+    {
+      end: bytes.length,
+      isColumn: true,
+      node: columnDef,
+      start: location - byteOffset,
+    },
+    bytes,
+    byteOffset,
+    table.name,
+    formatQualifiedName(table.schema, table.name)
+  );
 }
 
 export function stripDeclaredConstraints(
