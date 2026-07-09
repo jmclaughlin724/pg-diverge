@@ -1,6 +1,6 @@
 ---
 name: supaschema
-description: Generate, check, and verify replay-safe PostgreSQL/Supabase migrations from declarative SQL tree diffs with supaschema. Use when schema changes are requested, migrations must be created or validated, schema drift needs detection, or a supaschema diagnostic (SUPA_*) blocks a plan.
+description: Supaschema CLI reference for declarative SQL diffs, generated migrations, replay checks, generated contracts, and SUPA_* diagnostics. Use this skill for tool semantics; migration workflow policy lives in the bundled supaschema rule.
 metadata:
   keywords:
     - supaschema
@@ -11,15 +11,15 @@ metadata:
     - SUPA diagnostic
 ---
 
-# supaschema Migration Workflow
+# supaschema CLI Reference
 
 ## Contract
 
-This skill is a direct execution contract for producing schema migrations with supaschema. Follow the workflow in order; do not hand-author migration SQL for changes the declarative tree plus migration-derived source-intent lane can express, and never edit a generated migration (the `-- supaschema: lineage` marker) by hand. Use `supaschema diff --replace <migration.sql>` only for an unapplied generated migration that must be regenerated from its original lineage baseline.
+This skill explains supaschema behavior. Use it to decode CLI commands and diagnostics, not as workflow authority. Migration policy, ordering, ownership, and stop conditions live in the bundled supaschema rule.
 
 For source-kind and introspection boundaries, read `docs/concepts/sources.mdx` first, then the owner briefs in `src/AGENTS.md`, `src/source/AGENTS.md`, and `src/typegen/AGENTS.md`.
 
-When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`) and `workflow.schema_diff` / `workflow.migration_check` keep their defaults, a write to a schema-tree `.sql` file auto-runs `diff` then `check <generated migration path...>` and returns the generated migration name or blocking `SUPA_*` diagnostic. If `workflow.migration_sync` allows automatic sync, the hook first confirms exactly one `sync.targets` entry is selected with `mode: "auto"`, its database URL reference resolves when its runner needs one, and any remote target has its configured approval variable set; only then does it delegate to `supaschema sync` for the full source, diff, target-selection, history, check, generated-contract, stage, source safety, runner, and reconciliation workflow. If `check` or `sync` fails, inspect the diagnostic, fix the canonical source, and rerun the failing command.
+When the bundled PostToolUse hook is wired (`.claude/settings.json` / `.codex/hooks.json`) and `workflow.schema_diff` / `workflow.migration_check` keep their defaults, a write to a schema-tree `.sql` file auto-runs `diff` then `check <generated migration path...>` and returns the generated migration name or blocking `SUPA_*` diagnostic. If `workflow.migration_sync` allows automatic sync, the hook first confirms exactly one `sync.targets` entry is selected with `mode: "auto"`, its database URL reference resolves when its runner needs one, and any remote target has its configured approval variable set; only then does it delegate to `supaschema sync` for the full source, diff, target-selection, history, check, generated-contract, schema-closure staging, source safety, runner, and reconciliation workflow. If `check` or `sync` fails, inspect the diagnostic, fix the canonical source, and rerun the failing command.
 
 ## Installed Setup
 
@@ -52,6 +52,8 @@ Other config fields refine those decisions: `managedSchemas` blocks externally o
 
 ## Workflow
 
+This sequence documents CLI shape only. Follow the bundled supaschema rule for workflow policy.
+
 1. **Edit the declarative tree** (`config.schemaPaths`) to express the desired end state. Typical roots are `database/schemas/**` for neutral PostgreSQL, `supabase/schemas/**` for Supabase, `neon/schemas/**`, `aws-postgresql/schemas/**`, `cloud-sql/schemas/**`, `alloydb/schemas/**`, or `azure-postgresql/schemas/**` for detected managed PostgreSQL providers. Use schema-qualified object names. When a change depends on data movement, secret placeholders, or workload-derived indexes, confirm the intent already exists in the configured migration corpus, config, hint, or workload artifact before generating.
 2. **Generate the migration:**
 
@@ -74,7 +76,7 @@ Other config fields refine those decisions: `managedSchemas` blocks externally o
 
 3. **Check replay safety:** `supaschema check` gates every `.sql` in the migrations directory (or name specific files) — must exit 0 for generated and hand-authored migrations alike. Use `--changed`, `--staged`, `--base <ref>`, or `--since <ref>` only when a workflow intentionally wants a git-selected subset under `config.migrationsDir`; scaffolded `supaschema:check` remains the full-directory lane. It checks statement replay safety plus same-file forward references, `SECURITY DEFINER` search paths, and public-schema function `EXECUTE` exposure.
 4. **Regenerate contracts:** `supaschema types` refreshes TypeScript and Zod outputs from the configured schema source, including views and materialized views declared in that source. Investigate any schema-backed `unknown` field as a missing source/model or diagnostic gap before updating consumers. Use generated Zod validators at runtime boundaries when `workflow.type_usage` is `zod_validated`.
-5. **Stage generated migrations:** `supaschema stage` git-stages changed migration files containing the `-- supaschema: lineage` marker and leaves hand-authored SQL untouched.
+5. **Stage generated migrations:** `supaschema stage` git-stages changed migration files containing the `-- supaschema: lineage` marker and leaves other files untouched.
 6. **Apply pending migrations:** `supaschema apply` applies already-generated pending migrations through the configured runner without generating a new diff. When a selected Supabase CLI target has no resolved database URL, the CLI owns historical pending selection; supaschema replay-checks generated lineage files only instead of treating every disk migration as pending. Do not mutate a database unless config, target resolution, safety gates, and required runtime approval allow that target.
 7. **Verify execution** (when any database is resolvable — URL precedence is `--database-url` (`$ENV` supported), named `config.environments` via global `--env`, `SUPASCHEMA_DATABASE_URL`, then the nearest `supabase/config.toml`):
 
@@ -90,7 +92,7 @@ Other config fields refine those decisions: `managedSchemas` blocks externally o
 
 ## Operational Sync
 
-`supaschema sync` is the canonical one-command workflow. It composes apply policy, source resolution, diff generation, target selection, migration-history reconciliation, replay-safety check, generated TypeScript/Zod refresh according to workflow policy, generated-migration staging when Git is available, source-model deploy safety gates, selected runner apply, and final reconciliation or dry-run reporting. It refreshes generated contracts and runs the local stage lane even when no migration is pending. Target-history pending files are checked before runner handoff when a database URL is resolved. When a selected Supabase CLI target has no resolved database URL, the CLI owns historical pending selection; supaschema replay-checks generated lineage files only and must not treat every disk migration as pending. Use the explicit command lanes (`diff`, `check`, `types`, `stage`, `apply`) only when the user asks for a focused step. Bare `sync` may select one configured `sync.targets.<name>` entry with `mode: "auto"` when `workflow.migration_sync` is `"auto"`; multiple automatic targets are refused because cross-target apply is not atomic. `workflow.migration_sync: "manual"` leaves bare `sync` on the dry-run gate and allows explicit `--target <name>` overrides. `workflow.migration_sync: "disabled"` refuses apply while allowing non-mutating sync lanes. Remote automatic targets must require a runtime approval variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1`.
+`supaschema sync` is the canonical one-command workflow. It composes apply policy, source resolution, diff generation, target selection, migration-history reconciliation, replay-safety check, generated TypeScript/Zod refresh according to workflow policy, schema closure staging when Git is available, source-model deploy safety gates, selected runner apply, and final reconciliation or dry-run reporting. It refreshes generated contracts and runs the schema-closure staging lane even when no migration is pending. Target-history pending files are checked before runner handoff when a database URL is resolved. When a selected Supabase CLI target has no resolved database URL, the CLI owns historical pending selection; supaschema replay-checks generated lineage files only and must not treat every disk migration as pending. Use the explicit command lanes (`diff`, `check`, `types`, `stage`, `apply`) only when the user asks for a focused step. Bare `sync` may select one configured `sync.targets.<name>` entry with `mode: "auto"` when `workflow.migration_sync` is `"auto"`; multiple automatic targets are refused because cross-target apply is not atomic. `workflow.migration_sync: "manual"` leaves bare `sync` on the dry-run gate and allows explicit `--target <name>` overrides. `workflow.migration_sync: "disabled"` refuses apply while allowing non-mutating sync lanes. Remote automatic targets must require a runtime approval variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1`.
 
 ## Drift Detection
 

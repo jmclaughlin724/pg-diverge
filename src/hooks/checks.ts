@@ -82,5 +82,5 @@ export function syncFailureLoopReason(
     typeof diagnostics === "string" && diagnostics.length > 0
       ? `\n\nDiagnostics:\n${diagnostics}`
       : "";
-  return `supaschema sync failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, fix the canonical schema/config/migration source, rerun \`supaschema sync\`, and keep iterating until the ordered source, diff, target-selection, history, check, generated-contract, stage, safety, verify, runner, and reconciliation lanes pass or report the exact blocker.${diagnosticText}`;
+  return `supaschema sync failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, fix the canonical schema/config/migration source, rerun \`supaschema sync\`, and keep iterating until the ordered source, diff, target-selection, history, check, generated-contract, schema-closure staging, safety, verify, runner, and reconciliation lanes pass or report the exact blocker.${diagnosticText}`;
 }

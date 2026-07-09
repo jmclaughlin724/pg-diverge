@@ -14,7 +14,7 @@ The day-to-day migration workflow uses one command:
 npx supaschema sync
 ```
 
-`sync` reads the configured source, reads the target declarative SQL tree, reads the configured migration context for source intent and generated-lineage baseline proof, plans the change, renders the migration, writes it to the configured migration directory, selects at most one target, reconciles history, gates replay safety, refreshes TypeScript and Zod outputs, stages changed generated migrations when Git is available, runs source-model deploy safety gates, and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
+`sync` reads the configured source, reads the target declarative SQL tree, reads the configured migration context for source intent and generated-lineage baseline proof, plans the change, renders the migration, writes it to the configured migration directory, selects at most one target, reconciles history, gates replay safety, refreshes TypeScript and Zod outputs, stages the schema closure when Git is available, runs source-model deploy safety gates, and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
 
 ```text
 before-state source + declarative SQL tree + migration context

@@ -8,7 +8,7 @@ This FAQ gives short, citation-friendly answers about `supaschema`: what it is, 
 
 ## What is supaschema?
 
-`supaschema` is a CLI and Node.js library that generates deterministic PostgreSQL migrations from declarative SQL schema files. You edit the desired schema tree and run `supaschema sync` to generate the migration, check it, refresh TypeScript/Zod output, stage generated migrations, verify the pending migration set, and apply or dry-run through one configured target.
+`supaschema` is a CLI and Node.js library that generates deterministic PostgreSQL migrations from declarative SQL schema files. You edit the desired schema tree and run `supaschema sync` to generate the migration, check it, refresh TypeScript/Zod output, stage the schema closure, verify the pending migration set, and apply or dry-run through one configured target.
 
 ## Does supaschema work outside Supabase?
 
@@ -20,7 +20,7 @@ No. `supaschema` is an independent open-source project for PostgreSQL projects o
 
 ## Does supaschema apply migrations to my database?
 
-Yes, through `supaschema sync` when you select an apply target explicitly or configure one approved automatic target. `sync` runs history reconciliation, replay-safety, generated-contract refresh, generated-migration staging, source-model type-safety, source-model RLS-safety, target runner, and final-reconciliation lanes before it mutates a database. Remote automatic targets require an approval environment variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1`.
+Yes, through `supaschema sync` when you select an apply target explicitly or configure one approved automatic target. `sync` runs history reconciliation, replay-safety, generated-contract refresh, schema closure staging, source-model type-safety, source-model RLS-safety, target runner, and final-reconciliation lanes before it mutates a database. Remote automatic targets require an approval environment variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1`.
 
 ## Does supaschema need Docker or a shadow database?
 

@@ -36,7 +36,7 @@ Then apply through the configured sync workflow:
 npx supaschema sync
 ```
 
-`sync` checks pending migrations, refreshes generated contracts, stages generated migrations, runs safety gates, verifies the pending migration set, and then invokes the selected direct PostgreSQL or Supabase CLI runner. Target config may select one `sync.targets.<name>` entry with `mode: "auto"` for bare `sync`; multiple automatic targets are refused before any runner can mutate a database. Remote targets also require their approval variable before deploy. Use `supabase db push` directly only when your deployment process intentionally keeps the Supabase CLI as a separate operational step.
+`sync` checks pending migrations, refreshes generated contracts, stages the schema closure, runs safety gates, verifies the pending migration set, and then invokes the selected direct PostgreSQL or Supabase CLI runner. Target config may select one `sync.targets.<name>` entry with `mode: "auto"` for bare `sync`; multiple automatic targets are refused before any runner can mutate a database. Remote targets also require their approval variable before deploy. Use `supabase db push` directly only when your deployment process intentionally keeps the Supabase CLI as a separate operational step.
 
 ## Verify
 

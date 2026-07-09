@@ -799,19 +799,31 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     expect(result.pending.some((file) => file.endsWith(".sql"))).toBe(true);
   });
 
-  it("stages generated migrations during sync in a git worktree", async () => {
-    const source = await sqlSource("CREATE TABLE public.sync_stage (id bigint PRIMARY KEY);\n");
+  it("stages the sync closure in a git worktree", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-stage-"));
+    const schemaDir = join(root, "database", "schemas");
     const migrationsDir = join(root, "database", "migrations");
     const typesFile = join(root, "database.types.ts");
     const zodFile = join(root, "database.zod.ts");
+    await mkdir(schemaDir, { recursive: true });
+    await mkdir(migrationsDir, { recursive: true });
+    await writeFile(
+      join(schemaDir, "app.sql"),
+      "CREATE TABLE public.sync_stage (id bigint PRIMARY KEY);\n"
+    );
+    await writeFile(
+      join(migrationsDir, "20260101000000_manual.sql"),
+      "CREATE TABLE IF NOT EXISTS public.manual_stage (id bigint PRIMARY KEY);\n"
+    );
+    await writeFile(join(root, "README.md"), "unrelated\n");
     execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
     const previousCwd = process.cwd();
     process.chdir(root);
     try {
       const result = await syncMigrations({
         config: {
-          sources: { from: "empty:", to: source },
+          schemaPaths: ["database/schemas"],
+          sources: { from: "empty:", to: "dir:database/schemas" },
           typesFile,
           workflow: {
             migration_sync: "manual",
@@ -835,8 +847,13 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       expect(result.report).toContain("stage: staged");
       expect(result.report).toContain("dry run: no sync target was selected by config");
       expect(result.report).not.toContain("verify:");
-      expect(staged.some((file) => file.startsWith("database/migrations/"))).toBe(true);
+      expect(staged).toContain("database/schemas/app.sql");
+      expect(staged).toContain("database.types.ts");
+      expect(staged).toContain("database.zod.ts");
+      expect(staged.filter((file) => file.startsWith("database/migrations/"))).toHaveLength(1);
       expect(staged.some((file) => file.endsWith(".sql"))).toBe(true);
+      expect(staged).not.toContain("database/migrations/20260101000000_manual.sql");
+      expect(staged).not.toContain("README.md");
     } finally {
       process.chdir(previousCwd);
     }
@@ -1005,32 +1022,48 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
   it("refreshes generated contracts even when no migration is pending", async () => {
     const source = await sqlSource("CREATE TABLE public.noop_contracts (id bigint PRIMARY KEY);\n");
     const root = await mkdtemp(join(tmpdir(), "supa-sync-noop-contracts-"));
-    const migrationsDir = join(root, "migrations");
-    const typesFile = join(root, "database.types.ts");
-    const zodFile = join(root, "database.zod.ts");
-    await mkdir(migrationsDir);
-
-    const result = await syncMigrations({
-      config: {
-        sources: { from: "empty:", to: source },
-        typesFile,
-        workflow: {
-          migration_sync: "manual",
-          rls_safety: "disabled",
-          type_safety: "disabled",
+    const migrationsDir = "migrations";
+    const typesFile = "database.types.ts";
+    const zodFile = "database.zod.ts";
+    await mkdir(join(root, migrationsDir));
+    execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
+    const previousCwd = process.cwd();
+    process.chdir(root);
+    try {
+      const result = await syncMigrations({
+        config: {
+          sources: { from: "empty:", to: source },
+          typesFile,
+          workflow: {
+            migration_sync: "manual",
+            rls_safety: "disabled",
+            type_safety: "disabled",
+          },
+          zodFile,
         },
-        zodFile,
-      },
-      directory: migrationsDir,
-      pipeline: true,
-      skipDiff: true,
-    });
+        directory: migrationsDir,
+        pipeline: true,
+        skipDiff: true,
+      });
+      const staged = execFileSync("git", ["diff", "--cached", "--name-only"], {
+        cwd: root,
+        encoding: "utf8",
+      })
+        .trim()
+        .split("\n")
+        .filter(Boolean);
 
-    expect(result.applied).toBe(false);
-    expect(result.report).toContain("types: wrote");
-    expect(result.report).toContain("nothing to sync");
-    expect(await pathExists(typesFile)).toBe(true);
-    expect(await pathExists(zodFile)).toBe(true);
+      expect(result.applied).toBe(false);
+      expect(result.report).toContain("types: wrote");
+      expect(result.report).toContain("stage: staged database.types.ts");
+      expect(result.report).toContain("stage: staged database.zod.ts");
+      expect(result.report).toContain("nothing to sync");
+      expect(staged).toEqual(["database.types.ts", "database.zod.ts"]);
+      expect(await pathExists(join(root, typesFile))).toBe(true);
+      expect(await pathExists(join(root, zodFile))).toBe(true);
+    } finally {
+      process.chdir(previousCwd);
+    }
   });
 
   it("does not pass an ambient database URL override to bare configured-target sync", async () => {
@@ -1160,7 +1193,9 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       const dryRunOutput = await captureStdout(async () => {
         await dryRunProgram.parseAsync(["node", "supaschema", "stage", "--dry-run"]);
       });
-      expect(dryRunOutput).toContain("database/migrations/20260101000000_generated.sql");
+      expect(dryRunOutput).toContain(
+        "would ensure staged: database/migrations/20260101000000_generated.sql"
+      );
       expect(dryRunOutput).not.toContain("20260101000001_manual.sql");
 
       const stageProgram = reportProgram({

@@ -83,7 +83,7 @@ export function schemaWriteHookOutput(payload: unknown): AgentHookOutput | undef
             .map((path) => rel(projectDir, path))
             .join(
               ", "
-            )} through \`supaschema sync\`. ${autoSync.line}. The sync pipeline generated the schema diff, selected one target, reconciled migration history, checked pending migrations, refreshed generated contracts, staged generated migrations when Git was available, ran type/RLS safety gates, verified pending migrations, applied the selected target, and reconciled final history.`
+            )} through \`supaschema sync\`. ${autoSync.line}. The sync pipeline generated the schema diff, selected one target, reconciled migration history, checked pending migrations, refreshed generated contracts, staged the schema closure when Git was available, ran type/RLS safety gates, verified pending migrations, applied the selected target, and reconciled final history.`
         : `supaschema auto-sync for ${changed
             .map((path) => rel(projectDir, path))
             .join(", ")} did not complete (exit ${sync.code}):\n${diagnostics}`;

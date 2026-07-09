@@ -293,7 +293,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
   program
     .command("stage")
     .option("--migrations-dir <dir>", "migration files directory")
-    .option("--dry-run", "print generated migration files that would be staged")
+    .option("--dry-run", "print generated migration files that would be ensured staged")
     .description("Git-stage changed supaschema-generated migration SQL files.")
     .action((options: StageCommandOptions) => runStageCommand(options, context));
 
@@ -316,7 +316,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--runner <runner>", "operator override: direct | supabase-cli")
     .option("--no-diff", "skip schema diff generation")
     .description(
-      "Run the full sync pipeline: schema diff, replay-safety check, generated contracts, generated migration staging, source safety gates, selected runner apply/deploy, and final reconciliation."
+      "Run the full sync pipeline: schema diff, replay-safety check, generated contracts, schema closure staging, source safety gates, selected runner apply/deploy, and final reconciliation."
     )
     .action((options: SyncCommandOptions) => runSyncCommand(options, context));
 }
@@ -491,7 +491,7 @@ async function runStageCommand(
   }
   if (options.dryRun === true) {
     for (const file of result.wouldStage) {
-      process.stdout.write(`would stage: ${file}\n`);
+      process.stdout.write(`would ensure staged: ${file}\n`);
     }
     return;
   }

@@ -1,5 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import { resolveConfig } from "../config/schema.js";
 import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../core.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
@@ -11,7 +13,6 @@ import {
   runDirectMigrationRunner,
   runSupabaseCliMigrationRunner,
 } from "../migrations/runners.js";
-import { stageGeneratedMigrations } from "../migrations/stage.js";
 import {
   type MigrationsStatusReport,
   migrationsStatus,
@@ -35,6 +36,8 @@ import {
   resolveSyncTargets,
 } from "./targets.js";
 import { checkSyncLineageChain, verifyPendingMigrationsForSync } from "./verify.js";
+
+const execFileAsync = promisify(execFile);
 
 export interface SyncOptions {
   cliVersion?: string;
@@ -61,7 +64,12 @@ export interface SyncResult {
 
 export async function syncMigrations(options: SyncOptions): Promise<SyncResult> {
   const state: SyncPipelineState = {
-    artifacts: { contractsRefreshed: false, migrationsStaged: false },
+    artifacts: {
+      closureStaged: false,
+      contractsRefreshed: false,
+      generatedMigrationPaths: [],
+      writtenContractPaths: [],
+    },
     config: resolveConfig(options.config),
     diagnostics: [],
     lines: [],
@@ -92,8 +100,10 @@ interface SyncPipelineState {
 }
 
 interface SyncArtifactState {
+  closureStaged: boolean;
   contractsRefreshed: boolean;
-  migrationsStaged: boolean;
+  generatedMigrationPaths: string[];
+  writtenContractPaths: string[];
 }
 
 type SyncPipelineLane = (
@@ -109,7 +119,7 @@ const syncPipelineLanes: SyncPipelineLane[] = [
   guardFallbackHistoryLane,
   checkFallbackPendingMigrationsLane,
   refreshFallbackGeneratedContractsLane,
-  stageFallbackGeneratedMigrationsLane,
+  stageFallbackSyncClosureLane,
   runFallbackSafetyGatesLane,
   stopFallbackWhenNothingPendingLane,
   reportFallbackDryRunOrUnknownTargetLane,
@@ -149,7 +159,8 @@ function runSyncDiffLane(state: SyncPipelineState): Promise<SyncResult | undefin
     state.config,
     requiredSyncSources(state),
     state.diagnostics,
-    state.lines
+    state.lines,
+    state.artifacts
   );
 }
 
@@ -222,10 +233,8 @@ function refreshFallbackGeneratedContractsLane(
   return refreshGeneratedContractsForSync(state);
 }
 
-function stageFallbackGeneratedMigrationsLane(
-  state: SyncPipelineState
-): Promise<SyncResult | undefined> {
-  return stageGeneratedMigrationsForSync(state);
+function stageFallbackSyncClosureLane(state: SyncPipelineState): Promise<SyncResult | undefined> {
+  return stageSyncClosureForSync(state);
 }
 
 function runFallbackSafetyGatesLane(
@@ -337,7 +346,8 @@ async function runSyncDiffStage(
   config: SupaschemaConfig,
   sources: SyncSources,
   diagnostics: Diagnostic[],
-  lines: string[]
+  lines: string[],
+  artifacts: SyncArtifactState
 ): Promise<SyncResult | undefined> {
   const plan = await buildSchemaDiffPlan({
     config,
@@ -377,10 +387,12 @@ async function runSyncDiffStage(
   });
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, rendered.sql, { flag: "wx" });
+  artifacts.generatedMigrationPaths.push(outPath);
   lines.push(`diff: wrote ${outPath}`);
   if (rendered.concurrentSql !== undefined) {
     const concurrentPath = `${stripSqlExtension(outPath)}.concurrent.sql`;
     await writeFile(concurrentPath, rendered.concurrentSql, { flag: "wx" });
+    artifacts.generatedMigrationPaths.push(concurrentPath);
     lines.push(`diff: wrote ${concurrentPath}`);
   }
   return;
@@ -416,6 +428,7 @@ async function refreshGeneratedContractsForSync(
   for (const path of result.written) {
     state.lines.push(`types: wrote ${path}`);
   }
+  state.artifacts.writtenContractPaths.push(...result.written);
   for (const line of result.skipped) {
     state.lines.push(line);
   }
@@ -423,27 +436,180 @@ async function refreshGeneratedContractsForSync(
   return;
 }
 
-async function stageGeneratedMigrationsForSync(
-  state: Pick<SyncPipelineState, "artifacts" | "diagnostics" | "lines" | "options">
+async function stageSyncClosureForSync(
+  state: Pick<SyncPipelineState, "artifacts" | "config" | "lines" | "options" | "sources">
 ): Promise<SyncResult | undefined> {
   if (state.options.pipeline !== true || operationName(state.options) !== "sync") {
     return;
   }
-  if (state.artifacts.migrationsStaged) {
+  if (state.artifacts.closureStaged) {
     return;
   }
-  const result = await stageGeneratedMigrations({ directory: state.options.directory });
+  const result = await stageSyncClosure({
+    artifacts: state.artifacts,
+    config: state.config,
+    ...(state.sources === undefined ? {} : { sources: state.sources }),
+  });
   if (result.skippedReason !== undefined) {
     state.lines.push(`stage: skipped (${result.skippedReason})`);
   } else if (result.staged.length === 0) {
-    state.lines.push("stage: no generated migration files to stage");
+    state.lines.push("stage: no schema closure files to stage");
   } else {
     for (const file of result.staged) {
       state.lines.push(`stage: staged ${file}`);
     }
   }
-  state.artifacts.migrationsStaged = true;
+  state.artifacts.closureStaged = true;
   return;
+}
+
+interface StageSyncClosureOptions {
+  artifacts: SyncArtifactState;
+  config: SupaschemaConfig;
+  sources?: SyncSources;
+}
+
+interface StageSyncClosureResult {
+  skippedReason?: string;
+  staged: string[];
+}
+
+async function stageSyncClosure(options: StageSyncClosureOptions): Promise<StageSyncClosureResult> {
+  let root: string;
+  let schemaRoots: string[];
+  let artifactPaths: string[];
+  let changed: string[];
+  try {
+    root = await gitRoot();
+    schemaRoots = await syncSchemaRootGitPaths(root, options.config, options.sources);
+    artifactPaths = await syncArtifactGitPaths(root, options.artifacts);
+    const pathSpecs = uniqueStrings([...schemaRoots, ...artifactPaths]);
+    if (pathSpecs.length === 0) {
+      throw new Error("no sync closure paths are inside the git worktree");
+    }
+    changed = await changedGitPaths(root, pathSpecs);
+  } catch {
+    return { skippedReason: "not a git worktree", staged: [] };
+  }
+  const artifacts = new Set(artifactPaths);
+  const roots = new Set(schemaRoots);
+  const staged = changed.filter((path) => isSyncClosurePath(path, artifacts, roots));
+  if (staged.length === 0) {
+    return { staged: [] };
+  }
+  await execFileAsync("git", ["add", "--", ...staged], { cwd: root });
+  return { staged };
+}
+
+async function gitRoot(): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  return await realpath(stdout.trim());
+}
+
+async function changedGitPaths(root: string, pathSpecs: string[]): Promise<string[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["status", "--porcelain=v1", "--untracked-files=all", "-z", "--", ...pathSpecs],
+    { cwd: root, encoding: "utf8" }
+  );
+  return parsePorcelainStatusPaths(stdout);
+}
+
+function parsePorcelainStatusPaths(output: string): string[] {
+  const entries = output.split("\0");
+  const paths: string[] = [];
+  let index = 0;
+  while (index < entries.length) {
+    const entry = entries[index];
+    index += 1;
+    if (!entry) {
+      continue;
+    }
+    const status = entry.slice(0, 2);
+    const file = normalizeGitPath(entry.slice(3));
+    if (file.length > 0 && !paths.includes(file)) {
+      paths.push(file);
+    }
+    if (status.includes("R") || status.includes("C")) {
+      index += 1;
+    }
+  }
+  return paths;
+}
+
+async function syncSchemaRootGitPaths(
+  root: string,
+  config: SupaschemaConfig,
+  sources: SyncSources | undefined
+): Promise<string[]> {
+  const roots = [...config.schemaPaths];
+  const toDir = dirSourcePath(sources?.to);
+  if (toDir !== undefined) {
+    roots.push(toDir);
+  }
+  return await gitPathsForExistingPaths(root, roots);
+}
+
+function dirSourcePath(source: string | undefined): string | undefined {
+  if (source === undefined || !source.startsWith("dir:")) {
+    return;
+  }
+  const path = source.slice("dir:".length);
+  return path.length === 0 ? undefined : path;
+}
+
+async function syncArtifactGitPaths(root: string, artifacts: SyncArtifactState): Promise<string[]> {
+  return await gitPathsForExistingPaths(root, [
+    ...artifacts.generatedMigrationPaths,
+    ...artifacts.writtenContractPaths,
+  ]);
+}
+
+async function gitPathsForExistingPaths(root: string, paths: string[]): Promise<string[]> {
+  const gitPaths = await Promise.all(paths.map((path) => gitPathForExistingPath(root, path)));
+  return uniqueStrings(gitPaths.filter((path): path is string => path !== undefined));
+}
+
+async function gitPathForExistingPath(root: string, path: string): Promise<string | undefined> {
+  const absolutePath = isAbsolute(path) ? path : resolve(process.cwd(), path);
+  const resolvedPath = await realpath(absolutePath).catch(() => undefined);
+  if (resolvedPath === undefined) {
+    return;
+  }
+  const gitPath = normalizeGitPath(relative(root, resolvedPath) || ".");
+  if (gitPath === ".." || gitPath.startsWith("../") || isAbsolute(gitPath)) {
+    return;
+  }
+  return gitPath;
+}
+
+function isSyncClosurePath(
+  path: string,
+  artifacts: ReadonlySet<string>,
+  schemaRoots: ReadonlySet<string>
+): boolean {
+  if (artifacts.has(path)) {
+    return true;
+  }
+  if (!path.endsWith(".sql")) {
+    return false;
+  }
+  return [...schemaRoots].some((root) => pathIsWithin(path, root));
+}
+
+function pathIsWithin(path: string, root: string): boolean {
+  return root === "." || path === root || path.startsWith(`${root}/`);
+}
+
+function normalizeGitPath(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 async function runSyncSafetyGates(
@@ -562,7 +728,7 @@ const targetSyncLanes: TargetSyncLane[] = [
   guardTargetHistoryLane,
   checkTargetPendingMigrationsLane,
   refreshTargetGeneratedContractsLane,
-  stageTargetGeneratedMigrationsLane,
+  stageTargetSyncClosureLane,
   stopTargetWhenNothingPendingLane,
   guardTargetConcurrentCompanionsLane,
   runTargetSafetyLane,
@@ -637,10 +803,8 @@ function refreshTargetGeneratedContractsLane(
   return refreshGeneratedContractsForSync(state);
 }
 
-function stageTargetGeneratedMigrationsLane(
-  state: TargetSyncState
-): Promise<SyncResult | undefined> {
-  return stageGeneratedMigrationsForSync(state);
+function stageTargetSyncClosureLane(state: TargetSyncState): Promise<SyncResult | undefined> {
+  return stageSyncClosureForSync(state);
 }
 
 function guardTargetConcurrentCompanionsLane(state: TargetSyncState): SyncResult | undefined {

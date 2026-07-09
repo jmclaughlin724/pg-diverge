@@ -6,7 +6,7 @@ This directory coordinates user-facing sync/apply workflows across targets, hist
 
 ## Contents
 
-- `sync.ts` orchestrates diff, staging, apply, checks, and reporting.
+- `sync.ts` orchestrates diff, schema-closure staging, apply, checks, and reporting.
 - `targets.ts` resolves configured sync targets.
 - `history.ts` checks pending migrations and runner status.
 - `verify.ts` checks lineage between pending generated migrations.
@@ -15,7 +15,7 @@ This directory coordinates user-facing sync/apply workflows across targets, hist
 ## Working Rules
 
 - Workflow code should orchestrate existing modules, not own SQL semantics.
-- Preserve the distinction between generated migration staging, applying, checking, and verification.
+- Preserve the distinction between sync schema-closure staging, standalone generated migration staging, applying, checking, and verification.
 - Keep reports concise and tied to concrete next actions or blockers.
 
 ## Verification
