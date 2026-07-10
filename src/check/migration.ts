@@ -50,7 +50,8 @@ type StatementCheck = (
 ) => Diagnostic[];
 
 const statementChecks: Partial<Record<string, StatementCheck>> = {
-  AlterTableStmt: (node, statement) => checkAlterTableStatement(node, statement.text),
+  AlterTableStmt: (node, statement, previous) =>
+    checkAlterTableStatement(node, statement.text, previous),
   CompositeTypeStmt: (_node, statement) => checkTypeCreationStatement(statement.text),
   CreateDomainStmt: (_node, statement) => checkTypeCreationStatement(statement.text),
   CreateEnumStmt: (_node, statement) => checkTypeCreationStatement(statement.text),
@@ -554,7 +555,11 @@ function checkFunctionStatement(node: AstNode, text: string): Diagnostic[] {
   return diagnostics;
 }
 
-function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
+function checkAlterTableStatement(
+  node: AstNode,
+  text: string,
+  previous: AstStatement | undefined
+): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   for (const item of readArray(node.cmds)) {
     const command = asRecord(asRecord(item)?.AlterTableCmd);
@@ -582,7 +587,7 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
         )
       );
     }
-    if (subtype === "AT_SetNotNull") {
+    if (subtype === "AT_SetNotNull" && !hasValidatedNotNullProof(node, previous)) {
       diagnostics.push(
         diagnostic(
           "SUPA_CHECK_SET_NOT_NULL_SCAN",
@@ -610,6 +615,27 @@ function checkAlterTableStatement(node: AstNode, text: string): Diagnostic[] {
     }
   }
   return diagnostics;
+}
+
+function hasValidatedNotNullProof(node: AstNode, previous: AstStatement | undefined): boolean {
+  if (previous?.tag !== "AlterTableStmt") {
+    return false;
+  }
+  const previousNode = asRecord(previous.node.AlterTableStmt);
+  if (
+    !previousNode ||
+    relationIdentity(previousNode.relation) !== relationIdentity(node.relation)
+  ) {
+    return false;
+  }
+  return readArray(previousNode.cmds).some((item) => {
+    const command = asRecord(asRecord(item)?.AlterTableCmd);
+    const name = readString(command?.name);
+    return (
+      readString(command?.subtype) === "AT_ValidateConstraint" &&
+      name?.startsWith("supaschema_not_null_") === true
+    );
+  });
 }
 
 function hasVolatileDefault(columnDef: AstNode): boolean {

@@ -33,7 +33,6 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 | Skills | `.claude/skills/**` | `.agents/skills/**` for mirrored skills; `skills/supaschema` for the public `npx skills` source | `npm run sync:llm` |
 | Hooks | `.claude/hooks/**` | `.codex/hooks/**` mirrors or native adapters where supported | edit Claude/shared owner, then sync or update native adapter |
 | Native Codex hook registration | `scripts/skills/sync-llm.mjs` plus `.claude/settings.json`; see Rule 22 | `.codex/hooks.json` and packaged consumer registration | `npm run sync:llm`, `npm run sync:llm:check`, hook/package guards |
-| Response-shape enforcement | `.claude/rules/12-skill-loading-enforcement.md`, `scripts/agent-hooks/response-shape.mjs`, `scripts/agent-hooks/runner.mjs`, `.claude/settings.json`; see Rule 22 | Claude and generated Codex `Stop`/`SubagentStop` enforcement | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused hook/sync tests |
 | MCP registry | `.mcp.json`, `fastmcp.json` | local MCP clients and package docs | `npm run guard:fastmcp`, `npm run guard:agent` |
 | Consumer agent bundle | `.claude/skills/supaschema`, `.claude/rules/supaschema.md`, consumer hook sources, `agent-bundle/INSTALL.md`, `package.json#files`, `bin/scaffold.mjs`, `scripts/skills/sync-llm.mjs` | raw npm tarball bundle and default installed project scaffold | `npm run sync:llm`, `npm run check:package`, `npm pack --dry-run --json`, lifecycle tests |
 
@@ -43,7 +42,7 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 - `AGENTS.md`'s role (short root route map and rule index, not a policy owner) is defined in Rule 17; in this sync matrix it must point to rule owners instead of duplicating durable policy.
 - `CLAUDE.md` MUST import `@AGENTS.md` when maintainer hooks are enabled, so Claude sessions receive the same root operating contract that Codex receives.
 - `.codex/**` and `.agents/**` are generated or native runtime targets only where this rule names them as owners.
-- `scripts/skills/sync-llm.mjs` is the writer for generated LLM mirrors and generated source-repo `.codex/hooks.json`. It MUST validate Claude hook registration, `CLAUDE.md` root-contract import, and response-shape enforcement before rendering Codex hook registration. Do not hand-edit synced copies.
+- `scripts/skills/sync-llm.mjs` is the writer for generated LLM mirrors and generated source-repo `.codex/hooks.json`. It MUST validate Claude hook registration and the `CLAUDE.md` root-contract import before rendering Codex hook registration. Do not hand-edit synced copies.
 - Rule 22 owns source-repo Claude/Codex hook topology and generated Codex hook registration. This rule owns the sync matrix and boundary routing.
 - Rule 13 owns packaged consumer hook templates, including the standalone `.codex/hooks/general-guard.mjs` Bash safety hook used because consumer packages do not include the maintainer context runner path.
 - `skills/supaschema` is a generated public mirror of `.claude/skills/supaschema`. It is the only supported `npx skills` source in this repository.
@@ -60,7 +59,7 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 | Supaschema consumer skill/rule/hook | `npm run sync:llm`, package checks when bundled |
 | Maintainer skill only | `npm run sync:llm` for mirrored skills |
 | Hook source | `npm run hooks:check`, focused hook tests, `npm run sync:llm` if mirrored |
-| Response-shape detector or runtime adapter | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused hook/sync tests |
+| Shared runtime adapter | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused hook/sync tests |
 | Generated Codex hook registration or package hook templates | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused sync/hook tests |
 | Public/private agent-surface boundary | `npm run guard:public-surface`, `npm run check:package`, focused editor/package tests |
 | MCP surface | `npm run guard:fastmcp`, `npm run guard:agent` |

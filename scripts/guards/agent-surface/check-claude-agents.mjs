@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { list, parseFrontmatter, scalar } from "../../lib/frontmatter.mjs";
-import { assert, gitTrackedFiles, ok, ROOT, readJson } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { gitTrackedFiles, ROOT, readJson } from "../lib/repository.js";
 
 const forbiddenFragments = ["Anilize", "anilize", "@anilize", "anilize-code-map"];
 const permissionModes = new Set([

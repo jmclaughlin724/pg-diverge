@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.3.16",
+  "version": "0.3.17",
   "description": "Declarative PostgreSQL schema management for replay-safe migrations, guarded sync, TypeScript types, and Zod validators without an ORM, Docker, or a shadow database.",
   "keywords": [
     "ai-coding-agents",
@@ -117,16 +117,16 @@
     "py:typecheck": "uv run --package supaschema-agent-mcp mypy services/agent-mcp/supaschema_agent_mcp",
     "release:notes": "node scripts/release/changelog-notes.mjs",
     "release:registry-smoke": "node scripts/release/registry-smoke.mjs",
-    "release:verify": "npm run guard:release-version && npm test -- tests/action.test.ts tests/release-preflight.test.ts && npm run build && npm run check:package && npm run test:consumer-lifecycle && npm run package:smoke && npm run pack:dry && npm run guard",
+    "release:verify": "npm run guard:release-version && npm test -- tests/release/action.test.ts tests/release/preflight.test.ts && npm run build && npm run check:package && npm run test:consumer-lifecycle && npm run package:smoke && npm run pack:dry && npm run guard",
     "release:version": "changeset version",
     "sync:llm": "node scripts/skills/sync-llm.mjs",
     "sync:llm:check": "node scripts/skills/sync-llm.mjs --check",
     "test": "vitest run",
-    "test:consumer-lifecycle": "vitest run tests/consumer-lifecycle.test.ts",
+    "test:consumer-lifecycle": "vitest run tests/package/consumer.test.ts",
     "test:coverage": "vitest run --coverage",
-    "test:examples": "vitest run tests/examples.test.ts --maxWorkers=1",
-    "test:matrix": "vitest run --exclude tests/examples.test.ts",
-    "test:matrix:coverage": "vitest run --coverage --exclude tests/examples.test.ts",
+    "test:examples": "vitest run tests/examples/project.test.ts --maxWorkers=1",
+    "test:matrix": "vitest run --exclude tests/examples/project.test.ts",
+    "test:matrix:coverage": "vitest run --coverage --exclude tests/examples/project.test.ts",
     "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
   "overrides": {

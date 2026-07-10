@@ -1,5 +1,3 @@
-import { toolResponse } from "./tool-payload.mjs";
-
 const githubFailureStates = new Set([
   "action_required",
   "error",
@@ -27,7 +25,7 @@ export function finalMessage(payload) {
 }
 
 export function toolSucceeded(payload) {
-  const response = toolResponse(payload);
+  const response = payload?.tool_response;
   const outcome = toolOutcome(response);
   if (outcome !== undefined) {
     return outcome;
@@ -45,7 +43,7 @@ export function toolSucceeded(payload) {
 }
 
 export function responseReportsFailure(payload) {
-  const response = toolResponse(payload);
+  const response = payload?.tool_response;
   const structured = structuredGithubFailure(response);
   if (structured !== undefined) {
     return structured;
@@ -71,7 +69,7 @@ function toolOutcome(value) {
 }
 
 function toolResponseText(payload) {
-  return collectText(toolResponse(payload)).join("\n");
+  return collectText(payload?.tool_response).join("\n");
 }
 
 function collectText(value) {

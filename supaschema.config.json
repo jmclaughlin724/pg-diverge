@@ -33,8 +33,7 @@
     "include": []
   },
   "sources": {
-    "from": "auto",
-    "to": "dir:examples/postgres/schemas"
+    "from": "auto"
   },
   "statementTimeout": "60s",
   "transactionMode": "per-migration",

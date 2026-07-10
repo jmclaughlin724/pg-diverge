@@ -45,14 +45,13 @@
   ],
   "postgresVersion": "15+",
   "renameDetection": "hints-only",
-  "schemaPaths": ["supabase/schemas"],
+  "schemaPaths": ["supabase/schemas-next"],
   "schemas": {
     "exclude": [],
     "include": []
   },
   "sources": {
-    "from": "dir:supabase/schemas",
-    "to": "dir:supabase/schemas-next"
+    "from": "dir:supabase/schemas"
   },
   "statementTimeout": "60s",
   "transactionMode": "per-migration",

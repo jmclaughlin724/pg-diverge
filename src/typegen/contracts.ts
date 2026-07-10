@@ -1,5 +1,5 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, extname, relative, resolve } from "node:path";
 import type { Diagnostic, SupaschemaConfig } from "../core.js";
 import { hasErrors } from "../diagnostics.js";
 import { extractSourceModel } from "../source/extract.js";
@@ -48,19 +48,34 @@ export async function generateTypeContracts(
   if (hasErrors(model.diagnostics)) {
     return { diagnostics: model.diagnostics, skipped: [], written: [] };
   }
-  const shapes = await collectSchemaShapes(model);
+  const shapeDiagnostics: Diagnostic[] = [];
+  const shapes = await collectSchemaShapes(model, shapeDiagnostics);
+  const diagnostics = [...model.diagnostics, ...shapeDiagnostics];
   const types = generateDatabaseTypes(shapes);
   if (target === "stdout") {
-    return { diagnostics: model.diagnostics, skipped: [], stdout: types, written: [] };
+    return { diagnostics, skipped: [], stdout: types, written: [] };
   }
   const written: string[] = [];
   if (writeTypes) {
     written.push(await writeGeneratedOutput(typesPath, types));
   }
   if (writeZod) {
-    written.push(await writeGeneratedOutput(zodPath, generateZodSchemas(shapes)));
+    written.push(
+      await writeGeneratedOutput(
+        zodPath,
+        generateZodSchemas(shapes, typesModulePath(zodPath, typesPath))
+      )
+    );
   }
-  return { diagnostics: model.diagnostics, skipped: [], written };
+  return { diagnostics, skipped: [], written };
+}
+
+function typesModulePath(zodPath: string, typesPath: string): string {
+  const fromZod = relative(dirname(zodPath), typesPath).split("\\").join("/");
+  const extension = extname(fromZod);
+  const withoutExtension = extension.length === 0 ? fromZod : fromZod.slice(0, -extension.length);
+  const modulePath = `${withoutExtension}.js`;
+  return modulePath.startsWith(".") ? modulePath : `./${modulePath}`;
 }
 
 async function writeGeneratedOutput(path: string, contents: string): Promise<string> {

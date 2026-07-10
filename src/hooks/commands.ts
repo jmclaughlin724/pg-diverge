@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { redactSecrets } from "../redaction.js";
-import { asObject, property } from "./payload.js";
 
 export interface HookCommand {
   args: string[];
@@ -36,10 +35,9 @@ export function runHookCommand(bin: HookCommand, args: string[], cwd: string): H
     });
     return { code: 0, stderr: "", stdout };
   } catch (error) {
-    const record = asObject(error);
-    const status = property(record, "status");
-    const stderr = property(record, "stderr");
-    const stdout = property(record, "stdout");
+    const status = typeof error === "object" && error !== null ? Reflect.get(error, "status") : 1;
+    const stderr = typeof error === "object" && error !== null ? Reflect.get(error, "stderr") : "";
+    const stdout = typeof error === "object" && error !== null ? Reflect.get(error, "stdout") : "";
     return {
       code: typeof status === "number" ? status : 1,
       stderr: typeof stderr === "string" ? stderr : "",

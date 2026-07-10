@@ -119,7 +119,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_SYNC_RUNNER_UNAVAILABLE` | error | The selected migration runner could not be launched or connected. |
 | `SUPA_SOURCE_BASELINE_REQUIRED` | error | Generation could not resolve a source-backed baseline. Pin `sources.from` or review `empty:` for a first migration. |
 | `SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION` | error | Generation was given a live database source. Use a source-backed baseline, or use inspect/verify/selfcheck/drift/sync safety for database-backed workflows. |
-| `SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY` | error | Generation was given a `migrations:` replay source. Use it only with `supaschema types --source`; use `git:`, `dir:`, `dump:`, `catalog:`, or `empty:` for generation. |
+| `SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY` | error | Generation was given a `migrations:` replay source. Use it only with `supaschema types --from`; use `git:`, `dir:`, `dump:`, `catalog:`, or `empty:` for generation. |
 | `SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION` | error | The Supabase CLI runner cannot safely apply a `.concurrent.sql` companion migration. |
 | `SUPA_SYNC_TARGET_OVERRIDE_MULTI` | error | A database URL or environment override was used while multiple sync targets were selected. |
 | `SUPA_SYNC_TARGET_UNKNOWN` | error | The selected named sync target is not configured. |
@@ -128,6 +128,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_VERIFY_CLEANUP_FAILED` | warning | A temporary verification database could not be dropped and may need manual removal. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` hints | — | The mismatch hint names the differing objects: missing from the migration result, not present in the target, and definition differs. |
 | `SUPA_VERIFY_FAILED` | error | Temporary database verification failed. |
+| `SUPA_VERIFY_PREEXISTING_DRIFT` | warning | The pending migration converged every object it changed and introduced no new drift, but unrelated drift already present on the target remains for a separate reconciliation. |
 | `SUPA_VERIFY_FINGERPRINT_MISMATCH` | error | Applying the migration twice did not produce the target catalog fingerprint. |
 | `SUPA_VERIFY_ROLE_CAPABILITY` | error | The verification role cannot `CREATE DATABASE`; use a role with `CREATEDB` (on local Supabase stacks prefer `supabase_admin`). |
 | `SUPA_VERIFY_STUB_REFERENCE` | warning | A `verify` failure under `--ensure-environment` references a managed schema that the environment stub only provisions minimally; the failure may be a stub limitation rather than a real migration defect. Confirm by applying the migration to a disposable database that provisions the managed surface. |

@@ -16,7 +16,7 @@ This directory resolves declarative sources and turns SQL trees into normalized 
 - Use parser-backed SQL extraction through `src/sql`, not ad hoc text matching.
 - Keep schema filters and managed-schema exclusions before planner input.
 - Normalize source models deterministically so generated diffs are stable.
-- `migrations:` is a runtime source kind for `types`. Do not route `sources.to`, `diff`, `verify`, or drift gates through it until migration-replay fingerprints are proven planner-grade.
+- `migrations:` is a runtime source kind for `types --from`. Do not route `diff`, `verify`, or drift targets through it until migration-replay fingerprints are proven planner-grade.
 - `replay.ts` reads migration files in filename order and mutates the in-memory model. Keep column and enum mutations in the reducer; do not refactor `alterTableObjects` into this lane unless it can return per-subtype mutation results.
 - Replay hard-fails shape-corrupting gaps with named diagnostics: missing directories, duplicate `CREATE` objects, absent non-optional `DROP` targets, absent non-ignored `ALTER TABLE` targets, and absent enum neighbors use `SUPA_REPLAY_ORDER_GAP`; unsupported top-level DDL, unsupported `ALTER TABLE` subtypes, unsupported `DROP` kinds, and unsupported rename targets use `SUPA_REPLAY_UNSUPPORTED`.
 - Replay skips configured managed or excluded schemas before planner input, so Supabase-managed history noise such as `auth` DDL can be omitted without emitting `unknown` shapes.

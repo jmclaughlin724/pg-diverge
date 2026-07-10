@@ -4,12 +4,32 @@ import { dirname, join, resolve } from "node:path";
 const supabaseDefaultDbPort = 54_322;
 
 export function resolveSupabaseLocalDatabaseUrl(cwd: string = process.cwd()): string | undefined {
+  return resolveSupabaseLocalDatabaseUrlForRole("postgres", cwd);
+}
+
+export function resolveVerificationDatabaseUrl(
+  explicit?: string,
+  cwd: string = process.cwd()
+): string | undefined {
+  if (explicit !== undefined && explicit.length > 0) {
+    return expandEnvReference(explicit);
+  }
+  return (
+    process.env.SUPASCHEMA_DATABASE_URL ??
+    resolveSupabaseLocalDatabaseUrlForRole("supabase_admin", cwd)
+  );
+}
+
+function resolveSupabaseLocalDatabaseUrlForRole(
+  role: "postgres" | "supabase_admin",
+  cwd: string
+): string | undefined {
   let current = resolve(cwd);
   for (;;) {
     const configPath = join(current, "supabase", "config.toml");
     if (existsSync(configPath)) {
       const port = readTomlDbPort(readFileSync(configPath, "utf8")) ?? supabaseDefaultDbPort;
-      return `postgresql://postgres:postgres@127.0.0.1:${port}/postgres`;
+      return `postgresql://${role}:postgres@127.0.0.1:${port}/postgres`;
     }
     const parent = dirname(current);
     if (parent === current) {

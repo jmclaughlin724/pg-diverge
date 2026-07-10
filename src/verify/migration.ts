@@ -28,12 +28,26 @@ import { planSchemaDiff } from "../planner/schema.js";
 import { renderMigration } from "../render/migration.js";
 import { extractSourceModel } from "../source/extract.js";
 import { migrationsTypegenOnlyDiagnostic } from "../source/policy.js";
-import { type AstStatement, asRecord, astStatements, roleSpecName } from "../sql/ast.js";
+import {
+  type AstStatement,
+  asRecord,
+  astStatements,
+  readString,
+  roleSpecName,
+} from "../sql/ast.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
-import { extensionSchemaOption } from "../sql/extract-helpers.js";
 import { quoteIdent } from "../sql/identifiers.js";
 import { parseSqlAst } from "../sql/parser.js";
-import { preflightCapability, supabaseEnvironmentStubSql } from "./environment.js";
+import {
+  preflightCapability,
+  supabaseAuthEnvironmentStubSql,
+  supabaseCronEnvironmentStubSql,
+  supabaseEnvironmentStubSql,
+  supabaseVaultEnvironmentStubSql,
+  unreplayableVerificationObjects,
+} from "./environment.js";
+
+const preDropOperationPrefix = "pre-drop:";
 
 export function verifyMigration(options: VerifyMigrationOptions): Promise<Diagnostic[]> {
   return verifyMigrationChain({ ...options, migrationPaths: [options.migrationPath] });
@@ -64,6 +78,7 @@ export async function verifyMigrationChain(
   }
   const migrations = await migrationSqlByFile(options.migrationPaths);
   const extractOptions = verificationExtractOptions(options);
+  const ignoredObjects = [...(options.ignoredObjects ?? []), ...unreplayableVerificationObjects];
   for (const sql of migrations.values()) {
     diagnostics.push(...(await checkMigrationSql(sql, extractOptions)));
   }
@@ -72,11 +87,11 @@ export async function verifyMigrationChain(
   }
   const from = filterIgnoredObjects(
     await extractSourceModel(options.from, extractOptions),
-    options.ignoredObjects ?? []
+    ignoredObjects
   );
   const to = filterIgnoredObjects(
     await extractSourceModel(options.to, extractOptions),
-    options.ignoredObjects ?? []
+    ignoredObjects
   );
   diagnostics.push(...from.diagnostics, ...to.diagnostics);
   if (hasErrors(diagnostics)) {
@@ -97,12 +112,13 @@ export async function verifyMigrationChain(
     if (options.ensureRoles === true) {
       await ensureReferencedRoles(admin, [from, to]);
     }
-    await ensureVerificationEnvironment(environmentEnsured, migrationUrl, targetUrl);
     await applyBootstrapInventory(config, options.cwd, migrationUrl, targetUrl);
+    await ensureVerificationEnvironment(environmentEnsured, migrationUrl, targetUrl);
     await applyVerificationScenario(migrationUrl, targetUrl, from, to, migrations, config);
     await compareVerificationCatalogs(
       migrationUrl,
       targetUrl,
+      from,
       to,
       config,
       options.cwd,
@@ -245,8 +261,31 @@ async function ensureVerificationEnvironment(
     return;
   }
 
-  await applySql(migrationUrl, supabaseEnvironmentStubSql, "per-statement");
-  await applySql(targetUrl, supabaseEnvironmentStubSql, "per-statement");
+  await Promise.all([
+    ensureOneVerificationEnvironment(migrationUrl),
+    ensureOneVerificationEnvironment(targetUrl),
+  ]);
+}
+
+async function ensureOneVerificationEnvironment(databaseUrl: string): Promise<void> {
+  await applySql(databaseUrl, supabaseAuthEnvironmentStubSql, "per-statement");
+  if (!(await databaseHasExtension(databaseUrl, "supabase_vault"))) {
+    await applySql(databaseUrl, supabaseVaultEnvironmentStubSql, "per-statement");
+  }
+  await applySql(databaseUrl, supabaseCronEnvironmentStubSql, "per-statement");
+}
+
+async function databaseHasExtension(databaseUrl: string, name: string): Promise<boolean> {
+  const client = new Client({ connectionString: databaseUrl });
+  try {
+    await client.connect();
+    const result = await client.query("SELECT 1 FROM pg_catalog.pg_extension WHERE extname = $1", [
+      name,
+    ]);
+    return result.rowCount !== 0;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
 }
 
 async function applyBootstrapInventory(
@@ -292,17 +331,20 @@ async function filterBootstrapInventorySql(sql: string, file: string): Promise<s
     );
   }
   return astStatements(parsed.ast, sql)
-    .filter((statement) => !isPgCatalogExtensionStatement(statement))
+    .filter((statement) => !isUnreplayableVerificationExtensionStatement(statement))
     .map((statement) => `${statement.text};`)
     .join("\n");
 }
 
-function isPgCatalogExtensionStatement(statement: AstStatement): boolean {
+function isUnreplayableVerificationExtensionStatement(statement: AstStatement): boolean {
   if (statement.tag !== "CreateExtensionStmt") {
     return false;
   }
   const node = asRecord(statement.node.CreateExtensionStmt);
-  return extensionSchemaOption(node?.options) === "pg_catalog";
+  const name = readString(node?.extname);
+  return unreplayableVerificationObjects.some(
+    (object) => object.kind === "extension" && object.name === name
+  );
 }
 
 async function applyVerificationScenario(
@@ -380,6 +422,7 @@ async function applyMigrationUnitSql(
 async function compareVerificationCatalogs(
   migrationUrl: string,
   targetUrl: string,
+  from: SchemaModel,
   to: SchemaModel,
   config: SupaschemaConfig,
   cwd: string | undefined,
@@ -403,14 +446,19 @@ async function compareVerificationCatalogs(
     ...expectedTarget.diagnostics,
     ...reconvergenceSource.diagnostics
   );
-  pushFingerprintMismatchDiagnostic(diagnostics, afterMigration, expectedTarget);
-  await pushReconvergenceDiagnostic(
-    diagnostics,
+  const reconvergence = await reconvergenceDiagnostic(
+    from,
     reconvergenceSource,
     to,
     config,
     environmentEnsured
   );
+  if (reconvergence?.severity === "error" || reconvergence === undefined) {
+    pushFingerprintMismatchDiagnostic(diagnostics, afterMigration, expectedTarget);
+  }
+  if (reconvergence !== undefined) {
+    diagnostics.push(reconvergence);
+  }
 }
 
 function pushFingerprintMismatchDiagnostic(
@@ -433,21 +481,21 @@ function pushFingerprintMismatchDiagnostic(
   );
 }
 
-async function pushReconvergenceDiagnostic(
-  diagnostics: Diagnostic[],
+async function reconvergenceDiagnostic(
+  beforeMigration: SchemaModel,
   afterMigration: SchemaModel,
   to: SchemaModel,
   config: SupaschemaConfig,
   environmentEnsured: boolean
-): Promise<void> {
-  const reconvergence = planSchemaDiff(afterMigration, to, {
-    config: { ...config, hints: { ...config.hints, destructive: ["*"], renames: [] } },
-  });
+): Promise<Diagnostic | undefined> {
+  const permissiveConfig = {
+    ...config,
+    hints: { ...config.hints, destructive: ["*"], renames: [] },
+  };
+  const baseline = planSchemaDiff(beforeMigration, to, { config: permissiveConfig });
+  const reconvergence = planSchemaDiff(afterMigration, to, { config: permissiveConfig });
   const stubKeys = environmentEnsured ? await stubObjectKeys(config) : new Set<string>();
-  const result = reconvergenceResidualDiagnostic(reconvergence.operations, stubKeys);
-  if (result !== undefined) {
-    diagnostics.push(result);
-  }
+  return reconvergenceResidualDiagnostic(baseline.operations, reconvergence.operations, stubKeys);
 }
 
 function verifyFailureDiagnostics(
@@ -471,7 +519,7 @@ function verifyFailureDiagnostics(
         "warning",
         `verify failed while referencing the "${stubbedSchema}" managed schema, which --ensure-environment provisions only as a minimal stub`,
         {
-          hint: `--ensure-environment stubs auth.users (the GoTrue column set), the auth.uid/role/jwt/email helpers, and the cron tables; other ${stubbedSchema} objects are absent. This may be a stub limitation rather than a real migration defect; confirm by applying the migration to a disposable database that provisions the managed surface. Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.`,
+          hint: `--ensure-environment stubs auth.users, auth.sessions, the auth.uid/role/jwt/email helpers, Vault secrets, and cron tables; other ${stubbedSchema} objects are absent. This may be a stub limitation rather than a real migration defect; confirm by applying the migration to a disposable database that provisions the managed surface. Use --no-ensure-environment only when the verification server itself provisions the managed surface in new databases.`,
         }
       )
     );
@@ -570,6 +618,7 @@ async function stubObjectKeys(config: SupaschemaConfig): Promise<Set<string>> {
 }
 
 function reconvergenceResidualDiagnostic(
+  baselineOperations: MigrationOperation[],
   operations: MigrationOperation[],
   stubKeys: Set<string>
 ): Diagnostic | undefined {
@@ -577,17 +626,47 @@ function reconvergenceResidualDiagnostic(
   if (residualOperations.length === 0) {
     return;
   }
+  const baselineKeys = operationIdentitySet(baselineOperations, stubKeys);
+  const residualKeys = operationIdentitySet(residualOperations, stubKeys);
+  const newResidualKeys = [...residualKeys].filter((key) => !baselineKeys.has(key));
+  const reducedPreExistingDrift =
+    baselineKeys.size > residualKeys.size && newResidualKeys.length === 0;
   const residual = residualOperations
     .slice(0, 6)
     .map((operation) => `${operation.kind} ${operation.key}`)
     .join(", ");
+  if (reducedPreExistingDrift) {
+    return diagnostic(
+      "SUPA_VERIFY_PREEXISTING_DRIFT",
+      "warning",
+      `migration converged ${baselineKeys.size - residualKeys.size} drift object(s); ${residualKeys.size} pre-existing drift object(s) remain`,
+      {
+        hint: `residual: ${residual}. Run target reconciliation separately; this migration introduced no new drift and did not leave any changed object unresolved.`,
+      }
+    );
+  }
   return diagnostic(
     "SUPA_VERIFY_RECONVERGENCE",
     "error",
     `${residualOperations.length} operation(s) remain between the migrated catalog and the target model; the diff would never converge to empty`,
     {
-      hint: `residual: ${residual}. The target model declares state the catalog cannot reproduce (or vice versa); fix the model or the engine's lane parity.`,
+      hint: `residual: ${residual}.${newResidualKeys.length === 0 ? "" : ` New residual identities: ${newResidualKeys.slice(0, 6).join(", ")}.`} The target model declares state the catalog cannot reproduce (or vice versa); fix the model or the engine's lane parity.`,
     }
+  );
+}
+
+function operationIdentitySet(
+  operations: readonly MigrationOperation[],
+  ignoredKeys: ReadonlySet<string>
+): Set<string> {
+  return new Set(
+    operations
+      .filter((operation) => !ignoredKeys.has(operation.key))
+      .map((operation) =>
+        operation.key.startsWith(preDropOperationPrefix)
+          ? operation.key.slice(preDropOperationPrefix.length)
+          : operation.key
+      )
   );
 }
 
@@ -631,10 +710,19 @@ function fingerprintMismatchHint(migration: SchemaModel, target: SchemaModel): s
 }
 
 async function applyModel(databaseUrl: string, model: SchemaModel): Promise<void> {
-  const sql = renderMigration(planSchemaDiff(emptySchemaModel(model.source), model), {
-    includeHeader: false,
-  });
-  await applySql(databaseUrl, sql, "per-statement");
+  const plan = planSchemaDiff(emptySchemaModel(model.source), model);
+  const sql = renderMigration(plan, { includeHeader: false });
+  try {
+    await applySql(databaseUrl, sql, "per-statement");
+  } catch (error) {
+    const planErrors = plan.diagnostics.filter((item) => item.severity === "error");
+    if (planErrors.length > 0) {
+      throw new Error(
+        `${errorMessage(error)}; synthesizing ${model.source} also reported blocking plan diagnostics:\n${formatDiagnostics(planErrors)}`
+      );
+    }
+    throw error;
+  }
 }
 
 function emptySchemaModel(source: string): SchemaModel {

@@ -51,8 +51,7 @@
     "include": []
   },
   "sources": {
-    "from": "dump:baseline.sql",
-    "to": "dir:supabase/schemas"
+    "from": "dump:baseline.sql"
   },
   "statementTimeout": "60s",
   "transactionMode": "per-migration",

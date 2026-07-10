@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, exists, ok, ROOT, run } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { run } from "../lib/process.js";
+import { exists, ROOT } from "../lib/repository.js";
 
 const privatePrefixes = [
   ".planning/",

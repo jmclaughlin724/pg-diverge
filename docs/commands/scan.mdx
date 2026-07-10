@@ -31,12 +31,12 @@ npx supaschema scan --contract-usage src --reporter json
 npx supaschema scan --reporter json
 ```
 
-With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Output is credential-redacted before printing. JSON output is the machine contract used by the GitHub Action; it includes `file`, `score`, `grade`, `errorCount`, `warningCount`, and `diagnostics`.
+With no `--from`, `scan` reads `dir:<config.schemaPaths[0]>`. Output is credential-redacted before printing. JSON output is the machine contract used by the GitHub Action; it includes `file`, `score`, `grade`, `errorCount`, `warningCount`, and `diagnostics`.
 
 ## Flags
 
 <ParamField path="--from" type="source">
-  Source to scan. Defaults to the declarative tree (`config.sources.to`).
+  Source to scan. Defaults to the configured declarative tree.
 </ParamField>
 
 <ParamField path="--contract-usage" type="directory">
@@ -57,7 +57,7 @@ With no `--from`, `scan` reads the declarative tree from `config.sources.to`. Ou
 - RLS misconfiguration (enabled without a policy; policy without RLS; policy missing the predicate required for its command; public tables exposed by API-facing grants without RLS);
 - over-broad grants (to PUBLIC, ALL privileges, or roles outside `hints.allowedGrantees`).
 
-With `--contract-usage`, it also reports generated import renames, `.overrideTypes()`, `.returns()`, TypeScript assertions in files importing generated contracts, and local constants copied from generated runtime roots such as `Constants`, `Tables`, or `Enums`.
+With `--contract-usage`, it also reports generated import renames, `.overrideTypes()`, `.returns()`, TypeScript assertions in files importing generated contracts, and local contract copies.
 
 ## Exit codes
 

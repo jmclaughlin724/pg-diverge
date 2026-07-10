@@ -100,7 +100,15 @@ $supaschema$;`;
 export function renderConstraintGuard(object: SchemaObject): string {
   const schema = object.ref.schema ?? "public";
   const table = object.ref.table ?? object.ref.name;
-  const name = object.ref.name;
+  return renderConstraintSqlGuard(schema, table, object.ref.name, object.sql);
+}
+
+export function renderConstraintSqlGuard(
+  schema: string,
+  table: string,
+  name: string,
+  sql: string
+): string {
   return `DO $supaschema$
 BEGIN
   IF NOT EXISTS (
@@ -112,7 +120,7 @@ BEGIN
       AND r.relname = ${quoteLiteral(table)}
       AND c.conname = ${quoteLiteral(name)}
   ) THEN
-    ${ensureSemicolon(object.sql)}
+    ${ensureSemicolon(sql)}
   END IF;
 END
 $supaschema$;`;

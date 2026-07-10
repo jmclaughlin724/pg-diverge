@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { resolve } from "node:path";
+import { realpath } from "node:fs/promises";
+import { relative, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { promisify } from "node:util";
 import { parseRuntimeSource, RuntimeSourceKind, sourceAuto } from "../config/contract.js";
@@ -73,7 +74,7 @@ export async function resolveGenerationSourceDefaults(
   const diagnostics: Diagnostic[] = [];
   const cwd = options.cwd ?? process.cwd();
   const migrationsDir = options.migrationsDir ?? config.migrationsDir;
-  const to = options.to ?? config.sources.to ?? defaultTreeSource(config);
+  const to = options.to ?? defaultTreeSource(config);
   if (options.to === undefined) {
     defaulted.push(`--to ${redactSecrets(to)}`);
   }
@@ -82,7 +83,10 @@ export async function resolveGenerationSourceDefaults(
   let fromDefaultBlocked = false;
   if (from === undefined) {
     if (config.sources.from === sourceAuto) {
-      if (await gitHeadExists()) {
+      const stagedBaseline = await stagedGenerationBaseline(cwd, config, migrationsDir);
+      if (stagedBaseline) {
+        from = stagedBaseline;
+      } else if (await gitHeadExists()) {
         from = "git:HEAD";
       } else if (await hasMigrationCorpus(cwd, migrationsDir)) {
         from = "empty:";
@@ -103,6 +107,50 @@ export async function resolveGenerationSourceDefaults(
   const notice =
     defaulted.length > 0 ? `defaults: ${defaulted.join(" · ")} (flags override)\n` : undefined;
   return { diagnostics, from, notice, to };
+}
+
+async function stagedGenerationBaseline(
+  cwd: string,
+  config: SupaschemaConfig,
+  migrationsDir: string
+): Promise<string | undefined> {
+  const migrationContext = await readMigrationContext(migrationsDir, { cwd });
+  const baseline = migrationContext.latestGeneratedBaseline;
+  if (baseline === undefined || !(await isStagedWithoutWorktreeChanges(baseline.file, cwd))) {
+    return;
+  }
+  try {
+    const index = await extractSourceModel("git:INDEX", { config, cwd });
+    return index.fingerprint === baseline.fingerprint ? "git:INDEX" : undefined;
+  } catch {
+    return;
+  }
+}
+
+async function isStagedWithoutWorktreeChanges(file: string, cwd: string): Promise<boolean> {
+  try {
+    const { stdout: rootOutput } = await execFileAsync(
+      "git",
+      ["-C", cwd, "rev-parse", "--show-toplevel"],
+      { maxBuffer: 1024 * 1024 }
+    );
+    const root = await realpath(rootOutput.trim());
+    const path = relative(root, await realpath(resolve(cwd, file))).replaceAll("\\", "/");
+    if (path === ".." || path.startsWith("../")) {
+      return false;
+    }
+    const [staged, unstaged] = await Promise.all([
+      execFileAsync("git", ["-C", root, "diff", "--cached", "--name-only", "--", path], {
+        maxBuffer: 1024 * 1024,
+      }),
+      execFileAsync("git", ["-C", root, "diff", "--name-only", "--", path], {
+        maxBuffer: 1024 * 1024,
+      }),
+    ]);
+    return staged.stdout.trim() === path && unstaged.stdout.trim().length === 0;
+  } catch {
+    return false;
+  }
 }
 
 export async function buildSchemaPlanningContext(
@@ -306,7 +354,10 @@ async function uncommittedTreeDiagnostics(
       "warning",
       `the to-source tree ${treePath} has uncommitted changes; this migration's lineage end-state fingerprints uncommitted schema-tree state`,
       {
-        hint: "Commit the schema-tree change together with this generated migration and its generated outputs before further schema edits; otherwise the next git-baseline generation blocks with SUPA_MIGRATION_BASELINE_MISMATCH.",
+        hint:
+          fromSource === "git:INDEX"
+            ? "The indexed schema closure is the proven before-state; run supaschema sync to generate, stage, and apply the next forward migration."
+            : "Run supaschema sync to generate, stage, and apply one complete schema closure before the next schema edit.",
       }
     ),
   ];

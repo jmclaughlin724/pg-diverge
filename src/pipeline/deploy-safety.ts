@@ -11,6 +11,7 @@ import {
   runRulePacks,
 } from "../scan/rules.js";
 import { extractSourceModel } from "../source/extract.js";
+import { defaultTreeSource } from "../source/resolve.js";
 
 interface RlsSafetyGateOptions {
   config: SupaschemaConfig;
@@ -27,7 +28,7 @@ export async function scanSchemaSafety(
   config: SupaschemaConfig,
   from: string | undefined
 ): Promise<{ result: ScanResult; source: string }> {
-  const source = from ?? config.sources.to;
+  const source = from ?? defaultTreeSource(config);
   const model = await extractSourceModel(source, { config });
   return { result: scanModel(model, scanRulePacks(config)), source };
 }
@@ -38,7 +39,7 @@ export async function runRlsSafetyGate(
   if (options.config.workflow.rls_safety === "disabled") {
     return emptyDeploySafetyGateResult();
   }
-  const source = options.source ?? options.config.sources.to;
+  const source = options.source ?? defaultTreeSource(options.config);
   const model = await extractSourceModel(source, { config: options.config });
   const raw = runRulePacks(deploySafetyRulePacks(options.config), { model });
   const adjusted = applyDeploySafetyPolicy(raw, options.config.workflow.rls_safety);

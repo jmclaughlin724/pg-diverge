@@ -22,6 +22,14 @@ When a selected Supabase CLI target has no resolved database URL, the Supabase C
 
 ## Flags
 
+<ParamField path="--from" type="source">
+  Override the before-state source used by safety and verification.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  Override the target schema source used by safety and verification.
+</ParamField>
+
 <ParamField path="--migrations-dir" type="path">
   Directory containing migration files. Defaults to `config.migrationsDir`.
 </ParamField>

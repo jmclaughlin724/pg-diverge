@@ -16,7 +16,7 @@ export function migrationsTypegenOnlyDiagnostic(
     "error",
     `${subject} uses migration-history replay`,
     {
-      hint: `Use migrations:<dir> only with supaschema types --source. Use git:<ref>, dir:<path>, dump:<file>, catalog:<file>, or empty: for ${lane}.`,
+      hint: `Use migrations:<dir> only with supaschema types --from. Use git:<ref>, dir:<path>, dump:<file>, catalog:<file>, or empty: for ${lane}.`,
     }
   );
 }

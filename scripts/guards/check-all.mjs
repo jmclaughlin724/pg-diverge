@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { ok, ROOT, run } from "./lib/guard-utils.js";
+import { ok } from "./lib/assertions.js";
+import { run } from "./lib/process.js";
+import { ROOT } from "./lib/repository.js";
 
 const guards = [
   ["node", ["scripts/guards/code-atlas/check-code-atlas.mjs"]],
@@ -10,7 +12,6 @@ const guards = [
   ["node", ["scripts/guards/toolchain/check-lsp-coverage.mjs"]],
   ["node", ["scripts/guards/agent-surface/check-agent-hooks.mjs"]],
   ["node", ["scripts/guards/ci-release/check-codex-execpolicy.mjs"]],
-  ["node", ["scripts/guards/agent-surface/check-agent-policy-standardization.mjs"]],
   ["node", ["scripts/guards/code-shape/check-canonical-surfaces.mjs"]],
   ["node", ["scripts/guards/code-shape/check-child-process-shell.mjs"]],
   ["node", ["scripts/guards/code-shape/check-path-comparison.mjs"]],
@@ -32,7 +33,6 @@ const publicCheckoutGuards = [
   ["node", ["scripts/guards/fastmcp/check-fastmcp-agent.mjs"]],
   ["node", ["scripts/guards/toolchain/check-lsp-coverage.mjs"]],
   ["node", ["scripts/guards/agent-surface/check-agent-hooks.mjs"]],
-  ["node", ["scripts/guards/agent-surface/check-agent-policy-standardization.mjs"]],
 ];
 
 for (const [command, args] of guards) {

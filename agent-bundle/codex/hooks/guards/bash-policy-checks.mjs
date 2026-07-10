@@ -55,21 +55,13 @@ export function evaluateBashPolicy(input, env = process.env) {
 }
 
 function isBashPayload(input) {
-  return ["Bash", "exec_command", "functions.exec_command"].includes(
-    String(input?.tool_name ?? "")
-  );
+  return input?.tool_name === "Bash";
 }
 
 function commandFromPayload(input) {
   const toolInput = input?.tool_input ?? {};
   if (typeof toolInput.command === "string") {
     return toolInput.command;
-  }
-  if (typeof toolInput.cmd === "string") {
-    return toolInput.cmd;
-  }
-  if (Array.isArray(toolInput.command)) {
-    return toolInput.command.filter((part) => typeof part === "string").join(" ");
   }
   return "";
 }
@@ -164,7 +156,6 @@ const simpleGitWriteBlocks = new Map([
     "checkout",
     "BLOCKED: git checkout is prohibited. Keep work on the current branch and use git diff/git show for comparisons.",
   ],
-  ["switch", "BLOCKED: git switch is prohibited. Keep work on the current branch."],
   [
     "branch",
     "BLOCKED: git branch is prohibited. Keep work on the current branch and use git rev-parse for branch discovery.",
@@ -178,6 +169,9 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   const simple = simpleGitWriteBlocks.get(subcommand);
   if (simple) {
     return block(simple);
+  }
+  if (subcommand === "switch") {
+    return checkGitSwitch(gitArgs.slice(1));
   }
   if (subcommand === "merge" && gitArgs.includes("--squash")) {
     return block(
@@ -204,6 +198,41 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
     );
   }
   return allowResult();
+}
+
+function checkGitSwitch(args) {
+  if (
+    args.length === 3 &&
+    args[0] === "-c" &&
+    isTopicBranch(args[1]) &&
+    args[2] === "origin/main"
+  ) {
+    return allowResult();
+  }
+  if (
+    args.length === 2 &&
+    args[0] === "--track" &&
+    args[1].startsWith("origin/") &&
+    isTopicBranch(args[1].slice("origin/".length))
+  ) {
+    return allowResult();
+  }
+  return block(
+    "BLOCKED: git switch is limited to `git switch -c <topic> origin/main` or `git switch --track origin/<topic>` after the Rule 14 PR preflight."
+  );
+}
+
+function isTopicBranch(value) {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value !== "HEAD" &&
+    value !== "main" &&
+    value !== "master" &&
+    value !== "origin/main" &&
+    !value.startsWith("-") &&
+    !value.startsWith("refs/")
+  );
 }
 
 function checkDangerousGitAndShellWrites(command) {

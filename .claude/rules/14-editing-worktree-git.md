@@ -12,23 +12,37 @@ codexExecPolicy: |
       "not_match": ["git show main:package.json", "git diff main -- package.json"]
     },
     {
-      "pattern": ["git", "switch"],
+      "pattern": ["git", "switch", "-c"],
+      "decision": "allow",
+      "justification": "Rule 14 allows transactional topic-branch creation after explicit PR intent, origin/main fetch, and base proof; the Bash hook validates the complete command.",
+      "match": ["git switch -c feature/demo origin/main"],
+      "not_match": ["git switch --track origin/feature/demo", "git switch -C feature/demo origin/main"]
+    },
+    {
+      "pattern": ["git", "switch", "--track"],
+      "decision": "allow",
+      "justification": "Rule 14 allows transactional tracking of an existing origin topic branch after explicit PR intent, fetch, and base proof; the Bash hook validates the complete command.",
+      "match": ["git switch --track origin/feature/demo"],
+      "not_match": ["git switch -c feature/demo origin/main", "git switch main"]
+    },
+    {
+      "pattern": ["git", "switch", ["-C", "--force-create", "-f", "--force", "--discard-changes", "-m", "--merge"]],
       "decision": "forbidden",
-      "justification": "Rule 14 forbids switching or creating branches; keep work in the current branch.",
-      "match": ["git switch main", "git switch -c feature/demo"],
-      "not_match": ["git show main:package.json", "git status --short"]
+      "justification": "Rule 14 forbids branch replacement and switch modes that discard, stash, or merge local changes.",
+      "match": ["git switch -C feature/demo origin/main", "git switch --discard-changes feature/demo", "git switch --merge feature/demo"],
+      "not_match": ["git switch -c feature/demo origin/main", "git switch --track origin/feature/demo"]
     },
     {
       "pattern": ["git", "branch"],
       "decision": "forbidden",
-      "justification": "Rule 14 forbids direct git branch commands; keep work in the current branch and use git rev-parse for branch discovery.",
+      "justification": "Rule 14 forbids direct git branch commands; use transactional git switch forms for PR branches and git rev-parse for discovery.",
       "match": ["git branch feature/demo", "git branch --show-current"],
       "not_match": ["git rev-parse --abbrev-ref HEAD", "git status --short"]
     },
     {
       "pattern": ["git", "worktree"],
       "decision": "forbidden",
-      "justification": "Rule 14 forbids separate git worktrees; use the current worktree only.",
+      "justification": "Rule 14 forbids ad hoc CLI worktrees; use host-managed worktree isolation only when the host selects it before work begins.",
       "match": ["git worktree add ../demo HEAD", "git worktree list"],
       "not_match": ["git status --short"]
     },
@@ -136,14 +150,16 @@ This rule owns edit safety, dirty-worktree handling, generated mirror discipline
 ## Git safety
 
 - Commit only when explicitly asked.
-- Keep work in the current branch and current worktree. Do not switch, create, or delete branches or worktrees with the git CLI.
-- Direct-`main` work (Rule 21) commits on `main` and pushes `git push origin HEAD:main`, so local `main` stays in sync with `origin/main`. For PR or feature-branch work the branch MUST exist before any commit lands on it: never commit PR-scoped work onto local `main` and push it to a branch ref (`git push origin HEAD:refs/heads/<branch>`), which strands those commits on local `main` (diverged from `origin/main`, shown as "outgoing changes on main"). Create the isolated branch with the harness worktree tool (Claude `EnterWorktree`, which branches from `origin/main`); commit, push, and open the PR from that worktree, then `ExitWorktree`. If the session has no worktree tool, do not silently branch off `main`; tell the user and have them run `git switch -c <branch> origin/main`.
-- If PR commits already landed on local `main`, realign after the branch exists: `git switch <branch>`, then `git branch --force main origin/main` (switch first; `--force` refuses to move a checked-out branch). These use the branch/switch commands the Bash guard blocks for the agent, so the user runs them.
+- Direct-`main` work (Rule 21) commits on `main` and pushes `git push origin HEAD:main`, so local `main` stays in sync with `origin/main`.
+- PR work requires explicit PR intent and a topic checkout before the first commit. When the host selects managed worktree isolation before work begins, use that checkout. Otherwise run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`. A dirty index or worktree may move with the switch; Git must abort rather than lose changes.
+- To continue an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic branch is based on that fetched `origin/main`, then use `git switch --track origin/<branch>`.
+- Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a compatibility or recovery path that moves task commits off local `main` after the fact; the topic checkout is a pre-commit invariant.
 - Let lefthook/pre-commit/pre-push run. Never use `--no-verify`.
-- Do not use `git checkout`, `git switch`, `git branch`, or `git worktree`. Use `git show`, `git diff`, `git status --short --branch`, or `git rev-parse --abbrev-ref HEAD` for read-only comparisons and branch discovery.
+- Do not use `git checkout`, direct `git branch`, or ad hoc `git worktree`. Apart from the two transactional topic-branch forms above, do not use `git switch`.
+- Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
 - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.
-- Before creating or replacing a PR, follow Rule 21 and preserve the current branch/worktree boundary.
+- Before creating or replacing a PR, follow Rule 21 and prove the active checkout is the intended topic branch.
 - Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch that contains commits outside the requested task. Rule 21 owns the remote PR checks that prove this.
 - If a PR was opened from the wrong branch, follow Rule 21 to create and verify a clean replacement PR before closing or superseding the bad PR. Document why the old PR was superseded.
 - Subagents and workers may edit files only. They must not stage, commit, push, switch branches, create branches, create worktrees, force-push, merge, or open/replace PRs.

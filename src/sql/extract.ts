@@ -3,11 +3,11 @@ import type {
   Diagnostic,
   ExtractOptions,
   ObjectKind,
-  ObjectRef,
   SchemaObject,
   SupaschemaConfig,
 } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
+import { alterTableObjects } from "./alter-table.js";
 import type { AstNode, AstStatement } from "./ast.js";
 import {
   asRecord,
@@ -22,15 +22,9 @@ import {
   readString,
   stringList,
 } from "./ast.js";
-import type { ParseStatementResult } from "./extract-helpers.js";
-import {
-  alterTableObjects,
-  extensionSchemaOption,
-  sequenceOwnedByOption,
-  supabaseViewSecurityDiagnostics,
-  withManagedSchemaDiagnostics,
-} from "./extract-helpers.js";
 import { finalizeObjects } from "./facts.js";
+import { extensionSchemaOption, sequenceOwnedByOption } from "./options.js";
+import { supabaseViewSecurityDiagnostics, withManagedSchemaDiagnostics } from "./ownership.js";
 import { parseSqlAst } from "./parser.js";
 import { policyMetadataFromAst } from "./policies.js";
 import {
@@ -39,7 +33,6 @@ import {
   grantObjectsFromAst,
   isInitdbDefaultComment,
 } from "./privileges.js";
-import { extractStatementDependencies } from "./routine-dependencies.js";
 import { makeObject, tableMetadataFromAst } from "./statements.js";
 import {
   ignoredStatementTags,
@@ -56,6 +49,11 @@ type ExtractObjectsOptions = ExtractOptions & {
 interface ExtractObjectsResult {
   diagnostics: Diagnostic[];
   nextOrdinal: number;
+  objects: SchemaObject[];
+}
+
+interface ParseStatementResult {
+  diagnostics: Diagnostic[];
   objects: SchemaObject[];
 }
 
@@ -129,9 +127,6 @@ export async function extractObjectsFromSql(
     const parsed = parseStatement(statement, ordinal, config, options.file);
     diagnostics.push(...parsed.diagnostics);
     if (parsed.objects.length > 0) {
-      const dependency = await extractStatementDependencies(statement, options.file);
-      diagnostics.push(...dependency.diagnostics);
-      applyStatementDependencies(parsed.objects, dependency);
       diagnostics.push(
         ...(await finalizeObjects(parsed.objects, { normalize: config.normalize === "deparse" }))
       );
@@ -145,43 +140,6 @@ export async function extractObjectsFromSql(
     nextOrdinal: ordinal,
     objects,
   };
-}
-
-type StatementDependency = Awaited<ReturnType<typeof extractStatementDependencies>>;
-
-function applyStatementDependencies(
-  objects: readonly SchemaObject[],
-  dependency: StatementDependency
-): void {
-  for (const object of objects) {
-    object.dependencies = dependency.references
-      .filter((reference) => reference !== objectIdentity(object.ref))
-      .sort((left, right) => left.localeCompare(right));
-    const columnDependencies = [
-      ...metadataStrings(object.metadata.columnDependencies),
-      ...dependency.columnReferences,
-    ];
-    if (columnDependencies.length > 0) {
-      object.metadata.columnDependencies = [...new Set(columnDependencies)].sort((left, right) =>
-        left.localeCompare(right)
-      );
-    }
-    if (dependency.routine && isRoutineObject(object)) {
-      object.metadata.routineDependencyConfidence = dependency.routine.confidence;
-      object.metadata.routineDependencies = dependency.routine.references;
-      object.metadata.routineColumnDependencies = dependency.routine.columnReferences;
-    }
-  }
-}
-
-function isRoutineObject(object: SchemaObject): boolean {
-  return object.ref.kind === "function" || object.ref.kind === "procedure";
-}
-
-function metadataStrings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
 }
 
 function parseStatement(
@@ -619,11 +577,4 @@ function referencedSchemas(statement: AstStatement): string[] {
     }
   }
   return [...schemas].sort((left, right) => left.localeCompare(right));
-}
-
-function objectIdentity(ref: ObjectRef): string {
-  if (ref.kind === "schema") {
-    return ref.name;
-  }
-  return `${ref.schema ?? "public"}.${ref.name}`;
 }

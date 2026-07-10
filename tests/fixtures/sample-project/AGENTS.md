@@ -6,8 +6,8 @@ A faithful, minimal Supabase + supaschema consumer project used as a test fixtur
 
 It backs two maintainer test goals:
 
-1. **Schema-edit accuracy** (`tests/sample-supabase-migration.test.ts`) — comparing the configured declarative tree (`supabase/schemas`) to the test-only target snapshot (`supabase/schemas-next`) renders an accurate, replay-safe migration and accurate TypeScript + Zod for the `packages/db/src/types` layout. The DB-gated case proves apply-twice convergence under `per-migration` mode.
-2. **Package-contents budget** (`tests/package-contents.test.ts`) — the shipped `examples/` surface stays allowlisted and small, so this full sample (and any future one) cannot silently leak into a shipped directory.
+1. **Schema-edit accuracy** (`tests/examples/supabase-migration.test.ts`) — comparing the baseline tree (`supabase/schemas`) to the configured target (`supabase/schemas-next`) renders an accurate, replay-safe migration and generated contracts. The DB-gated case proves apply-twice convergence under `per-migration` mode.
+2. **Package-contents budget** (`tests/package/contents.test.ts`) — the shipped `examples/` surface stays allowlisted and small, so this full sample cannot silently leak into a shipped directory.
 
 ## What supaschema owns vs. what is adjacent
 
@@ -23,7 +23,7 @@ It backs two maintainer test goals:
 
 `supaschema.config.json` wires the owned surfaces. `managedSchemas` stays at the default Supabase list (setting it to `[]` would disable the managed-schema guard); the tree declares only its own `app` schema.
 
-For this fixture only, `sources.from` is `dir:supabase/schemas` and `sources.to` is `dir:supabase/schemas-next`. That lets maintainer tests run the same zero-source-flag workflow against a known edit. A real consumer project edits `supabase/schemas` directly and normally keeps `sources.to` pointed at that tree.
+For this fixture only, `sources.from` is `dir:supabase/schemas` and `schemaPaths` is `supabase/schemas-next`. That lets maintainer tests run the same zero-source-flag workflow against a known edit. A consumer project normally edits its configured `schemaPaths` tree directly.
 
 ## Schema file organization
 

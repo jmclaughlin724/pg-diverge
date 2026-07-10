@@ -14,7 +14,6 @@ import {
   uniqueByName,
 } from "./skill-paths.mjs";
 import { currentTurnState } from "./state.mjs";
-import { isCommandTool, toolCommand, toolName } from "./tool-payload.mjs";
 
 const toolGateSet = new Set([
   "Agent",
@@ -30,10 +29,6 @@ const toolGateSet = new Set([
   "WebSearch",
   "Write",
   "apply_patch",
-  "edit_file",
-  "exec_command",
-  "functions.apply_patch",
-  "functions.exec_command",
 ]);
 const lowSignalPromptTerms = new Set([
   "change",
@@ -62,6 +57,21 @@ export function updatePromptSkills(payload, state, options = {}) {
   turn.lastPrompt = prompt;
   const matched = scorePrompt(prompt, discoverSkills(options.root, options.runtime));
   const pendingMatches = [];
+  if (options.runtime === "codex") {
+    turn.pendingSkills = {};
+    const applicable = matched.filter((skill) => !state.invokedSkills[skill.name]);
+    return applicable.length === 0
+      ? {}
+      : {
+          contextParts: [
+            [
+              "Relevant skill context is available for this turn.",
+              ...applicable.map((skill) => `- ${skill.name}: ${skill.reason}`),
+              observableLoadAction(applicable),
+            ].join("\n"),
+          ],
+        };
+  }
   for (const skill of matched) {
     if (!state.invokedSkills[skill.name]) {
       pendingMatches.push(skill);
@@ -90,6 +100,20 @@ export function updatePromptSkills(payload, state, options = {}) {
 export function updateToolSkills(payload, state, options = {}) {
   const turn = currentTurnState(state);
   const matched = scoreTool(payload, discoverSkills(options.root, options.runtime), options.root);
+  if (options.runtime === "codex") {
+    turn.pendingSkills = {};
+    const applicable = matched.filter((skill) => !state.invokedSkills[skill.name]);
+    return applicable.length === 0
+      ? {}
+      : {
+          contextParts: [
+            ...applicable.map(
+              (skill) => `Skill ${skill.name} applies to this tool use: ${skill.reason}`
+            ),
+            observableLoadAction(applicable),
+          ],
+        };
+  }
   const newlyPending = [];
   for (const skill of matched) {
     if (!state.invokedSkills[skill.name]) {
@@ -110,7 +134,7 @@ export function updateToolSkills(payload, state, options = {}) {
   ];
   if (
     pending.length === 0 ||
-    !toolGateSet.has(toolName(payload)) ||
+    !toolGateSet.has(typeof payload?.tool_name === "string" ? payload.tool_name : "") ||
     isObservableLoad(payload, options.root) ||
     isCodeAtlasQuery(payload)
   ) {
@@ -147,7 +171,7 @@ export function recordObservableSkillLoad(payload, state, options = {}) {
     state.invokedSkills[skill] = {
       at: new Date().toISOString(),
       contextEpoch: state.contextEpoch,
-      source: toolName(payload),
+      source: typeof payload?.tool_name === "string" ? payload.tool_name : "",
     };
     delete turn.pendingSkills[skill];
   }
@@ -169,13 +193,9 @@ export function unresolvedPending(state) {
 }
 
 export function observedLoadedSkills(payload, root) {
-  const name = toolName(payload);
+  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
   if (name === "Skill") {
-    const value =
-      payload?.tool_input?.skill ??
-      payload?.tool_input?.name ??
-      payload?.tool_response?.skill ??
-      payload?.tool_response?.name;
+    const value = payload?.tool_input?.skill;
     return typeof value === "string" && value.length > 0 ? [cleanSkillToken(value)] : [];
   }
   if (name === "Read") {
@@ -184,7 +204,7 @@ export function observedLoadedSkills(payload, root) {
   if (name.startsWith("mcp__")) {
     return skillsFromPayloadPaths(payload, root);
   }
-  if (isCommandTool(name)) {
+  if (name === "Bash") {
     return skillsFromCommand(payload, root);
   }
   return [];
@@ -195,19 +215,15 @@ export function isObservableLoad(payload, root) {
 }
 
 export function isSubagentInvocation(payload) {
-  return Boolean(payload?.agent_id ?? payload?.agentId);
+  return Boolean(payload?.agent_id);
 }
 
 export function promptText(payload) {
-  return [
-    payload?.prompt,
-    payload?.message,
-    payload?.user_prompt,
-    payload?.tool_input?.prompt,
-    payload?.tool_input?.description,
-  ]
-    .filter((item) => typeof item === "string")
-    .join("\n");
+  const values = [payload?.prompt];
+  if (payload?.tool_name === "Agent" || payload?.tool_name === "Task") {
+    values.push(payload?.tool_input?.prompt, payload?.tool_input?.description);
+  }
+  return values.filter((item) => typeof item === "string").join("\n");
 }
 
 function scorePrompt(prompt, skills) {
@@ -314,7 +330,8 @@ function skillsFromPayloadPaths(payload, root) {
 }
 
 function skillsFromCommand(payload, root) {
-  const command = toolCommand(payload);
+  const command =
+    typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
   return unique(
     commandSkillPaths(command)
       .map((file) => skillFromSkillPath(file, root))
@@ -375,7 +392,7 @@ function appendSkillPaths(paths, token) {
 
 function atlasPreEditContext(payload, turn, root) {
   if (
-    !toolGateSet.has(toolName(payload)) ||
+    !toolGateSet.has(typeof payload?.tool_name === "string" ? payload.tool_name : "") ||
     isCodeAtlasQuery(payload) ||
     isObservableLoad(payload, root)
   ) {

@@ -3,7 +3,7 @@ import type { SchemaModel, SchemaObject } from "./core.js";
 
 type JsonLike = null | boolean | number | string | JsonLike[] | { [key: string]: JsonLike };
 
-export const MODEL_FORMAT_VERSION = 3;
+export const MODEL_FORMAT_VERSION = 4;
 
 export function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.17 (2026-07-10)
+
+### Patch Changes
+
+- Allow sequential schema changes without intermediate commits by recognizing a complete staged schema closure as the next `git:INDEX` baseline. Sync now guards target history before artifact generation, stages the full closure, reports staging failures, distinguishes applied from pending generated lineage, and allocates collision-free migration versions.
+- Accept normalized `changed_files` hook payloads and command-wrapped patches so host integrations can route every schema mutation through the same automatic sync pipeline.
+- Keep the agent loop blocked when the automatic schema-write fallback diff fails, including the actionable `SUPA_*` diagnostics needed to repair the lineage or schema source.
+- Make verification match managed Supabase environments with Auth, Vault, and cron bootstrapping, an auto-discovered admin verification lane, and catalog-aware exclusions for provider-owned objects.
+- Permit migrations that strictly reduce pre-existing target drift without introducing new drift, while preserving the remaining drift as a warning for later reconciliation.
+- Extract routine dependencies consistently from file and live-catalog models, bump the lineage model format, and support explicit `sync` and `apply` source ranges.
+- Tighten nullable columns with a replay-safe validated `CHECK` proof before `SET NOT NULL`, avoiding the ordinary full-table scan on PostgreSQL 17.
+
 ## 0.3.16 (2026-07-06)
 
 ### Patch Changes

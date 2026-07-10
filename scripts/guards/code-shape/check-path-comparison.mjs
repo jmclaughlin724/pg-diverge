@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { forEachNode, parse, ts } from "../lib/ast-utils.js";
-import { assert, exists, gitTrackedFiles, ok, ROOT, readText } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { exists, gitTrackedFiles, ROOT, readText } from "../lib/repository.js";
+import { forEachNode, parse, ts } from "../lib/typescript-ast.js";
 
 const ALLOWED = new Set(["src/paths.ts"]);
 

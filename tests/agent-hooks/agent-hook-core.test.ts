@@ -7,26 +7,14 @@ import { describe, expect, it } from "vitest";
 
 const hasAgentHookSources = [
   "scripts/agent-hooks/command-evidence.mjs",
-  "scripts/agent-hooks/evidence-gate.mjs",
   "scripts/agent-hooks/hook-output.mjs",
-  "scripts/agent-hooks/response-claims.mjs",
-  "scripts/agent-hooks/response-shape.mjs",
   "scripts/agent-hooks/runner.mjs",
   "scripts/agent-hooks/state.mjs",
-  "scripts/agent-hooks/tool-payload.mjs",
 ].every((file) => existsSync(join(process.cwd(), file)));
-let claimWithoutEvidence: any;
-let completionClaimWithOpenItems: any;
-let decisionMenuAfterDirective: any;
-let deferralLanguage: any;
-let hedgeDensity: any;
-let mechanismClaimWithoutArchitecture: any;
-let toolFailureWithoutRetry: any;
 let runChecks: any;
 let shapeHookResult: any;
 let handleAgentHookEvent: any;
 let currentTurnState: any;
-let normalizeState: any;
 let readSessionState: any;
 
 function optionalImport(specifier: string): Promise<any> {
@@ -34,22 +22,11 @@ function optionalImport(specifier: string): Promise<any> {
 }
 
 if (hasAgentHookSources) {
-  ({
-    completionClaimWithOpenItems,
-    decisionMenuAfterDirective,
-    deferralLanguage,
-    hedgeDensity,
-    mechanismClaimWithoutArchitecture,
-    toolFailureWithoutRetry,
-  } = await optionalImport("../../scripts/agent-hooks/response-shape.mjs"));
-  ({ claimWithoutEvidence } = await optionalImport(
-    "../../scripts/agent-hooks/response-claims.mjs"
-  ));
   ({ runChecks, shapeHookResult } = await optionalImport(
     "../../scripts/agent-hooks/hook-output.mjs"
   ));
   ({ handleAgentHookEvent } = await optionalImport("../../scripts/agent-hooks/runner.mjs"));
-  ({ currentTurnState, normalizeState, readSessionState } = await optionalImport(
+  ({ currentTurnState, readSessionState } = await optionalImport(
     "../../scripts/agent-hooks/state.mjs"
   ));
 }
@@ -83,10 +60,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
       "PreToolUse",
       "PostToolUse",
       "SubagentStart",
-      "Stop",
-      "SubagentStop",
     ]) {
-      expect(shapeHookResult(eventName, { contextParts: ["ctx"] }, "claude").output).toMatchObject({
+      expect(shapeHookResult(eventName, { contextParts: ["ctx"] }).output).toMatchObject({
         hookSpecificOutput: {
           additionalContext: "ctx",
           hookEventName: eventName,
@@ -96,25 +71,18 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
   });
 
   it("pins blocking and denial shapes by event", () => {
-    expect(shapeHookResult("PreToolUse", { deny: "no" }, "claude").output).toMatchObject({
+    expect(shapeHookResult("PreToolUse", { deny: "no" }).output).toMatchObject({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
         permissionDecisionReason: "no",
       },
     });
-    expect(shapeHookResult("Stop", { block: "continue" }, "claude").output).toMatchObject({
-      decision: "block",
-      reason: "continue",
-    });
-    expect(shapeHookResult("TaskCompleted", { block: "not done" }, "claude")).toMatchObject({
+    expect(shapeHookResult("TaskCompleted", { block: "not done" })).toMatchObject({
       exitCode: 2,
       stderr: "not done",
     });
-    expect(shapeHookResult("SessionEnd", {}, "claude").stdout).toBe("");
-    expect(shapeHookResult("Stop", {}, "codex").stdout).toBe("{}\n");
-    expect(shapeHookResult("Stop", { contextParts: ["ctx"] }, "codex").stdout).toBe("{}\n");
-    expect(shapeHookResult("SubagentStop", { contextParts: ["ctx"] }, "codex").stdout).toBe("{}\n");
+    expect(shapeHookResult("SessionEnd", {}).stdout).toBe("");
   });
 
   it("formats thrown checks as fail-closed hook feedback", () => {
@@ -123,7 +91,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
         throw new Error("boom");
       },
     ]);
-    const shaped = hookFeedback(shapeHookResult("PreToolUse", result, "claude").output);
+    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
 
     expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
     expect(shaped.permissionDecisionReason).toContain("check=explodingCheck");
@@ -139,7 +107,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
         return { block: "unsafe Bash command" };
       },
     ]);
-    const shaped = hookFeedback(shapeHookResult("PreToolUse", result, "claude").output);
+    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
 
     expect(shaped.permissionDecisionReason).toContain("load required skill");
     expect(shaped.permissionDecisionReason).toContain("unsafe Bash command");
@@ -177,22 +145,22 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     });
   });
 
-  it("blocks functions.apply_patch edits while a required skill is pending", async () => {
+  it("blocks apply_patch edits while a required Claude skill is pending", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
     const payload = { prompt: "use $code-atlas for scripts", session_id: "apply-patch-pending" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
 
     const blocked = handleAgentHookEvent(
       "PreToolUse",
       {
         session_id: "apply-patch-pending",
         tool_input: {
-          patch: "*** Begin Patch\n*** Update File: src/cli.ts\n@@\n export {}\n*** End Patch\n",
+          command: "*** Begin Patch\n*** Update File: src/cli.ts\n@@\n export {}\n*** End Patch\n",
         },
-        tool_name: "functions.apply_patch",
+        tool_name: "apply_patch",
       },
-      { root, runtime: "codex" }
+      { root, runtime: "claude" }
     );
 
     expect(blocked.output).toMatchObject({
@@ -212,7 +180,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
 
     handleAgentHookEvent(
       "PostToolUse",
-      { session_id: "clear-session", tool_input: { name: "code-atlas" }, tool_name: "Skill" },
+      { session_id: "clear-session", tool_input: { skill: "code-atlas" }, tool_name: "Skill" },
       { root, runtime: "claude" }
     );
     expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
@@ -234,22 +202,22 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     );
   }, 15_000);
 
-  it("allows the first observable skill load before blocking governed work", async () => {
+  it("allows the first observable Claude skill load before blocking governed work", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
     const payload = { prompt: "use $code-atlas for scripts", session_id: "load-first" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
 
     const unrelatedRead = handleAgentHookEvent(
       "PreToolUse",
       {
         session_id: "load-first",
         tool_input: {
-          cmd: "sed -n '1,120p' README.md",
+          command: "sed -n '1,120p' README.md",
         },
-        tool_name: "functions.exec_command",
+        tool_name: "Bash",
       },
-      { root, runtime: "codex" }
+      { root, runtime: "claude" }
     );
 
     expect(unrelatedRead.output).toMatchObject({
@@ -264,11 +232,11 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       {
         session_id: "load-first",
         tool_input: {
-          cmd: "sed -n '1,120p' .agents/skills/code-atlas/SKILL.md",
+          command: "sed -n '1,120p' .claude/skills/code-atlas/SKILL.md",
         },
-        tool_name: "functions.exec_command",
+        tool_name: "Bash",
       },
-      { root, runtime: "codex" }
+      { root, runtime: "claude" }
     );
 
     expect(skillRead.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
@@ -280,7 +248,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
         tool_input: { file_path: "src/cli.ts" },
         tool_name: "Edit",
       },
-      { root, runtime: "codex" }
+      { root, runtime: "claude" }
     );
 
     expect(blocked.output).toMatchObject({
@@ -291,20 +259,21 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     });
   });
 
-  it("allows Code Atlas evidence acquisition while skills are pending", async () => {
+  it("allows Code Atlas evidence acquisition while Claude skills are pending", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
     const payload = { prompt: "use $code-atlas for scripts", session_id: "atlas-first" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
 
     const atlasQuery = {
       session_id: "atlas-first",
       tool_input: {
-        cmd: "npm run code-atlas:query -- pre-edit scripts/guards/agent-surface/check-agent-hooks.mjs --json",
+        command:
+          "npm run code-atlas:query -- pre-edit scripts/guards/agent-surface/check-agent-hooks.mjs --json",
       },
-      tool_name: "functions.exec_command",
+      tool_name: "Bash",
     };
-    const allowed = handleAgentHookEvent("PreToolUse", atlasQuery, { root, runtime: "codex" });
+    const allowed = handleAgentHookEvent("PreToolUse", atlasQuery, { root, runtime: "claude" });
     expect(allowed.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
 
     handleAgentHookEvent(
@@ -313,7 +282,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
         ...atlasQuery,
         tool_response: { exit_code: 0 },
       },
-      { root, runtime: "codex" }
+      { root, runtime: "claude" }
     );
 
     expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
@@ -338,7 +307,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       "PostToolUse",
       {
         session_id: "quiet-loaded-skill",
-        tool_input: { name: "code-atlas" },
+        tool_input: { skill: "code-atlas" },
         tool_name: "Skill",
       },
       { root, runtime: "claude" }
@@ -495,7 +464,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     );
   });
 
-  it("uses Codex turn_id to isolate pending skills", async () => {
+  it("keeps Codex skill matches advisory across turn ids", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
     handleAgentHookEvent(
@@ -503,18 +472,18 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       { prompt: "use $code-atlas", session_id: "codex-turn", turn_id: "turn-a" },
       { root, runtime: "codex" }
     );
-    expect(
-      currentTurnState(readSessionState({ session_id: "codex-turn" })).pendingSkills
-    ).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState({ session_id: "codex-turn" })).pendingSkills).toEqual(
+      {}
+    );
 
     handleAgentHookEvent(
       "UserPromptSubmit",
       { prompt: "different turn", session_id: "codex-turn", turn_id: "turn-b" },
       { root, runtime: "codex" }
     );
-    expect(
-      currentTurnState(readSessionState({ session_id: "codex-turn" })).pendingSkills
-    ).not.toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState({ session_id: "codex-turn" })).pendingSkills).toEqual(
+      {}
+    );
   });
 
   it("observes MCP SKILL.md reads as skill loads", async () => {
@@ -553,9 +522,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       {
         session_id: "shell-load",
         tool_input: {
-          cmd: "sed -n '1,120p' .agents/skills/code-atlas/SKILL.md",
+          command: "sed -n '1,120p' .agents/skills/code-atlas/SKILL.md",
         },
-        tool_name: "functions.exec_command",
+        tool_name: "Bash",
       },
       { root, runtime: "codex" }
     );
@@ -577,9 +546,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       {
         session_id: "shell-load-win-path",
         tool_input: {
-          cmd: "sed -n '1,120p' .agents\\skills\\code-atlas\\SKILL.md",
+          command: "sed -n '1,120p' .agents\\skills\\code-atlas\\SKILL.md",
         },
-        tool_name: "functions.exec_command",
+        tool_name: "Bash",
       },
       { root, runtime: "codex" }
     );
@@ -604,15 +573,40 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       {
         session_id: "shell-load-non-reader-token",
         tool_input: {
-          cmd: "echo .agents\\skills\\code-atlas\\SKILL.md && sed -n '1,20p' README.md",
+          command: "echo .agents\\skills\\code-atlas\\SKILL.md && sed -n '1,20p' README.md",
         },
-        tool_name: "functions.exec_command",
+        tool_name: "Bash",
       },
       { root, runtime: "codex" }
     );
 
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).toEqual({});
     expect(readSessionState(payload).invokedSkills).not.toHaveProperty("code-atlas");
+  });
+
+  it("advises the mirrored Codex skill for an apply_patch file trigger", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = { prompt: "edit the policy", session_id: "codex-apply-patch-advisory" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    const result = handleAgentHookEvent(
+      "PreToolUse",
+      {
+        session_id: "codex-apply-patch-advisory",
+        tool_input: {
+          command:
+            "*** Begin Patch\n*** Update File: .claude/rules/12-skill-loading-enforcement.md\n*** End Patch",
+        },
+        tool_name: "apply_patch",
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(result.output.hookSpecificOutput?.additionalContext).toContain(
+      "Skill optimizer applies to this tool use"
+    );
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).toEqual({});
   });
 
   it("observes one nested Codex shell reader command loading multiple pending skills", async () => {
@@ -627,14 +621,14 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     const loadPayload = {
       session_id: "nested-multi-shell-load",
       tool_input: {
-        cmd: [
+        command: [
           "bash -lc \"sed -n '1,120p'",
           ".agents/skills/code-atlas/SKILL.md",
           ".agents/skills/optimizer/SKILL.md",
           '.agents/skills/update/SKILL.md"',
         ].join(" "),
       },
-      tool_name: "functions.exec_command",
+      tool_name: "Bash",
     };
     const allowedLoad = handleAgentHookEvent("PreToolUse", loadPayload, {
       root,
@@ -687,9 +681,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
         {
           session_id: "parallel-skill-loads",
           tool_input: {
-            cmd: `sed -n '1,120p' ${join(root, ".agents/skills/optimizer/SKILL.md")}`,
+            command: `sed -n '1,120p' ${join(root, ".agents/skills/optimizer/SKILL.md")}`,
           },
-          tool_name: "functions.exec_command",
+          tool_name: "Bash",
           turn_id: "turn-a",
         },
         root,
@@ -700,9 +694,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
         {
           session_id: "parallel-skill-loads",
           tool_input: {
-            cmd: `sed -n '1,120p' ${join(root, ".agents/skills/code-atlas/SKILL.md")}`,
+            command: `sed -n '1,120p' ${join(root, ".agents/skills/code-atlas/SKILL.md")}`,
           },
-          tool_name: "functions.exec_command",
+          tool_name: "Bash",
           turn_id: "turn-a",
         },
         root,
@@ -718,410 +712,32 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
   });
 });
 
-describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
-  it("detects hedge density without flagging decisive verified text", () => {
-    expect(
-      hedgeDensity(
-        "Maybe this probably could work and might likely pass once the possible missing setup is present."
-      )
-    ).toMatchObject({ id: "hedge-density" });
-    expect(hedgeDensity("The guard passed with the recorded command output.")).toBeUndefined();
-  });
-
-  it("detects completion claims with open items", () => {
-    expect(
-      completionClaimWithOpenItems(
-        "Done.",
-        { background_tasks: [{ id: "t1" }] },
-        normalizedHookState()
-      )
-    ).toMatchObject({ id: "completion-claim-with-open-items" });
-    expect(
-      completionClaimWithOpenItems("Done.", { background_tasks: [] }, normalizedHookState())
-    ).toBeUndefined();
-  });
-
-  it("requires successful domain evidence for domain verification claims", () => {
-    expect(claimWithoutEvidence("Verified and clean.", normalizedHookState(), [])).toBeUndefined();
-    expect(
-      claimWithoutEvidence(
-        "Verified and clean.",
-        normalizedHookState({ evidence: [{ kind: "verified-command" }] }),
-        []
-      )
-    ).toBeUndefined();
-    expect(
-      claimWithoutEvidence(
-        "Verified and clean.",
-        normalizedHookState({
-          evidence: [{ kind: "code-atlas-query", outcome: "success" }],
-        })
-      )
-    ).toBeUndefined();
-    expect(
-      claimWithoutEvidence(
-        "Verified Code Atlas scope.",
-        normalizedHookState({
-          evidence: [{ kind: "code-atlas-query", outcome: "success" }],
-        })
-      )
-    ).toBeUndefined();
-    expect(
-      claimWithoutEvidence(
-        "The GitHub checks are verified and green.",
-        normalizedHookState({
-          evidence: [{ domains: ["guard"], kind: "verified-command", outcome: "success" }],
-        }),
-        []
-      )
-    ).toMatchObject({ id: "claim-without-evidence" });
-    expect(
-      claimWithoutEvidence(
-        "The GitHub checks are verified and green.",
-        normalizedHookState({
-          evidence: [
-            {
-              at: "2026-06-15T00:00:00.000Z",
-              domains: ["github-checks"],
-              kind: "failed-command",
-              outcome: "failure",
-            },
-            {
-              at: "2026-06-15T00:01:00.000Z",
-              domains: ["guard"],
-              kind: "verified-command",
-              outcome: "success",
-            },
-          ],
-        }),
-        []
-      )
-    ).toMatchObject({ id: "claim-without-evidence" });
-    expect(
-      claimWithoutEvidence(
-        "The GitHub checks are verified and green.",
-        normalizedHookState({
-          evidence: [
-            {
-              at: "2026-06-15T00:00:00.000Z",
-              domains: ["github-checks"],
-              kind: "failed-command",
-              outcome: "failure",
-            },
-            {
-              at: "2026-06-15T00:01:00.000Z",
-              domains: ["github-checks"],
-              kind: "verified-command",
-              outcome: "success",
-            },
-          ],
-        }),
-        []
-      )
-    ).toBeUndefined();
-  });
-
-  it("detects mechanism-only diagnostic answers without end-state verification", () => {
-    expect(
-      mechanismClaimWithoutArchitecture(
-        "This is expected behavior because Codex runs each matching hook.",
-        normalizedHookState({
-          lastPrompt: "verify from upstream Codex sources if this is running correctly",
-        })
-      )
-    ).toMatchObject({ id: "mechanism-claim-without-architecture" });
-    expect(
-      mechanismClaimWithoutArchitecture(
-        "This is expected behavior: Codex runs each matching hook. Architecture: the $elegant canonical owner keeps one Stop-time response-shape gate. Verification: checked upstream docs and ran npm run guard:agent.",
-        normalizedHookState({
-          lastPrompt: "verify from upstream Codex sources if this is running correctly",
-        })
-      )
-    ).toBeUndefined();
-  });
-
-  it("does not flag a status report that makes no verification claim", () => {
-    expect(
-      claimWithoutEvidence(
-        "Codex Setup — Ready. Codex CLI 0.141.0 is active and the review gate is disabled.",
-        normalizedHookState(),
-        []
-      )
-    ).toBeUndefined();
-  });
-
-  it("does not derive verification domains from the prompt or from negated mentions", () => {
-    expect(
-      claimWithoutEvidence(
-        "Skipped checks: none required. npm run guard is not in scope for this action.",
-        normalizedHookState({ lastPrompt: "run the guard and the github checks" }),
-        []
-      )
-    ).toBeUndefined();
-    expect(
-      claimWithoutEvidence("No remote CI checks were verified.", normalizedHookState(), [])
-    ).toBeUndefined();
-    expect(
-      claimWithoutEvidence("No GitHub checks were verified.", normalizedHookState(), [])
-    ).toBeUndefined();
-    expect(
-      claimWithoutEvidence("GitHub checks are verified.", normalizedHookState(), [])
-    ).toMatchObject({ id: "claim-without-evidence" });
-  });
-
-  it("does not treat a lone parenthetical 'verified' as a domain verification claim", () => {
-    expect(
-      claimWithoutEvidence("Review gate enabled (verified).", normalizedHookState(), [])
-    ).toBeUndefined();
-  });
-
-  it("does not flag a mechanism-free status report in a diagnostic-shaped turn", () => {
-    expect(
-      mechanismClaimWithoutArchitecture(
-        "Setup complete: Codex CLI 0.141.0 is active and authenticated.",
-        normalizedHookState({
-          lastPrompt: "review the codex setup and verify it is correct",
-        })
-      )
-    ).toBeUndefined();
-  });
-
-  it("does not flag a status report that uses generic correctness words without a mechanism claim", () => {
-    expect(
-      mechanismClaimWithoutArchitecture(
-        "The plan's upstream contract is correct; the implementation has not begun. Every dispatch target is correctly named. No guard applies to .claude/plans/.",
-        normalizedHookState({
-          lastPrompt: "verify the upstream parser contract is correct",
-        })
-      )
-    ).toBeUndefined();
-  });
-
-  it("does not block Stop on a plain tool-setup status report", async () => {
+describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () => {
+  it("does not continue Codex Stop for completion prose or undocumented task fields", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
     const payload = {
-      prompt: "/codex:setup --enable-review-gate",
-      session_id: "codex-setup-status",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message:
-          "Codex Setup — Review Gate Enabled. Codex CLI 0.141.0 is active, ChatGPT login is active, and the stop-time review gate is enabled for this project.",
-        session_id: "codex-setup-status",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(result.output.decision).toBeUndefined();
-  });
-
-  it("blocks Claude Stop when response-shape corrections are pending", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = {
-      prompt: "verify from upstream Claude sources if this is running correctly",
-      session_id: "claude-stop-response-shape",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message:
-          "This is expected behavior because Claude runs the matching Stop hook.",
-        session_id: "claude-stop-response-shape",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(result.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("architecture/end-state disposition"),
-    });
-  });
-
-  it("downgrades a repeating Stop correction to advisory when stop_hook_active is set", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = {
-      prompt: "verify from upstream Claude sources if this is running correctly",
-      session_id: "claude-stop-active",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const firstStop = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message:
-          "This is expected behavior because Claude runs the matching Stop hook.",
-        session_id: "claude-stop-active",
-      },
-      { root, runtime: "claude" }
-    );
-    expect(firstStop.output).toMatchObject({ decision: "block" });
-
-    const continuedStop = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message:
-          "This is expected behavior because Claude runs the matching Stop hook.",
-        session_id: "claude-stop-active",
-        stop_hook_active: true,
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(continuedStop.output.decision).toBeUndefined();
-    expect(continuedStop.output.hookSpecificOutput?.additionalContext).toContain(
-      "Final response correction required"
-    );
-  });
-
-  it("suppresses Codex Stop advisory context when stop_hook_active is set", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = {
-      prompt: "verify from upstream Codex sources if this is running correctly",
-      session_id: "codex-stop-active",
+      prompt: "review with $upstream",
+      session_id: "codex-stop-continuation",
+      turn_id: "turn-1",
     };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
 
-    const firstStop = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message:
-          "This is expected behavior because Codex runs the matching Stop hook.",
-        session_id: "codex-stop-active",
-      },
-      { root, runtime: "codex" }
-    );
-    expect(firstStop.output).toMatchObject({ decision: "block" });
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).toEqual({});
 
-    const continuedStop = handleAgentHookEvent(
+    const result = handleAgentHookEvent(
       "Stop",
       {
-        last_assistant_message:
-          "This is expected behavior because Codex runs the matching Stop hook.",
-        session_id: "codex-stop-active",
-        stop_hook_active: true,
+        background_tasks: [{ id: "019f4d1a-3671-7f91-8f4c-cc527b4ed6d1" }],
+        last_assistant_message: "**completed_actions**",
+        session_id: "codex-stop-continuation",
+        turn_id: "turn-1",
       },
       { root, runtime: "codex" }
     );
 
-    expect(continuedStop.stdout).toBe("{}\n");
-    expect(continuedStop.output).toEqual({});
-  });
-
-  it("detects decision menus after direct directives", () => {
-    expect(
-      decisionMenuAfterDirective(
-        "Option 1 is safer, choose one.",
-        normalizedHookState({ lastPrompt: "implement it" })
-      )
-    ).toMatchObject({ id: "decision-menu-after-directive" });
-    expect(
-      decisionMenuAfterDirective(
-        "I implemented it.",
-        normalizedHookState({ lastPrompt: "what are options?" })
-      )
-    ).toBeUndefined();
-  });
-
-  it("detects deferral language and unresolved tool failures", () => {
-    expect(deferralLanguage("If you want, I can run tests next.")).toMatchObject({
-      id: "deferral-language",
-    });
-    expect(
-      deferralLanguage("Tests failed; the next step is to fix src/config/schema.ts.")
-    ).toBeUndefined();
-    expect(
-      deferralLanguage(
-        "Blocked: the external deployment needs your approval before I can continue."
-      )
-    ).toBeUndefined();
-    expect(
-      toolFailureWithoutRetry(
-        normalizedHookState({
-          evidence: [
-            {
-              at: "2026-06-15T00:00:00.000Z",
-              kind: "failed-command",
-              outcome: "failure",
-            },
-          ],
-        })
-      )
-    ).toMatchObject({ id: "tool-failure-without-retry" });
-    expect(
-      toolFailureWithoutRetry(
-        normalizedHookState({
-          evidence: [
-            {
-              at: "2026-06-15T00:00:00.000Z",
-              kind: "failed-command",
-              outcome: "failure",
-            },
-            { at: "2026-06-15T00:01:00.000Z", kind: "verified-command" },
-          ],
-        })
-      )
-    ).toMatchObject({ id: "tool-failure-without-retry" });
-    expect(
-      toolFailureWithoutRetry(
-        normalizedHookState({
-          evidence: [
-            {
-              at: "2026-06-15T00:00:00.000Z",
-              domains: ["github-checks"],
-              kind: "failed-command",
-              outcome: "failure",
-            },
-            {
-              at: "2026-06-15T00:01:00.000Z",
-              domains: ["guard"],
-              kind: "verified-command",
-              outcome: "success",
-            },
-          ],
-        })
-      )
-    ).toMatchObject({ id: "tool-failure-without-retry" });
-    expect(
-      toolFailureWithoutRetry(
-        normalizedHookState({
-          evidence: [
-            {
-              at: "2026-06-15T00:00:00.000Z",
-              domains: ["github-checks"],
-              kind: "failed-command",
-              outcome: "failure",
-            },
-            {
-              at: "2026-06-15T00:01:00.000Z",
-              domains: ["github-checks"],
-              kind: "verified-command",
-              outcome: "success",
-            },
-          ],
-        })
-      )
-    ).toBeUndefined();
-    expect(
-      toolFailureWithoutRetry(
-        normalizedHookState({
-          evidence: [
-            {
-              at: "2026-06-15T00:00:00.000Z",
-              kind: "failed-command",
-            },
-          ],
-        })
-      )
-    ).toBeUndefined();
+    expect(result.output).toEqual({});
+    expect(result.stdout).toBe("");
   });
 
   it("records Codex exec command evidence under the detector success kind", async () => {
@@ -1134,8 +750,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "exec-evidence",
-        tool_input: { cmd: "npm run guard:agent" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "npm run guard:agent" },
+        tool_name: "Bash",
         tool_response: { exit_code: 0 },
       },
       { root, runtime: "codex" }
@@ -1159,8 +775,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "exec-npm-check-evidence",
-        tool_input: { cmd: "npm run check" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "npm run check" },
+        tool_name: "Bash",
         tool_response: { exit_code: 0 },
       },
       { root, runtime: "codex" }
@@ -1186,8 +802,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "exec-github-failure",
-        tool_input: { cmd: "gh pr view --json statusCheckRollup" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "gh pr view --json statusCheckRollup" },
+        tool_name: "Bash",
         tool_response: {
           content: [
             {
@@ -1220,8 +836,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "exec-github-success-name",
-        tool_input: { cmd: "gh pr view --json statusCheckRollup" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "gh pr view --json statusCheckRollup" },
+        tool_name: "Bash",
         tool_response: {
           content: [
             {
@@ -1262,8 +878,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "exec-github-pending",
-        tool_input: { cmd: "gh pr view --json statusCheckRollup" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "gh pr view --json statusCheckRollup" },
+        tool_name: "Bash",
         tool_response: {
           content: [
             {
@@ -1293,87 +909,6 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     );
   });
 
-  it("blocks functions.apply_patch edits while response corrections are pending", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = {
-      prompt: "verify from upstream Codex sources if this is running correctly",
-      session_id: "codex-correction-apply-patch",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-    handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message:
-          "This is expected behavior because Codex runs the matching Stop hook.",
-        session_id: "codex-correction-apply-patch",
-      },
-      { root, runtime: "codex" }
-    );
-
-    const blocked = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        session_id: "codex-correction-apply-patch",
-        tool_input: {
-          patch: "*** Begin Patch\n*** Update File: src/cli.ts\n@@\n export {}\n*** End Patch\n",
-        },
-        tool_name: "functions.apply_patch",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(blocked.output).toMatchObject({
-      hookSpecificOutput: expect.objectContaining({
-        permissionDecision: "deny",
-        permissionDecisionReason: expect.stringContaining("Response evidence correction"),
-      }),
-    });
-  });
-
-  it("blocks mutating shell commands while response corrections are pending", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = {
-      prompt: "verify from upstream Codex sources if this is running correctly",
-      session_id: "codex-correction-shell-mutation",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-    handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message:
-          "This is expected behavior because Codex runs the matching Stop hook.",
-        session_id: "codex-correction-shell-mutation",
-      },
-      { root, runtime: "codex" }
-    );
-
-    for (const [cmd, session] of [
-      ["python -c \"from pathlib import Path; Path('x').write_text('x')\"", "python"],
-      ["sed -i '' s/a/b/g file.txt", "sed"],
-      ["cat value > file.txt", "redirect"],
-      ["printf value | tee file.txt", "tee"],
-    ]) {
-      const blocked = handleAgentHookEvent(
-        "PreToolUse",
-        {
-          session_id: "codex-correction-shell-mutation",
-          tool_input: { cmd },
-          tool_name: "functions.exec_command",
-        },
-        { root, runtime: "codex" }
-      );
-
-      expect(blocked.output, session).toMatchObject({
-        hookSpecificOutput: expect.objectContaining({
-          permissionDecision: "deny",
-          permissionDecisionReason: expect.stringContaining("Response evidence correction"),
-        }),
-      });
-    }
-  });
-
   it("parses nested Codex exec output text before recording command evidence", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -1384,8 +919,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "exec-text-evidence",
-        tool_input: { cmd: "npm run guard:agent" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "npm run guard:agent" },
+        tool_name: "Bash",
         tool_response: {
           content: [{ text: "Process exited with code 0\nAGENT_HOOKS_OK" }],
         },
@@ -1401,85 +936,6 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     );
   });
 
-  it("records transcript command evidence from nested exit output instead of top-level status", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const transcriptPath = join(root, "transcript-nested-failed-command.jsonl");
-    await writeFile(
-      transcriptPath,
-      `${JSON.stringify({
-        status: "success",
-        tool_input: { cmd: "npm run guard" },
-        tool_name: "functions.exec_command",
-        tool_response: { content: [{ text: "Process exited with code 1" }] },
-        type: "tool_result",
-      })}\n`
-    );
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "Guards passed.",
-        session_id: "transcript-nested-failed-command",
-        transcript_path: transcriptPath,
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("failed evidence remains unresolved"),
-    });
-  });
-
-  it("uses Codex function-call transcript evidence after compacted state loses command history", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const transcriptPath = join(root, "transcript-codex-function-call.jsonl");
-    await writeFile(
-      transcriptPath,
-      `${[
-        {
-          payload: {
-            arguments: JSON.stringify({
-              cmd: "npx vitest run tests/source-replay.test.ts tests/typegen-migrations.test.ts",
-            }),
-            call_id: "call_test",
-            name: "exec_command",
-            type: "function_call",
-          },
-          timestamp: "2026-07-06T23:00:00.000Z",
-          type: "response_item",
-        },
-        {
-          payload: {
-            call_id: "call_test",
-            output:
-              "Chunk ID: test\nProcess exited with code 0\nOutput:\nPASS tests/source-replay.test.ts",
-            type: "function_call_output",
-          },
-          timestamp: "2026-07-06T23:00:01.000Z",
-          type: "response_item",
-        },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n")}\n`
-    );
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "Tests passed.",
-        session_id: "transcript-codex-function-call",
-        transcript_path: transcriptPath,
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output.decision).toBeUndefined();
-    expect(JSON.stringify(result.output)).not.toContain("response claims verification");
-  });
-
   it("recognizes verification evidence behind npx options", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
@@ -1490,8 +946,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "exec-npx-evidence",
-        tool_input: { cmd: "npx --yes vitest run tests/agent-hooks/agent-hook-core.test.ts" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "npx --yes vitest run tests/agent-hooks/agent-hook-core.test.ts" },
+        tool_name: "Bash",
         tool_response: { exit_code: 0 },
       },
       { root, runtime: "codex" }
@@ -1517,8 +973,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "source-read-evidence",
-        tool_input: { cmd: "sed -n '1,260p' src/cli.ts" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "sed -n '1,260p' src/cli.ts" },
+        tool_name: "Bash",
         tool_response: {
           content: [{ text: "if (failed) {\n  process.exitCode = 2;\n}" }],
           exit_code: 0,
@@ -1528,110 +984,6 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     );
 
     expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it("does not block Stop on source-read text that mentions process.exitCode", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = { prompt: "review these hooks", session_id: "source-read-stop" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    for (const cmd of ["sed -n '1,260p' src/cli.ts", "sed -n '1,260p' src/cli/tools.ts"]) {
-      handleAgentHookEvent(
-        "PostToolUse",
-        {
-          session_id: "source-read-stop",
-          tool_input: { cmd },
-          tool_name: "functions.exec_command",
-          tool_response: {
-            content: [{ text: "process.exitCode = 2" }],
-            exit_code: 0,
-          },
-        },
-        { root, runtime: "codex" }
-      );
-    }
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message:
-          "Architecture: the $elegant owner is the shared response-evidence detector. Verification: implementation checks are not run.",
-        session_id: "source-read-stop",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output.decision).toBeUndefined();
-    expect(JSON.stringify(result.output)).not.toContain("sed -n");
-  });
-
-  it("does not use transcript inventory reads as verification evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const transcriptPath = join(root, "transcript.jsonl");
-    await writeFile(
-      transcriptPath,
-      `${JSON.stringify({
-        status: "success",
-        tool_input: { cmd: "sed -n '1,260p' src/cli.ts" },
-        tool_name: "functions.exec_command",
-        type: "tool_result",
-      })}\n`
-    );
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "Verified and clean.",
-        session_id: "transcript-source-read",
-        transcript_path: transcriptPath,
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output.decision).toBeUndefined();
-    expect(JSON.stringify(result.output)).not.toContain("response claims verification");
-  });
-
-  it("treats transcript GitHub check failures as unresolved evidence", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const transcriptPath = join(root, "transcript-github-failure.jsonl");
-    await writeFile(
-      transcriptPath,
-      `${JSON.stringify({
-        status: "success",
-        tool_input: { cmd: "gh pr view --json statusCheckRollup" },
-        tool_name: "functions.exec_command",
-        tool_response: {
-          content: [
-            {
-              text: JSON.stringify({
-                statusCheckRollup: [{ conclusion: "FAILURE", name: "check-os (windows-latest)" }],
-              }),
-            },
-          ],
-          exit_code: 0,
-        },
-        type: "tool_result",
-      })}\n`
-    );
-
-    const result = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "GitHub checks are green and verified.",
-        session_id: "transcript-github-failure",
-        transcript_path: transcriptPath,
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("failed evidence remains unresolved"),
-    });
   });
 
   it("does not create failed evidence when command outcome is unavailable", async () => {
@@ -1644,8 +996,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
       "PostToolUse",
       {
         session_id: "exec-unknown-evidence",
-        tool_input: { cmd: "npm run guard:agent" },
-        tool_name: "functions.exec_command",
+        tool_input: { command: "npm run guard:agent" },
+        tool_name: "Bash",
         tool_response: {},
       },
       { root, runtime: "codex" }
@@ -1654,7 +1006,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
     expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
   });
 
-  it("records Claude Bash success from the documented tool_response shape and does not false-block Stop", async () => {
+  it("records Claude Bash success from the documented tool_response shape", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
     const payload = { prompt: "run the guard", session_id: "claude-bash-shape" };
@@ -1684,99 +1036,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
         outcome: "success",
       })
     );
-
-    const stop = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "The guard run is verified and clean.",
-        session_id: "claude-bash-shape",
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(stop.output.decision).toBeUndefined();
   });
 
-  it("blocks a response correction once per turn, then downgrades repeats to advisory", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = { prompt: "did the guard pass", session_id: "loop-breaker" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const first = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "The guard run passed and is verified.",
-        session_id: "loop-breaker",
-      },
-      { root, runtime: "claude" }
-    );
-    expect(first.output.decision).toBe("block");
-
-    const second = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "The guard run passed and is verified.",
-        session_id: "loop-breaker",
-      },
-      { root, runtime: "claude" }
-    );
-    expect(second.output.decision).toBeUndefined();
-  });
-
-  it("re-blocks a correction whose specifics change on revision", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = { prompt: "did the gates pass", session_id: "changed-correction" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const first = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "The guard run passed and is verified.",
-        session_id: "changed-correction",
-      },
-      { root, runtime: "claude" }
-    );
-    expect(first.output.decision).toBe("block");
-
-    const second = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "The lint run passed and is verified.",
-        session_id: "changed-correction",
-      },
-      { root, runtime: "claude" }
-    );
-    expect(second.output.decision).toBe("block");
-  });
-
-  it("lets TaskCompleted proceed once its corrections are downgraded to advisory", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
-    const payload = { prompt: "note the outcome", session_id: "task-complete" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const claim = {
-      last_assistant_message: "The guard run passed and is verified.",
-      session_id: "task-complete",
-    };
-    expect(handleAgentHookEvent("Stop", claim, { root, runtime: "claude" }).output.decision).toBe(
-      "block"
-    );
-    expect(
-      handleAgentHookEvent("Stop", claim, { root, runtime: "claude" }).output.decision
-    ).toBeUndefined();
-
-    const done = handleAgentHookEvent(
-      "TaskCompleted",
-      { session_id: "task-complete" },
-      { root, runtime: "claude" }
-    );
-    expect(done.exitCode).toBe(0);
-  });
-
-  it("records Codex documented Bash success end-to-end and does not false-block Stop", async () => {
+  it("records Codex documented Bash success end-to-end", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
     const payload = {
@@ -1806,18 +1068,6 @@ describe.skipIf(!hasAgentHookSources)("agent hook response detectors", () => {
         outcome: "success",
       })
     );
-
-    const stop = handleAgentHookEvent(
-      "Stop",
-      {
-        last_assistant_message: "The test suite is verified and passed.",
-        session_id: "codex-bash-shape",
-        turn_id: "turn-1",
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(stop.output.decision).toBeUndefined();
   });
 });
 
@@ -2022,15 +1272,6 @@ async function runHookEventInChild(
         resolvePromise();
       }
     );
-  });
-}
-
-function normalizedHookState(turn: Record<string, unknown> = {}) {
-  return normalizeState({
-    currentTurnId: "turn-0",
-    turns: {
-      "turn-0": turn,
-    },
   });
 }
 

@@ -14,17 +14,33 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["git", "switch"],
+    pattern = ["git", "switch", "-c"],
+    decision = "allow",
+    justification = "Rule 14 allows transactional topic-branch creation after explicit PR intent, origin/main fetch, and base proof; the Bash hook validates the complete command.",
+    match = ["git switch -c feature/demo origin/main"],
+    not_match = ["git switch --track origin/feature/demo", "git switch -C feature/demo origin/main"],
+)
+
+prefix_rule(
+    pattern = ["git", "switch", "--track"],
+    decision = "allow",
+    justification = "Rule 14 allows transactional tracking of an existing origin topic branch after explicit PR intent, fetch, and base proof; the Bash hook validates the complete command.",
+    match = ["git switch --track origin/feature/demo"],
+    not_match = ["git switch -c feature/demo origin/main", "git switch main"],
+)
+
+prefix_rule(
+    pattern = ["git", "switch", ["-C", "--force-create", "-f", "--force", "--discard-changes", "-m", "--merge"]],
     decision = "forbidden",
-    justification = "Rule 14 forbids switching or creating branches; keep work in the current branch.",
-    match = ["git switch main", "git switch -c feature/demo"],
-    not_match = ["git show main:package.json", "git status --short"],
+    justification = "Rule 14 forbids branch replacement and switch modes that discard, stash, or merge local changes.",
+    match = ["git switch -C feature/demo origin/main", "git switch --discard-changes feature/demo", "git switch --merge feature/demo"],
+    not_match = ["git switch -c feature/demo origin/main", "git switch --track origin/feature/demo"],
 )
 
 prefix_rule(
     pattern = ["git", "branch"],
     decision = "forbidden",
-    justification = "Rule 14 forbids direct git branch commands; keep work in the current branch and use git rev-parse for branch discovery.",
+    justification = "Rule 14 forbids direct git branch commands; use transactional git switch forms for PR branches and git rev-parse for discovery.",
     match = ["git branch feature/demo", "git branch --show-current"],
     not_match = ["git rev-parse --abbrev-ref HEAD", "git status --short"],
 )
@@ -32,7 +48,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "worktree"],
     decision = "forbidden",
-    justification = "Rule 14 forbids separate git worktrees; use the current worktree only.",
+    justification = "Rule 14 forbids ad hoc CLI worktrees; use host-managed worktree isolation only when the host selects it before work begins.",
     match = ["git worktree add ../demo HEAD", "git worktree list"],
     not_match = ["git status --short"],
 )

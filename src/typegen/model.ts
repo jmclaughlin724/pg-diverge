@@ -1,9 +1,14 @@
-import type { SchemaModel, SchemaObject } from "../core.js";
+import type { Diagnostic, SchemaModel, SchemaObject } from "../core.js";
+import { diagnostic } from "../diagnostics.js";
 import type { AstNode } from "../sql/ast.js";
 import { asRecord, readArray, readString, stringList, typeNameToSql } from "../sql/ast.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { canonicalColumnType, canonicalTableShape } from "../sql/table-shape.js";
-import { collectViewColumns, type FunctionShapesByKey } from "./views.js";
+import {
+  collectUnresolvedViewRelations,
+  collectViewColumns,
+  type FunctionShapesByKey,
+} from "./views.js";
 
 export interface ColumnShape {
   default?: unknown;
@@ -83,7 +88,10 @@ export interface ResolvedColumnType {
   relationRef?: { collection: "Tables" | "Views"; name: string; schema: string };
 }
 
-export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaShapes> {
+export async function collectSchemaShapes(
+  model: SchemaModel,
+  diagnostics?: Diagnostic[]
+): Promise<SchemaShapes> {
   const shapes: SchemaShapes = {
     compositesByBareName: new Map(),
     compositesByQualifiedName: new Map(),
@@ -97,7 +105,13 @@ export async function collectSchemaShapes(model: SchemaModel): Promise<SchemaSha
   await collectRelationAndFunctionShapes(model, shapes, relationsByKey);
   await applyModelConstraints(model, relationsByKey);
   resolveRelationshipTargets(relationsByKey);
-  await collectViewAndCompositeShapes(model, shapes, relationsByKey, functionShapesByKey(shapes));
+  await collectViewAndCompositeShapes(
+    model,
+    shapes,
+    relationsByKey,
+    functionShapesByKey(shapes),
+    diagnostics
+  );
   return shapes;
 }
 
@@ -181,7 +195,8 @@ async function collectViewAndCompositeShapes(
   model: SchemaModel,
   shapes: SchemaShapes,
   relationsByKey: Map<string, TableShape>,
-  functionsByKey: FunctionShapesByKey
+  functionsByKey: FunctionShapesByKey,
+  diagnostics?: Diagnostic[]
 ): Promise<void> {
   const views: SchemaObject[] = [];
   const composites: SchemaObject[] = [];
@@ -197,14 +212,15 @@ async function collectViewAndCompositeShapes(
   for (const object of composites) {
     await registerCompositeShape(shapes, object);
   }
-  await registerViewShapes(shapes, relationsByKey, functionsByKey, views);
+  await registerViewShapes(shapes, relationsByKey, functionsByKey, views, diagnostics);
 }
 
 async function registerViewShapes(
   shapes: SchemaShapes,
   relationsByKey: Map<string, TableShape>,
   functionsByKey: FunctionShapesByKey,
-  objects: SchemaObject[]
+  objects: SchemaObject[],
+  diagnostics?: Diagnostic[]
 ): Promise<void> {
   const columnsByKey = new Map<string, ColumnShape[]>();
   for (let pass = 0; pass <= objects.length; pass += 1) {
@@ -223,10 +239,33 @@ async function registerViewShapes(
     }
   }
   for (const object of objects) {
+    const columns = columnsByKey.get(relationKey(object)) ?? [];
     schemaEntry(shapes, object.ref.schema ?? "public").views.push({
-      columns: columnsByKey.get(relationKey(object)) ?? [],
+      columns,
       name: object.ref.name,
     });
+    if (diagnostics === undefined) {
+      continue;
+    }
+    const unknownCount = columns.filter((column) => column.type === "unknown").length;
+    if (unknownCount === 0) {
+      continue;
+    }
+    const unresolved = await collectUnresolvedViewRelations(object, relationsByKey);
+    if (unresolved.length === 0) {
+      continue;
+    }
+    diagnostics.push(
+      diagnostic(
+        "SUPA_TYPEGEN_UNKNOWN_RELATION",
+        "warning",
+        `view ${relationKey(object)} generates ${unknownCount} unknown-typed column(s); relation(s) ${unresolved.join(", ")} are outside the modeled schemas`,
+        {
+          hint: "Add explicit casts to the view's output columns (for example (col)::uuid) so generated contracts carry concrete types, or include the referenced schema in the model.",
+          ref: object.ref,
+        }
+      )
+    );
   }
 }
 

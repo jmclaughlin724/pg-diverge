@@ -31,7 +31,7 @@ import { buildRemediationPlan } from "../remediation.js";
 import { scanGeneratedContractUsage } from "../scan/generated-contracts.js";
 import { renderScan, scanDiagnostics, scoreGrade } from "../scan/model.js";
 import { extractSourceModel } from "../source/extract.js";
-import { currentBaselineFingerprints } from "../source/resolve.js";
+import { currentBaselineFingerprints, defaultTreeSource } from "../source/resolve.js";
 import { syncMigrations } from "../workflow/sync.js";
 
 export interface ReportCommandContext {
@@ -46,15 +46,21 @@ export interface ReportCommandContext {
 interface SyncCommandOptions {
   databaseUrl?: string;
   diff?: boolean;
+  ensureEnvironment?: boolean;
+  from?: string;
   migrationsDir?: string;
   runner?: string;
   target?: string;
+  to?: string;
 }
 interface ApplyCommandOptions {
   databaseUrl?: string;
+  ensureEnvironment?: boolean;
+  from?: string;
   migrationsDir?: string;
   runner?: string;
   target?: string;
+  to?: string;
 }
 interface StageCommandOptions {
   dryRun?: boolean;
@@ -181,7 +187,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
           return;
         }
         const fromSource = options.from ?? "git:HEAD";
-        const toSource = options.to ?? config.sources.to;
+        const toSource = options.to ?? defaultTreeSource(config);
         const contract = await evaluateTypeContract({ config, fromSource, toSource });
         const report = renderCheckReport(
           reporter,
@@ -299,10 +305,14 @@ export function registerReportCommands(program: Command, context: ReportCommandC
 
   program
     .command("apply")
+    .option("--from <source>", "before-state source override for safety and verification")
+    .option("--to <source>", "target schema source override for safety and verification")
     .option("--migrations-dir <dir>", "migration files directory")
     .option("--database-url <url>", "explicit target whose applied history gates direct apply")
     .option("--target <name>", "operator override for one configured sync target")
     .option("--runner <runner>", "operator override: direct | supabase-cli")
+    .option("--ensure-environment", "stub Supabase-provisioned surfaces during verify")
+    .option("--no-ensure-environment", "disable Supabase environment stubs during verify")
     .description(
       "Apply pending generated migrations through the configured runner without generating a new diff."
     )
@@ -310,10 +320,14 @@ export function registerReportCommands(program: Command, context: ReportCommandC
 
   program
     .command("sync")
+    .option("--from <source>", "before-state source override for generation and verification")
+    .option("--to <source>", "target schema source override for generation and verification")
     .option("--migrations-dir <dir>", "migration files directory")
     .option("--database-url <url>", "explicit target whose applied history gates the sync")
     .option("--target <name>", "operator override for one configured sync target")
     .option("--runner <runner>", "operator override: direct | supabase-cli")
+    .option("--ensure-environment", "stub Supabase-provisioned surfaces during verify")
+    .option("--no-ensure-environment", "disable Supabase environment stubs during verify")
     .option("--no-diff", "skip schema diff generation")
     .description(
       "Run the full sync pipeline: schema diff, replay-safety check, generated contracts, schema closure staging, source safety gates, selected runner apply/deploy, and final reconciliation."
@@ -410,16 +424,23 @@ async function runSyncCommand(
     options.databaseUrl !== undefined || envName !== undefined
       ? await context.resolveCliDatabaseUrl(options.databaseUrl)
       : undefined;
+  const configPath = context.configPath();
   const result = await syncMigrations({
     cliVersion: context.cliVersion,
     config,
+    ...(configPath === undefined ? {} : { configPath }),
     directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
     ...(databaseUrl === undefined ? {} : { databaseUrl }),
     ...(envName === undefined ? {} : { envName }),
+    ...(options.ensureEnvironment === undefined
+      ? {}
+      : { ensureEnvironment: options.ensureEnvironment }),
+    ...(options.from === undefined ? {} : { from: options.from }),
     pipeline: true,
     ...(runner === undefined ? {} : { runner }),
     skipDiff: options.diff === false,
     ...(options.target === undefined ? {} : { target: options.target }),
+    ...(options.to === undefined ? {} : { to: options.to }),
   });
   context.printDiagnostics(result.diagnostics);
   process.stdout.write(result.report);
@@ -455,17 +476,24 @@ async function runApplyCommand(
     options.databaseUrl !== undefined || envName !== undefined
       ? await context.resolveCliDatabaseUrl(options.databaseUrl)
       : undefined;
+  const configPath = context.configPath();
   const result = await syncMigrations({
     cliVersion: context.cliVersion,
     config,
+    ...(configPath === undefined ? {} : { configPath }),
     directory: resolve(process.cwd(), options.migrationsDir ?? config.migrationsDir),
     ...(databaseUrl === undefined ? {} : { databaseUrl }),
     ...(envName === undefined ? {} : { envName }),
+    ...(options.ensureEnvironment === undefined
+      ? {}
+      : { ensureEnvironment: options.ensureEnvironment }),
+    ...(options.from === undefined ? {} : { from: options.from }),
     operation: "apply",
     pipeline: true,
     ...(runner === undefined ? {} : { runner }),
     skipDiff: true,
     ...(options.target === undefined ? {} : { target: options.target }),
+    ...(options.to === undefined ? {} : { to: options.to }),
   });
   context.printDiagnostics(result.diagnostics);
   process.stdout.write(result.report);

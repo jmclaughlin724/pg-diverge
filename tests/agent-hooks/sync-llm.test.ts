@@ -12,21 +12,7 @@ import {
 const root = resolve(import.meta.dirname, "../..");
 const claudeProjectDir = ["$", "{", "CLAUDE_PROJECT_DIR", "}"].join("");
 const codexProjectDir = ["$", "{", "CODEX_PROJECT_DIR:-$PWD", "}"].join("");
-const editToolMatcher = [
-  "^",
-  "(",
-  "apply_patch",
-  "|",
-  "functions\\\\.apply_patch",
-  "|",
-  "Edit",
-  "|",
-  "Write",
-  "|",
-  "edit_file",
-  ")",
-  "$",
-].join("");
+const editToolMatcher = "apply_patch";
 
 function tempSurface(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "supa-sync-llm-"));
@@ -46,17 +32,11 @@ function claudeHookSourceFiles(overrides: Record<string, string> = {}): Record<s
     "AGENTS.md": "# Agents\n",
     "CLAUDE.md": "@AGENTS.md\n",
     ".claude/rules/12-skill-loading-enforcement.md": [
-      'mechanism-only correctness answers decision: "block" $elegant verification disposition',
       "Source and inventory reads MUST NOT become verification evidence",
       "process.exitCode = 2",
       "",
     ].join("\n"),
     ".claude/settings.json": `${JSON.stringify(claudeHookSettings())}\n`,
-    "scripts/agent-hooks/response-shape.mjs": [
-      "mechanismClaimWithoutArchitecture mechanism-claim-without-architecture",
-      "architecture/end-state disposition verification disposition",
-      "",
-    ].join("\n"),
     "scripts/agent-hooks/command-evidence.mjs": "domains.length === 0\n",
     "scripts/agent-hooks/response-evidence.mjs":
       "exitCodeFromExecutionStatus isExecutionStatusLabel\n",
@@ -74,17 +54,15 @@ function claudeHookSettings() {
           hooks: [claudeNodeHook(".claude/hooks/context-permission-denied.mjs")],
         },
       ],
-      PostToolBatch: [
-        {
-          hooks: [claudeNodeHook(".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
-        },
-      ],
       PostToolUse: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-post-tool-use.mjs")],
         },
         {
           hooks: [claudeSupaschemaHook("schema-write")],
+        },
+        {
+          hooks: [claudeNodeHook(".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
         },
       ],
       PreToolUse: [
@@ -105,19 +83,9 @@ function claudeHookSettings() {
           hooks: [claudeNodeHook(".claude/hooks/context-session-start.mjs")],
         },
       ],
-      Stop: [
-        {
-          hooks: [claudeNodeHook(".claude/hooks/context-stop.mjs")],
-        },
-      ],
       SubagentStart: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-subagent-start.mjs")],
-        },
-      ],
-      SubagentStop: [
-        {
-          hooks: [claudeNodeHook(".claude/hooks/context-subagent-stop.mjs")],
         },
       ],
       UserPromptSubmit: [
@@ -217,14 +185,9 @@ describe("sync:llm", () => {
                 },
               ],
             },
-          ],
-          Stop: [
             {
+              matcher: editToolMatcher,
               hooks: [
-                {
-                  command: `node "${codexProjectDir}/.codex/hooks/context-stop.mjs"`,
-                  type: "command",
-                },
                 {
                   command: `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`,
                   type: "command",
@@ -310,7 +273,7 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
     expect(read(root, ".codex/hooks.json")).not.toContain("general-guard.mjs");
-    expect(read(root, ".codex/hooks.json")).toContain("context-stop.mjs");
+    expect(read(root, ".codex/hooks.json")).not.toContain("context-stop.mjs");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
     expect(read(root, "skills/supaschema/SKILL.md")).toBe("# supaschema\n");
     expect(existsSync(join(root, "skills/elegant/SKILL.md"))).toBe(false);
@@ -377,42 +340,6 @@ describe("sync:llm", () => {
     );
   });
 
-  it("blocks Codex hook rendering when Claude response-shape enforcement drifts", () => {
-    const root = tempSurface(
-      claudeHookSourceFiles({
-        "scripts/agent-hooks/response-shape.mjs": "mechanismClaimWithoutArchitecture\n",
-      })
-    );
-
-    expect(() => renderSourceCodexHooks(root)).toThrow(
-      "scripts/agent-hooks/response-shape.mjs must contain mechanism-claim-without-architecture"
-    );
-  });
-
-  it("blocks Codex hook rendering when source-read evidence boundaries drift", () => {
-    const root = tempSurface(
-      claudeHookSourceFiles({
-        "scripts/agent-hooks/command-evidence.mjs": "no domain guard here\n",
-      })
-    );
-
-    expect(() => renderSourceCodexHooks(root)).toThrow(
-      "scripts/agent-hooks/command-evidence.mjs must contain domains.length === 0"
-    );
-  });
-
-  it("blocks Codex hook rendering when arbitrary output exit parsing returns", () => {
-    const root = tempSurface(
-      claudeHookSourceFiles({
-        "scripts/agent-hooks/command-evidence.mjs": "domains.length === 0\ntextMentionsExit\n",
-      })
-    );
-
-    expect(() => renderSourceCodexHooks(root)).toThrow(
-      "scripts/agent-hooks/command-evidence.mjs must not contain textMentionsExit"
-    );
-  });
-
   it("does not sync for read-only Bash commands that mention Claude surfaces", () => {
     const project = tempSurface({
       ".claude/agents/worker.md": [
@@ -476,9 +403,9 @@ describe("sync:llm", () => {
     });
     const payload = {
       cwd: project,
-      hook_event_name: "Stop",
+      hook_event_name: "PostToolUse",
       tool_input: {
-        patch: [
+        command: [
           "*** Begin Patch",
           "*** Update File: .claude/rules/supaschema.md",
           "@@",
@@ -488,7 +415,7 @@ describe("sync:llm", () => {
           "",
         ].join("\n"),
       },
-      tool_name: "functions.apply_patch",
+      tool_name: "apply_patch",
     };
 
     const output = execFileSync(
@@ -501,61 +428,12 @@ describe("sync:llm", () => {
       }
     );
 
-    expect(output).toBe("{}\n");
-    expect(read(project, "sync-count.txt")).toBe("1");
-  });
-
-  it("syncs Codex trigger file drift from Stop payloads without edit targets", () => {
-    const project = tempSurface({
-      ".claude/agents/worker.md": [
-        "---",
-        "name: worker",
-        "description: Worker.",
-        "---",
-        "",
-        "# Worker",
-        "",
-      ].join("\n"),
-      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
-      ".claude/rules/supaschema.md": "# Rule\n",
-      ".claude/skills/supaschema/SKILL.md": "# Skill\n",
-      ".codex/hooks.json": "{}\n",
-      "package.json": `${JSON.stringify({
-        name: "supaschema",
-        scripts: {
-          "sync:llm":
-            "node -e \"const fs=require('node:fs');fs.appendFileSync('sync-count.txt','1')\"",
-        },
-      })}\n`,
+    expect(JSON.parse(output)).toMatchObject({
+      hookSpecificOutput: {
+        additionalContext: "SYNC_LLM_OK",
+        hookEventName: "PostToolUse",
+      },
     });
-    const payload = {
-      cwd: project,
-      hook_event_name: "Stop",
-      session_id: "codex-sync-digest",
-    };
-    const env = { ...process.env, CODEX_PROJECT_DIR: project };
-    execFileSync(
-      process.execPath,
-      [join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
-      {
-        encoding: "utf8",
-        env,
-        input: JSON.stringify(payload),
-      }
-    );
-    writeFileSync(join(project, ".codex/hooks.json"), '{"hooks":{"Stop":[]}}\n');
-
-    const output = execFileSync(
-      process.execPath,
-      [join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
-      {
-        encoding: "utf8",
-        env,
-        input: JSON.stringify(payload),
-      }
-    );
-
-    expect(output).toBe("{}\n");
     expect(read(project, "sync-count.txt")).toBe("1");
   });
 });

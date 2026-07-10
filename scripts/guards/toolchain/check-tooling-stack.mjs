@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { forEachNode, parseScript, ts } from "../lib/ast-utils.js";
-import { assert, exists, gitFiles, ok, ROOT, readJson, readText } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js";
+import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 const toolPins = {
   "@biomejs/biome": "2.5.1",
@@ -214,16 +215,17 @@ export function check(root = ROOT) {
     "test:coverage must run the full Vitest suite with coverage"
   );
   assert(
-    packageJson.scripts?.["test:examples"] === "vitest run tests/examples.test.ts --maxWorkers=1",
+    packageJson.scripts?.["test:examples"] ===
+      "vitest run tests/examples/project.test.ts --maxWorkers=1",
     "test:examples must own the examples regression lane"
   );
   assert(
-    packageJson.scripts?.["test:matrix"] === "vitest run --exclude tests/examples.test.ts",
+    packageJson.scripts?.["test:matrix"] === "vitest run --exclude tests/examples/project.test.ts",
     "test:matrix must exclude the examples lane from DB and OS matrices"
   );
   assert(
     packageJson.scripts?.["test:matrix:coverage"] ===
-      "vitest run --coverage --exclude tests/examples.test.ts",
+      "vitest run --coverage --exclude tests/examples/project.test.ts",
     "test:matrix:coverage must be the coverage equivalent of test:matrix"
   );
   assert(

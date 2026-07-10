@@ -60,7 +60,7 @@ import {
 | --- | --- |
 | `loadConfig` / `resolveConfig` / `defaultConfig` / `supaschemaConfigSchema` / `configJsonSchema` / `validateConfig` | Load, validate, and describe `supaschema.config.json` (the Zod and JSON Schema surfaces are exported). |
 | `SupaschemaWorkflow` / `SchemaDiffPolicy` / `MigrationCheckPolicy` / `MigrationVerifyPolicy` / `MigrationSyncPolicy` / `GeneratedOutputPolicy` / `TypeUsagePolicy` | Typed names for the `workflow.*` config policy values. |
-| `resolveDatabaseUrl` / `resolveSupabaseLocalDatabaseUrl` | The [URL resolution lanes](/configuration/environments), including `supabase/config.toml` discovery. |
+| `resolveDatabaseUrl` / `resolveSupabaseLocalDatabaseUrl` / `resolveVerificationDatabaseUrl` | The [URL resolution lanes](/configuration/environments), including least-privilege target discovery and verification-specific local Supabase admin discovery. |
 | `parseLineage` / `latestLineage` / `lineageLine` | Read and produce the `-- supaschema: lineage` markers that chain migrations. |
 | `runConfiguredValidators` | Run the configured external validators (`squawk`, `sqlfluff`, …) against SQL. |
 

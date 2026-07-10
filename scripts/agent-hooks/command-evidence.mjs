@@ -7,13 +7,13 @@ import {
 import { codeAtlasQueryEvidence } from "./atlas.mjs";
 import { responseReportsFailure, toolSucceeded } from "./response-evidence.mjs";
 import { addEvidence } from "./state.mjs";
-import { isCommandTool, toolCommand, toolName } from "./tool-payload.mjs";
 
 export function recordToolEvidence(payload, state) {
-  const name = toolName(payload);
-  const command = toolCommand(payload);
+  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
+  const command =
+    typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
   const atlasEvidence = codeAtlasQueryEvidence(payload);
-  if (!((isCommandTool(name) && command) || atlasEvidence)) {
+  if (!((name === "Bash" && command) || atlasEvidence)) {
     return {};
   }
   const toolSuccess = toolSucceeded(payload);
@@ -27,7 +27,7 @@ export function recordToolEvidence(payload, state) {
       summary: toolSuccess ? "Code Atlas query succeeded" : "Code Atlas query failed",
     });
   }
-  if (!(isCommandTool(name) && command)) {
+  if (!(name === "Bash" && command)) {
     return {};
   }
   const domains = classifyCommandDomains(command);
@@ -151,9 +151,6 @@ function transcriptCommand(entry) {
   if (typeof entry?.tool_input?.command === "string") {
     return entry.tool_input.command;
   }
-  if (typeof entry?.tool_input?.cmd === "string") {
-    return entry.tool_input.cmd;
-  }
   return "";
 }
 
@@ -162,15 +159,12 @@ function transcriptFunctionCommand(call) {
     return "";
   }
   const name = typeof call.name === "string" ? call.name : "";
-  if (!isCommandTool(name)) {
+  if (name !== "Bash") {
     return "";
   }
   const args = jsonObject(call.arguments);
   if (typeof args.command === "string") {
     return args.command;
-  }
-  if (typeof args.cmd === "string") {
-    return args.cmd;
   }
   return "";
 }

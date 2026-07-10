@@ -2,12 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { pathsOverlap } from "../paths.js";
 import { redactSecrets } from "../redaction.js";
-import {
-  canonicalSourceTo,
-  defaultMigrationHistoryTable,
-  isConfigSource,
-  sourceHint,
-} from "./contract.js";
+import { defaultMigrationHistoryTable, isConfigSource, sourceHint } from "./contract.js";
 import { isFileMissing, isRecord, type SupaschemaConfig } from "./schema.js";
 
 export interface ConfigValidationDiagnostic {
@@ -61,19 +56,8 @@ export async function validateConfig(
   await validateParentDirectory(diagnostics, cwd, "zodFile", config.zodFile);
 
   validateSource(diagnostics, "sources.from", config.sources.from, true);
-  validateSource(diagnostics, "sources.to", config.sources.to, false);
-  const expectedTo = canonicalSourceTo(config.schemaPaths);
-  if (config.sources.to !== expectedTo) {
-    diagnostics.push({
-      field: "sources.to",
-      hint: `Use "${expectedTo}" unless the default target should differ from schemaPaths[0].`,
-      message: `sources.to is ${config.sources.to}; schemaPaths[0] resolves to ${expectedTo}.`,
-      severity: "warning",
-    });
-  }
 
   warnIfRawDatabaseUrl(diagnostics, "sources.from", config.sources.from);
-  warnIfRawDatabaseUrl(diagnostics, "sources.to", config.sources.to);
   for (const [name, environment] of Object.entries(config.environments)) {
     warnIfRawDatabaseUrl(diagnostics, `environments.${name}.databaseUrl`, environment.databaseUrl);
   }
@@ -119,7 +103,7 @@ export async function pendingInstallPathConfirmationDiagnostic(
   }
   return {
     field: ".supaschema/install.json",
-    hint: "Inspect .supaschema/install.json agentInstructions, choose the owning paths from candidates, then set schemaPaths, sources.to, and migrationsDir in supaschema.config.json.",
+    hint: "Inspect .supaschema/install.json agentInstructions, choose the owning paths from candidates, then set schemaPaths and migrationsDir in supaschema.config.json.",
     message:
       "Install path confirmation is pending; zero-source migration commands must not use guessed schema or migration paths.",
     severity: "error",
@@ -138,10 +122,7 @@ async function hasConfirmedInstallPaths(
     Array.isArray(parsed.schemaPaths) &&
     parsed.schemaPaths.some((item) => typeof item === "string" && item.trim().length > 0) &&
     typeof parsed.migrationsDir === "string" &&
-    parsed.migrationsDir.trim().length > 0 &&
-    isRecord(parsed.sources) &&
-    typeof parsed.sources.to === "string" &&
-    parsed.sources.to.trim().length > 0
+    parsed.migrationsDir.trim().length > 0
   );
 }
 

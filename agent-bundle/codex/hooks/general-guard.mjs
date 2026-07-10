@@ -11,11 +11,7 @@ export function evaluateGeneralGuardHook({
   if ((payload?.hook_event_name ?? "PreToolUse") !== "PreToolUse") {
     return {};
   }
-  if (
-    !["Bash", "exec_command", "functions.exec_command"].includes(
-      String(payload?.tool_name ?? "")
-    )
-  ) {
+  if (payload?.tool_name !== "Bash") {
     return {};
   }
 

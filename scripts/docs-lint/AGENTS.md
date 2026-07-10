@@ -11,4 +11,4 @@ Internal modules for the docs authoring standard linter. The public entry is `sc
 ## Owners
 
 - Mintlify writing and component standards: `.claude/rules/02-*.md`, `.claude/rules/03-*.md`
-- Verify: `npm run docs:check`, `tests/docs-standard.test.ts`
+- Verify: `npm run docs:check`, `tests/docs/standard.test.ts`

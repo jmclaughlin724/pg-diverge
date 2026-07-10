@@ -75,7 +75,7 @@ When changing the planner or renderer, run `supaschema check` (replay-safety gat
 - The two determinism oracles are first-class:
   - `npm run fixture:verify` renders a fixture migration, applies it twice, and compares the resulting catalogs.
   - `npm run corpus:check` runs the dirty-real corpus reconvergence oracle when a database is reachable.
-- `tests/property.test.ts` uses `fast-check` for property-based testing of the planner (parse→deparse round-trips, idempotent replay). New planner/renderer work is a good candidate for property tests. For core SQL extraction, planning, rendering, checking, verifying, typegen, or CLI-default changes, run the targeted tests plus `npm run typecheck`. For package/release/agent-surface changes, run `npm run check:package` or `npm pack --dry-run`.
+- `tests/core/property.test.ts` uses `fast-check` for property-based parser, replay, migration-name, and redaction checks. For SQL extraction, planning, rendering, checking, verifying, typegen, or CLI-default changes, run the colocated tests plus `npm run typecheck`. For package/release/agent-surface changes, run `npm run check:package` or `npm pack --dry-run`.
 
 ## Changesets and releases
 

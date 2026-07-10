@@ -27,7 +27,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(Bash|exec_command|functions\\.exec_command|apply_patch|functions\\.apply_patch|Edit|Write|edit_file|Read|Glob|Grep|Task|WebFetch|WebSearch|mcp__.*)$",
+        "matcher": "Bash|apply_patch|mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -38,7 +38,7 @@
         ]
       },
       {
-        "matcher": "^(apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
+        "matcher": "Bash|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -51,7 +51,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Bash|exec_command|functions\\.exec_command|apply_patch|functions\\.apply_patch|Edit|Write|edit_file|Read|Glob|Grep|Task|mcp__.*)$",
+        "matcher": "Bash|apply_patch|mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -62,13 +62,24 @@
         ]
       },
       {
-        "matcher": "^(apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
+        "matcher": "Bash|apply_patch",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-source-hook.mjs\" hook schema-write",
             "timeout": 130,
             "statusMessage": "Running supaschema auto-diff on schema change"
+          }
+        ]
+      },
+      {
+        "matcher": "apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
+            "timeout": 130,
+            "statusMessage": "Syncing supaschema Claude agent surfaces"
           }
         ]
       }
@@ -81,36 +92,6 @@
             "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-subagent-start.mjs\"",
             "timeout": 10,
             "statusMessage": "Loading supaschema subagent context"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-subagent-stop.mjs\"",
-            "timeout": 10,
-            "statusMessage": "Checking supaschema subagent closeout"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-stop.mjs\"",
-            "timeout": 10,
-            "statusMessage": "Checking supaschema final-response evidence"
-          },
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "timeout": 130,
-            "statusMessage": "Syncing supaschema Claude agent surfaces"
           }
         ]
       }

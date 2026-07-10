@@ -3,6 +3,7 @@ import { diffTypeContract } from "../contract/type-diff.js";
 import type { Diagnostic } from "../core.js";
 import { extractSourceModel } from "../source/extract.js";
 import { migrationsTypegenOnlyDiagnostic } from "../source/policy.js";
+import { defaultTreeSource } from "../source/resolve.js";
 import { collectSchemaShapes } from "../typegen/model.js";
 import {
   applyDeploySafetyPolicy,
@@ -76,7 +77,7 @@ export async function runTypeSafetyGate(
   const evaluation = await evaluateTypeContract({
     config: options.config,
     fromSource: options.fromSource ?? options.config.sources.from,
-    toSource: options.toSource ?? options.config.sources.to,
+    toSource: options.toSource ?? defaultTreeSource(options.config),
   });
   const adjusted = applyDeploySafetyPolicy(
     evaluation.diagnostics,

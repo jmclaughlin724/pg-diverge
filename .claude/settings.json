@@ -59,7 +59,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|apply_patch",
+        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -91,7 +91,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|apply_patch",
+        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -100,6 +100,19 @@
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/supaschema-source-hook.mjs",
               "hook",
               "schema-write"
+            ],
+            "timeout": 130
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"
             ],
             "timeout": 130
           }
@@ -114,32 +127,6 @@
             "command": "node",
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-start.mjs"
-            ],
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-stop.mjs"],
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-stop.mjs"
             ],
             "timeout": 10
           }
@@ -185,20 +172,6 @@
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-end.mjs"
             ],
             "timeout": 2
-          }
-        ]
-      }
-    ],
-    "PostToolBatch": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"
-            ],
-            "timeout": 130
           }
         ]
       }

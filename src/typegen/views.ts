@@ -36,6 +36,48 @@ interface InferenceContext {
 
 export type FunctionShapesByKey = Map<string, FunctionShape[]>;
 
+export async function collectUnresolvedViewRelations(
+  object: SchemaObject,
+  tablesByKey: Map<string, TableShape>
+): Promise<string[]> {
+  const parsed = await parseSqlAst(object.sql, object.file);
+  const unresolved = new Set<string>();
+  walkRangeVars(parsed.ast, (schemaName, relname) => {
+    if (tablesByKey.has(`${schemaName}.${relname}`)) {
+      return;
+    }
+    if (builtinRelationColumns(schemaName, relname)) {
+      return;
+    }
+    unresolved.add(`${schemaName}.${relname}`);
+  });
+  return [...unresolved].sort();
+}
+
+function walkRangeVars(node: unknown, visit: (schemaName: string, relname: string) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      walkRangeVars(item, visit);
+    }
+    return;
+  }
+  const record = asRecord(node);
+  if (!record) {
+    return;
+  }
+  const rangeVar = asRecord(record.RangeVar);
+  if (rangeVar) {
+    const schemaName = readString(rangeVar.schemaname);
+    const relname = readString(rangeVar.relname);
+    if (schemaName && relname) {
+      visit(schemaName, relname);
+    }
+  }
+  for (const value of Object.values(record)) {
+    walkRangeVars(value, visit);
+  }
+}
+
 export async function collectViewColumns(
   object: SchemaObject,
   tablesByKey: Map<string, TableShape>,

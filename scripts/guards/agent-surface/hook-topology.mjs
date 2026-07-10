@@ -1,4 +1,4 @@
-import { forEachNode, parseScript, ts } from "../lib/ast-utils.js";
+import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 export function hookHandlers(value) {
   const out = [];

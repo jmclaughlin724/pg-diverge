@@ -1,4 +1,4 @@
-import { ts } from "../lib/ast-utils.js";
+import { ts } from "../lib/typescript-ast.js";
 
 export const forbiddenSurfaceNameTerms = [
   "alias",

@@ -41,7 +41,11 @@ export type {
 } from "./core.js";
 export type { CorpusOptions, CorpusReport } from "./corpus.js";
 export { renderCorpusReport, runCorpus } from "./corpus.js";
-export { resolveDatabaseUrl, resolveSupabaseLocalDatabaseUrl } from "./database/url.js";
+export {
+  resolveDatabaseUrl,
+  resolveSupabaseLocalDatabaseUrl,
+  resolveVerificationDatabaseUrl,
+} from "./database/url.js";
 export type { MigrationLineage } from "./migrations/lineage.js";
 export { latestLineage, lineageLine, parseLineage } from "./migrations/lineage.js";
 export type {

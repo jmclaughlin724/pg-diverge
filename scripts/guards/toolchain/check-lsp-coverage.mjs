@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, exists, ok, ROOT, readJson, run } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { run } from "../lib/process.js";
+import { exists, ROOT, readJson } from "../lib/repository.js";
 
 const nonCode = new Set([
   "editorconfig",

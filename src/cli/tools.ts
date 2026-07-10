@@ -58,22 +58,15 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
   program
     .command("types")
     .option("--from <source>", "source to type (default: the config schema tree)")
-    .option("--source <source>", "source to type (alias for --from)")
     .option("--out <file|stdout>", "TypeScript output path (default: config.typesFile)")
     .description(
       "Generate TypeScript types and Zod validators straight from the PostgreSQL schema tree — no database, no introspection, no applied migrations required."
     )
-    .action(async (options: { from?: string; out?: string; source?: string }) => {
-      if (options.from !== undefined && options.source !== undefined) {
-        process.stderr.write("supaschema: use only one of --from or --source for types\n");
-        process.exitCode = 2;
-        return;
-      }
+    .action(async (options: { from?: string; out?: string }) => {
       const config = await context.loadCliConfig();
-      const source = options.source ?? options.from;
       const result = await generateTypeContracts({
         config,
-        ...(source === undefined ? {} : { source }),
+        ...(options.from === undefined ? {} : { source: options.from }),
         ...(options.out === undefined ? {} : { out: options.out }),
       });
       context.printDiagnostics(result.diagnostics);

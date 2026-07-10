@@ -2,7 +2,8 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, ok, ROOT, readJson } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { ROOT, readJson } from "../lib/repository.js";
 
 export function check(root = ROOT) {
   const catalog = readJson("scripts/dependency-catalog.json", root);

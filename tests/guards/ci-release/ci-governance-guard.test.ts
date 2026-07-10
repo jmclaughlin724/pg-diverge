@@ -29,7 +29,7 @@ describe("CI governance guard", () => {
       ts.ScriptKind.JS
     );
 
-    expect(namedImports(source, "../lib/guard-utils.js")).toContain("gitTrackedFiles");
+    expect(namedImports(source, "../lib/repository.js")).toContain("gitTrackedFiles");
     expect(callNames(source)).not.toContain("fs.readdirSync");
   });
 });

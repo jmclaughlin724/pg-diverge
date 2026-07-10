@@ -85,7 +85,10 @@ async function extractRawModel(
   }
   if (parsed.kind === "git") {
     const ref = parsed.payload || "HEAD";
-    const files = await readGitSqlFiles(ref, cwd, config.schemaPaths);
+    const files =
+      ref === "INDEX"
+        ? await readGitIndexSqlFiles(cwd, config.schemaPaths)
+        : await readGitSqlFiles(ref, cwd, config.schemaPaths);
     return modelFromSqlFiles(files, source, config);
   }
   throw new Error(`unsupported source "${source}"`);
@@ -427,6 +430,28 @@ async function readGitSqlFiles(
       .filter((line) => line.endsWith(".sql") && !isBootstrapInventoryPath(line));
     for (const path of paths) {
       const { stdout: sql } = await execFileAsync("git", ["-C", cwd, "show", `${ref}:${path}`], {
+        maxBuffer: 1024 * 1024 * 20,
+      });
+      files.push({ path, sql });
+    }
+  }
+  return files;
+}
+
+async function readGitIndexSqlFiles(cwd: string, schemaPaths: string[]): Promise<SqlFile[]> {
+  const files: SqlFile[] = [];
+  for (const schemaPath of schemaPaths) {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", cwd, "ls-files", "--cached", "--", schemaPath],
+      { maxBuffer: 1024 * 1024 * 10 }
+    );
+    const paths = stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.endsWith(".sql") && !isBootstrapInventoryPath(line));
+    for (const path of paths) {
+      const { stdout: sql } = await execFileAsync("git", ["-C", cwd, "show", `:${path}`], {
         maxBuffer: 1024 * 1024 * 20,
       });
       files.push({ path, sql });

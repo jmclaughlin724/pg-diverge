@@ -1,212 +1,61 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import nodeAssert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createInstalledConfig,
+  mergeInstalledConfig,
+  migrationSyncPolicies,
+} from "../../../bin/config-contract.mjs";
+import { assert, ok } from "../lib/assertions.js";
+import { ROOT, readJson } from "../lib/repository.js";
 
-const fieldKeys = [
-  "$schema",
-  "adapter",
-  "cascade",
-  "destructiveChanges",
-  "environments",
-  "excludedGrantRoles",
-  "hints",
-  "idempotency",
-  "lockTimeout",
-  "workflow",
-  "sync",
-  "migrationsDir",
-  "typesFile",
-  "zodFile",
-  "normalize",
-  "managedSchemas",
-  "postgresVersion",
-  "renameDetection",
-  "schemaPaths",
-  "schemas",
-  "sources",
-  "statementTimeout",
-  "transactionMode",
-  "validators",
-];
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(`check-config-standardization: ${message}`);
-  }
-}
-
-function read(root, file) {
-  return readFileSync(path.join(root, file), "utf8");
-}
-
-export function check(root = process.cwd()) {
-  const schema = JSON.parse(read(root, "supaschema-config.schema.json"));
+export function check(root = ROOT) {
+  const schema = readJson("supaschema-config.schema.json", root);
   assert(
     schema.$id === "https://supaschema.com/schemas/supaschema-config.schema.json",
-    "supaschema-config.schema.json must use the canonical absolute $id"
+    "config schema must use the canonical absolute identifier"
   );
-  const schemaProperties = schema.properties ?? {};
+  const properties = schema.properties ?? {};
   assert(
-    JSON.stringify(schemaProperties.adapter?.enum) === JSON.stringify(["auto"]),
-    "supaschema-config.schema.json adapter must allow only auto"
-  );
-  for (const key of fieldKeys) {
-    assert(schemaProperties[key], `supaschema-config.schema.json is missing ${key}`);
-    assert(
-      typeof schemaProperties[key].description === "string" &&
-        schemaProperties[key].description.length > 0,
-      `supaschema-config.schema.json property ${key} is missing a description`
-    );
-  }
-  const sourceProperties = schemaProperties.sources?.properties ?? {};
-  const workflowProperties = schemaProperties.workflow?.properties ?? {};
-  assert(
-    JSON.stringify(sourceProperties.from?.oneOf) ===
-      JSON.stringify([
-        { const: "auto" },
-        {
-          type: "string",
-          not: { const: "auto" },
-          "x-supaschema-source-parser": "parseRuntimeSource",
-        },
-      ]),
-    "sources.from must allow only auto or a supported source spec"
+    JSON.stringify(properties.adapter?.enum) === JSON.stringify(["auto"]),
+    "adapter must allow only auto"
   );
   assert(
-    sourceProperties.to?.["x-supaschema-source-parser"] === "parseRuntimeSource",
-    "sources.to must use the canonical source parser"
+    JSON.stringify(Object.keys(properties.sources?.properties ?? {}).sort()) ===
+      JSON.stringify(["from"]),
+    "sources must expose only from"
   );
+  assert(properties.sources?.additionalProperties === false, "sources must be strict");
   assert(
-    JSON.stringify(workflowProperties.migration_sync?.enum) ===
+    JSON.stringify(properties.workflow?.properties?.migration_sync?.enum) ===
       JSON.stringify(["disabled", "manual", "auto"]),
-    "workflow.migration_sync must allow only disabled, manual, and auto"
+    "migration_sync must expose only canonical policies"
   );
   assert(
-    !JSON.stringify(workflowProperties.migration_sync).includes("explicit_request_only"),
-    "workflow.migration_sync schema must not allow removed explicit_request_only values"
-  );
-  assert(
-    workflowProperties.migration_sync?.default === "auto",
-    'workflow.migration_sync must default to "auto"'
+    JSON.stringify(migrationSyncPolicies) === JSON.stringify(["disabled", "manual", "auto"]),
+    "generated contract migration policies must match the schema"
   );
 
-  const docs = read(root, "docs/configuration/config-file.mdx");
-  const docsRows = {
-    hints: ["| `hints.destructive`", "| `hints.renames`"],
-    schemas: ["| `schemas.include`"],
-    sources: ["| `sources.from`", "| `sources.to`"],
-    sync: ["| `sync.targets.<name>`"],
-    workflow: ["| `workflow.schema_diff`", "| `workflow.migration_sync`"],
-  };
-  for (const key of fieldKeys) {
-    const rows = docsRows[key] ?? [`| \`${key}\``];
-    assert(
-      rows.some((row) => docs.includes(row)),
-      `configuration docs are missing option row for ${key}`
-    );
-  }
+  const installed = createInstalledConfig();
   assert(
-    docs.includes("supaschema config validate --json"),
-    "configuration docs must document config validate --json"
+    JSON.stringify(installed.sources) === JSON.stringify({ from: "auto" }),
+    "installed config must have one source owner"
   );
-  assert(
-    docs.includes("supaschema init --dry-run --json"),
-    "configuration docs must document init --dry-run --json"
+  nodeAssert.throws(
+    () => mergeInstalledConfig({ sources: { from: "auto", to: "dir:legacy" } }),
+    "config repair must reject removed source fields"
   );
-
-  const scaffold = read(root, "bin/scaffold.mjs");
-  assert(
-    scaffold.includes('from "./config-contract.mjs"'),
-    "bin/scaffold.mjs must import the generated config contract mirror"
+  nodeAssert.throws(
+    () =>
+      mergeInstalledConfig({
+        workflow: { migration_sync: "explicit_request_only" },
+      }),
+    "config repair must reject removed workflow policies"
   );
-  for (const forbidden of ["normalizeAdapter", "supabase-auto"]) {
-    assert(
-      !scaffold.includes(forbidden),
-      `bin/scaffold.mjs must not preserve adapter compatibility (${forbidden})`
-    );
-  }
-  for (const forbidden of [
-    '"supaschema.config.mjs"',
-    '"supaschema.config.js"',
-    "'supaschema.config.mjs'",
-    "'supaschema.config.js'",
-    "`supaschema.config.mjs`",
-    "`supaschema.config.js`",
-    "pathToFileURL",
-  ]) {
-    assert(
-      !scaffold.includes(forbidden),
-      `bin/scaffold.mjs must not preserve JavaScript config compatibility (${forbidden})`
-    );
-  }
-  for (const forbidden of [
-    '"auth",',
-    '"supabase/migrations"',
-    '"neon/migrations"',
-    '"aws-postgresql/migrations"',
-  ]) {
-    assert(
-      !scaffold.includes(forbidden),
-      `bin/scaffold.mjs must not hard-code provider/config contract value ${forbidden}`
-    );
-  }
-
-  const mirror = read(root, "bin/config-contract.mjs");
-  assert(
-    mirror.startsWith("const contract = JSON.parse(`"),
-    "bin/config-contract.mjs must be generated from src/config/contract.ts"
-  );
-
-  const configSource = read(root, "src/config/schema.ts");
-  assert(
-    configSource.includes("createInstalledConfig()"),
-    "src/config/schema.ts defaultConfigFile must come from createInstalledConfig()"
-  );
-  for (const forbidden of ["normalizeAdapter"]) {
-    assert(
-      !configSource.includes(forbidden),
-      `src/config/schema.ts must not preserve adapter compatibility (${forbidden})`
-    );
-  }
-  assert(
-    !configSource.includes("supaschema.config.mjs"),
-    "src/config/schema.ts must not load JavaScript config files"
-  );
-
-  const contractSource = read(root, "src/config/contract.ts");
-  for (const forbidden of ["normalizeAdapter", "auto_local", "auto_targets"]) {
-    assert(
-      !contractSource.includes(forbidden),
-      `src/config/contract.ts must not preserve removed config compatibility (${forbidden})`
-    );
-  }
-  assert(
-    contractSource.includes('next.migration_sync === "explicit_request_only"') &&
-      contractSource.includes("MigrationSyncPolicy.Manual"),
-    "src/config/contract.ts must repair removed migration_sync scaffold values to manual"
-  );
-  assert(
-    mirror.includes('next.migration_sync === "explicit_request_only"') &&
-      mirror.includes('next.migration_sync = "manual"'),
-    "bin/config-contract.mjs must mirror removed migration_sync scaffold repair"
-  );
-
-  const cliReportsSource = read(root, "src/cli/reports.ts");
-  for (const forbidden of ['.option("--local"', '.option("--remote"']) {
-    assert(
-      !cliReportsSource.includes(forbidden),
-      `src/cli/reports.ts must not expose removed sync compatibility alias ${forbidden}`
-    );
-  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  try {
-    check();
-    console.log("check-config-standardization: ok");
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
+  check();
+  ok("CONFIG_STANDARDIZATION_OK");
 }

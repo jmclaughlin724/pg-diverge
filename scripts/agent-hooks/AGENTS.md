@@ -4,14 +4,12 @@ Shared Claude and Codex hook runtime, imported by both `.claude/hooks/**` and `.
 
 ## Contents
 
-- `runner.mjs` — event dispatcher (skill gate, response-evidence gate, Bash safety)
+- `runner.mjs` — event dispatcher (skill gate and Bash safety)
 - `command-evidence.mjs` — command-evidence recording and verification-domain classification
-- `evidence-gate.mjs` — PreToolUse response-evidence gate (subagent-advisory)
-- `response-shape.mjs` — response-shape detectors (`runResponseDetectors`)
 - `response-evidence.mjs` — tool-outcome, GitHub-failure, and exit-code parsing
 - `skills.mjs` — skill discovery, prompt/tool matching, observable-load detection
 - `state.mjs` — serialized per-session state
-- `tool-payload.mjs`, `hook-output.mjs`, `response-claims.mjs`, `atlas.mjs` — payload and evidence helpers
+- `hook-output.mjs` and `atlas.mjs` — event output and Code Atlas owners
 
 ## Owners
 

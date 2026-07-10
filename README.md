@@ -83,7 +83,7 @@ Use `diff`, `check`, `types`, `stage`, or `apply` only when you need one focused
 
 Zero-flag commands read `supaschema.config.json`. Diff sources can be schema directories, Git refs, live read-only catalogs, SQL dumps, saved catalog snapshots, or an empty baseline. Full flags, defaults, and exit codes live in the [commands reference](https://supaschema.com/docs/commands) and [sources guide](https://supaschema.com/docs/concepts/sources).
 
-Read config as four decisions: `schemaPaths` / `sources.to` / `migrationsDir` define the recursive schema tree, migration output, and migration-derived source-intent corpus; `sources.from` / `sources.to` define the diff inputs; `typesFile` / `zodFile` plus workflow type policies define generated contracts; and `workflow.migration_sync` plus `sync.targets` defines apply behavior.
+Read config as four decisions: `schemaPaths` and `migrationsDir` define the recursive target tree, migration output, and migration-derived source-intent corpus; `sources.from` defines the baseline while explicit alternates use `--from` or `--to`; `typesFile` / `zodFile` plus workflow type policies define generated contracts; and `workflow.migration_sync` plus `sync.targets` defines apply behavior.
 
 ## What ships
 

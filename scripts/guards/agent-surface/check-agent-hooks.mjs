@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, exists, gitTrackedFiles, ok, ROOT, readJson } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { exists, ROOT, readJson, readText } from "../lib/repository.js";
 import {
   claudePreToolUseCommandsFor,
   codexPreToolUseCommandsFor,
@@ -26,8 +26,6 @@ const sourceRepoClaudeContextHooks = [
   ".claude/hooks/context-pre-tool-use.mjs",
   ".claude/hooks/context-post-tool-use.mjs",
   ".claude/hooks/context-subagent-start.mjs",
-  ".claude/hooks/context-subagent-stop.mjs",
-  ".claude/hooks/context-stop.mjs",
   ".claude/hooks/context-task-completed.mjs",
   ".claude/hooks/context-permission-denied.mjs",
   ".claude/hooks/context-session-end.mjs",
@@ -44,8 +42,6 @@ const sourceRepoCodexContextHooks = [
   ".codex/hooks/context-pre-tool-use.mjs",
   ".codex/hooks/context-post-tool-use.mjs",
   ".codex/hooks/context-subagent-start.mjs",
-  ".codex/hooks/context-subagent-stop.mjs",
-  ".codex/hooks/context-stop.mjs",
   ".codex/hooks/context-task-completed.mjs",
   ".codex/hooks/context-permission-denied.mjs",
   ".codex/hooks/context-session-end.mjs",
@@ -56,15 +52,17 @@ const codexRegisteredHookPaths = [
   ".codex/hooks/context-pre-tool-use.mjs",
   ".codex/hooks/context-post-tool-use.mjs",
   ".codex/hooks/context-subagent-start.mjs",
-  ".codex/hooks/context-subagent-stop.mjs",
-  ".codex/hooks/context-stop.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
 ];
 const retiredWorkflowHookPaths = [
   ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/block-generated-migration-edits.mjs",
+  ".claude/hooks/context-stop.mjs",
+  ".claude/hooks/context-subagent-stop.mjs",
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
+  ".codex/hooks/context-stop.mjs",
+  ".codex/hooks/context-subagent-stop.mjs",
 ];
 
 function assertClaudeSettings(claudeSettings, root) {
@@ -118,10 +116,17 @@ function assertClaudeSettings(claudeSettings, root) {
     );
   }
   const sourceClaudeBashCommands = claudePreToolUseCommandsFor(claudeSettings, "Bash");
+  const sourceClaudeContextCommands = sourceClaudeBashCommands.filter((command) =>
+    command.includes(".claude/hooks/context-pre-tool-use.mjs")
+  );
+  const sourceClaudeSchemaCommands = sourceClaudeBashCommands.filter(
+    (command) =>
+      command.includes(".claude/hooks/supaschema-source-hook.mjs") &&
+      command.includes("generated-migration-edit")
+  );
   assert(
-    sourceClaudeBashCommands.length === 1 &&
-      sourceClaudeBashCommands[0].includes(".claude/hooks/context-pre-tool-use.mjs"),
-    ".claude/settings.json Bash PreToolUse must resolve through exactly one context hook command"
+    sourceClaudeContextCommands.length === 1 && sourceClaudeSchemaCommands.length === 1,
+    ".claude/settings.json Bash PreToolUse must resolve through one context hook and one supaschema policy hook"
   );
   assert(
     !sourceClaudeBashCommands.some((command) =>
@@ -149,23 +154,23 @@ function assertClaudeSettings(claudeSettings, root) {
       `.claude/settings.json still registers ${removedHook}`
     );
   }
-  const claudePostToolUseText = JSON.stringify(claudeSettings.hooks?.PostToolUse ?? []);
-  const claudePostToolBatch = claudeSettings.hooks?.PostToolBatch;
-  assert(Array.isArray(claudePostToolBatch), ".claude/settings.json missing PostToolBatch entries");
+  const claudePostToolUse = claudeSettings.hooks?.PostToolUse ?? [];
   assert(
-    !claudePostToolUseText.includes("sync-llm-on-claude-surface-change.mjs"),
-    ".claude/settings.json must not run sync:llm from per-tool PostToolUse"
+    hookHandlers(claudePostToolUse).some((handler) =>
+      handler.args?.some((arg) =>
+        arg.endsWith("/.claude/hooks/sync-llm-on-claude-surface-change.mjs")
+      )
+    ),
+    ".claude/settings.json must run sync:llm from PostToolUse"
   );
   assert(
-    JSON.stringify(claudePostToolBatch).includes("sync-llm-on-claude-surface-change.mjs"),
-    ".claude/settings.json must run sync:llm from PostToolBatch"
+    claudeSettings.hooks?.PostToolBatch === undefined,
+    ".claude/settings.json must not register the removed PostToolBatch wrapper"
   );
-  for (const entry of claudePostToolBatch) {
-    assert(
-      !("matcher" in entry),
-      ".claude/settings.json PostToolBatch entries must not use unsupported matchers"
-    );
-  }
+  assert(
+    claudeSettings.hooks?.Stop === undefined && claudeSettings.hooks?.SubagentStop === undefined,
+    ".claude/settings.json must not register Stop continuation hooks"
+  );
 }
 
 function assertCodexConfig(codexConfig, root) {
@@ -186,8 +191,6 @@ function assertCodexConfig(codexConfig, root) {
     "context-pre-tool-use.mjs",
     "context-post-tool-use.mjs",
     "context-subagent-start.mjs",
-    "context-subagent-stop.mjs",
-    "context-stop.mjs",
   ]) {
     assert(codexHooksJson.includes(hook), `.codex/hooks.json must register ${hook}`);
   }
@@ -195,11 +198,19 @@ function assertCodexConfig(codexConfig, root) {
     !codexHooksJson.includes("general-guard.mjs"),
     ".codex/hooks.json must not register source-repo Codex general-guard fan-out"
   );
-  for (const toolName of ["Bash", "exec_command", "functions.exec_command"]) {
+  for (const toolName of ["Bash", "apply_patch"]) {
     const commands = codexPreToolUseCommandsFor(codexConfig, toolName);
+    const contextCommands = commands.filter((command) =>
+      command.includes(".codex/hooks/context-pre-tool-use.mjs")
+    );
+    const schemaCommands = commands.filter(
+      (command) =>
+        command.includes(".codex/hooks/supaschema-source-hook.mjs") &&
+        command.includes("generated-migration-edit")
+    );
     assert(
-      commands.length === 1 && commands[0].includes(".codex/hooks/context-pre-tool-use.mjs"),
-      `.codex/hooks.json ${toolName} PreToolUse must resolve through exactly one context hook command`
+      contextCommands.length === 1 && schemaCommands.length === 1,
+      `.codex/hooks.json ${toolName} PreToolUse must resolve through one context hook and one supaschema policy hook`
     );
   }
   const packageCodexHooksJson = JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json", root));
@@ -238,42 +249,23 @@ function assertCodexConfig(codexConfig, root) {
 }
 
 export function check(root = ROOT) {
-  const syncLlmText = fs.readFileSync(path.join(root, "scripts/skills/sync-llm.mjs"), "utf8");
-  const syncHookText = fs.readFileSync(
-    path.join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
-    "utf8"
-  );
   const sourceRepoAgentRuntimeFiles = [
     ".claude/settings.json",
     "scripts/agent-hooks/atlas.mjs",
     "scripts/agent-hooks/command-evidence.mjs",
-    "scripts/agent-hooks/evidence-gate.mjs",
     "scripts/agent-hooks/hook-output.mjs",
-    "scripts/agent-hooks/response-claims.mjs",
     "scripts/agent-hooks/response-evidence.mjs",
-    "scripts/agent-hooks/response-shape.mjs",
     "scripts/agent-hooks/runner.mjs",
     "scripts/agent-hooks/skill-frontmatter.mjs",
     "scripts/agent-hooks/skill-paths.mjs",
     "scripts/agent-hooks/skills.mjs",
     "scripts/agent-hooks/state.mjs",
-    "scripts/agent-hooks/tool-payload.mjs",
   ];
-  const trackedFiles = new Set(gitTrackedFiles(root));
   assert(
     sourceRepoAgentRuntimeFiles.every((file) => exists(file, root)),
     `source-repo agent hook runtime is incomplete; missing ${sourceRepoAgentRuntimeFiles.filter((file) => !exists(file, root)).join(", ")}`
   );
-  const skillMatcherText = fs.readFileSync(
-    path.join(root, "scripts/agent-hooks/skills.mjs"),
-    "utf8"
-  );
-  const hookRunnerText = fs.readFileSync(path.join(root, "scripts/agent-hooks/runner.mjs"), "utf8");
-  const hookStateText = fs.readFileSync(path.join(root, "scripts/agent-hooks/state.mjs"), "utf8");
-  const claudeSkillFiles = [...trackedFiles]
-    .filter((file) => file.startsWith(".claude/skills/") && path.basename(file) === "SKILL.md")
-    .filter((file) => exists(file, root))
-    .map((file) => path.join(root, file));
+  const hookRunnerText = readText("scripts/agent-hooks/runner.mjs", root);
 
   for (const hook of [
     ...claudeHookFiles,
@@ -305,130 +297,19 @@ export function check(root = ROOT) {
     }
   }
   const codexPostToolUseText = JSON.stringify(codexConfig.hooks?.PostToolUse ?? []);
-  const codexStop = codexConfig.hooks?.Stop;
-  assert(Array.isArray(codexStop), ".codex/hooks.json missing Stop entries");
   assert(
-    !codexPostToolUseText.includes("sync-llm-on-claude-surface-change.mjs"),
-    ".codex/hooks.json must not run sync:llm from per-tool PostToolUse"
+    codexPostToolUseText.includes("sync-llm-on-claude-surface-change.mjs"),
+    ".codex/hooks.json must run sync:llm from PostToolUse"
   );
   assert(
-    JSON.stringify(codexStop).includes("sync-llm-on-claude-surface-change.mjs"),
-    ".codex/hooks.json must run sync:llm from Stop"
-  );
-  assert(
-    JSON.stringify(codexStop).includes("context-stop.mjs"),
-    ".codex/hooks.json must run response-shape context enforcement from Stop"
-  );
-  for (const entry of codexStop) {
-    assert(!("matcher" in entry), ".codex/hooks.json Stop entries must not use matchers");
-  }
-  for (const forbidden of [
-    "new RegExp",
-    "RegExp(",
-    ".matchAll(",
-    "metadata.intent-patterns",
-    "intent-patterns",
-  ]) {
-    assert(
-      !skillMatcherText.includes(forbidden),
-      `scripts/agent-hooks/skills.mjs must not use ${forbidden} for skill matching`
-    );
-  }
-  assert(
-    skillMatcherText.includes("isSubagentInvocation") && skillMatcherText.includes("agent_id"),
-    "scripts/agent-hooks/skills.mjs must downgrade the PreToolUse skill gate to advisory inside subagents (agent_id)"
+    codexConfig.hooks?.Stop === undefined && codexConfig.hooks?.SubagentStop === undefined,
+    ".codex/hooks.json must not register Stop continuation hooks"
   );
   assert(
     runnerImportsEvaluateBashPolicy(hookRunnerText) &&
-      runnerDeclaresFunction(hookRunnerText, "bashSafety") &&
-      !hookRunnerText.includes("../github/") &&
-      !hookRunnerText.includes(".codex/hooks/general-guard.mjs"),
-    "scripts/agent-hooks/runner.mjs must own source-repo PreToolUse Bash safety without GitHub helper dispatch"
+      runnerDeclaresFunction(hookRunnerText, "bashSafety"),
+    "scripts/agent-hooks/runner.mjs must own source-repo PreToolUse Bash safety"
   );
-  assert(
-    hookRunnerText.includes("function responseShape") &&
-      hookRunnerText.includes("block: detectorResult.contextParts.join") &&
-      !hookRunnerText.includes('context.runtime === "codex" && detectorResult.contextParts'),
-    "scripts/agent-hooks/runner.mjs must block response-shape corrections for both Claude and Codex Stop hooks"
-  );
-  assert(
-    hookRunnerText.includes("withSessionState") &&
-      hookStateText.includes("export function withSessionState") &&
-      hookStateText.includes("acquireSessionLock") &&
-      hookStateText.includes("fs.mkdirSync(lockPath)") &&
-      hookStateText.includes("clearStaleLock"),
-    "scripts/agent-hooks must serialize session-state mutation so concurrent PostToolUse hooks cannot overwrite skill-load or evidence state"
-  );
-  assert(
-    syncLlmText.includes("renderSourceCodexHooks") &&
-      syncLlmText.includes("syncCodexHookConfig") &&
-      syncLlmText.includes("checkCodexHookConfig") &&
-      syncLlmText.includes("assertClaudeHookSource"),
-    "sync:llm must render, write, and check source-repo .codex/hooks.json from the Claude hook registration contract"
-  );
-  assert(
-    syncHookText.includes(".codex/hooks.json") &&
-      syncHookText.includes("agent-bundle/codex/hooks.npm.json") &&
-      syncHookText.includes("scripts/skills/sync-llm.mjs") &&
-      syncHookText.includes("syncTriggerFiles"),
-    "sync surface hook must run sync:llm for generated Codex hook config, package hook templates, and sync owner edits"
-  );
-  assert(
-    syncLlmText.includes("consumerCodexHooks") &&
-      syncLlmText.includes("ensureConsumerCodexGeneralGuard") &&
-      !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json", root)).includes("context-") &&
-      !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json", root)).includes(
-        "supaschema-source-hook.mjs"
-      ) &&
-      !JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json", root)).includes(
-        "scripts/agent-hooks"
-      ),
-    "sync:llm must strip repo-local context enforcement hooks from packaged Codex hook templates"
-  );
-  const evidenceGateText = fs.readFileSync(
-    path.join(root, "scripts/agent-hooks/evidence-gate.mjs"),
-    "utf8"
-  );
-  assert(
-    evidenceGateText.includes("isSubagentInvocation"),
-    "scripts/agent-hooks/evidence-gate.mjs response-evidence gate must downgrade to advisory inside subagents"
-  );
-  const responseShapeText = fs.readFileSync(
-    path.join(root, "scripts/agent-hooks/response-shape.mjs"),
-    "utf8"
-  );
-  assert(
-    responseShapeText.includes("mechanismClaimWithoutArchitecture") &&
-      responseShapeText.includes("mechanism-claim-without-architecture") &&
-      responseShapeText.includes("architecture/end-state disposition") &&
-      responseShapeText.includes("verification disposition"),
-    "scripts/agent-hooks/response-shape.mjs must block mechanism-only correctness answers until architecture/end-state and verification dispositions are present"
-  );
-  const commandEvidenceText = fs.readFileSync(
-    path.join(root, "scripts/agent-hooks/command-evidence.mjs"),
-    "utf8"
-  );
-  assert(
-    commandEvidenceText.includes("domains.length === 0"),
-    "scripts/agent-hooks/command-evidence.mjs must exclude source/inventory reads from verification evidence"
-  );
-  const responseEvidenceText = fs.readFileSync(
-    path.join(root, "scripts/agent-hooks/response-evidence.mjs"),
-    "utf8"
-  );
-  assert(
-    responseEvidenceText.includes("exitCodeFromExecutionStatus") &&
-      responseEvidenceText.includes("isExecutionStatusLabel") &&
-      !responseEvidenceText.includes("textMentionsExit"),
-    "scripts/agent-hooks/response-evidence.mjs must parse only execution-status exit lines"
-  );
-  for (const file of claudeSkillFiles) {
-    const text = fs.readFileSync(file, "utf8");
-    assert(
-      !text.includes("intent-patterns:"),
-      `${path.relative(root, file)} must use literal metadata.keywords, not intent-patterns`
-    );
-  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

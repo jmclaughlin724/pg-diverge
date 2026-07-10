@@ -13,7 +13,7 @@ import type { Diagnostic, MigrationPlan } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { MODEL_FORMAT_VERSION } from "../hash.js";
-import { defaultMigrationName, migrationFiles } from "../migrations/files.js";
+import { defaultMigrationName, migrationFiles, nextMigrationFile } from "../migrations/files.js";
 import { latestLineage, parseLineage } from "../migrations/lineage.js";
 import { migrationFileVersion, migrationsStatus } from "../migrations/status.js";
 import { pathContainsOrEqual } from "../paths.js";
@@ -60,7 +60,7 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
   program
     .command("plan")
     .option("--from <source>", "source model before the change (default: config.sources.from)")
-    .option("--to <target>", "source model after the change (default: config.sources.to)")
+    .option("--to <target>", "source model after the change (default: config.schemaPaths)")
     .option("--schema <names>", "comma-separated schema filter")
     .option("--timing", "print extract/plan phase timings to stderr")
     .description("Print the planned object-level schema diff as JSON (use `diff` to render SQL).")
@@ -81,7 +81,7 @@ export function registerDiffCommands(program: Command, context: DiffCommandConte
   program
     .command("diff")
     .option("--from <source>", "source model before the change (default: config.sources.from)")
-    .option("--to <target>", "source model after the change (default: config.sources.to)")
+    .option("--to <target>", "source model after the change (default: config.schemaPaths)")
     .option(
       "--out <file>",
       "output file path or stdout (default: <migrations-dir>/<UTC timestamp>_<name>.sql)"
@@ -203,7 +203,7 @@ async function runDiff(
     process.exitCode = 2;
     return;
   }
-  const output = renderDiffOutput(options, plan, config, context.cliVersion);
+  const output = await renderDiffOutput(options, plan, config, context.cliVersion);
   if (output.shouldSkipEmptyWrite) {
     process.stderr.write("no schema changes\n");
     return;
@@ -277,12 +277,12 @@ interface DiffOutput {
   shouldSkipEmptyWrite: boolean;
 }
 
-function renderDiffOutput(
+async function renderDiffOutput(
   options: WithSources<DiffOptions>,
   plan: MigrationPlan,
   config: SupaschemaConfig,
   cliVersion: string
-): DiffOutput {
+): Promise<DiffOutput> {
   const renderStart = performance.now();
   const rendered = renderMigrationSplit(plan, { config, version: cliVersion });
   if (options.timing) {
@@ -291,7 +291,7 @@ function renderDiffOutput(
   const migrationsDir = resolveMigrationsDir(options.migrationsDir, config);
   const defaultedOut =
     options.name === undefined && options.out === undefined && options.replace === undefined;
-  const outPath = resolveDiffOutPath(options, plan, migrationsDir);
+  const outPath = await resolveDiffOutPath(options, plan, migrationsDir);
   const concurrentPath =
     rendered.concurrentSql !== undefined && outPath !== undefined
       ? `${stripSqlExtension(outPath)}.concurrent.sql`
@@ -534,7 +534,9 @@ async function diffWorkspacePreflightDiagnostics(
     ...generatedContractPaths,
     normalizedConfigPath,
   ]);
-  const dirtyEntries = entries.filter(hasDirtyGitState);
+  const dirtyEntries = entries.filter(
+    options.from === "git:INDEX" ? hasUnstagedGitState : hasDirtyGitState
+  );
   if (dirtyEntries.length === 0) {
     return [];
   }
@@ -656,6 +658,10 @@ function hasDirtyGitState(entry: GitStatusEntry): boolean {
   return entry.indexStatus !== " " || entry.worktreeStatus !== " ";
 }
 
+function hasUnstagedGitState(entry: GitStatusEntry): boolean {
+  return entry.worktreeStatus !== " ";
+}
+
 function scopedDirtySchemaPaths(
   entries: GitStatusEntry[],
   schemaRoot: string,
@@ -744,24 +750,11 @@ function formatPathList(paths: string[], limit = 6): string {
   return values.length > limit ? `${visible}, +${values.length - limit} more` : visible;
 }
 
-function migrationTimestamp(): string {
-  const now = new Date();
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return [
-    now.getUTCFullYear(),
-    pad(now.getUTCMonth() + 1),
-    pad(now.getUTCDate()),
-    pad(now.getUTCHours()),
-    pad(now.getUTCMinutes()),
-    pad(now.getUTCSeconds()),
-  ].join("");
-}
-
-function resolveDiffOutPath(
+async function resolveDiffOutPath(
   options: WithSources<DiffOptions>,
   plan: MigrationPlan,
   migrationsDir: string
-): string | undefined {
+): Promise<string | undefined> {
   if (options.replace !== undefined) {
     return resolve(process.cwd(), options.replace);
   }
@@ -773,8 +766,7 @@ function resolveDiffOutPath(
   }
   return resolve(
     process.cwd(),
-    migrationsDir,
-    `${migrationTimestamp()}_${options.name ?? defaultMigrationName(plan)}.sql`
+    await nextMigrationFile(migrationsDir, options.name ?? defaultMigrationName(plan))
   );
 }
 

@@ -7,7 +7,6 @@ import {
   AdapterInput,
   adapterInputValues,
   canonicalSchemaId,
-  canonicalSourceTo,
   configFieldMetadata,
   createInstalledConfig,
   DestructiveChangesPolicy,
@@ -105,9 +104,8 @@ const syncSchema = z
 const sourcesSchema = z
   .strictObject({
     from: z.string().default(sourceAuto),
-    to: z.string().default(canonicalSourceTo([genericSchemaPath])),
   })
-  .default({ from: sourceAuto, to: canonicalSourceTo([genericSchemaPath]) });
+  .default({ from: sourceAuto });
 
 const adapterSchema = z.enum(adapterInputValues).default(AdapterInput.Auto);
 const workflowSchema = z
@@ -223,15 +221,6 @@ export function isFileMissing(error: unknown): boolean {
 
 function finalizeConfigDefaults(config: SupaschemaConfig, input: unknown): SupaschemaConfig {
   let next = config;
-  if (!hasExplicitSourcesTo(input)) {
-    next = {
-      ...next,
-      sources: {
-        ...next.sources,
-        to: canonicalSourceTo(next.schemaPaths),
-      },
-    };
-  }
   if (hasExplicitEnvironments(input) && !hasExplicitSync(input)) {
     next = {
       ...next,
@@ -239,10 +228,6 @@ function finalizeConfigDefaults(config: SupaschemaConfig, input: unknown): Supas
     };
   }
   return next;
-}
-
-function hasExplicitSourcesTo(input: unknown): boolean {
-  return isRecord(input) && isRecord(input.sources) && typeof input.sources.to === "string";
 }
 
 function hasExplicitEnvironments(input: unknown): boolean {
@@ -297,7 +282,6 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
     isRecord(sources) && isRecord(sources.properties) ? sources.properties : undefined;
   if (sourceProperties) {
     const from = sourceProperties.from;
-    const to = sourceProperties.to;
     if (isRecord(from)) {
       from.description =
         'Default before-state source. For generation, "auto" resolves git:HEAD as a candidate baseline, then empty: only for a first migration with no existing migration corpus. Existing generated migrations must prove the same baseline through lineage.';
@@ -317,11 +301,6 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
         },
       ];
       from.type = undefined;
-    }
-    if (isRecord(to)) {
-      to.description = "Default after-state source, usually dir:<schemaPaths[0]>.";
-      to.examples = ["dir:database/schemas", "dir:supabase/schemas"];
-      to["x-supaschema-source-parser"] = "parseRuntimeSource";
     }
   }
   const environments = properties.environments;

@@ -24,7 +24,11 @@ import {
   validateConfig,
 } from "./config/validate.js";
 import type { Diagnostic } from "./core.js";
-import { databaseUrlLane, resolveDatabaseUrl } from "./database/url.js";
+import {
+  databaseUrlLane,
+  resolveDatabaseUrl,
+  resolveVerificationDatabaseUrl,
+} from "./database/url.js";
 import { diagnosticCatalog, formatDiagnostics, hasErrors } from "./diagnostics.js";
 import { generatedMigrationEditHookOutput, schemaWriteHookOutput } from "./hooks/output.js";
 import { latestMigrationFile, migrationFiles } from "./migrations/files.js";
@@ -228,7 +232,7 @@ program
 program
   .command("verify")
   .option("--from <source>", "source model before the change (default: config.sources.from)")
-  .option("--to <target>", "source model after the change (default: config.sources.to)")
+  .option("--to <target>", "source model after the change (default: config.schemaPaths)")
   .option(
     "--migration <file>",
     "migration SQL file to apply twice (default: newest .sql in config.migrationsDir)"
@@ -257,7 +261,7 @@ program
   .description("Apply from + migration twice and compare against target in temporary databases.")
   .action(async (options: VerifyOptions) => {
     const config = await loadCliConfig();
-    const databaseUrl = await resolveCliDatabaseUrl(options.databaseUrl);
+    const databaseUrl = await resolveCliVerificationDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
       process.stderr.write(
         "no database URL: pass --database-url, --env, set SUPASCHEMA_DATABASE_URL, or run inside a project with supabase/config.toml\n"
@@ -274,7 +278,7 @@ program
       return;
     }
     const sources = await resolveSourceDefaults(options, config, () =>
-      resolveCliDatabaseUrl(options.databaseUrl)
+      resolveCliVerificationDatabaseUrl(options.databaseUrl)
     );
     if (sources.notice !== undefined) {
       process.stderr.write(sources.notice);
@@ -758,6 +762,13 @@ async function runHookFailOpen(action: () => Promise<void>): Promise<void> {
 
 async function resolveCliDatabaseUrl(explicit?: string): Promise<string | undefined> {
   return (await resolveCliDatabaseUrlInfo(explicit)).url;
+}
+
+async function resolveCliVerificationDatabaseUrl(explicit?: string): Promise<string | undefined> {
+  if (program.opts<GlobalOptions>().env !== undefined) {
+    return await resolveCliDatabaseUrl(explicit);
+  }
+  return resolveVerificationDatabaseUrl(explicit);
 }
 
 async function resolveCliDatabaseUrlInfo(

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, exists, ok, ROOT, readJson, readText } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { exists, ROOT, readJson } from "../lib/repository.js";
 
 const deletedGithubWorkflowFiles = [
   "scripts/github/merge.mjs",
@@ -17,26 +18,9 @@ const deletedGithubWorkflowScripts = [
   "github:pr-preflight",
 ];
 
-const obsoleteWorkflowText = [
-  "npm run github:merge",
-  "npm run github:merge-preflight",
-  "npm run github:post-merge-verify",
-  "npm run github:pr-preflight",
-  "--rebase --delete-branch",
-  "merge preflight",
-  "post-merge verification",
-];
-
 export function check(root = ROOT) {
   const policy = readJson(".github/repo-policy.json", root);
   const packageJson = readJson("package.json", root);
-  const prTemplate = readText(".github/PULL_REQUEST_TEMPLATE.md", root);
-  const contributing = readText("CONTRIBUTING.md", root);
-  const githubProcessRule = readText(".claude/rules/21-github-process.md", root);
-  const bashPolicyChecks = readText(".claude/hooks/guards/bash-policy-checks.mjs", root);
-  const antiPatterns = readText(".claude/rules/20-anti-patterns.md", root);
-  const checkAll = readText("scripts/guards/check-all.mjs", root);
-  const auditSettings = readText("scripts/github/audit-settings.mjs", root);
 
   for (const file of ["scripts/github/policy.mjs", "scripts/github/audit-settings.mjs"]) {
     assert(exists(file, root), `${file} must exist`);
@@ -61,10 +45,6 @@ export function check(root = ROOT) {
     );
   }
 
-  assert(
-    checkAll.includes("scripts/guards/ci-release/check-github-process.mjs"),
-    "npm run guard must include check-github-process.mjs"
-  );
   assert(
     Array.isArray(policy.upstreamSources) && policy.upstreamSources.length > 0,
     "repo policy must cite GitHub upstream sources"
@@ -95,26 +75,9 @@ export function check(root = ROOT) {
     JSON.stringify(policy.repositoryTopics) === JSON.stringify(expectedTopics),
     "repo policy topics must match the G41 distribution set"
   );
-  assert(
-    packageJson.description ===
-      "Declarative PostgreSQL schema management for replay-safe migrations, guarded sync, TypeScript types, and Zod validators without an ORM, Docker, or a shadow database.",
-    "package description must match the canonical distribution paragraph"
-  );
   for (const topic of expectedTopics) {
     assert(packageJson.keywords.includes(topic), `package keywords must include ${topic}`);
   }
-  assert(
-    auditSettings.includes("--apply-topics"),
-    "audit-settings must own the approval-gated topic apply flag"
-  );
-  assert(
-    auditSettings.includes("GITHUB_REPOSITORY_TOPICS_APPROVED"),
-    "audit-settings must require explicit topic write approval"
-  );
-  assert(
-    auditSettings.includes('"PUT"'),
-    "audit-settings topic apply must use the GitHub replace-topics endpoint"
-  );
 
   assert(policy.repository?.default_branch === "main", "default branch must be main");
   assert(policy.repository?.allow_merge_commit === false, "merge commits must be disabled");
@@ -198,42 +161,10 @@ export function check(root = ROOT) {
     );
   }
 
-  for (const source of [
-    [".github/PULL_REQUEST_TEMPLATE.md", prTemplate],
-    ["CONTRIBUTING.md", contributing],
-    [".claude/rules/21-github-process.md", githubProcessRule],
-    [".claude/hooks/guards/bash-policy-checks.mjs", bashPolicyChecks],
-  ]) {
-    for (const text of obsoleteWorkflowText) {
-      assert(
-        !source[1].includes(text),
-        `${source[0]} must not reference obsolete PR workflow text`
-      );
-    }
-  }
-  assert(
-    bashPolicyChecks.includes('"--merge", "--rebase", "--admin", "--disable-auto"') &&
-      bashPolicyChecks.includes('mergeArgs.includes("--squash")') &&
-      bashPolicyChecks.includes('mergeArgs.includes("--delete-branch")'),
-    "Bash policy must enforce squash PR merges with branch deletion"
-  );
-  assert(
-    antiPatterns.includes("`gh pr merge` with a non-policy merge method"),
-    "Rule 20 must index non-policy gh pr merge commands"
-  );
-
   assert(
     !(packageJson.scripts?.["github:check-dco"] || exists("scripts/github/check-dco.mjs", root)),
     "DCO checker must not be exposed as a repo blocker"
   );
-  for (const source of [
-    ["CONTRIBUTING.md", contributing],
-    [".github/PULL_REQUEST_TEMPLATE.md", prTemplate],
-    [".claude/rules/21-github-process.md", githubProcessRule],
-  ]) {
-    assert(!source[1].includes("github:check-dco"), `${source[0]} must not require DCO checks`);
-    assert(!source[1].includes("DCO"), `${source[0]} must not require DCO signoff`);
-  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

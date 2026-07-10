@@ -130,7 +130,7 @@ When you omit flags, supaschema reads `supaschema.config.json`.
 | Area | Default |
 | --- | --- |
 | `--from` | `config.sources.from`; for generation, `"auto"` resolves valid `git:HEAD` as a candidate baseline, then generated migration lineage must match when migrations exist |
-| `--to` | `config.sources.to`, then `dir:<config.schemaPaths[0]>` |
+| `--to` | `dir:<config.schemaPaths[0]>` |
 | Migration output | `config.migrationsDir` |
 | `check` input | every `.sql` file in `config.migrationsDir`; fails when none exist unless `--allow-empty` is passed |
 | `verify --migration` | newest `.sql` file in `config.migrationsDir` |

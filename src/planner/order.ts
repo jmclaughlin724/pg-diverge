@@ -44,7 +44,8 @@ export function sortOperations(
         hint: traceCycle(leftover, graph.outgoing) ?? [...leftover].join(", "),
       })
     );
-    return base;
+    const sortedKeys = new Set(result.sorted.map((operation) => operation.key));
+    return [...result.sorted, ...base.filter((operation) => !sortedKeys.has(operation.key))];
   }
   return result.sorted;
 }

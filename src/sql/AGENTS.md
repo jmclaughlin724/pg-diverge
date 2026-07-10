@@ -8,7 +8,7 @@ This directory owns PostgreSQL parse-tree helpers over `libpg-query` plus the lo
 
 - `parser.ts` parses SQL statements to AST nodes.
 - `support.ts` defines the executable support matrix and known deparser-gap contract.
-- `extract.ts` and `extract-helpers.ts` extract schema objects from DDL.
+- `extract.ts`, `alter-table.ts`, `options.ts`, and `ownership.ts` extract schema objects from DDL.
 - `facts.ts` finalizes objects, canonical hashes, and render-guard facts.
 - `ast.ts`, `statements.ts`, and `identifiers.ts` provide AST node-kind, unwrap, statement, and identifier helpers.
 - `normalize-deparse.ts` normalizes SQL through deparse.

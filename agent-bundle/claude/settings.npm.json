@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|apply_patch",
+        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -33,7 +33,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|apply_patch",
+        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -48,10 +48,9 @@
             "timeout": 130
           }
         ]
-      }
-    ],
-    "PostToolBatch": [
+      },
       {
+        "matcher": "Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",

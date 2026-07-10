@@ -1,5 +1,5 @@
 import { deparseSync } from "pgsql-deparser";
-import type { Diagnostic, SchemaObject } from "../core.js";
+import type { Diagnostic, ObjectRef, SchemaObject } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 import type { AstNode } from "./ast.js";
 import {
@@ -19,6 +19,7 @@ import { quoteIdent } from "./identifiers.js";
 import { normalizeObjectSql } from "./normalize-deparse.js";
 import { astObjectHash, shapeHash, stripLocations } from "./object-hash.js";
 import { parseSqlAst } from "./parser.js";
+import { extractStatementDependencies } from "./routine-dependencies.js";
 import {
   canonicalConstraintShape,
   canonicalSequenceShape,
@@ -125,10 +126,53 @@ export async function finalizeObject(
   if (!first) {
     return diagnostics;
   }
+  const dependency = await extractStatementDependencies(first, object.file);
+  diagnostics.push(...dependency.diagnostics);
+  applyStatementDependencies(object, dependency);
   object.hash = canonicalHash(object, statements);
   Object.assign(object.metadata, statementFacts(first.tag, first.node, object.sql));
   await assignRoutineCatalogTypecheckSql(object);
   return diagnostics;
+}
+
+type StatementDependency = Awaited<ReturnType<typeof extractStatementDependencies>>;
+
+function applyStatementDependencies(object: SchemaObject, dependency: StatementDependency): void {
+  const identity = objectIdentity(object.ref);
+  object.dependencies = [...new Set([...object.dependencies, ...dependency.references])]
+    .filter((reference) => reference !== identity)
+    .sort((left, right) => left.localeCompare(right));
+  const columnDependencies = [
+    ...metadataStrings(object.metadata.columnDependencies),
+    ...dependency.columnReferences,
+  ];
+  if (columnDependencies.length > 0) {
+    object.metadata.columnDependencies = [...new Set(columnDependencies)].sort((left, right) =>
+      left.localeCompare(right)
+    );
+  }
+  if (dependency.routine && isRoutineObject(object)) {
+    object.metadata.routineDependencyConfidence = dependency.routine.confidence;
+    object.metadata.routineDependencies = dependency.routine.references;
+    object.metadata.routineColumnDependencies = dependency.routine.columnReferences;
+  }
+}
+
+function isRoutineObject(object: SchemaObject): boolean {
+  return object.ref.kind === "function" || object.ref.kind === "procedure";
+}
+
+function metadataStrings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function objectIdentity(ref: ObjectRef): string {
+  if (ref.kind === "schema") {
+    return ref.name;
+  }
+  return `${ref.schema ?? "public"}.${ref.name}`;
 }
 
 function canonicalHash(object: SchemaObject, statements: { node: AstNode; tag: string }[]): string {
@@ -703,6 +747,10 @@ function viewFacts(node: AstNode): Record<string, unknown> {
   if (columns !== undefined) {
     facts.viewColumns = columns;
   }
+  const castTypes = viewTargetCastTypes(node.query);
+  if (columns !== undefined && castTypes !== undefined && castTypes.length === columns.length) {
+    facts.viewColumnCastTypes = castTypes;
+  }
   const securityInvoker = viewSecurityInvoker(node.options);
   if (securityInvoker !== undefined) {
     facts.securityInvoker = securityInvoker;
@@ -713,6 +761,31 @@ function viewFacts(node: AstNode): Record<string, unknown> {
 function viewTargetColumns(query: unknown): string[] | undefined {
   const select = asRecord(asRecord(query)?.SelectStmt);
   return select ? selectOutputColumns(select) : undefined;
+}
+
+function viewTargetCastTypes(query: unknown): (string | null)[] | undefined {
+  const select = asRecord(asRecord(query)?.SelectStmt);
+  return select ? selectOutputCastTypes(select) : undefined;
+}
+
+function selectOutputCastTypes(select: AstNode): (string | null)[] | undefined {
+  const larg = asRecord(select.larg);
+  if (larg) {
+    return selectOutputCastTypes(larg);
+  }
+  if (asRecord(select.rarg)) {
+    return;
+  }
+  const castTypes: (string | null)[] = [];
+  for (const item of readArray(select.targetList)) {
+    const target = asRecord(asRecord(item)?.ResTarget);
+    if (!target) {
+      return;
+    }
+    const typeName = asRecord(asRecord(target.val)?.TypeCast)?.typeName;
+    castTypes.push(typeName === undefined ? null : typeNameToSql(typeName));
+  }
+  return castTypes;
 }
 
 function selectOutputColumns(select: AstNode): string[] | undefined {

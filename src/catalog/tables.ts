@@ -51,11 +51,41 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
     ),
     pool.query<Record<string, unknown>>(
       `
-        select conrelid::text as oid, conname as name, pg_get_constraintdef(oid, true) as definition
-        from pg_constraint
-        where conrelid = any($1::oid[])
-          and contype in ('p', 'u', 'f', 'c', 'x')
-        order by conrelid, conname
+        select
+          c.conrelid::text as oid,
+          c.conname as name,
+          c.contype,
+          pg_get_constraintdef(c.oid, true) as definition,
+          coalesce(array(
+            select a.attname
+            from unnest(c.conkey) with ordinality as key(attnum, position)
+            join pg_attribute a on a.attrelid = c.conrelid and a.attnum = key.attnum
+            order by key.position
+          ), array[]::name[])::text[] as columns,
+          coalesce(array(
+            select distinct dependency_namespace.nspname || '.' || dependency_proc.proname
+            from pg_depend dependency
+            join pg_proc dependency_proc on dependency_proc.oid = dependency.refobjid
+            join pg_namespace dependency_namespace on dependency_namespace.oid = dependency_proc.pronamespace
+            where dependency.classid = 'pg_constraint'::regclass
+              and dependency.objid = c.oid
+              and dependency.refclassid = 'pg_proc'::regclass
+            order by dependency_namespace.nspname || '.' || dependency_proc.proname
+          ), array[]::text[]) as function_dependencies,
+          referenced_namespace.nspname as referenced_schema,
+          referenced_table.relname as referenced_table,
+          coalesce(array(
+            select a.attname
+            from unnest(c.confkey) with ordinality as key(attnum, position)
+            join pg_attribute a on a.attrelid = c.confrelid and a.attnum = key.attnum
+            order by key.position
+          ), array[]::name[])::text[] as referenced_columns
+        from pg_constraint c
+        left join pg_class referenced_table on referenced_table.oid = c.confrelid
+        left join pg_namespace referenced_namespace on referenced_namespace.oid = referenced_table.relnamespace
+        where c.conrelid = any($1::oid[])
+          and c.contype in ('p', 'u', 'f', 'c', 'x')
+        order by c.conrelid, c.conname
       `,
       [oids]
     ),
@@ -89,9 +119,20 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
         { kind: "constraint", name: constraintName, schema, table: name },
         `ALTER TABLE ONLY ${formatQualifiedName(schema, name)} ADD CONSTRAINT ${quoteIdent(constraintName)} ${stringValue(constraint.definition)}`,
         0,
-        undefined
+        undefined,
+        constraintMetadata(constraint)
       );
       constraintObject.dependencies.push(`${schema}.${name}`);
+      constraintObject.dependencies.push(...stringArray(constraint.function_dependencies));
+      if (
+        constraint.contype === "f" &&
+        typeof constraint.referenced_schema === "string" &&
+        typeof constraint.referenced_table === "string"
+      ) {
+        constraintObject.dependencies.push(
+          `${constraint.referenced_schema}.${constraint.referenced_table}`
+        );
+      }
       objects.push(constraintObject);
     }
   }
@@ -181,6 +222,48 @@ function identityMode(value: string | undefined): "always" | "by-default" | unde
     return "by-default";
   }
   return;
+}
+
+function constraintMetadata(constraint: Record<string, unknown>): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {
+    constraintColumns: stringArray(constraint.columns),
+    constraintType: catalogConstraintType(constraint.contype),
+  };
+  if (
+    constraint.contype === "f" &&
+    typeof constraint.referenced_schema === "string" &&
+    typeof constraint.referenced_table === "string"
+  ) {
+    metadata.foreignKeyTarget = {
+      columns: stringArray(constraint.referenced_columns),
+      schema: constraint.referenced_schema,
+      table: constraint.referenced_table,
+    };
+  }
+  return metadata;
+}
+
+function catalogConstraintType(value: unknown): string | undefined {
+  switch (value) {
+    case "c":
+      return "CONSTR_CHECK";
+    case "f":
+      return "CONSTR_FOREIGN";
+    case "p":
+      return "CONSTR_PRIMARY";
+    case "u":
+      return "CONSTR_UNIQUE";
+    case "x":
+      return "CONSTR_EXCLUSION";
+    default:
+      return;
+  }
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function groupByOid(rows: Record<string, unknown>[]): Map<string, Record<string, unknown>[]> {

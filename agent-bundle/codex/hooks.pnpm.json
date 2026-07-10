@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "^(Bash|exec_command|functions\\.exec_command)$",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
@@ -13,7 +13,7 @@
         ]
       },
       {
-        "matcher": "^(apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
+        "matcher": "Bash|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -26,7 +26,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(apply_patch|functions\\.apply_patch|Edit|Write|edit_file)$",
+        "matcher": "Bash|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -35,10 +35,9 @@
             "statusMessage": "Running supaschema auto-diff on schema change"
           }
         ]
-      }
-    ],
-    "Stop": [
+      },
       {
+        "matcher": "apply_patch",
         "hooks": [
           {
             "type": "command",

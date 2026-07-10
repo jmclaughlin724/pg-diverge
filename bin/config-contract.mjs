@@ -421,7 +421,7 @@ const contract = JSON.parse(`{
       "default": [
         "database/schemas"
       ],
-      "description": "Declarative SQL tree roots. Each root is read recursively; the first path usually matches sources.to.",
+      "description": "Declarative SQL tree roots. Each root is read recursively; the first path is the zero-argument command target.",
       "examples": [
         [
           "database/schemas"
@@ -449,18 +449,15 @@ const contract = JSON.parse(`{
     },
     {
       "default": {
-        "from": "auto",
-        "to": "dir:database/schemas"
+        "from": "auto"
       },
-      "description": "Default before/after sources for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist; sources.to is the desired schema tree.",
+      "description": "Default before source for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist.",
       "examples": [
         {
-          "from": "auto",
-          "to": "dir:database/schemas"
+          "from": "auto"
         },
         {
-          "from": "dir:baseline/schemas",
-          "to": "dir:database/schemas"
+          "from": "dir:baseline/schemas"
         }
       ],
       "key": "sources"
@@ -905,10 +902,6 @@ export const providerSchemaPaths = contract.providerSchemaPaths;
 export const providerMigrationsDirs = contract.providerMigrationsDirs;
 export const configFieldMetadata = contract.configFieldMetadata;
 
-export function canonicalSourceTo(schemaPaths = [genericSchemaPath]) {
-  return `dir:${schemaPaths[0] ?? genericSchemaPath}`;
-}
-
 export function parseRuntimeSource(source) {
   for (const prefix of runtimeSourcePrefixes) {
     if (!source.startsWith(prefix)) {
@@ -1026,7 +1019,7 @@ export function createInstalledConfig(options = {}) {
     renameDetection: "hints-only",
     schemaPaths,
     schemas: { exclude: managedSchemaExcludes, include: [] },
-    sources: { from: "auto", to: canonicalSourceTo(schemaPaths) },
+    sources: { from: "auto" },
     statementTimeout: "60s",
     transactionMode: "per-migration",
     validators: ["internal-parser"],
@@ -1038,20 +1031,23 @@ export function mergeInstalledConfig(existing, options = {}) {
   if (!isRecord(existing)) {
     return base;
   }
+  const existingSources = isRecord(existing.sources) ? existing.sources : {};
+  const existingWorkflow = isRecord(existing.workflow) ? existing.workflow : {};
+  if (Object.keys(existingSources).some((key) => key !== "from")) {
+    throw new Error("sources supports only the canonical from field");
+  }
+  if (
+    existingWorkflow.migration_sync !== undefined &&
+    !migrationSyncPolicies.some((policy) => policy === existingWorkflow.migration_sync)
+  ) {
+    throw new Error("workflow.migration_sync is not a supported policy");
+  }
   const baseSync = isRecord(base.sync) ? base.sync : defaultSync;
   const baseSchemas = isRecord(base.schemas) ? base.schemas : {};
   const schemaPaths = normalizedStringArray(existing.schemaPaths, base.schemaPaths);
   const existingEnvironments = isRecord(existing.environments) ? existing.environments : undefined;
-  const hasExistingEnvironments =
-    existingEnvironments !== undefined && !isLegacyDefaultEnvironments(existingEnvironments);
-  const existingSync = normalizeInstalledSync(
-    isRecord(existing.sync) ? existing.sync : undefined,
-    existingEnvironments !== undefined && isLegacyDefaultEnvironments(existingEnvironments),
-    baseSync
-  );
-  const existingWorkflow = isRecord(existing.workflow)
-    ? normalizeInstalledWorkflow(existing.workflow)
-    : {};
+  const hasExistingEnvironments = existingEnvironments !== undefined;
+  const existingSync = isRecord(existing.sync) ? existing.sync : undefined;
   const managedSchemas = normalizedStringArray(existing.managedSchemas, base.managedSchemas);
   const existingSchemas = isRecord(existing.schemas) ? existing.schemas : {};
   const baseManagedExcludes = normalizedStringArray(baseSchemas.exclude, []).filter((schema) =>
@@ -1080,7 +1076,9 @@ export function mergeInstalledConfig(existing, options = {}) {
         normalizedStringArray(baseSchemas.include, [])
       ),
     },
-    sources: { ...base.sources, ...(isRecord(existing.sources) ? existing.sources : {}) },
+    sources: {
+      from: normalizedString(existingSources.from, "auto"),
+    },
     sync:
       hasExistingEnvironments && existingSync === undefined
         ? { targets: {} }
@@ -1090,67 +1088,7 @@ export function mergeInstalledConfig(existing, options = {}) {
     validators: normalizedStringArray(existing.validators, base.validators),
     zodFile: normalizedString(existing.zodFile, base.zodFile),
   };
-  if (typeof merged.sources.to !== "string" || merged.sources.to.length === 0) {
-    merged.sources.to = canonicalSourceTo(schemaPaths);
-  }
-  if (typeof merged.sources.from !== "string" || merged.sources.from.length === 0) {
-    merged.sources.from = "auto";
-  }
   return orderInstalledConfig(merged);
-}
-
-function normalizeInstalledWorkflow(workflow) {
-  const next = { ...workflow };
-  if (next.migration_sync === "explicit_request_only") {
-    next.migration_sync = "manual";
-  }
-  return next;
-}
-
-function isLegacyDefaultEnvironments(environments) {
-  const entries = Object.entries(environments);
-  if (entries.length !== 2) {
-    return false;
-  }
-  return (
-    environmentDatabaseUrl(environments.local) === "$LOCAL_DATABASE_URL" &&
-    environmentDatabaseUrl(environments.production) === "$PRODUCTION_DATABASE_URL"
-  );
-}
-
-function environmentDatabaseUrl(value) {
-  const record = isRecord(value) ? value : undefined;
-  return typeof record?.databaseUrl === "string" ? record.databaseUrl : undefined;
-}
-
-function normalizeInstalledSync(sync, legacyDefaultEnvironments, baseSync) {
-  if (sync === undefined || !legacyDefaultEnvironments) {
-    return sync;
-  }
-  const targets = isRecord(sync.targets) ? sync.targets : undefined;
-  if (targets === undefined) {
-    return sync;
-  }
-  const normalizedTargets = {};
-  for (const [name, value] of Object.entries(targets)) {
-    normalizedTargets[name] = normalizeLegacyDefaultSyncTarget(name, value, baseSync);
-  }
-  return { ...sync, targets: normalizedTargets };
-}
-
-function normalizeLegacyDefaultSyncTarget(name, value, baseSync) {
-  if (!isRecord(value)) {
-    return value;
-  }
-  if (name !== "local" && name !== "remote") {
-    return value;
-  }
-  const legacyEnvironment = name === "local" ? "local" : "production";
-  if (value.environment !== legacyEnvironment || value.databaseUrl !== undefined) {
-    return value;
-  }
-  const baseTargets = isRecord(baseSync.targets) ? baseSync.targets : {};
-  return baseTargets[name] ?? value;
 }
 
 export function orderInstalledConfig(config) {

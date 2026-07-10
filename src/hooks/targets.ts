@@ -2,16 +2,8 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { lineagePrefix } from "../migrations/lineage.js";
 import { pathContainsOrEqual } from "../paths.js";
-import { asObject, property } from "./payload.js";
 
-const editTools = new Set([
-  "Edit",
-  "MultiEdit",
-  "Write",
-  "edit_file",
-  "apply_patch",
-  "functions.apply_patch",
-]);
+const editTools = new Set(["Edit", "MultiEdit", "Write"]);
 const addHeader = "*** Add File: ";
 const deleteHeader = "*** Delete File: ";
 const updateHeader = "*** Update File: ";
@@ -23,24 +15,30 @@ export interface ChangedSchemaGroup {
 }
 
 export function hookProjectDir(payload: unknown): string {
-  const record = asObject(payload);
-  const cwdValue = property(record, "cwd");
+  const cwdValue =
+    typeof payload === "object" && payload !== null ? Reflect.get(payload, "cwd") : undefined;
   const cwd = typeof cwdValue === "string" && cwdValue.length > 0 ? cwdValue : undefined;
   return resolve(cwd ?? process.env.CLAUDE_PROJECT_DIR ?? process.env.CODEX_PROJECT_DIR ?? ".");
 }
 
 export function hookEditTargets(payload: unknown, projectDir: string): string[] {
-  const record = asObject(payload);
-  const toolNameValue = property(record, "tool_name");
+  if (typeof payload !== "object" || payload === null) {
+    return [];
+  }
+  const toolNameValue = Reflect.get(payload, "tool_name");
   const toolName = typeof toolNameValue === "string" ? toolNameValue : "";
+  const inputValue = Reflect.get(payload, "tool_input");
+  if (typeof inputValue !== "object" || inputValue === null || Array.isArray(inputValue)) {
+    return [];
+  }
+  if (toolName === "apply_patch") {
+    const command = Reflect.get(inputValue, "command");
+    return typeof command === "string" ? hookPatchTargets(command, projectDir) : [];
+  }
   if (!editTools.has(toolName)) {
     return [];
   }
-  const input = asObject(property(record, "tool_input"));
-  if (isPatchTool(toolName)) {
-    return hookPatchTargets(patchTextFromInput(input), projectDir);
-  }
-  const filePath = property(input, "file_path");
+  const filePath = Reflect.get(inputValue, "file_path");
   if (typeof filePath === "string" && filePath.length > 0) {
     return [resolveHookTarget(projectDir, filePath)];
   }
@@ -48,17 +46,23 @@ export function hookEditTargets(payload: unknown, projectDir: string): string[] 
 }
 
 export function generatedMigrationEditTargets(payload: unknown, projectDir: string): string[] {
-  const record = asObject(payload);
-  const toolNameValue = property(record, "tool_name");
+  if (typeof payload !== "object" || payload === null) {
+    return [];
+  }
+  const toolNameValue = Reflect.get(payload, "tool_name");
   const toolName = typeof toolNameValue === "string" ? toolNameValue : "";
+  const inputValue = Reflect.get(payload, "tool_input");
+  if (typeof inputValue !== "object" || inputValue === null || Array.isArray(inputValue)) {
+    return [];
+  }
+  if (toolName === "apply_patch") {
+    const command = Reflect.get(inputValue, "command");
+    return typeof command === "string" ? generatedMigrationPatchTargets(command, projectDir) : [];
+  }
   if (!editTools.has(toolName)) {
     return [];
   }
-  const input = asObject(property(record, "tool_input"));
-  if (isPatchTool(toolName)) {
-    return generatedMigrationPatchTargets(patchTextFromInput(input), projectDir);
-  }
-  const filePath = property(input, "file_path");
+  const filePath = Reflect.get(inputValue, "file_path");
   if (typeof filePath === "string" && filePath.length > 0) {
     return [resolveHookTarget(projectDir, filePath)];
   }
@@ -114,26 +118,6 @@ export function rel(projectDir: string, path: string): string {
 
 export function slashPath(path: string): string {
   return path.replaceAll("\\", "/");
-}
-
-function patchTextFromInput(input: object): string {
-  const command = property(input, "command");
-  if (typeof command === "string") {
-    return command;
-  }
-  const patch = property(input, "patch");
-  if (typeof patch === "string") {
-    return patch;
-  }
-  const inputValue = property(input, "input");
-  if (typeof inputValue === "string") {
-    return inputValue;
-  }
-  return "";
-}
-
-function isPatchTool(toolName: string): boolean {
-  return toolName === "apply_patch" || toolName === "functions.apply_patch";
 }
 
 function hookPatchTargets(patch: string, projectDir: string): string[] {

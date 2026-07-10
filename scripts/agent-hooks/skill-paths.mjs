@@ -5,16 +5,22 @@ const patchPrefixes = ["*** Add File: ", "*** Update File: ", "*** Delete File: 
 export function payloadPaths(payload, root) {
   const input = payload?.tool_input ?? {};
   const out = [];
-  for (const key of ["file_path", "notebook_path", "path", "target", "uri"]) {
-    if (typeof input[key] === "string") {
-      out.push(repoRelative(input[key], root));
-    }
+  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
+  if (
+    ["Edit", "MultiEdit", "Read", "Write"].includes(name) &&
+    typeof input.file_path === "string"
+  ) {
+    out.push(repoRelative(input.file_path, root));
   }
-  const patch = input.command ?? input.patch ?? input.input;
-  if (typeof patch === "string") {
-    out.push(...patchPaths(patch, root));
+  if (name === "NotebookEdit" && typeof input.notebook_path === "string") {
+    out.push(repoRelative(input.notebook_path, root));
   }
-  out.push(...deepPathStrings(input, root));
+  if (name === "apply_patch" && typeof input.command === "string") {
+    out.push(...patchPaths(input.command, root));
+  }
+  if (name.startsWith("mcp__")) {
+    out.push(...deepPathStrings(input, root));
+  }
   return unique(out.filter(Boolean));
 }
 

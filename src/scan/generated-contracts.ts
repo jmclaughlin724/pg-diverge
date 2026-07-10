@@ -52,16 +52,6 @@ const skipDirectories = new Set([
   "dist",
   "node_modules",
 ]);
-const runtimeExportRoots = new Set([
-  "CompositeTypes",
-  "Constants",
-  "Enums",
-  "Tables",
-  "TablesInsert",
-  "TablesUpdate",
-  "jsonSchema",
-]);
-
 export async function scanGeneratedContractUsage(
   options: GeneratedContractUsageScanOptions
 ): Promise<Diagnostic[]> {
@@ -209,12 +199,7 @@ function collectGeneratedImportSpecifier(
       )
     );
   }
-  const importedName = (specifier.propertyName ?? specifier.name).text;
-  if (
-    runtimeExportRoots.has(importedName) &&
-    !importClauseIsTypeOnly &&
-    specifier.isTypeOnly !== true
-  ) {
+  if (!importClauseIsTypeOnly && specifier.isTypeOnly !== true) {
     runtimeRoots.add(specifier.name.text);
   }
 }

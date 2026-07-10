@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, exists, gitFiles, ok, ROOT, readJson } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { exists, gitFiles, ROOT, readJson } from "../lib/repository.js";
 import { changeDisciplineViolations } from "./check-change-discipline.mjs";
 import { packageScriptViolations } from "./check-package-scripts.mjs";
 import { patternEngineViolations } from "./check-pattern-engine.mjs";

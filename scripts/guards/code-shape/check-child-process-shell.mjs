@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { forEachNode, parseScript, ts } from "../lib/ast-utils.js";
-import { assert, exists, ok, ROOT, readText } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { exists, ROOT, readText } from "../lib/repository.js";
+import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 const lifecycleActionRunners = [
   "scripts/install-hooks.mjs",

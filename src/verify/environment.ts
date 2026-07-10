@@ -1,5 +1,5 @@
 import type { Client } from "pg";
-import type { Diagnostic } from "../core.js";
+import type { Diagnostic, ObjectRef } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 
 export async function preflightCapability(admin: Client): Promise<Diagnostic | undefined> {
@@ -19,7 +19,11 @@ export async function preflightCapability(admin: Client): Promise<Diagnostic | u
   );
 }
 
-export const supabaseEnvironmentStubSql = `
+export const unreplayableVerificationObjects: readonly ObjectRef[] = [
+  { kind: "extension", name: "pg_cron" },
+];
+
+export const supabaseAuthEnvironmentStubSql = `
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS auth.users (
   instance_id uuid,
@@ -58,6 +62,14 @@ CREATE TABLE IF NOT EXISTS auth.users (
   deleted_at timestamptz,
   is_anonymous boolean DEFAULT false
 );
+CREATE TABLE IF NOT EXISTS auth.sessions (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL,
+  created_at timestamptz,
+  refreshed_at timestamp,
+  user_agent text,
+  ip inet
+);
 CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
@@ -70,6 +82,58 @@ $$;
 CREATE OR REPLACE FUNCTION auth.email() RETURNS text LANGUAGE sql STABLE AS $$
   SELECT nullif(current_setting('request.jwt.claim.email', true), '')
 $$;
+`;
+
+export const supabaseVaultEnvironmentStubSql = `
+CREATE SCHEMA IF NOT EXISTS vault;
+CREATE TABLE IF NOT EXISTS vault.secrets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text,
+  description text NOT NULL DEFAULT '',
+  secret text NOT NULL,
+  key_id uuid,
+  nonce bytea,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE VIEW vault.decrypted_secrets AS
+  SELECT id, name, description, secret, secret AS decrypted_secret, key_id, nonce, created_at, updated_at
+  FROM vault.secrets;
+CREATE OR REPLACE FUNCTION vault.create_secret(
+  new_secret text,
+  new_name text DEFAULT NULL::text,
+  new_description text DEFAULT ''::text,
+  new_key_id uuid DEFAULT NULL::uuid
+) RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE
+  new_id uuid;
+BEGIN
+  INSERT INTO vault.secrets (secret, name, description, key_id)
+  VALUES (new_secret, new_name, new_description, new_key_id)
+  RETURNING id INTO new_id;
+  RETURN new_id;
+END
+$$;
+CREATE OR REPLACE FUNCTION vault.update_secret(
+  secret_id uuid,
+  new_secret text DEFAULT NULL::text,
+  new_name text DEFAULT NULL::text,
+  new_description text DEFAULT NULL::text,
+  new_key_id uuid DEFAULT NULL::uuid
+) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE vault.secrets
+  SET secret = coalesce(new_secret, secret),
+      name = coalesce(new_name, name),
+      description = coalesce(new_description, description),
+      key_id = coalesce(new_key_id, key_id),
+      updated_at = now()
+  WHERE id = secret_id;
+END
+$$;
+`;
+
+export const supabaseCronEnvironmentStubSql = `
 CREATE SCHEMA IF NOT EXISTS cron;
 CREATE TABLE IF NOT EXISTS cron.job (
   jobid bigint PRIMARY KEY,
@@ -95,3 +159,9 @@ CREATE TABLE IF NOT EXISTS cron.job_run_details (
   end_time timestamptz
 );
 `;
+
+export const supabaseEnvironmentStubSql = [
+  supabaseAuthEnvironmentStubSql,
+  supabaseVaultEnvironmentStubSql,
+  supabaseCronEnvironmentStubSql,
+].join("\n");

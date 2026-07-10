@@ -40,7 +40,7 @@ Do not add broad repo directories to the allowlist just because a single file is
 
 Public docs, examples, benchmarks, corpus fixtures, source files, tests, services, and maintainer scripts stay out of the npm tarball. They belong in the public repository or hosted docs when they are product evidence, and in a private maintainer workspace when they are not.
 
-Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package-contents.test.ts` fails if any `.tsbuildinfo`, source file, public-support directory, or maintainer tooling reaches the tarball.
+Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package/contents.test.ts` fails if any `.tsbuildinfo`, source file, public-support directory, or maintainer tooling reaches the tarball.
 
 Lower-level helpers that the CLI and tests share internally (in `src/database/admin.ts`, `src/migrations/runners.ts`, `src/migrations/status.ts`, `src/pipeline/deploy-safety.ts`, and `src/pipeline/type-safety.ts`) are not part of the public package surface: they are compiled into `dist/` for the CLI to use but have no subpath. They may change or be removed in any release. The package has one documented public entry, `dist/index.js`; no convenience subpaths, shims, or escape-hatch entry points are published.
 
@@ -126,9 +126,9 @@ The test owners and release smoke script prove the package surfaces, and they mo
 
 | Phase | Owner | Proves |
 | --- | --- | --- |
-| Download | `tests/package-contents.test.ts` | The shipped file list, package-size budget, and broad-directory denylist so docs, examples, benchmarks, corpus fixtures, source, tests, services, and maintainer scripts cannot silently bloat the download. |
-| Setup | `tests/database-url.test.ts` | The shared scaffolder creates the consuming project setup (config, schema/migration dirs, agent bundle, install manifest). |
-| Use | `tests/consumer-lifecycle.test.ts` | The full chain end to end: pack, `npm install` the tarball into a throwaway project, edit a schema in the scaffolded tree, then run the _installed_ `supaschema` binary and confirm an accurate, replay-safe migration and accurate generated types. |
+| Download | `tests/package/contents.test.ts` | The shipped file list, package-size budget, and broad-directory denylist so docs, examples, benchmarks, corpus fixtures, source, tests, services, and maintainer scripts cannot silently bloat the download. |
+| Setup | `tests/config/install.test.ts` | The shared scaffolder creates the consuming project setup (config, schema/migration dirs, agent bundle, install manifest). |
+| Use | `tests/package/consumer.test.ts` | The full chain end to end: pack, `npm install` the tarball into a throwaway project, edit a schema in the scaffolded tree, then run the _installed_ `supaschema` binary and confirm an accurate, replay-safe migration and accurate generated types. |
 | Package-manager smoke | `scripts/release/package-smoke.mjs` | The packed tarball installs and initializes through the supported consumer package managers and workspace recovery paths using current supported client behavior. |
 | Registry smoke | `scripts/release/registry-smoke.mjs` | Operator proof that npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun can download `supaschema@<version>` from the npm registry and execute the installed binary after publication. |
 
@@ -153,7 +153,7 @@ Run these checks when packaging or installer behavior changes:
 npm run release:verify
 npm run test:consumer-lifecycle
 npm pack --dry-run --json
-npx vitest run tests/editor-surfaces.test.ts tests/database-url.test.ts tests/package-contents.test.ts tests/consumer-lifecycle.test.ts
+npx vitest run tests/cli/editor.test.ts tests/config/install.test.ts tests/package/contents.test.ts tests/package/consumer.test.ts
 ```
 
 The dry-run tarball is the authoritative preview of what npm will publish.

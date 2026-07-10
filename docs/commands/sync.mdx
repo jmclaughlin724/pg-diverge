@@ -6,7 +6,7 @@ keywords: ["sync command", "migration sync", "apply gate", "migrations"]
 
 Use `sync` as the default one-command workflow for schema changes.
 
-`sync` resolves generation-safe source defaults, extracts migration-derived source intent from existing migrations, generates the schema diff, selects at most one configured target, reconciles history, checks pending migrations, refreshes generated TypeScript/Zod contracts according to workflow policy, stages the schema closure when Git is available, runs deploy safety gates, verifies the ordered pending migration set against a disposable database, invokes the selected target's runner when a target is selected, then reconciles history again. When no target is selected, the same local artifact, safety, and verify lanes end in a dry-run report. Bare `sync` may select one configured `sync.targets.<name>` entry with `mode: "auto"`. Multiple automatic targets are refused because cross-target apply is not atomic. When a selected target has a resolved database URL, the deploy type-safety gate compares that target's live PostgreSQL catalog with the declarative schema tree. Remote deploy uses the same selection rule and requires that target's approval variable before any mutation.
+`sync` selects at most one configured target and reconciles its history before artifact generation. It then resolves generation-safe source defaults, extracts migration-derived source intent, generates the schema diff, refreshes history, checks pending migrations, refreshes generated TypeScript/Zod contracts according to workflow policy, stages the schema closure when Git is available, runs deploy safety gates, verifies the ordered pending migration set against a disposable database, invokes the selected target's runner when a target is selected, then reconciles history again. When no target is selected, the same local artifact, safety, and verify lanes end in a dry-run report. Bare `sync` may select one configured `sync.targets.<name>` entry with `mode: "auto"`. Multiple automatic targets are refused because cross-target apply is not atomic. When a selected target has a resolved database URL, the deploy type-safety gate compares that target's live PostgreSQL catalog with the declarative schema tree. Remote deploy uses the same selection rule and requires that target's approval variable before any mutation.
 
 ## Use this when
 
@@ -18,19 +18,23 @@ Use `sync` as the default one-command workflow for schema changes.
 ## Lane order
 
 1. Enforce apply policy for any selected mutation target.
-2. Resolve source defaults from config and flags.
-3. Extract source intent from the configured migration corpus.
-4. Generate the diff unless `--no-diff` is set.
-5. Select zero or one configured sync target.
-6. Reconcile migration history for the selected target or fallback database URL.
+2. Select zero or one configured sync target.
+3. Reconcile migration history for the selected target or fallback database URL.
+4. Resolve source defaults and extract source intent from the configured migration corpus.
+5. Generate the diff unless `--no-diff` is set.
+6. Refresh and guard migration history after generation.
 7. Check pending migration files.
 8. Refresh generated TypeScript/Zod contracts according to workflow policy, even when no migration is pending.
-9. Stage generated migration files when Git is available.
+9. Stage the schema tree, generated migrations, contracts, and explicit config when Git is available.
 10. Report no-op when no migration is pending.
 11. Run deploy safety gates.
 12. Verify the ordered pending migration set against a disposable database.
 13. Invoke the selected runner when a target is selected, or report dry-run when no target is selected.
 14. Reconcile migration history after the runner completes.
+
+## Sequential schema edits
+
+`sources.from: "auto"` recognizes the closure staged by the previous sync. It uses `git:INDEX` only when the latest generated migration is staged without worktree edits and its lineage `to=` fingerprint matches the indexed schema tree. The next sync then diffs that index snapshot against the new worktree state, creates a forward migration, and stages the updated closure. The earlier migration may be applied or pending in the selected target history. Commit complete closures before handoff or merge; an intermediate commit is not required between local schema edits.
 
 ## Run it
 
@@ -44,6 +48,16 @@ npx supaschema sync --no-diff
 Supabase targets can use `runner: "supabase-cli"` without a `databaseUrl`; the Supabase CLI owns its project-link and authentication lane. Direct PostgreSQL targets can reuse an existing app database URL variable such as `$DIRECT_URL` or `$DATABASE_URL`. A local direct target with no URL uses the normal CLI fallback resolution.
 
 ## Flags
+
+<ParamField path="--from" type="source">
+  Override the configured before-state source for an explicit recovery or
+  reconciliation run.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  Override the configured target schema source. Ordinary schema edits should
+  keep the configured declarative tree.
+</ParamField>
 
 <ParamField path="--migrations-dir" type="path">
   Directory containing migration files.

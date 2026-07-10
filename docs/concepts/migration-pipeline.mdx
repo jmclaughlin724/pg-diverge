@@ -14,7 +14,7 @@ The day-to-day migration workflow uses one command:
 npx supaschema sync
 ```
 
-`sync` reads the configured source, reads the target declarative SQL tree, reads the configured migration context for source intent and generated-lineage baseline proof, plans the change, renders the migration, writes it to the configured migration directory, selects at most one target, reconciles history, gates replay safety, refreshes TypeScript and Zod outputs, stages the schema closure when Git is available, runs source-model deploy safety gates, and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
+`sync` selects at most one target and reconciles history before artifact generation. It then reads the configured source, target declarative SQL tree, and migration context for source intent and generated-lineage baseline proof; plans and writes the migration; refreshes history; gates replay safety; refreshes TypeScript and Zod outputs; stages the schema closure when Git is available; runs source-model deploy safety gates; and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
 
 ```text
 before-state source + declarative SQL tree + migration context
@@ -58,9 +58,9 @@ before-state source + declarative SQL tree + migration context
 
 ## Baseline contract
 
-Generated lineage proves the migration-tree baseline that `sources.from` must match for source-backed generation, and the contract behind it is atomic: a generated migration's lineage end-state fingerprints the on-disk tree at generation time, uncommitted edits included. Commit the schema-tree change, the generated migration, and regenerated outputs together. A pending generated migration whose end-state was never committed becomes unreproducible as soon as the tree moves — the next git-baseline generation blocks with `SUPA_MIGRATION_BASELINE_MISMATCH`, generation into a dirty tree warns with `SUPA_DIFF_TREE_UNCOMMITTED`, and `supaschema migrations` classifies the pending file as stale-baseline. Recovery for an unreproducible, unapplied pending migration is review, delete, and regenerate from the current tree.
+Generated lineage proves the migration-tree baseline that `sources.from` must match for source-backed generation. A generated migration's lineage end-state fingerprints the on-disk tree at generation time, uncommitted edits included. `sync` stages that schema state with its generated migration and contracts as one closure. When the latest migration is staged without worktree edits and its lineage matches the indexed schema fingerprint, `sources.from: "auto"` uses `git:INDEX` as the next before-state. This permits another forward migration whether the prior migration is already applied or still pending, without requiring an intermediate commit. A mismatched or partially staged closure still fails closed with `SUPA_MIGRATION_BASELINE_MISMATCH`.
 
-Diff generation also refuses to start when another migration unit is already open: dirty generated TypeScript/Zod outputs, dirty migration files, dirty scoped config, or dirty schema files outside a scoped `--schema` filter are blockers. These are ownership diagnostics, not destructive-change hints.
+With `git:INDEX`, diff generation treats staged closure files as the before-state and refuses only additional unstaged generated outputs, migrations, scoped config, or out-of-scope schema changes. Other Git baselines retain the full dirty-workspace ownership checks. These are ownership diagnostics, not destructive-change hints.
 
 ## Source intent
 

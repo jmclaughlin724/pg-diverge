@@ -157,7 +157,7 @@ If GitHub rejects the push because a PR, review, or required status check is req
 
 Use this path when the user asks for a PR or when an external contribution requires review flow.
 
-Create the PR branch before any commit lands on it, so local `main` never carries PR commits (Rule 14). Use the harness worktree tool (Claude `EnterWorktree`, which branches from `origin/main`) and commit, push, and open the PR from that worktree. Do not build the PR by committing onto local `main` and pushing a branch ref.
+Establish explicit PR intent and enter the topic checkout before the first commit, so local `main` never carries PR commits (Rule 14). Use host-managed worktree isolation when the host selected it before work began. Otherwise fetch and prove the branch base, then use Rule 14's transactional `git switch -c <branch> origin/main` or `git switch --track origin/<branch>` path. Commit, push, and open the PR only from that topic checkout. Do not build the PR by committing onto local `main` and pushing a branch ref.
 
 Merge PRs with GitHub's squash merge path:
 
@@ -182,7 +182,7 @@ Address every PR review comment and failing check before merge, and mark each re
 - `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, Rule 21, Bash hook, and PR template stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, repository rulesets, and topics to `.github/repo-policy.json`.
-- Rule 12 response-shape enforcement records GitHub check commands as `github-checks` evidence and blocks green claims while failed check evidence remains unresolved.
+- Rule 12 command evidence records GitHub check commands as `github-checks`; final claims must reflect the recorded result.
 - `.github/PULL_REQUEST_TEMPLATE.md` records the short operator checklist for PR authors and reviewers.
 
 ## Verification

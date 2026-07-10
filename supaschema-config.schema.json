@@ -428,7 +428,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Declarative SQL tree roots. Each root is read recursively; the first path usually matches sources.to.",
+      "description": "Declarative SQL tree roots. Each root is read recursively; the first path is the zero-argument command target.",
       "examples": [
         [
           "database/schemas"
@@ -472,8 +472,7 @@
     },
     "sources": {
       "default": {
-        "from": "auto",
-        "to": "dir:database/schemas"
+        "from": "auto"
       },
       "type": "object",
       "properties": {
@@ -499,28 +498,16 @@
               "x-supaschema-source-parser": "parseRuntimeSource"
             }
           ]
-        },
-        "to": {
-          "default": "dir:database/schemas",
-          "type": "string",
-          "description": "Default after-state source, usually dir:<schemaPaths[0]>.",
-          "examples": [
-            "dir:database/schemas",
-            "dir:supabase/schemas"
-          ],
-          "x-supaschema-source-parser": "parseRuntimeSource"
         }
       },
       "additionalProperties": false,
-      "description": "Default before/after sources for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist; sources.to is the desired schema tree.",
+      "description": "Default before source for zero-source-flag diff, plan, and verify. For generation, sources.from:auto resolves git:HEAD only as a candidate baseline and must match the generated migration-tree baseline when migrations exist.",
       "examples": [
         {
-          "from": "auto",
-          "to": "dir:database/schemas"
+          "from": "auto"
         },
         {
-          "from": "dir:baseline/schemas",
-          "to": "dir:database/schemas"
+          "from": "dir:baseline/schemas"
         }
       ]
     },

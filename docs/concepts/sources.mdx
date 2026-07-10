@@ -33,10 +33,10 @@ The configured `migrationsDir` is a third input to planning, but it is not a `--
 
   </Card>
 
-  <Card title="Git ref" icon="code-branch">
-    **Syntax:** `git:HEAD`, `git:origin/main`, `git:abc1234`
+  <Card title="Git snapshot" icon="code-branch">
+    **Syntax:** `git:INDEX`, `git:HEAD`, `git:origin/main`, `git:abc1234`
 
-    Schema at any committed Git ref. supaschema checks out the `schemaPaths` files at that ref without touching your working tree.
+    Schema in the staged index or at any committed Git ref. supaschema reads the `schemaPaths` files without touching your working tree.
 
   </Card>
 
@@ -115,11 +115,14 @@ supaschema does not care about subdirectories or file names — it reads everyth
 
 ## `git:` refs
 
-Use `git:` to read schema files from a commit, branch, or tag.
+Use `git:` to read schema files from the staged index, a commit, branch, or tag.
 
 It does not modify your working tree. It does not need a database connection.
 
 ```bash
+# Compare a new worktree edit with the staged schema closure
+supaschema diff --from git:INDEX --to dir:database/schemas
+
 # Compare the current working tree against the main branch
 supaschema diff --from git:origin/main --to dir:database/schemas
 
@@ -129,6 +132,7 @@ supaschema diff --from git:origin/main --to git:feature/add-subscriptions
 
 **When to use it:**
 
+- **Sequential local changes** — use `git:INDEX` as the proven before-state after `supaschema sync` stages a complete schema closure.
 - **CI pull request checks** — generate the migration that would be produced by merging this branch, and fail the pipeline if it contains unreviewed destructive operations.
 - **Release diffs** — quickly see what changed between two tagged versions.
 - **Code review** — produce a human-readable SQL diff alongside the file diff in your PR.
@@ -237,10 +241,10 @@ pg_dump --schema-only $PROD_URL | supaschema diff --from dump:- --to dir:databas
 Use `migrations:` when a project owns schema shape through reviewed migration files instead of a maintained declarative tree.
 
 ```bash
-npx supaschema types --source migrations:supabase/migrations
+npx supaschema types --from migrations:supabase/migrations
 ```
 
-supaschema reads filename-sorted `.sql` files, replays supported DDL in memory, and emits a schema model without a database connection. The v1 replay model is for the `types` command. Do not set `sources.to` to `migrations:` for `diff`, `verify`, or drift gates until reconstructed fingerprints are planner-grade.
+supaschema reads filename-sorted `.sql` files, replays supported DDL in memory, and emits a schema model without a database connection. The replay model is for `types --from`; it is not a `diff`, `verify`, or drift target.
 
 Replay is fail-closed for shape-corrupting gaps. Missing directories, duplicate `CREATE` objects, absent non-optional `DROP` targets, absent non-ignored `ALTER TABLE` targets, and absent enum neighbors raise `SUPA_REPLAY_ORDER_GAP` and return no objects. Unsupported top-level DDL, unsupported `ALTER TABLE` subtypes, unsupported `DROP` kinds, and unsupported rename targets raise `SUPA_REPLAY_UNSUPPORTED` and return no objects.
 
@@ -304,15 +308,17 @@ The table below summarises the most useful source pairings and the workflow each
 | Reconciling existing DB | `database:$DATABASE_URL` | `dir:database/schemas` | Generate a migration from the deployed catalog to your files |
 | Cross-branch comparison | `git:origin/main` | `git:feature/my-branch` | Preview the migration a merge would produce |
 | Analyse a legacy dump | `dump:legacy-schema.sql` | `dir:database/schemas` | Diff a dump file against your current schema |
-| Generate types from history | `migrations:supabase/migrations` | n/a | Run `supaschema types --source migrations:supabase/migrations` without a database |
+| Generate types from history | `migrations:supabase/migrations` | n/a | Run `supaschema types --from migrations:supabase/migrations` without a database |
 
 <Tip>
   Defaults come from `supaschema.config.json`. `sources.from` owns the source
-  before-state, `sources.to` owns the desired after-state, and `migrationsDir`
+  before-state, `schemaPaths` owns the desired after-state, and `migrationsDir`
   owns migration-derived source intent plus generated-lineage baseline proof for
   zero-source-flag commands. For generation, the scaffolded `"auto"`
-  before-state resolves valid `git:HEAD` as a candidate source snapshot, then
-  blocks if generated migrations prove a different baseline. `empty:` is only
+  before-state first resolves `git:INDEX` when the latest generated migration is
+  staged without worktree edits and its lineage matches the indexed schema
+  fingerprint. It then tries valid `git:HEAD` and blocks if generated migrations
+  prove a different baseline. `empty:` is only
   for a first migration with no existing migration corpus. `migrations:` is a
   typegen input in v1; keep diff and verify targets on planner-grade sources
   such as `dir:`, `git:`, `dump:`, `catalog:`, `database:`, or `empty:`.

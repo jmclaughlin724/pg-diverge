@@ -1,5 +1,6 @@
 import {
   checkFailureLoopReason,
+  diffFailureLoopReason,
   runConfiguredHookCheck,
   runConfiguredHookVerify,
   syncFailureLoopReason,
@@ -99,12 +100,17 @@ export function schemaWriteHookOutput(payload: unknown): AgentHookOutput | undef
   for (const group of groups) {
     const diff = runHookCommand(bin, ["diff", "--to", `dir:${group.display}`], projectDir);
     if (diff.code !== 0) {
+      const diagnostics = head(diff.stderr || diff.stdout);
       return postToolUseHookOutput(
         `supaschema auto-diff for ${group.changed
           .map((path) => rel(projectDir, path))
-          .join(", ")} did not complete (exit ${diff.code}):\n${head(
-          diff.stderr || diff.stdout
-        )}\nResolve per the supaschema skill, for example add the exact object key to hints.destructive for a destructive change, or diff from the post-migration state when the lineage chain is broken, then re-run \`supaschema diff --to dir:${group.display}\`.`
+          .join(
+            ", "
+          )} did not complete (exit ${diff.code}):\n${diagnostics}\nResolve per the supaschema skill, for example add the exact object key to hints.destructive for a destructive change, or diff from the post-migration state when the lineage chain is broken, then re-run \`supaschema diff --to dir:${group.display}\`.`,
+        {
+          decision: "block",
+          reason: diffFailureLoopReason(projectDir, group.changed, diagnostics),
+        }
       );
     }
     written.push(...migrationOutputs(diff.stdout));

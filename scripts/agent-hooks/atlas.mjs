@@ -1,8 +1,6 @@
 import path from "node:path";
-import { isCommandTool, toolCommand, toolName } from "./tool-payload.mjs";
 
 const defaultRoot = path.resolve(".");
-const pathKeys = ["file_path", "notebook_path", "path", "target", "uri"];
 const patchPrefixes = ["*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "];
 
 export function isCodeAtlasQuery(payload) {
@@ -10,11 +8,11 @@ export function isCodeAtlasQuery(payload) {
 }
 
 export function codeAtlasQueryEvidence(payload) {
-  const name = toolName(payload);
+  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
   if (isCodeAtlasTool(name)) {
     const input = payload?.tool_input ?? {};
-    const queryKind = firstString(input.kind, input.queryKind, input.query, input.type);
-    const value = firstString(input.value, input.target, input.path, input.file_path);
+    const queryKind = typeof input.kind === "string" ? input.kind : "";
+    const value = typeof input.value === "string" ? input.value : "";
     return {
       kind: "code-atlas-query",
       queryKind,
@@ -22,10 +20,11 @@ export function codeAtlasQueryEvidence(payload) {
       summary: `Code Atlas ${queryKind || "query"} tool call`,
     };
   }
-  if (!isCommandTool(name)) {
+  if (name !== "Bash") {
     return;
   }
-  const command = toolCommand(payload);
+  const command =
+    typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
   const parsed = parseCodeAtlasCommand(command);
   if (!parsed) {
     return;
@@ -39,16 +38,25 @@ export function codeAtlasQueryEvidence(payload) {
 }
 
 export function atlasAdvisoryTarget(payload, root = defaultRoot) {
+  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
   const input = payload?.tool_input ?? {};
-  for (const key of pathKeys) {
-    if (typeof input[key] === "string" && input[key].trim()) {
-      return repoRelative(input[key], root);
-    }
+  if (
+    ["Edit", "MultiEdit", "Read", "Write"].includes(name) &&
+    typeof input.file_path === "string"
+  ) {
+    return repoRelative(input.file_path, root);
   }
-  const patch = firstString(input.patch, input.command, input.input);
-  if (!patch) {
-    return "";
+  if (name === "NotebookEdit" && typeof input.notebook_path === "string") {
+    return repoRelative(input.notebook_path, root);
   }
+  if (isCodeAtlasTool(name) && typeof input.value === "string") {
+    return repoRelative(input.value, root);
+  }
+  const patch = name === "apply_patch" && typeof input.command === "string" ? input.command : "";
+  return patchTarget(patch, root);
+}
+
+function patchTarget(patch, root) {
   for (const line of patch.split("\n")) {
     for (const prefix of patchPrefixes) {
       if (line.startsWith(prefix)) {
@@ -108,20 +116,7 @@ function normalizedScriptToken(token) {
 }
 
 function isCodeAtlasTool(name) {
-  return (
-    name === "mcp__supaschema__code_atlas_query" ||
-    name === "supaschema.code_atlas_query" ||
-    name.endsWith("__code_atlas_query")
-  );
-}
-
-function firstString(...values) {
-  for (const value of values) {
-    if (typeof value === "string") {
-      return value;
-    }
-  }
-  return "";
+  return name === "mcp__supaschema__code_atlas_query";
 }
 
 function shellTokens(command) {

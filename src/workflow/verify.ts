@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../core.js";
-import { resolveDatabaseUrl } from "../database/url.js";
+import { resolveDatabaseUrl, resolveVerificationDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { MODEL_FORMAT_VERSION } from "../hash.js";
 import { latestLineage } from "../migrations/lineage.js";
@@ -58,6 +58,8 @@ export async function verifyPendingMigrationsForSync(
   const verifyDiagnostics = await verifyMigrationChain({
     config: options.config,
     databaseUrl,
+    ensureEnvironment:
+      options.options.ensureEnvironment ?? options.target?.runner === "supabase-cli",
     from: options.sources.from,
     ...(options.ignoredObjects === undefined ? {} : { ignoredObjects: options.ignoredObjects }),
     migrationPaths: options.pending.map((file) => join(options.directory, file)),
@@ -145,8 +147,11 @@ function resolveSyncVerifyDatabaseUrl(
 ): string | undefined {
   try {
     if (options.target?.remote === true) {
-      const databaseUrl = resolveDatabaseUrl();
+      const databaseUrl = resolveVerificationDatabaseUrl();
       return databaseUrl === options.target.databaseUrl ? undefined : databaseUrl;
+    }
+    if (options.target?.databaseUrlAutoDiscovered === true) {
+      return resolveVerificationDatabaseUrl();
     }
     return options.target?.databaseUrl ?? resolveDatabaseUrl(options.options.databaseUrl);
   } catch {

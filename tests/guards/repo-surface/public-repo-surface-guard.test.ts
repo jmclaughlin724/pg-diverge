@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { check } from "../../../scripts/guards/repo-surface/check-public-repo-surface.mjs";
-import { tempGuardRepo } from "../../guard-fixture.js";
+import { tempGuardRepo } from "../fixture.js";
 
 describe("public repo surface guard", () => {
   it("allows agent runtime skill targets without a public-surface catalog", () => {

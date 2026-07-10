@@ -31,7 +31,7 @@ export async function resolveSourceDefaults(
   gitHeadExists: () => Promise<boolean> = defaultGitHeadExists
 ): Promise<ResolvedSources> {
   const defaulted: string[] = [];
-  const to = options.to ?? config.sources.to ?? defaultTreeSource(config);
+  const to = options.to ?? defaultTreeSource(config);
   if (options.to === undefined) {
     defaulted.push(`--to ${to}`);
   }
@@ -65,7 +65,7 @@ export async function currentBaselineFingerprints(
   const head = (await defaultGitHeadExists())
     ? await sourceFingerprint("git:HEAD", config, cwd)
     : undefined;
-  const tree = await sourceFingerprint(config.sources.to ?? defaultTreeSource(config), config, cwd);
+  const tree = await sourceFingerprint(defaultTreeSource(config), config, cwd);
   return {
     ...(head === undefined ? {} : { head }),
     ...(tree === undefined ? {} : { tree }),

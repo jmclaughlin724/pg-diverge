@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, exists, ok, ROOT, readJson, readText } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { exists, ROOT, readJson, readText } from "../lib/repository.js";
 
 const required = [
   "services/agent-mcp/supaschema_agent_mcp/server.py",

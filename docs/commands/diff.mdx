@@ -35,8 +35,7 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file. I
 </ParamField>
 
 <ParamField path="--to" type="source">
-  Desired-state source. Defaults to `config.sources.to`, then the first
-  configured schema path.
+  Desired-state source. Defaults to `dir:<config.schemaPaths[0]>`.
 </ParamField>
 
 <ParamField path="--out" type="path | stdout">

@@ -84,3 +84,13 @@ export function syncFailureLoopReason(
       : "";
   return `supaschema sync failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, fix the canonical schema/config/migration source, rerun \`supaschema sync\`, and keep iterating until the ordered source, diff, target-selection, history, check, generated-contract, schema-closure staging, safety, verify, runner, and reconciliation lanes pass or report the exact blocker.${diagnosticText}`;
 }
+
+export function diffFailureLoopReason(
+  projectDir: string,
+  changed: string[],
+  diagnostics: string
+): string {
+  const changedList = changed.map((path) => rel(projectDir, path)).join(", ");
+  const diagnosticText = diagnostics.length > 0 ? `\n\nDiagnostics:\n${diagnostics}` : "";
+  return `supaschema diff failed after editing ${changedList}. Continue the agent loop now: inspect the reported SUPA_* diagnostics, fix the canonical schema/config/migration source, rerun \`supaschema diff\`, then run \`supaschema check\` and keep iterating until both pass or report the exact blocker.${diagnosticText}`;
+}

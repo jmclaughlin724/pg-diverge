@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { codexExecPolicyEntries } from "../../skills/codex-rules.mjs";
-import { assert, gitTrackedFiles, ok, ROOT } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { gitTrackedFiles, ROOT } from "../lib/repository.js";
 
 function prefixMatchesCommand(pattern, command) {
   const words = shellWords(command);

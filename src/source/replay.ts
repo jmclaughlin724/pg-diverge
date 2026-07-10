@@ -12,6 +12,7 @@ import type {
 import { diagnostic, hasErrors } from "../diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { migrationFiles } from "../migrations/files.js";
+import { alterTableObjects } from "../sql/alter-table.js";
 import type { AstNode, AstStatement, ColumnFacts, QualifiedName } from "../sql/ast.js";
 import {
   asRecord,
@@ -25,7 +26,6 @@ import {
   readString,
 } from "../sql/ast.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
-import { alterTableObjects } from "../sql/extract-helpers.js";
 import { finalizeObjects } from "../sql/facts.js";
 import { objectKey } from "../sql/identifiers.js";
 import { shapeHash, stripLocations } from "../sql/object-hash.js";

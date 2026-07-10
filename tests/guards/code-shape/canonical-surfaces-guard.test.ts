@@ -2,7 +2,7 @@ import { chmodSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { check } from "../../../scripts/guards/code-shape/check-canonical-surfaces.mjs";
-import { tempGuardRepo } from "../../guard-fixture.js";
+import { tempGuardRepo } from "../fixture.js";
 
 const packageJson = (scripts: Record<string, string> = {}) =>
   `${JSON.stringify({ type: "module", scripts })}\n`;

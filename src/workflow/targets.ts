@@ -16,6 +16,7 @@ export function operationTargetLabel(options: Pick<SyncOptions, "operation">): s
 export interface ResolvedSyncTarget {
   automatic: boolean;
   databaseUrl?: string;
+  databaseUrlAutoDiscovered?: true;
   historyTable: string;
   name: string;
   operation: SupabaseCliOperation;
@@ -128,7 +129,7 @@ function resolveSyncTarget(
       )
     );
   }
-  return {
+  const target: ResolvedSyncTarget = {
     automatic: selection.automatic,
     ...(databaseUrl === undefined ? {} : { databaseUrl }),
     historyTable: options.historyTable ?? configured.historyTable,
@@ -137,6 +138,24 @@ function resolveSyncTarget(
     remote,
     runner,
   };
+  if (usesDefaultDatabaseUrl(configured, options, remote)) {
+    target.databaseUrlAutoDiscovered = true;
+  }
+  return target;
+}
+
+function usesDefaultDatabaseUrl(
+  target: SupaschemaConfig["sync"]["targets"][string],
+  options: SyncOptions,
+  remote: boolean
+): boolean {
+  return (
+    !remote &&
+    options.databaseUrl === undefined &&
+    options.envName === undefined &&
+    target.databaseUrl === undefined &&
+    target.environment === undefined
+  );
 }
 
 function resolveTargetUrl(

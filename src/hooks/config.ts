@@ -3,7 +3,6 @@ import { join, resolve } from "node:path";
 import { resolveConfig } from "../config/schema.js";
 import type { SupaschemaConfig } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
-import { asObject, property, strings, uniqueStrings } from "./payload.js";
 import { rel } from "./targets.js";
 
 const genericSchemaPath = "database/schemas";
@@ -99,18 +98,8 @@ export interface SchemaPathState {
   migrationsDir?: string;
   pathConfirmationNeeded: boolean;
   schemaPaths: string[];
-  sourcesTo?: string;
-  sync: { targets: Record<string, HookSyncTarget> };
+  sync: SupaschemaConfig["sync"];
   workflow: SupaschemaConfig["workflow"];
-}
-
-export interface HookSyncTarget {
-  databaseUrl?: string;
-  environment?: string;
-  mode: "manual" | "auto";
-  remote?: boolean;
-  requireApprovalEnv?: string;
-  runner: "direct" | "supabase-cli";
 }
 
 export interface AutomaticSyncPlan {
@@ -120,28 +109,43 @@ export interface AutomaticSyncPlan {
 }
 
 export function readSchemaPathState(projectDir: string): SchemaPathState {
-  const { environments, explicit, migrationsDir, schemaPaths, sourcesTo, sync, workflow } =
+  const { environments, explicit, migrationsDir, schemaPaths, sync, workflow } =
     readConfigPathFields(projectDir);
   const manifest = readInstallManifest(projectDir);
-  if (
-    manifest !== undefined &&
-    property(manifest, "pathConfirmationNeeded") === true &&
-    !explicit
-  ) {
-    const candidates = asObject(property(manifest, "candidates"));
-    const candidateSchemaPaths = strings(property(candidates, "schemaPaths"));
-    const candidateMigrationsDirs = strings(property(candidates, "migrationsDirs"));
+  const confirmationNeeded =
+    typeof manifest === "object" &&
+    manifest !== null &&
+    Reflect.get(manifest, "pathConfirmationNeeded") === true;
+  if (confirmationNeeded && !explicit) {
+    const candidateValue = Reflect.get(manifest, "candidates");
+    const candidates =
+      typeof candidateValue === "object" &&
+      candidateValue !== null &&
+      !Array.isArray(candidateValue)
+        ? candidateValue
+        : {};
+    const schemaPathValue = Reflect.get(candidates, "schemaPaths");
+    const migrationDirValue = Reflect.get(candidates, "migrationsDirs");
+    const candidateSchemaPaths = Array.isArray(schemaPathValue)
+      ? schemaPathValue.filter(
+          (value): value is string => typeof value === "string" && value !== ""
+        )
+      : [];
+    const candidateMigrationsDirs = Array.isArray(migrationDirValue)
+      ? migrationDirValue.filter(
+          (value): value is string => typeof value === "string" && value !== ""
+        )
+      : [];
     return {
       candidateMigrationsDirs,
       candidateSchemaPaths,
-      confirmationSchemaPaths: uniqueStrings([...candidateSchemaPaths, ...schemaPaths]).map(
-        (path) => resolve(projectDir, path)
+      confirmationSchemaPaths: [...new Set([...candidateSchemaPaths, ...schemaPaths])].map((path) =>
+        resolve(projectDir, path)
       ),
       environments,
       ...(migrationsDir === undefined ? {} : { migrationsDir }),
       pathConfirmationNeeded: true,
       schemaPaths: schemaPaths.map((path) => resolve(projectDir, path)),
-      ...(sourcesTo === undefined ? {} : { sourcesTo }),
       sync,
       workflow,
     };
@@ -154,7 +158,6 @@ export function readSchemaPathState(projectDir: string): SchemaPathState {
     ...(migrationsDir === undefined ? {} : { migrationsDir }),
     pathConfirmationNeeded: false,
     schemaPaths: schemaPaths.map((path) => resolve(projectDir, path)),
-    ...(sourcesTo === undefined ? {} : { sourcesTo }),
     sync,
     workflow,
   };
@@ -222,7 +225,7 @@ export function pathConfirmationMessage(
     .map((path) => rel(projectDir, path))
     .join(
       ", "
-    )} because path confirmation is pending from install. Inspect .supaschema/install.json agentInstructions, choose the owning schemaPaths, sources.to, and migrationsDir from the detected candidates, update supaschema.config.json, then run \`supaschema config validate\`, \`supaschema diff\`, and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
+    )} because path confirmation is pending from install. Inspect .supaschema/install.json agentInstructions, choose the owning schemaPaths and migrationsDir from the detected candidates, update supaschema.config.json, then run \`supaschema config validate\`, \`supaschema diff\`, and \`supaschema check\`. Candidate schema paths: ${schemaCandidates}. Candidate migrations dirs: ${migrationCandidates}.`;
 }
 
 function readConfigPathFields(projectDir: string): {
@@ -230,8 +233,7 @@ function readConfigPathFields(projectDir: string): {
   explicit: boolean;
   migrationsDir?: string;
   schemaPaths: string[];
-  sourcesTo?: string;
-  sync: { targets: Record<string, HookSyncTarget> };
+  sync: SupaschemaConfig["sync"];
   workflow: SupaschemaConfig["workflow"];
 } {
   const jsonPath = join(projectDir, "supaschema.config.json");
@@ -255,112 +257,49 @@ function resolveConfigPathFields(
   explicit: boolean;
   migrationsDir?: string;
   schemaPaths: string[];
-  sourcesTo?: string;
-  sync: { targets: Record<string, HookSyncTarget> };
+  sync: SupaschemaConfig["sync"];
   workflow: SupaschemaConfig["workflow"];
 } {
-  const record = asObject(config);
-  const explicitSchemaPaths = schemaPathsFromConfig(record);
-  const migrationsDirValue = property(record, "migrationsDir");
+  const record =
+    typeof config === "object" && config !== null && !Array.isArray(config) ? config : {};
+  const schemaPathsValue = Reflect.get(record, "schemaPaths");
+  const explicitSchemaPaths =
+    Array.isArray(schemaPathsValue) && schemaPathsValue.length > 0
+      ? schemaPathsValue.filter(
+          (value): value is string => typeof value === "string" && value.length > 0
+        )
+      : undefined;
+  const migrationsDirValue = Reflect.get(record, "migrationsDir");
   const migrationsDir =
     typeof migrationsDirValue === "string" && migrationsDirValue.length > 0
       ? migrationsDirValue
       : undefined;
-  const sources = asObject(property(record, "sources"));
-  const sourcesToValue = property(sources, "to");
-  const sourcesTo =
-    typeof sourcesToValue === "string" && sourcesToValue.length > 0 ? sourcesToValue : undefined;
+  const resolved = resolveConfig(record);
   return {
-    environments: environmentsFromConfig(record),
-    explicit:
-      explicitSchemaPaths !== undefined && migrationsDir !== undefined && sourcesTo !== undefined,
+    environments: resolved.environments,
+    explicit: explicitSchemaPaths !== undefined && migrationsDir !== undefined,
     ...(migrationsDir === undefined ? {} : { migrationsDir }),
     schemaPaths: explicitSchemaPaths ?? [defaultSchemaPath(projectDir)],
-    ...(sourcesTo === undefined ? {} : { sourcesTo }),
-    sync: syncFromHookConfig(record),
-    workflow: resolveConfig({
-      workflow: asObject(property(record, "workflow")),
-    }).workflow,
+    sync: resolved.sync,
+    workflow: resolved.workflow,
   };
 }
 
-function readInstallManifest(projectDir: string): object | undefined {
+function readInstallManifest(projectDir: string): unknown {
   const path = join(projectDir, ".supaschema", "install.json");
   if (!existsSync(path)) {
     return;
   }
   try {
-    return asObject(JSON.parse(readFileSync(path, "utf8")));
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return;
   }
 }
 
-function schemaPathsFromConfig(config: object): string[] | undefined {
-  const schemaPaths = property(config, "schemaPaths");
-  if (Array.isArray(schemaPaths) && schemaPaths.length > 0) {
-    return schemaPaths.map(String);
-  }
-  return;
-}
-
-function environmentsFromConfig(config: object): Record<string, { databaseUrl: string }> {
-  const configured = asObject(property(config, "environments"));
-  const environments: Record<string, { databaseUrl: string }> = {};
-  for (const [name, value] of Object.entries(configured)) {
-    const record = asObject(value);
-    const databaseUrl = property(record, "databaseUrl");
-    if (typeof databaseUrl === "string" && databaseUrl !== "") {
-      environments[name] = { databaseUrl };
-    }
-  }
-  return environments;
-}
-
-function syncFromHookConfig(config: object): {
-  targets: Record<string, HookSyncTarget>;
-} {
-  const sync = asObject(property(config, "sync"));
-  const configured = asObject(property(sync, "targets"));
-  const targets: Record<string, HookSyncTarget> = {};
-  for (const [name, value] of Object.entries(configured)) {
-    const record = asObject(value);
-    if (Object.keys(record).length === 0) {
-      continue;
-    }
-    const target: HookSyncTarget = {
-      mode: hookTargetMode(property(record, "mode")),
-      runner: hookTargetRunner(property(record, "runner")),
-    };
-    const databaseUrl = property(record, "databaseUrl");
-    if (typeof databaseUrl === "string" && databaseUrl !== "") {
-      target.databaseUrl = databaseUrl;
-    }
-    const environment = property(record, "environment");
-    if (typeof environment === "string" && environment !== "") {
-      target.environment = environment;
-    }
-    const requireApprovalEnv = property(record, "requireApprovalEnv");
-    if (typeof requireApprovalEnv === "string" && requireApprovalEnv !== "") {
-      target.requireApprovalEnv = requireApprovalEnv;
-    }
-    if (property(record, "remote") === true) {
-      target.remote = true;
-    }
-    targets[name] = target;
-  }
-  return { targets };
-}
-
-function hookTargetMode(value: unknown): HookSyncTarget["mode"] {
-  return value === "auto" ? "auto" : "manual";
-}
-
-function hookTargetRunner(value: unknown): HookSyncTarget["runner"] {
-  return value === "supabase-cli" ? "supabase-cli" : "direct";
-}
-
-function automaticSyncTargets(targets: Record<string, HookSyncTarget>): [string, HookSyncTarget][] {
+function automaticSyncTargets(
+  targets: SupaschemaConfig["sync"]["targets"]
+): [string, SupaschemaConfig["sync"]["targets"][string]][] {
   return Object.entries(targets).filter(([, target]) => target.mode === "auto");
 }
 
@@ -379,7 +318,7 @@ function unresolvedUrlReason(name: string, value: string | undefined): string | 
 
 function unresolvedSyncUrlReason(
   name: string,
-  target: HookSyncTarget,
+  target: SupaschemaConfig["sync"]["targets"][string],
   value: string | undefined
 ): string | undefined {
   if (typeof value === "string" && value.trim() !== "") {
@@ -396,7 +335,10 @@ function unresolvedSyncUrlReason(
     : undefined;
 }
 
-function isRemoteSyncTarget(name: string, target: Pick<HookSyncTarget, "remote">): boolean {
+function isRemoteSyncTarget(
+  name: string,
+  target: Pick<SupaschemaConfig["sync"]["targets"][string], "remote">
+): boolean {
   return name === "remote" || target.remote === true;
 }
 

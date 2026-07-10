@@ -25,7 +25,7 @@ npx supaschema verify --database-url postgresql://postgres:postgres@localhost:54
 npx supaschema verify --ensure-environment --ensure-roles
 ```
 
-The database URL must point at a PostgreSQL instance where the role can create temporary databases.
+The database URL must point at a PostgreSQL instance where the role can create temporary databases. When verification auto-discovers a local Supabase stack, it uses the built-in `supabase_admin` role so catalog replay can reproduce extensions and owner-scoped default privileges. Explicit URLs, named environments, and `SUPASCHEMA_DATABASE_URL` remain authoritative.
 
 ## Flags
 
@@ -34,8 +34,7 @@ The database URL must point at a PostgreSQL instance where the role can create t
 </ParamField>
 
 <ParamField path="--to" type="source">
-  Target source. Defaults to `config.sources.to`, then the first configured
-  schema path.
+  Target source. Defaults to `dir:<config.schemaPaths[0]>`.
 </ParamField>
 
 <ParamField path="--migration" type="path">
@@ -57,7 +56,7 @@ The database URL must point at a PostgreSQL instance where the role can create t
 </ParamField>
 
 <ParamField path="--ensure-environment" type="boolean">
-  Stub common Supabase-managed surfaces such as `auth.uid()` and cron tables.
+  Stub common Supabase-managed Auth, Vault, and cron surfaces.
 </ParamField>
 
 <ParamField path="--no-ensure-environment" type="boolean">

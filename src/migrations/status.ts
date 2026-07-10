@@ -1,10 +1,11 @@
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { Client } from "pg";
 import type { Diagnostic } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 import { redactSecrets } from "../redaction.js";
 import { quoteIdent } from "../sql/identifiers.js";
+import { migrationFiles } from "./files.js";
 import type { MigrationLineage } from "./lineage.js";
 import { parseLineage } from "./lineage.js";
 
@@ -32,6 +33,7 @@ export interface MigrationHistoryComparison {
 
 export interface MigrationsStatusReport {
   applied: string[];
+  appliedLineage: MigrationLineage[];
   expectedAppliedVersions: string[];
   files: string[];
 
@@ -61,7 +63,8 @@ export async function migrationsStatus(
 ): Promise<{ diagnostics: Diagnostic[]; report: MigrationsStatusReport }> {
   const diagnostics: Diagnostic[] = [];
   const historyTable = options.historyTable ?? defaultHistoryTable;
-  const files = (await readdir(options.directory))
+  const files = (await migrationFiles(options.directory))
+    .map((file) => basename(file))
     .filter((name) => name.endsWith(".sql") && migrationFileVersion(name) !== undefined)
     .sort((left, right) => left.localeCompare(right));
   const versionsByFile = new Map(files.map((name) => [name, migrationFileVersion(name) ?? ""]));
@@ -71,6 +74,7 @@ export async function migrationsStatus(
       : [...options.expectedAppliedVersions].sort();
   const report: MigrationsStatusReport = {
     applied: [],
+    appliedLineage: [],
     expectedAppliedVersions,
     files,
     ghosts: [],
@@ -314,14 +318,18 @@ function classifyStaleBaselines(
 }
 
 async function annotateLineage(directory: string, report: MigrationsStatusReport): Promise<void> {
-  for (const file of report.pending) {
+  const pending = new Set(report.pending);
+  for (const file of report.files) {
     const handle = await readFile(join(directory, file), "utf8").catch(() => undefined);
     if (handle === undefined) {
       continue;
     }
     const lineage = parseLineage(handle.slice(0, lineageScanBytes));
     if (lineage) {
-      report.pendingLineage.push({ file, ...lineage });
+      (pending.has(file) ? report.pendingLineage : report.appliedLineage).push({
+        file,
+        ...lineage,
+      });
     }
   }
 }

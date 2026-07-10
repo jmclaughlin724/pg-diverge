@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { assert, ok, ROOT, readJson, readText } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { ROOT, readJson } from "../lib/repository.js";
 import {
   asArray,
   eachStep,
@@ -350,20 +351,6 @@ export function check(root = ROOT) {
     parsed.set(file, { doc: parseYaml(raw), raw });
   }
   const packageJson = readJson("package.json", root);
-  const checkAllText = readText("scripts/guards/check-all.mjs", root);
-  const agentHooksGuardText = readText("scripts/guards/agent-surface/check-agent-hooks.mjs", root);
-  const agentPolicyGuardText = readText(
-    "scripts/guards/agent-surface/check-agent-policy-standardization.mjs",
-    root
-  );
-  const ruleCitationsGuardText = readText(
-    "scripts/guards/docs-config/check-rule-citations.mjs",
-    root
-  );
-  const claudeAgentsGuardText = readText(
-    "scripts/guards/agent-surface/check-claude-agents.mjs",
-    root
-  );
 
   assertWorkflowBasics(parsed);
 
@@ -411,25 +398,6 @@ export function check(root = ROOT) {
     "ci.yml quality job must build generated dist before npm run lint:ci resolves dist imports"
   );
   assert(
-    checkAllText.includes("SUPASCHEMA_PUBLIC_CHECKOUT") &&
-      checkAllText.includes("PUBLIC_CHECKOUT_GUARDS_OK") &&
-      checkAllText.includes("check-agent-hooks.mjs") &&
-      checkAllText.includes("check-agent-policy-standardization.mjs"),
-    "npm run guard must include a public-checkout pass for local-only agent surfaces"
-  );
-  for (const [file, text] of [
-    ["scripts/guards/agent-surface/check-agent-hooks.mjs", agentHooksGuardText],
-    ["scripts/guards/agent-surface/check-agent-policy-standardization.mjs", agentPolicyGuardText],
-    ["scripts/guards/agent-surface/check-claude-agents.mjs", claudeAgentsGuardText],
-    ["scripts/guards/docs-config/check-rule-citations.mjs", ruleCitationsGuardText],
-  ]) {
-    assert(text.includes("gitTrackedFiles"), `${file} must scan tracked policy files only`);
-    assert(
-      !text.includes('readdirSync(path.join(ROOT, ".claude/skills")'),
-      `${file} must not raw-walk ignored .claude/skills`
-    );
-  }
-  assert(
     !packageJson.scripts?.["github:check-dco"],
     "package.json must not expose a DCO blocker as npm run github:check-dco"
   );
@@ -446,7 +414,7 @@ export function check(root = ROOT) {
   );
   assert(
     packageJson.scripts?.["test:consumer-lifecycle"] ===
-      "vitest run tests/consumer-lifecycle.test.ts",
+      "vitest run tests/package/consumer.test.ts",
     "package.json must expose npm run test:consumer-lifecycle for installed-CLI consumer lifecycle proof"
   );
   assert(

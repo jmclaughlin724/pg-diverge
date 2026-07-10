@@ -54,15 +54,13 @@ try {
 }
 
 function editTargets(payload, projectDir) {
-  return toolPayloads(payload).flatMap((toolPayload) =>
-    editTargetsForTool(toolPayload, projectDir)
-  );
+  return editTargetsForTool(payload, projectDir);
 }
 
 function editTargetsForTool(toolPayload, projectDir) {
   const toolName = toolNameOf(toolPayload);
   const input = toolInputOf(toolPayload);
-  if (toolName === "apply_patch" || toolName === "functions.apply_patch") {
+  if (toolName === "apply_patch") {
     return patchTargets(patchTextFromInput(input), projectDir);
   }
   if (typeof input.file_path === "string" && input.file_path.length > 0) {
@@ -71,55 +69,17 @@ function editTargetsForTool(toolPayload, projectDir) {
   return [];
 }
 
-function toolPayloads(payload) {
-  const payloads = [];
-  const add = (candidate) => {
-    if (!(candidate && typeof candidate === "object")) {
-      return;
-    }
-    if (
-      typeof candidate.tool_name === "string" ||
-      typeof candidate.toolName === "string" ||
-      typeof candidate.name === "string"
-    ) {
-      payloads.push(candidate);
-    }
-  };
-
-  add(payload);
-  for (const key of ["tool_calls", "tool_uses", "toolUses", "tools", "calls"]) {
-    if (Array.isArray(payload?.[key])) {
-      for (const item of payload[key]) {
-        add(item);
-      }
-    }
-  }
-
-  return payloads;
-}
-
 function toolNameOf(toolPayload) {
-  for (const value of [toolPayload?.tool_name, toolPayload?.toolName, toolPayload?.name]) {
-    if (typeof value === "string") {
-      return value;
-    }
-  }
-  return "";
+  return typeof toolPayload?.tool_name === "string" ? toolPayload.tool_name : "";
 }
 
 function toolInputOf(toolPayload) {
-  return toolPayload?.tool_input ?? toolPayload?.toolInput ?? toolPayload?.input ?? {};
+  return toolPayload?.tool_input ?? {};
 }
 
 function patchTextFromInput(input) {
   if (typeof input.command === "string") {
     return input.command;
-  }
-  if (typeof input.patch === "string") {
-    return input.patch;
-  }
-  if (typeof input.input === "string") {
-    return input.input;
   }
   return "";
 }
@@ -273,7 +233,7 @@ function eventName(payload) {
   if (typeof payload?.hook_event_name === "string" && payload.hook_event_name.length > 0) {
     return payload.hook_event_name;
   }
-  return runtime === "codex" ? "Stop" : "PostToolBatch";
+  return runtime === "codex" ? "PostToolUse" : "PostToolBatch";
 }
 
 function emitNoop() {
@@ -288,10 +248,6 @@ function emitSynced(output, hookEventName) {
     .trim()
     .split("\n")
     .find((item) => item.startsWith("SYNC_LLM_OK"));
-  if (runtime === "codex" && hookEventName === "Stop") {
-    process.stdout.write("{}\n");
-    process.exit(0);
-  }
   emitContext(line ?? "SYNC_LLM_OK", hookEventName);
 }
 

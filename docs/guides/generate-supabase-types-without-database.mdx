@@ -34,29 +34,27 @@ npx supaschema types
 Override the source or output when needed:
 
 ```bash
-npx supaschema types --source dir:database/schemas
+npx supaschema types --from dir:database/schemas
 npx supaschema types --out src/lib/database.types.ts
 ```
 
 For projects whose migration history is the reviewed schema source, generate from that history without introspection:
 
 ```bash
-npx supaschema types --source migrations:supabase/migrations
+npx supaschema types --from migrations:supabase/migrations
 ```
 
-`migrations:` is v1 typegen-only. Use it for `types`, not as `sources.to` for `diff`, `verify`, or drift gates.
+`migrations:` is typegen-only. Do not use it as a `diff`, `verify`, or drift target.
 
 `supaschema sync` refreshes configured TypeScript and Zod outputs as part of the full workflow. For the focused lane, run `supaschema types` after `supaschema diff` so schema, migration, and app types can be reviewed together.
 
-Use the generated helpers as the application contract:
+Use the generated schema-qualified owners as the application contract:
 
 ```ts
-import { Tables, type TablesInsert } from "./database.zod";
+import type { AppAccountsInsert } from "./database.types";
+import { AppAccountsInsertSchema } from "./database.zod";
 
-type Account = Tables<{ schema: "app" }, "accounts">;
-type NewAccount = TablesInsert<{ schema: "app" }, "accounts">;
-
-const input: NewAccount = Tables.app.accounts.Insert.parse(body);
+const input: AppAccountsInsert = AppAccountsInsertSchema.parse(body);
 ```
 
 That covers the shape and validation responsibilities that teams often reach for an ORM-generated client to solve. Query execution can stay SQL-native through your PostgreSQL driver or platform client.

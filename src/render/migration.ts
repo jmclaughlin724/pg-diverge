@@ -8,6 +8,7 @@ import type {
   SupaschemaConfig,
   TableColumn,
 } from "../core.js";
+import { sha256 } from "../hash.js";
 import { lineageLine } from "../migrations/lineage.js";
 import { quoteIdent } from "../sql/identifiers.js";
 import {
@@ -16,6 +17,7 @@ import {
   qualifiedTableRef,
   quoteLiteral,
   renderConstraintGuard,
+  renderConstraintSqlGuard,
   renderDefaultPrivilegeDrop,
   renderFdwGuard,
   renderGrantDrop,
@@ -267,12 +269,29 @@ function renderColumnAlteration(table: SchemaObject, alteration: unknown): strin
     statements.push(`${prefix} SET DEFAULT ${record.setDefault};`);
   }
   if (record.setNotNull === true) {
-    statements.push(`${prefix} SET NOT NULL;`);
+    statements.push(...renderSetNotNull(table, name, prefix));
   }
   if (record.dropNotNull === true) {
     statements.push(`${prefix} DROP NOT NULL;`);
   }
   return statements;
+}
+
+function renderSetNotNull(table: SchemaObject, columnName: string, prefix: string): string[] {
+  const schema = table.ref.schema ?? "public";
+  const tableName = table.ref.name;
+  const relation = qualifiedRef(table.ref);
+  const constraintName = `supaschema_not_null_${sha256(
+    `${schema}.${tableName}.${columnName}`
+  ).slice(0, 16)}`;
+  const quotedConstraint = quoteIdent(constraintName);
+  const addConstraint = `ALTER TABLE ${relation} ADD CONSTRAINT ${quotedConstraint} CHECK (${quoteIdent(columnName)} IS NOT NULL) NOT VALID;`;
+  return [
+    renderConstraintSqlGuard(schema, tableName, constraintName, addConstraint),
+    `ALTER TABLE ${relation} VALIDATE CONSTRAINT ${quotedConstraint};`,
+    `${prefix} SET NOT NULL;`,
+    `ALTER TABLE ${relation} DROP CONSTRAINT IF EXISTS ${quotedConstraint};`,
+  ];
 }
 
 function identityGeneration(value: string): string {

@@ -2,7 +2,10 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, edgeKey, exists, ok, ROOT, readJson, readText, run } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { edgeKey } from "../lib/graph.js";
+import { run } from "../lib/process.js";
+import { exists, ROOT, readJson, readText } from "../lib/repository.js";
 
 export function check(root = ROOT) {
   if (
@@ -157,7 +160,15 @@ export function check(root = ROOT) {
   );
   const strictHealth = query("health", "", ["--strict"]);
   assert(strictHealth.strict === true, "health --strict must report strict mode");
-  assert(typeof strictHealth.ok === "boolean", "health --strict must return ok boolean");
+  assert(strictHealth.ok === true, "health --strict must pass");
+  assert(
+    strictHealth.issues
+      .filter((issue) => issue.type === "high_coupling_file")
+      .every((issue) =>
+        ["coordinator", "entrypoint", "owner", "verification"].includes(issue.role)
+      ),
+    "high-coupling health findings must have a graph role"
+  );
   const coverage = query("validate-coverage");
   assert(coverage.ok === true, "validate-coverage query must pass");
   const regressionScope = query("regression-scope");

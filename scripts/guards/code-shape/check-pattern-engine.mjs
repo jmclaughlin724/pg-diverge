@@ -1,6 +1,7 @@
 import { parse as parseShell } from "sh-syntax";
-import { parse as parseJsTs, ts } from "../lib/ast-utils.js";
-import { readText, run } from "../lib/guard-utils.js";
+import { run } from "../lib/process.js";
+import { readText } from "../lib/repository.js";
+import { parse as parseJsTs, ts } from "../lib/typescript-ast.js";
 import { jsTsStringValue } from "./ast-scan.mjs";
 
 export async function patternEngineViolations(jsTsFiles, pythonFiles, shellFiles, root) {

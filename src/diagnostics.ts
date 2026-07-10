@@ -63,7 +63,18 @@ export function formatDiagnostic(item: Diagnostic): string {
 }
 
 export function formatDiagnostics(diagnostics: Diagnostic[]): string {
-  return diagnostics.map(formatDiagnostic).join("\n");
+  const grouped = new Map<string, number>();
+  for (const item of diagnostics) {
+    const formatted = formatDiagnostic(item);
+    grouped.set(formatted, (grouped.get(formatted) ?? 0) + 1);
+  }
+  return [...grouped]
+    .map(([formatted, count]) => formatDiagnosticCount(formatted, count))
+    .join("\n");
+}
+
+function formatDiagnosticCount(formatted: string, count: number): string {
+  return count === 1 ? formatted : `${formatted}\n  repeated: ${count} occurrences`;
 }
 
 function formatRef(ref: ObjectRef): string {
@@ -116,7 +127,7 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_DIFF_SCOPED_DIRTY_SCHEMA:
     "A scoped migration diff cannot run while schema files outside the requested schema filter are dirty.",
   SUPA_DIFF_TREE_UNCOMMITTED:
-    "The to-source tree has uncommitted changes, so this migration's lineage end-state fingerprints uncommitted schema-tree state; commit the tree change together with the generated migration and its generated outputs, or the next git-baseline generation blocks with SUPA_MIGRATION_BASELINE_MISMATCH.",
+    "The to-source tree has uncommitted changes, so this migration's lineage end-state fingerprints uncommitted schema-tree state; supaschema sync stages the complete closure and uses that proven index state as the next automatic baseline.",
   SUPA_DIFF_REPLACE_APPLIED:
     "The replacement migration version is already recorded in a configured database history table.",
   SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED:
@@ -185,6 +196,7 @@ export const diagnosticCatalog: Record<string, string> = {
     "The selected migration runner exited nonzero during sync; supaschema gates but the runner owns apply/deploy.",
   SUPA_SYNC_RUNNER_UNAVAILABLE:
     "The selected migration runner could not be launched or connected. supaschema gates and delegates apply to the runner.",
+  SUPA_SYNC_STAGE_FAILED: "Supaschema could not stage the complete schema closure in Git.",
   SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION:
     "The Supabase CLI runner cannot safely apply concurrent companion migrations because Supabase keys migration history by timestamp.",
   SUPA_SYNC_TARGET_OVERRIDE_MULTI:
@@ -291,6 +303,8 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_VALIDATOR_UNKNOWN: "Unknown validator name in the validators config.",
   SUPA_VERIFY_CLEANUP_FAILED: "A temporary verification database could not be dropped.",
   SUPA_VERIFY_FAILED: "Verification could not complete against the database.",
+  SUPA_VERIFY_PREEXISTING_DRIFT:
+    "Verification proved the pending migration without adding drift, but unrelated target drift remains.",
   SUPA_VERIFY_ROLE_CAPABILITY:
     "The verification role cannot CREATE DATABASE; verify needs a role with CREATEDB (on local Supabase stacks prefer supabase_admin).",
   SUPA_VERIFY_STUB_REFERENCE:

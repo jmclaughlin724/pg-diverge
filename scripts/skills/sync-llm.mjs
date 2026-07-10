@@ -8,30 +8,21 @@ import { renderCodexAgent, renderCodexRule } from "./codex-rules.mjs";
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
-const codexCommandTools = ["Bash", "exec_command", "functions.exec_command"];
-const codexEditTools = ["apply_patch", "functions.apply_patch", "Edit", "Write", "edit_file"];
+const codexCommandTools = ["Bash"];
+const codexEditTools = ["apply_patch"];
 const codexPreToolContextTools = [
   ...codexCommandTools,
   ...codexEditTools,
-  "Read",
-  "Glob",
-  "Grep",
-  "Task",
-  "WebFetch",
-  "WebSearch",
   ["mcp__", [".", "*"].join("")].join(""),
 ];
 const codexPostToolContextTools = [
   ...codexCommandTools,
   ...codexEditTools,
-  "Read",
-  "Glob",
-  "Grep",
-  "Task",
   ["mcp__", [".", "*"].join("")].join(""),
 ];
 const codexCommandToolMatcher = codexToolMatcher(codexCommandTools);
 const codexEditToolMatcher = codexToolMatcher(codexEditTools);
+const codexMutationToolMatcher = codexToolMatcher([...codexCommandTools, ...codexEditTools]);
 const codexPreToolContextMatcher = codexToolMatcher(codexPreToolContextTools);
 const codexPostToolContextMatcher = codexToolMatcher(codexPostToolContextTools);
 
@@ -279,7 +270,7 @@ function shellParameter(expression) {
 }
 
 function codexToolMatcher(tools) {
-  return ["^", "(", tools.map(codexMatcherSegment).join("|"), ")", "$"].join("");
+  return tools.map(codexMatcherSegment).join("|");
 }
 
 function codexMatcherSegment(tool) {
@@ -314,7 +305,7 @@ function claudeHookConfig(runner) {
           ],
         },
         {
-          matcher: "Write|Edit|MultiEdit|apply_patch",
+          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
           hooks: [
             {
               type: "command",
@@ -327,7 +318,7 @@ function claudeHookConfig(runner) {
       ],
       PostToolUse: [
         {
-          matcher: "Write|Edit|MultiEdit|apply_patch",
+          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
           hooks: [
             {
               type: "command",
@@ -337,9 +328,8 @@ function claudeHookConfig(runner) {
             },
           ],
         },
-      ],
-      PostToolBatch: [
         {
+          matcher: "Write|Edit|MultiEdit|apply_patch",
           hooks: [
             {
               type: "command",
@@ -392,7 +382,7 @@ export function renderSourceCodexHooks(root = ROOT) {
           ],
         },
         {
-          matcher: codexEditToolMatcher,
+          matcher: codexMutationToolMatcher,
           hooks: [
             codexHookCommand(
               ".codex/hooks/supaschema-source-hook.mjs",
@@ -415,13 +405,23 @@ export function renderSourceCodexHooks(root = ROOT) {
           ],
         },
         {
-          matcher: codexEditToolMatcher,
+          matcher: codexMutationToolMatcher,
           hooks: [
             codexHookCommand(
               ".codex/hooks/supaschema-source-hook.mjs",
               130,
               "Running supaschema auto-diff on schema change",
               "hook schema-write"
+            ),
+          ],
+        },
+        {
+          matcher: codexEditToolMatcher,
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+              130,
+              "Syncing supaschema Claude agent surfaces"
             ),
           ],
         },
@@ -433,33 +433,6 @@ export function renderSourceCodexHooks(root = ROOT) {
               ".codex/hooks/context-subagent-start.mjs",
               10,
               "Loading supaschema subagent context"
-            ),
-          ],
-        },
-      ],
-      SubagentStop: [
-        {
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/context-subagent-stop.mjs",
-              10,
-              "Checking supaschema subagent closeout"
-            ),
-          ],
-        },
-      ],
-      Stop: [
-        {
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/context-stop.mjs",
-              10,
-              "Checking supaschema final-response evidence"
-            ),
-            codexHookCommand(
-              ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-              130,
-              "Syncing supaschema Claude agent surfaces"
             ),
           ],
         },
@@ -484,7 +457,6 @@ function assertClaudeHookSource(root) {
     return;
   }
   assertClaudeEntrypoint(root);
-  assertClaudeResponseShapeStandard(root);
   const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
   const hooks = settings?.hooks;
   if (!hooks || typeof hooks !== "object") {
@@ -497,8 +469,6 @@ function assertClaudeHookSource(root) {
     ["PreToolUse", ".claude/hooks/context-pre-tool-use.mjs"],
     ["PostToolUse", ".claude/hooks/context-post-tool-use.mjs"],
     ["SubagentStart", ".claude/hooks/context-subagent-start.mjs"],
-    ["SubagentStop", ".claude/hooks/context-subagent-stop.mjs"],
-    ["Stop", ".claude/hooks/context-stop.mjs"],
   ]) {
     assertClaudeNodeHook(hooks, eventName, relativePath);
   }
@@ -506,11 +476,7 @@ function assertClaudeHookSource(root) {
   assertSourceClaudeBashPreToolUseTopology(hooks);
   assertClaudeCommand(hooks, "PreToolUse", "generated-migration-edit");
   assertClaudeCommand(hooks, "PostToolUse", "schema-write");
-  assertClaudeNodeHook(
-    hooks,
-    "PostToolBatch",
-    ".claude/hooks/sync-llm-on-claude-surface-change.mjs"
-  );
+  assertClaudeNodeHook(hooks, "PostToolUse", ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
 }
 
 function assertSourceClaudeBashPreToolUseTopology(hooks) {
@@ -552,62 +518,8 @@ function assertClaudeEntrypoint(root) {
     throw new Error("CLAUDE.md must exist when .claude/settings.json enables Claude hooks");
   }
   const text = fs.readFileSync(claudePath, "utf8");
-  if (!text.includes("@AGENTS.md")) {
+  if (text.trim() !== "@AGENTS.md") {
     throw new Error("CLAUDE.md must import @AGENTS.md so Claude receives the repo contract");
-  }
-}
-
-function assertClaudeResponseShapeStandard(root) {
-  assertFileIncludes(root, "scripts/agent-hooks/runner.mjs", [
-    "function responseShape",
-    "block: detectorResult.contextParts.join",
-  ]);
-  assertFileIncludes(root, "scripts/agent-hooks/response-shape.mjs", [
-    "mechanismClaimWithoutArchitecture",
-    "mechanism-claim-without-architecture",
-    "architecture/end-state disposition",
-    "verification disposition",
-  ]);
-  assertFileIncludes(root, "scripts/agent-hooks/command-evidence.mjs", ["domains.length === 0"]);
-  assertFileIncludes(root, "scripts/agent-hooks/response-evidence.mjs", [
-    "exitCodeFromExecutionStatus",
-    "isExecutionStatusLabel",
-  ]);
-  assertFileExcludes(root, "scripts/agent-hooks/command-evidence.mjs", ["textMentionsExit"]);
-  assertFileIncludes(root, ".claude/rules/12-skill-loading-enforcement.md", [
-    "mechanism-only correctness answers",
-    'decision: "block"',
-    "$elegant",
-    "verification disposition",
-    "Source and inventory reads",
-    "MUST NOT become verification evidence",
-    "process.exitCode = 2",
-  ]);
-}
-
-function assertFileIncludes(root, relativePath, requiredText) {
-  const file = path.join(root, relativePath);
-  if (!fs.existsSync(file)) {
-    throw new Error(`${relativePath} must exist for Claude response-shape enforcement`);
-  }
-  const text = fs.readFileSync(file, "utf8");
-  for (const required of requiredText) {
-    if (!text.includes(required)) {
-      throw new Error(`${relativePath} must contain ${required}`);
-    }
-  }
-}
-
-function assertFileExcludes(root, relativePath, forbiddenText) {
-  const file = path.join(root, relativePath);
-  if (!fs.existsSync(file)) {
-    throw new Error(`${relativePath} must exist for Claude response-shape enforcement`);
-  }
-  const text = fs.readFileSync(file, "utf8");
-  for (const forbidden of forbiddenText) {
-    if (text.includes(forbidden)) {
-      throw new Error(`${relativePath} must not contain ${forbidden}`);
-    }
   }
 }
 

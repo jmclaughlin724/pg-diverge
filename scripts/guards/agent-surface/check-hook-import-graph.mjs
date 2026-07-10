@@ -2,7 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, ok, ROOT } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { ROOT } from "../lib/repository.js";
 
 const roots = [".claude/hooks", ".codex/hooks", "scripts/agent-hooks"];
 const allowedBare = new Set([]);

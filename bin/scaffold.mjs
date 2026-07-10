@@ -1283,7 +1283,7 @@ function agentInstructionsForPendingInstall(selection) {
     requiredActions: [
       "Inspect candidates.schemaPaths and candidates.migrationsDirs in this manifest.",
       "Choose the package-owned declarative schema tree and migration directory.",
-      "Create or update supaschema.config.json with schemaPaths, sources.to, and migrationsDir.",
+      "Create or update supaschema.config.json with schemaPaths and migrationsDir.",
       "Run the local package-manager command for supaschema config validate --json.",
     ],
   };
@@ -1299,7 +1299,6 @@ function recommendedConfigForPendingInstall(selection) {
     schemaPaths: [schemaPath],
     sources: {
       from: "auto",
-      to: `dir:${schemaPath}`,
     },
   };
 }

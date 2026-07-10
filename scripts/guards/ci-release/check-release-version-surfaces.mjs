@@ -1,9 +1,15 @@
 #!/usr/bin/env node
+import nodeAssert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+import {
+  resolveActionVersion,
+  validateExactVersion,
+} from "../../actions/run-supaschema-action.mjs";
 import { extractChangelogEntry } from "../../release/changelog-notes.mjs";
-import { assert, ok, ROOT, readJson, readText } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { ROOT, readJson, readText } from "../lib/repository.js";
 
 export function check(root = ROOT) {
   const packageJson = readJson("package.json", root);
@@ -28,7 +34,6 @@ export function check(root = ROOT) {
   }
 
   const actionText = readText("action.yml", root);
-  const actionRunnerText = readText("scripts/actions/run-supaschema-action.mjs", root);
   const action = parseYaml(actionText);
   const actionVersionInput = action?.inputs?.version;
   assert(actionVersionInput, "action.yml must declare inputs.version");
@@ -37,33 +42,13 @@ export function check(root = ROOT) {
     "action.yml inputs.version.default must stay unset; the runner defaults from package.json"
   );
   assert(
-    typeof actionVersionInput.description === "string" &&
-      actionVersionInput.description.includes("Exact supaschema npm version") &&
-      actionVersionInput.description.includes("package.json version"),
-    "action.yml inputs.version.description must require an exact supaschema npm version"
+    resolveActionVersion(undefined, () => JSON.stringify({ version })) === version,
+    "action version must default from package.json"
   );
-  assert(
-    !actionText.includes("default: latest"),
-    "action.yml inputs.version.default must never be an npm dist-tag"
-  );
-
-  assert(
-    actionRunnerText.includes("use an exact npm version"),
-    "supaschema action runner version validation must tell users to use an exact npm version"
-  );
-  assert(
-    actionRunnerText.includes("../../package.json") &&
-      actionRunnerText.includes("resolveActionVersion"),
-    "supaschema action runner must default the action version from package.json"
-  );
-  assert(
-    !actionRunnerText.includes(`e.g. ${version}`),
-    "supaschema action runner must not duplicate package.json version in validation text"
-  );
-  assert(
-    !actionRunnerText.includes("latest|next"),
-    "supaschema action runner version validation must not allow npm dist-tags"
-  );
+  assert(validateExactVersion(version) === version, "package version must be exact");
+  for (const invalid of ["latest", "next", "1", "1.2", "1.2.x"]) {
+    nodeAssert.throws(() => validateExactVersion(invalid));
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

@@ -20,7 +20,7 @@ Guards enforce observable structure or behavior — AST shape, file existence, J
 
 | What you are analyzing | Use |
 | --- | --- |
-| TypeScript / JS / JSX structure | TypeScript compiler API via `scripts/guards/lib/ast-utils.js` (`parse`, `parseScript`, `forEachNode`, `leadingCommentHasToken`) |
+| TypeScript / JS / JSX structure | TypeScript compiler API via `scripts/guards/lib/typescript-ast.js` (`parse`, `parseScript`, `forEachNode`, `leadingCommentHasToken`) |
 | Postgres schema SQL (tables, RLS, functions…) | the real Postgres parser via `scripts/guards/lib/sql-ast.js` (libpg-query / libpg_query) |
 | Python structure | the `ast` module (see `scripts/guards/code-shape/check-pattern-engine.mjs` for the in-guard pattern) |
 | Shell structure | `parse` from `sh-syntax` |
@@ -28,7 +28,7 @@ Guards enforce observable structure or behavior — AST shape, file existence, J
 | YAML / TOML config | a YAML parser / `taplo` parser |
 | Markdown / MDX structure | a markdown AST (mdast) |
 
-The shared helpers are `scripts/guards/lib/ast-utils.js` (TS AST) and `scripts/guards/lib/sql-ast.js` (Postgres AST) — study them first.
+The parser owners are `scripts/guards/lib/typescript-ast.js` and `scripts/guards/lib/sql-ast.js`.
 
 ## Regex resolution sequence
 

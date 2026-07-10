@@ -1,44 +1,91 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, gitTrackedFiles, ok, ROOT } from "../lib/guard-utils.js";
+import { assert, ok } from "../lib/assertions.js";
+import { exists, gitFiles, ROOT } from "../lib/repository.js";
 
-const dumpTerms = ["shared", "_shared", "utils", "helpers", "common", "misc"];
+const dumpTerms = ["shared", "utils", "helpers", "common", "misc"];
+const privateDirectoryException = "supabase/functions/_shared";
 
-function isPrivateUnderscoreDir(name) {
-  return name.startsWith("_") && name.length >= 2 && name[1] >= "a" && name[1] <= "z";
+function forbiddenDirName(name, pathName) {
+  if (pathName === privateDirectoryException) {
+    return false;
+  }
+  return dumpTerms.includes(name.toLowerCase()) || name.startsWith("_");
 }
 
-function forbiddenDirName(name) {
-  return dumpTerms.includes(name.toLowerCase()) || isPrivateUnderscoreDir(name);
-}
-
-function forbiddenFileStem(stem) {
-  return dumpTerms.includes(stem.toLowerCase());
+function forbiddenFileConcept(concept, ancestors) {
+  if (
+    dumpTerms.includes(concept) ||
+    concept === "payload" ||
+    concept.endsWith("-payload") ||
+    concept.startsWith("query-") ||
+    concept.endsWith("-utils") ||
+    concept.endsWith("-helpers")
+  ) {
+    return true;
+  }
+  return ancestors.some((ancestor) => concept.startsWith(`${ancestor.toLowerCase()}-`));
 }
 
 export function check(root = ROOT) {
-  const violations = new Set();
-  for (const file of gitTrackedFiles(root)) {
-    const segments = file.split("/");
-    const filename = segments.pop() ?? "";
-    let acc = "";
-    for (const seg of segments) {
-      acc = acc ? `${acc}/${seg}` : seg;
-      if (forbiddenDirName(seg)) {
-        violations.add(acc);
-      }
-    }
-    const stem = path.parse(filename).name;
-    if (forbiddenFileStem(stem)) {
-      violations.add(file);
+  const files = gitFiles(root).filter((file) => exists(file, root));
+  const directories = populatedDirectories(files);
+  const violations = new Set(
+    [".claude/rules/00-supaschema.md", ".codex/rules/00-supaschema.rules"].filter((file) =>
+      files.includes(file)
+    )
+  );
+  for (const file of files) {
+    for (const violation of fileLayoutViolations(file, directories)) {
+      violations.add(violation);
     }
   }
-
   assert(
     violations.size === 0,
-    `authored source must not use shared/_shared/private-_/utils/helpers/common/misc folders or files (organize by owner, not by dumping):\n${[...violations].join("\n")}`
+    `authored paths must have one owner, one path context, canonical concept names, and paired client/server boundaries:\n${[...violations].join("\n")}`
   );
+}
+
+function populatedDirectories(files) {
+  const directories = new Set();
+  for (const file of files) {
+    let current = "";
+    for (const segment of file.split("/").slice(0, -1)) {
+      current = current ? `${current}/${segment}` : segment;
+      directories.add(current);
+    }
+  }
+  return directories;
+}
+
+function fileLayoutViolations(file, directories) {
+  const segments = file.split("/");
+  const filename = segments.pop() ?? "";
+  const violations = directoryViolations(segments, directories);
+  const firstDot = filename.indexOf(".");
+  const concept = (firstDot === -1 ? filename : filename.slice(0, firstDot)).toLowerCase();
+  return forbiddenFileConcept(concept, segments) ? [...violations, file] : violations;
+}
+
+function directoryViolations(segments, directories) {
+  const violations = [];
+  let current = "";
+  for (const segment of segments) {
+    current = current ? `${current}/${segment}` : segment;
+    if (forbiddenDirName(segment, current)) {
+      violations.push(current);
+    }
+    if (segment === "server" && !directories.has(siblingClient(current))) {
+      violations.push(current);
+    }
+  }
+  return violations;
+}
+
+function siblingClient(server) {
+  const slash = server.lastIndexOf("/");
+  return slash === -1 ? "client" : `${server.slice(0, slash)}/client`;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
