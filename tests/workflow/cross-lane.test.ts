@@ -94,13 +94,9 @@ describe.skipIf(!databaseUrl)("cross-lane identity parity", () => {
   it("diffs the hard-case parity tree against its own live catalog without false changes", {
     timeout: 30_000,
   }, async () => {
-    const falseChanges = await collectFalseChanges(
-      "tests/fixtures/parity/tree",
-      [
-        `DO $supa$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_parity_role') THEN CREATE ROLE app_parity_role NOLOGIN; END IF; END $supa$;`,
-      ],
-      ["DROP ROLE IF EXISTS app_parity_role;"]
-    );
+    const falseChanges = await collectFalseChanges("tests/fixtures/parity/tree", [
+      `DO $supa$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_parity_role') THEN CREATE ROLE app_parity_role NOLOGIN; END IF; END $supa$;`,
+    ]);
     expect(falseChanges).toEqual([]);
   });
 
