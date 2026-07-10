@@ -23,7 +23,7 @@ afterEach(() => {
 
 describe("schema-write hook", () => {
   it("accepts canonical edit and apply-patch targets", () => {
-    const project = "/tmp/supaschema-hook-project";
+    const project = join(tmpdir(), "supaschema-hook-project");
     expect(
       hookEditTargets(
         { tool_input: { file_path: "database/schemas/app.sql" }, tool_name: "Edit" },

@@ -122,6 +122,9 @@ async function autoDiffFixture(
   if (options.writeConfig !== false) {
     await writeFile(join(project, "supaschema.config.json"), JSON.stringify({ schemaPaths }));
   }
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key !== "SUPASCHEMA_DATABASE_URL")
+  );
   const log = join(project, "calls.log");
   const bin = join(project, "fake-supaschema.mjs");
   await writeFile(
@@ -144,7 +147,7 @@ process.exit(1);
   await chmod(bin, 0o755);
   return {
     bin,
-    env: { ...process.env, SUPASCHEMA_FAKE_LOG: log, SUPASCHEMA_HOOK_BIN: bin },
+    env: { ...env, SUPASCHEMA_FAKE_LOG: log, SUPASCHEMA_HOOK_BIN: bin },
     log,
     project,
   };
