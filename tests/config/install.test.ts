@@ -408,7 +408,7 @@ describe("init project setup", () => {
     expect(claudeSettings.hooks.PreToolUse).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ matcher: "Bash" }),
-        expect.objectContaining({ matcher: "Bash|Write|Edit|MultiEdit|apply_patch" }),
+        expect.objectContaining({ matcher: "Write|Edit|MultiEdit|apply_patch" }),
       ])
     );
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));

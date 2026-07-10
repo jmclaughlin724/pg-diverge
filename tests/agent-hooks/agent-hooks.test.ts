@@ -336,11 +336,6 @@ describe("agent hook configuration", () => {
           "node",
           `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/context-pre-tool-use.mjs`,
         ].join(" "),
-        [
-          "node",
-          `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/supaschema-source-hook.mjs`,
-          "hook generated-migration-edit --runtime claude",
-        ].join(" "),
       ]);
       expect(text).not.toContain("block-generated-migration-edits.mjs");
       expect(text).not.toContain("auto-diff-on-schema-change.mjs");
@@ -412,12 +407,16 @@ describe("agent hook configuration", () => {
     expect(JSON.stringify(config)).not.toContain("npx --no-install supaschema");
     expect(codexPreToolUseCommandsFor(config, "Bash")).toEqual([
       ['node "$', "{CODEX_PROJECT_DIR:-$PWD}", '/.codex/hooks/context-pre-tool-use.mjs"'].join(""),
-      [
-        'node "$',
-        "{CODEX_PROJECT_DIR:-$PWD}",
-        '/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex',
-      ].join(""),
     ]);
+    expect(codexPreToolUseCommandsFor(config, "apply_patch")).toEqual(
+      expect.arrayContaining([
+        [
+          'node "$',
+          "{CODEX_PROJECT_DIR:-$PWD}",
+          '/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex',
+        ].join(""),
+      ])
+    );
     expect(hookEntries(config, "Stop")).toEqual([]);
     expect(hookEntries(config, "SubagentStop")).toEqual([]);
   });

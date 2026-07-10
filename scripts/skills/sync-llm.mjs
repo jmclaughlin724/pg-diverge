@@ -305,7 +305,7 @@ function claudeHookConfig(runner) {
           ],
         },
         {
-          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+          matcher: "Write|Edit|MultiEdit|apply_patch",
           hooks: [
             {
               type: "command",
@@ -382,7 +382,7 @@ export function renderSourceCodexHooks(root = ROOT) {
           ],
         },
         {
-          matcher: codexMutationToolMatcher,
+          matcher: codexEditToolMatcher,
           hooks: [
             codexHookCommand(
               ".codex/hooks/supaschema-source-hook.mjs",

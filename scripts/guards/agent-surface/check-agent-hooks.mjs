@@ -125,8 +125,20 @@ function assertClaudeSettings(claudeSettings, root) {
       command.includes("generated-migration-edit")
   );
   assert(
-    sourceClaudeContextCommands.length === 1 && sourceClaudeSchemaCommands.length === 1,
-    ".claude/settings.json Bash PreToolUse must resolve through one context hook and one supaschema policy hook"
+    sourceClaudeContextCommands.length === 1 && sourceClaudeSchemaCommands.length === 0,
+    ".claude/settings.json Bash PreToolUse must resolve through the context hook only"
+  );
+  const sourceClaudeApplyPatchSchemaCommands = claudePreToolUseCommandsFor(
+    claudeSettings,
+    "apply_patch"
+  ).filter(
+    (command) =>
+      command.includes(".claude/hooks/supaschema-source-hook.mjs") &&
+      command.includes("generated-migration-edit")
+  );
+  assert(
+    sourceClaudeApplyPatchSchemaCommands.length === 1,
+    ".claude/settings.json apply_patch PreToolUse must register the generated-migration policy hook"
   );
   assert(
     !sourceClaudeBashCommands.some((command) =>
@@ -198,7 +210,10 @@ function assertCodexConfig(codexConfig, root) {
     !codexHooksJson.includes("general-guard.mjs"),
     ".codex/hooks.json must not register source-repo Codex general-guard fan-out"
   );
-  for (const toolName of ["Bash", "apply_patch"]) {
+  for (const [toolName, expectedSchemaCommands] of [
+    ["Bash", 0],
+    ["apply_patch", 1],
+  ]) {
     const commands = codexPreToolUseCommandsFor(codexConfig, toolName);
     const contextCommands = commands.filter((command) =>
       command.includes(".codex/hooks/context-pre-tool-use.mjs")
@@ -209,8 +224,8 @@ function assertCodexConfig(codexConfig, root) {
         command.includes("generated-migration-edit")
     );
     assert(
-      contextCommands.length === 1 && schemaCommands.length === 1,
-      `.codex/hooks.json ${toolName} PreToolUse must resolve through one context hook and one supaschema policy hook`
+      contextCommands.length === 1 && schemaCommands.length === expectedSchemaCommands,
+      `.codex/hooks.json ${toolName} PreToolUse must keep the expected context and generated-migration hook topology`
     );
   }
   const packageCodexHooksJson = JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json", root));
