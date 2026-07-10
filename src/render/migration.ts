@@ -8,8 +8,8 @@ import type {
   SupaschemaConfig,
   TableColumn,
 } from "../core.js";
-import { sha256 } from "../hash.js";
 import { lineageLine } from "../migrations/lineage.js";
+import { notNullProofConstraintName } from "../migrations/not-null.js";
 import { quoteIdent } from "../sql/identifiers.js";
 import {
   ensureSemicolon,
@@ -281,9 +281,7 @@ function renderSetNotNull(table: SchemaObject, columnName: string, prefix: strin
   const schema = table.ref.schema ?? "public";
   const tableName = table.ref.name;
   const relation = qualifiedRef(table.ref);
-  const constraintName = `supaschema_not_null_${sha256(
-    `${schema}.${tableName}.${columnName}`
-  ).slice(0, 16)}`;
+  const constraintName = notNullProofConstraintName(schema, tableName, columnName);
   const quotedConstraint = quoteIdent(constraintName);
   const addConstraint = `ALTER TABLE ${relation} ADD CONSTRAINT ${quotedConstraint} CHECK (${quoteIdent(columnName)} IS NOT NULL) NOT VALID;`;
   return [

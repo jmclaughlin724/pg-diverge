@@ -12,15 +12,27 @@ import {
   sortedByName,
 } from "./model.js";
 
-export function generateZodSchemas(shapes: SchemaShapes, typesImportPath: string): string {
+export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: string): string {
   const schemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
   const identifiers = buildGeneratedIdentifiers(shapes);
   const lines = [
-    `import type { Json } from ${JSON.stringify(typesImportPath)};`,
+    ...(typesImportPath ? [`import type { Json } from ${JSON.stringify(typesImportPath)};`] : []),
     'import { z } from "zod";',
     "",
+    ...(typesImportPath
+      ? []
+      : [
+          "export type Json =",
+          "  | string",
+          "  | number",
+          "  | boolean",
+          "  | null",
+          "  | { [key: string]: Json | undefined }",
+          "  | Json[];",
+          "",
+        ]),
     "export const JsonSchema: z.ZodType<Json> = z.lazy(() =>",
     "  z.union([",
     "    z.string(),",

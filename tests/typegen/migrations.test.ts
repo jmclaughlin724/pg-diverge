@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -43,5 +43,41 @@ ALTER TYPE app.status ADD VALUE IF NOT EXISTS 'archived';`,
     expect(result.stdout).toContain("title: string;");
     expect(result.stdout).toContain("status: AppStatus;");
     expect(result.stdout).toContain('"draft" | "active" | "archived"');
+  });
+
+  it("keeps zod-only output self-contained when type output is skipped", async () => {
+    const directory = await writeMigrations([
+      [
+        "20240101000000_create.sql",
+        `CREATE TABLE public.items (
+  id bigint GENERATED ALWAYS AS IDENTITY,
+  payload jsonb NOT NULL
+);`,
+      ],
+    ]);
+    const output = await mkdtemp(join(tmpdir(), "supa-typegen-output-"));
+    const typesFile = join(output, "database.types.ts");
+    const zodFile = join(output, "database.zod.ts");
+
+    const result = await generateTypeContracts({
+      config: resolveConfig({
+        sources: { from: `migrations:${directory}` },
+        typesFile,
+        workflow: {
+          type_generation: "disabled",
+          zod_generation: "create_or_refresh",
+        },
+        zodFile,
+      }),
+      honorWorkflowPolicy: true,
+      source: `migrations:${directory}`,
+    });
+    const zod = await readFile(zodFile, "utf8");
+
+    expect(result.written).toEqual([zodFile]);
+    expect(result.skipped).toEqual([]);
+    expect(zod).not.toContain("database.types");
+    expect(zod).toContain("export type Json =");
+    expect(zod).toContain("export const JsonSchema: z.ZodType<Json>");
   });
 });

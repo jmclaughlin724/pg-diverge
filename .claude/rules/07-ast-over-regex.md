@@ -20,7 +20,7 @@ Guards enforce observable structure or behavior — AST shape, file existence, J
 
 | What you are analyzing | Use |
 | --- | --- |
-| TypeScript / JS / JSX structure | TypeScript compiler API via `scripts/guards/lib/typescript-ast.js` (`parse`, `parseScript`, `forEachNode`, `leadingCommentHasToken`) |
+| TypeScript / JS / JSX structure | TypeScript compiler API via `scripts/guards/lib/typescript-ast.js` (`parse`, `parseScript`, `forEachNode`) |
 | Postgres schema SQL (tables, RLS, functions…) | the real Postgres parser via `scripts/guards/lib/sql-ast.js` (libpg-query / libpg_query) |
 | Python structure | the `ast` module (see `scripts/guards/code-shape/check-pattern-engine.mjs` for the in-guard pattern) |
 | Shell structure | `parse` from `sh-syntax` |

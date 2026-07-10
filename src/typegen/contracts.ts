@@ -63,7 +63,7 @@ export async function generateTypeContracts(
     written.push(
       await writeGeneratedOutput(
         zodPath,
-        generateZodSchemas(shapes, typesModulePath(zodPath, typesPath))
+        generateZodSchemas(shapes, writeTypes ? typesModulePath(zodPath, typesPath) : undefined)
       )
     );
   }

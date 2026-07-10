@@ -329,7 +329,7 @@ function claudeHookConfig(runner) {
           ],
         },
         {
-          matcher: "Write|Edit|MultiEdit|apply_patch",
+          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
           hooks: [
             {
               type: "command",

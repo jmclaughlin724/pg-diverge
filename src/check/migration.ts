@@ -1,6 +1,7 @@
 import { resolveConfig } from "../config/schema.js";
 import type { CheckOptions, Diagnostic } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
+import { notNullProofConstraintName } from "../migrations/not-null.js";
 import type { AstNode, AstStatement } from "../sql/ast.js";
 import {
   asRecord,
@@ -587,7 +588,10 @@ function checkAlterTableStatement(
         )
       );
     }
-    if (subtype === "AT_SetNotNull" && !hasValidatedNotNullProof(node, previous)) {
+    if (
+      subtype === "AT_SetNotNull" &&
+      !hasValidatedNotNullProof(node, previous, readString(command?.name))
+    ) {
       diagnostics.push(
         diagnostic(
           "SUPA_CHECK_SET_NOT_NULL_SCAN",
@@ -617,24 +621,30 @@ function checkAlterTableStatement(
   return diagnostics;
 }
 
-function hasValidatedNotNullProof(node: AstNode, previous: AstStatement | undefined): boolean {
+function hasValidatedNotNullProof(
+  node: AstNode,
+  previous: AstStatement | undefined,
+  column: string | undefined
+): boolean {
+  if (!column) {
+    return false;
+  }
   if (previous?.tag !== "AlterTableStmt") {
     return false;
   }
   const previousNode = asRecord(previous.node.AlterTableStmt);
+  const relation = rangeVarName(node.relation);
   if (
-    !previousNode ||
-    relationIdentity(previousNode.relation) !== relationIdentity(node.relation)
+    !(previousNode && relation) ||
+    relationIdentity(previousNode.relation) !== `${relation.schema}.${relation.name}`
   ) {
     return false;
   }
+  const proofName = notNullProofConstraintName(relation.schema, relation.name, column);
   return readArray(previousNode.cmds).some((item) => {
     const command = asRecord(asRecord(item)?.AlterTableCmd);
     const name = readString(command?.name);
-    return (
-      readString(command?.subtype) === "AT_ValidateConstraint" &&
-      name?.startsWith("supaschema_not_null_") === true
-    );
+    return readString(command?.subtype) === "AT_ValidateConstraint" && name === proofName;
   });
 }
 

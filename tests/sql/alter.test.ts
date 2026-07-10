@@ -121,6 +121,15 @@ describe("column-level alter lane", () => {
     expect(diagnostics.map((item) => item.code)).not.toContain("SUPA_CHECK_SET_NOT_NULL_SCAN");
   });
 
+  it("keeps NOT NULL validation proof column-specific", async () => {
+    const diagnostics = await checkMigrationSql(`
+      ALTER TABLE app.accounts VALIDATE CONSTRAINT "supaschema_not_null_0fdd384885ecd3c6";
+      ALTER TABLE app.accounts ALTER COLUMN "label" SET NOT NULL;
+    `);
+
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_CHECK_SET_NOT_NULL_SCAN");
+  });
+
   it("renders dropped defaults as DROP DEFAULT", async () => {
     const plan = await diff(
       baseTable,
