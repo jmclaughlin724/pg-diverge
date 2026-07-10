@@ -19,9 +19,9 @@ function optionalImport(specifier: string): Promise<any> {
 
 if (hasStripeSetupSources) {
   ({ createStripeCatalog, main, recommendedCatalog, stripePriceMap } = await optionalImport(
-    "../scripts/stripe/create-catalog.mjs"
+    "../../scripts/stripe/create-catalog.mjs"
   ));
-  ({ parsePlanCatalog } = await optionalImport("../services/license-worker/src/checkout.js"));
+  ({ parsePlanCatalog } = await optionalImport("../../services/license-worker/src/checkout.js"));
 }
 
 function okResponse(payload: unknown) {

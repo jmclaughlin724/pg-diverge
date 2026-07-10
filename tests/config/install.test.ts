@@ -412,14 +412,14 @@ describe("init project setup", () => {
       ])
     );
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
-    expect(codexHooks.hooks.Stop).toEqual(
-      expect.arrayContaining([expect.objectContaining({ hooks: expect.any(Array) })])
-    );
     const packagedCodexHooks = JSON.parse(
       await readFile(join(process.cwd(), "agent-bundle/codex/hooks.npm.json"), "utf8")
     );
     expect(codexHooks.hooks.PreToolUse).toEqual(
       expect.arrayContaining(packagedCodexHooks.hooks.PreToolUse)
+    );
+    expect(codexHooks.hooks.PostToolUse).toEqual(
+      expect.arrayContaining(packagedCodexHooks.hooks.PostToolUse)
     );
     expect(await readFile(join(consumer, ".codex/skills/custom/SKILL.md"), "utf8")).toBe(
       "custom skill\n"

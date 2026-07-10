@@ -8,7 +8,7 @@ function optionalImport(specifier: string): Promise<any> {
   return import(specifier);
 }
 const worker = hasMintlifyWorkerSource
-  ? (await optionalImport("../cloudflare/mintlify-docs-worker.js")).default
+  ? (await optionalImport("../../cloudflare/mintlify-docs-worker.js")).default
   : undefined;
 
 function setFetchMock(implementation: typeof fetch) {

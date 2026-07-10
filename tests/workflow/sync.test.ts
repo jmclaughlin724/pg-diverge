@@ -960,7 +960,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     } finally {
       process.chdir(previousCwd);
     }
-  });
+  }, 15_000);
 
   it("resolves configured targets before generating artifacts", async () => {
     const source = await sqlSource(

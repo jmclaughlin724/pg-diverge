@@ -9,7 +9,7 @@ import { configJsonSchema, defaultConfigFile, resolveConfig } from "../../src/co
 import { validateConfig } from "../../src/config/validate.js";
 import type { Diagnostic } from "../../src/core.js";
 
-const cliPath = resolve(import.meta.dirname, "../dist/cli.js");
+const cliPath = resolve(import.meta.dirname, "../../dist/cli.js");
 
 const sampleDiagnostics: Diagnostic[] = [
   {

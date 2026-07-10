@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "../..");
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(resolve(root, path), "utf8"));
@@ -170,12 +170,12 @@ describe("public agent and editor surfaces", () => {
     expect(codexHooks).toContain("supaschema hook schema-write");
     expect(codexHooks).not.toContain("context-");
     expect(codexHooks).not.toContain("scripts/agent-hooks");
-    expect(
-      findHookMatcher(JSON.parse(codexHooks), "sync-llm-on-claude-surface-change.mjs")
-    ).toBeUndefined();
+    expect(findHookMatcher(JSON.parse(codexHooks), "sync-llm-on-claude-surface-change.mjs")).toBe(
+      "apply_patch"
+    );
     expect(
       findStopHookCommand(JSON.parse(codexHooks), "sync-llm-on-claude-surface-change.mjs")
-    ).toBeDefined();
+    ).toBeUndefined();
     expect(claudeBashGuard).not.toContain("user-codex-skill-policy");
     expect(codexGeneralGuard).not.toContain("user-codex-skill-policy");
   });

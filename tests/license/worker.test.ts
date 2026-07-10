@@ -25,14 +25,16 @@ function optionalImport(specifier: string): Promise<any> {
 
 if (hasLicenseWorkerSources) {
   ({ extractCheckoutCompletion, handleLicenseWorker } = await optionalImport(
-    "../services/license-worker/src/index.js"
+    "../../services/license-worker/src/index.js"
   ));
   ({ issueLicenseToken, licenseClaimsFor } = await optionalImport(
-    "../services/license-worker/src/issue.js"
+    "../../services/license-worker/src/issue.js"
   ));
-  ({ createMemoryStore } = await optionalImport("../services/license-worker/src/store.js"));
-  ({ verifyStripeSignature } = await optionalImport("../services/license-worker/src/webhook.js"));
-  ({ isEntitled, verifyLicenseToken } = await optionalImport("../src/license.js"));
+  ({ createMemoryStore } = await optionalImport("../../services/license-worker/src/store.js"));
+  ({ verifyStripeSignature } = await optionalImport(
+    "../../services/license-worker/src/webhook.js"
+  ));
+  ({ isEntitled, verifyLicenseToken } = await optionalImport("../../src/license.js"));
 }
 
 const keyPair = generateKeyPairSync("ed25519");

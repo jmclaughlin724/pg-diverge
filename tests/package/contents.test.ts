@@ -15,7 +15,7 @@ const npmExec = (args: string[]): { file: string; args: string[] } => {
 
 function packageBinPath(): string {
   const manifest: unknown = JSON.parse(
-    readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8")
+    readFileSync(resolve(import.meta.dirname, "../../package.json"), "utf8")
   );
   if (!manifest || typeof manifest !== "object") {
     throw new Error("package.json must be an object");
@@ -38,7 +38,7 @@ describe("npm package contents", () => {
 
   it("keeps the generated install-time config contract executable", async () => {
     const mirror = await import(
-      pathToFileURL(resolve(import.meta.dirname, "../bin/config-contract.mjs")).href
+      pathToFileURL(resolve(import.meta.dirname, "../../bin/config-contract.mjs")).href
     );
 
     expect(mirror.configSchemaFileName).toBe("supaschema-config.schema.json");
@@ -48,7 +48,6 @@ describe("npm package contents", () => {
       schemaPaths: ["database/schemas"],
       sources: {
         from: "auto",
-        to: "dir:database/schemas",
       },
     });
   });
@@ -57,7 +56,7 @@ describe("npm package contents", () => {
     timeout: 60_000,
   }, async () => {
     const manifest = JSON.parse(
-      readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8")
+      readFileSync(resolve(import.meta.dirname, "../../package.json"), "utf8")
     );
     for (const script of ["install", "postinstall", "preinstall", "prepare"]) {
       expect(manifest.scripts).not.toHaveProperty(script);
@@ -133,7 +132,7 @@ describe("npm package contents", () => {
       "agent-bundle/codex/hooks.npm.json"
     );
     const codexHookContents = readFileSync(
-      resolve(import.meta.dirname, "../agent-bundle/codex/hooks.npm.json"),
+      resolve(import.meta.dirname, "../../agent-bundle/codex/hooks.npm.json"),
       "utf8"
     );
     expect(codexHookContents).not.toContain("context-");

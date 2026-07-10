@@ -26,7 +26,6 @@ describe("shipped examples", () => {
     expect(config.migrationsDir).toBe("supabase/migrations");
     expect(config.sources).toEqual({
       from: "dump:baseline.sql",
-      to: "dir:supabase/schemas",
     });
 
     const sources = await resolveSourceDefaults({}, config, async () => undefined);

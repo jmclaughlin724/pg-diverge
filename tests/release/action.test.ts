@@ -20,7 +20,7 @@ const explicitVersion = "1.2.3";
 
 describe("composite action", () => {
   it("defaults to package.json version, not an action metadata literal or npm dist-tag", () => {
-    const root = resolve(import.meta.dirname, "..");
+    const root = resolve(import.meta.dirname, "../..");
     const action = readFileSync(resolve(root, "action.yml"), "utf8");
     const actionRunner = readFileSync(
       resolve(root, "scripts/actions/run-supaschema-action.mjs"),
@@ -40,7 +40,7 @@ describe("composite action", () => {
   });
 
   it("is mapped to the action metadata schema, not the workflow schema", () => {
-    const root = resolve(import.meta.dirname, "..");
+    const root = resolve(import.meta.dirname, "../..");
     const actionText = readFileSync(resolve(root, "action.yml"), "utf8");
     const action = parse(actionText);
 
@@ -56,7 +56,7 @@ describe("composite action", () => {
   });
 
   it("accepts structured argv input instead of raw shell args", () => {
-    const root = resolve(import.meta.dirname, "..");
+    const root = resolve(import.meta.dirname, "../..");
     const actionText = readFileSync(resolve(root, "action.yml"), "utf8");
     const action = parse(actionText);
     const [step] = action.runs?.steps ?? [];
@@ -141,7 +141,7 @@ describe("composite action", () => {
 
   it("uses package.json version when action version input is omitted", async () => {
     const packageJson = JSON.parse(
-      readFileSync(resolve(import.meta.dirname, "..", "package.json"), "utf8")
+      readFileSync(resolve(import.meta.dirname, "../..", "package.json"), "utf8")
     );
     let captured:
       | {
