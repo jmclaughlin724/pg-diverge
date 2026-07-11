@@ -12,7 +12,6 @@ import {
   findNamedStep,
   isSha40,
   jobMatrix,
-  matrixValues,
   permissionsAreReadOnly,
   stepActionName,
   stepIf,
@@ -58,47 +57,6 @@ function assertWorkflowBasics(parsed) {
       }
     }
   }
-}
-
-function assertCodeql(parsed) {
-  const codeql = parsed.get("codeql.yml")?.doc;
-  assert(codeql, "codeql.yml must exist");
-  const codeqlJob = codeql.jobs?.analyze;
-  assert(codeqlJob, "codeql.yml must define an analyze job");
-  const codeqlLanguages = matrixValues(codeql, "analyze", "language");
-  for (const language of ["actions", "javascript-typescript"]) {
-    assert(
-      codeqlLanguages.includes(language),
-      `codeql.yml analyze language matrix must include ${language} (got ${JSON.stringify(codeqlLanguages)})`
-    );
-  }
-  assert(
-    codeqlJob.permissions?.["security-events"] === "write" &&
-      codeqlJob.permissions?.actions === "read" &&
-      codeqlJob.permissions?.contents === "read",
-    "codeql.yml analyze job must grant security-events: write plus actions: read and contents: read"
-  );
-  const codeqlSteps = codeqlJob.steps ?? [];
-  const codeqlInitIndex = codeqlSteps.findIndex(
-    (step) => stepActionName(step) === "github/codeql-action/init"
-  );
-  const codeqlInitStep = codeqlSteps[codeqlInitIndex];
-  const codeqlLanguageExpression = ["${{", " matrix.language ", "}}"].join("");
-  assert(
-    codeqlInitIndex >= 0 &&
-      codeqlInitStep?.with?.languages === codeqlLanguageExpression &&
-      codeqlInitStep.with?.queries === "security-and-quality" &&
-      [undefined, "none"].includes(codeqlInitStep.with?.["build-mode"]),
-    "codeql.yml init must use matrix.language, security-and-quality queries, and no-build analysis"
-  );
-  assert(
-    !codeqlSteps.some((step) => stepIf(step).includes("python") || stepRun(step).includes("uv ")),
-    "codeql.yml must not retain Python dependency setup after private Python service removal"
-  );
-  assert(
-    !codeqlSteps.some((step) => "setup-python-dependencies" in (step?.with ?? {})),
-    "codeql.yml must not use the deprecated CodeQL setup-python-dependencies input"
-  );
 }
 
 function assertReleaseConditionals(release, publishJob) {
@@ -374,7 +332,6 @@ export function check(root = ROOT) {
   const files = workflowFiles(root);
   const expectedWorkflowFiles = [
     "ci.yml",
-    "codeql.yml",
     "dependency-review.yml",
     "docs.yml",
     "release.yml",
@@ -394,7 +351,7 @@ export function check(root = ROOT) {
 
   assertWorkflowBasics(parsed);
 
-  for (const file of ["ci.yml", "codeql.yml", "dependency-review.yml", "docs.yml"]) {
+  for (const file of ["ci.yml", "dependency-review.yml", "docs.yml"]) {
     const doc = parsed.get(file)?.doc;
     assert(doc, `${file} must exist`);
     assert(
@@ -406,8 +363,6 @@ export function check(root = ROOT) {
     parsed.get("release.yml")?.doc?.concurrency?.["cancel-in-progress"] !== true,
     "release.yml must not set cancel-in-progress: true (never cancel an in-flight publish)"
   );
-
-  assertCodeql(parsed);
 
   assertReleaseYaml(parsed);
 

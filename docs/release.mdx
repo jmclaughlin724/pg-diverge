@@ -5,7 +5,7 @@ keywords: ["release", "trusted publishing", "npm", "checklist"]
 hidden: true
 ---
 
-The package is designed for trusted publishing from GitHub Actions. Protected `main` is the release source: every merged pull request starts the release workflow after its required CI, CodeQL, and Dependency Review checks pass. A read-only preflight publishes an unreleased package version, repairs a missing GitHub Release for an npm version that already exists, or exits without entering the privileged publish job when the release is complete.
+The package is designed for trusted publishing from GitHub Actions. Protected `main` is the release source: every merged pull request starts the release workflow after its required CI and Dependency Review checks pass. A read-only preflight publishes an unreleased package version, repairs a missing GitHub Release for an npm version that already exists, or exits without entering the privileged publish job when the release is complete.
 
 The public install package remains `supaschema` on npmjs.org. The release workflow also publishes a scoped GitHub Packages mirror, `@jmclaughlin724/supaschema`, so the repository Packages surface tracks each release without changing the public npm package name.
 
