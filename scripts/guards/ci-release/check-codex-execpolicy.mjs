@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { codexExecPolicyEntries } from "../../skills/codex-rules.mjs";
 import { assert, ok } from "../lib/assertions.js";
-import { gitTrackedFiles, ROOT } from "../lib/repository.js";
+import { gitFiles, ROOT } from "../lib/repository.js";
 
 function prefixMatchesCommand(pattern, command) {
   const words = shellWords(command);
@@ -71,9 +71,14 @@ export function check(root = ROOT) {
   const claudeRuleRoot = path.join(root, ".claude", "rules");
   const codexRuleRoot = path.join(root, ".codex", "rules");
 
-  function trackedFilesUnder(ruleRoot, extension) {
-    return gitTrackedFiles(root)
-      .filter((file) => file.startsWith(`${ruleRoot}/`) && file.endsWith(extension))
+  function worktreeFilesUnder(ruleRoot, extension) {
+    return gitFiles(root)
+      .filter(
+        (file) =>
+          file.startsWith(`${ruleRoot}/`) &&
+          file.endsWith(extension) &&
+          fs.existsSync(path.join(root, file))
+      )
       .sort();
   }
 
@@ -83,7 +88,7 @@ export function check(root = ROOT) {
     return path.join(path.relative(root, codexRuleRoot), parsed.dir, `${parsed.name}.rules`);
   }
 
-  for (const relativePath of trackedFilesUnder(".codex/rules", ".rules")) {
+  for (const relativePath of worktreeFilesUnder(".codex/rules", ".rules")) {
     const text = fs.readFileSync(path.join(root, relativePath), "utf8");
     assert(
       !text.includes(oldMirrorText),
@@ -91,7 +96,7 @@ export function check(root = ROOT) {
     );
   }
 
-  for (const sourceRelativePath of trackedFilesUnder(".claude/rules", ".md")) {
+  for (const sourceRelativePath of worktreeFilesUnder(".claude/rules", ".md")) {
     const sourcePath = path.join(root, sourceRelativePath);
     const entries = codexExecPolicyEntries(fs.readFileSync(sourcePath, "utf8"), sourceRelativePath);
     if (entries.length === 0) {

@@ -218,7 +218,7 @@ function checkGitSwitch(args) {
     return allowResult();
   }
   return block(
-    "BLOCKED: git switch is limited to `git switch -c <topic> origin/main` or `git switch --track origin/<topic>` after the Rule 14 PR preflight."
+    "BLOCKED: git switch is limited to `git switch -c <topic> origin/main` or `git switch --track origin/<topic>` after the Rule 21 PR preflight."
   );
 }
 

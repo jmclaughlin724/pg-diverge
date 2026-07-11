@@ -1,5 +1,5 @@
 ---
-description: One-command version bump, changelog, release-surface parity, git staging, commit, push, and PR discipline.
+description: Release versioning, mandatory update audit, release-surface parity, git staging, commit, push, and PR discipline.
 paths:
   - "package.json"
   - "package-lock.json"
@@ -17,9 +17,9 @@ paths:
 
 ## Contract
 
-This rule owns the operator workflow for version bumps, release notes, and release-control git work. When a user says to update supaschema to a version, that is one release-version transaction: update every version-coupled surface, prove parity with the guard, then stage, commit, push, or open the PR when requested. Do not ask the user to enumerate these steps.
+This rule owns the operator workflow for version bumps, release notes, the mandatory `$update` audit, and release-control git work. When a user says to update supaschema to a version, that is one release-version transaction: update every version-coupled surface, run `$update` after versioning, prove parity with the guards, then stage, commit, push, or open the PR when requested. Do not ask the user to enumerate these steps.
 
-Rules 09, 13, 14, 18, and 21 remain the owners for CI posture, package contents, local git safety, generated-surface sync, and GitHub PR/merge process. This rule connects those owners into the version bump path. Rule 20 owns the consolidated anti-pattern index for release and version-control bypasses.
+Rules 09, 13, 14, 18, and 21 remain the owners for CI posture, package contents, editing safety, generated-surface sync, and the complete source-control lifecycle. This rule connects those owners into the version bump path. Rule 20 owns the consolidated anti-pattern index for release and version-control bypasses.
 
 ## Release-note owner
 
@@ -36,8 +36,9 @@ When asked to create or update to version `<version>`, do all of this in the sam
 3. Add or update the top `CHANGELOG.md` entry as `## <version> (YYYY-MM-DD)` with concise, source-grounded release notes.
 4. Keep `action.yml` `inputs.version.default` unset; the action runner defaults from `package.json`. Keep exact-version validation text generic and do not duplicate `<version>` in the runner message.
 5. Search for other version-coupled release surfaces introduced by the change and update them in the same commit.
-6. Run `npm run release:notes -- --version <version>` to inspect the release body that GitHub will publish.
-7. Run `npm run guard:release-version` before broader release or package checks.
+6. Run `$update` as the final impact audit after all release-owned changes are present. Resolve every in-scope finding and run the owner, sync, docs, package, consumer, and generated-surface validation selected by the skill before continuing.
+7. Run `npm run release:notes -- --version <version>` to inspect the release body that GitHub will publish.
+8. Run `npm run guard:release-version` before broader release or package checks.
 
 A version bump that only changes `package.json` and `package-lock.json` is incomplete.
 
@@ -48,7 +49,7 @@ When the user asks to stage, commit, push, or create a PR after a version bump:
 - Stage only task-owned hunks after reviewing `git diff`.
 - Use a release-specific commit message such as `Prepare release <version>` or `Enforce release version surfaces`.
 - Let local hooks run. Do not use `--no-verify`.
-- Push the current branch without force-push unless the user explicitly approved a destructive branch operation.
+- Push only the intended release branch after Rule 21 verifies the active checkout; never reuse a merged topic branch.
 - Before creating or replacing a PR, complete Rule 21 PR preflight and mergeability verification.
 - When asked for a PR, create a non-draft PR unless the user explicitly says draft. Include the version, changelog, release-surface parity, base branch, head branch, commit count, changed-file count, mergeability result, and verification commands in the PR body.
 - If CI fails on a version-coupled surface, fix the source drift and add or update guard coverage so the same miss fails locally next time.
@@ -64,9 +65,10 @@ When the user asks to stage, commit, push, or create a PR after a version bump:
 - `.github/workflows/release.yml` creates GitHub Releases with `--notes-file` from `scripts/release/changelog-notes.mjs`, not `--generate-notes`.
 - `npm run guard` runs `guard:release-version` through `scripts/guards/check-all.mjs`.
 - `tests/action.test.ts` verifies the composite action default follows `package.json` and does not drift to npm dist-tags.
-- Rule 09 release workflow checks, Rule 13 package checks, Rule 14 git safety, and Rule 18 generated-surface sync remain required where their surfaces are touched.
+- The release checklist and release PR checklist require `$update` after versioning and before release verification, merge, or a direct push to `main`. The audit is semantic and is reviewed through its changed owners and validation evidence; do not add a forgeable marker file or brittle prose guard to simulate execution proof.
+- Rule 09 release workflow checks, Rule 13 package checks, Rule 14 editing safety, Rule 18 generated-surface sync, and Rule 21 source-control checks remain required where their surfaces are touched.
 
-STOP if a version bump leaves any known release surface on the previous version, adds a GitHub Action default version, uses an npm dist-tag for action execution, omits the changelog top entry, publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`, commits generated mirrors without syncing from the canonical owner, bypasses hooks, weakens a guard/test to make the release pass, or opens a PR before Rule 14 PR scope and mergeability verification passes.
+STOP if a version bump leaves any known release surface on the previous version, skips `$update` after the final release-owned changes, adds a GitHub Action default version, uses an npm dist-tag for action execution, omits the changelog top entry, publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`, commits generated mirrors without syncing from the canonical owner, bypasses hooks, weakens a guard/test to make the release pass, reuses a merged topic branch, or opens a PR before Rule 21 scope and mergeability verification passes.
 
 ## Verification
 
@@ -100,4 +102,4 @@ Fix the drift in the canonical source. Do not add an action version default, loo
 
 ## Done means
 
-All version-coupled surfaces agree with the package version, the changelog top entry names that version and is the GitHub Release body source, local release-version guards pass, and requested git/PR actions are completed without touching unrelated work.
+All version-coupled surfaces agree with the package version, `$update` has closed every confirmed impact after the final release-owned changes, the changelog top entry names that version and is the GitHub Release body source, local release-version guards pass, and requested git/PR actions are completed without touching unrelated work.

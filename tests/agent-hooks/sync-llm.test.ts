@@ -135,7 +135,7 @@ describe("sync:llm", () => {
       ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
       ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
-      ".claude/rules/21-github-process.md": [
+      ".claude/rules/21-source-control.md": [
         "---",
         "description: GitHub process.",
         "---",
@@ -235,10 +235,10 @@ describe("sync:llm", () => {
       skills: 2,
       skillTargets: 1,
     });
-    expect(read(root, ".codex/rules/21-github-process.rules")).toContain(
-      "Canonical rule owner: .claude/rules/21-github-process.md"
+    expect(read(root, ".codex/rules/21-source-control.rules")).toContain(
+      "Canonical rule owner: .claude/rules/21-source-control.md"
     );
-    expect(read(root, ".codex/rules/21-github-process.rules")).not.toContain(
+    expect(read(root, ".codex/rules/21-source-control.rules")).not.toContain(
       "Direct fast-forward pushes to main are allowed by policy."
     );
     expect(read(root, ".codex/agents/ci-debugger.toml")).toContain(
