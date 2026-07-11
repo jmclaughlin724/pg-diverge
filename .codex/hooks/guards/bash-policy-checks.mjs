@@ -191,6 +191,11 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
       "BLOCKED: symbolic HEAD pushes are ambiguous. Push an explicit topic branch or explicit HEAD:<topic> refspec."
     );
   }
+  if (subcommand === "push" && isImplicitPush(gitArgs)) {
+    return block(
+      "BLOCKED: implicit pushes are ambiguous. Push an explicit topic branch or use --dry-run for remote negotiation."
+    );
+  }
   if (subcommand === "push" && isDiagnosticPush(ast, tokens, gitArgs)) {
     return block(
       "BLOCKED: Do not use `git push` as a diagnostic or inventory probe. Use the repo pre-push check or `git push --dry-run` only when remote negotiation must be tested."
@@ -627,13 +632,44 @@ function rmArgsIncludeRecursiveForce(args) {
 }
 
 function isPushToMain(args) {
-  return args.some(
-    (arg) =>
-      arg === "main" ||
-      arg === "refs/heads/main" ||
-      arg.endsWith(":main") ||
-      arg.endsWith(":refs/heads/main")
-  );
+  return args.some((arg) => {
+    const refspec = arg.startsWith("+") ? arg.slice(1) : arg;
+    return (
+      refspec === "main" ||
+      refspec === "refs/heads/main" ||
+      refspec.endsWith(":main") ||
+      refspec.endsWith(":refs/heads/main")
+    );
+  });
+}
+
+function isImplicitPush(args) {
+  if (args.some((arg) => arg === "--dry-run" || arg === "-n")) {
+    return false;
+  }
+  return pushRefspecs(args).length === 0;
+}
+
+function pushRefspecs(args) {
+  const valueOptions = new Set(["--exec", "--push-option", "--receive-pack", "--repo", "-o"]);
+  const positionals = [];
+  let repositoryProvidedByOption = false;
+  for (let index = 1; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    const optionName = arg.split("=", 1)[0];
+    if (valueOptions.has(optionName)) {
+      repositoryProvidedByOption ||= optionName === "--repo";
+      if (!arg.includes("=")) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith("-")) {
+      continue;
+    }
+    positionals.push(arg);
+  }
+  return repositoryProvidedByOption ? positionals : positionals.slice(1);
 }
 
 function isDiagnosticPush(ast, gitPushTokens, args) {

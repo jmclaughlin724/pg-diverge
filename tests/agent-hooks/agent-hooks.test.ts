@@ -490,6 +490,15 @@ describe("general Bash blocker policy", () => {
     "git push origin HEAD:main",
     "git push origin HEAD:refs/heads/main",
     "git push origin HEAD",
+    "git push origin +main",
+    "git push origin +refs/heads/main",
+    "git push origin +HEAD:main",
+    "git push",
+    "git push origin",
+    "git push --force origin",
+    "git push -o ci.skip origin",
+    "git push --push-option ci.skip origin",
+    "git push --repo origin",
     "git push --force origin main",
     "git push | tail -20",
     "git -C . branch tmp",
@@ -543,6 +552,9 @@ describe("general Bash blocker policy", () => {
   it.each([
     "git push -u origin codex/feature",
     "git push origin HEAD:codex/feature",
+    "git push --repo origin codex/feature",
+    "git push --dry-run",
+    "git push --dry-run origin",
   ])("allows topic push shape: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(0);

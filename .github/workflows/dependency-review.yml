@@ -31,4 +31,8 @@ jobs:
           # unreviewed license. Keep exceptions package-specific.
           allow-licenses: >-
             0BSD, Apache-2.0, BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, ISC, MIT, MPL-2.0, Python-2.0
-          allow-dependencies-licenses: pkg:npm/spawndamnit
+          # postgres-language-server currently publishes a non-SPDX lowercase
+          # `or` expression; exclude only those exact packages until upstream
+          # metadata uses `MIT OR Apache-2.0`.
+          allow-dependencies-licenses: >-
+            pkg:npm/spawndamnit, pkg:npm/@postgres-language-server/cli, pkg:npm/@postgres-language-server/cli-aarch64-apple-darwin, pkg:npm/@postgres-language-server/cli-aarch64-linux-gnu, pkg:npm/@postgres-language-server/cli-aarch64-windows-msvc, pkg:npm/@postgres-language-server/cli-x86_64-apple-darwin, pkg:npm/@postgres-language-server/cli-x86_64-linux-gnu, pkg:npm/@postgres-language-server/cli-x86_64-linux-musl, pkg:npm/@postgres-language-server/cli-x86_64-windows-msvc
