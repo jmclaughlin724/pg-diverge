@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 (2026-07-11)
+
+### Patch Changes
+
+- Match official postgres-meta RPC metadata for argument ordering and visibility, named variadics, computed fields, inline relation-row returns, multi-OUT records, `SetofOptions`, and structured conflict signatures.
+- Correct packaged Supabase type-generation guidance and agent workflow surfaces following the 0.4.0 release.
+
 ## 0.4.0 (2026-07-11)
 
 ### Breaking Changes

@@ -320,6 +320,7 @@ CREATE VIEW app.account_custom_series AS SELECT app.expand_id(id) AS id FROM app
 CREATE VIEW app.account_totals AS SELECT count(id) AS total FROM app.accounts;
 CREATE VIEW app.account_ranks AS SELECT row_number() OVER () AS rank FROM app.accounts;
 CREATE VIEW app.account_series AS SELECT generate_series(1, 2) AS value FROM app.accounts;
+CREATE MATERIALIZED VIEW app.account_snapshot AS SELECT id, name FROM app.accounts;
 `);
     const insert = generatedTypeBlock(types, "account_labels", "Insert");
     const update = generatedTypeBlock(types, "account_labels", "Update");
@@ -343,6 +344,40 @@ CREATE VIEW app.account_series AS SELECT generate_series(1, 2) AS value FROM app
     expect(generatedTypeBlock(types, "account_ranks", "Insert")).toBe("");
     expect(generatedTypeBlock(types, "account_series", "Insert")).toBe("");
     expect(generatedTypeBlock(types, "account_custom_series", "Insert")).toBe("");
+    expect(generatedTypeBlock(types, "account_snapshot", "Insert")).toBe("");
+    expect(generatedTypeBlock(types, "account_snapshot", "Update")).toBe("");
+  });
+
+  it("matches upstream scalar mappings and unknown fallbacks", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.scalar_types (
+  embedding vector(3),
+  unsupported_half halfvec,
+  unsupported_oid oid,
+  unsupported_inet inet,
+  unsupported_cidr cidr,
+  unsupported_mac macaddr,
+  unsupported_name name,
+  unsupported_xml xml
+);
+CREATE FUNCTION app.returns_void() RETURNS void LANGUAGE sql AS $$ SELECT NULL::void $$;
+CREATE FUNCTION app.returns_record() RETURNS record LANGUAGE sql AS $$ SELECT ROW(1) $$;
+`);
+
+    expect(types).toContain("embedding: string | null;");
+    for (const column of [
+      "unsupported_half",
+      "unsupported_oid",
+      "unsupported_inet",
+      "unsupported_cidr",
+      "unsupported_mac",
+      "unsupported_name",
+      "unsupported_xml",
+    ]) {
+      expect(types).toContain(`${column}: unknown;`);
+    }
+    expect(types).toContain("returns_void: { Args: never; Returns: undefined };");
+    expect(types).toContain("returns_record: { Args: never; Returns: Record<string, unknown> };");
   });
 
   it("keeps view rows nullable across outer joins", async () => {
@@ -748,6 +783,31 @@ CREATE VIEW public.movie_names AS SELECT id, name FROM public.movies;
     }
   });
 
+  it("matches checked-in official postgres-meta RPC metadata", async () => {
+    const sql = `CREATE TABLE public.movies (id bigint, name text);
+CREATE FUNCTION public.movie_label(public.movies) RETURNS text LANGUAGE sql AS $$ SELECT $1.name $$;
+CREATE FUNCTION public.movie_rows(public.movies) RETURNS SETOF public.movies ROWS 2 LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION public.named_movie(row_arg public.movies) RETURNS text LANGUAGE sql AS $$ SELECT row_arg.name $$;
+CREATE FUNCTION public.relation_return() RETURNS public.movies LANGUAGE sql AS $$ SELECT ROW(1, 'x')::public.movies $$;
+CREATE FUNCTION public.multi_out(OUT a integer, OUT b text) LANGUAGE sql AS $$ SELECT 1, 'x'::text $$;
+CREATE FUNCTION public.ordered(z integer, a text) RETURNS text LANGUAGE sql AS $$ SELECT a $$;
+CREATE FUNCTION public.conflict(value boolean) RETURNS boolean LANGUAGE sql AS $$ SELECT value $$;
+CREATE FUNCTION public.conflict(value bigint) RETURNS bigint LANGUAGE sql AS $$ SELECT value $$;
+CREATE FUNCTION public.join_labels(VARIADIC labels text[]) RETURNS text LANGUAGE sql AS $$ SELECT array_to_string(labels, ',') $$;
+CREATE FUNCTION public.take_text_array(text[]) RETURNS text LANGUAGE sql AS $$ SELECT ''::text $$;
+CREATE FUNCTION public.take_movie_array(public.movies[]) RETURNS text LANGUAGE sql AS $$ SELECT ''::text $$;
+`;
+    const generated = await typesFor(sql);
+    const official = await readFile(
+      join(process.cwd(), "tests/fixtures/typegen/supabase-official-rpc.types.txt"),
+      "utf8"
+    );
+
+    expect(canonicalDeclaration(generated, "Database")).toBe(
+      canonicalDeclaration(official, "Database")
+    );
+  });
+
   it("emits internals and upstream empty collection sentinels", async () => {
     const model = await modelFor(
       `CREATE SCHEMA app;
@@ -889,7 +949,7 @@ describe("review-hardened typegen", () => {
     const types = await typesFor(hardenedSql);
 
     expect(types).toContain(
-      "get_user: { Args: { uid: number; fallback?: string }; Returns: string[] };"
+      "get_user: { Args: { fallback?: string; uid: number }; Returns: string[] };"
     );
   });
 });
@@ -989,13 +1049,13 @@ CREATE FUNCTION app.single_out(OUT x int) LANGUAGE sql AS $$ SELECT 1 $$;
 `;
 
 describe("function return row typegen", () => {
-  it("preserves RETURNS TABLE and OUT-parameter row shapes", async () => {
+  it("preserves RETURNS TABLE and uses upstream record metadata for multiple OUT parameters", async () => {
     const types = await typesFor(returnShapeSql);
 
     expect(types).toContain(
       "list_people: { Args: never; Returns: { id: number; label: string }[] };"
     );
-    expect(types).toContain("one_row: { Args: never; Returns: { a: number; b: string } };");
+    expect(types).toContain("one_row: { Args: never; Returns: Record<string, unknown> };");
   });
 
   it("keeps a single OUT parameter scalar instead of a one-field record", async () => {
@@ -1013,10 +1073,10 @@ CREATE FUNCTION app.many_accounts(app.accounts) RETURNS SETOF app.accounts ROWS 
 `);
 
     expect(types).toContain(
-      'one_account: { Args: { "": Database["app"]["Tables"]["accounts"]["Row"] }; Returns: Database["app"]["Tables"]["accounts"]["Row"]; SetofOptions: { from: "app.accounts"; to: "accounts"; isOneToOne: true; isSetofReturn: true } };'
+      'one_account: { Args: { "": Database["app"]["Tables"]["accounts"]["Row"] }; Returns: { id: number | null }; SetofOptions: { from: "app.accounts"; to: "accounts"; isOneToOne: true; isSetofReturn: true } };'
     );
     expect(types).toContain(
-      'many_accounts: { Args: { "": Database["app"]["Tables"]["accounts"]["Row"] }; Returns: Database["app"]["Tables"]["accounts"]["Row"][]; SetofOptions: { from: "app.accounts"; to: "accounts"; isOneToOne: false; isSetofReturn: true } };'
+      'many_accounts: { Args: { "": Database["app"]["Tables"]["accounts"]["Row"] }; Returns: { id: number | null }[]; SetofOptions: { from: "app.accounts"; to: "accounts"; isOneToOne: false; isSetofReturn: true } };'
     );
   });
 });
@@ -1027,21 +1087,33 @@ describe("PostgREST function metadata", () => {
 CREATE TYPE app.address AS (street text);
 CREATE TABLE app.accounts (id bigint);
 CREATE FUNCTION app.take_json(json) RETURNS json LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION app.take_jsonb(jsonb) RETURNS jsonb LANGUAGE sql AS $$ SELECT $1 $$;
 CREATE FUNCTION app.take_text(text) RETURNS text LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION app.take_text_array(text[]) RETURNS text LANGUAGE sql AS $$ SELECT ''::text $$;
 CREATE FUNCTION app.take_integer(integer) RETURNS integer LANGUAGE sql AS $$ SELECT $1 $$;
 CREATE FUNCTION app.take_address(app.address) RETURNS app.address LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION app.take_account_array(app.accounts[]) RETURNS text LANGUAGE sql AS $$ SELECT ''::text $$;
+CREATE DOMAIN app.account_domain AS app.accounts;
+CREATE FUNCTION app.take_account_domain(app.account_domain) RETURNS text LANGUAGE sql AS $$ SELECT ''::text $$;
+CREATE FUNCTION app.join_labels(VARIADIC labels text[]) RETURNS text LANGUAGE sql AS $$ SELECT array_to_string(labels, ',') $$;
 CREATE FUNCTION app.invalid_mixed(label text, app.address DEFAULT NULL) RETURNS text LANGUAGE sql AS $$ SELECT label $$;
 CREATE FUNCTION app.account_label(app.accounts) RETURNS text LANGUAGE sql AS $$ SELECT 'account'::text $$;
 `);
 
     expect(types).toContain('take_json: { Args: { "": Json }; Returns: Json };');
+    expect(types).toContain('take_jsonb: { Args: { "": Json }; Returns: Json };');
     expect(types).toContain('take_text: { Args: { "": string }; Returns: string };');
+    expect(types).not.toContain("take_text_array:");
+    expect(types).not.toContain("take_account_array:");
+    expect(types).not.toContain("take_account_domain:");
     expect(types).not.toContain("take_integer:");
     expect(types).not.toContain("invalid_mixed:");
+    expect(types).toContain("join_labels: { Args: { labels: string[] }; Returns: string };");
+    expect(generatedTypeBlock(types, "accounts", "Row")).not.toContain("take_account_array");
     expect(types).toContain(
       'take_address: { Args: { "": Database["app"]["CompositeTypes"]["address"] }; Returns: Database["app"]["CompositeTypes"]["address"]; SetofOptions: { from: "app.address"; to: "address"; isOneToOne: true; isSetofReturn: false } };'
     );
-    expect(types).toContain("account_label: string | null;");
+    expect(generatedTypeBlock(types, "accounts", "Row")).not.toContain("account_label");
     expect(types).toContain(
       'Returns: { error: true } & "the function app.account_label with parameter or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache"'
     );
@@ -1112,9 +1184,8 @@ void wrong;
   }, 15_000);
 
   it("keeps computed relationship validators aligned with generated rows", async () => {
-    const sql = `CREATE SCHEMA app;
-CREATE TABLE app.accounts (id bigint);
-CREATE FUNCTION app.account_label(app.accounts) RETURNS text LANGUAGE sql AS $$ SELECT 'account'::text $$;
+    const sql = `CREATE TABLE public.accounts (id bigint);
+CREATE FUNCTION public.account_label(public.accounts) RETURNS text LANGUAGE sql AS $$ SELECT 'account'::text $$;
 `;
     const types = await typesFor(sql);
     const zod = await zodFor(sql);
@@ -1122,7 +1193,7 @@ CREATE FUNCTION app.account_label(app.accounts) RETURNS text LANGUAGE sql AS $$ 
 
     expect(zod).toContain("account_label: z.string().nullable(),");
     await expectTypeScriptAccepts(`${types}${zodWithoutTypesImport}
-const account: Tables<{ schema: "app" }, "accounts"> = SupaschemaZod.app.Tables.accounts.Row.parse({ id: 1, account_label: null });
+const account: Tables<"accounts"> = SupaschemaZod.public.Tables.accounts.Row.parse({ id: 1, account_label: null });
 void account;
 `);
   }, 15_000);

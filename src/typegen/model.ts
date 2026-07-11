@@ -125,17 +125,26 @@ export function computedRelationshipFunctions(
   entry: SchemaEntry,
   relationName: string
 ): FunctionShape[] {
-  return entry.functions.filter((fn) => {
-    if (fn.args.length !== 1) {
+  return sortedByName(entry.functions).filter((fn) => {
+    const arg = fn.args[0];
+    if (fn.args.length !== 1 || arg?.name !== "") {
       return false;
     }
-    const resolved = resolveColumnType(shapes, schema, fn.args[0]?.type ?? "");
+    const resolved = resolveColumnType(shapes, schema, arg.type);
     return (
+      !isDeclaredDomainType(shapes, schema, arg.type) &&
+      resolved.arrayDepth === 0 &&
       resolved.kind === "relation" &&
       resolved.relationRef?.schema === schema &&
-      resolved.relationRef.name === relationName
+      resolved.relationRef.name === relationName &&
+      computedArgumentTypeName(arg.type) === relationName
     );
   });
+}
+
+function computedArgumentTypeName(sqlType: string): string {
+  const typeName = baseSqlTypeName(sqlType);
+  return typeName.startsWith("public.") ? typeName.slice("public.".length) : typeName;
 }
 
 export function functionReturnsMultipleRows(fn: FunctionShape): boolean {
@@ -580,6 +589,27 @@ export function resolveColumnType(
   return { arrayDepth, kind: "unknown" };
 }
 
+export function isDeclaredDomainType(
+  shapes: SchemaShapes,
+  schemaName: string,
+  sqlType: string
+): boolean {
+  const base = baseSqlTypeName(sqlType);
+  return (
+    shapes.domains.has(base.includes(".") ? base : `${schemaName}.${base}`) ||
+    shapes.domains.has(base)
+  );
+}
+
+function baseSqlTypeName(sqlType: string): string {
+  let base = sqlType.trim();
+  while (base.endsWith("[]")) {
+    base = base.slice(0, -2).trim();
+  }
+  const parenStart = base.indexOf("(");
+  return parenStart === -1 ? base : base.slice(0, parenStart).trim();
+}
+
 function resolveScalarType(base: string, arrayDepth: number): ResolvedColumnType | undefined {
   const lowered = base.toLowerCase();
   if (numberTypes.has(lowered)) {
@@ -778,13 +808,13 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
     }
     hasTableParam ||= result === "table";
   }
+  args.sort((left, right) => left.name.localeCompare(right.name));
   const returns = asRecord(object.metadata.returns);
   const scalarType = typeof returns?.type === "string" ? returns.type : undefined;
   const setof = returns?.setof === true || hasTableParam;
   const estimatedRows = functionEstimatedRows(fn, setof);
 
-  const isRowShape = hasTableParam || returnColumns.length > 1;
-  if (returnColumns.length > 0 && isRowShape) {
+  if (returnColumns.length > 0 && hasTableParam) {
     return {
       args,
       estimatedRows,
@@ -793,7 +823,7 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
     };
   }
   const singleOut = !hasTableParam && returnColumns.length === 1 ? returnColumns[0] : undefined;
-  const effectiveType = singleOut?.type ?? scalarType;
+  const effectiveType = singleOut?.type ?? (returnColumns.length > 1 ? "record" : scalarType);
   return {
     args,
     estimatedRows,
@@ -865,7 +895,12 @@ function isOutputParameter(mode: string): boolean {
 }
 
 function isInputParameter(mode: string): boolean {
-  return mode === "FUNC_PARAM_DEFAULT" || mode === "FUNC_PARAM_IN" || mode === "FUNC_PARAM_INOUT";
+  return (
+    mode === "FUNC_PARAM_DEFAULT" ||
+    mode === "FUNC_PARAM_IN" ||
+    mode === "FUNC_PARAM_INOUT" ||
+    mode === "FUNC_PARAM_VARIADIC"
+  );
 }
 
 async function applyConstraint(
