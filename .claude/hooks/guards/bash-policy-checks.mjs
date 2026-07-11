@@ -152,6 +152,7 @@ function checkRawSqlDdlCommand(command) {
 
 const simpleGitWriteBlocks = new Map([
   ["stash", "BLOCKED: git stash is prohibited. Preserve unrelated work without stash."],
+  ["clean", "BLOCKED: git clean is prohibited. Preserve unrelated untracked work."],
   [
     "checkout",
     "BLOCKED: git checkout is prohibited. Keep work on the current branch and use git diff/git show for comparisons.",

@@ -137,7 +137,7 @@ describe("sync:llm", () => {
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
       ".claude/rules/21-source-control.md": [
         "---",
-        "description: GitHub process.",
+        "description: Source control process.",
         "---",
         "",
         "# Rule 21",
