@@ -489,6 +489,7 @@ describe("general Bash blocker policy", () => {
     "git push origin main",
     "git push origin HEAD:main",
     "git push origin HEAD:refs/heads/main",
+    "git push origin HEAD",
     "git push --force origin main",
     "git push | tail -20",
     "git -C . branch tmp",
@@ -541,7 +542,7 @@ describe("general Bash blocker policy", () => {
 
   it.each([
     "git push -u origin codex/feature",
-    "git push origin HEAD",
+    "git push origin HEAD:codex/feature",
   ])("allows topic push shape: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(0);
@@ -1041,9 +1042,7 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
         script,
         {
           cwd: project,
-          tool_input: {
-            file_path: join(project, "supabase", "schemas", "accounts.sql"),
-          },
+          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
           tool_name: "Edit",
         },
         { cwd: project, env }
@@ -1146,9 +1145,7 @@ process.exit(1);
       await writeFile(
         join(project, "supaschema.config.json"),
         JSON.stringify({
-          environments: {
-            local: { databaseUrl: "$SUPASCHEMA_HOOK_LOCAL_DATABASE_URL" },
-          },
+          environments: { local: { databaseUrl: "$SUPASCHEMA_HOOK_LOCAL_DATABASE_URL" } },
           schemaPaths: ["supabase/schemas"],
           sync: {
             targets: {
@@ -1172,9 +1169,7 @@ process.exit(1);
         script,
         {
           cwd: project,
-          tool_input: {
-            file_path: join(project, "supabase", "schemas", "accounts.sql"),
-          },
+          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
           tool_name: "Edit",
         },
         {
@@ -1307,7 +1302,9 @@ process.exit(1);
         script,
         {
           cwd: project,
-          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+          tool_input: {
+            file_path: join(project, "supabase", "schemas", "accounts.sql"),
+          },
           tool_name: "Edit",
         },
         {
@@ -1347,7 +1344,9 @@ process.exit(1);
       await writeFile(
         join(project, "supaschema.config.json"),
         JSON.stringify({
-          environments: { local: { databaseUrl: "$SUPASCHEMA_HOOK_LOCAL_DATABASE_URL" } },
+          environments: {
+            local: { databaseUrl: "$SUPASCHEMA_HOOK_LOCAL_DATABASE_URL" },
+          },
           schemaPaths: ["supabase/schemas"],
           sync: {
             targets: {
@@ -1371,7 +1370,9 @@ process.exit(1);
         script,
         {
           cwd: project,
-          tool_input: { file_path: join(project, "supabase", "schemas", "accounts.sql") },
+          tool_input: {
+            file_path: join(project, "supabase", "schemas", "accounts.sql"),
+          },
           tool_name: "Edit",
         },
         {

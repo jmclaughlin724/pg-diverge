@@ -167,8 +167,8 @@ prefix_rule(
 
 prefix_rule(
     pattern = ["gh", "pr", "merge"],
-    decision = "allow",
-    justification = "The Bash hook permits only GitHub squash merge with branch deletion and blocks unsupported methods and bypass flags.",
+    decision = "prompt",
+    justification = "Keep selector-before-flag merge forms behind policy validation; the Bash hook then permits only GitHub squash merge with branch deletion.",
     match = ["gh pr merge 53 --rebase", "gh pr merge 53 --squash --delete-branch"],
     not_match = ["gh pr view 53"],
 )

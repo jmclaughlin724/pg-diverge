@@ -186,6 +186,11 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
       "BLOCKED: direct pushes to main are prohibited. Push a topic branch and merge its protected pull request."
     );
   }
+  if (subcommand === "push" && gitArgs.includes("HEAD")) {
+    return block(
+      "BLOCKED: symbolic HEAD pushes are ambiguous. Push an explicit topic branch or explicit HEAD:<topic> refspec."
+    );
+  }
   if (subcommand === "push" && isDiagnosticPush(ast, tokens, gitArgs)) {
     return block(
       "BLOCKED: Do not use `git push` as a diagnostic or inventory probe. Use the repo pre-push check or `git push --dry-run` only when remote negotiation must be tested."

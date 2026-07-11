@@ -184,6 +184,10 @@ function assertReleaseYaml(parsed) {
     "release.yml preflight job must not elevate the read-only workflow token"
   );
   assert(
+    preflightJob.permissions?.contents === "read" && preflightJob.permissions?.packages === "read",
+    "release.yml preflight job must grant only the content and package reads needed by release preflight"
+  );
+  assert(
     (preflightJob.steps ?? []).some((step) =>
       String(step?.run ?? "").includes("node scripts/release/preflight.mjs")
     ),
@@ -237,11 +241,14 @@ function assertReleaseYaml(parsed) {
     "rekor.sigstore.dev:443",
     "tuf-repo-cdn.sigstore.dev:443",
   ];
+  const allowedEndpoints = String(hardenRunnerStep.with?.["allowed-endpoints"] ?? "")
+    .split("\n")
+    .map((endpoint) => endpoint.trim())
+    .filter(Boolean);
   assert(
     hardenRunnerStep.with?.["egress-policy"] === "block" &&
-      requiredEndpoints.every((endpoint) =>
-        String(hardenRunnerStep.with?.["allowed-endpoints"] ?? "").includes(endpoint)
-      ),
+      requiredEndpoints.length === allowedEndpoints.length &&
+      requiredEndpoints.every((endpoint) => allowedEndpoints.includes(endpoint)),
     "release.yml privileged job must enforce the reviewed egress endpoint allow-list"
   );
   const checkoutStep = (publishJob.steps ?? []).find(
