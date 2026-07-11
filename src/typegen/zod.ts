@@ -2,7 +2,6 @@ import { quoteCodeString, quoteKey } from "./database.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes } from "./model.js";
 import {
   computedRelationshipFunctions,
-  functionReturnsMultipleRows,
   isNonWritableColumn,
   isOptionalInsertColumn,
   resolveColumnType,
@@ -247,7 +246,7 @@ function zodFunctionReturnExpression(
   } else {
     expression = returns ? zodExpression(shapes, schema, returns.type) : "z.unknown()";
   }
-  return functionReturnsMultipleRows(fn) ? `z.array(${expression})` : expression;
+  return expression;
 }
 
 function emitInsertSchema(

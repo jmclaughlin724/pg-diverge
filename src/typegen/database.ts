@@ -9,6 +9,7 @@ import type {
 import {
   computedRelationshipFunctions,
   functionReturnsMultipleRows,
+  isDeclaredDomainType,
   isNonWritableColumn,
   isOptionalInsertColumn,
   resolveColumnType,
@@ -460,16 +461,40 @@ function renderFunctionArgs(shapes: SchemaShapes, schema: string, fn: FunctionSh
 }
 
 function renderFunctionReturns(shapes: SchemaShapes, schema: string, fn: FunctionShape): string {
+  const base = renderFunctionReturnBase(shapes, schema, fn);
+  return functionReturnsMultipleRows(fn) ? `${base}[]` : base;
+}
+
+function renderFunctionReturnBase(shapes: SchemaShapes, schema: string, fn: FunctionShape): string {
   const returns = fn.returns;
   if (returns?.columns && returns.columns.length > 0) {
-    const row = returns.columns
-      .map((column) => `${quoteKey(column.name)}: ${tsType(shapes, schema, column.type)}`)
-      .join("; ");
-    const shape = `{ ${row} }`;
-    return functionReturnsMultipleRows(fn) ? `${shape}[]` : shape;
+    return renderFunctionRow(shapes, schema, returns.columns);
   }
-  const base = returns ? tsType(shapes, schema, returns.type) : "unknown";
-  return functionReturnsMultipleRows(fn) ? `${base}[]` : base;
+  const relation = returns ? relationRowType(shapes, schema, returns.type) : undefined;
+  if (relation) {
+    const entry = shapes.schemas.get(relation.schema);
+    const columns =
+      entry?.tables.find((table) => table.name === relation.name)?.columns ??
+      entry?.views.find((view) => view.name === relation.name)?.columns;
+    if (columns) {
+      return renderFunctionRow(shapes, relation.schema, columns);
+    }
+  }
+  return returns ? tsType(shapes, schema, returns.type) : "unknown";
+}
+
+function renderFunctionRow(
+  shapes: SchemaShapes,
+  schema: string,
+  columns: { name: string; notNull?: boolean; type: string }[]
+): string {
+  const row = columns
+    .map((column) => {
+      const type = tsType(shapes, schema, column.type);
+      return `${quoteKey(column.name)}: ${nullable(type, column.notNull === false)}`;
+    })
+    .join("; ");
+  return `{ ${row} }`;
 }
 
 function renderSetofOptions(
@@ -495,7 +520,7 @@ function computedRelationshipFields(
 ): { name: string; type: string }[] {
   return computedRelationshipFunctions(shapes, schema, entry, relationName).map((fn) => ({
     name: fn.name,
-    type: renderFunctionReturns(shapes, schema, fn),
+    type: renderFunctionReturnBase(shapes, schema, fn),
   }));
 }
 
@@ -527,7 +552,17 @@ function isValidUnnamedArg(shapes: SchemaShapes, schema: string, arg: FunctionAr
 }
 
 function isValidUnnamedScalarArg(arg: FunctionArgShape): boolean {
-  const base = unqualifiedTypeName(arg.type).toLowerCase();
+  const normalized = arg.type.trim().toLowerCase();
+  if (normalized.endsWith("[]")) {
+    return false;
+  }
+  const parenStart = normalized.indexOf("(");
+  const typeName = parenStart === -1 ? normalized : normalized.slice(0, parenStart);
+  const parts = typeName.split(".");
+  if (parts.length > 1 && parts.slice(0, -1).join(".") !== "pg_catalog") {
+    return false;
+  }
+  const base = parts.at(-1) ?? typeName;
   return base === "json" || base === "jsonb" || base === "text";
 }
 
@@ -537,6 +572,9 @@ function relationRowType(
   sqlType: string
 ): { name: string; schema: string } | undefined {
   const resolved = resolveColumnType(shapes, schema, sqlType);
+  if (resolved.arrayDepth > 0 || isDeclaredDomainType(shapes, schema, sqlType)) {
+    return;
+  }
   if (resolved.kind === "relation") {
     return resolved.relationRef;
   }
@@ -598,7 +636,7 @@ function functionConflictError(
     );
     if (conflicts.length > 0) {
       const conflictList = [fn, ...conflicts]
-        .sort((left, right) => (left.args[0]?.type ?? "").localeCompare(right.args[0]?.type ?? ""))
+        .sort(compareConflictArgumentTypes)
         .map((item) => {
           const arg = item.args[0];
           return `${schema}.${fn.name}(${arg?.name ?? ""} => ${arg ? postgresCatalogTypeName(arg.type) : "unknown"})`;
@@ -609,6 +647,16 @@ function functionConflictError(
       )}`;
     }
   }
+}
+
+function compareConflictArgumentTypes(left: FunctionShape, right: FunctionShape): number {
+  const leftType = postgresCatalogTypeName(left.args[0]?.type ?? "unknown");
+  const rightType = postgresCatalogTypeName(right.args[0]?.type ?? "unknown");
+  return (
+    (postgresCatalogTypeOids.get(leftType) ?? Number.MAX_SAFE_INTEGER) -
+      (postgresCatalogTypeOids.get(rightType) ?? Number.MAX_SAFE_INTEGER) ||
+    leftType.localeCompare(rightType)
+  );
 }
 
 function tableRowFunctionError(
@@ -697,4 +745,33 @@ const postgresCatalogTypeNames = new Map([
   ["time without time zone", "time"],
   ["timestamp with time zone", "timestamptz"],
   ["timestamp without time zone", "timestamp"],
+]);
+
+const postgresCatalogTypeOids = new Map([
+  ["bool", 16],
+  ["bytea", 17],
+  ["char", 18],
+  ["name", 19],
+  ["int8", 20],
+  ["int2", 21],
+  ["int4", 23],
+  ["text", 25],
+  ["oid", 26],
+  ["json", 114],
+  ["xml", 142],
+  ["float4", 700],
+  ["float8", 701],
+  ["inet", 869],
+  ["bpchar", 1042],
+  ["varchar", 1043],
+  ["date", 1082],
+  ["time", 1083],
+  ["timestamp", 1114],
+  ["timestamptz", 1184],
+  ["interval", 1186],
+  ["timetz", 1266],
+  ["numeric", 1700],
+  ["record", 2249],
+  ["uuid", 2950],
+  ["jsonb", 3802],
 ]);
