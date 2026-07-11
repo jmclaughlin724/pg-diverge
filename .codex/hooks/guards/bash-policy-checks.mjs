@@ -181,6 +181,11 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   if (subcommand === "commit" && gitArgs.includes("--no-verify")) {
     return block("BLOCKED: --no-verify is prohibited. Fix the hook failure instead.");
   }
+  if (subcommand === "push" && isProhibitedPush(gitArgs)) {
+    return block(
+      "BLOCKED: force pushes and push --no-verify are prohibited. Publish a new topic commit and keep pre-push verification enabled."
+    );
+  }
   if (subcommand === "push" && isPushToMain(gitArgs)) {
     return block(
       "BLOCKED: direct pushes to main are prohibited. Push a topic branch and merge its protected pull request."
@@ -643,8 +648,21 @@ function isPushToMain(args) {
   });
 }
 
+function isProhibitedPush(args) {
+  return (
+    args.some(
+      (arg) =>
+        arg === "--no-verify" ||
+        arg === "-f" ||
+        arg === "--force" ||
+        arg === "--force-if-includes" ||
+        arg.startsWith("--force-with-lease")
+    ) || pushRefspecs(args).some((refspec) => refspec.startsWith("+"))
+  );
+}
+
 function isImplicitPush(args) {
-  if (args.some((arg) => arg === "--dry-run" || arg === "-n")) {
+  if (args.some((arg) => arg === "--dry-run" || arg === "-n" || arg === "--help" || arg === "-h")) {
     return false;
   }
   return pushRefspecs(args).length === 0;
