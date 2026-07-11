@@ -505,19 +505,30 @@ export function check(root = ROOT) {
       .map((packageUrl) => packageUrl.trim())
       .filter(Boolean)
   );
-  for (const packageName of [
-    "@postgres-language-server/cli",
-    "@postgres-language-server/cli-aarch64-apple-darwin",
-    "@postgres-language-server/cli-aarch64-linux-gnu",
-    "@postgres-language-server/cli-aarch64-windows-msvc",
-    "@postgres-language-server/cli-x86_64-apple-darwin",
-    "@postgres-language-server/cli-x86_64-linux-gnu",
-    "@postgres-language-server/cli-x86_64-linux-musl",
-    "@postgres-language-server/cli-x86_64-windows-msvc",
-  ]) {
+  const expectedLicenseExclusions = new Map([
+    ["spawndamnit", "SEE LICENSE IN LICENSE"],
+    ["@postgres-language-server/cli", "MIT or Apache-2.0"],
+    ["@postgres-language-server/cli-aarch64-apple-darwin", "MIT or Apache-2.0"],
+    ["@postgres-language-server/cli-aarch64-linux-gnu", "MIT or Apache-2.0"],
+    ["@postgres-language-server/cli-aarch64-windows-msvc", "MIT or Apache-2.0"],
+    ["@postgres-language-server/cli-x86_64-apple-darwin", "MIT or Apache-2.0"],
+    ["@postgres-language-server/cli-x86_64-linux-gnu", "MIT or Apache-2.0"],
+    ["@postgres-language-server/cli-x86_64-linux-musl", "MIT or Apache-2.0"],
+    ["@postgres-language-server/cli-x86_64-windows-msvc", "MIT or Apache-2.0"],
+  ]);
+  assert(
+    licenseExclusions.size === expectedLicenseExclusions.size,
+    "dependency-review.yml license exclusions must contain only packages with current invalid metadata"
+  );
+  const packageLock = readJson("package-lock.json", root);
+  for (const [packageName, expectedLicense] of expectedLicenseExclusions) {
     assert(
       licenseExclusions.has(`pkg:npm/${packageName}`),
-      `dependency-review.yml must exclude the current invalid lowercase license metadata for ${packageName}`
+      `dependency-review.yml must exclude the current invalid license metadata for ${packageName}`
+    );
+    assert(
+      packageLock.packages?.[`node_modules/${packageName}`]?.license === expectedLicense,
+      `dependency-review.yml license exclusion for ${packageName} must be removed or updated when its lockfile metadata changes`
     );
   }
 

@@ -181,6 +181,11 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   if (subcommand === "commit" && gitArgs.includes("--no-verify")) {
     return block("BLOCKED: --no-verify is prohibited. Fix the hook failure instead.");
   }
+  if (subcommand === "push" && isProhibitedPush(gitArgs)) {
+    return block(
+      "BLOCKED: force pushes and push --no-verify are prohibited. Publish a new topic commit and keep pre-push verification enabled."
+    );
+  }
   if (subcommand === "push" && isPushToMain(gitArgs)) {
     return block(
       "BLOCKED: direct pushes to main are prohibited. Push a topic branch and merge its protected pull request."
@@ -643,8 +648,29 @@ function isPushToMain(args) {
   });
 }
 
+function isProhibitedPush(args) {
+  return (
+    args.some(
+      (arg) =>
+        arg === "--no-verify" ||
+        hasShortForceFlag(arg) ||
+        arg === "--force" ||
+        arg === "--force-if-includes" ||
+        arg.startsWith("--force-with-lease")
+    ) || pushRefspecs(args).some((refspec) => refspec.startsWith("+"))
+  );
+}
+
+function hasShortForceFlag(arg) {
+  if (!arg.startsWith("-") || arg.startsWith("--")) {
+    return false;
+  }
+  const flags = arg.slice(1).split("o", 1)[0];
+  return flags.includes("f");
+}
+
 function isImplicitPush(args) {
-  if (args.some((arg) => arg === "--dry-run" || arg === "-n")) {
+  if (args.some((arg) => arg === "--dry-run" || arg === "-n" || arg === "--help" || arg === "-h")) {
     return false;
   }
   return pushRefspecs(args).length === 0;
@@ -657,6 +683,12 @@ function pushRefspecs(args) {
   for (let index = 1; index < args.length; index += 1) {
     const arg = args[index] ?? "";
     const optionName = arg.split("=", 1)[0];
+    if (optionName === "--recurse-submodules") {
+      if (!arg.includes("=") && ["check", "on-demand", "no"].includes(args[index + 1] ?? "")) {
+        index += 1;
+      }
+      continue;
+    }
     if (valueOptions.has(optionName)) {
       repositoryProvidedByOption ||= optionName === "--repo";
       if (!arg.includes("=")) {
