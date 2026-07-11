@@ -499,6 +499,24 @@ export function check(root = ROOT) {
       !("deny-licenses" in (dependencyReviewStep.with ?? {})),
     "dependency-review.yml must use an explicit license allow-list, not deprecated deny-licenses"
   );
+  const licenseExclusions = String(
+    dependencyReviewStep.with?.["allow-dependencies-licenses"] ?? ""
+  );
+  for (const packageName of [
+    "@postgres-language-server/cli",
+    "@postgres-language-server/cli-aarch64-apple-darwin",
+    "@postgres-language-server/cli-aarch64-linux-gnu",
+    "@postgres-language-server/cli-aarch64-windows-msvc",
+    "@postgres-language-server/cli-x86_64-apple-darwin",
+    "@postgres-language-server/cli-x86_64-linux-gnu",
+    "@postgres-language-server/cli-x86_64-linux-musl",
+    "@postgres-language-server/cli-x86_64-windows-msvc",
+  ]) {
+    assert(
+      licenseExclusions.includes(`pkg:npm/${packageName}`),
+      `dependency-review.yml must exclude the current invalid lowercase license metadata for ${packageName}`
+    );
+  }
 
   const checkRuns = (ci.jobs?.check?.steps ?? []).map((step) => String(step?.run ?? ""));
   assert(
