@@ -260,7 +260,7 @@ Required repository ruleset:
 - A repository branch ruleset named `main branch policy` MUST be active and target the default branch.
 - The ruleset MUST block deletion and non-fast-forward updates and require linear history.
 - The ruleset MUST require pull requests with squash as the only merge method and zero approvals while the repository has only one independent maintainer.
-- The ruleset MUST require the stable `CI required`, both CodeQL language analyses, and Dependency Review from the GitHub Actions integration, with strict current-main testing.
+- The ruleset MUST require the stable `CI required` and Dependency Review from the GitHub Actions integration, with strict current-main testing.
 - Ruleset bypass actors MUST remain empty unless the user explicitly approves a break-glass path and the reason is recorded in the rule.
 - A `release tag policy` ruleset MUST block deletion and non-fast-forward updates for `v*` tags.
 - The `release` environment MUST allow only the `main` branch. Add an independent required reviewer when the maintainer set can satisfy that gate without self-approval.

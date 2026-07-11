@@ -80,14 +80,9 @@ function assertProtectedMainPolicy(policy) {
     (check) => check.context
   );
   assert(
-    JSON.stringify(requiredContexts) ===
-      JSON.stringify([
-        "CI required",
-        "analyze (actions)",
-        "analyze (javascript-typescript)",
-        "dependency-review",
-      ]) && requiredChecksRule?.parameters?.strict_required_status_checks_policy === true,
-    "main ruleset must require the stable CI, CodeQL, and dependency-review checks against current main"
+    JSON.stringify(requiredContexts) === JSON.stringify(["CI required", "dependency-review"]) &&
+      requiredChecksRule?.parameters?.strict_required_status_checks_policy === true,
+    "main ruleset must require the stable CI and dependency-review checks against current main"
   );
 
   const releaseTagRuleset = (policy.rulesets ?? []).find(

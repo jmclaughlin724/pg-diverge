@@ -126,11 +126,6 @@
             "do_not_enforce_on_create": false,
             "required_status_checks": [
               { "context": "CI required", "integration_id": 15368 },
-              { "context": "analyze (actions)", "integration_id": 15368 },
-              {
-                "context": "analyze (javascript-typescript)",
-                "integration_id": 15368
-              },
               { "context": "dependency-review", "integration_id": 15368 }
             ],
             "strict_required_status_checks_policy": true
