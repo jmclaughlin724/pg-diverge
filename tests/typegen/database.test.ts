@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { Diagnostic } from "../../src/core.js";
 import { extractSourceModel } from "../../src/source/extract.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
-import { generateDatabaseTypes } from "../../src/typegen/database.js";
+import { generateDatabaseTypes, quoteCodeString } from "../../src/typegen/database.js";
 import { collectSchemaShapes } from "../../src/typegen/model.js";
 import { generateZodSchemas } from "../../src/typegen/zod.js";
 
@@ -302,8 +302,8 @@ describe("database type generation", () => {
     const types = await typesFor(treeSql);
     const views = `${viewTypeBlock(types, "account_names")}\n${viewTypeBlock(types, "account_all")}`;
 
-    expect(views).toContain("id: number;");
-    expect(views).toContain("label: string;");
+    expect(views).toContain("id: number | null;");
+    expect(views).toContain("label: string | null;");
     expect(views).toContain("payload: Json | null;");
     expect(types).toContain("Relationships: [];");
   });
@@ -313,6 +313,7 @@ describe("database type generation", () => {
 CREATE TABLE app.accounts (id bigint, name text);
 CREATE FUNCTION app.expand_id(bigint) RETURNS SETOF bigint LANGUAGE sql AS $$ SELECT $1 $$;
 CREATE VIEW app.account_labels AS SELECT id, upper(name) AS label FROM app.accounts;
+CREATE VIEW app.account_aliases (account_id, account_name) AS SELECT id, name FROM app.accounts;
 CREATE VIEW app.account_expanded AS SELECT *, upper(name) AS label FROM app.accounts;
 CREATE VIEW app.account_expanded_implicit AS SELECT *, upper(name) FROM app.accounts;
 CREATE VIEW app.account_custom_series AS SELECT app.expand_id(id) AS id FROM app.accounts;
@@ -327,6 +328,9 @@ CREATE VIEW app.account_series AS SELECT generate_series(1, 2) AS value FROM app
     expect(insert).toContain("label?: never;");
     expect(update).toContain("id?: number | null;");
     expect(update).toContain("label?: never;");
+    const aliasesInsert = generatedTypeBlock(types, "account_aliases", "Insert");
+    expect(aliasesInsert).toContain("account_id?: number | null;");
+    expect(aliasesInsert).toContain("account_name?: string | null;");
     const expandedInsert = generatedTypeBlock(types, "account_expanded", "Insert");
     expect(expandedInsert).toContain("id?: number | null;");
     expect(expandedInsert).toContain("name?: string | null;");
@@ -341,12 +345,27 @@ CREATE VIEW app.account_series AS SELECT generate_series(1, 2) AS value FROM app
     expect(generatedTypeBlock(types, "account_custom_series", "Insert")).toBe("");
   });
 
+  it("keeps view rows nullable across outer joins", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint NOT NULL);
+CREATE TABLE app.profiles (profile_id bigint NOT NULL, account_id bigint NOT NULL);
+CREATE VIEW app.account_profiles AS
+SELECT accounts.id AS account_id, profiles.profile_id
+FROM app.accounts
+LEFT JOIN app.profiles ON profiles.account_id = accounts.id;
+`);
+    const row = viewTypeBlock(types, "account_profiles");
+
+    expect(row).toContain("account_id: number | null;");
+    expect(row).toContain("profile_id: number | null;");
+  });
+
   it("resolves CTE-backed view columns and typed expressions", async () => {
     const types = await typesFor(treeSql);
     const rollup = viewTypeBlock(types, "account_rollups");
 
-    expect(rollup).toContain("id: number;");
-    expect(rollup).toContain("account_name: string;");
+    expect(rollup).toContain("id: number | null;");
+    expect(rollup).toContain("account_name: string | null;");
     expect(rollup).toContain("payload: Json | null;");
     expect(rollup).toContain('state: Database["app"]["Enums"]["status"] | null;');
     expect(rollup).toContain("rank: number | null;");
@@ -692,6 +711,10 @@ CREATE VIEW public.custom_lower_mismatch AS SELECT lower(1) AS lowered;
     expect(types).toContain('status: ["draft", "active"],');
   });
 
+  it("escapes code-sensitive string literal characters", () => {
+    expect(quoteCodeString("</script>\u2028\u2029")).toBe('"\\u003c/script>\\u2028\\u2029"');
+  });
+
   it("matches the checked-in official postgres-meta contract", async () => {
     const sql = `CREATE TYPE public.visibility AS ENUM ('public', 'private');
 CREATE TYPE public.address AS (street text, zip bigint);
@@ -857,9 +880,9 @@ describe("review-hardened typegen", () => {
     const types = await typesFor(hardenedSql);
     const views = `${viewTypeBlock(types, "user_emails")}\n${viewTypeBlock(types, "all_users")}`;
 
-    expect(views).toContain("uid: number;");
-    expect(views).toContain("mail: string;");
-    expect(views).toContain("contact: string;");
+    expect(views).toContain("uid: number | null;");
+    expect(views).toContain("mail: string | null;");
+    expect(views).toContain("contact: string | null;");
   });
 
   it("populates Functions with named args, optionality, and setof returns", async () => {
@@ -1049,7 +1072,7 @@ describe("zod schema generation", () => {
     expect(zod).toContain("Insert: z.object({");
     expect(zod).toContain("Update: z.object({");
     expect(zod).toContain("account_names: {");
-    expect(zod).toContain("label: z.string(),");
+    expect(zod).toContain("label: z.string().nullable(),");
   });
 
   it("type-checks SupaschemaZod runtime schema owners", async () => {

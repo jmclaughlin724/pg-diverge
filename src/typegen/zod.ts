@@ -1,4 +1,4 @@
-import { quoteKey } from "./database.js";
+import { quoteCodeString, quoteKey } from "./database.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes } from "./model.js";
 import {
   computedRelationshipFunctions,
@@ -15,7 +15,7 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
   );
   const lines = [
     ...(typesImportPath
-      ? [`import type { Database, Json } from ${JSON.stringify(typesImportPath)};`]
+      ? [`import type { Database, Json } from ${quoteCodeString(typesImportPath)};`]
       : []),
     'import { z } from "zod";',
     "",
@@ -113,13 +113,13 @@ function emitZodContractShape(
 ): void {
   for (const shape of shapes) {
     lines.push(
-      `        ${shape}: z.ZodType<${databaseTypePath(schema, collection, name)}[${JSON.stringify(shape)}]>;`
+      `        ${shape}: z.ZodType<${databaseTypePath(schema, collection, name)}[${quoteCodeString(shape)}]>;`
     );
   }
 }
 
 function databaseTypePath(schema: string, collection: string, name: string): string {
-  return `Database[${JSON.stringify(schema)}][${JSON.stringify(collection)}][${JSON.stringify(name)}]`;
+  return `Database[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}]`;
 }
 
 function emitSchema(
@@ -182,7 +182,7 @@ function emitEnumSchemas(lines: string[], entry: SchemaEntry): void {
       continue;
     }
     lines.push(
-      `      ${quoteKey(item.name)}: z.enum([${item.values.map((value) => JSON.stringify(value)).join(", ")}]),`
+      `      ${quoteKey(item.name)}: z.enum([${item.values.map(quoteCodeString).join(", ")}]),`
     );
   }
   lines.push("    },");
@@ -356,9 +356,9 @@ function zodExpression(shapes: SchemaShapes, schema: string, sqlType: string): s
 }
 
 function lazyZodPath(schema: string, collection: string, name: string): string {
-  return `z.lazy(() => SupaschemaZod[${JSON.stringify(schema)}][${JSON.stringify(collection)}][${JSON.stringify(name)}])`;
+  return `z.lazy(() => SupaschemaZod[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}])`;
 }
 
 function lazyZodRelationRow(schema: string, collection: string, name: string): string {
-  return `z.lazy(() => SupaschemaZod[${JSON.stringify(schema)}][${JSON.stringify(collection)}][${JSON.stringify(name)}].Row)`;
+  return `z.lazy(() => SupaschemaZod[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}].Row)`;
 }

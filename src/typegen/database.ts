@@ -34,7 +34,7 @@ export function generateDatabaseTypes(
   if (options.postgrestVersion) {
     lines.push(
       "  __InternalSupabase: {",
-      `    PostgrestVersion: ${JSON.stringify(options.postgrestVersion)};`,
+      `    PostgrestVersion: ${quoteCodeString(options.postgrestVersion)};`,
       "  };"
     );
   }
@@ -182,7 +182,7 @@ function emitEnums(lines: string[], entry: SchemaEntry): void {
     lines.push("      [_ in never]: never;");
   } else {
     for (const item of enums) {
-      const union = item.values.map((value) => JSON.stringify(value)).join(" | ");
+      const union = item.values.map(quoteCodeString).join(" | ");
       lines.push(`      ${quoteKey(item.name)}: ${union.length > 0 ? union : "never"};`);
     }
   }
@@ -327,9 +327,7 @@ function emitConstants(lines: string[], schemas: [string, SchemaEntry][]): void 
   for (const [schema, entry] of schemas) {
     lines.push(`  ${quoteKey(schema)}: {`, "    Enums: {");
     for (const item of sortedByName(entry.enums)) {
-      lines.push(
-        `      ${quoteKey(item.name)}: [${item.values.map((value) => JSON.stringify(value)).join(", ")}],`
-      );
+      lines.push(`      ${quoteKey(item.name)}: [${item.values.map(quoteCodeString).join(", ")}],`);
     }
     lines.push("    },", "  },");
   }
@@ -364,7 +362,7 @@ function tsType(shapes: SchemaShapes, schema: string, sqlType: string): string {
 }
 
 function databasePath(schema: string, collection: string, name: string): string {
-  return `Database[${JSON.stringify(schema)}][${JSON.stringify(collection)}][${JSON.stringify(name)}]`;
+  return `Database[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}]`;
 }
 
 function nullable(type: string, isNullable: boolean): string {
@@ -486,7 +484,7 @@ function renderSetofOptions(
     return;
   }
   const from = sourceRelation ? postgresTypeFormat(sourceRelation) : "*";
-  return `{ from: ${JSON.stringify(from)}; to: ${JSON.stringify(returnRelation.name)}; isOneToOne: ${!functionReturnsMultipleRows(fn)}; isSetofReturn: ${fn.returns?.setof === true} }`;
+  return `{ from: ${quoteCodeString(from)}; to: ${quoteCodeString(returnRelation.name)}; isOneToOne: ${!functionReturnsMultipleRows(fn)}; isSetofReturn: ${fn.returns?.setof === true} }`;
 }
 
 function computedRelationshipFields(
@@ -583,7 +581,7 @@ function functionConflictError(
         other.args[0]?.optional
     );
     if (conflict) {
-      return `{ error: true } & ${JSON.stringify(
+      return `{ error: true } & ${quoteCodeString(
         `Could not choose the best candidate function between: ${schema}.${fn.name}(), ${schema}.${fn.name}( => ${
           conflict.returns ? postgresCatalogTypeName(conflict.returns.type) : "unknown"
         }). Try renaming the parameters or the function itself in the database so function overloading can be resolved`
@@ -606,7 +604,7 @@ function functionConflictError(
           return `${schema}.${fn.name}(${arg?.name ?? ""} => ${arg ? postgresCatalogTypeName(arg.type) : "unknown"})`;
         })
         .join(", ");
-      return `{ error: true } & ${JSON.stringify(
+      return `{ error: true } & ${quoteCodeString(
         `Could not choose the best candidate function between: ${conflictList}. Try renaming the parameters or the function itself in the database so function overloading can be resolved`
       )}`;
     }
@@ -625,7 +623,7 @@ function tableRowFunctionError(
     relationRowType(shapes, schema, arg.type) &&
     !(fn.returns && relationRowType(shapes, schema, fn.returns.type))
   ) {
-    return `{ error: true } & ${JSON.stringify(
+    return `{ error: true } & ${quoteCodeString(
       `the function ${schema}.${fn.name} with parameter or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache`
     )}`;
   }
@@ -651,13 +649,13 @@ function renderRelationships(relationships: RelationshipShape[]): string {
   return `[${relationships
     .map(
       (item) =>
-        `{ foreignKeyName: ${JSON.stringify(item.foreignKeyName)}; columns: ${tupleType(item.columns)}; isOneToOne: ${item.isOneToOne}; referencedRelation: ${JSON.stringify(item.referencedRelation)}; referencedColumns: ${tupleType(item.referencedColumns)} }`
+        `{ foreignKeyName: ${quoteCodeString(item.foreignKeyName)}; columns: ${tupleType(item.columns)}; isOneToOne: ${item.isOneToOne}; referencedRelation: ${quoteCodeString(item.referencedRelation)}; referencedColumns: ${tupleType(item.referencedColumns)} }`
     )
     .join(", ")}]`;
 }
 
 function tupleType(values: string[]): string {
-  return `[${values.map((value) => JSON.stringify(value)).join(", ")}]`;
+  return `[${values.map(quoteCodeString).join(", ")}]`;
 }
 
 export function quoteKey(name: string): string {
@@ -674,7 +672,14 @@ export function quoteKey(name: string): string {
       break;
     }
   }
-  return simple ? name : JSON.stringify(name);
+  return simple ? name : quoteCodeString(name);
+}
+
+export function quoteCodeString(value: string): string {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 }
 
 const postgresCatalogTypeNames = new Map([

@@ -37,8 +37,8 @@ export type Database = {
     Views: {
       movie_names: {
         Row: {
-          id: number
-          name: string
+          id: number | null
+          name: string | null
         }
         Insert: {
           id?: number | null

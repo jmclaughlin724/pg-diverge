@@ -33,10 +33,11 @@ export async function scanGeneratedContractUsage(
   const root = resolve(cwd, options.root);
   const generatedTargets = generatedContractTargets(cwd, options.config);
   const files = await sourceFiles(root, generatedTargets);
-  const diagnostics = await Promise.all(
-    files.map((file) => scanGeneratedContractUsageFile(file, cwd, generatedTargets))
-  );
-  return diagnostics.flat();
+  const diagnostics: Diagnostic[] = [];
+  for (const file of files) {
+    diagnostics.push(...(await scanGeneratedContractUsageFile(file, cwd, generatedTargets)));
+  }
+  return diagnostics;
 }
 
 async function scanGeneratedContractUsageFile(
@@ -238,15 +239,15 @@ function generatedContractTargets(cwd: string, config: SupaschemaConfig): Set<st
   );
 }
 
-function sourceFiles(root: string, generatedTargets: Set<string>): Promise<string[]> {
-  async function walk(directory: string): Promise<string[]> {
+async function sourceFiles(root: string, generatedTargets: Set<string>): Promise<string[]> {
+  const files: string[] = [];
+  async function walk(directory: string): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true });
-    const batches: Array<Promise<string[]> | string[]> = [];
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) {
         if (!skipDirectories.has(entry.name)) {
-          batches.push(walk(path));
+          await walk(path);
         }
         continue;
       }
@@ -256,12 +257,12 @@ function sourceFiles(root: string, generatedTargets: Set<string>): Promise<strin
         !generatedTargets.has(normalizePath(path)) &&
         !generatedTargets.has(normalizePath(stripKnownExtension(path)))
       ) {
-        batches.push([path]);
+        files.push(path);
       }
     }
-    return (await Promise.all(batches)).flat();
   }
-  return walk(root);
+  await walk(root);
+  return files;
 }
 
 function isGeneratedContractImport(

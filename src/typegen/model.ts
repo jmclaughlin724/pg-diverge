@@ -293,7 +293,10 @@ async function registerViewShapes(
     }
   }
   for (const object of objects) {
-    const columns = columnsByKey.get(relationKey(object)) ?? [];
+    const columns = (columnsByKey.get(relationKey(object)) ?? []).map((column) => ({
+      ...column,
+      notNull: false,
+    }));
     const updatable = object.ref.kind === "view" && (await isUpdatableView(object, functionsByKey));
     schemaEntry(shapes, object.ref.schema ?? "public").views.push({
       columns: updatable ? await markViewColumnUpdatability(object, columns) : columns,
@@ -426,7 +429,10 @@ async function markViewColumnUpdatability(
   if (!select) {
     return columns;
   }
-  const { hasWildcard, nonWritable, writable } = writableViewColumns(select);
+  const aliases = Array.isArray(object.metadata.viewColumns)
+    ? object.metadata.viewColumns.map((value) => String(value))
+    : [];
+  const { hasWildcard, nonWritable, writable } = writableViewColumns(select, aliases);
   return columns.map((column) => ({
     ...column,
     updatable: writable.has(column.name) || (hasWildcard && !nonWritable.has(column.name)),
@@ -442,15 +448,26 @@ async function viewSelectStatement(object: SchemaObject): Promise<AstNode | unde
   return asRecord(query?.SelectStmt);
 }
 
-function writableViewColumns(select: AstNode): {
+function writableViewColumns(
+  select: AstNode,
+  aliases: string[]
+): {
   hasWildcard: boolean;
   nonWritable: Set<string>;
   writable: Set<string>;
 } {
+  const targets = readArray(select.targetList);
+  const positionalAliases = targets.some((item) => {
+    const target = asRecord(asRecord(item)?.ResTarget);
+    const columnRef = asRecord(asRecord(target?.val)?.ColumnRef);
+    return readArray(columnRef?.fields).some((field) => asRecord(field)?.A_Star !== undefined);
+  })
+    ? []
+    : aliases;
   let hasWildcard = false;
   const nonWritable = new Set<string>();
   const writable = new Set<string>();
-  for (const item of readArray(select.targetList)) {
+  for (const [index, item] of targets.entries()) {
     const target = asRecord(asRecord(item)?.ResTarget);
     const columnRef = asRecord(asRecord(target?.val)?.ColumnRef);
     if (!target) {
@@ -458,7 +475,10 @@ function writableViewColumns(select: AstNode): {
     }
     if (!columnRef) {
       const functionCall = asRecord(asRecord(target.val)?.FuncCall);
-      const outputName = readString(target.name) ?? stringList(functionCall?.funcname).at(-1);
+      const outputName =
+        positionalAliases[index] ??
+        readString(target.name) ??
+        stringList(functionCall?.funcname).at(-1);
       if (outputName) {
         nonWritable.add(outputName);
       }
@@ -473,7 +493,7 @@ function writableViewColumns(select: AstNode): {
     if (!sourceName) {
       continue;
     }
-    writable.add(readString(target.name) ?? sourceName);
+    writable.add(positionalAliases[index] ?? readString(target.name) ?? sourceName);
   }
   return { hasWildcard, nonWritable, writable };
 }
