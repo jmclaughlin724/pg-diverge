@@ -160,3 +160,20 @@ jobs:
       - name: DB-gated tests (DB-gated cases skip without a database)
         run: npm run test:matrix
       - run: npm run fixture:diff
+
+  required:
+    name: CI required
+    if: ${{ always() }}
+    needs: [quality, check, check-os]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every CI lane
+        env:
+          CHECK_RESULT: ${{ needs.check.result }}
+          OS_RESULT: ${{ needs.check-os.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+        run: |
+          test "$QUALITY_RESULT" = success
+          test "$CHECK_RESULT" = success
+          test "$OS_RESULT" = success

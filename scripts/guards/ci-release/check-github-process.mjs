@@ -18,6 +18,106 @@ const deletedGithubWorkflowScripts = [
   "github:pr-preflight",
 ];
 
+function assertProtectedMainPolicy(policy) {
+  const main = policy.branches?.main;
+  assert(main, "repo policy must define branches.main");
+  assert(main.required_linear_history === true, "main must require linear history");
+  assert(
+    main.required_conversation_resolution === true,
+    "main must require conversation resolution"
+  );
+  assert(main.required_signatures === false, "required signatures must stay disabled");
+  assert(main.enforce_admins === true, "main branch protection must apply to admins");
+  assert(main.allow_force_pushes === false, "main must block force pushes");
+  assert(main.allow_deletions === false, "main must block deletions");
+  assert(main.direct_pushes === false, "main policy must reject direct pushes");
+  assert(
+    !("required_pull_request_reviews" in main),
+    "classic main protection must not duplicate ruleset reviews"
+  );
+  assert(
+    !("required_status_checks" in main),
+    "classic main protection must not duplicate ruleset checks"
+  );
+
+  const mainRuleset = (policy.rulesets ?? []).find(
+    (ruleset) => ruleset.name === "main branch policy"
+  );
+  assert(mainRuleset, "repo policy must define the main branch policy ruleset");
+  assert(mainRuleset.target === "branch", "main branch policy ruleset must target branches");
+  assert(mainRuleset.enforcement === "active", "main branch policy ruleset must be active");
+  assert(
+    mainRuleset.conditions?.ref_name?.include?.includes("~DEFAULT_BRANCH"),
+    "main branch policy ruleset must target the default branch"
+  );
+  assert(
+    Array.isArray(mainRuleset.bypass_actors) && mainRuleset.bypass_actors.length === 0,
+    "main branch policy ruleset must not define bypass actors"
+  );
+  for (const type of [
+    "deletion",
+    "non_fast_forward",
+    "required_linear_history",
+    "pull_request",
+    "required_status_checks",
+  ]) {
+    assert(
+      (mainRuleset.rules ?? []).some((rule) => rule.type === type),
+      `main branch policy ruleset must include ${type}`
+    );
+  }
+  const pullRequestRule = mainRuleset.rules.find((rule) => rule.type === "pull_request");
+  assert(
+    JSON.stringify(pullRequestRule?.parameters?.allowed_merge_methods) ===
+      JSON.stringify(["squash"]) &&
+      pullRequestRule?.parameters?.required_approving_review_count === 0,
+    "main pull-request rule must require GitHub squash PRs without an unsatisfiable solo-review gate"
+  );
+  const requiredChecksRule = mainRuleset.rules.find(
+    (rule) => rule.type === "required_status_checks"
+  );
+  const requiredContexts = (requiredChecksRule?.parameters?.required_status_checks ?? []).map(
+    (check) => check.context
+  );
+  assert(
+    JSON.stringify(requiredContexts) ===
+      JSON.stringify([
+        "CI required",
+        "analyze (actions)",
+        "analyze (javascript-typescript)",
+        "dependency-review",
+      ]) && requiredChecksRule?.parameters?.strict_required_status_checks_policy === true,
+    "main ruleset must require the stable CI, CodeQL, and dependency-review checks against current main"
+  );
+
+  const releaseTagRuleset = (policy.rulesets ?? []).find(
+    (ruleset) => ruleset.name === "release tag policy"
+  );
+  assert(releaseTagRuleset?.target === "tag", "release tag policy must target tags");
+  assert(
+    releaseTagRuleset?.conditions?.ref_name?.include?.includes("refs/tags/v*"),
+    "release tag policy must target v* tags"
+  );
+  for (const type of ["deletion", "non_fast_forward"]) {
+    assert(
+      releaseTagRuleset?.rules?.some((rule) => rule.type === type),
+      `release tag policy must include ${type}`
+    );
+  }
+
+  const releaseEnvironment = policy.environments?.release;
+  assert(
+    releaseEnvironment?.deployment_branch_policy?.custom_branch_policies === true &&
+      releaseEnvironment?.deployment_branch_policy?.protected_branches === false,
+    "release environment must use an explicit deployment branch policy"
+  );
+  assert(
+    JSON.stringify(releaseEnvironment?.branch_policies) ===
+      JSON.stringify([{ name: "main", type: "branch" }]),
+    "release environment must permit only main"
+  );
+}
+
 export function check(root = ROOT) {
   const policy = readJson(".github/repo-policy.json", root);
   const packageJson = readJson("package.json", root);
@@ -104,6 +204,26 @@ export function check(root = ROOT) {
     "GitHub Actions must require full-length SHA-pinned actions"
   );
   assert(
+    policy.actions?.permissions?.allowed_actions === "selected",
+    "GitHub Actions must allow only selected action owners"
+  );
+  assert(
+    policy.actions?.selectedActions?.github_owned_allowed === true &&
+      policy.actions?.selectedActions?.verified_allowed === false,
+    "selected Actions policy must allow GitHub-owned actions and deny the broad verified-creator set"
+  );
+  const requiredThirdPartyActions = [
+    "codecov/codecov-action@*",
+    "ossf/scorecard-action@*",
+    "oven-sh/setup-bun@*",
+    "step-security/harden-runner@*",
+  ];
+  assert(
+    JSON.stringify(policy.actions?.selectedActions?.patterns_allowed) ===
+      JSON.stringify(requiredThirdPartyActions),
+    "selected Actions policy must match the reviewed third-party action set"
+  );
+  assert(
     policy.actions?.workflowPermissions?.default_workflow_permissions === "read",
     "GitHub Actions default workflow token permissions must be read-only"
   );
@@ -124,50 +244,7 @@ export function check(root = ROOT) {
     assert(!(key in (policy.pullRequests ?? {})), `pullRequests.${key} must not exist`);
   }
 
-  const main = policy.branches?.main;
-  assert(main, "repo policy must define branches.main");
-  assert(main.required_linear_history === true, "main must require linear history");
-  assert(
-    main.required_conversation_resolution === true,
-    "main must require conversation resolution"
-  );
-  assert(main.required_signatures === false, "required signatures must stay disabled");
-  assert(main.enforce_admins === true, "main branch protection must apply to admins");
-  assert(main.allow_force_pushes === false, "main must block force pushes");
-  assert(main.allow_deletions === false, "main must block deletions");
-  assert(main.direct_pushes === true, "main policy must allow direct fast-forward pushes");
-  assert(
-    !("required_pull_request_reviews" in main),
-    "main policy must not require pull request reviews"
-  );
-  assert(!("required_status_checks" in main), "main policy must not require status checks");
-
-  const mainRuleset = (policy.rulesets ?? []).find(
-    (ruleset) => ruleset.name === "main branch policy"
-  );
-  assert(mainRuleset, "repo policy must define the main branch policy ruleset");
-  assert(mainRuleset.target === "branch", "main branch policy ruleset must target branches");
-  assert(mainRuleset.enforcement === "active", "main branch policy ruleset must be active");
-  assert(
-    mainRuleset.conditions?.ref_name?.include?.includes("~DEFAULT_BRANCH"),
-    "main branch policy ruleset must target the default branch"
-  );
-  assert(
-    Array.isArray(mainRuleset.bypass_actors) && mainRuleset.bypass_actors.length === 0,
-    "main branch policy ruleset must not define bypass actors"
-  );
-  for (const type of ["deletion", "non_fast_forward", "required_linear_history"]) {
-    assert(
-      (mainRuleset.rules ?? []).some((rule) => rule.type === type),
-      `main branch policy ruleset must include ${type}`
-    );
-  }
-  for (const type of ["pull_request", "required_status_checks"]) {
-    assert(
-      !(mainRuleset.rules ?? []).some((rule) => rule.type === type),
-      `main branch policy ruleset must not include ${type}`
-    );
-  }
+  assertProtectedMainPolicy(policy);
 
   assert(
     !(packageJson.scripts?.["github:check-dco"] || exists("scripts/github/check-dco.mjs", root)),

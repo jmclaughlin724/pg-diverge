@@ -5,7 +5,7 @@ keywords: ["release", "trusted publishing", "npm", "checklist"]
 hidden: true
 ---
 
-The package is designed for trusted publishing from GitHub Actions. `main` is the release source: every push to `main` starts the release workflow directly, without waiting for the full CI benchmark matrix. A push to `main` publishes an unreleased package version, repairs a missing GitHub Release for an npm version that already exists, or exits successfully when npm and GitHub already have the current version.
+The package is designed for trusted publishing from GitHub Actions. Protected `main` is the release source: every merged pull request starts the release workflow after its required CI, CodeQL, and Dependency Review checks pass. A read-only preflight publishes an unreleased package version, repairs a missing GitHub Release for an npm version that already exists, or exits without entering the privileged publish job when the release is complete.
 
 The public install package remains `supaschema` on npmjs.org. The release workflow also publishes a scoped GitHub Packages mirror, `@jmclaughlin724/supaschema`, so the repository Packages surface tracks each release without changing the public npm package name.
 
@@ -19,8 +19,9 @@ The public install package remains `supaschema` on npmjs.org. The release workfl
    - Workflow filename: `release.yml`
    - Environment name: `release`
    - Allowed actions: `npm publish`
-3. Configure the GitHub `release` environment so deployment branch policies allow `main`.
+3. Configure the GitHub `release` environment so deployment branch policies allow only `main`.
 4. Keep the release workflow's `packages: write` permission enabled so `GITHUB_TOKEN` can publish the scoped GitHub Packages mirror.
+5. Keep the `release tag policy` ruleset active for `v*` tags so published release tags cannot be rewritten or deleted.
 
 ## Per-release checklist
 
@@ -29,7 +30,7 @@ The public install package remains `supaschema` on npmjs.org. The release workfl
 3. Run `$update` after all release-owned edits are present. Resolve every in-scope finding and complete the validation selected by the skill.
 4. Run `npm run release:notes -- --version <version>` and confirm the output is the GitHub Release body you want.
 5. Run `npm run release:verify`.
-6. Push the signed release commit to `main`, or merge it through the optional PR lane.
+6. Push the signed release commit to its topic branch and squash-merge the protected pull request.
 
 Do not publish from GitHub Releases or local machines. GitHub Release creation runs immediately after npm publish and tarball attestation, so npm propagation lag cannot leave npm published without the matching GitHub release/tag. If npm publish succeeds but GitHub Release creation itself fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm.
 
@@ -46,7 +47,9 @@ The release workflow uses:
 - `permissions.id-token: write`
 - `permissions.contents: write` on the publish job
 - `permissions.packages: write` on the publish job
+- a read-only preflight job that prevents complete releases from entering the write/OIDC job
 - `push` to `main` plus a main-only `workflow_dispatch` repair path
+- Harden-Runner block-mode egress restricted to the reviewed GitHub, npm, GitHub Packages, and Sigstore endpoints
 - a GitHub-hosted Ubuntu runner with Node 24, npm `>=11.5.1`, and `actions/setup-node` with `registry-url: https://registry.npmjs.org`
 - `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`
 - `actions/attest@v4` for tarball provenance attestation

@@ -93,7 +93,7 @@ Pick the semver bump (patch/minor/major) and write a short, user-readable note. 
 
 Use the [PR template](./.github/PULL_REQUEST_TEMPLATE.md) as the current checklist.
 
-Direct fast-forward pushes to `main` are allowed by repository policy. For PR merges, run:
+Every update to `main` uses a protected pull request. Before merging, run:
 
 ```bash
 npm run github:audit-settings

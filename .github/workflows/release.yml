@@ -13,10 +13,37 @@ concurrency:
   queue: max
 
 jobs:
-  publish:
+  preflight:
     if: >-
       github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      create-github-release: ${{ steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE }}
+      publish-github-package: ${{ steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE }}
+      publish-npm: ${{ steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Release version preflight
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/preflight.mjs
 
+  publish:
+    needs: preflight
+    if: >-
+      needs.preflight.outputs.create-github-release == 'true' || needs.preflight.outputs.publish-github-package == 'true' || needs.preflight.outputs.publish-npm == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release
@@ -27,22 +54,20 @@ jobs:
       packages: write
 
     steps:
-      # Egress monitoring on the privileged publish job (holds id-token:write).
-      # Start in "audit": review the run's harden-runner insights, then switch to
-      # egress-policy: block with the verified allowed-endpoints below.
+      # The privileged publish job enforces the endpoint baseline observed in
+      # the successful 0.4.0 trusted-publishing run.
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
-          egress-policy: audit
-          # After one audit run, set `egress-policy: block` and verify this list
-          # against the run's network insights before committing the switch:
-          # allowed-endpoints: >
-          #   registry.npmjs.org:443
-          #   github.com:443
-          #   api.github.com:443
-          #   objects.githubusercontent.com:443
-          #   fulcio.sigstore.dev:443
-          #   rekor.sigstore.dev:443
-          #   tuf-repo-cdn.sigstore.dev:443
+          egress-policy: block
+          allowed-endpoints: |
+            *.actions.githubusercontent.com:443
+            api.github.com:443
+            fulcio.sigstore.dev:443
+            github.com:443
+            npm.pkg.github.com:443
+            registry.npmjs.org:443
+            rekor.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false

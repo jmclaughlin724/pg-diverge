@@ -1,10 +1,10 @@
 # Code owners for supaschema.
 #
 # These globs document publish-critical and cross-runtime ownership and
-# request the listed owner on matching PRs. Branch protection intentionally
-# does not require code-owner approval while this is a solo-maintainer repo;
-# enable "Require review from Code Owners" only when there is an independent
-# reviewer who can satisfy the gate.
+# request the listed owner on matching PRs. The main ruleset requires PRs and
+# automated checks but intentionally requires zero approvals while this is a
+# solo-maintainer repo. Enable code-owner approval only when an independent
+# reviewer can satisfy the gate.
 
 # Default owner for everything not matched below.
 *                       @jmclaughlin724
