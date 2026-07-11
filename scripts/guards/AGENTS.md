@@ -8,7 +8,7 @@ Single-concern `check-*.mjs` guards proving repo invariants, grouped by domain. 
 - `lib/` — guard assertions, process execution, repository access, graph traversal, TypeScript AST, and PostgreSQL AST owners
 - `code-shape/` — canonical code-surface shape (Rule 01/07/13): `check-canonical-surfaces.mjs` aggregator + `check-change-discipline.mjs`, `check-pattern-engine.mjs`, `check-package-scripts.mjs`, `check-child-process-shell.mjs`, `ast-scan.mjs`
 - `toolchain/` — `check-tooling-stack.mjs`, `check-lsp-coverage.mjs` (Rule 06/08)
-- `ci-release/` — `check-ci-governance.mjs`, `check-codex-execpolicy.mjs`, `check-github-process.mjs`, `check-release-version-surfaces.mjs` (Rule 09/19)
+- `ci-release/` — `check-ci-governance.mjs`, `check-codex-execpolicy.mjs`, `check-github-process.mjs`, `check-release-version-surfaces.mjs` (Rules 09/19/21)
 - `agent-surface/` — `check-agent-hooks.mjs`, `check-agent-surface-parity.mjs`, `check-claude-agents.mjs`, `check-hook-import-graph.mjs` (Rule 12/22)
 - `repo-surface/` — `check-public-repo-surface.mjs`, `check-repo-layout.mjs` (Rule 13/20)
 - `docs-config/` — `check-config-standardization.mjs`, `check-rule-citations.mjs`, `check-schema.mjs`

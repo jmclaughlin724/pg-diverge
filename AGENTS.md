@@ -13,7 +13,8 @@ This file is the repository instruction entrypoint and route map. Durable operat
 - Code Atlas graph proof standard: `.claude/rules/10-code-atlas.md`
 - Agent MCP/FastMCP surface: `.claude/rules/11-agent-mcp-fastmcp.md`
 - Package and public consumer boundary: `.claude/rules/13-npm-package-boundary.md`
-- Worktree and git operations: `.claude/rules/14-editing-worktree-git.md`
+- Editing safety and deletion sweeps: `.claude/rules/14-editing-safety.md`
+- Git, worktrees, branches, commits, pushes, GitHub, pull requests, merging, and cleanup: `.claude/rules/21-source-control.md`
 - Context-surface source of truth: `.claude/rules/18-context-surface-sync.md`
 - Agent-surface sync ownership: `.claude/rules/22-agent-surface-sync-ownership.md`
 - Repo documentation creation and editing: `.claude/rules/24-repo-documentation.md`

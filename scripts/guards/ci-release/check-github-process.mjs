@@ -22,6 +22,14 @@ export function check(root = ROOT) {
   const policy = readJson(".github/repo-policy.json", root);
   const packageJson = readJson("package.json", root);
 
+  assert(exists(".claude/rules/21-source-control.md", root), "Rule 21 must own source control");
+  for (const file of [
+    ".claude/rules/14-editing-worktree-git.md",
+    ".claude/rules/21-github-process.md",
+  ]) {
+    assert(!exists(file, root), `${file} must not exist`);
+  }
+
   for (const file of ["scripts/github/policy.mjs", "scripts/github/audit-settings.mjs"]) {
     assert(exists(file, root), `${file} must exist`);
   }

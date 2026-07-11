@@ -52,7 +52,9 @@ import {
 | `syncMigrations` | `sync` | Gate pending migrations, then optionally drive the selected runner. |
 | `auditModel` / `renderAuditReport` | `audit` | Support-matrix coverage report for adopting an existing schema. |
 | `runCorpus` / `renderCorpusReport` | `corpus` | Replay a corpus tree and require reconvergence to zero. |
-| `collectSchemaShapes` / `generateDatabaseTypes` / `generateZodSchemas` | `types` | Collect one schema shape graph, then generate TypeScript database types plus runtime Zod validators from the PostgreSQL schema model. |
+| `collectSchemaShapes` / `generateDatabaseTypes` / `generateZodSchemas` | `types` | Collect one schema shape graph, then generate upstream-compatible TypeScript database types plus separate runtime Zod validators from the PostgreSQL schema model. |
+
+Pass `{ postgrestVersion: "12" }` as the second argument to `generateDatabaseTypes` to include `Database.__InternalSupabase.PostgrestVersion`; omit it when the generated contract should not own a PostgREST version.
 
 ## Support utilities
 

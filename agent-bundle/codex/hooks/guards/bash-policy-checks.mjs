@@ -152,13 +152,10 @@ function checkRawSqlDdlCommand(command) {
 
 const simpleGitWriteBlocks = new Map([
   ["stash", "BLOCKED: git stash is prohibited. Preserve unrelated work without stash."],
+  ["clean", "BLOCKED: git clean is prohibited. Preserve unrelated untracked work."],
   [
     "checkout",
     "BLOCKED: git checkout is prohibited. Keep work on the current branch and use git diff/git show for comparisons.",
-  ],
-  [
-    "branch",
-    "BLOCKED: git branch is prohibited. Keep work on the current branch and use git rev-parse for branch discovery.",
   ],
   ["worktree", "BLOCKED: git worktree is prohibited. Use the current worktree only."],
   ["reset", "BLOCKED: git reset is prohibited. Ask the user before running reset."],
@@ -166,6 +163,9 @@ const simpleGitWriteBlocks = new Map([
 
 function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   const subcommand = gitArgs[0] ?? "";
+  if (subcommand === "branch") {
+    return checkGitBranch(gitArgs.slice(1));
+  }
   const simple = simpleGitWriteBlocks.get(subcommand);
   if (simple) {
     return block(simple);
@@ -200,6 +200,19 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   return allowResult();
 }
 
+function checkGitBranch(args) {
+  if (
+    args.length === 2 &&
+    ["-d", "-D", "--delete"].includes(args[0] ?? "") &&
+    isTopicBranch(args[1])
+  ) {
+    return allowResult();
+  }
+  return block(
+    "BLOCKED: git branch is limited to deleting one verified merged topic branch after explicit approval. Use git rev-parse for discovery and git switch for transactional branch creation."
+  );
+}
+
 function checkGitSwitch(args) {
   if (
     args.length === 3 &&
@@ -218,7 +231,7 @@ function checkGitSwitch(args) {
     return allowResult();
   }
   return block(
-    "BLOCKED: git switch is limited to `git switch -c <topic> origin/main` or `git switch --track origin/<topic>` after the Rule 14 PR preflight."
+    "BLOCKED: git switch is limited to `git switch -c <topic> origin/main` or `git switch --track origin/<topic>` after the Rule 21 PR preflight."
   );
 }
 

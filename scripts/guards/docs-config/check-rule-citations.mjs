@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, ok } from "../lib/assertions.js";
-import { gitTrackedFiles, ROOT } from "../lib/repository.js";
+import { gitFiles, ROOT } from "../lib/repository.js";
 
 function numberedRulePrefix(name) {
   if (name.length < 6 || !name.endsWith(".md") || name[2] !== "-") {
@@ -100,7 +100,7 @@ export function check(root = ROOT) {
   const scanRoots = [".claude/rules", ".claude/skills", ".codex/rules", ".agents/skills"];
   const scanExtensions = [".md", ".rules"];
   const extraFiles = ["AGENTS.md", "CLAUDE.md"];
-  const trackedFiles = gitTrackedFiles(root);
+  const worktreeFiles = gitFiles(root).filter((file) => fs.existsSync(path.join(root, file)));
   const violations = [];
 
   function scanText(rel, text) {
@@ -116,7 +116,7 @@ export function check(root = ROOT) {
   }
 
   function walk(dir) {
-    for (const rel of trackedFiles) {
+    for (const rel of worktreeFiles) {
       if (
         (rel === dir || rel.startsWith(`${dir}/`)) &&
         scanExtensions.some((ext) => rel.endsWith(ext))
@@ -130,7 +130,7 @@ export function check(root = ROOT) {
     walk(scanRoot);
   }
   for (const file of extraFiles) {
-    if (trackedFiles.includes(file) && fs.existsSync(path.join(root, file))) {
+    if (worktreeFiles.includes(file)) {
       scanText(file, fs.readFileSync(path.join(root, file), "utf8"));
     }
   }

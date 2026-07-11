@@ -12,7 +12,7 @@ Use `types` when application code needs the latest database shape before a migra
 
 The generated contract is derived from the schema source itself. Tables, views, materialized views, view dependencies, functions, enums, composites, and supported catalog-backed objects should resolve from the parsed SQL model before a database is available. If a view depends on an extension-owned relation that is not in the configured source, add or use a supported extension model/source rather than patching application code with local casts or copied contracts.
 
-If a schema-backed field is generated as `unknown`, treat that as unresolved source/model coverage. Fix the schema source, supported extension model, or typegen diagnostic path before updating application consumers.
+If a modeled relation, function, extension, or expression should resolve but is generated as `unknown`, fix the schema source, supported model, or typegen diagnostic path before updating application consumers. Unsupported PostgreSQL scalars intentionally keep the upstream `unknown` fallback.
 
 ## Use this when
 
