@@ -486,6 +486,9 @@ describe("general Bash blocker policy", () => {
     "git merge --squash feature/demo",
     "git reset --hard",
     'git commit --no-verify -m "skip"',
+    "git push origin main",
+    "git push origin HEAD:main",
+    "git push origin HEAD:refs/heads/main",
     "git push --force origin main",
     "git push | tail -20",
     "git -C . branch tmp",
@@ -532,6 +535,14 @@ describe("general Bash blocker policy", () => {
     "git -C . status --short",
     "git --no-pager rev-parse --abbrev-ref HEAD",
   ])("allows stateless git diagnostic: %s", async (command) => {
+    const result = await runHook(claudeScript, preToolBash(command));
+    expect(result.code, command).toBe(0);
+  });
+
+  it.each([
+    "git push -u origin codex/feature",
+    "git push origin HEAD",
+  ])("allows topic push shape: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(0);
   });

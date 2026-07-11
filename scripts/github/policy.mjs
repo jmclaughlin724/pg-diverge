@@ -80,11 +80,9 @@ function fakeGhJson(args, options) {
   if (endpoint === `repos/${repo}/actions/permissions`) {
     return policy.actions.permissions;
   }
-  if (endpoint === `repos/${repo}/actions/permissions/workflow`) {
-    return policy.actions.workflowPermissions;
-  }
-  if (endpoint === `repos/${repo}/actions/permissions/fork-pr-contributor-approval`) {
-    return policy.actions.forkPullRequestContributorApproval;
+  const settingsResponse = fakeSettingsResponse(endpoint, repo, policy);
+  if (settingsResponse !== undefined) {
+    return settingsResponse;
   }
   if (endpoint === `repos/${repo}/branches/main/protection`) {
     const main = policy.branches.main;
@@ -111,10 +109,29 @@ function fakeGhJson(args, options) {
   if (endpoint === `repos/${repo}/rulesets`) {
     return policy.rulesets.map((ruleset, index) => ({ id: index + 1, name: ruleset.name }));
   }
-  if (endpoint === `repos/${repo}/rulesets/1`) {
-    return policy.rulesets[0];
+  const rulesetPrefix = `repos/${repo}/rulesets/`;
+  if (endpoint.startsWith(rulesetPrefix)) {
+    const index = Number(endpoint.slice(rulesetPrefix.length)) - 1;
+    return policy.rulesets[index];
   }
   throw new Error(`unhandled fake gh endpoint ${endpoint}`);
+}
+
+function fakeSettingsResponse(endpoint, repo, policy) {
+  const responses = new Map([
+    [`repos/${repo}/actions/permissions/selected-actions`, policy.actions.selectedActions],
+    [`repos/${repo}/actions/permissions/workflow`, policy.actions.workflowPermissions],
+    [
+      `repos/${repo}/actions/permissions/fork-pr-contributor-approval`,
+      policy.actions.forkPullRequestContributorApproval,
+    ],
+    [`repos/${repo}/environments/release`, policy.environments.release],
+    [
+      `repos/${repo}/environments/release/deployment-branch-policies`,
+      { branch_policies: policy.environments.release.branch_policies },
+    ],
+  ]);
+  return responses.get(endpoint);
 }
 
 export function repoFullName(policy = readPolicy()) {
@@ -151,10 +168,6 @@ export function currentBranch() {
 
 export function defaultBase(policy = readPolicy()) {
   return policy.pullRequests?.base ?? policy.repository?.default_branch ?? "main";
-}
-
-export function requiredContexts(policy = readPolicy(), branch = defaultBase(policy)) {
-  return policy.branches?.[branch]?.required_status_checks?.contexts ?? [];
 }
 
 export function reportFailures(failures, okToken) {

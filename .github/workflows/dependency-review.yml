@@ -15,12 +15,8 @@ jobs:
     # Block PRs that introduce known-vulnerable or license-incompatible deps
     # before merge. supaschema ships dual-licensed: AGPL-3.0-only (LICENSE) for
     # open-source use, or a commercial license (LICENSE-COMMERCIAL.md) for
-    # proprietary/hosted use. A copyleft transitive dep can make a dependency
-    # un-relicensable into the commercial lane, so deny strong-copyleft and
-    # network-copyleft licenses that are incompatible with commercial
-    # relicensing. MAINTAINER: review deny-licenses below against the actual
-    # dependency tree before enabling as a required check; tune as needed
-    # (SPDX expressions, https://spdx.org/licenses/).
+    # proprietary/hosted use. Fail closed when a changed dependency introduces
+    # a license outside the reviewed SPDX allow-list below.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -31,13 +27,8 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
-          comment-summary-in-pr: on-failure
-          # Deny only strong/network copyleft that would force the COMMERCIAL
-          # lane open if a dependency's code were linked/distributed: GPL, AGPL,
-          # and SSPL. LGPL is intentionally NOT denied — it permits use in
-          # proprietary software via linking, and the LGPL deps here are
-          # dev-only Python tooling (e.g. pytoolconfig) that is never shipped in
-          # the npm package. The project's own AGPL-3.0 covers first-party code,
-          # not incoming deps. MAINTAINER: review before requiring as a gate.
-          deny-licenses: >-
-            GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-only, GPL-3.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, SSPL-1.0
+          # An allow-list fails closed when a dependency introduces an
+          # unreviewed license. Keep exceptions package-specific.
+          allow-licenses: >-
+            0BSD, Apache-2.0, BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, ISC, MIT, MPL-2.0, Python-2.0
+          allow-dependencies-licenses: pkg:npm/spawndamnit

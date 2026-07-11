@@ -146,17 +146,17 @@ codexExecPolicy: |
     },
     {
       "pattern": ["gh", "pr", "merge"],
-      "decision": "prompt",
-      "justification": "Rule 21 requires Bash hook verification for PR merge commands because Codex prefix_rule cannot match selector-before-flag forms without overblocking the policy merge command.",
+      "decision": "allow",
+      "justification": "The Bash hook permits only GitHub squash merge with branch deletion and blocks unsupported methods and bypass flags.",
       "match": ["gh pr merge 53 --rebase", "gh pr merge 53 --squash --delete-branch"],
       "not_match": ["gh pr view 53"]
     },
     {
       "pattern": ["git", "push", "origin", "HEAD:main"],
-      "decision": "allow",
-      "justification": "Rule 21 allows direct fast-forward pushes to main after npm run guard and origin/main preflight.",
+      "decision": "forbidden",
+      "justification": "Rule 21 requires all main updates to pass through a protected pull request.",
       "match": ["git push origin HEAD:main"],
-      "not_match": ["git push --force origin main"]
+      "not_match": ["git push -u origin codex/feature"]
     }
   ]
 paths:
@@ -205,8 +205,8 @@ Upstream sources:
 ## Git safety
 
 - Commit, push, create a branch, open a PR, or merge only when explicitly requested.
-- Direct-`main` work commits on `main` and pushes `git push origin HEAD:main`, so local `main` stays synchronized with `origin/main`.
-- PR work requires explicit PR intent and a topic checkout before the first commit. When the host selected managed worktree isolation before work began, use that checkout. Otherwise run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
+- Every update to `main` uses a protected pull request. Direct pushes to `main` are prohibited.
+- Work intended for publication requires a topic checkout before the first commit; a request to commit, push, merge, or release establishes PR intent. When the host selected managed worktree isolation before work began, use that checkout. Otherwise run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
 - To continue an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
@@ -238,7 +238,7 @@ Required GitHub Actions repository settings:
 
 - GitHub Actions MUST be enabled.
 - Repository Actions policy MUST require full-length SHA pinning.
-- Repository Actions policy MAY allow all actions because Rule 09 and `npm run guard:ci` enforce immutable action pins in workflow files.
+- Repository Actions policy MUST allow GitHub-owned actions plus only the reviewed third-party repositories named by `.github/repo-policy.json`; every executable ref remains full-SHA pinned.
 - Default `GITHUB_TOKEN` permissions MUST be read-only.
 - GitHub Actions MUST NOT be allowed to create or approve pull-request reviews.
 - First-time outside contributor workflow approval MUST remain enabled for public-fork PRs.
@@ -246,9 +246,8 @@ Required GitHub Actions repository settings:
 Required `main` branch protection:
 
 - `required_linear_history` MUST be `true`.
-- `direct_pushes` MUST be `true`; direct fast-forward pushes to `main` are allowed by policy.
-- `required_status_checks` MUST NOT be configured on `main`.
-- `required_pull_request_reviews` MUST NOT be configured on `main`.
+- `direct_pushes` MUST be `false`; every update to `main` must use a pull request.
+- Classic branch protection MUST NOT duplicate required status checks or pull-request review settings; the repository ruleset owns those gates.
 - `required_conversation_resolution` MUST be `true` for PRs when PRs are used.
 - `enforce_admins` MUST be `true`.
 - `allow_force_pushes` MUST be `false`.
@@ -260,51 +259,19 @@ Required repository ruleset:
 
 - A repository branch ruleset named `main branch policy` MUST be active and target the default branch.
 - The ruleset MUST block deletion and non-fast-forward updates and require linear history.
-- The ruleset MUST NOT require pull requests or required status checks while `.github/repo-policy.json` has `branches.main.direct_pushes: true`.
+- The ruleset MUST require pull requests with squash as the only merge method and zero approvals while the repository has only one independent maintainer.
+- The ruleset MUST require the stable `CI required`, both CodeQL language analyses, and Dependency Review from the GitHub Actions integration, with strict current-main testing.
 - Ruleset bypass actors MUST remain empty unless the user explicitly approves a break-glass path and the reason is recorded in the rule.
+- A `release tag policy` ruleset MUST block deletion and non-fast-forward updates for `v*` tags.
+- The `release` environment MUST allow only the `main` branch. Add an independent required reviewer when the maintainer set can satisfy that gate without self-approval.
 
 CODEOWNERS is advisory while `required_approving_review_count` is `0` and `require_code_owner_reviews` is `false`. Do not describe code-owner review as enforced unless those settings change.
 
-## Direct-main workflow
-
-Use this path when the user asks to push, deploy, merge to `main`, or release without explicitly asking for a PR.
-
-Before pushing to `main`, run:
-
-```bash
-npm run guard
-git fetch origin main
-```
-
-The branch MUST be current with `origin/main`, the update MUST be a fast-forward, and the commit MUST contain only task-owned tracked changes. Preserve unrelated local and ignored maintainer surfaces.
-
-Commit with voluntary author signoff:
-
-```bash
-git commit --signoff
-```
-
-Push directly:
-
-```bash
-git push origin HEAD:main
-```
-
-After pushing, verify:
-
-```bash
-git fetch origin main
-git merge-base --is-ancestor HEAD origin/main
-npm run github:audit-settings
-```
-
-If GitHub rejects the push because a PR, review, or required status check is required, treat live GitHub settings as policy drift. Fix by reconciling live settings to `.github/repo-policy.json` with `npm run github:audit-settings` evidence. Do not add PR or required-check gates back to satisfy the rejection unless the user explicitly requests a policy change.
-
 ## Pull-request workflow
 
-Use this path when the user asks for a PR or when an external contribution requires review flow.
+Use this path for every commit intended for `main`.
 
-Establish explicit PR intent and enter the topic checkout before the first commit, so local `main` never carries PR commits. Use the transactional branch paths defined above. Commit, push, and open the PR only from that topic checkout. Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch with commits outside the requested task.
+Enter the topic checkout before the first commit, so local `main` never carries unpublished work. Use the transactional branch paths defined above. Commit, push, and open the PR only from that topic checkout. Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch with commits outside the requested task.
 
 Merge PRs with GitHub's squash merge path:
 
@@ -361,13 +328,6 @@ For GitHub check evidence behavior, also run:
 npm test -- tests/agent-hooks/agent-hook-core.test.ts
 ```
 
-Before direct-main push, also run:
-
-```bash
-npm run guard
-git fetch origin main
-```
-
 Before merging a PR, run:
 
 ```bash
@@ -378,7 +338,7 @@ After merging a PR, run the post-merge closeout above and record the fetched ref
 
 ## Failure behavior
 
-Fix the worktree, branch, policy, GitHub setting, or failing check that failed. If direct push fails because GitHub requires PRs, reviews, or status checks, fix live policy drift against `.github/repo-policy.json`; do not reintroduce required PR or status-check gates unless the user explicitly asks to change the policy. If `statusCheckRollup` evidence reports failed checks, fix the checks and record later successful `github-checks` evidence before claiming green. Do not bypass branch protection, use admin merge, force push, change the PR base to avoid conflicts, loosen `.github/repo-policy.json`, discard unrelated work, or continue on a merged topic branch to make a command pass.
+Fix the worktree, branch, policy, GitHub setting, or failing check that failed. If `statusCheckRollup` evidence reports failed checks, fix the checks and record later successful evidence before claiming green. Do not bypass branch protection, push directly to `main`, use admin merge, force push, retarget the PR to avoid conflicts, loosen `.github/repo-policy.json`, discard unrelated work, or continue on a merged topic branch to make a command pass.
 
 ## Done means
 

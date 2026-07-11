@@ -92,6 +92,27 @@ if (expectedActions.permissions) {
   const actualPermissions = ghJson(["api", `repos/${repo}/actions/permissions`]);
   compareObject(actualPermissions, expectedActions.permissions, "actions.permissions");
 }
+if (expectedActions.selectedActions) {
+  const actualSelectedActions = ghJson([
+    "api",
+    `repos/${repo}/actions/permissions/selected-actions`,
+  ]);
+  compareObject(
+    actualSelectedActions,
+    {
+      github_owned_allowed: expectedActions.selectedActions.github_owned_allowed,
+      verified_allowed: expectedActions.selectedActions.verified_allowed,
+    },
+    "actions.selectedActions"
+  );
+  const expectedPatterns = sorted(expectedActions.selectedActions.patterns_allowed ?? []);
+  const actualPatterns = sorted(actualSelectedActions.patterns_allowed ?? []);
+  if (!sameJson(actualPatterns, expectedPatterns)) {
+    failures.push(
+      `actions.selectedActions.patterns_allowed expected ${JSON.stringify(expectedPatterns)}, got ${JSON.stringify(actualPatterns)}`
+    );
+  }
+}
 if (expectedActions.workflowPermissions) {
   const actualWorkflowPermissions = ghJson(["api", `repos/${repo}/actions/permissions/workflow`]);
   compareObject(
@@ -110,6 +131,32 @@ if (expectedActions.forkPullRequestContributorApproval) {
     expectedActions.forkPullRequestContributorApproval,
     "actions.forkPullRequestContributorApproval"
   );
+}
+
+for (const [environmentName, environmentPolicy] of Object.entries(policy.environments ?? {})) {
+  const environment = ghJson(["api", `repos/${repo}/environments/${environmentName}`]);
+  compareObject(
+    environment.deployment_branch_policy,
+    environmentPolicy.deployment_branch_policy,
+    `environments.${environmentName}.deployment_branch_policy`
+  );
+  const actualBranchPolicies = ghJson([
+    "api",
+    `repos/${repo}/environments/${environmentName}/deployment-branch-policies`,
+  ]).branch_policies;
+  const normalizeBranchPolicies = (value) =>
+    (value ?? [])
+      .map(({ name, type }) => ({ name, type }))
+      .sort((left, right) =>
+        `${left.type}:${left.name}`.localeCompare(`${right.type}:${right.name}`)
+      );
+  const expectedBranchPolicies = normalizeBranchPolicies(environmentPolicy.branch_policies);
+  const normalizedActualBranchPolicies = normalizeBranchPolicies(actualBranchPolicies);
+  if (!sameJson(normalizedActualBranchPolicies, expectedBranchPolicies)) {
+    failures.push(
+      `environments.${environmentName}.branch_policies expected ${JSON.stringify(expectedBranchPolicies)}, got ${JSON.stringify(normalizedActualBranchPolicies)}`
+    );
+  }
 }
 
 for (const [branch, branchPolicy] of Object.entries(policy.branches ?? {})) {

@@ -142,7 +142,7 @@ describe("sync:llm", () => {
         "",
         "# Rule 21",
         "",
-        "Direct fast-forward pushes to main are allowed by policy.",
+        "Protected pull requests are required for main.",
         "",
       ].join("\n"),
       ".claude/rules/supaschema.md": "# Supaschema rule\n",
@@ -239,7 +239,7 @@ describe("sync:llm", () => {
       "Canonical rule owner: .claude/rules/21-source-control.md"
     );
     expect(read(root, ".codex/rules/21-source-control.rules")).not.toContain(
-      "Direct fast-forward pushes to main are allowed by policy."
+      "Protected pull requests are required for main."
     );
     expect(read(root, ".codex/agents/ci-debugger.toml")).toContain(
       'sandbox_mode = "workspace-write"'

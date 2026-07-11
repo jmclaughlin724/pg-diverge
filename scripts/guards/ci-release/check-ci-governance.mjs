@@ -170,6 +170,25 @@ function assertReleaseYaml(parsed) {
       release.doc.concurrency["cancel-in-progress"] !== true,
     "release.yml must queue npm publishes with concurrency group release-npm and queue: max"
   );
+  const preflightJob = release.doc?.jobs?.preflight;
+  assert(preflightJob, "release.yml must define a read-only preflight job");
+  const preflightIf = String(preflightJob.if ?? "");
+  assert(
+    preflightIf.includes("github.event_name == 'workflow_dispatch'") &&
+      preflightIf.includes("github.event_name == 'push'") &&
+      preflightIf.includes("github.ref == 'refs/heads/main'"),
+    "release.yml preflight must run only for main push or main workflow_dispatch"
+  );
+  assert(
+    !preflightJob.permissions || permissionsAreReadOnly(preflightJob.permissions),
+    "release.yml preflight job must not elevate the read-only workflow token"
+  );
+  assert(
+    (preflightJob.steps ?? []).some((step) =>
+      String(step?.run ?? "").includes("node scripts/release/preflight.mjs")
+    ),
+    "release.yml read-only preflight job must run release preflight"
+  );
   const publishJob = Object.values(release.doc?.jobs ?? {}).find(
     (job) =>
       job?.permissions &&
@@ -185,15 +204,15 @@ function assertReleaseYaml(parsed) {
     publishJob["runs-on"] === "ubuntu-latest",
     "release.yml publish job must run on a GitHub-hosted Ubuntu runner for npm trusted publishing"
   );
+  for (const output of ["create-github-release", "publish-github-package", "publish-npm"]) {
+    assert(
+      publishIf.includes(`needs.preflight.outputs.${output} == 'true'`),
+      `release.yml publish job must require the ${output} preflight output`
+    );
+  }
   assert(
-    publishIf.includes("github.event_name == 'workflow_dispatch'") &&
-      publishIf.includes("github.ref == 'refs/heads/main'"),
-    "release.yml manual dispatch path must be scoped to refs/heads/main"
-  );
-  assert(
-    publishIf.includes("github.event_name == 'push'") &&
-      publishIf.includes("github.ref == 'refs/heads/main'"),
-    "release.yml publish job must run on push only for refs/heads/main"
+    publishJob.needs === "preflight",
+    "release.yml privileged publish job must depend on the read-only preflight"
   );
   assert(
     publishJob.permissions?.contents === "write",
@@ -204,12 +223,26 @@ function assertReleaseYaml(parsed) {
     "release.yml publish job must not configure a DB URL"
   );
   assert(!publishJob.services, "release.yml publish job must not start database services");
+  const hardenRunnerStep = (publishJob.steps ?? []).find(
+    (step) => typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
+  );
+  assert(hardenRunnerStep, "release.yml publish job must run step-security/harden-runner");
+  const requiredEndpoints = [
+    "*.actions.githubusercontent.com:443",
+    "api.github.com:443",
+    "fulcio.sigstore.dev:443",
+    "github.com:443",
+    "npm.pkg.github.com:443",
+    "registry.npmjs.org:443",
+    "rekor.sigstore.dev:443",
+    "tuf-repo-cdn.sigstore.dev:443",
+  ];
   assert(
-    (publishJob.steps ?? []).some(
-      (step) =>
-        typeof step?.uses === "string" && step.uses.startsWith("step-security/harden-runner")
-    ),
-    "release.yml publish job must run step-security/harden-runner (egress monitoring on the OIDC job)"
+    hardenRunnerStep.with?.["egress-policy"] === "block" &&
+      requiredEndpoints.every((endpoint) =>
+        String(hardenRunnerStep.with?.["allowed-endpoints"] ?? "").includes(endpoint)
+      ),
+    "release.yml privileged job must enforce the reviewed egress endpoint allow-list"
   );
   const checkoutStep = (publishJob.steps ?? []).find(
     (step) => typeof step?.uses === "string" && step.uses.startsWith("actions/checkout")
@@ -354,7 +387,7 @@ export function check(root = ROOT) {
 
   assertWorkflowBasics(parsed);
 
-  for (const file of ["ci.yml", "dependency-review.yml"]) {
+  for (const file of ["ci.yml", "codeql.yml", "dependency-review.yml", "docs.yml"]) {
     const doc = parsed.get(file)?.doc;
     assert(doc, `${file} must exist`);
     assert(
@@ -373,6 +406,14 @@ export function check(root = ROOT) {
 
   const ci = parsed.get("ci.yml")?.doc;
   assert(ci, "ci.yml must exist");
+  const requiredJob = ci.jobs?.required;
+  assert(
+    requiredJob?.name === "CI required" &&
+      String(requiredJob.if).includes("always()") &&
+      JSON.stringify(asArray(requiredJob.needs)) ===
+        JSON.stringify(["quality", "check", "check-os"]),
+    "ci.yml must expose one stable CI required job over every matrix lane"
+  );
   const nodes = jobMatrix(ci, "quality", "node-version");
   assert(
     [22, 24].every((value) => nodes.includes(value)),
@@ -436,6 +477,21 @@ export function check(root = ROOT) {
     "release:verify must run npm run test:consumer-lifecycle before npm run package:smoke"
   );
   assertConsumerPackageSmokeSteps(qualitySteps);
+
+  const dependencyReview = parsed.get("dependency-review.yml")?.doc?.jobs?.["dependency-review"];
+  const dependencyReviewStep = (dependencyReview?.steps ?? []).find(
+    (step) => stepActionName(step) === "actions/dependency-review-action"
+  );
+  assert(dependencyReviewStep, "dependency-review.yml must run dependency-review-action");
+  assert(
+    !("comment-summary-in-pr" in (dependencyReviewStep.with ?? {})),
+    "dependency-review.yml must remain read-only and must not request PR comment writes"
+  );
+  assert(
+    typeof dependencyReviewStep.with?.["allow-licenses"] === "string" &&
+      !("deny-licenses" in (dependencyReviewStep.with ?? {})),
+    "dependency-review.yml must use an explicit license allow-list, not deprecated deny-licenses"
+  );
 
   const checkRuns = (ci.jobs?.check?.steps ?? []).map((step) => String(step?.run ?? ""));
   assert(

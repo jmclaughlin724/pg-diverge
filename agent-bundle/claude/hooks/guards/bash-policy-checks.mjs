@@ -181,8 +181,10 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   if (subcommand === "commit" && gitArgs.includes("--no-verify")) {
     return block("BLOCKED: --no-verify is prohibited. Fix the hook failure instead.");
   }
-  if (subcommand === "push" && isForcePushToMain(gitArgs)) {
-    return block("BLOCKED: force-push to main is prohibited.");
+  if (subcommand === "push" && isPushToMain(gitArgs)) {
+    return block(
+      "BLOCKED: direct pushes to main are prohibited. Push a topic branch and merge its protected pull request."
+    );
   }
   if (subcommand === "push" && isDiagnosticPush(ast, tokens, gitArgs)) {
     return block(
@@ -619,12 +621,13 @@ function rmArgsIncludeRecursiveForce(args) {
   return false;
 }
 
-function isForcePushToMain(args) {
-  return (
-    args.some(
-      (arg) =>
-        arg === "--force" || arg === "--force-with-lease" || arg.startsWith("--force-with-lease=")
-    ) && args.some((arg) => arg === "main" || arg === "refs/heads/main" || arg.endsWith(":main"))
+function isPushToMain(args) {
+  return args.some(
+    (arg) =>
+      arg === "main" ||
+      arg === "refs/heads/main" ||
+      arg.endsWith(":main") ||
+      arg.endsWith(":refs/heads/main")
   );
 }
 
