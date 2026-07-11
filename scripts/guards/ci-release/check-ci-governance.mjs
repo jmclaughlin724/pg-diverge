@@ -499,8 +499,11 @@ export function check(root = ROOT) {
       !("deny-licenses" in (dependencyReviewStep.with ?? {})),
     "dependency-review.yml must use an explicit license allow-list, not deprecated deny-licenses"
   );
-  const licenseExclusions = String(
-    dependencyReviewStep.with?.["allow-dependencies-licenses"] ?? ""
+  const licenseExclusions = new Set(
+    String(dependencyReviewStep.with?.["allow-dependencies-licenses"] ?? "")
+      .split(",")
+      .map((packageUrl) => packageUrl.trim())
+      .filter(Boolean)
   );
   for (const packageName of [
     "@postgres-language-server/cli",
@@ -513,7 +516,7 @@ export function check(root = ROOT) {
     "@postgres-language-server/cli-x86_64-windows-msvc",
   ]) {
     assert(
-      licenseExclusions.includes(`pkg:npm/${packageName}`),
+      licenseExclusions.has(`pkg:npm/${packageName}`),
       `dependency-review.yml must exclude the current invalid lowercase license metadata for ${packageName}`
     );
   }
