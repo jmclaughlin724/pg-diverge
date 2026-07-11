@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import ts from "typescript-compiler-api";
 import { describe, expect, it } from "vitest";
 import type { Diagnostic } from "../../src/core.js";
 import { extractSourceModel } from "../../src/source/extract.js";
@@ -173,8 +174,9 @@ function generatedTypeBlock(
   if (relationStart === -1) {
     return "";
   }
+  const relationEnd = types.indexOf("\n      };", relationStart);
   const start = types.indexOf(`        ${shape}: {`, relationStart);
-  if (start === -1) {
+  if (start === -1 || (relationEnd !== -1 && start > relationEnd)) {
     return "";
   }
   const end = types.indexOf("\n        };", start);
@@ -238,6 +240,32 @@ function commandErrorField(error: Error, field: "stderr" | "stdout"): string | u
   return typeof value === "string" ? value : undefined;
 }
 
+function canonicalDeclaration(source: string, name: string): string | undefined {
+  const sourceFile = ts.createSourceFile(
+    "database.types.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const statement = sourceFile.statements.find((candidate) => {
+    if (ts.isTypeAliasDeclaration(candidate)) {
+      return candidate.name.text === name;
+    }
+    return (
+      ts.isVariableStatement(candidate) &&
+      candidate.declarationList.declarations.some(
+        (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === name
+      )
+    );
+  });
+  return statement
+    ? ts
+        .createPrinter({ removeComments: true })
+        .printNode(ts.EmitHint.Unspecified, statement, sourceFile)
+    : undefined;
+}
+
 describe("database type generation", () => {
   it("types tables, enums, views, and relationships without a database", async () => {
     const types = await typesFor(treeSql);
@@ -278,6 +306,39 @@ describe("database type generation", () => {
     expect(views).toContain("label: string;");
     expect(views).toContain("payload: Json | null;");
     expect(types).toContain("Relationships: [];");
+  });
+
+  it("emits write contracts only for automatically updatable views", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint, name text);
+CREATE FUNCTION app.expand_id(bigint) RETURNS SETOF bigint LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE VIEW app.account_labels AS SELECT id, upper(name) AS label FROM app.accounts;
+CREATE VIEW app.account_expanded AS SELECT *, upper(name) AS label FROM app.accounts;
+CREATE VIEW app.account_expanded_implicit AS SELECT *, upper(name) FROM app.accounts;
+CREATE VIEW app.account_custom_series AS SELECT app.expand_id(id) AS id FROM app.accounts;
+CREATE VIEW app.account_totals AS SELECT count(id) AS total FROM app.accounts;
+CREATE VIEW app.account_ranks AS SELECT row_number() OVER () AS rank FROM app.accounts;
+CREATE VIEW app.account_series AS SELECT generate_series(1, 2) AS value FROM app.accounts;
+`);
+    const insert = generatedTypeBlock(types, "account_labels", "Insert");
+    const update = generatedTypeBlock(types, "account_labels", "Update");
+
+    expect(insert).toContain("id?: number | null;");
+    expect(insert).toContain("label?: never;");
+    expect(update).toContain("id?: number | null;");
+    expect(update).toContain("label?: never;");
+    const expandedInsert = generatedTypeBlock(types, "account_expanded", "Insert");
+    expect(expandedInsert).toContain("id?: number | null;");
+    expect(expandedInsert).toContain("name?: string | null;");
+    expect(expandedInsert).toContain("label?: never;");
+    const implicitInsert = generatedTypeBlock(types, "account_expanded_implicit", "Insert");
+    expect(implicitInsert).toContain("id?: number | null;");
+    expect(implicitInsert).toContain("upper?: never;");
+    expect(generatedTypeBlock(types, "account_totals", "Insert")).toBe("");
+    expect(generatedTypeBlock(types, "account_totals", "Update")).toBe("");
+    expect(generatedTypeBlock(types, "account_ranks", "Insert")).toBe("");
+    expect(generatedTypeBlock(types, "account_series", "Insert")).toBe("");
+    expect(generatedTypeBlock(types, "account_custom_series", "Insert")).toBe("");
   });
 
   it("resolves CTE-backed view columns and typed expressions", async () => {
@@ -631,6 +692,39 @@ CREATE VIEW public.custom_lower_mismatch AS SELECT lower(1) AS lowered;
     expect(types).toContain('status: ["draft", "active"],');
   });
 
+  it("matches the checked-in official postgres-meta contract", async () => {
+    const sql = `CREATE TYPE public.visibility AS ENUM ('public', 'private');
+CREATE TYPE public.address AS (street text, zip bigint);
+CREATE TABLE public.movies (id bigint NOT NULL, name text NOT NULL, visibility visibility NOT NULL);
+CREATE VIEW public.movie_names AS SELECT id, name FROM public.movies;
+`;
+    const model = await modelFor(sql, "supa-typegen-official-parity-");
+    const generated = generateDatabaseTypes(await collectSchemaShapes(model), {
+      postgrestVersion: "12",
+    });
+    const official = await readFile(
+      join(process.cwd(), "tests/fixtures/typegen/supabase-official.types.txt"),
+      "utf8"
+    );
+
+    for (const name of [
+      "Json",
+      "Database",
+      "DatabaseWithoutInternals",
+      "DefaultSchema",
+      "Tables",
+      "TablesInsert",
+      "TablesUpdate",
+      "Enums",
+      "CompositeTypes",
+      "Constants",
+    ]) {
+      expect(canonicalDeclaration(generated, name), name).toBe(
+        canonicalDeclaration(official, name)
+      );
+    }
+  });
+
   it("emits internals and upstream empty collection sentinels", async () => {
     const model = await modelFor(
       `CREATE SCHEMA app;
@@ -649,7 +743,7 @@ CREATE TABLE public.movies (id bigint);
       'type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;'
     );
     expect(types).toContain(
-      'type DefaultSchema = DatabaseWithoutInternals[Extract<keyof DatabaseWithoutInternals, "public">];'
+      'type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">];'
     );
     expect(types.split("[_ in never]: never;")).toHaveLength(9);
   });
@@ -749,12 +843,14 @@ describe("review-hardened typegen", () => {
     );
   });
 
-  it("resolves shorthand foreign keys to the target primary key and marks unique FKs one-to-one", async () => {
+  it("filters cross-schema relationships like postgres-meta", async () => {
     const types = await typesFor(hardenedSql);
+    const logsStart = types.indexOf("      logs: {");
+    const relationshipsStart = types.indexOf("        Relationships:", logsStart);
+    const relationshipsEnd = types.indexOf("\n", relationshipsStart);
+    const relationships = types.slice(relationshipsStart, relationshipsEnd);
 
-    expect(types).toContain('referencedRelation: "users"');
-    expect(types).toContain('referencedColumns: ["id"]');
-    expect(types).toContain("isOneToOne: true");
+    expect(relationships).toBe("        Relationships: [];");
   });
 
   it("maps alias-list view columns positionally and expands qualified star selects", async () => {
@@ -796,6 +892,18 @@ void numeric;
 void textual;
 void invalid;
 `);
+  });
+
+  it("emits upstream conflict signatures for same-named arguments", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE FUNCTION app.ambiguous(value integer) RETURNS integer LANGUAGE sql AS $$ SELECT value $$;
+CREATE FUNCTION app.ambiguous(value text) RETURNS text LANGUAGE sql AS $$ SELECT value $$;
+`);
+
+    expect(types).toContain(
+      "Could not choose the best candidate function between: app.ambiguous(value => int4), app.ambiguous(value => text). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+    );
+    expect(types.split("Returns: { error: true }")).toHaveLength(3);
   });
 });
 
@@ -873,6 +981,48 @@ describe("function return row typegen", () => {
     expect(types).toContain("single_out: { Args: never; Returns: number };");
     expect(types).not.toContain("single_out: { Args: never; Returns: { x:");
   });
+
+  it("uses the PostgreSQL row estimate for set-returning function cardinality", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint);
+CREATE FUNCTION app.one_account(app.accounts) RETURNS SETOF app.accounts ROWS 1 LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION app.many_accounts(app.accounts) RETURNS SETOF app.accounts ROWS 2 LANGUAGE sql AS $$ SELECT $1 $$;
+`);
+
+    expect(types).toContain(
+      'one_account: { Args: { "": Database["app"]["Tables"]["accounts"]["Row"] }; Returns: Database["app"]["Tables"]["accounts"]["Row"]; SetofOptions: { from: "app.accounts"; to: "accounts"; isOneToOne: true; isSetofReturn: true } };'
+    );
+    expect(types).toContain(
+      'many_accounts: { Args: { "": Database["app"]["Tables"]["accounts"]["Row"] }; Returns: Database["app"]["Tables"]["accounts"]["Row"][]; SetofOptions: { from: "app.accounts"; to: "accounts"; isOneToOne: false; isSetofReturn: true } };'
+    );
+  });
+});
+
+describe("PostgREST function metadata", () => {
+  it("keeps valid unnamed scalar and relation-row arguments", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TYPE app.address AS (street text);
+CREATE TABLE app.accounts (id bigint);
+CREATE FUNCTION app.take_json(json) RETURNS json LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION app.take_text(text) RETURNS text LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION app.take_integer(integer) RETURNS integer LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION app.take_address(app.address) RETURNS app.address LANGUAGE sql AS $$ SELECT $1 $$;
+CREATE FUNCTION app.invalid_mixed(label text, app.address DEFAULT NULL) RETURNS text LANGUAGE sql AS $$ SELECT label $$;
+CREATE FUNCTION app.account_label(app.accounts) RETURNS text LANGUAGE sql AS $$ SELECT 'account'::text $$;
+`);
+
+    expect(types).toContain('take_json: { Args: { "": Json }; Returns: Json };');
+    expect(types).toContain('take_text: { Args: { "": string }; Returns: string };');
+    expect(types).not.toContain("take_integer:");
+    expect(types).not.toContain("invalid_mixed:");
+    expect(types).toContain(
+      'take_address: { Args: { "": Database["app"]["CompositeTypes"]["address"] }; Returns: Database["app"]["CompositeTypes"]["address"]; SetofOptions: { from: "app.address"; to: "address"; isOneToOne: true; isSetofReturn: false } };'
+    );
+    expect(types).toContain("account_label: string | null;");
+    expect(types).toContain(
+      'Returns: { error: true } & "the function app.account_label with parameter or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache"'
+    );
+  });
 });
 
 describe("zod schema generation", () => {
@@ -884,7 +1034,7 @@ describe("zod schema generation", () => {
   it("emits runtime validators mirroring the generated types", async () => {
     const zod = await zodFor(treeSql);
 
-    expect(zod).toContain('import type { Json } from "./database.types.js";');
+    expect(zod).toContain('import type { Database, Json } from "./database.types.js";');
     expect(zod).toContain('import { z } from "zod";');
     expect(zod).toContain("export const JsonSchema: z.ZodType<Json>");
     expect(zod).toContain("export const SupaschemaZod");
@@ -908,20 +1058,22 @@ describe("zod schema generation", () => {
     const zodWithoutJsonImport = zod.split("\n").slice(1).join("\n");
 
     await expectTypeScriptAccepts(`${types}${zodWithoutJsonImport}
-const movie = SupaschemaZod.public.Tables.movies.Row.parse({ id: 1, name: "Heat", visibility: "public" }) as Tables<"movies">;
-const movieView = SupaschemaZod.public.Views.movie_names.Row.parse({ id: 1, name: "Heat" }) as Tables<"movie_names">;
-const movieInsert = SupaschemaZod.public.Tables.movies.Insert.parse({ name: "Heat" }) as TablesInsert<"movies">;
-const movieUpdate = SupaschemaZod.public.Tables.movies.Update.parse({ name: "Thief" }) as TablesUpdate<"movies">;
-const visibility = SupaschemaZod.public.Enums.visibility.parse("private") as Enums<"visibility">;
-const account = SupaschemaZod.app.Tables.accounts.Row.parse({
+const movie: Tables<"movies"> = SupaschemaZod.public.Tables.movies.Row.parse({ id: 1, name: "Heat", visibility: "public" });
+const movieView: Tables<"movie_names"> = SupaschemaZod.public.Views.movie_names.Row.parse({ id: 1, name: "Heat" });
+const movieInsert: TablesInsert<"movies"> = SupaschemaZod.public.Tables.movies.Insert.parse({ name: "Heat" });
+const movieUpdate: TablesUpdate<"movies"> = SupaschemaZod.public.Tables.movies.Update.parse({ name: "Thief" });
+const visibility: Enums<"visibility"> = SupaschemaZod.public.Enums.visibility.parse("private");
+const account: Tables<{ schema: "app" }, "accounts"> = SupaschemaZod.app.Tables.accounts.Row.parse({
   id: 1,
   state: "active",
   home: { street: "Main", zip: 1 },
-}) as Tables<{ schema: "app" }, "accounts">;
-const accountInsert = SupaschemaZod.app.Tables.accounts.Insert.parse({ state: "draft" }) as TablesInsert<{ schema: "app" }, "accounts">;
-const accountUpdate = SupaschemaZod.app.Tables.accounts.Update.parse({ state: "active" }) as TablesUpdate<{ schema: "app" }, "accounts">;
-const status = SupaschemaZod.app.Enums.status.parse("draft") as Enums<{ schema: "app" }, "status">;
-const address = SupaschemaZod.app.CompositeTypes.address.parse({ street: "Main", zip: 1 }) as CompositeTypes<{ schema: "app" }, "address">;
+});
+const accountInsert: TablesInsert<{ schema: "app" }, "accounts"> = SupaschemaZod.app.Tables.accounts.Insert.parse({ state: "draft" });
+const accountUpdate: TablesUpdate<{ schema: "app" }, "accounts"> = SupaschemaZod.app.Tables.accounts.Update.parse({ state: "active" });
+const status: Enums<{ schema: "app" }, "status"> = SupaschemaZod.app.Enums.status.parse("draft");
+const address: CompositeTypes<{ schema: "app" }, "address"> = SupaschemaZod.app.CompositeTypes.address.parse({ street: "Main", zip: 1 });
+// @ts-expect-error Parsed rows retain their generated output type rather than any.
+const wrong: { missing: string } = SupaschemaZod.public.Tables.movies.Row.parse({ id: 1, name: "Heat", visibility: "public" });
 void movie;
 void movieView;
 void movieInsert;
@@ -932,6 +1084,23 @@ void accountInsert;
 void accountUpdate;
 void status;
 void address;
+void wrong;
+`);
+  }, 15_000);
+
+  it("keeps computed relationship validators aligned with generated rows", async () => {
+    const sql = `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint);
+CREATE FUNCTION app.account_label(app.accounts) RETURNS text LANGUAGE sql AS $$ SELECT 'account'::text $$;
+`;
+    const types = await typesFor(sql);
+    const zod = await zodFor(sql);
+    const zodWithoutTypesImport = zod.split("\n").slice(1).join("\n");
+
+    expect(zod).toContain("account_label: z.string().nullable(),");
+    await expectTypeScriptAccepts(`${types}${zodWithoutTypesImport}
+const account: Tables<{ schema: "app" }, "accounts"> = SupaschemaZod.app.Tables.accounts.Row.parse({ id: 1, account_label: null });
+void account;
 `);
   }, 15_000);
 
@@ -967,18 +1136,18 @@ CREATE TABLE app.people (id bigint, home app.address);
   });
 
   it("defers composite references so declaration order cannot trigger TDZ", async () => {
-    const zod = await zodFor(
-      `CREATE SCHEMA app;
+    const sql = `CREATE SCHEMA app;
 CREATE TYPE app.z AS (value text);
 CREATE TYPE app.a AS (z app.z);
-`
-    );
+`;
+    const zod = await zodFor(sql);
+    const types = await typesFor(sql);
     const root = join(process.cwd(), ".tmp");
     await mkdir(root, { recursive: true });
     const moduleRoot = await mkdtemp(join(root, "supa-zod-runtime-"));
     const outDir = join(moduleRoot, "dist");
     await writeFile(join(moduleRoot, "package.json"), '{"type":"module"}\n');
-    await writeFile(join(moduleRoot, "database.types.ts"), "export type Json = unknown;\n");
+    await writeFile(join(moduleRoot, "database.types.ts"), types);
     await writeFile(join(moduleRoot, "schemas.ts"), zod);
     await writeFile(
       join(moduleRoot, "tsconfig.json"),
@@ -1025,7 +1194,7 @@ CREATE TYPE app.a AS (z app.z);
 
   it("derives insert optionality and omits generated columns from writes", async () => {
     const zod = await zodFor(treeSql);
-    const accountsStart = zod.indexOf("accounts: {");
+    const accountsStart = zod.indexOf("accounts: {", zod.indexOf("export const SupaschemaZod"));
     const insertStart = zod.indexOf("Insert: z.object({", accountsStart);
     const insertEnd = zod.indexOf("Update: z.object({", accountsStart);
     const insert = zod.slice(insertStart, insertEnd);

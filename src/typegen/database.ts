@@ -1,13 +1,14 @@
 import type {
   ColumnShape,
   FunctionArgShape,
-  FunctionReturnShape,
   FunctionShape,
   RelationshipShape,
   SchemaEntry,
   SchemaShapes,
 } from "./model.js";
 import {
+  computedRelationshipFunctions,
+  functionReturnsMultipleRows,
   isNonWritableColumn,
   isOptionalInsertColumn,
   resolveColumnType,
@@ -93,7 +94,9 @@ function emitTables(
       }
       lines.push(
         "        };",
-        `        Relationships: ${renderRelationships(table.relationships)};`,
+        `        Relationships: ${renderRelationships(
+          table.relationships.filter((relationship) => relationship.referencedSchema === schema)
+        )};`,
         "      };"
       );
     }
@@ -113,32 +116,42 @@ function emitViews(
     lines.push("      [_ in never]: never;");
   } else {
     for (const view of views) {
-      const typeOf = (sqlType: string) => tsType(shapes, schema, sqlType);
-      lines.push(`      ${quoteKey(view.name)}: {`, "        Row: {");
-      for (const column of view.columns) {
-        lines.push(
-          `          ${quoteKey(column.name)}: ${nullable(typeOf(column.type), !column.notNull)};`
-        );
-      }
-      for (const field of computedRelationshipFields(shapes, schema, entry, view.name)) {
-        lines.push(`          ${quoteKey(field.name)}: ${nullable(field.type, true)};`);
-      }
-      lines.push("        };");
-      if (view.updatable) {
-        lines.push("        Insert: {");
-        for (const column of view.columns) {
-          lines.push(`          ${viewInsertField(column, typeOf)}`);
-        }
-        lines.push("        };", "        Update: {");
-        for (const column of view.columns) {
-          lines.push(`          ${viewUpdateField(column, typeOf)}`);
-        }
-        lines.push("        };");
-      }
-      lines.push(`        Relationships: ${renderRelationships(view.relationships)};`, "      };");
+      emitView(lines, shapes, schema, entry, view);
     }
   }
   lines.push("    };");
+}
+
+function emitView(
+  lines: string[],
+  shapes: SchemaShapes,
+  schema: string,
+  entry: SchemaEntry,
+  view: SchemaEntry["views"][number]
+): void {
+  const typeOf = (sqlType: string) => tsType(shapes, schema, sqlType);
+  lines.push(`      ${quoteKey(view.name)}: {`, "        Row: {");
+  for (const column of view.columns) {
+    lines.push(
+      `          ${quoteKey(column.name)}: ${nullable(typeOf(column.type), !column.notNull)};`
+    );
+  }
+  for (const field of computedRelationshipFields(shapes, schema, entry, view.name)) {
+    lines.push(`          ${quoteKey(field.name)}: ${nullable(field.type, true)};`);
+  }
+  lines.push("        };");
+  if (view.updatable) {
+    lines.push("        Insert: {");
+    for (const column of view.columns) {
+      lines.push(`          ${viewInsertField(column, typeOf)}`);
+    }
+    lines.push("        };", "        Update: {");
+    for (const column of view.columns) {
+      lines.push(`          ${viewUpdateField(column, typeOf)}`);
+    }
+    lines.push("        };");
+  }
+  lines.push(`        Relationships: ${renderRelationships(view.relationships)};`, "      };");
 }
 
 function emitFunctions(
@@ -203,7 +216,7 @@ function emitHelperTypes(lines: string[]): void {
   lines.push(
     'type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;',
     "",
-    'type DefaultSchema = DatabaseWithoutInternals[Extract<keyof DatabaseWithoutInternals, "public">];',
+    'type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">];',
     "",
     "export type Tables<",
     "  DefaultSchemaTableNameOrOptions extends",
@@ -398,7 +411,25 @@ function groupedFunctions(functions: FunctionShape[]): [string, FunctionShape[]]
     overloads.push(fn);
     grouped.set(fn.name, overloads);
   }
-  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right));
+  return [...grouped.entries()]
+    .map(sortFunctionOverloads)
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+
+function sortFunctionOverloads([name, overloads]: [string, FunctionShape[]]): [
+  string,
+  FunctionShape[],
+] {
+  return [name, [...overloads].sort(compareFunctionSignatures)];
+}
+
+function compareFunctionSignatures(left: FunctionShape, right: FunctionShape): number {
+  const leftArgs = left.args.map((arg) => `${arg.name}:${arg.type}`).join(",");
+  const rightArgs = right.args.map((arg) => `${arg.name}:${arg.type}`).join(",");
+  return (
+    leftArgs.localeCompare(rightArgs) ||
+    (left.returns?.type ?? "").localeCompare(right.returns?.type ?? "")
+  );
 }
 
 function renderFunctionSignatures(
@@ -408,11 +439,10 @@ function renderFunctionSignatures(
 ): string {
   return overloads
     .map((fn) => {
-      const conflict = functionConflictError(shapes, schema, overloads, fn);
+      const conflict = functionConflictError(schema, overloads, fn);
       const tableRowError = tableRowFunctionError(shapes, schema, fn);
       const args = renderFunctionArgs(shapes, schema, fn);
-      const returns =
-        conflict ?? tableRowError ?? renderFunctionReturns(shapes, schema, fn.returns);
+      const returns = conflict ?? tableRowError ?? renderFunctionReturns(shapes, schema, fn);
       const setofOptions = renderSetofOptions(shapes, schema, fn);
       return `{ Args: ${args}; Returns: ${returns}${setofOptions ? `; SetofOptions: ${setofOptions}` : ""} }`;
     })
@@ -431,20 +461,17 @@ function renderFunctionArgs(shapes: SchemaShapes, schema: string, fn: FunctionSh
     .join("; ")} }`;
 }
 
-function renderFunctionReturns(
-  shapes: SchemaShapes,
-  schema: string,
-  returns: FunctionReturnShape | undefined
-): string {
+function renderFunctionReturns(shapes: SchemaShapes, schema: string, fn: FunctionShape): string {
+  const returns = fn.returns;
   if (returns?.columns && returns.columns.length > 0) {
     const row = returns.columns
       .map((column) => `${quoteKey(column.name)}: ${tsType(shapes, schema, column.type)}`)
       .join("; ");
     const shape = `{ ${row} }`;
-    return returns.setof ? `${shape}[]` : shape;
+    return functionReturnsMultipleRows(fn) ? `${shape}[]` : shape;
   }
   const base = returns ? tsType(shapes, schema, returns.type) : "unknown";
-  return returns?.setof ? `${base}[]` : base;
+  return functionReturnsMultipleRows(fn) ? `${base}[]` : base;
 }
 
 function renderSetofOptions(
@@ -452,14 +479,14 @@ function renderSetofOptions(
   schema: string,
   fn: FunctionShape
 ): string | undefined {
-  const returnRelation = fn.returns ? relationForType(shapes, schema, fn.returns.type) : undefined;
+  const returnRelation = fn.returns ? relationRowType(shapes, schema, fn.returns.type) : undefined;
   const singleArg = fn.args.length === 1 ? fn.args[0] : undefined;
-  const sourceRelation = singleArg ? relationForType(shapes, schema, singleArg.type) : undefined;
+  const sourceRelation = singleArg ? relationRowType(shapes, schema, singleArg.type) : undefined;
   if (!returnRelation) {
     return;
   }
-  const from = sourceRelation?.name ?? "*";
-  return `{ from: ${JSON.stringify(from)}; to: ${JSON.stringify(returnRelation.name)}; isOneToOne: ${!fn.returns?.setof}; isSetofReturn: ${fn.returns?.setof === true} }`;
+  const from = sourceRelation ? postgresTypeFormat(sourceRelation) : "*";
+  return `{ from: ${JSON.stringify(from)}; to: ${JSON.stringify(returnRelation.name)}; isOneToOne: ${!functionReturnsMultipleRows(fn)}; isSetofReturn: ${fn.returns?.setof === true} }`;
 }
 
 function computedRelationshipFields(
@@ -468,16 +495,10 @@ function computedRelationshipFields(
   entry: SchemaEntry,
   relationName: string
 ): { name: string; type: string }[] {
-  return entry.functions.flatMap((fn) => {
-    if (fn.args.length !== 1) {
-      return [];
-    }
-    const source = relationForType(shapes, schema, fn.args[0]?.type ?? "");
-    if (source?.name !== relationName) {
-      return [];
-    }
-    return [{ name: fn.name, type: renderFunctionReturns(shapes, schema, fn.returns) }];
-  });
+  return computedRelationshipFunctions(shapes, schema, entry, relationName).map((fn) => ({
+    name: fn.name,
+    type: renderFunctionReturns(shapes, schema, fn),
+  }));
 }
 
 function isPostgrestVisibleFunction(
@@ -489,9 +510,7 @@ function isPostgrestVisibleFunction(
     return true;
   }
   if (
-    fn.args.every(
-      (arg) => arg.name.length > 0 || (arg.optional && isValidUnnamedArg(shapes, schema, arg))
-    )
+    fn.args.every((arg) => arg.name.length > 0 || (arg.optional && isValidUnnamedScalarArg(arg)))
   ) {
     return true;
   }
@@ -506,26 +525,48 @@ function isValidUnnamedArg(shapes: SchemaShapes, schema: string, arg: FunctionAr
   if (arg.name.length > 0) {
     return true;
   }
-  const base = unqualifiedTypeName(arg.type).toLowerCase();
-  return (
-    base === "json" ||
-    base === "jsonb" ||
-    base === "text" ||
-    relationForType(shapes, schema, arg.type) !== undefined
-  );
+  return isValidUnnamedScalarArg(arg) || relationRowType(shapes, schema, arg.type) !== undefined;
 }
 
-function relationForType(
+function isValidUnnamedScalarArg(arg: FunctionArgShape): boolean {
+  const base = unqualifiedTypeName(arg.type).toLowerCase();
+  return base === "json" || base === "jsonb" || base === "text";
+}
+
+function relationRowType(
   shapes: SchemaShapes,
   schema: string,
   sqlType: string
-): { collection: "Tables" | "Views"; name: string; schema: string } | undefined {
+): { name: string; schema: string } | undefined {
   const resolved = resolveColumnType(shapes, schema, sqlType);
-  return resolved.kind === "relation" ? resolved.relationRef : undefined;
+  if (resolved.kind === "relation") {
+    return resolved.relationRef;
+  }
+  return resolved.kind === "composite" ? resolved.compositeRef : undefined;
+}
+
+function postgresTypeFormat(type: { name: string; schema: string }): string {
+  const name = quotePostgresIdentifier(type.name);
+  return type.schema === "public" ? name : `${quotePostgresIdentifier(type.schema)}.${name}`;
+}
+
+function quotePostgresIdentifier(name: string): string {
+  let simple = name.length > 0;
+  for (let index = 0; index < name.length; index += 1) {
+    const character = name[index] ?? "";
+    const valid =
+      (character >= "a" && character <= "z") ||
+      character === "_" ||
+      (index > 0 && ((character >= "0" && character <= "9") || character === "$"));
+    if (!valid) {
+      simple = false;
+      break;
+    }
+  }
+  return simple ? name : `"${name.split('"').join('""')}"`;
 }
 
 function functionConflictError(
-  shapes: SchemaShapes,
   schema: string,
   overloads: FunctionShape[],
   fn: FunctionShape
@@ -544,7 +585,7 @@ function functionConflictError(
     if (conflict) {
       return `{ error: true } & ${JSON.stringify(
         `Could not choose the best candidate function between: ${schema}.${fn.name}(), ${schema}.${fn.name}( => ${
-          conflict.returns?.type ?? "unknown"
+          conflict.returns ? postgresCatalogTypeName(conflict.returns.type) : "unknown"
         }). Try renaming the parameters or the function itself in the database so function overloading can be resolved`
       )}`;
     }
@@ -562,7 +603,7 @@ function functionConflictError(
         .sort((left, right) => (left.args[0]?.type ?? "").localeCompare(right.args[0]?.type ?? ""))
         .map((item) => {
           const arg = item.args[0];
-          return `${schema}.${fn.name}(${arg?.name ?? ""} => ${arg ? tsType(shapes, schema, arg.type) : "unknown"})`;
+          return `${schema}.${fn.name}(${arg?.name ?? ""} => ${arg ? postgresCatalogTypeName(arg.type) : "unknown"})`;
         })
         .join(", ");
       return `{ error: true } & ${JSON.stringify(
@@ -581,8 +622,8 @@ function tableRowFunctionError(
   if (
     fn.args.length === 1 &&
     arg?.name === "" &&
-    relationForType(shapes, schema, arg.type) &&
-    !(fn.returns && relationForType(shapes, schema, fn.returns.type))
+    relationRowType(shapes, schema, arg.type) &&
+    !(fn.returns && relationRowType(shapes, schema, fn.returns.type))
   ) {
     return `{ error: true } & ${JSON.stringify(
       `the function ${schema}.${fn.name} with parameter or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache`
@@ -596,6 +637,11 @@ function unqualifiedTypeName(base: string): string {
   const parenStart = withoutArray.indexOf("(");
   const name = parenStart === -1 ? withoutArray : withoutArray.slice(0, parenStart);
   return name.includes(".") ? (name.split(".").at(-1) ?? name) : name;
+}
+
+function postgresCatalogTypeName(sqlType: string): string {
+  const name = unqualifiedTypeName(sqlType).toLowerCase();
+  return postgresCatalogTypeNames.get(name) ?? name;
 }
 
 function renderRelationships(relationships: RelationshipShape[]): string {
@@ -630,3 +676,20 @@ export function quoteKey(name: string): string {
   }
   return simple ? name : JSON.stringify(name);
 }
+
+const postgresCatalogTypeNames = new Map([
+  ["bigint", "int8"],
+  ["boolean", "bool"],
+  ["character", "bpchar"],
+  ["character varying", "varchar"],
+  ["decimal", "numeric"],
+  ["double precision", "float8"],
+  ["int", "int4"],
+  ["integer", "int4"],
+  ["real", "float4"],
+  ["smallint", "int2"],
+  ["time with time zone", "timetz"],
+  ["time without time zone", "time"],
+  ["timestamp with time zone", "timestamptz"],
+  ["timestamp without time zone", "timestamp"],
+]);

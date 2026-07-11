@@ -43,17 +43,14 @@ export async function createAccount(
   db: { query<T>(sql: string, values: unknown[]): Promise<{ rows: T[] }> },
   body: unknown
 ): Promise<AccountRow> {
-  const input = SupaschemaZod.app.Tables.accounts.Insert.parse(
-    body
-  ) as AccountInsert;
+  const input: AccountInsert =
+    SupaschemaZod.app.Tables.accounts.Insert.parse(body);
   const result = await db.query<AccountRow>(
     "insert into app.accounts (name) values ($1) returning id, name",
     [input.name]
   );
 
-  return SupaschemaZod.app.Tables.accounts.Row.parse(
-    result.rows[0]
-  ) as AccountRow;
+  return SupaschemaZod.app.Tables.accounts.Row.parse(result.rows[0]);
 }
 ```
 

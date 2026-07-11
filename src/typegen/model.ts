@@ -4,6 +4,7 @@ import type { AstNode } from "../sql/ast.js";
 import {
   asRecord,
   readArray,
+  readNumber,
   readString,
   stringList,
   stringValue,
@@ -15,6 +16,7 @@ import {
   collectUnresolvedViewRelations,
   collectViewColumns,
   type FunctionShapesByKey,
+  isNonUpdatableViewFunctionCall,
 } from "./views.js";
 
 export interface ColumnShape {
@@ -62,6 +64,7 @@ export interface FunctionReturnShape {
 
 export interface FunctionShape {
   args: FunctionArgShape[];
+  estimatedRows: number;
   name: string;
   returns: FunctionReturnShape | undefined;
 }
@@ -114,6 +117,29 @@ export interface ResolvedColumnType {
     | "unknown"
     | "void";
   relationRef?: { collection: "Tables" | "Views"; name: string; schema: string };
+}
+
+export function computedRelationshipFunctions(
+  shapes: SchemaShapes,
+  schema: string,
+  entry: SchemaEntry,
+  relationName: string
+): FunctionShape[] {
+  return entry.functions.filter((fn) => {
+    if (fn.args.length !== 1) {
+      return false;
+    }
+    const resolved = resolveColumnType(shapes, schema, fn.args[0]?.type ?? "");
+    return (
+      resolved.kind === "relation" &&
+      resolved.relationRef?.schema === schema &&
+      resolved.relationRef.name === relationName
+    );
+  });
+}
+
+export function functionReturnsMultipleRows(fn: FunctionShape): boolean {
+  return fn.returns?.setof === true && fn.estimatedRows > 1;
 }
 
 export async function collectSchemaShapes(
@@ -268,7 +294,7 @@ async function registerViewShapes(
   }
   for (const object of objects) {
     const columns = columnsByKey.get(relationKey(object)) ?? [];
-    const updatable = object.ref.kind === "view" && (await isUpdatableView(object));
+    const updatable = object.ref.kind === "view" && (await isUpdatableView(object, functionsByKey));
     schemaEntry(shapes, object.ref.schema ?? "public").views.push({
       columns: updatable ? await markViewColumnUpdatability(object, columns) : columns,
       name: object.ref.name,
@@ -323,7 +349,10 @@ function sameColumns(left: ColumnShape[] | undefined, right: ColumnShape[]): boo
   });
 }
 
-async function isUpdatableView(object: SchemaObject): Promise<boolean> {
+async function isUpdatableView(
+  object: SchemaObject,
+  functionsByKey: FunctionShapesByKey
+): Promise<boolean> {
   const select = await viewSelectStatement(object);
   if (!select) {
     return false;
@@ -340,11 +369,53 @@ async function isUpdatableView(object: SchemaObject): Promise<boolean> {
   ) {
     return false;
   }
+  if (
+    containsNonUpdatableViewFunction(
+      select.targetList,
+      object.ref.schema ?? "public",
+      functionsByKey
+    )
+  ) {
+    return false;
+  }
   const from = readArray(select.fromClause);
   if (from.length !== 1) {
     return false;
   }
   return asRecord(asRecord(from[0])?.RangeVar) !== undefined;
+}
+
+function containsNonUpdatableViewFunction(
+  value: unknown,
+  defaultSchema: string,
+  functionsByKey: FunctionShapesByKey
+): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) =>
+      containsNonUpdatableViewFunction(item, defaultSchema, functionsByKey)
+    );
+  }
+  const node = asRecord(value);
+  if (!node) {
+    return false;
+  }
+  const functionCall = asRecord(node.FuncCall);
+  if (functionCall) {
+    const parts = stringList(functionCall.funcname);
+    const name = parts.at(-1);
+    const schema = parts.length > 1 ? parts.at(-2) : defaultSchema;
+    if (
+      isNonUpdatableViewFunctionCall(functionCall) ||
+      (name !== undefined &&
+        schema !== undefined &&
+        functionsByKey.get(`${schema}.${name}`)?.some((fn) => fn.returns?.setof === true))
+    ) {
+      return true;
+    }
+  }
+  return Object.values(node).some((item) =>
+    containsNonUpdatableViewFunction(item, defaultSchema, functionsByKey)
+  );
 }
 
 async function markViewColumnUpdatability(
@@ -355,11 +426,11 @@ async function markViewColumnUpdatability(
   if (!select) {
     return columns;
   }
-  const writable = writableViewColumns(select);
-  if (writable === "all") {
-    return columns.map((column) => ({ ...column, updatable: true }));
-  }
-  return columns.map((column) => ({ ...column, updatable: writable.has(column.name) }));
+  const { hasWildcard, nonWritable, writable } = writableViewColumns(select);
+  return columns.map((column) => ({
+    ...column,
+    updatable: writable.has(column.name) || (hasWildcard && !nonWritable.has(column.name)),
+  }));
 }
 
 async function viewSelectStatement(object: SchemaObject): Promise<AstNode | undefined> {
@@ -371,17 +442,32 @@ async function viewSelectStatement(object: SchemaObject): Promise<AstNode | unde
   return asRecord(query?.SelectStmt);
 }
 
-function writableViewColumns(select: AstNode): Set<string> | "all" {
+function writableViewColumns(select: AstNode): {
+  hasWildcard: boolean;
+  nonWritable: Set<string>;
+  writable: Set<string>;
+} {
+  let hasWildcard = false;
+  const nonWritable = new Set<string>();
   const writable = new Set<string>();
   for (const item of readArray(select.targetList)) {
     const target = asRecord(asRecord(item)?.ResTarget);
     const columnRef = asRecord(asRecord(target?.val)?.ColumnRef);
-    if (!(target && columnRef)) {
+    if (!target) {
+      continue;
+    }
+    if (!columnRef) {
+      const functionCall = asRecord(asRecord(target.val)?.FuncCall);
+      const outputName = readString(target.name) ?? stringList(functionCall?.funcname).at(-1);
+      if (outputName) {
+        nonWritable.add(outputName);
+      }
       continue;
     }
     const fields = readArray(columnRef.fields);
     if (fields.some((field) => asRecord(field)?.A_Star !== undefined)) {
-      return "all";
+      hasWildcard = true;
+      continue;
     }
     const sourceName = stringValue(fields.at(-1));
     if (!sourceName) {
@@ -389,7 +475,7 @@ function writableViewColumns(select: AstNode): Set<string> | "all" {
     }
     writable.add(readString(target.name) ?? sourceName);
   }
-  return writable;
+  return { hasWildcard, nonWritable, writable };
 }
 
 function functionShapesByKey(shapes: SchemaShapes): FunctionShapesByKey {
@@ -675,11 +761,13 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
   const returns = asRecord(object.metadata.returns);
   const scalarType = typeof returns?.type === "string" ? returns.type : undefined;
   const setof = returns?.setof === true || hasTableParam;
+  const estimatedRows = functionEstimatedRows(fn, setof);
 
   const isRowShape = hasTableParam || returnColumns.length > 1;
   if (returnColumns.length > 0 && isRowShape) {
     return {
       args,
+      estimatedRows,
       name: object.ref.name,
       returns: { columns: returnColumns, setof, type: scalarType ?? "record" },
     };
@@ -688,9 +776,31 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
   const effectiveType = singleOut?.type ?? scalarType;
   return {
     args,
+    estimatedRows,
     name: object.ref.name,
     returns: effectiveType === undefined ? undefined : { setof, type: effectiveType },
   };
+}
+
+function functionEstimatedRows(fn: AstNode, setof: boolean): number {
+  for (const item of readArray(fn.options)) {
+    const option = asRecord(asRecord(item)?.DefElem);
+    if (readString(option?.defname) !== "rows") {
+      continue;
+    }
+    const integer = readNumber(asRecord(asRecord(option?.arg)?.Integer)?.ival);
+    if (integer !== undefined) {
+      return integer;
+    }
+    const float = readString(asRecord(asRecord(option?.arg)?.Float)?.fval);
+    if (float !== undefined) {
+      const parsed = Number.parseFloat(float);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return setof ? 1000 : 0;
 }
 
 type FunctionParameterResult = "skip" | "table" | "value";

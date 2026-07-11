@@ -1,6 +1,8 @@
 import { quoteKey } from "./database.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes } from "./model.js";
 import {
+  computedRelationshipFunctions,
+  functionReturnsMultipleRows,
   isNonWritableColumn,
   isOptionalInsertColumn,
   resolveColumnType,
@@ -12,7 +14,9 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
     left.localeCompare(right)
   );
   const lines = [
-    ...(typesImportPath ? [`import type { Json } from ${JSON.stringify(typesImportPath)};`] : []),
+    ...(typesImportPath
+      ? [`import type { Database, Json } from ${JSON.stringify(typesImportPath)};`]
+      : []),
     'import { z } from "zod";',
     "",
     ...(typesImportPath
@@ -38,22 +42,84 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
     "  ])",
     ");",
     "",
-    "type SupaschemaZodShape = {",
-    "  [schema: string]: {",
-    "    Tables: Record<string, { Row: z.ZodTypeAny; Insert: z.ZodTypeAny; Update: z.ZodTypeAny }>;",
-    "    Views: Record<string, { Row: z.ZodTypeAny; Insert?: z.ZodTypeAny; Update?: z.ZodTypeAny }>;",
-    "    Enums: Record<string, z.ZodTypeAny>;",
-    "    CompositeTypes: Record<string, z.ZodTypeAny>;",
-    "  };",
-    "};",
-    "",
-    "export const SupaschemaZod: SupaschemaZodShape = {",
   ];
+  if (typesImportPath) {
+    emitSupaschemaZodShape(lines, schemas);
+  } else {
+    lines.push(
+      "type SupaschemaZodShape = {",
+      "  [schema: string]: {",
+      "    Tables: Record<string, { Row: z.ZodTypeAny; Insert: z.ZodTypeAny; Update: z.ZodTypeAny }>;",
+      "    Views: Record<string, { Row: z.ZodTypeAny; Insert?: z.ZodTypeAny; Update?: z.ZodTypeAny }>;",
+      "    Enums: Record<string, z.ZodTypeAny>;",
+      "    CompositeTypes: Record<string, z.ZodTypeAny>;",
+      "  };",
+      "};",
+      ""
+    );
+  }
+  lines.push("export const SupaschemaZod: SupaschemaZodShape = {");
   for (const [schema, entry] of schemas) {
     emitSchema(lines, shapes, schema, entry);
   }
   lines.push("} as const;", "");
   return `${lines.join("\n")}\n`;
+}
+
+function emitSupaschemaZodShape(lines: string[], schemas: [string, SchemaEntry][]): void {
+  lines.push("type SupaschemaZodShape = {");
+  for (const [schema, entry] of schemas) {
+    lines.push(`  ${quoteKey(schema)}: {`, "    Tables: {");
+    for (const table of sortedByName(entry.tables)) {
+      lines.push(`      ${quoteKey(table.name)}: {`);
+      emitZodContractShape(lines, schema, "Tables", table.name, ["Row", "Insert", "Update"]);
+      lines.push("      };");
+    }
+    lines.push("    };", "    Views: {");
+    for (const view of sortedByName(entry.views)) {
+      lines.push(`      ${quoteKey(view.name)}: {`);
+      emitZodContractShape(
+        lines,
+        schema,
+        "Views",
+        view.name,
+        view.updatable ? ["Row", "Insert", "Update"] : ["Row"]
+      );
+      lines.push("      };");
+    }
+    lines.push("    };", "    Enums: {");
+    for (const item of sortedByName(entry.enums)) {
+      lines.push(
+        `      ${quoteKey(item.name)}: z.ZodType<${databaseTypePath(schema, "Enums", item.name)}>;`
+      );
+    }
+    lines.push("    };", "    CompositeTypes: {");
+    for (const composite of sortedByName(entry.composites)) {
+      lines.push(
+        `      ${quoteKey(composite.name)}: z.ZodType<${databaseTypePath(schema, "CompositeTypes", composite.name)}>;`
+      );
+    }
+    lines.push("    };", "  };");
+  }
+  lines.push("};", "");
+}
+
+function emitZodContractShape(
+  lines: string[],
+  schema: string,
+  collection: "Tables" | "Views",
+  name: string,
+  shapes: ("Insert" | "Row" | "Update")[]
+): void {
+  for (const shape of shapes) {
+    lines.push(
+      `        ${shape}: z.ZodType<${databaseTypePath(schema, collection, name)}[${JSON.stringify(shape)}]>;`
+    );
+  }
+}
+
+function databaseTypePath(schema: string, collection: string, name: string): string {
+  return `Database[${JSON.stringify(schema)}][${JSON.stringify(collection)}][${JSON.stringify(name)}]`;
 }
 
 function emitSchema(
@@ -80,7 +146,7 @@ function emitTableSchemas(
   lines.push("    Tables: {");
   for (const table of sortedByName(entry.tables)) {
     lines.push(`      ${quoteKey(table.name)}: {`);
-    emitRowSchema(lines, "Row", table.columns, zodFor);
+    emitRowSchema(lines, "Row", table.columns, zodFor, shapes, schema, entry, table.name);
     emitInsertSchema(lines, table.columns, zodFor);
     emitUpdateSchema(lines, table.columns, zodFor);
     lines.push("      },");
@@ -98,7 +164,7 @@ function emitViewSchemas(
   lines.push("    Views: {");
   for (const view of sortedByName(entry.views)) {
     lines.push(`      ${quoteKey(view.name)}: {`);
-    emitRowSchema(lines, "Row", view.columns, zodFor);
+    emitRowSchema(lines, "Row", view.columns, zodFor, shapes, schema, entry, view.name);
     if (view.updatable) {
       emitViewInsertSchema(lines, view.columns, zodFor);
       emitViewUpdateSchema(lines, view.columns, zodFor);
@@ -145,7 +211,11 @@ function emitRowSchema(
   lines: string[],
   name: string,
   columns: ColumnShape[],
-  zodFor: (sqlType: string) => string
+  zodFor: (sqlType: string) => string,
+  shapes: SchemaShapes,
+  schema: string,
+  entry: SchemaEntry,
+  relationName: string
 ): void {
   lines.push(`        ${name}: z.object({`);
   for (const column of columns) {
@@ -154,7 +224,30 @@ function emitRowSchema(
       `          ${quoteKey(column.name)}: ${column.notNull ? base : `${base}.nullable()`},`
     );
   }
+  for (const fn of computedRelationshipFunctions(shapes, schema, entry, relationName)) {
+    lines.push(
+      `          ${quoteKey(fn.name)}: ${zodFunctionReturnExpression(shapes, schema, fn)}.nullable(),`
+    );
+  }
   lines.push("        }),");
+}
+
+function zodFunctionReturnExpression(
+  shapes: SchemaShapes,
+  schema: string,
+  fn: SchemaEntry["functions"][number]
+): string {
+  const returns = fn.returns;
+  let expression: string;
+  if (returns?.columns && returns.columns.length > 0) {
+    const fields = returns.columns
+      .map((column) => `${quoteKey(column.name)}: ${zodExpression(shapes, schema, column.type)}`)
+      .join(", ");
+    expression = `z.object({ ${fields} })`;
+  } else {
+    expression = returns ? zodExpression(shapes, schema, returns.type) : "z.unknown()";
+  }
+  return functionReturnsMultipleRows(fn) ? `z.array(${expression})` : expression;
 }
 
 function emitInsertSchema(

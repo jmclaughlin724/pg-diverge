@@ -56,9 +56,8 @@ import { SupaschemaZod } from "./database.zod";
 
 type AccountInsert = TablesInsert<{ schema: "app" }, "accounts">;
 
-const input = SupaschemaZod.app.Tables.accounts.Insert.parse(
-  body
-) as AccountInsert;
+const input: AccountInsert =
+  SupaschemaZod.app.Tables.accounts.Insert.parse(body);
 ```
 
 That covers the shape and validation responsibilities that teams often reach for an ORM-generated client to solve. Query execution can stay SQL-native through your PostgreSQL driver or platform client.

@@ -1,7 +1,4 @@
 const contract = JSON.parse(`{
-  "adapterInputValues": [
-    "auto"
-  ],
   "allProviderPresets": [
     {
       "adapter": "auto",
@@ -216,10 +213,13 @@ const contract = JSON.parse(`{
       "schemaPath": "azure-postgresql/schemas"
     }
   ],
-  "canonicalSchemaId": "https://supaschema.com/schemas/supaschema-config.schema.json",
+  "adapterInputValues": [
+    "auto"
+  ],
   "cascadePolicies": [
     "never"
   ],
+  "canonicalSchemaId": "https://supaschema.com/schemas/supaschema-config.schema.json",
   "configFieldMetadata": [
     {
       "default": "Generated configs point to the package schema.",
@@ -248,9 +248,9 @@ const contract = JSON.parse(`{
     },
     {
       "allowed": [
-        "allow",
+        "hint-required",
         "block",
-        "hint-required"
+        "allow"
       ],
       "default": "hint-required",
       "description": "Controls whether destructive operations require exact hints, always block, or are allowed.",
@@ -278,8 +278,8 @@ const contract = JSON.parse(`{
       "default": {
         "allowedGrantees": [],
         "destructive": [],
-        "renames": [],
-        "requiredPolicyColumns": {}
+        "requiredPolicyColumns": {},
+        "renames": []
       },
       "description": "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
       "key": "hints"
@@ -299,15 +299,15 @@ const contract = JSON.parse(`{
     },
     {
       "default": {
-        "migration_check": "after_schema_diff",
-        "migration_sync": "auto",
-        "migration_verify": "suggest_after_check",
-        "rls_safety": "report_only",
         "schema_diff": "on_schema_write",
-        "type_generation": "create_or_refresh",
+        "migration_check": "after_schema_diff",
+        "migration_verify": "suggest_after_check",
+        "migration_sync": "auto",
         "type_safety": "report_only",
-        "type_usage": "zod_validated",
-        "zod_generation": "create_or_refresh"
+        "rls_safety": "report_only",
+        "type_generation": "create_or_refresh",
+        "zod_generation": "create_or_refresh",
+        "type_usage": "zod_validated"
       },
       "description": "Automation policy for hooks, generated contract guidance, verification guidance, deploy safety gates, and whether bare sync may select one apply target.",
       "key": "workflow"
@@ -324,8 +324,8 @@ const contract = JSON.parse(`{
             "mode": "manual",
             "runner": "direct",
             "historyTable": "supabase_migrations.schema_migrations",
-            "remote": true,
-            "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
+            "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+            "remote": true
           }
         }
       },
@@ -342,8 +342,8 @@ const contract = JSON.parse(`{
               "mode": "manual",
               "runner": "direct",
               "historyTable": "supabase_migrations.schema_migrations",
-              "remote": true,
-              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
+              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+              "remote": true
             }
           }
         }
@@ -376,8 +376,8 @@ const contract = JSON.parse(`{
     },
     {
       "allowed": [
-        "deparse",
-        "off"
+        "off",
+        "deparse"
       ],
       "default": "deparse",
       "description": "Controls canonical SQL deparse normalization for extracted objects.",
@@ -507,38 +507,38 @@ const contract = JSON.parse(`{
         "mode": "manual",
         "runner": "direct",
         "historyTable": "supabase_migrations.schema_migrations",
-        "remote": true,
-        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
+        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+        "remote": true
       }
     }
   },
   "defaultTypesFile": "database.types.ts",
-  "defaultWorkflow": {
-    "migration_check": "after_schema_diff",
-    "migration_sync": "auto",
-    "migration_verify": "suggest_after_check",
-    "rls_safety": "report_only",
-    "schema_diff": "on_schema_write",
-    "type_generation": "create_or_refresh",
-    "type_safety": "report_only",
-    "type_usage": "zod_validated",
-    "zod_generation": "create_or_refresh"
-  },
   "defaultZodFile": "database.zod.ts",
-  "deploySafetyPolicies": [
-    "deploy_blocking",
-    "disabled",
-    "report_only"
-  ],
+  "defaultWorkflow": {
+    "schema_diff": "on_schema_write",
+    "migration_check": "after_schema_diff",
+    "migration_verify": "suggest_after_check",
+    "migration_sync": "auto",
+    "type_safety": "report_only",
+    "rls_safety": "report_only",
+    "type_generation": "create_or_refresh",
+    "zod_generation": "create_or_refresh",
+    "type_usage": "zod_validated"
+  },
   "destructiveChangesPolicies": [
-    "allow",
+    "hint-required",
     "block",
-    "hint-required"
+    "allow"
+  ],
+  "deploySafetyPolicies": [
+    "disabled",
+    "report_only",
+    "deploy_blocking"
   ],
   "generatedOutputPolicies": [
-    "create_or_refresh",
     "disabled",
-    "refresh_existing"
+    "refresh_existing",
+    "create_or_refresh"
   ],
   "genericMigrationsDir": "database/migrations",
   "genericProviderId": "postgres",
@@ -554,8 +554,8 @@ const contract = JSON.parse(`{
   "genericSchemaPath": "database/schemas",
   "localSchemaRef": "./supaschema-config.schema.json",
   "migrationCheckPolicies": [
-    "after_schema_diff",
     "manual",
+    "after_schema_diff",
     "required_before_complete"
   ],
   "migrationSyncPolicies": [
@@ -564,13 +564,13 @@ const contract = JSON.parse(`{
     "auto"
   ],
   "migrationVerifyPolicies": [
-    "after_schema_diff",
     "manual",
-    "suggest_after_check"
+    "suggest_after_check",
+    "after_schema_diff"
   ],
   "normalizePolicies": [
-    "deparse",
-    "off"
+    "off",
+    "deparse"
   ],
   "packageSchemaRef": "./node_modules/supaschema/supaschema-config.schema.json",
   "providerMigrationsDirs": [
@@ -845,8 +845,8 @@ const contract = JSON.parse(`{
     "sqlfluff"
   ],
   "syncTargetModes": [
-    "auto",
-    "manual"
+    "manual",
+    "auto"
   ],
   "syncTargetRunners": [
     "direct",

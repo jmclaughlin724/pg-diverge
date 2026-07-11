@@ -12,7 +12,6 @@ const toolPins = {
   vitest: "4.1.10",
 };
 const allowedRootDisabledBiomeRules = new Set([
-  "linter.rules.complexity.noExcessiveCognitiveComplexity",
   "linter.rules.performance.noAwaitInLoops",
   "linter.rules.style.useDestructuring",
   "linter.rules.suspicious.noMisplacedAssertion",

@@ -52,11 +52,20 @@ async function scanGeneratedContractUsageFile(
     true,
     scriptKindForFile(file)
   );
+  const parseDiagnostics = sourceParseDiagnostics(sourceFile).map((item) =>
+    scanDiagnostic(
+      "SUPA_SCAN_CONTRACT_USAGE_PARSE",
+      text,
+      file,
+      item.start ?? 0,
+      `TypeScript source could not be fully parsed: ${ts.flattenDiagnosticMessageText(item.messageText, " ")}`
+    )
+  );
   const imports = collectGeneratedImports(sourceFile, text, file, generatedTargets);
   if (!imports.importsGeneratedContracts) {
     return [];
   }
-  const diagnostics = [...imports.diagnostics];
+  const diagnostics = [...parseDiagnostics, ...imports.diagnostics];
   collectUsageDiagnostics(sourceFile, text, file, imports.runtimeRoots, diagnostics);
   return diagnostics.map((item) => withRelativeFile(item, cwd));
 }
@@ -121,54 +130,89 @@ function collectUsageDiagnostics(
     if (ts.isImportDeclaration(node)) {
       return;
     }
-    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
-      diagnostics.push(
-        scanDiagnostic(
-          "SUPA_SCAN_CONTRACT_ASSERTION",
-          text,
-          file,
-          node.getStart(sourceFile),
-          "TypeScript assertions in files importing generated contracts bypass the generated contract boundary."
-        )
-      );
-    }
-    if (
-      ts.isPropertyAccessExpression(node) &&
-      (node.name.text === "overrideTypes" || node.name.text === "returns")
-    ) {
-      diagnostics.push(
-        scanDiagnostic(
-          node.name.text === "overrideTypes"
-            ? "SUPA_SCAN_CONTRACT_OVERRIDE_TYPES"
-            : "SUPA_SCAN_CONTRACT_RETURNS",
-          text,
-          file,
-          node.name.getStart(sourceFile),
-          `${node.name.text}() overrides generated query response contracts.`
-        )
-      );
-    }
-    if (
-      runtimeRoots.size > 0 &&
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      rootIdentifier(node.initializer) !== undefined &&
-      runtimeRoots.has(rootIdentifier(node.initializer) ?? "")
-    ) {
-      diagnostics.push(
-        scanDiagnostic(
-          "SUPA_SCAN_CONTRACT_RUNTIME_COPY",
-          text,
-          file,
-          node.name.getStart(sourceFile),
-          "Local constants initialized from generated runtime roots copy the generated contract."
-        )
-      );
-    }
+    collectAssertionDiagnostic(node, sourceFile, text, file, diagnostics);
+    collectOverrideDiagnostic(node, sourceFile, text, file, diagnostics);
+    collectRuntimeCopyDiagnostic(node, sourceFile, text, file, runtimeRoots, diagnostics);
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
+}
+
+function collectAssertionDiagnostic(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+  text: string,
+  file: string,
+  diagnostics: Diagnostic[]
+): void {
+  if (!(ts.isAsExpression(node) || ts.isTypeAssertionExpression(node))) {
+    return;
+  }
+  diagnostics.push(
+    scanDiagnostic(
+      "SUPA_SCAN_CONTRACT_ASSERTION",
+      text,
+      file,
+      node.getStart(sourceFile),
+      "TypeScript assertions in files importing generated contracts bypass the generated contract boundary."
+    )
+  );
+}
+
+function collectOverrideDiagnostic(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+  text: string,
+  file: string,
+  diagnostics: Diagnostic[]
+): void {
+  if (!(ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression))) {
+    return;
+  }
+  const name = node.expression.name.text;
+  if (name !== "overrideTypes" && name !== "returns") {
+    return;
+  }
+  diagnostics.push(
+    scanDiagnostic(
+      name === "overrideTypes" ? "SUPA_SCAN_CONTRACT_OVERRIDE_TYPES" : "SUPA_SCAN_CONTRACT_RETURNS",
+      text,
+      file,
+      node.expression.name.getStart(sourceFile),
+      `${name}() overrides generated query response contracts.`
+    )
+  );
+}
+
+function collectRuntimeCopyDiagnostic(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+  text: string,
+  file: string,
+  runtimeRoots: Set<string>,
+  diagnostics: Diagnostic[]
+): void {
+  if (
+    runtimeRoots.size === 0 ||
+    !ts.isVariableDeclaration(node) ||
+    !ts.isIdentifier(node.name) ||
+    node.initializer === undefined
+  ) {
+    return;
+  }
+  const root = rootIdentifier(node.initializer);
+  if (root === undefined || !runtimeRoots.has(root)) {
+    return;
+  }
+  diagnostics.push(
+    scanDiagnostic(
+      "SUPA_SCAN_CONTRACT_RUNTIME_COPY",
+      text,
+      file,
+      node.name.getStart(sourceFile),
+      "Local constants initialized from generated runtime roots copy the generated contract."
+    )
+  );
 }
 
 function rootIdentifier(expression: ts.Expression): string | undefined {
@@ -286,6 +330,11 @@ function scriptKindForFile(file: string): ts.ScriptKind {
   return extension === ".cts" || extension === ".mts" || extension === ".ts"
     ? ts.ScriptKind.TS
     : ts.ScriptKind.JS;
+}
+
+function sourceParseDiagnostics(sourceFile: ts.SourceFile): readonly ts.Diagnostic[] {
+  const value = Reflect.get(sourceFile, "parseDiagnostics");
+  return Array.isArray(value) ? value : [];
 }
 
 function lineAndCharacter(text: string, position: number): { character: number; line: number } {

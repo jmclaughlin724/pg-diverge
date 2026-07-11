@@ -49,9 +49,6 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "complexity": {
-        "noExcessiveCognitiveComplexity": "off"
-      },
       "correctness": {
         "useImportExtensions": {
           "level": "error",

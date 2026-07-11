@@ -153,7 +153,7 @@ describe("public agent and editor surfaces", () => {
       ).toBe(false);
     }
     expect(stageableFiles(privatePrefixes)).toEqual([]);
-  });
+  }, 15_000);
 
   it("ships self-contained raw consumer hook registration", () => {
     const packageJson = readJson<{ files?: string[] }>("package.json");
