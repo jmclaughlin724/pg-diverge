@@ -653,12 +653,20 @@ function isProhibitedPush(args) {
     args.some(
       (arg) =>
         arg === "--no-verify" ||
-        arg === "-f" ||
+        hasShortForceFlag(arg) ||
         arg === "--force" ||
         arg === "--force-if-includes" ||
         arg.startsWith("--force-with-lease")
     ) || pushRefspecs(args).some((refspec) => refspec.startsWith("+"))
   );
+}
+
+function hasShortForceFlag(arg) {
+  if (!arg.startsWith("-") || arg.startsWith("--")) {
+    return false;
+  }
+  const flags = arg.slice(1).split("o", 1)[0];
+  return flags.includes("f");
 }
 
 function isImplicitPush(args) {
