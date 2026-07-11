@@ -199,8 +199,13 @@ function assertReleaseYaml(parsed) {
     "rekor.sigstore.dev:443",
     "tuf-repo-cdn.sigstore.dev:443",
   ];
-  const allowedEndpoints = String(hardenRunnerStep.with?.["allowed-endpoints"] ?? "")
-    .split("\n")
+  const allowedEndpointsValue = String(hardenRunnerStep.with?.["allowed-endpoints"] ?? "").trim();
+  assert(
+    !allowedEndpointsValue.includes("\n"),
+    "release.yml harden-runner endpoints must use a folded YAML scalar so the agent receives space-separated tokens"
+  );
+  const allowedEndpoints = allowedEndpointsValue
+    .split(" ")
     .map((endpoint) => endpoint.trim())
     .filter(Boolean);
   assert(
