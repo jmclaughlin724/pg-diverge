@@ -156,16 +156,15 @@ const simpleGitWriteBlocks = new Map([
     "checkout",
     "BLOCKED: git checkout is prohibited. Keep work on the current branch and use git diff/git show for comparisons.",
   ],
-  [
-    "branch",
-    "BLOCKED: git branch is prohibited. Keep work on the current branch and use git rev-parse for branch discovery.",
-  ],
   ["worktree", "BLOCKED: git worktree is prohibited. Use the current worktree only."],
   ["reset", "BLOCKED: git reset is prohibited. Ask the user before running reset."],
 ]);
 
 function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   const subcommand = gitArgs[0] ?? "";
+  if (subcommand === "branch") {
+    return checkGitBranch(gitArgs.slice(1));
+  }
   const simple = simpleGitWriteBlocks.get(subcommand);
   if (simple) {
     return block(simple);
@@ -198,6 +197,19 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
     );
   }
   return allowResult();
+}
+
+function checkGitBranch(args) {
+  if (
+    args.length === 2 &&
+    ["-d", "-D", "--delete"].includes(args[0] ?? "") &&
+    isTopicBranch(args[1])
+  ) {
+    return allowResult();
+  }
+  return block(
+    "BLOCKED: git branch is limited to deleting one verified merged topic branch after explicit approval. Use git rev-parse for discovery and git switch for transactional branch creation."
+  );
 }
 
 function checkGitSwitch(args) {

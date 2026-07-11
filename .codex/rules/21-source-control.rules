@@ -39,9 +39,9 @@ prefix_rule(
 
 prefix_rule(
     pattern = ["git", "branch"],
-    decision = "forbidden",
-    justification = "Rule 21 forbids direct git branch commands; use transactional git switch forms for PR branches and git rev-parse for discovery.",
-    match = ["git branch feature/demo", "git branch --show-current"],
+    decision = "prompt",
+    justification = "Rule 21 permits direct git branch only to delete a verified merged topic after explicit approval; the Bash hook blocks creation, discovery, main deletion, and unsupported forms.",
+    match = ["git branch -D feature/demo", "git branch feature/demo"],
     not_match = ["git rev-parse --abbrev-ref HEAD", "git status --short"],
 )
 

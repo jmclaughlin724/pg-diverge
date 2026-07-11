@@ -478,6 +478,8 @@ describe("general Bash blocker policy", () => {
     "git switch -f feature/demo",
     "git branch feature/demo",
     "git branch --show-current",
+    "git branch -D main",
+    "git branch -D feature/one feature/two",
     "git worktree add ../demo HEAD",
     "git stash",
     "git merge --squash feature/demo",
@@ -503,6 +505,16 @@ describe("general Bash blocker policy", () => {
     "command git switch -c feature/demo origin/main",
     "env git switch --track origin/feature/demo",
   ])("allows transactional topic-branch switch: %s", async (command) => {
+    const result = await runHook(claudeScript, preToolBash(command));
+    expect(result.code, command).toBe(0);
+  });
+
+  it.each([
+    "git branch -d feature/demo",
+    "git branch -D feature/demo",
+    "git branch --delete feature/demo",
+    "command git branch -D feature/demo",
+  ])("allows approved merged topic deletion shape: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(0);
   });

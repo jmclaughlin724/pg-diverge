@@ -34,9 +34,9 @@ codexExecPolicy: |
     },
     {
       "pattern": ["git", "branch"],
-      "decision": "forbidden",
-      "justification": "Rule 21 forbids direct git branch commands; use transactional git switch forms for PR branches and git rev-parse for discovery.",
-      "match": ["git branch feature/demo", "git branch --show-current"],
+      "decision": "prompt",
+      "justification": "Rule 21 permits direct git branch only to delete a verified merged topic after explicit approval; the Bash hook blocks creation, discovery, main deletion, and unsupported forms.",
+      "match": ["git branch -D feature/demo", "git branch feature/demo"],
       "not_match": ["git rev-parse --abbrev-ref HEAD", "git status --short"]
     },
     {
@@ -203,7 +203,8 @@ Upstream sources:
 - To continue an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
-- Do not use `git checkout`, direct `git branch`, or ad hoc `git worktree`. Apart from the two transactional topic-branch forms above, do not use `git switch`.
+- Do not use `git checkout`, `git branch` for creation or discovery, or ad hoc `git worktree`. Apart from the two transactional topic-branch forms above, do not use `git switch`.
+- After proving a topic PR merged and preserving all dirty work elsewhere, `git branch -D <topic>` is allowed only with explicit approval. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
 - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.
