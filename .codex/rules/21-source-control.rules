@@ -14,6 +14,14 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["git", "switch", "main"],
+    decision = "allow",
+    justification = "Rule 21 allows returning to main after the current topic PR is verified merged and local main is synchronized with origin/main; the Bash hook validates the exact command shape.",
+    match = ["git switch main"],
+    not_match = ["git switch feature/demo", "git switch -C main origin/main"],
+)
+
+prefix_rule(
     pattern = ["git", "switch", "-c"],
     decision = "allow",
     justification = "Rule 21 allows transactional topic-branch creation after explicit PR intent, origin/main fetch, and base proof; the Bash hook validates the complete command.",

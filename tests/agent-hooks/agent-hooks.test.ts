@@ -463,7 +463,6 @@ describe("general Bash blocker policy", () => {
   });
 
   it.each([
-    "git switch main",
     "git switch -c feature/demo HEAD",
     "git switch -c main origin/main",
     "git switch -c HEAD origin/main",
@@ -510,6 +509,11 @@ describe("general Bash blocker policy", () => {
   ])("allows transactional topic-branch switch: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(0);
+  });
+
+  it("allows the verified post-merge switch to main", async () => {
+    const result = await runHook(claudeScript, preToolBash("git switch main"));
+    expect(result.code).toBe(0);
   });
 
   it.each([

@@ -12,6 +12,13 @@ codexExecPolicy: |
       "not_match": ["git show main:package.json", "git diff main -- package.json"]
     },
     {
+      "pattern": ["git", "switch", "main"],
+      "decision": "allow",
+      "justification": "Rule 21 allows returning to main after the current topic PR is verified merged and local main is synchronized with origin/main; the Bash hook validates the exact command shape.",
+      "match": ["git switch main"],
+      "not_match": ["git switch feature/demo", "git switch -C main origin/main"]
+    },
+    {
       "pattern": ["git", "switch", "-c"],
       "decision": "allow",
       "justification": "Rule 21 allows transactional topic-branch creation after explicit PR intent, origin/main fetch, and base proof; the Bash hook validates the complete command.",
@@ -203,7 +210,7 @@ Upstream sources:
 - To continue an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
-- Do not use `git checkout`, `git branch` for creation or discovery, or ad hoc `git worktree`. Apart from the two transactional topic-branch forms above, do not use `git switch`.
+- Do not use `git checkout`, `git branch` for creation or discovery, or ad hoc `git worktree`. Apart from the two transactional topic-branch forms above and `git switch main` after verified PR merge, do not use `git switch`.
 - After proving a topic PR merged and preserving all dirty work elsewhere, `git branch -D <topic>` is allowed only with explicit approval. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
