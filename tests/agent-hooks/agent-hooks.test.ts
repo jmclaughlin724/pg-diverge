@@ -498,6 +498,7 @@ describe("general Bash blocker policy", () => {
     "git push --force origin",
     "git push -o ci.skip origin",
     "git push --push-option ci.skip origin",
+    "git push --recurse-submodules check origin",
     "git push --repo origin",
     "git push --force origin main",
     "git push | tail -20",
@@ -553,6 +554,7 @@ describe("general Bash blocker policy", () => {
     "git push -u origin codex/feature",
     "git push origin HEAD:codex/feature",
     "git push --repo origin codex/feature",
+    "git push --recurse-submodules check origin codex/feature",
     "git push --dry-run",
     "git push --dry-run origin",
   ])("allows topic push shape: %s", async (command) => {

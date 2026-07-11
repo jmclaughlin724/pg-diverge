@@ -651,7 +651,14 @@ function isImplicitPush(args) {
 }
 
 function pushRefspecs(args) {
-  const valueOptions = new Set(["--exec", "--push-option", "--receive-pack", "--repo", "-o"]);
+  const valueOptions = new Set([
+    "--exec",
+    "--push-option",
+    "--receive-pack",
+    "--recurse-submodules",
+    "--repo",
+    "-o",
+  ]);
   const positionals = [];
   let repositoryProvidedByOption = false;
   for (let index = 1; index < args.length; index += 1) {
