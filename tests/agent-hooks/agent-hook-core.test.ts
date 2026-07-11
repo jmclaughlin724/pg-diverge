@@ -1016,13 +1016,13 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
       "PostToolUse",
       {
         session_id: "claude-bash-shape",
-        tool_name: "Bash",
         tool_input: { command: "npm run guard" },
+        tool_name: "Bash",
         tool_response: {
-          stdout: "ALL_GUARDS_OK\n",
-          stderr: "",
           interrupted: false,
           isImage: false,
+          stderr: "",
+          stdout: "ALL_GUARDS_OK\n",
         },
       },
       { root, runtime: "claude" }
@@ -1052,10 +1052,10 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
       "PostToolUse",
       {
         session_id: "codex-bash-shape",
-        turn_id: "turn-1",
-        tool_name: "Bash",
         tool_input: { command: "npm run test" },
+        tool_name: "Bash",
         tool_response: { exit_code: 0 },
+        turn_id: "turn-1",
       },
       { root, runtime: "codex" }
     );

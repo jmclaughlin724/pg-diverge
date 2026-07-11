@@ -438,7 +438,6 @@ describe("init project setup", () => {
           hooks: {
             PreToolUse: [
               {
-                matcher: "Write",
                 hooks: [
                   {
                     command:
@@ -448,6 +447,7 @@ describe("init project setup", () => {
                     type: "command",
                   },
                 ],
+                matcher: "Write",
               },
             ],
           },
@@ -484,7 +484,6 @@ describe("init project setup", () => {
           hooks: {
             PreToolUse: [
               {
-                matcher: "Write",
                 hooks: [
                   {
                     command:
@@ -499,6 +498,7 @@ describe("init project setup", () => {
                     type: "command",
                   },
                 ],
+                matcher: "Write",
               },
             ],
           },

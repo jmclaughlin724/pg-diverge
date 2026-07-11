@@ -36,24 +36,24 @@ const INSTALL_PROMPT_REQUIRED_LOCAL_RUNNER_TEXT = [
 ];
 const LOCAL_RUNNER_FORBIDDEN_TEXT = [
   {
-    text: "Run `npm install supaschema`",
     msg: "must not present npm install as universal install guidance",
+    text: "Run `npm install supaschema`",
   },
   {
+    msg: "must not present npx supaschema as universal schema workflow guidance",
     text: "npx supaschema diff",
-    msg: "must not present npx supaschema as universal schema workflow guidance",
   },
   {
+    msg: "must not present npx supaschema as universal schema workflow guidance",
     text: "npx supaschema check",
-    msg: "must not present npx supaschema as universal schema workflow guidance",
   },
   {
+    msg: "must not recommend workspace/filter install flags for first install",
     text: "--workspace <name-or-path>",
-    msg: "must not recommend workspace/filter install flags for first install",
   },
   {
-    text: "--filter <pkg> add",
     msg: "must not recommend workspace/filter install flags for first install",
+    text: "--filter <pkg> add",
   },
 ];
 
@@ -72,8 +72,8 @@ export function inspectLocalRunnerConvention(rootDir, violations) {
       violations.push({
         file: ".agents/prompts/supaschema-install.md",
         line: 1,
-        rule: "local-runner",
         msg: `must document ${required}`,
+        rule: "local-runner",
       });
     }
   }
@@ -84,8 +84,8 @@ export function inspectLocalRunnerConvention(rootDir, violations) {
         violations.push({
           file: surface,
           line: lineNumberForText(text, forbidden.text),
-          rule: "local-runner",
           msg: `${forbidden.msg} (${forbidden.text})`,
+          rule: "local-runner",
         });
       }
     }
@@ -99,8 +99,8 @@ function readRequiredSurface(rootDir, file, violations) {
     violations.push({
       file,
       line: 1,
-      rule: "local-runner",
       msg: `required local-runner convention surface is unreadable: ${error.message}`,
+      rule: "local-runner",
     });
   }
 }

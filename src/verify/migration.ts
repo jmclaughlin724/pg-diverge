@@ -207,7 +207,6 @@ async function migrationSqlByFile(migrationPaths: string[]): Promise<Map<string,
 function verifyDatabaseUrlDiagnostic(databaseUrl: string): Diagnostic | undefined {
   try {
     assertLocalDatabaseUrl(databaseUrl, "SUPASCHEMA_VERIFY_ALLOW_REMOTE");
-    return;
   } catch (error) {
     return diagnostic("SUPA_VERIFY_FAILED", "error", errorMessage(error), {
       hint: "verify creates and drops databases; non-local hosts require SUPASCHEMA_VERIFY_ALLOW_REMOTE=1.",
@@ -718,7 +717,8 @@ async function applyModel(databaseUrl: string, model: SchemaModel): Promise<void
     const planErrors = plan.diagnostics.filter((item) => item.severity === "error");
     if (planErrors.length > 0) {
       throw new Error(
-        `${errorMessage(error)}; synthesizing ${model.source} also reported blocking plan diagnostics:\n${formatDiagnostics(planErrors)}`
+        `${errorMessage(error)}; synthesizing ${model.source} also reported blocking plan diagnostics:\n${formatDiagnostics(planErrors)}`,
+        { cause: error }
       );
     }
     throw error;
@@ -759,5 +759,4 @@ function managedSchemaReferenced(message: string, managedSchemas: string[]): str
       return schema;
     }
   }
-  return;
 }

@@ -36,6 +36,19 @@ interface InferenceContext {
 
 export type FunctionShapesByKey = Map<string, FunctionShape[]>;
 
+export function isNonUpdatableViewFunctionCall(functionCall: Record<string, unknown>): boolean {
+  const name = stringList(functionCall.funcname).at(-1)?.toLowerCase();
+  return (
+    functionCall.over !== undefined ||
+    functionCall.agg_star === true ||
+    functionCall.agg_distinct === true ||
+    functionCall.agg_order !== undefined ||
+    functionCall.agg_filter !== undefined ||
+    functionCall.agg_within_group === true ||
+    (name !== undefined && nonUpdatableViewFunctions.has(name))
+  );
+}
+
 export async function collectUnresolvedViewRelations(
   object: SchemaObject,
   tablesByKey: Map<string, TableShape>
@@ -1299,4 +1312,41 @@ const functionTypeMap = new Map([
   ["safe_uuid_from_jsonb", "uuid"],
   ["trim", "text"],
   ["upper", "text"],
+]);
+
+const nonUpdatableViewFunctions = new Set([
+  "array_agg",
+  "avg",
+  "bit_and",
+  "bit_or",
+  "bool_and",
+  "bool_or",
+  "count",
+  "every",
+  "generate_series",
+  "generate_subscripts",
+  "json_agg",
+  "json_array_elements",
+  "json_array_elements_text",
+  "json_each",
+  "json_each_text",
+  "json_object_agg",
+  "json_object_keys",
+  "jsonb_agg",
+  "jsonb_array_elements",
+  "jsonb_array_elements_text",
+  "jsonb_each",
+  "jsonb_each_text",
+  "jsonb_object_agg",
+  "jsonb_object_keys",
+  "max",
+  "min",
+  "percentile_cont",
+  "percentile_disc",
+  "regexp_matches",
+  "regexp_split_to_table",
+  "string_agg",
+  "sum",
+  "unnest",
+  "xmlagg",
 ]);

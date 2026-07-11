@@ -290,8 +290,8 @@ function runRaw(file, args, cwd) {
   try {
     return execFileSync(file, args, {
       cwd,
-      env: childEnv(),
       encoding: "utf8",
+      env: childEnv(),
       maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", "pipe"],
       timeout: commandTimeoutMs,
@@ -302,7 +302,9 @@ function runRaw(file, args, cwd) {
     const detail = [stdout, stderr].filter(Boolean).join("\n").trim();
     const suffix = detail.length > 0 ? `\n${detail}` : "";
     const reason = error.signal ? ` signal=${error.signal}` : "";
-    throw new Error(`command failed in ${cwd}: ${file} ${args.join(" ")}${reason}${suffix}`);
+    throw new Error(`command failed in ${cwd}: ${file} ${args.join(" ")}${reason}${suffix}`, {
+      cause: error,
+    });
   }
 }
 

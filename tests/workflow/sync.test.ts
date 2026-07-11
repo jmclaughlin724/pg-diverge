@@ -103,7 +103,6 @@ describe("sync (no target)", () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-disabled-bare-"));
 
     const result = await syncMigrations({
-      to: "empty:",
       config: {
         sources: { from: "empty:" },
         workflow: { migration_sync: "disabled" },
@@ -111,6 +110,7 @@ describe("sync (no target)", () => {
       directory: root,
       pipeline: true,
       skipDiff: true,
+      to: "empty:",
     });
 
     expect(result.applied).toBe(false);
@@ -138,7 +138,6 @@ describe("sync (no target)", () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-unknown-target-"));
 
     const result = await syncMigrations({
-      to: "empty:",
       config: {
         sources: { from: "empty:" },
         workflow: { rls_safety: "disabled", type_safety: "disabled" },
@@ -147,6 +146,7 @@ describe("sync (no target)", () => {
       pipeline: true,
       skipDiff: true,
       target: "staging",
+      to: "empty:",
     });
 
     expect(result.applied).toBe(false);
@@ -168,7 +168,6 @@ describe("sync (no target)", () => {
       delete process.env.SUPASCHEMA_DATABASE_URL;
       try {
         const result = await syncMigrations({
-          to: "empty:",
           config: {
             sources: { from: "empty:" },
             sync: {
@@ -187,6 +186,7 @@ describe("sync (no target)", () => {
           pipeline: true,
           skipDiff: true,
           target: "local",
+          to: "empty:",
         });
 
         expect(result.applied).toBe(false);
@@ -223,7 +223,6 @@ describe("sync (no target)", () => {
       process.chdir(root);
       try {
         const result = await syncMigrations({
-          to: "empty:",
           config: {
             sources: { from: "empty:" },
             sync: {
@@ -241,6 +240,7 @@ describe("sync (no target)", () => {
           pipeline: true,
           skipDiff: true,
           target: "local",
+          to: "empty:",
         });
 
         expect(result.applied).toBe(false);
@@ -275,7 +275,6 @@ describe("sync (no target)", () => {
       process.chdir(root);
       try {
         const result = await syncMigrations({
-          to: "empty:",
           config: {
             sources: { from: "empty:" },
             sync: {
@@ -293,6 +292,7 @@ describe("sync (no target)", () => {
           pipeline: true,
           skipDiff: true,
           target: "local",
+          to: "empty:",
         });
 
         expect(result.applied).toBe(true);
@@ -323,7 +323,6 @@ describe("sync (no target)", () => {
     process.chdir(root);
     try {
       const result = await syncMigrations({
-        to: "empty:",
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -341,6 +340,7 @@ describe("sync (no target)", () => {
         pipeline: true,
         skipDiff: true,
         target: "local",
+        to: "empty:",
       });
 
       expect(result.applied).toBe(false);
@@ -385,7 +385,6 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
       process.chdir(root);
       try {
         const result = await syncMigrations({
-          to: "empty:",
           config: {
             sources: { from: "empty:" },
             sync: {
@@ -403,6 +402,7 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
           pipeline: true,
           skipDiff: true,
           target: "local",
+          to: "empty:",
         });
 
         expect(result.applied).toBe(true);
@@ -440,7 +440,6 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
       delete process.env.SUPASCHEMA_DATABASE_URL;
       try {
         const result = await syncMigrations({
-          to: "empty:",
           config: {
             sources: { from: "empty:" },
             sync: {
@@ -459,6 +458,7 @@ appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\\n");
           pipeline: true,
           skipDiff: true,
           target: "local",
+          to: "empty:",
         });
 
         expect(result.applied).toBe(false);
@@ -572,7 +572,6 @@ describe("sync pipeline orchestration", () => {
   it("selects automatic targets from target mode rather than target name", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-target-mode-"));
     const result = await syncMigrations({
-      to: "empty:",
       config: {
         sources: { from: "empty:" },
         sync: {
@@ -599,6 +598,7 @@ describe("sync pipeline orchestration", () => {
       directory: root,
       pipeline: true,
       skipDiff: true,
+      to: "empty:",
     });
 
     const messages = result.diagnostics.map((item) => item.message).join("\n");
@@ -647,10 +647,6 @@ describe("sync pipeline orchestration", () => {
         environments: {
           primary: { databaseUrl: "$DATABASE_URL" },
         },
-        workflow: {
-          rls_safety: "disabled",
-          type_safety: "disabled",
-        },
         sync: {
           targets: {
             local: {
@@ -666,6 +662,10 @@ describe("sync pipeline orchestration", () => {
               runner: "direct",
             },
           },
+        },
+        workflow: {
+          rls_safety: "disabled",
+          type_safety: "disabled",
         },
       },
       directory: root,
@@ -683,7 +683,6 @@ describe("sync pipeline orchestration", () => {
   it("refuses multiple selected targets before any target runner can mutate", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-sync-target-multi-"));
     const result = await syncMigrations({
-      to: "empty:",
       config: {
         sources: { from: "empty:" },
         sync: {
@@ -708,6 +707,7 @@ describe("sync pipeline orchestration", () => {
       directory: root,
       pipeline: true,
       skipDiff: true,
+      to: "empty:",
     });
 
     expect(result.applied).toBe(false);
@@ -728,7 +728,6 @@ describe("sync pipeline orchestration", () => {
     );
 
     const result = await syncMigrations({
-      to: after,
       config: {
         sources: { from: before },
         workflow: {
@@ -740,6 +739,7 @@ describe("sync pipeline orchestration", () => {
       directory: root,
       pipeline: true,
       skipDiff: true,
+      to: after,
     });
 
     expect(result.applied).toBe(false);
@@ -759,7 +759,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     );
 
     const result = await syncMigrations({
-      to: source,
       config: {
         workflow: {
           migration_sync: "manual",
@@ -770,6 +769,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       directory: root,
       pipeline: true,
       skipDiff: true,
+      to: source,
     });
 
     expect(result.applied).toBe(false);
@@ -785,7 +785,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     const migrationsDir = join(root, "migrations");
 
     const result = await syncMigrations({
-      to: source,
       config: {
         sources: { from: "empty:" },
         typesFile,
@@ -798,6 +797,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       },
       directory: migrationsDir,
       pipeline: true,
+      to: source,
     });
 
     expect(result.applied).toBe(false);
@@ -836,7 +836,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     process.chdir(root);
     try {
       const result = await syncMigrations({
-        to: "dir:database/schemas",
         config: {
           schemaPaths: ["database/schemas"],
           sources: { from: "empty:" },
@@ -850,6 +849,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         },
         directory: migrationsDir,
         pipeline: true,
+        to: "dir:database/schemas",
       });
 
       const staged = execFileSync("git", ["diff", "--cached", "--name-only"], {
@@ -971,7 +971,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     const zodFile = join(root, "database.zod.ts");
 
     const result = await syncMigrations({
-      to: source,
       config: {
         sources: { from: "empty:" },
         sync: {
@@ -994,6 +993,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       },
       directory: join(root, "migrations"),
       pipeline: true,
+      to: source,
     });
 
     expect(result.applied).toBe(false);
@@ -1019,7 +1019,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     process.chdir(cwd);
     try {
       const result = await syncMigrations({
-        to: source,
         config: {
           sources: { from: "auto" },
           typesFile,
@@ -1032,6 +1031,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         },
         directory: migrationsDir,
         pipeline: true,
+        to: source,
       });
 
       expect(result.applied).toBe(false);
@@ -1061,7 +1061,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     );
 
     const result = await syncMigrations({
-      to: source,
       config: {
         sources: { from: "empty:" },
         typesFile,
@@ -1074,6 +1073,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       },
       directory: migrationsDir,
       pipeline: true,
+      to: source,
     });
 
     expect(result.applied).toBe(false);
@@ -1089,7 +1089,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
     try {
       const result = await syncMigrations({
-        to: "empty:",
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -1110,6 +1109,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         pipeline: true,
         skipDiff: true,
         target: "local",
+        to: "empty:",
       });
 
       expect(result.applied).toBe(false);
@@ -1135,7 +1135,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     process.chdir(root);
     try {
       const result = await syncMigrations({
-        to: source,
         config: {
           sources: { from: "empty:" },
           typesFile,
@@ -1149,6 +1148,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         directory: migrationsDir,
         pipeline: true,
         skipDiff: true,
+        to: source,
       });
       const staged = execFileSync("git", ["diff", "--cached", "--name-only"], {
         cwd: root,
@@ -1385,7 +1385,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       process.chdir(root);
       try {
         const result = await syncMigrations({
-          to: "empty:",
           config: {
             sources: { from: "empty:" },
             sync: {
@@ -1407,6 +1406,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
           pipeline: true,
           skipDiff: true,
           target: "local",
+          to: "empty:",
         });
 
         expect(result.applied).toBe(true);
@@ -1440,7 +1440,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
     try {
       const result = await syncMigrations({
-        to: "empty:",
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -1462,6 +1461,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         pipeline: true,
         skipDiff: true,
         target: "local",
+        to: "empty:",
       });
 
       expect(result.applied).toBe(false);
@@ -1488,7 +1488,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     );
 
     const result = await syncMigrations({
-      to: after,
       config: {
         sources: { from: before },
         workflow: {
@@ -1500,6 +1499,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       directory: root,
       pipeline: true,
       skipDiff: true,
+      to: after,
     });
 
     expect(result.applied).toBe(false);
@@ -1550,7 +1550,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       );
 
       const result = await syncMigrations({
-        to: targetSource,
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -1571,6 +1570,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         directory: root,
         pipeline: true,
         skipDiff: true,
+        to: targetSource,
       });
 
       expect(result.applied).toBe(true);
@@ -1612,7 +1612,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       );
 
       const result = await syncMigrations({
-        to: targetSource,
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -1636,6 +1635,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         directory: root,
         pipeline: true,
         skipDiff: true,
+        to: targetSource,
       });
 
       expect(result.applied).toBe(true);
@@ -1693,7 +1693,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       );
 
       const result = await syncMigrations({
-        to: targetSource,
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -1717,6 +1716,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         directory: root,
         pipeline: true,
         skipDiff: true,
+        to: targetSource,
       });
 
       expect(result.applied).toBe(false);
@@ -1767,7 +1767,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       );
 
       const result = await syncMigrations({
-        to: targetSource,
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -1793,6 +1792,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         pipeline: true,
         skipDiff: true,
         target: "remote",
+        to: targetSource,
       });
 
       expect(result.applied).toBe(false);
@@ -1837,7 +1837,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       );
 
       const result = await syncMigrations({
-        to: targetSource,
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -1856,6 +1855,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         pipeline: true,
         skipDiff: true,
         target: "local",
+        to: targetSource,
       });
 
       expect(result.applied).toBe(true);
@@ -1914,7 +1914,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       );
 
       const result = await syncMigrations({
-        to: targetSource,
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -1933,6 +1932,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         pipeline: true,
         skipDiff: true,
         target: "local",
+        to: targetSource,
       });
 
       expect(result.applied).toBe(true);
@@ -1988,7 +1988,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       );
 
       const result = await syncMigrations({
-        to: targetSource,
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -2007,6 +2006,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         pipeline: true,
         skipDiff: true,
         target: "local",
+        to: targetSource,
       });
 
       expect(result.applied).toBe(true);
@@ -2044,7 +2044,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       );
 
       const result = await syncMigrations({
-        to: "empty:",
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -2063,6 +2062,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         pipeline: true,
         skipDiff: true,
         target: "local",
+        to: "empty:",
       });
 
       expect(result.applied).toBe(false);
@@ -2091,7 +2091,6 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
       const after = await sqlSource("CREATE TABLE public.users (id bigint);\n");
 
       const result = await syncMigrations({
-        to: after,
         config: {
           sources: { from: "empty:" },
           sync: {
@@ -2113,6 +2112,7 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
         pipeline: true,
         skipDiff: true,
         target: "local",
+        to: after,
       });
 
       expect(result.applied).toBe(false);

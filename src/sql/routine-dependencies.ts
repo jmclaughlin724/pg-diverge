@@ -334,7 +334,6 @@ function dmlStatementFragment(sql: string): StaticSqlFragment | undefined {
   ) {
     return { source: "DML statement", sql: stripReturningInto(sql) };
   }
-  return;
 }
 
 function dynamicExecuteStatementFragment(statement: string): StaticSqlFragment | undefined {
@@ -404,7 +403,6 @@ function skipNonCodeSpan(statement: string, index: number): number | undefined {
   if (char === "/" && statement[index + 1] === "*") {
     return skipBlockComment(statement, index);
   }
-  return;
 }
 
 function identifierEnd(statement: string, start: number): number {
@@ -538,7 +536,6 @@ function sqlStringLiteralAt(
       value: sql.slice(start + tag.length, end),
     };
   }
-  return;
 }
 
 function singleQuotedLiteralAt(sql: string, start: number): { end: number; value: string } {
@@ -586,7 +583,6 @@ function matchingParenEnd(sql: string, start: number): number | undefined {
     }
     index += 1;
   }
-  return;
 }
 
 function firstNonWhitespace(value: string, start = 0): number | undefined {
@@ -741,7 +737,6 @@ function afterKeywordSequence(sql: string, sequence: readonly string[]): string 
       return query.length > 0 ? query : undefined;
     }
   }
-  return;
 }
 
 function tokenSpans(sql: string): { end: number; start: number; text: string }[] {
@@ -884,7 +879,6 @@ function routineLanguage(options: unknown): string | undefined {
     }
     return stringValue(option?.arg)?.toLowerCase();
   }
-  return;
 }
 
 function routineBodyStrings(options: unknown): string[] {

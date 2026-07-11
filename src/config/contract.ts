@@ -387,7 +387,6 @@ export function parseRuntimeSource(source: string): ParsedRuntimeSource | undefi
       payload,
     };
   }
-  return;
 }
 
 export function isRuntimeSource(source: string): boolean {

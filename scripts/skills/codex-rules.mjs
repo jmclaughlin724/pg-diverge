@@ -55,7 +55,8 @@ export function codexExecPolicyEntries(sourceText, sourcePath = "rule.md") {
     parsed = JSON.parse(raw);
   } catch (error) {
     throw new Error(
-      `${sourcePath} codexExecPolicy must be valid JSON: ${error instanceof Error ? error.message : String(error)}`
+      `${sourcePath} codexExecPolicy must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
   if (!Array.isArray(parsed)) {

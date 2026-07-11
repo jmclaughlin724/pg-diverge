@@ -1,13 +1,22 @@
 import type { Diagnostic, SchemaModel, SchemaObject } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 import type { AstNode } from "../sql/ast.js";
-import { asRecord, readArray, readString, stringList, typeNameToSql } from "../sql/ast.js";
+import {
+  asRecord,
+  readArray,
+  readNumber,
+  readString,
+  stringList,
+  stringValue,
+  typeNameToSql,
+} from "../sql/ast.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { canonicalColumnType, canonicalTableShape } from "../sql/table-shape.js";
 import {
   collectUnresolvedViewRelations,
   collectViewColumns,
   type FunctionShapesByKey,
+  isNonUpdatableViewFunctionCall,
 } from "./views.js";
 
 export interface ColumnShape {
@@ -17,6 +26,7 @@ export interface ColumnShape {
   name: string;
   notNull: boolean;
   type: string;
+  updatable?: boolean;
 }
 
 export function sortedByName<T extends { name: string }>(items: T[]): T[] {
@@ -40,10 +50,23 @@ export interface RelationshipShape {
   referencedSchema: string;
 }
 
-export interface FunctionShape {
-  args: { name: string; optional: boolean; type: string }[];
+export interface FunctionArgShape {
   name: string;
-  returns: { columns?: { name: string; type: string }[]; setof: boolean; type: string } | undefined;
+  optional: boolean;
+  type: string;
+}
+
+export interface FunctionReturnShape {
+  columns?: { name: string; type: string }[];
+  setof: boolean;
+  type: string;
+}
+
+export interface FunctionShape {
+  args: FunctionArgShape[];
+  estimatedRows: number;
+  name: string;
+  returns: FunctionReturnShape | undefined;
 }
 
 export interface TableShape {
@@ -54,12 +77,19 @@ export interface TableShape {
   uniqueColumnSets: string[][];
 }
 
+export interface ViewShape {
+  columns: ColumnShape[];
+  name: string;
+  relationships: RelationshipShape[];
+  updatable: boolean;
+}
+
 export interface SchemaEntry {
   composites: { columns: ColumnShape[]; name: string }[];
   enums: { name: string; values: string[] }[];
   functions: FunctionShape[];
   tables: TableShape[];
-  views: { columns: ColumnShape[]; name: string }[];
+  views: ViewShape[];
 }
 
 export interface SchemaShapes {
@@ -81,11 +111,35 @@ export interface ResolvedColumnType {
     | "enum"
     | "json"
     | "number"
+    | "record"
     | "relation"
     | "string"
     | "unknown"
     | "void";
   relationRef?: { collection: "Tables" | "Views"; name: string; schema: string };
+}
+
+export function computedRelationshipFunctions(
+  shapes: SchemaShapes,
+  schema: string,
+  entry: SchemaEntry,
+  relationName: string
+): FunctionShape[] {
+  return entry.functions.filter((fn) => {
+    if (fn.args.length !== 1) {
+      return false;
+    }
+    const resolved = resolveColumnType(shapes, schema, fn.args[0]?.type ?? "");
+    return (
+      resolved.kind === "relation" &&
+      resolved.relationRef?.schema === schema &&
+      resolved.relationRef.name === relationName
+    );
+  });
+}
+
+export function functionReturnsMultipleRows(fn: FunctionShape): boolean {
+  return fn.returns?.setof === true && fn.estimatedRows > 1;
 }
 
 export async function collectSchemaShapes(
@@ -239,10 +293,16 @@ async function registerViewShapes(
     }
   }
   for (const object of objects) {
-    const columns = columnsByKey.get(relationKey(object)) ?? [];
+    const columns = (columnsByKey.get(relationKey(object)) ?? []).map((column) => ({
+      ...column,
+      notNull: false,
+    }));
+    const updatable = object.ref.kind === "view" && (await isUpdatableView(object, functionsByKey));
     schemaEntry(shapes, object.ref.schema ?? "public").views.push({
-      columns,
+      columns: updatable ? await markViewColumnUpdatability(object, columns) : columns,
       name: object.ref.name,
+      relationships: [],
+      updatable,
     });
     if (diagnostics === undefined) {
       continue;
@@ -290,6 +350,152 @@ function sameColumns(left: ColumnShape[] | undefined, right: ColumnShape[]): boo
     const other = right[index];
     return other !== undefined && column.name === other.name && column.type === other.type;
   });
+}
+
+async function isUpdatableView(
+  object: SchemaObject,
+  functionsByKey: FunctionShapesByKey
+): Promise<boolean> {
+  const select = await viewSelectStatement(object);
+  if (!select) {
+    return false;
+  }
+  if (
+    asRecord(select.larg) ||
+    asRecord(select.rarg) ||
+    select.distinctClause !== undefined ||
+    select.groupClause !== undefined ||
+    select.havingQual !== undefined ||
+    select.limitOffset !== undefined ||
+    select.limitCount !== undefined ||
+    select.withClause !== undefined
+  ) {
+    return false;
+  }
+  if (
+    containsNonUpdatableViewFunction(
+      select.targetList,
+      object.ref.schema ?? "public",
+      functionsByKey
+    )
+  ) {
+    return false;
+  }
+  const from = readArray(select.fromClause);
+  if (from.length !== 1) {
+    return false;
+  }
+  return asRecord(asRecord(from[0])?.RangeVar) !== undefined;
+}
+
+function containsNonUpdatableViewFunction(
+  value: unknown,
+  defaultSchema: string,
+  functionsByKey: FunctionShapesByKey
+): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) =>
+      containsNonUpdatableViewFunction(item, defaultSchema, functionsByKey)
+    );
+  }
+  const node = asRecord(value);
+  if (!node) {
+    return false;
+  }
+  const functionCall = asRecord(node.FuncCall);
+  if (functionCall) {
+    const parts = stringList(functionCall.funcname);
+    const name = parts.at(-1);
+    const schema = parts.length > 1 ? parts.at(-2) : defaultSchema;
+    if (
+      isNonUpdatableViewFunctionCall(functionCall) ||
+      (name !== undefined &&
+        schema !== undefined &&
+        functionsByKey.get(`${schema}.${name}`)?.some((fn) => fn.returns?.setof === true))
+    ) {
+      return true;
+    }
+  }
+  return Object.values(node).some((item) =>
+    containsNonUpdatableViewFunction(item, defaultSchema, functionsByKey)
+  );
+}
+
+async function markViewColumnUpdatability(
+  object: SchemaObject,
+  columns: ColumnShape[]
+): Promise<ColumnShape[]> {
+  const select = await viewSelectStatement(object);
+  if (!select) {
+    return columns;
+  }
+  const aliases = Array.isArray(object.metadata.viewColumns)
+    ? object.metadata.viewColumns.map((value) => String(value))
+    : [];
+  const { hasWildcard, nonWritable, writable } = writableViewColumns(select, aliases);
+  return columns.map((column) => ({
+    ...column,
+    updatable: writable.has(column.name) || (hasWildcard && !nonWritable.has(column.name)),
+  }));
+}
+
+async function viewSelectStatement(object: SchemaObject): Promise<AstNode | undefined> {
+  const parsed = await parseSqlAst(object.sql, object.file);
+  const statements = readArray(asRecord(parsed.ast)?.stmts);
+  const stmt = asRecord(asRecord(statements[0])?.stmt);
+  const view = asRecord(stmt?.ViewStmt);
+  const query = asRecord(view?.query);
+  return asRecord(query?.SelectStmt);
+}
+
+function writableViewColumns(
+  select: AstNode,
+  aliases: string[]
+): {
+  hasWildcard: boolean;
+  nonWritable: Set<string>;
+  writable: Set<string>;
+} {
+  const targets = readArray(select.targetList);
+  const positionalAliases = targets.some((item) => {
+    const target = asRecord(asRecord(item)?.ResTarget);
+    const columnRef = asRecord(asRecord(target?.val)?.ColumnRef);
+    return readArray(columnRef?.fields).some((field) => asRecord(field)?.A_Star !== undefined);
+  })
+    ? []
+    : aliases;
+  let hasWildcard = false;
+  const nonWritable = new Set<string>();
+  const writable = new Set<string>();
+  for (const [index, item] of targets.entries()) {
+    const target = asRecord(asRecord(item)?.ResTarget);
+    const columnRef = asRecord(asRecord(target?.val)?.ColumnRef);
+    if (!target) {
+      continue;
+    }
+    if (!columnRef) {
+      const functionCall = asRecord(asRecord(target.val)?.FuncCall);
+      const outputName =
+        positionalAliases[index] ??
+        readString(target.name) ??
+        stringList(functionCall?.funcname).at(-1);
+      if (outputName) {
+        nonWritable.add(outputName);
+      }
+      continue;
+    }
+    const fields = readArray(columnRef.fields);
+    if (fields.some((field) => asRecord(field)?.A_Star !== undefined)) {
+      hasWildcard = true;
+      continue;
+    }
+    const sourceName = stringValue(fields.at(-1));
+    if (!sourceName) {
+      continue;
+    }
+    writable.add(positionalAliases[index] ?? readString(target.name) ?? sourceName);
+  }
+  return { hasWildcard, nonWritable, writable };
 }
 
 function functionShapesByKey(shapes: SchemaShapes): FunctionShapesByKey {
@@ -379,9 +585,6 @@ function resolveScalarType(base: string, arrayDepth: number): ResolvedColumnType
   if (numberTypes.has(lowered)) {
     return { arrayDepth, kind: "number" };
   }
-  if (vectorTypes.has(lowered)) {
-    return { arrayDepth: arrayDepth + 1, kind: "number" };
-  }
   if (stringTypes.has(lowered)) {
     return { arrayDepth, kind: "string" };
   }
@@ -393,6 +596,9 @@ function resolveScalarType(base: string, arrayDepth: number): ResolvedColumnType
   }
   if (lowered === "void") {
     return { arrayDepth, kind: "void" };
+  }
+  if (lowered === "record") {
+    return { arrayDepth, kind: "record" };
   }
 }
 
@@ -570,19 +776,18 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
     if (result === "skip") {
       continue;
     }
-    if (result === "abort") {
-      return;
-    }
     hasTableParam ||= result === "table";
   }
   const returns = asRecord(object.metadata.returns);
   const scalarType = typeof returns?.type === "string" ? returns.type : undefined;
   const setof = returns?.setof === true || hasTableParam;
+  const estimatedRows = functionEstimatedRows(fn, setof);
 
   const isRowShape = hasTableParam || returnColumns.length > 1;
   if (returnColumns.length > 0 && isRowShape) {
     return {
       args,
+      estimatedRows,
       name: object.ref.name,
       returns: { columns: returnColumns, setof, type: scalarType ?? "record" },
     };
@@ -591,12 +796,34 @@ async function functionShape(object: SchemaObject): Promise<FunctionShape | unde
   const effectiveType = singleOut?.type ?? scalarType;
   return {
     args,
+    estimatedRows,
     name: object.ref.name,
     returns: effectiveType === undefined ? undefined : { setof, type: effectiveType },
   };
 }
 
-type FunctionParameterResult = "abort" | "skip" | "table" | "value";
+function functionEstimatedRows(fn: AstNode, setof: boolean): number {
+  for (const item of readArray(fn.options)) {
+    const option = asRecord(asRecord(item)?.DefElem);
+    if (readString(option?.defname) !== "rows") {
+      continue;
+    }
+    const integer = readNumber(asRecord(asRecord(option?.arg)?.Integer)?.ival);
+    if (integer !== undefined) {
+      return integer;
+    }
+    const float = readString(asRecord(asRecord(option?.arg)?.Float)?.fval);
+    if (float !== undefined) {
+      const parsed = Number.parseFloat(float);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return setof ? 1000 : 0;
+}
+
+type FunctionParameterResult = "skip" | "table" | "value";
 
 function applyFunctionParameter(
   parameter: AstNode | undefined,
@@ -611,12 +838,8 @@ function applyFunctionParameter(
   if (!isInputParameter(mode)) {
     return mode === "FUNC_PARAM_TABLE" ? "table" : "skip";
   }
-  const name = readString(parameter.name);
-  if (!name) {
-    return "abort";
-  }
   args.push({
-    name,
+    name: readString(parameter.name) ?? "",
     optional: parameter.defexpr !== undefined,
     type: typeNameToSql(parameter.argType),
   });
@@ -759,10 +982,7 @@ const numberTypes = new Set([
   "float8",
   "numeric",
   "decimal",
-  "oid",
 ]);
-
-const vectorTypes = new Set(["vector", "halfvec"]);
 
 const stringTypes = new Set([
   "text",
@@ -774,11 +994,7 @@ const stringTypes = new Set([
   "bpchar",
   "uuid",
   "citext",
-  "name",
   "bytea",
-  "inet",
-  "cidr",
-  "macaddr",
   "interval",
   "date",
   "time",
@@ -789,5 +1005,5 @@ const stringTypes = new Set([
   "timestamptz",
   "timestamp with time zone",
   "timestamp without time zone",
-  "xml",
+  "vector",
 ]);

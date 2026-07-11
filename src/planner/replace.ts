@@ -103,7 +103,6 @@ function castTypeChangedColumn(
       return sharedColumns[index];
     }
   }
-  return;
 }
 
 function viewColumnCastTypes(object: SchemaObject | undefined): (string | null)[] | undefined {

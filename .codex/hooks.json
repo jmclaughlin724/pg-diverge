@@ -1,14 +1,85 @@
 {
   "hooks": {
-    "SessionStart": [
+    "PostToolUse": [
       {
-        "matcher": "startup|resume|clear|compact",
         "hooks": [
           {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-session-start.mjs\"",
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-post-tool-use.mjs\"",
+            "statusMessage": "Recording supaschema hook evidence",
             "timeout": 10,
-            "statusMessage": "Loading supaschema agent context"
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|apply_patch|mcp__.*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-source-hook.mjs\" hook schema-write",
+            "statusMessage": "Running supaschema auto-diff on schema change",
+            "timeout": 130,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|apply_patch"
+      },
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
+            "statusMessage": "Syncing supaschema Claude agent surfaces",
+            "timeout": 130,
+            "type": "command"
+          }
+        ],
+        "matcher": "apply_patch"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-pre-tool-use.mjs\"",
+            "statusMessage": "Checking required supaschema context",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|apply_patch|mcp__.*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-source-hook.mjs\" hook generated-migration-edit --runtime codex",
+            "statusMessage": "Checking supaschema generated-migration policy",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "apply_patch"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-session-start.mjs\"",
+            "statusMessage": "Loading supaschema agent context",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "startup|resume|clear|compact"
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-subagent-start.mjs\"",
+            "statusMessage": "Loading supaschema subagent context",
+            "timeout": 10,
+            "type": "command"
           }
         ]
       }
@@ -17,81 +88,10 @@
       {
         "hooks": [
           {
-            "type": "command",
             "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-user-prompt-submit.mjs\"",
+            "statusMessage": "Checking prompt-scoped supaschema context",
             "timeout": 10,
-            "statusMessage": "Checking prompt-scoped supaschema context"
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash|apply_patch|mcp__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-pre-tool-use.mjs\"",
-            "timeout": 10,
-            "statusMessage": "Checking required supaschema context"
-          }
-        ]
-      },
-      {
-        "matcher": "apply_patch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-source-hook.mjs\" hook generated-migration-edit --runtime codex",
-            "timeout": 10,
-            "statusMessage": "Checking supaschema generated-migration policy"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash|apply_patch|mcp__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-post-tool-use.mjs\"",
-            "timeout": 10,
-            "statusMessage": "Recording supaschema hook evidence"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|apply_patch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/supaschema-source-hook.mjs\" hook schema-write",
-            "timeout": 130,
-            "statusMessage": "Running supaschema auto-diff on schema change"
-          }
-        ]
-      },
-      {
-        "matcher": "apply_patch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "timeout": 130,
-            "statusMessage": "Syncing supaschema Claude agent surfaces"
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-subagent-start.mjs\"",
-            "timeout": 10,
-            "statusMessage": "Loading supaschema subagent context"
+            "type": "command"
           }
         ]
       }

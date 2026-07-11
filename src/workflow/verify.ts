@@ -76,7 +76,6 @@ export async function verifyPendingMigrationsForSync(
     };
   }
   options.lines.push(`verify: ${options.pending.length} pending migration file(s) passed`);
-  return;
 }
 
 export async function checkSyncLineageChain(
@@ -155,7 +154,7 @@ function resolveSyncVerifyDatabaseUrl(
     }
     return options.target?.databaseUrl ?? resolveDatabaseUrl(options.options.databaseUrl);
   } catch {
-    return;
+    // Verification can still report an unresolved URL without this fallback.
   }
 }
 

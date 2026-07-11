@@ -270,7 +270,6 @@ async function readHistory(
         { hint: "Confirm the database URL is reachable." }
       )
     );
-    return;
   } finally {
     await client.end().catch(() => undefined);
   }
@@ -335,10 +334,8 @@ async function annotateLineage(directory: string, report: MigrationsStatusReport
 }
 
 function databaseTargetLabel(value: string): string {
-  try {
-    new URL(value);
+  if (URL.canParse(value)) {
     return redactSecrets(value);
-  } catch {
-    return "<database>";
   }
+  return "<database>";
 }

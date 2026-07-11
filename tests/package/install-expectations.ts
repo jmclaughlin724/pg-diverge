@@ -12,15 +12,15 @@ export const managedSchemas = [
 ];
 
 export const defaultWorkflow = {
-  schema_diff: "on_schema_write",
   migration_check: "after_schema_diff",
-  migration_verify: "suggest_after_check",
   migration_sync: "auto",
-  type_safety: "report_only",
+  migration_verify: "suggest_after_check",
   rls_safety: "report_only",
+  schema_diff: "on_schema_write",
   type_generation: "create_or_refresh",
-  zod_generation: "create_or_refresh",
+  type_safety: "report_only",
   type_usage: "zod_validated",
+  zod_generation: "create_or_refresh",
 };
 
 export const defaultEnvironments = {};
@@ -28,16 +28,16 @@ export const defaultEnvironments = {};
 export const defaultSync = {
   targets: {
     local: {
+      historyTable: "supabase_migrations.schema_migrations",
       mode: "auto",
       runner: "direct",
-      historyTable: "supabase_migrations.schema_migrations",
     },
     remote: {
-      mode: "manual",
-      runner: "direct",
       historyTable: "supabase_migrations.schema_migrations",
-      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+      mode: "manual",
       remote: true,
+      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+      runner: "direct",
     },
   },
 };
@@ -45,16 +45,16 @@ export const defaultSync = {
 export const supabaseSync = {
   targets: {
     local: {
+      historyTable: "supabase_migrations.schema_migrations",
       mode: "auto",
       runner: "supabase-cli",
-      historyTable: "supabase_migrations.schema_migrations",
     },
     remote: {
-      mode: "manual",
-      runner: "supabase-cli",
       historyTable: "supabase_migrations.schema_migrations",
-      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+      mode: "manual",
       remote: true,
+      requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+      runner: "supabase-cli",
     },
   },
 };
@@ -74,18 +74,14 @@ export function expectedInstalledConfig(
     hints: {
       allowedGrantees: [],
       destructive: [],
-      requiredPolicyColumns: {},
       renames: [],
+      requiredPolicyColumns: {},
     },
     idempotency: "required",
     lockTimeout: "5s",
-    workflow: { ...defaultWorkflow, ...(options.workflow ?? {}) },
-    sync: schemaPath === "supabase/schemas" ? supabaseSync : defaultSync,
-    migrationsDir,
-    typesFile: "database.types.ts",
-    zodFile: "database.zod.ts",
-    normalize: "deparse",
     managedSchemas: schemaPath === "supabase/schemas" ? managedSchemas : [],
+    migrationsDir,
+    normalize: "deparse",
     postgresVersion: "15+",
     renameDetection: "hints-only",
     schemaPaths: [schemaPath],
@@ -97,8 +93,12 @@ export function expectedInstalledConfig(
       from: "auto",
     },
     statementTimeout: "60s",
+    sync: schemaPath === "supabase/schemas" ? supabaseSync : defaultSync,
     transactionMode: "per-migration",
+    typesFile: "database.types.ts",
     validators: ["internal-parser"],
+    workflow: { ...defaultWorkflow, ...(options.workflow ?? {}) },
+    zodFile: "database.zod.ts",
   };
 }
 

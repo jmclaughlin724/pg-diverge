@@ -57,7 +57,7 @@ async function readJson(filePath) {
   try {
     return JSON.parse(await readFile(filePath, "utf8"));
   } catch {
-    return;
+    // Optional fixture metadata is best-effort.
   }
 }
 

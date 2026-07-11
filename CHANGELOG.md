@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 (2026-07-11)
+
+### Breaking Changes
+
+- Align generated TypeScript with the current Supabase/postgres-meta contract. `supaschema types` no longer emits direct schema-qualified aliases such as `AppAccountsRow`, `AppAccountsInsert`, `AppAccountsUpdate`, or enum/composite aliases. Use the generated `Database`, `Tables`, `TablesInsert`, `TablesUpdate`, `Enums`, `CompositeTypes`, and `Constants` exports instead.
+- Replace generated `App*Schema` Zod exports with the Supaschema runtime extension `SupaschemaZod`, organized by schema, tables, views, enums, and composites.
+- Keep the removed `source.to` config shape and `types --source` CLI flag removed. Use `sources.from` and `types --from`.
+
+### Changes
+
+- Add `DatabaseWithoutInternals`, `DefaultSchema`, optional `__InternalSupabase.PostgrestVersion`, schema-keyed runtime enum `Constants`, and upstream empty collection shapes for tables, views, functions, enums, and composites.
+- Correct scalar mappings to match upstream behavior, including `vector` as `string`, `void` as `undefined`, `record` as `Record<string, unknown>`, and unsupported PostgreSQL-only scalar names as `unknown`.
+- Expand view and RPC generation with writable view `Insert`/`Update` shapes, non-writable column `never` contracts, unnamed JSON/text/relation-row arguments, complete correlated RPC signature unions, `SetofOptions`, computed relationship fields, relation-row returns, and structured function metadata.
+
 ## 0.3.17 (2026-07-10)
 
 ### Patch Changes

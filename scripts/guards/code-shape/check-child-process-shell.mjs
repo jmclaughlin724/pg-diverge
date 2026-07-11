@@ -24,7 +24,6 @@ function propertyName(name) {
   if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
     return name.text;
   }
-  return;
 }
 
 function objectHasShellTrue(expression) {

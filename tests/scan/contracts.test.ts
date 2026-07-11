@@ -292,4 +292,27 @@ describe("generated contract usage scan", () => {
 
     expect(diagnostics).toEqual([]);
   });
+
+  it("reports parse failures in files importing generated contracts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-contract-parse-"));
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "database.types.ts"), "export const Constants = {};\n");
+    await writeFile(
+      join(root, "src", "broken.ts"),
+      'import { Constants } from "../database.types";\nconst broken = ;\n'
+    );
+
+    const diagnostics = await scanGeneratedContractUsage({
+      config: resolveConfig({ typesFile: "database.types.ts", zodFile: "database.zod.ts" }),
+      cwd: root,
+      root: "src",
+    });
+
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        code: "SUPA_SCAN_CONTRACT_USAGE_PARSE",
+        file: "src/broken.ts",
+      }),
+    ]);
+  });
 });

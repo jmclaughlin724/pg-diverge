@@ -242,7 +242,6 @@ function defElemBoolean(value: unknown): boolean | undefined {
   if (text === "false" || text === "off" || text === "0" || text === "no") {
     return false;
   }
-  return;
 }
 
 function canonicalPolicyRoles(roles: unknown[], scopes: Scope[]): unknown[] {

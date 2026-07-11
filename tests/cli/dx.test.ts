@@ -115,8 +115,8 @@ describe("config DX", () => {
     expect(sources.properties?.from?.oneOf).toEqual([
       { const: "auto" },
       {
-        type: "string",
         not: { const: "auto" },
+        type: "string",
         "x-supaschema-source-parser": "parseRuntimeSource",
       },
     ]);
@@ -127,8 +127,8 @@ describe("config DX", () => {
     const config = resolveConfig({
       workflow: {
         migration_sync: "auto",
-        type_safety: "report_only",
         rls_safety: "disabled",
+        type_safety: "report_only",
       },
     });
 
@@ -144,15 +144,15 @@ describe("config DX", () => {
       })
     ).toThrow();
     expect(resolveConfig().workflow).toEqual({
-      schema_diff: "on_schema_write",
       migration_check: "after_schema_diff",
-      migration_verify: "suggest_after_check",
       migration_sync: "auto",
-      type_safety: "report_only",
+      migration_verify: "suggest_after_check",
       rls_safety: "report_only",
+      schema_diff: "on_schema_write",
       type_generation: "create_or_refresh",
-      zod_generation: "create_or_refresh",
+      type_safety: "report_only",
       type_usage: "zod_validated",
+      zod_generation: "create_or_refresh",
     });
   });
 
@@ -162,18 +162,18 @@ describe("config DX", () => {
       sync: {
         targets: {
           local: {
-            mode: "auto",
-            runner: "direct",
             environment: "local",
             historyTable: "supabase_migrations.schema_migrations",
+            mode: "auto",
+            runner: "direct",
           },
           remote: {
-            mode: "manual",
-            runner: "supabase-cli",
             databaseUrl: "$REMOTE_DB",
             historyTable: "supabase_migrations.schema_migrations",
+            mode: "manual",
             remote: true,
             requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+            runner: "supabase-cli",
           },
         },
       },
@@ -189,10 +189,10 @@ describe("config DX", () => {
         sync: {
           targets: {
             local: {
-              mode: "auto",
-              runner: "direct",
               environment: "missing",
               historyTable: "supabase_migrations.schema_migrations",
+              mode: "auto",
+              runner: "direct",
             },
           },
         },
@@ -212,16 +212,16 @@ describe("config DX", () => {
     expect(supabase.sync).toEqual({
       targets: {
         local: {
+          historyTable: "supabase_migrations.schema_migrations",
           mode: "auto",
           runner: "supabase-cli",
-          historyTable: "supabase_migrations.schema_migrations",
         },
         remote: {
-          mode: "manual",
-          runner: "supabase-cli",
           historyTable: "supabase_migrations.schema_migrations",
-          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          mode: "manual",
           remote: true,
+          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          runner: "supabase-cli",
         },
       },
     });
@@ -233,18 +233,18 @@ describe("config DX", () => {
     expect(postgres.sync).toEqual({
       targets: {
         local: {
-          mode: "auto",
-          runner: "direct",
           databaseUrl: "$DIRECT_URL",
           historyTable: "supabase_migrations.schema_migrations",
+          mode: "auto",
+          runner: "direct",
         },
         remote: {
-          mode: "manual",
-          runner: "direct",
           databaseUrl: "$DATABASE_URL",
           historyTable: "supabase_migrations.schema_migrations",
-          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          mode: "manual",
           remote: true,
+          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          runner: "direct",
         },
       },
     });
@@ -256,11 +256,11 @@ describe("config DX", () => {
         sync: {
           targets: {
             local: {
+              databaseUrl: "$LOCAL_DB",
+              environment: "local",
+              historyTable: "supabase_migrations.schema_migrations",
               mode: "auto",
               runner: "direct",
-              environment: "local",
-              databaseUrl: "$LOCAL_DB",
-              historyTable: "supabase_migrations.schema_migrations",
             },
           },
         },
@@ -279,9 +279,9 @@ describe("config DX", () => {
         sync: {
           targets: {
             local: {
+              historyTable: "supabase_migrations.schema_migrations",
               mode: "auto",
               runner: "direct",
-              historyTable: "supabase_migrations.schema_migrations",
             },
           },
         },
@@ -304,18 +304,18 @@ describe("config DX", () => {
       sync: {
         targets: {
           local: {
-            mode: "auto",
-            runner: "direct",
             environment: "local",
             historyTable: "supabase_migrations.schema_migrations",
+            mode: "auto",
+            runner: "direct",
           },
           remote: {
-            mode: "manual",
-            runner: "direct",
             environment: "production",
             historyTable: "supabase_migrations.schema_migrations",
-            requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+            mode: "manual",
             remote: true,
+            requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+            runner: "direct",
           },
         },
       },
@@ -337,18 +337,18 @@ describe("config DX", () => {
         sync: {
           targets: {
             local: {
-              mode: "auto",
-              runner: "direct",
               environment: "local",
               historyTable: "supabase_migrations.schema_migrations",
+              mode: "auto",
+              runner: "direct",
             },
             remote: {
-              mode: "manual",
-              runner: "direct",
               environment: "production",
               historyTable: "supabase_migrations.schema_migrations",
-              requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+              mode: "manual",
               remote: true,
+              requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+              runner: "direct",
             },
           },
         },
@@ -370,10 +370,10 @@ describe("config DX", () => {
         sync: {
           targets: {
             remote: {
-              mode: "auto",
-              runner: "direct",
               environment: "production",
               historyTable: "supabase_migrations.schema_migrations",
+              mode: "auto",
+              runner: "direct",
             },
           },
         },

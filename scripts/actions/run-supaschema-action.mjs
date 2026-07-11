@@ -85,7 +85,8 @@ export function parseActionArgv(input) {
   try {
     parsed = JSON.parse(input);
   } catch (error) {
-    throw new Error(`argv must be valid JSON: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`argv must be valid JSON: ${message}`, { cause: error });
   }
 
   if (!Array.isArray(parsed)) {

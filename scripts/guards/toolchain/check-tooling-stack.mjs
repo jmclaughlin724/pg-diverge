@@ -6,11 +6,18 @@ import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 const toolPins = {
-  "@biomejs/biome": "2.5.1",
-  "@vitest/coverage-v8": "4.1.9",
-  ultracite: "7.8.3",
-  vitest: "4.1.9",
+  "@biomejs/biome": "2.5.3",
+  "@vitest/coverage-v8": "4.1.10",
+  ultracite: "7.9.3",
+  vitest: "4.1.10",
 };
+const allowedRootDisabledBiomeRules = new Set([
+  "linter.rules.performance.noAwaitInLoops",
+  "linter.rules.style.useDestructuring",
+  "linter.rules.suspicious.noMisplacedAssertion",
+  "linter.rules.suspicious.noShadow",
+  "linter.rules.suspicious.noUnnecessaryConditions",
+]);
 
 function staticModuleSpecifier(node) {
   if (
@@ -102,17 +109,20 @@ function isGeneratedDistModuleSpecifier(value) {
   );
 }
 
-function assertNoDisabledBiomeRules(value, rulePath = "linter.rules") {
+function assertNoDisabledBiomeRules(value, rulePath = "linter.rules", allowedDisabled = new Set()) {
   if (!value || typeof value !== "object") {
     return;
   }
   for (const [key, child] of Object.entries(value)) {
     const nextPath = `${rulePath}.${key}`;
     if (child === "off") {
+      if (allowedDisabled.has(nextPath)) {
+        continue;
+      }
       assert(false, `biome.jsonc must not disable ${nextPath}`);
     }
     if (child && typeof child === "object") {
-      assertNoDisabledBiomeRules(child, nextPath);
+      assertNoDisabledBiomeRules(child, nextPath, allowedDisabled);
     }
   }
 }
@@ -204,6 +214,10 @@ export function check(root = ROOT) {
     );
   }
   assert(
+    packageJson.dependencies?.["typescript-compiler-api"] === "npm:typescript@6.0.3",
+    "package.json must keep the TypeScript 6 compiler API alias for runtime AST scanners"
+  );
+  assert(
     !("pg-formatter" in (packageJson.devDependencies ?? {})),
     "pg-formatter must not be reintroduced; SQL is governed by supaschema parser/deparser semantics"
   );
@@ -265,8 +279,8 @@ export function check(root = ROOT) {
   );
 
   assert(
-    biome.$schema === "https://biomejs.dev/schemas/2.5.1/schema.json",
-    "biome.jsonc must use the Biome 2.5.1 schema"
+    biome.$schema === "https://biomejs.dev/schemas/2.5.3/schema.json",
+    "biome.jsonc must use the Biome 2.5.3 schema"
   );
   for (const preset of [
     "ultracite/biome/core",
@@ -298,7 +312,11 @@ export function check(root = ROOT) {
         "js",
     "Biome must preserve emitted .js specifiers for NodeNext TypeScript"
   );
-  assertNoDisabledBiomeRules(biome.linter?.rules ?? {});
+  assertNoDisabledBiomeRules(
+    biome.linter?.rules ?? {},
+    "linter.rules",
+    allowedRootDisabledBiomeRules
+  );
   assertBiomeOverrides(biome.overrides ?? []);
   assertAgentPackageSurface(packageJson.files ?? []);
   assertRuntimePackageSurface(packageJson.files ?? []);

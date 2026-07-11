@@ -650,5 +650,4 @@ function unsafeAddColumnReason(column: TableColumn): string | undefined {
   if (column.hasInlineConstraint === true) {
     return `column "${column.name}" has an inline validating constraint and can fail on populated tables`;
   }
-  return;
 }

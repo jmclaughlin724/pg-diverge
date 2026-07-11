@@ -195,5 +195,4 @@ function identityGeneration(command: AstNode): string | undefined {
       return "d";
     }
   }
-  return;
 }

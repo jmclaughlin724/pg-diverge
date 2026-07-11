@@ -440,7 +440,6 @@ function grantTarget(
       schema: named.schema,
     };
   }
-  return;
 }
 
 function defaultPrivilegeScope(options: unknown): { forRoles: string[]; schemas: string[] } {

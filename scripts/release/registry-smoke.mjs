@@ -162,8 +162,8 @@ function runRaw(file, args, cwd, options = {}) {
   try {
     return execFileSync(file, args, {
       cwd,
-      env: childEnv(),
       encoding: "utf8",
+      env: childEnv(),
       maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", "pipe"],
       timeout: commandTimeoutMs,
@@ -171,7 +171,7 @@ function runRaw(file, args, cwd, options = {}) {
   } catch (error) {
     const message = commandFailureMessage(file, args, cwd, error);
     if (options.throwOnError) {
-      throw new Error(message);
+      throw new Error(message, { cause: error });
     }
     fail(message);
   }

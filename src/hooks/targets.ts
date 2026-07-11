@@ -163,7 +163,6 @@ function hookPatchLineTarget(line: string, projectDir: string): string | undefin
   if (line.startsWith(moveHeader)) {
     return resolveHookTarget(projectDir, line.slice(moveHeader.length).trim());
   }
-  return;
 }
 
 function resolveHookTarget(projectDir: string, path: string): string {

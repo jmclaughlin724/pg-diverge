@@ -80,7 +80,7 @@ async function sourceFingerprint(
   try {
     return (await extractSourceModel(source, { config, cwd })).fingerprint;
   } catch {
-    return;
+    // Invalid fallback sources are ignored while resolving alternatives.
   }
 }
 

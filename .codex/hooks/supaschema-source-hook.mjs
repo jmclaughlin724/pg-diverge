@@ -24,6 +24,6 @@ await import(pathToFileURL(cli).href);
 function npmInvocation(args) {
   const execpath = process.env.npm_execpath;
   return execpath
-    ? { command: process.execPath, args: [execpath, ...args] }
-    : { command: process.platform === "win32" ? "npm.cmd" : "npm", args };
+    ? { args: [execpath, ...args], command: process.execPath }
+    : { args, command: process.platform === "win32" ? "npm.cmd" : "npm" };
 }

@@ -220,7 +220,9 @@ function acquireSessionLock(payload) {
       }
       clearStaleLock(lockPath);
       if (Date.now() - startedAt > lockTimeoutMs) {
-        throw new Error(`timed out waiting for session state lock: ${path.basename(lockPath)}`);
+        throw new Error(`timed out waiting for session state lock: ${path.basename(lockPath)}`, {
+          cause: error,
+        });
       }
       sleep(lockPollMs);
     }

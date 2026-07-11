@@ -41,7 +41,6 @@ export async function checkPendingMigrations(
     }
     lines.push(`checked: ${file} (replay-safe)`);
   }
-  return;
 }
 
 export function runnerFailureResult(

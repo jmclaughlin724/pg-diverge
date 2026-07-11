@@ -32,6 +32,7 @@ export function failedResult(adapter, fixture, warmup, iteration, error) {
     elapsedMs: 0,
     exitCode: 1,
     fixture: fixture.name,
+    iteration,
     matchesTargetAfterFirstApply: false,
     matchesTargetAfterSecondApply: false,
     matchesTargetFingerprint: false,
@@ -45,7 +46,6 @@ export function failedResult(adapter, fixture, warmup, iteration, error) {
     totalElapsedMs: 0,
     verificationReason: message,
     warmup,
-    iteration,
   };
 }
 

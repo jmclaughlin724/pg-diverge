@@ -27,6 +27,9 @@ const codexPreToolContextMatcher = codexToolMatcher(codexPreToolContextTools);
 const codexPostToolContextMatcher = codexToolMatcher(codexPostToolContextTools);
 
 export const agentSurfaceManifest = {
+  agentBundle: {
+    targetRoot: "agent-bundle",
+  },
   agents: {
     sourceRoot: ".claude/agents",
     targetRoot: ".codex/agents",
@@ -39,9 +42,6 @@ export const agentSurfaceManifest = {
   publicSkills: {
     sourceRoot: ".claude/skills/supaschema",
     targetRoot: "skills/supaschema",
-  },
-  agentBundle: {
-    targetRoot: "agent-bundle",
   },
   rules: {
     sourceRoot: ".claude/rules",
@@ -93,8 +93,8 @@ export function syncAgentSurfaces({ root = ROOT } = {}) {
     hooks: hookResult.files,
     publicSkills: publicSkillResult.files,
     rules: ruleResult.files,
-    skillTargets: skillResult.targets,
     skills: skillResult.files,
+    skillTargets: skillResult.targets,
   };
 }
 
@@ -293,50 +293,50 @@ function escapeCodexMatcherLiteral(value) {
 function claudeHookConfig(runner) {
   return {
     hooks: {
-      PreToolUse: [
-        {
-          matcher: "Bash",
-          hooks: [
-            {
-              type: "command",
-              command: `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`,
-              timeout: 10,
-            },
-          ],
-        },
-        {
-          matcher: "Write|Edit|MultiEdit|apply_patch",
-          hooks: [
-            {
-              type: "command",
-              command: runner.command,
-              args: [...runner.args, "hook", "generated-migration-edit", "--runtime", "claude"],
-              timeout: 10,
-            },
-          ],
-        },
-      ],
       PostToolUse: [
         {
-          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
           hooks: [
             {
-              type: "command",
-              command: runner.command,
               args: [...runner.args, "hook", "schema-write"],
+              command: runner.command,
               timeout: 130,
+              type: "command",
             },
           ],
+          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
         },
         {
-          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
           hooks: [
             {
-              type: "command",
               command: `node "${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`,
               timeout: 130,
+              type: "command",
             },
           ],
+          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+        },
+      ],
+      PreToolUse: [
+        {
+          hooks: [
+            {
+              command: `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`,
+              timeout: 10,
+              type: "command",
+            },
+          ],
+          matcher: "Bash",
+        },
+        {
+          hooks: [
+            {
+              args: [...runner.args, "hook", "generated-migration-edit", "--runtime", "claude"],
+              command: runner.command,
+              timeout: 10,
+              type: "command",
+            },
+          ],
+          matcher: "Write|Edit|MultiEdit|apply_patch",
         },
       ],
     },
@@ -347,14 +347,81 @@ export function renderSourceCodexHooks(root = ROOT) {
   assertClaudeHookSource(root);
   return {
     hooks: {
+      PostToolUse: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-post-tool-use.mjs",
+              10,
+              "Recording supaschema hook evidence"
+            ),
+          ],
+          matcher: codexPostToolContextMatcher,
+        },
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/supaschema-source-hook.mjs",
+              130,
+              "Running supaschema auto-diff on schema change",
+              "hook schema-write"
+            ),
+          ],
+          matcher: codexMutationToolMatcher,
+        },
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+              130,
+              "Syncing supaschema Claude agent surfaces"
+            ),
+          ],
+          matcher: codexEditToolMatcher,
+        },
+      ],
+      PreToolUse: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-pre-tool-use.mjs",
+              10,
+              "Checking required supaschema context"
+            ),
+          ],
+          matcher: codexPreToolContextMatcher,
+        },
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/supaschema-source-hook.mjs",
+              10,
+              "Checking supaschema generated-migration policy",
+              "hook generated-migration-edit --runtime codex"
+            ),
+          ],
+          matcher: codexEditToolMatcher,
+        },
+      ],
       SessionStart: [
         {
-          matcher: "startup|resume|clear|compact",
           hooks: [
             codexHookCommand(
               ".codex/hooks/context-session-start.mjs",
               10,
               "Loading supaschema agent context"
+            ),
+          ],
+          matcher: "startup|resume|clear|compact",
+        },
+      ],
+      SubagentStart: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-subagent-start.mjs",
+              10,
+              "Loading supaschema subagent context"
             ),
           ],
         },
@@ -370,73 +437,6 @@ export function renderSourceCodexHooks(root = ROOT) {
           ],
         },
       ],
-      PreToolUse: [
-        {
-          matcher: codexPreToolContextMatcher,
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/context-pre-tool-use.mjs",
-              10,
-              "Checking required supaschema context"
-            ),
-          ],
-        },
-        {
-          matcher: codexEditToolMatcher,
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/supaschema-source-hook.mjs",
-              10,
-              "Checking supaschema generated-migration policy",
-              "hook generated-migration-edit --runtime codex"
-            ),
-          ],
-        },
-      ],
-      PostToolUse: [
-        {
-          matcher: codexPostToolContextMatcher,
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/context-post-tool-use.mjs",
-              10,
-              "Recording supaschema hook evidence"
-            ),
-          ],
-        },
-        {
-          matcher: codexMutationToolMatcher,
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/supaschema-source-hook.mjs",
-              130,
-              "Running supaschema auto-diff on schema change",
-              "hook schema-write"
-            ),
-          ],
-        },
-        {
-          matcher: codexEditToolMatcher,
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-              130,
-              "Syncing supaschema Claude agent surfaces"
-            ),
-          ],
-        },
-      ],
-      SubagentStart: [
-        {
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/context-subagent-start.mjs",
-              10,
-              "Loading supaschema subagent context"
-            ),
-          ],
-        },
-      ],
     },
   };
 }
@@ -444,10 +444,10 @@ export function renderSourceCodexHooks(root = ROOT) {
 function codexHookCommand(relativePath, timeout, statusMessage, args = "") {
   const command = `node "${codexProjectDir}/${relativePath}"${args ? ` ${args}` : ""}`;
   return {
-    type: "command",
     command,
-    timeout,
     statusMessage,
+    timeout,
+    type: "command",
   };
 }
 
@@ -679,7 +679,6 @@ function ensureConsumerCodexGeneralGuard(hooks) {
   }
   hooks.PreToolUse = [
     {
-      matcher: codexCommandToolMatcher,
       hooks: [
         codexHookCommand(
           ".codex/hooks/general-guard.mjs",
@@ -687,6 +686,7 @@ function ensureConsumerCodexGeneralGuard(hooks) {
           "Checking general Bash safety policy"
         ),
       ],
+      matcher: codexCommandToolMatcher,
     },
     ...entries,
   ];

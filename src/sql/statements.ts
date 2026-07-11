@@ -134,7 +134,7 @@ export function expressionSql(expression: unknown): string | undefined {
   try {
     return normalizeSql(deparseSync(JSON.parse(JSON.stringify(expression))));
   } catch {
-    return;
+    // Parser expression fragments are best-effort for statement metadata.
   }
 }
 
@@ -221,7 +221,6 @@ function columnGeneratedExpression(columnDef: AstNode): string | undefined {
     }
     return expressionSql(constraint?.raw_expr);
   }
-  return;
 }
 
 function columnDefaultExpression(
@@ -254,7 +253,6 @@ function columnDefaultExpression(
     }
     return text.length > 0 ? text : undefined;
   }
-  return;
 }
 
 function expressionLocation(expression: unknown): number | undefined {

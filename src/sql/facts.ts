@@ -206,7 +206,6 @@ function canonicalStatementShapeHash(
   if (object.ref.kind === "constraint" && first?.tag === "AlterTableStmt") {
     return constraintShapeHash(object, asRecord(first.node.AlterTableStmt));
   }
-  return;
 }
 
 function tableShapeHash(
@@ -280,7 +279,6 @@ function tablePartitionAttachment(
       };
     }
   }
-  return;
 }
 
 function sequenceShapeHash(
@@ -333,7 +331,6 @@ function canonicalObjectKindHash(
   if (object.ref.kind === "view" || object.ref.kind === "materialized-view") {
     return viewHash(object, statements);
   }
-  return;
 }
 
 function defaultPrivilegeHash(object: SchemaObject): string {
@@ -416,7 +413,6 @@ function addConstraintNode(alterTableStmt: AstNode | undefined): AstNode | undef
       return constraint;
     }
   }
-  return;
 }
 
 export function statementFacts(
@@ -461,7 +457,7 @@ function commentDropSql(node: AstNode): string | undefined {
       )
     );
   } catch {
-    return;
+    // Unrenderable guard SQL has no facts to contribute.
   }
 }
 
@@ -493,7 +489,6 @@ function renderGuardFacts(tag: string, node: AstNode, sql: string): RenderGuardF
     }
     return facts;
   }
-  return;
 }
 
 function functionFacts(node: AstNode): Record<string, unknown> {
@@ -545,7 +540,6 @@ function functionLanguage(options: unknown): string | undefined {
     }
     return stringValue(option?.arg);
   }
-  return;
 }
 
 function functionBody(options: unknown): { asOffset: number; text: string } | undefined {
@@ -560,7 +554,6 @@ function functionBody(options: unknown): { asOffset: number; text: string } | un
       return { asOffset, text: body };
     }
   }
-  return;
 }
 
 async function assignRoutineCatalogTypecheckSql(object: SchemaObject): Promise<void> {
@@ -825,7 +818,6 @@ function viewSecurityInvoker(options: unknown): boolean | undefined {
     }
     return defElemBoolean(defElem?.arg);
   }
-  return;
 }
 
 function defElemBoolean(arg: unknown): boolean {

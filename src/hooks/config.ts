@@ -11,9 +11,8 @@ const providerSchemaMarkers: {
   markers: { contentTerms?: string[]; fileNames?: string[]; path?: string }[];
   schemaPath: string;
 }[] = [
-  { schemaPath: supabaseSchemaPath, markers: [{ path: "supabase/config.toml" }] },
+  { markers: [{ path: "supabase/config.toml" }], schemaPath: supabaseSchemaPath },
   {
-    schemaPath: "neon/schemas",
     markers: [
       { path: "neon.toml" },
       { path: ".neon/project.json" },
@@ -23,9 +22,9 @@ const providerSchemaMarkers: {
         fileNames: ["drizzle.config.ts", "drizzle.config.js", "drizzle.config.mjs"],
       },
     ],
+    schemaPath: "neon/schemas",
   },
   {
-    schemaPath: "aws-postgresql/schemas",
     markers: [
       {
         contentTerms: ["aws_db_instance", "aws_rds_cluster", "aws_rds_global_cluster"],
@@ -47,9 +46,9 @@ const providerSchemaMarkers: {
         ],
       },
     ],
+    schemaPath: "aws-postgresql/schemas",
   },
   {
-    schemaPath: "alloydb/schemas",
     markers: [
       { contentTerms: ["google_alloydb_cluster", "google_alloydb_instance"], fileNames: ["*.tf"] },
       {
@@ -57,9 +56,9 @@ const providerSchemaMarkers: {
         fileNames: ["cloudbuild.yaml", "cloudbuild.yml", "app.yaml", "app.yml"],
       },
     ],
+    schemaPath: "alloydb/schemas",
   },
   {
-    schemaPath: "cloud-sql/schemas",
     markers: [
       {
         contentTerms: ["google_sql_database_instance", "google_sql_database"],
@@ -70,9 +69,9 @@ const providerSchemaMarkers: {
         fileNames: ["cloudbuild.yaml", "cloudbuild.yml", "app.yaml", "app.yml"],
       },
     ],
+    schemaPath: "cloud-sql/schemas",
   },
   {
-    schemaPath: "azure-postgresql/schemas",
     markers: [
       {
         contentTerms: ["azurerm_postgresql_flexible_server", "azurerm_postgresql_server"],
@@ -87,6 +86,7 @@ const providerSchemaMarkers: {
         fileNames: ["azure.yaml"],
       },
     ],
+    schemaPath: "azure-postgresql/schemas",
   },
 ];
 
@@ -293,7 +293,7 @@ function readInstallManifest(projectDir: string): unknown {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    return;
+    // Missing or malformed hook config means there is no local override.
   }
 }
 
@@ -313,7 +313,6 @@ function unresolvedUrlReason(name: string, value: string | undefined): string | 
       return `sync target ${name} requires ${value}`;
     }
   }
-  return;
 }
 
 function unresolvedSyncUrlReason(

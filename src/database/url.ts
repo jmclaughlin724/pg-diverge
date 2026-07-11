@@ -95,7 +95,6 @@ function readTomlDbPort(content: string): number | undefined {
     const value = Number.parseInt(line.slice(separator + 1).trim(), 10);
     return Number.isInteger(value) && value > 0 ? value : undefined;
   }
-  return;
 }
 
 function stripTomlComment(line: string): string {

@@ -20,7 +20,7 @@ export function relName(rel) {
   }
   const schema = typeof rel.schemaname === "string" ? rel.schemaname : "public";
   const name = typeof rel.relname === "string" ? rel.relname : undefined;
-  return name ? { schema, name } : undefined;
+  return name ? { name, schema } : undefined;
 }
 
 export function dottedName(list) {
@@ -39,9 +39,9 @@ export function dottedName(list) {
     return;
   }
   if (parts.length === 1) {
-    return { schema: "public", name: parts[0] };
+    return { name: parts[0], schema: "public" };
   }
-  return { schema: parts.slice(0, -1).join("."), name: parts.at(-1) };
+  return { name: parts.at(-1), schema: parts.slice(0, -1).join(".") };
 }
 
 export function arrayItems(value) {

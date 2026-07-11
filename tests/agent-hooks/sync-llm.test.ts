@@ -29,14 +29,14 @@ function read(root: string, file: string): string {
 
 function claudeHookSourceFiles(overrides: Record<string, string> = {}): Record<string, string> {
   return {
-    "AGENTS.md": "# Agents\n",
-    "CLAUDE.md": "@AGENTS.md\n",
     ".claude/rules/12-skill-loading-enforcement.md": [
       "Source and inventory reads MUST NOT become verification evidence",
       "process.exitCode = 2",
       "",
     ].join("\n"),
     ".claude/settings.json": `${JSON.stringify(claudeHookSettings())}\n`,
+    "AGENTS.md": "# Agents\n",
+    "CLAUDE.md": "@AGENTS.md\n",
     "scripts/agent-hooks/command-evidence.mjs": "domains.length === 0\n",
     "scripts/agent-hooks/response-evidence.mjs":
       "exitCodeFromExecutionStatus isExecutionStatusLabel\n",
@@ -116,6 +116,7 @@ function claudeSupaschemaHook(command: string) {
 describe("sync:llm", () => {
   it("mirrors private Claude surfaces locally and keeps public skills narrow", () => {
     const root = tempSurface({
+      ".agents/prompts/supaschema-install.md": "# Install\n",
       ".agents/skills/stale/SKILL.md": "# stale\n",
       ".claude/agents/ci-debugger.md": [
         "---",
@@ -129,74 +130,6 @@ describe("sync:llm", () => {
         "Fix CI failures.",
         "",
       ].join("\n"),
-      ".agents/prompts/supaschema-install.md": "# Install\n",
-      ".codex/hooks.json": `${JSON.stringify({
-        hooks: {
-          UserPromptSubmit: [
-            {
-              hooks: [
-                {
-                  command: `node "${codexProjectDir}/.codex/hooks/context-user-prompt-submit.mjs"`,
-                  type: "command",
-                },
-              ],
-            },
-          ],
-          PreToolUse: [
-            {
-              matcher: "Bash",
-              hooks: [
-                {
-                  command: `node "${codexProjectDir}/.codex/hooks/context-pre-tool-use.mjs"`,
-                  type: "command",
-                },
-                {
-                  command: `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`,
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: editToolMatcher,
-              hooks: [
-                {
-                  command: `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex`,
-                  type: "command",
-                },
-              ],
-            },
-          ],
-          PostToolUse: [
-            {
-              matcher: "Bash",
-              hooks: [
-                {
-                  command: `node "${codexProjectDir}/.codex/hooks/context-post-tool-use.mjs"`,
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: editToolMatcher,
-              hooks: [
-                {
-                  command: `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs" hook schema-write`,
-                  type: "command",
-                },
-              ],
-            },
-            {
-              matcher: editToolMatcher,
-              hooks: [
-                {
-                  command: `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`,
-                  type: "command",
-                },
-              ],
-            },
-          ],
-        },
-      })}\n`,
       ".claude/hooks/context-pre-tool-use.mjs": "process.stdout.write('pre');\n",
       ".claude/hooks/general-guard.mjs": "process.stdout.write('guard');\n",
       ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
@@ -215,25 +148,92 @@ describe("sync:llm", () => {
       ".claude/rules/supaschema.md": "# Supaschema rule\n",
       ".claude/skills/elegant/SKILL.md": "# elegant\n",
       ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
-      "agent-bundle/INSTALL.md": "# Agent bundle install\n",
       ".codex/agents/stale.toml": 'name = "stale"\n',
+      ".codex/hooks.json": `${JSON.stringify({
+        hooks: {
+          PostToolUse: [
+            {
+              hooks: [
+                {
+                  command: `node "${codexProjectDir}/.codex/hooks/context-post-tool-use.mjs"`,
+                  type: "command",
+                },
+              ],
+              matcher: "Bash",
+            },
+            {
+              hooks: [
+                {
+                  command: `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs" hook schema-write`,
+                  type: "command",
+                },
+              ],
+              matcher: editToolMatcher,
+            },
+            {
+              hooks: [
+                {
+                  command: `node "${codexProjectDir}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`,
+                  type: "command",
+                },
+              ],
+              matcher: editToolMatcher,
+            },
+          ],
+          PreToolUse: [
+            {
+              hooks: [
+                {
+                  command: `node "${codexProjectDir}/.codex/hooks/context-pre-tool-use.mjs"`,
+                  type: "command",
+                },
+                {
+                  command: `node "${codexProjectDir}/.codex/hooks/general-guard.mjs"`,
+                  type: "command",
+                },
+              ],
+              matcher: "Bash",
+            },
+            {
+              hooks: [
+                {
+                  command: `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex`,
+                  type: "command",
+                },
+              ],
+              matcher: editToolMatcher,
+            },
+          ],
+          UserPromptSubmit: [
+            {
+              hooks: [
+                {
+                  command: `node "${codexProjectDir}/.codex/hooks/context-user-prompt-submit.mjs"`,
+                  type: "command",
+                },
+              ],
+            },
+          ],
+        },
+      })}\n`,
       ".codex/hooks/general-guard.mjs": "process.stdout.write('native');\n",
       ".codex/hooks/stale.mjs": "process.stdout.write('stale');\n",
       ".codex/rules/stale.rules": "# stale\n",
+      "agent-bundle/INSTALL.md": "# Agent bundle install\n",
       "skills/stale/SKILL.md": "# stale\n",
     });
 
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agents: 1,
       agentBundle: 19,
+      agents: 1,
       codexHookConfig: 1,
       hooks: 5,
       publicSkills: 1,
       rules: 2,
-      skillTargets: 1,
       skills: 2,
+      skillTargets: 1,
     });
     expect(read(root, ".codex/rules/21-github-process.rules")).toContain(
       "Canonical rule owner: .claude/rules/21-github-process.md"
@@ -289,10 +289,10 @@ describe("sync:llm", () => {
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
       ".claude/rules/supaschema.md": "# Supaschema rule\n",
       ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
-      ".codex/hooks/general-guard.mjs": "process.stdout.write('native');\n",
-      ".codex/hooks.json": `${JSON.stringify({ hooks: {} })}\n`,
-      "agent-bundle/INSTALL.md": "# Agent bundle install\n",
       ".codex/agents/stale.toml": 'name = "stale"\n',
+      ".codex/hooks.json": `${JSON.stringify({ hooks: {} })}\n`,
+      ".codex/hooks/general-guard.mjs": "process.stdout.write('native');\n",
+      "agent-bundle/INSTALL.md": "# Agent bundle install\n",
     });
 
     const result = syncAgentSurfaces({ root });
@@ -318,8 +318,8 @@ describe("sync:llm", () => {
     settings.hooks.PreToolUse = [
       ...settings.hooks.PreToolUse,
       {
-        matcher: "Bash",
         hooks: [claudeNodeHook(".claude/hooks/guards/bash-policy-checks.mjs")],
+        matcher: "Bash",
       },
     ];
     const root = tempSurface({

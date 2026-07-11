@@ -41,7 +41,7 @@ ALTER TYPE app.status ADD VALUE IF NOT EXISTS 'archived';`,
     expect(result.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
     expect(result.stdout).toContain("only_history");
     expect(result.stdout).toContain("title: string;");
-    expect(result.stdout).toContain("status: AppStatus;");
+    expect(result.stdout).toContain('status: Database["app"]["Enums"]["status"];');
     expect(result.stdout).toContain('"draft" | "active" | "archived"');
   });
 

@@ -586,7 +586,6 @@ function traceCycle(leftover: Set<string>, outgoing: Map<string, Set<string>>): 
       return [...path.slice(cycleStart), current].join(" -> ");
     }
   }
-  return;
 }
 
 export function compareOperations(left: MigrationOperation, right: MigrationOperation): number {

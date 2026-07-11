@@ -25,7 +25,7 @@ Choose an ORM or query builder only when its query-construction API is itself th
 - **Migrations come from the same tree.** `supaschema diff` renders guarded SQL from parser-backed model differences, and `supaschema check` verifies the migration before it reaches a database.
 - **Apply is part of the workflow.** `supaschema sync` can reconcile target history and apply pending migrations through configured direct PostgreSQL or Supabase CLI runners after safety gates pass.
 - **Types are generated before deploy.** `supaschema types` writes `database.types.ts` from the declared schema, so application code can compile against the intended shape before the database has caught up.
-- **Runtime validation is generated too.** `database.zod.ts` provides one direct schema-qualified validator for each generated type.
+- **Runtime validation is generated too.** `database.zod.ts` provides a `SupaschemaZod` runtime object that mirrors schemas, tables, views, enums, and composites.
 - **Deploy safety is package-owned.** The sync pipeline can block type-breaking changes and RLS hazards before mutation, instead of relying on a query layer to notice drift later.
 
 ## Application pattern
@@ -33,24 +33,28 @@ Choose an ORM or query builder only when its query-construction API is itself th
 Use PostgreSQL as the query language and the generated outputs as the application contract:
 
 ```ts app/accounts.ts
-import type { AppAccountsInsert, AppAccountsRow } from "../database.types";
-import { AppAccountsInsertSchema, AppAccountsRowSchema } from "../database.zod";
+import type { Tables, TablesInsert } from "../database.types";
+import { SupaschemaZod } from "../database.zod";
+
+type AccountInsert = TablesInsert<{ schema: "app" }, "accounts">;
+type AccountRow = Tables<{ schema: "app" }, "accounts">;
 
 export async function createAccount(
   db: { query<T>(sql: string, values: unknown[]): Promise<{ rows: T[] }> },
   body: unknown
-): Promise<AppAccountsRow> {
-  const input: AppAccountsInsert = AppAccountsInsertSchema.parse(body);
-  const result = await db.query<AppAccountsRow>(
+): Promise<AccountRow> {
+  const input: AccountInsert =
+    SupaschemaZod.app.Tables.accounts.Insert.parse(body);
+  const result = await db.query<AccountRow>(
     "insert into app.accounts (name) values ($1) returning id, name",
     [input.name]
   );
 
-  return AppAccountsRowSchema.parse(result.rows[0]);
+  return SupaschemaZod.app.Tables.accounts.Row.parse(result.rows[0]);
 }
 ```
 
-This pattern uses a driver or platform client to execute SQL. The generated named types and validators own compile-time shapes and runtime boundaries. An ORM can still be layered on top for query-builder ergonomics, but it should not duplicate schema ownership, generated types, validation contracts, or migration control.
+This pattern uses a driver or platform client to execute SQL. The generated Supabase-compatible helper types and `SupaschemaZod` validators own compile-time shapes and runtime boundaries. An ORM can still be layered on top for query-builder ergonomics, but it should not duplicate schema ownership, generated types, validation contracts, or migration control.
 
 ## Keep one source of truth
 

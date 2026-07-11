@@ -801,7 +801,6 @@ async function validateReplacement(
         { file: path, hint: "Pass the generated migration file that should be replaced." }
       )
     );
-    return;
   });
   const lineage = sql === undefined ? undefined : parseLineage(sql.slice(0, 4096));
   if (sql !== undefined && lineage === undefined) {

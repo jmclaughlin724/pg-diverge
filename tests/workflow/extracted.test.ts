@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "typescript-compiler-api";
 import { describe, expect, it } from "vitest";
 
 const workflowSources = [

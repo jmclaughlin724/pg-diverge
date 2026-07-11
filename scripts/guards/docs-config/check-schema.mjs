@@ -11,15 +11,15 @@ const generatedFiles = ["supaschema-config.schema.json", "bin/config-contract.mj
 function npmInvocation(args) {
   const execpath = process.env.npm_execpath;
   return execpath
-    ? { command: process.execPath, args: [execpath, ...args] }
-    : { command: process.platform === "win32" ? "npm.cmd" : "npm", args };
+    ? { args: [execpath, ...args], command: process.execPath }
+    : { args, command: process.platform === "win32" ? "npm.cmd" : "npm" };
 }
 
 function run(command, args, label) {
   const result = spawnSync(command, args, {
     cwd: packageRoot,
-    stdio: "inherit",
     shell: false,
+    stdio: "inherit",
   });
   if (result.error) {
     console.error(`check:schema: failed to run ${label}: ${result.error.message}`);

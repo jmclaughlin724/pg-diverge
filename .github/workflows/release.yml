@@ -17,7 +17,6 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
-
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release
@@ -109,7 +108,7 @@ jobs:
       - name: Attest tarball provenance
         if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         id: attest
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
         with:
           subject-path: ${{ steps.pack.outputs.tarball_path }}
       # GitHub Release creation is part of the publish transaction.

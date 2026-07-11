@@ -7,4 +7,4 @@ if (process.env.CI) {
 }
 
 const command = process.platform === "win32" ? "lefthook.cmd" : "lefthook";
-spawnSync(command, ["install"], { stdio: "ignore", shell: false });
+spawnSync(command, ["install"], { shell: false, stdio: "ignore" });
