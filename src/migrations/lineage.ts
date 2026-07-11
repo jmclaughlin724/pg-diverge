@@ -43,7 +43,6 @@ export function parseLineage(
       };
     }
   }
-  return;
 }
 
 function parseModelFormatVersion(value: string | undefined): number | undefined {
@@ -102,5 +101,4 @@ export async function latestLineage(directory: string): Promise<MigrationLineage
       return { file: path, ...lineage };
     }
   }
-  return;
 }

@@ -153,7 +153,7 @@ const parseUrl = (value) => {
   try {
     return new URL(value);
   } catch {
-    return;
+    // Invalid URLs are handled by the caller as non-links.
   }
 };
 
@@ -199,7 +199,7 @@ const classifyInternalLink = (target) => {
 const addLinkViolation = (violations, file, line, target) => {
   const msg = classifyInternalLink(target);
   if (msg) {
-    violations.push({ file, line, rule: "internal-link", msg });
+    violations.push({ file, line, msg, rule: "internal-link" });
   }
 };
 
@@ -257,7 +257,7 @@ const collectMdxDescendants = (node, name, matches = []) => {
 };
 
 const pushFrontmatterViolation = (violations, file, msg) => {
-  violations.push({ file, line: 1, rule: "frontmatter", msg });
+  violations.push({ file, line: 1, msg, rule: "frontmatter" });
 };
 
 const readFrontmatter = (tree, file, violations) => {
@@ -348,8 +348,8 @@ export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
       violations.push({
         file: displayFile,
         line: 1,
-        rule: "page-extension",
         msg: "docs pages must use .mdx so Mintlify components remain available by default",
+        rule: "page-extension",
       });
     }
 
@@ -359,8 +359,8 @@ export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
       violations.push({
         file: displayFile,
         line: error.line ?? 1,
-        rule: "parse",
         msg: error.message,
+        rule: "parse",
       });
       continue;
     }
@@ -390,8 +390,8 @@ export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
       violations.push({
         file: displayFile,
         line: 1,
-        rule: "component",
         msg: "command page has a Flags/Options section but no <ParamField> - document each flag with <ParamField> (Mintlify standard)",
+        rule: "component",
       });
     }
   }
@@ -421,16 +421,16 @@ function inspectComparisonPage(tree, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: 1,
-      rule: "comparison-claim",
       msg: "comparison pages must include `Last verified YYYY-MM-DD` for external claims",
+      rule: "comparison-claim",
     });
   }
   if (!hasSourcedSection(tree)) {
     violations.push({
       file: displayFile,
       line: 1,
-      rule: "comparison-claim",
       msg: "comparison pages must include a Sources section with at least one outbound link",
+      rule: "comparison-claim",
     });
   }
 }
@@ -501,8 +501,8 @@ function inspectHeading(node, displayFile, violations, state) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "body-h1",
       msg: "drop the body `# ` heading - the frontmatter `title` is the page H1; start in-page headings at `##`",
+      rule: "body-h1",
     });
   }
   if (node.depth === 2 && ["Flags", "Options"].includes(firstWord(headingText))) {
@@ -512,8 +512,8 @@ function inspectHeading(node, displayFile, violations, state) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "heading-case",
       msg: `heading "${headingText}" should use sentence case unless it is a command, acronym, code symbol, product name, or diagnostic code`,
+      rule: "heading-case",
     });
   }
 }
@@ -526,16 +526,16 @@ function inspectCodeFence(node, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "code-fence-language",
       msg: "add a code fence language tag (use `text` for terminal output, diagrams, and plain text)",
+      rule: "code-fence-language",
     });
   }
   if (typeof node.meta === "string" && node.meta.includes("theme={null}")) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "fence-artifact",
       msg: "remove `theme={null}` from the code fence",
+      rule: "fence-artifact",
     });
   }
 }
@@ -596,8 +596,8 @@ function inspectColumnsElement(node, displayFile, violations) {
   violations.push({
     file: displayFile,
     line: lineOf(node),
-    rule: "card-grid",
     msg: "use <CardGroup> for docs card grids so the repo has one card layout owner",
+    rule: "card-grid",
   });
 }
 
@@ -608,8 +608,8 @@ function inspectCardGroupElement(node, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "card-grid",
       msg: "<CardGroup> must use cols={2} or cols={3}",
+      rule: "card-grid",
     });
     return;
   }
@@ -617,16 +617,16 @@ function inspectCardGroupElement(node, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "card-grid",
       msg: "<CardGroup cols={3}> must contain exactly three direct <Card> children",
+      rule: "card-grid",
     });
   }
   if (cols === 2 && cards.length > 4) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "card-grid",
       msg: "<CardGroup cols={2}> must contain at most four direct <Card> children",
+      rule: "card-grid",
     });
   }
 }
@@ -637,8 +637,8 @@ function inspectCardElement(node, displayFile, violations) {
       violations.push({
         file: displayFile,
         line: lineOf(node),
-        rule: "card",
         msg: `<Card> must include a string ${attributeName} attribute`,
+        rule: "card",
       });
     }
   }
@@ -647,8 +647,8 @@ function inspectCardElement(node, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "card",
       msg: `<Card> body is ${bodyWords} words; keep card bodies to one short sentence (35 words max)`,
+      rule: "card",
     });
   }
 }
@@ -661,8 +661,8 @@ function inspectLinkText(node, displayFile, violations) {
   violations.push({
     file: displayFile,
     line: lineOf(node),
-    rule: "link-text",
     msg: `link text "${text}" is too generic; use descriptive text that names the destination`,
+    rule: "link-text",
   });
 }
 
@@ -671,8 +671,8 @@ function inspectImage(node, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "image-alt",
       msg: "images need descriptive alt text",
+      rule: "image-alt",
     });
   }
   inspectImageSrc(node.url, displayFile, lineOf(node), violations);
@@ -689,8 +689,8 @@ function inspectImgElement(node, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "image-alt",
       msg: "`<img>` elements need descriptive alt text",
+      rule: "image-alt",
     });
   }
   const src = attributes.get("src");
@@ -710,16 +710,16 @@ function inspectImageSrc(src, displayFile, line, violations) {
     violations.push({
       file: displayFile,
       line,
-      rule: "image-path",
       msg: `local image source "${src}" must live under ${LOCAL_IMAGE_PREFIX}`,
+      rule: "image-path",
     });
     return;
   }
   violations.push({
     file: displayFile,
     line,
-    rule: "image-path",
     msg: `image source "${src}" must be root-relative under ${LOCAL_IMAGE_PREFIX}, e.g. /images/example.png`,
+    rule: "image-path",
   });
 }
 
@@ -728,8 +728,8 @@ function inspectImageFrame(node, ancestors, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "image-frame",
       msg: 'use <Frame><img src="/images/..." alt="..." /></Frame> instead of markdown image syntax',
+      rule: "image-frame",
     });
     return;
   }
@@ -743,8 +743,8 @@ function inspectImageFrame(node, ancestors, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      rule: "image-frame",
       msg: "`<img>` elements in docs must be wrapped in a Mintlify <Frame>",
+      rule: "image-frame",
     });
   }
 }
@@ -760,8 +760,8 @@ function inspectAdjacentCallouts(node, displayFile, violations) {
       violations.push({
         file: displayFile,
         line: lineOf(child),
-        rule: "callout-spacing",
         msg: "do not stack callouts without intervening explanatory content",
+        rule: "callout-spacing",
       });
     }
     previousCallout = currentCallout ? child : undefined;

@@ -608,7 +608,6 @@ async function applyColumnMutation(
   if (subtype === "AT_DropConstraint") {
     return applyDropConstraint(statement, command, table, objects, file);
   }
-  return;
 }
 
 async function applyAddColumn(
@@ -1115,7 +1114,7 @@ async function applyNormalizedAmendment(
                 "SUPA_REPLAY_UNSUPPORTED",
                 "error",
                 `ALTER amendment could not be applied to ${marker.key}`,
-                { file: marker.file, statement: marker.sql, ref: marker.ref }
+                { file: marker.file, ref: marker.ref, statement: marker.sql }
               ),
             ],
       hardFail: true,
@@ -2011,7 +2010,6 @@ function doBlockBody(node: AstNode): string | undefined {
       return stringNode(def?.arg);
     }
   }
-  return;
 }
 
 function doBlockDdlFragments(body: string): DoBlockDdlFragment[] {
@@ -2139,7 +2137,6 @@ function skipNonCode(sql: string, index: number): number | undefined {
   if (char === "/" && sql[index + 1] === "*") {
     return skipBlockComment(sql, index);
   }
-  return;
 }
 
 function skipSingleQuoted(sql: string, start: number): number {

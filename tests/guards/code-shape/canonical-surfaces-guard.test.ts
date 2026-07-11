@@ -5,7 +5,7 @@ import { check } from "../../../scripts/guards/code-shape/check-canonical-surfac
 import { tempGuardRepo } from "../fixture.js";
 
 const packageJson = (scripts: Record<string, string> = {}) =>
-  `${JSON.stringify({ type: "module", scripts })}\n`;
+  `${JSON.stringify({ scripts, type: "module" })}\n`;
 
 describe("canonical surfaces guard", () => {
   it("blocks recursive force deletion in package scripts", async () => {
@@ -76,9 +76,9 @@ describe("canonical surfaces guard", () => {
 
   it("blocks comments and regular expression engines in skill reference code", async () => {
     const root = tempGuardRepo({
-      ".claude/skills/research/references/workflow.js": "const value = /x/;\n",
       ".agents/skills/research/references/workflow.js":
         "const value = 1;\n// generated mirror must stay clean\n",
+      ".claude/skills/research/references/workflow.js": "const value = /x/;\n",
     });
     const message = await errorMessage(check(root));
     expect(message).toContain(".claude/skills/research/references/workflow.js");

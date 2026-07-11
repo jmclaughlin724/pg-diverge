@@ -50,8 +50,8 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
       hooks: 5,
       publicSkills: 2,
       rules: 2,
-      skillTargets: 1,
       skills: 3,
+      skillTargets: 1,
     });
     expect(checkAgentSurfaces({ root })).toEqual([]);
     expect(existsSync(join(root, ".agents/skills/upstream/extra.md"))).toBe(false);
@@ -105,8 +105,8 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
       hooks: 3,
       publicSkills: 1,
       rules: 1,
-      skillTargets: 1,
       skills: 1,
+      skillTargets: 1,
     });
     expect(existsSync(join(root, ".agents/skills"))).toBe(true);
     expect(existsSync(join(root, ".codex/skills"))).toBe(false);

@@ -16,8 +16,8 @@ export function codeAtlasQueryEvidence(payload) {
     return {
       kind: "code-atlas-query",
       queryKind,
-      value,
       summary: `Code Atlas ${queryKind || "query"} tool call`,
+      value,
     };
   }
   if (name !== "Bash") {

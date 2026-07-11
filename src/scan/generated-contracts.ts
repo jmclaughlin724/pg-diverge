@@ -1,31 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
-import type {
-  Expression,
-  ImportDeclaration,
-  ImportSpecifier,
-  Node,
-  SourceFile,
-  StringLiteral,
-  Diagnostic as TypeScriptDiagnostic,
-} from "typescript";
-import {
-  createSourceFile,
-  flattenDiagnosticMessageText,
-  forEachChild,
-  isAsExpression,
-  isCallExpression,
-  isElementAccessExpression,
-  isIdentifier,
-  isImportDeclaration,
-  isNamedImports,
-  isPropertyAccessExpression,
-  isStringLiteral,
-  isTypeAssertionExpression,
-  isVariableDeclaration,
-  ScriptKind,
-  ScriptTarget,
-} from "typescript";
+import ts from "typescript-compiler-api";
 import type { Diagnostic, SupaschemaConfig } from "../core.js";
 import { diagnostic } from "../diagnostics.js";
 
@@ -41,8 +16,6 @@ interface GeneratedImportState {
   runtimeRoots: Set<string>;
 }
 
-type GeneratedImportDeclaration = ImportDeclaration & { moduleSpecifier: StringLiteral };
-
 const sourceExtensions = new Set([".ts", ".tsx", ".mts", ".cts"]);
 const skipDirectories = new Set([
   ".git",
@@ -52,6 +25,7 @@ const skipDirectories = new Set([
   "dist",
   "node_modules",
 ]);
+
 export async function scanGeneratedContractUsage(
   options: GeneratedContractUsageScanOptions
 ): Promise<Diagnostic[]> {
@@ -59,11 +33,10 @@ export async function scanGeneratedContractUsage(
   const root = resolve(cwd, options.root);
   const generatedTargets = generatedContractTargets(cwd, options.config);
   const files = await sourceFiles(root, generatedTargets);
-  const diagnostics: Diagnostic[] = [];
-  for (const file of files) {
-    diagnostics.push(...(await scanGeneratedContractUsageFile(file, cwd, generatedTargets)));
-  }
-  return diagnostics;
+  const diagnostics = await Promise.all(
+    files.map((file) => scanGeneratedContractUsageFile(file, cwd, generatedTargets))
+  );
+  return diagnostics.flat();
 }
 
 async function scanGeneratedContractUsageFile(
@@ -72,51 +45,65 @@ async function scanGeneratedContractUsageFile(
   generatedTargets: Set<string>
 ): Promise<Diagnostic[]> {
   const text = await readFile(file, "utf8");
-  const source = createSourceFile(file, text, ScriptTarget.Latest, true, scriptKind(file));
-  const parseDiagnostics: Diagnostic[] = sourceParseDiagnostics(source).map((item) =>
-    scanDiagnostic(
-      "SUPA_SCAN_CONTRACT_USAGE_PARSE",
-      source,
-      item.start ?? 0,
-      `TypeScript source could not be fully parsed: ${flattenDiagnosticMessageText(item.messageText, " ")}`
-    )
+  const sourceFile = ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKindForFile(file)
   );
-  const imports = collectGeneratedImports(source, generatedTargets);
+  const imports = collectGeneratedImports(sourceFile, text, file, generatedTargets);
   if (!imports.importsGeneratedContracts) {
     return [];
   }
-  const diagnostics = [...parseDiagnostics, ...imports.diagnostics];
-  collectUsageDiagnostics(source, source, imports.runtimeRoots, diagnostics);
+  const diagnostics = [...imports.diagnostics];
+  collectUsageDiagnostics(sourceFile, text, file, imports.runtimeRoots, diagnostics);
   return diagnostics.map((item) => withRelativeFile(item, cwd));
 }
 
 function collectGeneratedImports(
-  source: SourceFile,
+  sourceFile: ts.SourceFile,
+  text: string,
+  file: string,
   generatedTargets: Set<string>
 ): GeneratedImportState {
   const diagnostics: Diagnostic[] = [];
   const runtimeRoots = new Set<string>();
   let importsGeneratedContracts = false;
-  for (const statement of source.statements) {
-    if (!isGeneratedImportDeclaration(statement, source, generatedTargets)) {
+  for (const statement of sourceFile.statements) {
+    if (
+      !(
+        ts.isImportDeclaration(statement) &&
+        ts.isStringLiteral(statement.moduleSpecifier) &&
+        isGeneratedContractImport(statement.moduleSpecifier.text, file, generatedTargets)
+      )
+    ) {
       continue;
     }
     importsGeneratedContracts = true;
     const clause = statement.importClause;
-    const importClauseIsTypeOnly = clause?.isTypeOnly === true;
-    const bindings = clause?.namedBindings;
-    if (bindings === undefined) {
+    if (clause === undefined) {
       continue;
     }
-    if (isNamedImports(bindings)) {
-      for (const specifier of bindings.elements) {
-        collectGeneratedImportSpecifier(
-          specifier,
-          source,
-          importClauseIsTypeOnly,
-          diagnostics,
-          runtimeRoots
+    const namedBindings = clause?.namedBindings;
+    if (namedBindings === undefined || !ts.isNamedImports(namedBindings)) {
+      continue;
+    }
+    for (const specifier of namedBindings.elements) {
+      const renamed = specifier.propertyName !== undefined;
+      if (renamed) {
+        diagnostics.push(
+          scanDiagnostic(
+            "SUPA_SCAN_CONTRACT_IMPORT_RENAME",
+            text,
+            file,
+            specifier.name.getStart(sourceFile),
+            "Generated contract imports must keep their exported names."
+          )
         );
+      }
+      if (!(clause.isTypeOnly || specifier.isTypeOnly)) {
+        runtimeRoots.add(specifier.name.text);
       }
     }
   }
@@ -124,84 +111,72 @@ function collectGeneratedImports(
 }
 
 function collectUsageDiagnostics(
-  node: Node,
-  source: SourceFile,
+  sourceFile: ts.SourceFile,
+  text: string,
+  file: string,
   runtimeRoots: Set<string>,
   diagnostics: Diagnostic[]
 ): void {
-  if (isAsExpression(node) || isTypeAssertionExpression(node)) {
-    diagnostics.push(
-      scanDiagnostic(
-        "SUPA_SCAN_CONTRACT_ASSERTION",
-        source,
-        node.getStart(source),
-        "TypeScript assertions in files importing generated contracts bypass the generated contract boundary."
-      )
-    );
-  }
-  if (isCallExpression(node) && isPropertyAccessExpression(node.expression)) {
-    const name = node.expression.name.text;
-    if (name === "overrideTypes" || name === "returns") {
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      return;
+    }
+    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
       diagnostics.push(
         scanDiagnostic(
-          name === "overrideTypes"
-            ? "SUPA_SCAN_CONTRACT_OVERRIDE_TYPES"
-            : "SUPA_SCAN_CONTRACT_RETURNS",
-          source,
-          node.expression.name.getStart(source),
-          `${name}() overrides generated query response contracts.`
+          "SUPA_SCAN_CONTRACT_ASSERTION",
+          text,
+          file,
+          node.getStart(sourceFile),
+          "TypeScript assertions in files importing generated contracts bypass the generated contract boundary."
         )
       );
     }
-  }
-  if (isVariableDeclaration(node) && isIdentifier(node.name) && node.initializer !== undefined) {
-    const rootName = expressionRootName(node.initializer);
-    if (rootName !== undefined && runtimeRoots.has(rootName)) {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      (node.name.text === "overrideTypes" || node.name.text === "returns")
+    ) {
+      diagnostics.push(
+        scanDiagnostic(
+          node.name.text === "overrideTypes"
+            ? "SUPA_SCAN_CONTRACT_OVERRIDE_TYPES"
+            : "SUPA_SCAN_CONTRACT_RETURNS",
+          text,
+          file,
+          node.name.getStart(sourceFile),
+          `${node.name.text}() overrides generated query response contracts.`
+        )
+      );
+    }
+    if (
+      runtimeRoots.size > 0 &&
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined &&
+      rootIdentifier(node.initializer) !== undefined &&
+      runtimeRoots.has(rootIdentifier(node.initializer) ?? "")
+    ) {
       diagnostics.push(
         scanDiagnostic(
           "SUPA_SCAN_CONTRACT_RUNTIME_COPY",
-          source,
-          node.name.getStart(source),
+          text,
+          file,
+          node.name.getStart(sourceFile),
           "Local constants initialized from generated runtime roots copy the generated contract."
         )
       );
     }
-  }
-  forEachChild(node, (child) => collectUsageDiagnostics(child, source, runtimeRoots, diagnostics));
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
 }
 
-function isGeneratedImportDeclaration(
-  statement: Node,
-  source: SourceFile,
-  generatedTargets: Set<string>
-): statement is GeneratedImportDeclaration {
-  return (
-    isImportDeclaration(statement) &&
-    isStringLiteral(statement.moduleSpecifier) &&
-    isGeneratedContractImport(statement.moduleSpecifier.text, source.fileName, generatedTargets)
-  );
-}
-
-function collectGeneratedImportSpecifier(
-  specifier: ImportSpecifier,
-  source: SourceFile,
-  importClauseIsTypeOnly: boolean,
-  diagnostics: Diagnostic[],
-  runtimeRoots: Set<string>
-): void {
-  if (specifier.propertyName !== undefined) {
-    diagnostics.push(
-      scanDiagnostic(
-        "SUPA_SCAN_CONTRACT_IMPORT_RENAME",
-        source,
-        specifier.name.getStart(source),
-        "Generated contract imports must keep their exported names."
-      )
-    );
+function rootIdentifier(expression: ts.Expression): string | undefined {
+  let cursor = expression;
+  while (ts.isPropertyAccessExpression(cursor) || ts.isElementAccessExpression(cursor)) {
+    cursor = cursor.expression;
   }
-  if (!importClauseIsTypeOnly && specifier.isTypeOnly !== true) {
-    runtimeRoots.add(specifier.name.text);
-  }
+  return ts.isIdentifier(cursor) ? cursor.text : undefined;
 }
 
 function generatedContractTargets(cwd: string, config: SupaschemaConfig): Set<string> {
@@ -219,15 +194,15 @@ function generatedContractTargets(cwd: string, config: SupaschemaConfig): Set<st
   );
 }
 
-async function sourceFiles(root: string, generatedTargets: Set<string>): Promise<string[]> {
-  const files: string[] = [];
-  async function walk(directory: string): Promise<void> {
+function sourceFiles(root: string, generatedTargets: Set<string>): Promise<string[]> {
+  async function walk(directory: string): Promise<string[]> {
     const entries = await readdir(directory, { withFileTypes: true });
+    const batches: Array<Promise<string[]> | string[]> = [];
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) {
         if (!skipDirectories.has(entry.name)) {
-          await walk(path);
+          batches.push(walk(path));
         }
         continue;
       }
@@ -237,12 +212,12 @@ async function sourceFiles(root: string, generatedTargets: Set<string>): Promise
         !generatedTargets.has(normalizePath(path)) &&
         !generatedTargets.has(normalizePath(stripKnownExtension(path)))
       ) {
-        files.push(path);
+        batches.push([path]);
       }
     }
+    return (await Promise.all(batches)).flat();
   }
-  await walk(root);
-  return files;
+  return walk(root);
 }
 
 function isGeneratedContractImport(
@@ -264,29 +239,20 @@ function isGeneratedContractImport(
   );
 }
 
-function expressionRootName(expression: Expression): string | undefined {
-  if (isIdentifier(expression)) {
-    return expression.text;
-  }
-  if (isPropertyAccessExpression(expression) || isElementAccessExpression(expression)) {
-    return expressionRootName(expression.expression);
-  }
-  return;
-}
-
 function scanDiagnostic(
   code: string,
-  source: SourceFile,
+  text: string,
+  file: string,
   position: number,
   message: string
 ): Diagnostic {
-  const location = source.getLineAndCharacterOfPosition(position);
+  const location = lineAndCharacter(text, position);
   return diagnostic(
     code,
     "warning",
     `${message} (${location.line + 1}:${location.character + 1})`,
     {
-      file: source.fileName,
+      file,
     }
   );
 }
@@ -312,14 +278,25 @@ function normalizePath(path: string): string {
   return path.split("\\").join("/");
 }
 
-function scriptKind(file: string): ScriptKind {
-  if (file.endsWith(".tsx")) {
-    return ScriptKind.TSX;
+function scriptKindForFile(file: string): ts.ScriptKind {
+  const extension = extname(file);
+  if (extension === ".tsx") {
+    return ts.ScriptKind.TSX;
   }
-  return ScriptKind.TS;
+  return extension === ".cts" || extension === ".mts" || extension === ".ts"
+    ? ts.ScriptKind.TS
+    : ts.ScriptKind.JS;
 }
 
-function sourceParseDiagnostics(source: SourceFile): readonly TypeScriptDiagnostic[] {
-  const value = Reflect.get(source, "parseDiagnostics");
-  return Array.isArray(value) ? value : [];
+function lineAndCharacter(text: string, position: number): { character: number; line: number } {
+  const bounded = Math.max(0, Math.min(position, text.length));
+  let line = 0;
+  let lineStart = 0;
+  for (let index = 0; index < bounded; index += 1) {
+    if (text[index] === "\n") {
+      line += 1;
+      lineStart = index + 1;
+    }
+  }
+  return { character: bounded - lineStart, line };
 }

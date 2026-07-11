@@ -552,7 +552,6 @@ function checkSelectionMode(options: CheckOptions): CheckSelectionMode | undefin
   if (options.since !== undefined) {
     return { kind: "since", ref: options.since };
   }
-  return;
 }
 
 function hasConflictingCheckSelection(options: CheckOptions): boolean {
@@ -739,7 +738,7 @@ async function gitOutput(args: string[], cwd: string): Promise<string> {
       error !== null && typeof error === "object" && "stderr" in error
         ? String(error.stderr).trim()
         : "";
-    throw new Error(stderr || "supaschema check git selection failed");
+    throw new Error(stderr || "supaschema check git selection failed", { cause: error });
   }
 }
 
@@ -756,7 +755,7 @@ async function runHookFailOpen(action: () => Promise<void>): Promise<void> {
   try {
     await action();
   } catch {
-    return;
+    // Hooks are advisory in CLI flows and intentionally fail open.
   }
 }
 

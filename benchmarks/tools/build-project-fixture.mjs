@@ -179,7 +179,7 @@ writeFileSync(join(outDir, "from.sql"), fromSql);
 writeFileSync(join(outDir, "to.sql"), toSql);
 writeFileSync(
   join(outDir, "fixture.json"),
-  `${JSON.stringify({ supaschemaAdapter: "postgres", schemas: await treeSchemas(fromSql) }, null, 2)}\n`
+  `${JSON.stringify({ schemas: await treeSchemas(fromSql), supaschemaAdapter: "postgres" }, null, 2)}\n`
 );
 writeFileSync(
   join(outDir, "dropped.log"),

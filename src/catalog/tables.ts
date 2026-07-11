@@ -211,7 +211,6 @@ function generatedColumnKind(value: string | undefined): "stored" | "virtual" | 
   if (value === "v") {
     return "virtual";
   }
-  return;
 }
 
 function identityMode(value: string | undefined): "always" | "by-default" | undefined {
@@ -221,7 +220,6 @@ function identityMode(value: string | undefined): "always" | "by-default" | unde
   if (value === "d") {
     return "by-default";
   }
-  return;
 }
 
 function constraintMetadata(constraint: Record<string, unknown>): Record<string, unknown> {

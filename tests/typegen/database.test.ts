@@ -1,15 +1,9 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  createProgram,
-  formatDiagnosticsWithColorAndContext,
-  getPreEmitDiagnostics,
-  ModuleKind,
-  ModuleResolutionKind,
-  ScriptTarget,
-} from "typescript";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import type { Diagnostic } from "../../src/core.js";
 import { extractSourceModel } from "../../src/source/extract.js";
@@ -17,6 +11,8 @@ import { extractObjectsFromSql } from "../../src/sql/extract.js";
 import { generateDatabaseTypes } from "../../src/typegen/database.js";
 import { collectSchemaShapes } from "../../src/typegen/model.js";
 import { generateZodSchemas } from "../../src/typegen/zod.js";
+
+const execFileAsync = promisify(execFile);
 
 const treeSql = `CREATE SCHEMA app;
 CREATE TYPE app.status AS ENUM ('draft', 'active');
@@ -173,34 +169,16 @@ function generatedTypeBlock(
   name: string,
   shape: "Insert" | "Row" | "Update"
 ): string {
-  const suffix = `${pascalCase(name)}${shape} = {`;
-  const line = types
-    .split("\n")
-    .find((candidate) => candidate.startsWith("export type ") && candidate.endsWith(suffix));
-  const start = line === undefined ? -1 : types.indexOf(line);
+  const relationStart = types.indexOf(`      ${name}: {`);
+  if (relationStart === -1) {
+    return "";
+  }
+  const start = types.indexOf(`        ${shape}: {`, relationStart);
   if (start === -1) {
     return "";
   }
-  const end = types.indexOf("\n};", start);
+  const end = types.indexOf("\n        };", start);
   return end === -1 ? types.slice(start) : types.slice(start, end + 3);
-}
-
-function pascalCase(value: string): string {
-  let result = "";
-  let capitalize = true;
-  for (const character of value) {
-    const word =
-      (character >= "a" && character <= "z") ||
-      (character >= "A" && character <= "Z") ||
-      (character >= "0" && character <= "9");
-    if (!word) {
-      capitalize = true;
-      continue;
-    }
-    result += capitalize ? character.toUpperCase() : character;
-    capitalize = false;
-  }
-  return result;
 }
 
 async function expectTypeScriptAccepts(source: string): Promise<void> {
@@ -208,24 +186,56 @@ async function expectTypeScriptAccepts(source: string): Promise<void> {
   await mkdir(tmpRoot, { recursive: true });
   const root = await mkdtemp(join(tmpRoot, "supa-typegen-ts-"));
   const file = join(root, "generated-types.ts");
+  const config = join(root, "tsconfig.json");
   await writeFile(file, source);
-  const program = createProgram([file], {
-    module: ModuleKind.NodeNext,
-    moduleResolution: ModuleResolutionKind.NodeNext,
-    noEmit: true,
-    strict: true,
-    target: ScriptTarget.ES2022,
-  });
-  const diagnostics = getPreEmitDiagnostics(program);
-  if (diagnostics.length > 0) {
-    throw new Error(
-      formatDiagnosticsWithColorAndContext(diagnostics, {
-        getCanonicalFileName: (name) => name,
-        getCurrentDirectory: () => root,
-        getNewLine: () => "\n",
-      })
+  await writeFile(
+    config,
+    `${JSON.stringify(
+      {
+        compilerOptions: {
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          noEmit: true,
+          skipLibCheck: true,
+          strict: true,
+          target: "ES2022",
+        },
+        files: ["generated-types.ts"],
+      },
+      null,
+      2
+    )}\n`
+  );
+  try {
+    await execFileAsync(
+      process.execPath,
+      [typescriptCompilerPath(), "--project", config, "--pretty", "false"],
+      {
+        cwd: root,
+        maxBuffer: 1024 * 1024,
+      }
     );
+  } catch (error) {
+    throw new Error(commandErrorOutput(error), { cause: error });
   }
+}
+
+function typescriptCompilerPath(): string {
+  return join(process.cwd(), "node_modules", "typescript", "bin", "tsc");
+}
+
+function commandErrorOutput(error: unknown): string {
+  if (error instanceof Error) {
+    return [commandErrorField(error, "stdout"), commandErrorField(error, "stderr"), error.message]
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(error);
+}
+
+function commandErrorField(error: Error, field: "stderr" | "stdout"): string | undefined {
+  const value = Reflect.get(error, field);
+  return typeof value === "string" ? value : undefined;
 }
 
 describe("database type generation", () => {
@@ -240,7 +250,7 @@ describe("database type generation", () => {
     expect(types).toContain("score: number | null;");
     expect(types).toContain("tags: string[];");
     expect(types).toContain("payload: Json | null;");
-    expect(types).toContain("state: AppStatus;");
+    expect(types).toContain('state: Database["app"]["Enums"]["status"];');
     expect(types).toContain("active: boolean;");
     expect(types).toContain('foreignKeyName: "events_account_fk"');
     expect(types).toContain('referencedRelation: "accounts"');
@@ -264,8 +274,8 @@ describe("database type generation", () => {
     const types = await typesFor(treeSql);
     const views = `${viewTypeBlock(types, "account_names")}\n${viewTypeBlock(types, "account_all")}`;
 
-    expect(views).toContain("id: number | null;");
-    expect(views).toContain("label: string | null;");
+    expect(views).toContain("id: number;");
+    expect(views).toContain("label: string;");
     expect(views).toContain("payload: Json | null;");
     expect(types).toContain("Relationships: [];");
   });
@@ -274,10 +284,10 @@ describe("database type generation", () => {
     const types = await typesFor(treeSql);
     const rollup = viewTypeBlock(types, "account_rollups");
 
-    expect(rollup).toContain("id: number | null;");
-    expect(rollup).toContain("account_name: string | null;");
+    expect(rollup).toContain("id: number;");
+    expect(rollup).toContain("account_name: string;");
     expect(rollup).toContain("payload: Json | null;");
-    expect(rollup).toContain("state: AppStatus | null;");
+    expect(rollup).toContain('state: Database["app"]["Enums"]["status"] | null;');
     expect(rollup).toContain("rank: number | null;");
     expect(rollup).toContain("note: string | null;");
   });
@@ -470,13 +480,13 @@ CREATE VIEW app.late_view AS SELECT email FROM app.users;
     const fromPgCatalog = viewTypeBlock(types, "from_pg_catalog");
     const fromPgCron = viewTypeBlock(types, "from_pg_cron");
 
-    expect(types).toContain("embedding: number[] | null;");
+    expect(types).toContain("embedding: string | null;");
     expect(types).toContain("email: string | null;");
-    expect(types).toContain("p_user: AppUsersRow");
+    expect(types).toContain('p_user: Database["app"]["Tables"]["users"]["Row"]');
     expect(types).toContain("accept_user: { Args:");
-    expect(types).toContain("export type AppAcceptUserReturns = void;");
-    expect(types).toContain("users: AppVUsersRow[] | null;");
-    expect(types).toContain("owner: AppUsersRow | null;");
+    expect(types).toContain("Returns: undefined");
+    expect(types).toContain('users: Database["app"]["Views"]["v_users"]["Row"][] | null;');
+    expect(types).toContain('owner: Database["app"]["Tables"]["users"]["Row"] | null;');
     expect(fromLateView).toContain("email: string | null;");
     expect(fromView).toContain("user_id: number | null;");
     expect(fromView).toContain("email: string | null;");
@@ -487,7 +497,7 @@ CREATE VIEW app.late_view AS SELECT email FROM app.users;
     expect(fromFunction).toContain("n: number | null;");
     expect(fromTableFunction).toContain("subject_id: string | null;");
     expect(fromTableFunction).toContain("access_level: string | null;");
-    expect(fromUnnest).toContain("status: AppStatus | null;");
+    expect(fromUnnest).toContain('status: Database["app"]["Enums"]["status"] | null;');
     expect(fromSetOperation).toContain("id: number | null;");
     expect(fromSetOperation).toContain("email: string | null;");
     expect(fromSample).toContain("id: number | null;");
@@ -506,8 +516,8 @@ CREATE VIEW app.late_view AS SELECT email FROM app.users;
     expect(fromExpressions).toContain("formatted_id: string | null;");
     expect(fromExpressions).toContain("email_prefix: string | null;");
     expect(fromExpressions).toContain("business_days: number | null;");
-    expect(fromPgCatalog).toContain("object_oid: number | null;");
-    expect(fromPgCatalog).toContain("relation_name: string | null;");
+    expect(fromPgCatalog).toContain("object_oid: unknown;");
+    expect(fromPgCatalog).toContain("relation_name: unknown;");
     expect(fromPgCron).toContain("jobid: number | null;");
     expect(fromPgCron).toContain("jobname: string | null;");
     expect(
@@ -603,38 +613,61 @@ CREATE VIEW public.custom_lower_mismatch AS SELECT lower(1) AS lowered;
 `);
     const view = viewTypeBlock(types, "custom_lower_mismatch");
 
-    expect(view).toContain("lowered: unknown | null;");
+    expect(view).toContain("lowered: unknown;");
     expect(view).not.toContain("lowered: string | null;");
     expect(view).not.toContain("lowered: number | null;");
   });
 
-  it("emits direct schema-qualified contracts without shorthand aliases", async () => {
+  it("emits upstream helper types and enum constants without direct aliases", async () => {
     const types = await typesFor(treeSql);
 
-    expect(types).toContain('export type AppStatus = "draft" | "active";');
-    expect(types).toContain("export type AppAccountsRow = {");
-    expect(types).toContain("export type AppAccountsInsert = {");
-    expect(types).toContain("export type AppAccountsUpdate = {");
-    expect(types).not.toContain("export const Constants");
-    expect(types).not.toContain("export type Tables<");
-    expect(types).not.toContain("export type Enums<");
-    expect(types).not.toContain("export type CompositeTypes<");
+    expect(types).toContain('status: "draft" | "active";');
+    expect(types).toContain("export type Tables<");
+    expect(types).toContain("export type TablesInsert<");
+    expect(types).toContain("export type TablesUpdate<");
+    expect(types).toContain("export type Enums<");
+    expect(types).toContain("export type CompositeTypes<");
+    expect(types).toContain("export const Constants = {");
+    expect(types).toContain('status: ["draft", "active"],');
   });
 
-  it("type-checks direct schema-qualified contracts", async () => {
+  it("emits internals and upstream empty collection sentinels", async () => {
+    const model = await modelFor(
+      `CREATE SCHEMA app;
+CREATE TYPE app.status AS ENUM ('draft');
+CREATE TABLE public.movies (id bigint);
+`,
+      "supa-typegen-empty-"
+    );
+    const types = generateDatabaseTypes(await collectSchemaShapes(model), {
+      postgrestVersion: "12",
+    });
+
+    expect(types).toContain("  __InternalSupabase: {");
+    expect(types).toContain('    PostgrestVersion: "12";');
+    expect(types).toContain(
+      'type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;'
+    );
+    expect(types).toContain(
+      'type DefaultSchema = DatabaseWithoutInternals[Extract<keyof DatabaseWithoutInternals, "public">];'
+    );
+    expect(types.split("[_ in never]: never;")).toHaveLength(9);
+  });
+
+  it("type-checks upstream helper contracts", async () => {
     const types = await typesFor(helperSql);
 
     await expectTypeScriptAccepts(`${types}
-const movie: PublicMoviesRow = { id: 1, name: "Heat", visibility: "public" };
-const movieView: PublicMovieNamesRow = { id: 1, name: "Heat" };
-const movieInsert: PublicMoviesInsert = { name: "Heat" };
-const movieUpdate: PublicMoviesUpdate = { name: "Thief" };
-const visibility: PublicVisibility = "private";
-const account: AppAccountsRow = { id: 1, state: "active", home: { street: "Main", zip: 1 } };
-const accountInsert: AppAccountsInsert = { state: "draft" };
-const accountUpdate: AppAccountsUpdate = { state: "active" };
-const status: AppStatus = "draft";
-const address: AppAddress = { street: "Main", zip: 1 };
+const movie: Tables<"movies"> = { id: 1, name: "Heat", visibility: "public" };
+const movieView: Tables<"movie_names"> = { id: 1, name: "Heat" };
+const movieInsert: TablesInsert<"movies"> = { name: "Heat" };
+const movieUpdate: TablesUpdate<"movies"> = { name: "Thief" };
+const visibility: Enums<"visibility"> = "private";
+const account: Tables<{ schema: "app" }, "accounts"> = { id: 1, state: "active", home: { street: "Main", zip: 1 } };
+const accountInsert: TablesInsert<{ schema: "app" }, "accounts"> = { state: "draft" };
+const accountUpdate: TablesUpdate<{ schema: "app" }, "accounts"> = { state: "active" };
+const status: Enums<{ schema: "app" }, "status"> = "draft";
+const address: CompositeTypes<{ schema: "app" }, "address"> = { street: "Main", zip: 1 };
 void movie;
 void movieView;
 void movieInsert;
@@ -648,13 +681,28 @@ void address;
 `);
   }, 15_000);
 
+  it("type-checks schema-qualified helpers without a public schema", async () => {
+    const types = await typesFor(`CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint);
+`);
+
+    await expectTypeScriptAccepts(`${types}
+const account: Tables<{ schema: "app" }, "accounts"> = { id: 1 };
+const accountInsert: TablesInsert<{ schema: "app" }, "accounts"> = { id: 1 };
+const accountUpdate: TablesUpdate<{ schema: "app" }, "accounts"> = { id: 2 };
+void account;
+void accountInsert;
+void accountUpdate;
+`);
+  }, 15_000);
+
   it("emits TypeScript and Zod output from one precomputed shape graph", async () => {
     const model = await modelFor(treeSql, "supa-typegen-shapes-");
     const shapes = await collectSchemaShapes(model);
 
     expect(generateDatabaseTypes(shapes)).toContain("export type Database = {");
     expect(generateZodSchemas(shapes, "./database.types.js")).toContain(
-      "export const AppAccountsRowSchema ="
+      "export const SupaschemaZod"
     );
   });
 });
@@ -693,8 +741,12 @@ describe("review-hardened typegen", () => {
     const types = await typesFor(hardenedSql);
 
     expect(types).toContain("contact: string;");
-    expect(generatedTypeBlock(types, "users", "Row")).toContain("state: AppStatus;");
-    expect(generatedTypeBlock(types, "logs", "Row")).toContain("state: AuditStatus;");
+    expect(generatedTypeBlock(types, "users", "Row")).toContain(
+      'state: Database["app"]["Enums"]["status"];'
+    );
+    expect(generatedTypeBlock(types, "logs", "Row")).toContain(
+      'state: Database["audit"]["Enums"]["status"];'
+    );
   });
 
   it("resolves shorthand foreign keys to the target primary key and marks unique FKs one-to-one", async () => {
@@ -709,31 +761,41 @@ describe("review-hardened typegen", () => {
     const types = await typesFor(hardenedSql);
     const views = `${viewTypeBlock(types, "user_emails")}\n${viewTypeBlock(types, "all_users")}`;
 
-    expect(views).toContain("uid: number | null;");
-    expect(views).toContain("mail: string | null;");
-    expect(views).toContain("contact: string | null;");
+    expect(views).toContain("uid: number;");
+    expect(views).toContain("mail: string;");
+    expect(views).toContain("contact: string;");
   });
 
   it("populates Functions with named args, optionality, and setof returns", async () => {
     const types = await typesFor(hardenedSql);
 
-    expect(types).toContain("export type AppGetUserArgs = { uid: number; fallback?: string };");
-    expect(types).toContain("export type AppGetUserReturns = string[];");
-    expect(types).toContain("get_user: { Args: AppGetUserArgs; Returns: AppGetUserReturns };");
+    expect(types).toContain(
+      "get_user: { Args: { uid: number; fallback?: string }; Returns: string[] };"
+    );
   });
 });
 
 const overloadedSql = `CREATE SCHEMA app;
+CREATE TABLE public.default_schema_anchor (id bigint);
 CREATE FUNCTION app.f(a integer) RETURNS integer LANGUAGE sql AS $$ SELECT a $$;
-CREATE FUNCTION app.f(a text) RETURNS text LANGUAGE sql AS $$ SELECT a $$;
+CREATE FUNCTION app.f(b text) RETURNS text LANGUAGE sql AS $$ SELECT b $$;
 `;
 
 describe("overloaded function typegen", () => {
   it("unions every overload instead of silently keeping the first", async () => {
     const types = await typesFor(overloadedSql);
 
-    expect(types).toContain("export type AppFArgs = { a: number } | { a: string };");
-    expect(types).toContain("export type AppFReturns = number | string;");
+    expect(types).toContain("f: { Args: { a: number }; Returns:");
+    expect(types).toContain("{ Args: { b: string }; Returns:");
+    await expectTypeScriptAccepts(`${types}
+const numeric: Database["app"]["Functions"]["f"] = { Args: { a: 1 }, Returns: 1 };
+const textual: Database["app"]["Functions"]["f"] = { Args: { b: "x" }, Returns: "x" };
+// @ts-expect-error Returns must stay correlated with the matching Args overload.
+const invalid: Database["app"]["Functions"]["f"] = { Args: { a: 1 }, Returns: "x" };
+void numeric;
+void textual;
+void invalid;
+`);
   });
 });
 
@@ -747,10 +809,10 @@ describe("composite and range type typegen", () => {
   it("resolves a column of a declared composite type to its direct contract", async () => {
     const types = await typesFor(compositeSql);
 
-    expect(types).toContain("home: AppAddress | null;");
+    expect(types).toContain('home: Database["app"]["CompositeTypes"]["address"] | null;');
     expect(types).toContain("CompositeTypes: {");
     expect(collapseWhitespace(types)).toContain(
-      "export type AppAddress = { street: string | null; zip: number | null;"
+      "address: { street: string | null; zip: number | null;"
     );
   });
 
@@ -769,8 +831,8 @@ CREATE TABLE app.people (id bigint, home address);
 `
     );
 
-    expect(types).toContain("home: AppAddress | null;");
-    expect(types).not.toContain("home: PublicAddress | null;");
+    expect(types).toContain('home: Database["app"]["CompositeTypes"]["address"] | null;');
+    expect(types).not.toContain('home: Database["public"]["Enums"]["address"] | null;');
   });
 
   it("treats a bare name shared by an enum and a composite as ambiguous (unknown)", async () => {
@@ -784,7 +846,7 @@ CREATE TABLE app.t (id bigint, v thing);
 `
     );
 
-    expect(types).toContain("v: unknown | null;");
+    expect(types).toContain("v: unknown;");
     expect(types).not.toContain("v: AThing | null;");
   });
 });
@@ -799,16 +861,17 @@ describe("function return row typegen", () => {
   it("preserves RETURNS TABLE and OUT-parameter row shapes", async () => {
     const types = await typesFor(returnShapeSql);
 
-    expect(types).toContain("export type AppListPeopleArgs = Record<PropertyKey, never>;");
-    expect(types).toContain("export type AppListPeopleReturns = { id: number; label: string }[];");
-    expect(types).toContain("export type AppOneRowReturns = { a: number; b: string };");
+    expect(types).toContain(
+      "list_people: { Args: never; Returns: { id: number; label: string }[] };"
+    );
+    expect(types).toContain("one_row: { Args: never; Returns: { a: number; b: string } };");
   });
 
   it("keeps a single OUT parameter scalar instead of a one-field record", async () => {
     const types = await typesFor(returnShapeSql);
 
-    expect(types).toContain("export type AppSingleOutReturns = number;");
-    expect(types).not.toContain("export type AppSingleOutReturns = { x:");
+    expect(types).toContain("single_out: { Args: never; Returns: number };");
+    expect(types).not.toContain("single_out: { Args: never; Returns: { x:");
   });
 });
 
@@ -823,43 +886,42 @@ describe("zod schema generation", () => {
 
     expect(zod).toContain('import type { Json } from "./database.types.js";');
     expect(zod).toContain('import { z } from "zod";');
-    expect(zod).toContain('export const AppStatusSchema = z.enum(["draft", "active"]);');
     expect(zod).toContain("export const JsonSchema: z.ZodType<Json>");
+    expect(zod).toContain("export const SupaschemaZod");
+    expect(zod).toContain('status: z.enum(["draft", "active"]),');
     expect(zod).toContain("name: z.string(),");
     expect(zod).toContain("email: z.string().nullable(),");
     expect(zod).toContain("tags: z.array(z.string()),");
     expect(zod).toContain("payload: JsonSchema.nullable(),");
-    expect(zod).toContain("state: AppStatusSchema,");
-    expect(zod).toContain("export const AppAccountsRowSchema =");
-    expect(zod).toContain("export const AppAccountsInsertSchema =");
-    expect(zod).toContain("export const AppAccountsUpdateSchema =");
-    expect(zod).toContain("export const AppAccountNamesRowSchema =");
-    expect(zod).toContain("label: z.string().nullable(),");
-    expect(zod).not.toContain("export const Tables =");
-    expect(zod).not.toContain("export const Enums =");
-    expect(zod).not.toContain("export const CompositeTypes =");
+    expect(zod).toContain('state: z.lazy(() => SupaschemaZod["app"]["Enums"]["status"]),');
+    expect(zod).toContain("accounts: {");
+    expect(zod).toContain("Row: z.object({");
+    expect(zod).toContain("Insert: z.object({");
+    expect(zod).toContain("Update: z.object({");
+    expect(zod).toContain("account_names: {");
+    expect(zod).toContain("label: z.string(),");
   });
 
-  it("type-checks direct runtime schema owners", async () => {
+  it("type-checks SupaschemaZod runtime schema owners", async () => {
     const types = await typesFor(helperSql);
     const zod = await zodFor(helperSql);
     const zodWithoutJsonImport = zod.split("\n").slice(1).join("\n");
 
     await expectTypeScriptAccepts(`${types}${zodWithoutJsonImport}
-const movie: PublicMoviesRow = PublicMoviesRowSchema.parse({ id: 1, name: "Heat", visibility: "public" });
-const movieView: PublicMovieNamesRow = PublicMovieNamesRowSchema.parse({ id: 1, name: "Heat" });
-const movieInsert: PublicMoviesInsert = PublicMoviesInsertSchema.parse({ name: "Heat" });
-const movieUpdate: PublicMoviesUpdate = PublicMoviesUpdateSchema.parse({ name: "Thief" });
-const visibility: PublicVisibility = PublicVisibilitySchema.parse("private");
-const account: AppAccountsRow = AppAccountsRowSchema.parse({
+const movie = SupaschemaZod.public.Tables.movies.Row.parse({ id: 1, name: "Heat", visibility: "public" }) as Tables<"movies">;
+const movieView = SupaschemaZod.public.Views.movie_names.Row.parse({ id: 1, name: "Heat" }) as Tables<"movie_names">;
+const movieInsert = SupaschemaZod.public.Tables.movies.Insert.parse({ name: "Heat" }) as TablesInsert<"movies">;
+const movieUpdate = SupaschemaZod.public.Tables.movies.Update.parse({ name: "Thief" }) as TablesUpdate<"movies">;
+const visibility = SupaschemaZod.public.Enums.visibility.parse("private") as Enums<"visibility">;
+const account = SupaschemaZod.app.Tables.accounts.Row.parse({
   id: 1,
   state: "active",
   home: { street: "Main", zip: 1 },
-});
-const accountInsert: AppAccountsInsert = AppAccountsInsertSchema.parse({ state: "draft" });
-const accountUpdate: AppAccountsUpdate = AppAccountsUpdateSchema.parse({ state: "active" });
-const status: AppStatus = AppStatusSchema.parse("draft");
-const address: AppAddress = AppAddressSchema.parse({ street: "Main", zip: 1 });
+}) as Tables<{ schema: "app" }, "accounts">;
+const accountInsert = SupaschemaZod.app.Tables.accounts.Insert.parse({ state: "draft" }) as TablesInsert<{ schema: "app" }, "accounts">;
+const accountUpdate = SupaschemaZod.app.Tables.accounts.Update.parse({ state: "active" }) as TablesUpdate<{ schema: "app" }, "accounts">;
+const status = SupaschemaZod.app.Enums.status.parse("draft") as Enums<{ schema: "app" }, "status">;
+const address = SupaschemaZod.app.CompositeTypes.address.parse({ street: "Main", zip: 1 }) as CompositeTypes<{ schema: "app" }, "address">;
 void movie;
 void movieView;
 void movieInsert;
@@ -873,20 +935,17 @@ void address;
 `);
   }, 15_000);
 
-  it("uses one identifier namespace for enum and composite validators", async () => {
+  it("separates same-named enum and composite validators by schema/object namespace", async () => {
     const zod = await zodFor(`CREATE SCHEMA "tenant-a";
 CREATE SCHEMA tenant_a;
 CREATE TYPE "tenant-a".status AS ENUM ('active');
 CREATE TYPE tenant_a.status AS (value text);
 `);
 
-    expect(zod).toContain(' = z.enum(["active"]);');
-    expect(zod).toContain(" = z.object({");
-    const declarations = zod
-      .split("\n")
-      .filter((line) => line.startsWith("export const TenantAStatus"));
-    expect(declarations).toHaveLength(2);
-    expect(new Set(declarations.map((line) => line.slice(0, line.indexOf(" =")))).size).toBe(2);
+    expect(zod).toContain('status: z.enum(["active"]),');
+    expect(zod).toContain("status: z.object({");
+    expect(zod).toContain('"tenant-a": {');
+    expect(zod).toContain("tenant_a: {");
   });
 
   it("validates composite-typed columns with generated composite object schemas", async () => {
@@ -898,10 +957,12 @@ CREATE TABLE app.people (id bigint, home app.address);
     );
 
     expect(zod).not.toContain("z.composite()");
-    expect(zod).toContain("export const AppAddressSchema = z.object({");
+    expect(zod).toContain("address: z.object({");
     expect(zod).toContain("street: z.string().nullable(),");
     expect(zod).toContain("zip: z.number().nullable(),");
-    expect(zod).toContain("home: z.lazy(() => AppAddressSchema).nullable(),");
+    expect(zod).toContain(
+      'home: z.lazy(() => SupaschemaZod["app"]["CompositeTypes"]["address"]).nullable(),'
+    );
     expect(zod).not.toContain("export const CompositeTypes =");
   });
 
@@ -912,36 +973,68 @@ CREATE TYPE app.z AS (value text);
 CREATE TYPE app.a AS (z app.z);
 `
     );
-    const typescript = await import("typescript");
     const root = join(process.cwd(), ".tmp");
     await mkdir(root, { recursive: true });
-    const modulePath = join(await mkdtemp(join(root, "supa-zod-runtime-")), "schemas.mjs");
-    const js = typescript.transpileModule(zod, {
-      compilerOptions: {
-        module: typescript.ModuleKind.ES2022,
-        target: typescript.ScriptTarget.ES2022,
-      },
-    }).outputText;
+    const moduleRoot = await mkdtemp(join(root, "supa-zod-runtime-"));
+    const outDir = join(moduleRoot, "dist");
+    await writeFile(join(moduleRoot, "package.json"), '{"type":"module"}\n');
+    await writeFile(join(moduleRoot, "database.types.ts"), "export type Json = unknown;\n");
+    await writeFile(join(moduleRoot, "schemas.ts"), zod);
+    await writeFile(
+      join(moduleRoot, "tsconfig.json"),
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            module: "NodeNext",
+            moduleResolution: "NodeNext",
+            outDir: "dist",
+            skipLibCheck: true,
+            strict: true,
+            target: "ES2022",
+          },
+          files: ["database.types.ts", "schemas.ts"],
+        },
+        null,
+        2
+      )}\n`
+    );
 
-    expect(zod).toContain("z: z.lazy(() => AppZSchema).nullable(),");
-    await writeFile(modulePath, js);
+    expect(zod).toContain(
+      'z: z.lazy(() => SupaschemaZod["app"]["CompositeTypes"]["z"]).nullable(),'
+    );
+    await execFileAsync(
+      process.execPath,
+      [
+        typescriptCompilerPath(),
+        "--project",
+        join(moduleRoot, "tsconfig.json"),
+        "--pretty",
+        "false",
+      ],
+      {
+        cwd: moduleRoot,
+        maxBuffer: 1024 * 1024,
+      }
+    );
+    const modulePath = join(outDir, "schemas.js");
     const imported = await import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
-    expect(imported.AppASchema.parse({ z: { value: "ok" } })).toEqual({
+    expect(imported.SupaschemaZod.app.CompositeTypes.a.parse({ z: { value: "ok" } })).toEqual({
       z: { value: "ok" },
     });
   });
 
   it("derives insert optionality and omits generated columns from writes", async () => {
     const zod = await zodFor(treeSql);
-    const insertStart = zod.indexOf("export const AppAccountsInsertSchema = z.object({");
-    const insertEnd = zod.indexOf("export const AppAccountsUpdateSchema = z.object({");
+    const accountsStart = zod.indexOf("accounts: {");
+    const insertStart = zod.indexOf("Insert: z.object({", accountsStart);
+    const insertEnd = zod.indexOf("Update: z.object({", accountsStart);
     const insert = zod.slice(insertStart, insertEnd);
 
     expect(insert).toContain("id: z.number().optional(),");
     expect(insert).toContain("name: z.string(),");
     expect(insert).toContain("email: z.string().nullable().optional(),");
     expect(insert).not.toContain("doubled");
-    const update = zod.slice(insertEnd, zod.indexOf("export const AppEventsRowSchema"));
+    const update = zod.slice(insertEnd, zod.indexOf("events: {", accountsStart));
     expect(update).toContain("name: z.string().optional(),");
     expect(update).not.toContain("doubled");
   });

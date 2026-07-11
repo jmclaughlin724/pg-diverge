@@ -99,7 +99,6 @@ async function adapterUnavailableResult(adapter, fixture, contextBase) {
   if (unsupportedReason) {
     return unsupportedResult(adapter, fixture, unsupportedReason);
   }
-  return;
 }
 
 async function runAdapterIterations(adapter, fixture, contextBase) {
@@ -132,11 +131,11 @@ const payload = {
   completedAt: new Date().toISOString(),
   environment: {
     arch: process.arch,
+    commandTimeoutMs,
     databaseEnabled: Boolean(databaseUrl),
     iterations,
     node: process.version,
     platform: process.platform,
-    commandTimeoutMs,
     toolVersions: await collectToolVersions(),
     warmups,
   },
@@ -159,8 +158,8 @@ async function prepareFixtureContext(fixture) {
     fromSql,
     fromSqlPath: fixture.fromSqlPath,
     packageRoot,
-    supaschemaAdapter: fixture.supaschemaAdapter,
     schemas: fixture.schemas,
+    supaschemaAdapter: fixture.supaschemaAdapter,
     tempRoot,
     toDirectory: fixture.toDirectory,
     toSql,
@@ -291,6 +290,7 @@ async function runAdapter(adapter, fixture, context, warmup, iteration) {
     elapsedMs: Math.round(elapsedMs),
     exitCode: execution.exitCode,
     fixture: fixture.name,
+    iteration,
     matchesTargetAfterFirstApply: verification.matchesTargetAfterFirstApply,
     matchesTargetAfterSecondApply: verification.matchesTargetAfterSecondApply,
     matchesTargetFingerprint: verification.matchesTargetFingerprint,
@@ -305,7 +305,6 @@ async function runAdapter(adapter, fixture, context, warmup, iteration) {
     totalElapsedMs: Math.round(totalElapsedMs),
     verificationReason: verification.reason,
     warmup,
-    iteration,
   };
 }
 
@@ -486,8 +485,8 @@ function sleep(ms) {
 async function collectToolVersions() {
   const packageJson = JSON.parse(await readFile(resolve(packageRoot, "package.json"), "utf8"));
   return {
-    supaschema: packageJson.version,
     supabase: await commandVersion("supabase", ["--version"]),
+    supaschema: packageJson.version,
   };
 }
 

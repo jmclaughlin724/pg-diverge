@@ -1,4 +1,7 @@
 const contract = JSON.parse(`{
+  "adapterInputValues": [
+    "auto"
+  ],
   "allProviderPresets": [
     {
       "adapter": "auto",
@@ -213,13 +216,10 @@ const contract = JSON.parse(`{
       "schemaPath": "azure-postgresql/schemas"
     }
   ],
-  "adapterInputValues": [
-    "auto"
-  ],
+  "canonicalSchemaId": "https://supaschema.com/schemas/supaschema-config.schema.json",
   "cascadePolicies": [
     "never"
   ],
-  "canonicalSchemaId": "https://supaschema.com/schemas/supaschema-config.schema.json",
   "configFieldMetadata": [
     {
       "default": "Generated configs point to the package schema.",
@@ -248,9 +248,9 @@ const contract = JSON.parse(`{
     },
     {
       "allowed": [
-        "hint-required",
+        "allow",
         "block",
-        "allow"
+        "hint-required"
       ],
       "default": "hint-required",
       "description": "Controls whether destructive operations require exact hints, always block, or are allowed.",
@@ -278,8 +278,8 @@ const contract = JSON.parse(`{
       "default": {
         "allowedGrantees": [],
         "destructive": [],
-        "requiredPolicyColumns": {},
-        "renames": []
+        "renames": [],
+        "requiredPolicyColumns": {}
       },
       "description": "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
       "key": "hints"
@@ -299,15 +299,15 @@ const contract = JSON.parse(`{
     },
     {
       "default": {
-        "schema_diff": "on_schema_write",
         "migration_check": "after_schema_diff",
-        "migration_verify": "suggest_after_check",
         "migration_sync": "auto",
-        "type_safety": "report_only",
+        "migration_verify": "suggest_after_check",
         "rls_safety": "report_only",
+        "schema_diff": "on_schema_write",
         "type_generation": "create_or_refresh",
-        "zod_generation": "create_or_refresh",
-        "type_usage": "zod_validated"
+        "type_safety": "report_only",
+        "type_usage": "zod_validated",
+        "zod_generation": "create_or_refresh"
       },
       "description": "Automation policy for hooks, generated contract guidance, verification guidance, deploy safety gates, and whether bare sync may select one apply target.",
       "key": "workflow"
@@ -324,8 +324,8 @@ const contract = JSON.parse(`{
             "mode": "manual",
             "runner": "direct",
             "historyTable": "supabase_migrations.schema_migrations",
-            "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-            "remote": true
+            "remote": true,
+            "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
           }
         }
       },
@@ -342,8 +342,8 @@ const contract = JSON.parse(`{
               "mode": "manual",
               "runner": "direct",
               "historyTable": "supabase_migrations.schema_migrations",
-              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-              "remote": true
+              "remote": true,
+              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
             }
           }
         }
@@ -376,8 +376,8 @@ const contract = JSON.parse(`{
     },
     {
       "allowed": [
-        "off",
-        "deparse"
+        "deparse",
+        "off"
       ],
       "default": "deparse",
       "description": "Controls canonical SQL deparse normalization for extracted objects.",
@@ -507,38 +507,38 @@ const contract = JSON.parse(`{
         "mode": "manual",
         "runner": "direct",
         "historyTable": "supabase_migrations.schema_migrations",
-        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-        "remote": true
+        "remote": true,
+        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
       }
     }
   },
   "defaultTypesFile": "database.types.ts",
-  "defaultZodFile": "database.zod.ts",
   "defaultWorkflow": {
-    "schema_diff": "on_schema_write",
     "migration_check": "after_schema_diff",
-    "migration_verify": "suggest_after_check",
     "migration_sync": "auto",
-    "type_safety": "report_only",
+    "migration_verify": "suggest_after_check",
     "rls_safety": "report_only",
+    "schema_diff": "on_schema_write",
     "type_generation": "create_or_refresh",
-    "zod_generation": "create_or_refresh",
-    "type_usage": "zod_validated"
+    "type_safety": "report_only",
+    "type_usage": "zod_validated",
+    "zod_generation": "create_or_refresh"
   },
-  "destructiveChangesPolicies": [
-    "hint-required",
-    "block",
-    "allow"
-  ],
+  "defaultZodFile": "database.zod.ts",
   "deploySafetyPolicies": [
+    "deploy_blocking",
     "disabled",
-    "report_only",
-    "deploy_blocking"
+    "report_only"
+  ],
+  "destructiveChangesPolicies": [
+    "allow",
+    "block",
+    "hint-required"
   ],
   "generatedOutputPolicies": [
+    "create_or_refresh",
     "disabled",
-    "refresh_existing",
-    "create_or_refresh"
+    "refresh_existing"
   ],
   "genericMigrationsDir": "database/migrations",
   "genericProviderId": "postgres",
@@ -554,8 +554,8 @@ const contract = JSON.parse(`{
   "genericSchemaPath": "database/schemas",
   "localSchemaRef": "./supaschema-config.schema.json",
   "migrationCheckPolicies": [
-    "manual",
     "after_schema_diff",
+    "manual",
     "required_before_complete"
   ],
   "migrationSyncPolicies": [
@@ -564,13 +564,13 @@ const contract = JSON.parse(`{
     "auto"
   ],
   "migrationVerifyPolicies": [
+    "after_schema_diff",
     "manual",
-    "suggest_after_check",
-    "after_schema_diff"
+    "suggest_after_check"
   ],
   "normalizePolicies": [
-    "off",
-    "deparse"
+    "deparse",
+    "off"
   ],
   "packageSchemaRef": "./node_modules/supaschema/supaschema-config.schema.json",
   "providerMigrationsDirs": [
@@ -845,8 +845,8 @@ const contract = JSON.parse(`{
     "sqlfluff"
   ],
   "syncTargetModes": [
-    "manual",
-    "auto"
+    "auto",
+    "manual"
   ],
   "syncTargetRunners": [
     "direct",

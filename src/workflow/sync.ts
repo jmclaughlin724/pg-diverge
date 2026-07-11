@@ -80,7 +80,10 @@ export async function syncMigrations(options: SyncOptions): Promise<SyncResult> 
   for (const lane of syncPipelineLanes) {
     const result = await lane(state);
     if (result !== undefined) {
-      return result;
+      if (isSyncResult(result)) {
+        return result;
+      }
+      throw new Error("sync pipeline lane returned an invalid result");
     }
   }
   return {
@@ -115,9 +118,7 @@ interface SyncArtifactState {
   writtenContractPaths: string[];
 }
 
-type SyncPipelineLane = (
-  state: SyncPipelineState
-) => Promise<SyncResult | undefined> | SyncResult | undefined;
+type SyncPipelineLane = (state: SyncPipelineState) => Promise<unknown> | unknown;
 
 const syncPipelineLanes: SyncPipelineLane[] = [
   guardSyncPolicyLane,
@@ -140,6 +141,18 @@ const syncPipelineLanes: SyncPipelineLane[] = [
   applySyncMigrationsLane,
   reconcileSyncHistoryLane,
 ];
+
+function isSyncResult(value: unknown): value is SyncResult {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  return (
+    typeof Reflect.get(value, "applied") === "boolean" &&
+    Array.isArray(Reflect.get(value, "diagnostics")) &&
+    Array.isArray(Reflect.get(value, "pending")) &&
+    typeof Reflect.get(value, "report") === "string"
+  );
+}
 
 function guardSyncPolicyLane(state: SyncPipelineState): SyncResult | undefined {
   return disabledSyncResult(state.options, state.config, state.diagnostics);
@@ -164,12 +177,10 @@ function resolveSyncTargetLane(state: SyncPipelineState): SyncResult | undefined
   if (target !== undefined) {
     state.target = target;
   }
-  return;
 }
 
-async function loadSyncHistoryLane(state: SyncPipelineState): Promise<SyncResult | undefined> {
+async function loadSyncHistoryLane(state: SyncPipelineState): Promise<void> {
   await loadSyncHistory(state);
-  return;
 }
 
 async function reloadSyncHistoryLane(state: SyncPipelineState): Promise<SyncResult | undefined> {
@@ -177,7 +188,6 @@ async function reloadSyncHistoryLane(state: SyncPipelineState): Promise<SyncResu
     return;
   }
   await loadSyncHistory(state);
-  return;
 }
 
 async function loadSyncHistory(state: SyncPipelineState): Promise<void> {
@@ -244,7 +254,6 @@ async function resolveSyncSourcesLane(state: SyncPipelineState): Promise<SyncRes
     };
   }
   state.sources = { from: sources.from, to: sources.to };
-  return;
 }
 
 function runSyncDiffLane(state: SyncPipelineState): Promise<SyncResult | undefined> | undefined {
@@ -261,10 +270,9 @@ function runSyncDiffLane(state: SyncPipelineState): Promise<SyncResult | undefin
   );
 }
 
-function renderSyncHistoryLane(state: SyncPipelineState): SyncResult | undefined {
+function renderSyncHistoryLane(state: SyncPipelineState): void {
   const status = requiredSyncStatus(state);
   state.lines.push(renderMigrationsStatus(status).trimEnd());
-  return;
 }
 
 function checkSyncPendingMigrationsLane(
@@ -451,7 +459,6 @@ async function reconcileSyncHistoryLane(state: SyncPipelineState): Promise<SyncR
     };
   }
   state.lines.push(renderMigrationsStatus(finalStatus.report).trimEnd());
-  return;
 }
 
 function requiredSyncSources(state: SyncPipelineState): SyncSources {
@@ -557,7 +564,6 @@ async function runSyncDiffStage(
     artifacts.generatedMigrationPaths.push(concurrentPath);
     lines.push(`diff: wrote ${concurrentPath}`);
   }
-  return;
 }
 
 async function refreshGeneratedContractsForSync(
@@ -595,7 +601,6 @@ async function refreshGeneratedContractsForSync(
     state.lines.push(line);
   }
   state.artifacts.contractsRefreshed = true;
-  return;
 }
 
 async function stageSyncClosureForSync(state: SyncPipelineState): Promise<SyncResult | undefined> {
@@ -640,7 +645,6 @@ async function stageSyncClosureForSync(state: SyncPipelineState): Promise<SyncRe
     }
   }
   state.artifacts.closureStaged = true;
-  return;
 }
 
 interface StageSyncClosureOptions {
@@ -829,7 +833,6 @@ async function runSyncSafetyGates(
   if (typeGate.diagnostics.length > 0 || rlsGate.diagnostics.length > 0) {
     lines.push("safety: diagnostics reported without blocking");
   }
-  return;
 }
 
 function targetSafetySource(target: ResolvedSyncTarget, fallbackSource: string): string {

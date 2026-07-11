@@ -56,7 +56,6 @@ const hintsSchema = z
   .strictObject({
     allowedGrantees: z.array(z.string()).default([]),
     destructive: z.array(z.string()).default([]),
-    requiredPolicyColumns: z.record(z.string(), z.array(z.string())).default({}),
     renames: z
       .array(
         z.strictObject({
@@ -65,12 +64,13 @@ const hintsSchema = z
         })
       )
       .default([]),
+    requiredPolicyColumns: z.record(z.string(), z.array(z.string())).default({}),
   })
   .default({
     allowedGrantees: [],
     destructive: [],
-    requiredPolicyColumns: {},
     renames: [],
+    requiredPolicyColumns: {},
   });
 
 const schemaFilterSchema = z
@@ -110,15 +110,15 @@ const sourcesSchema = z
 const adapterSchema = z.enum(adapterInputValues).default(AdapterInput.Auto);
 const workflowSchema = z
   .strictObject({
-    schema_diff: z.enum(schemaDiffPolicies).default(defaultWorkflow.schema_diff),
     migration_check: z.enum(migrationCheckPolicies).default(defaultWorkflow.migration_check),
-    migration_verify: z.enum(migrationVerifyPolicies).default(defaultWorkflow.migration_verify),
     migration_sync: z.enum(migrationSyncPolicies).default(defaultWorkflow.migration_sync),
-    type_safety: z.enum(deploySafetyPolicies).default(defaultWorkflow.type_safety),
+    migration_verify: z.enum(migrationVerifyPolicies).default(defaultWorkflow.migration_verify),
     rls_safety: z.enum(deploySafetyPolicies).default(defaultWorkflow.rls_safety),
+    schema_diff: z.enum(schemaDiffPolicies).default(defaultWorkflow.schema_diff),
     type_generation: z.enum(generatedOutputPolicies).default(defaultWorkflow.type_generation),
-    zod_generation: z.enum(generatedOutputPolicies).default(defaultWorkflow.zod_generation),
+    type_safety: z.enum(deploySafetyPolicies).default(defaultWorkflow.type_safety),
     type_usage: z.enum(typeUsagePolicies).default(defaultWorkflow.type_usage),
+    zod_generation: z.enum(generatedOutputPolicies).default(defaultWorkflow.zod_generation),
   })
   .default(defaultWorkflow);
 export const supaschemaConfigSchema = z.strictObject({
@@ -133,21 +133,21 @@ export const supaschemaConfigSchema = z.strictObject({
   hints: hintsSchema,
   idempotency: z.literal("required").default("required"),
   lockTimeout: z.string().default("5s"),
-  workflow: workflowSchema,
-  sync: syncSchema,
-  migrationsDir: z.string().default(genericMigrationsDir),
-  typesFile: z.string().default(defaultTypesFile),
-  zodFile: z.string().default(defaultZodFile),
-  normalize: z.enum(normalizePolicies).default(NormalizePolicy.Deparse),
   managedSchemas: z.array(z.string()).default([]),
+  migrationsDir: z.string().default(genericMigrationsDir),
+  normalize: z.enum(normalizePolicies).default(NormalizePolicy.Deparse),
   postgresVersion: z.string().default("15+"),
   renameDetection: z.enum(renameDetectionPolicies).default(RenameDetectionPolicy.HintsOnly),
   schemaPaths: z.array(z.string()).default([genericSchemaPath]),
   schemas: schemaFilterSchema,
   sources: sourcesSchema,
   statementTimeout: z.string().default("60s"),
+  sync: syncSchema,
   transactionMode: z.enum(transactionModes).default(TransactionMode.PerMigration),
+  typesFile: z.string().default(defaultTypesFile),
   validators: z.array(z.string()).default(["internal-parser"]),
+  workflow: workflowSchema,
+  zodFile: z.string().default(defaultZodFile),
 });
 
 export type SupaschemaConfig = z.infer<typeof supaschemaConfigSchema>;
@@ -295,8 +295,8 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
       from.oneOf = [
         { const: sourceAuto },
         {
-          type: "string",
           not: { const: sourceAuto },
+          type: "string",
           "x-supaschema-source-parser": "parseRuntimeSource",
         },
       ];

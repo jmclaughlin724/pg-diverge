@@ -41,7 +41,7 @@ describe("property: AST identity", () => {
       fc.asyncProperty(
         identifier,
         identifier,
-        fc.array(fc.boolean(), { minLength: 1, maxLength: 24 }),
+        fc.array(fc.boolean(), { maxLength: 24, minLength: 1 }),
         async (table, column, flips) => {
           const lower = await objectHash(`create table app.${table} (${column} integer);`);
           const shouted = await objectHash(
@@ -70,7 +70,7 @@ describe("property: statement splitting", () => {
   it("never splits on semicolons inside string literals", () => {
     fc.assert(
       fc.property(
-        fc.array(fc.string({ maxLength: 30 }), { minLength: 1, maxLength: 8 }),
+        fc.array(fc.string({ maxLength: 30 }), { maxLength: 8, minLength: 1 }),
         (values) => {
           const statements = values.map((value) => `SELECT '${value.replaceAll("'", "''")}' AS v`);
           const split = splitSqlStatements(`${statements.join(";\n")};`);

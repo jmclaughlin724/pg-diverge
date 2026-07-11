@@ -123,7 +123,7 @@ async function stagedGenerationBaseline(
     const index = await extractSourceModel("git:INDEX", { config, cwd });
     return index.fingerprint === baseline.fingerprint ? "git:INDEX" : undefined;
   } catch {
-    return;
+    // If the index cannot be inspected, fall back to the configured source.
   }
 }
 

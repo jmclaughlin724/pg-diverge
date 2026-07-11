@@ -61,8 +61,8 @@ export function inspectDocsJson(
       violations.push({
         file: DOCS_CONFIG,
         line: 1,
-        rule: "docs-json",
         msg: "`docs/docs.json` is required for the Mintlify site",
+        rule: "docs-json",
       });
     }
     return;
@@ -75,8 +75,8 @@ export function inspectDocsJson(
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: `docs.json is not valid JSON: ${error.message}`,
+      rule: "docs-json",
     });
     return;
   }
@@ -90,8 +90,8 @@ function inspectDocsJsonShape(config, violations) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: "`docs.json` must be a JSON object",
+      rule: "docs-json",
     });
     return;
   }
@@ -100,20 +100,20 @@ function inspectDocsJsonShape(config, violations) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: `set "$schema" to "${MINTLIFY_SCHEMA_URL}"`,
+      rule: "docs-json",
     });
   }
   if (typeof config.theme !== "string" || !MINTLIFY_THEMES.has(config.theme)) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: "`theme` must be a supported Mintlify theme",
+      rule: "docs-json",
     });
   }
   if (typeof config.name !== "string" || config.name.trim().length === 0) {
-    violations.push({ file: DOCS_CONFIG, line: 1, rule: "docs-json", msg: "missing `name`" });
+    violations.push({ file: DOCS_CONFIG, line: 1, msg: "missing `name`", rule: "docs-json" });
   }
   if (
     !config.navigation ||
@@ -123,16 +123,16 @@ function inspectDocsJsonShape(config, violations) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: "missing `navigation` object",
+      rule: "docs-json",
     });
   }
   if (!config.colors || typeof config.colors !== "object" || Array.isArray(config.colors)) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: "missing `colors.primary`",
+      rule: "docs-json",
     });
   } else {
     for (const key of ["primary", "light", "dark"]) {
@@ -146,8 +146,8 @@ function inspectDocsJsonShape(config, violations) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: '`icons.library` must be either "lucide" or "fontawesome"',
+      rule: "docs-json",
     });
   }
   inspectContextualOptions(config, violations);
@@ -158,8 +158,8 @@ function inspectHexColor(value, path, violations) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: `\`${path}\` must be a hex color starting with #`,
+      rule: "docs-json",
     });
   }
 }
@@ -173,8 +173,8 @@ function inspectContextualOptions(config, violations) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: "`contextual.options` must be configured for Mintlify AI/MCP actions",
+      rule: "docs-json",
     });
     return;
   }
@@ -182,8 +182,8 @@ function inspectContextualOptions(config, violations) {
     violations.push({
       file: DOCS_CONFIG,
       line: 1,
-      rule: "docs-json",
       msg: "`contextual.options` must be an array",
+      rule: "docs-json",
     });
     return;
   }
@@ -196,8 +196,8 @@ function inspectContextualOptions(config, violations) {
       violations.push({
         file: DOCS_CONFIG,
         line: 1,
-        rule: "docs-json",
         msg: `contextual.options is missing "${option}" for Mintlify AI/MCP actions`,
+        rule: "docs-json",
       });
     }
   }
@@ -213,8 +213,8 @@ function inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterBy
       violations.push({
         file: DOCS_CONFIG,
         line: 1,
-        rule: "navigation",
         msg: `navigation page "${page}" must be extensionless and relative to docs root`,
+        rule: "navigation",
       });
       continue;
     }
@@ -222,8 +222,8 @@ function inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterBy
       violations.push({
         file: DOCS_CONFIG,
         line: 1,
-        rule: "navigation",
         msg: `navigation page "${page}" does not resolve to docs/${page}.md or docs/${page}.mdx`,
+        rule: "navigation",
       });
     }
   }
@@ -237,8 +237,8 @@ function inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterBy
       violations.push({
         file: `docs/${page}`,
         line: 1,
-        rule: "navigation",
         msg: "navigable page is missing from docs.json navigation; add it to navigation or set `hidden: true`",
+        rule: "navigation",
       });
     }
   }
@@ -248,8 +248,8 @@ function inspectDocsJsonNavigation(config, rootDir, relativeFiles, frontmatterBy
       violations.push({
         file: DOCS_CONFIG,
         line: 1,
-        rule: "navigation-label",
         msg: `${label.key} label "${label.value}" must be short enough for a one- or two-line navigation item`,
+        rule: "navigation-label",
       });
     }
   }

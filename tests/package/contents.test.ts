@@ -9,8 +9,8 @@ const run = promisify(execFile);
 const npmExec = (args: string[]): { file: string; args: string[] } => {
   const execpath = process.env.npm_execpath;
   return execpath
-    ? { file: process.execPath, args: [execpath, ...args] }
-    : { file: process.platform === "win32" ? "npm.cmd" : "npm", args };
+    ? { args: [execpath, ...args], file: process.execPath }
+    : { args, file: process.platform === "win32" ? "npm.cmd" : "npm" };
 };
 
 function packageBinPath(): string {

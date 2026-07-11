@@ -177,7 +177,9 @@ function runSync(projectDir) {
       timeout: 120_000,
     });
   } catch (error) {
-    throw new Error(`npm run sync:llm failed: ${syncErrorDetail(error).trim()}`);
+    throw new Error(`npm run sync:llm failed: ${syncErrorDetail(error).trim()}`, {
+      cause: error,
+    });
   }
 }
 
@@ -194,8 +196,8 @@ function syncErrorDetail(error) {
 function npmInvocation(args) {
   const execpath = process.env.npm_execpath;
   return execpath
-    ? { command: process.execPath, args: [execpath, ...args] }
-    : { command: process.platform === "win32" ? "npm.cmd" : "npm", args };
+    ? { args: [execpath, ...args], command: process.execPath }
+    : { args, command: process.platform === "win32" ? "npm.cmd" : "npm" };
 }
 
 function readSyncedDigest(projectDir) {
@@ -206,7 +208,7 @@ function readSyncedDigest(projectDir) {
     }
     return typeof state?.digest === "string" ? state.digest : undefined;
   } catch {
-    return;
+    // Missing or malformed hook state only means there is no digest to compare.
   }
 }
 

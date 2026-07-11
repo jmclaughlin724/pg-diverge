@@ -301,7 +301,10 @@ export function constraintMetadata(
     impliedColumns
   );
   const metadata: Record<string, unknown> = {
-    constraintColumns: columns.length > 0 ? columns : expressionColumns(constraint.raw_expr).sort(),
+    constraintColumns:
+      columns.length > 0
+        ? columns
+        : expressionColumns(constraint.raw_expr).sort((left, right) => left.localeCompare(right)),
     constraintType: contype,
   };
   if (contype === "CONSTR_FOREIGN") {

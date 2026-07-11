@@ -9,10 +9,6 @@ const localSupabaseBinary = resolve(root, "node_modules/.bin/supabase");
 export const adapters = [
   {
     binary: process.execPath,
-    id: "supaschema-file",
-    mode: "source-file diff",
-    output: "sql",
-    requiresDatabase: false,
     command(context) {
       return {
         args: [
@@ -30,13 +26,13 @@ export const adapters = [
         command: process.execPath,
       };
     },
+    id: "supaschema-file",
+    mode: "source-file diff",
+    output: "sql",
+    requiresDatabase: false,
   },
   {
     binary: process.execPath,
-    id: "supaschema-db",
-    mode: "live-catalog diff",
-    output: "sql",
-    requiresDatabase: true,
     command(context) {
       return {
         args: [
@@ -54,13 +50,13 @@ export const adapters = [
         command: process.execPath,
       };
     },
+    id: "supaschema-db",
+    mode: "live-catalog diff",
+    output: "sql",
+    requiresDatabase: true,
   },
   {
     binary: process.execPath,
-    id: "supaschema-workflow",
-    mode: "full workflow: sync + migration + TS types + Zod validators",
-    output: "sql",
-    requiresDatabase: false,
     async command(context) {
       const migrationsDir = join(context.runRoot, "migrations");
       const typesFile = join(context.runRoot, "database.types.ts");
@@ -96,6 +92,10 @@ export const adapters = [
         command: process.execPath,
       };
     },
+    id: "supaschema-workflow",
+    mode: "full workflow: sync + migration + TS types + Zod validators",
+    output: "sql",
+    requiresDatabase: false,
   },
   supabaseAdapter("supabase-default"),
   supabaseAdapter("supabase-migra", "--use-migra"),
@@ -140,7 +140,6 @@ async function findOnPath(binary) {
       return candidate;
     }
   }
-  return;
 }
 
 async function canAccess(filePath) {
@@ -164,19 +163,6 @@ async function resolveSupabaseBinary() {
 function supabaseWorkflowAdapter(id, engineFlag) {
   return {
     binary: "supabase",
-    id,
-    maxAttempts: 3,
-    mode: "full workflow: db diff + apply + gen types",
-    output: "sql",
-    requiresDatabase: true,
-    resolveBinary: resolveSupabaseBinary,
-    retryDelayMs: 2000,
-    retryOnFailure(execution) {
-      return (
-        execution.stderr.includes("Address already in use") &&
-        !execution.stderr.includes("workflow: applying migration")
-      );
-    },
     async command(context) {
       const supabaseBinary = await resolveSupabaseBinary();
       const schemas = context.schemas ?? ["app"];
@@ -223,22 +209,25 @@ function supabaseWorkflowAdapter(id, engineFlag) {
         command: process.execPath,
       };
     },
+    id,
+    maxAttempts: 3,
+    mode: "full workflow: db diff + apply + gen types",
+    output: "sql",
+    requiresDatabase: true,
+    resolveBinary: resolveSupabaseBinary,
+    retryDelayMs: 2000,
+    retryOnFailure(execution) {
+      return (
+        execution.stderr.includes("Address already in use") &&
+        !execution.stderr.includes("workflow: applying migration")
+      );
+    },
   };
 }
 
 function supabaseAdapter(id, engineFlag) {
   return {
     binary: "supabase",
-    id,
-    maxAttempts: 3,
-    mode: engineFlag ? `Supabase db diff ${engineFlag}` : "Supabase db diff default",
-    output: "sql",
-    requiresDatabase: true,
-    resolveBinary: resolveSupabaseBinary,
-    retryDelayMs: 2000,
-    retryOnFailure(execution) {
-      return execution.stderr.includes("Address already in use");
-    },
     async command(context) {
       const args = [
         "--workdir",
@@ -261,6 +250,16 @@ function supabaseAdapter(id, engineFlag) {
         args,
         command: await resolveSupabaseBinary(),
       };
+    },
+    id,
+    maxAttempts: 3,
+    mode: engineFlag ? `Supabase db diff ${engineFlag}` : "Supabase db diff default",
+    output: "sql",
+    requiresDatabase: true,
+    resolveBinary: resolveSupabaseBinary,
+    retryDelayMs: 2000,
+    retryOnFailure(execution) {
+      return execution.stderr.includes("Address already in use");
     },
   };
 }

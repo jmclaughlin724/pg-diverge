@@ -256,7 +256,7 @@ function addJsTsCommentRange(range, text, ranges) {
   ranges.set(`${range.pos}:${range.end}`, range);
 }
 
-function collectJsTsTypeAssertionViolations(node, source, found) {
+function collectJsTsTypeAssertionViolations(node, _source, found) {
   if (
     ts.isAsExpression(node) ||
     ts.isTypeAssertionExpression(node) ||
@@ -264,14 +264,14 @@ function collectJsTsTypeAssertionViolations(node, source, found) {
   ) {
     found.push(node);
   }
-  ts.forEachChild(node, (child) => collectJsTsTypeAssertionViolations(child, source, found));
+  ts.forEachChild(node, (child) => collectJsTsTypeAssertionViolations(child, _source, found));
 }
 
-function collectJsTsCopiedEnumTupleViolations(node, source, found) {
+function collectJsTsCopiedEnumTupleViolations(node, _source, found) {
   if (isInlineZodEnumTuple(node)) {
     found.push(node);
   }
-  ts.forEachChild(node, (child) => collectJsTsCopiedEnumTupleViolations(child, source, found));
+  ts.forEachChild(node, (child) => collectJsTsCopiedEnumTupleViolations(child, _source, found));
 }
 
 function isInlineZodEnumTuple(node) {
@@ -286,7 +286,7 @@ function isInlineZodEnumTuple(node) {
   );
 }
 
-function collectJsTsDeferredMarkerViolations(node, source, found) {
+function collectJsTsDeferredMarkerViolations(node, _source, found) {
   const value = jsTsSearchableValue(node);
   if (value !== undefined) {
     const term = deferredMarkerTerms.find((candidate) => value.includes(candidate));
@@ -294,10 +294,10 @@ function collectJsTsDeferredMarkerViolations(node, source, found) {
       found.push({ node, term });
     }
   }
-  ts.forEachChild(node, (child) => collectJsTsDeferredMarkerViolations(child, source, found));
+  ts.forEachChild(node, (child) => collectJsTsDeferredMarkerViolations(child, _source, found));
 }
 
-function collectMonetizationTerms(node, source, found) {
+function collectMonetizationTerms(node, _source, found) {
   const value = jsTsSearchableValue(node);
   if (value !== undefined) {
     const term = monetizationTerms.find((candidate) => value.includes(candidate));
@@ -305,7 +305,7 @@ function collectMonetizationTerms(node, source, found) {
       found.push({ node, term });
     }
   }
-  ts.forEachChild(node, (child) => collectMonetizationTerms(child, source, found));
+  ts.forEachChild(node, (child) => collectMonetizationTerms(child, _source, found));
 }
 
 function collectShellComments(value, comments) {

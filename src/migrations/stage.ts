@@ -79,8 +79,8 @@ async function changedGitPaths(directory: string): Promise<GitChangedPaths> {
       { cwd: root, encoding: "utf8" }
     );
     return { paths: parsePorcelainStatusPaths(stdout), root };
-  } catch {
-    throw new Error("supaschema stage requires a git worktree");
+  } catch (error) {
+    throw new Error("supaschema stage requires a git worktree", { cause: error });
   }
 }
 

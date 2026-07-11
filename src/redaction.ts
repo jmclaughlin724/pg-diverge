@@ -181,7 +181,6 @@ function readQuote(char: string): '"' | "'" | undefined {
   if (char === `"` || char === "'") {
     return char;
   }
-  return;
 }
 
 function isSensitiveKey(key: string): boolean {

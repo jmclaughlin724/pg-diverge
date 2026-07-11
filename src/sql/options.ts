@@ -12,7 +12,6 @@ export function sequenceOwnedByOption(options: unknown): string | null | undefin
     }
     return parts.at(-1) === "none" ? null : parts.join(".");
   }
-  return;
 }
 
 export function extensionSchemaOption(options: unknown): string | undefined {
@@ -26,5 +25,4 @@ export function extensionSchemaOption(options: unknown): string | undefined {
       return value;
     }
   }
-  return;
 }

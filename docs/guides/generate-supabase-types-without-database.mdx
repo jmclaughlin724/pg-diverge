@@ -51,10 +51,14 @@ npx supaschema types --from migrations:supabase/migrations
 Use the generated schema-qualified owners as the application contract:
 
 ```ts
-import type { AppAccountsInsert } from "./database.types";
-import { AppAccountsInsertSchema } from "./database.zod";
+import type { TablesInsert } from "./database.types";
+import { SupaschemaZod } from "./database.zod";
 
-const input: AppAccountsInsert = AppAccountsInsertSchema.parse(body);
+type AccountInsert = TablesInsert<{ schema: "app" }, "accounts">;
+
+const input = SupaschemaZod.app.Tables.accounts.Insert.parse(
+  body
+) as AccountInsert;
 ```
 
 That covers the shape and validation responsibilities that teams often reach for an ORM-generated client to solve. Query execution can stay SQL-native through your PostgreSQL driver or platform client.

@@ -13,10 +13,10 @@ describe("public repo surface guard", () => {
 
   it("allows reviewed source-repo hook runtime surfaces", () => {
     const root = tempGuardRepo({
-      ".claude/settings.json": "{}\n",
       ".claude/hooks/context-pre-tool-use.mjs": "export {};\n",
       ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/rules/22-agent-surface-sync-ownership.md": "# Rule 22\n",
+      ".claude/settings.json": "{}\n",
       ".codex/hooks/context-pre-tool-use.mjs": "export {};\n",
       ".codex/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".codex/rules/22-agent-surface-sync-ownership.rules": "# Rule 22\n",

@@ -11,7 +11,7 @@ export function isSha40(ref) {
 export function* eachStep(doc) {
   for (const [jobId, job] of Object.entries(doc?.jobs ?? {})) {
     for (const step of job?.steps ?? []) {
-      yield { jobId, job, step };
+      yield { job, jobId, step };
     }
   }
 }

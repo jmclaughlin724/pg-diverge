@@ -5,9 +5,9 @@ import { svgFooter, svgHeader, text, theme } from "./plot-lib.js";
 
 const width = 1200;
 const palette = {
+  good: { fill: theme.passFill, stroke: theme.passStroke, title: theme.accent },
   neutral: { fill: theme.neutralFill, stroke: theme.slateBar, title: theme.text },
   warn: { fill: theme.failFill, stroke: theme.failStroke, title: theme.fail },
-  good: { fill: theme.passFill, stroke: theme.passStroke, title: theme.accent },
 };
 
 function node(x, y, w, h, item) {

@@ -1,51 +1,51 @@
 {
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/general-guard.mjs\"",
-            "timeout": 10,
-            "statusMessage": "Checking general Bash safety policy"
-          }
-        ]
-      },
-      {
-        "matcher": "apply_patch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "yarn exec supaschema hook generated-migration-edit --runtime codex",
-            "timeout": 10,
-            "statusMessage": "Checking supaschema generated-migration policy"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
-        "matcher": "Bash|apply_patch",
         "hooks": [
           {
-            "type": "command",
             "command": "yarn exec supaschema hook schema-write",
+            "statusMessage": "Running supaschema auto-diff on schema change",
             "timeout": 130,
-            "statusMessage": "Running supaschema auto-diff on schema change"
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": "Bash|apply_patch"
       },
       {
-        "matcher": "apply_patch",
         "hooks": [
           {
-            "type": "command",
             "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
+            "statusMessage": "Syncing supaschema Claude agent surfaces",
             "timeout": 130,
-            "statusMessage": "Syncing supaschema Claude agent surfaces"
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": "apply_patch"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/general-guard.mjs\"",
+            "statusMessage": "Checking general Bash safety policy",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "command": "yarn exec supaschema hook generated-migration-edit --runtime codex",
+            "statusMessage": "Checking supaschema generated-migration policy",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "apply_patch"
       }
     ]
   }

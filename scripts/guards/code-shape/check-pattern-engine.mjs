@@ -83,11 +83,11 @@ async function shellPatternEngineViolations(candidates, root) {
   ).flat();
 }
 
-function collectJsTsPatternEngineViolations(node, source, found) {
+function collectJsTsPatternEngineViolations(node, _source, found) {
   if (node.kind === ts.SyntaxKind.RegularExpressionLiteral || isRegExpConstructorCall(node)) {
     found.push(node);
   }
-  ts.forEachChild(node, (child) => collectJsTsPatternEngineViolations(child, source, found));
+  ts.forEachChild(node, (child) => collectJsTsPatternEngineViolations(child, _source, found));
 }
 
 function isRegExpConstructorCall(node) {
@@ -98,12 +98,12 @@ function isRegExpConstructorCall(node) {
   );
 }
 
-function collectJsTsRegexStringContractViolations(node, source, found) {
+function collectJsTsRegexStringContractViolations(node, _source, found) {
   const value = jsTsStringValue(node);
   if (value !== undefined && isRegexShapedString(value)) {
     found.push(node);
   }
-  ts.forEachChild(node, (child) => collectJsTsRegexStringContractViolations(child, source, found));
+  ts.forEachChild(node, (child) => collectJsTsRegexStringContractViolations(child, _source, found));
 }
 
 function isRegexShapedString(value) {

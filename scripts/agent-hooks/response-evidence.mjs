@@ -39,7 +39,6 @@ export function toolSucceeded(payload) {
   ) {
     return !response.interrupted;
   }
-  return;
 }
 
 export function responseReportsFailure(payload) {
@@ -164,7 +163,7 @@ function jsonValue(text) {
   try {
     return JSON.parse(trimmed);
   } catch {
-    return;
+    // Non-JSON command output has no structured response evidence.
   }
 }
 

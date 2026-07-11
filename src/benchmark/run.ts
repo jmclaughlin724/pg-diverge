@@ -447,7 +447,7 @@ async function readSqlDirectory(root: string): Promise<string> {
   }
   await walk(root);
   const chunks: string[] = [];
-  for (const file of files.sort()) {
+  for (const file of files.sort((left, right) => left.localeCompare(right))) {
     chunks.push(await readFile(file, "utf8"));
   }
   return chunks.join("\n\n");

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
   "root": true,
   "extends": [
     "ultracite/biome/core",
@@ -10,6 +10,13 @@
     "enabled": true,
     "clientKind": "git",
     "useIgnoreFile": true
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "useSortedKeys": "off"
+      }
+    }
   },
   "files": {
     "ignoreUnknown": true,
@@ -42,6 +49,9 @@
   "linter": {
     "enabled": true,
     "rules": {
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "off"
+      },
       "correctness": {
         "useImportExtensions": {
           "level": "error",
@@ -52,6 +62,17 @@
             }
           }
         }
+      },
+      "performance": {
+        "noAwaitInLoops": "off"
+      },
+      "style": {
+        "useDestructuring": "off"
+      },
+      "suspicious": {
+        "noMisplacedAssertion": "off",
+        "noShadow": "off",
+        "noUnnecessaryConditions": "off"
       }
     }
   },

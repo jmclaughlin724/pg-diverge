@@ -29,9 +29,9 @@
       "default": "hint-required",
       "type": "string",
       "enum": [
-        "hint-required",
+        "allow",
         "block",
-        "allow"
+        "hint-required"
       ],
       "description": "Controls whether destructive operations require exact hints, always block, or are allowed."
     },
@@ -75,8 +75,8 @@
       "default": {
         "allowedGrantees": [],
         "destructive": [],
-        "requiredPolicyColumns": {},
-        "renames": []
+        "renames": [],
+        "requiredPolicyColumns": {}
       },
       "type": "object",
       "properties": {
@@ -92,19 +92,6 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
-        },
-        "requiredPolicyColumns": {
-          "default": {},
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           }
         },
         "renames": {
@@ -126,6 +113,19 @@
             ],
             "additionalProperties": false
           }
+        },
+        "requiredPolicyColumns": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "additionalProperties": false,
@@ -141,247 +141,6 @@
       "default": "5s",
       "type": "string",
       "description": "Migration preamble SET lock_timeout value."
-    },
-    "workflow": {
-      "default": {
-        "schema_diff": "on_schema_write",
-        "migration_check": "after_schema_diff",
-        "migration_verify": "suggest_after_check",
-        "migration_sync": "auto",
-        "type_safety": "report_only",
-        "rls_safety": "report_only",
-        "type_generation": "create_or_refresh",
-        "zod_generation": "create_or_refresh",
-        "type_usage": "zod_validated"
-      },
-      "type": "object",
-      "properties": {
-        "schema_diff": {
-          "default": "on_schema_write",
-          "type": "string",
-          "enum": [
-            "disabled",
-            "manual",
-            "on_schema_write"
-          ],
-          "description": "Controls whether agent hooks generate a schema migration automatically after configured schema-tree SQL writes."
-        },
-        "migration_check": {
-          "default": "after_schema_diff",
-          "type": "string",
-          "enum": [
-            "manual",
-            "after_schema_diff",
-            "required_before_complete"
-          ],
-          "description": "Controls when replay-safety checks run after a generated migration."
-        },
-        "migration_verify": {
-          "default": "suggest_after_check",
-          "type": "string",
-          "enum": [
-            "manual",
-            "suggest_after_check",
-            "after_schema_diff"
-          ],
-          "description": "Controls whether agents should only suggest verification or run it automatically when a database is available."
-        },
-        "migration_sync": {
-          "default": "auto",
-          "type": "string",
-          "enum": [
-            "disabled",
-            "manual",
-            "auto"
-          ],
-          "description": "Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select one sync.targets entry whose mode is \"auto\"."
-        },
-        "type_safety": {
-          "default": "report_only",
-          "type": "string",
-          "enum": [
-            "disabled",
-            "report_only",
-            "deploy_blocking"
-          ],
-          "description": "Controls whether sync type-contract diagnostics are disabled, reported only, or block deploy."
-        },
-        "rls_safety": {
-          "default": "report_only",
-          "type": "string",
-          "enum": [
-            "disabled",
-            "report_only",
-            "deploy_blocking"
-          ],
-          "description": "Controls whether sync RLS and least-privilege diagnostics are disabled, reported only, or block deploy."
-        },
-        "type_generation": {
-          "default": "create_or_refresh",
-          "type": "string",
-          "enum": [
-            "disabled",
-            "refresh_existing",
-            "create_or_refresh"
-          ],
-          "description": "Controls whether sync refreshes the configured TypeScript output during the full workflow."
-        },
-        "zod_generation": {
-          "default": "create_or_refresh",
-          "type": "string",
-          "enum": [
-            "disabled",
-            "refresh_existing",
-            "create_or_refresh"
-          ],
-          "description": "Controls whether sync refreshes the configured Zod validator output during the full workflow."
-        },
-        "type_usage": {
-          "default": "zod_validated",
-          "type": "string",
-          "enum": [
-            "typescript_only",
-            "zod_validated"
-          ],
-          "description": "Controls whether agents should prefer generated Zod validators or TypeScript-only generated shapes when wiring application code."
-        }
-      },
-      "additionalProperties": false,
-      "description": "Automation policy for hooks, generated contract guidance, verification guidance, deploy safety gates, and whether bare sync may select one apply target."
-    },
-    "sync": {
-      "default": {
-        "targets": {
-          "local": {
-            "mode": "auto",
-            "runner": "direct",
-            "historyTable": "supabase_migrations.schema_migrations"
-          },
-          "remote": {
-            "mode": "manual",
-            "runner": "direct",
-            "historyTable": "supabase_migrations.schema_migrations",
-            "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-            "remote": true
-          }
-        }
-      },
-      "type": "object",
-      "properties": {
-        "targets": {
-          "default": {
-            "local": {
-              "mode": "auto",
-              "runner": "direct",
-              "historyTable": "supabase_migrations.schema_migrations"
-            },
-            "remote": {
-              "mode": "manual",
-              "runner": "direct",
-              "historyTable": "supabase_migrations.schema_migrations",
-              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-              "remote": true
-            }
-          },
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "type": "object",
-            "properties": {
-              "historyTable": {
-                "type": "string"
-              },
-              "mode": {
-                "type": "string",
-                "enum": [
-                  "manual",
-                  "auto"
-                ]
-              },
-              "remote": {
-                "type": "boolean"
-              },
-              "requireApprovalEnv": {
-                "type": "string"
-              },
-              "runner": {
-                "type": "string",
-                "enum": [
-                  "direct",
-                  "supabase-cli"
-                ]
-              },
-              "databaseUrl": {
-                "type": "string"
-              },
-              "environment": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "historyTable",
-              "mode",
-              "runner"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      "additionalProperties": false,
-      "description": "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; bare sync may select at most one target with mode auto.",
-      "examples": [
-        {
-          "targets": {
-            "local": {
-              "mode": "auto",
-              "runner": "direct",
-              "historyTable": "supabase_migrations.schema_migrations"
-            },
-            "remote": {
-              "mode": "manual",
-              "runner": "direct",
-              "historyTable": "supabase_migrations.schema_migrations",
-              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
-              "remote": true
-            }
-          }
-        }
-      ]
-    },
-    "migrationsDir": {
-      "default": "database/migrations",
-      "type": "string",
-      "description": "Directory where diff writes migrations, check/verify read pending migrations, and planning reads existing migrations for source intent plus generated-lineage baseline proof.",
-      "examples": [
-        "database/migrations",
-        "supabase/migrations",
-        "neon/migrations",
-        "aws-postgresql/migrations"
-      ],
-      "x-supaschema-path-kind": "directory"
-    },
-    "typesFile": {
-      "default": "database.types.ts",
-      "type": "string",
-      "description": "Output file for TypeScript database types generated by supaschema types.",
-      "x-supaschema-path-kind": "file"
-    },
-    "zodFile": {
-      "default": "database.zod.ts",
-      "type": "string",
-      "description": "Output file for Zod runtime schemas generated by supaschema types.",
-      "x-supaschema-path-kind": "file"
-    },
-    "normalize": {
-      "default": "deparse",
-      "type": "string",
-      "enum": [
-        "off",
-        "deparse"
-      ],
-      "description": "Controls canonical SQL deparse normalization for extracted objects."
     },
     "managedSchemas": {
       "default": [],
@@ -405,6 +164,27 @@
           "graphql_public"
         ]
       ]
+    },
+    "migrationsDir": {
+      "default": "database/migrations",
+      "type": "string",
+      "description": "Directory where diff writes migrations, check/verify read pending migrations, and planning reads existing migrations for source intent plus generated-lineage baseline proof.",
+      "examples": [
+        "database/migrations",
+        "supabase/migrations",
+        "neon/migrations",
+        "aws-postgresql/migrations"
+      ],
+      "x-supaschema-path-kind": "directory"
+    },
+    "normalize": {
+      "default": "deparse",
+      "type": "string",
+      "enum": [
+        "deparse",
+        "off"
+      ],
+      "description": "Controls canonical SQL deparse normalization for extracted objects."
     },
     "postgresVersion": {
       "default": "15+",
@@ -491,10 +271,10 @@
               "const": "auto"
             },
             {
-              "type": "string",
               "not": {
                 "const": "auto"
               },
+              "type": "string",
               "x-supaschema-source-parser": "parseRuntimeSource"
             }
           ]
@@ -516,6 +296,107 @@
       "type": "string",
       "description": "Migration preamble SET statement_timeout value."
     },
+    "sync": {
+      "default": {
+        "targets": {
+          "local": {
+            "mode": "auto",
+            "runner": "direct",
+            "historyTable": "supabase_migrations.schema_migrations"
+          },
+          "remote": {
+            "mode": "manual",
+            "runner": "direct",
+            "historyTable": "supabase_migrations.schema_migrations",
+            "remote": true,
+            "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
+          }
+        }
+      },
+      "type": "object",
+      "properties": {
+        "targets": {
+          "default": {
+            "local": {
+              "mode": "auto",
+              "runner": "direct",
+              "historyTable": "supabase_migrations.schema_migrations"
+            },
+            "remote": {
+              "mode": "manual",
+              "runner": "direct",
+              "historyTable": "supabase_migrations.schema_migrations",
+              "remote": true,
+              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
+            }
+          },
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "historyTable": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "manual"
+                ]
+              },
+              "remote": {
+                "type": "boolean"
+              },
+              "requireApprovalEnv": {
+                "type": "string"
+              },
+              "runner": {
+                "type": "string",
+                "enum": [
+                  "direct",
+                  "supabase-cli"
+                ]
+              },
+              "databaseUrl": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "historyTable",
+              "mode",
+              "runner"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Named apply targets for supaschema sync. workflow.migration_sync is the global apply policy; bare sync may select at most one target with mode auto.",
+      "examples": [
+        {
+          "targets": {
+            "local": {
+              "mode": "auto",
+              "runner": "direct",
+              "historyTable": "supabase_migrations.schema_migrations"
+            },
+            "remote": {
+              "mode": "manual",
+              "runner": "direct",
+              "historyTable": "supabase_migrations.schema_migrations",
+              "remote": true,
+              "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED"
+            }
+          }
+        }
+      ]
+    },
     "transactionMode": {
       "default": "per-migration",
       "type": "string",
@@ -524,6 +405,12 @@
         "per-statement"
       ],
       "description": "Transaction model used by verification and transaction-hazard diagnostics."
+    },
+    "typesFile": {
+      "default": "database.types.ts",
+      "type": "string",
+      "description": "Output file for TypeScript database types generated by supaschema types.",
+      "x-supaschema-path-kind": "file"
     },
     "validators": {
       "default": [
@@ -543,6 +430,119 @@
           "squawk"
         ]
       ]
+    },
+    "workflow": {
+      "default": {
+        "migration_check": "after_schema_diff",
+        "migration_sync": "auto",
+        "migration_verify": "suggest_after_check",
+        "rls_safety": "report_only",
+        "schema_diff": "on_schema_write",
+        "type_generation": "create_or_refresh",
+        "type_safety": "report_only",
+        "type_usage": "zod_validated",
+        "zod_generation": "create_or_refresh"
+      },
+      "type": "object",
+      "properties": {
+        "migration_check": {
+          "default": "after_schema_diff",
+          "type": "string",
+          "enum": [
+            "after_schema_diff",
+            "manual",
+            "required_before_complete"
+          ],
+          "description": "Controls when replay-safety checks run after a generated migration."
+        },
+        "migration_sync": {
+          "default": "auto",
+          "type": "string",
+          "enum": [
+            "disabled",
+            "manual",
+            "auto"
+          ],
+          "description": "Global apply policy for supaschema sync: disable apply, require explicit --target, or let bare sync select one sync.targets entry whose mode is \"auto\"."
+        },
+        "migration_verify": {
+          "default": "suggest_after_check",
+          "type": "string",
+          "enum": [
+            "after_schema_diff",
+            "manual",
+            "suggest_after_check"
+          ],
+          "description": "Controls whether agents should only suggest verification or run it automatically when a database is available."
+        },
+        "rls_safety": {
+          "default": "report_only",
+          "type": "string",
+          "enum": [
+            "deploy_blocking",
+            "disabled",
+            "report_only"
+          ],
+          "description": "Controls whether sync RLS and least-privilege diagnostics are disabled, reported only, or block deploy."
+        },
+        "schema_diff": {
+          "default": "on_schema_write",
+          "type": "string",
+          "enum": [
+            "disabled",
+            "manual",
+            "on_schema_write"
+          ],
+          "description": "Controls whether agent hooks generate a schema migration automatically after configured schema-tree SQL writes."
+        },
+        "type_generation": {
+          "default": "create_or_refresh",
+          "type": "string",
+          "enum": [
+            "create_or_refresh",
+            "disabled",
+            "refresh_existing"
+          ],
+          "description": "Controls whether sync refreshes the configured TypeScript output during the full workflow."
+        },
+        "type_safety": {
+          "default": "report_only",
+          "type": "string",
+          "enum": [
+            "deploy_blocking",
+            "disabled",
+            "report_only"
+          ],
+          "description": "Controls whether sync type-contract diagnostics are disabled, reported only, or block deploy."
+        },
+        "type_usage": {
+          "default": "zod_validated",
+          "type": "string",
+          "enum": [
+            "typescript_only",
+            "zod_validated"
+          ],
+          "description": "Controls whether agents should prefer generated Zod validators or TypeScript-only generated shapes when wiring application code."
+        },
+        "zod_generation": {
+          "default": "create_or_refresh",
+          "type": "string",
+          "enum": [
+            "create_or_refresh",
+            "disabled",
+            "refresh_existing"
+          ],
+          "description": "Controls whether sync refreshes the configured Zod validator output during the full workflow."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Automation policy for hooks, generated contract guidance, verification guidance, deploy safety gates, and whether bare sync may select one apply target."
+    },
+    "zodFile": {
+      "default": "database.zod.ts",
+      "type": "string",
+      "description": "Output file for Zod runtime schemas generated by supaschema types.",
+      "x-supaschema-path-kind": "file"
     }
   },
   "additionalProperties": false,

@@ -32,7 +32,6 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
 
-
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,7 +48,6 @@ jobs:
         with:
           argv: >-
             ["diff","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--out","/tmp/supaschema/migration.sql"]
-
 
       - name: Check replay safety
         uses: jmclaughlin724/supaschema@<tag>

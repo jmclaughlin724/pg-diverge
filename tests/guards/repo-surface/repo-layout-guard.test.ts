@@ -22,12 +22,12 @@ describe("repo layout guard", () => {
   it("flags dump and private directories", () => {
     const message = guardMessage(
       trackedRepo({
+        "src/_private/f.ts": "export const f = 1;\n",
+        "src/common/d.ts": "export const d = 1;\n",
+        "src/helpers/c.ts": "export const c = 1;\n",
+        "src/misc/e.ts": "export const e = 1;\n",
         "src/shared/a.ts": "export const a = 1;\n",
         "src/utils/b.ts": "export const b = 1;\n",
-        "src/helpers/c.ts": "export const c = 1;\n",
-        "src/common/d.ts": "export const d = 1;\n",
-        "src/misc/e.ts": "export const e = 1;\n",
-        "src/_private/f.ts": "export const f = 1;\n",
       })
     );
     expect(message).toContain("src/shared");
@@ -49,10 +49,10 @@ describe("repo layout guard", () => {
     const message = guardMessage(
       trackedRepo({
         "scripts/shared.mjs": "export const s = 1;\n",
-        "src/payload.test.ts": "export const p = 1;\n",
-        "src/tool-payload.mjs": "export const t = 1;\n",
-        "src/query-users.ts": "export const q = 1;\n",
         "src/dashboard/nested/dashboard-widget.ts": "export const d = 1;\n",
+        "src/payload.test.ts": "export const p = 1;\n",
+        "src/query-users.ts": "export const q = 1;\n",
+        "src/tool-payload.mjs": "export const t = 1;\n",
       })
     );
     expect(message).toContain("scripts/shared.mjs");
@@ -71,10 +71,13 @@ describe("repo layout guard", () => {
     expect(() => check(root)).not.toThrow();
   });
 
-  it("requires a populated sibling client boundary for server directories", () => {
+  it("requires a populated sibling client boundary for root server directories", () => {
     expect(guardMessage(trackedRepo({ "src/server/index.ts": "export const s = 1;\n" }))).toContain(
       "src/server"
     );
+  });
+
+  it("requires a populated sibling client boundary for nested server directories", () => {
     expect(
       guardMessage(
         trackedRepo({
@@ -83,6 +86,9 @@ describe("repo layout guard", () => {
         })
       )
     ).toContain("src/feature/server");
+  });
+
+  it("allows a root server directory with a populated sibling client boundary", () => {
     const root = trackedRepo({
       "src/client/index.ts": "export const c = 1;\n",
       "src/server/index.ts": "export const s = 1;\n",

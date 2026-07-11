@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.3.17",
+  "version": "0.4.0",
   "description": "Declarative PostgreSQL schema management for replay-safe migrations, guarded sync, TypeScript types, and Zod validators without an ORM, Docker, or a shadow database.",
   "keywords": [
     "ai-coding-agents",
@@ -138,19 +138,20 @@
     "libpg-query": "^17.7.3",
     "pg": "^8.21.0",
     "pgsql-deparser": "^17.18.3",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
+    "typescript-compiler-api": "npm:typescript@6.0.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.3",
-    "@ast-grep/cli": "0.44.0",
-    "@biomejs/biome": "2.5.1",
+    "@ast-grep/cli": "0.44.1",
+    "@biomejs/biome": "2.5.3",
     "@changesets/cli": "^2.31.0",
     "@postgres-language-server/cli": "0.25.5",
     "@taplo/cli": "0.7.0",
     "@types/node": "^26.0.0",
     "@types/pg": "^8.15.6",
-    "@vitest/coverage-v8": "4.1.9",
+    "@vitest/coverage-v8": "4.1.10",
     "bash-language-server": "5.6.0",
     "dockerfile-language-server-nodejs": "0.15.0",
     "fast-check": "^4.8.0",
@@ -162,16 +163,16 @@
     "remark-gfm": "^4.0.1",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
-    "sh-syntax": "^0.5.8",
+    "sh-syntax": "^0.6.0",
     "sort-package-json": "^4.0.0",
     "typescript-language-server": "5.3.0",
-    "ultracite": "7.8.3",
+    "ultracite": "7.9.3",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
-    "vitest": "4.1.9",
+    "vitest": "4.1.10",
     "vscode-langservers-extracted": "4.10.0",
     "yaml": "^2.9.0",
-    "yaml-language-server": "1.23.0"
+    "yaml-language-server": "1.24.0"
   },
   "engines": {
     "node": ">=22.12.0"

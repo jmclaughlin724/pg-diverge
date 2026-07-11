@@ -84,15 +84,18 @@ export type {
 export { buildSchemaPlanningContext, resolveGenerationSourceDefaults } from "./planning/context.js";
 export { renderMigration, renderMigrationSplit } from "./render/migration.js";
 export { extractSourceModel } from "./source/extract.js";
-export { generateDatabaseTypes } from "./typegen/database.js";
+export { type GenerateDatabaseTypesOptions, generateDatabaseTypes } from "./typegen/database.js";
 export type {
   ColumnShape,
+  FunctionArgShape,
+  FunctionReturnShape,
   FunctionShape,
   RelationshipShape,
   ResolvedColumnType,
   SchemaEntry,
   SchemaShapes,
   TableShape,
+  ViewShape,
 } from "./typegen/model.js";
 export { collectSchemaShapes } from "./typegen/model.js";
 export { generateZodSchemas } from "./typegen/zod.js";

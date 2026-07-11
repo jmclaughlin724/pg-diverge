@@ -142,11 +142,11 @@ export async function scaffoldProject({
   }
 
   return {
-    config: configContents === undefined ? undefined : JSON.parse(configContents),
-    existingConfig,
-    dryRun,
-    installed,
     agentBundle,
+    config: configContents === undefined ? undefined : JSON.parse(configContents),
+    dryRun,
+    existingConfig,
+    installed,
     pathConfirmationNeeded: selection.pathConfirmationNeeded,
     preserved: agentBundle.preserved,
     selection,
@@ -252,7 +252,6 @@ function packageManagerName(value) {
   if (isRecord(value) && typeof value.name === "string") {
     return packageManagerNameFromSpec(value.name);
   }
-  return;
 }
 
 function packageManagerNameFromSpec(value) {
@@ -261,7 +260,6 @@ function packageManagerNameFromSpec(value) {
       return manager;
     }
   }
-  return;
 }
 
 function lockfilePackageManagers(dir) {
@@ -583,7 +581,6 @@ function supaschemaHookIdentity(commandLine) {
       return `supaschema hook ${name}`;
     }
   }
-  return;
 }
 
 function readRequiredAgentBundleFile(packageRoot, relativePath) {
@@ -607,7 +604,7 @@ function parseOptionalJson(contents) {
   try {
     return JSON.parse(contents);
   } catch {
-    return;
+    // Optional JSON inputs are ignored when they are malformed.
   }
 }
 
@@ -816,7 +813,6 @@ function detectProviderPreset(projectDir) {
       return { markers, preset };
     }
   }
-  return;
 }
 
 function discoverDatabaseUrlEnvs(projectDir) {
@@ -1199,6 +1195,7 @@ function writeInstallManifest(
 ) {
   const manifest = {
     adapter: selection.adapter ?? "auto",
+    agentInstructions: agentInstructionsForPendingInstall(selection),
     candidates: scan,
     configConfirmationNeeded: existingConfig.configConfirmationNeeded === true,
     databaseUrls: selection.databaseUrls,
@@ -1213,10 +1210,9 @@ function writeInstallManifest(
     migrationsDir: selection.migrationsDir,
     packageVersion,
     pathConfirmationNeeded: selection.pathConfirmationNeeded,
-    agentInstructions: agentInstructionsForPendingInstall(selection),
     pendingReasons: selection.pendingReasons,
-    recommendedConfig: recommendedConfigForPendingInstall(selection),
     provider: selection.provider,
+    recommendedConfig: recommendedConfigForPendingInstall(selection),
     schemaPaths: selection.schemaPaths,
     source: selection.source,
   };
@@ -1278,14 +1274,14 @@ function agentInstructionsForPendingInstall(selection) {
     return;
   }
   return {
-    summary:
-      "supaschema found multiple plausible schema or migration paths and needs the owning project paths selected before migration commands run.",
     requiredActions: [
       "Inspect candidates.schemaPaths and candidates.migrationsDirs in this manifest.",
       "Choose the package-owned declarative schema tree and migration directory.",
       "Create or update supaschema.config.json with schemaPaths and migrationsDir.",
       "Run the local package-manager command for supaschema config validate --json.",
     ],
+    summary:
+      "supaschema found multiple plausible schema or migration paths and needs the owning project paths selected before migration commands run.",
   };
 }
 
@@ -1321,7 +1317,7 @@ function readText(path) {
   try {
     return readFileSync(path, "utf8");
   } catch {
-    return;
+    // Optional template inputs may be absent.
   }
 }
 
@@ -1329,7 +1325,7 @@ function readJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    return;
+    // Optional template inputs may be absent or malformed.
   }
 }
 

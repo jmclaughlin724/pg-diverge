@@ -248,7 +248,6 @@ function bootstrapCommentDescriptor(object: SchemaObject): string | undefined {
   if (ref.kind === "extension") {
     return `extension ${ref.name}`;
   }
-  return;
 }
 
 function filteredCommentTargetKey(object: SchemaObject): string | undefined {
@@ -260,7 +259,6 @@ function filteredCommentTargetKey(object: SchemaObject): string | undefined {
   if (descriptor.startsWith(extensionPrefix)) {
     return `extension:${descriptor.slice(extensionPrefix.length)}`;
   }
-  return;
 }
 
 export function objectSchema(object: SchemaObject): string {

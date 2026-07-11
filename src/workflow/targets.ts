@@ -186,7 +186,6 @@ function resolveTargetUrl(
         error instanceof Error ? error.message : String(error)
       );
     }
-    return;
   }
 }
 

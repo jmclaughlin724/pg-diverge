@@ -36,16 +36,16 @@ export const SchemaDiffPolicy = literalContract({
 export type SchemaDiffPolicy = (typeof SchemaDiffPolicy)[keyof typeof SchemaDiffPolicy];
 
 export const MigrationCheckPolicy = literalContract({
-  Manual: "manual",
   AfterSchemaDiff: "after_schema_diff",
+  Manual: "manual",
   RequiredBeforeComplete: "required_before_complete",
 });
 export type MigrationCheckPolicy = (typeof MigrationCheckPolicy)[keyof typeof MigrationCheckPolicy];
 
 export const MigrationVerifyPolicy = literalContract({
+  AfterSchemaDiff: "after_schema_diff",
   Manual: "manual",
   SuggestAfterCheck: "suggest_after_check",
-  AfterSchemaDiff: "after_schema_diff",
 });
 export type MigrationVerifyPolicy =
   (typeof MigrationVerifyPolicy)[keyof typeof MigrationVerifyPolicy];
@@ -58,16 +58,16 @@ export const MigrationSyncPolicy = literalContract({
 export type MigrationSyncPolicy = (typeof MigrationSyncPolicy)[keyof typeof MigrationSyncPolicy];
 
 export const DeploySafetyPolicy = literalContract({
+  DeployBlocking: "deploy_blocking",
   Disabled: "disabled",
   ReportOnly: "report_only",
-  DeployBlocking: "deploy_blocking",
 });
 export type DeploySafetyPolicy = (typeof DeploySafetyPolicy)[keyof typeof DeploySafetyPolicy];
 
 export const GeneratedOutputPolicy = literalContract({
+  CreateOrRefresh: "create_or_refresh",
   Disabled: "disabled",
   RefreshExisting: "refresh_existing",
-  CreateOrRefresh: "create_or_refresh",
 });
 export type GeneratedOutputPolicy =
   (typeof GeneratedOutputPolicy)[keyof typeof GeneratedOutputPolicy];
@@ -79,8 +79,8 @@ export const TypeUsagePolicy = literalContract({
 export type TypeUsagePolicy = (typeof TypeUsagePolicy)[keyof typeof TypeUsagePolicy];
 
 export const SyncTargetMode = literalContract({
-  Manual: "manual",
   Auto: "auto",
+  Manual: "manual",
 });
 export type SyncTargetMode = (typeof SyncTargetMode)[keyof typeof SyncTargetMode];
 
@@ -91,16 +91,16 @@ export const SyncTargetRunner = literalContract({
 export type SyncTargetRunner = (typeof SyncTargetRunner)[keyof typeof SyncTargetRunner];
 
 export const DestructiveChangesPolicy = literalContract({
-  HintRequired: "hint-required",
-  Block: "block",
   Allow: "allow",
+  Block: "block",
+  HintRequired: "hint-required",
 });
 export type DestructiveChangesPolicy =
   (typeof DestructiveChangesPolicy)[keyof typeof DestructiveChangesPolicy];
 
 export const NormalizePolicy = literalContract({
-  Off: "off",
   Deparse: "deparse",
+  Off: "off",
 });
 export type NormalizePolicy = (typeof NormalizePolicy)[keyof typeof NormalizePolicy];
 
@@ -205,15 +205,15 @@ export const transactionModes = Object.values(TransactionMode);
 export const defaultMigrationHistoryTable = "supabase_migrations.schema_migrations";
 export const defaultEnvironments: Record<string, SupaschemaEnvironment> = {};
 export const defaultWorkflow: SupaschemaWorkflow = {
-  schema_diff: SchemaDiffPolicy.OnSchemaWrite,
   migration_check: MigrationCheckPolicy.AfterSchemaDiff,
-  migration_verify: MigrationVerifyPolicy.SuggestAfterCheck,
   migration_sync: MigrationSyncPolicy.Auto,
-  type_safety: DeploySafetyPolicy.ReportOnly,
+  migration_verify: MigrationVerifyPolicy.SuggestAfterCheck,
   rls_safety: DeploySafetyPolicy.ReportOnly,
+  schema_diff: SchemaDiffPolicy.OnSchemaWrite,
   type_generation: GeneratedOutputPolicy.CreateOrRefresh,
-  zod_generation: GeneratedOutputPolicy.CreateOrRefresh,
+  type_safety: DeploySafetyPolicy.ReportOnly,
   type_usage: TypeUsagePolicy.ZodValidated,
+  zod_generation: GeneratedOutputPolicy.CreateOrRefresh,
 };
 
 export interface ProviderMarker {
@@ -387,7 +387,6 @@ export function parseRuntimeSource(source: string): ParsedRuntimeSource | undefi
       payload,
     };
   }
-  return;
 }
 
 export function isRuntimeSource(source: string): boolean {
@@ -415,16 +414,16 @@ export function syncForInstalledConfig(options: InstalledConfigOptions = {}): Su
     return {
       targets: {
         local: {
+          historyTable: defaultMigrationHistoryTable,
           mode: SyncTargetMode.Auto,
           runner: SyncTargetRunner.SupabaseCli,
-          historyTable: defaultMigrationHistoryTable,
         },
         remote: {
-          mode: SyncTargetMode.Manual,
-          runner: SyncTargetRunner.SupabaseCli,
           historyTable: defaultMigrationHistoryTable,
-          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          mode: SyncTargetMode.Manual,
           remote: true,
+          requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+          runner: SyncTargetRunner.SupabaseCli,
         },
       },
     };
@@ -444,8 +443,8 @@ export function syncForInstalledConfig(options: InstalledConfigOptions = {}): Su
         runner: SyncTargetRunner.Direct,
         ...(remoteDatabaseUrl === undefined ? {} : { databaseUrl: remoteDatabaseUrl }),
         historyTable: defaultMigrationHistoryTable,
-        requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
         remote: true,
+        requireApprovalEnv: "SUPASCHEMA_REMOTE_SYNC_APPROVED",
       },
     },
   };
@@ -483,18 +482,14 @@ export function createInstalledConfig(
     hints: {
       allowedGrantees: [],
       destructive: [],
-      requiredPolicyColumns: {},
       renames: [],
+      requiredPolicyColumns: {},
     },
     idempotency: "required",
     lockTimeout: "5s",
-    workflow: defaultWorkflow,
-    sync,
-    migrationsDir,
-    typesFile: defaultTypesFile,
-    zodFile: defaultZodFile,
-    normalize: NormalizePolicy.Deparse,
     managedSchemas,
+    migrationsDir,
+    normalize: NormalizePolicy.Deparse,
     postgresVersion: "15+",
     renameDetection: RenameDetectionPolicy.HintsOnly,
     schemaPaths,
@@ -506,8 +501,12 @@ export function createInstalledConfig(
       from: sourceAuto,
     },
     statementTimeout: "60s",
+    sync,
     transactionMode: TransactionMode.PerMigration,
+    typesFile: defaultTypesFile,
     validators: ["internal-parser"],
+    workflow: defaultWorkflow,
+    zodFile: defaultZodFile,
   });
 }
 
@@ -591,10 +590,6 @@ export function mergeInstalledConfig(
             ...baseSync,
             ...(existingSync ?? {}),
           },
-    workflow: {
-      ...baseWorkflow,
-      ...existingWorkflow,
-    },
     typesFile: normalizedString(
       existing.typesFile,
       normalizedString(base.typesFile, defaultTypesFile)
@@ -603,6 +598,10 @@ export function mergeInstalledConfig(
       existing.validators,
       normalizedStringArray(base.validators, ["internal-parser"])
     ),
+    workflow: {
+      ...baseWorkflow,
+      ...existingWorkflow,
+    },
     zodFile: normalizedString(existing.zodFile, normalizedString(base.zodFile, defaultZodFile)),
   };
   return orderInstalledConfig(merged);
@@ -619,21 +618,21 @@ export function orderInstalledConfig(config: Record<string, unknown>): Record<st
     hints: config.hints,
     idempotency: config.idempotency,
     lockTimeout: config.lockTimeout,
-    workflow: config.workflow,
-    sync: config.sync,
-    migrationsDir: config.migrationsDir,
-    typesFile: config.typesFile,
-    zodFile: config.zodFile,
-    normalize: config.normalize,
     managedSchemas: config.managedSchemas,
+    migrationsDir: config.migrationsDir,
+    normalize: config.normalize,
     postgresVersion: config.postgresVersion,
     renameDetection: config.renameDetection,
     schemaPaths: config.schemaPaths,
     schemas: config.schemas,
     sources: config.sources,
     statementTimeout: config.statementTimeout,
+    sync: config.sync,
     transactionMode: config.transactionMode,
+    typesFile: config.typesFile,
     validators: config.validators,
+    workflow: config.workflow,
+    zodFile: config.zodFile,
   };
 }
 
@@ -690,8 +689,8 @@ export const configFieldMetadata: ConfigFieldMetadata[] = [
     default: {
       allowedGrantees: [],
       destructive: [],
-      requiredPolicyColumns: {},
       renames: [],
+      requiredPolicyColumns: {},
     },
     description:
       "Reviewed grant, RLS policy-column, destructive-change, and rename hints using exact object keys, table keys, or role names.",
@@ -817,20 +816,20 @@ export const configFieldMetadata: ConfigFieldMetadata[] = [
 
 export function configContractModuleText(): string {
   const data = {
-    allProviderPresets,
     adapterInputValues,
-    cascadePolicies,
+    allProviderPresets,
     canonicalSchemaId,
+    cascadePolicies,
     configFieldMetadata,
     configSchemaFileName,
     defaultEnvironments,
     defaultMigrationHistoryTable,
     defaultSync,
     defaultTypesFile,
-    defaultZodFile,
     defaultWorkflow,
-    destructiveChangesPolicies,
+    defaultZodFile,
     deploySafetyPolicies,
+    destructiveChangesPolicies,
     generatedOutputPolicies,
     genericMigrationsDir,
     genericProviderId,

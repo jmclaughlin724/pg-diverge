@@ -251,7 +251,6 @@ function enterSqlStatementDelimiter(
     state.dollarTag = tag;
     return index + tag.length - 1;
   }
-  return;
 }
 
 function isEscapeStringQuote(sql: string, index: number): boolean {

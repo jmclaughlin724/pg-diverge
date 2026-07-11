@@ -28,7 +28,7 @@ async function writeDocs(files: Record<string, string>) {
 
 const lintOne = async (file: string, contents: string) => {
   const root = await writeDocs({ [file]: contents });
-  return lintDocsStandard({ rootDir: root, files: [file] });
+  return lintDocsStandard({ files: [file], rootDir: root });
 };
 
 const localRunnerDocsPages = [
@@ -62,23 +62,23 @@ const localRunnerPrompt = [
 function localRunnerFixtureFiles(overrides: Record<string, string> = {}) {
   return {
     ".agents/prompts/supaschema-install.md": localRunnerPrompt,
-    ".claude/skills/supaschema/SKILL.md": "Use the package manager local runner.\n",
     ".claude/rules/supaschema.md": "Use the package manager local runner.\n",
+    ".claude/skills/supaschema/SKILL.md": "Use the package manager local runner.\n",
     "AGENTS.md": "Use the package manager local runner.\n",
-    "CLAUDE.md": "Use the package manager local runner.\n",
-    "README.md": "Use the package manager local runner.\n",
     "bin/scaffold.mjs": "export {};\n",
+    "CLAUDE.md": "Use the package manager local runner.\n",
     "docs/docs.json": JSON.stringify({
       $schema: "https://mintlify.com/docs.json",
-      theme: "luma",
-      name: "supaschema",
       colors: { primary: "#1D4ED8" },
-      icons: { library: "lucide" },
       contextual: {
         options: ["copy", "view", "chatgpt", "claude", "mcp", "add-mcp", "cursor", "vscode"],
       },
+      icons: { library: "lucide" },
+      name: "supaschema",
       navigation: { groups: [{ group: "Start", pages: localRunnerDocsPages }] },
+      theme: "luma",
     }),
+    "README.md": "Use the package manager local runner.\n",
     ...Object.fromEntries(
       localRunnerDocsPages.map((route) => [`docs/${route}.mdx`, page("## Start")])
     ),
@@ -88,7 +88,7 @@ function localRunnerFixtureFiles(overrides: Record<string, string> = {}) {
 
 describe("docs authoring standard", () => {
   afterEach(async () => {
-    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+    await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
   });
 
   it("rejects relative markdown and MDX component docs links", async () => {
@@ -210,16 +210,15 @@ plain output
     const root = await writeDocs({
       "docs/docs.json": JSON.stringify({
         $schema: "https://mintlify.com/docs.json",
-        theme: "luma",
-        name: "supaschema",
         colors: { primary: "#1D4ED8" },
-        icons: { library: "lucide" },
         contextual: {
           options: ["copy", "view", "chatgpt", "claude", "mcp", "add-mcp", "cursor", "vscode"],
         },
+        icons: { library: "lucide" },
+        name: "supaschema",
         navigation: { groups: [{ group: "Start", pages: ["page"] }] },
+        theme: "luma",
       }),
-      "docs/page.mdx": page("## Start"),
       "docs/hidden.mdx": `---
 title: "Hidden"
 description: "Hidden page."
@@ -229,11 +228,12 @@ hidden: true
 
 ## Hidden
 `,
+      "docs/page.mdx": page("## Start"),
     });
 
     const violations = lintDocsStandard({
-      rootDir: root,
       files: ["docs/page.mdx", "docs/hidden.mdx"],
+      rootDir: root,
     });
 
     expect(violations).toEqual([]);
@@ -414,10 +414,9 @@ noindex: "no"
     const root = await writeDocs({
       "docs/docs.json": JSON.stringify({
         $schema: "https://example.com/schema.json",
-        theme: "unknown",
-        name: "",
         colors: { primary: "blue" },
         icons: { library: "tabler" },
+        name: "",
         navigation: {
           groups: [
             {
@@ -426,11 +425,12 @@ noindex: "no"
             },
           ],
         },
+        theme: "unknown",
       }),
       "docs/page.mdx": page("## Start"),
     });
 
-    const violations = lintDocsStandard({ rootDir: root, files: ["docs/page.mdx"] });
+    const violations = lintDocsStandard({ files: ["docs/page.mdx"], rootDir: root });
     const rules = violations.map((violation) => violation.rule);
 
     expect(rules).toContain("docs-json");

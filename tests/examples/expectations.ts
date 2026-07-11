@@ -6,15 +6,18 @@ export const expectedMigrationFragments = [
 ];
 
 export const expectedTypesFragments = [
-  'export type AppAccountStatus = "active" | "suspended";',
-  "status: AppAccountStatus;",
-  "export type AppAccountsRow = {",
+  "export type Database = {",
+  'account_status: "active" | "suspended";',
+  'status: Database["app"]["Enums"]["account_status"];',
+  "accounts: {",
 ];
 
 export const expectedZodFragments = [
-  'export const AppAccountStatusSchema = z.enum(["active", "suspended"]);',
-  "status: AppAccountStatusSchema,",
-  "export const AppAccountsRowSchema =",
-  "export const AppAccountsInsertSchema =",
-  "export const AppAccountsUpdateSchema =",
+  "export const SupaschemaZod",
+  'account_status: z.enum(["active", "suspended"]),',
+  'status: z.lazy(() => SupaschemaZod["app"]["Enums"]["account_status"]),',
+  "accounts: {",
+  "Row: z.object({",
+  "Insert: z.object({",
+  "Update: z.object({",
 ];

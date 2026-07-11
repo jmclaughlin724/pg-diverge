@@ -113,7 +113,6 @@ function findParser(module: PgParserModule): PgParser | undefined {
       return candidate;
     }
   }
-  return;
 }
 
 function errorMessage(error: unknown): string {
