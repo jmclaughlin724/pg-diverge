@@ -669,19 +669,18 @@ function isImplicitPush(args) {
 }
 
 function pushRefspecs(args) {
-  const valueOptions = new Set([
-    "--exec",
-    "--push-option",
-    "--receive-pack",
-    "--recurse-submodules",
-    "--repo",
-    "-o",
-  ]);
+  const valueOptions = new Set(["--exec", "--push-option", "--receive-pack", "--repo", "-o"]);
   const positionals = [];
   let repositoryProvidedByOption = false;
   for (let index = 1; index < args.length; index += 1) {
     const arg = args[index] ?? "";
     const optionName = arg.split("=", 1)[0];
+    if (optionName === "--recurse-submodules") {
+      if (!arg.includes("=") && ["check", "on-demand", "no"].includes(args[index + 1] ?? "")) {
+        index += 1;
+      }
+      continue;
+    }
     if (valueOptions.has(optionName)) {
       repositoryProvidedByOption ||= optionName === "--repo";
       if (!arg.includes("=")) {
