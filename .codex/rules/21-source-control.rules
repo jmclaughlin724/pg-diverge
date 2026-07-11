@@ -39,8 +39,8 @@ prefix_rule(
 
 prefix_rule(
     pattern = ["git", "branch"],
-    decision = "prompt",
-    justification = "Rule 21 permits direct git branch only to delete a verified merged topic after explicit approval; the Bash hook blocks creation, discovery, main deletion, and unsupported forms.",
+    decision = "allow",
+    justification = "The Bash hook limits git branch to one approved merged-topic deletion and blocks creation, discovery, main deletion, and unsupported forms.",
     match = ["git branch -D feature/demo", "git branch feature/demo"],
     not_match = ["git rev-parse --abbrev-ref HEAD", "git status --short"],
 )
