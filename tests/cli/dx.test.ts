@@ -90,12 +90,17 @@ describe("config DX", () => {
       "validators",
       "workflow",
       "zodFile",
+      "zodTypesImportPath",
     ]) {
       expect(schema.properties?.[key], key).toBeDefined();
     }
     expect(schema.properties?.adapter).toMatchObject({
       default: "auto",
       enum: ["auto"],
+    });
+    expect(schema.properties?.zodTypesImportPath).toMatchObject({
+      minLength: 1,
+      pattern: "\\S",
     });
     const workflow = schema.properties?.workflow;
     expect(workflow.properties?.migration_sync?.enum).toEqual(["disabled", "manual", "auto"]);
@@ -121,6 +126,17 @@ describe("config DX", () => {
       },
     ]);
     expect(sources.properties?.to).toBeUndefined();
+  });
+
+  it("accepts an optional Zod type import module specifier", () => {
+    expect(resolveConfig().zodTypesImportPath).toBeUndefined();
+    expect(resolveConfig({ zodTypesImportPath: "  @anilize/db/types  " }).zodTypesImportPath).toBe(
+      "@anilize/db/types"
+    );
+    expect(mergeInstalledConfig({ zodTypesImportPath: "  @anilize/db/types  " })).toMatchObject({
+      zodTypesImportPath: "@anilize/db/types",
+    });
+    expect(() => resolveConfig({ zodTypesImportPath: "   " })).toThrow();
   });
 
   it("accepts automatic sync and deploy safety workflow policies", () => {

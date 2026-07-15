@@ -91,4 +91,61 @@ CREATE TABLE public.items (
       'metadata: z.lazy(() => SupaschemaZod["public"]["CompositeTypes"]["item_metadata"]).nullable(),'
     );
   });
+
+  it("allows the generated Zod type import module specifier to be configured", async () => {
+    const directory = await writeMigrations([
+      [
+        "20240101000000_create.sql",
+        `CREATE TYPE public.item_status AS ENUM ('draft', 'active');
+CREATE TABLE public.items (
+  id bigint GENERATED ALWAYS AS IDENTITY,
+  payload jsonb NOT NULL,
+  status public.item_status NOT NULL
+);`,
+      ],
+    ]);
+    const output = await mkdtemp(join(tmpdir(), "supa-typegen-import-"));
+    const typesFile = join(output, "database.types.ts");
+    const zodFile = join(output, "database.zod.ts");
+    const baseConfig = {
+      sources: { from: `migrations:${directory}` },
+      typesFile,
+      zodFile,
+    };
+
+    await generateTypeContracts({
+      config: resolveConfig(baseConfig),
+      source: `migrations:${directory}`,
+    });
+    expect(await readFile(zodFile, "utf8")).toContain(
+      'import type { Database, Json } from "./database.types.js";'
+    );
+
+    await generateTypeContracts({
+      config: resolveConfig({
+        ...baseConfig,
+        zodTypesImportPath: "@anilize/db/types",
+      }),
+      source: `migrations:${directory}`,
+    });
+    expect(await readFile(zodFile, "utf8")).toContain(
+      'import type { Database, Json } from "@anilize/db/types";'
+    );
+
+    await generateTypeContracts({
+      config: resolveConfig({
+        ...baseConfig,
+        workflow: {
+          type_generation: "disabled",
+          zod_generation: "create_or_refresh",
+        },
+        zodTypesImportPath: "@anilize/db/types",
+      }),
+      honorWorkflowPolicy: true,
+      source: `migrations:${directory}`,
+    });
+    expect(await readFile(zodFile, "utf8")).toContain(
+      'import type { Database, Json } from "@anilize/db/types";'
+    );
+  });
 });

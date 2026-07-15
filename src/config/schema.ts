@@ -138,6 +138,7 @@ export const supaschemaConfigSchema = z.strictObject({
   migrationsDir: z.string().default(genericMigrationsDir),
   typesFile: z.string().default(defaultTypesFile),
   zodFile: z.string().default(defaultZodFile),
+  zodTypesImportPath: z.string().trim().min(1).meta({ pattern: "\\S" }).optional(),
   normalize: z.enum(normalizePolicies).default(NormalizePolicy.Deparse),
   managedSchemas: z.array(z.string()).default([]),
   postgresVersion: z.string().default("15+"),

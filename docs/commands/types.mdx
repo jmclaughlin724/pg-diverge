@@ -45,10 +45,11 @@ npx supaschema types --out stdout
 
 ## Output paths
 
-| Config key  | Default             |
-| ----------- | ------------------- |
+| Config key | Default |
+| --- | --- |
 | `typesFile` | `database.types.ts` |
-| `zodFile`   | `database.zod.ts`   |
+| `zodFile` | `database.zod.ts` |
+| `zodTypesImportPath` | derived from `typesFile` during joint generation; otherwise omitted |
 
 Commit generated outputs when reviewers should see app-type impact in the same pull request as schema changes.
 
