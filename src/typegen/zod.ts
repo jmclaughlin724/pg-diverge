@@ -8,8 +8,13 @@ import {
   sortedByName,
 } from "./model.js";
 
+interface DatabaseTypeUsage {
+  used: boolean;
+}
+
 export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: string): string {
   const hasDatabaseContract = Boolean(typesImportPath);
+  const databaseTypeUsage = { used: false };
   const schemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
@@ -61,13 +66,11 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
       : "export const SupaschemaZod: SupaschemaZodShape = {"
   );
   for (const [schema, entry] of schemas) {
-    emitSchema(lines, shapes, schema, entry, hasDatabaseContract);
+    emitSchema(lines, shapes, schema, entry, hasDatabaseContract, databaseTypeUsage);
   }
   lines.push(hasDatabaseContract ? "} as const satisfies SupaschemaZodShape;" : "} as const;");
   if (typesImportPath) {
-    const importedTypes = lines.some((line) => line.includes("Database["))
-      ? "Database, Json"
-      : "Json";
+    const importedTypes = databaseTypeUsage.used ? "Database, Json" : "Json";
     lines.unshift(`import type { ${importedTypes} } from ${quoteCodeString(typesImportPath)};`);
   }
   return `${lines.join("\n")}\n`;
@@ -116,13 +119,14 @@ function emitSchema(
   shapes: SchemaShapes,
   schema: string,
   entry: SchemaEntry,
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): void {
   lines.push(`  ${quoteKey(schema)}: {`);
-  emitTableSchemas(lines, shapes, schema, entry, hasDatabaseContract);
-  emitViewSchemas(lines, shapes, schema, entry, hasDatabaseContract);
+  emitTableSchemas(lines, shapes, schema, entry, hasDatabaseContract, databaseTypeUsage);
+  emitViewSchemas(lines, shapes, schema, entry, hasDatabaseContract, databaseTypeUsage);
   emitEnumSchemas(lines, entry);
-  emitCompositeSchemas(lines, shapes, schema, entry, hasDatabaseContract);
+  emitCompositeSchemas(lines, shapes, schema, entry, hasDatabaseContract, databaseTypeUsage);
   lines.push("  },");
 }
 
@@ -131,9 +135,11 @@ function emitTableSchemas(
   shapes: SchemaShapes,
   schema: string,
   entry: SchemaEntry,
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): void {
-  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType, hasDatabaseContract);
+  const zodFor = (sqlType: string) =>
+    zodExpression(shapes, schema, sqlType, hasDatabaseContract, databaseTypeUsage);
   lines.push("    Tables: {");
   for (const table of sortedByName(entry.tables)) {
     lines.push(`      ${quoteKey(table.name)}: {`);
@@ -146,7 +152,8 @@ function emitTableSchemas(
       schema,
       entry,
       table.name,
-      hasDatabaseContract
+      hasDatabaseContract,
+      databaseTypeUsage
     );
     emitInsertSchema(lines, table.columns, zodFor);
     emitUpdateSchema(lines, table.columns, zodFor);
@@ -160,9 +167,11 @@ function emitViewSchemas(
   shapes: SchemaShapes,
   schema: string,
   entry: SchemaEntry,
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): void {
-  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType, hasDatabaseContract);
+  const zodFor = (sqlType: string) =>
+    zodExpression(shapes, schema, sqlType, hasDatabaseContract, databaseTypeUsage);
   lines.push("    Views: {");
   for (const view of sortedByName(entry.views)) {
     lines.push(`      ${quoteKey(view.name)}: {`);
@@ -175,7 +184,8 @@ function emitViewSchemas(
       schema,
       entry,
       view.name,
-      hasDatabaseContract
+      hasDatabaseContract,
+      databaseTypeUsage
     );
     if (view.updatable) {
       emitViewInsertSchema(lines, view.columns, zodFor);
@@ -205,9 +215,11 @@ function emitCompositeSchemas(
   shapes: SchemaShapes,
   schema: string,
   entry: SchemaEntry,
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): void {
-  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType, hasDatabaseContract);
+  const zodFor = (sqlType: string) =>
+    zodExpression(shapes, schema, sqlType, hasDatabaseContract, databaseTypeUsage);
   lines.push("    CompositeTypes: {");
   for (const composite of sortedByName(entry.composites)) {
     lines.push(`      ${quoteKey(composite.name)}: z.object({`);
@@ -229,7 +241,8 @@ function emitRowSchema(
   schema: string,
   entry: SchemaEntry,
   relationName: string,
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): void {
   lines.push(`        ${name}: z.object({`);
   for (const column of columns) {
@@ -240,7 +253,7 @@ function emitRowSchema(
   }
   for (const fn of computedRelationshipFunctions(shapes, schema, entry, relationName)) {
     lines.push(
-      `          ${quoteKey(fn.name)}: ${zodFunctionReturnExpression(shapes, schema, fn, hasDatabaseContract)}.nullable(),`
+      `          ${quoteKey(fn.name)}: ${zodFunctionReturnExpression(shapes, schema, fn, hasDatabaseContract, databaseTypeUsage)}.nullable(),`
     );
   }
   lines.push("        }),");
@@ -250,7 +263,8 @@ function zodFunctionReturnExpression(
   shapes: SchemaShapes,
   schema: string,
   fn: SchemaEntry["functions"][number],
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): string {
   const returns = fn.returns;
   let expression: string;
@@ -258,13 +272,13 @@ function zodFunctionReturnExpression(
     const fields = returns.columns
       .map(
         (column) =>
-          `${quoteKey(column.name)}: ${zodExpression(shapes, schema, column.type, hasDatabaseContract)}`
+          `${quoteKey(column.name)}: ${zodExpression(shapes, schema, column.type, hasDatabaseContract, databaseTypeUsage)}`
       )
       .join(", ");
     expression = `z.object({ ${fields} })`;
   } else {
     expression = returns
-      ? zodExpression(shapes, schema, returns.type, hasDatabaseContract)
+      ? zodExpression(shapes, schema, returns.type, hasDatabaseContract, databaseTypeUsage)
       : "z.unknown()";
   }
   return expression;
@@ -341,7 +355,8 @@ function zodExpression(
   shapes: SchemaShapes,
   schema: string,
   sqlType: string,
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): string {
   const resolved = resolveColumnType(shapes, schema, sqlType);
   let expression: string;
@@ -350,21 +365,24 @@ function zodExpression(
       resolved.enumRef.schema,
       "Enums",
       resolved.enumRef.name,
-      hasDatabaseContract
+      hasDatabaseContract,
+      databaseTypeUsage
     );
   } else if (resolved.kind === "composite" && resolved.compositeRef) {
     expression = lazyZodPath(
       resolved.compositeRef.schema,
       "CompositeTypes",
       resolved.compositeRef.name,
-      hasDatabaseContract
+      hasDatabaseContract,
+      databaseTypeUsage
     );
   } else if (resolved.kind === "relation" && resolved.relationRef) {
     expression = lazyZodRelationRow(
       resolved.relationRef.schema,
       resolved.relationRef.collection,
       resolved.relationRef.name,
-      hasDatabaseContract
+      hasDatabaseContract,
+      databaseTypeUsage
     );
   } else if (resolved.kind === "json") {
     expression = "JsonSchema";
@@ -391,9 +409,11 @@ function lazyZodPath(
   schema: string,
   collection: string,
   name: string,
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): string {
   const target = `SupaschemaZod[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}]`;
+  databaseTypeUsage.used ||= hasDatabaseContract;
   return hasDatabaseContract
     ? `z.lazy((): z.ZodType<${databaseTypePath(schema, collection, name)}> => ${target})`
     : `z.lazy(() => ${target})`;
@@ -403,9 +423,11 @@ function lazyZodRelationRow(
   schema: string,
   collection: string,
   name: string,
-  hasDatabaseContract: boolean
+  hasDatabaseContract: boolean,
+  databaseTypeUsage: DatabaseTypeUsage
 ): string {
   const target = `SupaschemaZod[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}].Row`;
+  databaseTypeUsage.used ||= hasDatabaseContract;
   return hasDatabaseContract
     ? `z.lazy((): z.ZodType<${databaseTypePath(schema, collection, name)}["Row"]> => ${target})`
     : `z.lazy(() => ${target})`;

@@ -1197,6 +1197,7 @@ void wrong;
     const sql = `CREATE TABLE public.items (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name text NOT NULL,
+  "Database[" text,
   payload jsonb
 );
 `;
@@ -1229,7 +1230,8 @@ void wrong;
     );
 
     expect(zod).toContain('import type { Json } from "./database.types.js";');
-    expect(zod).not.toContain("Database[");
+    expect(zod).toContain('"Database[": z.string().nullable(),');
+    expect(zod).not.toContain("import type { Database");
     await execFileAsync(
       process.execPath,
       [
