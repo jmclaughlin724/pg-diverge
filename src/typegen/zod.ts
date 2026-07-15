@@ -14,9 +14,6 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
     left.localeCompare(right)
   );
   const lines = [
-    ...(hasDatabaseContract
-      ? [`import type { Database, Json } from ${quoteCodeString(typesImportPath)};`]
-      : []),
     'import { z } from "zod";',
     "",
     ...(hasDatabaseContract
@@ -67,6 +64,12 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
     emitSchema(lines, shapes, schema, entry, hasDatabaseContract);
   }
   lines.push(hasDatabaseContract ? "} as const satisfies SupaschemaZodShape;" : "} as const;");
+  if (hasDatabaseContract) {
+    const importedTypes = lines.some((line) => line.includes("Database["))
+      ? "Database, Json"
+      : "Json";
+    lines.unshift(`import type { ${importedTypes} } from ${quoteCodeString(typesImportPath)};`);
+  }
   return `${lines.join("\n")}\n`;
 }
 

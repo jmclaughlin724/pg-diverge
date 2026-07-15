@@ -1193,6 +1193,59 @@ void wrong;
 `);
   }, 15_000);
 
+  it("omits an unused Database import from scalar-only schemas", async () => {
+    const sql = `CREATE TABLE public.items (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text NOT NULL,
+  payload jsonb
+);
+`;
+    const types = await typesFor(sql);
+    const zod = await zodFor(sql);
+    const root = join(process.cwd(), ".tmp");
+    await mkdir(root, { recursive: true });
+    const moduleRoot = await mkdtemp(join(root, "supa-zod-scalar-"));
+    await writeFile(join(moduleRoot, "package.json"), '{"type":"module"}\n');
+    await writeFile(join(moduleRoot, "database.types.ts"), types);
+    await writeFile(join(moduleRoot, "schemas.ts"), zod);
+    await writeFile(
+      join(moduleRoot, "tsconfig.json"),
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            module: "NodeNext",
+            moduleResolution: "NodeNext",
+            noEmit: true,
+            noUnusedLocals: true,
+            skipLibCheck: true,
+            strict: true,
+            target: "ES2022",
+          },
+          files: ["database.types.ts", "schemas.ts"],
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    expect(zod).toContain('import type { Json } from "./database.types.js";');
+    expect(zod).not.toContain("Database[");
+    await execFileAsync(
+      process.execPath,
+      [
+        typescriptCompilerPath(),
+        "--project",
+        join(moduleRoot, "tsconfig.json"),
+        "--pretty",
+        "false",
+      ],
+      {
+        cwd: moduleRoot,
+        maxBuffer: 1024 * 1024,
+      }
+    );
+  }, 15_000);
+
   it("keeps recursive Zod-only schemas self-contained and strictly compilable", async () => {
     const model = await modelFor(helperSql, "supa-zod-only-");
     const zod = generateZodSchemas(await collectSchemaShapes(model));
