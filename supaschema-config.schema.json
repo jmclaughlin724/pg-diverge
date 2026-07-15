@@ -377,6 +377,7 @@
     "zodTypesImportPath": {
       "type": "string",
       "minLength": 1,
+      "pattern": "\\S",
       "description": "Optional module specifier for the generated Zod file's type-only Database and Json import.",
       "examples": [
         "@acme/db/types"

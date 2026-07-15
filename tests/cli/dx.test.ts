@@ -98,6 +98,10 @@ describe("config DX", () => {
       default: "auto",
       enum: ["auto"],
     });
+    expect(schema.properties?.zodTypesImportPath).toMatchObject({
+      minLength: 1,
+      pattern: "\\S",
+    });
     const workflow = schema.properties?.workflow;
     expect(workflow.properties?.migration_sync?.enum).toEqual(["disabled", "manual", "auto"]);
     expect(workflow.properties?.type_safety?.enum).toEqual([
