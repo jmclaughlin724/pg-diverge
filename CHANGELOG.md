@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 (2026-07-15)
+
+### Patch Changes
+
+- Preserve concrete generated Zod schema inference while validating the database contract topology.
+
 ## 0.4.1 (2026-07-11)
 
 ### Patch Changes

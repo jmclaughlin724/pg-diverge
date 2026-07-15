@@ -876,11 +876,15 @@ void accountUpdate;
   it("emits TypeScript and Zod output from one precomputed shape graph", async () => {
     const model = await modelFor(treeSql, "supa-typegen-shapes-");
     const shapes = await collectSchemaShapes(model);
+    const types = generateDatabaseTypes(shapes);
+    const zod = generateZodSchemas(shapes, "./database.types.js");
 
-    expect(generateDatabaseTypes(shapes)).toContain("export type Database = {");
-    expect(generateZodSchemas(shapes, "./database.types.js")).toContain(
-      "export const SupaschemaZod"
-    );
+    expect(types).toContain("export type Database = {");
+    expect(zod).toContain("export const SupaschemaZod");
+    expect(types.endsWith("\n")).toBe(true);
+    expect(types.endsWith("\n\n")).toBe(false);
+    expect(zod.endsWith("\n")).toBe(true);
+    expect(zod.endsWith("\n\n")).toBe(false);
   });
 });
 
@@ -1132,13 +1136,16 @@ describe("zod schema generation", () => {
     expect(zod).toContain('import type { Database, Json } from "./database.types.js";');
     expect(zod).toContain('import { z } from "zod";');
     expect(zod).toContain("export const JsonSchema: z.ZodType<Json>");
-    expect(zod).toContain("export const SupaschemaZod");
+    expect(zod).toContain("export const SupaschemaZod = {");
+    expect(zod).toContain("} as const satisfies SupaschemaZodShape;");
     expect(zod).toContain('status: z.enum(["draft", "active"]),');
     expect(zod).toContain("name: z.string(),");
     expect(zod).toContain("email: z.string().nullable(),");
     expect(zod).toContain("tags: z.array(z.string()),");
     expect(zod).toContain("payload: JsonSchema.nullable(),");
-    expect(zod).toContain('state: z.lazy(() => SupaschemaZod["app"]["Enums"]["status"]),');
+    expect(zod).toContain(
+      'state: z.lazy((): z.ZodType<Database["app"]["Enums"]["status"]> => SupaschemaZod["app"]["Enums"]["status"]),'
+    );
     expect(zod).toContain("accounts: {");
     expect(zod).toContain("Row: z.object({");
     expect(zod).toContain("Insert: z.object({");
@@ -1167,6 +1174,8 @@ const accountInsert: TablesInsert<{ schema: "app" }, "accounts"> = SupaschemaZod
 const accountUpdate: TablesUpdate<{ schema: "app" }, "accounts"> = SupaschemaZod.app.Tables.accounts.Update.parse({ state: "active" });
 const status: Enums<{ schema: "app" }, "status"> = SupaschemaZod.app.Enums.status.parse("draft");
 const address: CompositeTypes<{ schema: "app" }, "address"> = SupaschemaZod.app.CompositeTypes.address.parse({ street: "Main", zip: 1 });
+const movieName = SupaschemaZod.public.Tables.movies.Row.pick({ name: true }).parse({ name: "Heat" });
+const parsedName: string = movieName.name;
 // @ts-expect-error Parsed rows retain their generated output type rather than any.
 const wrong: { missing: string } = SupaschemaZod.public.Tables.movies.Row.parse({ id: 1, name: "Heat", visibility: "public" });
 void movie;
@@ -1179,21 +1188,52 @@ void accountInsert;
 void accountUpdate;
 void status;
 void address;
+void parsedName;
 void wrong;
+`);
+  }, 15_000);
+
+  it("keeps recursive Zod-only schemas self-contained and strictly compilable", async () => {
+    const model = await modelFor(helperSql, "supa-zod-only-");
+    const zod = generateZodSchemas(await collectSchemaShapes(model));
+
+    expect(zod).toContain("export const SupaschemaZod: SupaschemaZodShape = {");
+    expect(zod).not.toContain("satisfies SupaschemaZodShape");
+    expect(zod).not.toContain("Database[");
+    expect(zod).toContain('state: z.lazy(() => SupaschemaZod["app"]["Enums"]["status"]),');
+    expect(zod).toContain(
+      'home: z.lazy(() => SupaschemaZod["app"]["CompositeTypes"]["address"]).nullable(),'
+    );
+    await expectTypeScriptAccepts(`${zod}
+const account = SupaschemaZod.app.Tables.accounts.Row.parse({
+  id: 1,
+  state: "active",
+  home: { street: "Main", zip: 1 },
+});
+void account;
 `);
   }, 15_000);
 
   it("keeps computed relationship validators aligned with generated rows", async () => {
     const sql = `CREATE TABLE public.accounts (id bigint);
+CREATE TABLE public.related_accounts (id bigint);
 CREATE FUNCTION public.account_label(public.accounts) RETURNS text LANGUAGE sql AS $$ SELECT 'account'::text $$;
+CREATE FUNCTION public.related_account(public.accounts) RETURNS public.related_accounts LANGUAGE sql AS $$ SELECT ROW(1)::public.related_accounts $$;
 `;
     const types = await typesFor(sql);
     const zod = await zodFor(sql);
     const zodWithoutTypesImport = zod.split("\n").slice(1).join("\n");
 
     expect(zod).toContain("account_label: z.string().nullable(),");
+    expect(zod).toContain(
+      'related_account: z.lazy((): z.ZodType<Database["public"]["Tables"]["related_accounts"]["Row"]> => SupaschemaZod["public"]["Tables"]["related_accounts"].Row).nullable(),'
+    );
     await expectTypeScriptAccepts(`${types}${zodWithoutTypesImport}
-const account: Tables<"accounts"> = SupaschemaZod.public.Tables.accounts.Row.parse({ id: 1, account_label: null });
+const account: Tables<"accounts"> = SupaschemaZod.public.Tables.accounts.Row.parse({
+  id: 1,
+  account_label: null,
+  related_account: null,
+});
 void account;
 `);
   }, 15_000);
@@ -1224,7 +1264,7 @@ CREATE TABLE app.people (id bigint, home app.address);
     expect(zod).toContain("street: z.string().nullable(),");
     expect(zod).toContain("zip: z.number().nullable(),");
     expect(zod).toContain(
-      'home: z.lazy(() => SupaschemaZod["app"]["CompositeTypes"]["address"]).nullable(),'
+      'home: z.lazy((): z.ZodType<Database["app"]["CompositeTypes"]["address"]> => SupaschemaZod["app"]["CompositeTypes"]["address"]).nullable(),'
     );
     expect(zod).not.toContain("export const CompositeTypes =");
   });
@@ -1263,7 +1303,7 @@ CREATE TYPE app.a AS (z app.z);
     );
 
     expect(zod).toContain(
-      'z: z.lazy(() => SupaschemaZod["app"]["CompositeTypes"]["z"]).nullable(),'
+      'z: z.lazy((): z.ZodType<Database["app"]["CompositeTypes"]["z"]> => SupaschemaZod["app"]["CompositeTypes"]["z"]).nullable(),'
     );
     await execFileAsync(
       process.execPath,

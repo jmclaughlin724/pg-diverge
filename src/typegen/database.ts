@@ -332,7 +332,7 @@ function emitConstants(lines: string[], schemas: [string, SchemaEntry][]): void 
     }
     lines.push("    },", "  },");
   }
-  lines.push("} as const;", "");
+  lines.push("} as const;");
 }
 
 function tsType(shapes: SchemaShapes, schema: string, sqlType: string): string {

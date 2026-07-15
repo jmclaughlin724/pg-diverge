@@ -9,16 +9,17 @@ import {
 } from "./model.js";
 
 export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: string): string {
+  const hasDatabaseContract = typesImportPath !== undefined;
   const schemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
   const lines = [
-    ...(typesImportPath
+    ...(hasDatabaseContract
       ? [`import type { Database, Json } from ${quoteCodeString(typesImportPath)};`]
       : []),
     'import { z } from "zod";',
     "",
-    ...(typesImportPath
+    ...(hasDatabaseContract
       ? []
       : [
           "export type Json =",
@@ -42,7 +43,7 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
     ");",
     "",
   ];
-  if (typesImportPath) {
+  if (hasDatabaseContract) {
     emitSupaschemaZodShape(lines, schemas);
   } else {
     lines.push(
@@ -57,11 +58,15 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
       ""
     );
   }
-  lines.push("export const SupaschemaZod: SupaschemaZodShape = {");
+  lines.push(
+    hasDatabaseContract
+      ? "export const SupaschemaZod = {"
+      : "export const SupaschemaZod: SupaschemaZodShape = {"
+  );
   for (const [schema, entry] of schemas) {
-    emitSchema(lines, shapes, schema, entry);
+    emitSchema(lines, shapes, schema, entry, hasDatabaseContract);
   }
-  lines.push("} as const;", "");
+  lines.push(hasDatabaseContract ? "} as const satisfies SupaschemaZodShape;" : "} as const;");
   return `${lines.join("\n")}\n`;
 }
 
@@ -71,49 +76,31 @@ function emitSupaschemaZodShape(lines: string[], schemas: [string, SchemaEntry][
     lines.push(`  ${quoteKey(schema)}: {`, "    Tables: {");
     for (const table of sortedByName(entry.tables)) {
       lines.push(`      ${quoteKey(table.name)}: {`);
-      emitZodContractShape(lines, schema, "Tables", table.name, ["Row", "Insert", "Update"]);
+      emitZodContractShape(lines, ["Row", "Insert", "Update"]);
       lines.push("      };");
     }
     lines.push("    };", "    Views: {");
     for (const view of sortedByName(entry.views)) {
       lines.push(`      ${quoteKey(view.name)}: {`);
-      emitZodContractShape(
-        lines,
-        schema,
-        "Views",
-        view.name,
-        view.updatable ? ["Row", "Insert", "Update"] : ["Row"]
-      );
+      emitZodContractShape(lines, view.updatable ? ["Row", "Insert", "Update"] : ["Row"]);
       lines.push("      };");
     }
     lines.push("    };", "    Enums: {");
     for (const item of sortedByName(entry.enums)) {
-      lines.push(
-        `      ${quoteKey(item.name)}: z.ZodType<${databaseTypePath(schema, "Enums", item.name)}>;`
-      );
+      lines.push(`      ${quoteKey(item.name)}: z.ZodTypeAny;`);
     }
     lines.push("    };", "    CompositeTypes: {");
     for (const composite of sortedByName(entry.composites)) {
-      lines.push(
-        `      ${quoteKey(composite.name)}: z.ZodType<${databaseTypePath(schema, "CompositeTypes", composite.name)}>;`
-      );
+      lines.push(`      ${quoteKey(composite.name)}: z.ZodTypeAny;`);
     }
     lines.push("    };", "  };");
   }
   lines.push("};", "");
 }
 
-function emitZodContractShape(
-  lines: string[],
-  schema: string,
-  collection: "Tables" | "Views",
-  name: string,
-  shapes: ("Insert" | "Row" | "Update")[]
-): void {
+function emitZodContractShape(lines: string[], shapes: ("Insert" | "Row" | "Update")[]): void {
   for (const shape of shapes) {
-    lines.push(
-      `        ${shape}: z.ZodType<${databaseTypePath(schema, collection, name)}[${quoteCodeString(shape)}]>;`
-    );
+    lines.push(`        ${shape}: z.ZodTypeAny;`);
   }
 }
 
@@ -125,13 +112,14 @@ function emitSchema(
   lines: string[],
   shapes: SchemaShapes,
   schema: string,
-  entry: SchemaEntry
+  entry: SchemaEntry,
+  hasDatabaseContract: boolean
 ): void {
   lines.push(`  ${quoteKey(schema)}: {`);
-  emitTableSchemas(lines, shapes, schema, entry);
-  emitViewSchemas(lines, shapes, schema, entry);
+  emitTableSchemas(lines, shapes, schema, entry, hasDatabaseContract);
+  emitViewSchemas(lines, shapes, schema, entry, hasDatabaseContract);
   emitEnumSchemas(lines, entry);
-  emitCompositeSchemas(lines, shapes, schema, entry);
+  emitCompositeSchemas(lines, shapes, schema, entry, hasDatabaseContract);
   lines.push("  },");
 }
 
@@ -139,13 +127,24 @@ function emitTableSchemas(
   lines: string[],
   shapes: SchemaShapes,
   schema: string,
-  entry: SchemaEntry
+  entry: SchemaEntry,
+  hasDatabaseContract: boolean
 ): void {
-  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType);
+  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType, hasDatabaseContract);
   lines.push("    Tables: {");
   for (const table of sortedByName(entry.tables)) {
     lines.push(`      ${quoteKey(table.name)}: {`);
-    emitRowSchema(lines, "Row", table.columns, zodFor, shapes, schema, entry, table.name);
+    emitRowSchema(
+      lines,
+      "Row",
+      table.columns,
+      zodFor,
+      shapes,
+      schema,
+      entry,
+      table.name,
+      hasDatabaseContract
+    );
     emitInsertSchema(lines, table.columns, zodFor);
     emitUpdateSchema(lines, table.columns, zodFor);
     lines.push("      },");
@@ -157,13 +156,24 @@ function emitViewSchemas(
   lines: string[],
   shapes: SchemaShapes,
   schema: string,
-  entry: SchemaEntry
+  entry: SchemaEntry,
+  hasDatabaseContract: boolean
 ): void {
-  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType);
+  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType, hasDatabaseContract);
   lines.push("    Views: {");
   for (const view of sortedByName(entry.views)) {
     lines.push(`      ${quoteKey(view.name)}: {`);
-    emitRowSchema(lines, "Row", view.columns, zodFor, shapes, schema, entry, view.name);
+    emitRowSchema(
+      lines,
+      "Row",
+      view.columns,
+      zodFor,
+      shapes,
+      schema,
+      entry,
+      view.name,
+      hasDatabaseContract
+    );
     if (view.updatable) {
       emitViewInsertSchema(lines, view.columns, zodFor);
       emitViewUpdateSchema(lines, view.columns, zodFor);
@@ -191,9 +201,10 @@ function emitCompositeSchemas(
   lines: string[],
   shapes: SchemaShapes,
   schema: string,
-  entry: SchemaEntry
+  entry: SchemaEntry,
+  hasDatabaseContract: boolean
 ): void {
-  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType);
+  const zodFor = (sqlType: string) => zodExpression(shapes, schema, sqlType, hasDatabaseContract);
   lines.push("    CompositeTypes: {");
   for (const composite of sortedByName(entry.composites)) {
     lines.push(`      ${quoteKey(composite.name)}: z.object({`);
@@ -214,7 +225,8 @@ function emitRowSchema(
   shapes: SchemaShapes,
   schema: string,
   entry: SchemaEntry,
-  relationName: string
+  relationName: string,
+  hasDatabaseContract: boolean
 ): void {
   lines.push(`        ${name}: z.object({`);
   for (const column of columns) {
@@ -225,7 +237,7 @@ function emitRowSchema(
   }
   for (const fn of computedRelationshipFunctions(shapes, schema, entry, relationName)) {
     lines.push(
-      `          ${quoteKey(fn.name)}: ${zodFunctionReturnExpression(shapes, schema, fn)}.nullable(),`
+      `          ${quoteKey(fn.name)}: ${zodFunctionReturnExpression(shapes, schema, fn, hasDatabaseContract)}.nullable(),`
     );
   }
   lines.push("        }),");
@@ -234,17 +246,23 @@ function emitRowSchema(
 function zodFunctionReturnExpression(
   shapes: SchemaShapes,
   schema: string,
-  fn: SchemaEntry["functions"][number]
+  fn: SchemaEntry["functions"][number],
+  hasDatabaseContract: boolean
 ): string {
   const returns = fn.returns;
   let expression: string;
   if (returns?.columns && returns.columns.length > 0) {
     const fields = returns.columns
-      .map((column) => `${quoteKey(column.name)}: ${zodExpression(shapes, schema, column.type)}`)
+      .map(
+        (column) =>
+          `${quoteKey(column.name)}: ${zodExpression(shapes, schema, column.type, hasDatabaseContract)}`
+      )
       .join(", ");
     expression = `z.object({ ${fields} })`;
   } else {
-    expression = returns ? zodExpression(shapes, schema, returns.type) : "z.unknown()";
+    expression = returns
+      ? zodExpression(shapes, schema, returns.type, hasDatabaseContract)
+      : "z.unknown()";
   }
   return expression;
 }
@@ -316,22 +334,34 @@ function emitViewUpdateSchema(
   lines.push("        }),");
 }
 
-function zodExpression(shapes: SchemaShapes, schema: string, sqlType: string): string {
+function zodExpression(
+  shapes: SchemaShapes,
+  schema: string,
+  sqlType: string,
+  hasDatabaseContract: boolean
+): string {
   const resolved = resolveColumnType(shapes, schema, sqlType);
   let expression: string;
   if (resolved.kind === "enum" && resolved.enumRef) {
-    expression = lazyZodPath(resolved.enumRef.schema, "Enums", resolved.enumRef.name);
+    expression = lazyZodPath(
+      resolved.enumRef.schema,
+      "Enums",
+      resolved.enumRef.name,
+      hasDatabaseContract
+    );
   } else if (resolved.kind === "composite" && resolved.compositeRef) {
     expression = lazyZodPath(
       resolved.compositeRef.schema,
       "CompositeTypes",
-      resolved.compositeRef.name
+      resolved.compositeRef.name,
+      hasDatabaseContract
     );
   } else if (resolved.kind === "relation" && resolved.relationRef) {
     expression = lazyZodRelationRow(
       resolved.relationRef.schema,
       resolved.relationRef.collection,
-      resolved.relationRef.name
+      resolved.relationRef.name,
+      hasDatabaseContract
     );
   } else if (resolved.kind === "json") {
     expression = "JsonSchema";
@@ -354,10 +384,26 @@ function zodExpression(shapes: SchemaShapes, schema: string, sqlType: string): s
   return expression;
 }
 
-function lazyZodPath(schema: string, collection: string, name: string): string {
-  return `z.lazy(() => SupaschemaZod[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}])`;
+function lazyZodPath(
+  schema: string,
+  collection: string,
+  name: string,
+  hasDatabaseContract: boolean
+): string {
+  const target = `SupaschemaZod[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}]`;
+  return hasDatabaseContract
+    ? `z.lazy((): z.ZodType<${databaseTypePath(schema, collection, name)}> => ${target})`
+    : `z.lazy(() => ${target})`;
 }
 
-function lazyZodRelationRow(schema: string, collection: string, name: string): string {
-  return `z.lazy(() => SupaschemaZod[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}].Row)`;
+function lazyZodRelationRow(
+  schema: string,
+  collection: string,
+  name: string,
+  hasDatabaseContract: boolean
+): string {
+  const target = `SupaschemaZod[${quoteCodeString(schema)}][${quoteCodeString(collection)}][${quoteCodeString(name)}].Row`;
+  return hasDatabaseContract
+    ? `z.lazy((): z.ZodType<${databaseTypePath(schema, collection, name)}["Row"]> => ${target})`
+    : `z.lazy(() => ${target})`;
 }
