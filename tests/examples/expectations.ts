@@ -13,11 +13,12 @@ export const expectedTypesFragments = [
 ];
 
 export const expectedZodFragments = [
-  "export const SupaschemaZod",
+  "export const SupaschemaZod = {",
   'account_status: z.enum(["active", "suspended"]),',
-  'status: z.lazy(() => SupaschemaZod["app"]["Enums"]["account_status"]),',
+  'status: z.lazy((): z.ZodType<Database["app"]["Enums"]["account_status"]> => SupaschemaZod["app"]["Enums"]["account_status"]),',
   "accounts: {",
   "Row: z.object({",
   "Insert: z.object({",
   "Update: z.object({",
+  "} as const satisfies SupaschemaZodShape;",
 ];

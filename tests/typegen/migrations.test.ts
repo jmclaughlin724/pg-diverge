@@ -49,9 +49,13 @@ ALTER TYPE app.status ADD VALUE IF NOT EXISTS 'archived';`,
     const directory = await writeMigrations([
       [
         "20240101000000_create.sql",
-        `CREATE TABLE public.items (
+        `CREATE TYPE public.item_status AS ENUM ('draft', 'active');
+CREATE TYPE public.item_metadata AS (label text);
+CREATE TABLE public.items (
   id bigint GENERATED ALWAYS AS IDENTITY,
-  payload jsonb NOT NULL
+  payload jsonb NOT NULL,
+  status public.item_status NOT NULL,
+  metadata public.item_metadata
 );`,
       ],
     ]);
@@ -77,7 +81,14 @@ ALTER TYPE app.status ADD VALUE IF NOT EXISTS 'archived';`,
     expect(result.written).toEqual([zodFile]);
     expect(result.skipped).toEqual([]);
     expect(zod).not.toContain("database.types");
+    expect(zod).not.toContain("Database[");
+    expect(zod).not.toContain("satisfies SupaschemaZodShape");
     expect(zod).toContain("export type Json =");
     expect(zod).toContain("export const JsonSchema: z.ZodType<Json>");
+    expect(zod).toContain("export const SupaschemaZod: SupaschemaZodShape = {");
+    expect(zod).toContain('status: z.lazy(() => SupaschemaZod["public"]["Enums"]["item_status"]),');
+    expect(zod).toContain(
+      'metadata: z.lazy(() => SupaschemaZod["public"]["CompositeTypes"]["item_metadata"]).nullable(),'
+    );
   });
 });
