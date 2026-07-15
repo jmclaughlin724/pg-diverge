@@ -9,7 +9,7 @@ import {
 } from "./model.js";
 
 export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: string): string {
-  const hasDatabaseContract = typesImportPath !== undefined;
+  const hasDatabaseContract = Boolean(typesImportPath);
   const schemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
@@ -64,7 +64,7 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
     emitSchema(lines, shapes, schema, entry, hasDatabaseContract);
   }
   lines.push(hasDatabaseContract ? "} as const satisfies SupaschemaZodShape;" : "} as const;");
-  if (hasDatabaseContract) {
+  if (typesImportPath) {
     const importedTypes = lines.some((line) => line.includes("Database["))
       ? "Database, Json"
       : "Json";

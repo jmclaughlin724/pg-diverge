@@ -1248,8 +1248,10 @@ void wrong;
 
   it("keeps recursive Zod-only schemas self-contained and strictly compilable", async () => {
     const model = await modelFor(helperSql, "supa-zod-only-");
-    const zod = generateZodSchemas(await collectSchemaShapes(model));
+    const shapes = await collectSchemaShapes(model);
+    const zod = generateZodSchemas(shapes);
 
+    expect(generateZodSchemas(shapes, "")).toBe(zod);
     expect(zod).toContain("export const SupaschemaZod: SupaschemaZodShape = {");
     expect(zod).not.toContain("satisfies SupaschemaZodShape");
     expect(zod).not.toContain("Database[");
