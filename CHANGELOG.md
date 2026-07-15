@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 (2026-07-15)
+
+### Patch Changes
+
+- Allow generated Zod contracts to use an explicit type-only database import specifier while preserving the relative `.js` default.
+
 ## 0.4.2 (2026-07-15)
 
 ### Patch Changes

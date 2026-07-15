@@ -375,6 +375,14 @@ const contract = JSON.parse(`{
       "pathKind": "file"
     },
     {
+      "default": "Derived from typesFile as a relative .js module specifier when TypeScript output is generated; omitted for Zod-only generation.",
+      "description": "Optional module specifier for the generated Zod file's type-only Database and Json import.",
+      "examples": [
+        "@acme/db/types"
+      ],
+      "key": "zodTypesImportPath"
+    },
+    {
       "allowed": [
         "off",
         "deparse"
@@ -1087,6 +1095,7 @@ export function mergeInstalledConfig(existing, options = {}) {
     typesFile: normalizedString(existing.typesFile, base.typesFile),
     validators: normalizedStringArray(existing.validators, base.validators),
     zodFile: normalizedString(existing.zodFile, base.zodFile),
+    zodTypesImportPath: normalizedOptionalString(existing.zodTypesImportPath),
   };
   return orderInstalledConfig(merged);
 }
@@ -1107,6 +1116,9 @@ export function orderInstalledConfig(config) {
     migrationsDir: config.migrationsDir,
     typesFile: config.typesFile,
     zodFile: config.zodFile,
+    ...(config.zodTypesImportPath === undefined
+      ? {}
+      : { zodTypesImportPath: config.zodTypesImportPath }),
     normalize: config.normalize,
     managedSchemas: config.managedSchemas,
     postgresVersion: config.postgresVersion,
@@ -1122,6 +1134,14 @@ export function orderInstalledConfig(config) {
 
 function normalizedString(value, fallback) {
   return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function normalizedOptionalString(value) {
+  if (typeof value !== "string") {
+    return;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function normalizedStringArray(value, fallback) {

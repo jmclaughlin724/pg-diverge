@@ -60,12 +60,10 @@ export async function generateTypeContracts(
     written.push(await writeGeneratedOutput(typesPath, types));
   }
   if (writeZod) {
-    written.push(
-      await writeGeneratedOutput(
-        zodPath,
-        generateZodSchemas(shapes, writeTypes ? typesModulePath(zodPath, typesPath) : undefined)
-      )
-    );
+    const typesImportPath =
+      options.config.zodTypesImportPath ??
+      (writeTypes ? typesModulePath(zodPath, typesPath) : undefined);
+    written.push(await writeGeneratedOutput(zodPath, generateZodSchemas(shapes, typesImportPath)));
   }
   return { diagnostics, skipped: [], written };
 }
