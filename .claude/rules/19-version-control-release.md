@@ -19,7 +19,7 @@ paths:
 
 This rule owns the operator workflow for version bumps, release notes, the mandatory `$update` audit, and release-control git work. When a user says to update supaschema to a version, that is one release-version transaction: update every version-coupled surface, run `$update` after versioning, prove parity with the guards, then stage, commit, push, or open the PR when requested. Do not ask the user to enumerate these steps.
 
-Rules 09, 13, 14, 18, and 21 remain the owners for CI posture, package contents, editing safety, generated-surface sync, and the complete source-control lifecycle. This rule connects those owners into the version bump path. Rule 20 owns the consolidated anti-pattern index for release and version-control bypasses.
+Rules 09, 13, 14, 18, and 21 remain the owners for CI posture, package contents, editing safety, generated-surface sync, and the complete source-control lifecycle. This rule connects those owners into the version bump path.
 
 ## Release-note owner
 

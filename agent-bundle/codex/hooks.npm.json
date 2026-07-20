@@ -47,6 +47,18 @@
         ],
         "matcher": "apply_patch"
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
+            "statusMessage": "Syncing supaschema Claude agent surfaces",
+            "timeout": 130,
+            "type": "command"
+          }
+        ]
+      }
     ]
   }
 }

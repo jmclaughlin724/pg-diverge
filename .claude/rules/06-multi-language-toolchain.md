@@ -1,5 +1,13 @@
 ---
 description: Multi-language LSP coverage, formatter/linter ownership, import/key sorting, and npm-only toolchain.
+paths:
+  - ".claude/cclsp.json"
+  - "biome.jsonc"
+  - ".prettier*"
+  - "taplo.toml"
+  - "scripts/cclsp-*.mjs"
+  - "scripts/guards/toolchain/**"
+  - "package.json"
 ---
 
 # Rule 06 — Multi-language LSP coverage + formatting/lint standards

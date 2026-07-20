@@ -88,6 +88,16 @@ function claudeHookSettings() {
           hooks: [claudeNodeHook(".claude/hooks/context-subagent-start.mjs")],
         },
       ],
+      Stop: [
+        {
+          hooks: [claudeNodeHook(".claude/hooks/context-stop.mjs")],
+        },
+      ],
+      SubagentStop: [
+        {
+          hooks: [claudeNodeHook(".claude/hooks/context-subagent-stop.mjs")],
+        },
+      ],
       UserPromptSubmit: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-user-prompt-submit.mjs")],
@@ -273,7 +283,7 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
     expect(read(root, ".codex/hooks.json")).not.toContain("general-guard.mjs");
-    expect(read(root, ".codex/hooks.json")).not.toContain("context-stop.mjs");
+    expect(read(root, ".codex/hooks.json")).toContain("context-stop.mjs");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
     expect(read(root, "skills/supaschema/SKILL.md")).toBe("# supaschema\n");
     expect(existsSync(join(root, "skills/elegant/SKILL.md"))).toBe(false);
@@ -434,6 +444,56 @@ describe("sync:llm", () => {
         hookEventName: "PostToolUse",
       },
     });
+    expect(read(project, "sync-count.txt")).toBe("1");
+  });
+
+  it("syncs Codex surface drift from Stop and returns valid empty Stop JSON", () => {
+    const project = tempSurface({
+      ".claude/agents/worker.md": [
+        "---",
+        "name: worker",
+        "description: Worker.",
+        "---",
+        "",
+        "# Worker",
+        "",
+      ].join("\n"),
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
+      ".claude/rules/supaschema.md": "# Rule\n",
+      ".claude/skills/supaschema/SKILL.md": "# Skill\n",
+      "package.json": `${JSON.stringify({
+        name: "supaschema",
+        scripts: {
+          "sync:llm":
+            "node -e \"const fs=require('node:fs');fs.appendFileSync('sync-count.txt','1')\"",
+        },
+      })}\n`,
+    });
+    const payload = {
+      cwd: project,
+      hook_event_name: "Stop",
+      session_id: "codex-sync-stop",
+    };
+    const env = { ...process.env, CODEX_PROJECT_DIR: project };
+    const hook = join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
+
+    expect(
+      execFileSync(process.execPath, [hook], {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify(payload),
+      })
+    ).toBe("{}\n");
+
+    writeFileSync(join(project, ".claude/rules/supaschema.md"), "# Rule changed\n");
+
+    expect(
+      execFileSync(process.execPath, [hook], {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify(payload),
+      })
+    ).toBe("{}\n");
     expect(read(project, "sync-count.txt")).toBe("1");
   });
 });

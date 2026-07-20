@@ -4,18 +4,22 @@ const modelContextEvents = new Set([
   "PreToolUse",
   "PostToolUse",
   "SubagentStart",
+  "Stop",
+  "SubagentStop",
 ]);
 
-const decisionBlockEvents = new Set(["UserPromptSubmit", "PostToolUse"]);
+const decisionBlockEvents = new Set(["UserPromptSubmit", "PostToolUse", "Stop", "SubagentStop"]);
 
 const exitTwoBlockEvents = new Set(["TaskCompleted", "PermissionDenied"]);
 
-export function shapeHookResult(eventName, result = {}) {
+export function shapeHookResult(eventName, result = {}, runtime = "claude") {
   const output = {};
   const context = joinParts(result.contextParts);
   let exitCode = 0;
   let stderr = "";
-  const supportsModelContext = modelContextEvents.has(eventName);
+  const supportsModelContext =
+    modelContextEvents.has(eventName) &&
+    !(runtime === "codex" && (eventName === "Stop" || eventName === "SubagentStop"));
 
   if (context && supportsModelContext) {
     output.hookSpecificOutput = {
@@ -51,6 +55,10 @@ export function shapeHookResult(eventName, result = {}) {
     } else {
       output.systemMessage = result.block;
     }
+  }
+
+  if (runtime === "codex" && (eventName === "Stop" || eventName === "SubagentStop")) {
+    return shaped(output, exitCode, stderr, true);
   }
 
   return shaped(output, exitCode, stderr, false);

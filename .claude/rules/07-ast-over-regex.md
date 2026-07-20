@@ -1,5 +1,13 @@
 ---
 description: Parser/AST-first policy — AST/parser analysis is sanctioned throughout the repo wherever it applies; prefer it over regex.
+paths:
+  - "src/**"
+  - "scripts/**"
+  - "services/**"
+  - "tests/**"
+  - "bin/**"
+  - "cloudflare/**"
+  - ".claude/hooks/**"
 ---
 
 # Rule 07 — Analyze structure with an AST/parser, not regex
@@ -10,7 +18,7 @@ This rule owns the policy that structural analysis uses an AST/parser, and that 
 
 Guards, hooks, scripts, source, and tests use a real AST/parser for structural analysis anywhere in the repo. Wherever a parser exists for the format — TypeScript compiler API for JS/TS, libpg_query for SQL, `JSON.parse` for JSON, a YAML/TOML parser for config, mdast for Markdown/MDX, the Python `ast` module, `sh-syntax` for shell — it is the preferred tool for structural questions.
 
-Regex cannot see structure: quote style, whitespace, type parameters, comments, string contents, and node nesting all create bypasses (an adversarial pass found ~12 in the regex-era shape detector — single/mixed quotes, `z .enum`, `z.enum (`, a marker smuggled inside a string) and false positives. A parser sees the real tree, so that whole class of holes is gone by construction. Literal string operations remain appropriate for non-structural scalar-value tests (a version prefix, a path suffix, membership in a known set).
+Regex cannot see structure: quote style, whitespace, type parameters, comments, string contents, and node nesting all create bypasses (an adversarial pass found ~12 in the regex-era shape detector — single/mixed quotes, `z .enum`, `z.enum (`, a marker smuggled inside a string) and false positives. A parser sees the real tree, so that whole class of holes is gone by construction. Literal string operations remain appropriate for non-structural scalar-value tests (a version prefix, a path suffix, membership in a known set). When a Zod config field must emit a JSON Schema `pattern` keyword, inject it with `.meta({ pattern: "..." })` instead of `.regex()` — `zodTypesImportPath` in `src/config/schema.ts` is the canonical example; the emitted schema is identical and source stays free of regex literals.
 
 Enforced by `scripts/guards/code-shape/check-canonical-surfaces.mjs` (in `npm run guard` via `scripts/guards/check-all.mjs`), which AST-scans every tracked JS/TS, Python, and shell file under `src/`, `scripts/`, `services/`, `tests/`, `bin/`, `benchmarks/`, `.claude/hooks/`, `.claude/skills/`, `.agents/skills/`, `cloudflare/`, plus root config scripts, and fails on regex literals, `RegExp(...)` calls, regex-shaped strings, Python `re` usage, and shell `=~`. Detection is itself AST/parser-based, so the rule dogfoods.
 

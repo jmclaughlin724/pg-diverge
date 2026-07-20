@@ -426,6 +426,33 @@ export function renderSourceCodexHooks(root = ROOT) {
           ],
         },
       ],
+      SubagentStop: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-subagent-stop.mjs",
+              10,
+              "Checking supaschema subagent closeout"
+            ),
+          ],
+        },
+      ],
+      Stop: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-stop.mjs",
+              10,
+              "Checking supaschema final-response evidence"
+            ),
+            codexHookCommand(
+              ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+              130,
+              "Syncing supaschema Claude agent surfaces"
+            ),
+          ],
+        },
+      ],
       UserPromptSubmit: [
         {
           hooks: [
@@ -469,6 +496,8 @@ function assertClaudeHookSource(root) {
     ["PreToolUse", ".claude/hooks/context-pre-tool-use.mjs"],
     ["PostToolUse", ".claude/hooks/context-post-tool-use.mjs"],
     ["SubagentStart", ".claude/hooks/context-subagent-start.mjs"],
+    ["SubagentStop", ".claude/hooks/context-subagent-stop.mjs"],
+    ["Stop", ".claude/hooks/context-stop.mjs"],
   ]) {
     assertClaudeNodeHook(hooks, eventName, relativePath);
   }

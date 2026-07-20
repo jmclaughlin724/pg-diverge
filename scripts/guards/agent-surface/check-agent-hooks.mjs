@@ -26,6 +26,8 @@ const sourceRepoClaudeContextHooks = [
   ".claude/hooks/context-pre-tool-use.mjs",
   ".claude/hooks/context-post-tool-use.mjs",
   ".claude/hooks/context-subagent-start.mjs",
+  ".claude/hooks/context-subagent-stop.mjs",
+  ".claude/hooks/context-stop.mjs",
   ".claude/hooks/context-task-completed.mjs",
   ".claude/hooks/context-permission-denied.mjs",
   ".claude/hooks/context-session-end.mjs",
@@ -42,6 +44,8 @@ const sourceRepoCodexContextHooks = [
   ".codex/hooks/context-pre-tool-use.mjs",
   ".codex/hooks/context-post-tool-use.mjs",
   ".codex/hooks/context-subagent-start.mjs",
+  ".codex/hooks/context-subagent-stop.mjs",
+  ".codex/hooks/context-stop.mjs",
   ".codex/hooks/context-task-completed.mjs",
   ".codex/hooks/context-permission-denied.mjs",
   ".codex/hooks/context-session-end.mjs",
@@ -52,17 +56,15 @@ const codexRegisteredHookPaths = [
   ".codex/hooks/context-pre-tool-use.mjs",
   ".codex/hooks/context-post-tool-use.mjs",
   ".codex/hooks/context-subagent-start.mjs",
+  ".codex/hooks/context-subagent-stop.mjs",
+  ".codex/hooks/context-stop.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
 ];
 const retiredWorkflowHookPaths = [
   ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/block-generated-migration-edits.mjs",
-  ".claude/hooks/context-stop.mjs",
-  ".claude/hooks/context-subagent-stop.mjs",
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
-  ".codex/hooks/context-stop.mjs",
-  ".codex/hooks/context-subagent-stop.mjs",
 ];
 
 function assertClaudeSettings(claudeSettings, root) {
@@ -180,8 +182,8 @@ function assertClaudeSettings(claudeSettings, root) {
     ".claude/settings.json must not register the removed PostToolBatch wrapper"
   );
   assert(
-    claudeSettings.hooks?.Stop === undefined && claudeSettings.hooks?.SubagentStop === undefined,
-    ".claude/settings.json must not register Stop continuation hooks"
+    Array.isArray(claudeSettings.hooks?.Stop) && Array.isArray(claudeSettings.hooks?.SubagentStop),
+    ".claude/settings.json must register Stop and SubagentStop continuation hooks"
   );
 }
 
@@ -203,6 +205,8 @@ function assertCodexConfig(codexConfig, root) {
     "context-pre-tool-use.mjs",
     "context-post-tool-use.mjs",
     "context-subagent-start.mjs",
+    "context-subagent-stop.mjs",
+    "context-stop.mjs",
   ]) {
     assert(codexHooksJson.includes(hook), `.codex/hooks.json must register ${hook}`);
   }
@@ -268,8 +272,11 @@ export function check(root = ROOT) {
     ".claude/settings.json",
     "scripts/agent-hooks/atlas.mjs",
     "scripts/agent-hooks/command-evidence.mjs",
+    "scripts/agent-hooks/evidence-gate.mjs",
     "scripts/agent-hooks/hook-output.mjs",
+    "scripts/agent-hooks/response-claims.mjs",
     "scripts/agent-hooks/response-evidence.mjs",
+    "scripts/agent-hooks/response-shape.mjs",
     "scripts/agent-hooks/runner.mjs",
     "scripts/agent-hooks/skill-frontmatter.mjs",
     "scripts/agent-hooks/skill-paths.mjs",
@@ -317,8 +324,8 @@ export function check(root = ROOT) {
     ".codex/hooks.json must run sync:llm from PostToolUse"
   );
   assert(
-    codexConfig.hooks?.Stop === undefined && codexConfig.hooks?.SubagentStop === undefined,
-    ".codex/hooks.json must not register Stop continuation hooks"
+    Array.isArray(codexConfig.hooks?.Stop) && Array.isArray(codexConfig.hooks?.SubagentStop),
+    ".codex/hooks.json must register Stop and SubagentStop continuation hooks"
   );
   assert(
     runnerImportsEvaluateBashPolicy(hookRunnerText) &&

@@ -129,6 +129,7 @@ export function normalizeState(value) {
   return {
     atlasAdvisories: currentTurn.atlasAdvisories,
     contextEpoch: integerValue(value?.contextEpoch),
+    corrections: currentTurn.corrections,
     currentTurnId,
     evidence: currentTurn.evidence,
     invokedSkills: objectValue(value?.invokedSkills),
@@ -142,6 +143,21 @@ export function normalizeState(value) {
 export function addEvidence(state, evidence) {
   const turn = currentTurnState(state);
   turn.evidence = [...turn.evidence, { at: new Date().toISOString(), ...evidence }].slice(-50);
+}
+
+export function setCorrections(state, findings) {
+  const turn = currentTurnState(state);
+  const blocked = new Set(
+    turn.corrections.filter((item) => item.blocked).map((item) => correctionSignature(item))
+  );
+  turn.corrections = findings.map((finding) => ({
+    blocked: blocked.has(correctionSignature(finding)),
+    ...finding,
+  }));
+}
+
+function correctionSignature(item) {
+  return JSON.stringify([item.id, item.message ?? ""]);
 }
 
 function resetContextEpoch(state) {
@@ -161,6 +177,7 @@ function normalizeTurns(value) {
   for (const [id, turn] of Object.entries(value)) {
     turns[validateStateKey(id)] = {
       atlasAdvisories: objectValue(turn?.atlasAdvisories),
+      corrections: Array.isArray(turn?.corrections) ? turn.corrections : [],
       evidence: Array.isArray(turn?.evidence) ? turn.evidence : [],
       lastPrompt: typeof turn?.lastPrompt === "string" ? turn.lastPrompt : "",
       pendingSkills: objectValue(turn?.pendingSkills),
@@ -172,6 +189,7 @@ function normalizeTurns(value) {
 function emptyTurn() {
   return {
     atlasAdvisories: {},
+    corrections: [],
     evidence: [],
     lastPrompt: "",
     pendingSkills: {},

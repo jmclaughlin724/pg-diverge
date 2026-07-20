@@ -1,5 +1,11 @@
 ---
 description: Biome/Ultracite JS/TS lint and format policy for the single-package npm repo.
+paths:
+  - "biome.jsonc"
+  - "ultracite.*"
+  - "package.json"
+  - "package-lock.json"
+  - "scripts/guards/toolchain/**"
 ---
 
 # Rule 08 — Biome/Ultracite is the JS/TS lint policy

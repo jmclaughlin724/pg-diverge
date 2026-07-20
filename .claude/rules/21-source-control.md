@@ -160,15 +160,12 @@ codexExecPolicy: |
     }
   ]
 paths:
-  - "src/**"
-  - "tests/**"
-  - "docs/**"
-  - "bin/**"
-  - "services/agent-mcp/**"
-  - ".claude/**"
-  - ".codex/**"
-  - ".agents/**"
   - ".github/**"
+  - ".gitignore"
+  - ".gitattributes"
+  - ".claude/rules/21-source-control.md"
+  - ".claude/hooks/**"
+  - ".codex/hooks/**"
   - "scripts/github/**"
   - "scripts/guards/ci-release/check-github-process.mjs"
   - "scripts/guards/check-all.mjs"
@@ -183,7 +180,7 @@ paths:
 
 This rule is the single owner for source-control state and lifecycle: dirty worktrees, Git command safety, branch creation, staging, commits, pushes, GitHub repository settings, pull requests, squash merging, local and remote branch cleanup, and live settings audit.
 
-Rule 14 owns file-edit safety and deletion/rename sweeps. Rule 09 owns GitHub Actions workflow posture. Rule 19 owns release-version transactions. Rule 20 owns the consolidated source-control anti-pattern index.
+Rule 14 owns file-edit safety and deletion/rename sweeps. Rule 09 owns GitHub Actions workflow posture. Rule 19 owns release-version transactions.
 
 Upstream sources:
 
@@ -306,6 +303,7 @@ Address every PR review comment and failing check before merge, and mark each re
 
 ## Enforced by
 
+- SessionStart merged-topic detection: `scripts/agent-hooks/merged-branch-state.mjs` (via the shared hook runner) injects post-merge closeout context when the current checkout's unique commits are already tree-contained in `origin/main`, so a squash-merged topic surviving as the active checkout is self-announcing in both Claude and Codex sessions.
 - `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, canonical Rule 21 path, retired duplicate rule paths, Bash hook, and PR template stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, repository rulesets, and topics to `.github/repo-policy.json`.

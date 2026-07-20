@@ -367,8 +367,10 @@ describe("agent hook configuration", () => {
       const postToolUseText = JSON.stringify(hookEntries(settings, "PostToolUse"));
       expect(postToolUseText).toContain("sync-llm-on-claude-surface-change.mjs");
       expect(hookEntries(settings, "PostToolBatch")).toEqual([]);
-      expect(hookEntries(settings, "Stop")).toEqual([]);
-      expect(hookEntries(settings, "SubagentStop")).toEqual([]);
+      expect(JSON.stringify(hookEntries(settings, "Stop"))).toContain("context-stop.mjs");
+      expect(JSON.stringify(hookEntries(settings, "SubagentStop"))).toContain(
+        "context-subagent-stop.mjs"
+      );
     }
   );
 
@@ -388,8 +390,8 @@ describe("agent hook configuration", () => {
     expect(JSON.stringify(config)).toContain("context-user-prompt-submit.mjs");
     expect(JSON.stringify(config)).toContain("context-pre-tool-use.mjs");
     expect(JSON.stringify(config)).toContain("context-post-tool-use.mjs");
-    expect(JSON.stringify(config)).not.toContain("context-stop.mjs");
-    expect(JSON.stringify(config)).not.toContain("context-subagent-stop.mjs");
+    expect(JSON.stringify(config)).toContain("context-stop.mjs");
+    expect(JSON.stringify(config)).toContain("context-subagent-stop.mjs");
     expect(JSON.stringify(config)).not.toContain("scripts/agent-hooks");
     expect(JSON.stringify(config)).not.toContain("general-guard.mjs");
     expect(JSON.stringify(config)).not.toContain("block-generated-migration-edits.mjs");
@@ -417,8 +419,8 @@ describe("agent hook configuration", () => {
         ].join(""),
       ])
     );
-    expect(hookEntries(config, "Stop")).toEqual([]);
-    expect(hookEntries(config, "SubagentStop")).toEqual([]);
+    expect(hookEntries(config, "Stop")).toHaveLength(1);
+    expect(hookEntries(config, "SubagentStop")).toHaveLength(1);
   });
 });
 

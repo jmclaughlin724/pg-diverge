@@ -1,5 +1,9 @@
 ---
 description: Code Atlas repo graph ownership, commands, proof standard, and MCP/local atlas split.
+paths:
+  - "scripts/code-atlas/**"
+  - "scripts/guards/code-atlas/**"
+  - ".codeatlas*/**"
 ---
 
 # Rule 10 — Code Atlas repo graph

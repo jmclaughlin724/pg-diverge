@@ -1,3 +1,11 @@
+---
+description: Canonical comparison for normalized paths and other normalized domains.
+paths:
+  - "src/paths.ts"
+  - "scripts/guards/code-shape/check-path-comparison.mjs"
+  - "tests/**/paths*.test.ts"
+---
+
 # Rule 23 — Normalized-domain comparison (paths)
 
 ## Contract

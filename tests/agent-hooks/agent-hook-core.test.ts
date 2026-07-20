@@ -7,7 +7,10 @@ import { describe, expect, it } from "vitest";
 
 const hasAgentHookSources = [
   "scripts/agent-hooks/command-evidence.mjs",
+  "scripts/agent-hooks/evidence-gate.mjs",
   "scripts/agent-hooks/hook-output.mjs",
+  "scripts/agent-hooks/response-claims.mjs",
+  "scripts/agent-hooks/response-shape.mjs",
   "scripts/agent-hooks/runner.mjs",
   "scripts/agent-hooks/state.mjs",
 ].every((file) => existsSync(join(process.cwd(), file)));
@@ -60,6 +63,8 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
       "PreToolUse",
       "PostToolUse",
       "SubagentStart",
+      "Stop",
+      "SubagentStop",
     ]) {
       expect(shapeHookResult(eventName, { contextParts: ["ctx"] }).output).toMatchObject({
         hookSpecificOutput: {
@@ -82,6 +87,11 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
       exitCode: 2,
       stderr: "not done",
     });
+    expect(shapeHookResult("Stop", { block: "revise" }).output).toMatchObject({
+      decision: "block",
+      reason: "revise",
+    });
+    expect(shapeHookResult("Stop", {}, "codex").stdout).toBe("{}\n");
     expect(shapeHookResult("SessionEnd", {}).stdout).toBe("");
   });
 
@@ -713,7 +723,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
 });
 
 describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () => {
-  it("does not continue Codex Stop for completion prose or undocumented task fields", async () => {
+  it("continues Codex Stop once for a completion claim with open work", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
     const payload = {
@@ -736,8 +746,52 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
       { root, runtime: "codex" }
     );
 
-    expect(result.output).toEqual({});
-    expect(result.stdout).toBe("");
+    expect(result.output).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("open background tasks or pending skills remain"),
+    });
+    expect(result.stdout).toContain('"decision":"block"');
+
+    const repeated = handleAgentHookEvent(
+      "Stop",
+      {
+        background_tasks: [{ id: "019f4d1a-3671-7f91-8f4c-cc527b4ed6d1" }],
+        last_assistant_message: "**completed_actions**",
+        session_id: "codex-stop-continuation",
+        stop_hook_active: true,
+        turn_id: "turn-1",
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(repeated.output).toEqual({});
+    expect(repeated.stdout).toBe("{}\n");
+  });
+
+  it("continues Codex SubagentStop when closeout defers requested work", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR = stateDir;
+    const payload = {
+      prompt: "implement the fix",
+      session_id: "codex-subagent-stop-continuation",
+      turn_id: "turn-1",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    const result = handleAgentHookEvent(
+      "SubagentStop",
+      {
+        last_assistant_message: "If you want, I can implement the fix.",
+        session_id: payload.session_id,
+        turn_id: payload.turn_id,
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(result.output).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("defers work"),
+    });
   });
 
   it("records Codex exec command evidence under the detector success kind", async () => {

@@ -1,5 +1,15 @@
 ---
 description: GitHub Actions CI/CD efficiency, release governance, supply-chain hardening, and npm trusted publishing.
+paths:
+  - ".github/**"
+  - "action.yml"
+  - "package.json"
+  - "package-lock.json"
+  - "scripts/actions/**"
+  - "scripts/github/**"
+  - "scripts/release/**"
+  - "scripts/guards/ci-release/**"
+  - "tests/release/**"
 ---
 
 # Rule 09 — CI/CD efficiency and release governance

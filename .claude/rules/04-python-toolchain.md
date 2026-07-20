@@ -1,5 +1,13 @@
 ---
 description: Python uv workspace, ruff, mypy, pytest, pip-audit, and pylsp standards for services/agent-mcp.
+paths:
+  - "services/agent-mcp/**"
+  - "pyproject.toml"
+  - "uv.lock"
+  - ".python-version"
+  - ".claude/cclsp.json"
+  - ".github/workflows/python.yml"
+  - "scripts/guards/fastmcp/**"
 ---
 
 # Rule 04 — Python toolchain (uv + ruff + mypy) and pylsp

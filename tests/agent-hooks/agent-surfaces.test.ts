@@ -86,9 +86,7 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
 
     expect(result.codexHookConfig).toBe(1);
     expect(checkAgentSurfaces({ root })).toEqual([]);
-    expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).not.toContain(
-      "context-stop.mjs"
-    );
+    expect(await readFile(join(root, ".codex/hooks.json"), "utf8")).toContain("context-stop.mjs");
   });
 
   it("reconciles minimal Claude source directories into generated mirrors", async () => {

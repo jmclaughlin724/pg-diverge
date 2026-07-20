@@ -1,5 +1,16 @@
 ---
 description: npm package `files` boundary, consumer agent bundle install, explicit init scaffold surface, and package-content tests.
+paths:
+  - "package.json"
+  - "package-lock.json"
+  - "bin/scaffold.mjs"
+  - "agent-bundle/**"
+  - "skills/supaschema/**"
+  - "docs/coding-agents/agent-bundle.mdx"
+  - "docs/reference/package-boundary.mdx"
+  - "tests/package/**"
+  - "scripts/release/package-smoke.mjs"
+  - "scripts/guards/repo-surface/**"
 ---
 
 # Rule 13 — npm package boundary
@@ -30,7 +41,7 @@ The published package is an explicit consumer surface. The repository also conta
 - Consumer package install and default `supaschema init` must not run the Skills CLI or depend on the user's Skills destination choice. `supaschema init` installs the package-bundled `.agents`, `.claude`, and `.codex` enforcement surfaces when missing, merges the matching package-manager `.claude/settings.json` and `.codex/hooks.json` entries, and must not write `AGENTS.md` or `CLAUDE.md`.
 - Rules and hooks ship as raw package files under `agent-bundle/**`, not through `npx skills`. `supaschema init` copies missing consumer rule/skill/hook files and merges runtime-specific project registration from the matching `agent-bundle/**` settings templates. Existing non-identical files are preserved, and JSON hook/config files are merged without duplicate direct hooks; non-mergeable JSON shapes must be reported as skipped setup work.
 - `docs/coding-agents/agent-bundle.mdx` is the reader-facing owner for consumer agent bundle contents, installed hook commands, hook events, and schema-edit workflow trigger behavior such as `supaschema hook schema-write`. `docs/reference/package-boundary.mdx` owns package mechanics only and should link to the agent-bundle page instead of duplicating the hook contract.
-- Agent-bundle setup instructions expose packaged settings templates that `supaschema init` merges automatically. The packaged Codex hook templates must only wire the supaschema generated-migration block, schema auto-diff, LLM surface sync hook, and the Rule 20 general Bash safety blocker that prevents secret argv/env-file reads, raw SQL DDL through Bash, destructive git shortcuts, and `rm -rf` equivalents.
+- Agent-bundle setup instructions expose packaged settings templates that `supaschema init` merges automatically. The packaged Codex hook templates must only wire the supaschema generated-migration block, schema auto-diff, LLM surface sync hook, and the general Bash safety blocker that prevents secret argv/env-file reads, raw SQL DDL through Bash, destructive git shortcuts, and `rm -rf` equivalents.
 - Rule 22 owns source-repo Codex hook registration and generated hook topology. This rule owns the package boundary: `scripts/skills/sync-llm.mjs` MUST strip source-only context hooks, `scripts/agent-hooks/**`, and source-repo hook launcher commands from `agent-bundle/codex/hooks.*.json`, replacing supaschema hook invocations with consumer package-manager commands. Consumer Codex hook templates MUST keep `.codex/hooks/general-guard.mjs` as the standalone consumer Bash safety boundary. Source-repo runtime may be tracked in the GitHub branch, but it must never enter the published consumer bundle or active consumer install output unless the consumer contract explicitly changes.
 - Maintainer Claude/Codex optimization infrastructure is repo-local by default. Do not publish or scaffold `.claude/hooks/context-*`, `.codex/hooks/context-*`, `scripts/agent-hooks/**`, optimizer skills, internal rules, generated Codex rule mirrors, `.claude/agents/**`, `.codex/agents/**`, `.codex/config.toml`, or other agent-development tooling unless the consumer contract explicitly changes and `tests/package-contents.test.ts`, `tests/database-url.test.ts`, `bin/scaffold.mjs`, docs, and this rule change together. GitHub branch tracking is not package publication; `package.json#files`, package tests, and `npm pack --dry-run --json` own the package boundary.
 - Required source-repo hook runtime and rule surfaces MUST be tracked when tracked hook registration, guards, or `AGENTS.md` route to them. Personal/local DX remains gitignored.

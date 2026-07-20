@@ -29,7 +29,6 @@ Repo docs are future agent context. Write them so a later Codex or Claude sessio
 - Do not add history, rationale, plans, TODOs, or broad examples unless needed to act.
 - If a doc is hard to find, move it, rename it, or route to it from the owner map.
 - Split long docs by when they must be read, not by topic sprawl.
-- For `docs/**`, follow Rule 02. For agent instruction surfaces, follow Rule 17. For package docs, follow Rule 13.
 
 ## Verification
 

@@ -1,5 +1,11 @@
 ---
 description: Repo-local FastMCP agent server contract, read-only tool surface, deny-list, and alignment checks.
+paths:
+  - "services/agent-mcp/**"
+  - "fastmcp.json"
+  - ".mcp.json"
+  - ".codex/config.toml"
+  - "scripts/guards/fastmcp/**"
 ---
 
 # Rule 11 — Agent MCP FastMCP

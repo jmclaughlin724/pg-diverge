@@ -84,6 +84,36 @@
         ]
       }
     ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-subagent-stop.mjs\"",
+            "statusMessage": "Checking supaschema subagent closeout",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/context-stop.mjs\"",
+            "statusMessage": "Checking supaschema final-response evidence",
+            "timeout": 10,
+            "type": "command"
+          },
+          {
+            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
+            "statusMessage": "Syncing supaschema Claude agent surfaces",
+            "timeout": 130,
+            "type": "command"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

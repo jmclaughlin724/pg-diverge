@@ -133,6 +133,32 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-stop.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-stop.mjs"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "TaskCompleted": [
       {
         "hooks": [
