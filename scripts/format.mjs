@@ -2,10 +2,12 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LOCAL_BIOME_PATHS } from "./lib/repo-files.mjs";
 
+const canonicalPathsModule = new URL("../src/paths.ts", import.meta.url);
+const { pathContainsOrEqual } = await import(canonicalPathsModule.href);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ultraciteBinary = resolve(repositoryRoot, "node_modules", "ultracite", "dist", "index.js");
 
@@ -42,14 +44,6 @@ function runUltracite(args, label) {
   return run(process.execPath, [ultraciteBinary, ...args], label);
 }
 
-function isWithin(root, target) {
-  const pathFromRoot = relative(root, target);
-  return (
-    pathFromRoot === "" ||
-    (pathFromRoot !== ".." && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot))
-  );
-}
-
 export function validateFormatTargets(targets, root = repositoryRoot) {
   if (targets.length === 1 && targets[0] === "--staged") {
     return targets;
@@ -63,7 +57,7 @@ export function validateFormatTargets(targets, root = repositoryRoot) {
     if (!existsSync(absoluteTarget)) {
       throw new Error(`scoped format target does not exist: ${target}`);
     }
-    if (!isWithin(canonicalRoot, realpathSync(absoluteTarget))) {
+    if (!pathContainsOrEqual(canonicalRoot, realpathSync(absoluteTarget))) {
       throw new Error(`scoped format target resolves outside the repository: ${target}`);
     }
   }

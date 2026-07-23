@@ -19,7 +19,6 @@ const required = [
 const requiredSharedServers = [
   "cloudflare-api",
   "cloudflare-docs",
-  "cclsp",
   "supaschema",
   "context7",
   "mintlify",
@@ -44,11 +43,6 @@ const expectedRegistryServers = {
     headers: { Authorization: ["Bearer $", "{input:cloudflare-api-token}"].join("") },
   },
   "cloudflare-docs": { type: "http", url: "https://docs.mcp.cloudflare.com/mcp" },
-  cclsp: {
-    command: "npx",
-    args: ["--no-install", "cclsp"],
-    env: { CCLSP_CONFIG_PATH: "cclsp.json" },
-  },
   supaschema: {
     command: "uv",
     args: [
@@ -69,7 +63,7 @@ const expectedRegistryServers = {
   zod: { type: "http", url: "https://mcp.inkeep.com/zod/mcp" },
   "supaschema-docs": { type: "http", url: "https://supaschema.com/docs/mcp" },
 };
-const disallowedServers = ["MCP_DOCKER", "codeatlas", "next-devtools", "render", "sentry"];
+const disallowedServers = ["MCP_DOCKER", "cclsp", "codeatlas", "next-devtools", "render", "sentry"];
 const unsupportedProjectClientConfigs = [
   ".cursor/mcp.json",
   ".gemini/settings.json",
@@ -82,11 +76,6 @@ const expectedCodexWiring = {
     bearer_token_env_var: "CLOUDFLARE_API_TOKEN",
   },
   "cloudflare-docs": { url: "https://docs.mcp.cloudflare.com/mcp" },
-  cclsp: {
-    command: "npx",
-    args: ["--no-install", "cclsp"],
-    env: { CCLSP_CONFIG_PATH: "cclsp.json" },
-  },
   supaschema: {
     command: "uv",
     args: [

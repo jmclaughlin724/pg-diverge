@@ -414,6 +414,13 @@ export function grantObjectsFromAst(
   ordinal: number,
   file?: string
 ): SchemaObject[] {
+  if (isRevokeGrantOptionFor(node)) {
+    return [
+      fallbackPrivilegeObject("grant", statement, ordinal, file, {
+        unsupportedPrivilegeForm: "REVOKE GRANT OPTION FOR",
+      }),
+    ];
+  }
   const isGrant = readBoolean(node.is_grant);
   const verb = isGrant ? "GRANT" : "REVOKE";
   const objtype = readString(node.objtype) ?? "OBJECT_TABLE";
@@ -453,6 +460,10 @@ export function grantObjectsFromAst(
     }
   }
   return objects;
+}
+
+export function isRevokeGrantOptionFor(node: AstNode): boolean {
+  return !readBoolean(node.is_grant) && readBoolean(node.grant_option);
 }
 
 export function defaultPrivilegesFromAst(
@@ -688,8 +699,9 @@ function fallbackPrivilegeObject(
   kind: "grant" | "default-privilege",
   statement: string,
   ordinal: number,
-  file?: string
+  file?: string,
+  metadata: Record<string, unknown> = {}
 ): SchemaObject {
   const name = sha256(normalizeSql(statement)).slice(0, 16);
-  return makeObject({ kind, name }, statement, ordinal, file);
+  return makeObject({ kind, name }, statement, ordinal, file, metadata);
 }

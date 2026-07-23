@@ -14,7 +14,12 @@ import {
   stringValue,
   typeNameToSql,
 } from "./ast.js";
-import { canonicalPolicyNode, canonicalViewNode } from "./canonical-nodes.js";
+import {
+  canonicalIndexNode,
+  canonicalPolicyNode,
+  canonicalRoutineNode,
+  canonicalViewNode,
+} from "./canonical-nodes.js";
 import { quoteIdent } from "./identifiers.js";
 import { normalizeObjectSql } from "./normalize-deparse.js";
 import { astObjectHash, shapeHash, stripLocations } from "./object-hash.js";
@@ -316,6 +321,20 @@ function canonicalObjectKindHash(
   object: SchemaObject,
   statements: { node: AstNode; tag: string }[]
 ): string | undefined {
+  if (object.ref.kind === "index") {
+    return astObjectHash(
+      statements.map((item) => canonicalIndexNode(item.node)),
+      object.key,
+      object.ref
+    );
+  }
+  if (object.ref.kind === "function" || object.ref.kind === "procedure") {
+    return astObjectHash(
+      statements.map((item) => canonicalRoutineNode(item.node)),
+      object.key,
+      object.ref
+    );
+  }
   if (object.ref.kind === "grant") {
     return grantHash(object);
   }

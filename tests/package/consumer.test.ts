@@ -22,10 +22,10 @@ import {
 const run = promisify(execFile);
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const bunCommand = process.platform === "win32" ? "bun.exe" : "bun";
-const pnpmAvailable = (() => {
+const pnpm11Available = (() => {
   try {
-    execFileSync(pnpmCommand, ["--version"], { stdio: "ignore" });
-    return true;
+    const version = execFileSync(pnpmCommand, ["--version"], { encoding: "utf8" }).trim();
+    return version.startsWith("11.");
   } catch {
     return false;
   }
@@ -272,7 +272,7 @@ describe("consumer lifecycle: workspace member install from member directory", (
   }, 300_000);
 });
 
-describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery lanes", () => {
+describe.skipIf(!pnpm11Available)("consumer lifecycle: pnpm install and recovery lanes", () => {
   it("pnpm add plus explicit init scaffolds the project", async () => {
     const pnpmConsumer = await mkdtemp(join(tmpdir(), "supa-pnpm-consumer-"));
     await writeFile(

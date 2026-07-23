@@ -33,6 +33,7 @@ import {
   defaultPrivilegesFromAst,
   grantObjectsFromAst,
   isInitdbDefaultComment,
+  isRevokeGrantOptionFor,
 } from "./privileges.js";
 import { makeObject, tableMetadataFromAst } from "./statements.js";
 import {
@@ -213,7 +214,27 @@ function parseStatement(
       objects: [],
     };
   }
-  return withManagedSchemaDiagnostics(objects, statement.text, config, file);
+  const managed = withManagedSchemaDiagnostics(objects, statement.text, config, file);
+  if (statement.tag !== "GrantStmt" || !isRevokeGrantOptionFor(node)) {
+    return managed;
+  }
+  return {
+    diagnostics: [
+      diagnostic(
+        "SUPA_EXTRACT_UNSUPPORTED",
+        "error",
+        "unsupported REVOKE GRANT OPTION FOR privilege statement",
+        {
+          file,
+          hint: "Keep this privilege mutation in an explicit reviewed migration until it has a dedicated model.",
+          schemas: referencedSchemas(statement),
+          statement: statement.text,
+        }
+      ),
+      ...managed.diagnostics,
+    ],
+    objects: managed.objects,
+  };
 }
 
 function buildObjects(

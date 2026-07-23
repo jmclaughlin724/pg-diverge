@@ -3,7 +3,6 @@
   "enabledMcpjsonServers": [
     "cloudflare-api",
     "cloudflare-docs",
-    "cclsp",
     "supaschema",
     "context7",
     "mintlify",

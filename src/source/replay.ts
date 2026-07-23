@@ -131,7 +131,6 @@ const supportedColumnConstraintTypes = new Set([
 ]);
 
 const typegenNeutralStatementTags = new Set([
-  "AlterPolicyStmt",
   "AlterRoleStmt",
   "CreateRoleStmt",
   "DropRoleStmt",
@@ -275,7 +274,7 @@ async function applyStatement(
     return applyAlterEnum(statement, node, objects, file);
   }
   if (statement.tag === "RenameStmt") {
-    return await applyRename(statement, node, objects, file);
+    return await applyRename(statement, node, objects, context, file);
   }
   if (statement.tag === "DropStmt") {
     return applyDrop(statement, node, objects, file);
@@ -352,6 +351,7 @@ async function applyExtractedStatement(
 ): Promise<ReplayResult> {
   const extracted = await extractObjectsFromSql(statement.text, {
     config: context.config,
+    existingObjects: [...objects.values()],
     file,
     startOrdinal: ordinal,
   });
@@ -404,6 +404,17 @@ async function applyExtractedObject(
   const existing = objects.get(object.key);
   if (existing && isReplayPrivilegeObject(object)) {
     return await mergeReplayPrivilege(existing, object, objects, context, file, statement.text);
+  }
+  if (existing && statement.tag === "AlterTableStmt" && object.ref.kind === "constraint") {
+    if (context.idempotentCreate === true) {
+      return emptyResult();
+    }
+    return orderGap(
+      `ADD CONSTRAINT duplicates ${object.key} while replaying migration history`,
+      file,
+      statement.text,
+      object.ref
+    );
   }
   if (objects.has(object.key) && createDuplicateGapTags.has(statement.tag)) {
     if (isReplaceStatement(statement)) {
@@ -563,7 +574,8 @@ async function applyAlterTableCommand(options: {
     { ...options.node, cmds: [options.rawCommand] },
     options.statement.text,
     options.ordinal,
-    options.file
+    options.file,
+    constraintNamesForSchema(options.objects, options.table.ref.schema ?? "public")
   );
   if (!extracted || extracted.length === 0) {
     return unsupportedStatement(
@@ -634,6 +646,23 @@ async function applyColumnMutation(
   file: string,
   ordinal: number
 ): Promise<ReplayResult | undefined> {
+  if (subtype === "AT_ValidateConstraint") {
+    return await applyValidateConstraint(statement, command, table, objects, context, file);
+  }
+  if (subtype === "AT_AddConstraint") {
+    const constraint = asRecord(asRecord(command.def)?.Constraint);
+    if (readString(constraint?.indexname) !== undefined) {
+      return await applyConstraintUsingIndex(
+        statement,
+        command,
+        table,
+        objects,
+        context,
+        file,
+        ordinal
+      );
+    }
+  }
   if (subtype === "AT_AddColumn") {
     return await applyAddColumn(statement, command, table, objects, context, file, ordinal);
   }
@@ -649,6 +678,200 @@ async function applyColumnMutation(
   if (subtype === "AT_DropConstraint") {
     return applyDropConstraint(statement, command, table, objects, file);
   }
+}
+
+async function applyValidateConstraint(
+  statement: AstStatement,
+  command: AstNode,
+  table: SchemaObject,
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext,
+  file: string
+): Promise<ReplayResult> {
+  const name = readString(command.name);
+  if (!name) {
+    return unsupportedStatement(
+      statement,
+      file,
+      "constraint validation target could not be resolved"
+    );
+  }
+  const ref: ObjectRef = {
+    kind: "constraint",
+    name,
+    ...(table.ref.schema === undefined ? {} : { schema: table.ref.schema }),
+    table: table.ref.name,
+  };
+  const key = objectKey(ref);
+  const target = objects.get(key);
+  if (!target) {
+    return orderGap(`VALIDATE CONSTRAINT targets absent object ${key}`, file, statement.text, ref);
+  }
+  const parsed = await parseSqlAst(target.sql, target.file);
+  if (parsed.ast === undefined || hasErrors(parsed.diagnostics)) {
+    return unsupportedStatement(
+      statement,
+      file,
+      `could not parse ${key} while validating migration replay state`
+    );
+  }
+  const ast = structuredClone(parsed.ast);
+  let changed = false;
+  visitMutableAst(ast, (node) => {
+    const constraint = mutableRecord(mutableGet(node, "Constraint"));
+    if (constraint && mutableGet(constraint, "conname") === name) {
+      Reflect.deleteProperty(constraint, "skip_validation");
+      mutableSet(constraint, "initially_valid", true);
+      changed = true;
+    }
+  });
+  if (!changed) {
+    return unsupportedStatement(statement, file, `${key} has no rewritable constraint definition`);
+  }
+  let sql: string;
+  try {
+    sql = deparseSync(JSON.parse(JSON.stringify(ast)));
+  } catch {
+    return unsupportedStatement(
+      statement,
+      file,
+      `could not deparse ${key} while validating migration replay state`
+    );
+  }
+  const next = makeObject(ref, sql, target.ordinal, target.file, structuredClone(target.metadata));
+  const diagnostics = await finalizeObjects([next], { normalize: context.normalize });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: undefined };
+  }
+  objects.set(key, next);
+  return { diagnostics, hardFail: false, nextOrdinal: undefined };
+}
+
+async function applyConstraintUsingIndex(
+  statement: AstStatement,
+  command: AstNode,
+  table: SchemaObject,
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext,
+  file: string,
+  ordinal: number
+): Promise<ReplayResult> {
+  const constraint = asRecord(asRecord(command.def)?.Constraint);
+  const indexName = readString(constraint?.indexname);
+  if (!(constraint && indexName)) {
+    return unsupportedStatement(statement, file, "backing index target could not be resolved");
+  }
+  const schema = table.ref.schema ?? "public";
+  const backing = [...objects].find(
+    ([, object]) =>
+      object.ref.kind === "index" &&
+      object.ref.name === indexName &&
+      (object.ref.schema ?? "public") === schema &&
+      object.ref.table === table.ref.name
+  );
+  const indexRef: ObjectRef = {
+    kind: "index",
+    name: indexName,
+    ...(table.ref.schema === undefined ? {} : { schema: table.ref.schema }),
+    table: table.ref.name,
+  };
+  if (!backing) {
+    return orderGap(
+      `ADD CONSTRAINT references absent backing index ${objectKey(indexRef)}`,
+      file,
+      statement.text,
+      indexRef
+    );
+  }
+  const parsed = await parseSqlAst(backing[1].sql, backing[1].file);
+  const indexStatement =
+    parsed.ast === undefined
+      ? undefined
+      : astStatements(parsed.ast, backing[1].sql).find((item) => item.tag === "IndexStmt");
+  const indexNode = asRecord(indexStatement?.node.IndexStmt);
+  const columns = indexNode ? attachableUniqueIndexColumns(indexNode, table, indexName) : undefined;
+  if (!columns) {
+    return unsupportedStatement(
+      statement,
+      file,
+      `backing index ${backing[1].key} is not a directly attachable unique index`
+    );
+  }
+  const nextCommand = structuredClone(command);
+  const nextDefinition = asRecord(nextCommand.def) ?? {};
+  const nextConstraint = asRecord(nextDefinition.Constraint);
+  if (!nextConstraint) {
+    return unsupportedStatement(statement, file, "backing index constraint could not be rewritten");
+  }
+  Reflect.deleteProperty(nextConstraint, "indexname");
+  nextConstraint.keys = columns.map((name) => ({ String: { sval: name } }));
+  nextCommand.def = { ...nextDefinition, Constraint: nextConstraint };
+  const alterTable = asRecord(statement.node.AlterTableStmt);
+  const extracted = alterTable
+    ? alterTableObjects(
+        { ...alterTable, cmds: [{ AlterTableCmd: nextCommand }] },
+        statement.text,
+        ordinal,
+        file,
+        constraintNamesForSchema(objects, schema)
+      )
+    : undefined;
+  if (!extracted || extracted.length === 0) {
+    return unsupportedStatement(statement, file, "backing index constraint could not be modeled");
+  }
+  const diagnostics = await finalizeObjects(extracted, { normalize: context.normalize });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: ordinal };
+  }
+  const applied = await applyExtractedObjects(
+    { context, file, objects, ordinal, statement },
+    extracted,
+    diagnostics
+  );
+  if (!applied.hardFail) {
+    objects.delete(backing[0]);
+  }
+  return applied;
+}
+
+function attachableUniqueIndexColumns(
+  index: AstNode,
+  table: SchemaObject,
+  indexName: string
+): string[] | undefined {
+  const relation = rangeVarName(index.relation);
+  if (
+    readString(index.idxname) !== indexName ||
+    readBoolean(index.unique) !== true ||
+    readString(index.accessMethod) !== "btree" ||
+    !relation ||
+    relation.name !== table.ref.name ||
+    (relation.schema ?? "public") !== (table.ref.schema ?? "public") ||
+    index.whereClause !== undefined ||
+    readArray(index.indexIncludingParams).length > 0 ||
+    readArray(index.options).length > 0 ||
+    readString(index.tableSpace) !== undefined
+  ) {
+    return;
+  }
+  const columns: string[] = [];
+  for (const item of readArray(index.indexParams)) {
+    const element = asRecord(asRecord(item)?.IndexElem);
+    const name = readString(element?.name);
+    if (
+      !(element && name) ||
+      element.expr !== undefined ||
+      readArray(element.collation).length > 0 ||
+      readArray(element.opclass).length > 0 ||
+      readArray(element.opclassopts).length > 0 ||
+      readString(element.ordering) !== "SORTBY_DEFAULT" ||
+      readString(element.nulls_ordering) !== "SORTBY_NULLS_DEFAULT"
+    ) {
+      return;
+    }
+    columns.push(name);
+  }
+  return columns.length > 0 ? columns : undefined;
 }
 
 async function applyAddColumn(
@@ -711,7 +934,8 @@ async function applyAddColumn(
     columnDef,
     tableName,
     statement.text,
-    statement.byteStart
+    statement.byteStart,
+    constraintNamesForSchema(objects, tableName.schema ?? "public")
   ).map((synthesized, index) =>
     makeObject(
       {
@@ -737,6 +961,14 @@ async function applyAddColumn(
     { context, file, objects, ordinal, statement },
     extracted,
     diagnostics
+  );
+}
+
+function constraintNamesForSchema(objects: Map<string, SchemaObject>, schema: string): string[] {
+  return [...objects.values()].flatMap((object) =>
+    object.ref.kind === "constraint" && (object.ref.schema ?? "public") === schema
+      ? [object.ref.name]
+      : []
   );
 }
 
@@ -983,6 +1215,7 @@ async function applyRename(
   statement: AstStatement,
   node: AstNode,
   objects: Map<string, SchemaObject>,
+  context: ReplayContext,
   file: string
 ): Promise<ReplayResult> {
   const renameType = readString(node.renameType);
@@ -993,7 +1226,7 @@ async function applyRename(
     return await applyTableRename(statement, node, objects, renameType, file);
   }
   if (renameType === "OBJECT_INDEX") {
-    return applyObjectRename(statement, node, objects, "index", file);
+    return await applyIndexRename(statement, node, objects, context, file);
   }
   return unsupportedStatement(
     statement,
@@ -1733,29 +1966,29 @@ function mutableSet(value: MutableRecord, key: string, next: unknown): void {
   Reflect.set(value, key, next);
 }
 
-function applyObjectRename(
+async function applyIndexRename(
   statement: AstStatement,
   node: AstNode,
   objects: Map<string, SchemaObject>,
-  kind: ObjectKind,
+  context: ReplayContext,
   file: string
-): ReplayResult {
+): Promise<ReplayResult> {
   const oldName = rangeVarName(node.relation);
   const newName = stringNode(node.newname);
   if (!(oldName && newName)) {
-    return unsupportedStatement(statement, file, `${kind} rename target could not be resolved`);
+    return unsupportedStatement(statement, file, "index rename target could not be resolved");
   }
   const ref: ObjectRef =
     oldName.schema === undefined
-      ? { kind, name: oldName.name }
-      : { kind, name: oldName.name, schema: oldName.schema };
+      ? { kind: "index", name: oldName.name }
+      : { kind: "index", name: oldName.name, schema: oldName.schema };
   const target = [...objects].find(([, object]) => matchesDropRef(object.ref, ref));
   if (!target) {
     if (readBoolean(node.missing_ok) === true) {
       return emptyResult();
     }
     return orderGap(
-      `RENAME ${kind.toUpperCase()} targets absent object ${qualifiedObjectName(oldName)}`,
+      `RENAME INDEX targets absent object ${qualifiedObjectName(oldName)}`,
       file,
       statement.text,
       ref
@@ -1768,15 +2001,60 @@ function applyObjectRename(
     )
   ) {
     return orderGap(
-      `RENAME ${kind.toUpperCase()} would duplicate ${objectKey(nextRef)}`,
+      `RENAME INDEX would duplicate ${objectKey(nextRef)}`,
       file,
       statement.text,
       nextRef
     );
   }
+  const parsed = await parseSqlAst(target[1].sql, target[1].file);
+  if (parsed.ast === undefined || hasErrors(parsed.diagnostics)) {
+    return unsupportedStatement(
+      statement,
+      file,
+      `could not parse ${target[1].key} while renaming migration replay state`
+    );
+  }
+  const ast = structuredClone(parsed.ast);
+  let changed = false;
+  visitMutableAst(ast, (astNode) => {
+    const index = mutableRecord(mutableGet(astNode, "IndexStmt"));
+    if (index && mutableGet(index, "idxname") === oldName.name) {
+      mutableSet(index, "idxname", newName);
+      changed = true;
+    }
+  });
+  if (!changed) {
+    return unsupportedStatement(
+      statement,
+      file,
+      `${target[1].key} has no rewritable index definition`
+    );
+  }
+  let sql: string;
+  try {
+    sql = deparseSync(JSON.parse(JSON.stringify(ast)));
+  } catch {
+    return unsupportedStatement(
+      statement,
+      file,
+      `could not deparse ${target[1].key} while renaming migration replay state`
+    );
+  }
+  const next = makeObject(
+    nextRef,
+    sql,
+    target[1].ordinal,
+    target[1].file,
+    structuredClone(target[1].metadata)
+  );
+  const diagnostics = await finalizeObjects([next], { normalize: context.normalize });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: undefined };
+  }
   objects.delete(target[0]);
-  objects.set(objectKey(nextRef), renamedObject(target[1], nextRef, statement.text));
-  return emptyResult();
+  objects.set(objectKey(nextRef), next);
+  return { diagnostics, hardFail: false, nextOrdinal: undefined };
 }
 
 function dropTargets(removeType: string | undefined, node: AstNode): DropTarget[] {

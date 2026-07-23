@@ -139,6 +139,10 @@ interface GrantRenderMetadata extends PrivilegeMetadata {
 }
 
 export function renderGrantCreate(object: SchemaObject): string {
+  const unsupportedForm = object.metadata.unsupportedPrivilegeForm;
+  if (typeof unsupportedForm === "string") {
+    throw new Error(`unsupported ${unsupportedForm} privilege statement: ${object.sql}`);
+  }
   const metadata = grantRenderMetadata(object);
   if (!metadata) {
     return ensureSemicolon(object.sql);

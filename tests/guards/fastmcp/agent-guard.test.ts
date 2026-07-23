@@ -5,7 +5,6 @@ import { tempGuardRepo } from "../fixture.js";
 const activeServerNames = [
   "cloudflare-api",
   "cloudflare-docs",
-  "cclsp",
   "supaschema",
   "context7",
   "mintlify",
@@ -37,11 +36,6 @@ const registryServers: Record<string, ServerConfig> = {
   "cloudflare-docs": {
     type: "http",
     url: "https://docs.mcp.cloudflare.com/mcp",
-  },
-  cclsp: {
-    command: "npx",
-    args: ["--no-install", "cclsp"],
-    env: { CCLSP_CONFIG_PATH: "cclsp.json" },
   },
   supaschema: {
     command: "uv",
@@ -79,11 +73,6 @@ const codexServers: Record<string, ServerConfig> = {
     bearer_token_env_var: "CLOUDFLARE_API_TOKEN",
   },
   "cloudflare-docs": { url: "https://docs.mcp.cloudflare.com/mcp" },
-  cclsp: {
-    command: "npx",
-    args: ["--no-install", "cclsp"],
-    env: { CCLSP_CONFIG_PATH: "cclsp.json" },
-  },
   supaschema: {
     command: "uv",
     args: [
@@ -278,17 +267,17 @@ describe("FastMCP agent guard", () => {
     );
   });
 
-  it("rejects exact cclsp registry wiring drift", () => {
+  it("rejects cclsp as a disallowed registry server", () => {
     const root = fixture((state) => {
       state.registryServers.cclsp = {
         command: "npx",
-        args: ["cclsp"],
+        args: ["--no-install", "cclsp"],
         env: { CCLSP_CONFIG_PATH: "cclsp.json" },
       };
     });
 
     expect(() => check(root)).toThrow(
-      ".mcp.json registry wiring, transport, or authentication drifted"
+      ".mcp.json registry must contain exactly the approved active and registry-only servers"
     );
   });
 
