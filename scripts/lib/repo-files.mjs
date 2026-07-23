@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep, toNamespacedPath } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 
 export const LOCAL_REPOSITORY_FILES = [
   "package.json",
@@ -89,22 +89,16 @@ export function isRepositoryContextPath(file) {
   return !file.split("/").some((segment) => REPOSITORY_DENY_SEGMENTS.has(segment));
 }
 
-function isWithin(root, file) {
-  const pathFromRoot = relative(toNamespacedPath(root), toNamespacedPath(file));
-  return pathFromRoot !== ".." && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot);
+function repositoryPathContainsOrEqual(root, file) {
+  return root === "" || file === root || file.startsWith(`${root}/`);
 }
 
-function isSafeRegularFile(file, repositoryRoot) {
-  let resolvedFile;
+function isRegularFile(file) {
   try {
-    if (!lstatSync(file).isFile()) {
-      return false;
-    }
-    resolvedFile = realpathSync(file);
+    return lstatSync(file).isFile();
   } catch {
     return false;
   }
-  return isWithin(repositoryRoot, resolvedFile);
 }
 
 export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {}) {
@@ -115,10 +109,9 @@ export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {})
       encoding: "utf8",
     }).trim()
   );
-  const ownedRoots = roots.map((root) => {
-    const absoluteRoot = resolve(workingDirectory, root);
-    return existsSync(absoluteRoot) ? realpathSync(absoluteRoot) : absoluteRoot;
-  });
+  const ownedRoots = roots.map((root) =>
+    relative(repoRoot, resolve(workingDirectory, root)).split(sep).join("/")
+  );
   const output = execFileSync(
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
@@ -128,9 +121,10 @@ export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {})
   return output
     .split("\0")
     .filter(Boolean)
+    .filter((file) => file.endsWith(extension))
+    .filter((file) => ownedRoots.some((root) => repositoryPathContainsOrEqual(root, file)))
     .map((file) => join(repoRoot, file))
-    .filter((file) => file.endsWith(extension) && isSafeRegularFile(file, repoRoot))
-    .filter((file) => ownedRoots.some((root) => isWithin(root, file)))
-    .map((file) => relative(workingDirectory, file))
+    .filter(isRegularFile)
+    .map((file) => relative(workingDirectory, file).split(sep).join("/"))
     .sort();
 }
