@@ -112,10 +112,17 @@ function repositoryPathFromRecord(record) {
 }
 
 export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {}) {
-  const workingDirectory = realpathSync(cwd);
+  const requestedWorkingDirectory = realpathSync(cwd);
   const repoRoot = realpathSync(
     execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd: workingDirectory,
+      cwd: requestedWorkingDirectory,
+      encoding: "utf8",
+    }).trim()
+  );
+  const workingDirectory = resolve(
+    repoRoot,
+    execFileSync("git", ["rev-parse", "--show-prefix"], {
+      cwd: requestedWorkingDirectory,
       encoding: "utf8",
     }).trim()
   );

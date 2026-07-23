@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { lstatSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { main as formatMain, validateFormatTargets } from "../scripts/format.mjs";
 import {
@@ -16,49 +15,6 @@ import {
 import { main as lintMain, parseLintArguments } from "../scripts/lint.mjs";
 
 const temporaryRoots: string[] = [];
-
-function windowsFileDiscoveryDiagnostics(root: string) {
-  const workingDirectory = realpathSync(root);
-  const gitRootOutput = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-    cwd: workingDirectory,
-    encoding: "utf8",
-  }).trim();
-  const repoRoot = realpathSync(gitRootOutput);
-  const cachedOutput = execFileSync("git", ["ls-files", "--cached", "-z"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  const otherOutput = execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  const eolOutput = execFileSync(
-    "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard", "--eol", "-z"],
-    { cwd: repoRoot, encoding: "utf8" }
-  );
-  const repositoryFiles = `${cachedOutput}${otherOutput}`.split("\0").filter(Boolean);
-
-  return {
-    root,
-    workingDirectory,
-    gitRootOutput,
-    repoRoot,
-    ownedRoot: relative(repoRoot, resolve(workingDirectory, ".")),
-    cachedOutput,
-    otherOutput,
-    eolOutput,
-    eolHex: Buffer.from(eolOutput).toString("hex"),
-    candidates: repositoryFiles.map((file) => {
-      const absoluteFile = resolve(repoRoot, file);
-      try {
-        return { file, absoluteFile, isFile: lstatSync(absoluteFile).isFile() };
-      } catch (error) {
-        return { file, absoluteFile, error: String(error) };
-      }
-    }),
-  };
-}
 
 describe("formatter file discovery", () => {
   afterEach(async () => {
@@ -98,13 +54,10 @@ describe("formatter file discovery", () => {
       stdio: "ignore",
     });
 
-    const discoveredTomlFiles = collectRepoFiles(["."], ".toml", { cwd: root });
-    if (process.platform === "win32" && discoveredTomlFiles.length === 0) {
-      throw new Error(
-        `Windows file discovery diagnostics: ${JSON.stringify(windowsFileDiscoveryDiagnostics(root))}`
-      );
-    }
-    expect(discoveredTomlFiles).toEqual(["tracked.toml", "visible.toml"]);
+    expect(collectRepoFiles(["."], ".toml", { cwd: root })).toEqual([
+      "tracked.toml",
+      "visible.toml",
+    ]);
     expect(collectRepoFiles(["scripts"], ".sh", { cwd: root })).toEqual([
       "scripts/tracked.sh",
       "scripts/untracked.sh",
@@ -113,6 +66,10 @@ describe("formatter file discovery", () => {
       "scripts/untracked.sh",
     ]);
     expect(collectRepoFiles(["scripts"], ".mjs", { cwd: root })).toEqual([]);
+    expect(collectRepoFiles(["."], ".sh", { cwd: join(root, "scripts") })).toEqual([
+      "tracked.sh",
+      "untracked.sh",
+    ]);
   });
 
   it("keeps local repository and Biome inventory in the shared file owner", () => {
