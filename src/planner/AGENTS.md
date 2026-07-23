@@ -2,10 +2,11 @@
 
 ## Contract
 
-This directory converts before/after schema models into ordered migration operations. It is included so destructive disposition, dependency ordering, replacement policy, and table alteration policy are decided before SQL rendering.
+This directory owns the full planning lifecycle from generation-context resolution through ordered migration operations. It resolves generation sources and builds the before/after schema models before deciding destructive disposition, dependency ordering, replacement policy, and table alteration policy for SQL rendering.
 
 ## Contents
 
+- `context.ts` resolves generation sources and builds the before/after schema models.
 - `schema.ts` plans object-level schema diffs.
 - `table.ts` plans table and column alterations.
 - `replace.ts` classifies replace/drop safety and destructive hints.

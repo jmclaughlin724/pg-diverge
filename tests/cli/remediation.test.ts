@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { Diagnostic } from "../../src/core.js";
 import {
   buildRemediationPlan,
   remediationCacheKey,
   remediationPrompt,
-} from "../../src/remediation.js";
+} from "../../src/cli/reports.js";
+import type { Diagnostic } from "../../src/types.js";
 
 const finding: Diagnostic = {
   code: "SUPA_RULE_RLS_NO_POLICY",

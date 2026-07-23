@@ -13,10 +13,8 @@ concurrency:
 jobs:
   dependency-review:
     # Block PRs that introduce known-vulnerable or license-incompatible deps
-    # before merge. supaschema ships dual-licensed: AGPL-3.0-only (LICENSE) for
-    # open-source use, or a commercial license (LICENSE-COMMERCIAL.md) for
-    # proprietary/hosted use. Fail closed when a changed dependency introduces
-    # a license outside the reviewed SPDX allow-list below.
+    # before merge. supaschema ships under MIT; fail closed when a changed
+    # dependency introduces a license outside the reviewed SPDX allow-list.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

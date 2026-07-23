@@ -1,17 +1,12 @@
 # Third-Party Notices
 
-supaschema is **dual-licensed**:
-
-- **AGPL-3.0-only** — see [`LICENSE`](./LICENSE).
-- **Commercial license** — see [`LICENSE-COMMERCIAL.md`](./LICENSE-COMMERCIAL.md).
-
-Choose the license that fits your use. The AGPL-3.0-only terms apply unless you hold a separate commercial license.
+supaschema is distributed under the **MIT License**. See [`LICENSE`](./LICENSE).
 
 This file is a concise attribution notice for supaschema's **direct runtime dependencies** (the packages shipped to and resolved by consumers at runtime). It is not an exhaustive listing of the full transitive dependency tree; each dependency carries its own license and may pull in further dependencies under their respective terms. Run `npm ls --omit=dev` for the resolved runtime tree.
 
 ## Direct runtime dependencies
 
-All direct runtime dependencies are distributed under the **MIT License**.
+Direct runtime dependencies are distributed under the MIT or Apache-2.0 licenses.
 
 | Package | License | Source |
 | --- | --- | --- |
@@ -19,6 +14,7 @@ All direct runtime dependencies are distributed under the **MIT License**.
 | `libpg-query` | MIT | https://github.com/constructive-io/libpg-query-node |
 | `pg` | MIT | https://github.com/brianc/node-postgres |
 | `pgsql-deparser` | MIT | https://github.com/constructive-io/pgsql-parser |
+| `typescript` (`@typescript/typescript6`) | Apache-2.0 | https://github.com/microsoft/TypeScript |
 | `zod` | MIT | https://github.com/colinhacks/zod |
 
 ### MIT License
@@ -45,4 +41,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-The full license text for each dependency is included in that package's distribution under `node_modules/<package>/` (e.g. its `LICENSE` file and the `license` field in its `package.json`).
+### Apache License 2.0
+
+The runtime `typescript` dependency resolves to the `@typescript/typescript6` compatibility package, which is provided under the Apache License 2.0. Its full license text is included in that package's distribution.
+
+The full license text for each dependency is included in that package's distribution under `node_modules/<package>/` (for example, its `LICENSE` file and the `license` field in its `package.json`).

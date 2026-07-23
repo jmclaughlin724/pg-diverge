@@ -438,6 +438,16 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     expect(existsSync(join(consumer2, "node_modules", "supaschema", "bin", "scaffold.mjs"))).toBe(
       true
     );
+    expect(
+      existsSync(
+        join(consumer2, "node_modules", "supaschema", "agent-bundle", "docs", "coding-agents.mdx")
+      )
+    ).toBe(true);
+    expect(
+      existsSync(join(consumer2, "node_modules", "supaschema", "agent-bundle", "docs", "index.md"))
+    ).toBe(true);
+    expect(existsSync(join(consumer2, "agent-bundle", "docs"))).toBe(false);
+    expect(existsSync(join(consumer2, ".agents", "docs"))).toBe(false);
   });
 
   it("supaschema init scaffolds config and active agent enforcement by default", async () => {
@@ -459,6 +469,8 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     for (const file of excludedMaintainerFiles) {
       expect(existsSync(join(consumer2, file)), file).toBe(false);
     }
+    expect(existsSync(join(consumer2, "agent-bundle", "docs"))).toBe(false);
+    expect(existsSync(join(consumer2, ".agents", "docs"))).toBe(false);
     expect(existsSync(join(consumer2, ".supaschema"))).toBe(false);
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
     expect(first.stdout).toContain("agent bundle");

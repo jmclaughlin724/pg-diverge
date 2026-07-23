@@ -8,13 +8,28 @@ const verificationDomainLexicon = [
   ["docs", ["docs", "documentation"]],
   ["build", ["build", "builds"]],
   ["package", ["package", "packages", "tarball"]],
-  ["github-checks", ["checks", "check", "ci", "github"]],
+  ["github-checks", ["ci", "github"]],
   ["sync", ["sync", "synced"]],
   ["code-atlas", ["atlas"]],
 ];
 const verificationDomainOfWord = new Map(
   verificationDomainLexicon.flatMap(([domain, words]) => words.map((word) => [word, domain]))
 );
+const compoundDomainOfTail = new Map([
+  ["suite", "test"],
+  ["suites", "test"],
+  ["run", "test"],
+  ["runs", "test"],
+  ["command", "guard"],
+  ["commands", "guard"],
+  ["step", "typecheck"],
+  ["steps", "typecheck"],
+  ["task", "lint"],
+  ["tasks", "lint"],
+  ["job", "build"],
+  ["jobs", "build"],
+]);
+const verificationCheckTails = new Set(["check", "checks"]);
 const successPredicates = new Set([
   "pass",
   "passes",
@@ -30,56 +45,41 @@ const successPredicates = new Set([
   "succeeded",
   "success",
   "successful",
-  "complete",
-  "completes",
-  "completed",
 ]);
-const predicateBlockers = new Set([
-  ...successPredicates,
-  "fail",
-  "fails",
-  "failed",
-  "failing",
-  "error",
-  "errors",
-  "broken",
-  "crash",
-  "crashed",
-  "red",
-  "incomplete",
-  "missing",
+const claimJoiners = new Set([
+  "a",
+  "all",
+  "already",
+  "an",
+  "are",
+  "be",
+  "been",
+  "being",
+  "both",
+  "did",
+  "do",
+  "does",
+  "had",
+  "has",
+  "have",
+  "is",
+  "now",
+  "successfully",
+  "the",
+  "was",
+  "were",
 ]);
-const subjectBlockers = new Set([
-  "it",
-  "they",
-  "them",
-  "this",
-  "that",
-  "these",
-  "those",
-  "he",
-  "she",
-  "we",
-  "i",
-  "you",
-  "which",
-  "who",
-  "what",
-  "not",
-  "never",
-  "no",
-  "neither",
-  "nor",
-  "n't",
-  "cannot",
-  "can't",
-  "won't",
-  "didn't",
-  "doesn't",
-  "isn't",
-  "aren't",
-  "wasn't",
-  "weren't",
+const coordinationJoiners = new Set(["and", "or"]);
+const associationBoundaries = new Set([
+  "about",
+  "analysing",
+  "analyzing",
+  "around",
+  "concerning",
+  "covering",
+  "describing",
+  "discussing",
+  "examining",
   "of",
   "for",
   "to",
@@ -92,6 +92,10 @@ const subjectBlockers = new Set([
   "than",
   "at",
   "as",
+  "mentioning",
+  "regarding",
+  "reviewing",
+  "studying",
 ]);
 const negationBlockers = new Set([
   "not",
@@ -133,14 +137,17 @@ export function claimedVerificationDomains(message) {
   return [...claims];
 }
 
-export function claimWithoutEvidence(message, state, transcript = []) {
+export function verificationClaimConflict(message, state, transcript, runtime) {
   const claims = claimedVerificationDomains(message);
   if (claims.length === 0) {
     return;
   }
   const evidenceItems = [...currentTurnState(state).evidence, ...transcript];
   const contradicted = claims.filter((domain) => hasUnresolvedFailure(evidenceItems, domain));
-  const missing = claims.filter((domain) => !hasSuccessfulEvidence(evidenceItems, domain));
+  const missing =
+    runtime === "codex"
+      ? []
+      : claims.filter((domain) => !hasSuccessfulEvidence(evidenceItems, domain));
   if (contradicted.length === 0 && missing.length === 0) {
     return;
   }
@@ -154,7 +161,7 @@ export function claimWithoutEvidence(message, state, transcript = []) {
   ].filter((item) => item !== undefined);
   return {
     id: "claim-without-evidence",
-    message: `The response claims verification while ${details.join("; ")}.`,
+    message: `The response claims verification while ${details.join("; ")}. Provide matching command evidence, remove the verification claim, or state that verification was not run.`,
   };
 }
 
@@ -187,29 +194,91 @@ function clauseDomainClaims(clause) {
   const tokens = tokenize(clause);
   const claims = new Set();
   for (let predicateIndex = 0; predicateIndex < tokens.length; predicateIndex += 1) {
-    if (!successPredicates.has(tokens[predicateIndex])) {
+    const scanStart = claimScanStart(tokens, predicateIndex);
+    if (scanStart === undefined) {
       continue;
     }
-    const predicateClaims = new Set();
-    for (let index = predicateIndex - 1; index >= 0; index -= 1) {
-      const word = tokens[index];
-      if (negationBlockers.has(word)) {
-        predicateClaims.clear();
-        break;
-      }
-      if (subjectBlockers.has(word) || predicateBlockers.has(word)) {
-        break;
-      }
-      const domain = verificationDomainOfWord.get(word);
-      if (domain) {
-        predicateClaims.add(domain);
-      }
-    }
-    for (const claim of predicateClaims) {
+    for (const claim of scanPredicateClaims(tokens, scanStart)) {
       claims.add(claim);
     }
   }
   return [...claims];
+}
+
+function scanPredicateClaims(tokens, scanStart) {
+  const claims = new Set();
+  let coordinated = false;
+  let sawDomain = false;
+  for (let index = scanStart; index >= 0; index -= 1) {
+    const word = tokens[index];
+    if (negationBlockers.has(word)) {
+      claims.clear();
+      break;
+    }
+    const match = verificationDomainMatch(tokens, index);
+    if (match) {
+      if (!sawDomain || coordinated) {
+        claims.add(match.domain);
+      }
+      coordinated = false;
+      sawDomain = true;
+      index -= match.width - 1;
+      continue;
+    }
+    if (coordinationJoiners.has(word) && sawDomain) {
+      coordinated = true;
+      continue;
+    }
+    if (claimJoiners.has(word)) {
+      continue;
+    }
+    if (associationBoundaries.has(word)) {
+      claims.clear();
+      coordinated = false;
+      sawDomain = false;
+      continue;
+    }
+    if (sawDomain && hasEarlierAssociationBoundary(tokens, index)) {
+      claims.clear();
+    }
+    break;
+  }
+  return claims;
+}
+
+function verificationDomainMatch(tokens, index) {
+  const compoundDomain = compoundVerificationDomain(tokens, index);
+  if (compoundDomain) {
+    return { domain: compoundDomain, width: 2 };
+  }
+  const domain = verificationDomainOfWord.get(tokens[index]);
+  return domain ? { domain, width: 1 } : undefined;
+}
+
+function claimScanStart(tokens, predicateIndex) {
+  if (successPredicates.has(tokens[predicateIndex])) {
+    return predicateIndex - 1;
+  }
+  return tokens[predicateIndex] === "successfully" && tokens[predicateIndex - 1] === "completed"
+    ? predicateIndex - 2
+    : undefined;
+}
+
+function compoundVerificationDomain(tokens, tailIndex) {
+  const tail = tokens[tailIndex];
+  if (verificationCheckTails.has(tail)) {
+    const headIndex = tokens[tailIndex - 1] === "status" ? tailIndex - 2 : tailIndex - 1;
+    return verificationDomainOfWord.get(tokens[headIndex]);
+  }
+  const domain = compoundDomainOfTail.get(tail);
+  if (!domain) {
+    return;
+  }
+  return verificationDomainOfWord.get(tokens[tailIndex - 1]) === domain ? domain : undefined;
+}
+
+function hasEarlierAssociationBoundary(tokens, throughIndex) {
+  return tokens.slice(0, throughIndex + 1).some((word) => associationBoundaries.has(word));
 }
 
 function hasUnresolvedFailure(evidence, domain) {

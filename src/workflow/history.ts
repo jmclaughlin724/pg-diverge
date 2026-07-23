@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkMigrationSql } from "../check/migration.js";
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import type { MigrationRunnerKind, MigrationRunnerResult } from "../migrations/runners.js";
 import { migrationsStatus } from "../migrations/status.js";
+import type { Diagnostic, SupaschemaConfig } from "../types.js";
 import { render } from "./report.js";
 import type { SyncOptions, SyncResult } from "./sync.js";
 

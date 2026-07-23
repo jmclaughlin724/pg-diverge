@@ -365,6 +365,11 @@ describe("agent hook configuration", () => {
         })
       );
       const postToolUseText = JSON.stringify(hookEntries(settings, "PostToolUse"));
+      expect(hookEntries(settings, "PostToolUse").map((entry) => entry.matcher)).toEqual([
+        "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch|mcp__supaschema__code_atlas_query",
+        "Bash|Write|Edit|MultiEdit|apply_patch",
+        "Bash|Write|Edit|MultiEdit|apply_patch",
+      ]);
       expect(postToolUseText).toContain("sync-llm-on-claude-surface-change.mjs");
       expect(hookEntries(settings, "PostToolBatch")).toEqual([]);
       expect(JSON.stringify(hookEntries(settings, "Stop"))).toContain("context-stop.mjs");
@@ -386,6 +391,13 @@ describe("agent hook configuration", () => {
     }
     const postToolUseText = JSON.stringify(hookEntries(config, "PostToolUse"));
     const preToolUseText = JSON.stringify(hookEntries(config, "PreToolUse"));
+    expect(
+      hookEntries(config, "PostToolUse").find((entry) =>
+        JSON.stringify(entry).includes("context-post-tool-use.mjs")
+      )
+    ).toMatchObject({
+      matcher: "Bash|apply_patch|mcp__.*",
+    });
     expect(postToolUseText).toContain("sync-llm-on-claude-surface-change.mjs");
     expect(JSON.stringify(config)).toContain("context-user-prompt-submit.mjs");
     expect(JSON.stringify(config)).toContain("context-pre-tool-use.mjs");
@@ -402,6 +414,8 @@ describe("agent hook configuration", () => {
     expect(preToolUseText).toContain("apply_patch");
     expect(preToolUseText).not.toContain("exec_command");
     expect(preToolUseText).not.toContain("functions.");
+    expect(postToolUseText).not.toContain("exec_command");
+    expect(postToolUseText).not.toContain("functions.");
     expect(JSON.stringify(config)).toContain("hook generated-migration-edit");
     expect(JSON.stringify(config)).toContain("hook schema-write");
     expect(JSON.stringify(config)).not.toContain("npm exec -- supaschema");
@@ -482,6 +496,7 @@ describe("general Bash blocker policy", () => {
     "git branch -D main",
     "git branch -D feature/one feature/two",
     "git worktree add ../demo HEAD",
+    "git worktree remove ../demo",
     "git stash",
     "git clean -fd",
     "git clean -xdf",
@@ -555,11 +570,62 @@ describe("general Bash blocker policy", () => {
   it.each([
     "git status --short",
     "git rev-parse --abbrev-ref HEAD",
+    "git worktree list --porcelain -z",
+    "/usr/bin/git worktree list --porcelain -z",
+    "git -c alias.wt=worktree status --short",
+    "git -c user.email=a@b.c status --short",
     "git -C . status --short",
     "git --no-pager rev-parse --abbrev-ref HEAD",
+    "echo $(command -v git) worktree add ../demo HEAD",
+    "git help worktree",
+    "man git-worktree",
+    "git worktree list --porcelain -z | head",
   ])("allows stateless git diagnostic: %s", async (command) => {
     const result = await runHook(claudeScript, preToolBash(command));
     expect(result.code, command).toBe(0);
+  });
+
+  it.each([
+    "git worktree list",
+    "git worktree list --porcelain",
+    "git worktree list --porcelain -z --verbose",
+    "git -C . worktree list --porcelain -z",
+    "git --no-pager worktree list --porcelain -z",
+  ])("blocks noncanonical worktree inventory: %s", async (command) => {
+    const result = await runHook(claudeScript, preToolBash(command));
+    expect(result.code, command).toBe(2);
+  });
+
+  it.each([
+    "git worktree lock ../demo",
+    "git worktree move ../demo ../moved",
+    "git worktree prune",
+    "git worktree repair ../demo",
+    "git worktree unlock ../demo",
+    "/usr/bin/git worktree add ../demo HEAD",
+    "command /opt/homebrew/bin/git worktree remove ../demo",
+    '"C:/Program Files/Git/cmd/git.exe" worktree add ../demo HEAD',
+    "git-worktree add ../demo HEAD",
+    "/usr/libexec/git-core/git-worktree remove ../demo",
+    "git -c alias.wt=worktree wt add ../demo HEAD",
+    "git --config-env=alias.wt=GIT_ALIAS wt add ../demo HEAD",
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.wt GIT_CONFIG_VALUE_0=worktree git wt add ../demo HEAD",
+    "git config alias.wt worktree",
+    "$(command -v git) worktree add ../demo HEAD",
+    '"$(command -v git)" worktree remove ../demo',
+    "$GIT worktree add ../demo HEAD",
+    "`command -v git` worktree add ../demo HEAD",
+    'env -S "git worktree add ../demo HEAD"',
+    'env --split-string="git worktree add ../demo HEAD"',
+    "sudo git worktree add ../demo HEAD",
+    "/bin/bash -lc 'git worktree add ../demo HEAD'",
+    Array.from({ length: 4 }).reduce(
+      (nested) => `bash -lc ${JSON.stringify(nested)}`,
+      "git worktree add ../demo HEAD"
+    ),
+  ])("blocks worktree policy bypass: %s", async (command) => {
+    const result = await runHook(claudeScript, preToolBash(command));
+    expect(result.code, command).toBe(2);
   });
 
   it.each([
@@ -641,7 +707,25 @@ describe("general Bash blocker policy", () => {
       preToolBash("git worktree add ../demo HEAD")
     );
     expect(blockedWorktree.code).toBe(0);
-    expect(codexDenial(blockedWorktree.stdout)).toContain("git worktree is prohibited");
+    expect(codexDenial(blockedWorktree.stdout)).toContain("git worktree is limited");
+
+    for (const command of [
+      "/usr/bin/git worktree add ../demo HEAD",
+      "git -c alias.wt=worktree wt add ../demo HEAD",
+      "$(command -v git) worktree add ../demo HEAD",
+      'env -S "git worktree add ../demo HEAD"',
+    ]) {
+      const result = await runHook(codexScript, preToolBash(command));
+      expect(result.code, command).toBe(0);
+      expect(codexDenial(result.stdout), command).toContain("BLOCKED:");
+    }
+
+    const allowedWorktree = await runHook(
+      codexScript,
+      preToolBash("git worktree list --porcelain -z")
+    );
+    expect(allowedWorktree.code).toBe(0);
+    expect(JSON.parse(allowedWorktree.stdout)).toEqual({});
 
     const blockedSwitch = await runHook(codexScript, preToolBash("git switch feature/demo"));
     expect(blockedSwitch.code).toBe(0);
@@ -660,17 +744,29 @@ describe("general Bash blocker policy", () => {
   });
 
   it("blocks unsafe Bash through the source Codex context hook path", async () => {
-    const blocked = await runHook(sourceCodexScript, preToolBash("rm -rf tmp"));
-
-    expect(blocked.code).toBe(0);
-    expect(codexDenial(blocked.stdout)).toContain("recursive+force rm");
+    for (const command of [
+      "rm -rf tmp",
+      "/usr/bin/git worktree add ../demo HEAD",
+      "git -c alias.wt=worktree wt add ../demo HEAD",
+      "$(command -v git) worktree add ../demo HEAD",
+    ]) {
+      const blocked = await runHook(sourceCodexScript, preToolBash(command));
+      expect(blocked.code, command).toBe(0);
+      expect(codexDenial(blocked.stdout), command).toContain("BLOCKED:");
+    }
   });
 
   it("blocks unsafe Bash through the source Claude context hook path", async () => {
-    const blocked = await runHook(sourceClaudeScript, preToolBash("rm -rf tmp"));
-
-    expect(blocked.code).toBe(0);
-    expect(codexDenial(blocked.stdout)).toContain("recursive+force rm");
+    for (const command of [
+      "rm -rf tmp",
+      "/usr/bin/git worktree add ../demo HEAD",
+      "git -c alias.wt=worktree wt add ../demo HEAD",
+      "$(command -v git) worktree add ../demo HEAD",
+    ]) {
+      const blocked = await runHook(sourceClaudeScript, preToolBash(command));
+      expect(blocked.code, command).toBe(0);
+      expect(codexDenial(blocked.stdout), command).toContain("BLOCKED:");
+    }
   });
 });
 
@@ -936,7 +1032,7 @@ describe("codex generated-migration tool gate", () => {
 describe.skipIf(!hasPrivateContextHooks)("agent-hooks PreToolUse subagent downgrade", () => {
   it("hard-denies a gated tool in the main session but only advises inside a subagent", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-state-"));
-    const env = { ...process.env, SUPASCHEMA_AGENT_HOOK_STATE_DIR: stateDir };
+    const env = { ...process.env, STATE_DIR: stateDir };
     const session = "subagent-downgrade-test";
     const promptHook = ".claude/hooks/context-user-prompt-submit.mjs";
     const preToolHook = ".claude/hooks/context-pre-tool-use.mjs";

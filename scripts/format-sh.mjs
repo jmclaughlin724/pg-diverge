@@ -2,10 +2,10 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { print } from "sh-syntax";
-import { collectFiles } from "./lib/walk-files.mjs";
+import { collectRepoFiles } from "./lib/repo-files.mjs";
 
 const roots = process.argv.slice(2);
-const files = collectFiles(roots.length > 0 ? roots : ["."], ".sh");
+const files = collectRepoFiles(roots.length > 0 ? roots : ["."], ".sh");
 
 let changed = 0;
 for (const file of files) {

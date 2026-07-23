@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
-import type { SchemaModel } from "../../src/core.js";
 import { resolveDatabaseUrl } from "../../src/database/url.js";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderMigrationSplit } from "../../src/render/migration.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
+import type { SchemaModel } from "../../src/types.js";
 import { supabaseEnvironmentStubSql } from "../../src/verify/environment.js";
 import { verifyMigration } from "../../src/verify/migration.js";
 

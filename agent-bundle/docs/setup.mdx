@@ -1,0 +1,79 @@
+---
+title: "Setup"
+description: "Review install-time setup, verify the environment, and find detailed configuration options."
+keywords: ["setup", "configuration", "agent bundle", "schema paths"]
+---
+
+Use this page to confirm paths and setup output after install.
+
+Command examples show `supaschema` as CLI syntax. In a project install, run it through the local runner from [Installation](/installation).
+
+After installing the package, run `init` through the local runner for your package manager:
+
+```bash
+supaschema init
+```
+
+## Path selection
+
+Install scans the repository before writing config:
+
+- one detected schema folder and one detected migrations folder are used automatically;
+- provider markers seed default folders when no existing folders are found;
+- Supabase projects use Supabase CLI sync targets by default;
+- non-Supabase projects reuse existing database URL environment variable names from `.env*` files when present;
+- generic PostgreSQL projects use `database/schemas` and `database/migrations`;
+- multiple candidates that still need confirmation are recorded in `.supaschema/install.json` with `agentInstructions`;
+- interactive terminals can confirm paths immediately.
+
+<Warning>
+  Do not run the first `diff` from a guessed path. If `.supaschema/install.json`
+  says `pathConfirmationNeeded: true`, follow its `agentInstructions`; `config
+  validate`, `doctor`, and zero-source `diff` block until
+  `supaschema.config.json` explicitly sets `schemaPaths` and `migrationsDir`.
+</Warning>
+
+Supabase projects with `_bootstrap` inventory or an owner brief marking `supabase/schemas/**` as non-generator inventory still get `supaschema.config.json`. Those installs set schema diff and migration sync to manual workflow policy so setup is usable immediately without enabling automatic schema-write migration generation. Supabase managed schemas are also seeded into `schemas.exclude`, and `_bootstrap` directories are skipped by schema-source readers because role/control-plane bootstrap SQL is not generated migration input.
+
+| Provider marker | Schema path | Migrations path |
+| --- | --- | --- |
+| `supabase/config.toml` | `supabase/schemas` | `supabase/migrations` |
+| `neon.toml`, `.neon/project.json`, `.neon/config.json`, or Neon references in `drizzle.config.*` | `neon/schemas` | `neon/migrations` |
+| RDS/Aurora markers in Terraform, CloudFormation/SAM, CDK, SST, or Serverless config | `aws-postgresql/schemas` | `aws-postgresql/migrations` |
+| Cloud SQL markers in Terraform, Cloud Build, or App Engine config | `cloud-sql/schemas` | `cloud-sql/migrations` |
+| AlloyDB markers in Terraform, Cloud Build, or App Engine config | `alloydb/schemas` | `alloydb/migrations` |
+| Azure PostgreSQL markers in Terraform, Bicep, ARM, or Azure Developer CLI config | `azure-postgresql/schemas` | `azure-postgresql/migrations` |
+
+Commit `supaschema.config.json` after confirming paths. It keeps humans, CI, and coding agents on the same schema tree and migration directory.
+
+Resolved installs do not create `.supaschema/` or supaschema-only credential files; `supaschema.config.json` is the durable project state.
+
+## Agent addendum
+
+Default install writes package-owned `.agents`, `.claude`, and `.codex` enforcement files when they are missing and merges the matching hook registration for the detected package manager. It preserves existing non-identical files, reports skipped non-mergeable hook config for agent repair, and does not write `AGENTS.md` or `CLAUDE.md`.
+
+If an existing project already uses `AGENTS.md` or `CLAUDE.md`, keep those files as consumer-owned root briefs and point them at the installed `.agents/prompts/supaschema-install.md` only when the project wants that routing.
+
+## Check setup
+
+Run `doctor` when setup behaves unexpectedly:
+
+```bash
+supaschema doctor
+```
+
+`doctor` checks Node, parser load, config validity, database URL resolution, optional database reachability, `CREATEDB`, migration history, and declarative schema paths.
+
+## Configuration
+
+<CardGroup cols={3}>
+  <Card title="Config file" icon="file-json" href="/configuration/config-file">
+    Review paths, migrations, type outputs, validators, and planner policies.
+  </Card>
+  <Card title="Environments" icon="database" href="/configuration/environments">
+    Configure named targets and database URL resolution.
+  </Card>
+  <Card title="Hints" icon="shield-alert" href="/configuration/hints">
+    Approve reviewed destructive changes and renames.
+  </Card>
+</CardGroup>

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import ts from "typescript-compiler-api";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const workflowSources = [
@@ -66,7 +66,7 @@ describe.skipIf(!hasWorkflowSources)("extracted workflow sources", () => {
     ]);
 
     expect(workerText).toContain("Do not stage, commit, push");
-    expect(workerText).toContain("FILES:");
+    expect(workerText).toContain("Findings or files changed, with precise references.");
     expect(workerText).not.toContain("Committed abc123");
 
     expect(batchText).toContain("workers edit the current branch in the current worktree");

@@ -11,10 +11,42 @@ export interface SynthesizedConstraint {
   sql: string;
 }
 
+interface ConstraintNameParts {
+  label: string;
+  name1: string;
+  name2?: string;
+}
+
+const postgresIdentifierByteLimit = 63;
+
+class ConstraintNameAllocator {
+  readonly #used: Set<string>;
+
+  constructor(names: Iterable<string> = []) {
+    this.#used = new Set(names);
+  }
+
+  reserve(name: string): void {
+    this.#used.add(name);
+  }
+
+  allocate(parts: ConstraintNameParts): string {
+    for (let pass = 0; ; pass += 1) {
+      const label = pass === 0 ? parts.label : `${parts.label}${pass}`;
+      const candidate = postgresObjectName(parts.name1, parts.name2, label);
+      if (!this.#used.has(candidate)) {
+        this.#used.add(candidate);
+        return candidate;
+      }
+    }
+  }
+}
+
 export function tableConstraintSyntheses(
   createStmt: AstNode,
   sql: string,
-  byteOffset = 0
+  byteOffset = 0,
+  existingNames: Iterable<string> = []
 ): SynthesizedConstraint[] {
   const relation = rangeVarName(createStmt.relation);
   if (!relation) {
@@ -23,17 +55,30 @@ export function tableConstraintSyntheses(
   const qualified = formatQualifiedName(relation.schema, relation.name);
   const bytes = toByteString(sql);
   const syntheses: SynthesizedConstraint[] = [];
-  for (const element of tableElements(createStmt, bytes, byteOffset)) {
+  const elements = tableElements(createStmt, bytes, byteOffset);
+  const allocator = new ConstraintNameAllocator(existingNames);
+  for (const element of elements) {
     if (element.isColumn) {
       syntheses.push(
-        ...inlineConstraintSyntheses(element, bytes, byteOffset, relation.name, qualified)
+        ...inlineConstraintSyntheses(
+          element,
+          bytes,
+          byteOffset,
+          relation.name,
+          qualified,
+          allocator
+        )
       );
       continue;
     }
     const constraint = element.node;
     const text = fromByteString(elementText(bytes, element));
     const conname = readString(constraint.conname);
-    const name = conname ?? defaultConstraintName(relation.name, constraint, []);
+    if (conname) {
+      allocator.reserve(conname);
+    }
+    const parts = defaultConstraintNameParts(relation.name, constraint, []);
+    const name = conname ?? (parts ? allocator.allocate(parts) : undefined);
     if (!name) {
       continue;
     }
@@ -51,24 +96,28 @@ export function columnConstraintSyntheses(
   columnDef: AstNode,
   table: QualifiedName,
   sql: string,
-  byteOffset = 0
+  byteOffset = 0,
+  existingNames: Iterable<string> = []
 ): SynthesizedConstraint[] {
   const location = readNumber(columnDef.location);
   if (location === undefined) {
     return [];
   }
   const bytes = toByteString(sql);
+  const element: TableElement = {
+    end: bytes.length,
+    isColumn: true,
+    node: columnDef,
+    start: location - byteOffset,
+  };
+  const allocator = new ConstraintNameAllocator(existingNames);
   return inlineConstraintSyntheses(
-    {
-      end: bytes.length,
-      isColumn: true,
-      node: columnDef,
-      start: location - byteOffset,
-    },
+    element,
     bytes,
     byteOffset,
     table.name,
-    formatQualifiedName(table.schema, table.name)
+    formatQualifiedName(table.schema, table.name),
+    allocator
   );
 }
 
@@ -178,7 +227,8 @@ function inlineConstraintSyntheses(
   bytes: string,
   byteOffset: number,
   table: string,
-  qualified: string
+  qualified: string,
+  allocator: ConstraintNameAllocator
 ): SynthesizedConstraint[] {
   const column = readString(element.node.colname);
   if (!column) {
@@ -198,9 +248,11 @@ function inlineConstraintSyntheses(
     }
     const conname = readString(item.constraint.conname);
     if (conname) {
+      allocator.reserve(conname);
       text = skipConstraintNamePrefix(text);
     }
-    const name = conname ?? defaultConstraintName(table, item.constraint, [column]);
+    const parts = defaultConstraintNameParts(table, item.constraint, [column]);
+    const name = conname ?? (parts ? allocator.allocate(parts) : undefined);
     if (!name) {
       continue;
     }
@@ -335,11 +387,11 @@ function inlineConstraintBody(contype: string, column: string, text: string): st
   }
 }
 
-function defaultConstraintName(
+function defaultConstraintNameParts(
   table: string,
   constraint: AstNode,
   impliedColumns: string[]
-): string | undefined {
+): ConstraintNameParts | undefined {
   const contype = readString(constraint.contype);
   const keys = stringList(constraint.keys);
   const fkAttrs = stringList(constraint.fk_attrs);
@@ -347,20 +399,70 @@ function defaultConstraintName(
   const joined = columns.join("_");
   switch (contype) {
     case "CONSTR_PRIMARY":
-      return `${table}_pkey`;
+      return { label: "pkey", name1: table };
     case "CONSTR_UNIQUE":
-      return joined ? `${table}_${joined}_key` : undefined;
+      return joined ? { label: "key", name1: table, name2: joined } : undefined;
     case "CONSTR_FOREIGN":
-      return joined ? `${table}_${joined}_fkey` : undefined;
+      return joined ? { label: "fkey", name1: table, name2: joined } : undefined;
     case "CONSTR_CHECK": {
       const referenced = columns.length > 0 ? columns : expressionColumns(constraint.raw_expr);
-      return referenced.length === 1 ? `${table}_${referenced[0]}_check` : `${table}_check`;
+      return {
+        label: "check",
+        name1: table,
+        ...(referenced.length === 1 ? { name2: referenced[0] } : {}),
+      };
     }
     case "CONSTR_EXCLUSION":
-      return joined ? `${table}_${joined}_excl` : undefined;
+      return joined ? { label: "excl", name1: table, name2: joined } : undefined;
     default:
       return;
   }
+}
+
+export function allocateDefaultConstraintName(
+  table: string,
+  constraint: AstNode,
+  impliedColumns: string[] = [],
+  existingNames: Iterable<string> = []
+): string | undefined {
+  const parts = defaultConstraintNameParts(table, constraint, impliedColumns);
+  return parts ? new ConstraintNameAllocator(existingNames).allocate(parts) : undefined;
+}
+
+function postgresObjectName(name1: string, name2: string | undefined, label: string): string {
+  let name1Bytes = Buffer.byteLength(name1, "utf8");
+  let name2Bytes = name2 === undefined ? 0 : Buffer.byteLength(name2, "utf8");
+  const separatorBytes = name2 === undefined ? 1 : 2;
+  const availableNameBytes =
+    postgresIdentifierByteLimit - separatorBytes - Buffer.byteLength(label, "utf8");
+
+  while (name1Bytes + name2Bytes > availableNameBytes) {
+    if (name1Bytes > name2Bytes) {
+      name1Bytes -= 1;
+    } else {
+      name2Bytes -= 1;
+    }
+  }
+
+  const clippedName1 = utf8Prefix(name1, name1Bytes);
+  if (name2 === undefined) {
+    return `${clippedName1}_${label}`;
+  }
+  return `${clippedName1}_${utf8Prefix(name2, name2Bytes)}_${label}`;
+}
+
+function utf8Prefix(value: string, byteLimit: number): string {
+  let bytes = 0;
+  let prefix = "";
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, "utf8");
+    if (bytes + characterBytes > byteLimit) {
+      break;
+    }
+    prefix += character;
+    bytes += characterBytes;
+  }
+  return prefix;
 }
 
 function constraintColumns(fkAttrs: string[], keys: string[], impliedColumns: string[]): string[] {

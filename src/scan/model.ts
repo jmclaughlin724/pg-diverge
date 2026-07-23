@@ -1,6 +1,6 @@
 import { type CheckReporter, type FileDiagnostics, renderCheckReport } from "../check/report.js";
-import type { Diagnostic, SchemaModel } from "../core.js";
-import { isDiagnostic } from "../diagnostics.js";
+import { isDiagnostic } from "../diagnostics/diagnostics.js";
+import type { Diagnostic, SchemaModel } from "../types.js";
 import { type RulePack, runRulePacks } from "./rules.js";
 
 export interface ScanResult {

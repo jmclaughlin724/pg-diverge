@@ -1,4 +1,4 @@
-import typescript from "typescript-compiler-api";
+import typescript from "typescript";
 
 export const ts = typescript;
 

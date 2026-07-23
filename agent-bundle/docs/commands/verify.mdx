@@ -1,0 +1,104 @@
+---
+title: "verify"
+description: "Apply a migration twice in throwaway databases and compare catalog fingerprints against the declared target."
+keywords:
+  ["verify command", "apply twice", "idempotency", "catalog fingerprint"]
+---
+
+Use `verify` when a disposable PostgreSQL server is available and you want the strongest pre-merge proof.
+
+`verify` applies the before-state and migration twice in one temporary database, applies the target model in another, and compares the resulting fingerprints.
+
+## Use this when
+
+- Static checks passed but you want runtime proof.
+- A migration touches policies, grants, functions, or dependency-heavy objects.
+- CI can run a PostgreSQL service container.
+- A failed verify should leave databases behind for inspection.
+
+## Run it
+
+```bash
+npx supaschema verify
+npx supaschema verify --migration database/migrations/20240101000000_add_accounts.sql
+npx supaschema verify --database-url postgresql://postgres:postgres@localhost:54322/postgres
+npx supaschema verify --ensure-environment --ensure-roles
+```
+
+The database URL must point at a PostgreSQL instance where the role can create temporary databases. When verification auto-discovers a local Supabase stack, it uses the built-in `supabase_admin` role so catalog replay can reproduce extensions and owner-scoped default privileges. Explicit URLs, named environments, and `SUPASCHEMA_DATABASE_URL` remain authoritative.
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Before-state source. Defaults to `config.sources.from`.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  Target source. Defaults to `dir:<config.schemaPaths[0]>`.
+</ParamField>
+
+<ParamField path="--migration" type="path">
+  Migration SQL to apply twice. Defaults to the newest `.sql` file in the
+  migrations directory.
+</ParamField>
+
+<ParamField path="--migrations-dir" type="path">
+  Directory used to resolve the default migration file.
+</ParamField>
+
+<ParamField path="--database-url" type="url">
+  PostgreSQL admin URL. Also resolves from `SUPASCHEMA_DATABASE_URL` or Supabase
+  local discovery.
+</ParamField>
+
+<ParamField path="--ensure-roles" type="boolean">
+  Create missing `NOLOGIN` roles referenced by grants or policies.
+</ParamField>
+
+<ParamField path="--ensure-environment" type="boolean">
+  Stub common Supabase-managed Auth, Vault, and cron surfaces.
+</ParamField>
+
+<ParamField path="--no-ensure-environment" type="boolean">
+  Disable the Supabase environment stub when another command enabled it.
+</ParamField>
+
+<ParamField path="--keep-databases" type="boolean">
+  Keep temporary databases after failure and print their names.
+</ParamField>
+
+## Environment variables
+
+| Variable | Use |
+| --- | --- |
+| `SUPASCHEMA_DATABASE_URL` | Default database URL |
+| `SUPASCHEMA_VERIFY_ALLOW_REMOTE` | Set to `1` only for intentionally disposable remote infrastructure |
+
+## Exit codes
+
+| Code | Meaning                                 |
+| ---- | --------------------------------------- |
+| `0`  | Migration is idempotent and converges   |
+| `1`  | Runtime failure or missing database URL |
+| `2`  | Verification diagnostics failed         |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    Run static safety checks first.
+  </Card>
+  <Card title="CI recipe" icon="github" href="/guides/ci-github-actions">
+    Add a disposable PostgreSQL service.
+  </Card>
+  <Card
+    title="Supabase integration"
+    icon="database"
+    href="/guides/supabase-integration"
+  >
+    Use environment and role stubs for Supabase trees.
+  </Card>
+  <Card title="Fingerprint" icon="fingerprint" href="/commands/fingerprint">
+    Understand the catalog equality hash.
+  </Card>
+</CardGroup>

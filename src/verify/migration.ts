@@ -4,14 +4,6 @@ import { Client } from "pg";
 import { extractCatalogModel } from "../catalog/extract.js";
 import { checkMigrationSql } from "../check/migration.js";
 import { resolveConfig, type SupaschemaConfig } from "../config/schema.js";
-import type {
-  Diagnostic,
-  ExtractOptions,
-  MigrationOperation,
-  ObjectRef,
-  SchemaModel,
-  VerifyMigrationOptions,
-} from "../core.js";
 import {
   applyMigrationSql,
   applySql as applyPerStatementSql,
@@ -21,13 +13,12 @@ import {
   databaseUrlWithDatabase,
   tempDatabaseName,
 } from "../database/admin.js";
-import { diagnostic, formatDiagnostics, hasErrors } from "../diagnostics.js";
+import { diagnostic, formatDiagnostics, hasErrors } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects } from "../hash.js";
 import { groupMigrationUnits, type MigrationUnit } from "../migrations/runners.js";
 import { planSchemaDiff } from "../planner/schema.js";
 import { renderMigration } from "../render/migration.js";
 import { extractSourceModel } from "../source/extract.js";
-import { migrationsTypegenOnlyDiagnostic } from "../source/policy.js";
 import {
   type AstStatement,
   asRecord,
@@ -38,6 +29,14 @@ import {
 import { extractObjectsFromSql } from "../sql/extract.js";
 import { quoteIdent } from "../sql/identifiers.js";
 import { parseSqlAst } from "../sql/parser.js";
+import type {
+  Diagnostic,
+  ExtractOptions,
+  MigrationOperation,
+  ObjectRef,
+  SchemaModel,
+  VerifyMigrationOptions,
+} from "../types.js";
 import {
   preflightCapability,
   supabaseAuthEnvironmentStubSql,
@@ -66,15 +65,6 @@ export async function verifyMigrationChain(
   const databaseDiagnostic = verifyDatabaseUrlDiagnostic(options.databaseUrl);
   if (databaseDiagnostic !== undefined) {
     return [databaseDiagnostic];
-  }
-  diagnostics.push(
-    ...[
-      migrationsTypegenOnlyDiagnostic("verify", "from", options.from),
-      migrationsTypegenOnlyDiagnostic("verify", "to", options.to),
-    ].filter((item): item is Diagnostic => item !== undefined)
-  );
-  if (hasErrors(diagnostics)) {
-    return diagnostics;
   }
   const migrations = await migrationSqlByFile(options.migrationPaths);
   const extractOptions = verificationExtractOptions(options);

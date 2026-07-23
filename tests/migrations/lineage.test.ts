@@ -38,13 +38,16 @@ async function git(cwd: string, args: string[]): Promise<void> {
   });
 }
 
-async function writeBasicFixtureConfig(directory: string): Promise<string> {
+async function writeBasicFixtureConfig(
+  directory: string,
+  targets: Record<string, Record<string, unknown>> = {}
+): Promise<string> {
   const path = join(directory, "supaschema.config.json");
   await writeFile(
     path,
     JSON.stringify({
       hints: { destructive: ["function:app.legacy_ping()"] },
-      sync: { targets: {} },
+      sync: { targets },
     })
   );
   return path;
@@ -205,6 +208,46 @@ describe("diff lineage chain gate", () => {
     expect(parseLineage(await readFile(generated, "utf8"))).toBeDefined();
   });
 
+  it("does not use an ambient database URL for a URL-less replacement target", {
+    timeout: 60_000,
+  }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "supa-replace-explicit-target-"));
+    const config = await writeBasicFixtureConfig(await mkdtemp(join(tmpdir(), "supa-config-")), {
+      local: {
+        historyTable: "supabase_migrations.schema_migrations",
+        mode: "manual",
+        runner: "direct",
+      },
+    });
+    const generated = join(directory, "20260101000000_generated.sql");
+    const diff = [
+      "--config",
+      config,
+      "diff",
+      "--from",
+      fromArg,
+      "--to",
+      toArg,
+      "--migrations-dir",
+      directory,
+    ];
+
+    const initial = await cli([...diff, "--out", generated]);
+    expect(initial.code, initial.stderr).toBe(0);
+
+    const replaced = await cli([...diff, "--replace", generated], {
+      env: {
+        ...process.env,
+        SUPASCHEMA_DATABASE_URL:
+          "postgresql://postgres:postgres@127.0.0.1:1/postgres?connect_timeout=1",
+      },
+    });
+
+    expect(replaced.code, replaced.stderr).toBe(0);
+    expect(replaced.stderr).toContain("SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED");
+    expect(replaced.stderr).not.toContain("SUPA_MIGRATIONS_TARGET_UNAVAILABLE");
+  });
+
   it("refuses to replace generated migrations older than the migration tip", {
     timeout: 60_000,
   }, async () => {
@@ -308,10 +351,12 @@ describe("diff lineage chain gate", () => {
     const directory = await mkdtemp(join(tmpdir(), "supa-replace-concurrent-"));
     const config = join(directory, "supaschema.config.json");
     const from = join(directory, "from.sql");
+    const migrationsDir = join(directory, "migrations");
     const toConcurrent = join(directory, "to-concurrent.sql");
     const toTransactional = join(directory, "to-transactional.sql");
-    const generated = join(directory, "20260101000000_generated.sql");
-    const companion = join(directory, "20260101000000_generated.concurrent.sql");
+    const generated = join(migrationsDir, "20260101000000_generated.sql");
+    const companion = join(migrationsDir, "20260101000000_generated.concurrent.sql");
+    await mkdir(migrationsDir);
     await writeFile(
       config,
       JSON.stringify({ sync: { targets: {} }, transactionMode: "per-statement" })
@@ -335,12 +380,12 @@ describe("diff lineage chain gate", () => {
       "--to",
       `dump:${toConcurrent}`,
       "--migrations-dir",
-      directory,
+      migrationsDir,
       "--out",
       generated,
     ]);
     expect(initial.code, initial.stderr).toBe(0);
-    expect(await readdir(directory)).toContain("20260101000000_generated.concurrent.sql");
+    expect(await readdir(migrationsDir)).toContain("20260101000000_generated.concurrent.sql");
 
     const replaced = await cli([
       "--config",
@@ -351,12 +396,12 @@ describe("diff lineage chain gate", () => {
       "--to",
       `dump:${toTransactional}`,
       "--migrations-dir",
-      directory,
+      migrationsDir,
       "--replace",
       generated,
     ]);
     expect(replaced.code, replaced.stderr).toBe(0);
-    expect(await readdir(directory)).not.toContain("20260101000000_generated.concurrent.sql");
+    expect(await readdir(migrationsDir)).not.toContain("20260101000000_generated.concurrent.sql");
     await expect(readFile(companion, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 

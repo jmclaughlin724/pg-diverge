@@ -1,0 +1,147 @@
+---
+title: "diff"
+description: "Compare two schema sources and emit a replay-safe SQL migration."
+keywords: ["diff command", "schema diff", "migration generation", "PostgreSQL"]
+---
+
+Use `diff` when schema files changed and you need a migration.
+
+`diff` compares a before-state source with a desired-state source, reads configured existing migrations as source intent, renders replay-safe SQL, and writes it to the configured migrations directory.
+
+## Use this when
+
+- You edited the schema tree.
+- CI needs to detect drift.
+- A pull request should render a candidate migration without a live database.
+- A migration should be generated without requiring a database.
+- Existing migrations carry operational intent that must be considered before the planner reports missing intent.
+
+## Run it
+
+```bash
+npx supaschema diff
+npx supaschema diff --summary
+npx supaschema diff --fail-on-diff --quiet
+npx supaschema diff --from "git:origin/main" --to dir:database/schemas --out /tmp/migration.sql
+npx supaschema diff --replace database/migrations/20260101000000_schema_diff.sql
+```
+
+If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file. If a disk write is explicitly requested with `--name`, file `--out`, or `--replace`, an empty plan is refused with `SUPA_DIFF_EMPTY_PLAN`.
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Before-state source. Defaults to `config.sources.from`.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  Desired-state source. Defaults to `dir:<config.schemaPaths[0]>`.
+</ParamField>
+
+<ParamField path="--out" type="path | stdout">
+  Write SQL to a specific file or print to stdout.
+</ParamField>
+
+<ParamField path="--name" type="snake_case">
+  Override the descriptive part of the timestamped migration filename.
+</ParamField>
+
+<ParamField path="--migrations-dir" type="path">
+  Override the directory where timestamped migrations are written.
+</ParamField>
+
+<ParamField path="--replace" type="path">
+  Replace one unapplied supaschema-generated migration in the selected
+  migrations directory. The file must contain lineage metadata, the planned
+  `--from` fingerprint must match the file's original lineage baseline, and any
+  resolvable configured target must not record the migration version as applied.
+</ParamField>
+
+<ParamField path="--schema" type="names">
+  Diff only the comma-separated PostgreSQL schema names.
+</ParamField>
+
+<ParamField path="--dry-run" type="boolean">
+  Print the migration and target path without writing files.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Print a structured payload with fingerprint, operations, and SQL.
+</ParamField>
+
+<ParamField path="--fail-on-diff" type="boolean">
+  Exit `3` when the plan contains operations. Use this for drift gates.
+</ParamField>
+
+<ParamField path="--no-check-chain" type="boolean">
+  Skip the lineage-chain gate against pending supaschema migrations.
+</ParamField>
+
+<ParamField path="--summary" type="boolean">
+  Print operation and diagnostic counts before any error exit.
+</ParamField>
+
+<ParamField path="--write-hints" type="path">
+  Write blocked destructive object keys as a `hints.destructive` skeleton.
+</ParamField>
+
+<ParamField path="--timing" type="boolean">
+  Print extract, plan, and render timings to stderr.
+</ParamField>
+
+<ParamField path="--watch" type="boolean">
+  Re-run on `dir:` source changes. Implies `--dry-run --summary`.
+</ParamField>
+
+## Source specifiers
+
+`--from` and `--to` choose schema sources. The configured `migrationsDir` is a separate migration-tree input: existing reviewed migrations are parsed for source intent, and generated migration lineage proves the current migration-tree baseline. If `sources.from:auto` resolves to `git:HEAD` but generated migrations prove a different baseline, `diff` blocks with `SUPA_MIGRATION_BASELINE_MISMATCH` instead of writing a misleading migration.
+
+The baseline contract is atomic: a generated migration's lineage end-state fingerprints the on-disk tree at generation time, uncommitted edits included, so commit the schema-tree change, the generated migration, and regenerated outputs together. Generating from a `git:` baseline into a dirty `dir:` tree emits the `SUPA_DIFF_TREE_UNCOMMITTED` warning as the disclosure of that pending obligation. To recover from `SUPA_MIGRATION_BASELINE_MISMATCH`: regenerate from the source state that produced the baseline, use `diff --replace` for an unapplied generated migration, or — when the pending migration's end-state was never committed and no target records it as applied — review and delete the pending migration, then regenerate from the current tree. `supaschema migrations` classifies such pending files as stale-baseline (`SUPA_MIGRATIONS_STALE_BASELINE`).
+
+`--schema` scopes only the planned and rendered operations. Lineage fingerprints stay full-tree states: the from-fingerprint is the unfiltered baseline, and the to-fingerprint is the baseline with the filtered schemas replaced by their to-source versions — the intermediate tree state the scoped migration actually produces. Committing the scoped schema files together with the scoped migration makes `git:HEAD` match that intermediate state, so a later diff continues the chain and captures the remaining schemas.
+
+Before planning a `git:` to `dir:` diff, supaschema checks the workspace for already-open migration units. Dirty generated TypeScript/Zod outputs block with `SUPA_DIFF_GENERATED_CONTRACT_DIRTY`, dirty migration files block with `SUPA_DIFF_MIGRATIONS_DIRTY`, and scoped `--schema` diffs also block on dirty global config (`SUPA_DIFF_CONFIG_DIRTY`) or dirty schema files outside the requested filter (`SUPA_DIFF_SCOPED_DIRTY_SCHEMA`). Close that unit first; do not add hints or change the baseline to bypass it.
+
+Use `--replace` for a generated migration that has not been applied and needs to be regenerated from the same original baseline. Git only proves the source snapshot; applied state is checked from configured database migration history when a target is resolvable.
+
+| Format | Example | Use |
+| --- | --- | --- |
+| `database:<url>` | `database:$STAGING_DB` | Live database introspection |
+| `git:<ref>` | `git:origin/main` | Schema files at a git ref |
+| `dir:<path>` | `dir:database/schemas` | Schema files on disk |
+| `dump:<path>` | `dump:baseline.sql` | SQL dump file or stdin with `dump:-` |
+| `catalog:<path>` | `catalog:snapshot.json` | Saved supaschema catalog snapshot |
+| `empty:` | `empty:` | Empty baseline for first migrations |
+
+## Exit codes
+
+| Code | Meaning                               |
+| ---- | ------------------------------------- |
+| `0`  | Success, including no schema changes  |
+| `1`  | Runtime failure                       |
+| `2`  | Blocking diagnostics                  |
+| `3`  | `--fail-on-diff` saw a non-empty plan |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Plan" icon="list-tree" href="/commands/plan">
+    Inspect operations before rendering SQL.
+  </Card>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    Validate generated SQL before applying it.
+  </Card>
+  <Card title="Types" icon="braces" href="/commands/types">
+    Regenerate TypeScript and Zod outputs from schema files.
+  </Card>
+  <Card title="Sources" icon="database" href="/concepts/sources">
+    Learn every supported source format.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card title="Hints" icon="triangle-alert" href="/configuration/hints">
+    Approve destructive operations explicitly.
+  </Card>
+</CardGroup>

@@ -1,8 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
-import ts from "typescript-compiler-api";
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import ts from "typescript";
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import type { Diagnostic, SupaschemaConfig } from "../types.js";
 
 interface GeneratedContractUsageScanOptions {
   config: SupaschemaConfig;

@@ -47,11 +47,18 @@ codexExecPolicy: |
       "not_match": ["git rev-parse --abbrev-ref HEAD", "git status --short"]
     },
     {
-      "pattern": ["git", "worktree"],
+      "pattern": ["git", "worktree", "list", "--porcelain", "-z"],
+      "decision": "allow",
+      "justification": "Rule 21 allows the stable read-only worktree inventory form; the Bash hook rejects every other worktree command shape.",
+      "match": ["git worktree list --porcelain -z"],
+      "not_match": ["git worktree list", "git worktree add ../demo HEAD"]
+    },
+    {
+      "pattern": ["git", "worktree", ["add", "lock", "move", "prune", "remove", "repair", "unlock"]],
       "decision": "forbidden",
-      "justification": "Rule 21 forbids ad hoc CLI worktrees; use host-managed worktree isolation only when the host selects it before work begins.",
-      "match": ["git worktree add ../demo HEAD", "git worktree list"],
-      "not_match": ["git status --short"]
+      "justification": "Rule 21 forbids CLI worktree mutation; use host-managed worktree isolation only when the host selects it before work begins.",
+      "match": ["git worktree add ../demo HEAD", "git worktree lock ../demo", "git worktree move ../demo ../moved", "git worktree prune", "git worktree remove ../demo", "git worktree repair ../demo", "git worktree unlock ../demo"],
+      "not_match": ["git worktree list --porcelain -z", "git status --short"]
     },
     {
       "pattern": ["git", "reset"],
@@ -190,6 +197,7 @@ Upstream sources:
 - GitHub automatic branch deletion: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches>
 - GitHub CLI `gh pr merge`: <https://cli.github.com/manual/gh_pr_merge>
 - GitHub CLI `gh repo edit`: <https://cli.github.com/manual/gh_repo_edit>
+- Git worktrees: <https://git-scm.com/docs/git-worktree>
 
 ## Dirty worktree rules
 
@@ -207,7 +215,7 @@ Upstream sources:
 - To continue an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
-- Do not use `git checkout`, `git branch` for creation or discovery, or ad hoc `git worktree`. Apart from the two transactional topic-branch forms above and `git switch main` after verified PR merge, do not use `git switch`.
+- Do not use `git checkout` or `git branch` for creation or discovery. Worktree mutation is host-managed; the only allowed CLI worktree operation is `git worktree list --porcelain -z` for stable read-only inventory. Apart from the two transactional topic-branch forms above and `git switch main` after verified PR merge, do not use `git switch`.
 - After proving a topic PR merged and preserving all dirty work elsewhere, `git branch -D <topic>` is allowed only with explicit approval. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.

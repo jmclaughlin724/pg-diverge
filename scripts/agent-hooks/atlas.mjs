@@ -9,7 +9,7 @@ export function isCodeAtlasQuery(payload) {
 
 export function codeAtlasQueryEvidence(payload) {
   const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
-  if (isCodeAtlasTool(name)) {
+  if (isLocalCodeAtlasTool(name)) {
     const input = payload?.tool_input ?? {};
     const queryKind = typeof input.kind === "string" ? input.kind : "";
     const value = typeof input.value === "string" ? input.value : "";
@@ -49,7 +49,7 @@ export function atlasAdvisoryTarget(payload, root = defaultRoot) {
   if (name === "NotebookEdit" && typeof input.notebook_path === "string") {
     return repoRelative(input.notebook_path, root);
   }
-  if (isCodeAtlasTool(name) && typeof input.value === "string") {
+  if (isLocalCodeAtlasTool(name) && typeof input.value === "string") {
     return repoRelative(input.value, root);
   }
   const patch = name === "apply_patch" && typeof input.command === "string" ? input.command : "";
@@ -115,7 +115,7 @@ function normalizedScriptToken(token) {
   return withoutDot;
 }
 
-function isCodeAtlasTool(name) {
+function isLocalCodeAtlasTool(name) {
   return name === "mcp__supaschema__code_atlas_query";
 }
 

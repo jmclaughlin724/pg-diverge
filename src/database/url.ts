@@ -51,12 +51,20 @@ export function expandEnvReference(value: string): string {
   return value;
 }
 
+export function resolveExplicitDatabaseUrl(explicit?: string): string | undefined {
+  if (explicit === undefined || explicit.length === 0) {
+    return;
+  }
+  return expandEnvReference(explicit);
+}
+
 export function resolveDatabaseUrl(
   explicit?: string,
   cwd: string = process.cwd()
 ): string | undefined {
-  if (explicit !== undefined && explicit.length > 0) {
-    return expandEnvReference(explicit);
+  const resolvedExplicit = resolveExplicitDatabaseUrl(explicit);
+  if (resolvedExplicit !== undefined) {
+    return resolvedExplicit;
   }
   return process.env.SUPASCHEMA_DATABASE_URL ?? resolveSupabaseLocalDatabaseUrl(cwd);
 }

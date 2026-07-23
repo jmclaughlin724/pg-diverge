@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
+import {
+  commandArgs,
+  commandName,
+  commandSegmentObjects,
+} from "../../../.claude/hooks/guards/bash-policy-checks.mjs";
 import { assert, ok } from "../lib/assertions.js";
 import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js";
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 const toolPins = {
   "@biomejs/biome": "2.5.3",
+  "@typescript/native": "npm:typescript@7.0.2",
   "@vitest/coverage-v8": "4.1.10",
+  cclsp: "0.7.0",
+  prettier: "3.9.6",
   ultracite: "7.9.3",
   vitest: "4.1.10",
 };
@@ -18,6 +27,33 @@ const allowedRootDisabledBiomeRules = new Set([
   "linter.rules.suspicious.noShadow",
   "linter.rules.suspicious.noUnnecessaryConditions",
 ]);
+const extractedWorkflowBiomeExclusions = [
+  "!.claude/skills/code-review/references/workflow-backed-code-review.js",
+  "!.claude/skills/deep-research/references/workflow-backed-deep-research.js",
+];
+const expectedBiomeExclusions = [
+  "!dist",
+  "!node_modules",
+  "!.venv",
+  "!coverage",
+  "!.tmp",
+  "!**/.tmp",
+  "!.wrangler",
+  "!*.tgz",
+  "!supaschema-config.schema.json",
+  "!database.types.ts",
+  "!database.zod.ts",
+  "!api-docs",
+  "!benchmarks/results",
+  "!.gitnexus",
+  "!.claude/worktrees",
+  ...extractedWorkflowBiomeExclusions,
+  "!agent-bundle",
+  "!tests/fixtures/sample-project/supabase/functions",
+  "!.agents",
+  "!.codex",
+];
+const ultraciteWriteCommands = new Set(["check", "fix"]);
 
 function staticModuleSpecifier(node) {
   if (
@@ -109,6 +145,114 @@ function isGeneratedDistModuleSpecifier(value) {
   );
 }
 
+function unwrappedPackageRunnerCommand(words) {
+  const name = commandName(words);
+  const args = commandArgs(words);
+  if (name === "npx") {
+    return args[0] === "--no-install" ? args.slice(1) : args;
+  }
+  if (name === "npm" && args[0] === "exec") {
+    return args[1] === "--" ? args.slice(2) : args.slice(1);
+  }
+  return words;
+}
+
+function invokesDirectBiomeOrUltracite(command) {
+  return commandSegmentObjects(command).some((segment) => {
+    const words = unwrappedPackageRunnerCommand(segment.words);
+    const name = commandName(words);
+    const args = commandArgs(words);
+    return name === "biome" || (name === "ultracite" && ultraciteWriteCommands.has(args[0]));
+  });
+}
+
+function assertUltraciteEntryPoints(packageJson, lefthook, root) {
+  assert(exists("scripts/lint.mjs", root), "npm-owned Ultracite lint wrapper must exist");
+  assert(exists("scripts/format.mjs", root), "npm-owned Ultracite format wrapper must exist");
+  assert(
+    packageJson.scripts?.format === "node scripts/format.mjs",
+    "format must route every writer through the npm-owned format wrapper"
+  );
+  assert(
+    packageJson.scripts?.lint === "node scripts/lint.mjs",
+    "lint must route Ultracite through the npm-owned lint wrapper"
+  );
+  assert(
+    packageJson.scripts?.["lint:ci"] === "node scripts/lint.mjs --ci",
+    "lint:ci must route the CI reporter through the npm-owned lint wrapper"
+  );
+  for (const [name, command] of Object.entries(packageJson.scripts ?? {})) {
+    assert(
+      !invokesDirectBiomeOrUltracite(String(command)),
+      `package script ${name} must route Biome and Ultracite check/fix through the npm-owned lint/format wrappers`
+    );
+  }
+  assert(
+    packageJson.scripts?.["lint:doctor"] === "ultracite doctor",
+    "lint:doctor must run Ultracite doctor"
+  );
+  assert(
+    packageJson.scripts?.["bench:plot:headtohead"]?.endsWith(
+      " && npm run format -- docs/images/benchmarks"
+    ),
+    "bench:plot:headtohead must format generated benchmark SVGs through the scoped npm wrapper"
+  );
+  assert(
+    packageJson.scripts?.diagrams?.endsWith(" && npm run format -- docs/images/concepts"),
+    "diagrams must format generated concept SVGs through the scoped npm wrapper"
+  );
+
+  const preCommitJobs = lefthook?.["pre-commit"]?.jobs ?? [];
+  const ultraciteHook = preCommitJobs.find((job) => job?.name === "Ultracite");
+  assert(
+    ultraciteHook?.run === "npm run format -- --staged" && ultraciteHook.stage_fixed === true,
+    "lefthook Ultracite pre-commit job must run npm run format -- --staged with stage_fixed: true"
+  );
+  const prettierHook = preCommitJobs.find((job) => job?.name === "prettier");
+  assert(
+    prettierHook?.run === "npx --no-install prettier --write {staged_files}" &&
+      prettierHook.stage_fixed === true,
+    "lefthook Prettier job must use the pinned local binary with --no-install and stage_fixed: true"
+  );
+  for (const job of preCommitJobs) {
+    assert(
+      !invokesDirectBiomeOrUltracite(String(job?.run ?? "")),
+      `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must route Biome and Ultracite through npm scripts`
+    );
+  }
+}
+
+function assertBiomeLanguageSurface(biome) {
+  assert(
+    biome.files?.includes?.includes("!.claude/worktrees"),
+    "biome.jsonc must exclude .claude/worktrees so the host lint lane does not traverse nested checkout configs"
+  );
+  const claudeSkillExclusions = (biome.files?.includes ?? [])
+    .filter((include) => include.startsWith("!.claude/skills"))
+    .sort();
+  assert(
+    JSON.stringify(claudeSkillExclusions) === JSON.stringify(extractedWorkflowBiomeExclusions),
+    "biome.jsonc may exclude only the two exact binary-extracted workflow JavaScript files under .claude/skills"
+  );
+  const exclusions = (biome.files?.includes ?? []).filter((include) => include.startsWith("!"));
+  assert(
+    JSON.stringify([...exclusions].sort()) === JSON.stringify([...expectedBiomeExclusions].sort()),
+    "biome.jsonc exclusions must match the exact reviewed generated, state, nested-worktree, and extracted-workflow boundary"
+  );
+  assert(
+    biome.vcs?.useIgnoreFile === true,
+    "biome.jsonc must keep VCS ignore handling enabled for the Git-visible lint lane"
+  );
+  assert(
+    biome.html?.experimentalFullSupportEnabled === true,
+    "biome.jsonc must enable full HTML formatting and lint support"
+  );
+  assert(
+    biome.javascript?.experimentalEmbeddedSnippetsEnabled === true,
+    "biome.jsonc must enable embedded CSS and GraphQL snippet support"
+  );
+}
+
 function assertNoDisabledBiomeRules(value, rulePath = "linter.rules", allowedDisabled = new Set()) {
   if (!value || typeof value !== "object") {
     return;
@@ -157,13 +301,61 @@ function assertBiomeOverrides(overrides) {
   }
 }
 
-function assertCclspProxyWiring(config) {
-  const javascriptServer = config.servers?.find((server) => server.extensions?.includes("mjs"));
-  assert(javascriptServer, ".claude/cclsp.json must map .mjs files");
+function assertCclspWiring(config) {
+  const pythonServer = config.servers?.find((server) => server.extensions?.includes("py"));
+  assert(pythonServer, "cclsp.json must map .py files");
   assert(
-    javascriptServer.command?.includes("scripts/cclsp-language-id-proxy.mjs"),
-    ".claude/cclsp.json must route JS-family LSP through cclsp-language-id-proxy.mjs"
+    JSON.stringify(pythonServer.command) === JSON.stringify(["uv", "run", "pylsp"]),
+    "cclsp.json must run pylsp from the locked uv workspace"
   );
+  assert(pythonServer.restartInterval === 5, "cclsp.json must auto-restart pylsp every 5 minutes");
+  const pylspInitializationOptions = pythonServer.initializationOptions?.pylsp;
+  assert(
+    typeof pylspInitializationOptions === "object" &&
+      pylspInitializationOptions !== null &&
+      !Array.isArray(pylspInitializationOptions) &&
+      pythonServer.initializationOptions?.settings === undefined,
+    "cclsp.json must pass pylsp settings as an object directly through initializationOptions.pylsp"
+  );
+
+  const javascriptServer = config.servers?.find((server) => server.extensions?.includes("mjs"));
+  assert(javascriptServer, "cclsp.json must map .mjs files");
+  assert(
+    JSON.stringify(javascriptServer.command) ===
+      JSON.stringify([
+        "node",
+        "scripts/cclsp-language-id-proxy.mjs",
+        "--",
+        "npx",
+        "--no-install",
+        "typescript-language-server",
+        "--stdio",
+      ]),
+    "cclsp.json must route JS-family LSP through the local TypeScript proxy and server"
+  );
+  assert(
+    javascriptServer.initializationOptions?.tsserver?.path === undefined,
+    "cclsp.json must let the TypeScript proxy inject the tsserver path"
+  );
+  for (const server of config.servers ?? []) {
+    assert(
+      !server.extensions?.some((extension) => extension === "ql" || extension === "qll"),
+      "cclsp.json must not expose an unowned CodeQL language server"
+    );
+    const command = server.command ?? [];
+    if (command[0] === "uv" || command.includes("scripts/cclsp-language-id-proxy.mjs")) {
+      continue;
+    }
+    assert(
+      command[0] === "npx" && command[1] === "--no-install",
+      "cclsp.json Node language servers must use repository-installed npx --no-install binaries"
+    );
+    assert(
+      !(command.includes("--package") || command.includes("--yes") || command.includes("-y")) &&
+        command.slice(2).every((part) => !part.includes("@")),
+      "cclsp.json must not duplicate package versions or request runtime installation"
+    );
+  }
 }
 
 function disabledBiomeRulePaths(value, rulePath = "linter.rules") {
@@ -186,11 +378,11 @@ function disabledBiomeRulePaths(value, rulePath = "linter.rules") {
 
 export function check(root = ROOT) {
   const packageJson = readJson("package.json", root);
-  const catalog = readJson("scripts/dependency-catalog.json", root);
   const biome = readJson("biome.jsonc", root);
+  const gitignore = readText(".gitignore", root);
+  const lefthook = parseYaml(readText("lefthook.yml", root));
   const vitestConfig = readText("vitest.config.ts", root);
 
-  assert(catalog.packageManager === "npm", "tooling stack must keep the npm package contract");
   assert(exists("package-lock.json", root), "npm package-lock.json must exist");
   assert(!exists("pnpm-lock.yaml", root), "pnpm lockfile must not be introduced");
   assert(!exists("yarn.lock", root), "Yarn lockfile must not be introduced");
@@ -201,12 +393,18 @@ export function check(root = ROOT) {
   );
   assert(!exists("biome.json", root), "Biome config must be biome.jsonc");
   assert(exists("biome.jsonc", root), "missing biome.jsonc");
+  assert(exists("prettier.config.mjs", root), "missing prettier.config.mjs");
+  assert(exists("cclsp.json", root), "tracked source-repository cclsp.json must exist");
+  assert(
+    !gitignore.split("\n").some((line) => line.trim() === "cclsp.json"),
+    "tracked source-repository cclsp.json must not be ignored"
+  );
+  const prettierConfig = readText("prettier.config.mjs", root);
   assert(Array.isArray(packageJson.files), "package.json must define a files allowlist");
   assert(
     exists("scripts/cclsp-language-id-proxy.mjs", root),
     "cclsp language-id proxy must exist for .mjs/.cjs TypeScript LSP support"
   );
-
   for (const [name, version] of Object.entries(toolPins)) {
     assert(
       packageJson.devDependencies?.[name] === version,
@@ -214,15 +412,34 @@ export function check(root = ROOT) {
     );
   }
   assert(
-    packageJson.dependencies?.["typescript-compiler-api"] === "npm:typescript@6.0.3",
-    "package.json must keep the TypeScript 6 compiler API alias for runtime AST scanners"
+    packageJson.dependencies?.typescript === "npm:@typescript/typescript6@6.0.2",
+    "package.json must keep the TypeScript 6 compatibility package under the runtime typescript identity"
+  );
+  assert(
+    !(
+      "typescript-compiler-api" in (packageJson.dependencies ?? {}) ||
+      "typescript-compiler-api" in (packageJson.devDependencies ?? {})
+    ),
+    "package.json must not expose the retired typescript-compiler-api alias"
+  );
+  assert(
+    !("typescript" in (packageJson.devDependencies ?? {})),
+    "package.json must keep TypeScript 7 under the @typescript/native development identity"
+  );
+  assert(
+    packageJson.overrides?.cclsp?.typescript === "$typescript",
+    "package.json must map cclsp's stale TypeScript peer to the canonical runtime typescript dependency"
+  );
+  assert(
+    packageJson.overrides?.["@typescript/old"] === "npm:typescript@6.0.2",
+    "package.json must pin the compatibility package's nested TypeScript compiler to 6.0.2"
   );
   assert(
     !("pg-formatter" in (packageJson.devDependencies ?? {})),
     "pg-formatter must not be reintroduced; SQL is governed by supaschema parser/deparser semantics"
   );
 
-  assert(packageJson.scripts?.lint === "ultracite check .", "lint must run Ultracite check");
+  assertUltraciteEntryPoints(packageJson, lefthook, root);
   assert(packageJson.scripts?.test === "vitest run", "test must run the full Vitest suite");
   assert(
     packageJson.scripts?.["test:coverage"] === "vitest run --coverage",
@@ -243,13 +460,12 @@ export function check(root = ROOT) {
     "test:matrix:coverage must be the coverage equivalent of test:matrix"
   );
   assert(
-    packageJson.scripts?.format ===
-      "npm run format:json && ultracite fix . && npm run format:md && npm run format:toml && npm run format:sh && npm run py:fix",
-    "format must be the single write command chaining every writer: sort-package-json (format:json), Ultracite (Biome), Prettier (format:md), taplo (format:toml), shfmt (format:sh), and ruff (py:fix)"
-  );
-  assert(
     packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{md,mdx,yml,yaml}"',
     "format:md must run Prettier write over MDX/Markdown/YAML"
+  );
+  assert(
+    packageJson.scripts?.["format:md:check"] === 'prettier --check "**/*.{md,mdx,yml,yaml}"',
+    "format:md:check must run the read-only Prettier check over the format:md glob"
   );
   assert(!("format:sql" in packageJson.scripts), "SQL formatter lane must not be reintroduced");
   assert(
@@ -273,26 +489,40 @@ export function check(root = ROOT) {
     !("lint:fix" in packageJson.scripts),
     "format must be the only repo-wide write/fix script"
   );
+  assert(!("fix" in packageJson.scripts), "package.json must not expose a second fix writer");
   assert(
-    packageJson.scripts?.["lint:doctor"] === "ultracite doctor",
-    "lint:doctor must run Ultracite doctor"
+    !("prepare" in packageJson.scripts),
+    "package.json must not install maintainer hooks through a lifecycle script"
   );
-
   assert(
     biome.$schema === "https://biomejs.dev/schemas/2.5.3/schema.json",
     "biome.jsonc must use the Biome 2.5.3 schema"
   );
-  for (const preset of [
+  const expectedBiomePresets = [
     "ultracite/biome/core",
     "ultracite/biome/type-aware",
     "ultracite/biome/vitest",
+  ];
+  assert(
+    JSON.stringify(biome.extends) === JSON.stringify(expectedBiomePresets),
+    `biome.jsonc must extend exactly ${expectedBiomePresets.join(", ")}`
+  );
+  for (const token of [
+    'embeddedLanguageFormatting: "auto"',
+    'endOfLine: "lf"',
+    "printWidth: 80",
+    'proseWrap: "never"',
+    "tabWidth: 2",
+    'trailingComma: "es5"',
+    "useTabs: false",
   ]) {
-    assert(biome.extends?.includes(preset), `biome.jsonc missing ${preset}`);
+    assert(prettierConfig.includes(token), `prettier.config.mjs missing ${token}`);
   }
   assert(
     biome.formatter?.lineWidth === 100,
     "biome.jsonc must preserve the 100-column formatter line width"
   );
+  assertBiomeLanguageSurface(biome);
   assert(
     !biome.files?.includes?.includes("**"),
     'biome.jsonc must not duplicate Ultracite core\'s "**" include'
@@ -320,9 +550,7 @@ export function check(root = ROOT) {
   assertBiomeOverrides(biome.overrides ?? []);
   assertAgentPackageSurface(packageJson.files ?? []);
   assertRuntimePackageSurface(packageJson.files ?? []);
-  if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT !== "1" && exists(".claude/cclsp.json", root)) {
-    assertCclspProxyWiring(readJson(".claude/cclsp.json", root));
-  }
+  assertCclspWiring(readJson("cclsp.json", root));
 
   for (const file of gitFiles(root).filter(
     (candidate) => isJavascriptSourceFile(candidate) && exists(candidate, root)

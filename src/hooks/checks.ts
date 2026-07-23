@@ -1,4 +1,4 @@
-import type { SupaschemaConfig } from "../core.js";
+import type { SupaschemaConfig } from "../types.js";
 import { type HookCommand, head, runHookCommand } from "./commands.js";
 import { rel } from "./targets.js";
 

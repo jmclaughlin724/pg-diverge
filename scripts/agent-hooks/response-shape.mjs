@@ -1,5 +1,5 @@
 import { failureLabels, transcriptEvidence, unresolvedFailures } from "./command-evidence.mjs";
-import { claimWithoutEvidence, tokenize } from "./response-claims.mjs";
+import { tokenize, verificationClaimConflict } from "./response-claims.mjs";
 import { finalMessage, lower } from "./response-evidence.mjs";
 import { currentTurnState, setCorrections } from "./state.mjs";
 
@@ -82,27 +82,29 @@ const verificationDispositionTerms = [
   "verified",
 ];
 
-export function runResponseDetectors(payload, state) {
+export function runResponseDetectors(payload, state, runtime) {
   const message = finalMessage(payload);
   const findings = [
     hedgeDensity(message),
     completionClaimWithOpenItems(message, payload, state),
-    claimWithoutEvidence(message, state, transcriptEvidence(payload)),
+    verificationClaimConflict(message, state, transcriptEvidence(payload), runtime),
     mechanismClaimWithoutArchitecture(message, state),
     decisionMenuAfterDirective(message, state),
     deferralLanguage(message),
     toolFailureWithoutRetry(state),
   ].filter(Boolean);
 
-  setCorrections(state, findings);
-  if (findings.length === 0) {
+  const pendingFindings = setCorrections(payload, state, findings).filter(
+    (finding) => !finding.blocked
+  );
+  if (pendingFindings.length === 0) {
     return {};
   }
   return {
     contextParts: [
       [
         "Final response correction required.",
-        ...findings.map((finding) => `- ${finding.message}`),
+        ...pendingFindings.map((finding) => `- ${finding.message}`),
         "Revise the response using only verified evidence already present in the session. To resolve any assumptions or lack of clarity, query context7 or upstream sources prior to continuing.",
       ].join("\n"),
     ],

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { resolveConfig } from "./config/schema.js";
-import type { CheckOptions, Diagnostic } from "./core.js";
-import { diagnostic } from "./diagnostics.js";
+import { diagnostic } from "./diagnostics/diagnostics.js";
+import type { CheckOptions, Diagnostic } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 

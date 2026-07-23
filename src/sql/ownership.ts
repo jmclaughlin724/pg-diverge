@@ -1,5 +1,5 @@
-import type { Diagnostic, SchemaObject, SupaschemaConfig } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import type { Diagnostic, SchemaObject, SupaschemaConfig } from "../types.js";
 
 export function withManagedSchemaDiagnostics(
   objects: SchemaObject[],
@@ -52,29 +52,44 @@ function managedSchemaDiagnostics(
   config: SupaschemaConfig,
   file?: string
 ): Diagnostic[] {
-  if (config.managedSchemas.length === 0) {
+  const schema = managedSchema(object, config);
+  if (schema === undefined || isManagedSchemaOverlay(object, config)) {
     return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_SUPABASE_MANAGED_SCHEMA",
+      "error",
+      `schema "${schema}" is configured as managed and is not a declarative source owner`,
+      {
+        file,
+        hint: `Move this statement out of the declarative tree, or remove "${schema}" from managedSchemas only if this project owns it.`,
+        ref: object.ref,
+        schemas: [schema],
+        statement,
+      }
+    ),
+  ];
+}
+
+const managedSchemaOverlayKinds = new Set(["comment", "grant", "policy"]);
+
+export function isManagedSchemaOverlay(object: SchemaObject, config: SupaschemaConfig): boolean {
+  return (
+    managedSchemaOverlayKinds.has(object.ref.kind) &&
+    config.managedSchemaOverlays.includes(object.key) &&
+    managedSchema(object, config) !== undefined
+  );
+}
+
+function managedSchema(object: SchemaObject, config: SupaschemaConfig): string | undefined {
+  if (config.managedSchemas.length === 0) {
+    return;
   }
   const refSchema = object.ref.kind === "schema" ? object.ref.name : object.ref.schema;
   const metadataSchema =
     typeof object.metadata.schema === "string" ? object.metadata.schema : undefined;
-  const schema = [refSchema, metadataSchema].find(
+  return [refSchema, metadataSchema].find(
     (candidate) => candidate !== undefined && config.managedSchemas.includes(candidate)
   );
-  return schema
-    ? [
-        diagnostic(
-          "SUPA_SUPABASE_MANAGED_SCHEMA",
-          "error",
-          `schema "${schema}" is configured as managed and is not a declarative source owner`,
-          {
-            file,
-            hint: `Move this statement out of the declarative tree, or remove "${schema}" from managedSchemas only if this project owns it.`,
-            ref: object.ref,
-            schemas: [schema],
-            statement,
-          }
-        ),
-      ]
-    : [];
 }

@@ -1,4 +1,5 @@
 {
+  "enableAllProjectMcpServers": false,
   "enabledMcpjsonServers": [
     "cloudflare-api",
     "cloudflare-docs",
@@ -6,12 +7,12 @@
     "supaschema",
     "context7",
     "mintlify",
-    "next-devtools",
     "openaiDeveloperDocs",
     "ultracite",
     "zod",
     "supaschema-docs"
   ],
+  "disabledMcpjsonServers": ["stripe"],
   "env": {
     "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000"
   },
@@ -78,7 +79,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch",
+        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch|mcp__supaschema__code_atlas_query",
         "hooks": [
           {
             "type": "command",

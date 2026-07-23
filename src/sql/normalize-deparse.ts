@@ -1,7 +1,7 @@
 import { deparseSync } from "pgsql-deparser";
-import type { Diagnostic, SchemaObject } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import { sha256, stableJson } from "../hash.js";
+import type { Diagnostic, SchemaObject } from "../types.js";
 import type { AstStatement } from "./ast.js";
 import { asRecord, astStatements } from "./ast.js";
 import { normalizeSql } from "./identifiers.js";

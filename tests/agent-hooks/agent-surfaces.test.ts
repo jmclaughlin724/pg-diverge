@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderCodexAgent, renderCodexRule } from "../../scripts/skills/codex-rules.mjs";
-import { checkAgentSurfaces, syncAgentSurfaces } from "../../scripts/skills/sync-llm.mjs";
+import {
+  checkAgentSurfaces,
+  publicSkillNames,
+  syncAgentSurfaces,
+} from "../../scripts/skills/sync-llm.mjs";
 
 describe("agent surface sync", { timeout: 30_000 }, () => {
   it("passes when generated mirrors match the Claude-owned directories", async () => {
@@ -44,13 +48,13 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 19,
+      agentBundle: 32,
       agents: 2,
       codexHookConfig: 1,
       hooks: 5,
-      publicSkills: 2,
+      publicSkills: 6,
       rules: 2,
-      skills: 3,
+      skills: 7,
       skillTargets: 1,
     });
     expect(checkAgentSurfaces({ root })).toEqual([]);
@@ -62,6 +66,12 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     expect(await readFile(join(root, "skills/supaschema/SKILL.md"), "utf8")).toBe(
       "supaschema skill\n"
     );
+    expect(
+      await readFile(join(root, "skills/supaschema-maintain/references/commands.md"), "utf8")
+    ).toBe("maintain commands\n");
+    expect(
+      JSON.parse(await readFile(join(root, "agent-bundle/skills-manifest.json"), "utf8"))
+    ).toEqual({ skills: publicSkillNames });
     expect(await readFile(join(root, ".codex/hooks/sample-hook.mjs"), "utf8")).toBe(
       await readFile(join(root, ".claude/hooks/sample-hook.mjs"), "utf8")
     );
@@ -71,6 +81,46 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     expect(await readFile(join(root, ".codex/rules/supaschema.rules"), "utf8")).toContain(
       "Canonical rule owner: .claude/rules/supaschema.md"
     );
+  });
+
+  it("repairs documentation updates, additions, renames, removals, and unmanaged files", async () => {
+    const root = await seedSurfaceRoot();
+    const originalBytes = Buffer.from([0x23, 0x20, 0x47, 0x75, 0x69, 0x64, 0x65, 0x0d, 0x0a]);
+    await write(root, "docs/guide.mdx", originalBytes);
+    await write(root, "docs/image.png", "not an image fixture\n");
+
+    syncAgentSurfaces({ root });
+
+    expect(await readFile(join(root, "agent-bundle/docs/guide.mdx"))).toEqual(originalBytes);
+    expect(existsSync(join(root, "agent-bundle/docs/image.png"))).toBe(false);
+
+    await write(root, "docs/guide.mdx", "# Updated guide\n");
+    expect(checkAgentSurfaces({ root })).toEqual(
+      expect.arrayContaining(["raw agent bundle drifted: docs/guide.mdx"])
+    );
+    syncAgentSurfaces({ root });
+    expect(await readFile(join(root, "agent-bundle/docs/guide.mdx"), "utf8")).toBe(
+      "# Updated guide\n"
+    );
+
+    await rm(join(root, "docs/guide.mdx"));
+    await rm(join(root, "docs/start.mdx"));
+    await write(root, "docs/a-added.mdx", "# Added\n");
+    await write(root, "docs/nested/renamed.mdx", "# Renamed\n");
+    await write(root, "agent-bundle/docs/stale.mdx", "# Stale\n");
+
+    syncAgentSurfaces({ root });
+
+    expect(existsSync(join(root, "agent-bundle/docs/guide.mdx"))).toBe(false);
+    expect(existsSync(join(root, "agent-bundle/docs/start.mdx"))).toBe(false);
+    expect(existsSync(join(root, "agent-bundle/docs/stale.mdx"))).toBe(false);
+    expect(existsSync(join(root, "agent-bundle/docs/a-added.mdx"))).toBe(true);
+    expect(existsSync(join(root, "agent-bundle/docs/nested/renamed.mdx"))).toBe(true);
+    const indexEntries = (await readFile(join(root, "agent-bundle/docs/index.md"), "utf8"))
+      .split("\n")
+      .filter((line) => line.startsWith("- ["));
+    expect(indexEntries).toEqual([...indexEntries].sort());
+    expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 
   it("detects and repairs generated Codex hook config drift", async () => {
@@ -97,13 +147,13 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 19,
+      agentBundle: 30,
       agents: 0,
       codexHookConfig: 1,
       hooks: 3,
-      publicSkills: 1,
+      publicSkills: 5,
       rules: 1,
-      skills: 1,
+      skills: 5,
       skillTargets: 1,
     });
     expect(existsSync(join(root, ".agents/skills"))).toBe(true);
@@ -252,8 +302,21 @@ Review code.
 }
 
 async function seedRequiredAgentBundleInputs(root: string): Promise<void> {
+  await write(root, "docs/start.mdx", "# Start\n");
   await write(root, "agent-bundle/INSTALL.md", "install\n");
   await write(root, ".agents/prompts/supaschema-install.md", "install prompt\n");
+  await write(
+    root,
+    ".claude/skills/supaschema-maintain/references/commands.md",
+    "maintain commands\n"
+  );
+  await write(root, ".claude/skills/supaschema-maintain/SKILL.md", "maintain skill\n");
+  await write(
+    root,
+    ".claude/skills/supaschema-migrate/references/commands.md",
+    "migrate commands\n"
+  );
+  await write(root, ".claude/skills/supaschema-migrate/SKILL.md", "migrate skill\n");
   await write(root, ".claude/skills/supaschema/SKILL.md", "supaschema skill\n");
   await write(root, ".claude/hooks/general-guard.mjs", "general guard\n");
   await write(root, ".claude/hooks/guards/bash-policy-checks.mjs", "bash guard\n");
@@ -263,8 +326,12 @@ async function seedRequiredAgentBundleInputs(root: string): Promise<void> {
   await write(root, ".codex/hooks/general-guard.mjs", "general guard\n");
 }
 
-async function write(root: string, relativePath: string, text: string): Promise<void> {
+async function write(
+  root: string,
+  relativePath: string,
+  content: string | Uint8Array
+): Promise<void> {
   const file = join(root, relativePath);
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, text);
+  await writeFile(file, content);
 }

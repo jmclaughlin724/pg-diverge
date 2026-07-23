@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { MigrationPlan } from "../core.js";
 import { MODEL_FORMAT_VERSION } from "../hash.js";
+import type { MigrationPlan } from "../types.js";
 
 export interface MigrationLineage {
   file: string;

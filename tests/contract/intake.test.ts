@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { validateIntake } from "../../src/contract/intake.js";
 import { contractDrift, type SchemaContract } from "../../src/contract/schema.js";
-import { validateIntake } from "../../src/intake.js";
 
 const SECRET_URL = ["postgres://svc:", "s3cr3t", "@db.internal/app"].join("");
 const SECRET_KV = ["pass", "word=", "p4ssval"].join("");

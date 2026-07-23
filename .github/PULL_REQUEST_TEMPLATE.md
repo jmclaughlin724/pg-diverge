@@ -17,7 +17,7 @@ What this PR changes and why. Link any related issue (`Closes #123`).
 
 ## Checklist
 
-- [ ] `npm run check` passes (lint + test + build; build type-checks via `noEmitOnError`).
+- [ ] `npm run check` passes (build + lint + typecheck + test).
 - [ ] PR review comments and failing checks were verified against upstream/canonical sources and resolved only when each correction was committed.
 - [ ] `npm run typecheck` passes (or is covered by the pre-push hook).
 - [ ] Source changes live in `src/**`; `dist/**` is not hand-edited.

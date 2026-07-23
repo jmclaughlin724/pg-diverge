@@ -1,7 +1,7 @@
-import type { Diagnostic } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
-import { validateIntake } from "../intake.js";
-import type { SchemaEntry, SchemaShapes } from "../typegen/model.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import type { SchemaEntry, SchemaShapes, TableShape } from "../typegen/model.js";
+import type { Diagnostic } from "../types.js";
+import { validateIntake } from "./intake.js";
 import { diffTypeContract } from "./type-diff.js";
 
 export interface SchemaContractColumn {
@@ -42,9 +42,30 @@ export interface SchemaContract {
 export function toContract(shapes: SchemaShapes): SchemaContract {
   const schemas: SchemaContract["schemas"] = {};
   for (const [name, entry] of shapes.schemas) {
-    schemas[name] = { enums: entry.enums, tables: entry.tables };
+    schemas[name] = { enums: entry.enums, tables: entry.tables.map(toContractTable) };
   }
   return { schemas };
+}
+
+function toContractTable(table: TableShape): SchemaContractTable {
+  return {
+    columns: table.columns.map(toContractColumn),
+    name: table.name,
+    ...(table.primaryKey === undefined ? {} : { primaryKey: table.primaryKey }),
+    relationships: table.relationships,
+    uniqueColumnSets: table.uniqueColumnSets,
+  };
+}
+
+function toContractColumn(column: TableShape["columns"][number]): SchemaContractColumn {
+  return {
+    name: column.name,
+    notNull: column.notNull,
+    type: column.type,
+    ...(column.default === undefined ? {} : { default: column.default }),
+    ...(column.generated === undefined ? {} : { generated: column.generated }),
+    ...(column.identity === undefined ? {} : { identity: column.identity }),
+  };
 }
 
 export function contractDrift(previous: unknown, next: unknown): Diagnostic[] {
@@ -103,7 +124,7 @@ function fromContract(contract: SchemaContract): SchemaShapes {
       composites: [],
       enums: entry.enums,
       functions: [],
-      tables: entry.tables,
+      tables: entry.tables.map((table) => ({ ...table, checkConstraints: [] })),
       views: [],
     });
   }

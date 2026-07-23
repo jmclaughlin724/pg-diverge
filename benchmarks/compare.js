@@ -451,14 +451,15 @@ function sqlOutput(stdout) {
 }
 
 async function commandOutput(context, execution) {
-  if (execution.stdout.trim()) {
-    return execution.stdout;
-  }
   try {
-    return await readFile(context.outputPath, "utf8");
+    const output = await readFile(context.outputPath, "utf8");
+    if (output.trim()) {
+      return output;
+    }
   } catch {
-    return execution.stdout;
+    // Adapters that emit to stdout do not create the requested output path.
   }
+  return execution.stdout;
 }
 
 function csvSet(value) {

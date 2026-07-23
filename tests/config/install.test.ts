@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   resolveDatabaseUrl,
+  resolveExplicitDatabaseUrl,
   resolveSupabaseLocalDatabaseUrl,
   resolveVerificationDatabaseUrl,
 } from "../../src/database/url.js";
@@ -23,11 +24,11 @@ const run = promisify(execFile);
 async function runScaffold(
   targetDir: string,
   options: { packageRoot?: string; repair?: boolean } = {}
-): Promise<void> {
+) {
   const { scaffoldProject } = await import(
     pathToFileURL(join(process.cwd(), "bin/scaffold.mjs")).href
   );
-  await scaffoldProject({
+  return scaffoldProject({
     interactive: false,
     packageRoot: options.packageRoot ?? process.cwd(),
     packageVersion: "test",
@@ -99,6 +100,23 @@ describe("supabase database URL discovery", () => {
       delete process.env.SUPA_URL_TEST;
     }
   });
+
+  it("does not fall back to ambient database discovery for explicit-only resolution", () => {
+    const previous = process.env.SUPASCHEMA_DATABASE_URL;
+    process.env.SUPASCHEMA_DATABASE_URL = "postgresql://ambient@host/db";
+    process.env.SUPA_URL_TEST = "postgresql://explicit@host/db";
+    try {
+      expect(resolveExplicitDatabaseUrl()).toBeUndefined();
+      expect(resolveExplicitDatabaseUrl("$SUPA_URL_TEST")).toBe("postgresql://explicit@host/db");
+    } finally {
+      delete process.env.SUPA_URL_TEST;
+      if (previous === undefined) {
+        delete process.env.SUPASCHEMA_DATABASE_URL;
+      } else {
+        process.env.SUPASCHEMA_DATABASE_URL = previous;
+      }
+    }
+  });
 });
 
 describe("init project setup", () => {
@@ -117,6 +135,7 @@ describe("init project setup", () => {
     for (const file of activeAgentFiles) {
       expect(existsSync(join(consumer, file)), file).toBe(true);
     }
+    expect(existsSync(join(consumer, ".codex/skills"))).toBe(false);
     expect(existsSync(join(consumer, ".claude/skills/gitnexus"))).toBe(false);
     for (const file of excludedMaintainerFiles) {
       expect(existsSync(join(consumer, file)), file).toBe(false);
@@ -392,8 +411,16 @@ describe("init project setup", () => {
     await writeNestedFile(join(consumer, ".claude/settings.json"), '{"hooks":{"PreToolUse":[]}}\n');
     await writeNestedFile(join(consumer, ".codex/hooks.json"), '{"hooks":{"Stop":[]}}\n');
     await writeNestedFile(join(consumer, ".codex/skills/custom/SKILL.md"), "custom skill\n");
+    await writeNestedFile(
+      join(consumer, ".agents/skills/supaschema-migrate/references/commands.md"),
+      "consumer Agent commands\n"
+    );
+    await writeNestedFile(
+      join(consumer, ".claude/skills/supaschema-maintain/SKILL.md"),
+      "consumer Claude skill\n"
+    );
 
-    await runScaffold(consumer);
+    const result = await runScaffold(consumer);
 
     expect(await readFile(join(consumer, "supaschema.config.json"), "utf8")).toBe(
       '{"adapter":"auto"}\n'
@@ -424,6 +451,22 @@ describe("init project setup", () => {
     expect(await readFile(join(consumer, ".codex/skills/custom/SKILL.md"), "utf8")).toBe(
       "custom skill\n"
     );
+    expect(
+      await readFile(
+        join(consumer, ".agents/skills/supaschema-migrate/references/commands.md"),
+        "utf8"
+      )
+    ).toBe("consumer Agent commands\n");
+    expect(
+      await readFile(join(consumer, ".claude/skills/supaschema-maintain/SKILL.md"), "utf8")
+    ).toBe("consumer Claude skill\n");
+    expect(result.preserved).toEqual(
+      expect.arrayContaining([
+        ".agents/skills/supaschema-migrate/references/commands.md",
+        ".claude/skills/supaschema-maintain/SKILL.md",
+      ])
+    );
+    expect(result.skipped).toEqual([]);
     for (const file of activeAgentFiles) {
       expect(existsSync(join(consumer, file)), file).toBe(true);
     }
@@ -689,7 +732,7 @@ describe("init project setup", () => {
       ".vscode/settings.json",
       ".mcp.json",
       ".claude/settings.json",
-      ".claude/cclsp.json",
+      "cclsp.json",
       "components.json",
       "postgres-language-server.jsonc",
       "pyproject.toml",
@@ -720,7 +763,7 @@ describe("init project setup", () => {
     }
     expect(existsSync(join(consumer, ".vscode/settings.json"))).toBe(false);
     expect(existsSync(join(consumer, ".mcp.json"))).toBe(false);
-    expect(existsSync(join(consumer, ".claude/cclsp.json"))).toBe(false);
+    expect(existsSync(join(consumer, "cclsp.json"))).toBe(false);
     expect(existsSync(join(consumer, "postgres-language-server.jsonc"))).toBe(false);
     expect(existsSync(join(consumer, "pyproject.toml"))).toBe(false);
     expect(existsSync(join(consumer, "components.json"))).toBe(false);

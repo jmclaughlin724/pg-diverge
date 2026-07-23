@@ -3,9 +3,15 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { bundleDocsFiles } from "./bundle-docs.mjs";
 import { renderCodexAgent, renderCodexRule } from "./codex-rules.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+export const publicSkillNames = Object.freeze([
+  "supaschema",
+  "supaschema-migrate",
+  "supaschema-maintain",
+]);
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
 const codexCommandTools = ["Bash"];
@@ -40,8 +46,8 @@ export const agentSurfaceManifest = {
     targetRoot: ".codex/hooks",
   },
   publicSkills: {
-    sourceRoot: ".claude/skills/supaschema",
-    targetRoot: "skills/supaschema",
+    sourceRoot: ".claude/skills",
+    targetRoot: "skills",
   },
   rules: {
     sourceRoot: ".claude/rules",
@@ -125,7 +131,15 @@ function syncSkills(root) {
 }
 
 function syncPublicSkills(root) {
-  return syncDirectoryMirror(root, agentSurfaceManifest.publicSkills);
+  const { sourceRoot, targetRoot } = agentSurfaceManifest.publicSkills;
+  const files = curatedSkillFiles(root, sourceRoot);
+  const skillFileCount = files.size;
+  const readme = path.join(root, targetRoot, "README.md");
+  if (fs.existsSync(readme)) {
+    files.set("README.md", fs.readFileSync(readme));
+  }
+  syncTextFiles(path.join(root, targetRoot), files);
+  return { files: skillFileCount };
 }
 
 function syncAgentBundle(root) {
@@ -180,12 +194,15 @@ function checkAgentBundle(root, errors) {
     actualFiles,
     errors
   );
-  for (const [file, expectedText] of expected) {
+  for (const [file, expectedContent] of expected) {
     if (!actualFiles.includes(file)) {
       continue;
     }
-    const actualText = fs.readFileSync(path.join(targetRootPath, file), "utf8");
-    if (actualText !== expectedText) {
+    const actualContent = fs.readFileSync(
+      path.join(targetRootPath, file),
+      Buffer.isBuffer(expectedContent) ? undefined : "utf8"
+    );
+    if (!fileContentsEqual(actualContent, expectedContent)) {
       errors.push(`raw agent bundle drifted: ${file}`);
     }
   }
@@ -206,13 +223,10 @@ function agentBundleFiles(root) {
   const sourceCodexHooks = renderSourceCodexHooks(root);
   const files = new Map([
     ["INSTALL.md", fs.readFileSync(path.join(root, "agent-bundle", "INSTALL.md"), "utf8")],
+    ["skills-manifest.json", jsonText({ skills: publicSkillNames })],
     [
       "agents/prompts/supaschema-install.md",
       fs.readFileSync(path.join(root, ".agents/prompts/supaschema-install.md"), "utf8"),
-    ],
-    [
-      "agents/skills/supaschema/SKILL.md",
-      fs.readFileSync(path.join(root, ".agents/skills/supaschema/SKILL.md"), "utf8"),
     ],
     [
       "claude/hooks/guards/bash-policy-checks.mjs",
@@ -228,10 +242,6 @@ function agentBundleFiles(root) {
     [
       "claude/rules/supaschema.md",
       fs.readFileSync(path.join(root, ".claude/rules/supaschema.md"), "utf8"),
-    ],
-    [
-      "claude/skills/supaschema/SKILL.md",
-      fs.readFileSync(path.join(root, ".claude/skills/supaschema/SKILL.md"), "utf8"),
     ],
     [
       "codex/hooks/general-guard.mjs",
@@ -262,6 +272,29 @@ function agentBundleFiles(root) {
     files.set(`codex/hooks.${packageManager}.json`, jsonText(codexHooks));
   }
 
+  for (const [file, content] of curatedSkillFiles(root, ".agents/skills")) {
+    files.set(`agents/skills/${file}`, content);
+  }
+  for (const [file, content] of curatedSkillFiles(root, ".claude/skills")) {
+    files.set(`claude/skills/${file}`, content);
+  }
+
+  for (const [file, content] of bundleDocsFiles(root)) {
+    files.set(file, content);
+  }
+
+  return files;
+}
+
+function curatedSkillFiles(root, sourceRoot) {
+  const files = new Map();
+  for (const skillName of publicSkillNames) {
+    const skillRoot = path.join(root, sourceRoot, skillName);
+    assertDirectory(skillRoot, `missing curated skill dir ${sourceRoot}/${skillName}`);
+    for (const file of listFiles(skillRoot)) {
+      files.set(`${skillName}/${file}`, fs.readFileSync(path.join(skillRoot, file)));
+    }
+  }
   return files;
 }
 
@@ -832,7 +865,34 @@ function checkSkills(root, errors) {
 }
 
 function checkPublicSkills(root, errors) {
-  checkDirectoryMirror(root, agentSurfaceManifest.publicSkills, errors);
+  const { sourceRoot, targetRoot } = agentSurfaceManifest.publicSkills;
+  let expected;
+  try {
+    expected = curatedSkillFiles(root, sourceRoot);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  const targetRootPath = path.join(root, targetRoot);
+  const readme = path.join(targetRootPath, "README.md");
+  if (fs.existsSync(readme)) {
+    expected.set("README.md", fs.readFileSync(readme));
+  }
+  if (!fs.existsSync(targetRootPath)) {
+    errors.push(`missing mirror dir ${targetRoot}`);
+    return;
+  }
+  const targetFiles = listFiles(targetRootPath);
+  pushFileSetErrors({ targetRoot }, [...expected.keys()], targetFiles, errors);
+  for (const [file, expectedContent] of expected) {
+    if (!targetFiles.includes(file)) {
+      continue;
+    }
+    const actualContent = fs.readFileSync(path.join(targetRootPath, file));
+    if (!fileContentsEqual(actualContent, expectedContent)) {
+      errors.push(`mirror drifted for ${targetRoot}: ${file}`);
+    }
+  }
 }
 
 function checkDirectoryMirror(root, surface, errors) {
@@ -959,12 +1019,18 @@ function assertMarkdownFile(root, file, kind) {
   }
 }
 
-function writeFileIfChanged(file, text) {
-  const current = readExistingFile(file, "utf8");
-  if (current === text) {
+function writeFileIfChanged(file, content) {
+  const current = readExistingFile(file, Buffer.isBuffer(content) ? undefined : "utf8");
+  if (fileContentsEqual(current, content)) {
     return;
   }
-  writeFileAtomic(file, text);
+  writeFileAtomic(file, content);
+}
+
+function fileContentsEqual(actual, expected) {
+  return Buffer.isBuffer(expected)
+    ? Buffer.isBuffer(actual) && actual.equals(expected)
+    : actual === expected;
 }
 
 function syncCopiedFiles(sourceRootPath, targetRootPath, sourceFiles) {

@@ -1,4 +1,4 @@
-import type { ObjectRef } from "../core.js";
+import type { ObjectRef } from "../types.js";
 
 export function splitQualifiedIdentifier(input: string): string[] {
   const parts: string[] = [];

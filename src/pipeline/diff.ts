@@ -1,10 +1,10 @@
 import { performance } from "node:perf_hooks";
 import type { SupaschemaConfig } from "../config/schema.js";
-import type { MigrationPlan, SchemaModel } from "../core.js";
+import { buildSchemaPlanningContext } from "../planner/context.js";
 import { planSchemaDiff } from "../planner/schema.js";
-import { buildSchemaPlanningContext } from "../planning/context.js";
 import { migrationSafetyPack, runRulePacks } from "../scan/rules.js";
 import { filterModelBySchemas, parseSchemaFilter } from "../source/extract.js";
+import type { MigrationPlan, SchemaModel } from "../types.js";
 
 interface SchemaDiffPlanOptions {
   checkMigrationBaseline?: boolean;

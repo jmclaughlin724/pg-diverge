@@ -157,14 +157,20 @@ const simpleGitWriteBlocks = new Map([
     "checkout",
     "BLOCKED: git checkout is prohibited. Keep work on the current branch and use git diff/git show for comparisons.",
   ],
-  ["worktree", "BLOCKED: git worktree is prohibited. Use the current worktree only."],
   ["reset", "BLOCKED: git reset is prohibited. Ask the user before running reset."],
+]);
+
+const scopedGitSubcommandChecks = new Map([
+  ["branch", checkGitBranch],
+  ["config", checkGitConfig],
+  ["worktree", checkGitWorktree],
 ]);
 
 function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   const subcommand = gitArgs[0] ?? "";
-  if (subcommand === "branch") {
-    return checkGitBranch(gitArgs.slice(1));
+  const scopedCheck = scopedGitSubcommandChecks.get(subcommand);
+  if (scopedCheck) {
+    return scopedCheck(gitArgs.slice(1));
   }
   const simple = simpleGitWriteBlocks.get(subcommand);
   if (simple) {
@@ -217,6 +223,15 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   return allowResult();
 }
 
+function checkGitConfig(args) {
+  if (!configWritesAlias(args)) {
+    return allowResult();
+  }
+  return block(
+    "BLOCKED: Git alias configuration cannot bypass source-control policy. Invoke the canonical Git subcommand directly."
+  );
+}
+
 function checkGitBranch(args) {
   if (
     args.length === 2 &&
@@ -227,6 +242,19 @@ function checkGitBranch(args) {
   }
   return block(
     "BLOCKED: git branch is limited to deleting one verified merged topic branch after explicit approval. Use git rev-parse for discovery and git switch for transactional branch creation."
+  );
+}
+
+function checkGitWorktree(args) {
+  if (args.length === 3 && args[0] === "list" && args[1] === "--porcelain" && args[2] === "-z") {
+    return allowResult();
+  }
+  return blockGitWorktree();
+}
+
+function blockGitWorktree() {
+  return block(
+    "BLOCKED: git worktree is limited to `git worktree list --porcelain -z` for stable read-only inventory. Use host-managed isolation for worktree creation or mutation."
   );
 }
 
@@ -270,10 +298,16 @@ function isTopicBranch(value) {
 
 function checkDangerousGitAndShellWrites(command) {
   const ast = { segments: commandSegmentObjects(stripHeredocs(command)) };
-  const segments = ast.segments.map((segment) => segment.words);
+  if (ast.segments.some((segment) => segment.nestedCommandLimitReached)) {
+    return block(
+      "BLOCKED: nested shell command depth exceeded the safety parser limit. Run the governed command directly."
+    );
+  }
   if (
-    segments.some(
-      (tokens) => commandName(tokens) === "rm" && rmArgsIncludeRecursiveForce(commandArgs(tokens))
+    ast.segments.some(
+      (segment) =>
+        commandName(segment.words) === "rm" &&
+        rmArgsIncludeRecursiveForce(commandArgs(segment.words))
     )
   ) {
     return block(
@@ -281,24 +315,39 @@ function checkDangerousGitAndShellWrites(command) {
     );
   }
 
-  for (const tokens of segments) {
-    const name = commandName(tokens);
-    const args = commandArgs(tokens);
-    if (name === "gh") {
-      const result = checkGhPrMerge(args);
-      if (result.action !== "allow") {
-        return result;
-      }
-    }
-    if (name === "git") {
-      const result = checkGitWriteSubcommand(skipGitGlobalOptions(args), ast, tokens);
-      if (result.action !== "allow") {
-        return result;
-      }
+  for (let index = 0; index < ast.segments.length; index += 1) {
+    const result = checkDangerousCommandSegment(ast, index);
+    if (result.action !== "allow") {
+      return result;
     }
   }
 
   return allowResult();
+}
+
+function checkDangerousCommandSegment(ast, index) {
+  const segment = ast.segments[index];
+  const tokens = segment.words;
+  const name = commandName(tokens);
+  if (isDynamicWorktreeInvocation(ast.segments, index) || name === "git-worktree") {
+    return blockGitWorktree();
+  }
+  if (name === "gh") {
+    return checkGhPrMerge(commandArgs(tokens));
+  }
+  if (name !== "git") {
+    return allowResult();
+  }
+  const invocation = parseGitInvocation(tokens);
+  if (invocation.invokesAlias) {
+    return block(
+      "BLOCKED: Git aliases cannot bypass source-control policy. Invoke the canonical Git subcommand directly."
+    );
+  }
+  if (invocation.hasGlobalOptions && invocation.args[0] === "worktree") {
+    return blockGitWorktree();
+  }
+  return checkGitWriteSubcommand(invocation.args, ast, tokens);
 }
 
 function checkGhPrMerge(args) {
@@ -336,13 +385,18 @@ export function commandSegmentObjects(command) {
 function expandShellSegments(ast, depth = 0) {
   const segments = [];
   for (const segment of ast.segments) {
-    segments.push(segment);
-    if (depth >= 3) {
-      continue;
-    }
-    const nestedCommand = nestedShellCommand(segment.words);
-    if (nestedCommand) {
-      segments.push(...expandShellSegments(parseShellAst(nestedCommand), depth + 1));
+    const nestedCommands = [
+      nestedShellCommand(segment.words),
+      nestedEnvSplitCommand(segment.words),
+    ].filter((command) => typeof command === "string" && command.length > 0);
+    segments.push({
+      ...segment,
+      nestedCommandLimitReached: depth >= 3 && nestedCommands.length > 0,
+    });
+    if (depth < 3) {
+      for (const nestedCommand of nestedCommands) {
+        segments.push(...expandShellSegments(parseShellAst(nestedCommand), depth + 1));
+      }
     }
   }
   return segments;
@@ -357,6 +411,28 @@ function nestedShellCommand(tokens) {
     if (shellCommandOption(args[index] ?? "")) {
       const commandIndex = nestedShellCommandIndex(args, index + 1);
       return args[commandIndex];
+    }
+  }
+}
+
+function nestedEnvSplitCommand(tokens) {
+  let index = 0;
+  while (index < tokens.length && envAssignment(tokens[index])) {
+    index += 1;
+  }
+  if (executableName(tokens[index] ?? "") !== "env") {
+    return;
+  }
+  const args = tokens.slice(index + 1);
+  for (let argIndex = 0; argIndex < args.length; argIndex += 1) {
+    const arg = args[argIndex] ?? "";
+    if (arg === "-S" || arg === "--split-string") {
+      return [args[argIndex + 1], ...args.slice(argIndex + 2)].filter(Boolean).join(" ");
+    }
+    for (const prefix of ["-S", "--split-string="]) {
+      if (arg.startsWith(prefix) && arg.length > prefix.length) {
+        return [arg.slice(prefix.length), ...args.slice(argIndex + 1)].join(" ");
+      }
     }
   }
 }
@@ -455,6 +531,29 @@ const commandWrappers = new Map([
   ["env", new Set(["-C", "-S", "-u", "-P"])],
   ["exec", new Set(["-a"])],
   ["command", new Set()],
+  [
+    "sudo",
+    new Set([
+      "--chdir",
+      "--close-from",
+      "--group",
+      "--host",
+      "--prompt",
+      "--role",
+      "--type",
+      "--user",
+      "-C",
+      "-D",
+      "-g",
+      "-h",
+      "-p",
+      "-R",
+      "-r",
+      "-T",
+      "-t",
+      "-u",
+    ]),
+  ],
 ]);
 
 function commandStart(tokens) {
@@ -462,14 +561,14 @@ function commandStart(tokens) {
   while (index < tokens.length && envAssignment(tokens[index])) {
     index += 1;
   }
-  while (commandWrappers.has(tokens[index])) {
+  while (commandWrappers.has(executableName(tokens[index] ?? ""))) {
     index = skipCommandWrapper(tokens, index);
   }
   return index;
 }
 
 function skipCommandWrapper(tokens, start) {
-  const valueOptions = commandWrappers.get(tokens[start]);
+  const valueOptions = commandWrappers.get(executableName(tokens[start] ?? ""));
   let index = start + 1;
   while (index < tokens.length) {
     const token = tokens[index];
@@ -493,33 +592,118 @@ function skipCommandWrapper(tokens, start) {
   return index;
 }
 
-function skipGitGlobalOptions(args) {
-  const valueOptions = new Set([
-    "--config-env",
-    "--exec-path",
-    "--git-dir",
-    "--namespace",
-    "--super-prefix",
-    "--work-tree",
-    "-C",
-    "-c",
-  ]);
+const gitGlobalValueOptions = new Set([
+  "--config-env",
+  "--exec-path",
+  "--git-dir",
+  "--namespace",
+  "--super-prefix",
+  "--work-tree",
+  "-C",
+  "-c",
+]);
+
+function parseGitInvocation(tokens) {
+  const start = commandStart(tokens);
+  const aliases = configuredGitAliases(tokens.slice(0, start));
+  const args = tokens.slice(start + 1);
   let index = 0;
+  let hasGlobalOptions = false;
   while (index < args.length) {
     const arg = args[index];
     if (typeof arg !== "string" || !arg.startsWith("-") || arg === "-") {
       break;
     }
+    hasGlobalOptions = true;
     index += 1;
-    if (valueOptions.has(arg) && index < args.length) {
+    if ((arg === "-c" || arg === "--config-env") && index < args.length) {
+      addGitAlias(aliases, args[index] ?? "");
+    } else if (arg.startsWith("--config-env=")) {
+      addGitAlias(aliases, arg.slice("--config-env=".length));
+    } else if (arg.startsWith("-c") && arg.length > 2) {
+      addGitAlias(aliases, arg.slice(2));
+    }
+    if (gitGlobalValueOptions.has(arg) && index < args.length) {
       index += 1;
     }
   }
-  return args.slice(index);
+  const commandArgs = args.slice(index);
+  return {
+    args: commandArgs,
+    hasGlobalOptions,
+    invokesAlias: aliases.has((commandArgs[0] ?? "").toLowerCase()),
+  };
+}
+
+function configuredGitAliases(tokens) {
+  const aliases = new Set();
+  for (const token of tokens) {
+    const assignment = envAssignment(token);
+    if (assignment?.name.startsWith("GIT_CONFIG_KEY_")) {
+      addGitAlias(aliases, assignment.value);
+    }
+  }
+  return aliases;
+}
+
+function addGitAlias(aliases, config) {
+  const alias = gitAliasName(config);
+  if (alias) {
+    aliases.add(alias);
+  }
+}
+
+function gitAliasName(config) {
+  const equals = config.indexOf("=");
+  const name = (equals === -1 ? config : config.slice(0, equals)).toLowerCase();
+  if (!name.startsWith("alias.")) {
+    return "";
+  }
+  const alias = name.slice("alias.".length);
+  return alias.endsWith(".command") ? alias.slice(0, -".command".length) : alias;
+}
+
+function configWritesAlias(args) {
+  const aliasIndex = args.findIndex((arg) => gitAliasName(arg));
+  return aliasIndex !== -1 && aliasIndex < args.length - 1;
+}
+
+function isDynamicWorktreeInvocation(segments, index) {
+  const segment = segments[index];
+  const tokens = segment.words;
+  const start = commandStart(tokens);
+  const rawName = tokens[start] ?? "";
+  const dynamicInvocation = parseGitInvocation(["git", ...tokens.slice(start + 1)]);
+  if (isDynamicExecutable(rawName) && dynamicInvocation.args[0] === "worktree") {
+    return true;
+  }
+  const substitutionTail = parseGitInvocation(["git", ...tokens]);
+  if (segment.operatorBefore !== ")" || substitutionTail.args[0] !== "worktree") {
+    return false;
+  }
+  for (let openIndex = index - 1; openIndex > 0; openIndex -= 1) {
+    if (segments[openIndex].operatorBefore !== "(") {
+      continue;
+    }
+    const owner = segments[openIndex - 1].words;
+    const ownerStart = commandStart(owner);
+    return owner[ownerStart] === "$" && owner.length === ownerStart + 1;
+  }
+  return false;
+}
+
+function isDynamicExecutable(value) {
+  return value.startsWith("$") || [...value].some(isWhitespace);
+}
+
+function executableName(value) {
+  const separator = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\"));
+  const basename = value.slice(separator + 1);
+  return basename.endsWith(".exe") ? basename.slice(0, -".exe".length) : basename;
 }
 
 export function commandName(tokens) {
-  return tokens[commandStart(tokens)] ?? "";
+  return executableName(tokens[commandStart(tokens)] ?? "");
 }
 
 export function commandArgs(tokens) {

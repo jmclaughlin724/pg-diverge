@@ -1,0 +1,43 @@
+---
+title: "completion"
+description: "Print a shell completion script for supaschema commands."
+keywords: ["completion command", "shell completion", "bash", "zsh", "fish"]
+---
+
+Use `completion` when you want shell autocomplete for supaschema commands.
+
+The command prints a completion script for bash, zsh, or fish.
+
+## Run it
+
+```bash
+npx supaschema completion bash >> ~/.bashrc
+npx supaschema completion zsh >> ~/.zshrc
+npx supaschema completion fish > ~/.config/fish/completions/supaschema.fish
+```
+
+Reload the shell after installing the script.
+
+## Arguments
+
+<ParamField path="<shell>" type="bash | zsh | fish">
+  Required shell name.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning                              |
+| ---- | ------------------------------------ |
+| `0`  | Completion script printed            |
+| `1`  | Unsupported shell or runtime failure |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Commands" icon="terminal" href="/commands">
+    Pick the command you want to run.
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Add supaschema before installing completions.
+  </Card>
+</CardGroup>

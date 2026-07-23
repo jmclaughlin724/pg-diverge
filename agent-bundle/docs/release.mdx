@@ -1,0 +1,66 @@
+---
+title: "Release"
+description: "Release and trusted publishing checklist for the supaschema npm package."
+keywords: ["release", "trusted publishing", "npm", "checklist"]
+hidden: true
+---
+
+The package is designed for trusted publishing from GitHub Actions. Protected `main` is the release source: every merged pull request starts the release workflow after its required CI and Dependency Review checks pass. A read-only preflight publishes an unreleased package version, repairs a missing GitHub Release for an npm version that already exists, or exits without entering the privileged publish job when the release is complete.
+
+The public install package remains `supaschema` on npmjs.org. The release workflow also publishes a scoped GitHub Packages mirror, `@jmclaughlin724/supaschema`, so the repository Packages surface tracks each release without changing the public npm package name.
+
+## One-time setup
+
+1. Create the public GitHub repository.
+2. Add the npm trusted publisher for this repository:
+   - Provider: GitHub Actions
+   - Organization or user: `jmclaughlin724`
+   - Repository: `supaschema`
+   - Workflow filename: `release.yml`
+   - Environment name: `release`
+   - Allowed actions: `npm publish`
+3. Configure the GitHub `release` environment so deployment branch policies allow only `main`.
+4. Keep the release workflow's `packages: write` permission enabled so `GITHUB_TOKEN` can publish the scoped GitHub Packages mirror.
+5. Keep the `release tag policy` ruleset active for `v*` tags so published release tags cannot be rewritten or deleted.
+
+## Per-release checklist
+
+1. Add changesets for user-facing changes while the change is fresh.
+2. Run `npm run release:version` and review the resulting `package.json`, `package-lock.json`, and `CHANGELOG.md` changes.
+3. Run `$update` after all release-owned edits are present. Resolve every in-scope finding and complete the validation selected by the skill.
+4. Run `npm run release:notes -- --version <version>` and confirm the output is the GitHub Release body you want.
+5. Run `npm run release:verify`.
+6. Push the signed release commit to its topic branch and squash-merge the protected pull request.
+
+Do not publish from GitHub Releases or local machines. GitHub Release creation runs immediately after npm publish and tarball attestation, so npm propagation lag cannot leave npm published without the matching GitHub release/tag. If npm publish succeeds but GitHub Release creation itself fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm.
+
+## Package boundary
+
+Package contents are allowlisted with `package.json` `files`. Do not add a root `.npmignore`; the package boundary is explicit by design.
+
+Use [Package Boundary](/reference/package-boundary) before adding, moving, or deleting any published file or consumer installer output. Use [Agent bundle](/coding-agents/agent-bundle) before changing shipped agent surfaces or hook behavior.
+
+Before publishing, `npm run release:verify` is the local release proof. It runs release preflight, package checks, the installed-CLI consumer lifecycle proof, tarball inspection, and the package-manager smoke owned by [Package Boundary](/reference/package-boundary).
+
+The release workflow uses:
+
+- `permissions.id-token: write`
+- `permissions.contents: write` on the publish job
+- `permissions.packages: write` on the publish job
+- a read-only preflight job that prevents complete releases from entering the write/OIDC job
+- `push` to `main` plus a main-only `workflow_dispatch` repair path
+- Harden-Runner block-mode egress restricted to the reviewed GitHub, npm, GitHub Packages, and Sigstore endpoints
+- a GitHub-hosted Ubuntu runner with Node 24, npm `>=11.5.1`, and `actions/setup-node` with `registry-url: https://registry.npmjs.org`
+- `npm publish "$SUPASCHEMA_TARBALL" --access public --provenance`
+- `actions/attest@v4` for tarball provenance attestation
+- `node scripts/release/changelog-notes.mjs --version "$SUPASCHEMA_PACKAGE_VERSION" --out "$RUNNER_TEMP/release-notes.md"`
+- `gh release create "$SUPASCHEMA_RELEASE_TAG" --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"`
+- `npm publish "$SUPASCHEMA_GITHUB_PACKAGE_TARBALL" --registry https://npm.pkg.github.com` for the scoped GitHub Packages mirror when it is missing
+
+Run `npm run release:registry-smoke` manually when you need to prove npm, pnpm 11, and Bun can download `supaschema@<version>` from the npm registry after publication.
+
+With npm trusted publishing, provenance is generated through GitHub Actions OIDC. The explicit `--provenance` flag is kept as release policy.
+
+No long-lived npm token is required.
+
+Do not publish from a laptop for production releases.

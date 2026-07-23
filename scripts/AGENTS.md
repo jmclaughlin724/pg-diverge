@@ -7,13 +7,15 @@ Maintainer scripts: guards, agent-hook runtime, agent-surface sync, docs linting
 - `guards/` — `check-*.mjs` invariant guards (`npm run guard`)
 - `agent-hooks/` — shared Claude/Codex hook runtime
 - `skills/` — `sync-llm.mjs` agent-surface sync writer
-- `docs-lint/` — docs-standard linter modules
+- `docs-lint/` — canonical docs-standard CLI and its internal inspectors
+- `lib/` — shared Git-visible file discovery for formatter adapters
 - `code-atlas/`, `stripe/` — local-only (gitignored)
 
 ## Top-level scripts
 
-- `check-docs-standard.mjs` — docs authoring standard (`npm run docs:lint`)
-- `clean-dist.mjs`, `check-schema.mjs`, `format-*.mjs` — generated output cleanup, schema generation, and per-language formatters
+- `cclsp-language-id-proxy.mjs` — cclsp language-ID normalization adapter
+- `clean-dist.mjs`, `ensure-bin-executable.mjs` — build lifecycle helpers
+- `format-sh.mjs`, `format-toml.mjs` — per-language formatter adapters
 
 ## Owners
 

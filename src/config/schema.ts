@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
-import { diagnostic, diagnosticCatalog, formatDiagnostic } from "../diagnostics.js";
+import { diagnosticCatalog } from "../diagnostics/catalog.js";
+import { diagnostic, formatDiagnostic } from "../diagnostics/diagnostics.js";
 import { redactSecrets } from "../redaction.js";
 import {
   AdapterInput,
@@ -141,6 +142,7 @@ export const supaschemaConfigSchema = z.strictObject({
   zodTypesImportPath: z.string().trim().min(1).meta({ pattern: "\\S" }).optional(),
   normalize: z.enum(normalizePolicies).default(NormalizePolicy.Deparse),
   managedSchemas: z.array(z.string()).default([]),
+  managedSchemaOverlays: z.array(z.string().trim().min(1)).default([]),
   postgresVersion: z.string().default("15+"),
   renameDetection: z.enum(renameDetectionPolicies).default(RenameDetectionPolicy.HintsOnly),
   schemaPaths: z.array(z.string()).default([genericSchemaPath]),

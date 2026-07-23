@@ -31,11 +31,11 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 | Nested Codex briefs | `<subfolder>/AGENTS.md` | loaded hierarchically by Codex for matching subtrees | no generated sync; validate scoped routes with `npm run guard` |
 | Claude runtime entrypoint | `CLAUDE.md` | Claude Code | keep as a runtime entrypoint for Claude Code only; unique durable policy belongs in `AGENTS.md` or scoped rules |
 | Rules | `.claude/rules/**` | Codex rule pointers/mirrors when packaged | `npm run sync:llm`; rule guard if available |
-| Skills | `.claude/skills/**` | `.agents/skills/**` for mirrored skills; `skills/supaschema` for the public `npx skills` source | `npm run sync:llm` |
+| Skills | `.claude/skills/**`; ordered public list in `scripts/skills/sync-llm.mjs` | `.agents/skills/**`; curated `skills/**`; Agent/Claude bundle skill trees and manifest | `npm run sync:llm` |
 | Hooks | `.claude/hooks/**` | `.codex/hooks/**` mirrors or native adapters where supported | edit Claude/shared owner, then sync or update native adapter |
 | Native Codex hook registration | `scripts/skills/sync-llm.mjs` plus `.claude/settings.json`; see Rule 22 | `.codex/hooks.json` and packaged consumer registration | `npm run sync:llm`, `npm run sync:llm:check`, hook/package guards |
 | MCP registry | `.mcp.json`, `fastmcp.json` | local MCP clients and package docs | `npm run guard:fastmcp`, `npm run guard:agent` |
-| Consumer agent bundle | `.claude/skills/supaschema`, `.claude/rules/supaschema.md`, consumer hook sources, `agent-bundle/INSTALL.md`, `package.json#files`, `bin/scaffold.mjs`, `scripts/skills/sync-llm.mjs` | raw npm tarball bundle and default installed project scaffold | `npm run sync:llm`, `npm run check:package`, `npm pack --dry-run --json`, lifecycle tests |
+| Consumer agent bundle | curated `.claude/skills/**`, `.claude/rules/supaschema.md`, consumer hook sources, `agent-bundle/INSTALL.md`, `package.json#files`, `bin/scaffold.mjs`, `scripts/skills/sync-llm.mjs` | raw npm tarball bundle, ordered skills manifest, and default installed project scaffold | `npm run sync:llm`, `npm run check:package`, `npm pack --dry-run --json`, lifecycle tests |
 
 ## Rules
 

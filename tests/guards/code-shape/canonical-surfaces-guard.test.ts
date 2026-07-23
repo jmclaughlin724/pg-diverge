@@ -114,6 +114,15 @@ describe("canonical surfaces guard", () => {
     await expect(check(root)).rejects.toThrow("contains monetization term marketplace_purchase");
   });
 
+  it("blocks public license issuance implementation", async () => {
+    const root = tempGuardRepo({
+      "src/license.ts": "export const secret = 'SUPASCHEMA_LICENSE_PRIVATE_KEY';\n",
+    });
+    await expect(check(root)).rejects.toThrow(
+      "contains monetization term SUPASCHEMA_LICENSE_PRIVATE_KEY"
+    );
+  });
+
   it("allows package scripts without recursive force deletion", async () => {
     const root = tempGuardRepo({
       "package.json": packageJson({ lint: "node scripts/check.mjs" }),

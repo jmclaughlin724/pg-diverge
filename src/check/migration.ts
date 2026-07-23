@@ -1,6 +1,5 @@
 import { resolveConfig } from "../config/schema.js";
-import type { CheckOptions, Diagnostic } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import { notNullProofConstraintName } from "../migrations/not-null.js";
 import type { AstNode, AstStatement } from "../sql/ast.js";
 import {
@@ -18,6 +17,7 @@ import {
 import { deparseFidelityDiagnostics } from "../sql/normalize-deparse.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { extractStatementDependencies } from "../sql/routine-dependencies.js";
+import type { CheckOptions, Diagnostic } from "../types.js";
 import { runConfiguredValidators } from "../validators.js";
 import {
   enumValueUseDiagnostics,

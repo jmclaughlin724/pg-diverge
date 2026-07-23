@@ -1,5 +1,5 @@
-import type { Diagnostic } from "../core.js";
-import { formatDiagnostics } from "../diagnostics.js";
+import { formatDiagnostics } from "../diagnostics/diagnostics.js";
+import type { Diagnostic } from "../types.js";
 
 export type CheckReporter = "text" | "github" | "sarif" | "json";
 

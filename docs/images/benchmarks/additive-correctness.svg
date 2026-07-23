@@ -183,17 +183,17 @@
     ✓ 3/3
   </text>
   <rect
-    fill="rgba(155,116,106,0.16)"
+    fill="rgba(62,207,142,0.14)"
     height="32"
     rx="16"
-    stroke="#9B746A"
+    stroke="#10B981"
     stroke-opacity="0.55"
     width="120"
     x="985"
     y="150"
   />
   <text
-    fill="#D8B49C"
+    fill="#3ECF8E"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="600"
@@ -201,7 +201,7 @@
     x="1045.0"
     y="171.4"
   >
-    —
+    1.000
   </text>
   <circle cx="41" cy="207" fill="#FACC15" r="4" />
   <text
@@ -278,17 +278,17 @@
     ✓ 3/3
   </text>
   <rect
-    fill="rgba(155,116,106,0.16)"
+    fill="rgba(62,207,142,0.14)"
     height="32"
     rx="16"
-    stroke="#9B746A"
+    stroke="#10B981"
     stroke-opacity="0.55"
     width="120"
     x="985"
     y="196"
   />
   <text
-    fill="#D8B49C"
+    fill="#3ECF8E"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="600"
@@ -296,7 +296,7 @@
     x="1045.0"
     y="217.4"
   >
-    —
+    1.000
   </text>
   <text
     fill="#FFF2E1"
@@ -372,17 +372,17 @@
     ✓ 3/3
   </text>
   <rect
-    fill="rgba(155,116,106,0.16)"
+    fill="rgba(62,207,142,0.14)"
     height="32"
     rx="16"
-    stroke="#9B746A"
+    stroke="#10B981"
     stroke-opacity="0.55"
     width="120"
     x="985"
     y="242"
   />
   <text
-    fill="#D8B49C"
+    fill="#3ECF8E"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="600"
@@ -390,7 +390,7 @@
     x="1045.0"
     y="263.4"
   >
-    —
+    1.000
   </text>
   <text
     fill="#FFF2E1"
@@ -466,17 +466,17 @@
     ✓ 3/3
   </text>
   <rect
-    fill="rgba(155,116,106,0.16)"
+    fill="rgba(62,207,142,0.14)"
     height="32"
     rx="16"
-    stroke="#9B746A"
+    stroke="#10B981"
     stroke-opacity="0.55"
     width="120"
     x="985"
     y="288"
   />
   <text
-    fill="#D8B49C"
+    fill="#3ECF8E"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="600"
@@ -484,7 +484,7 @@
     x="1045.0"
     y="309.4"
   >
-    —
+    1.000
   </text>
   <text
     fill="#FFF2E1"
@@ -497,10 +497,10 @@
     supabase-pg-delta
   </text>
   <rect
-    fill="rgba(62,207,142,0.14)"
+    fill="rgba(250,204,21,0.14)"
     height="32"
     rx="16"
-    stroke="#10B981"
+    stroke="#FACC15"
     stroke-opacity="0.55"
     width="120"
     x="430"
@@ -515,7 +515,7 @@
     x="490.0"
     y="355.4"
   >
-    ✓ 3/3
+    △ 2/3
   </text>
   <rect
     fill="rgba(169,22,22,0.16)"
@@ -539,10 +539,10 @@
     ✗ 0/3
   </text>
   <rect
-    fill="rgba(62,207,142,0.14)"
+    fill="rgba(250,204,21,0.14)"
     height="32"
     rx="16"
-    stroke="#10B981"
+    stroke="#FACC15"
     stroke-opacity="0.55"
     width="120"
     x="790"
@@ -557,20 +557,20 @@
     x="850.0"
     y="355.4"
   >
-    ✓ 3/3
+    △ 2/3
   </text>
   <rect
-    fill="rgba(155,116,106,0.16)"
+    fill="rgba(62,207,142,0.14)"
     height="32"
     rx="16"
-    stroke="#9B746A"
+    stroke="#10B981"
     stroke-opacity="0.55"
     width="120"
     x="985"
     y="334"
   />
   <text
-    fill="#D8B49C"
+    fill="#3ECF8E"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="600"
@@ -578,7 +578,7 @@
     x="1045.0"
     y="355.4"
   >
-    —
+    1.000
   </text>
   <text
     fill="#FFF2E1"
@@ -654,17 +654,17 @@
     ✓ 3/3
   </text>
   <rect
-    fill="rgba(155,116,106,0.16)"
+    fill="rgba(62,207,142,0.14)"
     height="32"
     rx="16"
-    stroke="#9B746A"
+    stroke="#10B981"
     stroke-opacity="0.55"
     width="120"
     x="985"
     y="380"
   />
   <text
-    fill="#D8B49C"
+    fill="#3ECF8E"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="600"
@@ -672,7 +672,7 @@
     x="1045.0"
     y="401.4"
   >
-    —
+    1.000
   </text>
   <text
     fill="#FFF2E1"
@@ -748,17 +748,17 @@
     ✓ 3/3
   </text>
   <rect
-    fill="rgba(155,116,106,0.16)"
+    fill="rgba(62,207,142,0.14)"
     height="32"
     rx="16"
-    stroke="#9B746A"
+    stroke="#10B981"
     stroke-opacity="0.55"
     width="120"
     x="985"
     y="426"
   />
   <text
-    fill="#D8B49C"
+    fill="#3ECF8E"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="600"
@@ -766,7 +766,7 @@
     x="1045.0"
     y="447.4"
   >
-    —
+    1.000
   </text>
   <text
     fill="#9B746A"
@@ -776,6 +776,6 @@
     x="36.0"
     y="506.0"
   >
-    supaschema 0.1.0 · Supabase CLI 2.106.0 · Node v24.14.0 · Apple Silicon · 3 iterations
+    supaschema 0.4.3 · Supabase CLI 2.109.1 · Node v24.18.0 · Apple Silicon · 3 iterations
   </text>
 </svg>

@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { MigrationPlan } from "../core.js";
+import type { MigrationPlan } from "../types.js";
 
 export function defaultMigrationName(plan: MigrationPlan): string {
   const first = plan.operations[0];

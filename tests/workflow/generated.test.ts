@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { checkMigrationSql } from "../../src/check/migration.js";
-import type { SupaschemaConfig } from "../../src/core.js";
 import { resolveDatabaseUrl } from "../../src/database/url.js";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderMigration } from "../../src/render/migration.js";
 import { extractSourceModel } from "../../src/source/extract.js";
 import { parseSqlAst } from "../../src/sql/parser.js";
+import type { SupaschemaConfig } from "../../src/types.js";
 import { verifyMigration } from "../../src/verify/migration.js";
 import { hasUnqualifiedCatalogName, hasUnqualifiedRegproc } from "../catalog/qualification.js";
 

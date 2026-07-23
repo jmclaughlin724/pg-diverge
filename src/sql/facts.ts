@@ -1,6 +1,6 @@
 import { deparseSync } from "pgsql-deparser";
-import type { Diagnostic, ObjectRef, SchemaObject } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import type { Diagnostic, ObjectRef, SchemaObject } from "../types.js";
 import type { AstNode } from "./ast.js";
 import {
   asRecord,
@@ -316,6 +316,9 @@ function canonicalObjectKindHash(
   object: SchemaObject,
   statements: { node: AstNode; tag: string }[]
 ): string | undefined {
+  if (object.ref.kind === "grant") {
+    return grantHash(object);
+  }
   if (object.ref.kind === "default-privilege") {
     return defaultPrivilegeHash(object);
   }
@@ -333,9 +336,26 @@ function canonicalObjectKindHash(
   }
 }
 
+function grantHash(object: SchemaObject): string {
+  return shapeHash(
+    {
+      columnPrivileges: object.metadata.columnPrivileges ?? null,
+      grantee: String(object.metadata.grantee ?? ""),
+      kindPhrase: String(object.metadata.kindPhrase ?? ""),
+      privileges: Array.isArray(object.metadata.privileges) ? object.metadata.privileges : [],
+      targetIdentity: String(object.metadata.targetIdentity ?? ""),
+      verb: String(object.metadata.verb ?? ""),
+      withGrantOption: object.metadata.withGrantOption === true,
+    },
+    object.key,
+    object.ref
+  );
+}
+
 function defaultPrivilegeHash(object: SchemaObject): string {
   return shapeHash(
     {
+      forRole: String(object.metadata.forRole ?? ""),
       grantee: String(object.metadata.grantee ?? ""),
       objectType: String(object.metadata.objectType ?? ""),
       privileges: Array.isArray(object.metadata.privileges) ? object.metadata.privileges : [],

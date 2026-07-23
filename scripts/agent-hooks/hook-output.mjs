@@ -4,8 +4,6 @@ const modelContextEvents = new Set([
   "PreToolUse",
   "PostToolUse",
   "SubagentStart",
-  "Stop",
-  "SubagentStop",
 ]);
 
 const decisionBlockEvents = new Set(["UserPromptSubmit", "PostToolUse", "Stop", "SubagentStop"]);
@@ -17,9 +15,7 @@ export function shapeHookResult(eventName, result = {}, runtime = "claude") {
   const context = joinParts(result.contextParts);
   let exitCode = 0;
   let stderr = "";
-  const supportsModelContext =
-    modelContextEvents.has(eventName) &&
-    !(runtime === "codex" && (eventName === "Stop" || eventName === "SubagentStop"));
+  const supportsModelContext = modelContextEvents.has(eventName);
 
   if (context && supportsModelContext) {
     output.hookSpecificOutput = {

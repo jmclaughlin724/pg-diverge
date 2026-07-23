@@ -8,12 +8,12 @@ import { codeAtlasQueryEvidence } from "./atlas.mjs";
 import { responseReportsFailure, toolSucceeded } from "./response-evidence.mjs";
 import { addEvidence } from "./state.mjs";
 
+const shellToolNames = new Set(["Bash", "exec_command", "functions.exec_command"]);
+
 export function recordToolEvidence(payload, state) {
-  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
-  const command =
-    typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
-  const atlasEvidence = codeAtlasQueryEvidence(payload);
-  if (!((name === "Bash" && command) || atlasEvidence)) {
+  const command = shellCommand(payload);
+  const atlasEvidence = codeAtlasQueryEvidence(normalizeShellPayload(payload, command));
+  if (!(command || atlasEvidence)) {
     return {};
   }
   const toolSuccess = toolSucceeded(payload);
@@ -24,10 +24,10 @@ export function recordToolEvidence(payload, state) {
     addEvidence(state, {
       ...atlasEvidence,
       outcome: toolSuccess ? "success" : "failure",
-      summary: toolSuccess ? "Code Atlas query succeeded" : "Code Atlas query failed",
+      summary: `Code Atlas query ${toolSuccess ? "succeeded" : "failed"}`,
     });
   }
-  if (!(name === "Bash" && command)) {
+  if (!command) {
     return {};
   }
   const domains = classifyCommandDomains(command);
@@ -148,10 +148,7 @@ export function failureLabels(failures) {
 }
 
 function transcriptCommand(entry) {
-  if (typeof entry?.tool_input?.command === "string") {
-    return entry.tool_input.command;
-  }
-  return "";
+  return commandInput(entry?.tool_input);
 }
 
 function transcriptFunctionCommand(call) {
@@ -159,14 +156,39 @@ function transcriptFunctionCommand(call) {
     return "";
   }
   const name = typeof call.name === "string" ? call.name : "";
-  if (name !== "Bash") {
+  if (!shellToolNames.has(name)) {
     return "";
   }
-  const args = jsonObject(call.arguments);
-  if (typeof args.command === "string") {
-    return args.command;
+  return commandInput(jsonObject(call.arguments));
+}
+
+function shellCommand(payload) {
+  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
+  return shellToolNames.has(name) ? commandInput(payload?.tool_input) : "";
+}
+
+function commandInput(input) {
+  if (typeof input?.command === "string") {
+    return input.command;
   }
-  return "";
+  return typeof input?.cmd === "string" ? input.cmd : "";
+}
+
+function normalizeShellPayload(payload, command) {
+  if (!command) {
+    return payload;
+  }
+  const input =
+    payload?.tool_input &&
+    typeof payload.tool_input === "object" &&
+    !Array.isArray(payload.tool_input)
+      ? payload.tool_input
+      : {};
+  return {
+    ...payload,
+    tool_input: { ...input, command },
+    tool_name: "Bash",
+  };
 }
 
 function transcriptTimestamp(entry) {

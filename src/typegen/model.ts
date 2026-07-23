@@ -1,5 +1,4 @@
-import type { Diagnostic, SchemaModel, SchemaObject } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import type { AstNode } from "../sql/ast.js";
 import {
   asRecord,
@@ -12,6 +11,7 @@ import {
 } from "../sql/ast.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { canonicalColumnType, canonicalTableShape } from "../sql/table-shape.js";
+import type { Diagnostic, SchemaModel, SchemaObject } from "../types.js";
 import {
   collectUnresolvedViewRelations,
   collectViewColumns,
@@ -20,6 +20,7 @@ import {
 } from "./views.js";
 
 export interface ColumnShape {
+  collation?: string;
   default?: unknown;
   generated?: unknown;
   identity?: string;
@@ -69,8 +70,22 @@ export interface FunctionShape {
   returns: FunctionReturnShape | undefined;
 }
 
+export interface CheckConstraintShape {
+  expression: AstNode;
+  name: string;
+  skipValidation: boolean;
+}
+
+interface DomainShape {
+  baseType: string;
+  checkConstraints: CheckConstraintShape[];
+  collation?: string;
+}
+
 export interface TableShape {
+  checkConstraints: CheckConstraintShape[];
   columns: ColumnShape[];
+  foreign?: boolean;
   name: string;
   primaryKey?: string[];
   relationships: RelationshipShape[];
@@ -95,7 +110,7 @@ export interface SchemaEntry {
 export interface SchemaShapes {
   compositesByBareName: Map<string, { name: string; schema: string }[]>;
   compositesByQualifiedName: Map<string, { name: string; schema: string }>;
-  domains: Map<string, string>;
+  domains: Map<string, DomainShape>;
   enumsByBareName: Map<string, { name: string; schema: string }[]>;
   enumsByQualifiedName: Map<string, { name: string; schema: string }>;
   schemas: Map<string, SchemaEntry>;
@@ -185,9 +200,9 @@ async function collectEnumAndDomainShapes(model: SchemaModel, shapes: SchemaShap
       continue;
     }
     if (object.ref.kind === "domain") {
-      const base = await domainBaseType(object);
-      if (base !== undefined) {
-        shapes.domains.set(`${object.ref.schema ?? "public"}.${object.ref.name}`, base);
+      const domain = await domainShape(object);
+      if (domain !== undefined) {
+        shapes.domains.set(`${object.ref.schema ?? "public"}.${object.ref.name}`, domain);
       }
     }
   }
@@ -231,9 +246,11 @@ async function registerTableShape(
   object: SchemaObject
 ): Promise<void> {
   const columns =
-    object.ref.kind === "table" ? tableColumns(object) : await foreignTableColumns(object);
+    object.ref.kind === "table" ? await tableColumns(object) : await foreignTableColumns(object);
   const table: TableShape = {
+    checkConstraints: [],
     columns,
+    ...(object.ref.kind === "foreign-table" ? { foreign: true } : {}),
     name: object.ref.name,
     relationships: [],
     uniqueColumnSets: [],
@@ -344,6 +361,7 @@ function relationKey(object: SchemaObject): string {
 
 function relationShape(name: string, columns: ColumnShape[]): TableShape {
   return {
+    checkConstraints: [],
     columns,
     name,
     relationships: [],
@@ -535,38 +553,122 @@ async function registerCompositeShape(shapes: SchemaShapes, object: SchemaObject
   shapes.compositesByBareName.set(name, bare);
 }
 
-export function resolveColumnType(
+export interface ColumnTypeChase extends ResolvedColumnType {
+  baseTypeName: string;
+  domainChain: string[];
+  sawTypmod: boolean;
+}
+
+export function chaseColumnType(
   shapes: SchemaShapes,
   schemaName: string,
   sqlType: string
-): ResolvedColumnType {
-  let base = sqlType.trim();
+): ColumnTypeChase {
+  const initial = typeDecorations(sqlType);
+  let arrayDepth = initial.arrayDepth;
+  let baseTypeName = initial.baseTypeName;
+  let sawTypmod = initial.sawTypmod;
+  const domainChain: string[] = [];
+  const visited = new Set<string>();
+  let domainSchema = schemaName;
+  let unresolvedDomain = false;
+  while (true) {
+    const domainKey = domainKeyForType(shapes, baseTypeName);
+    if (domainKey === null || (domainKey !== undefined && visited.has(domainKey))) {
+      unresolvedDomain = true;
+      break;
+    }
+    if (domainKey === undefined) {
+      break;
+    }
+    const domain = shapes.domains.get(domainKey);
+    if (domain === undefined) {
+      break;
+    }
+    visited.add(domainKey);
+    domainChain.push(domainKey);
+    domainSchema = schemaNameFromKey(domainKey);
+    const base = typeDecorations(domain.baseType);
+    arrayDepth += base.arrayDepth;
+    baseTypeName = base.baseTypeName;
+    sawTypmod ||= base.sawTypmod;
+  }
+  const resolved: ResolvedColumnType = unresolvedDomain
+    ? { arrayDepth, kind: "unknown" }
+    : resolveBaseColumnType(shapes, domainSchema, baseTypeName, arrayDepth);
+  return {
+    ...resolved,
+    baseTypeName,
+    domainChain,
+    sawTypmod,
+  };
+}
+
+function domainKeyForType(shapes: SchemaShapes, typeName: string): string | null | undefined {
+  if (typeName.includes(".")) {
+    return shapes.domains.has(typeName) ? typeName : undefined;
+  }
+  if (resolveScalarType(typeName, 0) !== undefined) {
+    return;
+  }
+  const suffix = `.${typeName}`;
+  const domainMatches = [...shapes.domains.keys()].filter((key) => key.endsWith(suffix));
+  if (domainMatches.length === 0) {
+    return;
+  }
+  const candidateKeys = new Set(domainMatches);
+  for (const entry of shapes.enumsByBareName.get(typeName) ?? []) {
+    candidateKeys.add(`${entry.schema}.${entry.name}`);
+  }
+  for (const entry of shapes.compositesByBareName.get(typeName) ?? []) {
+    candidateKeys.add(`${entry.schema}.${entry.name}`);
+  }
+  for (const [schema, entry] of shapes.schemas) {
+    if (relationTypeInEntry(entry, schema, typeName) !== undefined) {
+      candidateKeys.add(`${schema}.${typeName}`);
+    }
+  }
+  return candidateKeys.size === 1 ? domainMatches[0] : null;
+}
+
+function schemaNameFromKey(key: string): string {
+  const separator = key.lastIndexOf(".");
+  return separator === -1 ? "public" : key.slice(0, separator);
+}
+
+function typeDecorations(sqlType: string): {
+  arrayDepth: number;
+  baseTypeName: string;
+  sawTypmod: boolean;
+} {
   let arrayDepth = 0;
+  let base = sqlType.trim();
   while (base.endsWith("[]")) {
     base = base.slice(0, -2).trim();
     arrayDepth += 1;
   }
   const parenStart = base.indexOf("(");
-  if (parenStart !== -1) {
-    base = base.slice(0, parenStart).trim();
-  }
-  for (let hops = 0; hops < 8; hops += 1) {
-    const domainBase =
-      shapes.domains.get(base.includes(".") ? base : `${schemaName}.${base}`) ??
-      shapes.domains.get(base);
-    if (domainBase === undefined) {
-      break;
-    }
-    base = domainBase;
-    const innerParen = base.indexOf("(");
-    if (innerParen !== -1) {
-      base = base.slice(0, innerParen).trim();
-    }
-    while (base.endsWith("[]")) {
-      base = base.slice(0, -2).trim();
-      arrayDepth += 1;
-    }
-  }
+  return {
+    arrayDepth,
+    baseTypeName: parenStart === -1 ? base : base.slice(0, parenStart).trim(),
+    sawTypmod: parenStart !== -1,
+  };
+}
+
+export function resolveColumnType(
+  shapes: SchemaShapes,
+  schemaName: string,
+  sqlType: string
+): ResolvedColumnType {
+  return chaseColumnType(shapes, schemaName, sqlType);
+}
+
+function resolveBaseColumnType(
+  shapes: SchemaShapes,
+  schemaName: string,
+  base: string,
+  arrayDepth: number
+): ResolvedColumnType {
   const scalar = resolveScalarType(base, arrayDepth);
   if (scalar) {
     return scalar;
@@ -591,23 +693,15 @@ export function resolveColumnType(
 
 export function isDeclaredDomainType(
   shapes: SchemaShapes,
-  schemaName: string,
+  _schemaName: string,
   sqlType: string
 ): boolean {
   const base = baseSqlTypeName(sqlType);
-  return (
-    shapes.domains.has(base.includes(".") ? base : `${schemaName}.${base}`) ||
-    shapes.domains.has(base)
-  );
+  return domainKeyForType(shapes, base) !== undefined;
 }
 
 function baseSqlTypeName(sqlType: string): string {
-  let base = sqlType.trim();
-  while (base.endsWith("[]")) {
-    base = base.slice(0, -2).trim();
-  }
-  const parenStart = base.indexOf("(");
-  return parenStart === -1 ? base : base.slice(0, parenStart).trim();
+  return typeDecorations(sqlType).baseTypeName;
 }
 
 function resolveScalarType(base: string, arrayDepth: number): ResolvedColumnType | undefined {
@@ -727,7 +821,11 @@ function schemaEntry(shapes: SchemaShapes, name: string): SchemaEntry {
   return entry;
 }
 
-function tableColumns(object: SchemaObject): ColumnShape[] {
+async function tableColumns(object: SchemaObject): Promise<ColumnShape[]> {
+  const parsed = await parseSqlAst(object.sql, object.file);
+  const statements = readArray(asRecord(parsed.ast)?.stmts);
+  const create = asRecord(asRecord(asRecord(statements[0])?.stmt)?.CreateStmt);
+  const collations = explicitColumnCollations(create);
   const shape = asRecord(object.metadata.canonicalShape);
   return readArray(shape?.columns).flatMap((item) => {
     const column = asRecord(item);
@@ -736,8 +834,10 @@ function tableColumns(object: SchemaObject): ColumnShape[] {
     if (!(column && name && type)) {
       return [];
     }
+    const collation = collations.get(name);
     return [
       {
+        ...(collation === undefined ? {} : { collation }),
         name,
         notNull: column.notNull === true,
         type,
@@ -758,12 +858,36 @@ async function foreignTableColumns(object: SchemaObject): Promise<ColumnShape[]>
     return [];
   }
   const shape = canonicalTableShape(base);
+  const collations = explicitColumnCollations(base);
   return readArray(shape.columns).flatMap((item) => {
     const column = asRecord(item);
     const name = readString(column?.name);
     const type = readString(column?.type);
-    return column && name && type ? [{ name, notNull: column.notNull === true, type }] : [];
+    const collation = name === undefined ? undefined : collations.get(name);
+    return column && name && type
+      ? [
+          {
+            ...(collation === undefined ? {} : { collation }),
+            name,
+            notNull: column.notNull === true,
+            type,
+          },
+        ]
+      : [];
   });
+}
+
+function explicitColumnCollations(table: AstNode | undefined): Map<string, string> {
+  const collations = new Map<string, string>();
+  for (const item of readArray(table?.tableElts)) {
+    const column = asRecord(asRecord(item)?.ColumnDef);
+    const name = readString(column?.colname);
+    const collation = stringList(asRecord(column?.collClause)?.collname).join(".");
+    if (name && collation) {
+      collations.set(name, collation);
+    }
+  }
+  return collations;
 }
 
 async function compositeColumns(object: SchemaObject): Promise<ColumnShape[] | undefined> {
@@ -783,11 +907,33 @@ async function compositeColumns(object: SchemaObject): Promise<ColumnShape[] | u
   });
 }
 
-async function domainBaseType(object: SchemaObject): Promise<string | undefined> {
+async function domainShape(object: SchemaObject): Promise<DomainShape | undefined> {
   const parsed = await parseSqlAst(object.sql, object.file);
   const statements = readArray(asRecord(parsed.ast)?.stmts);
   const domain = asRecord(asRecord(asRecord(statements[0])?.stmt)?.CreateDomainStmt);
-  return domain ? canonicalColumnType(domain.typeName) : undefined;
+  if (!domain) {
+    return;
+  }
+  const checkConstraints = readArray(domain.constraints).flatMap((item) => {
+    const constraint = asRecord(asRecord(item)?.Constraint);
+    const expression = asRecord(constraint?.raw_expr);
+    if (readString(constraint?.contype) !== "CONSTR_CHECK" || !expression) {
+      return [];
+    }
+    return [
+      {
+        expression,
+        name: readString(constraint?.conname) ?? object.ref.name,
+        skipValidation: false,
+      },
+    ];
+  });
+  const collation = stringList(asRecord(domain.collClause)?.collname).join(".");
+  return {
+    baseType: canonicalColumnType(domain.typeName),
+    checkConstraints,
+    ...(collation ? { collation } : {}),
+  };
 }
 
 async function functionShape(object: SchemaObject): Promise<FunctionShape | undefined> {
@@ -943,7 +1089,23 @@ function applyConstraintCommand(
   }
   if (contype === "CONSTR_FOREIGN") {
     applyForeignKeyConstraint(table, constraint, object, schemaName);
+    return;
   }
+  if (contype === "CONSTR_CHECK") {
+    applyCheckConstraint(table, constraint, object);
+  }
+}
+
+function applyCheckConstraint(table: TableShape, constraint: AstNode, object: SchemaObject): void {
+  const expression = asRecord(constraint.raw_expr);
+  if (!expression || table.foreign) {
+    return;
+  }
+  table.checkConstraints.push({
+    expression,
+    name: readString(constraint.conname) ?? object.ref.name,
+    skipValidation: constraint.skip_validation === true,
+  });
 }
 
 function applyPrimaryKeyConstraint(table: TableShape, constraint: AstNode): void {

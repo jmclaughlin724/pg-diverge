@@ -16,7 +16,7 @@ const packageVersion = packageJson.version;
 const nodeBinDir = dirname(process.execPath);
 const bunTool = "bun@1.3.14";
 const pnpmTool = "pnpm@11.1.2";
-const yarnTool = "yarn@4.16.0";
+const yarnTool = "yarn@4.17.1";
 const commandTimeoutMs = 300_000;
 const corepackTools = new Map([
   ["pnpm", pnpmTool],

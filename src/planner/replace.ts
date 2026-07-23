@@ -1,6 +1,6 @@
-import type { MigrationOperation, SchemaObject, SupaschemaConfig } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import { stableJson } from "../hash.js";
+import type { MigrationOperation, SchemaObject, SupaschemaConfig } from "../types.js";
 
 export function destructiveAllowedDisposition(
   key: string,

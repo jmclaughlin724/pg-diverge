@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import ts from "typescript-compiler-api";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import type { Diagnostic } from "../../src/core.js";
 import { extractSourceModel } from "../../src/source/extract.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
 import { generateDatabaseTypes, quoteCodeString } from "../../src/typegen/database.js";
 import { collectSchemaShapes } from "../../src/typegen/model.js";
 import { generateZodSchemas } from "../../src/typegen/zod.js";
+import type { Diagnostic } from "../../src/types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -223,7 +223,7 @@ async function expectTypeScriptAccepts(source: string): Promise<void> {
 }
 
 function typescriptCompilerPath(): string {
-  return join(process.cwd(), "node_modules", "typescript", "bin", "tsc");
+  return join(process.cwd(), "node_modules", "@typescript", "native", "bin", "tsc");
 }
 
 function commandErrorOutput(error: unknown): string {

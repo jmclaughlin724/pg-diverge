@@ -69,7 +69,6 @@ export const adapters = [
           migrationsDir,
           sources: {
             from: `dump:${context.fromSqlPath}`,
-            to: `dump:${context.toSqlPath}`,
           },
           sync: { targets: {} },
           typesFile,
@@ -79,7 +78,15 @@ export const adapters = [
       );
       const spec = {
         diff: {
-          args: [resolve(root, "dist/cli.js"), "--config", configPath, "--quiet", "sync"],
+          args: [
+            resolve(root, "dist/cli.js"),
+            "--config",
+            configPath,
+            "--quiet",
+            "sync",
+            "--to",
+            `dump:${context.toSqlPath}`,
+          ],
           command: process.execPath,
         },
         generatedMigrationDir: migrationsDir,

@@ -1,0 +1,112 @@
+---
+title: "Migration pipeline"
+description: "How supaschema turns declarative SQL into deterministic, replay-safe PostgreSQL migrations."
+keywords:
+  - supaschema migration pipeline
+  - migration workflow
+  - PostgreSQL schema diff
+  - PostgreSQL migrations
+---
+
+The day-to-day migration workflow uses one command:
+
+```bash
+npx supaschema sync
+```
+
+`sync` selects at most one target and reconciles history before artifact generation. It then reads the configured source, target declarative SQL tree, and migration context for source intent and generated-lineage baseline proof; plans and writes the migration; refreshes history; gates replay safety; refreshes TypeScript and Zod outputs; stages the schema closure when Git is available; runs source-model deploy safety gates; and applies or dry-runs through the configured runner. `diff`, `check`, `types`, `stage`, and `apply` stay available for focused operation.
+
+```text
+before-state source + declarative SQL tree + migration context
+  -> extract structured schema, source intent, and generated-lineage baseline proof
+  -> plan safe operations
+  -> render replay-safe SQL
+  -> write migration
+```
+
+## What happens inside
+
+<Steps>
+  <Step title="Extract">
+    supaschema loads both schema sides into structured PostgreSQL models and
+    loads existing migrations into one structured migration context for source
+    intent plus generated-lineage baseline proof. SQL understanding comes from
+    parser-backed models, not raw text comparison.
+  </Step>
+  <Step title="Plan">
+    The planner compares tables, constraints, indexes, functions, triggers,
+    views, policies, grants, foreign data wrappers, comments, and supported
+    extension ownership, then applies explicit migration-derived intent for
+    facts the schema tree cannot express by shape alone. Unsupported,
+    provider-owned, or missing-intent surfaces fail closed instead of being
+    guessed. Routine bodies feed the same dependency graph: SQL-standard bodies,
+    SQL string bodies, and static PL/pgSQL statements produce relation/column
+    dependencies, while dynamic SQL and unsupported languages block relation or
+    type changes until the routine is structurally extractable or the change is
+    moved to a reviewed explicit migration.
+  </Step>
+  <Step title="Render">
+    The renderer emits deterministic SQL with idempotent guards, lock and
+    statement timeouts, lineage markers, and destructive-intent checks.
+  </Step>
+  <Step title="Regenerate contracts">
+    `supaschema types` generates TypeScript and Zod outputs from the same
+    declarative tree as the migration, keeping runtime validators aligned with
+    schema intent.
+  </Step>
+</Steps>
+
+## Baseline contract
+
+Generated lineage proves the migration-tree baseline that `sources.from` must match for source-backed generation. A generated migration's lineage end-state fingerprints the on-disk tree at generation time, uncommitted edits included. `sync` stages that schema state with its generated migration and contracts as one closure. When the latest migration is staged without worktree edits and its lineage matches the indexed schema fingerprint, `sources.from: "auto"` uses `git:INDEX` as the next before-state. This permits another forward migration whether the prior migration is already applied or still pending, without requiring an intermediate commit. A mismatched or partially staged closure still fails closed with `SUPA_MIGRATION_BASELINE_MISMATCH`.
+
+With `git:INDEX`, diff generation treats staged closure files as the before-state and refuses only additional unstaged generated outputs, migrations, scoped config, or out-of-scope schema changes. Other Git baselines retain the full dirty-workspace ownership checks. These are ownership diagnostics, not destructive-change hints.
+
+## Source intent
+
+The declarative tree owns the desired schema shape. Existing migrations in `migrationsDir` are also an input: they carry operational intent that a final schema snapshot cannot prove by itself, and generated lineage proves the migration-tree baseline that `sources.from` must match for source-backed generation.
+
+That source-intent lane is required for row backfills, explicit DML or `DO` workflows, enum rewrite recipes, Vault references or placeholder names, workload-proven index intent, and provider bootstrap constraints. supaschema may preserve or transform that intent only when it is present in schema files, existing migrations, config, checked workload artifacts, or reviewed hints.
+
+It must not invent row values, Vault secret material, tenant predicates, conversion expressions, or query-workload indexes from table shape alone. When the source intent is missing, the correct behavior is an actionable diagnostic that names the file, config field, hint, or workload artifact an agent must add before generation can continue.
+
+Column-level dependencies are ordered through the planner. Dependents that use newly added columns render after the table alter. Dependents that still use dropped or type-changed columns block until the routine, view, policy, or trigger is rewritten or split into a reviewed migration.
+
+## Safety gates
+
+`supaschema diff` is the generator. The same package also includes explicit gates for CI and release lanes:
+
+<CardGroup cols={2}>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    Replays generated migrations and blocks unsafe or out-of-contract SQL.
+  </Card>
+  <Card title="Verify" icon="repeat-2" href="/commands/verify">
+    Proves the newest pending migration can apply twice against a disposable
+    database.
+  </Card>
+  <Card title="Apply" icon="database-zap" href="/commands/apply">
+    Runs history reconciliation, safety gates, and selected runner apply.
+  </Card>
+  <Card title="CI drift gate" icon="git-branch" href="/guides/ci-gate">
+    Runs `supaschema diff --fail-on-diff --quiet` to fail when the schema tree
+    and migrations drift.
+  </Card>
+</CardGroup>
+
+Use the [corpus oracle](/guides/corpus-oracle) for real-world reconvergence fixtures, and use [ORM-free applications](/concepts/orm-free-applications) to wire generated TypeScript and Zod outputs into application boundaries.
+
+In projects with the installed coding-agent hooks, schema-tree edits trigger `diff` and `check` automatically after the write. The agent still treats generated migrations as output and reports the migration or diagnostic instead of editing generated SQL.
+
+## Apply orchestration
+
+supaschema keeps generation and deployment as separate workflow stages. `diff` writes the migration; `apply` reuses pending SQL, selects one configured target, reconciles migration history, checks target-pending migrations, runs source-model deploy safety gates, applies through the configured runner, and reconciles again or reports a dry run.
+
+For plain PostgreSQL and hosted PostgreSQL providers, `apply` can use the direct PostgreSQL runner when a target database URL is configured or passed explicitly. For Supabase projects, `apply` can use the Supabase CLI adapter. When a selected Supabase CLI target has no resolved database URL, the CLI owns historical pending selection, while supaschema checks generated lineage files before handoff. The installed default lets target config select at most one target, and only one `sync.targets.<name>` entry may be automatic because cross-target apply is not atomic. Remote targets use the same `mode` rule and also require their approval environment variable. `--target <name>` is the explicit override path for one configured target.
+
+Teams that already use `psql`, a deployment job, Terraform-controlled operations, Flyway, Liquibase, a platform migration service, or another reviewed SQL runner can keep that external apply step. That is an operational boundary, not a reason to duplicate schema ownership or generated types in an ORM.
+
+<Note>
+  `apply` is the canonical package-owned apply pipeline. External runners are a
+  deliberate integration choice when a team already has a separate deployment
+  owner.
+</Note>

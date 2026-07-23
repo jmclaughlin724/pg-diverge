@@ -494,6 +494,7 @@ export function createInstalledConfig(
     zodFile: defaultZodFile,
     normalize: NormalizePolicy.Deparse,
     managedSchemas,
+    managedSchemaOverlays: [],
     postgresVersion: "15+",
     renameDetection: RenameDetectionPolicy.HintsOnly,
     schemaPaths,
@@ -537,6 +538,10 @@ export function mergeInstalledConfig(
     existing.managedSchemas,
     normalizedStringArray(base.managedSchemas, [])
   );
+  const managedSchemaOverlays = normalizedStringArray(
+    existing.managedSchemaOverlays,
+    normalizedStringArray(base.managedSchemaOverlays, [])
+  );
   const existingSchemas = recordValue(existing.schemas);
   const baseManagedExcludes = normalizedStringArray(baseSchemas.exclude, []).filter((schema) =>
     managedSchemas.includes(schema)
@@ -563,6 +568,7 @@ export function mergeInstalledConfig(
       ...(isRecord(existing.hints) ? existing.hints : {}),
     },
     managedSchemas,
+    managedSchemaOverlays,
     migrationsDir: normalizedString(
       existing.migrationsDir,
       normalizedString(base.migrationsDir, genericMigrationsDir)
@@ -629,6 +635,7 @@ export function orderInstalledConfig(config: Record<string, unknown>): Record<st
       : { zodTypesImportPath: config.zodTypesImportPath }),
     normalize: config.normalize,
     managedSchemas: config.managedSchemas,
+    managedSchemaOverlays: config.managedSchemaOverlays,
     postgresVersion: config.postgresVersion,
     renameDetection: config.renameDetection,
     schemaPaths: config.schemaPaths,
@@ -769,6 +776,13 @@ export const configFieldMetadata: ConfigFieldMetadata[] = [
       "Externally owned schemas blocked from declarative ownership. Supabase installs seed the Supabase platform schema list.",
     examples: [[], [...supabaseManagedSchemas]],
     key: "managedSchemas",
+  },
+  {
+    default: [],
+    description:
+      "Exact policy, grant, or comment object keys that Supaschema may manage inside managed schemas. Wildcards and structural objects are not supported.",
+    examples: [["policy:storage.tenant_document_read:objects"]],
+    key: "managedSchemaOverlays",
   },
   {
     default: "15+",
@@ -1023,6 +1037,7 @@ export function createInstalledConfig(options = {}) {
     zodFile: defaultZodFile,
     normalize: "deparse",
     managedSchemas,
+    managedSchemaOverlays: [],
     postgresVersion: "15+",
     renameDetection: "hints-only",
     schemaPaths,
@@ -1057,6 +1072,10 @@ export function mergeInstalledConfig(existing, options = {}) {
   const hasExistingEnvironments = existingEnvironments !== undefined;
   const existingSync = isRecord(existing.sync) ? existing.sync : undefined;
   const managedSchemas = normalizedStringArray(existing.managedSchemas, base.managedSchemas);
+  const managedSchemaOverlays = normalizedStringArray(
+    existing.managedSchemaOverlays,
+    base.managedSchemaOverlays
+  );
   const existingSchemas = isRecord(existing.schemas) ? existing.schemas : {};
   const baseManagedExcludes = normalizedStringArray(baseSchemas.exclude, []).filter((schema) =>
     managedSchemas.includes(schema)
@@ -1070,6 +1089,7 @@ export function mergeInstalledConfig(existing, options = {}) {
     excludedGrantRoles: normalizedStringArray(existing.excludedGrantRoles, base.excludedGrantRoles),
     hints: { ...base.hints, ...(isRecord(existing.hints) ? existing.hints : {}) },
     managedSchemas,
+    managedSchemaOverlays,
     migrationsDir: normalizedString(existing.migrationsDir, base.migrationsDir),
     schemaPaths,
     schemas: {
@@ -1121,6 +1141,7 @@ export function orderInstalledConfig(config) {
       : { zodTypesImportPath: config.zodTypesImportPath }),
     normalize: config.normalize,
     managedSchemas: config.managedSchemas,
+    managedSchemaOverlays: config.managedSchemaOverlays,
     postgresVersion: config.postgresVersion,
     renameDetection: config.renameDetection,
     schemaPaths: config.schemaPaths,

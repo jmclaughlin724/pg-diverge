@@ -1,4 +1,4 @@
-import type { Diagnostic, SchemaModel } from "./core.js";
+import type { Diagnostic, SchemaModel } from "./types.js";
 
 export interface AuditFinding {
   code: string;

@@ -169,6 +169,18 @@ function assertClaudeSettings(claudeSettings, root) {
     );
   }
   const claudePostToolUse = claudeSettings.hooks?.PostToolUse ?? [];
+  const claudeContextPostToolUse = claudePostToolUse.find((entry) =>
+    hookHandlers(entry).some((handler) =>
+      handler.args?.some((arg) => arg.endsWith("/.claude/hooks/context-post-tool-use.mjs"))
+    )
+  );
+  const claudeContextMatcher = claudeContextPostToolUse?.matcher;
+  assert(
+    typeof claudeContextMatcher === "string" &&
+      claudeContextMatcher.split("|").includes("mcp__supaschema__code_atlas_query") &&
+      !claudeContextMatcher.split("|").includes("mcp__codeatlas__.*"),
+    ".claude/settings.json must dispatch only local Code Atlas MCP results to the context PostToolUse hook"
+  );
   assert(
     hookHandlers(claudePostToolUse).some((handler) =>
       handler.args?.some((arg) =>

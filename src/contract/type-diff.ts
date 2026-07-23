@@ -1,5 +1,5 @@
-import type { Diagnostic, ObjectKind } from "../core.js";
 import type { SchemaEntry, SchemaShapes, TableShape } from "../typegen/model.js";
+import type { Diagnostic, ObjectKind } from "../types.js";
 
 function breaking(
   code: string,

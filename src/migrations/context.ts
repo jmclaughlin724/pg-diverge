@@ -1,12 +1,6 @@
 import { readFile, realpath } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import type {
-  MigrationContext,
-  MigrationCorpus,
-  MigrationCorpusOperation,
-  MigrationCorpusOperationKind,
-} from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import {
   asRecord,
   astStatements,
@@ -16,6 +10,12 @@ import {
   readString,
 } from "../sql/ast.js";
 import { parseSqlAst } from "../sql/parser.js";
+import type {
+  MigrationContext,
+  MigrationCorpus,
+  MigrationCorpusOperation,
+  MigrationCorpusOperationKind,
+} from "../types.js";
 import { migrationFiles } from "./files.js";
 import { parseLineage } from "./lineage.js";
 import { migrationFileVersion } from "./status.js";
@@ -48,7 +48,12 @@ export async function readMigrationContext(
   };
   const destructiveKeys = new Set<string>();
   const tableColumnDrops = new Set<string>();
-  const context: MigrationContext = { corpus, files, unprovenBaselineFiles: [] };
+  const context: MigrationContext = {
+    corpus,
+    directory: await canonicalPath(directory),
+    files,
+    unprovenBaselineFiles: [],
+  };
   for (const file of files) {
     await readMigrationFileContext(file, migrationsDir, destructiveKeys, tableColumnDrops, context);
   }

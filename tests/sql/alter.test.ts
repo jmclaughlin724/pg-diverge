@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { checkMigrationSql } from "../../src/check/migration.js";
-import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../../src/core.js";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderMigration } from "../../src/render/migration.js";
 import { normalizeSourceObjects } from "../../src/source/normalize.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
+import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../../src/types.js";
 
 async function model(sql: string, source: string): Promise<SchemaModel> {
   const extracted = await extractObjectsFromSql(sql);

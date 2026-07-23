@@ -1,0 +1,116 @@
+---
+title: "check"
+description: "Statically validate migration SQL for replay safety, lock hazards, parser issues, and blocked patterns."
+keywords: ["check command", "migration safety", "replay safety", "diagnostics"]
+---
+
+Use `check` before migration SQL reaches a database.
+
+`check` reads SQL files or stdin. It does not connect to a database.
+
+## Use this when
+
+- A generated migration needs replay-safety proof.
+- Hand-written SQL should be gated before review.
+- CI should annotate pull requests or upload SARIF.
+- A pre-commit hook should reject unsafe staged migrations.
+
+## Run it
+
+```bash
+npx supaschema check
+npx supaschema check --changed
+npx supaschema check --staged
+npx supaschema check --base "$GITHUB_BASE_REF"
+npx supaschema check database/migrations/*.sql
+cat migration.sql | npx supaschema check -
+npx supaschema check migration.sql --reporter github
+npx supaschema check --allow-empty
+```
+
+With no migration arguments, `check` scans every `.sql` file in `config.migrationsDir`. It exits `1` when no migrations exist unless `--allow-empty` is passed.
+
+Use `--changed` for local working-tree checks, `--staged` for pre-commit checks, and `--base` or `--since` for CI diff checks. Git-selected checks only include `.sql` files under `config.migrationsDir` and ignore deleted files.
+
+## Input
+
+<ParamField path="[migrations...]" type="file | -">
+  Migration files to check. Use `-` to read SQL from stdin.
+</ParamField>
+
+Explicit directory arguments are not expanded. Use a shell glob such as `database/migrations/*.sql`.
+
+## Flags
+
+<ParamField path="--reporter" type="text | github | sarif | json">
+  Choose human text, GitHub workflow annotations, SARIF, or JSON.
+</ParamField>
+
+<ParamField path="--allow-empty" type="boolean">
+  Treat an empty `config.migrationsDir` as success for setup probes.
+</ParamField>
+
+<ParamField path="--changed" type="boolean">
+  Check migration SQL changed in the working tree or index. This includes
+  untracked migration files.
+</ParamField>
+
+<ParamField path="--staged" type="boolean">
+  Check staged migration SQL only.
+</ParamField>
+
+<ParamField path="--base" type="git ref">
+  Check migration SQL returned by `git diff <ref> --name-only --diff-filter=ACMR`.
+</ParamField>
+
+<ParamField path="--since" type="git ref">
+  Alias the same git diff selection as `--base`, for CI and hook vocabulary that
+  names a since-ref.
+</ParamField>
+
+Use only one of `--changed`, `--staged`, `--base`, or `--since`. These flags cannot be combined with explicit migration file arguments.
+
+## What it checks
+
+- unguarded `CREATE`, `DROP`, and constraint operations;
+- unsafe `DROP ... CASCADE`;
+- lock hazards such as table rewrites and non-concurrent indexes;
+- transaction-incompatible statements;
+- `search_path` hazards;
+- `SECURITY DEFINER` functions without function-local `search_path`;
+- public-schema functions that do not explicitly revoke default `PUBLIC` `EXECUTE`;
+- same-file forward references to objects or columns created later in the migration;
+- DML that cannot be proven idempotent.
+
+## Exit codes
+
+| Code | Meaning                                    |
+| ---- | ------------------------------------------ |
+| `0`  | All checked files passed                   |
+| `1`  | Runtime failure or no migrations found     |
+| `2`  | At least one diagnostic had error severity |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Verify" icon="repeat-2" href="/commands/verify">
+    Prove apply-twice behavior with a database.
+  </Card>
+  <Card
+    title="Diagnostics"
+    icon="message-square-warning"
+    href="/reference/diagnostics"
+  >
+    Look up safety and extraction codes.
+  </Card>
+  <Card title="CI recipe" icon="github" href="/guides/ci-github-actions">
+    Add reporters to GitHub Actions.
+  </Card>
+  <Card
+    title="Idempotent migrations"
+    icon="shield-check"
+    href="/guides/idempotent-postgres-migrations"
+  >
+    Learn the replay-safety model.
+  </Card>
+</CardGroup>

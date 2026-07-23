@@ -4,10 +4,6 @@
 
 This is the canonical root instruction brief for the repository.
 
-Apply this file before any nested `AGENTS.md`. A closer `AGENTS.md` adds local context and takes precedence within its directory scope.
-
-This file owns repository-wide routing and invariants. Detailed procedures remain in their canonical rule, skill, agent, or configuration owner. Do not duplicate those instructions here or create a second owner for them.
-
 Read only the rules and skills directly applicable to the current task.
 
 ## Rule Routing
@@ -56,6 +52,8 @@ When ownership is unclear, determine the existing owner before adding a new file
 
 Assume the user is a principal engineer.
 
+Write code that is **accessible, performant, type-safe, and maintainable**. Focus on clarity and explicit intent over brevity.
+
 Implement the requested behavior using the simplest maintainable approach that fits the existing repository.
 
 - Follow established local architecture, naming, contracts, frameworks, and helper APIs.
@@ -81,6 +79,41 @@ Avoid:
 - broad validation or enforcement layers for a narrow local change.
 
 Patch the narrow failing path first. Expand only when the requested behavior or an applicable repository contract requires it.
+
+### Type Safety & Explicitness
+
+- Use explicit types for function parameters and return values when they enhance clarity
+- Prefer `unknown` over `any` when the type is genuinely unknown
+- Use const assertions (`as const`) for immutable values and literal types
+- Leverage TypeScript's type narrowing instead of type assertions
+- Use meaningful variable names instead of magic numbers - extract constants with descriptive names
+
+### Modern JavaScript/TypeScript
+
+- Use arrow functions for callbacks and short functions
+- Prefer `for...of` loops over `.forEach()` and indexed `for` loops
+- Use optional chaining (`?.`) and nullish coalescing (`??`) for safer property access
+- Prefer template literals over string concatenation
+- Use destructuring for object and array assignments
+- Use `const` by default, `let` only when reassignment is needed, never `var`
+
+### Async & Promises
+
+- Always `await` promises in async functions - don't forget to use the return value
+- Use `async/await` syntax instead of promise chains for better readability
+- Handle errors appropriately in async code with try-catch blocks
+- Don't use async functions as Promise executors
+
+## When Biome Can't Help
+
+Biome's linter will catch most issues automatically. Focus your attention on:
+
+1. **Business logic correctness** - Biome can't validate your algorithms
+2. **Meaningful naming** - Use descriptive names for functions, variables, and types
+3. **Architecture decisions** - Component structure, data flow, and API design
+4. **Edge cases** - Handle boundary conditions and error states
+5. **User experience** - Accessibility, performance, and usability considerations
+6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
 
 ## Discovery
 

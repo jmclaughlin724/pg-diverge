@@ -1,0 +1,62 @@
+---
+title: "fingerprint"
+description: "Print the canonical model equality hash for one schema source."
+keywords: ["fingerprint command", "schema hash", "drift", "catalog"]
+---
+
+Use `fingerprint` when you need a fast equality check for a schema source.
+
+Matching fingerprints mean the modeled schema objects are equal, ignoring SQL formatting and comments.
+
+## Use this when
+
+- A script needs a compact drift signal.
+- You want to compare a tree and database after deploy.
+- Two schema spellings should normalize to the same model.
+- Debugging requires the model hash only.
+
+## Run it
+
+```bash
+npx supaschema fingerprint --from dir:database/schemas
+npx supaschema fingerprint --from "database:$DATABASE_URL"
+```
+
+Compare two sources in a shell:
+
+```bash
+[ "$(npx supaschema fingerprint --from dir:database/schemas)" = \
+  "$(npx supaschema fingerprint --from "database:$DATABASE_URL")" ] \
+  && echo "in sync" || echo "drift detected"
+```
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Required schema source to fingerprint.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning                                   |
+| ---- | ----------------------------------------- |
+| `0`  | Fingerprint printed                       |
+| `1`  | Runtime failure                           |
+| `2`  | Extraction diagnostics contained an error |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Inspect" icon="scan-search" href="/commands/inspect">
+    Print the model that produced the hash.
+  </Card>
+  <Card title="Verify" icon="repeat-2" href="/commands/verify">
+    Compare fingerprints after apply-twice verification.
+  </Card>
+  <Card title="Diff" icon="file-diff" href="/commands/diff">
+    Render operations when fingerprints differ.
+  </Card>
+  <Card title="Sources" icon="database" href="/concepts/sources">
+    Choose source formats for comparisons.
+  </Card>
+</CardGroup>

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { lintDocsStandard } from "../../scripts/check-docs-standard.mjs";
+import { lintDocsStandard } from "../../scripts/docs-lint/check-standard.mjs";
 
 const roots: string[] = [];
 

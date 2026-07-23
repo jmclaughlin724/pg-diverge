@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { performance } from "node:perf_hooks";
-import type { Diagnostic, SchemaModel } from "../core.js";
 import {
   applyMigrationSql,
   applySql,
@@ -10,12 +9,13 @@ import {
   withTemporaryDatabases,
 } from "../database/admin.js";
 import { resolveDatabaseUrl } from "../database/url.js";
-import { formatDiagnostics } from "../diagnostics.js";
+import { formatDiagnostics } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects } from "../hash.js";
 import { planSchemaDiff } from "../planner/schema.js";
 import { renderMigration } from "../render/migration.js";
 import { extractSourceModel } from "../source/extract.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
+import type { Diagnostic, SchemaModel } from "../types.js";
 import { verifyMigration } from "../verify/migration.js";
 import { makeRealisticSqlFixture } from "./fixtures.js";
 

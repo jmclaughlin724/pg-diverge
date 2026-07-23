@@ -26,6 +26,63 @@ describe("in-CREATE constraint decomposition", () => {
     ]);
   });
 
+  it("allocates colliding unnamed constraint names with PostgreSQL suffixes", async () => {
+    const extracted = await extractObjectsFromSql(
+      `CREATE TABLE app.role_assignments (
+  organization_id uuid,
+  unit_id uuid,
+  role_id uuid,
+  CHECK ((organization_id IS NULL) <> (unit_id IS NULL)),
+  CHECK ((organization_id IS NULL) OR (role_id IS NOT NULL)),
+  CHECK ((unit_id IS NULL) OR (role_id IS NOT NULL))
+);`,
+      { file: "t.sql" }
+    );
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(
+      extracted.objects
+        .filter((object) => object.key.startsWith("constraint:"))
+        .map((object) => object.ref.name)
+    ).toEqual(["role_assignments_check", "role_assignments_check1", "role_assignments_check2"]);
+  });
+
+  it("does not reserve explicit constraint names before PostgreSQL encounters them", async () => {
+    const extracted = await extractObjectsFromSql(
+      `CREATE TABLE app.items (
+  value integer CHECK (value > 0),
+  CONSTRAINT items_value_check CHECK (value < 100)
+);`,
+      { file: "t.sql" }
+    );
+
+    expect(
+      extracted.objects
+        .filter((object) => object.ref.kind === "constraint")
+        .map((object) => object.ref.name)
+    ).toEqual(["items_value_check", "items_value_check"]);
+  });
+
+  it("reserves explicit names and truncates generated names on UTF-8 boundaries", async () => {
+    const tableName = "é".repeat(30);
+    const extracted = await extractObjectsFromSql(
+      `CREATE TABLE app."${tableName}" (
+  first_id uuid,
+  second_id uuid,
+  CONSTRAINT "${"é".repeat(28)}_check" CHECK (first_id IS NOT NULL OR second_id IS NOT NULL),
+  CHECK (first_id IS NULL OR second_id IS NULL)
+);`,
+      { file: "t.sql" }
+    );
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    const names = extracted.objects
+      .filter((object) => object.key.startsWith("constraint:"))
+      .map((object) => object.ref.name);
+    expect(names).toEqual([`${"é".repeat(28)}_check`, `${"é".repeat(28)}_check1`]);
+    expect(names.every((name) => Buffer.byteLength(name, "utf8") <= 63)).toBe(true);
+  });
+
   it("synthesizes named inline constraints without the CONSTRAINT prefix doubled", async () => {
     const extracted = await extractObjectsFromSql(
       `CREATE TABLE app.accounts (

@@ -1,13 +1,13 @@
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import { stableJson } from "../hash.js";
+import type { TableColumn } from "../sql/table-shape.js";
 import type {
   Diagnostic,
   MigrationCorpus,
   MigrationOperation,
   SchemaObject,
   SupaschemaConfig,
-  TableColumn,
-} from "../core.js";
-import { diagnostic } from "../diagnostics.js";
-import { stableJson } from "../hash.js";
+} from "../types.js";
 import { destructiveAllowedDisposition } from "./replace.js";
 
 interface ColumnAlteration {

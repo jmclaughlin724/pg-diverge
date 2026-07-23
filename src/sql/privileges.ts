@@ -1,5 +1,5 @@
-import type { ObjectRef, SchemaObject } from "../core.js";
 import { sha256 } from "../hash.js";
+import type { ObjectRef, SchemaObject } from "../types.js";
 import type { AstNode } from "./ast.js";
 import {
   asRecord,
@@ -82,6 +82,8 @@ const fullPrivilegeSets = new Map<string, string[]>([
   ["TYPES", ["USAGE"]],
 ]);
 
+const columnPrivilegeNames: readonly string[] = ["INSERT", "REFERENCES", "SELECT", "UPDATE"];
+
 const builtinPublicDefaults = new Map<string, string[]>([
   ["DOMAIN", ["USAGE"]],
   ["FUNCTION", ["EXECUTE"]],
@@ -136,7 +138,189 @@ function normalizePrivileges(privileges: string[], kindPhrase: string): string[]
   return privileges;
 }
 
+export interface PrivilegeMetadataInput {
+  readonly columnPrivileges?: unknown;
+  readonly privileges: unknown;
+  readonly withGrantOption: boolean;
+}
+
+export interface PrivilegeMetadata {
+  columnPrivileges?: Record<string, string[]>;
+  privileges: string[];
+  withGrantOption: boolean;
+}
+
+interface PrivilegeAccumulator {
+  columnsByPrivilege: Map<string, Set<string>>;
+  objectWidePrivileges: Set<string>;
+}
+
+export function mergePrivilegeMetadata(
+  inputs: readonly PrivilegeMetadataInput[]
+): PrivilegeMetadata | undefined {
+  if (inputs.length === 0 || new Set(inputs.map((input) => input.withGrantOption)).size !== 1) {
+    return;
+  }
+  const accumulator: PrivilegeAccumulator = {
+    columnsByPrivilege: new Map(),
+    objectWidePrivileges: new Set(),
+  };
+  for (const input of inputs) {
+    if (!mergePrivilegeInput(input, accumulator)) {
+      return;
+    }
+  }
+  return accumulatedPrivilegeMetadata(accumulator, inputs[0]?.withGrantOption === true);
+}
+
+function mergePrivilegeInput(
+  input: PrivilegeMetadataInput,
+  accumulator: PrivilegeAccumulator
+): boolean {
+  const privileges = normalizedPrivilegeNames(input.privileges);
+  const columnPrivileges = normalizedColumnPrivileges(input.columnPrivileges);
+  if (!privileges || columnPrivileges === null) {
+    return false;
+  }
+  const usedColumnPrivileges = new Set<string>();
+  for (const privilege of privileges) {
+    const columns = columnPrivileges?.get(privilege);
+    if (columns !== undefined) {
+      usedColumnPrivileges.add(privilege);
+    }
+    mergePrivilegeValue(privilege, columns, accumulator);
+  }
+  return (
+    columnPrivileges === undefined ||
+    [...columnPrivileges.keys()].every((privilege) => usedColumnPrivileges.has(privilege))
+  );
+}
+
+function normalizedPrivilegeNames(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) {
+    return;
+  }
+  const privileges = value.filter(
+    (privilege): privilege is string => typeof privilege === "string"
+  );
+  return privileges.length === value.length
+    ? privileges.map((privilege) => privilege.toUpperCase())
+    : undefined;
+}
+
+function mergePrivilegeValue(
+  privilege: string,
+  columns: readonly string[] | undefined,
+  accumulator: PrivilegeAccumulator
+): void {
+  if (privilege === "ALL" && columns !== undefined) {
+    for (const columnPrivilege of columnPrivilegeNames) {
+      addColumnPrivilege(
+        columnPrivilege,
+        columns,
+        accumulator.objectWidePrivileges,
+        accumulator.columnsByPrivilege
+      );
+    }
+    return;
+  }
+  if (columns !== undefined) {
+    addColumnPrivilege(
+      privilege,
+      columns,
+      accumulator.objectWidePrivileges,
+      accumulator.columnsByPrivilege
+    );
+    return;
+  }
+  accumulator.objectWidePrivileges.add(privilege);
+  accumulator.columnsByPrivilege.delete(privilege);
+}
+
+function accumulatedPrivilegeMetadata(
+  accumulator: PrivilegeAccumulator,
+  withGrantOption: boolean
+): PrivilegeMetadata | undefined {
+  if (accumulator.objectWidePrivileges.has("ALL")) {
+    return { privileges: ["ALL"], withGrantOption };
+  }
+  const privileges = [
+    ...new Set([...accumulator.objectWidePrivileges, ...accumulator.columnsByPrivilege.keys()]),
+  ].sort((left, right) => left.localeCompare(right));
+  if (privileges.length === 0) {
+    return;
+  }
+  const columnPrivileges: Record<string, string[]> = {};
+  for (const [privilege, columns] of [...accumulator.columnsByPrivilege.entries()].sort(
+    ([left], [right]) => left.localeCompare(right)
+  )) {
+    if (!accumulator.objectWidePrivileges.has(privilege)) {
+      columnPrivileges[privilege] = [...columns].sort((left, right) => left.localeCompare(right));
+    }
+  }
+  return {
+    ...(Object.keys(columnPrivileges).length > 0 ? { columnPrivileges } : {}),
+    privileges,
+    withGrantOption,
+  };
+}
+
+export function renderPrivilegeList(
+  privileges: readonly string[],
+  columnPrivileges?: Readonly<Record<string, readonly string[]>>
+): string {
+  return privileges
+    .map((privilege) => {
+      const columns = columnPrivileges?.[privilege];
+      return columns && columns.length > 0
+        ? `${privilege} (${columns.map(quoteIdent).join(", ")})`
+        : privilege;
+    })
+    .join(", ");
+}
+
+function normalizedColumnPrivileges(value: unknown): Map<string, string[]> | null | undefined {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const result = new Map<string, string[]>();
+  for (const [rawPrivilege, rawColumns] of Object.entries(value)) {
+    if (
+      !Array.isArray(rawColumns) ||
+      rawColumns.length === 0 ||
+      rawColumns.some((column) => typeof column !== "string")
+    ) {
+      return null;
+    }
+    result.set(
+      rawPrivilege.toUpperCase(),
+      [...new Set(rawColumns)].sort((left, right) => left.localeCompare(right))
+    );
+  }
+  return result;
+}
+
+function addColumnPrivilege(
+  privilege: string,
+  columns: readonly string[],
+  objectWidePrivileges: ReadonlySet<string>,
+  columnsByPrivilege: Map<string, Set<string>>
+): void {
+  if (objectWidePrivileges.has("ALL") || objectWidePrivileges.has(privilege)) {
+    return;
+  }
+  const mergedColumns = columnsByPrivilege.get(privilege) ?? new Set<string>();
+  for (const column of columns) {
+    mergedColumns.add(column);
+  }
+  columnsByPrivilege.set(privilege, mergedColumns);
+}
+
 export interface GrantObjectInput {
+  columnPrivileges?: Record<string, string[]>;
   file?: string | undefined;
   grantee: string;
   kindPhrase: string;
@@ -151,9 +335,21 @@ export interface GrantObjectInput {
 
 export function buildGrantObject(input: GrantObjectInput): SchemaObject {
   const keyword = input.verb === "GRANT" ? "TO" : "FROM";
-  const suffix = input.withGrantOption ? " WITH GRANT OPTION" : "";
-  const privileges = normalizePrivileges(input.privileges, input.kindPhrase);
-  const canonicalSql = `${input.verb} ${privileges.join(", ")} ON ${input.kindPhrase} ${input.targetRendered} ${keyword} ${renderRole(input.grantee)}${suffix}`;
+  const merged = mergePrivilegeMetadata([
+    {
+      columnPrivileges: input.columnPrivileges,
+      privileges: input.privileges,
+      withGrantOption: input.withGrantOption === true,
+    },
+  ]);
+  if (!merged) {
+    throw new Error("invalid grant privilege metadata");
+  }
+  const privileges = merged.columnPrivileges
+    ? merged.privileges
+    : normalizePrivileges(merged.privileges, input.kindPhrase);
+  const suffix = input.verb === "GRANT" && merged.withGrantOption ? " WITH GRANT OPTION" : "";
+  const canonicalSql = `${input.verb} ${renderPrivilegeList(privileges, merged.columnPrivileges)} ON ${input.kindPhrase} ${input.targetRendered} ${keyword} ${renderRole(input.grantee)}${suffix}`;
   const ref: ObjectRef = {
     kind: "grant",
     name: `${input.verb.toLowerCase()}:${input.kindPhrase.toLowerCase().replaceAll(" ", "-")}:${input.targetIdentity}:${input.grantee}`,
@@ -162,13 +358,14 @@ export function buildGrantObject(input: GrantObjectInput): SchemaObject {
     ref.schema = input.schema;
   }
   return makeObject(ref, canonicalSql, input.ordinal, input.file, {
+    ...(merged.columnPrivileges ? { columnPrivileges: merged.columnPrivileges } : {}),
     grantee: input.grantee,
     kindPhrase: input.kindPhrase,
     privileges,
     target: input.targetRendered,
     targetIdentity: input.targetIdentity,
     verb: input.verb,
-    withGrantOption: input.withGrantOption === true,
+    withGrantOption: merged.withGrantOption,
   });
 }
 
@@ -185,6 +382,7 @@ export interface DefaultPrivilegeObjectInput {
 
 export function buildDefaultPrivilegeObject(input: DefaultPrivilegeObjectInput): SchemaObject {
   const scope = input.schema ? `in ${input.schema}` : "";
+  const roleScope = input.forRole ? `for ${input.forRole}` : "for current-role";
   const privileges = normalizePrivileges(input.privileges, input.objectType);
   const clauses = [
     "ALTER DEFAULT PRIVILEGES",
@@ -195,7 +393,7 @@ export function buildDefaultPrivilegeObject(input: DefaultPrivilegeObjectInput):
   ].filter(Boolean);
   const ref: ObjectRef = {
     kind: "default-privilege",
-    name: `${input.verb.toLowerCase()}:${scope || "global"}:${input.objectType.toLowerCase()}:${input.grantee}`,
+    name: `${input.verb.toLowerCase()}:${roleScope}:${scope || "global"}:${input.objectType.toLowerCase()}:${input.grantee}`,
   };
   if (input.schema) {
     ref.schema = input.schema;
@@ -221,14 +419,14 @@ export function grantObjectsFromAst(
   const objtype = readString(node.objtype) ?? "OBJECT_TABLE";
   const allInSchema = readString(node.targtype) === "ACL_TARGET_ALL_IN_SCHEMA";
   const kindPhrase = allInSchema ? allInSchemaKinds.get(objtype) : grantObjectKinds.get(objtype);
-  const privileges = grantPrivileges(node.privileges);
+  const privilegeMetadata = grantPrivilegeMetadata(node.privileges);
   const grantees = readArray(node.grantees)
     .map((item) => roleSpecName(item))
     .filter((role): role is string => role !== undefined);
   const targets = readArray(node.objects)
     .map((item) => grantTarget(item, objtype, allInSchema))
     .filter((target): target is GrantTarget => target !== undefined);
-  if (!kindPhrase || grantees.length === 0 || targets.length === 0) {
+  if (!(kindPhrase && privilegeMetadata) || grantees.length === 0 || targets.length === 0) {
     return [fallbackPrivilegeObject("grant", statement, ordinal, file)];
   }
   const withGrantOption = isGrant && readBoolean(node.grant_option);
@@ -237,11 +435,14 @@ export function grantObjectsFromAst(
     for (const grantee of grantees) {
       objects.push(
         buildGrantObject({
+          ...(privilegeMetadata.columnPrivileges
+            ? { columnPrivileges: privilegeMetadata.columnPrivileges }
+            : {}),
           file,
           grantee,
           kindPhrase,
           ordinal: ordinal + objects.length,
-          privileges,
+          privileges: privilegeMetadata.privileges,
           schema: target.schema,
           targetIdentity: target.identity,
           targetRendered: target.rendered,
@@ -389,12 +590,26 @@ function commentTarget(
 }
 
 function grantPrivileges(value: unknown): string[] {
-  const privileges = readArray(value)
-    .map((item) => readString(asRecord(asRecord(item)?.AccessPriv)?.priv_name))
-    .filter((name): name is string => name !== undefined)
-    .map((name) => name.toUpperCase())
-    .sort((left, right) => left.localeCompare(right));
-  return privileges.length > 0 ? privileges : ["ALL"];
+  return grantPrivilegeMetadata(value)?.privileges ?? ["ALL"];
+}
+
+function grantPrivilegeMetadata(value: unknown): PrivilegeMetadata | undefined {
+  const privileges = readArray(value);
+  if (privileges.length === 0) {
+    return { privileges: ["ALL"], withGrantOption: false };
+  }
+  return mergePrivilegeMetadata(
+    privileges.map((item) => {
+      const accessPrivilege = asRecord(asRecord(item)?.AccessPriv);
+      const privilege = (readString(accessPrivilege?.priv_name) ?? "ALL").toUpperCase();
+      const columns = stringList(accessPrivilege?.cols);
+      return {
+        ...(columns.length > 0 ? { columnPrivileges: { [privilege]: columns } } : {}),
+        privileges: [privilege],
+        withGrantOption: false,
+      };
+    })
+  );
 }
 
 function grantTarget(

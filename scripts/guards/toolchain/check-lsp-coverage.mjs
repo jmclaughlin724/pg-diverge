@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, ok } from "../lib/assertions.js";
 import { run } from "../lib/process.js";
-import { exists, ROOT, readJson } from "../lib/repository.js";
+import { ROOT, readJson } from "../lib/repository.js";
 
 const nonCode = new Set([
   "editorconfig",
@@ -38,11 +38,7 @@ function extensionFor(file) {
 }
 
 export function check(root = ROOT) {
-  if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT === "1" || !exists(".claude/cclsp.json", root)) {
-    return "LSP_COVERAGE_SKIPPED_LOCAL_ONLY";
-  }
-
-  const config = readJson(".claude/cclsp.json", root);
+  const config = readJson("cclsp.json", root);
   const mapped = new Set();
   for (const server of config.servers ?? []) {
     for (const extension of server.extensions ?? []) {
@@ -64,7 +60,7 @@ export function check(root = ROOT) {
     }
     assert(
       mapped.has(extension) || nonCode.has(extension),
-      `tracked extension .${extension} is not mapped in .claude/cclsp.json`
+      `tracked extension .${extension} is not mapped in cclsp.json`
     );
   }
 

@@ -1,0 +1,55 @@
+---
+title: "selfcheck"
+description: "Compare live-catalog extraction against the database engine representation."
+keywords: ["selfcheck command", "catalog", "normalization", "diagnostics"]
+---
+
+Use `selfcheck` when evaluating supaschema against an existing database or after upgrading the engine.
+
+The command extracts a live catalog, re-renders the modeled SQL, re-extracts it, and reports identity normalization gaps.
+
+## Use this when
+
+- You are validating catalog normalization.
+- A provider-specific object shape may need investigation.
+- An upgrade should be checked against a real database.
+- You need diagnostics for engine parity work.
+
+## Run it
+
+```bash
+npx supaschema selfcheck --database-url "$DATABASE_URL"
+```
+
+`selfcheck` is a diagnostic tool, not a deployment gate. Review mismatches before deciding whether they matter.
+
+## Flags
+
+<ParamField path="--database-url" type="url">
+  PostgreSQL URL to extract. Defaults to normal database URL resolution.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning                                       |
+| ---- | --------------------------------------------- |
+| `0`  | Selfcheck completed without error diagnostics |
+| `1`  | Runtime failure or missing database URL       |
+| `2`  | Diagnostics contained an error                |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Inspect" icon="scan-search" href="/commands/inspect">
+    Print the extracted model directly.
+  </Card>
+  <Card title="Fingerprint" icon="fingerprint" href="/commands/fingerprint">
+    Compare normalized model hashes.
+  </Card>
+  <Card title="Corpus" icon="database-zap" href="/commands/corpus">
+    Run dirty-real regression coverage.
+  </Card>
+  <Card title="Support matrix" icon="table" href="/reference/support-matrix">
+    Check modeled object coverage.
+  </Card>
+</CardGroup>

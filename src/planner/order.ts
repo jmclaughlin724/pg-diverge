@@ -1,5 +1,5 @@
-import type { Diagnostic, MigrationOperation, ObjectKind, ObjectRef } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import type { Diagnostic, MigrationOperation, ObjectKind, ObjectRef } from "../types.js";
 
 const createOrder = new Map<ObjectKind, number>([
   ["schema", 10],

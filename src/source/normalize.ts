@@ -1,6 +1,5 @@
-import type { Diagnostic, SchemaObject } from "../core.js";
-import { stringArray } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { stringArray } from "../catalog/tables.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import { suppressDefaultAclImpliedGrants } from "../grants/default-acl.js";
 import { asRecord } from "../sql/ast.js";
 import { finalizeObject } from "../sql/facts.js";
@@ -10,9 +9,11 @@ import {
   buildGrantObject,
   builtinPublicDefault,
   isBuiltinDefaultGrant,
+  mergePrivilegeMetadata,
 } from "../sql/privileges.js";
 import { expressionSql, makeObject } from "../sql/statements.js";
 import { canonicalizeRegclassLiterals } from "../sql/table-shape.js";
+import type { Diagnostic, SchemaObject } from "../types.js";
 
 export interface SourceNormalizeOptions {
   normalize?: boolean;
@@ -896,60 +897,81 @@ async function mergePrivilegeGroup(
   if (!first) {
     return;
   }
-  const privileges = unionPrivileges(group);
-  if (!privileges) {
+  const merged =
+    first.ref.kind === "grant"
+      ? mergeGrantPrivilegeGroup(first, group)
+      : mergeDefaultPrivilegeGroup(first, group);
+  if (!merged) {
     return;
-  }
-  const meta = first.metadata;
-  let merged: SchemaObject | undefined;
-  if (first.ref.kind === "grant") {
-    const grantOptions = new Set(group.map((item) => item.metadata.withGrantOption === true));
-    if (grantOptions.size > 1) {
-      return;
-    }
-    if (
-      typeof meta.grantee !== "string" ||
-      typeof meta.kindPhrase !== "string" ||
-      typeof meta.target !== "string" ||
-      typeof meta.targetIdentity !== "string" ||
-      (meta.verb !== "GRANT" && meta.verb !== "REVOKE")
-    ) {
-      return;
-    }
-    merged = buildGrantObject({
-      file: first.file,
-      grantee: meta.grantee,
-      kindPhrase: meta.kindPhrase,
-      ordinal: first.ordinal,
-      privileges,
-      schema: first.ref.schema,
-      targetIdentity: meta.targetIdentity,
-      targetRendered: meta.target,
-      verb: meta.verb,
-      withGrantOption: meta.withGrantOption === true,
-    });
-  } else {
-    if (
-      typeof meta.grantee !== "string" ||
-      typeof meta.objectType !== "string" ||
-      (meta.verb !== "GRANT" && meta.verb !== "REVOKE")
-    ) {
-      return;
-    }
-    merged = buildDefaultPrivilegeObject({
-      file: first.file,
-      forRole: typeof meta.forRole === "string" ? meta.forRole : undefined,
-      grantee: meta.grantee,
-      objectType: meta.objectType,
-      ordinal: first.ordinal,
-      privileges,
-      schema: typeof meta.schema === "string" ? meta.schema : undefined,
-      verb: meta.verb,
-    });
   }
   merged.dependencies = mergedDependencies(group);
   await finalizeObject(merged, { normalize: options.normalize === true });
   return merged;
+}
+
+function mergeGrantPrivilegeGroup(
+  first: SchemaObject,
+  group: SchemaObject[]
+): SchemaObject | undefined {
+  const meta = first.metadata;
+  const privilegeMetadata = mergePrivilegeMetadata(
+    group.map((item) => ({
+      columnPrivileges: item.metadata.columnPrivileges,
+      privileges: item.metadata.privileges,
+      withGrantOption: item.metadata.withGrantOption === true,
+    }))
+  );
+  if (
+    !privilegeMetadata ||
+    typeof meta.grantee !== "string" ||
+    typeof meta.kindPhrase !== "string" ||
+    typeof meta.target !== "string" ||
+    typeof meta.targetIdentity !== "string" ||
+    (meta.verb !== "GRANT" && meta.verb !== "REVOKE")
+  ) {
+    return;
+  }
+  return buildGrantObject({
+    ...(privilegeMetadata.columnPrivileges
+      ? { columnPrivileges: privilegeMetadata.columnPrivileges }
+      : {}),
+    file: first.file,
+    grantee: meta.grantee,
+    kindPhrase: meta.kindPhrase,
+    ordinal: first.ordinal,
+    privileges: privilegeMetadata.privileges,
+    schema: first.ref.schema,
+    targetIdentity: meta.targetIdentity,
+    targetRendered: meta.target,
+    verb: meta.verb,
+    withGrantOption: privilegeMetadata.withGrantOption,
+  });
+}
+
+function mergeDefaultPrivilegeGroup(
+  first: SchemaObject,
+  group: SchemaObject[]
+): SchemaObject | undefined {
+  const meta = first.metadata;
+  const privileges = unionPrivileges(group);
+  if (
+    !privileges ||
+    typeof meta.grantee !== "string" ||
+    typeof meta.objectType !== "string" ||
+    (meta.verb !== "GRANT" && meta.verb !== "REVOKE")
+  ) {
+    return;
+  }
+  return buildDefaultPrivilegeObject({
+    file: first.file,
+    forRole: typeof meta.forRole === "string" ? meta.forRole : undefined,
+    grantee: meta.grantee,
+    objectType: meta.objectType,
+    ordinal: first.ordinal,
+    privileges,
+    schema: typeof meta.schema === "string" ? meta.schema : undefined,
+    verb: meta.verb,
+  });
 }
 
 function unionPrivileges(group: SchemaObject[]): string[] | undefined {

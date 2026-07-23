@@ -1,0 +1,83 @@
+---
+title: "migrations"
+description: "Compare SQL files on disk against a database's applied migration history."
+keywords:
+  [
+    "migrations command",
+    "migration status",
+    "ghost migrations",
+    "pending migrations",
+  ]
+---
+
+Use `migrations` when you need to know what has been applied and what is still pending.
+
+The command compares migration files on disk with versions recorded in a target database history table. Without a database URL, it still lists disk files.
+
+## Use this when
+
+- A deploy needs a preflight view of pending files.
+- A branch may have ghost or out-of-order migrations.
+- Supabase local and remote histories need comparison.
+- `sync` refused and you need the history reason.
+
+## Run it
+
+```bash
+npx supaschema migrations
+npx supaschema migrations --database-url "$DATABASE_URL"
+npx supaschema migrations --env staging
+npx supaschema migrations --history-table public.flyway_schema_history
+npx supaschema migrations --json
+```
+
+## Flags
+
+<ParamField path="--migrations-dir" type="path">
+  Directory containing numbered migration files.
+</ParamField>
+
+<ParamField path="--database-url" type="url">
+  Target database whose applied history should be compared.
+</ParamField>
+
+<ParamField path="--history-table" type="schema.table">
+  Migration history table. Use this for non-Supabase runners.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Print the reconciliation report as JSON.
+</ParamField>
+
+## Status values
+
+| Status | Meaning |
+| --- | --- |
+| `applied` | File exists and version appears in history |
+| `pending` | File exists but version is not applied |
+| `ghost` | Version is applied but file is missing |
+| `out-of-order` | File version is older than the current applied tip and is not applied |
+| `pending (no target)` | No database URL was available |
+
+Resolve ghost and out-of-order states before running `sync`.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Sync" icon="refresh-cw" href="/commands/sync">
+    Apply pending migrations after target reconciliation and safety gates.
+  </Card>
+  <Card
+    title="Supabase integration"
+    icon="database"
+    href="/guides/supabase-integration"
+  >
+    Configure Supabase paths, managed schemas, and runner targets.
+  </Card>
+  <Card title="Explain" icon="message-circle-question" href="/commands/explain">
+    Decode migration diagnostics.
+  </Card>
+  <Card title="CI gate" icon="circle-check" href="/guides/ci-gate">
+    Add history checks before deploy.
+  </Card>
+</CardGroup>

@@ -1,5 +1,4 @@
 import type { SupaschemaConfig } from "../config/schema.js";
-import type { Diagnostic } from "../core.js";
 import { type ScanResult, scanModel } from "../scan/model.js";
 import {
   grantPack,
@@ -12,6 +11,7 @@ import {
 } from "../scan/rules.js";
 import { extractSourceModel } from "../source/extract.js";
 import { defaultTreeSource } from "../source/resolve.js";
+import type { Diagnostic } from "../types.js";
 
 interface RlsSafetyGateOptions {
   config: SupaschemaConfig;

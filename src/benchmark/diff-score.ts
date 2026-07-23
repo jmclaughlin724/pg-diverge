@@ -1,4 +1,3 @@
-import type { ObjectKind } from "../core.js";
 import type { AstNode } from "../sql/ast.js";
 import {
   asRecord,
@@ -12,6 +11,7 @@ import {
 } from "../sql/ast.js";
 import { objectKey } from "../sql/identifiers.js";
 import { parseSqlAst } from "../sql/parser.js";
+import type { ObjectKind } from "../types.js";
 import type { FixtureManifestEntry } from "./fixtures.js";
 
 export interface DiffOutputScore {

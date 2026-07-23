@@ -1,0 +1,66 @@
+---
+title: "corpus"
+description: "Run the dirty-real regression oracle against a disposable PostgreSQL database."
+keywords:
+  ["corpus command", "regression oracle", "catalog parity", "reconvergence"]
+---
+
+Use `corpus` when you need regression coverage for false drift and catalog parity bugs.
+
+The command replays dirty migrations, diffs the result against a clean tree, applies the reconciliation twice, and requires the final diff to converge to zero operations.
+
+## Use this when
+
+- A bug involved false drift.
+- Engine changes need dirty-real catalog coverage.
+- A consuming repo keeps its own incident corpus.
+- CI can provide a disposable PostgreSQL database.
+
+## Run it
+
+```bash
+npx supaschema corpus --database-url "$DATABASE_URL"
+npx supaschema corpus --corpus-dir corpus/supabase-style --database-url "$DATABASE_URL"
+npx supaschema corpus --database-url "$DATABASE_URL" --json
+```
+
+Without a database URL, `corpus` prints a skip notice and exits `0`.
+
+## Flags
+
+<ParamField path="--corpus-dir" type="path">
+  Corpus directory. Defaults to `corpus/supabase-style`.
+</ParamField>
+
+<ParamField path="--database-url" type="url">
+  Admin URL for disposable corpus databases.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Print the corpus report as JSON.
+</ParamField>
+
+## Exit codes
+
+| Code | Meaning                                                       |
+| ---- | ------------------------------------------------------------- |
+| `0`  | Corpus converged, or skipped because no database URL resolved |
+| `1`  | Runtime failure                                               |
+| `2`  | Corpus diagnostics failed                                     |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Corpus guide" icon="book-open" href="/guides/corpus-oracle">
+    Understand the dirty-real regression lane.
+  </Card>
+  <Card title="Benchmarks" icon="gauge" href="/benchmarks">
+    Review correctness and timing evidence.
+  </Card>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    See the static gate used by the corpus lane.
+  </Card>
+  <Card title="Verify" icon="repeat-2" href="/commands/verify">
+    Compare apply-twice proof with corpus reconvergence.
+  </Card>
+</CardGroup>

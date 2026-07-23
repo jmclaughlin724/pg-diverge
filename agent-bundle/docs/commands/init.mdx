@@ -1,0 +1,59 @@
+---
+title: "init"
+description: "Scaffold or repair supaschema config."
+keywords: ["init command", "scaffold", "repair", "setup"]
+---
+
+Use `init` after package install or when setup needs repair.
+
+The command scaffolds config, schema directories, migration directories, canonical `supaschema:*` package scripts, package-owned active AI-agent enforcement under `.agents`, `.claude`, and `.codex`, and path-confirmation state. It does not write `AGENTS.md` or `CLAUDE.md`.
+
+## Use this when
+
+- supaschema was installed in a project that has not been set up yet.
+- `supaschema.config.json` should be repaired from the canonical contract.
+
+## Run it
+
+```bash
+<local-runner> init
+<local-runner> init --dry-run --json
+<local-runner> init --repair
+```
+
+Existing config files are left untouched unless `--repair` is passed.
+
+## Flags
+
+<ParamField path="--dry-run" type="boolean">
+  Print the scaffold or repair plan without writing files.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Print the init result as redacted JSON.
+</ParamField>
+
+<ParamField path="--repair" type="boolean">
+  Rewrite `supaschema.config.json` from the canonical contract when needed.
+</ParamField>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Add supaschema to a project.
+  </Card>
+  <Card title="Setup" icon="wrench" href="/setup">
+    Confirm generated paths and files.
+  </Card>
+  <Card title="What's included" icon="package" href="/whats-included">
+    See the package and agent surfaces.
+  </Card>
+  <Card
+    title="Config validate"
+    icon="settings"
+    href="/commands/config-validate"
+  >
+    Check the generated config.
+  </Card>
+</CardGroup>

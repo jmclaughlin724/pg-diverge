@@ -1,15 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { deparseSync } from "pgsql-deparser";
-import type {
-  Diagnostic,
-  ObjectKind,
-  ObjectRef,
-  SchemaModel,
-  SchemaObject,
-  SupaschemaConfig,
-  TableColumn,
-} from "../core.js";
-import { diagnostic, hasErrors } from "../diagnostics.js";
+import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { migrationFiles } from "../migrations/files.js";
 import { alterTableObjects } from "../sql/alter-table.js";
@@ -34,6 +25,15 @@ import { expressionSql, makeObject } from "../sql/statements.js";
 import { ignoredStatementTags, sourceIntentStatementTags } from "../sql/support.js";
 import { columnConstraintSyntheses } from "../sql/table-constraints.js";
 import { canonicalColumnType, canonicalizeRegclassLiterals } from "../sql/table-shape.js";
+import type {
+  Diagnostic,
+  ObjectKind,
+  ObjectRef,
+  SchemaModel,
+  SchemaObject,
+  SupaschemaConfig,
+  TableColumn,
+} from "../types.js";
 import { normalizeSourceObjects } from "./normalize.js";
 
 interface ReplayResult {
@@ -401,6 +401,10 @@ async function applyExtractedObject(
   if (isNormalizedAmendmentMarker(object)) {
     return await applyNormalizedAmendment(object, objects, context);
   }
+  const existing = objects.get(object.key);
+  if (existing && isReplayPrivilegeObject(object)) {
+    return await mergeReplayPrivilege(existing, object, objects, context, file, statement.text);
+  }
   if (objects.has(object.key) && createDuplicateGapTags.has(statement.tag)) {
     if (isReplaceStatement(statement)) {
       objects.set(object.key, object);
@@ -418,6 +422,43 @@ async function applyExtractedObject(
   }
   objects.set(object.key, object);
   return emptyResult();
+}
+
+async function mergeReplayPrivilege(
+  existing: SchemaObject,
+  incoming: SchemaObject,
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext,
+  file: string,
+  statement: string
+): Promise<ReplayResult> {
+  const diagnostics: Diagnostic[] = [];
+  const normalized = await normalizeSourceObjects([existing, incoming], diagnostics, {
+    normalize: context.normalize,
+  });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: undefined };
+  }
+  const merged = normalized.filter((object) => object.key === incoming.key);
+  if (merged.length > 1) {
+    return orderGap(
+      `privilege statements for ${incoming.key} could not be merged safely`,
+      file,
+      statement,
+      incoming.ref
+    );
+  }
+  const next = merged[0];
+  if (next) {
+    objects.set(incoming.key, next);
+  } else {
+    objects.delete(incoming.key);
+  }
+  return emptyResult();
+}
+
+function isReplayPrivilegeObject(object: SchemaObject): boolean {
+  return object.ref.kind === "grant" || object.ref.kind === "default-privilege";
 }
 
 function isReplaceStatement(statement: AstStatement): boolean {

@@ -1,8 +1,8 @@
-import type { SchemaObject } from "../core.js";
 import { sha256 } from "../hash.js";
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
 import { isInitdbDefaultComment } from "../sql/privileges.js";
 import { makeObject } from "../sql/statements.js";
+import type { SchemaObject } from "../types.js";
 import { type CatalogQuery, managedSchemaFilter, notExtensionMember, text } from "./query.js";
 
 const relationCommentWords = new Map([
@@ -106,7 +106,7 @@ async function collectSchemaComments(pool: CatalogQuery): Promise<SchemaObject[]
     if (isInitdbDefaultComment(`schema ${name}`, description)) {
       continue;
     }
-    objects.push(commentObject(`schema ${name}`, `SCHEMA ${name}`, undefined, description));
+    objects.push(commentObject(`schema ${name}`, `SCHEMA ${name}`, name, description));
   }
   return objects;
 }

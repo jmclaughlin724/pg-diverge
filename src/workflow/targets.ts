@@ -1,8 +1,8 @@
 import { defaultMigrationHistoryTable } from "../config/contract.js";
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import type { MigrationRunnerKind, SupabaseCliOperation } from "../migrations/runners.js";
+import type { Diagnostic, SupaschemaConfig } from "../types.js";
 import type { SyncOptions } from "./sync.js";
 
 export function operationName(options: Pick<SyncOptions, "operation">): "apply" | "sync" {

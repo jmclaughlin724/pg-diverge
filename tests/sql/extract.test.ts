@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkMigrationSql } from "../../src/check/migration.js";
 import { resolveConfig } from "../../src/config/schema.js";
-import { diagnostic, formatDiagnostics } from "../../src/diagnostics.js";
+import { diagnostic, formatDiagnostics } from "../../src/diagnostics/diagnostics.js";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderMigration } from "../../src/render/migration.js";
 import { extractSourceModel } from "../../src/source/extract.js";
@@ -969,6 +969,21 @@ describe("grants and default privileges", () => {
     );
   });
 
+  it("preserves column scopes when dropping grants", async () => {
+    const before = await extractObjectsFromSql(
+      "GRANT SELECT(display_name, id) ON TABLE app.accounts TO authenticated;"
+    );
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
+      { diagnostics: [], fingerprint: "", objects: [], source: "to" },
+      { config: { hints: { destructive: ["*"] } } }
+    );
+
+    expect(renderMigration(plan)).toContain(
+      `REVOKE SELECT ("display_name", "id") ON TABLE "app"."accounts" FROM "authenticated";`
+    );
+  });
+
   it("renders dropped default privileges as reverse REVOKE statements", async () => {
     const before = await extractObjectsFromSql(
       "ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO authenticated;"
@@ -1001,6 +1016,76 @@ describe("grants and default privileges", () => {
       `REVOKE INSERT, SELECT, UPDATE ON TABLE "app"."accounts" FROM "authenticated";`
     );
     expect(sql).toContain('GRANT SELECT ON TABLE "app"."accounts" TO "authenticated";');
+  });
+
+  it("preserves scoped columns while replacing grants", async () => {
+    const before = await extractObjectsFromSql(
+      "GRANT INSERT, SELECT(id) ON TABLE app.accounts TO authenticated;"
+    );
+    const after = await extractObjectsFromSql(
+      "GRANT INSERT, SELECT(display_name) ON TABLE app.accounts TO authenticated;"
+    );
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "from", objects: before.objects, source: "from" },
+      { diagnostics: [], fingerprint: "to", objects: after.objects, source: "to" }
+    );
+    const sql = renderMigration(plan);
+    const revoke = `REVOKE INSERT, SELECT ("id") ON TABLE "app"."accounts" FROM "authenticated";`;
+    const grant = `GRANT INSERT, SELECT ("display_name") ON TABLE "app"."accounts" TO "authenticated";`;
+
+    expect(sql).toContain(revoke);
+    expect(sql).toContain(grant);
+    expect(sql.indexOf(revoke)).toBeLessThan(sql.indexOf(grant));
+  });
+
+  it("renders grant creation from structured metadata", async () => {
+    const after = await extractObjectsFromSql(
+      "GRANT SELECT(id) ON TABLE app.accounts TO authenticated;"
+    );
+    const grant = after.objects[0];
+    if (!grant) {
+      throw new Error("expected one grant object");
+    }
+    grant.sql = 'GRANT ALL ON TABLE "app"."accounts" TO "authenticated"';
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "from", objects: [], source: "from" },
+      { diagnostics: [], fingerprint: "to", objects: after.objects, source: "to" }
+    );
+    const sql = renderMigration(plan);
+
+    expect(sql).toContain(`GRANT SELECT ("id") ON TABLE "app"."accounts" TO "authenticated";`);
+    expect(sql).not.toContain("GRANT ALL ON TABLE");
+  });
+
+  it("restores a removed column-scoped REVOKE", async () => {
+    const before = await extractObjectsFromSql(
+      "REVOKE SELECT(id) ON TABLE app.accounts FROM authenticated;"
+    );
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "", objects: before.objects, source: "from" },
+      { diagnostics: [], fingerprint: "", objects: [], source: "to" },
+      { config: { hints: { destructive: ["*"] } } }
+    );
+
+    expect(renderMigration(plan)).toContain(
+      `GRANT SELECT ("id") ON TABLE "app"."accounts" TO "authenticated";`
+    );
+  });
+
+  it("rejects REVOKE GRANT OPTION FOR until it has a dedicated model", async () => {
+    const extracted = await extractObjectsFromSql(
+      "REVOKE GRANT OPTION FOR SELECT(id) ON TABLE app.accounts FROM authenticated;"
+    );
+    const unsupported = extracted.diagnostics.find(
+      (item) => item.code === "SUPA_EXTRACT_UNSUPPORTED"
+    );
+
+    expect(unsupported?.message).toContain("REVOKE GRANT OPTION FOR");
+    const plan = planSchemaDiff(
+      { diagnostics: [], fingerprint: "from", objects: [], source: "from" },
+      { diagnostics: [], fingerprint: "to", objects: extracted.objects, source: "to" }
+    );
+    expect(() => renderMigration(plan)).toThrow("unsupported REVOKE GRANT OPTION FOR");
   });
 
   it("renders dropped builtin revokes as restored grants", async () => {

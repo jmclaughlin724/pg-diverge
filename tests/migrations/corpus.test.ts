@@ -18,6 +18,7 @@ describe("migration-derived source corpus", () => {
     });
 
     const plan = await buildSchemaDiffPlan({
+      checkMigrationBaseline: false,
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
       cwd: root,
       from: "dir:from",
@@ -51,6 +52,7 @@ describe("migration-derived source corpus", () => {
     const root = await migrationCorpusFixture({ migrationSql: "" });
 
     const plan = await buildSchemaDiffPlan({
+      checkMigrationBaseline: false,
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
       cwd: root,
       from: "dir:from",
@@ -67,6 +69,7 @@ describe("migration-derived source corpus", () => {
     const root = await migrationCorpusFixture({ migrationSql: "" });
 
     const plan = await buildSchemaDiffPlan({
+      checkMigrationBaseline: false,
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
       cwd: root,
       from: "dir:from",
@@ -85,6 +88,7 @@ describe("migration-derived source corpus", () => {
     });
 
     const plan = await buildSchemaDiffPlan({
+      checkMigrationBaseline: false,
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
       cwd: root,
       from: "dir:from",
@@ -111,6 +115,7 @@ describe("migration-derived source corpus", () => {
     });
 
     const plan = await buildSchemaDiffPlan({
+      checkMigrationBaseline: false,
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
       cwd: root,
       from: "dir:from",
@@ -132,6 +137,7 @@ describe("migration-derived source corpus", () => {
     );
 
     const plan = await buildSchemaDiffPlan({
+      checkMigrationBaseline: false,
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
       cwd: root,
       from: "dir:from",
@@ -158,6 +164,7 @@ describe("migration-derived source corpus", () => {
     await mkdir(join(root, "selected-migrations"), { recursive: true });
 
     const plan = await buildSchemaDiffPlan({
+      checkMigrationBaseline: false,
       config: resolveConfig({ migrationsDir: "migrations", schemaPaths: ["to"] }),
       cwd: root,
       from: "dir:from",

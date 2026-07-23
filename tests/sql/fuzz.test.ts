@@ -1,11 +1,11 @@
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
 import { extractCatalogModel } from "../../src/catalog/extract.js";
-import type { SchemaModel } from "../../src/core.js";
 import { resolveDatabaseUrl } from "../../src/database/url.js";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
 import { splitSqlStatements } from "../../src/sql/split.js";
+import type { SchemaModel } from "../../src/types.js";
 
 const databaseUrl = process.env.SUPASCHEMA_TEST_DATABASE_URL ?? resolveDatabaseUrl();
 

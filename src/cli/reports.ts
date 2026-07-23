@@ -12,10 +12,7 @@ import {
   formatConfigValidationDiagnostics,
   pendingInstallPathConfirmationDiagnostic,
 } from "../config/validate.js";
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
-import { renderCorpusReport, runCorpus } from "../corpus.js";
-import { diagnostic, hasErrors } from "../diagnostics.js";
-import { isEntitledFromEnv } from "../license.js";
+import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { stageGeneratedMigrations } from "../migrations/stage.js";
 import {
   type MigrationsStatusOptions,
@@ -23,15 +20,20 @@ import {
   migrationsStatus,
   renderMigrationsStatus,
 } from "../migrations/status.js";
-import { buildReadinessReport, classifyMigrationSystems, renderReadiness } from "../onboard.js";
 import { scanSchemaSafety } from "../pipeline/deploy-safety.js";
 import { evaluateTypeContract } from "../pipeline/type-safety.js";
 import { redactSecrets } from "../redaction.js";
-import { buildRemediationPlan } from "../remediation.js";
 import { scanGeneratedContractUsage } from "../scan/generated-contracts.js";
 import { renderScan, scanDiagnostics, scoreGrade } from "../scan/model.js";
+import {
+  buildReadinessReport,
+  classifyMigrationSystems,
+  renderReadiness,
+} from "../scan/onboard.js";
 import { extractSourceModel } from "../source/extract.js";
 import { currentBaselineFingerprints, defaultTreeSource } from "../source/resolve.js";
+import type { Diagnostic, SupaschemaConfig } from "../types.js";
+import { renderCorpusReport, runCorpus } from "../verify/corpus.js";
 import { syncMigrations } from "../workflow/sync.js";
 
 export interface ReportCommandContext {
@@ -65,6 +67,56 @@ interface ApplyCommandOptions {
 interface StageCommandOptions {
   dryRun?: boolean;
   migrationsDir?: string;
+}
+
+function describeLocation(diagnostic: Diagnostic): string {
+  const ref = diagnostic.ref;
+  if (ref === undefined) {
+    return diagnostic.file ?? "the schema";
+  }
+  const qualified = ref.schema === undefined ? ref.name : `${ref.schema}.${ref.name}`;
+  return `${ref.kind} ${qualified}`;
+}
+
+export function remediationPrompt(diagnostic: Diagnostic): string {
+  const lines = [
+    "You are a PostgreSQL migration-safety assistant. Propose a minimal, safe fix.",
+    `Finding [${diagnostic.code}] (${diagnostic.severity}): ${diagnostic.message}`,
+    diagnostic.hint === undefined ? "" : `Guidance: ${diagnostic.hint}`,
+    `Location: ${describeLocation(diagnostic)}`,
+    "Respond with: (1) the corrected SQL, (2) a one-line rationale. Change nothing unrelated.",
+  ];
+  return lines.filter((line) => line.length > 0).join("\n");
+}
+
+export function remediationCacheKey(diagnostic: Diagnostic): string {
+  const ref = diagnostic.ref;
+  const target =
+    ref === undefined ? (diagnostic.file ?? "") : `${ref.kind}:${ref.schema ?? ""}.${ref.name}`;
+  return `${diagnostic.code}|${target}`;
+}
+
+export interface RemediationStep {
+  diagnostic: Diagnostic;
+  order: number;
+  prompt: string;
+}
+
+function severityRank(severity: string): number {
+  if (severity === "error") {
+    return 0;
+  }
+  return severity === "warning" ? 1 : 2;
+}
+
+export function buildRemediationPlan(diagnostics: Diagnostic[]): RemediationStep[] {
+  return [...diagnostics]
+    .sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
+    .map((diagnostic, index) => ({
+      diagnostic,
+      order: index + 1,
+      prompt: remediationPrompt(diagnostic),
+    }));
 }
 
 function resolveReporter(value: string | undefined): CheckReporter | null {
@@ -171,7 +223,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
     .option("--from <source>", "previous schema source (default git:HEAD)")
     .option("--to <source>", "new schema source (defaults to the declarative tree)")
     .option("--reporter <reporter>", "text | json | github | sarif", "text")
-    .option("--enforce", "fail (exit 2) on breaking changes — licensed; free is report-only")
+    .option("--enforce", "fail (exit 2) on breaking changes")
     .description("Gate breaking changes in the generated type contract between two schema sources.")
     .action(
       async (options: {
@@ -208,13 +260,7 @@ export function registerReportCommands(program: Command, context: ReportCommandC
         ) {
           return;
         }
-        if (isEntitledFromEnv(process.env, Math.floor(Date.now() / 1000))) {
-          process.exitCode = 2;
-        } else {
-          process.stderr.write(
-            "supaschema: --enforce requires a license; reporting only (free tier).\n"
-          );
-        }
+        process.exitCode = 2;
       }
     );
 

@@ -1,0 +1,67 @@
+---
+title: "scan"
+description: "Score a declarative schema and optional generated-contract usage with the scan rule packs."
+keywords:
+  [
+    "scan command",
+    "postgres safety score",
+    "rule packs",
+    "rls audit",
+    "generated contracts",
+  ]
+---
+
+Use `scan` to grade a declarative schema and optionally surface generated-contract usage findings without a database.
+
+`scan` reads the declarative tree (or any source) and runs the schema rule packs. With `--contract-usage`, it also scans TypeScript files for high-signal generated-contract misuse.
+
+## Use this when
+
+- A repo needs a quick Postgres safety score.
+- CI should surface RLS, grant, and hygiene findings.
+- CI should report generated-contract import renames, query overrides, assertions, or copied runtime roots.
+- An onboarding check wants a baseline grade.
+
+## Run it
+
+```bash
+npx supaschema scan
+npx supaschema scan --from dir:database/schemas
+npx supaschema scan --contract-usage src --reporter json
+npx supaschema scan --reporter json
+```
+
+With no `--from`, `scan` reads `dir:<config.schemaPaths[0]>`. Output is credential-redacted before printing. JSON output is the machine contract used by the GitHub Action; it includes `file`, `score`, `grade`, `errorCount`, `warningCount`, and `diagnostics`.
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Source to scan. Defaults to the configured declarative tree.
+</ParamField>
+
+<ParamField path="--contract-usage" type="directory">
+  Also scan TypeScript files under this directory for generated-contract usage
+  diagnostics. The scan uses `typesFile` and `zodFile` from config to identify
+  generated contract imports.
+</ParamField>
+
+<ParamField path="--reporter" type="text | json | github | sarif">
+  Output format. Use `json` for Action PR comments and check runs. An unknown
+  value exits `2` with an error.
+</ParamField>
+
+## What it scores
+
+- a composite safety score (0-100) and letter grade A-F;
+- table-naming hygiene;
+- RLS misconfiguration (enabled without a policy; policy without RLS; policy missing the predicate required for its command; public tables exposed by API-facing grants without RLS);
+- over-broad grants (to PUBLIC, ALL privileges, or roles outside `hints.allowedGrantees`).
+
+With `--contract-usage`, it also reports generated import renames, `.overrideTypes()`, `.returns()`, TypeScript assertions in files importing generated contracts, and local contract copies.
+
+## Exit codes
+
+| Code | Meaning                                              |
+| ---- | ---------------------------------------------------- |
+| 0    | Scan completed; warnings are allowed.                |
+| 2    | Error-severity findings, or an unknown `--reporter`. |

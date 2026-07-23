@@ -167,7 +167,7 @@ function jsonValue(text) {
   }
 }
 
-function findHardOutcome(value) {
+function findHardOutcome(value, depth = 0) {
   if (value === null || value === undefined) {
     return;
   }
@@ -186,14 +186,18 @@ function findHardOutcome(value) {
       return value[key] === 0;
     }
   }
-  if (typeof value.is_error === "boolean") {
-    return !value.is_error;
+  if (depth === 0) {
+    for (const key of ["is_error", "isError"]) {
+      if (typeof value[key] === "boolean") {
+        return !value[key];
+      }
+    }
   }
   if (typeof value.interrupted === "boolean" && value.interrupted) {
     return false;
   }
   for (const child of childValues(value)) {
-    const outcome = findHardOutcome(child);
+    const outcome = findHardOutcome(child, depth + 1);
     if (outcome !== undefined) {
       return outcome;
     }

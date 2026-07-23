@@ -1,5 +1,5 @@
-import type { SchemaObject } from "../core.js";
-import { stringArray } from "../core.js";
+import { stringArray } from "../catalog/tables.js";
+import type { SchemaObject } from "../types.js";
 
 const kindPhraseToDefaultObjectType = new Map([
   ["DOMAIN", "TYPES"],

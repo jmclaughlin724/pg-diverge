@@ -1,0 +1,75 @@
+---
+title: "RLS policy safety"
+description: "Detect PostgreSQL Row Level Security policy changes by comparing policy expressions, not just policy names."
+keywords: ["RLS policy safety", "policy diff", "PostgreSQL"]
+---
+
+Use this when Row Level Security predicates protect tenants or other sensitive boundaries.
+
+`supaschema` compares policy definitions structurally. A changed `USING` expression, `WITH CHECK` expression, command, role list, or permissive/restrictive mode is treated as a real schema change.
+
+The RLS safety pack also surfaces Supabase-specific policy issues from parsed policy metadata: `auth.role()` usage, direct `auth.uid()` calls that are not wrapped as `(select auth.uid())`, update-capable policies without explicit `WITH CHECK`, policies without enabled RLS, and enabled RLS tables with no policies.
+
+## Use this when
+
+- Policy bodies are part of your access-control model.
+- Reviewers need to see tenant-isolation changes.
+- CI should catch drift between policy files and the database.
+- Deploy should block when configured RLS safety rules fail.
+- Supabase projects use `auth.uid()` or platform roles in policies.
+
+## Do this
+
+Keep policies in the declarative tree near the protected tables:
+
+```text
+database/schemas/
+  020_invoices.sql
+  021_invoices_policies.sql
+```
+
+Generate and check every policy change:
+
+```bash
+npx supaschema diff
+npx supaschema check
+```
+
+Review whether each predicate broadened reads, weakened writes, or changed role coverage.
+
+For apply workflows, the default `workflow.rls_safety` policy reports diagnostics without blocking. Set it to `deploy_blocking` when a project wants RLS diagnostics to refuse target mutation.
+
+## Verify
+
+Block drift in CI:
+
+```bash
+npx supaschema diff --fail-on-diff --quiet
+```
+
+Use Supabase stubs when verifying against bare PostgreSQL:
+
+```bash
+npx supaschema verify --ensure-environment --ensure-roles
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card
+    title="Supabase comparison"
+    icon="scale"
+    href="/comparisons/supaschema-vs-supabase-cli"
+  >
+    See why structural policy diffs matter.
+  </Card>
+  <Card title="CI gate" icon="circle-check" href="/guides/ci-gate">
+    Gate policy changes before merge.
+  </Card>
+  <Card title="Check command" icon="shield-check" href="/commands/check">
+    Surface policy changes with safety diagnostics.
+  </Card>
+  <Card title="Sync command" icon="refresh-cw" href="/commands/sync">
+    Block unsafe RLS changes before local or remote apply.
+  </Card>
+</CardGroup>

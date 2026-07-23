@@ -15,7 +15,9 @@ import {
 } from "./skills.mjs";
 import {
   beginTurnState,
-  currentTurnState,
+  clearCorrections,
+  correctionsFor,
+  markCorrectionsBlocked,
   selectTurnState,
   sessionStartState,
   withSessionState,
@@ -58,6 +60,7 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
         result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
       } else if (eventName === "SubagentStart") {
         selectTurnState(payload, state);
+        clearCorrections(payload, state);
         result = runChecks(eventName, payload, [subagentContext], context);
       } else if (eventName === "Stop" || eventName === "SubagentStop") {
         selectTurnState(payload, state);
@@ -141,25 +144,28 @@ function subagentContext(_payload, context) {
 }
 
 function responseShape(payload, context) {
-  const detectorResult = runResponseDetectors(payload, context.state);
+  if (payload?.stop_hook_active) {
+    clearCorrections(payload, context.state);
+    return {};
+  }
+  const detectorResult = runResponseDetectors(payload, context.state, context.runtime);
   if (!detectorResult.contextParts?.length) {
     return detectorResult;
   }
-  const corrections = currentTurnState(context.state).corrections;
-  if (payload?.stop_hook_active || !corrections.some((correction) => !correction.blocked)) {
-    return detectorResult;
+  const corrections = correctionsFor(payload, context.state);
+  if (!corrections.some((correction) => !correction.blocked)) {
+    return {};
   }
-  for (const correction of corrections) {
-    correction.blocked = true;
-  }
+  const block = detectorResult.contextParts.join("\n\n");
+  markCorrectionsBlocked(payload, context.state, block);
   return {
-    block: detectorResult.contextParts.join("\n\n"),
+    block,
   };
 }
 
-function taskCompletionGate(_payload, context) {
+function taskCompletionGate(payload, context) {
   const pending = unresolvedPending(context.state);
-  const corrections = currentTurnState(context.state).corrections.filter((item) => !item.blocked);
+  const corrections = correctionsFor(payload, context.state).filter((item) => !item.blocked);
   if (pending.length === 0 && corrections.length === 0) {
     return {};
   }

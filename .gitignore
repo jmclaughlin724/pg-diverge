@@ -1,6 +1,7 @@
 coverage
 dist
 node_modules
+.pnpm-store/
 .venv
 __pycache__
 *.pyc
@@ -14,8 +15,6 @@ benchmarks/results
 /database.zod.ts
 .DS_Store
 .envrc
-.codeatlas/
-.codeatlas-sa/
 .claude/scheduled_tasks.lock
 .claude/plans
 .wrangler/
@@ -48,7 +47,6 @@ scripts/stripe/
 !.agents/skills/supaschema/**
 .claude/*
 .claude/agents/
-.claude/cclsp.json
 !.claude/hooks/
 .claude/hooks/*
 !.claude/hooks/context-*.mjs

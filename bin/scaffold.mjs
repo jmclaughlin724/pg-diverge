@@ -35,14 +35,12 @@ const packageScripts = {
 };
 const agentBundleCopies = [
   ["agents/prompts/supaschema-install.md", ".agents/prompts/supaschema-install.md"],
-  ["agents/skills/supaschema/SKILL.md", ".agents/skills/supaschema/SKILL.md"],
   ["claude/hooks/guards/bash-policy-checks.mjs", ".claude/hooks/guards/bash-policy-checks.mjs"],
   [
     "claude/hooks/sync-llm-on-claude-surface-change.mjs",
     ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ],
   ["claude/rules/supaschema.md", ".claude/rules/supaschema.md"],
-  ["claude/skills/supaschema/SKILL.md", ".claude/skills/supaschema/SKILL.md"],
   ["codex/hooks/general-guard.mjs", ".codex/hooks/general-guard.mjs"],
   ["codex/hooks/guards/bash-policy-checks.mjs", ".codex/hooks/guards/bash-policy-checks.mjs"],
   [
@@ -405,6 +403,7 @@ function installAgentBundle({ dryRun, packageManager, packageRoot, targetDir }) 
   for (const [source, target] of agentBundleCopies) {
     installAgentBundleTextFile({ dryRun, packageRoot, result, source, target, targetDir });
   }
+  installAgentBundleSkills({ dryRun, packageRoot, result, targetDir });
   mergeAgentBundleJsonFile({
     dryRun,
     packageRoot,
@@ -423,6 +422,89 @@ function installAgentBundle({ dryRun, packageManager, packageRoot, targetDir }) 
   });
   result.installed = result.skipped.length === 0;
   return result;
+}
+
+function installAgentBundleSkills({ dryRun, packageRoot, result, targetDir }) {
+  const manifestPath = "skills-manifest.json";
+  const manifest = parseRequiredJson(
+    readRequiredAgentBundleFile(packageRoot, manifestPath),
+    manifestPath
+  );
+  if (!Array.isArray(manifest.skills)) {
+    throw new Error("agent bundle skills manifest must contain a skills array");
+  }
+
+  const seen = new Set();
+  for (const skillName of manifest.skills) {
+    if (
+      typeof skillName !== "string" ||
+      !isAgentBundleSkillName(skillName) ||
+      seen.has(skillName)
+    ) {
+      throw new Error(`invalid agent bundle skill name: ${String(skillName)}`);
+    }
+    seen.add(skillName);
+
+    for (const [sourceSurface, targetSurface] of [
+      ["agents", ".agents"],
+      ["claude", ".claude"],
+    ]) {
+      const sourceRoot = `${sourceSurface}/skills/${skillName}`;
+      const files = listAgentBundleFiles(packageRoot, sourceRoot);
+      if (!files.includes("SKILL.md")) {
+        throw new Error(`missing packaged agent bundle skill: agent-bundle/${sourceRoot}/SKILL.md`);
+      }
+      for (const file of files) {
+        installAgentBundleTextFile({
+          dryRun,
+          packageRoot,
+          result,
+          source: `${sourceRoot}/${file}`,
+          target: `${targetSurface}/skills/${skillName}/${file}`,
+          targetDir,
+        });
+      }
+    }
+  }
+}
+
+function isAgentBundleSkillName(value) {
+  return value
+    .split("-")
+    .every(
+      (segment) =>
+        segment.length > 0 &&
+        [...segment].every(
+          (character) =>
+            (character >= "a" && character <= "z") || (character >= "0" && character <= "9")
+        )
+    );
+}
+
+function listAgentBundleFiles(packageRoot, relativeRoot) {
+  const root = join(packageRoot, "agent-bundle", relativeRoot);
+  if (!(existsSync(root) && statSync(root).isDirectory())) {
+    throw new Error(`missing packaged agent bundle directory: agent-bundle/${relativeRoot}`);
+  }
+
+  const files = [];
+  const visit = (dir) => {
+    const entries = readdirSync(dir, { withFileTypes: true }).sort((left, right) =>
+      left.name.localeCompare(right.name)
+    );
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+      } else if (entry.isFile()) {
+        files.push(relative(root, path).split(sep).join("/"));
+      } else {
+        throw new Error(`unsupported packaged agent bundle entry: ${relativeRoot}/${entry.name}`);
+      }
+    }
+  };
+  visit(root);
+  return files;
 }
 
 function installAgentBundleTextFile({ dryRun, packageRoot, result, source, target, targetDir }) {

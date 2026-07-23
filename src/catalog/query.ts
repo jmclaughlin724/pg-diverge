@@ -1,10 +1,7 @@
 import { stripOuterDoubleQuotes } from "../sql/identifiers.js";
 
 export interface CatalogQuery {
-  query: <Row extends Record<string, unknown>>(
-    text: string,
-    values?: unknown[]
-  ) => Promise<{ rows: Row[] }>;
+  query: (text: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
 }
 
 const supabasePlatformOwnerRoles = [
