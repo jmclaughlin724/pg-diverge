@@ -1,9 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
-
-const canonicalPathsModule = new URL("../../src/paths.ts", import.meta.url);
-const { resolvedPathContainsOrEqual } = await import(canonicalPathsModule.href);
+import { isAbsolute, join, relative, resolve, sep, toNamespacedPath } from "node:path";
 
 export const LOCAL_REPOSITORY_FILES = [
   "package.json",
@@ -92,14 +89,22 @@ export function isRepositoryContextPath(file) {
   return !file.split("/").some((segment) => REPOSITORY_DENY_SEGMENTS.has(segment));
 }
 
+function isWithin(root, file) {
+  const pathFromRoot = relative(toNamespacedPath(root), toNamespacedPath(file));
+  return pathFromRoot !== ".." && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot);
+}
+
 function isSafeRegularFile(file, repositoryRoot) {
+  let resolvedFile;
   try {
-    return (
-      lstatSync(file).isFile() && resolvedPathContainsOrEqual(repositoryRoot, realpathSync(file))
-    );
+    if (!lstatSync(file).isFile()) {
+      return false;
+    }
+    resolvedFile = realpathSync(file);
   } catch {
     return false;
   }
+  return isWithin(repositoryRoot, resolvedFile);
 }
 
 export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {}) {
@@ -125,7 +130,7 @@ export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {})
     .filter(Boolean)
     .map((file) => join(repoRoot, file))
     .filter((file) => file.endsWith(extension) && isSafeRegularFile(file, repoRoot))
-    .filter((file) => ownedRoots.some((root) => resolvedPathContainsOrEqual(root, file)))
+    .filter((file) => ownedRoots.some((root) => isWithin(root, file)))
     .map((file) => relative(workingDirectory, file))
     .sort();
 }
