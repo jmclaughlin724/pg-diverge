@@ -349,6 +349,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
   const objects: SchemaObject[] = [];
   const rows = await pool.query(`
     select pg_get_userbyid(d.defaclrole) as for_role,
+      d.defaclrole = current_user::regrole as is_current_role,
       case when d.defaclnamespace = 0 then null else n.nspname end as schema,
       d.defaclobjtype as objtype,
       case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee,
@@ -372,17 +373,18 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     if (!objectType) {
       continue;
     }
-    const forRole = text(row.for_role);
+    const ownerRole = text(row.for_role);
+    const forRole = row.is_current_role === true ? undefined : ownerRole;
     const grantee = text(row.grantee);
     const privileges = textArray(row.privileges);
-    const identity = `${forRole}:${text(row.objtype)}:${grantee}`;
+    const identity = `${ownerRole}:${text(row.objtype)}:${grantee}`;
     if (catalogGrantOption(row.is_grantable, identity)) {
       throw new Error(
         `Catalog default privilege ${identity} uses a grant option that cannot be represented safely`
       );
     }
 
-    if (grantee === forRole || isBuiltinDefaultGrant(objectType, grantee, privileges)) {
+    if (grantee === ownerRole || isBuiltinDefaultGrant(objectType, grantee, privileges)) {
       continue;
     }
     objects.push(
@@ -400,6 +402,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
 
   const revokedDefaults = await pool.query(`
     select pg_get_userbyid(d.defaclrole) as for_role,
+      d.defaclrole = current_user::regrole as is_current_role,
       case when d.defaclnamespace = 0 then null else n.nspname end as schema,
       d.defaclobjtype as objtype
     from pg_default_acl d
@@ -422,9 +425,10 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     if (!objectType) {
       continue;
     }
+    const forRole = row.is_current_role === true ? undefined : text(row.for_role);
     objects.push(
       buildDefaultPrivilegeObject({
-        forRole: text(row.for_role),
+        forRole,
         grantee: "PUBLIC",
         objectType,
         ordinal: 0,

@@ -3,7 +3,7 @@ import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const canonicalPathsModule = new URL("../../src/paths.ts", import.meta.url);
-const { pathContainsOrEqual } = await import(canonicalPathsModule.href);
+const { resolvedPathContainsOrEqual } = await import(canonicalPathsModule.href);
 
 export const LOCAL_REPOSITORY_FILES = [
   "package.json",
@@ -94,7 +94,9 @@ export function isRepositoryContextPath(file) {
 
 function isSafeRegularFile(file, repositoryRoot) {
   try {
-    return lstatSync(file).isFile() && pathContainsOrEqual(repositoryRoot, realpathSync(file));
+    return (
+      lstatSync(file).isFile() && resolvedPathContainsOrEqual(repositoryRoot, realpathSync(file))
+    );
   } catch {
     return false;
   }
@@ -123,7 +125,7 @@ export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {})
     .filter(Boolean)
     .map((file) => join(repoRoot, file))
     .filter((file) => file.endsWith(extension) && isSafeRegularFile(file, repoRoot))
-    .filter((file) => ownedRoots.some((root) => pathContainsOrEqual(root, file)))
+    .filter((file) => ownedRoots.some((root) => resolvedPathContainsOrEqual(root, file)))
     .map((file) => relative(workingDirectory, file))
     .sort();
 }

@@ -265,9 +265,42 @@ describe("catalog default privilege extraction", () => {
 
     expect(calls).toHaveLength(2);
     expect(
+      calls.every((sql) => sql.includes("d.defaclrole = current_user::regrole as is_current_role"))
+    ).toBe(true);
+    expect(
       calls.every((sql) => sql.includes("ext_member.classid = 'pg_default_acl'::regclass"))
     ).toBe(true);
     expect(calls.every((sql) => sql.includes("ext.extnamespace = d.defaclnamespace"))).toBe(true);
+  });
+
+  it("normalizes the catalog executor to the omitted current-role scope", async () => {
+    const pool: CatalogQuery = {
+      query(sql: string) {
+        if (!sql.includes("lateral aclexplode(d.defaclacl)")) {
+          return Promise.resolve({ rows: [] });
+        }
+        return Promise.resolve({
+          rows: [
+            {
+              for_role: "postgres",
+              grantee: "app_user",
+              is_current_role: true,
+              is_grantable: false,
+              objtype: "r",
+              privileges: ["SELECT"],
+              schema: "app",
+            },
+          ],
+        });
+      },
+    };
+
+    const objects = await collectDefaultPrivileges(pool);
+
+    expect(objects).toHaveLength(1);
+    expect(objects[0]?.ref.name).toContain("for current-role");
+    expect(objects[0]?.sql).not.toContain("FOR ROLE");
+    expect(objects[0]?.metadata.forRole).toBeUndefined();
   });
 
   it("rejects default ACL grant options that the model cannot preserve", async () => {

@@ -1,10 +1,7 @@
 # Supaschema Documentation
 
-- [agent-bundle/docs/api/index.mdx](https://supaschema.com/docs/api/index)
 - [agent-bundle/docs/benchmarks.mdx](https://supaschema.com/docs/benchmarks)
 - [agent-bundle/docs/case-study-anilize.mdx](https://supaschema.com/docs/case-study-anilize)
-- [agent-bundle/docs/changelog/changelog/v1-0-0.mdx](https://supaschema.com/docs/changelog/changelog/v1-0-0)
-- [agent-bundle/docs/changelog/index.mdx](https://supaschema.com/docs/changelog/index)
 - [agent-bundle/docs/coding-agents.mdx](https://supaschema.com/docs/coding-agents)
 - [agent-bundle/docs/coding-agents/agent-bundle.mdx](https://supaschema.com/docs/coding-agents/agent-bundle)
 - [agent-bundle/docs/commands.mdx](https://supaschema.com/docs/commands)
@@ -47,7 +44,6 @@
 - [agent-bundle/docs/configuration/config-file.mdx](https://supaschema.com/docs/configuration/config-file)
 - [agent-bundle/docs/configuration/environments.mdx](https://supaschema.com/docs/configuration/environments)
 - [agent-bundle/docs/configuration/hints.mdx](https://supaschema.com/docs/configuration/hints)
-- [agent-bundle/docs/docs/index.mdx](https://supaschema.com/docs/docs/index)
 - [agent-bundle/docs/faq.mdx](https://supaschema.com/docs/faq)
 - [agent-bundle/docs/guides/ci-gate.mdx](https://supaschema.com/docs/guides/ci-gate)
 - [agent-bundle/docs/guides/ci-github-actions.mdx](https://supaschema.com/docs/guides/ci-github-actions)
@@ -69,7 +65,5 @@
 - [agent-bundle/docs/reference/support-matrix.mdx](https://supaschema.com/docs/reference/support-matrix)
 - [agent-bundle/docs/reference/support.mdx](https://supaschema.com/docs/reference/support)
 - [agent-bundle/docs/release.mdx](https://supaschema.com/docs/release)
-- [agent-bundle/docs/sdk/index.mdx](https://supaschema.com/docs/sdk/index)
-- [agent-bundle/docs/sdk/installation.mdx](https://supaschema.com/docs/sdk/installation)
 - [agent-bundle/docs/setup.mdx](https://supaschema.com/docs/setup)
 - [agent-bundle/docs/whats-included.mdx](https://supaschema.com/docs/whats-included)

@@ -106,7 +106,7 @@ async function collectSchemaComments(pool: CatalogQuery): Promise<SchemaObject[]
     if (isInitdbDefaultComment(`schema ${name}`, description)) {
       continue;
     }
-    objects.push(commentObject(`schema ${name}`, `SCHEMA ${name}`, name, description));
+    objects.push(commentObject(`schema ${name}`, `SCHEMA ${name}`, undefined, description));
   }
   return objects;
 }

@@ -1,9 +1,13 @@
 import { realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 export function pathContainsOrEqual(parent: string, child: string): boolean {
-  const rel = relative(canonicalPath(parent), canonicalPath(child));
-  return !(rel.startsWith("..") || isAbsolute(rel));
+  return resolvedPathContainsOrEqual(canonicalPath(parent), canonicalPath(child));
+}
+
+export function resolvedPathContainsOrEqual(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 export function pathsOverlap(a: string, b: string): boolean {

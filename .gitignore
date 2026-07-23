@@ -45,6 +45,10 @@ scripts/stripe/
 .agents/skills/*
 !.agents/skills/supaschema/
 !.agents/skills/supaschema/**
+!.agents/skills/supaschema-maintain/
+!.agents/skills/supaschema-maintain/**
+!.agents/skills/supaschema-migrate/
+!.agents/skills/supaschema-migrate/**
 .claude/*
 .claude/agents/
 !.claude/hooks/
@@ -63,6 +67,10 @@ scripts/stripe/
 .claude/skills/*
 !.claude/skills/supaschema/
 !.claude/skills/supaschema/**
+!.claude/skills/supaschema-maintain/
+!.claude/skills/supaschema-maintain/**
+!.claude/skills/supaschema-migrate/
+!.claude/skills/supaschema-migrate/**
 .codex/*
 .codex/agents/
 .codex/config.toml

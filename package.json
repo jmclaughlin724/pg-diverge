@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "blume": "^1.1.4",
     "commander": "^15.0.0",
     "libpg-query": "^17.7.3",
     "pg": "^8.21.0",

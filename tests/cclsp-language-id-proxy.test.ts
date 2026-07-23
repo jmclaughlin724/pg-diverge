@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -108,7 +108,7 @@ describe("cclsp TypeScript language-server proxy", () => {
     expect(message.params.initializationOptions.tsserver.logVerbosity).toBe("normal");
     expect(isAbsolute(message.params.initializationOptions.tsserver.path)).toBe(true);
     expect(message.params.initializationOptions.tsserver.path).toContain(
-      "/@typescript/old/lib/tsserver.js"
+      join("@typescript", "old", "lib", "tsserver.js")
     );
     expect(existsSync(message.params.initializationOptions.tsserver.path)).toBe(true);
   });

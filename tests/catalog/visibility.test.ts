@@ -126,6 +126,7 @@ describe.skipIf(!databaseUrl)("catalog visibility", () => {
         (object) => object.metadata.descriptor === "schema public"
       );
       expect(comment?.metadata.description).toBe("workspace docs");
+      expect(comment?.ref.schema).toBeUndefined();
     });
   });
 });
