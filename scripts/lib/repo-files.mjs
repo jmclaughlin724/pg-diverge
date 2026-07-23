@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { lstatSync, realpathSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { realpathSync } from "node:fs";
+import { relative, resolve, sep } from "node:path";
 
 export const LOCAL_REPOSITORY_FILES = [
   "package.json",
@@ -93,12 +93,22 @@ function repositoryPathContainsOrEqual(root, file) {
   return root === "" || file === root || file.startsWith(`${root}/`);
 }
 
-function isRegularFile(file) {
-  try {
-    return lstatSync(file).isFile();
-  } catch {
+function isRegularWorkingTreeRecord(record) {
+  const metadataEnd = record.indexOf("\t");
+  if (metadataEnd === -1) {
     return false;
   }
+  const worktreeFieldStart = record.indexOf("w/");
+  const worktreeValueStart = worktreeFieldStart + 2;
+  return (
+    worktreeFieldStart !== -1 &&
+    worktreeValueStart < metadataEnd &&
+    record[worktreeValueStart] !== " "
+  );
+}
+
+function repositoryPathFromRecord(record) {
+  return record.slice(record.indexOf("\t") + 1);
 }
 
 export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {}) {
@@ -114,17 +124,17 @@ export function collectRepoFiles(roots, extension, { cwd = process.cwd() } = {})
   );
   const output = execFileSync(
     "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    ["ls-files", "--cached", "--others", "--exclude-standard", "--eol", "-z"],
     { cwd: repoRoot, encoding: "utf8" }
   );
 
   return output
     .split("\0")
     .filter(Boolean)
+    .filter(isRegularWorkingTreeRecord)
+    .map(repositoryPathFromRecord)
     .filter((file) => file.endsWith(extension))
     .filter((file) => ownedRoots.some((root) => repositoryPathContainsOrEqual(root, file)))
-    .map((file) => join(repoRoot, file))
-    .filter(isRegularFile)
-    .map((file) => relative(workingDirectory, file).split(sep).join("/"))
+    .map((file) => relative(workingDirectory, resolve(repoRoot, file)).split(sep).join("/"))
     .sort();
 }
