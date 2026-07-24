@@ -172,8 +172,11 @@ const wireSoundnessSql = `CREATE TABLE public.wire_values (
   upper_numeric numeric,
   lower_bigint bigint,
   upper_bigint bigint,
+  equal_bigint bigint,
+  equal_bigint_other bigint,
   CHECK (lower_numeric < upper_numeric),
-  CHECK (lower_bigint < upper_bigint)
+  CHECK (lower_bigint < upper_bigint),
+  CHECK (equal_bigint = equal_bigint_other)
 );
 `;
 
@@ -346,6 +349,7 @@ describe("check constraint zod refinements", () => {
     expect(row).toContain("collated_list: z.string().nullable(),");
     expect(row).not.toContain('value["lower_numeric"]');
     expect(row).not.toContain('value["lower_bigint"]');
+    expect(row).not.toContain('value["equal_bigint"]');
   });
 
   it("fails loose for cross-family or ambiguous domain lookup", async () => {
@@ -356,6 +360,28 @@ describe("check constraint zod refinements", () => {
     expect(row).toContain("ambiguous: z.unknown().nullable(),");
     expect(row).toContain("collated: z.string().nullable(),");
     expect(row).toContain("sized: z.string().nullable(),");
+  });
+
+  it("prefers a same-schema domain over same-named domains in other schemas", () => {
+    const shapes: SchemaShapes = {
+      compositesByBareName: new Map(),
+      compositesByQualifiedName: new Map(),
+      domains: new Map([
+        ["app.code", { baseType: "integer", checkConstraints: [] }],
+        ["other.code", { baseType: "text", checkConstraints: [] }],
+      ]),
+      enumsByBareName: new Map(),
+      enumsByQualifiedName: new Map(),
+      schemas: new Map(),
+    };
+
+    expect(chaseColumnType(shapes, "app", "code")).toEqual({
+      arrayDepth: 0,
+      baseTypeName: "integer",
+      domainChain: ["app.code"],
+      kind: "number",
+      sawTypmod: false,
+    });
   });
 
   it("treats composite, relation, and cyclic domain resolution conservatively", () => {

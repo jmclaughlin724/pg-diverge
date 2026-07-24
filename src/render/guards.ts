@@ -235,6 +235,7 @@ function renderReversePrivileges(
 
 function renderReverseGrantPrivileges(metadata: GrantRenderMetadata): string | undefined {
   if (
+    metadata.verb === "REVOKE" &&
     metadata.grantee === "PUBLIC" &&
     metadata.columnPrivileges === undefined &&
     metadata.privileges.includes("ALL")

@@ -740,7 +740,7 @@ const pairOperators = new Map([
   [">=", ">="],
 ]);
 
-const precisionSensitivePairOperators = new Set(["<", "<>", ">"]);
+const precisionSensitivePairOperators = new Set(["<", "<>", "=", ">"]);
 
 const exactIntegerTypes = new Set(["bigint", "int", "int2", "int4", "int8", "integer", "smallint"]);
 

@@ -56,7 +56,7 @@ function formatViolations(violations, pageCount) {
 
 function runCli() {
   const files = globSync(DOCS_GLOB, { cwd: process.cwd() }).map(toPosix).sort();
-  const violations = lintDocsStandard({ files });
+  const violations = lintDocsStandard();
   const output = formatViolations(violations, files.length);
   if (violations.length === 0) {
     console.log(output);

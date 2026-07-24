@@ -573,7 +573,7 @@ export function chaseColumnType(
   let domainSchema = schemaName;
   let unresolvedDomain = false;
   while (true) {
-    const domainKey = domainKeyForType(shapes, baseTypeName);
+    const domainKey = domainKeyForType(shapes, domainSchema, baseTypeName);
     if (domainKey === null || (domainKey !== undefined && visited.has(domainKey))) {
       unresolvedDomain = true;
       break;
@@ -604,12 +604,20 @@ export function chaseColumnType(
   };
 }
 
-function domainKeyForType(shapes: SchemaShapes, typeName: string): string | null | undefined {
+function domainKeyForType(
+  shapes: SchemaShapes,
+  schemaName: string,
+  typeName: string
+): string | null | undefined {
   if (typeName.includes(".")) {
     return shapes.domains.has(typeName) ? typeName : undefined;
   }
   if (resolveScalarType(typeName, 0) !== undefined) {
     return;
+  }
+  const localKey = `${schemaName}.${typeName}`;
+  if (shapes.domains.has(localKey)) {
+    return localKey;
   }
   const suffix = `.${typeName}`;
   const domainMatches = [...shapes.domains.keys()].filter((key) => key.endsWith(suffix));
@@ -693,11 +701,11 @@ function resolveBaseColumnType(
 
 export function isDeclaredDomainType(
   shapes: SchemaShapes,
-  _schemaName: string,
+  schemaName: string,
   sqlType: string
 ): boolean {
   const base = baseSqlTypeName(sqlType);
-  return domainKeyForType(shapes, base) !== undefined;
+  return domainKeyForType(shapes, schemaName, base) !== undefined;
 }
 
 function baseSqlTypeName(sqlType: string): string {

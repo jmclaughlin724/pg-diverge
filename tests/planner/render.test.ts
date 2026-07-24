@@ -122,4 +122,22 @@ describe("privilege rendering", () => {
       'REVOKE SELECT ("id", "name") ON TABLE "app"."accounts" FROM "authenticated";'
     );
   });
+
+  it("revokes removed PUBLIC ALL grants on objects without PUBLIC defaults", async () => {
+    const source = [
+      "CREATE SCHEMA app;",
+      "CREATE TABLE app.accounts (id integer);",
+      "GRANT ALL ON TABLE app.accounts TO PUBLIC;",
+    ].join("\n");
+
+    const extracted = await extractObjectsFromSql(source, { config: { normalize: "off" } });
+    const errors = extracted.diagnostics.filter((item) => item.severity === "error");
+    const grant = extracted.objects.find((object) => object.ref.kind === "grant");
+
+    expect(errors).toEqual([]);
+    expect(grant).toBeDefined();
+    expect(grant && renderGrantDrop(grant)).toBe(
+      'REVOKE ALL ON TABLE "app"."accounts" FROM PUBLIC;'
+    );
+  });
 });
