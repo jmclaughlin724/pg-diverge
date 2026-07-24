@@ -5,10 +5,7 @@ import { assert, ok } from "../lib/assertions.js";
 import { exists, ROOT, readText } from "../lib/repository.js";
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
-const lifecycleActionRunners = [
-  "scripts/install-hooks.mjs",
-  "scripts/actions/run-supaschema-action.mjs",
-];
+const childProcessRunners = ["scripts/actions/run-supaschema-action.mjs"];
 
 function isChildProcessCall(expression) {
   if (ts.isIdentifier(expression)) {
@@ -55,7 +52,7 @@ function assertNoShellTrueWithArgs(file, root) {
 }
 
 export function check(root = ROOT) {
-  for (const file of lifecycleActionRunners) {
+  for (const file of childProcessRunners) {
     if (exists(file, root)) {
       assertNoShellTrueWithArgs(file, root);
     }

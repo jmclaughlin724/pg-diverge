@@ -4,6 +4,18 @@ This harness compares `supaschema` against Supabase CLI schema diff engines. It 
 
 ## Run
 
+For the complete publication run, start a disposable local PostgreSQL instance, point the harness at it, serialize all fixtures to avoid cross-fixture CPU contention, and then rebuild every tracked chart:
+
+```bash
+export SUPASCHEMA_COMPARE_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres?sslmode=disable'
+SUPABASE_TELEMETRY_DISABLED=1 BENCH_ALL_SEQUENTIAL=1 bash benchmarks/tools/bench-all.sh
+npm run bench:plot:docs
+```
+
+Never use a development, staging, or production database for this command. The harness creates and drops comparison databases. Publication benchmarks are dated advisory evidence, not CI gates; record the package, hardware, OS, Node, PostgreSQL server, Supabase CLI, fixtures, warmups, and measured iterations with the results. Do not rerun or replace an individual measured failure in a publication set; retain it and report the complete serialized run.
+
+For a focused local comparison instead:
+
 ```bash
 SUPASCHEMA_COMPARE_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
   npm run bench:compare
@@ -82,4 +94,4 @@ Do not average all modes together. Source-file diff, live-catalog diff, and repl
 
 ## Reference Results
 
-Dated reference runs belong in benchmark reports, not automatic agent context. The archived 2026-06-12 reference run lives in `benchmarks/REFERENCE_RESULTS.md`. Generated per-run tables live in `summary.md` under the selected benchmark output directory. The internal threshold suite remains `npm run benchmark`.
+Dated reference runs belong in benchmark reports, not automatic agent context. The current 2026-07-21 publication run lives in `benchmarks/REFERENCE_RESULTS.md`. Generated per-run tables live in `summary.md` under the selected benchmark output directory. `npm run benchmark` remains a separate advisory internal threshold suite.

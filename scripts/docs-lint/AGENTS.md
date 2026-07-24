@@ -1,9 +1,14 @@
 # scripts/docs-lint/ — docs standard modules
 
-Internal modules for the docs authoring standard linter. The public entry is `scripts/check-docs-standard.mjs` (`npm run docs:lint`); these modules hold the inspectors.
+Canonical CLI and internal modules for the docs authoring standard linter. `check-standard.mjs` owns the executable route and the sole programmatic entry, `lintDocsStandard`.
 
 ## Contents
 
+- `check-standard.mjs` — `npm run docs:lint` CLI and lint orchestration
+- `page.mjs` — Markdown/MDX parsing and page-level inspection
+- `frontmatter.mjs` — YAML frontmatter validation
+- `components.mjs` — Mintlify component, card, callout, and image inspection
+- `links.mjs` — internal-link classification and image-source validation
 - `paths.mjs` — docs path and route helpers (`routeForDocFile`, `hasMarkdownExtension`, `isDigit`)
 - `docs-json.mjs` — `docs.json` shape, contextual options, and navigation inspection
 - `local-runner.mjs` — npm-as-local-runner convention checks across install/setup surfaces

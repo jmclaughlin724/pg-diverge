@@ -1,0 +1,76 @@
+---
+title: "Supabase integration"
+description: "Use supaschema with Supabase paths, managed schemas, guarded sync targets, and the optional Supabase CLI runner adapter."
+keywords: ["Supabase integration", "config.toml", "managed schemas", "sync"]
+---
+
+Use this when a Supabase project should keep Supabase paths and platform-managed schemas while `supaschema` owns generation, safety gates, generated outputs, and guarded apply orchestration.
+
+In this setup, `supaschema sync` uses the Supabase CLI adapter by default. The existing Supabase CLI project link, access token, project ref, and database password remain the credential lane. Use `supabase db push` directly only when a separate deployment process intentionally owns apply.
+
+## Use this when
+
+- The repository already has a `supabase/` directory.
+- Migrations should stay in `supabase/migrations`.
+- Schema files should live in `supabase/schemas`.
+- Platform schemas such as `auth`, `storage`, and `realtime` should stay protected.
+
+## Do this
+
+Use the scaffolded Supabase defaults or set the same paths in `supaschema.config.json`:
+
+```json
+{
+  "schemaPaths": ["supabase/schemas"],
+  "migrationsDir": "supabase/migrations"
+}
+```
+
+Generate, check, and apply through guarded sync:
+
+```bash
+npx supaschema diff
+npx supaschema check
+npx supaschema sync
+```
+
+The installed default lets target config select at most one target for bare `sync`. For remote deploys, set one remote target to `mode: "auto"` and provide the target's approval environment variable in the deployment job. Multiple automatic targets are refused before any runner can mutate a database. Use `--target <name>` only for an explicit one-target operator override.
+
+## Verify
+
+Use bare PostgreSQL plus Supabase stubs for disposable verification:
+
+```bash
+npx supaschema verify --ensure-environment --ensure-roles
+```
+
+Before adopting an existing project, confirm the tree and database agree:
+
+```bash
+npx supaschema inspect --from "database:$DATABASE_URL" > database.catalog.json
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card
+    title="Docker-free diff"
+    icon="container"
+    href="/guides/supabase-db-diff-without-docker"
+  >
+    Generate Supabase migrations without a local stack.
+  </Card>
+  <Card title="Sync command" icon="refresh-cw" href="/commands/sync">
+    Run safety gates, target reconciliation, and selected runner apply.
+  </Card>
+  <Card title="Migrations command" icon="list-tree" href="/commands/migrations">
+    Reconcile disk files with applied history.
+  </Card>
+  <Card
+    title="RLS safety"
+    icon="shield"
+    href="/guides/rls-policy-migration-safety"
+  >
+    Review policy predicate changes explicitly.
+  </Card>
+</CardGroup>

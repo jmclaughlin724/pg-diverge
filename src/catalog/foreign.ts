@@ -1,11 +1,11 @@
-import type { SchemaObject } from "../core.js";
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
 import { makeObject } from "../sql/statements.js";
+import type { SchemaObject } from "../types.js";
 import { type CatalogQuery, managedSchemaFilter, notExtensionMember, text } from "./query.js";
 
 export async function collectForeignObjects(pool: CatalogQuery): Promise<SchemaObject[]> {
   const objects: SchemaObject[] = [];
-  const wrappers = await pool.query<Record<string, unknown>>(`
+  const wrappers = await pool.query(`
     select w.fdwname as name,
            w.fdwhandler::regproc::text as handler,
            w.fdwvalidator::regproc::text as validator,
@@ -19,7 +19,7 @@ export async function collectForeignObjects(pool: CatalogQuery): Promise<SchemaO
   for (const row of wrappers.rows) {
     objects.push(foreignDataWrapperObject(row));
   }
-  const servers = await pool.query<Record<string, unknown>>(`
+  const servers = await pool.query(`
     select s.srvname as name, w.fdwname as wrapper, s.srvtype as server_type,
            s.srvversion as server_version, s.srvoptions as options
     from pg_foreign_server s
@@ -29,7 +29,7 @@ export async function collectForeignObjects(pool: CatalogQuery): Promise<SchemaO
   for (const row of servers.rows) {
     objects.push(foreignServerObject(row));
   }
-  const tables = await pool.query<Record<string, unknown>>(`
+  const tables = await pool.query(`
     select n.nspname as schema, c.relname as name, s.srvname as server, ft.ftoptions as options,
            array(
              select format('%I %s', a.attname, pg_catalog.format_type(a.atttypid, a.atttypmod))

@@ -107,53 +107,89 @@
   >
     0.00s
   </text>
-  <line stroke="#3B1A15" stroke-width="1" x1="320.6" x2="320.6" y1="142" y2="572" />
+  <line stroke="#3B1A15" stroke-width="1" x1="286.7" x2="286.7" y1="142" y2="572" />
   <text
     fill="#FFF8EA"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="400"
     text-anchor="middle"
-    x="320.6"
+    x="286.7"
     y="594.0"
   >
     50.0s
   </text>
-  <line stroke="#3B1A15" stroke-width="1" x1="409.2" x2="409.2" y1="142" y2="572" />
+  <line stroke="#3B1A15" stroke-width="1" x1="341.4" x2="341.4" y1="142" y2="572" />
   <text
     fill="#FFF8EA"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="400"
     text-anchor="middle"
-    x="409.2"
+    x="341.4"
     y="594.0"
   >
     100s
   </text>
-  <line stroke="#3B1A15" stroke-width="1" x1="497.9" x2="497.9" y1="142" y2="572" />
+  <line stroke="#3B1A15" stroke-width="1" x1="396.1" x2="396.1" y1="142" y2="572" />
   <text
     fill="#FFF8EA"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="400"
     text-anchor="middle"
-    x="497.9"
+    x="396.1"
     y="594.0"
   >
     150s
   </text>
-  <line stroke="#3B1A15" stroke-width="1" x1="586.5" x2="586.5" y1="142" y2="572" />
+  <line stroke="#3B1A15" stroke-width="1" x1="450.8" x2="450.8" y1="142" y2="572" />
   <text
     fill="#FFF8EA"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="400"
     text-anchor="middle"
-    x="586.5"
+    x="450.8"
     y="594.0"
   >
     200s
+  </text>
+  <line stroke="#3B1A15" stroke-width="1" x1="505.5" x2="505.5" y1="142" y2="572" />
+  <text
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="16"
+    font-weight="400"
+    text-anchor="middle"
+    x="505.5"
+    y="594.0"
+  >
+    250s
+  </text>
+  <line stroke="#3B1A15" stroke-width="1" x1="560.2" x2="560.2" y1="142" y2="572" />
+  <text
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="16"
+    font-weight="400"
+    text-anchor="middle"
+    x="560.2"
+    y="594.0"
+  >
+    300s
+  </text>
+  <line stroke="#3B1A15" stroke-width="1" x1="614.9" x2="614.9" y1="142" y2="572" />
+  <text
+    fill="#FFF8EA"
+    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="16"
+    font-weight="400"
+    text-anchor="middle"
+    x="614.9"
+    y="594.0"
+  >
+    350s
   </text>
   <circle cx="41" cy="165" fill="#FACC15" r="4" />
   <text
@@ -166,13 +202,13 @@
   >
     supaschema-db
   </text>
-  <rect fill="url(#supaGradient)" height="30" rx="7" width="4.7" x="232" y="150" />
+  <rect fill="url(#supaGradient)" height="30" rx="7" width="5.2" x="232" y="150" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="236.7"
-    x2="236.7"
+    x1="237.2"
+    x2="237.2"
     y1="165"
     y2="165"
   />
@@ -180,8 +216,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="236.7"
-    x2="236.7"
+    x1="237.2"
+    x2="237.2"
     y1="147"
     y2="183"
   />
@@ -190,10 +226,10 @@
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="17"
     font-weight="700"
-    x="244.7"
+    x="245.2"
     y="171.1"
   >
-    2.64s
+    4.71s
   </text>
   <rect
     fill="rgba(62,207,142,0.14)"
@@ -248,13 +284,13 @@
   >
     supaschema-file
   </text>
-  <rect fill="url(#supaGradient)" height="30" rx="7" width="5.6" x="232" y="212" />
+  <rect fill="url(#supaGradient)" height="30" rx="7" width="6.3" x="232" y="212" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="237.6"
-    x2="237.6"
+    x1="238.3"
+    x2="238.3"
     y1="227"
     y2="227"
   />
@@ -262,8 +298,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="237.6"
-    x2="237.6"
+    x1="238.3"
+    x2="238.3"
     y1="209"
     y2="245"
   />
@@ -272,10 +308,10 @@
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="17"
     font-weight="700"
-    x="245.6"
+    x="246.3"
     y="233.1"
   >
-    3.17s
+    5.80s
   </text>
   <rect
     fill="rgba(62,207,142,0.14)"
@@ -327,15 +363,15 @@
     x="54.0"
     y="295.1"
   >
-    supabase-pg-delta
+    supabase-default
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="366.9" x="232" y="274" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="293.4" x="232" y="274" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="598.9"
-    x2="598.9"
+    x1="525.4"
+    x2="525.4"
     y1="289"
     y2="289"
   />
@@ -343,8 +379,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="598.9"
-    x2="598.9"
+    x1="525.4"
+    x2="525.4"
     y1="271"
     y2="307"
   />
@@ -354,10 +390,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="590.9"
+    x="517.4"
     y="295.1"
   >
-    207s · 65× slower
+    268s · 46× slower
   </text>
   <rect
     fill="rgba(250,204,21,0.14)"
@@ -409,15 +445,15 @@
     x="54.0"
     y="357.1"
   >
-    supabase-migra
+    supabase-pgadmin
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="367.4" x="232" y="336" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="300.9" x="232" y="336" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="599.4"
-    x2="599.4"
+    x1="532.9"
+    x2="532.9"
     y1="351"
     y2="351"
   />
@@ -425,8 +461,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="599.4"
-    x2="599.4"
+    x1="532.9"
+    x2="532.9"
     y1="333"
     y2="369"
   />
@@ -436,10 +472,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="591.4"
+    x="524.9"
     y="357.1"
   >
-    207s · 65× slower
+    275s · 47× slower
   </text>
   <rect
     fill="rgba(250,204,21,0.14)"
@@ -491,15 +527,15 @@
     x="54.0"
     y="419.1"
   >
-    supabase-pgadmin
+    supabase-pg-delta
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="374.0" x="232" y="398" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="301.0" x="232" y="398" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="606.0"
-    x2="606.0"
+    x1="533.0"
+    x2="533.0"
     y1="413"
     y2="413"
   />
@@ -507,8 +543,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="606.0"
-    x2="606.0"
+    x1="533.0"
+    x2="533.0"
     y1="395"
     y2="431"
   />
@@ -518,10 +554,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="598.0"
+    x="525.0"
     y="419.1"
   >
-    211s · 66× slower
+    275s · 47× slower
   </text>
   <rect
     fill="rgba(250,204,21,0.14)"
@@ -573,15 +609,15 @@
     x="54.0"
     y="481.1"
   >
-    supabase-default
+    supabase-migra
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="382.8" x="232" y="460" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="342.5" x="232" y="460" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="614.8"
-    x2="614.8"
+    x1="574.5"
+    x2="574.5"
     y1="475"
     y2="475"
   />
@@ -589,8 +625,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="614.8"
-    x2="614.8"
+    x1="574.5"
+    x2="574.5"
     y1="457"
     y2="493"
   />
@@ -600,10 +636,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="606.8"
+    x="566.5"
     y="481.1"
   >
-    216s · 68× slower
+    313s · 53× slower
   </text>
   <rect
     fill="rgba(250,204,21,0.14)"
@@ -685,7 +721,7 @@
     x="608.6"
     y="543.1"
   >
-    217s · 68× slower
+    352s · 60× slower
   </text>
   <rect
     fill="rgba(250,204,21,0.14)"
@@ -737,6 +773,6 @@
     x="36.0"
     y="626.0"
   >
-    supaschema 0.1.0 · Supabase CLI 2.106.0 · Node v24.14.0 · Apple Silicon · 1 iteration
+    supaschema 0.4.3 · Supabase CLI 2.109.1 · Node v24.18.0 · Apple Silicon · 1 iteration
   </text>
 </svg>

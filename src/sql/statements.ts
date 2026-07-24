@@ -1,6 +1,6 @@
 import { deparseSync } from "pgsql-deparser";
-import type { ObjectRef, SchemaObject, TableColumn } from "../core.js";
 import { sha256, stableJson } from "../hash.js";
+import type { ObjectRef, SchemaObject, TableColumn } from "../types.js";
 import type { AstNode } from "./ast.js";
 import { asRecord, columnFacts, readArray, readNumber, readString } from "./ast.js";
 import { normalizeSql, objectKey } from "./identifiers.js";

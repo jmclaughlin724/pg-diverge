@@ -62,6 +62,34 @@ describe("split privilege aggregation", () => {
     expect(model.objects.map((object) => object.key)).toContain("table:app.accounts");
   });
 
+  it("accepts a duplicate-guarded role-only DO block as declarative bootstrap intent", async () => {
+    const model = await modelFromSql(`DO $$
+BEGIN
+  CREATE ROLE app_worker NOLOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END
+$$;`);
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects).toEqual([]);
+  });
+
+  it("rejects a DO block that mixes role bootstrap with data side effects", async () => {
+    const model = await modelFromSql(`CREATE SCHEMA app;
+CREATE TABLE app.events (id integer);
+DO $$
+BEGIN
+  CREATE ROLE app_worker NOLOGIN;
+  INSERT INTO app.events (id) VALUES (1);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END
+$$;`);
+
+    expect(errors(model).map((item) => item.code)).toContain(
+      "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED"
+    );
+  });
+
   it("filters managed-schema and side-effect diagnostics out of scoped schema diffs", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-filter-"));
     await writeFile(
@@ -163,6 +191,82 @@ describe("split privilege aggregation", () => {
     const grants = model.objects.filter((object) => object.ref.kind === "grant");
     expect(grants).toHaveLength(1);
     expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT", "UPDATE"]);
+  });
+
+  it("preserves column-scoped SELECT grants when merging table privileges", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA tenancy;\nCREATE TABLE tenancy.role_assignments (organization_id uuid, user_id uuid);\nGRANT SELECT (user_id, organization_id) ON TABLE tenancy.role_assignments TO authenticated;\nGRANT INSERT ON TABLE tenancy.role_assignments TO authenticated;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
+    expect(grants[0]?.metadata.columnPrivileges).toEqual({
+      SELECT: ["organization_id", "user_id"],
+    });
+    expect(grants[0]?.sql).toBe(
+      'GRANT INSERT, SELECT ("organization_id", "user_id") ON TABLE "tenancy"."role_assignments" TO "authenticated"'
+    );
+  });
+
+  it("lets an object-wide privilege dominate the same column-scoped privilege", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA tenancy;\nCREATE TABLE tenancy.role_assignments (organization_id uuid, user_id uuid);\nGRANT SELECT (organization_id) ON TABLE tenancy.role_assignments TO authenticated;\nGRANT SELECT ON TABLE tenancy.role_assignments TO authenticated;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.privileges).toEqual(["SELECT"]);
+    expect(grants[0]?.metadata).not.toHaveProperty("columnPrivileges");
+    expect(grants[0]?.sql).toBe(
+      'GRANT SELECT ON TABLE "tenancy"."role_assignments" TO "authenticated"'
+    );
+  });
+
+  it("does not collapse a complete table privilege set while one privilege is column-scoped", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT (id) ON TABLE app.t TO authenticated;\nGRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON TABLE app.t TO authenticated;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.privileges).toEqual([
+      "DELETE",
+      "INSERT",
+      "REFERENCES",
+      "SELECT",
+      "TRIGGER",
+      "TRUNCATE",
+      "UPDATE",
+    ]);
+    expect(grants[0]?.metadata.columnPrivileges).toEqual({ SELECT: ["id"] });
+    expect(grants[0]?.sql).toContain('SELECT ("id")');
+    expect(grants[0]?.sql).not.toContain("GRANT ALL");
+  });
+
+  it("normalizes column-scoped ALL to PostgreSQL's column privilege set", async () => {
+    const all = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT ALL (id) ON TABLE app.t TO authenticated;\n"
+    );
+    const explicit = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT INSERT (id), REFERENCES (id), SELECT (id), UPDATE (id) ON TABLE app.t TO authenticated;\n"
+    );
+
+    expect(errors(all)).toEqual([]);
+    expect(errors(explicit)).toEqual([]);
+    const grant = all.objects.find((object) => object.ref.kind === "grant");
+    expect(grant?.metadata.privileges).toEqual(["INSERT", "REFERENCES", "SELECT", "UPDATE"]);
+    expect(grant?.metadata.columnPrivileges).toEqual({
+      INSERT: ["id"],
+      REFERENCES: ["id"],
+      SELECT: ["id"],
+      UPDATE: ["id"],
+    });
+    expect(grant?.sql).not.toContain("GRANT ALL");
+    expect(all.fingerprint).toBe(explicit.fingerprint);
   });
 
   it("keeps duplicate diagnostics when grant options conflict", async () => {

@@ -70,7 +70,7 @@
     x="36.0"
     y="128.0"
   >
-    supaschema is up to 21× faster
+    supaschema is up to 5× faster
   </text>
   <line stroke="#3B1A15" stroke-width="1" x1="232.0" x2="232.0" y1="142" y2="572" />
   <text
@@ -84,41 +84,17 @@
   >
     0.00s
   </text>
-  <line stroke="#3B1A15" stroke-width="1" x1="456.4" x2="456.4" y1="142" y2="572" />
+  <line stroke="#3B1A15" stroke-width="1" x1="708.7" x2="708.7" y1="142" y2="572" />
   <text
     fill="#FFF8EA"
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="16"
     font-weight="400"
     text-anchor="middle"
-    x="456.4"
+    x="708.7"
     y="594.0"
   >
     2.00s
-  </text>
-  <line stroke="#3B1A15" stroke-width="1" x1="680.7" x2="680.7" y1="142" y2="572" />
-  <text
-    fill="#FFF8EA"
-    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="16"
-    font-weight="400"
-    text-anchor="middle"
-    x="680.7"
-    y="594.0"
-  >
-    4.00s
-  </text>
-  <line stroke="#3B1A15" stroke-width="1" x1="905.1" x2="905.1" y1="142" y2="572" />
-  <text
-    fill="#FFF8EA"
-    font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
-    font-size="16"
-    font-weight="400"
-    text-anchor="middle"
-    x="905.1"
-    y="594.0"
-  >
-    6.00s
   </text>
   <circle cx="41" cy="165" fill="#FACC15" r="4" />
   <text
@@ -129,15 +105,15 @@
     x="54.0"
     y="171.1"
   >
-    supaschema-db
+    supaschema-file
   </text>
-  <rect fill="url(#supaGradient)" height="30" rx="7" width="26.9" x="232" y="150" />
+  <rect fill="url(#supaGradient)" height="30" rx="7" width="95.6" x="232" y="150" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="258.9"
-    x2="258.9"
+    x1="327.6"
+    x2="338.8"
     y1="165"
     y2="165"
   />
@@ -145,8 +121,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="258.9"
-    x2="258.9"
+    x1="338.8"
+    x2="338.8"
     y1="147"
     y2="183"
   />
@@ -155,10 +131,10 @@
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="17"
     font-weight="700"
-    x="266.9"
+    x="346.8"
     y="171.1"
   >
-    0.24s
+    0.40s
   </text>
   <circle cx="41" cy="227" fill="#FACC15" r="4" />
   <text
@@ -169,15 +145,15 @@
     x="54.0"
     y="233.1"
   >
-    supaschema-file
+    supaschema-db
   </text>
-  <rect fill="url(#supaGradient)" height="30" rx="7" width="28.0" x="232" y="212" />
+  <rect fill="url(#supaGradient)" height="30" rx="7" width="107.0" x="232" y="212" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="260.0"
-    x2="260.9"
+    x1="339.0"
+    x2="344.0"
     y1="227"
     y2="227"
   />
@@ -185,8 +161,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="260.9"
-    x2="260.9"
+    x1="344.0"
+    x2="344.0"
     y1="209"
     y2="245"
   />
@@ -195,10 +171,10 @@
     font-family="Aptos, 'Avenir Next', ui-sans-serif, system-ui, 'Segoe UI', Helvetica, Arial, sans-serif"
     font-size="17"
     font-weight="700"
-    x="268.9"
+    x="352.0"
     y="233.1"
   >
-    0.25s
+    0.45s
   </text>
   <text
     fill="#FFF2E1"
@@ -208,15 +184,15 @@
     x="54.0"
     y="295.1"
   >
-    supabase-pgadmin
+    supabase-pg-schema
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="498.1" x="232" y="274" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="391.6" x="232" y="274" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="730.1"
-    x2="818.9"
+    x1="623.6"
+    x2="661.0"
     y1="289"
     y2="289"
   />
@@ -224,8 +200,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="818.9"
-    x2="818.9"
+    x1="661.0"
+    x2="661.0"
     y1="271"
     y2="307"
   />
@@ -235,10 +211,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="722.1"
+    x="615.6"
     y="295.1"
   >
-    4.44s · 17× slower
+    1.64s · 3× slower
   </text>
   <text
     fill="#FFF2E1"
@@ -248,15 +224,15 @@
     x="54.0"
     y="357.1"
   >
-    supabase-pg-schema
+    supabase-pgadmin
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="541.9" x="232" y="336" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="407.8" x="232" y="336" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="773.9"
-    x2="804.7"
+    x1="639.8"
+    x2="643.4"
     y1="351"
     y2="351"
   />
@@ -264,8 +240,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="804.7"
-    x2="804.7"
+    x1="643.4"
+    x2="643.4"
     y1="333"
     y2="369"
   />
@@ -275,10 +251,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="765.9"
+    x="631.8"
     y="357.1"
   >
-    4.83s · 19× slower
+    1.71s · 3× slower
   </text>
   <text
     fill="#FFF2E1"
@@ -288,15 +264,15 @@
     x="54.0"
     y="419.1"
   >
-    supabase-pg-delta
+    supabase-migra
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="572.1" x="232" y="398" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="420.9" x="232" y="398" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="804.1"
-    x2="851.0"
+    x1="652.9"
+    x2="675.1"
     y1="413"
     y2="413"
   />
@@ -304,8 +280,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="851.0"
-    x2="851.0"
+    x1="675.1"
+    x2="675.1"
     y1="395"
     y2="431"
   />
@@ -315,10 +291,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="796.1"
+    x="644.9"
     y="419.1"
   >
-    5.10s · 20× slower
+    1.77s · 3× slower
   </text>
   <text
     fill="#FFF2E1"
@@ -330,13 +306,13 @@
   >
     supabase-default
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="587.8" x="232" y="460" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="449.1" x="232" y="460" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="819.8"
-    x2="824.0"
+    x1="681.1"
+    x2="704.2"
     y1="475"
     y2="475"
   />
@@ -344,8 +320,8 @@
     stroke="#FFF8EA"
     stroke-opacity="0.45"
     stroke-width="2"
-    x1="824.0"
-    x2="824.0"
+    x1="704.2"
+    x2="704.2"
     y1="457"
     y2="493"
   />
@@ -355,10 +331,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="811.8"
+    x="673.1"
     y="481.1"
   >
-    5.24s · 20× slower
+    1.88s · 4× slower
   </text>
   <text
     fill="#FFF2E1"
@@ -368,14 +344,14 @@
     x="54.0"
     y="543.1"
   >
-    supabase-migra
+    supabase-pg-delta
   </text>
-  <rect fill="url(#slateGradient)" height="30" rx="7" width="602.4" x="232" y="522" />
+  <rect fill="url(#slateGradient)" height="30" rx="7" width="631.9" x="232" y="522" />
   <line
     stroke="#FFF8EA"
     stroke-opacity="0.18"
     stroke-width="1.5"
-    x1="834.4"
+    x1="863.9"
     x2="935.8"
     y1="537"
     y2="537"
@@ -395,10 +371,10 @@
     font-size="17"
     font-weight="600"
     text-anchor="end"
-    x="826.4"
+    x="855.9"
     y="543.1"
   >
-    5.37s · 21× slower
+    2.65s · 5× slower
   </text>
   <text
     fill="#9B746A"
@@ -408,6 +384,6 @@
     x="36.0"
     y="626.0"
   >
-    supaschema 0.1.0 · Supabase CLI 2.106.0 · Node v24.14.0 · Apple Silicon · 3 iterations
+    supaschema 0.4.3 · Supabase CLI 2.109.1 · Node v24.18.0 · Apple Silicon · 3 iterations
   </text>
 </svg>

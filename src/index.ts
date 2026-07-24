@@ -20,27 +20,6 @@ export {
 } from "./config/schema.js";
 export type { ConfigValidationDiagnostic } from "./config/validate.js";
 export { validateConfig } from "./config/validate.js";
-export type {
-  CheckOptions,
-  Diagnostic,
-  DiagnosticSeverity,
-  ExtractOptions,
-  MigrationOperation,
-  MigrationOperationKind,
-  MigrationPlan,
-  ObjectKind,
-  ObjectRef,
-  RenameHint,
-  RenderOptions,
-  SchemaModel,
-  SchemaObject,
-  SupaschemaConfig,
-  SupaschemaHints,
-  TableColumn,
-  VerifyMigrationOptions,
-} from "./core.js";
-export type { CorpusOptions, CorpusReport } from "./corpus.js";
-export { renderCorpusReport, runCorpus } from "./corpus.js";
 export {
   resolveDatabaseUrl,
   resolveSupabaseLocalDatabaseUrl,
@@ -74,14 +53,14 @@ export { runRlsSafetyGate } from "./pipeline/deploy-safety.js";
 export { buildSchemaDiffPlan } from "./pipeline/diff.js";
 export type { TypeContractEvaluation } from "./pipeline/type-safety.js";
 export { runTypeSafetyGate } from "./pipeline/type-safety.js";
-export { planSchemaDiff } from "./planner/schema.js";
 export type {
   ResolvedGenerationSources,
   ResolveGenerationSourceOptions,
   SchemaPlanningContext,
   SchemaPlanningContextOptions,
-} from "./planning/context.js";
-export { buildSchemaPlanningContext, resolveGenerationSourceDefaults } from "./planning/context.js";
+} from "./planner/context.js";
+export { buildSchemaPlanningContext, resolveGenerationSourceDefaults } from "./planner/context.js";
+export { planSchemaDiff } from "./planner/schema.js";
 export { renderMigration, renderMigrationSplit } from "./render/migration.js";
 export { extractSourceModel } from "./source/extract.js";
 export { type GenerateDatabaseTypesOptions, generateDatabaseTypes } from "./typegen/database.js";
@@ -99,7 +78,28 @@ export type {
 } from "./typegen/model.js";
 export { collectSchemaShapes } from "./typegen/model.js";
 export { generateZodSchemas } from "./typegen/zod.js";
+export type {
+  CheckOptions,
+  Diagnostic,
+  DiagnosticSeverity,
+  ExtractOptions,
+  MigrationOperation,
+  MigrationOperationKind,
+  MigrationPlan,
+  ObjectKind,
+  ObjectRef,
+  RenameHint,
+  RenderOptions,
+  SchemaModel,
+  SchemaObject,
+  SupaschemaConfig,
+  SupaschemaHints,
+  TableColumn,
+  VerifyMigrationOptions,
+} from "./types.js";
 export { runConfiguredValidators } from "./validators.js";
+export type { CorpusOptions, CorpusReport } from "./verify/corpus.js";
+export { renderCorpusReport, runCorpus } from "./verify/corpus.js";
 export { verifyMigration } from "./verify/migration.js";
 export type { SyncOptions, SyncResult } from "./workflow/sync.js";
 export { syncMigrations } from "./workflow/sync.js";

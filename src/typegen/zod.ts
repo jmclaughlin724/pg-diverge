@@ -1,3 +1,5 @@
+import type { CheckConstraintTranslator, ObjectCheckFragment } from "./check-constraints.js";
+import { createCheckConstraintTranslator } from "./check-constraints.js";
 import { quoteCodeString, quoteKey } from "./database.js";
 import type { ColumnShape, SchemaEntry, SchemaShapes } from "./model.js";
 import {
@@ -12,9 +14,15 @@ interface DatabaseTypeUsage {
   used: boolean;
 }
 
+interface ShapeChecks {
+  columns: Map<string, string>;
+  objects: ObjectCheckFragment[];
+}
+
 export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: string): string {
   const hasDatabaseContract = Boolean(typesImportPath);
   const databaseTypeUsage = { used: false };
+  const translateChecks = createCheckConstraintTranslator(shapes);
   const schemas = [...shapes.schemas.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
   );
@@ -66,7 +74,15 @@ export function generateZodSchemas(shapes: SchemaShapes, typesImportPath?: strin
       : "export const SupaschemaZod: SupaschemaZodShape = {"
   );
   for (const [schema, entry] of schemas) {
-    emitSchema(lines, shapes, schema, entry, hasDatabaseContract, databaseTypeUsage);
+    emitSchema(
+      lines,
+      shapes,
+      schema,
+      entry,
+      hasDatabaseContract,
+      databaseTypeUsage,
+      translateChecks
+    );
   }
   lines.push(hasDatabaseContract ? "} as const satisfies SupaschemaZodShape;" : "} as const;");
   if (typesImportPath) {
@@ -120,10 +136,19 @@ function emitSchema(
   schema: string,
   entry: SchemaEntry,
   hasDatabaseContract: boolean,
-  databaseTypeUsage: DatabaseTypeUsage
+  databaseTypeUsage: DatabaseTypeUsage,
+  translateChecks: CheckConstraintTranslator
 ): void {
   lines.push(`  ${quoteKey(schema)}: {`);
-  emitTableSchemas(lines, shapes, schema, entry, hasDatabaseContract, databaseTypeUsage);
+  emitTableSchemas(
+    lines,
+    shapes,
+    schema,
+    entry,
+    hasDatabaseContract,
+    databaseTypeUsage,
+    translateChecks
+  );
   emitViewSchemas(lines, shapes, schema, entry, hasDatabaseContract, databaseTypeUsage);
   emitEnumSchemas(lines, entry);
   emitCompositeSchemas(lines, shapes, schema, entry, hasDatabaseContract, databaseTypeUsage);
@@ -136,12 +161,14 @@ function emitTableSchemas(
   schema: string,
   entry: SchemaEntry,
   hasDatabaseContract: boolean,
-  databaseTypeUsage: DatabaseTypeUsage
+  databaseTypeUsage: DatabaseTypeUsage,
+  translateChecks: CheckConstraintTranslator
 ): void {
   const zodFor = (sqlType: string) =>
     zodExpression(shapes, schema, sqlType, hasDatabaseContract, databaseTypeUsage);
   lines.push("    Tables: {");
   for (const table of sortedByName(entry.tables)) {
+    const fragments = translateChecks(table, schema);
     lines.push(`      ${quoteKey(table.name)}: {`);
     emitRowSchema(
       lines,
@@ -153,10 +180,17 @@ function emitTableSchemas(
       entry,
       table.name,
       hasDatabaseContract,
-      databaseTypeUsage
+      databaseTypeUsage,
+      { columns: fragments.row, objects: fragments.rowObject }
     );
-    emitInsertSchema(lines, table.columns, zodFor);
-    emitUpdateSchema(lines, table.columns, zodFor);
+    emitInsertSchema(lines, table.columns, zodFor, {
+      columns: fragments.write,
+      objects: fragments.writeObject,
+    });
+    emitUpdateSchema(lines, table.columns, zodFor, {
+      columns: fragments.write,
+      objects: fragments.writeObject,
+    });
     lines.push("      },");
   }
   lines.push("    },");
@@ -242,11 +276,12 @@ function emitRowSchema(
   entry: SchemaEntry,
   relationName: string,
   hasDatabaseContract: boolean,
-  databaseTypeUsage: DatabaseTypeUsage
+  databaseTypeUsage: DatabaseTypeUsage,
+  checks?: ShapeChecks
 ): void {
   lines.push(`        ${name}: z.object({`);
   for (const column of columns) {
-    const base = zodFor(column.type);
+    const base = zodFor(column.type) + (checks?.columns.get(column.name) ?? "");
     lines.push(
       `          ${quoteKey(column.name)}: ${column.notNull ? base : `${base}.nullable()`},`
     );
@@ -256,7 +291,7 @@ function emitRowSchema(
       `          ${quoteKey(fn.name)}: ${zodFunctionReturnExpression(shapes, schema, fn, hasDatabaseContract, databaseTypeUsage)}.nullable(),`
     );
   }
-  lines.push("        }),");
+  lines.push(`        })${objectCheckSuffix(columns, checks)},`);
 }
 
 function zodFunctionReturnExpression(
@@ -287,38 +322,47 @@ function zodFunctionReturnExpression(
 function emitInsertSchema(
   lines: string[],
   columns: ColumnShape[],
-  zodFor: (sqlType: string) => string
+  zodFor: (sqlType: string) => string,
+  checks?: ShapeChecks
 ): void {
   lines.push("        Insert: z.object({");
-  for (const column of columns) {
-    if (isNonWritableColumn(column)) {
-      continue;
-    }
-    const base = zodFor(column.type);
+  const writable = columns.filter((column) => !isNonWritableColumn(column));
+  for (const column of writable) {
+    const base = zodFor(column.type) + (checks?.columns.get(column.name) ?? "");
     const nullable = column.notNull ? base : `${base}.nullable()`;
     lines.push(
       `          ${quoteKey(column.name)}: ${isOptionalInsertColumn(column) ? `${nullable}.optional()` : nullable},`
     );
   }
-  lines.push("        }),");
+  lines.push(`        })${objectCheckSuffix(writable, checks)},`);
 }
 
 function emitUpdateSchema(
   lines: string[],
   columns: ColumnShape[],
-  zodFor: (sqlType: string) => string
+  zodFor: (sqlType: string) => string,
+  checks?: ShapeChecks
 ): void {
   lines.push("        Update: z.object({");
-  for (const column of columns) {
-    if (isNonWritableColumn(column)) {
-      continue;
-    }
-    const base = zodFor(column.type);
+  const writable = columns.filter((column) => !isNonWritableColumn(column));
+  for (const column of writable) {
+    const base = zodFor(column.type) + (checks?.columns.get(column.name) ?? "");
     lines.push(
       `          ${quoteKey(column.name)}: ${column.notNull ? base : `${base}.nullable()`}.optional(),`
     );
   }
-  lines.push("        }),");
+  lines.push(`        })${objectCheckSuffix(writable, checks)},`);
+}
+
+function objectCheckSuffix(emitted: ColumnShape[], checks: ShapeChecks | undefined): string {
+  if (!checks || checks.objects.length === 0) {
+    return "";
+  }
+  const names = new Set(emitted.map((column) => column.name));
+  return checks.objects
+    .filter((object) => object.columns.every((column) => names.has(column)))
+    .map((object) => object.fragment)
+    .join("");
 }
 
 function emitViewInsertSchema(

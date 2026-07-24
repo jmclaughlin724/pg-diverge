@@ -1,0 +1,44 @@
+---
+title: "onboard"
+description: "Detect the current migration system and report onboarding readiness with a safety score and ordered fixes."
+keywords:
+  ["onboard command", "migration system detection", "readiness", "adoption"]
+---
+
+Use `onboard` to assess a repo's migration tooling and Postgres safety in one pass.
+
+`onboard` detects the incumbent migration system from marker files, scores the declarative schema, and reports a readiness verdict. It does not connect to a database.
+
+## Use this when
+
+- Adopting supaschema in a repo with existing migration tooling.
+- A quick "are we ready?" check with an ordered remediation list.
+
+## Run it
+
+```bash
+npx supaschema onboard
+npx supaschema onboard --from dir:database/schemas
+```
+
+Detection runs against the current working directory; `--from` selects the schema source to score. Output is credential-redacted.
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Schema source to score. Defaults to the declarative tree
+  (`dir:<config.schemaPaths[0]>`).
+</ParamField>
+
+## What it reports
+
+- the detected migration system(s), and whether the workflow is mixed;
+- the Postgres safety score and grade;
+- a `READY` / `needs work` verdict;
+- when not ready, an ordered `Remediate in order` list (errors before warnings).
+
+## Exit codes
+
+| Code | Meaning                   |
+| ---- | ------------------------- |
+| 0    | Readiness report printed. |

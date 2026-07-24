@@ -1,4 +1,7 @@
 import { resolveConfig } from "../config/schema.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import { sha256, stableJson } from "../hash.js";
+import type { RoutineDependencyConfidence } from "../sql/routine-dependencies.js";
 import type {
   Diagnostic,
   MigrationCorpus,
@@ -8,13 +11,10 @@ import type {
   ObjectKind,
   ObjectRef,
   RenderOptions,
-  RoutineDependencyConfidence,
   SchemaModel,
   SchemaObject,
   SupaschemaConfig,
-} from "../core.js";
-import { diagnostic } from "../diagnostics.js";
-import { sha256, stableJson } from "../hash.js";
+} from "../types.js";
 import { sortOperations } from "./order.js";
 import { destructiveAllowedDisposition, refineReplaceOperation } from "./replace.js";
 import { makeTableAlterOperation } from "./table.js";

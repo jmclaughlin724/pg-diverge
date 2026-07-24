@@ -1,0 +1,72 @@
+---
+title: "Idempotent migrations"
+description: "Generate and check replay-safe PostgreSQL migrations that can run more than once without failing on existing objects."
+keywords: ["idempotent migrations", "replay-safe SQL", "PostgreSQL", "checks"]
+---
+
+Use this when a migration must survive retries after a partial deploy.
+
+`supaschema` renders guarded DDL where PostgreSQL supports it and catalog-checked blocks where it does not. The goal is simple: a second apply should converge instead of failing on objects that already exist.
+
+## Use this when
+
+- Deploy jobs can be retried after timeouts, locks, or crashes.
+- Migration files are reviewed before a database has caught up.
+- Existing migrations need static safety checks.
+- CI should reject unguarded DDL or unsafe `CASCADE`.
+
+## Do this
+
+Generate migrations from the schema tree:
+
+```bash
+npx supaschema diff
+```
+
+Check generated or hand-written files:
+
+```bash
+npx supaschema check database/migrations/*.sql
+```
+
+Use exact destructive hints only for reviewed object keys. Broad drops are not an idempotency shortcut.
+
+## Verify
+
+When a disposable database is available, prove replay behavior:
+
+```bash
+npx supaschema verify
+```
+
+For pull request annotations or code scanning:
+
+```bash
+npx supaschema check --reporter github
+npx supaschema check --reporter sarif
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Check command" icon="shield-check" href="/commands/check">
+    See diagnostics and reporter flags.
+  </Card>
+  <Card title="Verify command" icon="repeat-2" href="/commands/verify">
+    Apply pending migrations twice in a disposable database.
+  </Card>
+  <Card
+    title="Destructive hints"
+    icon="triangle-alert"
+    href="/configuration/hints"
+  >
+    Approve risky operations deliberately.
+  </Card>
+  <Card
+    title="Migration pipeline"
+    icon="route"
+    href="/concepts/migration-pipeline"
+  >
+    See how diff, check, and verify fit together.
+  </Card>
+</CardGroup>

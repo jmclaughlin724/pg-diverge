@@ -1,5 +1,5 @@
-import type { Diagnostic, RoutineDependencyResult } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import type { Diagnostic } from "../types.js";
 import type { AstStatement } from "./ast.js";
 import {
   asRecord,
@@ -963,3 +963,20 @@ function isIdentifierPart(char: string): boolean {
 function isDigit(char: string): boolean {
   return char >= "0" && char <= "9";
 }
+
+export interface RoutineDependencyResult {
+  columnReferences: string[];
+  confidence: RoutineDependencyConfidence;
+  diagnostics: Diagnostic[];
+  references: string[];
+}
+
+export type RoutineDependencyConfidence =
+  | "sql-body"
+  | "sql-string-partial"
+  | "sql-string-parsed"
+  | "plpgsql-dynamic-parsed"
+  | "plpgsql-static"
+  | "plpgsql-partial"
+  | "dynamic-sql-unknown"
+  | "unsupported-language";

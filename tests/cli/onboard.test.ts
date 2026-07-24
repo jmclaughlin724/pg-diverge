@@ -2,13 +2,13 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { ScanResult } from "../../src/scan/model.js";
 import {
   buildReadinessReport,
   classifyMigrationSystems,
   detectMigrationSystems,
   renderReadiness,
-} from "../../src/onboard.js";
-import type { ScanResult } from "../../src/scan/model.js";
+} from "../../src/scan/onboard.js";
 
 function scanResult(score: number, findings: number): ScanResult {
   return {

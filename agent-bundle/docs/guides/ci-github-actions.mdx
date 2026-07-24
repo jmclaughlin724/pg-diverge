@@ -1,0 +1,139 @@
+---
+title: "CI recipe"
+description: "GitHub Actions examples for drift checks, replay-safety checks, and apply-twice verification."
+keywords: ["GitHub Actions", "CI recipe", "drift check", "verify"]
+---
+
+Use this when a pull request changes schema files and CI should prove the migration before review.
+
+This workflow renders the migration from the PR diff, checks replay safety, and verifies apply-twice behavior against a disposable PostgreSQL service.
+
+## Do this
+
+```yaml
+name: schema-diff
+on: pull_request
+
+permissions:
+  contents: read
+  checks: write
+  issues: write
+
+jobs:
+  supaschema:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Scan schema safety
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: '["scan","--reporter","json"]'
+      - name: Render migration from the PR diff
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: >-
+            ["diff","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--out","/tmp/supaschema/migration.sql"]
+
+      - name: Check replay safety
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: '["check","/tmp/supaschema/migration.sql"]'
+      - name: Verify apply-twice and catalog parity
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: >-
+            ["verify","--from","git:origin/${{ github.base_ref }}","--to","dir:database/schemas","--migration","/tmp/supaschema/migration.sql","--database-url","postgresql://postgres:postgres@localhost:5432/postgres"]
+```
+
+The scan step writes the job summary, creates a `supaschema scan` check run on the pull-request head SHA, and updates one PR comment with the score and top issues. It requires `checks: write` for the check run and `issues: write` because GitHub stores pull-request timeline comments through the Issues comments API.
+
+To include generated-contract usage diagnostics in that same scan report, pass the source directory explicitly:
+
+```yaml
+- name: Scan schema and generated-contract usage
+  uses: jmclaughlin724/supaschema@<tag>
+  with:
+    argv: '["scan","--contract-usage","src","--reporter","json"]'
+```
+
+## Protected sync
+
+Use the same action for a protected deploy job when `supaschema.config.json` defines `workflow.migration_sync`, `sync.targets`, generated output policies, and deploy safety gates. The action passes argv through unchanged; it does not set remote approval for you.
+
+```yaml
+name: schema-sync
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Sync remote schema
+        uses: jmclaughlin724/supaschema@<tag>
+        with:
+          argv: '["sync","--target","remote"]'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPASCHEMA_REMOTE_SYNC_APPROVED: "1"
+```
+
+## Keep
+
+- Use `fetch-depth: 0` so `git:` sources can read the base ref.
+- Pin a PostgreSQL major that matches production, or run a matrix over supported majors.
+- Add `--ensure-roles` when migrations grant to roles that a bare PostgreSQL service does not have.
+- Use `SUPASCHEMA_DATABASE_URL` instead of repeating `--database-url` when multiple steps need the same target.
+- Set a remote approval variable, such as `SUPASCHEMA_REMOTE_SYNC_APPROVED`, only in the protected workflow or environment that is allowed to deploy.
+
+## Verify
+
+For a smaller drift-only gate:
+
+```bash
+npx supaschema diff --fail-on-diff --quiet
+npx supaschema check --reporter github
+```
+
+Upload SARIF when you want code-scanning results:
+
+```bash
+npx supaschema check --reporter sarif
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="CI gate" icon="circle-check" href="/guides/ci-gate">
+    Decide which checks belong in required status.
+  </Card>
+  <Card title="Diff command" icon="git-compare-arrows" href="/commands/diff">
+    Compare configured sources or explicit refs.
+  </Card>
+  <Card title="Check command" icon="shield-check" href="/commands/check">
+    See reporter and diagnostic options.
+  </Card>
+  <Card title="Verify command" icon="repeat-2" href="/commands/verify">
+    Prove apply-twice behavior in a disposable database.
+  </Card>
+</CardGroup>

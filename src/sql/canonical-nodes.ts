@@ -2,6 +2,16 @@ import { asRecord, readArray, typeNameToSql } from "./ast.js";
 
 type Scope = string | null;
 
+type CanonicalReplacement = (record: Record<string, unknown>) => unknown | undefined;
+
+export function canonicalIndexNode(node: unknown): unknown {
+  return canonicalNode(node, textLiteralCastArgument);
+}
+
+export function canonicalRoutineNode(node: unknown): unknown {
+  return canonicalNode(node, matchingNullParameterDefault);
+}
+
 export function canonicalPolicyNode(node: unknown, scopes: Scope[] = []): unknown {
   return canonicalExpressionNode(node, scopes, canonicalPolicyNode);
 }
@@ -11,6 +21,60 @@ export function canonicalViewNode(node: unknown, scopes: Scope[]): unknown {
 }
 
 type CanonicalVisit = (node: unknown, scopes: Scope[]) => unknown;
+
+function canonicalNode(node: unknown, replacement: CanonicalReplacement): unknown {
+  if (Array.isArray(node)) {
+    return node.map((item) => canonicalNode(item, replacement));
+  }
+  if (typeof node !== "object" || node === null) {
+    return node;
+  }
+  const record = asRecord(node);
+  if (!record) {
+    return node;
+  }
+  const replaced = replacement(record);
+  if (replaced !== undefined) {
+    return canonicalNode(replaced, replacement);
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) {
+    result[key] = canonicalNode(child, replacement);
+  }
+  return result;
+}
+
+function textLiteralCastArgument(record: Record<string, unknown>): unknown | undefined {
+  const typeCast = asRecord(record.TypeCast);
+  if (!typeCast || typeNameToSql(typeCast.typeName) !== "text") {
+    return;
+  }
+  const constant = asRecord(asRecord(typeCast.arg)?.A_Const);
+  const stringLiteral = asRecord(constant?.sval);
+  return typeof stringLiteral?.sval === "string" ? typeCast.arg : undefined;
+}
+
+function matchingNullParameterDefault(record: Record<string, unknown>): unknown | undefined {
+  const parameter = asRecord(record.FunctionParameter);
+  const typeCast = asRecord(asRecord(parameter?.defexpr)?.TypeCast);
+  const constant = asRecord(asRecord(typeCast?.arg)?.A_Const);
+  if (!(parameter && typeCast)) {
+    return;
+  }
+  if (
+    constant?.isnull !== true ||
+    typeNameToSql(typeCast.typeName) !== typeNameToSql(parameter.argType)
+  ) {
+    return;
+  }
+  return {
+    ...record,
+    FunctionParameter: {
+      ...parameter,
+      defexpr: typeCast.arg,
+    },
+  };
+}
 
 function canonicalExpressionNode(node: unknown, scopes: Scope[], visit: CanonicalVisit): unknown {
   if (Array.isArray(node)) {

@@ -1,6 +1,6 @@
-import type { Diagnostic } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import { sha256 } from "../hash.js";
+import type { Diagnostic } from "../types.js";
 
 type PgParser = (sql: string) => unknown | Promise<unknown>;
 

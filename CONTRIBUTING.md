@@ -14,11 +14,12 @@ Requirements:
 Install and verify a clean checkout:
 
 ```bash
-npm ci            # clean, lockfile-exact install (also installs local git hooks)
-npm run check     # lint + tests + build (build type-checks via noEmitOnError)
+npm ci                # clean, lockfile-exact dependency install
+npx lefthook install  # explicit maintainer hook installation
+npm run check         # build + lint + typecheck + tests
 ```
 
-`npm ci` runs the `prepare` script, which builds `dist/` and installs the [lefthook](https://lefthook.dev) git hooks. After that:
+Package installation has no lifecycle hook. Maintainers install the [lefthook](https://lefthook.dev) git hooks explicitly with `npx lefthook install`. After that:
 
 - **pre-commit** formats staged files across every language owner in parallel and re-stages the fixes: Biome (JS/TS/JSON/CSS), Prettier (MD/MDX/YAML), taplo (TOML), and sh-syntax (shell). Lanes with no staged files are skipped.
 - **pre-push** runs `npm run typecheck` and `npm run guard` (the repo guard suite).
@@ -29,7 +30,7 @@ Do not bypass hooks with `--no-verify` or `LEFTHOOK=0`. Fix the failure locally;
 
 | Command | What it does |
 | --- | --- |
-| `npm run check` | lint + test + build — the gate to run before pushing |
+| `npm run check` | build + lint + typecheck + test — the gate to run before pushing |
 | `npm run lint` | Biome lint (via Ultracite) |
 | `npm run format` | single write command: format + lint-fix + import/key-sort across every language |
 | `npm run typecheck` | TypeScript no-emit type check |
@@ -113,4 +114,4 @@ Use the [issue templates](./.github/ISSUE_TEMPLATE). Never paste real connection
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the project's [AGPL-3.0-only](./LICENSE) license and may also be distributed under the [commercial license](./LICENSE-COMMERCIAL.md).
+By contributing, you agree that your contributions are licensed under the project's [MIT License](./LICENSE).

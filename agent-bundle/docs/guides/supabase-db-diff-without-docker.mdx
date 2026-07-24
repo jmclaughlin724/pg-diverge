@@ -1,0 +1,78 @@
+---
+title: "Docker-free diff"
+description: "Generate Supabase-compatible PostgreSQL migrations from declarative SQL files without Docker, a local Supabase stack, or a shadow database."
+keywords: ["Docker-free diff", "Supabase db diff", "schema diff", "PostgreSQL"]
+---
+
+Use this when a Supabase project needs a migration but Docker or a local stack is not part of the workflow.
+
+`supaschema diff` reads declarative SQL, compares it with the configured source state, and writes a migration that `supaschema sync` or the Supabase CLI can apply.
+
+## Use this when
+
+- CI cannot run Docker reliably.
+- You want schema diffing without a shadow database.
+- The review should include replay-safety checks before any Supabase apply path.
+- You want the option to run the Supabase CLI through a configured `supaschema sync` target.
+
+## Do this
+
+Put declarative SQL under the configured Supabase schema path:
+
+```bash
+mkdir -p supabase/schemas
+```
+
+Generate and check the migration:
+
+```bash
+npx supaschema diff
+npx supaschema check
+```
+
+Then apply through the configured sync workflow:
+
+```bash
+npx supaschema sync
+```
+
+`sync` checks pending migrations, refreshes generated contracts, stages the schema closure, runs safety gates, verifies the pending migration set, and then invokes the selected direct PostgreSQL or Supabase CLI runner. Target config may select one `sync.targets.<name>` entry with `mode: "auto"` for bare `sync`; multiple automatic targets are refused before any runner can mutate a database. Remote targets also require their approval variable before deploy. Use `supabase db push` directly only when your deployment process intentionally keeps the Supabase CLI as a separate operational step.
+
+## Verify
+
+Use a disposable PostgreSQL database for apply-twice proof:
+
+```bash
+npx supaschema verify --ensure-environment --ensure-roles
+```
+
+In pull requests, fail when the configured sources drift:
+
+```bash
+npx supaschema diff --fail-on-diff --quiet
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card
+    title="Supabase integration"
+    icon="database"
+    href="/guides/supabase-integration"
+  >
+    See the Supabase path and runner model.
+  </Card>
+  <Card title="Diff command" icon="git-compare-arrows" href="/commands/diff">
+    Review source flags and drift behavior.
+  </Card>
+  <Card title="Check command" icon="shield-check" href="/commands/check">
+    Validate replay safety before applying SQL.
+  </Card>
+  <Card
+    title="Supabase comparison"
+    icon="scale"
+    href="/comparisons/supaschema-vs-supabase-cli"
+  >
+    Compare this flow with `supabase db diff`.
+  </Card>
+</CardGroup>

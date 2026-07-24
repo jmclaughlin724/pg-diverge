@@ -1,10 +1,11 @@
-import type { SchemaObject } from "../core.js";
 import { formatQualifiedName } from "../sql/identifiers.js";
 import {
   buildDefaultPrivilegeObject,
   buildGrantObject,
   isBuiltinDefaultGrant,
+  mergePrivilegeMetadata,
 } from "../sql/privileges.js";
+import type { SchemaObject } from "../types.js";
 import {
   type CatalogQuery,
   managedSchemaFilter,
@@ -21,50 +22,168 @@ const defaultPrivilegeObjectTypes = new Map([
   ["r", "TABLES"],
 ]);
 
+interface CatalogGrant {
+  columnPrivileges?: Record<string, string[]>;
+  grantee: string;
+  kindPhrase: string;
+  privileges: string[];
+  schema?: string;
+  targetIdentity: string;
+  targetRendered: string;
+  withGrantOption: boolean;
+}
+
+type CatalogGrantGroups = Map<string, CatalogGrant[]>;
+
+function addCatalogGrant(groups: CatalogGrantGroups, grant: CatalogGrant): void {
+  const identity = [grant.kindPhrase, grant.targetIdentity, grant.grantee].join(":");
+  const grants = groups.get(identity) ?? [];
+  grants.push(grant);
+  groups.set(identity, grants);
+}
+
+function buildCatalogGrants(groups: CatalogGrantGroups): SchemaObject[] {
+  const objects: SchemaObject[] = [];
+  for (const [identity, grants] of groups) {
+    const first = grants[0];
+    if (!first) {
+      continue;
+    }
+    const merged = mergePrivilegeMetadata(
+      grants.map((grant) => ({
+        ...(grant.columnPrivileges ? { columnPrivileges: grant.columnPrivileges } : {}),
+        privileges: grant.privileges,
+        withGrantOption: grant.withGrantOption,
+      }))
+    );
+    if (!merged) {
+      throw new Error(
+        `Catalog grant ${identity} has mixed grant-option states or invalid privilege metadata`
+      );
+    }
+    objects.push(
+      buildGrantObject({
+        ...(merged.columnPrivileges ? { columnPrivileges: merged.columnPrivileges } : {}),
+        grantee: first.grantee,
+        kindPhrase: first.kindPhrase,
+        ordinal: 0,
+        privileges: merged.privileges,
+        ...(first.schema ? { schema: first.schema } : {}),
+        targetIdentity: first.targetIdentity,
+        targetRendered: first.targetRendered,
+        verb: "GRANT",
+        withGrantOption: merged.withGrantOption,
+      })
+    );
+  }
+  return objects;
+}
+
+function catalogGrantOption(value: unknown, identity: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`Catalog grant ${identity} has an invalid grant-option state`);
+  }
+  return value;
+}
+
 export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]> {
   const objects: SchemaObject[] = [];
+  const relationGrantGroups: CatalogGrantGroups = new Map();
   const relationGrants = await pool.query(`
     select n.nspname as schema, c.relname as name, c.relkind as relkind,
       case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee,
-      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges
+      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges,
+      acl.is_grantable as is_grantable
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace,
     lateral aclexplode(c.relacl) as acl
     where c.relacl is not null
-      and c.relkind in ('r', 'p', 'v', 'm', 'S')
+      and c.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
       and ${managedSchemaFilter}
       and ${notExtensionMember("c", "pg_class")}
       and acl.grantee <> c.relowner
       and not exists (
         select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
         where i.objoid = c.oid and i.classoid = 'pg_class'::regclass
-          and ia.grantee = acl.grantee and ia.privilege_type = acl.privilege_type
+          and i.objsubid = 0
+          and ia.grantor = acl.grantor
+          and ia.grantee = acl.grantee
+          and ia.privilege_type = acl.privilege_type
+          and ia.is_grantable = acl.is_grantable
       )
-    group by n.nspname, c.relname, c.relkind, acl.grantee
-    order by n.nspname, c.relname, grantee
+    group by n.nspname, c.relname, c.relkind, acl.grantee, acl.is_grantable
+    order by n.nspname, c.relname, grantee, acl.is_grantable
   `);
   for (const row of relationGrants.rows) {
     const schema = text(row.schema);
     const name = text(row.name);
     const kindPhrase = text(row.relkind) === "S" ? "SEQUENCE" : "TABLE";
-    objects.push(
-      buildGrantObject({
-        grantee: text(row.grantee),
-        kindPhrase,
-        ordinal: 0,
-        privileges: textArray(row.privileges),
-        schema,
-        targetIdentity: `${schema}.${name}`,
-        targetRendered: formatQualifiedName(schema, name),
-        verb: "GRANT",
-      })
-    );
+    const targetIdentity = `${schema}.${name}`;
+    addCatalogGrant(relationGrantGroups, {
+      grantee: text(row.grantee),
+      kindPhrase,
+      privileges: textArray(row.privileges),
+      schema,
+      targetIdentity,
+      targetRendered: formatQualifiedName(schema, name),
+      withGrantOption: catalogGrantOption(row.is_grantable, targetIdentity),
+    });
   }
 
+  const columnGrants = await pool.query(`
+    select n.nspname as schema, c.relname as name, c.relkind as relkind,
+      case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee,
+      acl.privilege_type as privilege,
+      array_agg(distinct a.attname order by a.attname) as columns,
+      acl.is_grantable as is_grantable
+    from pg_attribute a
+    join pg_class c on c.oid = a.attrelid
+    join pg_namespace n on n.oid = c.relnamespace,
+    lateral aclexplode(a.attacl) as acl
+    where a.attacl is not null
+      and a.attnum > 0
+      and not a.attisdropped
+      and c.relkind in ('r', 'p', 'v', 'm', 'f')
+      and ${managedSchemaFilter}
+      and ${notExtensionMember("c", "pg_class")}
+      and acl.grantee <> c.relowner
+      and not exists (
+        select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
+        where i.objoid = c.oid and i.classoid = 'pg_class'::regclass
+          and i.objsubid = a.attnum
+          and ia.grantor = acl.grantor
+          and ia.grantee = acl.grantee
+          and ia.privilege_type = acl.privilege_type
+          and ia.is_grantable = acl.is_grantable
+      )
+    group by n.nspname, c.relname, c.relkind, acl.grantee,
+      acl.privilege_type, acl.is_grantable
+    order by n.nspname, c.relname, grantee, acl.privilege_type, acl.is_grantable
+  `);
+  for (const row of columnGrants.rows) {
+    const schema = text(row.schema);
+    const name = text(row.name);
+    const privilege = text(row.privilege);
+    const targetIdentity = `${schema}.${name}`;
+    addCatalogGrant(relationGrantGroups, {
+      columnPrivileges: { [privilege]: textArray(row.columns) },
+      grantee: text(row.grantee),
+      kindPhrase: "TABLE",
+      privileges: [privilege],
+      schema,
+      targetIdentity,
+      targetRendered: formatQualifiedName(schema, name),
+      withGrantOption: catalogGrantOption(row.is_grantable, targetIdentity),
+    });
+  }
+  objects.push(...buildCatalogGrants(relationGrantGroups));
+
+  const schemaGrantGroups: CatalogGrantGroups = new Map();
   const schemaGrants = await pool.query(`
     select n.nspname as name,
       case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee,
-      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges
+      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges,
+      acl.is_grantable as is_grantable
     from pg_namespace n,
     lateral aclexplode(n.nspacl) as acl
     where n.nspacl is not null
@@ -73,31 +192,36 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
       and not exists (
         select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
         where i.objoid = n.oid and i.classoid = 'pg_namespace'::regclass
-          and ia.grantee = acl.grantee and ia.privilege_type = acl.privilege_type
+          and i.objsubid = 0
+          and ia.grantor = acl.grantor
+          and ia.grantee = acl.grantee
+          and ia.privilege_type = acl.privilege_type
+          and ia.is_grantable = acl.is_grantable
       )
-    group by n.nspname, acl.grantee
-    order by n.nspname, grantee
+    group by n.nspname, acl.grantee, acl.is_grantable
+    order by n.nspname, grantee, acl.is_grantable
   `);
   for (const row of schemaGrants.rows) {
     const name = text(row.name);
-    objects.push(
-      buildGrantObject({
-        grantee: text(row.grantee),
-        kindPhrase: "SCHEMA",
-        ordinal: 0,
-        privileges: textArray(row.privileges),
-        schema: name,
-        targetIdentity: name,
-        targetRendered: `"${name}"`,
-        verb: "GRANT",
-      })
-    );
+    addCatalogGrant(schemaGrantGroups, {
+      grantee: text(row.grantee),
+      kindPhrase: "SCHEMA",
+      privileges: textArray(row.privileges),
+      schema: name,
+      targetIdentity: name,
+      targetRendered: `"${name}"`,
+      withGrantOption: catalogGrantOption(row.is_grantable, name),
+    });
   }
+  objects.push(...buildCatalogGrants(schemaGrantGroups));
+
+  const functionGrantGroups: CatalogGrantGroups = new Map();
   const functionGrants = await pool.query(`
     select n.nspname as schema, p.proname as name,
       oidvectortypes(p.proargtypes) as args,
       case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee,
-      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges
+      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges,
+      acl.is_grantable as is_grantable
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace,
     lateral aclexplode(p.proacl) as acl
@@ -108,10 +232,14 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
       and not exists (
         select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
         where i.objoid = p.oid and i.classoid = 'pg_proc'::regclass
-          and ia.grantee = acl.grantee and ia.privilege_type = acl.privilege_type
+          and i.objsubid = 0
+          and ia.grantor = acl.grantor
+          and ia.grantee = acl.grantee
+          and ia.privilege_type = acl.privilege_type
+          and ia.is_grantable = acl.is_grantable
       )
-    group by n.nspname, p.proname, args, acl.grantee
-    order by n.nspname, p.proname, grantee
+    group by n.nspname, p.proname, args, acl.grantee, acl.is_grantable
+    order by n.nspname, p.proname, grantee, acl.is_grantable
   `);
   for (const row of functionGrants.rows) {
     const schema = text(row.schema);
@@ -119,22 +247,22 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     const args = text(row.args);
     const grantee = text(row.grantee);
     const privileges = textArray(row.privileges);
-    if (isBuiltinDefaultGrant("FUNCTION", grantee, privileges)) {
+    const targetIdentity = `${schema}.${name}(${args})`;
+    const withGrantOption = catalogGrantOption(row.is_grantable, targetIdentity);
+    if (!withGrantOption && isBuiltinDefaultGrant("FUNCTION", grantee, privileges)) {
       continue;
     }
-    objects.push(
-      buildGrantObject({
-        grantee,
-        kindPhrase: "FUNCTION",
-        ordinal: 0,
-        privileges,
-        schema,
-        targetIdentity: `${schema}.${name}(${args})`,
-        targetRendered: `${formatQualifiedName(schema, name)}(${args})`,
-        verb: "GRANT",
-      })
-    );
+    addCatalogGrant(functionGrantGroups, {
+      grantee,
+      kindPhrase: "FUNCTION",
+      privileges,
+      schema,
+      targetIdentity,
+      targetRendered: `${formatQualifiedName(schema, name)}(${args})`,
+      withGrantOption,
+    });
   }
+  objects.push(...buildCatalogGrants(functionGrantGroups));
 
   const revokedFunctionDefaults = await pool.query(`
     select n.nspname as schema, p.proname as name, oidvectortypes(p.proargtypes) as args
@@ -166,10 +294,12 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
       })
     );
   }
+  const typeGrantGroups: CatalogGrantGroups = new Map();
   const typeGrants = await pool.query(`
     select n.nspname as schema, t.typname as name, t.typtype as typtype,
       case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee,
-      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges
+      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges,
+      acl.is_grantable as is_grantable
     from pg_type t
     join pg_namespace n on n.oid = t.typnamespace,
     lateral aclexplode(t.typacl) as acl
@@ -181,10 +311,14 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
       and not exists (
         select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
         where i.objoid = t.oid and i.classoid = 'pg_type'::regclass
-          and ia.grantee = acl.grantee and ia.privilege_type = acl.privilege_type
+          and i.objsubid = 0
+          and ia.grantor = acl.grantor
+          and ia.grantee = acl.grantee
+          and ia.privilege_type = acl.privilege_type
+          and ia.is_grantable = acl.is_grantable
       )
-    group by n.nspname, t.typname, t.typtype, acl.grantee
-    order by n.nspname, t.typname, grantee
+    group by n.nspname, t.typname, t.typtype, acl.grantee, acl.is_grantable
+    order by n.nspname, t.typname, grantee, acl.is_grantable
   `);
   for (const row of typeGrants.rows) {
     const schema = text(row.schema);
@@ -192,22 +326,22 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     const grantee = text(row.grantee);
     const privileges = textArray(row.privileges);
     const kindPhrase = text(row.typtype) === "d" ? "DOMAIN" : "TYPE";
-    if (isBuiltinDefaultGrant(kindPhrase, grantee, privileges)) {
+    const targetIdentity = `${schema}.${name}`;
+    const withGrantOption = catalogGrantOption(row.is_grantable, targetIdentity);
+    if (!withGrantOption && isBuiltinDefaultGrant(kindPhrase, grantee, privileges)) {
       continue;
     }
-    objects.push(
-      buildGrantObject({
-        grantee,
-        kindPhrase,
-        ordinal: 0,
-        privileges,
-        schema,
-        targetIdentity: `${schema}.${name}`,
-        targetRendered: formatQualifiedName(schema, name),
-        verb: "GRANT",
-      })
-    );
+    addCatalogGrant(typeGrantGroups, {
+      grantee,
+      kindPhrase,
+      privileges,
+      schema,
+      targetIdentity,
+      targetRendered: formatQualifiedName(schema, name),
+      withGrantOption,
+    });
   }
+  objects.push(...buildCatalogGrants(typeGrantGroups));
   return objects;
 }
 
@@ -215,10 +349,12 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
   const objects: SchemaObject[] = [];
   const rows = await pool.query(`
     select pg_get_userbyid(d.defaclrole) as for_role,
+      d.defaclrole = current_user::regrole as is_current_role,
       case when d.defaclnamespace = 0 then null else n.nspname end as schema,
       d.defaclobjtype as objtype,
       case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee,
-      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges
+      array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges,
+      acl.is_grantable as is_grantable
     from pg_default_acl d
     left join pg_namespace n on n.oid = d.defaclnamespace,
     lateral aclexplode(d.defaclacl) as acl
@@ -229,19 +365,26 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
         from pg_extension ext
         where ext.extnamespace = d.defaclnamespace
       )
-    group by d.defaclrole, schema, d.defaclobjtype, acl.grantee
-    order by for_role, schema, d.defaclobjtype, grantee
+    group by d.defaclrole, schema, d.defaclobjtype, acl.grantee, acl.is_grantable
+    order by for_role, schema, d.defaclobjtype, grantee, acl.is_grantable
   `);
   for (const row of rows.rows) {
     const objectType = defaultPrivilegeObjectTypes.get(text(row.objtype));
     if (!objectType) {
       continue;
     }
-    const forRole = text(row.for_role);
+    const ownerRole = text(row.for_role);
+    const forRole = row.is_current_role === true ? undefined : ownerRole;
     const grantee = text(row.grantee);
     const privileges = textArray(row.privileges);
+    const identity = `${ownerRole}:${text(row.objtype)}:${grantee}`;
+    if (catalogGrantOption(row.is_grantable, identity)) {
+      throw new Error(
+        `Catalog default privilege ${identity} uses a grant option that cannot be represented safely`
+      );
+    }
 
-    if (grantee === forRole || isBuiltinDefaultGrant(objectType, grantee, privileges)) {
+    if (grantee === ownerRole || isBuiltinDefaultGrant(objectType, grantee, privileges)) {
       continue;
     }
     objects.push(
@@ -259,6 +402,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
 
   const revokedDefaults = await pool.query(`
     select pg_get_userbyid(d.defaclrole) as for_role,
+      d.defaclrole = current_user::regrole as is_current_role,
       case when d.defaclnamespace = 0 then null else n.nspname end as schema,
       d.defaclobjtype as objtype
     from pg_default_acl d
@@ -281,9 +425,10 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     if (!objectType) {
       continue;
     }
+    const forRole = row.is_current_role === true ? undefined : text(row.for_role);
     objects.push(
       buildDefaultPrivilegeObject({
-        forRole: text(row.for_role),
+        forRole,
         grantee: "PUBLIC",
         objectType,
         ordinal: 0,

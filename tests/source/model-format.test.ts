@@ -6,6 +6,10 @@ import { MODEL_FORMAT_VERSION } from "../../src/hash.js";
 import { extractSourceModel } from "../../src/source/extract.js";
 
 describe("model format versioning", () => {
+  it("uses model format version 5 for structured grant identity", () => {
+    expect(MODEL_FORMAT_VERSION).toBe(5);
+  });
+
   it("stamps extracted models with the current format version", async () => {
     const directory = await mkdtemp(join(tmpdir(), "supa-format-"));
     await writeFile(join(directory, "schema.sql"), "CREATE TABLE app.items (id integer);");

@@ -2,13 +2,13 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { MigrationPlan } from "../../src/core.js";
 import {
   defaultMigrationName,
   latestMigrationFile,
   migrationFiles,
   migrationNameSlug,
 } from "../../src/migrations/files.js";
+import type { MigrationPlan } from "../../src/types.js";
 
 function planWith(operations: MigrationPlan["operations"]): MigrationPlan {
   return {

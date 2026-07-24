@@ -6,11 +6,11 @@ const modelContextEvents = new Set([
   "SubagentStart",
 ]);
 
-const decisionBlockEvents = new Set(["UserPromptSubmit", "PostToolUse"]);
+const decisionBlockEvents = new Set(["UserPromptSubmit", "PostToolUse", "Stop", "SubagentStop"]);
 
 const exitTwoBlockEvents = new Set(["TaskCompleted", "PermissionDenied"]);
 
-export function shapeHookResult(eventName, result = {}) {
+export function shapeHookResult(eventName, result = {}, runtime = "claude") {
   const output = {};
   const context = joinParts(result.contextParts);
   let exitCode = 0;
@@ -51,6 +51,10 @@ export function shapeHookResult(eventName, result = {}) {
     } else {
       output.systemMessage = result.block;
     }
+  }
+
+  if (runtime === "codex" && (eventName === "Stop" || eventName === "SubagentStop")) {
+    return shaped(output, exitCode, stderr, true);
   }
 
   return shaped(output, exitCode, stderr, false);

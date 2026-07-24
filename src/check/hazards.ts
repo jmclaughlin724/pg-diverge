@@ -1,7 +1,7 @@
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import type { AstStatement } from "../sql/ast.js";
 import { asRecord, qualifiedName, readString } from "../sql/ast.js";
+import type { Diagnostic, SupaschemaConfig } from "../types.js";
 
 export function newEnumAdditionState(): Map<string, Set<string>> {
   return new Map();

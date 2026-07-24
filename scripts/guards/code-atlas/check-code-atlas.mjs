@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { assert, ok } from "../lib/assertions.js";
 import { edgeKey } from "../lib/graph.js";
 import { run } from "../lib/process.js";
-import { exists, ROOT, readJson, readText } from "../lib/repository.js";
+import { exists, ROOT, readJson } from "../lib/repository.js";
 
 export function check(root = ROOT) {
   if (
@@ -108,27 +108,13 @@ export function check(root = ROOT) {
     }
   }
 
-  const mcp = readJson(".mcp.json", root);
+  const packageJson = readJson("package.json", root);
+  assert(!packageJson.devDependencies?.["@codeatlas/mcp"], "remove @codeatlas/mcp");
+  assert(!packageJson.scripts?.["code-atlas:mcp"], "remove code-atlas:mcp script");
+  assert(!packageJson.scripts?.["code-atlas:mcp:status"], "remove MCP status script");
   assert(
-    !mcp.mcpServers?.codeatlas,
-    ".mcp.json must not expose standalone codeatlas; use supaschema.code_atlas_query"
-  );
-  assert(
-    mcp.mcpServers?.supaschema?.command === "uv",
-    ".mcp.json supaschema must use the uv FastMCP server"
-  );
-  assert(
-    mcp.mcpServers?.supaschema?.args?.includes("fastmcp.json"),
-    ".mcp.json supaschema must run fastmcp.json"
-  );
-  const codexConfig = readText(".codex/config.toml", root);
-  assert(
-    !codexConfig.includes("[mcp_servers.codeatlas]"),
-    ".codex/config.toml must not expose standalone codeatlas"
-  );
-  assert(
-    codexConfig.includes("[mcp_servers.supaschema]"),
-    ".codex/config.toml missing local supaschema server"
+    !exists("scripts/code-atlas/mcp-launcher.mjs", root),
+    "remove the CodeAtlas-Live launcher"
   );
 
   const entrypoints = query("entrypoints");
@@ -198,17 +184,6 @@ export function check(root = ROOT) {
   assert(
     queryConsumers.nodes.some((node) => node.id === "package_script:supaschema#code-atlas:query"),
     "consumers query must include package script"
-  );
-  const mcpStatus = query("mcp-status");
-  assert(mcpStatus.localAtlas?.nodes > 0, "mcp-status must report local atlas nodes");
-  assert(
-    mcpStatus.liveMcp?.launcher === "scripts/code-atlas/mcp-launcher.mjs",
-    "mcp launcher drifted"
-  );
-  assert(mcpStatus.liveMcp?.source !== "npx", "mcp-status must not use npx fallback by default");
-  assert(
-    mcpStatus.liveMcp?.npxFallbackEnabled === false,
-    "mcp-status must report npx fallback disabled by default"
   );
   assertUnknownTargetFails();
 

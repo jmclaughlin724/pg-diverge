@@ -47,11 +47,18 @@ codexExecPolicy: |
       "not_match": ["git rev-parse --abbrev-ref HEAD", "git status --short"]
     },
     {
-      "pattern": ["git", "worktree"],
+      "pattern": ["git", "worktree", "list", "--porcelain", "-z"],
+      "decision": "allow",
+      "justification": "Rule 21 allows the stable read-only worktree inventory form; the Bash hook rejects every other worktree command shape.",
+      "match": ["git worktree list --porcelain -z"],
+      "not_match": ["git worktree list", "git worktree add ../demo HEAD"]
+    },
+    {
+      "pattern": ["git", "worktree", ["add", "lock", "move", "prune", "remove", "repair", "unlock"]],
       "decision": "forbidden",
-      "justification": "Rule 21 forbids ad hoc CLI worktrees; use host-managed worktree isolation only when the host selects it before work begins.",
-      "match": ["git worktree add ../demo HEAD", "git worktree list"],
-      "not_match": ["git status --short"]
+      "justification": "Rule 21 forbids CLI worktree mutation; use host-managed worktree isolation only when the host selects it before work begins.",
+      "match": ["git worktree add ../demo HEAD", "git worktree lock ../demo", "git worktree move ../demo ../moved", "git worktree prune", "git worktree remove ../demo", "git worktree repair ../demo", "git worktree unlock ../demo"],
+      "not_match": ["git worktree list --porcelain -z", "git status --short"]
     },
     {
       "pattern": ["git", "reset"],
@@ -160,15 +167,12 @@ codexExecPolicy: |
     }
   ]
 paths:
-  - "src/**"
-  - "tests/**"
-  - "docs/**"
-  - "bin/**"
-  - "services/agent-mcp/**"
-  - ".claude/**"
-  - ".codex/**"
-  - ".agents/**"
   - ".github/**"
+  - ".gitignore"
+  - ".gitattributes"
+  - ".claude/rules/21-source-control.md"
+  - ".claude/hooks/**"
+  - ".codex/hooks/**"
   - "scripts/github/**"
   - "scripts/guards/ci-release/check-github-process.mjs"
   - "scripts/guards/check-all.mjs"
@@ -183,7 +187,7 @@ paths:
 
 This rule is the single owner for source-control state and lifecycle: dirty worktrees, Git command safety, branch creation, staging, commits, pushes, GitHub repository settings, pull requests, squash merging, local and remote branch cleanup, and live settings audit.
 
-Rule 14 owns file-edit safety and deletion/rename sweeps. Rule 09 owns GitHub Actions workflow posture. Rule 19 owns release-version transactions. Rule 20 owns the consolidated source-control anti-pattern index.
+Rule 14 owns file-edit safety and deletion/rename sweeps. Rule 09 owns GitHub Actions workflow posture. Rule 19 owns release-version transactions.
 
 Upstream sources:
 
@@ -193,6 +197,7 @@ Upstream sources:
 - GitHub automatic branch deletion: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches>
 - GitHub CLI `gh pr merge`: <https://cli.github.com/manual/gh_pr_merge>
 - GitHub CLI `gh repo edit`: <https://cli.github.com/manual/gh_repo_edit>
+- Git worktrees: <https://git-scm.com/docs/git-worktree>
 
 ## Dirty worktree rules
 
@@ -210,7 +215,7 @@ Upstream sources:
 - To continue an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
-- Do not use `git checkout`, `git branch` for creation or discovery, or ad hoc `git worktree`. Apart from the two transactional topic-branch forms above and `git switch main` after verified PR merge, do not use `git switch`.
+- Do not use `git checkout` or `git branch` for creation or discovery. Worktree mutation is host-managed; the only allowed CLI worktree operation is `git worktree list --porcelain -z` for stable read-only inventory. Apart from the two transactional topic-branch forms above and `git switch main` after verified PR merge, do not use `git switch`.
 - After proving a topic PR merged and preserving all dirty work elsewhere, `git branch -D <topic>` is allowed only with explicit approval. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
@@ -306,6 +311,7 @@ Address every PR review comment and failing check before merge, and mark each re
 
 ## Enforced by
 
+- SessionStart merged-topic detection: `scripts/agent-hooks/merged-branch-state.mjs` (via the shared hook runner) injects post-merge closeout context when the current checkout's unique commits are already tree-contained in `origin/main`, so a squash-merged topic surviving as the active checkout is self-announcing in both Claude and Codex sessions.
 - `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, canonical Rule 21 path, retired duplicate rule paths, Bash hook, and PR template stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, repository rulesets, and topics to `.github/repo-policy.json`.

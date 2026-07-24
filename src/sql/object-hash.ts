@@ -1,5 +1,5 @@
-import type { ObjectRef } from "../core.js";
 import { sha256, stableJson } from "../hash.js";
+import type { ObjectRef } from "../types.js";
 
 const strippedKeys = new Set(["if_not_exists", "location", "replace", "stmt_len", "stmt_location"]);
 

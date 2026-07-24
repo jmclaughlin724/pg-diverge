@@ -1,0 +1,81 @@
+---
+title: "Declarative management"
+description: "Manage PostgreSQL schemas from versioned SQL files with deterministic diffs, replay-safe migrations, explicit destructive hints, and CI drift checks."
+keywords:
+  ["declarative management", "PostgreSQL schema", "migration workflow", "CI"]
+---
+
+Use this when SQL files should be the source of truth for your PostgreSQL schema.
+
+`supaschema` compares a declared schema tree with another schema source, renders the migration needed to move between them, refreshes generated TypeScript and Zod outputs, and can apply through guarded `sync` targets. It does not require an ORM schema layer, Docker, or a shadow database for the schema workflow.
+
+## Use this when
+
+- You want schema review to start from the desired end state.
+- You need migrations that can be retried after a failed deploy.
+- You want drift checks in CI before a database changes.
+- You use PostgreSQL directly or through Supabase, Neon, RDS/Aurora, Cloud SQL, AlloyDB, or Azure PostgreSQL.
+
+## Do this
+
+Keep SQL files in the configured schema directory:
+
+```text
+database/schemas/
+  extensions.sql
+  auth.sql
+  billing.sql
+  policies.sql
+```
+
+Generate and check the migration:
+
+```bash
+npx supaschema diff
+npx supaschema check
+```
+
+If the generated file contains a `-- supaschema: lineage` marker, change the schema tree and regenerate instead of editing that file by hand.
+
+## Verify
+
+Use a disposable database when you need runtime proof:
+
+```bash
+npx supaschema verify
+```
+
+In CI, fail when the configured sources disagree:
+
+```bash
+npx supaschema diff --fail-on-diff --quiet
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card
+    title="Declarative schema"
+    icon="files"
+    href="/concepts/declarative-schema"
+  >
+    Understand the schema tree model.
+  </Card>
+  <Card
+    title="ORM-free apps"
+    icon="database"
+    href="/concepts/orm-free-applications"
+  >
+    Use generated database contracts without adding an ORM schema layer.
+  </Card>
+  <Card
+    title="Destructive hints"
+    icon="triangle-alert"
+    href="/configuration/hints"
+  >
+    Approve exact drops and rewrites intentionally.
+  </Card>
+  <Card title="CI recipe" icon="circle-check" href="/guides/ci-github-actions">
+    Add drift, check, and verify gates.
+  </Card>
+</CardGroup>

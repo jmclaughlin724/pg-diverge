@@ -1,6 +1,6 @@
 import type { Client } from "pg";
-import type { Diagnostic, ObjectRef } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
+import type { Diagnostic, ObjectRef } from "../types.js";
 
 export async function preflightCapability(admin: Client): Promise<Diagnostic | undefined> {
   const result = await admin.query<{ can_create: boolean | null }>(

@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../../src/config/schema.js";
-import type { Diagnostic, SchemaModel, SchemaObject } from "../../src/core.js";
 import { aggregateScanReportFiles, parseScanAggregateArgs } from "../../src/scan/aggregate.js";
 import { scanGeneratedContractUsage } from "../../src/scan/generated-contracts.js";
 import {
@@ -17,6 +16,7 @@ import {
   scoreGrade,
 } from "../../src/scan/model.js";
 import { hygienePack } from "../../src/scan/rules.js";
+import type { Diagnostic, SchemaModel, SchemaObject } from "../../src/types.js";
 
 function tableObject(name: string): SchemaObject {
   return {

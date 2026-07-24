@@ -20,13 +20,14 @@ paths:
 
 ## Contract
 
-This rule owns file-edit safety, generated-artifact discipline, concurrent-change preservation, and deletion/rename sweeps. Rule 21 is the single owner for worktrees, Git commands, staging, commits, pushes, branches, pull requests, merges, and branch cleanup. Rule 20 owns the consolidated anti-pattern index.
+This rule owns file-edit safety, generated-artifact discipline, concurrent-change preservation, and deletion/rename sweeps. Rule 21 is the single owner for worktrees, Git commands, staging, commits, pushes, branches, pull requests, merges, and branch cleanup.
 
 ## Editing rules
 
 - Read enough local context before editing.
 - Keep changes owner-scoped and use the canonical owner that satisfies the requested end state.
 - Prefer structured edits (`apply_patch`, editor tool, AST/LSP rename, or repo codemod) over shell write tricks for source changes.
+- Treat edit-tool success as transport evidence only. Inspect the resulting file or diff and run the narrow owner check before claiming the patch worked; an `apply_patch` success or `Done` message does not prove the intended content landed.
 - Do not use broad replacement on substrings of wider identifiers. Verify uniqueness or use AST/LSP rename.
 - Do not hand-edit generated artifacts such as `dist/**`, generated config contract outputs, generated migrations, generated docs output, Code Atlas scratch output, or LLM mirrors.
 - For generated surfaces, edit the canonical owner and run the generator or sync command.

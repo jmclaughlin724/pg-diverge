@@ -1,6 +1,7 @@
 coverage
 dist
 node_modules
+.pnpm-store/
 .venv
 __pycache__
 *.pyc
@@ -14,8 +15,6 @@ benchmarks/results
 /database.zod.ts
 .DS_Store
 .envrc
-.codeatlas/
-.codeatlas-sa/
 .claude/scheduled_tasks.lock
 .claude/plans
 .wrangler/
@@ -46,9 +45,12 @@ scripts/stripe/
 .agents/skills/*
 !.agents/skills/supaschema/
 !.agents/skills/supaschema/**
+!.agents/skills/supaschema-maintain/
+!.agents/skills/supaschema-maintain/**
+!.agents/skills/supaschema-migrate/
+!.agents/skills/supaschema-migrate/**
 .claude/*
 .claude/agents/
-.claude/cclsp.json
 !.claude/hooks/
 .claude/hooks/*
 !.claude/hooks/context-*.mjs
@@ -65,6 +67,10 @@ scripts/stripe/
 .claude/skills/*
 !.claude/skills/supaschema/
 !.claude/skills/supaschema/**
+!.claude/skills/supaschema-maintain/
+!.claude/skills/supaschema-maintain/**
+!.claude/skills/supaschema-migrate/
+!.claude/skills/supaschema-migrate/**
 .codex/*
 .codex/agents/
 .codex/config.toml

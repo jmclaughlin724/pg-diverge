@@ -1,8 +1,8 @@
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { resolveConfig } from "../config/schema.js";
-import type { SupaschemaConfig } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
+import type { SupaschemaConfig } from "../types.js";
 import { rel } from "./targets.js";
 
 const genericSchemaPath = "database/schemas";

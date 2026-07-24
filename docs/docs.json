@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "luma",
   "name": "supaschema",
-  "description": "From declarative PostgreSQL schema to replay-safe migrations, generated types, Zod validators, and guarded sync in seconds. No ORM schema layer, no Docker, no shadow database.",
+  "description": "Declarative PostgreSQL schema management: fast, AI-ready, and zero-config, with replay-safe migrations and generated TypeScript and Zod. No ORM, Docker, or shadow database.",
   "logo": {
     "light": "/images/brand/supaschema-logo-light.png",
     "dark": "/images/brand/supaschema-logo-dark.png",
@@ -116,7 +116,7 @@
             "href": "/comparisons/supaschema-vs-supabase-cli"
           },
           {
-            "label": "Commercial support",
+            "label": "Support",
             "href": "/reference/support"
           },
           {

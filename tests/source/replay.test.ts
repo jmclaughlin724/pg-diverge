@@ -1,16 +1,18 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../../src/config/schema.js";
+import { MODEL_FORMAT_VERSION } from "../../src/hash.js";
+import { buildSchemaPlanningContext } from "../../src/planner/context.js";
+import { extractSourceModel } from "../../src/source/extract.js";
 import type {
   Diagnostic,
   SchemaModel,
   SchemaObject,
   SupaschemaConfig,
   TableColumn,
-} from "../../src/core.js";
-import { extractSourceModel } from "../../src/source/extract.js";
+} from "../../src/types.js";
 
 async function writeMigrations(files: [string, string][]): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "supa-replay-"));
@@ -26,6 +28,14 @@ async function extractMigrations(
 ): Promise<SchemaModel> {
   const directory = await writeMigrations(files);
   return extractSourceModel(`migrations:${directory}`, { config });
+}
+
+async function extractDirectory(
+  files: [string, string][],
+  config: SupaschemaConfig = resolveConfig()
+): Promise<SchemaModel> {
+  const directory = await writeMigrations(files);
+  return extractSourceModel(`dir:${directory}`, { config });
 }
 
 function errors(diagnostics: Diagnostic[]): Diagnostic[] {
@@ -133,6 +143,118 @@ CREATE INDEX accounts_lookup_idx ON app.accounts (company_id);`,
     expect(
       model.objects.find((object) => object.key === "index:app.accounts_lookup_idx:accounts")?.sql
     ).toContain("company_id");
+  });
+
+  it("allocates unnamed ADD COLUMN constraints against existing table constraints", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_create.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id bigint,
+  CONSTRAINT accounts_minimum_check CHECK (id > 0)
+);
+ALTER TABLE app.accounts ADD COLUMN minimum bigint CHECK (minimum > id);`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(
+      model.objects
+        .filter((object) => object.ref.kind === "constraint")
+        .map((object) => object.ref.name)
+    ).toEqual(["accounts_minimum_check", "accounts_minimum_check1"]);
+  });
+
+  it("allocates generated constraint names within the owning table", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_create.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.other (
+  id bigint,
+  CONSTRAINT accounts_check CHECK (id > 0)
+);
+CREATE TABLE app.accounts (
+  minimum bigint,
+  maximum bigint,
+  CHECK (minimum <= maximum)
+);`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(
+      model.objects
+        .filter((object) => object.ref.kind === "constraint")
+        .map((object) => object.ref.name)
+    ).toEqual(["accounts_check", "accounts_check"]);
+  });
+
+  it("reuses a generated constraint name after PostgreSQL drops it", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_reuse.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  minimum bigint,
+  maximum bigint,
+  CHECK (minimum <= maximum)
+);
+ALTER TABLE app.accounts DROP CONSTRAINT accounts_check;
+ALTER TABLE app.accounts ADD CHECK (minimum IS NULL OR maximum IS NULL);`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(
+      model.objects
+        .filter((object) => object.ref.kind === "constraint")
+        .map((object) => object.ref.name)
+    ).toEqual(["accounts_check"]);
+  });
+
+  it("still rejects duplicated explicitly named constraints", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_duplicate.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id bigint,
+  CONSTRAINT accounts_id_check CHECK (id > 0)
+);
+ALTER TABLE app.accounts ADD CONSTRAINT accounts_id_check CHECK (id < 100);`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics).map((item) => item.code)).toEqual(["SUPA_REPLAY_ORDER_GAP"]);
+  });
+
+  it("treats catalog-guarded duplicate constraints as idempotent", async () => {
+    const guarded = `DO $schema_replay$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'accounts_id_check'
+  ) THEN
+    ALTER TABLE app.accounts
+      ADD CONSTRAINT accounts_id_check CHECK (id > 0);
+  END IF;
+END
+$schema_replay$;`;
+    const model = await extractMigrations([
+      [
+        "20240101000000_guarded.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint);
+${guarded}
+${guarded}`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(
+      model.objects.filter((object) => object.key === "constraint:app.accounts_id_check:accounts")
+    ).toHaveLength(1);
   });
 
   it("hard-fails duplicate CREATE without idempotency", async () => {
@@ -579,6 +701,121 @@ CREATE INDEX accounts_name_idx ON app.accounts (name);`,
     expect(table(model, "index:app.accounts_name_idx_old:accounts")).toBeDefined();
   });
 
+  it("hashes a replayed index rename like the equivalent declarative tree", async () => {
+    const migrations = await writeMigrations([
+      [
+        "20240101000000_rename_index.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE INDEX accounts_id_idx ON app.accounts (id);
+ALTER INDEX app.accounts_id_idx RENAME TO accounts_lookup_idx;`,
+      ],
+    ]);
+    const tree = await writeMigrations([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE INDEX accounts_lookup_idx ON app.accounts (id);`,
+      ],
+    ]);
+    const config = resolveConfig();
+    const replayed = await extractSourceModel(`migrations:${migrations}`, { config });
+    const declared = await extractSourceModel(`dir:${tree}`, { config });
+
+    expect(errors(replayed.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const identities = (model: SchemaModel) =>
+      model.objects.map((object) => ({
+        hash: object.hash,
+        key: object.key,
+        sql: object.sql,
+      }));
+    expect(identities(replayed)).toEqual(identities(declared));
+    expect(replayed.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("filters bootstrap inventory identically from migration and tree sources", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-bootstrap-parity-"));
+    const migrations = join(root, "migrations");
+    const schemas = join(root, "schemas");
+    await mkdir(migrations);
+    await mkdir(join(schemas, "_bootstrap"), { recursive: true });
+    await writeFile(
+      join(schemas, "_bootstrap", "extensions.sql"),
+      "CREATE SCHEMA extensions;\nCREATE EXTENSION pgcrypto WITH SCHEMA extensions;\n"
+    );
+    await writeFile(
+      join(schemas, "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n"
+    );
+    await writeFile(
+      join(migrations, "20240101000000_create.sql"),
+      `CREATE SCHEMA extensions;
+CREATE EXTENSION pgcrypto WITH SCHEMA extensions;
+CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint);`
+    );
+    const config = resolveConfig({
+      migrationsDir: migrations,
+      schemaPaths: [schemas],
+    });
+    const replayed = await extractSourceModel(`migrations:${migrations}`, { config, cwd: root });
+    const declared = await extractSourceModel(`dir:${schemas}`, { config, cwd: root });
+
+    expect(errors(replayed.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    expect(replayed.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("blocks hand-authored migrations after generated lineage", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-migrations-lineage-"));
+    const migrations = join(root, "migrations");
+    const schemas = join(root, "schemas");
+    await mkdir(migrations);
+    await mkdir(schemas);
+    const legacySql = "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n";
+    await writeFile(join(migrations, "20240101000000_legacy.sql"), legacySql);
+    const config = resolveConfig({
+      migrationsDir: migrations,
+      schemaPaths: [schemas],
+      sources: { from: "empty:" },
+    });
+    const before = await extractSourceModel(`migrations:${migrations}`, { config, cwd: root });
+    const generatedPath = join(migrations, "20240102000000_generated.sql");
+    const generatedSql = "ALTER TABLE app.accounts ADD COLUMN name text;\n";
+    await writeFile(generatedPath, generatedSql);
+    const generated = await extractSourceModel(`migrations:${migrations}`, {
+      config,
+      cwd: root,
+    });
+    await writeFile(
+      generatedPath,
+      `-- supaschema: lineage format=${MODEL_FORMAT_VERSION} from=${before.fingerprint} to=${generated.fingerprint}
+${generatedSql}`
+    );
+    await writeFile(
+      join(migrations, "20240103000000_hand_authored.sql"),
+      "ALTER TABLE app.accounts ADD COLUMN rogue text;\n"
+    );
+    await writeFile(
+      join(schemas, "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint, name text, rogue text);\n"
+    );
+
+    const context = await buildSchemaPlanningContext({
+      config,
+      cwd: root,
+      from: "empty:",
+      migrationsDir: migrations,
+      to: `dir:${schemas}`,
+    });
+
+    expect(context.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_MIGRATION_BASELINE_UNSUPPORTED"
+    );
+  });
+
   it("replays policy drop before recreating the policy name", async () => {
     const model = await extractMigrations([
       [
@@ -612,7 +849,7 @@ CREATE TRIGGER accounts_touch BEFORE INSERT ON app.accounts FOR EACH ROW EXECUTE
     expect(table(model, "trigger:app.accounts_touch:accounts")).toBeDefined();
   });
 
-  it("treats typegen-neutral migration statements as no-ops", async () => {
+  it("treats session and role migration statements as no-ops", async () => {
     const model = await extractMigrations([
       [
         "20240101000000_neutral.sql",
@@ -620,13 +857,176 @@ CREATE TRIGGER accounts_touch BEFORE INSERT ON app.accounts FOR EACH ROW EXECUTE
 CREATE ROLE app_worker NOLOGIN;
 CREATE SCHEMA app;
 CREATE TABLE app.accounts (id integer);
-CREATE POLICY accounts_select ON app.accounts FOR SELECT USING (true);
-ALTER POLICY accounts_select ON app.accounts USING (id IS NOT NULL);`,
+CREATE POLICY accounts_select ON app.accounts FOR SELECT USING (true);`,
       ],
     ]);
 
     expect(errors(model.diagnostics)).toEqual([]);
     expect(columnNames(table(model, "table:app.accounts"))).toEqual(["id"]);
+  });
+
+  it("treats duplicate-guarded role-only DO blocks as replay-neutral", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_role.sql",
+        `DO $$
+BEGIN
+  CREATE ROLE app_worker NOLOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END
+$$;
+CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(model.objects.map((object) => object.key)).toEqual(["schema:app", "table:app.accounts"]);
+  });
+
+  it("hard-fails ALTER POLICY until replay models the mutation", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_alter_policy.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE POLICY accounts_select ON app.accounts FOR SELECT USING (true);
+ALTER POLICY accounts_select ON app.accounts USING (id IS NOT NULL);`,
+      ],
+    ]);
+
+    expect(model.objects).toEqual([]);
+    expect(errors(model.diagnostics).map((item) => item.code)).toEqual(["SUPA_REPLAY_UNSUPPORTED"]);
+  });
+
+  it("replays constraint validation to the same end state as an initially valid constraint", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_validate.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.parents (id integer PRIMARY KEY);
+CREATE TABLE app.children (parent_id integer);
+ALTER TABLE app.children ADD CONSTRAINT children_parent_id_fkey
+  FOREIGN KEY (parent_id) REFERENCES app.parents(id) NOT VALID;
+ALTER TABLE app.children VALIDATE CONSTRAINT children_parent_id_fkey;`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.parents (id integer PRIMARY KEY);
+CREATE TABLE app.children (parent_id integer);
+ALTER TABLE app.children ADD CONSTRAINT children_parent_id_fkey
+  FOREIGN KEY (parent_id) REFERENCES app.parents(id);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("hard-fails validation when the target constraint is absent", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_validate_missing.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.children (parent_id integer);
+ALTER TABLE app.children VALIDATE CONSTRAINT children_parent_id_fkey;`,
+      ],
+    ]);
+
+    expect(model.objects).toEqual([]);
+    expect(errors(model.diagnostics).map((item) => item.code)).toEqual(["SUPA_REPLAY_ORDER_GAP"]);
+  });
+
+  it("consumes a unique backing index when attaching it as a table constraint", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_using_index.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE UNIQUE INDEX accounts_id_key ON app.accounts (id);
+ALTER TABLE app.accounts ADD CONSTRAINT accounts_id_key UNIQUE USING INDEX accounts_id_key;`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+ALTER TABLE app.accounts ADD CONSTRAINT accounts_id_key UNIQUE (id);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    expect(history.objects.some((object) => object.ref.kind === "index")).toBe(false);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("uses the backing index name for an unnamed attached constraint", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_using_index.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (email text);
+CREATE UNIQUE INDEX accounts_email_idx ON app.accounts (email);
+ALTER TABLE app.accounts ADD UNIQUE USING INDEX accounts_email_idx;`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (email text);
+ALTER TABLE app.accounts ADD CONSTRAINT accounts_email_idx UNIQUE (email);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    expect(history.objects.some((object) => object.ref.kind === "index")).toBe(false);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("hard-fails a constraint attachment when its backing index is absent", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_using_missing_index.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+ALTER TABLE app.accounts ADD CONSTRAINT accounts_id_key UNIQUE USING INDEX accounts_id_key;`,
+      ],
+    ]);
+
+    expect(model.objects).toEqual([]);
+    expect(errors(model.diagnostics).map((item) => item.code)).toEqual(["SUPA_REPLAY_ORDER_GAP"]);
+  });
+
+  it("unions split grants that share one replay identity", async () => {
+    const files: [string, string][] = [
+      [
+        "20240101000000_split_grant.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.sessions (id integer, token text);
+GRANT INSERT ON app.sessions TO app_worker;
+GRANT SELECT(id, token) ON app.sessions TO app_worker;`,
+      ],
+    ];
+    const model = await extractMigrations(files);
+    const declared = await extractDirectory(files);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
+    expect(grants[0]?.metadata.columnPrivileges).toEqual({ SELECT: ["id", "token"] });
+    expect(grants[0]?.sql).toBe(
+      'GRANT INSERT, SELECT ("id", "token") ON TABLE "app"."sessions" TO "app_worker"'
+    );
+    expect(model.fingerprint).toBe(declared.fingerprint);
   });
 
   it("hard-fails unsupported ALTER TABLE subtypes", async () => {

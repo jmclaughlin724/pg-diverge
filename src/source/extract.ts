@@ -5,17 +5,18 @@ import { promisify } from "node:util";
 import { extractCatalogModel } from "../catalog/extract.js";
 import { parseRuntimeSource } from "../config/contract.js";
 import { resolveConfig } from "../config/schema.js";
+import { expandEnvReference } from "../database/url.js";
+import { diagnostic, isDiagnostic } from "../diagnostics/diagnostics.js";
+import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
+import { extractObjectsFromSql } from "../sql/extract.js";
+import { isManagedSchemaOverlay } from "../sql/ownership.js";
 import type {
   Diagnostic,
   ExtractOptions,
   SchemaModel,
   SchemaObject,
   SupaschemaConfig,
-} from "../core.js";
-import { expandEnvReference } from "../database/url.js";
-import { diagnostic, isDiagnostic } from "../diagnostics.js";
-import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
-import { extractObjectsFromSql } from "../sql/extract.js";
+} from "../types.js";
 import { normalizeSourceObjects } from "./normalize.js";
 import { reconstructModelFromMigrations } from "./replay.js";
 
@@ -33,13 +34,14 @@ export async function extractSourceModel(
   const cwd = options.cwd ?? process.cwd();
   const config = resolveConfig(options.config);
   const model = applyConfigModelFilters(await extractRawModel(source, cwd, config), config);
-  return isDatabaseSource(source)
+  return isBootstrapInventorySource(source)
     ? await filterBootstrapInventoryObjects(model, cwd, config)
     : model;
 }
 
-function isDatabaseSource(source: string): boolean {
-  return parseRuntimeSource(source)?.kind === "database";
+function isBootstrapInventorySource(source: string): boolean {
+  const kind = parseRuntimeSource(source)?.kind;
+  return kind === "database" || kind === "migrations";
 }
 
 async function extractRawModel(
@@ -142,11 +144,16 @@ function applyConfigModelFilters(model: SchemaModel, config: SupaschemaConfig): 
     const excluded = new Set(config.schemas.exclude);
     current = withObjects(
       current,
-      current.objects.filter((object) => !excluded.has(objectSchema(object)))
+      current.objects.filter(
+        (object) => !excluded.has(objectSchema(object)) || isManagedSchemaOverlay(object, config)
+      )
     );
     current = {
       ...current,
       diagnostics: current.diagnostics.filter((item) => {
+        if (item.code === "SUPA_SUPABASE_MANAGED_SCHEMA" && item.severity === "error") {
+          return true;
+        }
         if (!schemaScopedDiagnosticCodes.has(item.code)) {
           return true;
         }
@@ -359,6 +366,7 @@ async function modelFromSqlFiles(
   for (const file of files.sort((left, right) => left.path.localeCompare(right.path))) {
     const extracted = await extractObjectsFromSql(file.sql, {
       config,
+      existingObjects: extractedObjects,
       file: file.path,
       startOrdinal: ordinal,
     });

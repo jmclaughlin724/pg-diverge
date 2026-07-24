@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Client } from "pg";
-import type { Diagnostic } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import { redactSecrets } from "../redaction.js";
 import { quoteIdent } from "../sql/identifiers.js";
+import type { Diagnostic } from "../types.js";
 import { migrationFiles } from "./files.js";
 import type { MigrationLineage } from "./lineage.js";
 import { parseLineage } from "./lineage.js";

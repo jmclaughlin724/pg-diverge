@@ -36,6 +36,7 @@ jobs:
       - run: npm audit signatures
       - run: npm run build
       - run: npm run lint:ci
+      - run: npm run format:md:check
       - run: npm run typecheck
       - name: Guard suite
         run: npm run guard
@@ -66,7 +67,7 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@11.1.2 --activate
-          corepack prepare yarn@4.16.0 --activate
+          corepack prepare yarn@4.17.1 --activate
       - name: Install Bun for consumer package smoke
         if: matrix.node-version == 22
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0

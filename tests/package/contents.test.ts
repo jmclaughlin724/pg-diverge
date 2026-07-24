@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { bundleDocsFiles } from "../../scripts/skills/bundle-docs.mjs";
 
 const run = promisify(execFile);
 const npmExec = (args: string[]): { file: string; args: string[] } => {
@@ -66,6 +67,14 @@ describe("npm package contents", () => {
     const { stdout } = await run(file, args, { maxBuffer: 32 * 1024 * 1024 });
     const [packed] = JSON.parse(stdout);
     const paths = packed.files.map((file) => file.path);
+    const expectedDocs = [...bundleDocsFiles(resolve(import.meta.dirname, "../..")).keys()]
+      .map((file) => `agent-bundle/${file}`)
+      .sort((left, right) => left.localeCompare(right));
+    expect(
+      paths
+        .filter((file) => file.startsWith("agent-bundle/docs/"))
+        .sort((left, right) => left.localeCompare(right))
+    ).toEqual(expectedDocs);
     const readmes = paths.filter((path) => path.endsWith("README.md")).sort();
     expect(readmes, "only the root README should ship").toEqual(["README.md"]);
 
@@ -77,13 +86,24 @@ describe("npm package contents", () => {
       "bin/config-contract.mjs",
       "supaschema-config.schema.json",
       "agent-bundle/INSTALL.md",
+      "agent-bundle/skills-manifest.json",
+      "agent-bundle/docs/coding-agents.mdx",
+      "agent-bundle/docs/index.md",
       "agent-bundle/agents/prompts/supaschema-install.md",
+      "agent-bundle/agents/skills/supaschema-maintain/references/commands.md",
+      "agent-bundle/agents/skills/supaschema-maintain/SKILL.md",
+      "agent-bundle/agents/skills/supaschema-migrate/references/commands.md",
+      "agent-bundle/agents/skills/supaschema-migrate/SKILL.md",
       "agent-bundle/agents/skills/supaschema/SKILL.md",
       "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
       "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
       "agent-bundle/claude/rules/supaschema.md",
       "agent-bundle/claude/settings.npm.json",
       "agent-bundle/claude/settings.pnpm.json",
+      "agent-bundle/claude/skills/supaschema-maintain/references/commands.md",
+      "agent-bundle/claude/skills/supaschema-maintain/SKILL.md",
+      "agent-bundle/claude/skills/supaschema-migrate/references/commands.md",
+      "agent-bundle/claude/skills/supaschema-migrate/SKILL.md",
       "agent-bundle/claude/skills/supaschema/SKILL.md",
       "agent-bundle/codex/hooks.npm.json",
       "agent-bundle/codex/hooks.pnpm.json",
@@ -93,7 +113,6 @@ describe("npm package contents", () => {
       "agent-bundle/codex/rules/supaschema.rules",
       "README.md",
       "LICENSE",
-      "LICENSE-COMMERCIAL.md",
     ];
     for (const entry of required) {
       expect(paths, `missing required package file: ${entry}`).toContain(entry);
@@ -168,7 +187,7 @@ describe("npm package contents", () => {
     const leaks = paths.filter(isLeak);
     expect(leaks, `unexpected files in npm tarball: ${leaks.join(", ")}`).toEqual([]);
     expect(packed.unpackedSize, `npm tarball unpacked bytes: ${packed.unpackedSize}`).toBeLessThan(
-      1_500_000
+      2_000_000
     );
   });
 });

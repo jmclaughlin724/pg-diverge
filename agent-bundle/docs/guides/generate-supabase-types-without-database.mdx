@@ -1,0 +1,102 @@
+---
+title: "Type generation"
+description: "Generate PostgreSQL TypeScript types and Zod validators from declarative SQL files or migration history before applying a migration."
+keywords:
+  [
+    "type generation",
+    "PostgreSQL types",
+    "database types",
+    "Zod",
+    "no database",
+  ]
+---
+
+Use this when application code needs database types and runtime validators before the migration is applied.
+
+`supaschema types` reads a PostgreSQL source and emits TypeScript database types plus runtime Zod validators. The source can be the configured declarative tree or a filename-ordered migration history.
+
+## Use this when
+
+- A pull request changes SQL and TypeScript together.
+- Database introspection cannot see the new schema yet.
+- You want runtime validators generated from the same source as migrations.
+- You want a typed, validated application boundary without adding an ORM schema layer.
+- You want generated application contracts without adding a provider-specific or ORM schema layer.
+
+## Do this
+
+Generate types from the configured schema tree:
+
+```bash
+npx supaschema types
+```
+
+Override the source or output when needed:
+
+```bash
+npx supaschema types --from dir:database/schemas
+npx supaschema types --out src/lib/database.types.ts
+```
+
+For projects whose migration history is the reviewed schema source, generate from that history without introspection:
+
+```bash
+npx supaschema types --from migrations:supabase/migrations
+```
+
+`migrations:` is typegen-only. Do not use it as a `diff`, `verify`, or drift target.
+
+`supaschema sync` refreshes configured TypeScript and Zod outputs as part of the full workflow. For the focused lane, run `supaschema types` after `supaschema diff` so schema, migration, and app types can be reviewed together.
+
+Use the generated schema-qualified owners as the application contract:
+
+```ts
+import type { TablesInsert } from "./database.types";
+import { SupaschemaZod } from "./database.zod";
+
+type AccountInsert = TablesInsert<{ schema: "app" }, "accounts">;
+
+const input: AccountInsert =
+  SupaschemaZod.app.Tables.accounts.Insert.parse(body);
+```
+
+That covers the shape and validation responsibilities that teams often reach for an ORM-generated client to solve. Query execution can stay SQL-native through your PostgreSQL driver or platform client.
+
+## Verify
+
+Commit generated outputs when your project reviews them:
+
+```bash
+git diff --exit-code database.types.ts database.zod.ts
+```
+
+Then run your app typecheck:
+
+```bash
+npm run typecheck
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Types command" icon="code" href="/commands/types">
+    See type and Zod output flags.
+  </Card>
+  <Card
+    title="Configuration"
+    icon="sliders-horizontal"
+    href="/configuration/config-file"
+  >
+    Set default output paths in config.
+  </Card>
+  <Card
+    title="ORM-free apps"
+    icon="database"
+    href="/concepts/orm-free-applications"
+  >
+    Use generated outputs as the application contract.
+  </Card>
+  <Card title="CI recipe" icon="circle-check" href="/guides/ci-github-actions">
+    Keep generated files checked in CI.
+  </Card>
+</CardGroup>

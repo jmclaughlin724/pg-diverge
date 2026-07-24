@@ -1,10 +1,11 @@
-import type { SchemaObject, TableColumn } from "../core.js";
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
 import { makeObject } from "../sql/statements.js";
+import type { TableColumn } from "../sql/table-shape.js";
+import type { SchemaObject } from "../types.js";
 import { type CatalogQuery, managedSchemaFilter, notExtensionMember } from "./query.js";
 
 export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]> {
-  const tables = await pool.query<Record<string, unknown>>(`
+  const tables = await pool.query(`
     select
       c.oid::text as oid,
       n.nspname as schema,
@@ -30,7 +31,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
   }
   const oids = tables.rows.map((row) => stringValue(row.oid));
   const [columns, constraints] = await Promise.all([
-    pool.query<Record<string, unknown>>(
+    pool.query(
       `
         select
           a.attrelid::text as oid,
@@ -49,7 +50,7 @@ export async function collectTables(pool: CatalogQuery): Promise<SchemaObject[]>
       `,
       [oids]
     ),
-    pool.query<Record<string, unknown>>(
+    pool.query(
       `
         select
           c.conrelid::text as oid,
@@ -258,7 +259,7 @@ function catalogConstraintType(value: unknown): string | undefined {
   }
 }
 
-function stringArray(value: unknown): string[] {
+export function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];

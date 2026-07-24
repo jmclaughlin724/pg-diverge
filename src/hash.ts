@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import type { SchemaModel, SchemaObject } from "./core.js";
+import type { SchemaModel, SchemaObject } from "./types.js";
 
 type JsonLike = null | boolean | number | string | JsonLike[] | { [key: string]: JsonLike };
 
-export const MODEL_FORMAT_VERSION = 4;
+export const MODEL_FORMAT_VERSION = 5;
 
 export function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");

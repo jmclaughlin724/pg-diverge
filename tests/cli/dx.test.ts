@@ -7,7 +7,7 @@ import { renderCheckReport } from "../../src/check/report.js";
 import { createInstalledConfig, mergeInstalledConfig } from "../../src/config/contract.js";
 import { configJsonSchema, defaultConfigFile, resolveConfig } from "../../src/config/schema.js";
 import { validateConfig } from "../../src/config/validate.js";
-import type { Diagnostic } from "../../src/core.js";
+import type { Diagnostic } from "../../src/types.js";
 
 const cliPath = resolve(import.meta.dirname, "../../dist/cli.js");
 
@@ -716,7 +716,7 @@ describe("check git selection", () => {
 });
 
 describe("raw CLI errors", () => {
-  it("keeps migrations replay scoped to types instead of drift commands", () => {
+  it("supports migrations replay across source-model consumers", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supa-cli-migrations-source-"));
     mkdirSync(join(cwd, "supabase", "migrations"), { recursive: true });
     mkdirSync(join(cwd, "supabase", "schemas"), { recursive: true });
@@ -759,9 +759,11 @@ describe("raw CLI errors", () => {
         encoding: "utf8",
       }
     );
+    const contractPath = join(cwd, "contract.json");
+    writeFileSync(contractPath, contract.stdout);
     const contractDiff = spawnSync(
       process.execPath,
-      [cliPath, "contracts", "diff", "--from", "missing.json", "--to", source],
+      [cliPath, "contracts", "diff", "--from", contractPath, "--to", source],
       {
         cwd,
         encoding: "utf8",
@@ -772,12 +774,15 @@ describe("raw CLI errors", () => {
     expect(types.stdout).toContain("todos");
     expect(removedSourceAlias.status).toBe(1);
     expect(removedSourceAlias.stderr).toContain("unknown option '--source'");
-    expect(fingerprint.status).toBe(2);
-    expect(fingerprint.stderr).toContain("SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY");
-    expect(contract.status).toBe(2);
-    expect(contract.stderr).toContain("SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY");
-    expect(contractDiff.status).toBe(2);
-    expect(contractDiff.stderr).toContain("SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY");
+    expect(fingerprint.status).toBe(0);
+    const fingerprintValue = fingerprint.stdout.trim();
+    expect(fingerprintValue).toHaveLength(64);
+    expect([...fingerprintValue].every((character) => "0123456789abcdef".includes(character))).toBe(
+      true
+    );
+    expect(contract.status).toBe(0);
+    expect(contract.stdout).toContain("todos");
+    expect(contractDiff.status).toBe(0);
   }, 20_000);
 
   it("rejects JavaScript config files", () => {

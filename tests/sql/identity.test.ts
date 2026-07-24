@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { SchemaObject } from "../../src/core.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
-import type { RenderGuardFacts } from "../../src/sql/facts.js";
+import { finalizeObject, type RenderGuardFacts } from "../../src/sql/facts.js";
+import type { SchemaObject } from "../../src/types.js";
 
 async function singleObject(
   sql: string,
@@ -66,6 +66,132 @@ describe("AST object identity", () => {
     expect(guarded.hash).toBe(bare.hash);
     expect(renderFacts(guarded).present).toBe(true);
     expect(renderFacts(bare).present).toBe(false);
+  });
+
+  it("hashes dump-style text casts on index string literals like the source spelling", async () => {
+    const casted = await singleObject(
+      "CREATE INDEX app_tasks_idx ON app.tasks ((payload ->> 'status'::text)) WHERE queue = 'ready'::text;"
+    );
+    const bare = await singleObject(
+      "CREATE INDEX app_tasks_idx ON app.tasks ((payload ->> 'status')) WHERE queue = 'ready';"
+    );
+
+    expect(casted.hash).toBe(bare.hash);
+  });
+
+  it("preserves semantically different index literal casts", async () => {
+    const text = await singleObject("CREATE INDEX app_literal_idx ON app.tasks (('1'::text));");
+    const integer = await singleObject(
+      "CREATE INDEX app_literal_idx ON app.tasks (('1'::integer));"
+    );
+
+    expect(text.hash).not.toBe(integer.hash);
+  });
+
+  it("preserves text casts on nonliteral index expressions", async () => {
+    const casted = await singleObject(
+      "CREATE INDEX app_payload_idx ON app.tasks ((payload::text));"
+    );
+    const bare = await singleObject("CREATE INDEX app_payload_idx ON app.tasks ((payload));");
+
+    expect(casted.hash).not.toBe(bare.hash);
+  });
+
+  it("hashes typed NULL routine defaults like untyped NULL for the declared parameter type", async () => {
+    const typed = await singleObject(
+      "CREATE FUNCTION app.allowed(resource_type text DEFAULT NULL::text, resource_id uuid DEFAULT NULL::uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;"
+    );
+    const bare = await singleObject(
+      "CREATE FUNCTION app.allowed(resource_type text DEFAULT NULL, resource_id uuid DEFAULT NULL) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;"
+    );
+
+    expect(typed.hash).toBe(bare.hash);
+  });
+
+  it("preserves a typed NULL routine default when its cast differs from the parameter type", async () => {
+    const matching = await singleObject(
+      "CREATE FUNCTION app.allowed(resource_type text DEFAULT NULL::text) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;"
+    );
+    const different = await singleObject(
+      "CREATE FUNCTION app.allowed(resource_type text DEFAULT NULL::uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;"
+    );
+
+    expect(matching.hash).not.toBe(different.hash);
+  });
+
+  it("canonicalizes matching typed NULL procedure defaults", async () => {
+    const typed = await singleObject(
+      "CREATE PROCEDURE app.refresh(resource_id uuid DEFAULT NULL::uuid) LANGUAGE sql AS $$ SELECT true $$;"
+    );
+    const bare = await singleObject(
+      "CREATE PROCEDURE app.refresh(resource_id uuid DEFAULT NULL) LANGUAGE sql AS $$ SELECT true $$;"
+    );
+
+    expect(typed.hash).toBe(bare.hash);
+  });
+
+  it("hashes grants from canonical structured privilege metadata", async () => {
+    const canonical = await singleObject(
+      "GRANT SELECT(id, display_name) ON TABLE app.accounts TO authenticated;"
+    );
+    const reorderedSql = structuredClone(canonical);
+    reorderedSql.sql =
+      'GRANT SELECT ("display_name", "id") ON TABLE "app"."accounts" TO "authenticated"';
+
+    const diagnostics = await finalizeObject(reorderedSql);
+
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(reorderedSql.hash).toBe(canonical.hash);
+  });
+
+  it("includes every structured grant identity field in its hash", async () => {
+    const canonical = await singleObject(
+      "GRANT SELECT(id) ON TABLE app.accounts TO authenticated;"
+    );
+    const variants: Record<string, unknown>[] = [
+      { columnPrivileges: { SELECT: ["other_id"] } },
+      { grantee: "service_role" },
+      { kindPhrase: "VIEW" },
+      { targetIdentity: "app.other_accounts" },
+      { verb: "REVOKE" },
+      { withGrantOption: true },
+    ];
+
+    for (const metadata of variants) {
+      const variant = structuredClone(canonical);
+      Object.assign(variant.metadata, metadata);
+      await finalizeObject(variant);
+      expect(variant.hash).not.toBe(canonical.hash);
+    }
+  });
+
+  it("distinguishes column-scoped grants from object-wide grants", async () => {
+    const scoped = await singleObject("GRANT SELECT(id) ON TABLE app.accounts TO authenticated;");
+    const objectWide = await singleObject("GRANT SELECT ON TABLE app.accounts TO authenticated;");
+
+    expect(scoped.key).toBe(objectWide.key);
+    expect(scoped.hash).not.toBe(objectWide.hash);
+  });
+
+  it("hashes scoped ALL like PostgreSQL's explicit column privilege set", async () => {
+    const all = await singleObject("GRANT ALL(id) ON TABLE app.accounts TO authenticated;");
+    const explicit = await singleObject(
+      "GRANT INSERT(id), REFERENCES(id), SELECT(id), UPDATE(id) ON TABLE app.accounts TO authenticated;"
+    );
+
+    expect(all.hash).toBe(explicit.hash);
+  });
+
+  it("includes the default-privilege owner role in its hash", async () => {
+    const first = await singleObject(
+      "ALTER DEFAULT PRIVILEGES FOR ROLE owner_a IN SCHEMA app GRANT SELECT ON TABLES TO authenticated;"
+    );
+    const second = await singleObject(
+      "ALTER DEFAULT PRIVILEGES FOR ROLE owner_b IN SCHEMA app GRANT SELECT ON TABLES TO authenticated;"
+    );
+
+    expect(first.key).not.toBe(second.key);
+    expect(first.hash).not.toBe(second.hash);
   });
 });
 

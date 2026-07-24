@@ -1,0 +1,58 @@
+---
+title: "Corpus oracle"
+description: "Run dirty-real catalog regression tests for cross-lane schema diff correctness."
+keywords: ["corpus oracle", "dirty-real testing", "reconvergence", "catalog"]
+---
+
+Use this when you need regression coverage for false drift and catalog parity bugs.
+
+The corpus lane applies deliberately messy migrations to a disposable database, reconciles that database against a clean declarative tree, checks the rendered migration, applies it twice, and requires the final diff to converge to zero operations.
+
+## Use this when
+
+- A bug involved false drift or catalog mismatch.
+- Unit fixtures were too clean to catch the failure.
+- You want package-level proof across real PostgreSQL catalog noise.
+- A consuming repo needs its own incident-history corpus.
+
+## Do this
+
+Run the bundled corpus:
+
+```bash
+npm run corpus:check
+```
+
+Or run the CLI directly:
+
+```bash
+npx supaschema corpus --corpus-dir corpus/supabase-style --database-url "$DATABASE_URL"
+```
+
+Without a resolvable database URL, the command prints a skip notice and exits 0.
+
+## Add a case
+
+For every false-drift or parity bug, add the triggering shape in the same change:
+
+- put the dirty migration in `corpus/supabase-style/migrations/`;
+- put the clean end state in `corpus/supabase-style/tree/`;
+- keep expected settings in `corpus/supabase-style/corpus.json`;
+- prove `npm run corpus:check` converges.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Benchmarks" icon="gauge" href="/benchmarks">
+    See timing and correctness evidence.
+  </Card>
+  <Card title="Support matrix" icon="table" href="/reference/support-matrix">
+    Check which PostgreSQL objects are modeled.
+  </Card>
+  <Card title="Check command" icon="shield-check" href="/commands/check">
+    Validate rendered corpus migrations.
+  </Card>
+  <Card title="Verify command" icon="repeat-2" href="/commands/verify">
+    Compare apply-twice behavior against the declarative tree.
+  </Card>
+</CardGroup>

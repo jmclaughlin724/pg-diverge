@@ -305,3 +305,16 @@ function constraintColumns(fkAttrs: string[], keys: string[], impliedColumns: st
   }
   return impliedColumns;
 }
+
+export interface TableColumn {
+  defaultExpression?: string;
+  definition: string;
+  generated?: "stored" | "virtual";
+  generatedExpression?: string;
+  hasDefault?: boolean;
+  hasInlineConstraint?: boolean;
+  identity?: "always" | "by-default";
+  name: string;
+  notNull?: boolean;
+  type?: string;
+}

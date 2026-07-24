@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { SchemaModel } from "../../src/core.js";
 import { planSchemaDiff } from "../../src/planner/schema.js";
+import { renderGrantCreate, renderGrantDrop } from "../../src/render/guards.js";
 import { renderMigration } from "../../src/render/migration.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
+import type { SchemaModel } from "../../src/types.js";
 import { hasUnqualifiedCatalogName } from "../catalog/qualification.js";
 
 function emptyModel(): SchemaModel {
@@ -96,6 +97,47 @@ describe("catalog-qualified DO guards", () => {
     expect(sql).toContain("pg_catalog.pg_class");
     expect(hasUnqualifiedCatalogName(sql, ["pg_type", "pg_constraint", "pg_namespace"])).toBe(
       false
+    );
+  });
+});
+
+describe("privilege rendering", () => {
+  it("preserves column scope when creating and dropping grants", async () => {
+    const source = [
+      "CREATE SCHEMA app;",
+      "CREATE TABLE app.accounts (id integer, name text);",
+      "GRANT SELECT (name, id) ON TABLE app.accounts TO authenticated;",
+    ].join("\n");
+
+    const extracted = await extractObjectsFromSql(source, { config: { normalize: "off" } });
+    const errors = extracted.diagnostics.filter((item) => item.severity === "error");
+    const grant = extracted.objects.find((object) => object.ref.kind === "grant");
+
+    expect(errors).toEqual([]);
+    expect(grant).toBeDefined();
+    expect(grant && renderGrantCreate(grant)).toBe(
+      'GRANT SELECT ("id", "name") ON TABLE "app"."accounts" TO "authenticated";'
+    );
+    expect(grant && renderGrantDrop(grant)).toBe(
+      'REVOKE SELECT ("id", "name") ON TABLE "app"."accounts" FROM "authenticated";'
+    );
+  });
+
+  it("revokes removed PUBLIC ALL grants on objects without PUBLIC defaults", async () => {
+    const source = [
+      "CREATE SCHEMA app;",
+      "CREATE TABLE app.accounts (id integer);",
+      "GRANT ALL ON TABLE app.accounts TO PUBLIC;",
+    ].join("\n");
+
+    const extracted = await extractObjectsFromSql(source, { config: { normalize: "off" } });
+    const errors = extracted.diagnostics.filter((item) => item.severity === "error");
+    const grant = extracted.objects.find((object) => object.ref.kind === "grant");
+
+    expect(errors).toEqual([]);
+    expect(grant).toBeDefined();
+    expect(grant && renderGrantDrop(grant)).toBe(
+      'REVOKE ALL ON TABLE "app"."accounts" FROM PUBLIC;'
     );
   });
 });

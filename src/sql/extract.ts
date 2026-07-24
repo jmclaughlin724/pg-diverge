@@ -1,12 +1,12 @@
 import { resolveConfig } from "../config/schema.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import type {
   Diagnostic,
   ExtractOptions,
   ObjectKind,
   SchemaObject,
   SupaschemaConfig,
-} from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+} from "../types.js";
 import { alterTableObjects } from "./alter-table.js";
 import type { AstNode, AstStatement } from "./ast.js";
 import {
@@ -22,6 +22,7 @@ import {
   readString,
   stringList,
 } from "./ast.js";
+import { classifyDoBlock } from "./do-block.js";
 import { finalizeObjects } from "./facts.js";
 import { extensionSchemaOption, sequenceOwnedByOption } from "./options.js";
 import { supabaseViewSecurityDiagnostics, withManagedSchemaDiagnostics } from "./ownership.js";
@@ -32,6 +33,7 @@ import {
   defaultPrivilegesFromAst,
   grantObjectsFromAst,
   isInitdbDefaultComment,
+  isRevokeGrantOptionFor,
 } from "./privileges.js";
 import { makeObject, tableMetadataFromAst } from "./statements.js";
 import {
@@ -42,6 +44,7 @@ import {
 import { stripDeclaredConstraints, tableConstraintSyntheses } from "./table-constraints.js";
 
 type ExtractObjectsOptions = ExtractOptions & {
+  existingObjects?: readonly SchemaObject[];
   file?: string;
   startOrdinal?: number;
 };
@@ -57,6 +60,8 @@ interface ParseStatementResult {
   objects: SchemaObject[];
 }
 
+type ConstraintNamesByTable = Map<string, Map<string, Set<string>>>;
+
 type ObjectBuilder = (
   node: AstNode,
   statement: AstStatement,
@@ -67,8 +72,6 @@ type ObjectBuilder = (
 const objectBuilders: Partial<Record<string, ObjectBuilder>> = {
   AlterDefaultPrivilegesStmt: defaultPrivilegeObjects,
   AlterSeqStmt: sequenceOwnedByObjects,
-  AlterTableStmt: (node, statement, ordinal, file) =>
-    alterTableObjects(node, statement.text, ordinal, file),
   CommentStmt: commentObjects,
   CompositeTypeStmt: (node, statement, ordinal, file) =>
     singleRangeVarObject("type", node.typevar, statement, ordinal, file),
@@ -88,7 +91,6 @@ const objectBuilders: Partial<Record<string, ObjectBuilder>> = {
   CreateSchemaStmt: schemaObjects,
   CreateSeqStmt: (node, statement, ordinal, file) =>
     singleRangeVarObject("sequence", node.sequence, statement, ordinal, file),
-  CreateStmt: tableObjects,
   CreateTableAsStmt: materializedViewObjects,
   CreateTrigStmt: triggerObjects,
   GrantStmt: (node, statement, ordinal, file) =>
@@ -106,6 +108,7 @@ export async function extractObjectsFromSql(
   const parsedSql = await parseSqlAst(sql, options.file);
   const diagnostics = [...parsedSql.diagnostics];
   const objects: SchemaObject[] = [];
+  const constraintNames = constraintNameState(options.existingObjects);
   let ordinal = options.startOrdinal ?? 0;
   if (parsedSql.ast === undefined) {
     if (!diagnostics.some((item) => item.severity === "error")) {
@@ -124,7 +127,7 @@ export async function extractObjectsFromSql(
     if (statement.text.length === 0 || ignoredStatementTags.has(statement.tag)) {
       continue;
     }
-    const parsed = parseStatement(statement, ordinal, config, options.file);
+    const parsed = parseStatement(statement, ordinal, config, options.file, constraintNames);
     diagnostics.push(...parsed.diagnostics);
     if (parsed.objects.length > 0) {
       diagnostics.push(
@@ -132,6 +135,7 @@ export async function extractObjectsFromSql(
       );
       diagnostics.push(...supabaseViewSecurityDiagnostics(parsed.objects, config));
     }
+    recordConstraintNames(parsed.objects, constraintNames);
     objects.push(...parsed.objects);
     ordinal += parsed.objects.length;
   }
@@ -146,8 +150,13 @@ function parseStatement(
   statement: AstStatement,
   ordinal: number,
   config: SupaschemaConfig,
-  file: string | undefined
+  file: string | undefined,
+  constraintNames: ConstraintNamesByTable
 ): ParseStatementResult {
+  const node = asRecord(statement.node[statement.tag]) ?? {};
+  if (statement.tag === "DoStmt" && classifyDoBlock(node) === "idempotent-role") {
+    return { diagnostics: [], objects: [] };
+  }
   if (sourceIntentStatementTags.has(statement.tag)) {
     return {
       diagnostics: [
@@ -166,7 +175,6 @@ function parseStatement(
       objects: [],
     };
   }
-  const node = asRecord(statement.node[statement.tag]) ?? {};
   const unsupported = unsupportedStatement(statement.tag, node);
   if (unsupported) {
     return {
@@ -186,7 +194,7 @@ function parseStatement(
       objects: [],
     };
   }
-  const objects = buildObjects(statement, ordinal, file);
+  const objects = buildObjects(statement, ordinal, file, constraintNames);
   if (objects === undefined) {
     const head = statement.text.split("\n", 1)[0]?.slice(0, 100) ?? "";
     return {
@@ -206,17 +214,49 @@ function parseStatement(
       objects: [],
     };
   }
-  return withManagedSchemaDiagnostics(objects, statement.text, config, file);
+  const managed = withManagedSchemaDiagnostics(objects, statement.text, config, file);
+  if (statement.tag !== "GrantStmt" || !isRevokeGrantOptionFor(node)) {
+    return managed;
+  }
+  return {
+    diagnostics: [
+      diagnostic(
+        "SUPA_EXTRACT_UNSUPPORTED",
+        "error",
+        "unsupported REVOKE GRANT OPTION FOR privilege statement",
+        {
+          file,
+          hint: "Keep this privilege mutation in an explicit reviewed migration until it has a dedicated model.",
+          schemas: referencedSchemas(statement),
+          statement: statement.text,
+        }
+      ),
+      ...managed.diagnostics,
+    ],
+    objects: managed.objects,
+  };
 }
 
 function buildObjects(
   statement: AstStatement,
   ordinal: number,
-  file: string | undefined
+  file: string | undefined,
+  constraintNames: ConstraintNamesByTable
 ): SchemaObject[] | undefined {
   const node = asRecord(statement.node[statement.tag]);
   if (!node) {
     return;
+  }
+  const relation = rangeVarName(node.relation);
+  const existingNames =
+    relation === undefined
+      ? []
+      : (constraintNames.get(relation.schema ?? "public")?.get(relation.name) ?? []);
+  if (statement.tag === "CreateStmt") {
+    return tableObjects(node, statement, ordinal, file, existingNames);
+  }
+  if (statement.tag === "AlterTableStmt") {
+    return alterTableObjects(node, statement.text, ordinal, file, existingNames);
   }
   return objectBuilders[statement.tag]?.(node, statement, ordinal, file);
 }
@@ -273,7 +313,8 @@ function tableObjects(
   node: AstNode,
   statement: AstStatement,
   ordinal: number,
-  file: string | undefined
+  file: string | undefined,
+  existingConstraintNames: Iterable<string> = []
 ): SchemaObject[] | undefined {
   const name = rangeVarName(node.relation);
   if (!name) {
@@ -294,7 +335,8 @@ function tableObjects(
   for (const [index, synthesized] of tableConstraintSyntheses(
     node,
     statement.text,
-    statement.byteStart
+    statement.byteStart,
+    existingConstraintNames
   ).entries()) {
     objects.push(
       makeObject(
@@ -307,6 +349,31 @@ function tableObjects(
     );
   }
   return objects;
+}
+
+function constraintNameState(
+  existingObjects: readonly SchemaObject[] | undefined
+): ConstraintNamesByTable {
+  const names: ConstraintNamesByTable = new Map();
+  recordConstraintNames(existingObjects ?? [], names);
+  return names;
+}
+
+function recordConstraintNames(
+  objects: readonly SchemaObject[],
+  names: ConstraintNamesByTable
+): void {
+  for (const object of objects) {
+    if (object.ref.kind !== "constraint" || object.ref.table === undefined) {
+      continue;
+    }
+    const schema = object.ref.schema ?? "public";
+    const tables = names.get(schema) ?? new Map<string, Set<string>>();
+    const tableNames = tables.get(object.ref.table) ?? new Set<string>();
+    tableNames.add(object.ref.name);
+    tables.set(object.ref.table, tableNames);
+    names.set(schema, tables);
+  }
 }
 
 function sequenceOwnedByObjects(

@@ -1,9 +1,14 @@
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { lintDocsStandard } from "../../scripts/check-docs-standard.mjs";
+import { lintDocsStandard } from "../../scripts/docs-lint/check-standard.mjs";
 
+const docsLintCli = fileURLToPath(
+  new URL("../../scripts/docs-lint/check-standard.mjs", import.meta.url)
+);
 const roots: string[] = [];
 
 const page = (body: string) => `---
@@ -447,6 +452,28 @@ noindex: "no"
     const violations = lintDocsStandard({ rootDir: root });
 
     expect(violations).toEqual([]);
+  });
+
+  it("requires docs.json from the executable full-lint route", async () => {
+    const root = await writeDocs({ "docs/page.mdx": page("## Start") });
+
+    const result = spawnSync(process.execPath, [docsLintCli], { cwd: root, encoding: "utf8" });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("[docs-json]");
+  });
+
+  it("checks local-runner conventions from the executable full-lint route", async () => {
+    const root = await writeDocs(
+      localRunnerFixtureFiles({
+        "README.md": "Run `npm install supaschema`\nnpx supaschema diff\n",
+      })
+    );
+
+    const result = spawnSync(process.execPath, [docsLintCli], { cwd: root, encoding: "utf8" });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("[local-runner]");
   });
 
   it("rejects stale universal npx and missing local-runner install guidance", async () => {

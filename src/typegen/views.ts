@@ -1,4 +1,3 @@
-import type { SchemaObject } from "../core.js";
 import {
   asRecord,
   astNodeKind,
@@ -10,6 +9,7 @@ import {
   typeNameToSql,
 } from "../sql/ast.js";
 import { parseSqlAst } from "../sql/parser.js";
+import type { SchemaObject } from "../types.js";
 import type { ColumnShape, FunctionShape, TableShape } from "./model.js";
 
 interface ViewTarget {

@@ -14,7 +14,6 @@ Single-concern `check-*.mjs` guards proving repo invariants, grouped by domain. 
 - `docs-config/` — `check-config-standardization.mjs`, `check-rule-citations.mjs`, `check-schema.mjs`
 - `fastmcp/check-fastmcp-agent.mjs` (Rule 11)
 - `code-atlas/check-code-atlas.mjs` (Rule 10)
-- `deps/check-dependency-catalog.mjs`
 
 ## Owners
 

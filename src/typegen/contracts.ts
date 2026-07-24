@@ -1,9 +1,9 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve } from "node:path";
-import type { Diagnostic, SupaschemaConfig } from "../core.js";
-import { hasErrors } from "../diagnostics.js";
+import { hasErrors } from "../diagnostics/diagnostics.js";
 import { extractSourceModel } from "../source/extract.js";
 import { defaultTreeSource } from "../source/resolve.js";
+import type { Diagnostic, SupaschemaConfig } from "../types.js";
 import { generateDatabaseTypes } from "./database.js";
 import { collectSchemaShapes } from "./model.js";
 import { generateZodSchemas } from "./zod.js";

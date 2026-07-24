@@ -2,21 +2,19 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import type { SupaschemaConfig } from "../config/schema.js";
-import { pullContract, pushContract } from "../contract/registry-client.js";
 import {
   contractDrift,
   isSchemaContract,
   type SchemaContract,
   toContract,
 } from "../contract/schema.js";
-import type { Diagnostic } from "../core.js";
-import { formatDiagnostics, hasErrors } from "../diagnostics.js";
+import { formatDiagnostics, hasErrors } from "../diagnostics/diagnostics.js";
 import { renderDoctorReport, runDoctor } from "../doctor.js";
 import { extractSourceModel } from "../source/extract.js";
-import { migrationsTypegenOnlyDiagnostic } from "../source/policy.js";
 import { defaultTreeSource } from "../source/resolve.js";
 import { generateTypeContracts } from "../typegen/contracts.js";
 import { collectSchemaShapes } from "../typegen/model.js";
+import type { Diagnostic } from "../types.js";
 
 export interface ToolCommandContext {
   configPath: () => string | undefined;
@@ -59,13 +57,12 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .command("types")
     .option("--from <source>", "source to type (default: the config schema tree)")
     .option("--out <file|stdout>", "TypeScript output path (default: config.typesFile)")
-    .description(
-      "Generate TypeScript types and Zod validators straight from the PostgreSQL schema tree — no database, no introspection, no applied migrations required."
-    )
+    .description("Generate configured TypeScript and Zod contracts from a schema source.")
     .action(async (options: { from?: string; out?: string }) => {
       const config = await context.loadCliConfig();
       const result = await generateTypeContracts({
         config,
+        honorWorkflowPolicy: options.from === undefined && options.out === undefined,
         ...(options.from === undefined ? {} : { source: options.from }),
         ...(options.out === undefined ? {} : { out: options.out }),
       });
@@ -89,16 +86,6 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     )
     .action(async (options: { from: string }) => {
       const config = await context.loadCliConfig();
-      const sourceDiagnostic = migrationsTypegenOnlyDiagnostic(
-        "fingerprint drift",
-        "from",
-        options.from
-      );
-      if (sourceDiagnostic !== undefined) {
-        context.printDiagnostics([sourceDiagnostic]);
-        process.exitCode = 2;
-        return;
-      }
       const model = await extractSourceModel(options.from, { config });
       context.printDiagnostics(model.diagnostics);
       if (hasErrors(model.diagnostics)) {
@@ -108,9 +95,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
       process.stdout.write(`${model.fingerprint}\n`);
     });
 
-  const contracts = program
-    .command("contracts")
-    .description("Export, diff, push, and pull schema contracts.");
+  const contracts = program.command("contracts").description("Export and diff schema contracts.");
 
   contracts
     .command("export")
@@ -120,9 +105,6 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .action(async (options: { from?: string; out?: string }) => {
       const config = await context.loadCliConfig();
       const source = options.from ?? defaultTreeSource(config);
-      if (printMigrationsSourceDiagnostic(context, "schema contract export", "source", source)) {
-        return;
-      }
       const contract = await buildContract(config, source);
       await writeJson(options.out ?? "stdout", contract);
     });
@@ -135,9 +117,6 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .action(async (options: { from: string; to?: string }) => {
       const config = await context.loadCliConfig();
       const source = options.to ?? defaultTreeSource(config);
-      if (printMigrationsSourceDiagnostic(context, "schema contract drift", "to", source)) {
-        return;
-      }
       const previous = await readContractFile(options.from);
       const next = await buildContract(config, source);
       const diagnostics = contractDrift(previous, next);
@@ -148,75 +127,6 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
         process.exitCode = 2;
       }
     });
-
-  contracts
-    .command("push")
-    .requiredOption("--registry-url <url>", "contract registry base URL")
-    .requiredOption("--repo <owner/repo>", "repo bound to the license token")
-    .option("--name <name>", "contract name", "main")
-    .option("--from <source>", "source to export and push (default: the config schema tree)")
-    .option(
-      "--license-env <name>",
-      "environment variable containing the license token",
-      "SUPASCHEMA_LICENSE"
-    )
-    .description("Push a schema contract to the hosted registry.")
-    .action(
-      async (options: {
-        from?: string;
-        licenseEnv: string;
-        name: string;
-        registryUrl: string;
-        repo: string;
-      }) => {
-        const config = await context.loadCliConfig();
-        const source = options.from ?? defaultTreeSource(config);
-        if (printMigrationsSourceDiagnostic(context, "schema contract export", "source", source)) {
-          return;
-        }
-        const contract = await buildContract(config, source);
-        await pushContract({
-          contract,
-          fetchImpl: globalThis.fetch,
-          license: licenseFromEnv(options.licenseEnv),
-          name: options.name,
-          registryUrl: options.registryUrl,
-          repo: options.repo,
-        });
-        process.stdout.write("contract stored\n");
-      }
-    );
-
-  contracts
-    .command("pull")
-    .requiredOption("--registry-url <url>", "contract registry base URL")
-    .requiredOption("--repo <owner/repo>", "repo bound to the license token")
-    .option("--name <name>", "contract name", "main")
-    .option("--out <file|stdout>", "contract output path", "stdout")
-    .option(
-      "--license-env <name>",
-      "environment variable containing the license token",
-      "SUPASCHEMA_LICENSE"
-    )
-    .description("Pull a schema contract from the hosted registry.")
-    .action(
-      async (options: {
-        licenseEnv: string;
-        name: string;
-        out?: string;
-        registryUrl: string;
-        repo: string;
-      }) => {
-        const contract = await pullContract({
-          fetchImpl: globalThis.fetch,
-          license: licenseFromEnv(options.licenseEnv),
-          name: options.name,
-          registryUrl: options.registryUrl,
-          repo: options.repo,
-        });
-        await writeJson(options.out ?? "stdout", contract);
-      }
-    );
 
   program
     .command("completion")
@@ -233,21 +143,6 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
       }
       process.stdout.write(script);
     });
-}
-
-function printMigrationsSourceDiagnostic(
-  context: Pick<ToolCommandContext, "printDiagnostics">,
-  lane: string,
-  side: "from" | "source" | "to",
-  source: string
-): boolean {
-  const diagnostic = migrationsTypegenOnlyDiagnostic(lane, side, source);
-  if (diagnostic === undefined) {
-    return false;
-  }
-  context.printDiagnostics([diagnostic]);
-  process.exitCode = 2;
-  return true;
 }
 
 async function buildContract(
@@ -279,14 +174,6 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, json);
   process.stdout.write(`${outPath}\n`);
-}
-
-function licenseFromEnv(name: string): string {
-  const token = process.env[name];
-  if (token === undefined || token.length === 0) {
-    throw new Error(`${name} must contain a license token`);
-  }
-  return token;
 }
 
 function completionScript(shell: string, program: Command): string | undefined {

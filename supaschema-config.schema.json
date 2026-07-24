@@ -415,6 +415,20 @@
         ]
       ]
     },
+    "managedSchemaOverlays": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Exact policy, grant, or comment object keys that Supaschema may manage inside managed schemas. Wildcards and structural objects are not supported.",
+      "examples": [
+        [
+          "policy:storage.tenant_document_read:objects"
+        ]
+      ]
+    },
     "postgresVersion": {
       "default": "15+",
       "type": "string",

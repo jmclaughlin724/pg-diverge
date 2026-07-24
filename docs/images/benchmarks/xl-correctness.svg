@@ -591,10 +591,10 @@
     supabase-pg-schema
   </text>
   <rect
-    fill="rgba(62,207,142,0.14)"
+    fill="rgba(250,204,21,0.14)"
     height="32"
     rx="16"
-    stroke="#10B981"
+    stroke="#FACC15"
     stroke-opacity="0.55"
     width="120"
     x="430"
@@ -609,7 +609,7 @@
     x="490.0"
     y="401.4"
   >
-    ✓ 3/3
+    △ 2/3
   </text>
   <rect
     fill="rgba(169,22,22,0.16)"
@@ -633,10 +633,10 @@
     ✗ 0/3
   </text>
   <rect
-    fill="rgba(62,207,142,0.14)"
+    fill="rgba(250,204,21,0.14)"
     height="32"
     rx="16"
-    stroke="#10B981"
+    stroke="#FACC15"
     stroke-opacity="0.55"
     width="120"
     x="790"
@@ -651,7 +651,7 @@
     x="850.0"
     y="401.4"
   >
-    ✓ 3/3
+    △ 2/3
   </text>
   <rect
     fill="rgba(250,204,21,0.14)"
@@ -776,6 +776,6 @@
     x="36.0"
     y="506.0"
   >
-    supaschema 0.1.0 · Supabase CLI 2.106.0 · Node v24.14.0 · Apple Silicon · 3 iterations
+    supaschema 0.4.3 · Supabase CLI 2.109.1 · Node v24.18.0 · Apple Silicon · 3 iterations
   </text>
 </svg>

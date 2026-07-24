@@ -1,6 +1,6 @@
-import type { SchemaObject } from "../core.js";
 import { formatQualifiedName } from "../sql/identifiers.js";
 import { makeObject } from "../sql/statements.js";
+import type { SchemaObject } from "../types.js";
 import {
   type CatalogQuery,
   managedSchemaFilter,

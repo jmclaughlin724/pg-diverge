@@ -1,6 +1,11 @@
-import type { MigrationOperation, ObjectRef, SchemaObject } from "../core.js";
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
-import { builtinPublicDefault } from "../sql/privileges.js";
+import {
+  builtinPublicDefault,
+  mergePrivilegeMetadata,
+  type PrivilegeMetadata,
+  renderPrivilegeList,
+} from "../sql/privileges.js";
+import type { MigrationOperation, ObjectRef, SchemaObject } from "../types.js";
 
 export function ensureSemicolon(sql: string): string {
   const trimmed = sql.trim();
@@ -126,28 +131,65 @@ END
 $supaschema$;`;
 }
 
+interface GrantRenderMetadata extends PrivilegeMetadata {
+  grantee: string;
+  kindPhrase: string;
+  target: string;
+  verb: "GRANT" | "REVOKE";
+}
+
+export function renderGrantCreate(object: SchemaObject): string {
+  const unsupportedForm = object.metadata.unsupportedPrivilegeForm;
+  if (typeof unsupportedForm === "string") {
+    throw new Error(`unsupported ${unsupportedForm} privilege statement: ${object.sql}`);
+  }
+  const metadata = grantRenderMetadata(object);
+  if (!metadata) {
+    return ensureSemicolon(object.sql);
+  }
+  const keyword = metadata.verb === "GRANT" ? "TO" : "FROM";
+  const suffix = metadata.verb === "GRANT" && metadata.withGrantOption ? " WITH GRANT OPTION" : "";
+  return `${metadata.verb} ${renderPrivilegeList(metadata.privileges, metadata.columnPrivileges)} ON ${metadata.kindPhrase} ${metadata.target} ${keyword} ${renderRole(metadata.grantee)}${suffix};`;
+}
+
 export function renderGrantDrop(object: SchemaObject): string {
+  const metadata = grantRenderMetadata(object);
+  if (!metadata) {
+    return `-- Manual privilege removal required for ${object.key}`;
+  }
+  const direction = metadata.verb === "GRANT" ? "REVOKE" : "GRANT";
+  const reversePrivileges = renderReverseGrantPrivileges(metadata);
+  if (!reversePrivileges) {
+    return manualPrivilegeDropComment(object);
+  }
+  const keyword = direction === "GRANT" ? "TO" : "FROM";
+  return `${direction} ${reversePrivileges} ON ${metadata.kindPhrase} ${metadata.target} ${keyword} ${renderRole(metadata.grantee)};`;
+}
+
+function grantRenderMetadata(object: SchemaObject): GrantRenderMetadata | undefined {
   const verb = object.metadata.verb;
-  const privileges = object.metadata.privileges;
   const kindPhrase = object.metadata.kindPhrase;
   const target = object.metadata.target;
   const grantee = object.metadata.grantee;
   if (
     (verb !== "GRANT" && verb !== "REVOKE") ||
-    !Array.isArray(privileges) ||
     typeof kindPhrase !== "string" ||
     typeof target !== "string" ||
     typeof grantee !== "string"
   ) {
-    return `-- Manual privilege removal required for ${object.key}`;
+    return;
   }
-  const direction = verb === "GRANT" ? "REVOKE" : "GRANT";
-  const reversePrivileges = renderReversePrivileges(privileges, kindPhrase, grantee);
-  if (!reversePrivileges) {
-    return manualPrivilegeDropComment(object);
+  const privilegeMetadata = mergePrivilegeMetadata([
+    {
+      columnPrivileges: object.metadata.columnPrivileges,
+      privileges: object.metadata.privileges,
+      withGrantOption: object.metadata.withGrantOption === true,
+    },
+  ]);
+  if (!privilegeMetadata) {
+    return;
   }
-  const keyword = direction === "GRANT" ? "TO" : "FROM";
-  return `${direction} ${reversePrivileges} ON ${kindPhrase} ${target} ${keyword} ${renderRole(grantee)};`;
+  return { ...privilegeMetadata, grantee, kindPhrase, target, verb };
 }
 
 export function renderDefaultPrivilegeDrop(object: SchemaObject): string {
@@ -189,6 +231,18 @@ function renderReversePrivileges(
     return builtinPublicDefault(kindPhrase)?.join(", ");
   }
   return privileges.map(String).join(", ");
+}
+
+function renderReverseGrantPrivileges(metadata: GrantRenderMetadata): string | undefined {
+  if (
+    metadata.verb === "REVOKE" &&
+    metadata.grantee === "PUBLIC" &&
+    metadata.columnPrivileges === undefined &&
+    metadata.privileges.includes("ALL")
+  ) {
+    return builtinPublicDefault(metadata.kindPhrase)?.join(", ");
+  }
+  return renderPrivilegeList(metadata.privileges, metadata.columnPrivileges);
 }
 
 function manualPrivilegeDropComment(object: SchemaObject): string {

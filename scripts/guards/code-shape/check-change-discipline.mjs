@@ -13,7 +13,6 @@ const deferredMarkerTerms = [
 const externalContractExportOnlyFiles = new Map([
   ["src/index.ts", "npm package public API entry point"],
 ]);
-const monetizationOwnerFiles = new Set(["src/license.ts"]);
 const monetizationTerms = [
   "STRIPE_SECRET_KEY",
   "STRIPE_PRICE_MAP",
@@ -224,8 +223,7 @@ function monetizationSurfaceViolations(candidates, root) {
   return candidates.flatMap((file) => {
     if (
       file.startsWith("tests/") ||
-      file === "scripts/guards/code-shape/check-change-discipline.mjs" ||
-      monetizationOwnerFiles.has(file)
+      file === "scripts/guards/code-shape/check-change-discipline.mjs"
     ) {
       return [];
     }

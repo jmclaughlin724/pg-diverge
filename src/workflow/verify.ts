@@ -1,9 +1,9 @@
 import { join } from "node:path";
-import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../core.js";
 import { resolveDatabaseUrl, resolveVerificationDatabaseUrl } from "../database/url.js";
-import { diagnostic, hasErrors } from "../diagnostics.js";
+import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { MODEL_FORMAT_VERSION } from "../hash.js";
 import { latestLineage } from "../migrations/lineage.js";
+import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../types.js";
 import { verifyMigrationChain } from "../verify/migration.js";
 import { render } from "./report.js";
 import type { SyncOptions, SyncResult, SyncSources } from "./sync.js";

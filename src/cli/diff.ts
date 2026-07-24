@@ -9,20 +9,20 @@ import {
   formatConfigValidationDiagnostics,
   pendingInstallPathConfirmationDiagnostic,
 } from "../config/validate.js";
-import type { Diagnostic, MigrationPlan } from "../core.js";
 import { resolveDatabaseUrl } from "../database/url.js";
-import { diagnostic, hasErrors } from "../diagnostics.js";
+import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { MODEL_FORMAT_VERSION } from "../hash.js";
 import { defaultMigrationName, migrationFiles, nextMigrationFile } from "../migrations/files.js";
 import { latestLineage, parseLineage } from "../migrations/lineage.js";
 import { migrationFileVersion, migrationsStatus } from "../migrations/status.js";
 import { pathContainsOrEqual } from "../paths.js";
 import { buildSchemaDiffPlan } from "../pipeline/diff.js";
-import { resolveGenerationSourceDefaults } from "../planning/context.js";
+import { resolveGenerationSourceDefaults } from "../planner/context.js";
 import { redactSecrets } from "../redaction.js";
 import { renderMigrationSplit } from "../render/migration.js";
 import { parseSchemaFilter } from "../source/extract.js";
 import { resolveMigrationsDir } from "../source/resolve.js";
+import type { Diagnostic, MigrationPlan } from "../types.js";
 import type { SummaryTone } from "./tools.js";
 import { colorizeSummaryLine } from "./tools.js";
 

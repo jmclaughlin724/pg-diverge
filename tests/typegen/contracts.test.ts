@@ -110,20 +110,28 @@ async function sqlSource(sql: string): Promise<string> {
   return `dir:${root}`;
 }
 
+async function migrationSource(sql: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "supa-type-contract-migrations-"));
+  await writeFile(join(root, "20260101000000_schema.sql"), sql);
+  return `migrations:${root}`;
+}
+
 describe("type-safety deploy gate", () => {
-  it("rejects migrations replay sources for drift evaluation", async () => {
+  it("evaluates migrations replay sources for drift", async () => {
     const config = resolveConfig();
+    const fromSource = await migrationSource(
+      "CREATE TABLE public.users (id bigint, email text);\n"
+    );
+    const toSource = await sqlSource("CREATE TABLE public.users (id bigint);\n");
 
     const result = await evaluateTypeContract({
       config,
-      fromSource: "git:HEAD",
-      toSource: "migrations:supabase/migrations",
+      fromSource,
+      toSource,
     });
 
-    expect(result.sourceDiagnostics).toEqual([
-      expect.objectContaining({ code: "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY" }),
-    ]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.sourceDiagnostics).toEqual([]);
+    expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_TYPE_COLUMN_REMOVED");
   });
 
   it("blocks deploy when configured as deploy_blocking", async () => {

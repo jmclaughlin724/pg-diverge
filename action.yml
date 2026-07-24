@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://www.schemastore.org/github-action.json
 name: supaschema
-description: Run supaschema CLI gates or the config-gated sync pipeline against a declarative SQL tree.
+description: Fast, AI-ready, zero-config PostgreSQL schema gates and guarded sync from a declarative SQL tree.
 branding:
   color: blue
   icon: git-merge

@@ -1,12 +1,12 @@
 import { Pool } from "pg";
-import type { SchemaModel, SchemaObject } from "../core.js";
-import { diagnostic } from "../diagnostics.js";
+import { diagnostic } from "../diagnostics/diagnostics.js";
 import { suppressDefaultAclImpliedGrants } from "../grants/default-acl.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { finalizeObjects } from "../sql/facts.js";
 import { formatQualifiedName, quoteIdent, stripOuterDoubleQuotes } from "../sql/identifiers.js";
 import { policyMetadataFromSql } from "../sql/policies.js";
 import { makeObject } from "../sql/statements.js";
+import type { SchemaModel, SchemaObject } from "../types.js";
 import { collectComments } from "./comments.js";
 import { collectForeignObjects } from "./foreign.js";
 import { collectDefaultPrivileges, collectGrants } from "./grants.js";

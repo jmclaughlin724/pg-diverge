@@ -1,11 +1,11 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
-  "root": true,
   "extends": [
     "ultracite/biome/core",
     "ultracite/biome/type-aware",
     "ultracite/biome/vitest"
   ],
+  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+  "root": true,
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -26,19 +26,29 @@
       "!.venv",
       "!coverage",
       "!.tmp",
-      "!.codeatlas",
-      "!.codeatlas-sa",
+      "!**/.tmp",
       "!.wrangler",
       "!*.tgz",
       "!supaschema-config.schema.json",
+      "!database.types.ts",
+      "!database.zod.ts",
       "!api-docs",
       "!benchmarks/results",
       "!.gitnexus",
+      "!.claude/worktrees",
+      "!.claude/skills/code-review/references/workflow-backed-code-review.js",
+      "!.claude/skills/deep-research/references/workflow-backed-deep-research.js",
       "!agent-bundle",
       "!tests/fixtures/sample-project/supabase/functions",
       "!.agents",
       "!.codex"
     ]
+  },
+  "html": {
+    "experimentalFullSupportEnabled": true
+  },
+  "javascript": {
+    "experimentalEmbeddedSnippetsEnabled": true
   },
   "formatter": {
     "enabled": true,

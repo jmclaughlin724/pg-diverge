@@ -3,8 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { bundleDocsFiles } from "../../scripts/skills/bundle-docs.mjs";
 import {
   checkAgentSurfaces,
+  publicSkillNames,
   renderSourceCodexHooks,
   syncAgentSurfaces,
 } from "../../scripts/skills/sync-llm.mjs";
@@ -13,10 +15,23 @@ const root = resolve(import.meta.dirname, "../..");
 const claudeProjectDir = ["$", "{", "CLAUDE_PROJECT_DIR", "}"].join("");
 const codexProjectDir = ["$", "{", "CODEX_PROJECT_DIR:-$PWD", "}"].join("");
 const editToolMatcher = "apply_patch";
+const curatedSkillSources = {
+  ".claude/skills/supaschema-maintain/references/commands.md": "maintain commands\n",
+  ".claude/skills/supaschema-maintain/SKILL.md": "maintain skill\n",
+  ".claude/skills/supaschema-migrate/references/commands.md": "migrate commands\n",
+  ".claude/skills/supaschema-migrate/SKILL.md": "migrate skill\n",
+};
 
-function tempSurface(files: Record<string, string>): string {
+function tempSurface(files: Record<string, string | Uint8Array>): string {
   const root = mkdtempSync(join(tmpdir(), "supa-sync-llm-"));
-  for (const [file, source] of Object.entries(files)) {
+  const sourceFiles = {
+    ...curatedSkillSources,
+    ...(Object.keys(files).some((file) => file.startsWith("docs/"))
+      ? {}
+      : { "docs/getting-started.mdx": "# Getting started\n" }),
+    ...files,
+  };
+  for (const [file, source] of Object.entries(sourceFiles)) {
     mkdirSync(join(root, dirname(file)), { recursive: true });
     writeFileSync(join(root, file), source);
   }
@@ -88,6 +103,16 @@ function claudeHookSettings() {
           hooks: [claudeNodeHook(".claude/hooks/context-subagent-start.mjs")],
         },
       ],
+      Stop: [
+        {
+          hooks: [claudeNodeHook(".claude/hooks/context-stop.mjs")],
+        },
+      ],
+      SubagentStop: [
+        {
+          hooks: [claudeNodeHook(".claude/hooks/context-subagent-stop.mjs")],
+        },
+      ],
       UserPromptSubmit: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-user-prompt-submit.mjs")],
@@ -114,6 +139,32 @@ function claudeSupaschemaHook(command: string) {
 }
 
 describe("sync:llm", () => {
+  it("builds a sorted byte-exact MDX bundle and excludes non-MDX sources", () => {
+    const nestedBytes = Buffer.from([0x23, 0x20, 0x41, 0x0d, 0x0a, 0x00, 0xff]);
+    const root = tempSurface({
+      "docs/a/first.mdx": nestedBytes,
+      "docs/docs.json": "{}\n",
+      "docs/image.svg": "<svg />\n",
+      "docs/z-last.mdx": "# Z\n",
+    });
+
+    const files = bundleDocsFiles(root);
+
+    expect(files.get("docs/a/first.mdx")).toEqual(nestedBytes);
+    expect(files.get("docs/z-last.mdx")).toEqual(Buffer.from("# Z\n"));
+    expect(files.has("docs/docs.json")).toBe(false);
+    expect(files.has("docs/image.svg")).toBe(false);
+    expect(files.get("docs/index.md")?.toString("utf8")).toBe(
+      [
+        "# Supaschema Documentation",
+        "",
+        "- [agent-bundle/docs/a/first.mdx](https://supaschema.com/docs/a/first)",
+        "- [agent-bundle/docs/z-last.mdx](https://supaschema.com/docs/z-last)",
+        "",
+      ].join("\n")
+    );
+  });
+
   it("mirrors private Claude surfaces locally and keeps public skills narrow", () => {
     const root = tempSurface({
       ".agents/prompts/supaschema-install.md": "# Install\n",
@@ -220,19 +271,20 @@ describe("sync:llm", () => {
       ".codex/hooks/stale.mjs": "process.stdout.write('stale');\n",
       ".codex/rules/stale.rules": "# stale\n",
       "agent-bundle/INSTALL.md": "# Agent bundle install\n",
+      "skills/README.md": "# Public skills\n",
       "skills/stale/SKILL.md": "# stale\n",
     });
 
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 19,
+      agentBundle: 30,
       agents: 1,
       codexHookConfig: 1,
       hooks: 5,
-      publicSkills: 1,
+      publicSkills: 5,
       rules: 2,
-      skills: 2,
+      skills: 6,
       skillTargets: 1,
     });
     expect(read(root, ".codex/rules/21-source-control.rules")).toContain(
@@ -273,10 +325,21 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
     expect(read(root, ".codex/hooks.json")).not.toContain("general-guard.mjs");
-    expect(read(root, ".codex/hooks.json")).not.toContain("context-stop.mjs");
+    expect(read(root, ".codex/hooks.json")).toContain("context-stop.mjs");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
     expect(read(root, "skills/supaschema/SKILL.md")).toBe("# supaschema\n");
+    expect(read(root, "skills/supaschema-migrate/references/commands.md")).toBe(
+      "migrate commands\n"
+    );
+    expect(read(root, "agent-bundle/claude/skills/supaschema-maintain/SKILL.md")).toBe(
+      "maintain skill\n"
+    );
+    expect(JSON.parse(read(root, "agent-bundle/skills-manifest.json"))).toEqual({
+      skills: publicSkillNames,
+    });
+    expect(read(root, "skills/README.md")).toBe("# Public skills\n");
     expect(existsSync(join(root, "skills/elegant/SKILL.md"))).toBe(false);
+    expect(existsSync(join(root, ".codex/skills"))).toBe(false);
     expect(existsSync(join(root, ".codex/rules/stale.rules"))).toBe(false);
     expect(checkAgentSurfaces({ root })).toEqual([]);
   });
@@ -434,6 +497,56 @@ describe("sync:llm", () => {
         hookEventName: "PostToolUse",
       },
     });
+    expect(read(project, "sync-count.txt")).toBe("1");
+  });
+
+  it("syncs Codex surface drift from Stop and returns valid empty Stop JSON", () => {
+    const project = tempSurface({
+      ".claude/agents/worker.md": [
+        "---",
+        "name: worker",
+        "description: Worker.",
+        "---",
+        "",
+        "# Worker",
+        "",
+      ].join("\n"),
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
+      ".claude/rules/supaschema.md": "# Rule\n",
+      ".claude/skills/supaschema/SKILL.md": "# Skill\n",
+      "package.json": `${JSON.stringify({
+        name: "supaschema",
+        scripts: {
+          "sync:llm":
+            "node -e \"const fs=require('node:fs');fs.appendFileSync('sync-count.txt','1')\"",
+        },
+      })}\n`,
+    });
+    const payload = {
+      cwd: project,
+      hook_event_name: "Stop",
+      session_id: "codex-sync-stop",
+    };
+    const env = { ...process.env, CODEX_PROJECT_DIR: project };
+    const hook = join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
+
+    expect(
+      execFileSync(process.execPath, [hook], {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify(payload),
+      })
+    ).toBe("{}\n");
+
+    writeFileSync(join(project, ".claude/rules/supaschema.md"), "# Rule changed\n");
+
+    expect(
+      execFileSync(process.execPath, [hook], {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify(payload),
+      })
+    ).toBe("{}\n");
     expect(read(project, "sync-count.txt")).toBe("1");
   });
 });

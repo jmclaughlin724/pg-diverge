@@ -1,4 +1,8 @@
 import { resolveConfig } from "../config/schema.js";
+import { lineageLine } from "../migrations/lineage.js";
+import { notNullProofConstraintName } from "../migrations/not-null.js";
+import { quoteIdent } from "../sql/identifiers.js";
+import type { TableColumn } from "../sql/table-shape.js";
 import type {
   Diagnostic,
   MigrationOperation,
@@ -6,11 +10,7 @@ import type {
   RenderOptions,
   SchemaObject,
   SupaschemaConfig,
-  TableColumn,
-} from "../core.js";
-import { lineageLine } from "../migrations/lineage.js";
-import { notNullProofConstraintName } from "../migrations/not-null.js";
-import { quoteIdent } from "../sql/identifiers.js";
+} from "../types.js";
 import {
   ensureSemicolon,
   qualifiedRef,
@@ -20,6 +20,7 @@ import {
   renderConstraintSqlGuard,
   renderDefaultPrivilegeDrop,
   renderFdwGuard,
+  renderGrantCreate,
   renderGrantDrop,
   renderRename,
   renderTypeGuard,
@@ -445,10 +446,11 @@ function renderCreate(object: SchemaObject): string {
     case "trigger":
       return `${renderDrop(object)}\n${ensureSemicolon(object.sql)}`;
     case "rls":
-    case "grant":
     case "default-privilege":
     case "comment":
       return ensureSemicolon(object.sql);
+    case "grant":
+      return renderGrantCreate(object);
     default:
       throw new Error(`unsupported create operation for ${object.ref.kind}`);
   }

@@ -7,9 +7,10 @@ const lockPollMs = 20;
 const lockTimeoutMs = 8000;
 const staleLockMs = 30_000;
 const maxTurns = 20;
+const maxCorrectionEntries = 20;
 
 export function stateDir() {
-  return process.env.SUPASCHEMA_AGENT_HOOK_STATE_DIR ?? defaultStateDir;
+  return process.env.STATE_DIR ?? defaultStateDir;
 }
 
 export function sessionStatePath(payload) {
@@ -80,6 +81,7 @@ export function sessionStartState(payload, state) {
 }
 
 export function beginTurnState(payload, state) {
+  resetMainCorrectionsForPrompt(payload, state);
   const id = turnId(payload);
   if (id) {
     state.currentTurnId = validateStateKey(id);
@@ -134,6 +136,7 @@ export function normalizeState(value) {
     invokedSkills: objectValue(value?.invokedSkills),
     lastPrompt: currentTurn.lastPrompt,
     pendingSkills: currentTurn.pendingSkills,
+    responseCorrections: normalizeResponseCorrections(value?.responseCorrections),
     turnSequence: integerValue(value?.turnSequence),
     turns,
   };
@@ -144,12 +147,65 @@ export function addEvidence(state, evidence) {
   turn.evidence = [...turn.evidence, { at: new Date().toISOString(), ...evidence }].slice(-50);
 }
 
+export function correctionsFor(payload, state) {
+  return correctionLedger(state)[correctionScope(payload)]?.findings ?? [];
+}
+
+export function setCorrections(payload, state, findings) {
+  const scope = correctionScope(payload);
+  if (findings.length === 0) {
+    delete correctionLedger(state)[scope];
+    return [];
+  }
+
+  const existing = correctionLedger(state)[scope] ?? emptyCorrectionEntry();
+  const emitted = new Set(existing.emittedSignatures);
+  const normalizedFindings = findings.map((finding) => ({
+    blocked: emitted.has(correctionSignature(finding)),
+    ...finding,
+  }));
+  storeCorrectionEntry(state, scope, {
+    ...existing,
+    findings: normalizedFindings,
+  });
+  return normalizedFindings;
+}
+
+export function markCorrectionsBlocked(payload, state, continuationPrompt) {
+  const scope = correctionScope(payload);
+  const existing = correctionLedger(state)[scope];
+  if (!existing) {
+    return;
+  }
+  const findings = existing.findings.map((finding) => ({ ...finding, blocked: true }));
+  const emittedSignatures = [
+    ...new Set([
+      ...existing.emittedSignatures,
+      ...findings.map((finding) => correctionSignature(finding)),
+    ]),
+  ].slice(-maxCorrectionEntries);
+  storeCorrectionEntry(state, scope, {
+    continuationPrompt,
+    emittedSignatures,
+    findings,
+  });
+}
+
+export function clearCorrections(payload, state) {
+  delete correctionLedger(state)[correctionScope(payload)];
+}
+
+function correctionSignature(item) {
+  return JSON.stringify([item.id, item.message ?? ""]);
+}
+
 function resetContextEpoch(state) {
   return {
     ...normalizeState(state),
     contextEpoch: integerValue(state?.contextEpoch) + 1,
     currentTurnId: "",
     invokedSkills: {},
+    responseCorrections: {},
   };
 }
 
@@ -176,6 +232,108 @@ function emptyTurn() {
     lastPrompt: "",
     pendingSkills: {},
   };
+}
+
+function correctionScope(payload) {
+  const agentId = typeof payload?.agent_id === "string" ? payload.agent_id : "";
+  return agentId ? `agent:${validateStateKey(agentId)}` : "main";
+}
+
+function correctionLedger(state) {
+  state.responseCorrections ??= {};
+  return state.responseCorrections;
+}
+
+function emptyCorrectionEntry() {
+  return {
+    continuationPrompt: "",
+    emittedSignatures: [],
+    findings: [],
+  };
+}
+
+function storeCorrectionEntry(state, scope, entry) {
+  const ledger = correctionLedger(state);
+  delete ledger[scope];
+  ledger[scope] = entry;
+  const entries = Object.entries(ledger);
+  if (entries.length > maxCorrectionEntries) {
+    state.responseCorrections = Object.fromEntries(entries.slice(-maxCorrectionEntries));
+  }
+}
+
+function resetMainCorrectionsForPrompt(payload, state) {
+  const main = correctionLedger(state).main;
+  if (!main) {
+    return;
+  }
+  const prompt = typeof payload?.prompt === "string" ? payload.prompt : "";
+  if (prompt !== main.continuationPrompt) {
+    clearCorrections(payload, state);
+  }
+}
+
+function normalizeResponseCorrections(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const entries = [];
+  for (const [rawScope, rawEntry] of Object.entries(value).slice(-maxCorrectionEntries)) {
+    const scope = normalizeCorrectionScope(rawScope);
+    if (
+      scope === undefined ||
+      rawEntry === null ||
+      typeof rawEntry !== "object" ||
+      Array.isArray(rawEntry)
+    ) {
+      continue;
+    }
+    const emittedSignatures = Array.isArray(rawEntry.emittedSignatures)
+      ? rawEntry.emittedSignatures
+          .filter((signature) => typeof signature === "string")
+          .slice(-maxCorrectionEntries)
+      : [];
+    const findings = Array.isArray(rawEntry.findings)
+      ? rawEntry.findings
+          .filter(
+            (finding) =>
+              finding &&
+              typeof finding === "object" &&
+              !Array.isArray(finding) &&
+              typeof finding.id === "string" &&
+              typeof finding.message === "string"
+          )
+          .map((finding) => ({
+            blocked: Boolean(finding.blocked),
+            id: finding.id,
+            message: finding.message,
+          }))
+      : [];
+    entries.push([
+      scope,
+      {
+        continuationPrompt:
+          typeof rawEntry.continuationPrompt === "string" ? rawEntry.continuationPrompt : "",
+        emittedSignatures,
+        findings,
+      },
+    ]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function normalizeCorrectionScope(scope) {
+  if (scope === "main") {
+    return scope;
+  }
+  if (!scope.startsWith("agent:")) {
+    return;
+  }
+  try {
+    return `agent:${validateStateKey(scope.slice("agent:".length))}`;
+  } catch {
+    // Invalid persisted actor scopes are discarded during normalization.
+  }
 }
 
 function pruneTurns(state) {

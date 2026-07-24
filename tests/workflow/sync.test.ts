@@ -7,13 +7,13 @@ import { Client } from "pg";
 import { describe, expect, it } from "vitest";
 import { registerReportCommands } from "../../src/cli/reports.js";
 import { resolveConfig } from "../../src/config/schema.js";
-import type { Diagnostic } from "../../src/core.js";
 import { resolveDatabaseUrl } from "../../src/database/url.js";
-import { diagnosticCatalog } from "../../src/diagnostics.js";
+import { diagnosticCatalog } from "../../src/diagnostics/catalog.js";
 import { MODEL_FORMAT_VERSION } from "../../src/hash.js";
 import { parseLineage } from "../../src/migrations/lineage.js";
 import { stageGeneratedMigrations } from "../../src/migrations/stage.js";
-import { resolveGenerationSourceDefaults } from "../../src/planning/context.js";
+import { resolveGenerationSourceDefaults } from "../../src/planner/context.js";
+import type { Diagnostic } from "../../src/types.js";
 import { syncMigrations } from "../../src/workflow/sync.js";
 import { resolveSyncTargets } from "../../src/workflow/targets.js";
 
@@ -824,11 +824,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     await mkdir(migrationsDir, { recursive: true });
     await writeFile(
       join(schemaDir, "app.sql"),
-      "CREATE TABLE public.sync_stage (id bigint PRIMARY KEY);\n"
-    );
-    await writeFile(
-      join(migrationsDir, "20260101000000_manual.sql"),
-      "CREATE TABLE IF NOT EXISTS public.manual_stage (id bigint PRIMARY KEY);\n"
+      "CREATE TABLE public.manual_stage (id bigint PRIMARY KEY);\nCREATE TABLE public.sync_stage (id bigint PRIMARY KEY);\n"
     );
     await writeFile(join(root, "README.md"), "unrelated\n");
     execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
@@ -860,6 +856,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         .split("\n")
         .filter(Boolean);
       expect(result.applied).toBe(false);
+      expect(result.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
       expect(result.report).toContain("stage: staged");
       expect(result.report).toContain("dry run: no sync target was selected by config");
       expect(result.report).not.toContain("verify:");
@@ -868,7 +865,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       expect(staged).toContain("database.zod.ts");
       expect(staged.filter((file) => file.startsWith("database/migrations/"))).toHaveLength(1);
       expect(staged.some((file) => file.endsWith(".sql"))).toBe(true);
-      expect(staged).not.toContain("database/migrations/20260101000000_manual.sql");
       expect(staged).not.toContain("README.md");
     } finally {
       process.chdir(previousCwd);
@@ -1048,7 +1044,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     }
   });
 
-  it("runs the lineage gate before writing a new migration", async () => {
+  it("runs the migration baseline gate before writing outputs", async () => {
     const source = await sqlSource("CREATE TABLE public.accounts (id bigint PRIMARY KEY);\n");
     const root = await mkdtemp(join(tmpdir(), "supa-sync-lineage-before-outputs-"));
     const typesFile = join(root, "database.types.ts");
@@ -1077,7 +1073,9 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     });
 
     expect(result.applied).toBe(false);
-    expect(result.diagnostics.map((item) => item.code)).toContain("SUPA_DIFF_LINEAGE_GAP");
+    expect(result.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_MIGRATION_BASELINE_MISMATCH"
+    );
     expect(await pathExists(typesFile)).toBe(false);
     expect(await pathExists(zodFile)).toBe(false);
   });

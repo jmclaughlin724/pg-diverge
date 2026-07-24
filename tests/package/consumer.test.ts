@@ -22,10 +22,10 @@ import {
 const run = promisify(execFile);
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const bunCommand = process.platform === "win32" ? "bun.exe" : "bun";
-const pnpmAvailable = (() => {
+const pnpm11Available = (() => {
   try {
-    execFileSync(pnpmCommand, ["--version"], { stdio: "ignore" });
-    return true;
+    const version = execFileSync(pnpmCommand, ["--version"], { encoding: "utf8" }).trim();
+    return version.startsWith("11.");
   } catch {
     return false;
   }
@@ -272,7 +272,7 @@ describe("consumer lifecycle: workspace member install from member directory", (
   }, 300_000);
 });
 
-describe.skipIf(!pnpmAvailable)("consumer lifecycle: pnpm install and recovery lanes", () => {
+describe.skipIf(!pnpm11Available)("consumer lifecycle: pnpm install and recovery lanes", () => {
   it("pnpm add plus explicit init scaffolds the project", async () => {
     const pnpmConsumer = await mkdtemp(join(tmpdir(), "supa-pnpm-consumer-"));
     await writeFile(
@@ -438,6 +438,16 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     expect(existsSync(join(consumer2, "node_modules", "supaschema", "bin", "scaffold.mjs"))).toBe(
       true
     );
+    expect(
+      existsSync(
+        join(consumer2, "node_modules", "supaschema", "agent-bundle", "docs", "coding-agents.mdx")
+      )
+    ).toBe(true);
+    expect(
+      existsSync(join(consumer2, "node_modules", "supaschema", "agent-bundle", "docs", "index.md"))
+    ).toBe(true);
+    expect(existsSync(join(consumer2, "agent-bundle", "docs"))).toBe(false);
+    expect(existsSync(join(consumer2, ".agents", "docs"))).toBe(false);
   });
 
   it("supaschema init scaffolds config and active agent enforcement by default", async () => {
@@ -459,6 +469,8 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     for (const file of excludedMaintainerFiles) {
       expect(existsSync(join(consumer2, file)), file).toBe(false);
     }
+    expect(existsSync(join(consumer2, "agent-bundle", "docs"))).toBe(false);
+    expect(existsSync(join(consumer2, ".agents", "docs"))).toBe(false);
     expect(existsSync(join(consumer2, ".supaschema"))).toBe(false);
     expect(existsSync(join(consumer2, "AGENTS.md"))).toBe(false);
     expect(first.stdout).toContain("agent bundle");

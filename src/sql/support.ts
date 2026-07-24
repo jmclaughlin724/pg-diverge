@@ -1,4 +1,4 @@
-import type { ObjectKind, SchemaObject } from "../core.js";
+import type { ObjectKind, SchemaObject } from "../types.js";
 import type { AstStatement } from "./ast.js";
 import { asRecord, readArray, readString } from "./ast.js";
 

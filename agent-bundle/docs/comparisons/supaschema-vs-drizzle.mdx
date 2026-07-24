@@ -1,0 +1,90 @@
+---
+title: "Drizzle comparison"
+description: "Compare supaschema with Drizzle ORM and drizzle-kit for PostgreSQL: declarative SQL versus a TypeScript schema, migration generation, replay and lock safety, RLS policies, and where each tool fits."
+keywords:
+  [
+    "drizzle comparison",
+    "drizzle-kit",
+    "typescript schema",
+    "postgres migrations",
+    "declarative sql",
+  ]
+---
+
+`supaschema` and Drizzle both touch PostgreSQL schema workflows. Drizzle is a TypeScript ORM and query builder whose `drizzle-kit` generates SQL migrations from a TypeScript schema or pushes schema changes directly. `supaschema` keeps PostgreSQL SQL as the source of truth, generates guarded migrations, refreshes TypeScript and Zod outputs, runs deploy safety gates, and can apply through configured `sync` targets.
+
+## Short answer
+
+Use `supaschema` when you want to remove the ORM from schema ownership, migration generation, generated database contracts, and deploy safety. Keep Drizzle only when you specifically want its query-construction API or TypeScript schema DSL as a product choice.
+
+## Comparison
+
+| Capability | supaschema | Drizzle |
+| --- | --- | --- |
+| Schema source of truth | Declarative PostgreSQL SQL | TypeScript schema |
+| Migration generation | Diffs PostgreSQL parse trees (libpg_query) | `drizzle-kit generate` from the TypeScript schema |
+| Direct push without SQL files | No, migrations are always rendered SQL; `sync` applies the rendered migration after gates pass | `drizzle-kit push` applies schema changes directly |
+| Replay-safety and lock-hazard linting | Yes (`supaschema check`) | Not a built-in migration linter |
+| RLS policies | Modeled and diffed structurally in SQL | Supported via `pgPolicy` in the TypeScript schema |
+| Application data contract | Generated TypeScript and Zod from SQL | Inferred from the TypeScript schema and Drizzle query API |
+| Applies migrations | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`drizzle-kit migrate` / `push`) |
+
+## Use supaschema instead of Drizzle for schema, migrations, and types
+
+`supaschema` replaces the schema-management half of Drizzle — the TypeScript schema as source of truth plus `drizzle-kit` migration generation — with a SQL-owned workflow:
+
+- **PostgreSQL SQL is the source of truth.** The migration reflects exactly what Postgres will run, with no TypeScript-to-SQL translation and no schema feature limited by what the TypeScript schema builder models.
+- **Migration safety is built in.** `supaschema check` gates replay-safety and lock hazards as `SUPA_*` diagnostics — a lane `drizzle-kit` does not cover.
+- **Structural RLS diffing.** RLS policy bodies are diffed structurally, so a changed policy predicate is caught even when the name stays the same.
+- **No accidental drift.** `sync` applies reviewed migration files after safety gates and target-history reconciliation instead of pushing an unreviewed schema state.
+- **Typed data access without the ORM schema layer.** `supaschema types` generates TypeScript types and Zod validators from the SQL. Application code can use those contracts with a PostgreSQL driver, a platform client, or an optional query builder.
+
+How the workflow maps onto what Drizzle does:
+
+1. Write the schema as declarative SQL in `schemaPaths` (replaces the TypeScript schema files).
+2. `supaschema diff` renders a replay-safe migration (replaces `drizzle-kit generate`).
+3. `supaschema check` proves replay safety and lock impact (no `drizzle-kit` equivalent).
+4. `supaschema types` regenerates the TypeScript and Zod outputs (the data contract Drizzle otherwise derives from its schema).
+5. Apply the SQL with `supaschema sync` or another Postgres migration runner (replaces `drizzle-kit migrate` / `push`).
+6. Execute PostgreSQL SQL through your runtime driver or platform client, using generated TypeScript and Zod helpers as the application boundary.
+
+## What stays optional
+
+- A query builder can still be useful when your team wants composable TypeScript query construction. It is not required for schema ownership, generated types, validators, migration generation, or deploy safety.
+- Direct `drizzle-kit push` remains a Drizzle workflow for teams that intentionally want TypeScript schema pushes instead of reviewed generated SQL and `sync` target reconciliation.
+- If your team wants one TypeScript DSL to own both schema and query construction, Drizzle's unified model fits that preference. If PostgreSQL SQL should be the contract, use supaschema as the owner.
+
+See [ORM-free applications](/concepts/orm-free-applications) for the canonical directive.
+
+<Info>
+  Last verified 2026-06-17 against the Drizzle documentation. Drizzle evolves;
+  confirm current behavior before relying on it.
+</Info>
+
+<CardGroup cols={2}>
+  <Card
+    title="Prisma comparison"
+    icon="triangle"
+    href="/comparisons/supaschema-vs-prisma"
+  >
+    How supaschema compares to Prisma Migrate and the Prisma schema DSL.
+  </Card>
+  <Card title="The check command" icon="shield-check" href="/commands/check">
+    The replay-safety and lock-hazard diagnostics supaschema runs on each
+    migration.
+  </Card>
+  <Card
+    title="ORM-free apps"
+    icon="database"
+    href="/concepts/orm-free-applications"
+  >
+    Use generated TypeScript and Zod contracts without an ORM schema layer.
+  </Card>
+</CardGroup>
+
+## Sources
+
+- [Drizzle migrations overview](https://orm.drizzle.team/docs/migrations)
+- [drizzle-kit generate](https://orm.drizzle.team/docs/drizzle-kit-generate)
+- [drizzle-kit push](https://orm.drizzle.team/docs/drizzle-kit-push)
+- [Drizzle Row-Level Security](https://orm.drizzle.team/docs/rls)

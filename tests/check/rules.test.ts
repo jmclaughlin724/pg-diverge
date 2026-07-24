@@ -4,12 +4,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderCheckReport } from "../../src/check/report.js";
 import { resolveConfig } from "../../src/config/schema.js";
-import type {
-  MigrationOperation,
-  MigrationPlan,
-  SchemaModel,
-  SchemaObject,
-} from "../../src/core.js";
 import { runRlsSafetyGate } from "../../src/pipeline/deploy-safety.js";
 import {
   exposedTableWithoutRlsRule,
@@ -28,6 +22,12 @@ import {
   tableNamingRule,
 } from "../../src/scan/rules.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
+import type {
+  MigrationOperation,
+  MigrationPlan,
+  SchemaModel,
+  SchemaObject,
+} from "../../src/types.js";
 
 function tableObject(name: string): SchemaObject {
   return {

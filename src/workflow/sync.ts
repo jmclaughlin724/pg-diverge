@@ -3,8 +3,7 @@ import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { resolveConfig } from "../config/schema.js";
-import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../core.js";
-import { diagnostic, hasErrors } from "../diagnostics.js";
+import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { defaultMigrationName, nextMigrationFile } from "../migrations/files.js";
 import {
   isConcurrentMigrationFile,
@@ -24,9 +23,10 @@ import { runTypeSafetyGate } from "../pipeline/type-safety.js";
 import {
   type ResolvedGenerationSources,
   resolveGenerationSourceDefaults,
-} from "../planning/context.js";
+} from "../planner/context.js";
 import { renderMigrationSplit } from "../render/migration.js";
 import { generateTypeContracts } from "../typegen/contracts.js";
+import type { Diagnostic, ObjectRef, SupaschemaConfig } from "../types.js";
 import { checkPendingMigrations, loadSyncStatus, runnerFailureResult } from "./history.js";
 import { render, stripSqlExtension } from "./report.js";
 import {

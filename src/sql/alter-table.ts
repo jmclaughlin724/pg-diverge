@@ -1,14 +1,16 @@
-import type { SchemaObject } from "../core.js";
+import { deparseSync } from "pgsql-deparser";
+import type { SchemaObject } from "../types.js";
 import type { AstNode, QualifiedName } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readNumber, readString } from "./ast.js";
 import { makeObject } from "./statements.js";
-import { constraintMetadata } from "./table-constraints.js";
+import { allocateDefaultConstraintName, constraintMetadata } from "./table-constraints.js";
 
 export function alterTableObjects(
   node: AstNode,
   statement: string,
   ordinal: number,
-  file: string | undefined
+  file: string | undefined,
+  existingConstraintNames: Iterable<string> = []
 ): SchemaObject[] | undefined {
   const table = rangeVarName(node.relation);
   if (!table) {
@@ -18,11 +20,23 @@ export function alterTableObjects(
     .map((item) => asRecord(asRecord(item)?.AlterTableCmd))
     .filter((item): item is AstNode => item !== undefined);
   const objects: SchemaObject[] = [];
+  const allocatedConstraintNames = new Set(existingConstraintNames);
   let unsupported = false;
   for (const command of commands) {
-    const object = alterTableCommandObject(command, table, statement, ordinal, file);
+    const object = alterTableCommandObject(
+      command,
+      node,
+      table,
+      statement,
+      ordinal,
+      file,
+      allocatedConstraintNames
+    );
     if (object) {
       objects.push(object);
+      if (object.ref.kind === "constraint") {
+        allocatedConstraintNames.add(object.ref.name);
+      }
     } else {
       unsupported = true;
     }
@@ -32,24 +46,16 @@ export function alterTableObjects(
 
 function alterTableCommandObject(
   command: AstNode,
+  alterTable: AstNode,
   table: QualifiedName,
   statement: string,
   ordinal: number,
-  file: string | undefined
+  file: string | undefined,
+  existingConstraintNames: Iterable<string>
 ): SchemaObject | undefined {
   const subtype = readString(command.subtype);
   if (subtype === "AT_AddConstraint") {
-    const constraint = asRecord(asRecord(command.def)?.Constraint);
-    const name = readString(constraint?.conname);
-    return constraint && name
-      ? makeObject(
-          { kind: "constraint", name, schema: table.schema, table: table.name },
-          statement,
-          ordinal,
-          file,
-          constraintMetadata(constraint)
-        )
-      : undefined;
+    return addConstraintObject(command, alterTable, table, ordinal, file, existingConstraintNames);
   }
   if (
     subtype === "AT_EnableRowSecurity" ||
@@ -95,6 +101,66 @@ function alterTableCommandObject(
           }
         )
       : undefined;
+  }
+}
+
+function addConstraintObject(
+  command: AstNode,
+  alterTable: AstNode,
+  table: QualifiedName,
+  ordinal: number,
+  file: string | undefined,
+  existingConstraintNames: Iterable<string>
+): SchemaObject | undefined {
+  const constraint = asRecord(asRecord(command.def)?.Constraint);
+  const name =
+    readString(constraint?.conname) ??
+    (constraint
+      ? allocateDefaultConstraintName(table.name, constraint, [], existingConstraintNames)
+      : undefined);
+  const sql =
+    constraint && name
+      ? canonicalAddConstraintSql(alterTable, command, constraint, name)
+      : undefined;
+  return constraint && name && sql
+    ? makeObject(
+        { kind: "constraint", name, schema: table.schema, table: table.name },
+        sql,
+        ordinal,
+        file,
+        constraintMetadata(constraint)
+      )
+    : undefined;
+}
+
+function canonicalAddConstraintSql(
+  alterTable: AstNode,
+  command: AstNode,
+  constraint: AstNode,
+  name: string
+): string | undefined {
+  try {
+    const relation = asRecord(structuredClone(alterTable.relation));
+    const namedCommand = structuredClone(command);
+    namedCommand.def = {
+      ...(asRecord(namedCommand.def) ?? {}),
+      Constraint: { ...structuredClone(constraint), conname: name },
+    };
+    const node = {
+      ...structuredClone(alterTable),
+      cmds: [{ AlterTableCmd: namedCommand }],
+      ...(relation === undefined ? {} : { relation: { ...relation, inh: false } }),
+    };
+    return deparseSync(
+      JSON.parse(
+        JSON.stringify({
+          stmts: [{ stmt: { AlterTableStmt: node } }],
+          version: 170_004,
+        })
+      )
+    );
+  } catch {
+    // Unsupported parser fragments are reported by the caller as ambiguous ALTER TABLE input.
   }
 }
 

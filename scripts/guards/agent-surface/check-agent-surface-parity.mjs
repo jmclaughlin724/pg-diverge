@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkAgentSurfaces } from "../../skills/sync-llm.mjs";
+import { checkAgentSurfaces, publicSkillNames } from "../../skills/sync-llm.mjs";
 import { assert, ok } from "../lib/assertions.js";
 import { ROOT } from "../lib/repository.js";
 
@@ -23,8 +23,8 @@ export function check(root = ROOT) {
     .map((entry) => entry.name)
     .sort();
   assert(
-    JSON.stringify(publicSkillDirs) === JSON.stringify(["supaschema"]),
-    `public skills must expose only supaschema; found ${publicSkillDirs.join(", ")}`
+    JSON.stringify(publicSkillDirs) === JSON.stringify([...publicSkillNames].sort()),
+    `public skills must match the curated manifest; found ${publicSkillDirs.join(", ")}`
   );
 }
 

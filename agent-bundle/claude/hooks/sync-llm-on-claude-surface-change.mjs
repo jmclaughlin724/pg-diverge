@@ -250,6 +250,10 @@ function emitSynced(output, hookEventName) {
     .trim()
     .split("\n")
     .find((item) => item.startsWith("SYNC_LLM_OK"));
+  if (runtime === "codex" && hookEventName === "Stop") {
+    process.stdout.write("{}\n");
+    process.exit(0);
+  }
   emitContext(line ?? "SYNC_LLM_OK", hookEventName);
 }
 

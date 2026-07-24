@@ -1,4 +1,4 @@
-import type { Diagnostic, MigrationPlan, ObjectRef, SchemaModel, SchemaObject } from "../core.js";
+import type { Diagnostic, MigrationPlan, ObjectRef, SchemaModel, SchemaObject } from "../types.js";
 
 export interface RuleContext {
   model: SchemaModel;

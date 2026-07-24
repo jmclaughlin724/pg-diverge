@@ -1,40 +1,32 @@
 #!/usr/bin/env node
-import { execFile } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 import { Command } from "commander";
-import { checkMigrationSql } from "./check/migration.js";
-import {
-  CHECK_REPORTER_DISPLAY,
-  type FileDiagnostics,
-  parseCheckReporter,
-  renderCheckReport,
-} from "./check/report.js";
+import { selfCheckCatalog } from "./catalog/selfcheck.js";
+import { type CheckCommandOptions, runCheckCommand } from "./cli/check-selection.js";
 import { registerDiffCommands } from "./cli/diff.js";
 import { registerReportCommands } from "./cli/reports.js";
+import {
+  configureCliShared,
+  currentConfigPath,
+  loadCliConfig,
+  printDiagnostics,
+  readPackageVersion,
+  readStdin,
+  redactJson,
+  redactRawError,
+  resolveCliDatabaseUrl,
+  resolveCliDatabaseUrlInfo,
+  resolveCliVerificationDatabaseUrl,
+  runHookFailOpen,
+} from "./cli/runtime.js";
 import { registerToolCommands } from "./cli/tools.js";
-import type { SupaschemaConfig } from "./config/schema.js";
-import { loadConfig } from "./config/schema.js";
-import {
-  formatConfigValidationDiagnostics,
-  pendingInstallPathConfirmationDiagnostic,
-  validateConfig,
-} from "./config/validate.js";
-import type { Diagnostic } from "./core.js";
-import {
-  databaseUrlLane,
-  resolveDatabaseUrl,
-  resolveVerificationDatabaseUrl,
-} from "./database/url.js";
-import { diagnosticCatalog, formatDiagnostics, hasErrors } from "./diagnostics.js";
+import { formatConfigValidationDiagnostics, validateConfig } from "./config/validate.js";
+import { diagnosticCatalog } from "./diagnostics/catalog.js";
+import { hasErrors } from "./diagnostics/diagnostics.js";
 import { generatedMigrationEditHookOutput, schemaWriteHookOutput } from "./hooks/output.js";
-import { latestMigrationFile, migrationFiles } from "./migrations/files.js";
+import { latestMigrationFile } from "./migrations/files.js";
 import { filterModel } from "./pipeline/diff.js";
-import { redactSecrets } from "./redaction.js";
-import { selfCheckCatalog } from "./selfcheck.js";
 import { extractSourceModel } from "./source/extract.js";
 import {
   defaultTreeSource,
@@ -53,19 +45,11 @@ interface InitOptions {
   json?: boolean;
   repair?: boolean;
 }
-interface CheckOptions {
-  allowEmpty?: boolean;
-  base?: string;
-  changed?: boolean;
-  reporter: string;
-  since?: string;
-  staged?: boolean;
-}
-interface InspectOptions {
+interface InspectCommandOptions {
   from?: string;
   schema?: string;
 }
-interface VerifyOptions {
+interface VerifyCommandOptions {
   databaseUrl?: string;
   ensureEnvironment?: boolean;
   ensureRoles?: boolean;
@@ -76,9 +60,9 @@ interface VerifyOptions {
   to?: string;
 }
 
-const cliVersion = await readPackageVersion();
-const execFileAsync = promisify(execFile);
 const program = new Command();
+configureCliShared(program);
+const cliVersion = await readPackageVersion();
 program
   .name("supaschema")
   .description("Generate deterministic, replay-safe PostgreSQL/Supabase migrations from SQL trees.")
@@ -180,7 +164,7 @@ program
   .option("--from <source>", "source to inspect (default: the config schema tree)")
   .option("--schema <names>", "comma-separated schema filter")
   .description("Extract and print a deterministic schema model.")
-  .action(async (options: InspectOptions) => {
+  .action(async (options: InspectCommandOptions) => {
     const config = await loadCliConfig();
     const source = options.from ?? defaultTreeSource(config);
     const model = filterModel(await extractSourceModel(source, { config }), options.schema);
@@ -225,7 +209,7 @@ program
   .description(
     "Validate replay-safety and parser diagnostics for migration files (shell globs expand to a directory gate; `-` reads stdin; zero args checks the migrations directory)."
   )
-  .action((migrationArgs: string[], options: CheckOptions) =>
+  .action((migrationArgs: string[], options: CheckCommandOptions) =>
     runCheckCommand(migrationArgs, options)
   );
 
@@ -259,7 +243,7 @@ program
     "keep the temporary databases after the run and print their names (debugging failed verifies)"
   )
   .description("Apply from + migration twice and compare against target in temporary databases.")
-  .action(async (options: VerifyOptions) => {
+  .action(async (options: VerifyCommandOptions) => {
     const config = await loadCliConfig();
     const databaseUrl = await resolveCliVerificationDatabaseUrl(options.databaseUrl);
     if (!databaseUrl) {
@@ -387,454 +371,3 @@ program.parseAsync(process.argv).catch((error: unknown) => {
   process.stderr.write(`${redactRawError(error)}\n`);
   process.exitCode = 1;
 });
-
-async function runCheckCommand(migrationArgs: string[], options: CheckOptions): Promise<void> {
-  const config = await loadCliConfig();
-  const selectionMode = checkSelectionMode(options);
-  if (await blockInvalidCheckSelection(migrationArgs, options, selectionMode)) {
-    return;
-  }
-  const migrationInputs = await resolveCheckMigrationPaths(config, migrationArgs, selectionMode);
-  if (
-    writeEmptyCheckSelection(config, migrationInputs, selectionMode, options.allowEmpty === true)
-  ) {
-    return;
-  }
-  const results = await checkMigrationPaths(config, migrationInputs);
-  writeCheckResults(migrationInputs, results, options.reporter);
-}
-
-async function blockInvalidCheckSelection(
-  migrationArgs: string[],
-  options: CheckOptions,
-  selectionMode: CheckSelectionMode | undefined
-): Promise<boolean> {
-  if (selectionMode !== undefined && migrationArgs.length > 0) {
-    process.stderr.write(
-      "supaschema: check git-selection flags cannot be combined with explicit migration files\n"
-    );
-    process.exitCode = 1;
-    return true;
-  }
-  if (hasConflictingCheckSelection(options)) {
-    process.stderr.write("supaschema: use only one of --changed, --staged, --base, or --since\n");
-    process.exitCode = 1;
-    return true;
-  }
-  if (migrationArgs.length > 0) {
-    return false;
-  }
-  const pendingInstall = await pendingInstallPathConfirmationDiagnostic(
-    process.cwd(),
-    currentConfigPath()
-  );
-  if (!pendingInstall) {
-    return false;
-  }
-  process.stderr.write(formatConfigValidationDiagnostics([pendingInstall]));
-  process.exitCode = 2;
-  return true;
-}
-
-async function resolveCheckMigrationPaths(
-  config: SupaschemaConfig,
-  migrationArgs: string[],
-  selectionMode: CheckSelectionMode | undefined
-): Promise<CheckMigrationInput[]> {
-  if (migrationArgs.length > 0) {
-    return migrationArgs.map((file) => ({ file, staged: false }));
-  }
-  if (selectionMode === undefined) {
-    return (await migrationFiles(resolve(process.cwd(), config.migrationsDir))).map((file) => ({
-      file,
-      staged: false,
-    }));
-  }
-  return await selectedCheckMigrationPaths(config, selectionMode);
-}
-
-function writeEmptyCheckSelection(
-  config: SupaschemaConfig,
-  migrationInputs: CheckMigrationInput[],
-  selectionMode: CheckSelectionMode | undefined,
-  allowEmpty: boolean
-): boolean {
-  if (migrationInputs.length > 0) {
-    return false;
-  }
-  process.stderr.write(
-    selectionMode === undefined
-      ? `no migrations found in ${config.migrationsDir}\n`
-      : `no selected migration files found in ${config.migrationsDir}\n`
-  );
-  if (!allowEmpty) {
-    process.exitCode = 1;
-  }
-  return true;
-}
-
-async function checkMigrationPaths(
-  config: SupaschemaConfig,
-  migrationInputs: CheckMigrationInput[]
-): Promise<FileDiagnostics[]> {
-  const results: FileDiagnostics[] = [];
-  for (const input of migrationInputs) {
-    const sql = await readCheckMigrationSql(input);
-    const diagnostics = await checkMigrationSql(sql, { config, cwd: process.cwd() });
-    results.push({ diagnostics, file: input.file === "-" ? "<stdin>" : input.file });
-  }
-  return results;
-}
-
-async function readCheckMigrationSql(input: CheckMigrationInput): Promise<string> {
-  if (input.file === "-") {
-    return await readStdin();
-  }
-  if (input.staged) {
-    if (input.gitRoot === undefined) {
-      throw new Error("supaschema check staged selection requires a git worktree");
-    }
-    const gitPath = normalizeGitPath(relative(input.gitRoot, input.file));
-    return await gitOutput(["show", `:${gitPath}`], input.gitRoot);
-  }
-  return await readFile(input.file, "utf8");
-}
-
-function writeCheckResults(
-  migrationInputs: CheckMigrationInput[],
-  results: FileDiagnostics[],
-  reporterName: string
-): void {
-  const reporter = parseCheckReporter(reporterName);
-  if (reporter === undefined) {
-    process.stderr.write(
-      `supaschema: unknown --reporter "${reporterName}" (use ${CHECK_REPORTER_DISPLAY})\n`
-    );
-    process.exitCode = 2;
-    return;
-  }
-  const report = renderCheckReport(reporter, results);
-  if (report.length > 0) {
-    process.stdout.write(report);
-  }
-  if (results.some((entry) => hasErrors(entry.diagnostics))) {
-    process.exitCode = 2;
-    return;
-  }
-  if (reporter === "text") {
-    const fileCount = migrationInputs.length;
-    process.stdout.write(fileCount > 1 ? `ok (${fileCount} files)\n` : "ok\n");
-  }
-}
-
-type CheckSelectionMode =
-  | { kind: "base"; ref: string }
-  | { kind: "changed" }
-  | { kind: "since"; ref: string }
-  | { kind: "staged" };
-
-interface CheckMigrationInput {
-  file: string;
-  gitRoot?: string;
-  staged: boolean;
-}
-
-function checkSelectionMode(options: CheckOptions): CheckSelectionMode | undefined {
-  if (options.changed === true) {
-    return { kind: "changed" };
-  }
-  if (options.staged === true) {
-    return { kind: "staged" };
-  }
-  if (options.base !== undefined) {
-    return { kind: "base", ref: options.base };
-  }
-  if (options.since !== undefined) {
-    return { kind: "since", ref: options.since };
-  }
-}
-
-function hasConflictingCheckSelection(options: CheckOptions): boolean {
-  return (
-    [
-      options.changed === true,
-      options.staged === true,
-      options.base !== undefined,
-      options.since !== undefined,
-    ].filter(Boolean).length > 1
-  );
-}
-
-async function selectedCheckMigrationPaths(
-  config: SupaschemaConfig,
-  mode: CheckSelectionMode
-): Promise<CheckMigrationInput[]> {
-  const gitRoot = await gitRootPath();
-  const migrationsDir = migrationDirGitPath(gitRoot, config);
-  let selected: string[];
-  if (mode.kind === "changed") {
-    selected = await changedGitCheckPaths(gitRoot, migrationsDir);
-  } else if (mode.kind === "staged") {
-    selected = await namedGitDiffCheckPaths(gitRoot, ["diff", "--cached"], migrationsDir);
-  } else {
-    selected = await namedGitDiffCheckPaths(gitRoot, ["diff", mode.ref], migrationsDir);
-  }
-  const unique = [
-    ...new Set(selected.filter((item) => isSelectedMigrationPath(item, migrationsDir))),
-  ];
-  unique.sort((left, right) => left.localeCompare(right));
-  return unique.map((item) => ({
-    file: resolve(gitRoot, item),
-    gitRoot,
-    staged: mode.kind === "staged",
-  }));
-}
-
-async function gitRootPath(): Promise<string> {
-  const root = (await gitOutput(["rev-parse", "--show-toplevel"], process.cwd())).trim();
-  if (root.length === 0) {
-    throw new Error("supaschema check git selection requires a git worktree");
-  }
-  return resolvedNativePath(root);
-}
-
-function migrationDirGitPath(gitRoot: string, config: SupaschemaConfig): string {
-  const migrationsDir = resolvedNativePath(resolve(process.cwd(), config.migrationsDir));
-  const relativePath = relative(gitRoot, migrationsDir);
-  if (!isPathInsideOrEqual(gitRoot, migrationsDir)) {
-    throw new Error("supaschema check migrationsDir must be inside the git worktree");
-  }
-  if (!(relativePath.startsWith("..") || isAbsolute(relativePath))) {
-    return normalizeGitPath(relativePath);
-  }
-  return normalizedInsidePath(gitRoot, migrationsDir);
-}
-
-function isPathInsideOrEqual(parent: string, child: string): boolean {
-  const parentPath = comparablePath(parent);
-  const childPath = comparablePath(child);
-  return childPath === parentPath || childPath.startsWith(`${parentPath}/`);
-}
-
-function normalizedInsidePath(parent: string, child: string): string {
-  const parentPath = comparablePath(parent);
-  const childPath = comparablePath(child);
-  if (childPath === parentPath) {
-    return "";
-  }
-  return childPath.slice(parentPath.length + 1);
-}
-
-function comparablePath(path: string): string {
-  let normalized = nativeGitPath(path).replaceAll("\\", "/");
-  if (normalized.startsWith("//?/")) {
-    normalized = normalized.slice(4);
-  }
-  while (normalized.endsWith("/")) {
-    normalized = normalized.slice(0, -1);
-  }
-  if (process.platform === "win32") {
-    return normalized.toLowerCase();
-  }
-  return normalized;
-}
-
-function resolvedNativePath(path: string): string {
-  const resolved = resolve(nativeGitPath(path));
-  try {
-    return realpathSync.native(resolved);
-  } catch {
-    return resolved;
-  }
-}
-
-function nativeGitPath(path: string): string {
-  if (process.platform !== "win32") {
-    return path;
-  }
-  const normalized = path.replaceAll("\\", "/");
-  if (
-    normalized.length < 3 ||
-    normalized[0] !== "/" ||
-    normalized[2] !== "/" ||
-    !isAsciiLetter(normalized.charCodeAt(1))
-  ) {
-    return path;
-  }
-  return `${normalized[1]}:/${normalized.slice(3)}`;
-}
-
-function isAsciiLetter(code: number): boolean {
-  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-}
-
-async function namedGitDiffCheckPaths(
-  gitRoot: string,
-  args: string[],
-  migrationsDir: string
-): Promise<string[]> {
-  const output = await gitOutput(
-    [...args, "--name-only", "--diff-filter=ACMR", "--", migrationsDir || "."],
-    gitRoot
-  );
-  return output
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map(normalizeGitPath);
-}
-
-async function changedGitCheckPaths(gitRoot: string, migrationsDir: string): Promise<string[]> {
-  const output = await gitOutput(
-    ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", migrationsDir || "."],
-    gitRoot
-  );
-  return parsePorcelainStatusPaths(output).map(normalizeGitPath);
-}
-
-function parsePorcelainStatusPaths(output: string): string[] {
-  const entries = output.split("\0").filter(Boolean);
-  const paths: string[] = [];
-  let skipRenameSource = false;
-  for (const entry of entries) {
-    if (skipRenameSource) {
-      skipRenameSource = false;
-      continue;
-    }
-    const x = entry.at(0) ?? " ";
-    const y = entry.at(1) ?? " ";
-    const path = entry.slice(3);
-    if (x !== "D" && y !== "D" && path.length > 0) {
-      paths.push(path);
-    }
-    if (x === "R" || y === "R" || x === "C" || y === "C") {
-      skipRenameSource = true;
-    }
-  }
-  return paths;
-}
-
-function isSelectedMigrationPath(path: string, migrationsDir: string): boolean {
-  if (extname(path).toLowerCase() !== ".sql") {
-    return false;
-  }
-  return migrationsDir.length === 0 || path.startsWith(`${migrationsDir}/`);
-}
-
-function normalizeGitPath(path: string): string {
-  let normalized = path.split(sep).join("/");
-  while (normalized.endsWith("/")) {
-    normalized = normalized.slice(0, -1);
-  }
-  return normalized === "." ? "" : normalized;
-}
-
-async function gitOutput(args: string[], cwd: string): Promise<string> {
-  try {
-    const { stdout } = await execFileAsync("git", args, { cwd, encoding: "utf8" });
-    return stdout;
-  } catch (error) {
-    const stderr =
-      error !== null && typeof error === "object" && "stderr" in error
-        ? String(error.stderr).trim()
-        : "";
-    throw new Error(stderr || "supaschema check git selection failed", { cause: error });
-  }
-}
-
-function loadCliConfig(): Promise<SupaschemaConfig> {
-  const globals = program.opts<GlobalOptions>();
-  return loadConfig(process.cwd(), globals.config);
-}
-
-function currentConfigPath(): string | undefined {
-  return program.opts<GlobalOptions>().config;
-}
-
-async function runHookFailOpen(action: () => Promise<void>): Promise<void> {
-  try {
-    await action();
-  } catch {
-    // Hooks are advisory in CLI flows and intentionally fail open.
-  }
-}
-
-async function resolveCliDatabaseUrl(explicit?: string): Promise<string | undefined> {
-  return (await resolveCliDatabaseUrlInfo(explicit)).url;
-}
-
-async function resolveCliVerificationDatabaseUrl(explicit?: string): Promise<string | undefined> {
-  if (program.opts<GlobalOptions>().env !== undefined) {
-    return await resolveCliDatabaseUrl(explicit);
-  }
-  return resolveVerificationDatabaseUrl(explicit);
-}
-
-async function resolveCliDatabaseUrlInfo(
-  explicit?: string
-): Promise<{ lane: string; url: string | undefined }> {
-  if (explicit) {
-    return { lane: "explicit --database-url", url: resolveDatabaseUrl(explicit) };
-  }
-  const globals = program.opts<GlobalOptions>();
-  if (globals.env) {
-    const config = await loadCliConfig();
-    const entry = config.environments[globals.env];
-    if (!entry) {
-      throw new Error(
-        `--env "${globals.env}" is not defined in config.environments (known: ${Object.keys(config.environments).join(", ") || "none"})`
-      );
-    }
-    return { lane: `--env ${globals.env}`, url: resolveDatabaseUrl(entry.databaseUrl) };
-  }
-  const url = resolveDatabaseUrl();
-  const lane = databaseUrlLane();
-  return { lane, url };
-}
-
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-function printDiagnostics(diagnostics: Diagnostic[]): void {
-  const globals = program.opts<GlobalOptions>();
-  if (globals.quiet || diagnostics.length === 0) {
-    return;
-  }
-  process.stderr.write(`${formatDiagnostics(diagnostics)}\n`);
-}
-
-function redactRawError(error: unknown): string {
-  return redactSecrets(error instanceof Error ? error.message : String(error));
-}
-
-function redactJson(value: unknown): unknown {
-  if (typeof value === "string") {
-    return redactSecrets(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map(redactJson);
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactJson(item)]));
-  }
-  return value;
-}
-
-async function readPackageVersion(): Promise<string> {
-  try {
-    const raw = await readFile(new URL("../package.json", import.meta.url), "utf8");
-    const parsed = JSON.parse(raw);
-    if (parsed !== null && typeof parsed === "object") {
-      const version = Reflect.get(parsed, "version");
-      return typeof version === "string" ? version : "0.0.0";
-    }
-    return "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}

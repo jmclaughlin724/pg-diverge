@@ -1,0 +1,100 @@
+---
+title: "Environments"
+description: "How supaschema resolves PostgreSQL database URLs through named environments, $ENV indirection, SUPASCHEMA_DATABASE_URL, and provider-specific fallbacks."
+keywords:
+  ["environments", "database URL", "SUPASCHEMA_DATABASE_URL", "PostgreSQL"]
+---
+
+Explicit database-backed workflows need a database URL.
+
+This includes:
+
+- `inspect` and `selfcheck`;
+- `verify`;
+- `migrations`;
+- `sync`;
+- `doctor`.
+
+You usually do not need to repeat the URL on every command. `supaschema init` reuses existing database URL environment variable names from `.env*` files in `sync.targets` when it can identify them. Configure named environments only when you need an extra named target.
+
+## Resolution order
+
+1. **An explicit value** — the `--database-url` flag or a `database:<url>` source in non-generation workflows.
+2. **A named environment** — the global `--env <name>` flag reads `environments.<name>.databaseUrl` from config.
+3. **`SUPASCHEMA_DATABASE_URL`** — the environment variable, when set.
+4. **The local Supabase stack** — for Supabase projects only, the nearest `supabase/config.toml` (searched upward from the working directory) supplies the local URL from its `[db] port`. Other providers should use named environments or `SUPASCHEMA_DATABASE_URL`.
+
+Explicit values and named environments support `$ENV_NAME` indirection. If the environment variable is missing, supaschema fails loudly.
+
+<Note>
+  `supabase/config.toml` is read only to discover the local Supabase database
+  URL. Supabase installs also default sync targets to the Supabase CLI runner,
+  so existing Supabase CLI project link and authentication state remain the
+  apply credential lane. Other provider config or infrastructure files are
+  install-time markers only. Schema locations and sync target references come
+  from `supaschema.config.json`.
+</Note>
+
+## Named environments
+
+Define extra targets in `supaschema.config.json` and select them per run with `--env`:
+
+```json
+{
+  "environments": {
+    "staging": { "databaseUrl": "$STAGING_DB" },
+    "production": { "databaseUrl": "$DATABASE_URL" }
+  }
+}
+```
+
+```bash
+supaschema --env staging diff --fail-on-diff   # drift gate against staging
+supaschema --env staging migrations            # reconcile files vs staging history
+```
+
+Keeping the actual URLs in environment variables means the committed config carries no credentials. Reuse the application’s existing variable names when they already exist.
+
+## Sync targets
+
+`sync.targets` names the apply or deploy targets that `supaschema sync` can reconcile. A target may set `databaseUrl`, reference a named `environment`, or omit both to use the runner/default database URL fallback.
+
+```json
+{
+  "sync": {
+    "targets": {
+      "local": {
+        "mode": "auto",
+        "runner": "direct",
+        "databaseUrl": "$DIRECT_URL",
+        "historyTable": "supabase_migrations.schema_migrations"
+      },
+      "remote": {
+        "mode": "manual",
+        "runner": "direct",
+        "databaseUrl": "$DATABASE_URL",
+        "historyTable": "supabase_migrations.schema_migrations",
+        "requireApprovalEnv": "SUPASCHEMA_REMOTE_SYNC_APPROVED",
+        "remote": true
+      }
+    }
+  }
+}
+```
+
+`mode: "auto"` makes a target selectable by bare `supaschema sync` when `workflow.migration_sync` is `"auto"`. Keep at most one target automatic; `sync` refuses multiple selected targets because cross-target apply is not atomic. Remote targets also require a runtime approval variable such as `SUPASCHEMA_REMOTE_SYNC_APPROVED=1` before automatic deploy.
+
+<Warning>
+  Do not hard-code connection strings in scripts, config, or CI. Use existing
+  `$ENV_NAME` indirection, `SUPASCHEMA_DATABASE_URL` as a fallback, or the
+  configured provider runner, and inject secrets from your CI provider's secret
+  store.
+</Warning>
+
+## Remote targets and `verify`
+
+`verify` creates and drops throwaway databases, so it refuses non-local hosts unless you explicitly opt in with `SUPASCHEMA_VERIFY_ALLOW_REMOTE=1`. The role it connects with must have `CREATEDB`; a capability preflight fails fast when it does not.
+
+## Diagnosing resolution
+
+`supaschema doctor` prints which resolution lane produced the URL, whether the database is reachable, and whether the role has `CREATEDB` — the first stop when a command can't find or reach a database. Diagnostics redact credentials (URL passwords, JWTs, secrets) before printing.

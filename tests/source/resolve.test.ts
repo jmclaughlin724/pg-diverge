@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../../src/config/schema.js";
-import { resolveGenerationSourceDefaults } from "../../src/planning/context.js";
+import { resolveGenerationSourceDefaults } from "../../src/planner/context.js";
 import {
   defaultTreeSource,
   resolveMigrationsDir,
@@ -91,26 +91,36 @@ describe("generation source defaults", () => {
     expect(resolved.notice).toContain("--from empty:");
   });
 
-  it("rejects live database sources for generation", async () => {
-    const resolved = await resolveGenerationSourceDefaults(
-      { from: "database:postgresql://postgres:secret@example.test/db" },
-      config
-    );
+  it.each([
+    {
+      from: "database:postgresql://postgres:secret@example.test/db",
+      name: "database to migrations",
+      to: "migrations:supabase/migrations",
+    },
+    {
+      from: "migrations:supabase/migrations",
+      name: "migrations to database",
+      to: "database:postgresql://postgres:secret@example.test/db",
+    },
+  ])("rejects explicit $name generation sources", async ({ from, to }) => {
+    const resolved = await resolveGenerationSourceDefaults({ from, to }, config);
 
-    expect(resolved.diagnostics).toEqual([
-      expect.objectContaining({ code: "SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION" }),
+    expect(resolved.from).toBe(from);
+    expect(resolved.to).toBe(to);
+    expect(resolved.diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY",
     ]);
   });
 
-  it("rejects migrations sources for generation", async () => {
-    const resolved = await resolveGenerationSourceDefaults(
-      { to: "migrations:supabase/migrations" },
-      config
-    );
+  it("redacts credentials when a configured database source is reported", async () => {
+    const custom = resolveConfig({
+      sources: { from: "database:postgresql://postgres:secret@example.test/db" },
+    });
 
-    expect(resolved.diagnostics).toEqual([
-      expect.objectContaining({ code: "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY" }),
-    ]);
+    const resolved = await resolveGenerationSourceDefaults({}, custom);
+
+    expect(resolved.notice).toContain("postgresql://postgres:[redacted]@example.test/db");
+    expect(resolved.notice).not.toContain("secret");
   });
 
   it("rejects removed configured target ownership", () => {
@@ -136,22 +146,27 @@ describe("generic source defaults", () => {
 });
 
 describe("migrations source scope", () => {
-  it("rejects migrations sources for verify before connecting to a database", async () => {
+  it("surfaces migrations extraction diagnostics in verify before connecting", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-source-scope-"));
     const migrationPath = join(root, "migration.sql");
-    await writeFile(migrationPath, "select 1;\n");
+    const history = join(root, "history");
+    await mkdir(history);
+    await writeFile(migrationPath, "CREATE SCHEMA IF NOT EXISTS app;\n");
+    await writeFile(
+      join(history, "20260101000000_invalid.sql"),
+      "ALTER TABLE app.missing ADD COLUMN id bigint;\n"
+    );
 
     const diagnostics = await verifyMigration({
       config,
+      cwd: root,
       databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5432/postgres",
-      from: "empty:",
+      from: "migrations:history",
       migrationPath,
-      to: "migrations:supabase/migrations",
+      to: "migrations:history",
     });
 
-    expect(diagnostics).toEqual([
-      expect.objectContaining({ code: "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY" }),
-    ]);
+    expect(diagnostics.map((item) => item.code)).toContain("SUPA_REPLAY_ORDER_GAP");
   });
 });
 

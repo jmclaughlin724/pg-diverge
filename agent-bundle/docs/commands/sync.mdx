@@ -1,0 +1,154 @@
+---
+title: "sync"
+description: "Run the full schema-change workflow: diff, check, types, stage, safety, verify, apply, and reconcile."
+keywords: ["sync command", "migration sync", "apply gate", "migrations"]
+---
+
+Use `sync` as the default one-command workflow for schema changes.
+
+`sync` selects at most one configured target and reconciles its history before artifact generation. It then resolves generation-safe source defaults, extracts migration-derived source intent, generates the schema diff, refreshes history, checks pending migrations, refreshes generated TypeScript/Zod contracts according to workflow policy, stages the schema closure when Git is available, runs deploy safety gates, verifies the ordered pending migration set against a disposable database, invokes the selected target's runner when a target is selected, then reconciles history again. When no target is selected, the same local artifact, safety, and verify lanes end in a dry-run report. Bare `sync` may select one configured `sync.targets.<name>` entry with `mode: "auto"`. Multiple automatic targets are refused because cross-target apply is not atomic. When a selected target has a resolved database URL, the deploy type-safety gate compares that target's live PostgreSQL catalog with the declarative schema tree. Remote deploy uses the same selection rule and requires that target's approval variable before any mutation.
+
+## Use this when
+
+- A schema change should move from declarative SQL to generated migration, generated contracts, staging, verify, and apply/dry-run in one command.
+- Pending files need `check` before apply.
+- Ghost or out-of-order history should block deployment.
+- A dry run should preview what the runner would apply.
+
+## Lane order
+
+1. Enforce apply policy for any selected mutation target.
+2. Select zero or one configured sync target.
+3. Reconcile migration history for the selected target or fallback database URL.
+4. Resolve source defaults and extract source intent from the configured migration corpus.
+5. Generate the diff unless `--no-diff` is set.
+6. Refresh and guard migration history after generation.
+7. Check pending migration files.
+8. Refresh generated TypeScript/Zod contracts according to workflow policy, even when no migration is pending.
+9. Stage the schema tree, generated migrations, contracts, and explicit config when Git is available.
+10. Report no-op when no migration is pending.
+11. Run deploy safety gates.
+12. Verify the ordered pending migration set against a disposable database.
+13. Invoke the selected runner when a target is selected, or report dry-run when no target is selected.
+14. Reconcile migration history after the runner completes.
+
+## Sequential schema edits
+
+`sources.from: "auto"` recognizes the closure staged by the previous sync. It uses `git:INDEX` only when the latest generated migration is staged without worktree edits and its lineage `to=` fingerprint matches the indexed schema tree. The next sync then diffs that index snapshot against the new worktree state, creates a forward migration, and stages the updated closure. The earlier migration may be applied or pending in the selected target history. Commit complete closures before handoff or merge; an intermediate commit is not required between local schema edits.
+
+## Run it
+
+```bash
+npx supaschema sync
+npx supaschema sync --no-diff
+```
+
+`sync.targets` controls target selection. `workflow.migration_sync` only controls whether apply is allowed and whether bare `sync` may select an automatic target: `disabled` refuses apply while allowing non-mutating local lanes, `manual` leaves bare `sync` on the dry-run gate, and `auto` lets bare `sync` use one target whose own `mode` is `"auto"`. If more than one target is automatic, `sync` refuses before any runner can mutate a database. `--target <name>` is an explicit override for one configured target.
+
+Supabase targets can use `runner: "supabase-cli"` without a `databaseUrl`; the Supabase CLI owns its project-link and authentication lane. Direct PostgreSQL targets can reuse an existing app database URL variable such as `$DIRECT_URL` or `$DATABASE_URL`. A local direct target with no URL uses the normal CLI fallback resolution.
+
+## Flags
+
+<ParamField path="--from" type="source">
+  Override the configured before-state source for an explicit recovery or
+  reconciliation run.
+</ParamField>
+
+<ParamField path="--to" type="source">
+  Override the configured target schema source. Ordinary schema edits should
+  keep the configured declarative tree.
+</ParamField>
+
+<ParamField path="--migrations-dir" type="path">
+  Directory containing migration files.
+</ParamField>
+
+<ParamField path="--database-url" type="url">
+  Target database used for history reconciliation.
+</ParamField>
+
+<ParamField path="--target" type="name">
+  Override config target selection with one configured `sync.targets.<name>` target.
+</ParamField>
+
+<ParamField path="--runner" type="direct | supabase-cli">
+  Override the configured runner for the selected target.
+</ParamField>
+
+<ParamField path="--no-diff" type="boolean">
+  Skip schema diff generation. Pending migrations are still reconciled and
+  checked.
+</ParamField>
+
+<ParamField path="--ensure-roles" type="boolean">
+  Create missing `NOLOGIN` roles referenced by grants/policies on the
+  verification server.
+</ParamField>
+
+<ParamField path="--ensure-environment" type="boolean">
+  Stub Supabase-provisioned surfaces in verify temporary databases.
+</ParamField>
+
+<ParamField path="--no-ensure-environment" type="boolean">
+  Disable the Supabase environment stub when another command or config enables
+  it.
+</ParamField>
+
+<ParamField path="sync.targets.<name>.runner" type="direct | supabase-cli">
+  Target runner configured in `supaschema.config.json`.
+</ParamField>
+
+## Refusal cases
+
+`sync` stops before handoff when:
+
+- migration history has ghost versions;
+- migration files are out of order;
+- a pending migration fails `check`;
+- the selected runner is unavailable;
+- `workflow.migration_sync` disables apply;
+- deploy type-safety or RLS-safety gates fail;
+- verify cannot resolve a database URL or fails against the disposable database;
+- more than one sync target is selected;
+- `--env` or `--database-url` attempts to override more than one selected target;
+- a selected direct remote target has no database URL;
+- a remote automatic target lacks its configured runtime approval environment variable.
+
+## Exit codes
+
+| Code | Meaning                                              |
+| ---- | ---------------------------------------------------- |
+| `0`  | Dry run passed, apply passed, or nothing was pending |
+| `1`  | Runtime failure                                      |
+| `2`  | Gate failure or inconsistent migration history       |
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Migrations" icon="list-checks" href="/commands/migrations">
+    Inspect applied and pending history first.
+  </Card>
+  <Card title="Check" icon="shield-check" href="/commands/check">
+    See the replay-safety gate `sync` runs.
+  </Card>
+  <Card title="Apply" icon="database-zap" href="/commands/apply">
+    Apply already-generated pending migrations without generating a new diff.
+  </Card>
+  <Card
+    title="Supabase integration"
+    icon="database"
+    href="/guides/supabase-integration"
+  >
+    Understand the Supabase runner boundary.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card
+    title="Configuration"
+    icon="sliders-horizontal"
+    href="/configuration/config-file"
+  >
+    Set `workflow.migration_sync`.
+  </Card>
+</CardGroup>

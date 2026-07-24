@@ -295,7 +295,7 @@ function assertConsumerPackageSmokeSteps(qualitySteps) {
     preparePackageManagersStep &&
       stepIf(preparePackageManagersStep) === "matrix.node-version == 22" &&
       stepRun(preparePackageManagersStep).includes("corepack prepare pnpm@11.1.2 --activate") &&
-      stepRun(preparePackageManagersStep).includes("corepack prepare yarn@4.16.0 --activate"),
+      stepRun(preparePackageManagersStep).includes("corepack prepare yarn@4.17.1 --activate"),
     "ci.yml must prepare pnpm and Yarn only for the Node 22 consumer package-smoke lane"
   );
   const setupBunStep = findNamedStep(qualitySteps, "Install Bun for consumer package smoke");
@@ -398,12 +398,16 @@ export function check(root = ROOT) {
   );
   const qualitySteps = ci.jobs?.quality?.steps ?? [];
   assert(
-    packageJson.scripts?.check?.startsWith("npm run build && npm run lint"),
-    "package.json check must build generated dist before lint resolves dist imports"
+    packageJson.scripts?.check === "npm run build && npm run lint && npm run typecheck && npm test",
+    "package.json check must run the documented build, lint, typecheck, and test contract"
   );
   assert(
     stepRunBefore(qualitySteps, "npm run build", "npm run lint:ci"),
     "ci.yml quality job must build generated dist before npm run lint:ci resolves dist imports"
+  );
+  assert(
+    qualitySteps.some((step) => stepRun(step) === "npm run format:md:check"),
+    "ci.yml quality job must run the read-only Markdown formatting check"
   );
   assert(
     !packageJson.scripts?.["github:check-dco"],

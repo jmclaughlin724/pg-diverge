@@ -27,21 +27,23 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 
 | Surface | Canonical owner | Targets | Sync / validation |
 | --- | --- | --- | --- |
-| Root route map | `AGENTS.md` | discovered by coding agents | no sync; validate with `npm run guard` |
+| Root Codex runtime brief | root `AGENTS.md` | loaded directly by Codex; imported by `CLAUDE.md` | no generated sync; preserve the user-owned brief |
+| Nested Codex briefs | `<subfolder>/AGENTS.md` | loaded hierarchically by Codex for matching subtrees | no generated sync; validate scoped routes with `npm run guard` |
 | Claude runtime entrypoint | `CLAUDE.md` | Claude Code | keep as a runtime entrypoint for Claude Code only; unique durable policy belongs in `AGENTS.md` or scoped rules |
 | Rules | `.claude/rules/**` | Codex rule pointers/mirrors when packaged | `npm run sync:llm`; rule guard if available |
-| Skills | `.claude/skills/**` | `.agents/skills/**` for mirrored skills; `skills/supaschema` for the public `npx skills` source | `npm run sync:llm` |
+| Skills | `.claude/skills/**`; ordered public list in `scripts/skills/sync-llm.mjs` | `.agents/skills/**`; curated `skills/**`; Agent/Claude bundle skill trees and manifest | `npm run sync:llm` |
 | Hooks | `.claude/hooks/**` | `.codex/hooks/**` mirrors or native adapters where supported | edit Claude/shared owner, then sync or update native adapter |
 | Native Codex hook registration | `scripts/skills/sync-llm.mjs` plus `.claude/settings.json`; see Rule 22 | `.codex/hooks.json` and packaged consumer registration | `npm run sync:llm`, `npm run sync:llm:check`, hook/package guards |
 | MCP registry | `.mcp.json`, `fastmcp.json` | local MCP clients and package docs | `npm run guard:fastmcp`, `npm run guard:agent` |
-| Consumer agent bundle | `.claude/skills/supaschema`, `.claude/rules/supaschema.md`, consumer hook sources, `agent-bundle/INSTALL.md`, `package.json#files`, `bin/scaffold.mjs`, `scripts/skills/sync-llm.mjs` | raw npm tarball bundle and default installed project scaffold | `npm run sync:llm`, `npm run check:package`, `npm pack --dry-run --json`, lifecycle tests |
+| Consumer agent bundle | curated `.claude/skills/**`, `.claude/rules/supaschema.md`, consumer hook sources, `agent-bundle/INSTALL.md`, `package.json#files`, `bin/scaffold.mjs`, `scripts/skills/sync-llm.mjs` | raw npm tarball bundle, ordered skills manifest, and default installed project scaffold | `npm run sync:llm`, `npm run check:package`, `npm pack --dry-run --json`, lifecycle tests |
 
 ## Rules
 
 - `.claude/**` is the canonical authoring surface for maintainer Claude rules, skills, hooks, and agents.
-- `AGENTS.md`'s role (short root route map and rule index, not a policy owner) is defined in Rule 17; in this sync matrix it must point to rule owners instead of duplicating durable policy.
+- The root `AGENTS.md` is the canonical, user-owned Codex project brief because Codex loads it directly and does not load `.claude/rules/**` prose automatically. This rule does not constrain the root brief to a route map, concise projection, rule index, or any prescribed content shape.
+- Route-map, concision, section-order, and content-placement guidance applies only to nested `<subfolder>/AGENTS.md` files. Any owner pointer in a nested brief must resolve to a live owner.
 - `CLAUDE.md` MUST import `@AGENTS.md` when maintainer hooks are enabled, so Claude sessions receive the same root operating contract that Codex receives.
-- `.codex/**` and `.agents/**` are generated or native runtime targets only where this rule names them as owners.
+- `.codex/**` and `.agents/**` are generated or native runtime targets only where this rule names them as owners. Generated `.codex/rules/**` contain command policy or owner pointers, not the Markdown rule prose, so they do not replace the root or nested `AGENTS.md` chain.
 - `scripts/skills/sync-llm.mjs` is the writer for generated LLM mirrors and generated source-repo `.codex/hooks.json`. It MUST validate Claude hook registration and the `CLAUDE.md` root-contract import before rendering Codex hook registration. Do not hand-edit synced copies.
 - Rule 22 owns source-repo Claude/Codex hook topology and generated Codex hook registration. This rule owns the sync matrix and boundary routing.
 - Rule 13 owns packaged consumer hook templates, including the standalone `.codex/hooks/general-guard.mjs` Bash safety hook used because consumer packages do not include the maintainer context runner path.

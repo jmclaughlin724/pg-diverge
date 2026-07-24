@@ -124,7 +124,6 @@ describe("public agent and editor surfaces", () => {
       ".mcp.json",
       ".vscode/settings.json",
       ".vscode/extensions.json",
-      ".claude/cclsp.json",
       ".codex/config.toml",
       "fastmcp.json",
       "pyproject.toml",
@@ -138,6 +137,11 @@ describe("public agent and editor surfaces", () => {
       privateFiles.filter((file) => existsSync(resolve(root, file))).sort()
     );
     expect(stageableFiles(privateFiles)).toEqual([]);
+    expect(existsSync(resolve(root, "cclsp.json"))).toBe(true);
+    expect(ignoredFiles(["cclsp.json"])).toEqual([]);
+    expect(
+      files.includes("cclsp.json") || stageableFiles(["cclsp.json"]).includes("cclsp.json")
+    ).toBe(true);
     const privatePrefixes = [
       "advisor-plans/",
       "cloudflare/",
@@ -175,7 +179,7 @@ describe("public agent and editor surfaces", () => {
     );
     expect(
       findStopHookCommand(JSON.parse(codexHooks), "sync-llm-on-claude-surface-change.mjs")
-    ).toBeUndefined();
+    ).toBe(`node "\${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`);
     expect(claudeBashGuard).not.toContain("user-codex-skill-policy");
     expect(codexGeneralGuard).not.toContain("user-codex-skill-policy");
   });

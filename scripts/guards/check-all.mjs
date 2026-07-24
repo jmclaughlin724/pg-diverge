@@ -8,7 +8,6 @@ const guards = [
   ["node", ["scripts/guards/toolchain/check-tooling-stack.mjs"]],
   ["node", ["scripts/guards/fastmcp/check-fastmcp-agent.mjs"]],
   ["node", ["scripts/guards/repo-surface/check-public-repo-surface.mjs"]],
-  ["node", ["scripts/guards/deps/check-dependency-catalog.mjs"]],
   ["node", ["scripts/guards/toolchain/check-lsp-coverage.mjs"]],
   ["node", ["scripts/guards/agent-surface/check-agent-hooks.mjs"]],
   ["node", ["scripts/guards/ci-release/check-codex-execpolicy.mjs"]],

@@ -1,57 +1,60 @@
 ---
-description: Repo operating discipline: STOP gates, enforcement, technical decisions, npm-only package manager, and closeout behavior.
+description: Repo-wide authorization, gate integrity, enforcement closure, evidence, npm, and closeout.
 ---
 
-# Rule 01 — Operating rules
+# Rule 01 - Operating rules
 
 ## Contract
 
-This rule owns the repo-wide operating discipline that applies every other rule: gates are real, technical decisions are evidence-based, npm is the only package manager, and no standard ships without an executable enforcement path.
+This rule owns repo-wide authorization, gate integrity, enforcement closure, canonical-owner discipline, evidence, validation, npm, and closeout. `AGENTS.md` is the canonical Codex runtime entrypoint; durable prevention standards also live in the closest `.claude/rules/**` owner.
 
-The non-negotiable working agreement for any agent or contributor in this repo. Standing rules live in the per-concern files under `.claude/rules/`; `AGENTS.md` is the root route map that points agents to those owners.
+## Action boundary
 
-## Hard rules
+- Answer, explain, review, diagnose, research, or plan requests authorize inspection and reporting. Do not edit files or perform external writes unless the user also asks for a change.
+- Change, build, fix, or implement requests authorize in-scope local edits and relevant non-destructive validation.
+- Get explicit confirmation before destructive or irreversible actions, external writes, real spending, secret use, or material scope expansion. Stage, commit, push, publish, deploy, merge, and send only when asked.
+- Preserve concurrent work. Work with overlapping changes and leave unrelated changes untouched.
 
-- **Follow the gates; do not skip a STOP condition.** Every concern has a STOP gate with an executable enforcement path. A red gate is a real failure — fix the cause, never weaken, disable, skip, or comment out a guard, test, hook, or assertion to make it pass. The umbrella gate is `npm run guard` (`scripts/guards/check-all.mjs`), which must print `ALL_GUARDS_OK`.
-- **No standard without enforcement.** A rule, contract, or STOP gate that no guard or test reaches is incomplete — wire it into `npm run guard` or a test, do not leave it as prose. A docs-only or skill-only change cannot close hook, context, rule, sync, generated-surface, package-template, or runtime behavior unless the enforcement closure ledger in the task record or closeout records the runtime/hook path, guard, focused test, validation script, generated mirrors, consumer/package disposition, and explicit Claude/Codex disposition. STOP IF any ledger row is missing a verified update, already-covered finding, or owner-scoped not-applicable reason.
-- **Anti-patterns stay indexed.** Rule 20 is the single repo-wide anti-pattern inventory. When a rule, hook, guard, skill, or CI lane adds a prohibited pattern, update Rule 20 in the same change and keep the domain rule focused on the positive workflow and recovery path.
-- **Use `$elegant` only.** DEFAULT TO `$elegant` for every task and action. MUST NOT create or keep backwards compatibility behavior or paths, export-only compatibility files, shims, aliases, wrappers, DTOs, facades, copied enum tuples, casts that patch missing contracts, local view-models, local compatibility layers, broader helper surfaces, allowlist exceptions, transitional branches, comments in code or scripts, redundant or convenience entry points, placeholders, TODOs, regex, or duplicate owners. Typed UI prop containers are allowed only when DB-backed payloads use direct generated contracts without renaming, projection, mirroring, or local ownership. Use AST only for structural analysis. Treat external-contract conflicts as STOP conditions; solve them in the canonical owner. STOP IF the approach preserves an old path or patches around a missing contract instead of rewriting or deleting its consumers in the same change. VERIFY with Code Atlas impact/consumer queries plus AST/LSP import-export-symbol inspection before deleting or privatizing a public surface, and with `scripts/guards/code-shape/check-canonical-surfaces.mjs` for code-surface shape. FIX BY moving behavior into the canonical owner, updating consumers, and deleting the legacy surface.
-- **Enforce the `$elegant` change discipline.** MUST name the canonical owner and single entry point before adding or preserving any surface. This rule owns the sequence, STOP gate, and guard wiring; `AGENTS.md` only routes agents here. STOP IF the accepted scope keeps backwards compatibility behavior or paths, backwards-compatibility shims, export-only compatibility files, avoidable duplicate owners, wrappers, aliases, DTOs, facades, copied enum tuples, cast-based contract patches, local view-models, local compatibility layers, broader helper surfaces, allowlist exceptions, redundant docs, placeholders, TODOs, or multiple entry points without a named distinct runtime, storage, compliance, lifecycle, or external-contract boundary. VERIFY by naming the canonical owner, the single entry point, and the direct source or Code Atlas evidence. FIX BY merging, moving, deleting, or documenting the distinct boundary that justifies a separate surface.
-- **Use DRY owner proof before new enforcement surfaces.** Prefer deletion, consolidation into the canonical owner, direct consumer rewrites, and existing import/type/test/build/package proof before adding a guard, allowlist, contract module, or central file catalog. A new guard is valid only for a concrete recurring behavior invariant that the canonical owner and existing checks cannot cover precisely. STOP IF the approach freezes incidental file shape, enumerates acceptable public surfaces, or centralizes a list whose correct fix is deleting or consolidating the owner. FIX BY deleting the redundant surface, updating consumers, and using existing checks unless a precise behavior guard remains necessary.
-- **Separate mechanism, end state, and verification for correctness work.** Diagnostic, review, verification, source, why, correctness, best-practice, redundancy, and architecture-shaped tasks MUST name the runtime mechanism, the `$elegant` architecture/end-state disposition, and the verification disposition before claiming correctness. STOP IF the answer treats upstream-valid runtime behavior as proof of local correctness, omits the canonical owner or end-state disposition, or omits commands, sources, failures, skipped checks, or blockers. VERIFY with direct source and command evidence. FIX BY revising the answer or running the missing verification before making the correctness claim.
-- **Reason from source, not pattern.** Derive changes from the requested end state and protected invariant; treat existing patterns as evidence, not authority. When mechanisms overlap, verify the canonical upstream source before keeping, consolidating, or replacing enforcement. Add only surfaces that directly protect the verified invariant. VERIFY by naming the source and invariant before editing; guards must check behavior, not incidental shape.
-- **Resolve technical choices by research, not by polling the user** (Rule 05): default to the upstream-canonical pattern and cite the source. Escalate only product scope, irreversible/outward-facing actions, secrets/spend, or a genuine conflict between the user's own prior instructions.
-- **Generated types come from the declarative tree, never hand-rolled.** supaschema generates `database.types.ts` and `database.zod.ts` from the declarative SQL tree and source model (`supaschema types`), not from live database introspection (`.claude/rules/supaschema.md`).
-- **Stay inside the governed toolchain** (Rules 04/06/08): navigate and refactor via cclsp; format and lint with the one owner per concern — `ruff` for Python, Biome via Ultracite for JS/TS/JSON/CSS/HTML/GraphQL; analyze code structure with an AST, never regex (Rule 07).
-- **Use Code Atlas for repo-wide graph claims** (Rule 10): build and query the atlas before broad owner, route, consumer, dependency, DB, API, worker, generated-surface, or rollout assertions, then prove exact behavior with cclsp and direct source reads.
-- **Keep agent surfaces synchronized.** After changing `.claude/skills/**`, run `npm run sync:llm` so generated `.agents/skills/**` mirrors, and the public `skills/supaschema` mirror where applicable, stay generated from their `.claude/skills/**` owners (Rule 12). Codex hooks stay native; Codex rule files should hold executable command policy or short pointers to canonical rule owners, not duplicated long-form policy.
-- **Durable operator policy lives in `.claude/rules/`, not `AGENTS.md`.** `AGENTS.md` is a concise repo map and rule index; `README.md` is the npm package landing page and `docs/` is the Mintlify site. The published npm package boundary is the `package.json` `files` allowlist (Rule 13).
-- **The package manager is npm.** Never introduce pnpm, yarn, or an alternate lockfile; preserve `package-lock.json`. There is no Turborepo, no workspaces, and no `apps/` in this single-package repo.
-- **Commit only when asked; keep work on the current branch and current worktree;** let lefthook run (never `--no-verify`).
+## Gate integrity and enforcement closure
 
-## Enforced by
+- Treat failing guards, tests, hooks, assertions, and STOP conditions as evidence. Fix the cause; do not weaken, skip, baseline, bypass, or delete the gate to make it pass.
+- Every HIGH or MEDIUM finding, recurring lesson, architecture change, hook change, generated-surface change, or package-boundary change requires an enforcement-closure disposition before closeout.
+- The closure ledger covers: rule owner; Claude and Codex runtime or hook path; guard; focused test; CI or validation script; skill repair guidance; generated mirrors; and consumer or package surface.
+- Every ledger row must be `updated`, `already covered` with evidence, or `not applicable` with an owner-scoped reason. A docs-only or skill-only change cannot close executable behavior, hook, sync, generated-surface, or package work.
+- Add a guard or test only when it can check a concrete recurring invariant or changed executable/public behavior precisely. Do not invent prose scanners, semantic allowlists, or architecture-judgment detectors merely to fill a ledger row.
+- `npm run guard` is the umbrella rule gate and must finish with `ALL_GUARDS_OK` when a cross-cutting rule, hook, package, migration, toolchain, or CI contract changes.
 
-- `npm run guard` (`scripts/guards/check-all.mjs`) is the umbrella gate: tooling stack, canonical surface shape, agent hooks, generated-surface parity, rule citations, dependency catalog, Code Atlas, LSP coverage, and FastMCP. lefthook and the PreToolUse/PostToolUse hooks enforce the same owners in-loop.
+## Owner and end-state discipline
 
-STOP if any STOP condition in `.claude/rules/*` is skipped, a guard or test is weakened instead of its cause being fixed, a standard ships without an executable enforcement path, hook/context/rule/sync/package-template behavior changes without an enforcement closure ledger, the package manager is switched away from npm, a technical decision ships on a guess when an authoritative upstream source was available, an approach preserves avoidable duplication because removing it would be a larger patch, a backwards compatibility path, export-only compatibility file, shim, placeholder, or TODO remains in the accepted scope, or avoidable duplicate or redundant surfaces or multiple entry points remain in the accepted scope.
+- Name the canonical owner and intended end state before adding or preserving a surface. Prefer existing owners, direct consumers, clear types, and simple control flow.
+- Use `$elegant` when consolidation, simplification, deletion, compatibility removal, or duplicate ownership is part of the accepted scope. Do not preserve avoidable shims, wrappers, aliases, copied contracts, cast-based patches, placeholders, TODOs, transitional branches, redundant docs, or multiple entry points.
+- Prefer owner consolidation, direct consumer rewrites, and existing type, test, build, import, or package proof before adding a new guard, allowlist, registry, or contract module.
+- Treat existing patterns as evidence, not authority. Derive the change from the requested outcome, protected invariant, current source, and authoritative upstream behavior.
+
+## Evidence and execution
+
+- Use repo evidence for local behavior and authoritative upstream sources for material external claims. Absence from one search is not proof that a surface does not exist; try one or two meaningful fallbacks before concluding it is unavailable.
+- Use structured APIs or parsers for structural questions. Use Code Atlas before broad ownership, dependency, consumer, route, generated-surface, delete, rename, move, or rollout claims; use focused source and structural tooling for exact behavior.
+- Resolve technical implementation choices from evidence. Ask the user only for product scope, irreversible or outward-facing actions, secrets, spending, material permission expansion, or genuine instruction conflicts.
+- For complex work, use a short plan or checklist when it prevents missed dependencies. Continue through implementation and relevant validation, update the user at major phase changes, and stop routine tool narration.
+- Use subagents only when authorized and when bounded independent work improves coverage or latency. Require evidence, files inspected, uncertainty, risks, and validation; keep final judgment and integration in the parent.
+- Protect context. Scope commands before printing, byte-cap unknown or potentially large output, preserve exit status when it matters, and read instruction, skill, tool, and policy files completely.
+- Validate in proportion to risk with the narrowest command that proves the outcome. Broaden only when shared behavior or an owner rule requires it. If validation is unavailable, state what was not run and why.
+- Keep durable policy in `.claude/rules/**`, reusable workflows in `.claude/skills/**`, deterministic enforcement in hooks or guards, and generated mirrors under their declared sync owner.
+- npm is the JavaScript package manager. Preserve `package-lock.json`; do not introduce pnpm, Yarn, or another lockfile.
+
+## Stop rule
+
+Stop when the requested outcome, impacted-owner follow-through, enforcement closure, and relevant validation are complete. Do not add unrelated cleanup or recommendations. When missing authority, evidence, or an external dependency blocks completion, report the concrete blocker and the smallest next decision.
 
 ## Verification
 
-Run the narrowest command that proves the touched rule, then the umbrella gate when rule, hook, package, migration, toolchain, or CI behavior changed.
-
-Required closeout checks when this rule or a cross-cutting rule changes:
-
-```bash
-npm run guard
-npm run typecheck
-```
-
-`npm run guard` must finish with `ALL_GUARDS_OK`.
+Run the closest owner check for changed behavior. Use `npm run guard` for cross-cutting rule, hook, package, migration, toolchain, or CI changes.
 
 ## Failure behavior
 
-If any gate fails, fix the underlying cause and rerun the failed command. Do not weaken, disable, skip, comment out, baseline, or bypass a guard, test, hook, assertion, or STOP condition to make the run green.
+Fix the canonical owner and rerun the failing owner check. Do not close a task with a missing enforcement-closure row, an unverified material claim, a weakened gate, or an unsynced generated target.
 
 ## Done means
 
-Every accepted instruction has a disposition: resolved with evidence, not applicable with evidence, or blocked by a concrete external constraint after investigation. Deferral and future cleanup are not closeout states.
+The authorized outcome is complete, every HIGH or MEDIUM finding has a full closure disposition, evidence supports material claims, relevant checks passed or their absence is explained, generated targets are current, and unrelated work remains intact.
