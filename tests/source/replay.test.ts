@@ -166,7 +166,7 @@ ALTER TABLE app.accounts ADD COLUMN minimum bigint CHECK (minimum > id);`,
     ).toEqual(["accounts_minimum_check", "accounts_minimum_check1"]);
   });
 
-  it("allocates generated constraint names against the schema namespace", async () => {
+  it("allocates generated constraint names within the owning table", async () => {
     const model = await extractMigrations([
       [
         "20240101000000_create.sql",
@@ -188,7 +188,7 @@ CREATE TABLE app.accounts (
       model.objects
         .filter((object) => object.ref.kind === "constraint")
         .map((object) => object.ref.name)
-    ).toEqual(["accounts_check", "accounts_check1"]);
+    ).toEqual(["accounts_check", "accounts_check"]);
   });
 
   it("reuses a generated constraint name after PostgreSQL drops it", async () => {
@@ -768,7 +768,7 @@ CREATE TABLE app.accounts (id bigint);`
     expect(replayed.fingerprint).toBe(declared.fingerprint);
   });
 
-  it("blocks hand-authored migrations after migrations-backed generated lineage", async () => {
+  it("blocks hand-authored migrations after generated lineage", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-migrations-lineage-"));
     const migrations = join(root, "migrations");
     const schemas = join(root, "schemas");
@@ -779,7 +779,7 @@ CREATE TABLE app.accounts (id bigint);`
     const config = resolveConfig({
       migrationsDir: migrations,
       schemaPaths: [schemas],
-      sources: { from: `migrations:${migrations}` },
+      sources: { from: "empty:" },
     });
     const before = await extractSourceModel(`migrations:${migrations}`, { config, cwd: root });
     const generatedPath = join(migrations, "20240102000000_generated.sql");
@@ -806,7 +806,7 @@ ${generatedSql}`
     const context = await buildSchemaPlanningContext({
       config,
       cwd: root,
-      from: `migrations:${migrations}`,
+      from: "empty:",
       migrationsDir: migrations,
       to: `dir:${schemas}`,
     });
@@ -957,6 +957,31 @@ ALTER TABLE app.accounts ADD CONSTRAINT accounts_id_key UNIQUE USING INDEX accou
         `CREATE SCHEMA app;
 CREATE TABLE app.accounts (id integer);
 ALTER TABLE app.accounts ADD CONSTRAINT accounts_id_key UNIQUE (id);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    expect(history.objects.some((object) => object.ref.kind === "index")).toBe(false);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("uses the backing index name for an unnamed attached constraint", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_using_index.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (email text);
+CREATE UNIQUE INDEX accounts_email_idx ON app.accounts (email);
+ALTER TABLE app.accounts ADD UNIQUE USING INDEX accounts_email_idx;`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (email text);
+ALTER TABLE app.accounts ADD CONSTRAINT accounts_email_idx UNIQUE (email);`,
       ],
     ]);
 

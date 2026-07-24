@@ -3,7 +3,7 @@ import { realpath } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { promisify } from "node:util";
-import { parseRuntimeSource, sourceAuto } from "../config/contract.js";
+import { parseRuntimeSource, RuntimeSourceKind, sourceAuto } from "../config/contract.js";
 import { diagnostic } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { readMigrationContext } from "../migrations/context.js";
@@ -221,7 +221,19 @@ function generationSourceSideDiagnostics(side: "from" | "to", source: string): D
         "error",
         `generation ${side}-source still resolves to auto`,
         {
-          hint: "Resolve the source explicitly to database:, migrations:, git:, dir:, dump:, catalog:, or empty: before planning.",
+          hint: "Resolve the source explicitly to database:, git:, dir:, dump:, catalog:, or empty: before planning.",
+        }
+      ),
+    ];
+  }
+  if (parseRuntimeSource(source)?.kind === RuntimeSourceKind.Migrations) {
+    return [
+      diagnostic(
+        "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY",
+        "error",
+        `generation ${side}-source uses migration replay`,
+        {
+          hint: "Use migrations: only with supaschema types --from; use database:, git:, dir:, dump:, catalog:, or empty: for generation.",
         }
       ),
     ];
@@ -239,7 +251,7 @@ function baselineRequiredDiagnostic(migrationsDir: string): Diagnostic {
     "error",
     "sources.from: auto could not resolve a repository baseline for existing migrations",
     {
-      hint: `Set sources.from to migrations:${migrationsDir} to adopt that history, or explicitly select database:, git:, dir:, dump:, catalog:, or empty: after review.`,
+      hint: `Review ${migrationsDir}, then set sources.from to database:, git:, dir:, dump:, catalog:, or empty:.`,
     }
   );
 }

@@ -208,7 +208,7 @@ describe("diff lineage chain gate", () => {
     expect(parseLineage(await readFile(generated, "utf8"))).toBeDefined();
   });
 
-  it("does not use an ambient database URL for a URL-less replacement target", {
+  it("uses an ambient database URL to gate a URL-less replacement target", {
     timeout: 60_000,
   }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "supa-replace-explicit-target-"));
@@ -243,9 +243,9 @@ describe("diff lineage chain gate", () => {
       },
     });
 
-    expect(replaced.code, replaced.stderr).toBe(0);
-    expect(replaced.stderr).toContain("SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED");
-    expect(replaced.stderr).not.toContain("SUPA_MIGRATIONS_TARGET_UNAVAILABLE");
+    expect(replaced.code).toBe(2);
+    expect(replaced.stderr).toContain("SUPA_MIGRATIONS_TARGET_UNAVAILABLE");
+    expect(replaced.stderr).not.toContain("SUPA_DIFF_REPLACE_APPLIED_STATE_UNVERIFIED");
   });
 
   it("refuses to replace generated migrations older than the migration tip", {

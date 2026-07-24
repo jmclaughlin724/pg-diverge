@@ -575,7 +575,7 @@ async function applyAlterTableCommand(options: {
     options.statement.text,
     options.ordinal,
     options.file,
-    constraintNamesForSchema(options.objects, options.table.ref.schema ?? "public")
+    constraintNamesForTable(options.objects, options.table)
   );
   if (!extracted || extracted.length === 0) {
     return unsupportedStatement(
@@ -803,6 +803,9 @@ async function applyConstraintUsingIndex(
   if (!nextConstraint) {
     return unsupportedStatement(statement, file, "backing index constraint could not be rewritten");
   }
+  if (readString(nextConstraint.conname) === undefined) {
+    nextConstraint.conname = indexName;
+  }
   Reflect.deleteProperty(nextConstraint, "indexname");
   nextConstraint.keys = columns.map((name) => ({ String: { sval: name } }));
   nextCommand.def = { ...nextDefinition, Constraint: nextConstraint };
@@ -813,7 +816,7 @@ async function applyConstraintUsingIndex(
         statement.text,
         ordinal,
         file,
-        constraintNamesForSchema(objects, schema)
+        constraintNamesForTable(objects, table)
       )
     : undefined;
   if (!extracted || extracted.length === 0) {
@@ -935,7 +938,7 @@ async function applyAddColumn(
     tableName,
     statement.text,
     statement.byteStart,
-    constraintNamesForSchema(objects, tableName.schema ?? "public")
+    constraintNamesForTable(objects, table)
   ).map((synthesized, index) =>
     makeObject(
       {
@@ -964,9 +967,15 @@ async function applyAddColumn(
   );
 }
 
-function constraintNamesForSchema(objects: Map<string, SchemaObject>, schema: string): string[] {
+function constraintNamesForTable(
+  objects: Map<string, SchemaObject>,
+  table: SchemaObject
+): string[] {
+  const schema = table.ref.schema ?? "public";
   return [...objects.values()].flatMap((object) =>
-    object.ref.kind === "constraint" && (object.ref.schema ?? "public") === schema
+    object.ref.kind === "constraint" &&
+    (object.ref.schema ?? "public") === schema &&
+    object.ref.table === table.ref.name
       ? [object.ref.name]
       : []
   );

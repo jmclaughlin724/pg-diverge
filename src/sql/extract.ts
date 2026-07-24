@@ -60,7 +60,7 @@ interface ParseStatementResult {
   objects: SchemaObject[];
 }
 
-type ConstraintNamesBySchema = Map<string, Set<string>>;
+type ConstraintNamesByTable = Map<string, Map<string, Set<string>>>;
 
 type ObjectBuilder = (
   node: AstNode,
@@ -151,7 +151,7 @@ function parseStatement(
   ordinal: number,
   config: SupaschemaConfig,
   file: string | undefined,
-  constraintNames: ConstraintNamesBySchema
+  constraintNames: ConstraintNamesByTable
 ): ParseStatementResult {
   const node = asRecord(statement.node[statement.tag]) ?? {};
   if (statement.tag === "DoStmt" && classifyDoBlock(node) === "idempotent-role") {
@@ -241,13 +241,17 @@ function buildObjects(
   statement: AstStatement,
   ordinal: number,
   file: string | undefined,
-  constraintNames: ConstraintNamesBySchema
+  constraintNames: ConstraintNamesByTable
 ): SchemaObject[] | undefined {
   const node = asRecord(statement.node[statement.tag]);
   if (!node) {
     return;
   }
-  const existingNames = constraintNames.get(rangeVarName(node.relation)?.schema ?? "public") ?? [];
+  const relation = rangeVarName(node.relation);
+  const existingNames =
+    relation === undefined
+      ? []
+      : (constraintNames.get(relation.schema ?? "public")?.get(relation.name) ?? []);
   if (statement.tag === "CreateStmt") {
     return tableObjects(node, statement, ordinal, file, existingNames);
   }
@@ -349,24 +353,26 @@ function tableObjects(
 
 function constraintNameState(
   existingObjects: readonly SchemaObject[] | undefined
-): ConstraintNamesBySchema {
-  const names: ConstraintNamesBySchema = new Map();
+): ConstraintNamesByTable {
+  const names: ConstraintNamesByTable = new Map();
   recordConstraintNames(existingObjects ?? [], names);
   return names;
 }
 
 function recordConstraintNames(
   objects: readonly SchemaObject[],
-  names: ConstraintNamesBySchema
+  names: ConstraintNamesByTable
 ): void {
   for (const object of objects) {
-    if (object.ref.kind !== "constraint") {
+    if (object.ref.kind !== "constraint" || object.ref.table === undefined) {
       continue;
     }
     const schema = object.ref.schema ?? "public";
-    const schemaNames = names.get(schema) ?? new Set<string>();
-    schemaNames.add(object.ref.name);
-    names.set(schema, schemaNames);
+    const tables = names.get(schema) ?? new Map<string, Set<string>>();
+    const tableNames = tables.get(object.ref.table) ?? new Set<string>();
+    tableNames.add(object.ref.name);
+    tables.set(object.ref.table, tableNames);
+    names.set(schema, tables);
   }
 }
 

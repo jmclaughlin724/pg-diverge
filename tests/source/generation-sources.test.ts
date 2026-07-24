@@ -75,13 +75,6 @@ const catalogPassword = ["catalog", "credential", "value"].join("-");
 const validMigration = `CREATE SCHEMA app;
 CREATE TABLE app.accounts (id bigint);
 `;
-const replayNeutralMigration = `DO $$
-BEGIN
-  CREATE ROLE source_matrix_role NOLOGIN;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END
-$$;
-`;
 
 interface Fixture {
   config: ReturnType<typeof resolveConfig>;
@@ -149,17 +142,11 @@ async function isReadOnlyCatalogQuery(query: string): Promise<boolean> {
 }
 
 describe("generation source planning", () => {
-  it.each([
-    { kind: "database", side: "from" },
-    { kind: "database", side: "to" },
-    { kind: "migrations", side: "from" },
-    { kind: "migrations", side: "to" },
-  ] satisfies {
-    kind: "database" | "migrations";
+  it.each([{ side: "from" }, { side: "to" }] satisfies {
     side: SourceSide;
-  }[])("extracts an explicit $kind source on the $side side", async ({ kind, side }) => {
+  }[])("extracts an explicit database source on the $side side", async ({ side }) => {
     const fixture = await createFixture();
-    const source = kind === "database" ? databaseSource() : fixture.migrationsSource;
+    const source = databaseSource();
     const context = await buildSchemaPlanningContext({
       checkMigrationBaseline: false,
       config: fixture.config,
@@ -172,8 +159,8 @@ describe("generation source planning", () => {
     expect(context.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
     expect(model?.source).toBe(source);
     expect(model?.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-    expect(pgState.poolConstructions).toBe(kind === "database" ? 1 : 0);
-    expect(pgState.poolEndCalls).toBe(kind === "database" ? 1 : 0);
+    expect(pgState.poolConstructions).toBe(1);
+    expect(pgState.poolEndCalls).toBe(1);
     expect(pgState.clientConstructions).toBe(0);
   });
 
@@ -184,7 +171,7 @@ describe("generation source planning", () => {
       checkMigrationBaseline: false,
       config: fixture.config,
       cwd: fixture.root,
-      from: fixture.migrationsSource,
+      from: "empty:",
       to: databaseSource(),
     });
 
@@ -199,8 +186,8 @@ describe("generation source planning", () => {
 
   it.each([{ side: "from" }, { side: "to" }] satisfies {
     side: SourceSide;
-  }[])("surfaces migrations replay diagnostics on the $side side", async ({ side }) => {
-    const fixture = await createFixture("ALTER TABLE app.missing ADD COLUMN id bigint;\n");
+  }[])("rejects migrations replay on the $side side before extraction", async ({ side }) => {
+    const fixture = await createFixture();
     const context = await buildSchemaPlanningContext({
       checkMigrationBaseline: false,
       config: fixture.config,
@@ -210,11 +197,10 @@ describe("generation source planning", () => {
     });
 
     const model = modelForSide(context, side);
-    const codes = [
-      ...context.diagnostics.map((item) => item.code),
-      ...(model?.diagnostics.map((item) => item.code) ?? []),
-    ];
-    expect(codes).toContain("SUPA_REPLAY_ORDER_GAP");
+    expect(context.diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY",
+    ]);
+    expect(model).toBeUndefined();
     expect(pgState.poolConstructions).toBe(0);
     expect(pgState.clientConstructions).toBe(0);
   });
@@ -265,11 +251,11 @@ describe("generation source planning", () => {
   ] satisfies {
     command: "diff" | "plan";
     reverse: boolean;
-  }[])("routes database and migrations through $command with reverse=$reverse", async ({
+  }[])("rejects migrations replay through $command with reverse=$reverse", async ({
     command,
     reverse,
   }) => {
-    const fixture = await createFixture(replayNeutralMigration);
+    const fixture = await createFixture();
     const migrationsSource = `migrations:${join(fixture.root, "migrations")}`;
     const database = databaseSource();
     const from = reverse ? migrationsSource : database;
@@ -302,19 +288,19 @@ describe("generation source planning", () => {
       stderr.mockRestore();
     }
 
-    expect(process.exitCode).toBeUndefined();
-    expect(diagnostics).toEqual([]);
-    expect(pgState.poolConstructions).toBe(1);
-    expect(pgState.poolEndCalls).toBe(1);
+    expect(process.exitCode).toBe(2);
+    expect(diagnostics).toEqual(["SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY"]);
+    expect(pgState.poolConstructions).toBe(0);
+    expect(pgState.poolEndCalls).toBe(0);
     expect(pgState.clientConstructions).toBe(0);
   });
 
   it.each([{ reverse: false }, { reverse: true }] satisfies {
     reverse: boolean;
-  }[])("routes database and migrations through no-target sync with reverse=$reverse", async ({
+  }[])("rejects migrations replay through no-target sync with reverse=$reverse", async ({
     reverse,
   }) => {
-    const fixture = await createFixture(replayNeutralMigration);
+    const fixture = await createFixture();
     const migrationsDirectory = join(fixture.root, "migrations");
     const outputDirectory = join(fixture.root, "output-migrations");
     await mkdir(outputDirectory);
@@ -342,10 +328,12 @@ describe("generation source planning", () => {
     });
 
     expect(result.applied).toBe(false);
-    expect(result.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-    expect(result.report).toContain("nothing to sync");
-    expect(pgState.poolConstructions).toBe(1);
-    expect(pgState.poolEndCalls).toBe(1);
+    expect(
+      result.diagnostics.filter((item) => item.severity === "error").map((item) => item.code)
+    ).toEqual(["SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY"]);
+    expect(result.report).toContain("generation source resolution failed");
+    expect(pgState.poolConstructions).toBe(0);
+    expect(pgState.poolEndCalls).toBe(0);
     expect(pgState.clientConstructions).toBe(0);
   });
 });

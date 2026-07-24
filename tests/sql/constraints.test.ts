@@ -47,6 +47,25 @@ describe("in-CREATE constraint decomposition", () => {
     ).toEqual(["role_assignments_check", "role_assignments_check1", "role_assignments_check2"]);
   });
 
+  it("allocates generated constraint names within the owning table", async () => {
+    const extracted = await extractObjectsFromSql(
+      `CREATE TABLE app.other (
+  id integer,
+  CONSTRAINT accounts_check CHECK (id > 0)
+);
+CREATE TABLE app.accounts (minimum integer, maximum integer);
+ALTER TABLE app.accounts ADD CHECK (minimum <= maximum);`,
+      { file: "t.sql" }
+    );
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(
+      extracted.objects
+        .filter((object) => object.ref.kind === "constraint")
+        .map((object) => `${object.ref.table}:${object.ref.name}`)
+    ).toEqual(["other:accounts_check", "accounts:accounts_check"]);
+  });
+
   it("does not reserve explicit constraint names before PostgreSQL encounters them", async () => {
     const extracted = await extractObjectsFromSql(
       `CREATE TABLE app.items (

@@ -9,7 +9,7 @@ import {
   formatConfigValidationDiagnostics,
   pendingInstallPathConfirmationDiagnostic,
 } from "../config/validate.js";
-import { resolveExplicitDatabaseUrl } from "../database/url.js";
+import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { MODEL_FORMAT_VERSION } from "../hash.js";
 import { defaultMigrationName, migrationFiles, nextMigrationFile } from "../migrations/files.js";
@@ -963,7 +963,7 @@ function replacementHistoryTargets(
       target.databaseUrl ?? config.environments[target.environment ?? ""]?.databaseUrl;
     let databaseUrl: string | undefined;
     try {
-      databaseUrl = resolveExplicitDatabaseUrl(configured);
+      databaseUrl = resolveDatabaseUrl(configured);
     } catch {
       continue;
     }

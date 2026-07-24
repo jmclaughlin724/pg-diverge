@@ -826,10 +826,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       join(schemaDir, "app.sql"),
       "CREATE TABLE public.manual_stage (id bigint PRIMARY KEY);\nCREATE TABLE public.sync_stage (id bigint PRIMARY KEY);\n"
     );
-    await writeFile(
-      join(migrationsDir, "20260101000000_manual.sql"),
-      "CREATE TABLE IF NOT EXISTS public.manual_stage (id bigint PRIMARY KEY);\n"
-    );
     await writeFile(join(root, "README.md"), "unrelated\n");
     execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
     const previousCwd = process.cwd();
@@ -838,7 +834,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       const result = await syncMigrations({
         config: {
           schemaPaths: ["database/schemas"],
-          sources: { from: "migrations:database/migrations" },
+          sources: { from: "empty:" },
           typesFile,
           workflow: {
             migration_sync: "manual",
@@ -860,6 +856,7 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
         .split("\n")
         .filter(Boolean);
       expect(result.applied).toBe(false);
+      expect(result.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
       expect(result.report).toContain("stage: staged");
       expect(result.report).toContain("dry run: no sync target was selected by config");
       expect(result.report).not.toContain("verify:");
@@ -868,7 +865,6 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
       expect(staged).toContain("database.zod.ts");
       expect(staged.filter((file) => file.startsWith("database/migrations/"))).toHaveLength(1);
       expect(staged.some((file) => file.endsWith(".sql"))).toBe(true);
-      expect(staged).not.toContain("database/migrations/20260101000000_manual.sql");
       expect(staged).not.toContain("README.md");
     } finally {
       process.chdir(previousCwd);

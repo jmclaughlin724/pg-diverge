@@ -102,10 +102,14 @@ describe("generation source defaults", () => {
       name: "migrations to database",
       to: "database:postgresql://postgres:secret@example.test/db",
     },
-  ])("accepts explicit $name generation sources", async ({ from, to }) => {
+  ])("rejects explicit $name generation sources", async ({ from, to }) => {
     const resolved = await resolveGenerationSourceDefaults({ from, to }, config);
 
-    expect(resolved).toEqual({ diagnostics: [], from, notice: undefined, to });
+    expect(resolved.from).toBe(from);
+    expect(resolved.to).toBe(to);
+    expect(resolved.diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY",
+    ]);
   });
 
   it("redacts credentials when a configured database source is reported", async () => {
