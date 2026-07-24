@@ -514,10 +514,7 @@ function translateColumnPair(
   if (!(soundNumericTarget(left) && soundNumericTarget(right))) {
     return;
   }
-  if (
-    precisionSensitivePairOperators.has(operator) &&
-    !(losslessPairTarget(left) && losslessPairTarget(right))
-  ) {
+  if (!(losslessPairTarget(left) && losslessPairTarget(right))) {
     return;
   }
   const leftAccess = `value[${quoteCodeString(leftColumn)}]`;
@@ -739,8 +736,6 @@ const pairOperators = new Map([
   [">", ">"],
   [">=", ">="],
 ]);
-
-const precisionSensitivePairOperators = new Set(["<", "<=", "<>", "=", ">", ">="]);
 
 const exactIntegerTypes = new Set(["bigint", "int", "int2", "int4", "int8", "integer", "smallint"]);
 
