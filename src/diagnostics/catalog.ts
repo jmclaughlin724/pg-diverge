@@ -90,7 +90,7 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_MIGRATION_BASELINE_MISMATCH:
     "The resolved before-state source does not match the generated migration-tree baseline. Recover by regenerating from the source state that produced the baseline, using diff --replace for a generated migration replacement, or — when the pending generated migration's end-state was never committed and no target records it as applied — reviewing and deleting that pending migration, then regenerating from the current tree.",
   SUPA_MIGRATION_BASELINE_UNSUPPORTED:
-    "Existing migrations cannot prove a generated-lineage baseline for source-backed generation.",
+    "The selected before-state does not match the configured migration corpus, or existing migrations cannot prove a generated-lineage baseline for source-backed generation.",
   SUPA_MIGRATION_CORPUS_PARSE_SKIPPED:
     "A historical migration could not be parsed for source-intent extraction.",
   SUPA_MIGRATIONS_GHOST_VERSIONS:
@@ -184,6 +184,8 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_SELFCHECK_UNEXPECTED: "Re-extraction produced an object the catalog model does not contain.",
   SUPA_SOURCE_BASELINE_REQUIRED:
     "Migration generation could not resolve a repository source baseline.",
+  SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED:
+    "Migration generation cannot use replayed migrations as its target. Use the matching migration corpus only as the before-state.",
   SUPA_SUPABASE_MANAGED_SCHEMA: "Configured managed schemas are not declarative source owners.",
   SUPA_SUPABASE_VIEW_SECURITY_INVOKER:
     "Views in exposed schemas should set security_invoker so RLS applies to the querying role.",

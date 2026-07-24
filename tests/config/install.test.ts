@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 import {
   resolveDatabaseUrl,
   resolveExplicitDatabaseUrl,
@@ -198,6 +199,37 @@ describe("init project setup", () => {
 
     const workspaceYaml = await readFile(join(consumer, "pnpm-workspace.yaml"), "utf8");
     expect(workspaceYaml).toBe("packages:\n  - packages/*\n\nallowBuilds:\n  supaschema: true\n");
+  });
+
+  it("normalizes a quoted pnpm approval without crossing the allowBuilds block", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-pnpm-quoted-approval-"));
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-pnpm-workspace-root",
+        packageManager: "pnpm@11.1.2",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+    await writeFile(
+      join(consumer, "pnpm-workspace.yaml"),
+      'packages:\n  - "packages/*"\n\nallowBuilds:\n  "@ast-grep/cli": true\n  "supaschema": false\n  "unrs-resolver": true\n\nautoInstallPeers: false\n\ncatalog:\n  supaschema: 0.5.0\n'
+    );
+
+    const first = await runScaffold(consumer);
+    const second = await runScaffold(consumer);
+
+    const workspaceYaml = await readFile(join(consumer, "pnpm-workspace.yaml"), "utf8");
+    const parsed = parseYaml(workspaceYaml);
+    expect(first.installed).toContain("pnpm build approval");
+    expect(second.installed).not.toContain("pnpm build approval");
+    expect(parsed.allowBuilds.supaschema).toBe(true);
+    expect(parsed.autoInstallPeers).toBe(false);
+    expect(workspaceYaml).toContain(
+      '  "@ast-grep/cli": true\n  supaschema: true\n  "unrs-resolver": true\n'
+    );
+    expect(workspaceYaml).not.toContain("autoInstallPeers: false\n  supaschema: true");
   });
 
   it("adds canonical package scripts to the owning package manifest", async () => {

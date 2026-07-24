@@ -103,6 +103,7 @@ export async function resolveGenerationSourceDefaults(
   }
 
   diagnostics.push(...generationSourceDiagnostics(from, to));
+  diagnostics.push(...(await migrationGenerationSourceDiagnostics(from, migrationsDir, cwd)));
   const notice =
     defaulted.length > 0 ? `defaults: ${defaulted.join(" · ")} (flags override)\n` : undefined;
   return { diagnostics, from, notice, to };
@@ -155,7 +156,12 @@ async function isStagedWithoutWorktreeChanges(file: string, cwd: string): Promis
 export async function buildSchemaPlanningContext(
   options: SchemaPlanningContextOptions
 ): Promise<SchemaPlanningContext> {
-  const diagnostics = generationSourceDiagnostics(options.from, options.to);
+  const cwd = options.cwd ?? process.cwd();
+  const migrationsDir = options.migrationsDir ?? options.config.migrationsDir;
+  const diagnostics = [
+    ...generationSourceDiagnostics(options.from, options.to),
+    ...(await migrationGenerationSourceDiagnostics(options.from, migrationsDir, cwd)),
+  ];
   if (diagnostics.some((item) => item.severity === "error")) {
     return { diagnostics, fromMs: 0, planStart: performance.now(), toMs: 0 };
   }
@@ -168,30 +174,20 @@ export async function buildSchemaPlanningContext(
   const extractStart = performance.now();
   const fullFrom = await extractSourceModel(options.from, extractOptions);
   const fromMs = performance.now() - extractStart;
-  const migrationContext = await readMigrationContext(
-    options.migrationsDir ?? options.config.migrationsDir,
-    {
-      ...corpusOptions,
-      ...(options.migrationContextExcludeFiles === undefined
-        ? {}
-        : { excludeFiles: options.migrationContextExcludeFiles }),
-    }
-  );
+  const migrationContext = await readMigrationContext(migrationsDir, {
+    ...corpusOptions,
+    ...(options.migrationContextExcludeFiles === undefined
+      ? {}
+      : { excludeFiles: options.migrationContextExcludeFiles }),
+  });
   const toStart = performance.now();
   const fullTo = await extractSourceModel(options.to, extractOptions);
   if (options.checkMigrationBaseline !== false) {
     diagnostics.push(
-      ...(await migrationBaselineDiagnostics(
-        options.from,
-        fullFrom,
-        migrationContext,
-        options.cwd ?? process.cwd()
-      ))
+      ...(await migrationBaselineDiagnostics(options.from, fullFrom, migrationContext, cwd))
     );
   }
-  diagnostics.push(
-    ...(await uncommittedTreeDiagnostics(options.from, options.to, options.cwd ?? process.cwd()))
-  );
+  diagnostics.push(...(await uncommittedTreeDiagnostics(options.from, options.to, cwd)));
   const toMs = performance.now() - toStart;
   const { from, to } = scopePlanningModels(fullFrom, fullTo, options.schema);
   return {
@@ -226,19 +222,42 @@ function generationSourceSideDiagnostics(side: "from" | "to", source: string): D
       ),
     ];
   }
-  if (parseRuntimeSource(source)?.kind === RuntimeSourceKind.Migrations) {
+  if (side === "to" && parseRuntimeSource(source)?.kind === RuntimeSourceKind.Migrations) {
     return [
       diagnostic(
-        "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY",
+        "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
         "error",
-        `generation ${side}-source uses migration replay`,
+        "generation to-source uses migration replay",
         {
-          hint: "Use migrations: only with supaschema types --from; use database:, git:, dir:, dump:, catalog:, or empty: for generation.",
+          hint: "Use the matching migrations: corpus only as the generation before-state; keep the target on database:, git:, dir:, dump:, catalog:, or empty:.",
         }
       ),
     ];
   }
   return [];
+}
+
+async function migrationGenerationSourceDiagnostics(
+  from: string,
+  migrationsDir: string,
+  cwd: string
+): Promise<Diagnostic[]> {
+  if (parseRuntimeSource(from)?.kind !== RuntimeSourceKind.Migrations) {
+    return [];
+  }
+  if (await isMigrationDirectorySource(from, migrationsDir, cwd)) {
+    return [];
+  }
+  return [
+    diagnostic(
+      "SUPA_MIGRATION_BASELINE_UNSUPPORTED",
+      "error",
+      "generation from-source migration replay does not match the configured migrations directory",
+      {
+        hint: `Use migrations:${migrationsDir} for migration-corpus adoption, or select another source-backed baseline.`,
+      }
+    ),
+  ];
 }
 
 async function hasMigrationCorpus(cwd: string, migrationsDir: string): Promise<boolean> {
@@ -267,7 +286,7 @@ async function migrationBaselineDiagnostics(
   }
   const baseline = migrationContext.latestGeneratedBaseline;
   if (baseline === undefined) {
-    if (await isMigrationCorpusSource(fromSource, migrationContext, cwd)) {
+    if (await isMigrationDirectorySource(fromSource, migrationContext.directory, cwd)) {
       return [];
     }
     return [
@@ -318,20 +337,25 @@ async function migrationBaselineDiagnostics(
   ];
 }
 
-async function isMigrationCorpusSource(
+async function isMigrationDirectorySource(
   source: string,
-  migrationContext: MigrationContext,
+  migrationsDir: string,
   cwd: string
 ): Promise<boolean> {
   const parsed = parseRuntimeSource(source);
-  if (parsed?.kind !== "migrations") {
+  if (parsed?.kind !== RuntimeSourceKind.Migrations) {
     return false;
   }
   const directory = resolve(cwd, parsed.payload);
+  const configuredDirectory = resolve(cwd, migrationsDir);
   try {
-    return (await realpath(directory)) === migrationContext.directory;
+    const [resolvedDirectory, resolvedConfiguredDirectory] = await Promise.all([
+      realpath(directory),
+      realpath(configuredDirectory),
+    ]);
+    return resolvedDirectory === resolvedConfiguredDirectory;
   } catch {
-    return directory === migrationContext.directory;
+    return directory === configuredDirectory;
   }
 }
 

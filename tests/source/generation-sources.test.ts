@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Diagnostic } from "../../src/types.js";
 
 interface PgState {
   clientConstructions: number;
@@ -82,7 +83,12 @@ interface Fixture {
   root: string;
 }
 
+type GenerationCommand = "diff" | "plan";
 type SourceSide = "from" | "to";
+
+const generationCommandCases = [{ command: "plan" }, { command: "diff" }] satisfies {
+  command: GenerationCommand;
+}[];
 
 let previousDatabaseUrl: string | undefined;
 
@@ -124,6 +130,47 @@ function databaseSource(): string {
   url.username = "catalog_reader";
   url.password = catalogPassword;
   return `database:${url.toString()}`;
+}
+
+async function runGenerationCommand({
+  command,
+  config,
+  from,
+  to,
+}: {
+  command: GenerationCommand;
+  config: ReturnType<typeof resolveConfig>;
+  from: string;
+  to: string;
+}): Promise<Diagnostic[]> {
+  const diagnostics: Diagnostic[] = [];
+  const program = new Command();
+  program.exitOverride();
+  program.configureOutput({ writeErr: () => undefined, writeOut: () => undefined });
+  registerDiffCommands(program, {
+    cliVersion: "test",
+    configPath: () => undefined,
+    loadCliConfig: () => Promise.resolve(config),
+    printDiagnostics: (items) => diagnostics.push(...items),
+  });
+  const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  try {
+    await program.parseAsync([
+      "node",
+      "supaschema",
+      command,
+      "--from",
+      from,
+      "--to",
+      to,
+      ...(command === "diff" ? ["--out", "stdout"] : []),
+    ]);
+  } finally {
+    stdout.mockRestore();
+    stderr.mockRestore();
+  }
+  return diagnostics;
 }
 
 function modelForSide(
@@ -184,23 +231,63 @@ describe("generation source planning", () => {
     expect(pgState.clientConstructions).toBe(0);
   });
 
-  it.each([{ side: "from" }, { side: "to" }] satisfies {
-    side: SourceSide;
-  }[])("rejects migrations replay on the $side side before extraction", async ({ side }) => {
+  it("extracts a matching migrations replay before-state for lineage adoption", async () => {
+    const fixture = await createFixture();
+    const context = await buildSchemaPlanningContext({
+      config: fixture.config,
+      cwd: fixture.root,
+      from: fixture.migrationsSource,
+      to: "empty:",
+    });
+
+    expect(context.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(context.from?.source).toBe(fixture.migrationsSource);
+    expect(context.from?.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(context.from?.objects.map((object) => object.key)).toEqual([
+      "schema:app",
+      "table:app.accounts",
+    ]);
+    expect(pgState.poolConstructions).toBe(0);
+    expect(pgState.clientConstructions).toBe(0);
+  });
+
+  it("rejects migrations replay on the to side before extraction", async () => {
     const fixture = await createFixture();
     const context = await buildSchemaPlanningContext({
       checkMigrationBaseline: false,
       config: fixture.config,
       cwd: fixture.root,
-      from: side === "from" ? fixture.migrationsSource : "empty:",
-      to: side === "to" ? fixture.migrationsSource : "empty:",
+      from: "empty:",
+      to: fixture.migrationsSource,
     });
 
-    const model = modelForSide(context, side);
     expect(context.diagnostics.map((item) => item.code)).toEqual([
-      "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY",
+      "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
     ]);
-    expect(model).toBeUndefined();
+    expect(context.to).toBeUndefined();
+    expect(pgState.poolConstructions).toBe(0);
+    expect(pgState.clientConstructions).toBe(0);
+  });
+
+  it("rejects a migrations before-state outside the configured migrations directory", async () => {
+    const fixture = await createFixture();
+    await mkdir(join(fixture.root, "other-migrations"));
+    await writeFile(
+      join(fixture.root, "other-migrations", "20260101000000_source.sql"),
+      validMigration
+    );
+    const context = await buildSchemaPlanningContext({
+      config: fixture.config,
+      cwd: fixture.root,
+      from: "migrations:other-migrations",
+      to: databaseSource(),
+    });
+
+    expect(context.diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_MIGRATION_BASELINE_UNSUPPORTED",
+    ]);
+    expect(context.from).toBeUndefined();
+    expect(context.to).toBeUndefined();
     expect(pgState.poolConstructions).toBe(0);
     expect(pgState.clientConstructions).toBe(0);
   });
@@ -243,53 +330,49 @@ describe("generation source planning", () => {
     expect(pgState.clientConstructions).toBe(0);
   });
 
-  it.each([
-    { command: "plan", reverse: false },
-    { command: "plan", reverse: true },
-    { command: "diff", reverse: false },
-    { command: "diff", reverse: true },
-  ] satisfies {
-    command: "diff" | "plan";
-    reverse: boolean;
-  }[])("rejects migrations replay through $command with reverse=$reverse", async ({
+  it.each(
+    generationCommandCases
+  )("accepts a matching migrations replay before-state through $command", async ({ command }) => {
+    const fixture = await createFixture();
+    await writeFile(
+      join(fixture.root, "schemas", "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\nCREATE TABLE app.profiles (id bigint PRIMARY KEY);\n"
+    );
+    const migrationsSource = `migrations:${join(fixture.root, "migrations")}`;
+    const diagnostics = await runGenerationCommand({
+      command,
+      config: {
+        ...fixture.config,
+        migrationsDir: join(fixture.root, "migrations"),
+        schemaPaths: [join(fixture.root, "schemas")],
+      },
+      from: migrationsSource,
+      to: `dir:${join(fixture.root, "schemas")}`,
+    });
+
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(pgState.poolConstructions).toBe(0);
+    expect(pgState.poolEndCalls).toBe(0);
+    expect(pgState.clientConstructions).toBe(0);
+  });
+
+  it.each(generationCommandCases)("rejects migrations replay as the $command target", async ({
     command,
-    reverse,
   }) => {
     const fixture = await createFixture();
     const migrationsSource = `migrations:${join(fixture.root, "migrations")}`;
-    const database = databaseSource();
-    const from = reverse ? migrationsSource : database;
-    const to = reverse ? database : migrationsSource;
-    const diagnostics: string[] = [];
-    const program = new Command();
-    program.exitOverride();
-    program.configureOutput({ writeErr: () => undefined, writeOut: () => undefined });
-    registerDiffCommands(program, {
-      cliVersion: "test",
-      configPath: () => undefined,
-      loadCliConfig: () => Promise.resolve(fixture.config),
-      printDiagnostics: (items) => diagnostics.push(...items.map((item) => item.code)),
+    const diagnostics = await runGenerationCommand({
+      command,
+      config: fixture.config,
+      from: databaseSource(),
+      to: migrationsSource,
     });
-    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    try {
-      await program.parseAsync([
-        "node",
-        "supaschema",
-        command,
-        "--from",
-        from,
-        "--to",
-        to,
-        ...(command === "diff" ? ["--out", "stdout"] : []),
-      ]);
-    } finally {
-      stdout.mockRestore();
-      stderr.mockRestore();
-    }
 
     expect(process.exitCode).toBe(2);
-    expect(diagnostics).toEqual(["SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY"]);
+    expect(diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
+    ]);
     expect(pgState.poolConstructions).toBe(0);
     expect(pgState.poolEndCalls).toBe(0);
     expect(pgState.clientConstructions).toBe(0);
@@ -330,7 +413,9 @@ describe("generation source planning", () => {
     expect(result.applied).toBe(false);
     expect(
       result.diagnostics.filter((item) => item.severity === "error").map((item) => item.code)
-    ).toEqual(["SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY"]);
+    ).toEqual([
+      reverse ? "SUPA_MIGRATION_BASELINE_UNSUPPORTED" : "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
+    ]);
     expect(result.report).toContain("generation source resolution failed");
     expect(pgState.poolConstructions).toBe(0);
     expect(pgState.poolEndCalls).toBe(0);

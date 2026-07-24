@@ -6,9 +6,9 @@ TypeScript (NodeNext ESM) compiled to `dist/`. Public API surface is `src/index.
 
 | Command lane | Model source owner | Introspection boundary |
 | --- | --- | --- |
-| `diff` / `plan` / `sync` | `config.sources.from` owns the baseline and `config.schemaPaths` owns the default target; explicit alternates use `--from` and `--to`. `migrationsDir` contributes generated-lineage proof and migration source intent. | No live database read unless an operator explicitly selects a `database:` source or an apply-capable sync target runs its target/history lane. |
+| `diff` / `plan` / `sync` | `config.sources.from` owns the baseline and `config.schemaPaths` owns the default target; explicit alternates use `--from` and `--to`. A `migrations:` before-state must match `migrationsDir`, which also contributes generated-lineage proof and migration source intent. Migration replay is never a target. | No live database read unless an operator explicitly selects a `database:` source or an apply-capable sync target runs its target/history lane. |
 | `check` | Migration SQL files only, either explicit paths, every `.sql` in `config.migrationsDir`, or the git-selected subset from `--changed`, `--staged`, `--base`, or `--since`. | Never introspects. |
-| `types` | The configured schema tree or explicit `--from`; supported source kinds include `dir:`, `git:`, `dump:`, `catalog:`, `empty:`, `database:`, and typegen-only `migrations:` replay. | `database:` is explicit catalog introspection; `migrations:` reconstructs from ordered migration files and must not fall back to a database. |
+| `types` | The configured schema tree or explicit `--from`; supported source kinds include `dir:`, `git:`, `dump:`, `catalog:`, `empty:`, `database:`, and `migrations:` replay. | `database:` is explicit catalog introspection; `migrations:` reconstructs from ordered migration files and must not fall back to a database. |
 | `verify` | `from`/`to` source models plus the selected migration file. | Uses disposable databases for execution proof after source resolution; it is not a typegen or planning fallback. |
 | `inspect` / `selfcheck` / `doctor` | Explicit source inspection, live catalog parity checks, or environment diagnostics. | These are the intentional catalog/connection diagnostic lanes, not defaults for generation or typegen. |
 

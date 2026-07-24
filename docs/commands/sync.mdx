@@ -51,12 +51,13 @@ Supabase targets can use `runner: "supabase-cli"` without a `databaseUrl`; the S
 
 <ParamField path="--from" type="source">
   Override the configured before-state source for an explicit recovery or
-  reconciliation run.
+  reconciliation run. A `migrations:` value must match the selected migrations
+  directory.
 </ParamField>
 
 <ParamField path="--to" type="source">
   Override the configured target schema source. Ordinary schema edits should
-  keep the configured declarative tree.
+  keep the configured declarative tree. Migration replay is not supported here.
 </ParamField>
 
 <ParamField path="--migrations-dir" type="path">

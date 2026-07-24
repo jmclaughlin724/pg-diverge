@@ -271,6 +271,8 @@ describe("sync:llm", () => {
       ".codex/hooks/stale.mjs": "process.stdout.write('stale');\n",
       ".codex/rules/stale.rules": "# stale\n",
       "agent-bundle/INSTALL.md": "# Agent bundle install\n",
+      "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs": "stale\n",
+      "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs": "stale\n",
       "skills/README.md": "# Public skills\n",
       "skills/stale/SKILL.md": "# stale\n",
     });
@@ -278,7 +280,7 @@ describe("sync:llm", () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 30,
+      agentBundle: 28,
       agents: 1,
       codexHookConfig: 1,
       hooks: 5,
@@ -322,10 +324,23 @@ describe("sync:llm", () => {
     );
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("context-");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("scripts/agent-hooks");
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain(
+      "sync-llm-on-claude-surface-change.mjs"
+    );
+    expect(read(root, "agent-bundle/claude/settings.npm.json")).not.toContain(
+      "sync-llm-on-claude-surface-change.mjs"
+    );
+    expect(
+      existsSync(join(root, "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs"))
+    ).toBe(false);
+    expect(
+      existsSync(join(root, "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs"))
+    ).toBe(false);
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
     expect(read(root, ".codex/hooks.json")).not.toContain("general-guard.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-stop.mjs");
+    expect(read(root, ".codex/hooks.json")).toContain("sync-llm-on-claude-surface-change.mjs");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
     expect(read(root, "skills/supaschema/SKILL.md")).toBe("# supaschema\n");
     expect(read(root, "skills/supaschema-migrate/references/commands.md")).toBe(

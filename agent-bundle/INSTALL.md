@@ -34,7 +34,6 @@ Claude files:
 - `agent-bundle/claude/rules/supaschema.md` to `.claude/rules/supaschema.md`
 - `agent-bundle/claude/skills/{supaschema,supaschema-migrate,supaschema-maintain}` recursively to the matching `.claude/skills/**` directories
 - `agent-bundle/claude/hooks/guards/bash-policy-checks.mjs` to `.claude/hooks/guards/bash-policy-checks.mjs`
-- `agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs` to `.claude/hooks/sync-llm-on-claude-surface-change.mjs`
 - the matching `agent-bundle/claude/settings.<manager>.json` entries into `.claude/settings.json`
 
 Codex files:
@@ -42,7 +41,6 @@ Codex files:
 - `agent-bundle/codex/rules/supaschema.rules` to `.codex/rules/supaschema.rules`
 - `agent-bundle/codex/hooks/general-guard.mjs` to `.codex/hooks/general-guard.mjs`
 - `agent-bundle/codex/hooks/guards/bash-policy-checks.mjs` to `.codex/hooks/guards/bash-policy-checks.mjs`
-- `agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs` to `.codex/hooks/sync-llm-on-claude-surface-change.mjs`
 - the matching `agent-bundle/codex/hooks.<manager>.json` entries into `.codex/hooks.json`
 
 No `.codex/skills/**` directory is installed. Existing non-identical Agent or Claude skill files, including references, are preserved and reported individually.

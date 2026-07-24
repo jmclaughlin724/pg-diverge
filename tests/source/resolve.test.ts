@@ -91,24 +91,45 @@ describe("generation source defaults", () => {
     expect(resolved.notice).toContain("--from empty:");
   });
 
-  it.each([
-    {
-      from: "database:postgresql://postgres:secret@example.test/db",
-      name: "database to migrations",
-      to: "migrations:supabase/migrations",
-    },
-    {
-      from: "migrations:supabase/migrations",
-      name: "migrations to database",
-      to: "database:postgresql://postgres:secret@example.test/db",
-    },
-  ])("rejects explicit $name generation sources", async ({ from, to }) => {
+  it("accepts a configured migrations before-state that matches migrationsDir", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-resolve-"));
+    await mkdir(join(root, "supabase", "migrations"), { recursive: true });
+    const from = "migrations:supabase/migrations";
+    const to = "dir:database/schemas";
+    const custom = resolveConfig({
+      migrationsDir: "supabase/migrations",
+      sources: { from },
+    });
+
+    const resolved = await resolveGenerationSourceDefaults({ cwd: root, to }, custom);
+
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.from).toBe(from);
+    expect(resolved.to).toBe(to);
+    expect(resolved.notice).toContain(`--from ${from}`);
+  });
+
+  it("rejects migrations replay as the generation target", async () => {
+    const from = "database:postgresql://postgres:secret@example.test/db";
+    const to = "migrations:supabase/migrations";
     const resolved = await resolveGenerationSourceDefaults({ from, to }, config);
 
     expect(resolved.from).toBe(from);
     expect(resolved.to).toBe(to);
     expect(resolved.diagnostics.map((item) => item.code)).toEqual([
-      "SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY",
+      "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
+    ]);
+  });
+
+  it("rejects a migrations before-state that does not match migrationsDir", async () => {
+    const from = "migrations:supabase/migrations";
+    const to = "database:postgresql://postgres:secret@example.test/db";
+    const resolved = await resolveGenerationSourceDefaults({ from, to }, config);
+
+    expect(resolved.from).toBe(from);
+    expect(resolved.to).toBe(to);
+    expect(resolved.diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_MIGRATION_BASELINE_UNSUPPORTED",
     ]);
   });
 

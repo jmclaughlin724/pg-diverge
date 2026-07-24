@@ -21,7 +21,7 @@ A source is any PostgreSQL schema representation that supaschema can parse into 
 
 Use the format `<prefix>:<location>`, such as `dir:database/schemas`.
 
-The configured `migrationsDir` is a third input to planning, but it is not a `--from` or `--to` schema source. Existing reviewed migrations form the source-intent corpus for row backfills, explicit DML/`DO` workflows, enum rewrite recipes, Vault references, workload-proven index intent, and provider bootstrap constraints. Generated migration lineage in that same directory proves the current migration-tree baseline. supaschema should model that intent and verify that baseline before blocking; when the intent or baseline proof is absent, the diagnostic should tell an agent where to declare or pin it.
+The configured `migrationsDir` is always a planning input for source intent and lineage proof. A matching `migrations:<migrationsDir>` reference can also supply the generation before-state for migration-first adoption; migration replay is never a generation target. Existing reviewed migrations form the source-intent corpus for row backfills, explicit DML/`DO` workflows, enum rewrite recipes, Vault references, workload-proven index intent, and provider bootstrap constraints. Generated migration lineage in that same directory proves the current migration-tree baseline. supaschema should model that intent and verify that baseline before blocking; when the intent or baseline proof is absent, the diagnostic should tell an agent where to declare or pin it.
 
 ## Source reference
 
@@ -242,9 +242,13 @@ Use `migrations:` when a project owns schema shape through reviewed migration fi
 
 ```bash
 npx supaschema types --from migrations:supabase/migrations
+
+supaschema diff \
+  --from migrations:supabase/migrations \
+  --to dir:supabase/schemas
 ```
 
-supaschema reads filename-sorted `.sql` files, replays supported DDL in memory, and emits a schema model without a database connection. The replay model is for `types --from`; it is not a `diff`, `verify`, or drift target.
+supaschema reads filename-sorted `.sql` files, replays supported DDL in memory, and emits a schema model without a database connection. The replay model is valid for `types --from` and as the `diff`/`plan`/`sync` before-state when it resolves to the configured `migrationsDir`. It is not a generation target, `verify` target, or drift target. A different migration directory fails with `SUPA_MIGRATION_BASELINE_UNSUPPORTED`; using replay as `--to` fails with `SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED`.
 
 Replay is fail-closed for shape-corrupting gaps. Missing directories, duplicate `CREATE` objects, absent non-optional `DROP` targets, absent non-ignored `ALTER TABLE` targets, and absent enum neighbors raise `SUPA_REPLAY_ORDER_GAP` and return no objects. Unsupported top-level DDL, unsupported `ALTER TABLE` subtypes, unsupported `DROP` kinds, and unsupported rename targets raise `SUPA_REPLAY_UNSUPPORTED` and return no objects.
 
@@ -308,6 +312,7 @@ The table below summarises the most useful source pairings and the workflow each
 | Reconciling existing DB | `database:$DATABASE_URL` | `dir:database/schemas` | Generate a migration from the deployed catalog to your files |
 | Cross-branch comparison | `git:origin/main` | `git:feature/my-branch` | Preview the migration a merge would produce |
 | Analyse a legacy dump | `dump:legacy-schema.sql` | `dir:database/schemas` | Diff a dump file against your current schema |
+| Adopt a migration-first project | `migrations:supabase/migrations` | `dir:supabase/schemas` | Generate the first lineage migration from the configured history |
 | Generate types from history | `migrations:supabase/migrations` | n/a | Run `supaschema types --from migrations:supabase/migrations` without a database |
 
 <Tip>
@@ -319,9 +324,10 @@ The table below summarises the most useful source pairings and the workflow each
   staged without worktree edits and its lineage matches the indexed schema
   fingerprint. It then tries valid `git:HEAD` and blocks if generated migrations
   prove a different baseline. `empty:` is only
-  for a first migration with no existing migration corpus. `migrations:` is a
-  typegen input in v1; keep diff and verify targets on planner-grade sources
-  such as `dir:`, `git:`, `dump:`, `catalog:`, `database:`, or `empty:`.
+  for a first migration with no existing migration corpus. A `migrations:`
+  before-state must resolve to `migrationsDir` and replay without errors; keep
+  generation targets and verify/drift sources on `dir:`, `git:`, `dump:`,
+  `catalog:`, `database:`, or `empty:`.
 
 ```json
 {

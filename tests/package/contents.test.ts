@@ -96,7 +96,6 @@ describe("npm package contents", () => {
       "agent-bundle/agents/skills/supaschema-migrate/SKILL.md",
       "agent-bundle/agents/skills/supaschema/SKILL.md",
       "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
-      "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
       "agent-bundle/claude/rules/supaschema.md",
       "agent-bundle/claude/settings.npm.json",
       "agent-bundle/claude/settings.pnpm.json",
@@ -109,13 +108,20 @@ describe("npm package contents", () => {
       "agent-bundle/codex/hooks.pnpm.json",
       "agent-bundle/codex/hooks/general-guard.mjs",
       "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
-      "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs",
       "agent-bundle/codex/rules/supaschema.rules",
       "README.md",
       "LICENSE",
     ];
     for (const entry of required) {
       expect(paths, `missing required package file: ${entry}`).toContain(entry);
+    }
+    for (const sourceOnlyHook of [
+      "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
+      "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs",
+    ]) {
+      expect(paths, `source-only hook reached npm package: ${sourceOnlyHook}`).not.toContain(
+        sourceOnlyHook
+      );
     }
     expect(
       paths.filter((path) => path.startsWith("bin/")).sort(),

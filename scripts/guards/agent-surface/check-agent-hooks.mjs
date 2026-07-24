@@ -190,6 +190,12 @@ function assertClaudeSettings(claudeSettings, root) {
     ".claude/settings.json must run sync:llm from PostToolUse"
   );
   assert(
+    !readText("agent-bundle/claude/settings.npm.json", root).includes(
+      "sync-llm-on-claude-surface-change.mjs"
+    ),
+    "agent-bundle/claude/settings.npm.json must strip the source-only surface sync hook"
+  );
+  assert(
     claudeSettings.hooks?.PostToolBatch === undefined,
     ".claude/settings.json must not register the removed PostToolBatch wrapper"
   );
@@ -249,6 +255,7 @@ function assertCodexConfig(codexConfig, root) {
     packageCodexHooksJson.includes("general-guard.mjs") &&
       !packageCodexHooksJson.includes("context-") &&
       !packageCodexHooksJson.includes("supaschema-source-hook.mjs") &&
+      !packageCodexHooksJson.includes("sync-llm-on-claude-surface-change.mjs") &&
       !packageCodexHooksJson.includes("scripts/agent-hooks"),
     "agent-bundle/codex/hooks.npm.json must keep the consumer Bash guard and strip source-only Codex hooks"
   );

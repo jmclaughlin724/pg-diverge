@@ -28,11 +28,13 @@ npx supaschema plan | jq '.operations'
 ## Flags
 
 <ParamField path="--from" type="source">
-  Before-state source. Defaults to `config.sources.from`.
+  Before-state source. Defaults to `config.sources.from`. A `migrations:` value
+  must match the configured migrations directory.
 </ParamField>
 
 <ParamField path="--to" type="source">
-  Desired-state source. Defaults to `dir:<config.schemaPaths[0]>`.
+  Desired-state source. Defaults to `dir:<config.schemaPaths[0]>`. Migration
+  replay is not supported here.
 </ParamField>
 
 <ParamField path="--schema" type="names">

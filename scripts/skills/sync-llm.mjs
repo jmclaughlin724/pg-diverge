@@ -233,13 +233,6 @@ function agentBundleFiles(root) {
       fs.readFileSync(path.join(root, ".claude/hooks/guards/bash-policy-checks.mjs"), "utf8"),
     ],
     [
-      "claude/hooks/sync-llm-on-claude-surface-change.mjs",
-      fs.readFileSync(
-        path.join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
-        "utf8"
-      ),
-    ],
-    [
       "claude/rules/supaschema.md",
       fs.readFileSync(path.join(root, ".claude/rules/supaschema.md"), "utf8"),
     ],
@@ -250,13 +243,6 @@ function agentBundleFiles(root) {
     [
       "codex/hooks/guards/bash-policy-checks.mjs",
       fs.readFileSync(path.join(root, ".codex/hooks/guards/bash-policy-checks.mjs"), "utf8"),
-    ],
-    [
-      "codex/hooks/sync-llm-on-claude-surface-change.mjs",
-      fs.readFileSync(
-        path.join(root, ".codex/hooks/sync-llm-on-claude-surface-change.mjs"),
-        "utf8"
-      ),
     ],
     [
       "codex/rules/supaschema.rules",
@@ -332,16 +318,6 @@ function claudeHookConfig(runner) {
             {
               args: [...runner.args, "hook", "schema-write"],
               command: runner.command,
-              timeout: 130,
-              type: "command",
-            },
-          ],
-          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
-        },
-        {
-          hooks: [
-            {
-              command: `node "${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`,
               timeout: 130,
               type: "command",
             },
@@ -776,6 +752,7 @@ function isRepoLocalCodexHook(hook) {
     typeof hook === "object" &&
     typeof hook.command === "string" &&
     (hook.command.includes("/.codex/hooks/context-") ||
+      hook.command.includes("/.codex/hooks/sync-llm-on-claude-surface-change.mjs") ||
       hook.command.includes("scripts/agent-hooks/"))
   );
 }
