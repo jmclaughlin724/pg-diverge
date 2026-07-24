@@ -12,6 +12,7 @@ import {
 import { dirname, join, relative, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
+
 import {
   genericMigrationsDir,
   genericProviderPreset,
@@ -35,19 +36,13 @@ const packageScripts = {
 };
 const agentBundleCopies = [
   ["agents/prompts/supaschema-install.md", ".agents/prompts/supaschema-install.md"],
-  ["claude/hooks/guards/bash-policy-checks.mjs", ".claude/hooks/guards/bash-policy-checks.mjs"],
-  [
-    "claude/hooks/sync-llm-on-claude-surface-change.mjs",
-    ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  ],
   ["claude/rules/supaschema.md", ".claude/rules/supaschema.md"],
+  ["codex/rules/supaschema.rules", ".codex/rules/supaschema.rules"],
+];
+const bashGuardCopies = [
+  ["claude/hooks/guards/bash-policy-checks.mjs", ".claude/hooks/guards/bash-policy-checks.mjs"],
   ["codex/hooks/general-guard.mjs", ".codex/hooks/general-guard.mjs"],
   ["codex/hooks/guards/bash-policy-checks.mjs", ".codex/hooks/guards/bash-policy-checks.mjs"],
-  [
-    "codex/hooks/sync-llm-on-claude-surface-change.mjs",
-    ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-  ],
-  ["codex/rules/supaschema.rules", ".codex/rules/supaschema.rules"],
 ];
 const inventoryWorkflowOverrides = {
   migration_sync: "manual",
@@ -353,13 +348,22 @@ function topLevelBlockEnd(lines, start) {
 }
 
 function isTopLevelYamlKey(line) {
-  return line.length > 0 && !line.startsWith(" ") && !line.startsWith("\t") && line.endsWith(":");
+  return (
+    line.length > 0 &&
+    !line.startsWith(" ") &&
+    !line.startsWith("\t") &&
+    !line.startsWith("#") &&
+    !line.startsWith("-") &&
+    line.includes(":")
+  );
 }
 
 function pnpmBuildApprovalEntryIndex(lines, start, end) {
   for (let index = start; index < end; index += 1) {
     const line = lines[index].trimStart();
-    if (line.startsWith("supaschema:")) {
+    const separator = line.indexOf(":");
+    const key = separator === -1 ? line : line.slice(0, separator).trim();
+    if (key === "supaschema" || key === '"supaschema"' || key === "'supaschema'") {
       return index;
     }
   }
@@ -391,6 +395,86 @@ function ensurePackageScripts({ dryRun, repair, targetDir }) {
   return true;
 }
 
+function hookCommandString(hook) {
+  if (typeof hook?.command === "string") {
+    return hook.command;
+  }
+  const cmd = String(hook?.command ?? "");
+  const args = Array.isArray(hook?.args) ? hook.args.join(" ") : "";
+  return `${cmd} ${args}`;
+}
+
+function preToolUseBashEntries(targetDir, configPath) {
+  const raw = readText(join(targetDir, configPath));
+  if (!raw) {
+    return [];
+  }
+  const parsed = parseOptionalJson(raw);
+  if (!(isRecord(parsed) && isRecord(parsed.hooks))) {
+    return [];
+  }
+  const preToolUse = parsed.hooks.PreToolUse;
+  return Array.isArray(preToolUse)
+    ? preToolUse.filter((entry) => isRecord(entry) && entry.matcher === "Bash")
+    : [];
+}
+
+function hasConsumerOwnedBashGuard(targetDir) {
+  const dispatcherPaths = [
+    "scripts/hooks/adapters/claude.mjs",
+    "scripts/hooks/adapters/codex.mjs",
+    ".codex/hooks/tool-gate.mjs",
+    ".codex/hooks/stop.mjs",
+  ];
+  if (dispatcherPaths.some((p) => existsSync(join(targetDir, p)))) {
+    return true;
+  }
+  for (const configPath of [".claude/settings.json", ".codex/hooks.json"]) {
+    for (const entry of preToolUseBashEntries(targetDir, configPath)) {
+      const hooks = Array.isArray(entry.hooks) ? entry.hooks : [];
+      if (
+        hooks.some(
+          (hook) =>
+            !hookCommandString(hook).includes("bash-policy-checks.mjs") &&
+            hookCommandString(hook).trim().length > 0
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function filterBashGuardEntries(config) {
+  if (!(isRecord(config) && isRecord(config.hooks))) {
+    return config;
+  }
+  const filtered = {};
+  for (const [event, entries] of Object.entries(config.hooks)) {
+    if (!Array.isArray(entries)) {
+      filtered[event] = entries;
+      continue;
+    }
+    const kept = entries.filter((entry) => {
+      if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
+        return true;
+      }
+      return entry.hooks.every(
+        (hook) =>
+          !(
+            hookCommandString(hook).includes("general-guard.mjs") ||
+            hookCommandString(hook).includes("bash-policy-checks.mjs")
+          )
+      );
+    });
+    if (kept.length > 0) {
+      filtered[event] = kept;
+    }
+  }
+  return { ...config, hooks: filtered };
+}
+
 function installAgentBundle({ dryRun, packageManager, packageRoot, targetDir }) {
   const result = {
     changed: false,
@@ -400,25 +484,46 @@ function installAgentBundle({ dryRun, packageManager, packageRoot, targetDir }) 
     preserved: [],
     skipped: [],
   };
-  for (const [source, target] of agentBundleCopies) {
+  const consumerOwnedBashGuard = hasConsumerOwnedBashGuard(targetDir);
+  const copies = consumerOwnedBashGuard
+    ? agentBundleCopies
+    : [...agentBundleCopies, ...bashGuardCopies];
+  for (const [source, target] of copies) {
     installAgentBundleTextFile({ dryRun, packageRoot, result, source, target, targetDir });
   }
+  if (consumerOwnedBashGuard) {
+    result.skipped.push("bash safety guard (consumer owns a PreToolUse Bash dispatcher)");
+  }
   installAgentBundleSkills({ dryRun, packageRoot, result, targetDir });
+  const claudeSource = `claude/settings.${packageManager}.json`;
+  const codexSource = `codex/hooks.${packageManager}.json`;
+  const claudeIncoming = consumerOwnedBashGuard
+    ? filterBashGuardEntries(
+        parseRequiredJson(readRequiredAgentBundleFile(packageRoot, claudeSource), claudeSource)
+      )
+    : undefined;
+  const codexIncoming = consumerOwnedBashGuard
+    ? filterBashGuardEntries(
+        parseRequiredJson(readRequiredAgentBundleFile(packageRoot, codexSource), codexSource)
+      )
+    : undefined;
   mergeAgentBundleJsonFile({
     dryRun,
     packageRoot,
     result,
-    source: `claude/settings.${packageManager}.json`,
+    source: claudeSource,
     target: ".claude/settings.json",
     targetDir,
+    ...(claudeIncoming ? { incomingOverride: claudeIncoming } : {}),
   });
   mergeAgentBundleJsonFile({
     dryRun,
     packageRoot,
     result,
-    source: `codex/hooks.${packageManager}.json`,
+    source: codexSource,
     target: ".codex/hooks.json",
     targetDir,
+    ...(codexIncoming ? { incomingOverride: codexIncoming } : {}),
   });
   result.installed = result.skipped.length === 0;
   return result;
@@ -524,14 +629,23 @@ function installAgentBundleTextFile({ dryRun, packageRoot, result, source, targe
   result.files.push(target);
 }
 
-function mergeAgentBundleJsonFile({ dryRun, packageRoot, result, source, target, targetDir }) {
-  const contents = readRequiredAgentBundleFile(packageRoot, source);
-  const incoming = parseRequiredJson(contents, source);
+function mergeAgentBundleJsonFile({
+  dryRun,
+  packageRoot,
+  result,
+  source,
+  target,
+  targetDir,
+  incomingOverride,
+}) {
+  const incoming =
+    incomingOverride ?? parseRequiredJson(readRequiredAgentBundleFile(packageRoot, source), source);
   const destination = join(targetDir, target);
   const existingContents = readText(destination);
   if (existingContents === undefined) {
+    const serialized = `${JSON.stringify(incoming, null, 2)}\n`;
     if (!dryRun) {
-      writeFileAtomic(destination, contents);
+      writeFileAtomic(destination, serialized);
     }
     result.changed = true;
     result.files.push(target);

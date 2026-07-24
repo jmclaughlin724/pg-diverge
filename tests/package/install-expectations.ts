@@ -103,6 +103,12 @@ export function expectedInstalledConfig(
   };
 }
 
+export const bashGuardAgentFiles = [
+  ".claude/hooks/guards/bash-policy-checks.mjs",
+  ".codex/hooks/general-guard.mjs",
+  ".codex/hooks/guards/bash-policy-checks.mjs",
+];
+
 export const activeAgentFiles = [
   ".agents/prompts/supaschema-install.md",
   ".agents/skills/supaschema-maintain/references/commands.md",
@@ -110,8 +116,6 @@ export const activeAgentFiles = [
   ".agents/skills/supaschema-migrate/references/commands.md",
   ".agents/skills/supaschema-migrate/SKILL.md",
   ".agents/skills/supaschema/SKILL.md",
-  ".claude/hooks/guards/bash-policy-checks.mjs",
-  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".claude/rules/supaschema.md",
   ".claude/settings.json",
   ".claude/skills/supaschema-maintain/references/commands.md",
@@ -119,11 +123,9 @@ export const activeAgentFiles = [
   ".claude/skills/supaschema-migrate/references/commands.md",
   ".claude/skills/supaschema-migrate/SKILL.md",
   ".claude/skills/supaschema/SKILL.md",
-  ".codex/hooks/general-guard.mjs",
-  ".codex/hooks/guards/bash-policy-checks.mjs",
-  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks.json",
   ".codex/rules/supaschema.rules",
+  ...bashGuardAgentFiles,
 ];
 
 export const rawAgentBundleFiles = [
@@ -138,7 +140,6 @@ export const rawAgentBundleFiles = [
   "node_modules/supaschema/agent-bundle/agents/skills/supaschema-migrate/SKILL.md",
   "node_modules/supaschema/agent-bundle/agents/skills/supaschema/SKILL.md",
   "node_modules/supaschema/agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
-  "node_modules/supaschema/agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
   "node_modules/supaschema/agent-bundle/claude/rules/supaschema.md",
   "node_modules/supaschema/agent-bundle/claude/settings.npm.json",
   "node_modules/supaschema/agent-bundle/claude/skills/supaschema-maintain/references/commands.md",
@@ -149,11 +150,12 @@ export const rawAgentBundleFiles = [
   "node_modules/supaschema/agent-bundle/codex/hooks/general-guard.mjs",
   "node_modules/supaschema/agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
   "node_modules/supaschema/agent-bundle/codex/hooks.npm.json",
-  "node_modules/supaschema/agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs",
   "node_modules/supaschema/agent-bundle/codex/rules/supaschema.rules",
 ];
 
 export const excludedMaintainerFiles = [
+  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/skills",
   ".vscode/settings.json",
   ".vscode/extensions.json",
