@@ -71,8 +71,8 @@ CREATE TYPE app.mood AS ENUM ('happy', 'sad');
 CREATE DOMAIN app.positive_amount AS integer;
 CREATE TABLE app.listings (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  min_price numeric,
-  max_price numeric,
+  min_price integer,
+  max_price integer,
   start_at timestamptz,
   end_at timestamptz,
   amount app.positive_amount CHECK (amount > 0),
@@ -170,13 +170,25 @@ const wireSoundnessSql = `CREATE TABLE public.wire_values (
   collated_list text COLLATE public.case_insensitive CHECK (collated_list IN ('active')),
   lower_numeric numeric,
   upper_numeric numeric,
+  lte_numeric numeric,
+  lte_numeric_other numeric,
+  gte_numeric numeric,
+  gte_numeric_other numeric,
   lower_bigint bigint,
   upper_bigint bigint,
   equal_bigint bigint,
   equal_bigint_other bigint,
+  lte_bigint bigint,
+  lte_bigint_other bigint,
+  gte_bigint bigint,
+  gte_bigint_other bigint,
   CHECK (lower_numeric < upper_numeric),
+  CHECK (lte_numeric <= lte_numeric_other),
+  CHECK (gte_numeric >= gte_numeric_other),
   CHECK (lower_bigint < upper_bigint),
-  CHECK (equal_bigint = equal_bigint_other)
+  CHECK (equal_bigint = equal_bigint_other),
+  CHECK (lte_bigint <= lte_bigint_other),
+  CHECK (gte_bigint >= gte_bigint_other)
 );
 `;
 
@@ -348,8 +360,12 @@ describe("check constraint zod refinements", () => {
     expect(row).toContain("sized_cast: z.string().nullable(),");
     expect(row).toContain("collated_list: z.string().nullable(),");
     expect(row).not.toContain('value["lower_numeric"]');
+    expect(row).not.toContain('value["lte_numeric"]');
+    expect(row).not.toContain('value["gte_numeric"]');
     expect(row).not.toContain('value["lower_bigint"]');
     expect(row).not.toContain('value["equal_bigint"]');
+    expect(row).not.toContain('value["lte_bigint"]');
+    expect(row).not.toContain('value["gte_bigint"]');
   });
 
   it("fails loose for cross-family or ambiguous domain lookup", async () => {
@@ -435,7 +451,7 @@ describe("check constraint zod refinements", () => {
     });
   });
 
-  it("emits guarded object refinements for numeric column pairs only", async () => {
+  it("emits guarded object refinements for wire-exact numeric column pairs only", async () => {
     const zod = await zodFor(mixedSql);
     const listings = sliceBetween(zod, "listings: {", "listing_prices: {");
     const pairFragment =
