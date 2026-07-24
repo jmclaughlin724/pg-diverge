@@ -64,7 +64,7 @@ When the user asks to stage, commit, push, or create a PR after a version bump:
 - `scripts/release/preflight.mjs` repeats the package, lockfile, and changelog release-note checks before the release workflow decides whether to publish npm or repair GitHub Release state.
 - `.github/workflows/release.yml` creates GitHub Releases with `--notes-file` from `scripts/release/changelog-notes.mjs`, not `--generate-notes`.
 - `npm run guard` runs `guard:release-version` through `scripts/guards/check-all.mjs`.
-- `tests/action.test.ts` verifies the composite action default follows `package.json` and does not drift to npm dist-tags.
+- `tests/release/action.test.ts` verifies the composite action default follows `package.json` and does not drift to npm dist-tags.
 - The release checklist and release PR checklist require `$update` after versioning and before release verification or merge. The audit is semantic and is reviewed through its changed owners and validation evidence; do not add a forgeable marker file or brittle prose guard to simulate execution proof.
 - Rule 09 release workflow checks, Rule 13 package checks, Rule 14 editing safety, Rule 18 generated-surface sync, and Rule 21 source-control checks remain required where their surfaces are touched.
 
@@ -77,7 +77,7 @@ For every version bump, run:
 ```bash
 npm run guard:release-version
 npm run release:notes -- --version <version>
-npm test -- tests/action.test.ts
+npm test -- tests/release/action.test.ts
 ```
 
 For package or release workflow changes, also run:

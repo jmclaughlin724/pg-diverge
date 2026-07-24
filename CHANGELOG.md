@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.0 (2026-07-23)
+
+### Breaking Changes
+
+- Remove the hosted contract-registry commands `contracts push` and `contracts pull`. Use `contracts export` and `contracts diff` with repository or artifact storage instead.
+- Remove license-token gating from `type-contract --enforce`. The flag now exits `2` whenever it finds a breaking generated contract; omit `--enforce` for report-only behavior.
+
+### Changes
+
+- Re-license supaschema under MIT and retire the commercial entitlement and hosted registry implementation.
+- Generate Zod refinements from sound PostgreSQL `CHECK` constraints, including supported numeric bounds, `BETWEEN`, equality, character-length, membership, boolean, domain, and null-aware column comparisons while skipping unsafe coercions.
+- Expand the packaged offline agent bundle with complete documentation, three curated Supaschema skills, and safer Claude and Codex setup that preserves existing customized files.
+
+### Patch Changes
+
+- Correct schema replay for unnamed `USING INDEX` constraints, table-scoped generated constraint names, same-schema domains, and type-generation-only migration sources.
+- Preserve numeric constraint soundness for bigint and numeric pairs, inherited domains, non-strict bounds, and `NOT VALID` checks.
+- Match PostgreSQL privilege behavior when restoring `PUBLIC` defaults and revoking table or column grants.
+- Restore the full documentation lint path and Git-based cross-platform file discovery used by repository checks.
+
 ## 0.4.3 (2026-07-15)
 
 ### Patch Changes

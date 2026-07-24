@@ -30,7 +30,7 @@ The public install package remains `supaschema` on npmjs.org. The release workfl
 3. Run `$update` after all release-owned edits are present. Resolve every in-scope finding and complete the validation selected by the skill.
 4. Run `npm run release:notes -- --version <version>` and confirm the output is the GitHub Release body you want.
 5. Run `npm run release:verify`.
-6. Push the signed release commit to its topic branch and squash-merge the protected pull request.
+6. Push the release commit to its topic branch and squash-merge the protected pull request.
 
 Do not publish from GitHub Releases or local machines. GitHub Release creation runs immediately after npm publish and tarball attestation, so npm propagation lag cannot leave npm published without the matching GitHub release/tag. If npm publish succeeds but GitHub Release creation itself fails, rerun the release workflow from `main`; preflight repairs the missing GitHub Release without republishing npm.
 
