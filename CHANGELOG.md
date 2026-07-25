@@ -5,7 +5,7 @@
 ### Changes
 
 - Let `diff`, `plan`, and `sync` use the configured `migrations:` history as the generation before-state for migration-first adoption, while rejecting migration replay as a target or drift source.
-- Add scan coverage for `SECURITY DEFINER` routines that do not pin `search_path = ''`, and tighten migration checks to require the same safe posture.
+- Add scan coverage for `SECURITY DEFINER` routines that do not pin `search_path = ''`, and tighten migration checks to require the same safe posture without adding a new deploy-blocking RLS gate in this patch.
 
 ### Patch Changes
 
