@@ -492,7 +492,7 @@ function codexHookCommand(relativePath, timeout, statusMessage, args = "") {
   const commandArgs = args ? ` ${args}` : "";
   return {
     command: `node "${codexProjectDir}/${relativePath}"${commandArgs}`,
-    commandWindows: `for /f "delims=" %S in ('git rev-parse --show-toplevel') do node "%S/${relativePath}"${commandArgs}`,
+    commandWindows: `for /f "delims=" %S in ('git rev-parse --show-toplevel') do @node "%S/${relativePath}"${commandArgs}`,
     statusMessage,
     timeout,
     type: "command",

@@ -256,9 +256,10 @@ function assertCodexConfig(codexConfig, root) {
     hookHandlers(codexConfig).every(
       (handler) =>
         typeof handler.commandWindows === "string" &&
-        handler.commandWindows.includes("git rev-parse --show-toplevel")
+        handler.commandWindows.includes("git rev-parse --show-toplevel") &&
+        handler.commandWindows.includes('do @node "')
     ),
-    ".codex/hooks.json must provide git-rooted commandWindows overrides"
+    ".codex/hooks.json must provide git-rooted, echo-suppressed commandWindows overrides"
   );
   assert(
     codexConfig.hooks?.PermissionDenied === undefined &&
@@ -298,8 +299,9 @@ function assertCodexConfig(codexConfig, root) {
     handler.command?.includes(".codex/hooks/general-guard.mjs")
   );
   assert(
-    packageGeneralGuard?.commandWindows?.includes("git rev-parse --show-toplevel"),
-    "agent-bundle Codex general guard must provide a git-rooted commandWindows override"
+    packageGeneralGuard?.commandWindows?.includes("git rev-parse --show-toplevel") &&
+      packageGeneralGuard.commandWindows.includes('do @node "'),
+    "agent-bundle Codex general guard must provide a git-rooted, echo-suppressed commandWindows override"
   );
   assert(
     codexHooksJson.includes(".codex/hooks/supaschema-source-hook.mjs") &&

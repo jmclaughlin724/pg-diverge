@@ -350,7 +350,7 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks.json")).toContain("$(git rev-parse --show-toplevel)");
     expect(read(root, ".codex/hooks.json")).toContain('"commandWindows"');
     expect(read(root, ".codex/hooks.json")).toContain(
-      `for /f \\"delims=\\" %S in ('git rev-parse --show-toplevel')`
+      `for /f \\"delims=\\" %S in ('git rev-parse --show-toplevel') do @node`
     );
     expect(read(root, ".codex/hooks.json")).not.toContain("CODEX_PROJECT_DIR");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");

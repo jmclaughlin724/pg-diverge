@@ -692,6 +692,7 @@ describe("agent hook configuration", () => {
       expect(handler.commandWindows).toEqual(
         expect.stringContaining("git rev-parse --show-toplevel")
       );
+      expect(handler.commandWindows).toEqual(expect.stringContaining('do @node "'));
     }
   });
 
