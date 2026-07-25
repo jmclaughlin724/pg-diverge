@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "f040c2ed49b612d136cc47715a85fbe266ac2a1f",
+  "sourceDirectory": "supabase/migrations",
+  "sourceRepository": "anilize",
+  "files": {
+    "202607110001_platform_foundation.sql": "b337aa476f89230f431a6b92ca1f7cd47892e788744e74305956b1fac724b3d3",
+    "202607140001_fastmcp_postgres_storage.sql": "a8eec334f4b0de1c6bc42985c88657dbc466b0e884a26b1a4770c04dd698208c",
+    "20260714233027_anilize_mcp_storage_bucket.sql": "7279758dff1f887edc46caab17236ad3ab03b83e279d6ec040479eef56a9929c",
+    "20260715002803_fastmcp_supabase_task_indexes.sql": "ad6836b5b682d4dd9fb011041e00378c54ae50d66a1cf4aa47e8650308cfc032",
+    "20260715134948_fix_authorization_boundaries.sql": "30090c252e04798a0356a71f6fa88e6ef9d7acfb2fbba4ee2106ec61c78a842b"
+  }
+}

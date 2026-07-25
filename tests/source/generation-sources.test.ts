@@ -135,11 +135,13 @@ function databaseSource(): string {
 async function runGenerationCommand({
   command,
   config,
+  failOnDiff = false,
   from,
   to,
 }: {
   command: GenerationCommand;
   config: ReturnType<typeof resolveConfig>;
+  failOnDiff?: boolean;
   from: string;
   to: string;
 }): Promise<Diagnostic[]> {
@@ -164,7 +166,7 @@ async function runGenerationCommand({
       from,
       "--to",
       to,
-      ...(command === "diff" ? ["--out", "stdout"] : []),
+      ...(command === "diff" ? ["--out", "stdout", ...(failOnDiff ? ["--fail-on-diff"] : [])] : []),
     ]);
   } finally {
     stdout.mockRestore();
@@ -355,6 +357,46 @@ describe("generation source planning", () => {
     expect(pgState.poolConstructions).toBe(0);
     expect(pgState.poolEndCalls).toBe(0);
     expect(pgState.clientConstructions).toBe(0);
+  });
+
+  it("rejects migrations replay as a diff --fail-on-diff source", async () => {
+    const fixture = await createFixture();
+    const migrationsDir = join(fixture.root, "migrations");
+    const schemaDir = join(fixture.root, "schemas");
+    const diagnostics = await runGenerationCommand({
+      command: "diff",
+      config: {
+        ...fixture.config,
+        migrationsDir,
+        schemaPaths: [schemaDir],
+      },
+      failOnDiff: true,
+      from: `migrations:${migrationsDir}`,
+      to: `dir:${schemaDir}`,
+    });
+
+    expect(process.exitCode).toBe(2);
+    expect(diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_SOURCE_MIGRATIONS_DRIFT_UNSUPPORTED",
+    ]);
+    expect(pgState.poolConstructions).toBe(0);
+    expect(pgState.clientConstructions).toBe(0);
+  });
+
+  it("rejects migrations replay in direct drift planning", async () => {
+    const fixture = await createFixture();
+    const context = await buildSchemaPlanningContext({
+      config: fixture.config,
+      cwd: fixture.root,
+      from: fixture.migrationsSource,
+      mode: "drift",
+      to: "empty:",
+    });
+
+    expect(context.diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_SOURCE_MIGRATIONS_DRIFT_UNSUPPORTED",
+    ]);
+    expect(context.from).toBeUndefined();
   });
 
   it.each(generationCommandCases)("rejects migrations replay as the $command target", async ({

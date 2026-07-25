@@ -3,12 +3,15 @@ const modelContextEvents = new Set([
   "UserPromptSubmit",
   "PreToolUse",
   "PostToolUse",
+  "PostToolUseFailure",
   "SubagentStart",
 ]);
 
 const decisionBlockEvents = new Set(["UserPromptSubmit", "PostToolUse", "Stop", "SubagentStop"]);
 
-const exitTwoBlockEvents = new Set(["TaskCompleted", "PermissionDenied"]);
+const exitTwoBlockEvents = new Set(["TaskCompleted"]);
+const maxDiagnosticValueLength = 800;
+const sourceExtensions = [".cjs", ".js", ".mjs", ".ts"];
 
 export function shapeHookResult(eventName, result = {}, runtime = "claude") {
   const output = {};
@@ -60,9 +63,9 @@ export function shapeHookResult(eventName, result = {}, runtime = "claude") {
   return shaped(output, exitCode, stderr, false);
 }
 
-export function failClosedResult(eventName, error, checkName = "unknown") {
+export function failClosedResult(eventName, error, checkName = "unknown", details = {}) {
   return {
-    block: structuredError(eventName, checkName, error),
+    block: structuredError(eventName, checkName, error, details),
   };
 }
 
@@ -75,7 +78,10 @@ export function runChecks(eventName, payload, checks, context = {}) {
     try {
       mergeResult(aggregate, check(payload, context) ?? {});
     } catch (error) {
-      return failClosedResult(eventName, error, check.name || "anonymous");
+      return failClosedResult(eventName, error, check.name || "anonymous", {
+        hookPath: context.hookPath,
+        runtime: context.runtime,
+      });
     }
   }
 
@@ -94,24 +100,34 @@ export function mergeResult(target, addition) {
   return target;
 }
 
-export function structuredError(eventName, checkName, error) {
-  const message = error instanceof Error ? error.message : String(error);
-  const stack = error instanceof Error && error.stack ? error.stack : "";
-  const source =
-    stack
-      .split("\n")
-      .find((line) => line.includes(".mjs"))
-      ?.trim() ?? "unknown";
+export function structuredError(eventName, checkName, error, details = {}) {
+  const message = diagnosticValue(error instanceof Error ? error.message : String(error));
+  const hookPath = diagnosticValue(details.hookPath ?? "unknown");
+  const remediation = diagnosticValue(
+    details.remediation ??
+      "Inspect the reported source and rerun the hook with representative JSON input."
+  );
   return [
     "Agent hook failed closed.",
+    `runtime=${diagnosticValue(details.runtime ?? "unknown")}`,
     `event=${eventName}`,
+    `hook=${hookPath}`,
     `check=${checkName}`,
-    `source=${source}`,
+    `source=${sourceLocation(error)}`,
     `error=${message}`,
-    stack ? `stack=${stack}` : "",
+    `remediation=${remediation}`,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export function writeHookResult(result) {
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(`${result.stderr}\n`);
+  }
 }
 
 function shaped(output, exitCode, stderr, forceJson) {
@@ -130,4 +146,65 @@ function joinParts(parts) {
 
 function joinMessages(...messages) {
   return [...new Set(messages.filter(Boolean))].join("\n\n");
+}
+
+function diagnosticValue(value) {
+  let normalized = "";
+  let previousWasWhitespace = false;
+  for (const character of String(value)) {
+    const isWhitespace = character.trim().length === 0;
+    if (!isWhitespace) {
+      normalized += character;
+    } else if (!previousWasWhitespace) {
+      normalized += " ";
+    }
+    previousWasWhitespace = isWhitespace;
+  }
+  return normalized.trim().slice(0, maxDiagnosticValueLength);
+}
+
+function sourceLocation(error) {
+  const stack = error instanceof Error && error.stack ? error.stack : "";
+  for (const line of stack.split("\n").slice(1)) {
+    const candidate = stackLocation(line);
+    if (candidate) {
+      return diagnosticValue(candidate);
+    }
+  }
+  return "unknown";
+}
+
+function stackLocation(line) {
+  let candidate = line.trim();
+  if (candidate.endsWith(")")) {
+    candidate = candidate.slice(0, -1);
+  }
+  const columnSeparator = candidate.lastIndexOf(":");
+  const lineSeparator = candidate.lastIndexOf(":", columnSeparator - 1);
+  if (columnSeparator < 0 || lineSeparator < 0) {
+    return;
+  }
+  const column = candidate.slice(columnSeparator + 1);
+  const lineNumber = candidate.slice(lineSeparator + 1, columnSeparator);
+  if (!(isDecimal(lineNumber) && isDecimal(column))) {
+    return;
+  }
+  let source = candidate.slice(0, lineSeparator);
+  const openParenthesis = source.lastIndexOf("(");
+  if (openParenthesis >= 0) {
+    source = source.slice(openParenthesis + 1);
+  } else if (source.startsWith("at ")) {
+    source = source.slice(3);
+  }
+  if (source.startsWith("file://")) {
+    source = source.slice("file://".length);
+  }
+  if (!sourceExtensions.some((extension) => source.endsWith(extension))) {
+    return;
+  }
+  return `${source}:${lineNumber}:${column}`;
+}
+
+function isDecimal(value) {
+  return value.length > 0 && [...value].every((character) => character >= "0" && character <= "9");
 }

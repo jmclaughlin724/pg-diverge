@@ -186,6 +186,8 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_SELFCHECK_UNEXPECTED: "Re-extraction produced an object the catalog model does not contain.",
   SUPA_SOURCE_BASELINE_REQUIRED:
     "Migration generation could not resolve a repository source baseline.",
+  SUPA_SOURCE_MIGRATIONS_DRIFT_UNSUPPORTED:
+    "Drift detection cannot use replayed migrations as a source. Use migrations only as a generation before-state.",
   SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED:
     "Migration generation cannot use replayed migrations as its target. Use the matching migration corpus only as the before-state.",
   SUPA_SUPABASE_MANAGED_SCHEMA: "Configured managed schemas are not declarative source owners.",

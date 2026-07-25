@@ -17,7 +17,7 @@
       {
         "hooks": [
           {
-            "command": "node \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/general-guard.mjs\"",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/general-guard.mjs\"",
             "statusMessage": "Checking general Bash safety policy",
             "timeout": 10,
             "type": "command"

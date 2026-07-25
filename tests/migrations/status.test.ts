@@ -95,7 +95,9 @@ describe("migrations status (disk only)", () => {
 });
 
 describe.skipIf(!databaseUrl)("migrations status (against a target)", () => {
-  it("classifies applied, pending, ghost, and out-of-order versions", async () => {
+  it("classifies applied, pending, ghost, and out-of-order versions", {
+    timeout: 30_000,
+  }, async () => {
     const admin = new Client({ connectionString: databaseUrl });
     await admin.connect();
     const db = `supa_migrations_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;

@@ -24,6 +24,8 @@ supaschema config validate --json
 
 `supaschema init` installs missing text files and merges hook registration JSON. Existing non-identical text files are preserved and listed in the init result. Existing malformed or non-mergeable hook JSON is skipped and listed so the agent can repair it.
 
+On upgrade, init removes the retired package-owned `sync-llm-on-claude-surface-change.mjs` registrations. Byte-identical retired scripts are deleted after their registrations are removed; modified scripts are preserved and listed.
+
 Shared files:
 
 - `agent-bundle/agents/prompts/supaschema-install.md` to `.agents/prompts/supaschema-install.md`
@@ -52,7 +54,7 @@ Use the package manager that owns the project:
 - Yarn: `settings.yarn.json` and `hooks.yarn.json`
 - Bun: `settings.bun.json` and `hooks.bun.json`
 
-Merge JSON files. Do not overwrite existing user hooks or settings. Do not register duplicate direct hooks. If the project already owns a Codex dispatcher such as `.codex/hooks/tool-gate.mjs` or `.codex/hooks/stop.mjs`, keep the dispatcher as the owner and route supaschema checks through that dispatcher instead of registering duplicate direct hooks.
+Merge JSON files. Do not overwrite existing user hooks or settings. Do not register duplicate direct hooks.
 
 ## Verify
 

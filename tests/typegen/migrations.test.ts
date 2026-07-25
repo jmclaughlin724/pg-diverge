@@ -45,6 +45,41 @@ ALTER TYPE app.status ADD VALUE IF NOT EXISTS 'archived';`,
     expect(result.stdout).toContain('"draft" | "active" | "archived"');
   });
 
+  it("writes TypeScript constants without a Zod artifact when Zod generation is disabled", async () => {
+    const directory = await writeMigrations([
+      [
+        "20240101000000_create.sql",
+        `CREATE TYPE public.item_status AS ENUM ('draft', 'active');
+CREATE TABLE public.items (
+  id bigint GENERATED ALWAYS AS IDENTITY,
+  status public.item_status NOT NULL
+);`,
+      ],
+    ]);
+    const output = await mkdtemp(join(tmpdir(), "supa-typegen-types-only-"));
+    const typesFile = join(output, "database.types.ts");
+    const zodFile = join(output, "database.zod.ts");
+
+    const result = await generateTypeContracts({
+      config: resolveConfig({
+        typesFile,
+        workflow: {
+          type_generation: "create_or_refresh",
+          zod_generation: "disabled",
+        },
+        zodFile,
+      }),
+      honorWorkflowPolicy: true,
+      source: `migrations:${directory}`,
+    });
+    const types = await readFile(typesFile, "utf8");
+
+    expect(result.written).toEqual([typesFile]);
+    expect(types).toContain("export const Constants = {");
+    expect(types).toContain('item_status: ["draft", "active"]');
+    await expect(readFile(zodFile, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("keeps zod-only output self-contained when type output is skipped", async () => {
     const directory = await writeMigrations([
       [

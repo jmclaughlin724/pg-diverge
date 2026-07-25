@@ -31,15 +31,10 @@ export async function readMigrationContext(
 ): Promise<MigrationContext> {
   const cwd = options.cwd ?? process.cwd();
   const directory = resolve(cwd, migrationsDir);
-  const excludedFiles = new Set(
-    await Promise.all((options.excludeFiles ?? []).map((file) => canonicalPath(resolve(cwd, file))))
-  );
-  const files: string[] = [];
-  for (const file of await migrationFiles(directory)) {
-    if (!excludedFiles.has(await canonicalPath(file))) {
-      files.push(file);
-    }
-  }
+  const files = await migrationFiles(directory, {
+    cwd,
+    ...(options.excludeFiles === undefined ? {} : { excludeFiles: options.excludeFiles }),
+  });
   const corpus: MigrationCorpus = {
     destructiveKeys: [],
     diagnostics: [],

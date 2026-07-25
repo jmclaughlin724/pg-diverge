@@ -35,10 +35,13 @@ export interface ResolvedGenerationSources extends ResolvedSources {
   diagnostics: Diagnostic[];
 }
 
+export type SchemaPlanningMode = "drift" | "generation";
+
 export interface ResolveGenerationSourceOptions {
   cwd?: string;
   from?: string;
   migrationsDir?: string;
+  mode?: SchemaPlanningMode;
   to?: string;
 }
 
@@ -57,9 +60,10 @@ export interface SchemaPlanningContextOptions {
   checkMigrationBaseline?: boolean;
   config: SupaschemaConfig;
   cwd?: string;
+  excludeMigrationFiles?: readonly string[];
   from: string;
-  migrationContextExcludeFiles?: readonly string[];
   migrationsDir?: string;
+  mode?: SchemaPlanningMode;
   schema?: string;
   to: string;
 }
@@ -71,8 +75,11 @@ export async function resolveGenerationSourceDefaults(
 ): Promise<ResolvedGenerationSources> {
   const defaulted: string[] = [];
   const diagnostics: Diagnostic[] = [];
-  const cwd = options.cwd ?? process.cwd();
-  const migrationsDir = options.migrationsDir ?? config.migrationsDir;
+  const {
+    cwd = process.cwd(),
+    migrationsDir = config.migrationsDir,
+    mode = "generation",
+  } = options;
   const to = options.to ?? defaultTreeSource(config);
   if (options.to === undefined) {
     defaulted.push(`--to ${redactSecrets(to)}`);
@@ -102,8 +109,7 @@ export async function resolveGenerationSourceDefaults(
     }
   }
 
-  diagnostics.push(...generationSourceDiagnostics(from, to));
-  diagnostics.push(...(await migrationGenerationSourceDiagnostics(from, migrationsDir, cwd)));
+  diagnostics.push(...(await planningSourceDiagnostics(from, to, mode, migrationsDir, cwd)));
   const notice =
     defaulted.length > 0 ? `defaults: ${defaulted.join(" · ")} (flags override)\n` : undefined;
   return { diagnostics, from, notice, to };
@@ -158,10 +164,13 @@ export async function buildSchemaPlanningContext(
 ): Promise<SchemaPlanningContext> {
   const cwd = options.cwd ?? process.cwd();
   const migrationsDir = options.migrationsDir ?? options.config.migrationsDir;
-  const diagnostics = [
-    ...generationSourceDiagnostics(options.from, options.to),
-    ...(await migrationGenerationSourceDiagnostics(options.from, migrationsDir, cwd)),
-  ];
+  const diagnostics = await planningSourceDiagnostics(
+    options.from,
+    options.to,
+    options.mode ?? "generation",
+    migrationsDir,
+    cwd
+  );
   if (diagnostics.some((item) => item.severity === "error")) {
     return { diagnostics, fromMs: 0, planStart: performance.now(), toMs: 0 };
   }
@@ -169,6 +178,9 @@ export async function buildSchemaPlanningContext(
   const extractOptions = {
     config: options.config,
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.excludeMigrationFiles === undefined
+      ? {}
+      : { excludeMigrationFiles: options.excludeMigrationFiles }),
   };
   const corpusOptions = options.cwd === undefined ? {} : { cwd: options.cwd };
   const extractStart = performance.now();
@@ -176,9 +188,9 @@ export async function buildSchemaPlanningContext(
   const fromMs = performance.now() - extractStart;
   const migrationContext = await readMigrationContext(migrationsDir, {
     ...corpusOptions,
-    ...(options.migrationContextExcludeFiles === undefined
+    ...(options.excludeMigrationFiles === undefined
       ? {}
-      : { excludeFiles: options.migrationContextExcludeFiles }),
+      : { excludeFiles: options.excludeMigrationFiles }),
   });
   const toStart = performance.now();
   const fullTo = await extractSourceModel(options.to, extractOptions);
@@ -202,14 +214,36 @@ export async function buildSchemaPlanningContext(
   };
 }
 
-export function generationSourceDiagnostics(from: string, to: string): Diagnostic[] {
+async function planningSourceDiagnostics(
+  from: string,
+  to: string,
+  mode: SchemaPlanningMode,
+  migrationsDir: string,
+  cwd: string
+): Promise<Diagnostic[]> {
+  const diagnostics = generationSourceDiagnostics(from, to, mode);
+  if (mode === "generation") {
+    diagnostics.push(...(await migrationGenerationSourceDiagnostics(from, migrationsDir, cwd)));
+  }
+  return diagnostics;
+}
+
+export function generationSourceDiagnostics(
+  from: string,
+  to: string,
+  mode: SchemaPlanningMode = "generation"
+): Diagnostic[] {
   return [
-    ...generationSourceSideDiagnostics("from", from),
-    ...generationSourceSideDiagnostics("to", to),
+    ...generationSourceSideDiagnostics("from", from, mode),
+    ...generationSourceSideDiagnostics("to", to, mode),
   ];
 }
 
-function generationSourceSideDiagnostics(side: "from" | "to", source: string): Diagnostic[] {
+function generationSourceSideDiagnostics(
+  side: "from" | "to",
+  source: string,
+  mode: SchemaPlanningMode
+): Diagnostic[] {
   if (source === sourceAuto) {
     return [
       diagnostic(
@@ -230,6 +264,22 @@ function generationSourceSideDiagnostics(side: "from" | "to", source: string): D
         "generation to-source uses migration replay",
         {
           hint: "Use the matching migrations: corpus only as the generation before-state; keep the target on database:, git:, dir:, dump:, catalog:, or empty:.",
+        }
+      ),
+    ];
+  }
+  if (
+    mode === "drift" &&
+    side === "from" &&
+    parseRuntimeSource(source)?.kind === RuntimeSourceKind.Migrations
+  ) {
+    return [
+      diagnostic(
+        "SUPA_SOURCE_MIGRATIONS_DRIFT_UNSUPPORTED",
+        "error",
+        "drift detection from-source uses migration replay",
+        {
+          hint: "Use migrations: only as a generation before-state. Compare drift from database:, catalog:, git:, dir:, dump:, or empty:.",
         }
       ),
     ];

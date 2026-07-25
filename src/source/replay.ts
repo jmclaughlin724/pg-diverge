@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { deparseSync } from "pgsql-deparser";
 import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
-import { migrationFiles } from "../migrations/files.js";
+import { type MigrationFilesOptions, migrationFiles } from "../migrations/files.js";
 import { alterTableObjects } from "../sql/alter-table.js";
 import type { AstNode, AstStatement, ColumnFacts, QualifiedName } from "../sql/ast.js";
 import {
@@ -149,11 +149,19 @@ const dollarSign = "$".charCodeAt(0);
 export async function reconstructModelFromMigrations(
   directory: string,
   source: string,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  options: MigrationFilesOptions = {}
 ): Promise<SchemaModel> {
   const diagnostics: Diagnostic[] = [];
-  const files = await migrationFiles(directory);
+  const files = await migrationFiles(directory, options);
   if (files.length === 0) {
+    const allFiles =
+      options.excludeFiles === undefined || options.excludeFiles.length === 0
+        ? files
+        : await migrationFiles(directory, options.cwd === undefined ? {} : { cwd: options.cwd });
+    if (allFiles.length > 0) {
+      return replayModel(diagnostics, [], source);
+    }
     diagnostics.push(
       replayDiagnostic(
         "SUPA_REPLAY_ORDER_GAP",

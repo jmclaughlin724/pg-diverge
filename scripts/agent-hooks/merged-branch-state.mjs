@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 
 const closeoutRulePath = ".claude/rules/21-source-control.md";
 const candidateCommitLimit = 200;
-const gitTimeoutMs = 2000;
+const gitTimeoutMs = 5000;
 
 export function mergedTopicBranchContext(root) {
   const branch = gitLine(root, ["rev-parse", "--abbrev-ref", "HEAD"]);

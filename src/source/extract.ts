@@ -33,7 +33,10 @@ export async function extractSourceModel(
 ): Promise<SchemaModel> {
   const cwd = options.cwd ?? process.cwd();
   const config = resolveConfig(options.config);
-  const model = applyConfigModelFilters(await extractRawModel(source, cwd, config), config);
+  const model = applyConfigModelFilters(
+    await extractRawModel(source, cwd, config, options.excludeMigrationFiles),
+    config
+  );
   return isBootstrapInventorySource(source)
     ? await filterBootstrapInventoryObjects(model, cwd, config)
     : model;
@@ -47,7 +50,8 @@ function isBootstrapInventorySource(source: string): boolean {
 async function extractRawModel(
   source: string,
   cwd: string,
-  config: SupaschemaConfig
+  config: SupaschemaConfig,
+  excludeMigrationFiles: readonly string[] | undefined
 ): Promise<SchemaModel> {
   const parsed = parseRuntimeSource(source);
   if (!parsed) {
@@ -80,7 +84,10 @@ async function extractRawModel(
   }
   if (parsed.kind === "migrations") {
     const directory = resolve(cwd, parsed.payload);
-    return reconstructModelFromMigrations(directory, source, config);
+    return reconstructModelFromMigrations(directory, source, config, {
+      cwd,
+      ...(excludeMigrationFiles === undefined ? {} : { excludeFiles: excludeMigrationFiles }),
+    });
   }
   if (parsed.kind === "empty") {
     return modelFromSqlFiles([], source, config);

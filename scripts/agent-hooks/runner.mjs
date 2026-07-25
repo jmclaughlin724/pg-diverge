@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
 import { recordToolEvidence } from "./command-evidence.mjs";
 import { preToolEvidenceGate } from "./evidence-gate.mjs";
-import { failClosedResult, runChecks, shapeHookResult } from "./hook-output.mjs";
+import { failClosedResult, runChecks, shapeHookResult, writeHookResult } from "./hook-output.mjs";
 import { mergedTopicBranchContext } from "./merged-branch-state.mjs";
 import { runResponseDetectors } from "./response-shape.mjs";
 import {
@@ -24,25 +24,52 @@ import {
 } from "./state.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const claudePermissionModes = new Set([
+  "default",
+  "acceptEdits",
+  "plan",
+  "dontAsk",
+  "bypassPermissions",
+  "auto",
+]);
+const codexPermissionModes = new Set([
+  "default",
+  "acceptEdits",
+  "plan",
+  "dontAsk",
+  "bypassPermissions",
+]);
+const claudeSessionStartSources = new Set(["startup", "resume", "clear", "compact", "fork"]);
+const codexSessionStartSources = new Set(["startup", "resume", "clear", "compact"]);
 
 export function runAgentHookEvent(eventName, options = {}) {
-  const payload = readStdinJson();
   const runtime = options.runtime ?? hookRuntime();
-  const shaped = handleAgentHookEvent(eventName, payload, { root, runtime });
-  if (shaped.stdout) {
-    process.stdout.write(shaped.stdout);
+  const hookPath = options.hookPath ?? process.argv[1] ?? "unknown";
+  let shaped;
+  try {
+    const payload = readStdinJson(eventName, runtime);
+    shaped = handleAgentHookEvent(eventName, payload, { hookPath, root, runtime });
+  } catch (error) {
+    shaped = shapeHookResult(
+      eventName,
+      failClosedResult(eventName, error, "hookInput", {
+        hookPath,
+        remediation: `Send one valid JSON object on stdin matching the ${eventName} hook schema.`,
+        runtime,
+      }),
+      runtime
+    );
   }
-  if (shaped.stderr) {
-    process.stderr.write(`${shaped.stderr}\n`);
-  }
+  writeHookResult(shaped);
   process.exit(shaped.exitCode);
 }
 
 export function handleAgentHookEvent(eventName, payload, options = {}) {
   const runtime = options.runtime ?? "claude";
+  const hookPath = options.hookPath ?? "scripts/agent-hooks/runner.mjs";
   try {
     return withSessionState(payload, (state) => {
-      const context = { root: options.root ?? root, runtime, state };
+      const context = { hookPath, root: options.root ?? root, runtime, state };
       let result = {};
       let clear = false;
 
@@ -55,7 +82,7 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
       } else if (eventName === "PreToolUse") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [toolSkills, evidenceGate, bashSafety], context);
-      } else if (eventName === "PostToolUse") {
+      } else if (eventName === "PostToolUse" || eventName === "PostToolUseFailure") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
       } else if (eventName === "SubagentStart") {
@@ -68,9 +95,6 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
       } else if (eventName === "TaskCompleted") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [taskCompletionGate], context);
-      } else if (eventName === "PermissionDenied") {
-        selectTurnState(payload, state);
-        result = runChecks(eventName, payload, [permissionDeniedContext], context);
       } else if (eventName === "SessionEnd") {
         clear = true;
       }
@@ -83,7 +107,16 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
       };
     });
   } catch (error) {
-    return shapeHookResult(eventName, failClosedResult(eventName, error, "sessionState"), runtime);
+    return shapeHookResult(
+      eventName,
+      failClosedResult(eventName, error, "sessionState", {
+        hookPath,
+        remediation:
+          "Inspect the reported session-state error, preserve the state file, and rerun the hook.",
+        runtime,
+      }),
+      runtime
+    );
   }
 }
 
@@ -178,13 +211,6 @@ function taskCompletionGate(payload, context) {
   };
 }
 
-function permissionDeniedContext(payload) {
-  const reason = payload?.denial_reason ?? payload?.tool_response?.reason ?? "permission denied";
-  return {
-    block: `Permission denial observed. Re-plan without retrying the same denied action. reason=${reason}`,
-  };
-}
-
 function hookRuntime() {
   const normalized = String(process.argv[1] ?? "")
     .split(path.sep)
@@ -194,11 +220,57 @@ function hookRuntime() {
     : "claude";
 }
 
-function readStdinJson() {
+function readStdinJson(eventName, runtime) {
+  const raw = fs.readFileSync(0, "utf8");
+  if (raw.trim().length === 0) {
+    throw new Error("hook stdin was empty");
+  }
+  let payload;
   try {
-    const raw = fs.readFileSync(0, "utf8");
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
+    payload = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `hook stdin is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("hook stdin must contain one JSON object");
+  }
+  if (eventName === "SessionStart") {
+    validateSessionStartPayload(payload, runtime);
+  }
+  return payload;
+}
+
+function validateSessionStartPayload(payload, runtime) {
+  requireNonEmptyString(payload, "session_id");
+  requireNullableString(payload, "transcript_path");
+  requireNonEmptyString(payload, "cwd");
+  if (payload.hook_event_name !== "SessionStart") {
+    throw new Error('hook input field "hook_event_name" must equal "SessionStart"');
+  }
+  if (runtime === "codex") {
+    requireNonEmptyString(payload, "model");
+  }
+  const permissionModes = runtime === "claude" ? claudePermissionModes : codexPermissionModes;
+  if (!permissionModes.has(payload.permission_mode)) {
+    throw new Error('hook input field "permission_mode" has an unsupported value');
+  }
+  const sources = runtime === "claude" ? claudeSessionStartSources : codexSessionStartSources;
+  if (!sources.has(payload.source)) {
+    throw new Error('hook input field "source" has an unsupported value');
+  }
+}
+
+function requireNonEmptyString(payload, field) {
+  if (typeof payload[field] !== "string" || payload[field].length === 0) {
+    throw new Error(`hook input field "${field}" must be a non-empty string`);
+  }
+}
+
+function requireNullableString(payload, field) {
+  if (payload[field] !== null && typeof payload[field] !== "string") {
+    throw new Error(`hook input field "${field}" must be a string or null`);
   }
 }

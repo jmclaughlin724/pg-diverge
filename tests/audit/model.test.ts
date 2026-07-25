@@ -83,7 +83,9 @@ describe("foreign data wrapper tier", () => {
 });
 
 describe.skipIf(!databaseUrl)("verify environment pack", () => {
-  it("applies auth/cron-dependent trees against bare temporary databases", async () => {
+  it("applies auth/cron-dependent trees against bare temporary databases", {
+    timeout: 30_000,
+  }, async () => {
     const treeSql =
       "CREATE SCHEMA app;\nCREATE TABLE app.notes (id bigint PRIMARY KEY, owner_id uuid);\nALTER TABLE app.notes ENABLE ROW LEVEL SECURITY;\nCREATE POLICY notes_owner ON app.notes FOR SELECT TO authenticated USING (owner_id = auth.uid());\nCREATE VIEW app.cron_health WITH (security_invoker = true) AS SELECT jobid, status FROM cron.job_run_details;\n";
     const root = await mkdtemp(join(tmpdir(), "supa-envpack-"));

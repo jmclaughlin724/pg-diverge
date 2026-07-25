@@ -13,7 +13,7 @@ export const publicSkillNames = Object.freeze([
   "supaschema-maintain",
 ]);
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
+const codexProjectDir = ["$(", "git rev-parse --show-toplevel", ")"].join("");
 const codexCommandTools = ["Bash"];
 const codexEditTools = ["apply_patch"];
 const codexPreToolContextTools = [
@@ -424,6 +424,17 @@ export function renderSourceCodexHooks(root = ROOT) {
           matcher: "startup|resume|clear|compact",
         },
       ],
+      SessionEnd: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-session-end.mjs",
+              2,
+              "Clearing supaschema agent hook state"
+            ),
+          ],
+        },
+      ],
       SubagentStart: [
         {
           hooks: [
@@ -504,9 +515,11 @@ function assertClaudeHookSource(root) {
     ["UserPromptSubmit", ".claude/hooks/context-user-prompt-submit.mjs"],
     ["PreToolUse", ".claude/hooks/context-pre-tool-use.mjs"],
     ["PostToolUse", ".claude/hooks/context-post-tool-use.mjs"],
+    ["PostToolUseFailure", ".claude/hooks/context-post-tool-use-failure.mjs"],
     ["SubagentStart", ".claude/hooks/context-subagent-start.mjs"],
     ["SubagentStop", ".claude/hooks/context-subagent-stop.mjs"],
     ["Stop", ".claude/hooks/context-stop.mjs"],
+    ["SessionEnd", ".claude/hooks/context-session-end.mjs"],
   ]) {
     assertClaudeNodeHook(hooks, eventName, relativePath);
   }
@@ -515,6 +528,11 @@ function assertClaudeHookSource(root) {
   assertClaudeCommand(hooks, "PreToolUse", "generated-migration-edit");
   assertClaudeCommand(hooks, "PostToolUse", "schema-write");
   assertClaudeNodeHook(hooks, "PostToolUse", ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
+  assertClaudeNodeHook(
+    hooks,
+    "PostToolUseFailure",
+    ".claude/hooks/sync-llm-on-claude-surface-change.mjs"
+  );
 }
 
 function assertSourceClaudeBashPreToolUseTopology(hooks) {

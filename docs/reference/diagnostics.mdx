@@ -120,6 +120,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_SYNC_RUNNER_UNAVAILABLE` | error | The selected migration runner could not be launched or connected. |
 | `SUPA_SOURCE_BASELINE_REQUIRED` | error | Generation could not resolve a source-backed baseline. Pin `sources.from` or review `empty:` for a first migration. |
 | `SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION` | error | Generation was given a live database source. Use a source-backed baseline, or use inspect/verify/selfcheck/drift/sync safety for database-backed workflows. |
+| `SUPA_SOURCE_MIGRATIONS_DRIFT_UNSUPPORTED` | error | Drift detection cannot use replayed migrations as a source. Use `migrations:` only as a generation before-state. |
 | `SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED` | error | Generation was given a `migrations:` replay target. Use the matching migration corpus only as `--from`; keep `--to` on a declarative or catalog source. |
 | `SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION` | error | The Supabase CLI runner cannot safely apply a `.concurrent.sql` companion migration. |
 | `SUPA_SYNC_TARGET_OVERRIDE_MULTI` | error | A database URL or environment override was used while multiple sync targets were selected. |

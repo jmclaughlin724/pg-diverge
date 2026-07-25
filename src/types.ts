@@ -95,6 +95,7 @@ export interface MigrationPlan {
 export interface ExtractOptions {
   config?: Partial<SupaschemaConfig>;
   cwd?: string;
+  excludeMigrationFiles?: readonly string[];
 }
 
 export interface RenderOptions {

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const hasModule = existsSync(join(process.cwd(), "scripts/agent-hooks/merged-branch-state.mjs"));
+const gitFixtureTimeoutMs = 15_000;
 let mergedTopicBranchContext: any;
 
 if (hasModule) {
@@ -48,7 +49,9 @@ async function squashMergedRepo(): Promise<{ dir: string; squash: string }> {
 }
 
 describe.skipIf(!hasModule)("merged-branch-state", () => {
-  it("flags a squash-merged topic checkout with the closeout contract", async () => {
+  it("flags a squash-merged topic checkout with the closeout contract", {
+    timeout: gitFixtureTimeoutMs,
+  }, async () => {
     const { dir, squash } = await squashMergedRepo();
     const result = mergedTopicBranchContext(dir);
     expect(result.contextParts).toHaveLength(1);
@@ -58,20 +61,24 @@ describe.skipIf(!hasModule)("merged-branch-state", () => {
     expect(result.contextParts[0]).toContain("21-source-control");
   });
 
-  it("stays silent on the main checkout", async () => {
+  it("stays silent on the main checkout", { timeout: gitFixtureTimeoutMs }, async () => {
     const { dir } = await squashMergedRepo();
     git(dir, "switch", "main");
     expect(mergedTopicBranchContext(dir)).toEqual({});
   });
 
-  it("stays silent on a fresh branch with no unique commits", async () => {
+  it("stays silent on a fresh branch with no unique commits", {
+    timeout: gitFixtureTimeoutMs,
+  }, async () => {
     const { dir } = await squashMergedRepo();
     git(dir, "switch", "main");
     git(dir, "switch", "-c", "fresh");
     expect(mergedTopicBranchContext(dir)).toEqual({});
   });
 
-  it("stays silent when the topic has unmerged commits", async () => {
+  it("stays silent when the topic has unmerged commits", {
+    timeout: gitFixtureTimeoutMs,
+  }, async () => {
     const { dir } = await squashMergedRepo();
     await writeFile(join(dir, "extra.txt"), "unmerged\n");
     git(dir, "add", ".");
@@ -79,13 +86,13 @@ describe.skipIf(!hasModule)("merged-branch-state", () => {
     expect(mergedTopicBranchContext(dir)).toEqual({});
   });
 
-  it("stays silent on a detached HEAD", async () => {
+  it("stays silent on a detached HEAD", { timeout: gitFixtureTimeoutMs }, async () => {
     const { dir } = await squashMergedRepo();
     git(dir, "switch", "--detach");
     expect(mergedTopicBranchContext(dir)).toEqual({});
   });
 
-  it("stays silent without an origin/main ref", async () => {
+  it("stays silent without an origin/main ref", { timeout: gitFixtureTimeoutMs }, async () => {
     const dir = await initRepo();
     git(dir, "switch", "-c", "topic");
     await writeFile(join(dir, "feature.txt"), "one\n");

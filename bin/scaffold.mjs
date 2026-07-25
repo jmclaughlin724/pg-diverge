@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -36,14 +38,25 @@ const packageScripts = {
 };
 const agentBundleCopies = [
   ["agents/prompts/supaschema-install.md", ".agents/prompts/supaschema-install.md"],
-  ["claude/rules/supaschema.md", ".claude/rules/supaschema.md"],
-  ["codex/rules/supaschema.rules", ".codex/rules/supaschema.rules"],
-];
-const bashGuardCopies = [
   ["claude/hooks/guards/bash-policy-checks.mjs", ".claude/hooks/guards/bash-policy-checks.mjs"],
+  ["claude/rules/supaschema.md", ".claude/rules/supaschema.md"],
   ["codex/hooks/general-guard.mjs", ".codex/hooks/general-guard.mjs"],
   ["codex/hooks/guards/bash-policy-checks.mjs", ".codex/hooks/guards/bash-policy-checks.mjs"],
+  ["codex/rules/supaschema.rules", ".codex/rules/supaschema.rules"],
 ];
+const claudeProjectDirExpression = ["$", "{CLAUDE_PROJECT_DIR}"].join("");
+const codexProjectDirExpression = ["$", "{CODEX_PROJECT_DIR:-$PWD}"].join("");
+const obsoleteAgentBundleHookCommands = new Set([
+  `node ${claudeProjectDirExpression}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
+  `node ${codexProjectDirExpression}/.codex/hooks/sync-llm-on-claude-surface-change.mjs`,
+]);
+const obsoleteAgentBundleHookFiles = [
+  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+];
+const obsoleteAgentBundleHookSha256 =
+  "2b6979dc84aad94b23f54ac5804b1809322eac2b65fa8574e74c242419c0149f";
+const obsoleteAgentBundleHookName = "sync-llm-on-claude-surface-change.mjs";
 const inventoryWorkflowOverrides = {
   migration_sync: "manual",
   schema_diff: "manual",
@@ -395,86 +408,6 @@ function ensurePackageScripts({ dryRun, repair, targetDir }) {
   return true;
 }
 
-function hookCommandString(hook) {
-  if (typeof hook?.command === "string") {
-    return hook.command;
-  }
-  const cmd = String(hook?.command ?? "");
-  const args = Array.isArray(hook?.args) ? hook.args.join(" ") : "";
-  return `${cmd} ${args}`;
-}
-
-function preToolUseBashEntries(targetDir, configPath) {
-  const raw = readText(join(targetDir, configPath));
-  if (!raw) {
-    return [];
-  }
-  const parsed = parseOptionalJson(raw);
-  if (!(isRecord(parsed) && isRecord(parsed.hooks))) {
-    return [];
-  }
-  const preToolUse = parsed.hooks.PreToolUse;
-  return Array.isArray(preToolUse)
-    ? preToolUse.filter((entry) => isRecord(entry) && entry.matcher === "Bash")
-    : [];
-}
-
-function hasConsumerOwnedBashGuard(targetDir) {
-  const dispatcherPaths = [
-    "scripts/hooks/adapters/claude.mjs",
-    "scripts/hooks/adapters/codex.mjs",
-    ".codex/hooks/tool-gate.mjs",
-    ".codex/hooks/stop.mjs",
-  ];
-  if (dispatcherPaths.some((p) => existsSync(join(targetDir, p)))) {
-    return true;
-  }
-  for (const configPath of [".claude/settings.json", ".codex/hooks.json"]) {
-    for (const entry of preToolUseBashEntries(targetDir, configPath)) {
-      const hooks = Array.isArray(entry.hooks) ? entry.hooks : [];
-      if (
-        hooks.some(
-          (hook) =>
-            !hookCommandString(hook).includes("bash-policy-checks.mjs") &&
-            hookCommandString(hook).trim().length > 0
-        )
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function filterBashGuardEntries(config) {
-  if (!(isRecord(config) && isRecord(config.hooks))) {
-    return config;
-  }
-  const filtered = {};
-  for (const [event, entries] of Object.entries(config.hooks)) {
-    if (!Array.isArray(entries)) {
-      filtered[event] = entries;
-      continue;
-    }
-    const kept = entries.filter((entry) => {
-      if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
-        return true;
-      }
-      return entry.hooks.every(
-        (hook) =>
-          !(
-            hookCommandString(hook).includes("general-guard.mjs") ||
-            hookCommandString(hook).includes("bash-policy-checks.mjs")
-          )
-      );
-    });
-    if (kept.length > 0) {
-      filtered[event] = kept;
-    }
-  }
-  return { ...config, hooks: filtered };
-}
-
 function installAgentBundle({ dryRun, packageManager, packageRoot, targetDir }) {
   const result = {
     changed: false,
@@ -484,46 +417,41 @@ function installAgentBundle({ dryRun, packageManager, packageRoot, targetDir }) 
     preserved: [],
     skipped: [],
   };
-  const consumerOwnedBashGuard = hasConsumerOwnedBashGuard(targetDir);
-  const copies = consumerOwnedBashGuard
-    ? agentBundleCopies
-    : [...agentBundleCopies, ...bashGuardCopies];
-  for (const [source, target] of copies) {
+  for (const [source, target] of agentBundleCopies) {
     installAgentBundleTextFile({ dryRun, packageRoot, result, source, target, targetDir });
-  }
-  if (consumerOwnedBashGuard) {
-    result.skipped.push("bash safety guard (consumer owns a PreToolUse Bash dispatcher)");
   }
   installAgentBundleSkills({ dryRun, packageRoot, result, targetDir });
   const claudeSource = `claude/settings.${packageManager}.json`;
   const codexSource = `codex/hooks.${packageManager}.json`;
-  const claudeIncoming = consumerOwnedBashGuard
-    ? filterBashGuardEntries(
-        parseRequiredJson(readRequiredAgentBundleFile(packageRoot, claudeSource), claudeSource)
-      )
-    : undefined;
-  const codexIncoming = consumerOwnedBashGuard
-    ? filterBashGuardEntries(
-        parseRequiredJson(readRequiredAgentBundleFile(packageRoot, codexSource), codexSource)
-      )
-    : undefined;
-  mergeAgentBundleJsonFile({
+  const claudeConfig = mergeAgentBundleJsonFile({
     dryRun,
     packageRoot,
     result,
     source: claudeSource,
     target: ".claude/settings.json",
     targetDir,
-    ...(claudeIncoming ? { incomingOverride: claudeIncoming } : {}),
   });
-  mergeAgentBundleJsonFile({
+  const codexConfig = mergeAgentBundleJsonFile({
     dryRun,
     packageRoot,
     result,
     source: codexSource,
     target: ".codex/hooks.json",
     targetDir,
-    ...(codexIncoming ? { incomingOverride: codexIncoming } : {}),
+  });
+  removeObsoleteAgentBundleHookFile({
+    config: claudeConfig,
+    dryRun,
+    path: obsoleteAgentBundleHookFiles[0],
+    result,
+    targetDir,
+  });
+  removeObsoleteAgentBundleHookFile({
+    config: codexConfig,
+    dryRun,
+    path: obsoleteAgentBundleHookFiles[1],
+    result,
+    targetDir,
   });
   result.installed = result.skipped.length === 0;
   return result;
@@ -629,17 +557,8 @@ function installAgentBundleTextFile({ dryRun, packageRoot, result, source, targe
   result.files.push(target);
 }
 
-function mergeAgentBundleJsonFile({
-  dryRun,
-  packageRoot,
-  result,
-  source,
-  target,
-  targetDir,
-  incomingOverride,
-}) {
-  const incoming =
-    incomingOverride ?? parseRequiredJson(readRequiredAgentBundleFile(packageRoot, source), source);
+function mergeAgentBundleJsonFile({ dryRun, packageRoot, result, source, target, targetDir }) {
+  const incoming = parseRequiredJson(readRequiredAgentBundleFile(packageRoot, source), source);
   const destination = join(targetDir, target);
   const existingContents = readText(destination);
   if (existingContents === undefined) {
@@ -649,23 +568,96 @@ function mergeAgentBundleJsonFile({
     }
     result.changed = true;
     result.files.push(target);
-    return;
+    return incoming;
   }
   const existing = parseOptionalJson(existingContents);
   if (!isRecord(existing)) {
     result.skipped.push(`${target} (not a JSON object)`);
     return;
   }
-  const merged = mergeHookConfig(existing, incoming);
+  const cleaned = removeObsoleteAgentBundleHooks(existing);
+  const merged = mergeHookConfig(cleaned.value, incoming);
   result.skipped.push(...merged.skipped.map((item) => `${target} ${item}`));
-  if (!merged.changed) {
-    return;
+  if (!(cleaned.changed || merged.changed)) {
+    return merged.value;
   }
   if (!dryRun) {
     writeFileAtomic(destination, `${JSON.stringify(merged.value, null, 2)}\n`);
   }
   result.changed = true;
   result.files.push(target);
+  return merged.value;
+}
+
+function removeObsoleteAgentBundleHooks(config) {
+  if (!isRecord(config.hooks)) {
+    return { changed: false, value: config };
+  }
+  const hooks = {};
+  let changed = false;
+  for (const [event, entries] of Object.entries(config.hooks)) {
+    if (!Array.isArray(entries)) {
+      hooks[event] = entries;
+      continue;
+    }
+    const retainedEntries = [];
+    for (const entry of entries) {
+      if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
+        retainedEntries.push(entry);
+        continue;
+      }
+      const retainedHooks = entry.hooks.filter(
+        (hook) => !obsoleteAgentBundleHookCommands.has(hookCommandIdentity(hook))
+      );
+      if (retainedHooks.length === entry.hooks.length) {
+        retainedEntries.push(entry);
+        continue;
+      }
+      changed = true;
+      if (retainedHooks.length > 0) {
+        retainedEntries.push({ ...entry, hooks: retainedHooks });
+      }
+    }
+    if (retainedEntries.length > 0 || entries.length === 0) {
+      hooks[event] = retainedEntries;
+    }
+  }
+  return { changed, value: changed ? { ...config, hooks } : config };
+}
+
+function removeObsoleteAgentBundleHookFile({ config, dryRun, path, result, targetDir }) {
+  const destination = join(targetDir, path);
+  if (!existsSync(destination)) {
+    return;
+  }
+  if (
+    config === undefined ||
+    JSON.stringify(config).includes(obsoleteAgentBundleHookName) ||
+    !isRegularFile(destination) ||
+    fileSha256(destination) !== obsoleteAgentBundleHookSha256
+  ) {
+    if (!result.preserved.includes(path)) {
+      result.preserved.push(path);
+    }
+    return;
+  }
+  if (!dryRun) {
+    unlinkSync(destination);
+  }
+  result.changed = true;
+  result.files.push(path);
+}
+
+function isRegularFile(path) {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function fileSha256(path) {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
 function mergeHookConfig(existing, incoming) {
