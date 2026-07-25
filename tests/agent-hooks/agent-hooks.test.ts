@@ -364,9 +364,12 @@ async function sourceLauncherFailureFixture(): Promise<{
     copyFile(resolve("scripts/agent-hooks/hook-output.mjs"), hookOutput),
     writeFile(fakeNpm, "process.exitCode = 17;\n"),
   ]);
+  const inheritedEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => name.toLowerCase() !== "npm_execpath")
+  );
   return {
     env: {
-      ...process.env,
+      ...inheritedEnv,
       CODEX_PROJECT_DIR: root,
       npm_execpath: fakeNpm,
     },
@@ -685,12 +688,18 @@ describe("agent hook configuration", () => {
     expect(hookEntries(config, "PostToolUseFailure")).toEqual([]);
     expect(hookEntries(config, "TaskCompleted")).toEqual([]);
     expect(JSON.stringify(config)).not.toContain("CODEX_PROJECT_DIR");
+    for (const handler of hookHandlers(config)) {
+      expect(handler.commandWindows).toEqual(
+        expect.stringContaining("git rev-parse --show-toplevel")
+      );
+    }
   });
 
   it("runs generated Codex lifecycle commands from a nested directory without an env root", async () => {
     const config = jsonRecord(await readFile(".codex/hooks.json", "utf8"));
     const commandFor = (eventName: string): string => {
-      const command = hookHandlers(hookEntries(config, eventName))[0]?.command;
+      const commandKey = process.platform === "win32" ? "commandWindows" : "command";
+      const command = hookHandlers(hookEntries(config, eventName))[0]?.[commandKey];
       expect(command, eventName).toEqual(expect.any(String));
       return String(command);
     };

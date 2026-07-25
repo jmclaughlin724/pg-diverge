@@ -18,6 +18,7 @@
         "hooks": [
           {
             "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/general-guard.mjs\"",
+            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do node \"%S/.codex/hooks/general-guard.mjs\"",
             "statusMessage": "Checking general Bash safety policy",
             "timeout": 10,
             "type": "command"

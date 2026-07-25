@@ -253,6 +253,14 @@ function assertCodexConfig(codexConfig, root) {
     ".codex/hooks.json must resolve repo-local commands from the git root"
   );
   assert(
+    hookHandlers(codexConfig).every(
+      (handler) =>
+        typeof handler.commandWindows === "string" &&
+        handler.commandWindows.includes("git rev-parse --show-toplevel")
+    ),
+    ".codex/hooks.json must provide git-rooted commandWindows overrides"
+  );
+  assert(
     codexConfig.hooks?.PermissionDenied === undefined &&
       codexConfig.hooks?.PostToolUseFailure === undefined &&
       codexConfig.hooks?.TaskCompleted === undefined,
@@ -276,7 +284,8 @@ function assertCodexConfig(codexConfig, root) {
       `.codex/hooks.json ${toolName} PreToolUse must keep the expected context and generated-migration hook topology`
     );
   }
-  const packageCodexHooksJson = JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json", root));
+  const packageCodexConfig = readJson("agent-bundle/codex/hooks.npm.json", root);
+  const packageCodexHooksJson = JSON.stringify(packageCodexConfig);
   assert(
     packageCodexHooksJson.includes("general-guard.mjs") &&
       !packageCodexHooksJson.includes("context-") &&
@@ -284,6 +293,13 @@ function assertCodexConfig(codexConfig, root) {
       !packageCodexHooksJson.includes("sync-llm-on-claude-surface-change.mjs") &&
       !packageCodexHooksJson.includes("scripts/agent-hooks"),
     "agent-bundle/codex/hooks.npm.json must keep the consumer Bash guard and strip source-only Codex hooks"
+  );
+  const packageGeneralGuard = hookHandlers(packageCodexConfig).find((handler) =>
+    handler.command?.includes(".codex/hooks/general-guard.mjs")
+  );
+  assert(
+    packageGeneralGuard?.commandWindows?.includes("git rev-parse --show-toplevel"),
+    "agent-bundle Codex general guard must provide a git-rooted commandWindows override"
   );
   assert(
     codexHooksJson.includes(".codex/hooks/supaschema-source-hook.mjs") &&

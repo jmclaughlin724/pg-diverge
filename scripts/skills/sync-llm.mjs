@@ -489,9 +489,10 @@ export function renderSourceCodexHooks(root = ROOT) {
 }
 
 function codexHookCommand(relativePath, timeout, statusMessage, args = "") {
-  const command = `node "${codexProjectDir}/${relativePath}"${args ? ` ${args}` : ""}`;
+  const commandArgs = args ? ` ${args}` : "";
   return {
-    command,
+    command: `node "${codexProjectDir}/${relativePath}"${commandArgs}`,
+    commandWindows: `for /f "delims=" %S in ('git rev-parse --show-toplevel') do node "%S/${relativePath}"${commandArgs}`,
     statusMessage,
     timeout,
     type: "command",
@@ -780,7 +781,13 @@ function consumerCodexHookCommands(entry) {
     return entry;
   }
   if (typeof entry.command === "string") {
-    return { ...entry, command: consumerSupaschemaCommand(entry.command) };
+    const command = consumerSupaschemaCommand(entry.command);
+    if (command === entry.command) {
+      return entry;
+    }
+    const portableEntry = { ...entry, command };
+    Reflect.deleteProperty(portableEntry, "commandWindows");
+    return portableEntry;
   }
   return entry;
 }
