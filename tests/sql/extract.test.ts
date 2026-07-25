@@ -788,12 +788,112 @@ describe("migration checks", () => {
       RETURNS int
       LANGUAGE sql
       SECURITY DEFINER
-      SET search_path = app, pg_temp
+      SET search_path = ''
       AS $$ SELECT 1 $$;
     `);
 
     expect(unsafe.map((item) => item.code)).toContain("SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH");
     expect(safe.map((item) => item.code)).not.toContain("SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH");
+  });
+
+  it("warns when a SECURITY DEFINER function pins a non-empty search_path", async () => {
+    // A non-empty search_path still resolves unqualified references through
+    // those schemas. If the caller can create objects in any of them they can
+    // shadow a reference and run their own code as the routine owner, so only
+    // an empty search_path closes the hole.
+    for (const searchPath of ["public", "app, pg_temp", "'', public"]) {
+      const diagnostics = await checkMigrationSql(`
+        CREATE OR REPLACE FUNCTION app.risky()
+        RETURNS int
+        LANGUAGE sql
+        SECURITY DEFINER
+        SET search_path = ${searchPath}
+        AS $$ SELECT 1 $$;
+      `);
+
+      expect(diagnostics.map((item) => item.code)).toContain(
+        "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH"
+      );
+    }
+  });
+
+  it("warns when a SECURITY DEFINER function inherits search_path from the session", async () => {
+    // FROM CURRENT captures whatever the creating session happened to have, so
+    // it pins nothing reviewable.
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.inherited()
+      RETURNS int
+      LANGUAGE sql
+      SECURITY DEFINER
+      SET search_path FROM CURRENT
+      AS $$ SELECT 1 $$;
+    `);
+
+    expect(diagnostics.map((item) => item.code)).toContain(
+      "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH"
+    );
+  });
+
+  it("leaves SECURITY INVOKER functions without a search_path alone", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.invoker()
+      RETURNS int
+      LANGUAGE sql
+      AS $$ SELECT 1 $$;
+    `);
+
+    expect(diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH"
+    );
+  });
+
+  it("carries routine security facts on the extracted model", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE OR REPLACE FUNCTION app.definer_empty()
+      RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = ''
+      AS $$ SELECT 1 $$;
+      CREATE OR REPLACE FUNCTION app.definer_public()
+      RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public
+      AS $$ SELECT 1 $$;
+      CREATE OR REPLACE FUNCTION app.definer_bare()
+      RETURNS int LANGUAGE sql SECURITY DEFINER
+      AS $$ SELECT 1 $$;
+      CREATE OR REPLACE FUNCTION app.invoker()
+      RETURNS int LANGUAGE sql
+      AS $$ SELECT 1 $$;
+    `);
+    const metadata = (name: string) =>
+      extracted.objects.find((object) => object.ref.name === name)?.metadata;
+
+    expect(metadata("definer_empty")?.securityDefiner).toBe(true);
+    expect(metadata("definer_empty")?.routineSearchPath).toBe("");
+    expect(metadata("definer_public")?.securityDefiner).toBe(true);
+    expect(metadata("definer_public")?.routineSearchPath).toBe("pg_catalog, public");
+    expect(metadata("definer_bare")?.securityDefiner).toBe(true);
+    expect(metadata("definer_bare")?.routineSearchPath).toBeUndefined();
+    expect(metadata("invoker")?.securityDefiner).toBe(false);
+  });
+
+  it("reads routine security facts from a pg_get_functiondef definition", async () => {
+    // The live-catalog path stores pg_get_functiondef() output as the object
+    // SQL and finalizes it through the same parser, so it gets these facts
+    // without any extra pg_proc columns.
+    const object = makeObject(
+      { kind: "function", name: "definer", schema: "app", signature: "" },
+      `CREATE OR REPLACE FUNCTION app.definer()
+ RETURNS integer
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$ SELECT 1 $function$`,
+      0
+    );
+
+    const diagnostics = await finalizeObject(object);
+
+    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(object.metadata.securityDefiner).toBe(true);
+    expect(object.metadata.routineSearchPath).toBe("");
   });
 
   it("warns when public functions do not explicitly revoke PUBLIC EXECUTE", async () => {

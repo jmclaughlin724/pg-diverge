@@ -568,7 +568,65 @@ function functionFacts(node: AstNode): Record<string, unknown> {
   if (outParams.length > 0) {
     facts.outParams = outParams;
   }
+  facts.securityDefiner = routineSecurityDefiner(node.options);
+  const searchPath = routineSearchPath(node.options);
+  if (searchPath !== undefined) {
+    facts.routineSearchPath = searchPath;
+  }
   return facts;
+}
+
+/**
+ * True when the routine executes with its owner's privileges
+ * (`SECURITY DEFINER`).
+ *
+ * PostgreSQL defaults to `SECURITY INVOKER`, so an absent `security` option is
+ * definitively not definer -- this never has to guess.
+ */
+export function routineSecurityDefiner(options: unknown): boolean {
+  for (const item of readArray(options)) {
+    const option = asRecord(asRecord(item)?.DefElem);
+    if (readString(option?.defname) !== "security") {
+      continue;
+    }
+    return readBoolean(option?.arg);
+  }
+  return false;
+}
+
+/**
+ * The literal search_path pinned to the routine, or undefined when it pins no
+ * literal.
+ *
+ * Only `SET search_path = <values>` (VAR_SET_VALUE) carries a value list in the
+ * parse tree. `FROM CURRENT`, `TO DEFAULT`, and `RESET` do not: they inherit
+ * whatever the creating or calling session had. Reporting those as undefined is
+ * both faithful to the parse tree and the correct security answer, since none
+ * of them pins a known path.
+ */
+export function routineSearchPath(options: unknown): string | undefined {
+  for (const item of readArray(options)) {
+    const option = asRecord(asRecord(item)?.DefElem);
+    if (readString(option?.defname) !== "set") {
+      continue;
+    }
+    const setStmt = asRecord(asRecord(option?.arg)?.VariableSetStmt);
+    if (readString(setStmt?.name) !== "search_path") {
+      continue;
+    }
+    if (readString(setStmt?.kind) !== "VAR_SET_VALUE") {
+      return;
+    }
+    const values = readArray(setStmt?.args).map((arg) =>
+      readString(asRecord(asRecord(asRecord(arg)?.A_Const)?.sval)?.sval)
+    );
+    // An unreadable value list must not collapse to the empty string, which
+    // callers read as the safe `search_path = ''` posture.
+    if (values.length === 0 || values.some((value) => value === undefined)) {
+      return;
+    }
+    return values.join(", ");
+  }
 }
 
 function functionLanguage(options: unknown): string | undefined {

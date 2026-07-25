@@ -437,6 +437,39 @@ function isApiFacingGrantee(value: unknown): boolean {
   );
 }
 
+function routineKey(ref: ObjectRef): string {
+  return `${ref.schema ?? "public"}.${ref.name}(${ref.signature ?? ""})`;
+}
+
+export const securityDefinerSearchPathRule: Rule = {
+  check: ({ model }) => {
+    const diagnostics: Diagnostic[] = [];
+    for (const object of model.objects) {
+      if (object.ref.kind !== "function" && object.ref.kind !== "procedure") {
+        continue;
+      }
+      // Only an empty search_path is safe: a definer routine resolves every
+      // unqualified reference through the path it pins, so any writable schema
+      // left on that path lets a caller shadow an object and run their own code
+      // as the routine owner. An absent routineSearchPath means nothing is
+      // pinned, which fails closed here.
+      if (object.metadata.securityDefiner !== true || object.metadata.routineSearchPath === "") {
+        continue;
+      }
+      diagnostics.push({
+        code: "SUPA_RULE_SECDEF_SEARCH_PATH",
+        ...(object.file === undefined ? {} : { file: object.file }),
+        hint: "Add SET search_path = '' and schema-qualify every reference in the routine body",
+        message: `SECURITY DEFINER routine "${routineKey(object.ref)}" does not set an empty search_path`,
+        ref: object.ref,
+        severity: "warning",
+      });
+    }
+    return diagnostics;
+  },
+  id: "SEC008",
+};
+
 export const rlsPack: RulePack = {
   id: "rls",
   rules: [
@@ -446,6 +479,7 @@ export const rlsPack: RulePack = {
     policyDeprecatedAuthRoleRule,
     policyUnwrappedAuthUidRule,
     exposedTableWithoutRlsRule,
+    securityDefinerSearchPathRule,
   ],
   version: "0.1.0",
 };

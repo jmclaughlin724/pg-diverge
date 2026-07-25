@@ -78,7 +78,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_CHECK_ADD_CONSTRAINT_GUARD` | error | `ALTER TABLE ... ADD CONSTRAINT` is not wrapped in a catalog guard. |
 | `SUPA_CHECK_CREATE_TRIGGER_REPLACEMENT` | error | `CREATE TRIGGER` is not preceded by `DROP TRIGGER IF EXISTS`. |
 | `SUPA_CHECK_SEARCH_PATH` | error | Migration SQL depends on session `search_path`. |
-| `SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH` | warning | A `SECURITY DEFINER` function lacks function-local `SET search_path`. |
+| `SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH` | warning | A `SECURITY DEFINER` function lacks an empty function-local `SET search_path = ''`. |
 | `SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE` | warning | A public-schema function does not explicitly revoke default `PUBLIC` `EXECUTE`. |
 | `SUPA_CHECK_FORWARD_REFERENCE_ORDER` | error | A migration statement references an object or column created later in the same file. |
 | `SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION` | error/warning | An enum value added in this migration is used later in the same file; transactional runners fail. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
@@ -98,6 +98,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_RULE_POLICY_MISSING_PREDICATE` | warning | An RLS policy lacks the `USING` or `WITH CHECK` predicate needed for its command class. |
 | `SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN` | warning | An RLS policy lacks a column configured in `hints.requiredPolicyColumns` for its table. |
 | `SUPA_RULE_EXPOSED_TABLE_WITHOUT_RLS` | warning | A public table is exposed by API-facing grants without RLS enabled. |
+| `SUPA_RULE_SECDEF_SEARCH_PATH` | warning | A `SECURITY DEFINER` routine does not pin `search_path = ''`, so a caller can shadow an unqualified reference and run code as the routine owner. |
 | `SUPA_SCAN_CONTRACT_ASSERTION` | warning | A TypeScript assertion appears in a file importing generated database contracts. |
 | `SUPA_SCAN_CONTRACT_IMPORT_RENAME` | warning | A generated contract import was renamed locally. |
 | `SUPA_SCAN_CONTRACT_OVERRIDE_TYPES` | warning | A Supabase query response override bypasses the generated database contract. |
