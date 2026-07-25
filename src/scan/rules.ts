@@ -1,3 +1,4 @@
+import { isSinglePrivilegeKind } from "../sql/privileges.js";
 import type { Diagnostic, MigrationPlan, ObjectRef, SchemaModel, SchemaObject } from "../types.js";
 
 export interface RuleContext {
@@ -489,6 +490,13 @@ export const grantAllPrivilegesRule: Rule = {
       }
       const privileges = object.metadata.privileges;
       if (!(Array.isArray(privileges) && privileges.includes("ALL"))) {
+        continue;
+      }
+      const kindPhrase = object.metadata.kindPhrase;
+      // Kinds with one grantable privilege normalize any grant to ALL, so ALL
+      // says nothing about intent. Flagging them reports every legitimate
+      // `grant execute on function` as over-broad.
+      if (typeof kindPhrase === "string" && isSinglePrivilegeKind(kindPhrase)) {
         continue;
       }
       const target = grantTarget(object);

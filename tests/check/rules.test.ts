@@ -453,6 +453,26 @@ describe("grant ALL-privileges rule (P11)", () => {
     });
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("passes a single-privilege kind whose only privilege normalizes to ALL", () => {
+    // EXECUTE is the only FUNCTION privilege, so `grant execute on function`
+    // normalizes to ALL. Flagging it reports every legitimate function grant as
+    // over-broad, which is not a signal about author intent.
+    const grant = grantObject("authenticated", "public.f()", ["ALL"]);
+    const diagnostics = grantAllPrivilegesRule.check({
+      model: model([{ ...grant, metadata: { ...grant.metadata, kindPhrase: "FUNCTION" } }]),
+    });
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags ALL on a kind with multiple grantable privileges", () => {
+    const grant = grantObject("authenticated", "public.users", ["ALL"]);
+    const diagnostics = grantAllPrivilegesRule.check({
+      model: model([{ ...grant, metadata: { ...grant.metadata, kindPhrase: "TABLE" } }]),
+    });
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_GRANT_ALL_PRIVILEGES");
+  });
 });
 
 describe("grant role-policy drift rule (P11)", () => {
