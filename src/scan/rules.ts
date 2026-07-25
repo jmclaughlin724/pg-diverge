@@ -448,11 +448,6 @@ export const securityDefinerSearchPathRule: Rule = {
       if (object.ref.kind !== "function" && object.ref.kind !== "procedure") {
         continue;
       }
-      // Only an empty search_path is safe: a definer routine resolves every
-      // unqualified reference through the path it pins, so any writable schema
-      // left on that path lets a caller shadow an object and run their own code
-      // as the routine owner. An absent routineSearchPath means nothing is
-      // pinned, which fails closed here.
       if (object.metadata.securityDefiner !== true || object.metadata.routineSearchPath === "") {
         continue;
       }
@@ -527,9 +522,6 @@ export const grantAllPrivilegesRule: Rule = {
         continue;
       }
       const kindPhrase = object.metadata.kindPhrase;
-      // Kinds with one grantable privilege normalize any grant to ALL, so ALL
-      // says nothing about intent. Flagging them reports every legitimate
-      // `grant execute on function` as over-broad.
       if (typeof kindPhrase === "string" && isSinglePrivilegeKind(kindPhrase)) {
         continue;
       }

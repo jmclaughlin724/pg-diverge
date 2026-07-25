@@ -456,9 +456,6 @@ describe("grant ALL-privileges rule (P11)", () => {
   });
 
   it("passes a single-privilege kind whose only privilege normalizes to ALL", () => {
-    // EXECUTE is the only FUNCTION privilege, so `grant execute on function`
-    // normalizes to ALL. Flagging it reports every legitimate function grant as
-    // over-broad, which is not a signal about author intent.
     const grant = grantObject("authenticated", "public.f()", ["ALL"]);
     const diagnostics = grantAllPrivilegesRule.check({
       model: model([{ ...grant, metadata: { ...grant.metadata, kindPhrase: "FUNCTION" } }]),
@@ -524,8 +521,6 @@ describe("SECURITY DEFINER search_path rule", () => {
   });
 
   it("flags a SECURITY DEFINER routine whose search_path is not empty", () => {
-    // `search_path = public` passes a "does it set one at all" test but still
-    // resolves unqualified references through a schema the caller may write to.
     const diagnostics = securityDefinerSearchPathRule.check({
       model: model([
         routineObject("escalate", { routineSearchPath: "public", securityDefiner: true }),
@@ -545,8 +540,6 @@ describe("SECURITY DEFINER search_path rule", () => {
   });
 
   it("passes a SECURITY INVOKER routine with no search_path", () => {
-    // INVOKER routines run as the caller, so an unpinned search_path grants no
-    // privilege the caller did not already have.
     const diagnostics = securityDefinerSearchPathRule.check({
       model: model([routineObject("plain", { securityDefiner: false })]),
     });

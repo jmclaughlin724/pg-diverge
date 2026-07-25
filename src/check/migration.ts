@@ -529,10 +529,6 @@ function checkFunctionStatement(node: AstNode, text: string): Diagnostic[] {
       )
     );
   }
-  // Only an empty search_path is safe. A non-empty one (`SET search_path =
-  // public`) still resolves unqualified references through a schema the caller
-  // may be able to write to, which is the whole attack this check exists to
-  // stop.
   if (routineSecurityDefiner(node.options) && routineSearchPath(node.options) !== "") {
     diagnostics.push(
       diagnostic(

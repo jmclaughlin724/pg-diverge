@@ -127,14 +127,6 @@ function privilegeSetLookupKey(kindPhrase: string): string {
   return kindPhrase.startsWith("ALL ") ? (kindPhrase.split(" ")[1] ?? kindPhrase) : kindPhrase;
 }
 
-/**
- * True when the object kind has exactly one grantable privilege (FUNCTION and
- * ROUTINE have only EXECUTE, DOMAIN and LANGUAGE only USAGE, and so on).
- *
- * For those kinds, granting the single privilege that exists is normalized to
- * ALL, so `ALL` carries no information about author intent and cannot indicate
- * an over-broad grant.
- */
 export function isSinglePrivilegeKind(kindPhrase: string): boolean {
   return fullPrivilegeSets.get(privilegeSetLookupKey(kindPhrase))?.length === 1;
 }

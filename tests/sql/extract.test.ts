@@ -797,10 +797,6 @@ describe("migration checks", () => {
   });
 
   it("warns when a SECURITY DEFINER function pins a non-empty search_path", async () => {
-    // A non-empty search_path still resolves unqualified references through
-    // those schemas. If the caller can create objects in any of them they can
-    // shadow a reference and run their own code as the routine owner, so only
-    // an empty search_path closes the hole.
     for (const searchPath of ["public", "app, pg_temp", "'', public"]) {
       const diagnostics = await checkMigrationSql(`
         CREATE OR REPLACE FUNCTION app.risky()
@@ -818,8 +814,6 @@ describe("migration checks", () => {
   });
 
   it("warns when a SECURITY DEFINER function inherits search_path from the session", async () => {
-    // FROM CURRENT captures whatever the creating session happened to have, so
-    // it pins nothing reviewable.
     const diagnostics = await checkMigrationSql(`
       CREATE OR REPLACE FUNCTION app.inherited()
       RETURNS int
@@ -875,9 +869,6 @@ describe("migration checks", () => {
   });
 
   it("reads routine security facts from a pg_get_functiondef definition", async () => {
-    // The live-catalog path stores pg_get_functiondef() output as the object
-    // SQL and finalizes it through the same parser, so it gets these facts
-    // without any extra pg_proc columns.
     const object = makeObject(
       { kind: "function", name: "definer", schema: "app", signature: "" },
       `CREATE OR REPLACE FUNCTION app.definer()
