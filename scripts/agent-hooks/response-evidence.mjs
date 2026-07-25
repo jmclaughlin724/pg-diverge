@@ -25,6 +25,9 @@ export function finalMessage(payload) {
 }
 
 export function toolSucceeded(payload) {
+  if (payload?.hook_event_name === "PostToolUseFailure") {
+    return false;
+  }
   const response = payload?.tool_response;
   const outcome = toolOutcome(response);
   if (outcome !== undefined) {

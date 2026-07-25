@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 import {
   resolveDatabaseUrl,
   resolveExplicitDatabaseUrl,
@@ -20,6 +21,12 @@ import {
 } from "../package/install-expectations.js";
 
 const run = promisify(execFile);
+const claudeProjectDirExpression = ["$", "{CLAUDE_PROJECT_DIR}"].join("");
+const codexProjectDirExpression = ["$", "{CODEX_PROJECT_DIR:-$PWD}"].join("");
+const codexGitRootExpression = ["$(", "git rev-parse --show-toplevel", ")"].join("");
+const codexGeneralGuardCommand = `node "${codexGitRootExpression}/.codex/hooks/general-guard.mjs"`;
+const legacyClaudeSyncCommand = `node "${claudeProjectDirExpression}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`;
+const legacyCodexSyncCommand = `node "${codexProjectDirExpression}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
 
 async function runScaffold(
   targetDir: string,
@@ -198,6 +205,37 @@ describe("init project setup", () => {
 
     const workspaceYaml = await readFile(join(consumer, "pnpm-workspace.yaml"), "utf8");
     expect(workspaceYaml).toBe("packages:\n  - packages/*\n\nallowBuilds:\n  supaschema: true\n");
+  });
+
+  it("normalizes a quoted pnpm approval without crossing the allowBuilds block", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-pnpm-quoted-approval-"));
+    await writeFile(
+      join(consumer, "package.json"),
+      `${JSON.stringify({
+        name: "supaschema-pnpm-workspace-root",
+        packageManager: "pnpm@11.1.2",
+        private: true,
+        version: "0.0.0",
+      })}\n`
+    );
+    await writeFile(
+      join(consumer, "pnpm-workspace.yaml"),
+      'packages:\n  - "packages/*"\n\nallowBuilds:\n  "@ast-grep/cli": true\n  "supaschema": false\n  "unrs-resolver": true\n\nautoInstallPeers: false\n\ncatalog:\n  supaschema: 0.5.0\n'
+    );
+
+    const first = await runScaffold(consumer);
+    const second = await runScaffold(consumer);
+
+    const workspaceYaml = await readFile(join(consumer, "pnpm-workspace.yaml"), "utf8");
+    const parsed = parseYaml(workspaceYaml);
+    expect(first.installed).toContain("pnpm build approval");
+    expect(second.installed).not.toContain("pnpm build approval");
+    expect(parsed.allowBuilds.supaschema).toBe(true);
+    expect(parsed.autoInstallPeers).toBe(false);
+    expect(workspaceYaml).toContain(
+      '  "@ast-grep/cli": true\n  supaschema: true\n  "unrs-resolver": true\n'
+    );
+    expect(workspaceYaml).not.toContain("autoInstallPeers: false\n  supaschema: true");
   });
 
   it("adds canonical package scripts to the owning package manifest", async () => {
@@ -516,6 +554,175 @@ describe("init project setup", () => {
       command: "npm exec -- supaschema hook generated-migration-edit --runtime codex",
       timeout: 10,
     });
+  });
+
+  it("installs package guards alongside consumer-owned Bash hooks", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-consumer-bash-hook-"));
+    await writeNestedFile(join(consumer, ".codex/hooks/tool-gate.mjs"), "export {};\n");
+    await writeNestedFile(
+      join(consumer, ".codex/hooks.json"),
+      `${JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                hooks: [{ command: "node .codex/hooks/tool-gate.mjs", type: "command" }],
+                matcher: "Bash",
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    const result = await runScaffold(consumer);
+
+    const hooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    const commands = hooks.hooks.PreToolUse.flatMap(
+      (entry: { hooks?: { command?: string }[] }) => entry.hooks?.map((hook) => hook.command) ?? []
+    );
+    expect(commands).toContain("node .codex/hooks/tool-gate.mjs");
+    expect(commands).toContain(codexGeneralGuardCommand);
+    expect(existsSync(join(consumer, ".codex/hooks/general-guard.mjs"))).toBe(true);
+    expect(existsSync(join(consumer, ".codex/hooks/guards/bash-policy-checks.mjs"))).toBe(true);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("removes retired package-owned sync hooks and unchanged scripts during upgrades", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-retired-sync-hook-"));
+    const legacyScript = await readFile(
+      join(process.cwd(), ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
+      "utf8"
+    );
+    await writeNestedFile(
+      join(consumer, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
+      legacyScript
+    );
+    await writeNestedFile(
+      join(consumer, ".codex/hooks/sync-llm-on-claude-surface-change.mjs"),
+      legacyScript
+    );
+    await writeNestedFile(
+      join(consumer, ".claude/settings.json"),
+      `${JSON.stringify(
+        {
+          hooks: {
+            PostToolUse: [
+              {
+                hooks: [
+                  {
+                    command: legacyClaudeSyncCommand,
+                    type: "command",
+                  },
+                  { command: "node .claude/hooks/custom.mjs", type: "command" },
+                ],
+                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )}\n`
+    );
+    await writeNestedFile(
+      join(consumer, ".codex/hooks.json"),
+      `${JSON.stringify(
+        {
+          hooks: {
+            PostToolUse: [
+              {
+                hooks: [
+                  {
+                    command: legacyCodexSyncCommand,
+                    type: "command",
+                  },
+                  { command: "node .codex/hooks/custom.mjs", type: "command" },
+                ],
+                matcher: "apply_patch",
+              },
+            ],
+            Stop: [
+              {
+                hooks: [
+                  {
+                    command: legacyCodexSyncCommand,
+                    type: "command",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        2
+      )}\n`
+    );
+
+    const result = await runScaffold(consumer);
+
+    const claudeSettings = JSON.parse(
+      await readFile(join(consumer, ".claude/settings.json"), "utf8")
+    );
+    const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
+    expect(JSON.stringify(claudeSettings)).not.toContain("sync-llm-on-claude-surface-change");
+    expect(JSON.stringify(codexHooks)).not.toContain("sync-llm-on-claude-surface-change");
+    expect(JSON.stringify(claudeSettings)).toContain("node .claude/hooks/custom.mjs");
+    expect(JSON.stringify(codexHooks)).toContain("node .codex/hooks/custom.mjs");
+    expect(codexHooks.hooks.Stop).toBeUndefined();
+    expect(existsSync(join(consumer, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"))).toBe(
+      false
+    );
+    expect(existsSync(join(consumer, ".codex/hooks/sync-llm-on-claude-surface-change.mjs"))).toBe(
+      false
+    );
+    expect(result.agentBundle.files).toEqual(
+      expect.arrayContaining([
+        ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+        ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+      ])
+    );
+  });
+
+  it("preserves a modified retired sync script after removing its registration", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-modified-sync-hook-"));
+    const legacyScript = await readFile(
+      join(process.cwd(), ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
+      "utf8"
+    );
+    const path = ".claude/hooks/sync-llm-on-claude-surface-change.mjs";
+    await writeNestedFile(join(consumer, path), `${legacyScript}\n// consumer modification\n`);
+    await writeNestedFile(
+      join(consumer, ".claude/settings.json"),
+      `${JSON.stringify(
+        {
+          hooks: {
+            PostToolUse: [
+              {
+                hooks: [
+                  {
+                    command: legacyClaudeSyncCommand,
+                    type: "command",
+                  },
+                ],
+                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    const result = await runScaffold(consumer);
+
+    expect(existsSync(join(consumer, path))).toBe(true);
+    expect(result.preserved).toContain(path);
+    expect(await readFile(join(consumer, ".claude/settings.json"), "utf8")).not.toContain(
+      "sync-llm-on-claude-surface-change"
+    );
   });
 
   it("keeps consumer hooks on their original matcher when replacing package hooks", async () => {

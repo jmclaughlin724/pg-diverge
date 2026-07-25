@@ -36,7 +36,7 @@ export const diagnosticCatalog: Record<string, string> = {
     "REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction block.",
   SUPA_CHECK_SEARCH_PATH: "Migrations must not set the session search_path.",
   SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH:
-    "SECURITY DEFINER functions should set a function-local search_path.",
+    "SECURITY DEFINER functions must set an empty function-local search_path.",
   SUPA_CHECK_SET_NOT_NULL_SCAN:
     "SET NOT NULL scans the table unless a validated CHECK constraint proves it.",
   SUPA_CHECK_VOLATILE_DEFAULT_REWRITE: "ADD COLUMN with a volatile default rewrites the table.",
@@ -90,7 +90,7 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_MIGRATION_BASELINE_MISMATCH:
     "The resolved before-state source does not match the generated migration-tree baseline. Recover by regenerating from the source state that produced the baseline, using diff --replace for a generated migration replacement, or — when the pending generated migration's end-state was never committed and no target records it as applied — reviewing and deleting that pending migration, then regenerating from the current tree.",
   SUPA_MIGRATION_BASELINE_UNSUPPORTED:
-    "Existing migrations cannot prove a generated-lineage baseline for source-backed generation.",
+    "The selected before-state does not match the configured migration corpus, or existing migrations cannot prove a generated-lineage baseline for source-backed generation.",
   SUPA_MIGRATION_CORPUS_PARSE_SKIPPED:
     "A historical migration could not be parsed for source-intent extraction.",
   SUPA_MIGRATIONS_GHOST_VERSIONS:
@@ -168,6 +168,8 @@ export const diagnosticCatalog: Record<string, string> = {
     "An RLS policy lacks the USING or WITH CHECK predicate needed for its command class.",
   SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN:
     "An RLS policy lacks a configured table column in its effective predicate.",
+  SUPA_RULE_SECDEF_SEARCH_PATH:
+    "A SECURITY DEFINER routine does not pin an empty search_path, so a caller can shadow an unqualified reference and run code as the routine owner.",
   SUPA_SCAN_CONTRACT_ASSERTION:
     "A TypeScript assertion appears in a file importing generated database contracts.",
   SUPA_SCAN_CONTRACT_IMPORT_RENAME: "A generated contract import was renamed locally.",
@@ -184,6 +186,10 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_SELFCHECK_UNEXPECTED: "Re-extraction produced an object the catalog model does not contain.",
   SUPA_SOURCE_BASELINE_REQUIRED:
     "Migration generation could not resolve a repository source baseline.",
+  SUPA_SOURCE_MIGRATIONS_DRIFT_UNSUPPORTED:
+    "Drift detection cannot use replayed migrations as a source. Use migrations only as a generation before-state.",
+  SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED:
+    "Migration generation cannot use replayed migrations as its target. Use the matching migration corpus only as the before-state.",
   SUPA_SUPABASE_MANAGED_SCHEMA: "Configured managed schemas are not declarative source owners.",
   SUPA_SUPABASE_VIEW_SECURITY_INVOKER:
     "Views in exposed schemas should set security_invoker so RLS applies to the querying role.",

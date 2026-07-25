@@ -14,6 +14,7 @@ import {
   readString,
   stringList,
 } from "../sql/ast.js";
+import { routineSearchPath, routineSecurityDefiner } from "../sql/facts.js";
 import { deparseFidelityDiagnostics } from "../sql/normalize-deparse.js";
 import { parseSqlAst } from "../sql/parser.js";
 import { extractStatementDependencies } from "../sql/routine-dependencies.js";
@@ -528,28 +529,16 @@ function checkFunctionStatement(node: AstNode, text: string): Diagnostic[] {
       )
     );
   }
-  let securityDefiner = false;
-  let setsSearchPath = false;
-  for (const item of readArray(node.options)) {
-    const defElem = asRecord(asRecord(item)?.DefElem);
-    const name = readString(defElem?.defname);
-    if (name === "security" && readBoolean(defElem?.arg)) {
-      securityDefiner = true;
-    }
-    if (name === "set") {
-      const setStmt = asRecord(asRecord(defElem?.arg)?.VariableSetStmt);
-      if (readString(setStmt?.name) === "search_path") {
-        setsSearchPath = true;
-      }
-    }
-  }
-  if (securityDefiner && !setsSearchPath) {
+  if (routineSecurityDefiner(node.options) && routineSearchPath(node.options) !== "") {
     diagnostics.push(
       diagnostic(
         "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH",
         "warning",
-        "SECURITY DEFINER functions should set a safe function-local search_path",
-        { statement: text }
+        "SECURITY DEFINER functions must set an empty function-local search_path",
+        {
+          hint: "Add SET search_path = '' and schema-qualify every reference in the routine body.",
+          statement: text,
+        }
       )
     );
   }

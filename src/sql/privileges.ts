@@ -123,11 +123,16 @@ export function isBuiltinDefaultGrant(
   );
 }
 
+function privilegeSetLookupKey(kindPhrase: string): string {
+  return kindPhrase.startsWith("ALL ") ? (kindPhrase.split(" ")[1] ?? kindPhrase) : kindPhrase;
+}
+
+export function isSinglePrivilegeKind(kindPhrase: string): boolean {
+  return fullPrivilegeSets.get(privilegeSetLookupKey(kindPhrase))?.length === 1;
+}
+
 function normalizePrivileges(privileges: string[], kindPhrase: string): string[] {
-  const lookupKey = kindPhrase.startsWith("ALL ")
-    ? (kindPhrase.split(" ")[1] ?? kindPhrase)
-    : kindPhrase;
-  const fullSet = fullPrivilegeSets.get(lookupKey);
+  const fullSet = fullPrivilegeSets.get(privilegeSetLookupKey(kindPhrase));
   if (!fullSet) {
     return privileges;
   }

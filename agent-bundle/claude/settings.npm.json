@@ -17,16 +17,6 @@
           }
         ],
         "matcher": "Bash|Write|Edit|MultiEdit|apply_patch"
-      },
-      {
-        "hooks": [
-          {
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "timeout": 130,
-            "type": "command"
-          }
-        ],
-        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch"
       }
     ],
     "PreToolUse": [

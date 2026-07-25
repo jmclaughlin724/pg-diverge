@@ -133,7 +133,7 @@ npm run sync:llm
 npm run guard
 ```
 
-Use narrower commands (`npm run hooks:check`, `npm run guard:agent`, rule/skill checks) when the task is scoped.
+Use narrower commands (`npm run guard:agent`, focused hook tests, rule/skill checks) when the task is scoped.
 
 ## Failure behavior
 

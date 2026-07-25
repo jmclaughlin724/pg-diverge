@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveDatabaseUrl } from "../../src/database/url.js";
 import { planSchemaDiff } from "../../src/planner/schema.js";
+import { extractSourceModel } from "../../src/source/extract.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
 import type { MigrationPlan, SchemaModel, SupaschemaConfig } from "../../src/types.js";
 import { verifyMigration } from "../../src/verify/migration.js";
@@ -279,6 +280,40 @@ describe("routine dependency proof guards", () => {
 
 describe("managed schema policy", () => {
   const managedSql = "CREATE TABLE auth.mirror (id integer);";
+
+  it("keeps only configured managed-schema overlays after source filtering", async () => {
+    const managedSchemaOverlays = [
+      "policy:storage.loan_documents_require_mfa:objects",
+      "policy:storage.tenant_document_read:objects",
+      "policy:storage.tenant_document_upload:objects",
+    ];
+    const root = await mkdtemp(join(tmpdir(), "supa-managed-overlays-"));
+    await writeFile(
+      join(root, "storage.sql"),
+      [
+        "CREATE SCHEMA storage;",
+        "CREATE TABLE storage.objects (id uuid);",
+        "CREATE POLICY loan_documents_require_mfa ON storage.objects USING (true);",
+        "CREATE POLICY tenant_document_read ON storage.objects USING (true);",
+        "CREATE POLICY tenant_document_upload ON storage.objects USING (true);",
+        "CREATE POLICY provider_internal ON storage.objects USING (true);",
+        "GRANT SELECT ON TABLE storage.objects TO authenticated;",
+        "COMMENT ON TABLE storage.objects IS 'provider owned';",
+      ].join("\n")
+    );
+
+    const extracted = await extractSourceModel(`dir:${root}`, {
+      config: {
+        managedSchemaOverlays,
+        managedSchemas: ["storage"],
+        schemas: { exclude: ["storage"], include: [] },
+      },
+    });
+
+    expect(extracted.objects.map((object) => object.key).toSorted()).toEqual(
+      managedSchemaOverlays.toSorted()
+    );
+  });
 
   it("blocks schemas listed in managedSchemas", async () => {
     const extracted = await extractObjectsFromSql(managedSql, {

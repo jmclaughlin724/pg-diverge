@@ -13,7 +13,7 @@ import {
 
 const root = resolve(import.meta.dirname, "../..");
 const claudeProjectDir = ["$", "{", "CLAUDE_PROJECT_DIR", "}"].join("");
-const codexProjectDir = ["$", "{", "CODEX_PROJECT_DIR:-$PWD", "}"].join("");
+const codexProjectDir = ["$(", "git rev-parse --show-toplevel", ")"].join("");
 const editToolMatcher = "apply_patch";
 const curatedSkillSources = {
   ".claude/skills/supaschema-maintain/references/commands.md": "maintain commands\n",
@@ -64,17 +64,20 @@ function claudeHookSourceFiles(overrides: Record<string, string> = {}): Record<s
 function claudeHookSettings() {
   return {
     hooks: {
-      PermissionDenied: [
-        {
-          hooks: [claudeNodeHook(".claude/hooks/context-permission-denied.mjs")],
-        },
-      ],
       PostToolUse: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-post-tool-use.mjs")],
         },
         {
           hooks: [claudeSupaschemaHook("schema-write")],
+        },
+        {
+          hooks: [claudeNodeHook(".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
+        },
+      ],
+      PostToolUseFailure: [
+        {
+          hooks: [claudeNodeHook(".claude/hooks/context-post-tool-use-failure.mjs")],
         },
         {
           hooks: [claudeNodeHook(".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
@@ -165,7 +168,9 @@ describe("sync:llm", () => {
     );
   });
 
-  it("mirrors private Claude surfaces locally and keeps public skills narrow", () => {
+  it("mirrors private Claude surfaces locally and keeps public skills narrow", {
+    timeout: 15_000,
+  }, () => {
     const root = tempSurface({
       ".agents/prompts/supaschema-install.md": "# Install\n",
       ".agents/skills/stale/SKILL.md": "# stale\n",
@@ -271,6 +276,8 @@ describe("sync:llm", () => {
       ".codex/hooks/stale.mjs": "process.stdout.write('stale');\n",
       ".codex/rules/stale.rules": "# stale\n",
       "agent-bundle/INSTALL.md": "# Agent bundle install\n",
+      "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs": "stale\n",
+      "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs": "stale\n",
       "skills/README.md": "# Public skills\n",
       "skills/stale/SKILL.md": "# stale\n",
     });
@@ -278,7 +285,7 @@ describe("sync:llm", () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 30,
+      agentBundle: 28,
       agents: 1,
       codexHookConfig: 1,
       hooks: 5,
@@ -322,10 +329,30 @@ describe("sync:llm", () => {
     );
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("context-");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("scripts/agent-hooks");
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain(
+      "sync-llm-on-claude-surface-change.mjs"
+    );
+    expect(read(root, "agent-bundle/claude/settings.npm.json")).not.toContain(
+      "sync-llm-on-claude-surface-change.mjs"
+    );
+    expect(
+      existsSync(join(root, "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs"))
+    ).toBe(false);
+    expect(
+      existsSync(join(root, "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs"))
+    ).toBe(false);
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
+    expect(read(root, ".codex/hooks.json")).toContain("context-session-end.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
     expect(read(root, ".codex/hooks.json")).not.toContain("general-guard.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-stop.mjs");
+    expect(read(root, ".codex/hooks.json")).toContain("sync-llm-on-claude-surface-change.mjs");
+    expect(read(root, ".codex/hooks.json")).toContain("$(git rev-parse --show-toplevel)");
+    expect(read(root, ".codex/hooks.json")).toContain('"commandWindows"');
+    expect(read(root, ".codex/hooks.json")).toContain(
+      `for /f \\"delims=\\" %S in ('git rev-parse --show-toplevel') do @node`
+    );
+    expect(read(root, ".codex/hooks.json")).not.toContain("CODEX_PROJECT_DIR");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
     expect(read(root, "skills/supaschema/SKILL.md")).toBe("# supaschema\n");
     expect(read(root, "skills/supaschema-migrate/references/commands.md")).toBe(

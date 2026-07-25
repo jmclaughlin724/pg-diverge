@@ -39,10 +39,18 @@ export function validateSessionId(id) {
 }
 
 export function readSessionState(payload) {
+  const file = sessionStatePath(payload);
   try {
-    return normalizeState(JSON.parse(fs.readFileSync(sessionStatePath(payload), "utf8")));
-  } catch {
-    return normalizeState({});
+    return normalizeState(JSON.parse(fs.readFileSync(file, "utf8")));
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return normalizeState({});
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    const category = error instanceof SyntaxError ? "invalid JSON" : "read failure";
+    throw new Error(`could not read hook state ${path.basename(file)}: ${category}: ${detail}`, {
+      cause: error,
+    });
   }
 }
 

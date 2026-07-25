@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -23,6 +23,7 @@ let correctionsFor: any;
 let currentTurnState: any;
 let normalizeState: any;
 let readSessionState: any;
+let sessionStatePath: any;
 let setCorrections: any;
 let transcriptEvidence: any;
 
@@ -40,8 +41,14 @@ if (hasAgentHookSources) {
     "../../scripts/agent-hooks/response-claims.mjs"
   ));
   ({ transcriptEvidence } = await optionalImport("../../scripts/agent-hooks/command-evidence.mjs"));
-  ({ correctionsFor, currentTurnState, normalizeState, readSessionState, setCorrections } =
-    await optionalImport("../../scripts/agent-hooks/state.mjs"));
+  ({
+    correctionsFor,
+    currentTurnState,
+    normalizeState,
+    readSessionState,
+    sessionStatePath,
+    setCorrections,
+  } = await optionalImport("../../scripts/agent-hooks/state.mjs"));
 }
 
 interface HookFeedback {
@@ -72,6 +79,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
       "UserPromptSubmit",
       "PreToolUse",
       "PostToolUse",
+      "PostToolUseFailure",
       "SubagentStart",
     ]) {
       expect(shapeHookResult(eventName, { contextParts: ["ctx"] }).output).toMatchObject({
@@ -106,16 +114,52 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
   });
 
   it("formats thrown checks as fail-closed hook feedback", () => {
-    const result = runChecks("PreToolUse", {}, [
-      function explodingCheck() {
-        throw new Error("boom");
-      },
-    ]);
+    const result = runChecks(
+      "PreToolUse",
+      {},
+      [
+        function explodingCheck() {
+          throw new Error("boom");
+        },
+      ],
+      {
+        hookPath: "/workspace/.codex/hooks/context-pre-tool-use.mjs",
+        runtime: "codex",
+      }
+    );
     const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
 
     expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
+    expect(shaped.permissionDecisionReason).toContain("runtime=codex");
+    expect(shaped.permissionDecisionReason).toContain(
+      "hook=/workspace/.codex/hooks/context-pre-tool-use.mjs"
+    );
     expect(shaped.permissionDecisionReason).toContain("check=explodingCheck");
+    expect(shaped.permissionDecisionReason).toContain("source=");
+    expect(shaped.permissionDecisionReason).toContain("agent-hook-core.test.ts:");
     expect(shaped.permissionDecisionReason).toContain("error=boom");
+    expect(shaped.permissionDecisionReason).toContain("remediation=");
+    expect(shaped.permissionDecisionReason).not.toContain("stack=");
+  });
+
+  it("fails closed without overwriting corrupted session state", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-corrupt-state-"));
+    process.env.STATE_DIR = stateDir;
+    const payload = { session_id: "corrupt-session" };
+    const file = sessionStatePath(payload);
+    await writeFile(file, "{not-json");
+
+    const result = handleAgentHookEvent("SessionStart", payload, {
+      hookPath: "/workspace/.codex/hooks/context-session-start.mjs",
+      runtime: "codex",
+    });
+
+    expect(result.output.systemMessage).toContain("Agent hook failed closed.");
+    expect(result.output.systemMessage).toContain("check=sessionState");
+    expect(result.output.systemMessage).toContain("runtime=codex");
+    expect(result.output.systemMessage).toContain("error=could not read hook state");
+    expect(result.output.systemMessage).toContain("invalid JSON");
+    expect(await readFile(file, "utf8")).toBe("{not-json");
   });
 
   it("keeps same-hook PreToolUse denial reasons from multiple checks", () => {
@@ -1464,6 +1508,36 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
         domains: ["build", "lint", "test", "typecheck"],
         kind: "verified-command",
         outcome: "success",
+      })
+    );
+  });
+
+  it("records Claude PostToolUseFailure commands as failed evidence without a tool response", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.STATE_DIR = stateDir;
+    const payload = {
+      prompt: "run the hook guard",
+      session_id: "claude-post-tool-failure-evidence",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
+
+    handleAgentHookEvent(
+      "PostToolUseFailure",
+      {
+        hook_event_name: "PostToolUseFailure",
+        session_id: "claude-post-tool-failure-evidence",
+        tool_input: { command: "npm run guard:agent" },
+        tool_name: "Bash",
+      },
+      { root, runtime: "claude" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
+      expect.objectContaining({
+        command: "npm run guard:agent",
+        domains: ["guard"],
+        kind: "failed-command",
+        outcome: "failure",
       })
     );
   });

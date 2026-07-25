@@ -48,7 +48,7 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 32,
+      agentBundle: 30,
       agents: 2,
       codexHookConfig: 1,
       hooks: 5,
@@ -147,7 +147,7 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 30,
+      agentBundle: 28,
       agents: 0,
       codexHookConfig: 1,
       hooks: 3,

@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -13,6 +14,8 @@ import type {
   SupaschemaConfig,
   TableColumn,
 } from "../../src/types.js";
+
+const lowercaseHexCharacters = "0123456789abcdef";
 
 async function writeMigrations(files: [string, string][]): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "supa-replay-"));
@@ -76,7 +79,108 @@ function isTableColumn(value: unknown): value is TableColumn {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSha256Hex(value: string): boolean {
+  if (value.length !== 64) {
+    return false;
+  }
+  for (const character of value) {
+    if (!lowercaseHexCharacters.includes(character)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function fixtureFileHashes(value: unknown): Record<string, string> {
+  if (!(isRecord(value) && isRecord(value.files))) {
+    throw new Error("Anilize migration fixture provenance must contain a files object");
+  }
+  const hashes: Record<string, string> = {};
+  for (const [file, hash] of Object.entries(value.files)) {
+    if (!file.endsWith(".sql") || typeof hash !== "string" || !isSha256Hex(hash)) {
+      throw new Error(`Invalid Anilize migration fixture hash for ${file}`);
+    }
+    hashes[file] = hash;
+  }
+  return hashes;
+}
+
 describe("migrations source replay", () => {
+  it("replays the immutable Anilize migration corpus deterministically", async () => {
+    const fixture = join(process.cwd(), "tests", "fixtures", "anilize-migrations");
+    const provenance: unknown = JSON.parse(
+      await readFile(join(fixture, "provenance.json"), "utf8")
+    );
+    const expectedHashes = fixtureFileHashes(provenance);
+    const expectedSqlFiles = Object.keys(expectedHashes).sort();
+    const actualSqlFiles = (await readdir(fixture)).filter((file) => file.endsWith(".sql")).sort();
+    expect(actualSqlFiles).toEqual(expectedSqlFiles);
+    for (const file of actualSqlFiles) {
+      const actualHash = createHash("sha256")
+        .update(await readFile(join(fixture, file)))
+        .digest("hex");
+      expect(actualHash, file).toBe(expectedHashes[file]);
+    }
+
+    const config = resolveConfig({ migrationsDir: fixture });
+    const first = await extractSourceModel(`migrations:${fixture}`, { config });
+    const second = await extractSourceModel(`migrations:${fixture}`, { config });
+
+    expect(first.diagnostics).toEqual([]);
+    expect(second.diagnostics).toEqual([]);
+    expect(first.formatVersion).toBe(MODEL_FORMAT_VERSION);
+    expect(first.objects).toHaveLength(246);
+    expect(first.fingerprint).toBe(
+      "4f372c330acc0e0aa9ff067597cbb9b1095298ebbc88565759db92ccacca5be7"
+    );
+    expect(second.objects.map(({ hash, key }) => ({ hash, key }))).toEqual(
+      first.objects.map(({ hash, key }) => ({ hash, key }))
+    );
+    expect(second.fingerprint).toBe(first.fingerprint);
+
+    const objectKeys = first.objects.map((object) => object.key);
+    const roleAssignmentCheckNames = first.objects
+      .filter(
+        (object) =>
+          object.ref.kind === "constraint" &&
+          object.ref.schema === "authz" &&
+          object.ref.table === "role_assignments" &&
+          object.metadata.constraintType === "CONSTR_CHECK"
+      )
+      .map((object) => object.ref.name);
+    expect(roleAssignmentCheckNames).toEqual([
+      "role_assignments_check",
+      "role_assignments_check1",
+      "role_assignments_check2",
+    ]);
+    expect(first.objects.some((object) => object.sql.toLowerCase().includes("create role"))).toBe(
+      false
+    );
+    expect(objectKeys).toContain("table:platform.fastmcp_key_value");
+
+    expect(objectKeys).toContain(
+      "constraint:core.relationships_id_organization_id_key:relationships"
+    );
+    expect(objectKeys).not.toContain(
+      "index:core.relationships_id_organization_id_key:relationships"
+    );
+    const validatedConstraintKeys = [
+      "constraint:mortgage.loan_cases_relationship_id_organization_id_fkey:loan_cases",
+      "constraint:real_estate.transactions_relationship_id_organization_id_fkey:transactions",
+    ];
+    const validatedConstraints = first.objects.filter((object) =>
+      validatedConstraintKeys.includes(object.key)
+    );
+    expect(validatedConstraints.map((object) => object.key)).toEqual(validatedConstraintKeys);
+    for (const constraint of validatedConstraints) {
+      expect(constraint.sql.toUpperCase()).not.toContain("NOT VALID");
+    }
+  });
+
   it("reconstructs create, column alter, column rename, enum append, and drop end-state", async () => {
     const model = await extractMigrations([
       [

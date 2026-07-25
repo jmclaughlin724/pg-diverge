@@ -25,11 +25,11 @@ const sourceRepoClaudeContextHooks = [
   ".claude/hooks/context-user-prompt-submit.mjs",
   ".claude/hooks/context-pre-tool-use.mjs",
   ".claude/hooks/context-post-tool-use.mjs",
+  ".claude/hooks/context-post-tool-use-failure.mjs",
   ".claude/hooks/context-subagent-start.mjs",
   ".claude/hooks/context-subagent-stop.mjs",
   ".claude/hooks/context-stop.mjs",
   ".claude/hooks/context-task-completed.mjs",
-  ".claude/hooks/context-permission-denied.mjs",
   ".claude/hooks/context-session-end.mjs",
 ];
 const codexMirrorHookPaths = [
@@ -43,11 +43,11 @@ const sourceRepoCodexContextHooks = [
   ".codex/hooks/context-user-prompt-submit.mjs",
   ".codex/hooks/context-pre-tool-use.mjs",
   ".codex/hooks/context-post-tool-use.mjs",
+  ".codex/hooks/context-post-tool-use-failure.mjs",
   ".codex/hooks/context-subagent-start.mjs",
   ".codex/hooks/context-subagent-stop.mjs",
   ".codex/hooks/context-stop.mjs",
   ".codex/hooks/context-task-completed.mjs",
-  ".codex/hooks/context-permission-denied.mjs",
   ".codex/hooks/context-session-end.mjs",
 ];
 const codexRegisteredHookPaths = [
@@ -58,13 +58,16 @@ const codexRegisteredHookPaths = [
   ".codex/hooks/context-subagent-start.mjs",
   ".codex/hooks/context-subagent-stop.mjs",
   ".codex/hooks/context-stop.mjs",
+  ".codex/hooks/context-session-end.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
 ];
-const retiredWorkflowHookPaths = [
+const removedHookPaths = [
   ".claude/hooks/auto-diff-on-schema-change.mjs",
   ".claude/hooks/block-generated-migration-edits.mjs",
+  ".claude/hooks/context-permission-denied.mjs",
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
+  ".codex/hooks/context-permission-denied.mjs",
 ];
 
 function assertClaudeSettings(claudeSettings, root) {
@@ -189,6 +192,23 @@ function assertClaudeSettings(claudeSettings, root) {
     ),
     ".claude/settings.json must run sync:llm from PostToolUse"
   );
+  const claudePostToolUseFailure = claudeSettings.hooks?.PostToolUseFailure ?? [];
+  const claudePostToolUseFailureText = JSON.stringify(claudePostToolUseFailure);
+  assert(
+    claudePostToolUseFailureText.includes("context-post-tool-use-failure.mjs") &&
+      claudePostToolUseFailureText.includes("sync-llm-on-claude-surface-change.mjs"),
+    ".claude/settings.json must record failed tools and sync partial canonical-surface mutations from PostToolUseFailure"
+  );
+  assert(
+    claudeSettings.hooks?.PermissionDenied === undefined,
+    ".claude/settings.json must not register PermissionDenied without an explicit retry policy"
+  );
+  assert(
+    !readText("agent-bundle/claude/settings.npm.json", root).includes(
+      "sync-llm-on-claude-surface-change.mjs"
+    ),
+    "agent-bundle/claude/settings.npm.json must strip the source-only surface sync hook"
+  );
   assert(
     claudeSettings.hooks?.PostToolBatch === undefined,
     ".claude/settings.json must not register the removed PostToolBatch wrapper"
@@ -219,12 +239,33 @@ function assertCodexConfig(codexConfig, root) {
     "context-subagent-start.mjs",
     "context-subagent-stop.mjs",
     "context-stop.mjs",
+    "context-session-end.mjs",
   ]) {
     assert(codexHooksJson.includes(hook), `.codex/hooks.json must register ${hook}`);
   }
   assert(
     !codexHooksJson.includes("general-guard.mjs"),
     ".codex/hooks.json must not register source-repo Codex general-guard fan-out"
+  );
+  assert(
+    codexHooksJson.includes("$(git rev-parse --show-toplevel)") &&
+      !codexHooksJson.includes("CODEX_PROJECT_DIR"),
+    ".codex/hooks.json must resolve repo-local commands from the git root"
+  );
+  assert(
+    hookHandlers(codexConfig).every(
+      (handler) =>
+        typeof handler.commandWindows === "string" &&
+        handler.commandWindows.includes("git rev-parse --show-toplevel") &&
+        handler.commandWindows.includes('do @node "')
+    ),
+    ".codex/hooks.json must provide git-rooted, echo-suppressed commandWindows overrides"
+  );
+  assert(
+    codexConfig.hooks?.PermissionDenied === undefined &&
+      codexConfig.hooks?.PostToolUseFailure === undefined &&
+      codexConfig.hooks?.TaskCompleted === undefined,
+    ".codex/hooks.json must not register unsupported Codex hook events"
   );
   for (const [toolName, expectedSchemaCommands] of [
     ["Bash", 0],
@@ -244,13 +285,23 @@ function assertCodexConfig(codexConfig, root) {
       `.codex/hooks.json ${toolName} PreToolUse must keep the expected context and generated-migration hook topology`
     );
   }
-  const packageCodexHooksJson = JSON.stringify(readJson("agent-bundle/codex/hooks.npm.json", root));
+  const packageCodexConfig = readJson("agent-bundle/codex/hooks.npm.json", root);
+  const packageCodexHooksJson = JSON.stringify(packageCodexConfig);
   assert(
     packageCodexHooksJson.includes("general-guard.mjs") &&
       !packageCodexHooksJson.includes("context-") &&
       !packageCodexHooksJson.includes("supaschema-source-hook.mjs") &&
+      !packageCodexHooksJson.includes("sync-llm-on-claude-surface-change.mjs") &&
       !packageCodexHooksJson.includes("scripts/agent-hooks"),
     "agent-bundle/codex/hooks.npm.json must keep the consumer Bash guard and strip source-only Codex hooks"
+  );
+  const packageGeneralGuard = hookHandlers(packageCodexConfig).find((handler) =>
+    handler.command?.includes(".codex/hooks/general-guard.mjs")
+  );
+  assert(
+    packageGeneralGuard?.commandWindows?.includes("git rev-parse --show-toplevel") &&
+      packageGeneralGuard.commandWindows.includes('do @node "'),
+    "agent-bundle Codex general guard must provide a git-rooted, echo-suppressed commandWindows override"
   );
   assert(
     codexHooksJson.includes(".codex/hooks/supaschema-source-hook.mjs") &&
@@ -309,11 +360,8 @@ export function check(root = ROOT) {
   ]) {
     assert(exists(hook, root), `missing hook ${hook}`);
   }
-  for (const hook of retiredWorkflowHookPaths) {
-    assert(
-      !exists(hook, root),
-      `${hook} must not exist; use supaschema hook CLI commands directly`
-    );
+  for (const hook of removedHookPaths) {
+    assert(!exists(hook, root), `${hook} must not exist; remove the stale hook entrypoint`);
   }
   const claudeSettings = readJson(".claude/settings.json", root);
   assertClaudeSettings(claudeSettings, root);
@@ -336,8 +384,10 @@ export function check(root = ROOT) {
     ".codex/hooks.json must run sync:llm from PostToolUse"
   );
   assert(
-    Array.isArray(codexConfig.hooks?.Stop) && Array.isArray(codexConfig.hooks?.SubagentStop),
-    ".codex/hooks.json must register Stop and SubagentStop continuation hooks"
+    Array.isArray(codexConfig.hooks?.Stop) &&
+      Array.isArray(codexConfig.hooks?.SubagentStop) &&
+      Array.isArray(codexConfig.hooks?.SessionEnd),
+    ".codex/hooks.json must register Stop, SubagentStop, and SessionEnd lifecycle hooks"
   );
   assert(
     runnerImportsEvaluateBashPolicy(hookRunnerText) &&

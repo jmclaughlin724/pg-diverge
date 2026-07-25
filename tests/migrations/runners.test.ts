@@ -64,7 +64,7 @@ describe("migration runner planning", () => {
 });
 
 describe.skipIf(!databaseUrl)("direct PostgreSQL migration runner", () => {
-  it("applies pending files and records migration history", async () => {
+  it("applies pending files and records migration history", { timeout: 30_000 }, async () => {
     await withTempDatabase(async (url) => {
       const root = await migrationDir({
         "20260101000000_one.sql": `

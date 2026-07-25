@@ -44,7 +44,7 @@ For projects whose migration history is the reviewed schema source, generate fro
 npx supaschema types --from migrations:supabase/migrations
 ```
 
-`migrations:` is typegen-only. Do not use it as a `diff`, `verify`, or drift target.
+`migrations:` is also allowed as the generation before-state when it resolves to the configured `migrationsDir`; it is never a generation target, `verify` source, or drift source.
 
 `supaschema sync` refreshes configured TypeScript and Zod outputs as part of the full workflow. For the focused lane, run `supaschema types` after `supaschema diff` so schema, migration, and app types can be reviewed together.
 

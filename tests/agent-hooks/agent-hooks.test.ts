@@ -1,6 +1,6 @@
-import { execFile } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,6 +11,12 @@ const handAuthoredSql = "-- reviewed migration\nINSERT INTO t VALUES (1) ON CONF
 const cliPath = resolve(import.meta.dirname, "../../dist/cli.js");
 const fakeMigrationPath = "supabase/migrations/20260613000000_fake.sql";
 const hasClaudeSettings = existsSync(resolve(".claude/settings.json"));
+const hasClaudeSessionStartHook = existsSync(resolve(".claude/hooks/context-session-start.mjs"));
+const hasCodexSessionStartHook = existsSync(resolve(".codex/hooks/context-session-start.mjs"));
+const hasClaudePostToolUseFailureHook = existsSync(
+  resolve(".claude/hooks/context-post-tool-use-failure.mjs")
+);
+const codexGitRoot = ["$(", "git rev-parse --show-toplevel", ")"].join("");
 const hasPrivateContextHooks = [
   ".claude/hooks/context-post-tool-use.mjs",
   ".claude/hooks/context-pre-tool-use.mjs",
@@ -25,26 +31,47 @@ interface HookOutput {
     permissionDecisionReason?: string;
   };
   reason?: string;
+  systemMessage?: string;
+}
+
+interface RunHookOptions {
+  args?: string[];
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  stdin?: string;
 }
 
 async function runHook(
   script: string,
   payload: unknown,
-  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}
+  options: RunHookOptions = {}
 ): Promise<{ code: number; stderr: string; stdout: string }> {
   return await new Promise((resolvePromise) => {
     const cliArgs = script.startsWith("supaschema hook ")
       ? [cliPath, ...script.split(" ").slice(1)]
-      : undefined;
+      : [resolve(script), ...(options.args ?? [])];
     const child = execFile(
       process.execPath,
-      cliArgs ?? [resolve(script)],
+      cliArgs,
       { cwd: options.cwd, env: options.env },
       (error, stdout, stderr) => {
         const code = errorCode(error);
         resolvePromise({ code, stderr, stdout });
       }
     );
+    child.stdin?.end(options.stdin ?? JSON.stringify(payload));
+  });
+}
+
+async function runHookCommand(
+  command: string,
+  payload: unknown,
+  options: { cwd: string; env: NodeJS.ProcessEnv }
+): Promise<{ code: number; stderr: string; stdout: string }> {
+  return await new Promise((resolvePromise) => {
+    const child = exec(command, options, (error, stdout, stderr) => {
+      resolvePromise({ code: errorCode(error), stderr, stdout });
+    });
     child.stdin?.end(JSON.stringify(payload));
   });
 }
@@ -72,6 +99,7 @@ function hookOutput(stdout: string): HookOutput {
       permissionDecisionReason: stringValue(rawHookOutput.permissionDecisionReason),
     },
     reason: stringValue(parsed.reason),
+    systemMessage: stringValue(parsed.systemMessage),
   };
 }
 
@@ -301,6 +329,225 @@ function workspaceVariable(name: string): string {
   return ["$", "{", name, "}"].join("");
 }
 
+function codexSessionStartPayload(source: string, sessionId: string): Record<string, unknown> {
+  return {
+    cwd: process.cwd(),
+    hook_event_name: "SessionStart",
+    model: "test-model",
+    permission_mode: "default",
+    session_id: sessionId,
+    source,
+    transcript_path: null,
+  };
+}
+
+async function sessionState(stateDir: string): Promise<Record<string, unknown>> {
+  const files = (await readdir(stateDir)).filter((file) => file.endsWith(".json"));
+  expect(files).toHaveLength(1);
+  return jsonRecord(await readFile(join(stateDir, files[0]), "utf8"));
+}
+
+async function sourceLauncherFailureFixture(): Promise<{
+  env: NodeJS.ProcessEnv;
+  script: string;
+}> {
+  const root = await mkdtemp(join(tmpdir(), "supa-source-hook-launcher-"));
+  const script = join(root, ".claude", "hooks", "supaschema-source-hook.mjs");
+  const hookOutput = join(root, "scripts", "agent-hooks", "hook-output.mjs");
+  const fakeNpm = join(root, "fake-npm.mjs");
+  await Promise.all([
+    mkdir(dirname(script), { recursive: true }),
+    mkdir(dirname(hookOutput), { recursive: true }),
+  ]);
+  await Promise.all([
+    copyFile(resolve(".claude/hooks/supaschema-source-hook.mjs"), script),
+    copyFile(resolve("scripts/agent-hooks/hook-output.mjs"), hookOutput),
+    writeFile(fakeNpm, "process.exitCode = 17;\n"),
+  ]);
+  const inheritedEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => name.toLowerCase() !== "npm_execpath")
+  );
+  return {
+    env: {
+      ...inheritedEnv,
+      CODEX_PROJECT_DIR: root,
+      npm_execpath: fakeNpm,
+    },
+    script,
+  };
+}
+
+describe.skipIf(!hasCodexSessionStartHook)("Codex SessionStart input contract", () => {
+  const script = ".codex/hooks/context-session-start.mjs";
+
+  it("accepts every upstream source and applies the expected context-epoch transition", {
+    timeout: 15_000,
+  }, async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-session-start-state-"));
+    const env = { ...process.env, CODEX_PROJECT_DIR: process.cwd(), STATE_DIR: stateDir };
+    const transitions: [string, number][] = [
+      ["startup", 0],
+      ["resume", 1],
+      ["compact", 2],
+      ["clear", 0],
+    ];
+
+    for (const [source, expectedEpoch] of transitions) {
+      const payload = {
+        ...codexSessionStartPayload(source, "session-start-contract"),
+        ...(source === "startup" ? { future_field: "accepted" } : {}),
+      };
+      const result = await runHook(script, payload, { env });
+
+      expect(result.code, source).toBe(0);
+      expect(result.stderr, source).toBe("");
+      expect(hookAdditionalContext(result.stdout), source).toContain("Agent hook layer active");
+      expect((await sessionState(stateDir)).contextEpoch, source).toBe(expectedEpoch);
+    }
+  });
+
+  it("returns structured diagnostics and writes no state for invalid input", async () => {
+    const valid = codexSessionStartPayload("startup", "invalid-session-start");
+    const missingSession = { ...valid, session_id: undefined };
+    const missingModel = { ...valid, model: undefined };
+    const cases: [string, string][] = [
+      ["empty", ""],
+      ["malformed JSON", "{"],
+      ["array", "[]"],
+      ["scalar", "42"],
+      ["missing session_id", JSON.stringify(missingSession)],
+      ["missing model", JSON.stringify(missingModel)],
+      ["mismatched event", JSON.stringify({ ...valid, hook_event_name: "UserPromptSubmit" })],
+      ["invalid source", JSON.stringify({ ...valid, source: "other" })],
+      ["Claude-only source", JSON.stringify({ ...valid, source: "fork" })],
+      ["invalid permission mode", JSON.stringify({ ...valid, permission_mode: "unsupported" })],
+      ["Claude-only permission mode", JSON.stringify({ ...valid, permission_mode: "auto" })],
+    ];
+
+    for (const [name, stdin] of cases) {
+      const stateDir = await mkdtemp(join(tmpdir(), "supa-invalid-session-start-"));
+      const result = await runHook(
+        script,
+        {},
+        {
+          env: { ...process.env, CODEX_PROJECT_DIR: process.cwd(), STATE_DIR: stateDir },
+          stdin,
+        }
+      );
+      const output = hookOutput(result.stdout);
+
+      expect(result.code, name).toBe(0);
+      expect(result.stderr, name).toBe("");
+      expect(output.systemMessage, name).toContain("Agent hook failed closed.");
+      expect(output.systemMessage, name).toContain("runtime=codex");
+      expect(output.systemMessage, name).toContain("event=SessionStart");
+      expect(output.systemMessage, name).toContain("context-session-start.mjs");
+      expect(output.systemMessage, name).toContain("check=hookInput");
+      expect(output.systemMessage, name).toContain("source=");
+      expect(output.systemMessage, name).toContain("remediation=");
+      expect(output.systemMessage, name).not.toContain("stack=");
+      expect(await readdir(stateDir), name).toEqual([]);
+    }
+  });
+});
+
+describe.skipIf(!hasClaudeSessionStartHook)("Claude SessionStart input contract", () => {
+  it("accepts the upstream fork source, auto mode, optional model, and future fields", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-claude-session-start-"));
+    const env = {
+      ...process.env,
+      CLAUDE_PROJECT_DIR: process.cwd(),
+      STATE_DIR: stateDir,
+    };
+    env.CODEX_PROJECT_DIR = undefined;
+    const result = await runHook(
+      ".claude/hooks/context-session-start.mjs",
+      {
+        cwd: process.cwd(),
+        future_field: "accepted",
+        hook_event_name: "SessionStart",
+        permission_mode: "auto",
+        session_id: "claude-fork-contract",
+        source: "fork",
+        transcript_path: null,
+      },
+      { env }
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(hookAdditionalContext(result.stdout)).toContain("Agent hook layer active");
+    expect((await sessionState(stateDir)).contextEpoch).toBe(0);
+  });
+});
+
+describe.skipIf(!hasClaudePostToolUseFailureHook)(
+  "Claude PostToolUseFailure input contract",
+  () => {
+    it("records a failed verification command without requiring a synthetic tool response", async () => {
+      const stateDir = await mkdtemp(join(tmpdir(), "supa-claude-tool-failure-"));
+      const result = await runHook(
+        ".claude/hooks/context-post-tool-use-failure.mjs",
+        {
+          cwd: process.cwd(),
+          hook_event_name: "PostToolUseFailure",
+          session_id: "claude-tool-failure",
+          tool_input: { command: "npm run guard:agent" },
+          tool_name: "Bash",
+          transcript_path: null,
+        },
+        { env: { ...process.env, STATE_DIR: stateDir } }
+      );
+
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(await readFile(join(stateDir, (await readdir(stateDir))[0]), "utf8")).toContain(
+        '"kind": "failed-command"'
+      );
+    });
+  }
+);
+
+describe("source hook launcher diagnostics", () => {
+  it.each([
+    {
+      args: ["hook", "generated-migration-edit", "--runtime", "codex"],
+      eventName: "PreToolUse",
+    },
+    {
+      args: ["hook", "schema-write", "--runtime", "codex"],
+      eventName: "PostToolUse",
+    },
+  ])("fails closed with event-correct output for $eventName bootstrap errors", async (testCase) => {
+    const fixture = await sourceLauncherFailureFixture();
+    const result = await runHook(
+      fixture.script,
+      {},
+      {
+        args: testCase.args,
+        env: fixture.env,
+      }
+    );
+    const output = hookOutput(result.stdout);
+    const message =
+      testCase.eventName === "PreToolUse"
+        ? output.hookSpecificOutput?.permissionDecisionReason
+        : output.reason;
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(message).toContain("Agent hook failed closed.");
+    expect(message).toContain("runtime=codex");
+    expect(message).toContain(`event=${testCase.eventName}`);
+    expect(message).toContain("hook=");
+    expect(message).toContain("check=sourceHookLauncher");
+    expect(message).toContain("source=");
+    expect(message).toContain("failed with status 17");
+    expect(message).toContain("remediation=");
+    expect(message).not.toContain("stack=");
+  });
+});
+
 describe("agent hook configuration", () => {
   it.skipIf(!hasClaudeSettings)(
     "registers Claude hooks without retired wrapper scripts",
@@ -316,9 +563,9 @@ describe("agent hook configuration", () => {
         "context-user-prompt-submit.mjs",
         "context-pre-tool-use.mjs",
         "context-post-tool-use.mjs",
+        "context-post-tool-use-failure.mjs",
         "context-subagent-start.mjs",
         "context-task-completed.mjs",
-        "context-permission-denied.mjs",
         "context-session-end.mjs",
         "sync-llm-on-claude-surface-change.mjs",
       ]) {
@@ -365,12 +612,16 @@ describe("agent hook configuration", () => {
         })
       );
       const postToolUseText = JSON.stringify(hookEntries(settings, "PostToolUse"));
+      const postToolUseFailureText = JSON.stringify(hookEntries(settings, "PostToolUseFailure"));
       expect(hookEntries(settings, "PostToolUse").map((entry) => entry.matcher)).toEqual([
         "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch|mcp__supaschema__code_atlas_query",
         "Bash|Write|Edit|MultiEdit|apply_patch",
         "Bash|Write|Edit|MultiEdit|apply_patch",
       ]);
       expect(postToolUseText).toContain("sync-llm-on-claude-surface-change.mjs");
+      expect(postToolUseFailureText).toContain("context-post-tool-use-failure.mjs");
+      expect(postToolUseFailureText).toContain("sync-llm-on-claude-surface-change.mjs");
+      expect(hookEntries(settings, "PermissionDenied")).toEqual([]);
       expect(hookEntries(settings, "PostToolBatch")).toEqual([]);
       expect(JSON.stringify(hookEntries(settings, "Stop"))).toContain("context-stop.mjs");
       expect(JSON.stringify(hookEntries(settings, "SubagentStop"))).toContain(
@@ -402,6 +653,7 @@ describe("agent hook configuration", () => {
     expect(JSON.stringify(config)).toContain("context-user-prompt-submit.mjs");
     expect(JSON.stringify(config)).toContain("context-pre-tool-use.mjs");
     expect(JSON.stringify(config)).toContain("context-post-tool-use.mjs");
+    expect(JSON.stringify(config)).toContain("context-session-end.mjs");
     expect(JSON.stringify(config)).toContain("context-stop.mjs");
     expect(JSON.stringify(config)).toContain("context-subagent-stop.mjs");
     expect(JSON.stringify(config)).not.toContain("scripts/agent-hooks");
@@ -422,19 +674,71 @@ describe("agent hook configuration", () => {
     expect(JSON.stringify(config)).not.toContain("pnpm exec supaschema");
     expect(JSON.stringify(config)).not.toContain("npx --no-install supaschema");
     expect(codexPreToolUseCommandsFor(config, "Bash")).toEqual([
-      ['node "$', "{CODEX_PROJECT_DIR:-$PWD}", '/.codex/hooks/context-pre-tool-use.mjs"'].join(""),
+      `node "${codexGitRoot}/.codex/hooks/context-pre-tool-use.mjs"`,
     ]);
     expect(codexPreToolUseCommandsFor(config, "apply_patch")).toEqual(
       expect.arrayContaining([
-        [
-          'node "$',
-          "{CODEX_PROJECT_DIR:-$PWD}",
-          '/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex',
-        ].join(""),
+        `node "${codexGitRoot}/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex`,
       ])
     );
     expect(hookEntries(config, "Stop")).toHaveLength(1);
     expect(hookEntries(config, "SubagentStop")).toHaveLength(1);
+    expect(hookEntries(config, "SessionEnd")).toHaveLength(1);
+    expect(hookEntries(config, "PermissionDenied")).toEqual([]);
+    expect(hookEntries(config, "PostToolUseFailure")).toEqual([]);
+    expect(hookEntries(config, "TaskCompleted")).toEqual([]);
+    expect(JSON.stringify(config)).not.toContain("CODEX_PROJECT_DIR");
+    for (const handler of hookHandlers(config)) {
+      expect(handler.commandWindows).toEqual(
+        expect.stringContaining("git rev-parse --show-toplevel")
+      );
+      expect(handler.commandWindows).toEqual(expect.stringContaining('do @node "'));
+    }
+  });
+
+  it("runs generated Codex lifecycle commands from a nested directory without an env root", async () => {
+    const config = jsonRecord(await readFile(".codex/hooks.json", "utf8"));
+    const commandFor = (eventName: string): string => {
+      const commandKey = process.platform === "win32" ? "commandWindows" : "command";
+      const command = hookHandlers(hookEntries(config, eventName))[0]?.[commandKey];
+      expect(command, eventName).toEqual(expect.any(String));
+      return String(command);
+    };
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-codex-nested-lifecycle-"));
+    const env = { ...process.env, STATE_DIR: stateDir };
+    env.CODEX_PROJECT_DIR = undefined;
+    const cwd = resolve("scripts/agent-hooks");
+    const sessionId = "codex-nested-lifecycle";
+
+    const start = await runHookCommand(
+      commandFor("SessionStart"),
+      codexSessionStartPayload("startup", sessionId),
+      { cwd, env }
+    );
+
+    expect(start.code).toBe(0);
+    expect(start.stderr).toBe("");
+    expect(hookAdditionalContext(start.stdout)).toContain("Agent hook layer active");
+    expect(await readdir(stateDir)).toHaveLength(1);
+
+    const end = await runHookCommand(
+      commandFor("SessionEnd"),
+      {
+        cwd,
+        hook_event_name: "SessionEnd",
+        model: "test-model",
+        permission_mode: "default",
+        reason: "other",
+        session_id: sessionId,
+        transcript_path: null,
+      },
+      { cwd, env }
+    );
+
+    expect(end.code).toBe(0);
+    expect(end.stderr).toBe("");
+    expect(end.stdout).toBe("");
+    expect(await readdir(stateDir)).toEqual([]);
   });
 });
 

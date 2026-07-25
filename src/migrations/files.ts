@@ -1,6 +1,11 @@
-import { readdir } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { readdir, realpath } from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
 import type { MigrationPlan } from "../types.js";
+
+export interface MigrationFilesOptions {
+  cwd?: string;
+  excludeFiles?: readonly string[];
+}
 
 export function defaultMigrationName(plan: MigrationPlan): string {
   const first = plan.operations[0];
@@ -84,23 +89,48 @@ function migrationDate(file: string): Date | undefined {
   return migrationTimestamp(date) === version ? date : undefined;
 }
 
-export async function migrationFiles(directory: string): Promise<string[]> {
+export async function migrationFiles(
+  directory: string,
+  options: MigrationFilesOptions = {}
+): Promise<string[]> {
+  const cwd = options.cwd ?? process.cwd();
   let entries: string[];
   try {
-    entries = await readdir(directory);
+    entries = await readdir(resolve(cwd, directory));
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return [];
     }
     throw error;
   }
-  return entries
+  const files = entries
     .filter((entry) => entry.endsWith(".sql"))
     .sort((left, right) => left.localeCompare(right))
     .map((entry) => join(directory, entry));
+  if (options.excludeFiles === undefined || options.excludeFiles.length === 0) {
+    return files;
+  }
+  const excludedFiles = new Set(
+    await Promise.all(options.excludeFiles.map((file) => canonicalPath(resolve(cwd, file))))
+  );
+  const selected = await Promise.all(
+    files.map(async (file) => ({
+      excluded: excludedFiles.has(await canonicalPath(resolve(cwd, file))),
+      file,
+    }))
+  );
+  return selected.filter((entry) => !entry.excluded).map((entry) => entry.file);
 }
 
 export async function latestMigrationFile(directory: string): Promise<string | undefined> {
   const files = await migrationFiles(directory);
   return files.at(-1);
+}
+
+async function canonicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
 }

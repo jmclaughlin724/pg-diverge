@@ -60,7 +60,7 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 | --- | --- |
 | Supaschema consumer skill/rule/hook | `npm run sync:llm`, package checks when bundled |
 | Maintainer skill only | `npm run sync:llm` for mirrored skills |
-| Hook source | `npm run hooks:check`, focused hook tests, `npm run sync:llm` if mirrored |
+| Hook source | `npm run guard:agent`, focused hook tests, `npm run sync:llm` if mirrored |
 | Shared runtime adapter | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused hook/sync tests |
 | Generated Codex hook registration or package hook templates | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused sync/hook tests |
 | Public/private agent-surface boundary | `npm run guard:public-surface`, `npm run check:package`, focused editor/package tests |

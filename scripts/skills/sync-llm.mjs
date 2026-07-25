@@ -13,7 +13,7 @@ export const publicSkillNames = Object.freeze([
   "supaschema-maintain",
 ]);
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
-const codexProjectDir = shellParameter("CODEX_PROJECT_DIR:-$PWD");
+const codexProjectDir = ["$(", "git rev-parse --show-toplevel", ")"].join("");
 const codexCommandTools = ["Bash"];
 const codexEditTools = ["apply_patch"];
 const codexPreToolContextTools = [
@@ -233,13 +233,6 @@ function agentBundleFiles(root) {
       fs.readFileSync(path.join(root, ".claude/hooks/guards/bash-policy-checks.mjs"), "utf8"),
     ],
     [
-      "claude/hooks/sync-llm-on-claude-surface-change.mjs",
-      fs.readFileSync(
-        path.join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
-        "utf8"
-      ),
-    ],
-    [
       "claude/rules/supaschema.md",
       fs.readFileSync(path.join(root, ".claude/rules/supaschema.md"), "utf8"),
     ],
@@ -250,13 +243,6 @@ function agentBundleFiles(root) {
     [
       "codex/hooks/guards/bash-policy-checks.mjs",
       fs.readFileSync(path.join(root, ".codex/hooks/guards/bash-policy-checks.mjs"), "utf8"),
-    ],
-    [
-      "codex/hooks/sync-llm-on-claude-surface-change.mjs",
-      fs.readFileSync(
-        path.join(root, ".codex/hooks/sync-llm-on-claude-surface-change.mjs"),
-        "utf8"
-      ),
     ],
     [
       "codex/rules/supaschema.rules",
@@ -332,16 +318,6 @@ function claudeHookConfig(runner) {
             {
               args: [...runner.args, "hook", "schema-write"],
               command: runner.command,
-              timeout: 130,
-              type: "command",
-            },
-          ],
-          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
-        },
-        {
-          hooks: [
-            {
-              command: `node "${claudeProjectDir}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`,
               timeout: 130,
               type: "command",
             },
@@ -448,6 +424,17 @@ export function renderSourceCodexHooks(root = ROOT) {
           matcher: "startup|resume|clear|compact",
         },
       ],
+      SessionEnd: [
+        {
+          hooks: [
+            codexHookCommand(
+              ".codex/hooks/context-session-end.mjs",
+              2,
+              "Clearing supaschema agent hook state"
+            ),
+          ],
+        },
+      ],
       SubagentStart: [
         {
           hooks: [
@@ -502,9 +489,10 @@ export function renderSourceCodexHooks(root = ROOT) {
 }
 
 function codexHookCommand(relativePath, timeout, statusMessage, args = "") {
-  const command = `node "${codexProjectDir}/${relativePath}"${args ? ` ${args}` : ""}`;
+  const commandArgs = args ? ` ${args}` : "";
   return {
-    command,
+    command: `node "${codexProjectDir}/${relativePath}"${commandArgs}`,
+    commandWindows: `for /f "delims=" %S in ('git rev-parse --show-toplevel') do @node "%S/${relativePath}"${commandArgs}`,
     statusMessage,
     timeout,
     type: "command",
@@ -528,9 +516,11 @@ function assertClaudeHookSource(root) {
     ["UserPromptSubmit", ".claude/hooks/context-user-prompt-submit.mjs"],
     ["PreToolUse", ".claude/hooks/context-pre-tool-use.mjs"],
     ["PostToolUse", ".claude/hooks/context-post-tool-use.mjs"],
+    ["PostToolUseFailure", ".claude/hooks/context-post-tool-use-failure.mjs"],
     ["SubagentStart", ".claude/hooks/context-subagent-start.mjs"],
     ["SubagentStop", ".claude/hooks/context-subagent-stop.mjs"],
     ["Stop", ".claude/hooks/context-stop.mjs"],
+    ["SessionEnd", ".claude/hooks/context-session-end.mjs"],
   ]) {
     assertClaudeNodeHook(hooks, eventName, relativePath);
   }
@@ -539,6 +529,11 @@ function assertClaudeHookSource(root) {
   assertClaudeCommand(hooks, "PreToolUse", "generated-migration-edit");
   assertClaudeCommand(hooks, "PostToolUse", "schema-write");
   assertClaudeNodeHook(hooks, "PostToolUse", ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
+  assertClaudeNodeHook(
+    hooks,
+    "PostToolUseFailure",
+    ".claude/hooks/sync-llm-on-claude-surface-change.mjs"
+  );
 }
 
 function assertSourceClaudeBashPreToolUseTopology(hooks) {
@@ -776,6 +771,7 @@ function isRepoLocalCodexHook(hook) {
     typeof hook === "object" &&
     typeof hook.command === "string" &&
     (hook.command.includes("/.codex/hooks/context-") ||
+      hook.command.includes("/.codex/hooks/sync-llm-on-claude-surface-change.mjs") ||
       hook.command.includes("scripts/agent-hooks/"))
   );
 }
@@ -785,7 +781,13 @@ function consumerCodexHookCommands(entry) {
     return entry;
   }
   if (typeof entry.command === "string") {
-    return { ...entry, command: consumerSupaschemaCommand(entry.command) };
+    const command = consumerSupaschemaCommand(entry.command);
+    if (command === entry.command) {
+      return entry;
+    }
+    const portableEntry = { ...entry, command };
+    Reflect.deleteProperty(portableEntry, "commandWindows");
+    return portableEntry;
   }
   return entry;
 }

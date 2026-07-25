@@ -24,6 +24,8 @@ supaschema config validate --json
 
 `supaschema init` installs missing text files and merges hook registration JSON. Existing non-identical text files are preserved and listed in the init result. Existing malformed or non-mergeable hook JSON is skipped and listed so the agent can repair it.
 
+On upgrade, init removes the retired package-owned `sync-llm-on-claude-surface-change.mjs` registrations. Byte-identical retired scripts are deleted after their registrations are removed; modified scripts are preserved and listed.
+
 Shared files:
 
 - `agent-bundle/agents/prompts/supaschema-install.md` to `.agents/prompts/supaschema-install.md`
@@ -34,7 +36,6 @@ Claude files:
 - `agent-bundle/claude/rules/supaschema.md` to `.claude/rules/supaschema.md`
 - `agent-bundle/claude/skills/{supaschema,supaschema-migrate,supaschema-maintain}` recursively to the matching `.claude/skills/**` directories
 - `agent-bundle/claude/hooks/guards/bash-policy-checks.mjs` to `.claude/hooks/guards/bash-policy-checks.mjs`
-- `agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs` to `.claude/hooks/sync-llm-on-claude-surface-change.mjs`
 - the matching `agent-bundle/claude/settings.<manager>.json` entries into `.claude/settings.json`
 
 Codex files:
@@ -42,7 +43,6 @@ Codex files:
 - `agent-bundle/codex/rules/supaschema.rules` to `.codex/rules/supaschema.rules`
 - `agent-bundle/codex/hooks/general-guard.mjs` to `.codex/hooks/general-guard.mjs`
 - `agent-bundle/codex/hooks/guards/bash-policy-checks.mjs` to `.codex/hooks/guards/bash-policy-checks.mjs`
-- `agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs` to `.codex/hooks/sync-llm-on-claude-surface-change.mjs`
 - the matching `agent-bundle/codex/hooks.<manager>.json` entries into `.codex/hooks.json`
 
 No `.codex/skills/**` directory is installed. Existing non-identical Agent or Claude skill files, including references, are preserved and reported individually.
@@ -54,7 +54,7 @@ Use the package manager that owns the project:
 - Yarn: `settings.yarn.json` and `hooks.yarn.json`
 - Bun: `settings.bun.json` and `hooks.bun.json`
 
-Merge JSON files. Do not overwrite existing user hooks or settings. Do not register duplicate direct hooks. If the project already owns a Codex dispatcher such as `.codex/hooks/tool-gate.mjs` or `.codex/hooks/stop.mjs`, keep the dispatcher as the owner and route supaschema checks through that dispatcher instead of registering duplicate direct hooks.
+Merge JSON files. Do not overwrite existing user hooks or settings. Do not register duplicate direct hooks.
 
 ## Verify
 

@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import type { SupaschemaConfig } from "../config/schema.js";
-import { buildSchemaPlanningContext } from "../planner/context.js";
+import { buildSchemaPlanningContext, type SchemaPlanningMode } from "../planner/context.js";
 import { planSchemaDiff } from "../planner/schema.js";
 import { migrationSafetyPack, runRulePacks } from "../scan/rules.js";
 import { filterModelBySchemas, parseSchemaFilter } from "../source/extract.js";
@@ -10,9 +10,10 @@ interface SchemaDiffPlanOptions {
   checkMigrationBaseline?: boolean;
   config: SupaschemaConfig;
   cwd?: string;
+  excludeMigrationFiles?: readonly string[];
   from: string;
-  migrationContextExcludeFiles?: readonly string[];
   migrationsDir?: string;
+  mode?: SchemaPlanningMode;
   schema?: string;
   timing?: boolean;
   to: string;

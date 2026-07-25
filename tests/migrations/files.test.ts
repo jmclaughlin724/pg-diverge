@@ -78,5 +78,12 @@ describe("migration file enumeration", () => {
     ]);
     expect((await latestMigrationFile(dir))?.endsWith("20250101000000_two.sql")).toBe(true);
     expect(await migrationFiles(join(dir, "missing"))).toEqual([]);
+    expect(
+      (
+        await migrationFiles(dir, {
+          excludeFiles: [join(dir, "20250101000000_two.sql")],
+        })
+      ).map((file) => basename(file))
+    ).toEqual(["20240101000000_one.sql"]);
   });
 });

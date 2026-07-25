@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -12,6 +14,7 @@ import {
 import { dirname, join, relative, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
+
 import {
   genericMigrationsDir,
   genericProviderPreset,
@@ -36,19 +39,24 @@ const packageScripts = {
 const agentBundleCopies = [
   ["agents/prompts/supaschema-install.md", ".agents/prompts/supaschema-install.md"],
   ["claude/hooks/guards/bash-policy-checks.mjs", ".claude/hooks/guards/bash-policy-checks.mjs"],
-  [
-    "claude/hooks/sync-llm-on-claude-surface-change.mjs",
-    ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
-  ],
   ["claude/rules/supaschema.md", ".claude/rules/supaschema.md"],
   ["codex/hooks/general-guard.mjs", ".codex/hooks/general-guard.mjs"],
   ["codex/hooks/guards/bash-policy-checks.mjs", ".codex/hooks/guards/bash-policy-checks.mjs"],
-  [
-    "codex/hooks/sync-llm-on-claude-surface-change.mjs",
-    ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-  ],
   ["codex/rules/supaschema.rules", ".codex/rules/supaschema.rules"],
 ];
+const claudeProjectDirExpression = ["$", "{CLAUDE_PROJECT_DIR}"].join("");
+const codexProjectDirExpression = ["$", "{CODEX_PROJECT_DIR:-$PWD}"].join("");
+const obsoleteAgentBundleHookCommands = new Set([
+  `node ${claudeProjectDirExpression}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
+  `node ${codexProjectDirExpression}/.codex/hooks/sync-llm-on-claude-surface-change.mjs`,
+]);
+const obsoleteAgentBundleHookFiles = [
+  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
+];
+const obsoleteAgentBundleHookSha256 =
+  "2b6979dc84aad94b23f54ac5804b1809322eac2b65fa8574e74c242419c0149f";
+const obsoleteAgentBundleHookName = "sync-llm-on-claude-surface-change.mjs";
 const inventoryWorkflowOverrides = {
   migration_sync: "manual",
   schema_diff: "manual",
@@ -353,13 +361,22 @@ function topLevelBlockEnd(lines, start) {
 }
 
 function isTopLevelYamlKey(line) {
-  return line.length > 0 && !line.startsWith(" ") && !line.startsWith("\t") && line.endsWith(":");
+  return (
+    line.length > 0 &&
+    !line.startsWith(" ") &&
+    !line.startsWith("\t") &&
+    !line.startsWith("#") &&
+    !line.startsWith("-") &&
+    line.includes(":")
+  );
 }
 
 function pnpmBuildApprovalEntryIndex(lines, start, end) {
   for (let index = start; index < end; index += 1) {
     const line = lines[index].trimStart();
-    if (line.startsWith("supaschema:")) {
+    const separator = line.indexOf(":");
+    const key = separator === -1 ? line : line.slice(0, separator).trim();
+    if (key === "supaschema" || key === '"supaschema"' || key === "'supaschema'") {
       return index;
     }
   }
@@ -404,20 +421,36 @@ function installAgentBundle({ dryRun, packageManager, packageRoot, targetDir }) 
     installAgentBundleTextFile({ dryRun, packageRoot, result, source, target, targetDir });
   }
   installAgentBundleSkills({ dryRun, packageRoot, result, targetDir });
-  mergeAgentBundleJsonFile({
+  const claudeSource = `claude/settings.${packageManager}.json`;
+  const codexSource = `codex/hooks.${packageManager}.json`;
+  const claudeConfig = mergeAgentBundleJsonFile({
     dryRun,
     packageRoot,
     result,
-    source: `claude/settings.${packageManager}.json`,
+    source: claudeSource,
     target: ".claude/settings.json",
     targetDir,
   });
-  mergeAgentBundleJsonFile({
+  const codexConfig = mergeAgentBundleJsonFile({
     dryRun,
     packageRoot,
     result,
-    source: `codex/hooks.${packageManager}.json`,
+    source: codexSource,
     target: ".codex/hooks.json",
+    targetDir,
+  });
+  removeObsoleteAgentBundleHookFile({
+    config: claudeConfig,
+    dryRun,
+    path: obsoleteAgentBundleHookFiles[0],
+    result,
+    targetDir,
+  });
+  removeObsoleteAgentBundleHookFile({
+    config: codexConfig,
+    dryRun,
+    path: obsoleteAgentBundleHookFiles[1],
+    result,
     targetDir,
   });
   result.installed = result.skipped.length === 0;
@@ -525,33 +558,106 @@ function installAgentBundleTextFile({ dryRun, packageRoot, result, source, targe
 }
 
 function mergeAgentBundleJsonFile({ dryRun, packageRoot, result, source, target, targetDir }) {
-  const contents = readRequiredAgentBundleFile(packageRoot, source);
-  const incoming = parseRequiredJson(contents, source);
+  const incoming = parseRequiredJson(readRequiredAgentBundleFile(packageRoot, source), source);
   const destination = join(targetDir, target);
   const existingContents = readText(destination);
   if (existingContents === undefined) {
+    const serialized = `${JSON.stringify(incoming, null, 2)}\n`;
     if (!dryRun) {
-      writeFileAtomic(destination, contents);
+      writeFileAtomic(destination, serialized);
     }
     result.changed = true;
     result.files.push(target);
-    return;
+    return incoming;
   }
   const existing = parseOptionalJson(existingContents);
   if (!isRecord(existing)) {
     result.skipped.push(`${target} (not a JSON object)`);
     return;
   }
-  const merged = mergeHookConfig(existing, incoming);
+  const cleaned = removeObsoleteAgentBundleHooks(existing);
+  const merged = mergeHookConfig(cleaned.value, incoming);
   result.skipped.push(...merged.skipped.map((item) => `${target} ${item}`));
-  if (!merged.changed) {
-    return;
+  if (!(cleaned.changed || merged.changed)) {
+    return merged.value;
   }
   if (!dryRun) {
     writeFileAtomic(destination, `${JSON.stringify(merged.value, null, 2)}\n`);
   }
   result.changed = true;
   result.files.push(target);
+  return merged.value;
+}
+
+function removeObsoleteAgentBundleHooks(config) {
+  if (!isRecord(config.hooks)) {
+    return { changed: false, value: config };
+  }
+  const hooks = {};
+  let changed = false;
+  for (const [event, entries] of Object.entries(config.hooks)) {
+    if (!Array.isArray(entries)) {
+      hooks[event] = entries;
+      continue;
+    }
+    const retainedEntries = [];
+    for (const entry of entries) {
+      if (!(isRecord(entry) && Array.isArray(entry.hooks))) {
+        retainedEntries.push(entry);
+        continue;
+      }
+      const retainedHooks = entry.hooks.filter(
+        (hook) => !obsoleteAgentBundleHookCommands.has(hookCommandIdentity(hook))
+      );
+      if (retainedHooks.length === entry.hooks.length) {
+        retainedEntries.push(entry);
+        continue;
+      }
+      changed = true;
+      if (retainedHooks.length > 0) {
+        retainedEntries.push({ ...entry, hooks: retainedHooks });
+      }
+    }
+    if (retainedEntries.length > 0 || entries.length === 0) {
+      hooks[event] = retainedEntries;
+    }
+  }
+  return { changed, value: changed ? { ...config, hooks } : config };
+}
+
+function removeObsoleteAgentBundleHookFile({ config, dryRun, path, result, targetDir }) {
+  const destination = join(targetDir, path);
+  if (!existsSync(destination)) {
+    return;
+  }
+  if (
+    config === undefined ||
+    JSON.stringify(config).includes(obsoleteAgentBundleHookName) ||
+    !isRegularFile(destination) ||
+    fileSha256(destination) !== obsoleteAgentBundleHookSha256
+  ) {
+    if (!result.preserved.includes(path)) {
+      result.preserved.push(path);
+    }
+    return;
+  }
+  if (!dryRun) {
+    unlinkSync(destination);
+  }
+  result.changed = true;
+  result.files.push(path);
+}
+
+function isRegularFile(path) {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function fileSha256(path) {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
 function mergeHookConfig(existing, incoming) {

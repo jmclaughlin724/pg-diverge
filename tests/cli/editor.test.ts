@@ -13,72 +13,6 @@ function readText(path: string): string {
   return readFileSync(resolve(root, path), "utf8");
 }
 
-function findHookMatcher(config: unknown, commandFragment: string): string | undefined {
-  if (!(config && typeof config === "object")) {
-    return;
-  }
-  const hooksRoot = Reflect.get(config, "hooks");
-  if (!(hooksRoot && typeof hooksRoot === "object")) {
-    return;
-  }
-  const postToolUse = Reflect.get(hooksRoot, "PostToolUse");
-  if (!Array.isArray(postToolUse)) {
-    return;
-  }
-  for (const entry of postToolUse) {
-    if (!(entry && typeof entry === "object")) {
-      continue;
-    }
-    const hooks = Reflect.get(entry, "hooks");
-    const matcher = Reflect.get(entry, "matcher");
-    if (
-      Array.isArray(hooks) &&
-      hooks.some(
-        (hook) =>
-          hook &&
-          typeof hook === "object" &&
-          typeof Reflect.get(hook, "command") === "string" &&
-          Reflect.get(hook, "command").includes(commandFragment)
-      )
-    ) {
-      return typeof matcher === "string" ? matcher : undefined;
-    }
-  }
-}
-
-function findStopHookCommand(config: unknown, commandFragment: string): string | undefined {
-  if (!(config && typeof config === "object")) {
-    return;
-  }
-  const hooksRoot = Reflect.get(config, "hooks");
-  if (!(hooksRoot && typeof hooksRoot === "object")) {
-    return;
-  }
-  const stop = Reflect.get(hooksRoot, "Stop");
-  if (!Array.isArray(stop)) {
-    return;
-  }
-  for (const entry of stop) {
-    if (!(entry && typeof entry === "object")) {
-      continue;
-    }
-    const hooks = Reflect.get(entry, "hooks");
-    if (!Array.isArray(hooks)) {
-      continue;
-    }
-    for (const hook of hooks) {
-      if (
-        hook &&
-        typeof hook === "object" &&
-        typeof Reflect.get(hook, "command") === "string" &&
-        Reflect.get(hook, "command").includes(commandFragment)
-      ) {
-        return Reflect.get(hook, "command");
-      }
-    }
-  }
-}
-
 function trackedFiles(): string[] {
   return execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
     cwd: root,
@@ -161,6 +95,7 @@ describe("public agent and editor surfaces", () => {
 
   it("ships self-contained raw consumer hook registration", () => {
     const packageJson = readJson<{ files?: string[] }>("package.json");
+    const claudeSettings = readText("agent-bundle/claude/settings.npm.json");
     const codexHooks = readText("agent-bundle/codex/hooks.npm.json");
     const claudeBashGuard = readText("agent-bundle/claude/hooks/guards/bash-policy-checks.mjs");
     const codexGeneralGuard = readText("agent-bundle/codex/hooks/general-guard.mjs");
@@ -174,12 +109,8 @@ describe("public agent and editor surfaces", () => {
     expect(codexHooks).toContain("supaschema hook schema-write");
     expect(codexHooks).not.toContain("context-");
     expect(codexHooks).not.toContain("scripts/agent-hooks");
-    expect(findHookMatcher(JSON.parse(codexHooks), "sync-llm-on-claude-surface-change.mjs")).toBe(
-      "apply_patch"
-    );
-    expect(
-      findStopHookCommand(JSON.parse(codexHooks), "sync-llm-on-claude-surface-change.mjs")
-    ).toBe(`node "\${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`);
+    expect(codexHooks).not.toContain("sync-llm-on-claude-surface-change.mjs");
+    expect(claudeSettings).not.toContain("sync-llm-on-claude-surface-change.mjs");
     expect(claudeBashGuard).not.toContain("user-codex-skill-policy");
     expect(codexGeneralGuard).not.toContain("user-codex-skill-policy");
   });

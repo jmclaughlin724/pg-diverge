@@ -19,6 +19,7 @@ import {
   policyWithoutRlsRule,
   rlsEnabledNoPolicyRule,
   runRulePacks,
+  securityDefinerSearchPathRule,
   tableNamingRule,
 } from "../../src/scan/rules.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
@@ -453,6 +454,23 @@ describe("grant ALL-privileges rule (P11)", () => {
     });
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("passes a single-privilege kind whose only privilege normalizes to ALL", () => {
+    const grant = grantObject("authenticated", "public.f()", ["ALL"]);
+    const diagnostics = grantAllPrivilegesRule.check({
+      model: model([{ ...grant, metadata: { ...grant.metadata, kindPhrase: "FUNCTION" } }]),
+    });
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags ALL on a kind with multiple grantable privileges", () => {
+    const grant = grantObject("authenticated", "public.users", ["ALL"]);
+    const diagnostics = grantAllPrivilegesRule.check({
+      model: model([{ ...grant, metadata: { ...grant.metadata, kindPhrase: "TABLE" } }]),
+    });
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_GRANT_ALL_PRIVILEGES");
+  });
 });
 
 describe("grant role-policy drift rule (P11)", () => {
@@ -475,6 +493,83 @@ describe("grant role-policy drift rule (P11)", () => {
     const rule = grantPolicyRule([]);
     const diagnostics = rule.check({ model: model([grantObject("anyone", "public.users")]) });
     expect(diagnostics).toHaveLength(0);
+  });
+});
+
+function routineObject(name: string, metadata: Record<string, unknown>): SchemaObject {
+  return {
+    dependencies: [],
+    hash: "h",
+    key: `public.${name}()`,
+    metadata,
+    normalizedSql: "",
+    ordinal: 0,
+    ref: { kind: "function", name, schema: "public", signature: "" },
+    sql: "",
+  };
+}
+
+describe("SECURITY DEFINER search_path rule", () => {
+  it("flags a SECURITY DEFINER routine with no pinned search_path", () => {
+    const diagnostics = securityDefinerSearchPathRule.check({
+      model: model([routineObject("escalate", { securityDefiner: true })]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_SECDEF_SEARCH_PATH");
+    expect(diagnostics[0]?.severity).toBe("warning");
+  });
+
+  it("flags a SECURITY DEFINER routine whose search_path is not empty", () => {
+    const diagnostics = securityDefinerSearchPathRule.check({
+      model: model([
+        routineObject("escalate", { routineSearchPath: "public", securityDefiner: true }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_SECDEF_SEARCH_PATH");
+  });
+
+  it("passes a SECURITY DEFINER routine that pins an empty search_path", () => {
+    const diagnostics = securityDefinerSearchPathRule.check({
+      model: model([routineObject("safe", { routineSearchPath: "", securityDefiner: true })]),
+    });
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("passes a SECURITY INVOKER routine with no search_path", () => {
+    const diagnostics = securityDefinerSearchPathRule.check({
+      model: model([routineObject("plain", { securityDefiner: false })]),
+    });
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("ignores objects that are not routines", () => {
+    const diagnostics = securityDefinerSearchPathRule.check({
+      model: model([tableObject("users")]),
+    });
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags and passes parsed routines end to end", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE OR REPLACE FUNCTION public.unsafe()
+      RETURNS int LANGUAGE sql SECURITY DEFINER
+      AS $$ SELECT 1 $$;
+      CREATE OR REPLACE FUNCTION public.safe()
+      RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = ''
+      AS $$ SELECT 1 $$;
+    `);
+
+    const diagnostics = securityDefinerSearchPathRule.check({ model: extracted });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe("SUPA_RULE_SECDEF_SEARCH_PATH");
+    expect(diagnostics[0]?.ref.name).toBe("unsafe");
   });
 });
 

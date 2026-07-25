@@ -568,7 +568,46 @@ function functionFacts(node: AstNode): Record<string, unknown> {
   if (outParams.length > 0) {
     facts.outParams = outParams;
   }
+  facts.securityDefiner = routineSecurityDefiner(node.options);
+  const searchPath = routineSearchPath(node.options);
+  if (searchPath !== undefined) {
+    facts.routineSearchPath = searchPath;
+  }
   return facts;
+}
+
+export function routineSecurityDefiner(options: unknown): boolean {
+  for (const item of readArray(options)) {
+    const option = asRecord(asRecord(item)?.DefElem);
+    if (readString(option?.defname) !== "security") {
+      continue;
+    }
+    return readBoolean(option?.arg);
+  }
+  return false;
+}
+
+export function routineSearchPath(options: unknown): string | undefined {
+  for (const item of readArray(options)) {
+    const option = asRecord(asRecord(item)?.DefElem);
+    if (readString(option?.defname) !== "set") {
+      continue;
+    }
+    const setStmt = asRecord(asRecord(option?.arg)?.VariableSetStmt);
+    if (readString(setStmt?.name) !== "search_path") {
+      continue;
+    }
+    if (readString(setStmt?.kind) !== "VAR_SET_VALUE") {
+      return;
+    }
+    const values = readArray(setStmt?.args).map((arg) =>
+      readString(asRecord(asRecord(asRecord(arg)?.A_Const)?.sval)?.sval)
+    );
+    if (values.length === 0 || values.some((value) => value === undefined)) {
+      return;
+    }
+    return values.join(", ");
+  }
 }
 
 function functionLanguage(options: unknown): string | undefined {

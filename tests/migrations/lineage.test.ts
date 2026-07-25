@@ -208,6 +208,79 @@ describe("diff lineage chain gate", () => {
     expect(parseLineage(await readFile(generated, "utf8"))).toBeDefined();
   });
 
+  it("excludes the replaced migration from a migrations replay baseline", {
+    timeout: 60_000,
+  }, async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-replace-replay-"));
+    const migrationsDir = join(root, "migrations");
+    const schemaDir = join(root, "schemas");
+    await mkdir(migrationsDir);
+    await mkdir(schemaDir);
+    const config = join(root, "supaschema.config.json");
+    await writeFile(
+      config,
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "migrations:migrations" },
+        sync: { targets: {} },
+      })
+    );
+    const schemaFile = join(schemaDir, "app.sql");
+    await writeFile(
+      schemaFile,
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint PRIMARY KEY);\n"
+    );
+    const generated = join(migrationsDir, "20260101000000_generated.sql");
+    const initial = await cli(
+      [
+        "--config",
+        config,
+        "diff",
+        "--from",
+        "empty:",
+        "--to",
+        "dir:schemas",
+        "--migrations-dir",
+        "migrations",
+        "--out",
+        generated,
+      ],
+      { cwd: root }
+    );
+    expect(initial.code, initial.stderr).toBe(0);
+    const originalLineage = parseLineage(await readFile(generated, "utf8"));
+    expect(originalLineage).toBeDefined();
+    await writeFile(
+      schemaFile,
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint PRIMARY KEY, name text);\n"
+    );
+
+    const replaced = await cli(
+      [
+        "--config",
+        config,
+        "diff",
+        "--from",
+        "migrations:migrations",
+        "--to",
+        "dir:schemas",
+        "--migrations-dir",
+        "migrations",
+        "--replace",
+        generated,
+      ],
+      { cwd: root }
+    );
+
+    expect(replaced.code, replaced.stderr).toBe(0);
+    expect(replaced.stderr).not.toContain("SUPA_DIFF_REPLACE_BASELINE_REQUIRED");
+    const replacedSql = await readFile(generated, "utf8");
+    expect(replacedSql).toContain("CREATE TABLE");
+    expect(replacedSql).not.toContain('ADD COLUMN IF NOT EXISTS "name"');
+    expect(parseLineage(replacedSql)?.from).toBe(originalLineage?.from);
+  });
+
   it("uses an ambient database URL to gate a URL-less replacement target", {
     timeout: 60_000,
   }, async () => {

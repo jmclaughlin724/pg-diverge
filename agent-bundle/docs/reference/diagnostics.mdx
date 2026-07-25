@@ -39,7 +39,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_DIFF_REPLACE_NOT_LATEST` | error | `diff --replace` targeted a generated migration older than the configured migration directory tip. |
 | `SUPA_MIGRATION_BASELINE_MISMATCH` | error | The resolved `sources.from` model does not match the generated migration-tree baseline. Recover from the source state that produced the baseline, use `diff --replace`, or — when the pending migration's end-state was never committed and no target records it as applied — review and delete the pending migration, then regenerate from the current tree. |
 | `SUPA_MIGRATION_BASELINE_FORMAT_DRIFT` | warning | The latest generated migration-tree lineage was produced by a different model format, so old and current fingerprints are not directly comparable. Same-format mismatches still block. |
-| `SUPA_MIGRATION_BASELINE_UNSUPPORTED` | error | Existing migrations cannot prove a generated-lineage baseline for source-backed generation. |
+| `SUPA_MIGRATION_BASELINE_UNSUPPORTED` | error | The selected before-state does not match the configured migration corpus, or existing migrations cannot prove a generated-lineage baseline for source-backed generation. |
 | `SUPA_MIGRATIONS_STALE_BASELINE` | warning | A pending generated migration's lineage end-state matches neither the current `git:HEAD` schema fingerprint nor the current tree fingerprint; its baseline is unreproducible. If no target records the version as applied, review and delete it, then regenerate. |
 | `SUPA_MIGRATION_CORPUS_PARSE_SKIPPED` | warning | A configured migration file could not be fully parsed for source intent; destructive changes in that file may still require explicit hints. |
 | `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` | error | A destructive change lacks an explicit hint. |
@@ -78,7 +78,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_CHECK_ADD_CONSTRAINT_GUARD` | error | `ALTER TABLE ... ADD CONSTRAINT` is not wrapped in a catalog guard. |
 | `SUPA_CHECK_CREATE_TRIGGER_REPLACEMENT` | error | `CREATE TRIGGER` is not preceded by `DROP TRIGGER IF EXISTS`. |
 | `SUPA_CHECK_SEARCH_PATH` | error | Migration SQL depends on session `search_path`. |
-| `SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH` | warning | A `SECURITY DEFINER` function lacks function-local `SET search_path`. |
+| `SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH` | warning | A `SECURITY DEFINER` function lacks an empty function-local `SET search_path = ''`. |
 | `SUPA_CHECK_FUNCTION_PUBLIC_EXECUTE` | warning | A public-schema function does not explicitly revoke default `PUBLIC` `EXECUTE`. |
 | `SUPA_CHECK_FORWARD_REFERENCE_ORDER` | error | A migration statement references an object or column created later in the same file. |
 | `SUPA_CHECK_ENUM_VALUE_USE_SAME_TRANSACTION` | error/warning | An enum value added in this migration is used later in the same file; transactional runners fail. Error under `transactionMode: "per-migration"`, warning under `per-statement`. |
@@ -98,6 +98,7 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_RULE_POLICY_MISSING_PREDICATE` | warning | An RLS policy lacks the `USING` or `WITH CHECK` predicate needed for its command class. |
 | `SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN` | warning | An RLS policy lacks a column configured in `hints.requiredPolicyColumns` for its table. |
 | `SUPA_RULE_EXPOSED_TABLE_WITHOUT_RLS` | warning | A public table is exposed by API-facing grants without RLS enabled. |
+| `SUPA_RULE_SECDEF_SEARCH_PATH` | warning | A `SECURITY DEFINER` routine does not pin `search_path = ''`, so a caller can shadow an unqualified reference and run code as the routine owner. |
 | `SUPA_SCAN_CONTRACT_ASSERTION` | warning | A TypeScript assertion appears in a file importing generated database contracts. |
 | `SUPA_SCAN_CONTRACT_IMPORT_RENAME` | warning | A generated contract import was renamed locally. |
 | `SUPA_SCAN_CONTRACT_OVERRIDE_TYPES` | warning | A Supabase query response override bypasses the generated database contract. |
@@ -119,7 +120,8 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_SYNC_RUNNER_UNAVAILABLE` | error | The selected migration runner could not be launched or connected. |
 | `SUPA_SOURCE_BASELINE_REQUIRED` | error | Generation could not resolve a source-backed baseline. Pin `sources.from` or review `empty:` for a first migration. |
 | `SUPA_SOURCE_LIVE_DATABASE_FOR_GENERATION` | error | Generation was given a live database source. Use a source-backed baseline, or use inspect/verify/selfcheck/drift/sync safety for database-backed workflows. |
-| `SUPA_SOURCE_MIGRATIONS_TYPEGEN_ONLY` | error | Generation was given a `migrations:` replay source. Use it only with `supaschema types --from`; use `git:`, `dir:`, `dump:`, `catalog:`, or `empty:` for generation. |
+| `SUPA_SOURCE_MIGRATIONS_DRIFT_UNSUPPORTED` | error | Drift detection cannot use replayed migrations as a source. Use `migrations:` only as a generation before-state. |
+| `SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED` | error | Generation was given a `migrations:` replay target. Use the matching migration corpus only as `--from`; keep `--to` on a declarative or catalog source. |
 | `SUPA_SYNC_SUPABASE_CLI_CONCURRENT_COMPANION` | error | The Supabase CLI runner cannot safely apply a `.concurrent.sql` companion migration. |
 | `SUPA_SYNC_TARGET_OVERRIDE_MULTI` | error | A database URL or environment override was used while multiple sync targets were selected. |
 | `SUPA_SYNC_TARGET_UNKNOWN` | error | The selected named sync target is not configured. |

@@ -17,7 +17,7 @@ import { latestLineage, parseLineage } from "../migrations/lineage.js";
 import { migrationFileVersion, migrationsStatus } from "../migrations/status.js";
 import { pathContainsOrEqual } from "../paths.js";
 import { buildSchemaDiffPlan } from "../pipeline/diff.js";
-import { resolveGenerationSourceDefaults } from "../planner/context.js";
+import { resolveGenerationSourceDefaults, type SchemaPlanningMode } from "../planner/context.js";
 import { redactSecrets } from "../redaction.js";
 import { renderMigrationSplit } from "../render/migration.js";
 import { parseSchemaFilter } from "../source/extract.js";
@@ -145,22 +145,33 @@ function isZeroSourceDiff(options: PlanCommandOptions): boolean {
   return options.from === undefined && options.to === undefined;
 }
 
-type WithSources<T> = T & { from: string; sourceDiagnostics: Diagnostic[]; to: string };
+type WithSources<T> = T & {
+  from: string;
+  mode: SchemaPlanningMode;
+  sourceDiagnostics: Diagnostic[];
+  to: string;
+};
 
 async function withSourceDefaults<T extends PlanCommandOptions>(
   options: T,
   config: SupaschemaConfig
 ): Promise<WithSources<T>> {
-  const resolved = await resolveGenerationSourceDefaults(options, config);
+  const mode = planningMode(options);
+  const resolved = await resolveGenerationSourceDefaults({ ...options, mode }, config);
   if (resolved.notice !== undefined) {
     process.stderr.write(resolved.notice);
   }
   return {
     ...options,
     from: resolved.from,
+    mode,
     sourceDiagnostics: resolved.diagnostics,
     to: resolved.to,
   };
+}
+
+function planningMode(options: PlanCommandOptions): SchemaPlanningMode {
+  return "failOnDiff" in options && options.failOnDiff === true ? "drift" : "generation";
 }
 
 function printBlockingSourceDiagnostics(
@@ -495,14 +506,22 @@ function buildPlan(
   options: WithSources<PlanCommandOptions> & { migrationsDir?: string; replace?: string },
   config: SupaschemaConfig
 ): Promise<MigrationPlan> {
+  const replacementPath =
+    options.replace === undefined ? undefined : resolve(process.cwd(), options.replace);
   return buildSchemaDiffPlan({
     ...(options.replace === undefined ? {} : { checkMigrationBaseline: false }),
     config,
-    from: options.from,
-    ...(options.replace === undefined
+    ...(replacementPath === undefined
       ? {}
-      : { migrationContextExcludeFiles: [resolve(process.cwd(), options.replace)] }),
+      : {
+          excludeMigrationFiles: [
+            replacementPath,
+            `${stripSqlExtension(replacementPath)}.concurrent.sql`,
+          ],
+        }),
+    from: options.from,
     ...(options.migrationsDir === undefined ? {} : { migrationsDir: options.migrationsDir }),
+    mode: options.mode,
     ...(options.schema === undefined ? {} : { schema: options.schema }),
     ...(options.timing === undefined ? {} : { timing: options.timing }),
     to: options.to,
