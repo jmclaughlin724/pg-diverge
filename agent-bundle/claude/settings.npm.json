@@ -12,6 +12,7 @@
               "schema-write"
             ],
             "command": "npm",
+            "statusMessage": "Running supaschema auto-diff on schema change",
             "timeout": 130,
             "type": "command"
           }
@@ -24,6 +25,7 @@
         "hooks": [
           {
             "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guards/bash-policy-checks.mjs\"",
+            "statusMessage": "Checking general Bash safety policy",
             "timeout": 10,
             "type": "command"
           }
@@ -43,6 +45,7 @@
               "claude"
             ],
             "command": "npm",
+            "statusMessage": "Checking supaschema generated-migration policy",
             "timeout": 10,
             "type": "command"
           }

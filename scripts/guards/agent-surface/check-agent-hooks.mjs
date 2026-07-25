@@ -70,9 +70,24 @@ const removedHookPaths = [
   ".codex/hooks/context-permission-denied.mjs",
 ];
 
+function assertLabeledCommandHandlers(value, owner) {
+  const invalid = hookHandlers(value).filter(
+    (handler) =>
+      typeof handler.statusMessage !== "string" ||
+      handler.statusMessage.trim().length === 0 ||
+      handler.statusMessage !== handler.statusMessage.trim() ||
+      handler.statusMessage.includes("\n")
+  );
+  assert(
+    invalid.length === 0,
+    `${owner} command hook handlers must define a non-empty single-line statusMessage`
+  );
+}
+
 function assertClaudeSettings(claudeSettings, root) {
   const settingsText = JSON.stringify(claudeSettings);
   const claudeHandlers = hookHandlers(claudeSettings);
+  assertLabeledCommandHandlers(claudeSettings, ".claude/settings.json");
   const claudeRegisteredHookPaths = [
     ...sourceRepoClaudeRegisteredHookPaths,
     ...sourceRepoClaudeContextHooks,
@@ -221,6 +236,7 @@ function assertClaudeSettings(claudeSettings, root) {
 
 function assertCodexConfig(codexConfig, root) {
   const codexHooksJson = JSON.stringify(codexConfig);
+  assertLabeledCommandHandlers(codexConfig, ".codex/hooks.json");
   for (const hook of codexRegisteredHookPaths) {
     assert(
       codexHooksJson.includes(path.basename(hook)),
@@ -330,6 +346,20 @@ function assertCodexConfig(codexConfig, root) {
   );
 }
 
+function assertAgentBundleHookLabels(root) {
+  for (const packageManager of ["npm", "pnpm", "yarn", "bun"]) {
+    for (const [runtime, path] of [
+      ["Claude", `agent-bundle/claude/settings.${packageManager}.json`],
+      ["Codex", `agent-bundle/codex/hooks.${packageManager}.json`],
+    ]) {
+      assertLabeledCommandHandlers(
+        readJson(path, root),
+        `${runtime} ${packageManager} agent-bundle hook config`
+      );
+    }
+  }
+}
+
 export function check(root = ROOT) {
   const sourceRepoAgentRuntimeFiles = [
     ".claude/settings.json",
@@ -368,6 +398,7 @@ export function check(root = ROOT) {
 
   const codexConfig = readJson(".codex/hooks.json", root);
   assertCodexConfig(codexConfig, root);
+  assertAgentBundleHookLabels(root);
   for (const eventName of ["PreToolUse", "PostToolUse"]) {
     const entries = codexConfig.hooks?.[eventName];
     assert(Array.isArray(entries), `.codex/hooks.json missing ${eventName} entries`);

@@ -129,6 +129,7 @@ function claudeNodeHook(relativePath: string) {
   return {
     args: [`${claudeProjectDir}/${relativePath}`],
     command: "node",
+    statusMessage: `Running ${relativePath}`,
     type: "command",
   };
 }
@@ -137,6 +138,7 @@ function claudeSupaschemaHook(command: string) {
   return {
     args: [`${claudeProjectDir}/.claude/hooks/supaschema-source-hook.mjs`, "hook", command],
     command: "node",
+    statusMessage: `Running supaschema hook ${command}`,
     type: "command",
   };
 }
@@ -316,6 +318,12 @@ describe("sync:llm", () => {
     );
     expect(read(root, "agent-bundle/claude/settings.bun.json")).toContain(
       '"command": "./node_modules/.bin/supaschema"'
+    );
+    expect(read(root, "agent-bundle/claude/settings.npm.json")).toContain(
+      '"statusMessage": "Running supaschema auto-diff on schema change"'
+    );
+    expect(read(root, "agent-bundle/claude/settings.npm.json")).toContain(
+      '"statusMessage": "Checking general Bash safety policy"'
     );
     expect(read(root, "agent-bundle/codex/hooks.bun.json")).toContain(
       "./node_modules/.bin/supaschema hook generated-migration-edit --runtime codex"

@@ -25,6 +25,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-start.mjs"
             ],
+            "statusMessage": "Loading supaschema agent context",
             "timeout": 10
           }
         ]
@@ -39,6 +40,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-user-prompt-submit.mjs"
             ],
+            "statusMessage": "Checking prompt-scoped supaschema context",
             "timeout": 10
           }
         ]
@@ -54,6 +56,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-pre-tool-use.mjs"
             ],
+            "statusMessage": "Checking required supaschema context",
             "timeout": 10
           }
         ]
@@ -71,6 +74,7 @@
               "--runtime",
               "claude"
             ],
+            "statusMessage": "Checking supaschema generated-migration policy",
             "timeout": 10
           }
         ]
@@ -86,6 +90,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-post-tool-use.mjs"
             ],
+            "statusMessage": "Recording supaschema hook evidence",
             "timeout": 10
           }
         ]
@@ -101,6 +106,7 @@
               "hook",
               "schema-write"
             ],
+            "statusMessage": "Running supaschema auto-diff on schema change",
             "timeout": 130
           }
         ]
@@ -114,6 +120,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"
             ],
+            "statusMessage": "Syncing supaschema Claude agent surfaces",
             "timeout": 130
           }
         ]
@@ -129,6 +136,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-post-tool-use-failure.mjs"
             ],
+            "statusMessage": "Recording failed supaschema hook evidence",
             "timeout": 10
           }
         ]
@@ -142,6 +150,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"
             ],
+            "statusMessage": "Syncing supaschema Claude agent surfaces",
             "timeout": 130
           }
         ]
@@ -156,6 +165,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-start.mjs"
             ],
+            "statusMessage": "Loading supaschema subagent context",
             "timeout": 10
           }
         ]
@@ -168,6 +178,7 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/context-stop.mjs"],
+            "statusMessage": "Checking supaschema final-response evidence",
             "timeout": 10
           }
         ]
@@ -182,6 +193,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-stop.mjs"
             ],
+            "statusMessage": "Checking supaschema subagent closeout",
             "timeout": 10
           }
         ]
@@ -196,6 +208,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-task-completed.mjs"
             ],
+            "statusMessage": "Checking supaschema task completion",
             "timeout": 10
           }
         ]
@@ -210,6 +223,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-end.mjs"
             ],
+            "statusMessage": "Clearing supaschema agent hook state",
             "timeout": 2
           }
         ]

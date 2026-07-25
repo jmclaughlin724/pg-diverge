@@ -318,6 +318,7 @@ function claudeHookConfig(runner) {
             {
               args: [...runner.args, "hook", "schema-write"],
               command: runner.command,
+              statusMessage: "Running supaschema auto-diff on schema change",
               timeout: 130,
               type: "command",
             },
@@ -330,6 +331,7 @@ function claudeHookConfig(runner) {
           hooks: [
             {
               command: `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`,
+              statusMessage: "Checking general Bash safety policy",
               timeout: 10,
               type: "command",
             },
@@ -341,6 +343,7 @@ function claudeHookConfig(runner) {
             {
               args: [...runner.args, "hook", "generated-migration-edit", "--runtime", "claude"],
               command: runner.command,
+              statusMessage: "Checking supaschema generated-migration policy",
               timeout: 10,
               type: "command",
             },
