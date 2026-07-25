@@ -8,6 +8,7 @@ import {
   type RulePack,
   rlsPack,
   runRulePacks,
+  securityDefinerSearchPathRule,
 } from "../scan/rules.js";
 import { extractSourceModel } from "../source/extract.js";
 import { defaultTreeSource } from "../source/resolve.js";
@@ -23,6 +24,11 @@ export interface DeploySafetyGateResult {
   blockingDiagnostics: Diagnostic[];
   diagnostics: Diagnostic[];
 }
+
+const deploySafetyRlsPack: RulePack = {
+  ...rlsPack,
+  rules: rlsPack.rules.filter((rule) => rule !== securityDefinerSearchPathRule),
+};
 
 export async function scanSchemaSafety(
   config: SupaschemaConfig,
@@ -85,7 +91,7 @@ function scanRulePacks(config: SupaschemaConfig): RulePack[] {
 }
 
 function deploySafetyRulePacks(config: SupaschemaConfig): RulePack[] {
-  return [rlsPack, ...configuredRulePacks(config), grantPack];
+  return [deploySafetyRlsPack, ...configuredRulePacks(config), grantPack];
 }
 
 function configuredRulePacks(config: SupaschemaConfig): RulePack[] {

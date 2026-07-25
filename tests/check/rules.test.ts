@@ -614,6 +614,23 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
     ).toBe("warning");
   });
 
+  it("keeps the new SECURITY DEFINER scan rule out of the patch release deploy gate", async () => {
+    const source = await sqlSource(`
+CREATE SCHEMA app;
+CREATE FUNCTION app.unsafe() RETURNS int
+LANGUAGE sql SECURITY DEFINER
+AS $$ SELECT 1 $$;
+`);
+    const config = resolveConfig({ workflow: { rls_safety: "deploy_blocking" } });
+
+    const result = await runRlsSafetyGate({ config, source });
+
+    expect(result.blocked).toBe(false);
+    expect(result.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_RULE_SECDEF_SEARCH_PATH"
+    );
+  });
+
   it("promotes configured required policy-column findings to deploy-blocking errors", async () => {
     const source = await sqlSource(`
 CREATE TABLE public.accounts (id bigint PRIMARY KEY, tenant_id uuid, owner_id uuid);

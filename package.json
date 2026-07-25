@@ -110,7 +110,7 @@
     "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
   "type": "module",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Declarative PostgreSQL schema management: fast, AI-ready, and zero-config, with replay-safe migrations and generated TypeScript and Zod.",
   "keywords": [
     "ai-coding-agents",

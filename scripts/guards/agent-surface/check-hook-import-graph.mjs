@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, ok } from "../lib/assertions.js";
 import { ROOT } from "../lib/repository.js";
+import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 const roots = [".claude/hooks", ".codex/hooks", "scripts/agent-hooks"];
 const allowedBare = new Set([]);
@@ -24,52 +25,94 @@ function walk(dir) {
   return out;
 }
 
-function hookFiles(root) {
-  return roots.flatMap((r) =>
-    walk(path.join(root, r))
-      .filter((file) => file.endsWith(".mjs") || file.endsWith(".js"))
-      .map((file) => path.relative(root, file).split(path.sep).join("/"))
-  );
+export function hookFiles(root = ROOT) {
+  return roots
+    .flatMap((r) =>
+      walk(path.join(root, r))
+        .filter((file) => file.endsWith(".mjs") || file.endsWith(".js"))
+        .map((file) => path.relative(root, file).split(path.sep).join("/"))
+    )
+    .sort();
 }
 
 function importSpecifiers(file, root) {
   const source = fs.readFileSync(path.join(root, file), "utf8");
-  const out = [];
-  for (const line of source.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("import ")) {
-      const fromIndex = trimmed.indexOf(" from ");
-      const raw = fromIndex === -1 ? trimmed.slice("import ".length) : trimmed.slice(fromIndex + 6);
-      let quote = "";
-      if (raw.includes('"')) {
-        quote = '"';
-      } else if (raw.includes("'")) {
-        quote = "'";
+  const sourceFile = parseScript(source, file);
+  assert(
+    sourceFile.parseDiagnostics.length === 0,
+    `${file} has JavaScript parse diagnostics and cannot produce a complete hook import graph`
+  );
+  const specifiers = new Set();
+  forEachNode(sourceFile, (node) => {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+      const value = literalModuleSpecifier(node.moduleSpecifier);
+      if (value !== undefined) {
+        specifiers.add(value);
       }
-      if (!quote) {
-        continue;
-      }
-      const start = raw.indexOf(quote);
-      const end = raw.indexOf(quote, start + 1);
-      if (start !== -1 && end !== -1) {
-        out.push(raw.slice(start + 1, end));
+      return;
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1
+    ) {
+      const value = literalModuleSpecifier(node.arguments[0]);
+      if (value !== undefined) {
+        specifiers.add(value);
       }
     }
+  });
+  return [...specifiers].sort();
+}
+
+function literalModuleSpecifier(node) {
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
+    ? node.text
+    : undefined;
+}
+
+function relativeDependency(file, specifier, root) {
+  const target = path.resolve(path.dirname(path.join(root, file)), specifier);
+  const relativeTarget = path.relative(root, target);
+  assert(
+    relativeTarget !== ".." &&
+      !relativeTarget.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativeTarget),
+    `${file} imports outside the repository hook graph: ${specifier}`
+  );
+  assert(
+    fs.existsSync(target) && fs.statSync(target).isFile(),
+    `${file} imports missing relative hook dependency ${specifier}`
+  );
+  return relativeTarget.split(path.sep).join("/");
+}
+
+export function hookImportGraph(root = ROOT) {
+  const edges = [];
+  for (const file of hookFiles(root)) {
+    for (const specifier of importSpecifiers(file, root)) {
+      if (specifier.startsWith("node:")) {
+        edges.push({ file, kind: "builtin", specifier });
+        continue;
+      }
+      if (specifier.startsWith("./") || specifier.startsWith("../")) {
+        edges.push({
+          file,
+          kind: "relative",
+          specifier,
+          target: relativeDependency(file, specifier, root),
+        });
+        continue;
+      }
+      assert(allowedBare.has(specifier), `${file} imports non-runtime-safe module ${specifier}`);
+      edges.push({ file, kind: "bare", specifier });
+    }
   }
-  return out;
+  return edges;
 }
 
 export function check(root = ROOT) {
-  for (const file of hookFiles(root)) {
-    for (const specifier of importSpecifiers(file, root)) {
-      const allowed =
-        specifier.startsWith("node:") ||
-        specifier.startsWith("./") ||
-        specifier.startsWith("../") ||
-        allowedBare.has(specifier);
-      assert(allowed, `${file} imports non-runtime-safe module ${specifier}`);
-    }
-  }
+  hookImportGraph(root);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
