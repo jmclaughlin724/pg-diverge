@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.1 (2026-07-25)
+
+### Changes
+
+- Let `diff`, `plan`, and `sync` use the configured `migrations:` history as the generation before-state for migration-first adoption, while rejecting migration replay as a target or drift source.
+- Add scan coverage for `SECURITY DEFINER` routines that do not pin `search_path = ''`, and tighten migration checks to require the same safe posture.
+
+### Patch Changes
+
+- Stop reporting normal `EXECUTE` and other single-privilege grants as over-broad `ALL` privileges.
+- Make `diff --replace` exclude both the replaced migration and its concurrent companion from replay and source-intent context, including canonicalized paths and an empty post-exclusion history.
+- Upgrade the packaged agent bundle by removing retired package-owned sync-hook registrations, deleting only byte-identical retired scripts, preserving customized files, and recognizing quoted pnpm build approvals.
+- Align Claude and Codex hook handling with current failure and session events, fail closed on malformed input or corrupted state, resolve hooks from the repository root, and add quiet Windows command variants.
+
 ## 0.5.0 (2026-07-23)
 
 ### Breaking Changes
