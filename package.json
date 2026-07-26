@@ -1,48 +1,64 @@
 {
-  "dependencies": {
-    "commander": "^15.0.0",
-    "libpg-query": "^17.7.3",
-    "pg": "^8.21.0",
-    "pgsql-deparser": "^17.18.3",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@arethetypeswrong/cli": "^0.18.3",
-    "@ast-grep/cli": "0.44.1",
-    "@biomejs/biome": "2.5.3",
-    "@changesets/cli": "^2.31.0",
-    "@postgres-language-server/cli": "0.25.5",
-    "@taplo/cli": "0.7.0",
-    "@types/node": "^26.0.0",
-    "@types/pg": "^8.15.6",
-    "@typescript/native": "npm:typescript@7.0.2",
-    "@vitest/coverage-v8": "4.1.10",
-    "bash-language-server": "5.6.0",
-    "cclsp": "0.7.0",
-    "dockerfile-language-server-nodejs": "0.15.0",
-    "fast-check": "^4.8.0",
-    "lefthook": "^2.1.10",
-    "mdast-util-to-string": "^4.0.0",
-    "prettier": "3.9.6",
-    "publint": "^0.3.21",
-    "remark-frontmatter": "^5.0.0",
-    "remark-gfm": "^4.0.1",
-    "remark-mdx": "^3.1.1",
-    "remark-parse": "^11.0.0",
-    "sh-syntax": "^0.6.0",
-    "smol-toml": "1.7.0",
-    "sort-package-json": "^4.0.0",
-    "typescript-language-server": "5.3.0",
-    "ultracite": "7.9.3",
-    "unified": "^11.0.5",
-    "unist-util-visit": "^5.1.0",
-    "vitest": "4.1.10",
-    "vscode-langservers-extracted": "4.10.0",
-    "yaml": "^2.9.0",
-    "yaml-language-server": "1.24.0"
-  },
   "name": "supaschema",
+  "version": "0.5.2",
+  "description": "Declarative PostgreSQL schema management: fast, AI-ready, and zero-config, with replay-safe migrations and generated TypeScript and Zod.",
+  "keywords": [
+    "ai-coding-agents",
+    "database-migrations",
+    "declarative-database",
+    "declarative-schema",
+    "drift-detection",
+    "idempotent-migrations",
+    "postgres",
+    "postgres-migrations",
+    "postgres-schema",
+    "postgresql",
+    "postgresql-migrations",
+    "row-level-security",
+    "schema-diff",
+    "schema-management",
+    "supabase",
+    "supabase-migrations",
+    "typescript-types",
+    "zod"
+  ],
+  "homepage": "https://supaschema.com/docs",
+  "bugs": {
+    "url": "https://github.com/jmclaughlin724/supaschema/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jmclaughlin724/supaschema.git"
+  },
+  "license": "MIT",
+  "author": "John McLaughlin",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "supaschema": "dist/cli.js"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  },
+  "files": [
+    "agent-bundle",
+    "bin/config-contract.mjs",
+    "bin/scaffold.mjs",
+    "supaschema-config.schema.json",
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "bench:compare": "npm run build && node benchmarks/compare.js",
     "bench:plot": "node benchmarks/plot.js",
@@ -109,65 +125,6 @@
     "test:matrix:coverage": "vitest run --coverage --exclude tests/examples/project.test.ts",
     "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
-  "type": "module",
-  "version": "0.5.2",
-  "description": "Declarative PostgreSQL schema management: fast, AI-ready, and zero-config, with replay-safe migrations and generated TypeScript and Zod.",
-  "keywords": [
-    "ai-coding-agents",
-    "database-migrations",
-    "declarative-database",
-    "declarative-schema",
-    "drift-detection",
-    "idempotent-migrations",
-    "postgres",
-    "postgres-migrations",
-    "postgres-schema",
-    "postgresql",
-    "postgresql-migrations",
-    "row-level-security",
-    "schema-diff",
-    "schema-management",
-    "supabase",
-    "supabase-migrations",
-    "typescript-types",
-    "zod"
-  ],
-  "homepage": "https://supaschema.com/docs",
-  "bugs": {
-    "url": "https://github.com/jmclaughlin724/supaschema/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/jmclaughlin724/supaschema.git"
-  },
-  "license": "MIT",
-  "author": "John McLaughlin",
-  "sideEffects": false,
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "bin": {
-    "supaschema": "dist/cli.js"
-  },
-  "directories": {
-    "doc": "docs",
-    "example": "examples",
-    "test": "tests"
-  },
-  "files": [
-    "agent-bundle",
-    "bin/config-contract.mjs",
-    "bin/scaffold.mjs",
-    "supaschema-config.schema.json",
-    "dist",
-    "LICENSE",
-    "README.md"
-  ],
   "overrides": {
     "@hono/node-server": "^2.0.5",
     "@typescript/old": "npm:typescript@6.0.2",
@@ -176,6 +133,49 @@
     },
     "minimatch": "10.2.5",
     "read-yaml-file": "2.1.0"
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "libpg-query": "^17.7.3",
+    "pg": "^8.21.0",
+    "pgsql-deparser": "^17.18.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.3",
+    "@ast-grep/cli": "0.45.0",
+    "@biomejs/biome": "2.5.5",
+    "@changesets/cli": "^2.31.0",
+    "@postgres-language-server/cli": "0.25.6",
+    "@taplo/cli": "0.7.0",
+    "@types/node": "^26.0.0",
+    "@types/pg": "^8.15.6",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "@vitest/coverage-v8": "4.1.10",
+    "bash-language-server": "5.6.0",
+    "cclsp": "0.7.0",
+    "dockerfile-language-server-nodejs": "0.15.0",
+    "fast-check": "^4.8.0",
+    "lefthook": "^2.1.10",
+    "mdast-util-to-string": "^4.0.0",
+    "prettier": "3.9.6",
+    "publint": "^0.3.21",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
+    "sh-syntax": "^0.6.0",
+    "smol-toml": "1.7.0",
+    "sort-package-json": "^4.0.0",
+    "typescript-language-server": "5.3.0",
+    "ultracite": "7.9.4",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0",
+    "vitest": "4.1.10",
+    "vscode-langservers-extracted": "4.10.0",
+    "yaml": "^2.9.0",
+    "yaml-language-server": "1.24.0"
   },
   "engines": {
     "node": ">=22.12.0"

@@ -12,12 +12,12 @@ import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 const toolPins = {
-  "@biomejs/biome": "2.5.3",
+  "@biomejs/biome": "2.5.5",
   "@typescript/native": "npm:typescript@7.0.2",
   "@vitest/coverage-v8": "4.1.10",
   cclsp: "0.7.0",
   prettier: "3.9.6",
-  ultracite: "7.9.3",
+  ultracite: "7.9.4",
   vitest: "4.1.10",
 };
 const allowedRootDisabledBiomeRules = new Set([
@@ -494,9 +494,10 @@ export function check(root = ROOT) {
     !("prepare" in packageJson.scripts),
     "package.json must not install maintainer hooks through a lifecycle script"
   );
+  const biomeSchemaVersion = toolPins["@biomejs/biome"];
   assert(
-    biome.$schema === "https://biomejs.dev/schemas/2.5.3/schema.json",
-    "biome.jsonc must use the Biome 2.5.3 schema"
+    biome.$schema === `https://biomejs.dev/schemas/${biomeSchemaVersion}/schema.json`,
+    `biome.jsonc must use the Biome ${biomeSchemaVersion} schema`
   );
   const expectedBiomePresets = [
     "ultracite/biome/core",

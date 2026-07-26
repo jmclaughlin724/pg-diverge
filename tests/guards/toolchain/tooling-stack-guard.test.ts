@@ -56,12 +56,12 @@ function validPackage() {
       typescript: "npm:@typescript/typescript6@6.0.2",
     },
     devDependencies: {
-      "@biomejs/biome": "2.5.3",
+      "@biomejs/biome": "2.5.5",
       "@typescript/native": "npm:typescript@7.0.2",
       "@vitest/coverage-v8": "4.1.10",
       cclsp: "0.7.0",
       prettier: "3.9.6",
-      ultracite: "7.9.3",
+      ultracite: "7.9.4",
       vitest: "4.1.10",
     },
     files: ["agent-bundle", "bin/config-contract.mjs", "bin/scaffold.mjs"],
@@ -99,7 +99,7 @@ function validPackage() {
 function validFiles() {
   return {
     "biome.jsonc": JSON.stringify({
-      $schema: "https://biomejs.dev/schemas/2.5.3/schema.json",
+      $schema: "https://biomejs.dev/schemas/2.5.5/schema.json",
       extends: biomePresets,
       files: {
         includes: [

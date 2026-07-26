@@ -426,24 +426,22 @@ describe("init project setup", () => {
       migrationsDir: "azure-postgresql/migrations",
       schemaPath: "azure-postgresql/schemas",
     },
-  ])("uses $id paths when provider config markers are present", async ({
-    marker,
-    markerContent,
-    migrationsDir,
-    schemaPath,
-  }) => {
-    const consumer = await mkdtemp(join(tmpdir(), "supa-init-provider-"));
-    await mkdir(dirname(join(consumer, marker)), { recursive: true });
-    await writeFile(join(consumer, marker), markerContent);
+  ])(
+    "uses $id paths when provider config markers are present",
+    async ({ marker, markerContent, migrationsDir, schemaPath }) => {
+      const consumer = await mkdtemp(join(tmpdir(), "supa-init-provider-"));
+      await mkdir(dirname(join(consumer, marker)), { recursive: true });
+      await writeFile(join(consumer, marker), markerContent);
 
-    await runScaffold(consumer);
+      await runScaffold(consumer);
 
-    const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
-    expect(config).toEqual(expectedInstalledConfig(schemaPath, migrationsDir));
-    expect(existsSync(join(consumer, schemaPath))).toBe(true);
-    expect(existsSync(join(consumer, migrationsDir))).toBe(true);
-    expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
-  });
+      const config = JSON.parse(await readFile(join(consumer, "supaschema.config.json"), "utf8"));
+      expect(config).toEqual(expectedInstalledConfig(schemaPath, migrationsDir));
+      expect(existsSync(join(consumer, schemaPath))).toBe(true);
+      expect(existsSync(join(consumer, migrationsDir))).toBe(true);
+      expect(existsSync(join(consumer, ".supaschema"))).toBe(false);
+    }
+  );
 
   it("preserves existing config and consumer-owned agent surfaces", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-existing-"));

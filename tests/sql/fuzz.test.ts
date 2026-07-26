@@ -119,52 +119,56 @@ const strictKinds = new Set([
 
 describe.skipIf(!databaseUrl)("seeded round-trip fuzz", () => {
   const seeds = [11, 42, 1337, 2026, 90_210];
-  it.each(
-    seeds
-  )("round-trips generated tree (seed %i) through a live catalog without false changes", {
-    timeout: 60_000,
-  }, async (seed) => {
-    if (!databaseUrl) {
-      return;
-    }
-    const sql = generateTree(seed);
-    const extracted = await extractObjectsFromSql(sql, { config: { managedSchemas: [] } });
-    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-    const dir: SchemaModel = {
-      diagnostics: [],
-      fingerprint: `fuzz:${seed}`,
-      objects: extracted.objects,
-      source: `fuzz:${seed}`,
-    };
-    const admin = new Client({ connectionString: databaseUrl });
-    await admin.connect();
-    const databaseName = `supaschema_fuzz_${seed}_${process.pid}`;
-    try {
-      await admin.query(`CREATE DATABASE "${databaseName}"`);
-      const url = new URL(databaseUrl);
-      url.pathname = `/${databaseName}`;
-      const client = new Client({ connectionString: url.toString() });
-      await client.connect();
-      try {
-        for (const statement of splitSqlStatements(sql)) {
-          await client.query(statement);
-        }
-      } finally {
-        await client.end();
+  it.each(seeds)(
+    "round-trips generated tree (seed %i) through a live catalog without false changes",
+    {
+      timeout: 60_000,
+    },
+    async (seed) => {
+      if (!databaseUrl) {
+        return;
       }
-      const live = await extractCatalogModel({ databaseUrl: url.toString() });
-      expect(live.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-      const plan = planSchemaDiff(live, dir, { config: { managedSchemas: [] } });
-      const falseChanges = plan.operations
-        .filter((operation) => operation.kind !== "drop")
-        .filter((operation) => strictKinds.has(operation.ref.kind))
-        .map((operation) => `${operation.kind}:${operation.key}`);
-      expect(falseChanges, `seed ${seed} drifted`).toEqual([]);
-    } finally {
-      await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`).catch((error) => {
-        console.error(`fuzz cleanup failed for ${databaseName}`, error);
-      });
-      await admin.end();
+      const sql = generateTree(seed);
+      const extracted = await extractObjectsFromSql(sql, { config: { managedSchemas: [] } });
+      expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+      const dir: SchemaModel = {
+        diagnostics: [],
+        fingerprint: `fuzz:${seed}`,
+        objects: extracted.objects,
+        source: `fuzz:${seed}`,
+      };
+      const admin = new Client({ connectionString: databaseUrl });
+      await admin.connect();
+      const databaseName = `supaschema_fuzz_${seed}_${process.pid}`;
+      try {
+        await admin.query(`CREATE DATABASE "${databaseName}"`);
+        const url = new URL(databaseUrl);
+        url.pathname = `/${databaseName}`;
+        const client = new Client({ connectionString: url.toString() });
+        await client.connect();
+        try {
+          for (const statement of splitSqlStatements(sql)) {
+            await client.query(statement);
+          }
+        } finally {
+          await client.end();
+        }
+        const live = await extractCatalogModel({ databaseUrl: url.toString() });
+        expect(live.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+        const plan = planSchemaDiff(live, dir, { config: { managedSchemas: [] } });
+        const falseChanges = plan.operations
+          .filter((operation) => operation.kind !== "drop")
+          .filter((operation) => strictKinds.has(operation.ref.kind))
+          .map((operation) => `${operation.kind}:${operation.key}`);
+        expect(falseChanges, `seed ${seed} drifted`).toEqual([]);
+      } finally {
+        await admin
+          .query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
+          .catch((error) => {
+            console.error(`fuzz cleanup failed for ${databaseName}`, error);
+          });
+        await admin.end();
+      }
     }
-  });
+  );
 });

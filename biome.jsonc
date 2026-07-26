@@ -4,7 +4,7 @@
     "ultracite/biome/type-aware",
     "ultracite/biome/vitest"
   ],
-  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.5/schema.json",
   "root": true,
   "vcs": {
     "enabled": true,

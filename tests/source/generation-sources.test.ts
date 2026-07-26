@@ -332,32 +332,33 @@ describe("generation source planning", () => {
     expect(pgState.clientConstructions).toBe(0);
   });
 
-  it.each(
-    generationCommandCases
-  )("accepts a matching migrations replay before-state through $command", async ({ command }) => {
-    const fixture = await createFixture();
-    await writeFile(
-      join(fixture.root, "schemas", "app.sql"),
-      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\nCREATE TABLE app.profiles (id bigint PRIMARY KEY);\n"
-    );
-    const migrationsSource = `migrations:${join(fixture.root, "migrations")}`;
-    const diagnostics = await runGenerationCommand({
-      command,
-      config: {
-        ...fixture.config,
-        migrationsDir: join(fixture.root, "migrations"),
-        schemaPaths: [join(fixture.root, "schemas")],
-      },
-      from: migrationsSource,
-      to: `dir:${join(fixture.root, "schemas")}`,
-    });
+  it.each(generationCommandCases)(
+    "accepts a matching migrations replay before-state through $command",
+    async ({ command }) => {
+      const fixture = await createFixture();
+      await writeFile(
+        join(fixture.root, "schemas", "app.sql"),
+        "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\nCREATE TABLE app.profiles (id bigint PRIMARY KEY);\n"
+      );
+      const migrationsSource = `migrations:${join(fixture.root, "migrations")}`;
+      const diagnostics = await runGenerationCommand({
+        command,
+        config: {
+          ...fixture.config,
+          migrationsDir: join(fixture.root, "migrations"),
+          schemaPaths: [join(fixture.root, "schemas")],
+        },
+        from: migrationsSource,
+        to: `dir:${join(fixture.root, "schemas")}`,
+      });
 
-    expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-    expect(process.exitCode ?? 0).toBe(0);
-    expect(pgState.poolConstructions).toBe(0);
-    expect(pgState.poolEndCalls).toBe(0);
-    expect(pgState.clientConstructions).toBe(0);
-  });
+      expect(diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+      expect(process.exitCode ?? 0).toBe(0);
+      expect(pgState.poolConstructions).toBe(0);
+      expect(pgState.poolEndCalls).toBe(0);
+      expect(pgState.clientConstructions).toBe(0);
+    }
+  );
 
   it("rejects migrations replay as a diff --fail-on-diff source", async () => {
     const fixture = await createFixture();
@@ -399,68 +400,72 @@ describe("generation source planning", () => {
     expect(context.from).toBeUndefined();
   });
 
-  it.each(generationCommandCases)("rejects migrations replay as the $command target", async ({
-    command,
-  }) => {
-    const fixture = await createFixture();
-    const migrationsSource = `migrations:${join(fixture.root, "migrations")}`;
-    const diagnostics = await runGenerationCommand({
-      command,
-      config: fixture.config,
-      from: databaseSource(),
-      to: migrationsSource,
-    });
+  it.each(generationCommandCases)(
+    "rejects migrations replay as the $command target",
+    async ({ command }) => {
+      const fixture = await createFixture();
+      const migrationsSource = `migrations:${join(fixture.root, "migrations")}`;
+      const diagnostics = await runGenerationCommand({
+        command,
+        config: fixture.config,
+        from: databaseSource(),
+        to: migrationsSource,
+      });
 
-    expect(process.exitCode).toBe(2);
-    expect(diagnostics.map((item) => item.code)).toEqual([
-      "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
-    ]);
-    expect(pgState.poolConstructions).toBe(0);
-    expect(pgState.poolEndCalls).toBe(0);
-    expect(pgState.clientConstructions).toBe(0);
-  });
+      expect(process.exitCode).toBe(2);
+      expect(diagnostics.map((item) => item.code)).toEqual([
+        "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
+      ]);
+      expect(pgState.poolConstructions).toBe(0);
+      expect(pgState.poolEndCalls).toBe(0);
+      expect(pgState.clientConstructions).toBe(0);
+    }
+  );
 
   it.each([{ reverse: false }, { reverse: true }] satisfies {
     reverse: boolean;
-  }[])("rejects migrations replay through no-target sync with reverse=$reverse", async ({
-    reverse,
-  }) => {
-    const fixture = await createFixture();
-    const migrationsDirectory = join(fixture.root, "migrations");
-    const outputDirectory = join(fixture.root, "output-migrations");
-    await mkdir(outputDirectory);
-    const database = databaseSource();
-    const migrations = `migrations:${migrationsDirectory}`;
-    const from = reverse ? migrations : database;
-    const to = reverse ? database : migrations;
-    const result = await syncMigrations({
-      config: {
-        migrationsDir: outputDirectory,
-        schemaPaths: [join(fixture.root, "schemas")],
-        sync: { targets: {} },
-        workflow: {
-          migration_sync: "manual",
-          rls_safety: "disabled",
-          type_generation: "disabled",
-          type_safety: "disabled",
-          zod_generation: "disabled",
+  }[])(
+    "rejects migrations replay through no-target sync with reverse=$reverse",
+    async ({ reverse }) => {
+      const fixture = await createFixture();
+      const migrationsDirectory = join(fixture.root, "migrations");
+      const outputDirectory = join(fixture.root, "output-migrations");
+      await mkdir(outputDirectory);
+      const database = databaseSource();
+      const migrations = `migrations:${migrationsDirectory}`;
+      const from = reverse ? migrations : database;
+      const to = reverse ? database : migrations;
+      const result = await syncMigrations({
+        config: {
+          migrationsDir: outputDirectory,
+          schemaPaths: [join(fixture.root, "schemas")],
+          sync: { targets: {} },
+          workflow: {
+            migration_sync: "manual",
+            rls_safety: "disabled",
+            type_generation: "disabled",
+            type_safety: "disabled",
+            zod_generation: "disabled",
+          },
         },
-      },
-      directory: outputDirectory,
-      from,
-      pipeline: true,
-      to,
-    });
+        directory: outputDirectory,
+        from,
+        pipeline: true,
+        to,
+      });
 
-    expect(result.applied).toBe(false);
-    expect(
-      result.diagnostics.filter((item) => item.severity === "error").map((item) => item.code)
-    ).toEqual([
-      reverse ? "SUPA_MIGRATION_BASELINE_UNSUPPORTED" : "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
-    ]);
-    expect(result.report).toContain("generation source resolution failed");
-    expect(pgState.poolConstructions).toBe(0);
-    expect(pgState.poolEndCalls).toBe(0);
-    expect(pgState.clientConstructions).toBe(0);
-  });
+      expect(result.applied).toBe(false);
+      expect(
+        result.diagnostics.filter((item) => item.severity === "error").map((item) => item.code)
+      ).toEqual([
+        reverse
+          ? "SUPA_MIGRATION_BASELINE_UNSUPPORTED"
+          : "SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED",
+      ]);
+      expect(result.report).toContain("generation source resolution failed");
+      expect(pgState.poolConstructions).toBe(0);
+      expect(pgState.poolEndCalls).toBe(0);
+      expect(pgState.clientConstructions).toBe(0);
+    }
+  );
 });

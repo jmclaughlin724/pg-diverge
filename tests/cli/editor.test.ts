@@ -68,7 +68,9 @@ describe("public agent and editor surfaces", () => {
       expect(files, file).not.toContain(file);
     }
     expect(ignoredFiles(privateFiles.filter((file) => existsSync(resolve(root, file))))).toEqual(
-      privateFiles.filter((file) => existsSync(resolve(root, file))).sort()
+      privateFiles
+        .filter((file) => existsSync(resolve(root, file)))
+        .sort((left, right) => left.localeCompare(right))
     );
     expect(stageableFiles(privateFiles)).toEqual([]);
     expect(existsSync(resolve(root, "cclsp.json"))).toBe(true);

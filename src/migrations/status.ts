@@ -126,7 +126,9 @@ export async function migrationsStatus(
       report.outOfOrder.push(file);
     }
   }
-  report.ghosts = [...appliedVersions].filter((version) => !diskVersions.has(version)).sort();
+  report.ghosts = [...appliedVersions]
+    .filter((version) => !diskVersions.has(version))
+    .sort((left, right) => left.localeCompare(right));
   await annotateLineage(options.directory, report);
   diagnostics.push(...classifyStaleBaselines(report, options.currentFingerprints));
   if (report.ghosts.length > 0) {
@@ -194,7 +196,7 @@ export function migrationFileVersions(files: string[]): string[] {
   return files
     .map((file) => migrationFileVersion(file))
     .filter((version): version is string => version !== undefined)
-    .sort();
+    .sort((left, right) => left.localeCompare(right));
 }
 
 export function compareMigrationHistory(
@@ -207,7 +209,9 @@ export function compareMigrationHistory(
   return {
     expectedAppliedVersions: expected,
     missingExpectedVersions: expected.filter((version) => !applied.has(version)),
-    unexpectedAppliedVersions: [...applied].filter((version) => !expectedSet.has(version)).sort(),
+    unexpectedAppliedVersions: [...applied]
+      .filter((version) => !expectedSet.has(version))
+      .sort((left, right) => left.localeCompare(right)),
   };
 }
 

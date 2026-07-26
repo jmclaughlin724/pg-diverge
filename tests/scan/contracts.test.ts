@@ -268,7 +268,9 @@ describe("generated contract usage scan", () => {
       root: "src",
     });
 
-    expect(diagnostics.map((item) => item.code).sort()).toEqual([
+    expect(
+      diagnostics.map((item) => item.code).sort((left, right) => left.localeCompare(right))
+    ).toEqual([
       "SUPA_SCAN_CONTRACT_ASSERTION",
       "SUPA_SCAN_CONTRACT_IMPORT_RENAME",
       "SUPA_SCAN_CONTRACT_OVERRIDE_TYPES",

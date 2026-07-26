@@ -37,10 +37,12 @@ export async function scoreDiffOutput(
 ): Promise<DiffOutputScore> {
   const collected = await collectDiffOutputKeys(sql);
   const manifestKeys = new Set(manifest.map((entry) => entry.key));
-  const missed = [...manifestKeys].filter((key) => !collected.emittedKeys.has(key)).sort();
+  const missed = [...manifestKeys]
+    .filter((key) => !collected.emittedKeys.has(key))
+    .sort((left, right) => left.localeCompare(right));
   const excess = [...collected.emittedKeys]
     .filter((key) => !manifestKeys.has(key) || collected.destructiveKeys.has(key))
-    .sort();
+    .sort((left, right) => left.localeCompare(right));
   const matched = manifestKeys.size - missed.length;
   const recall = manifestKeys.size === 0 ? 1 : matched / manifestKeys.size;
   const precision =

@@ -13,20 +13,18 @@ describe("canonical surfaces guard", () => {
     await expect(check(root)).rejects.toThrow("package script clean uses recursive force deletion");
   });
 
-  it.each([
-    "install",
-    "postinstall",
-    "preinstall",
-    "prepare",
-  ])("blocks public package lifecycle script %s", async (script) => {
-    const root = tempGuardRepo({
-      "package.json": packageJson({ [script]: "node scripts/check.mjs" }),
-      "scripts/check.mjs": "process.stdout.write('ok\\n');\n",
-    });
-    await expect(check(root)).rejects.toThrow(
-      `package script ${script} is a public install lifecycle`
-    );
-  });
+  it.each(["install", "postinstall", "preinstall", "prepare"])(
+    "blocks public package lifecycle script %s",
+    async (script) => {
+      const root = tempGuardRepo({
+        "package.json": packageJson({ [script]: "node scripts/check.mjs" }),
+        "scripts/check.mjs": "process.stdout.write('ok\\n');\n",
+      });
+      await expect(check(root)).rejects.toThrow(
+        `package script ${script} is a public install lifecycle`
+      );
+    }
+  );
 
   it("blocks comments in code files", async () => {
     const root = tempGuardRepo({ "src/commented.ts": "const value = 1;\n// explain elsewhere\n" });
