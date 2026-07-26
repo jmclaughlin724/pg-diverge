@@ -541,6 +541,59 @@ describe.skipIf(!hasClaudeSessionStartHook)("Claude SessionStart input contract"
     expect(hookAdditionalContext(result.stdout)).toContain("Agent hook layer active");
     expect((await sessionState(stateDir)).contextEpoch).toBe(0);
   });
+
+  it("accepts the documented startup payload that omits permission_mode", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-claude-session-start-startup-"));
+    const result = await runHook(
+      ".claude/hooks/context-session-start.mjs",
+      {
+        cwd: process.cwd(),
+        hook_event_name: "SessionStart",
+        model: "claude-opus-5",
+        session_id: "claude-startup-contract",
+        source: "startup",
+        transcript_path: null,
+      },
+      {
+        env: {
+          ...withoutCodexProjectDir(),
+          CLAUDE_PROJECT_DIR: process.cwd(),
+          STATE_DIR: stateDir,
+        },
+      }
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).not.toContain("Agent hook failed closed.");
+    expect(hookAdditionalContext(result.stdout)).toContain("Agent hook layer active");
+  });
+
+  it("still rejects a permission_mode value outside the documented Claude set", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-claude-session-start-invalid-"));
+    const result = await runHook(
+      ".claude/hooks/context-session-start.mjs",
+      {
+        cwd: process.cwd(),
+        hook_event_name: "SessionStart",
+        permission_mode: "unsupported",
+        session_id: "claude-invalid-mode-contract",
+        source: "startup",
+        transcript_path: null,
+      },
+      {
+        env: {
+          ...withoutCodexProjectDir(),
+          CLAUDE_PROJECT_DIR: process.cwd(),
+          STATE_DIR: stateDir,
+        },
+      }
+    );
+
+    expect(result.code).toBe(0);
+    expect(hookOutput(result.stdout).systemMessage).toContain("Agent hook failed closed.");
+    expect(await readdir(stateDir)).toEqual([]);
+  });
 });
 
 describe.skipIf(!hasClaudePostToolUseFailureHook)(

@@ -282,13 +282,20 @@ function validateSessionStartPayload(payload, runtime) {
   if (runtime === "codex") {
     requireNonEmptyString(payload, "model");
   }
-  const permissionModes = runtime === "claude" ? claudePermissionModes : codexPermissionModes;
-  if (!permissionModes.has(payload.permission_mode)) {
-    throw new Error('hook input field "permission_mode" has an unsupported value');
-  }
+  requirePermissionMode(payload, runtime);
   const sources = runtime === "claude" ? claudeSessionStartSources : codexSessionStartSources;
   if (!sources.has(payload.source)) {
     throw new Error('hook input field "source" has an unsupported value');
+  }
+}
+
+function requirePermissionMode(payload, runtime) {
+  if (runtime === "claude" && payload.permission_mode === undefined) {
+    return;
+  }
+  const permissionModes = runtime === "claude" ? claudePermissionModes : codexPermissionModes;
+  if (!permissionModes.has(payload.permission_mode)) {
+    throw new Error('hook input field "permission_mode" has an unsupported value');
   }
 }
 
