@@ -169,6 +169,7 @@
     "README.md"
   ],
   "overrides": {
+    "@hono/node-server": "^2.0.5",
     "@typescript/old": "npm:typescript@6.0.2",
     "cclsp": {
       "typescript": "$typescript"
