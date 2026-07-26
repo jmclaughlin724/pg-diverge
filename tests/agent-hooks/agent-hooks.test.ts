@@ -1253,6 +1253,68 @@ describe("general Bash blocker policy", () => {
       expect(codexDenial(blocked.stdout), command).toContain("BLOCKED:");
     }
   });
+
+  it.each([
+    "git submodule add https://example.com/lib.git vendor/lib",
+    "git submodule update --init",
+    "git submodule update --init --recursive",
+    "git submodule update --checkout",
+    "git submodule sync",
+    "git submodule sync --recursive",
+    "git submodule absorbgitdirs",
+    "git submodule set-branch -b main vendor/lib",
+  ])(
+    "blocks submodule checkout-creating or mutating form through the source Codex context hook path: %s",
+    async (command) => {
+      const blocked = await runHook(sourceCodexScript, preToolBash(command));
+      expect(blocked.code, command).toBe(0);
+      expect(codexDenial(blocked.stdout), command).toContain("BLOCKED:");
+    }
+  );
+
+  it.each([
+    "git submodule add https://example.com/lib.git vendor/lib",
+    "git submodule update --init",
+    "git submodule update --init --recursive",
+    "git submodule update --checkout",
+    "git submodule sync",
+    "git submodule sync --recursive",
+    "git submodule absorbgitdirs",
+    "git submodule set-branch -b main vendor/lib",
+  ])(
+    "blocks submodule checkout-creating or mutating form through the source Claude context hook path: %s",
+    async (command) => {
+      const blocked = await runHook(sourceClaudeScript, preToolBash(command));
+      expect(blocked.code, command).toBe(0);
+      expect(codexDenial(blocked.stdout), command).toContain("BLOCKED:");
+    }
+  );
+
+  it.each(["git submodule status", "git submodule status --recursive"])(
+    "allows read-only git submodule status through the source Codex context hook path: %s",
+    async (command) => {
+      const allowed = await runHook(sourceCodexScript, preToolBash(command));
+      expect(allowed.code, command).toBe(0);
+      expect(codexDenial(allowed.stdout), command).toBeUndefined();
+    }
+  );
+
+  it.each(["git submodule status", "git submodule status --recursive"])(
+    "allows read-only git submodule status through the source Claude context hook path: %s",
+    async (command) => {
+      const allowed = await runHook(sourceClaudeScript, preToolBash(command));
+      expect(allowed.code, command).toBe(0);
+      expect(codexDenial(allowed.stdout), command).toBeUndefined();
+    }
+  );
+
+  it("known limitation A7: git newbranch is allowed because a git alias configured in ~/.gitconfig or .git/config outside the invoked command is invisible to this hook", async () => {
+    const result = await runHook(
+      claudeScript,
+      preToolBash("git newbranch feature/demo origin/main")
+    );
+    expect(result.code).toBe(0);
+  });
 });
 
 describe("llm surface sync hook", () => {

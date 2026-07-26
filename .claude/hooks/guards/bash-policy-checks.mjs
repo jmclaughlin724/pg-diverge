@@ -243,12 +243,18 @@ function checkActiveBranchBypass(subcommand, gitArgs, options) {
       "BLOCKED: mutating Git HEAD through symbolic-ref bypasses the active-branch boundary. Use an explicitly authorized `git switch` form."
     );
   }
-  if (subcommand === "submodule" && gitArgs[1] === "add") {
+  if (subcommand === "submodule" && isGitSubmoduleCheckoutMutation(gitArgs)) {
     return block(
-      "BLOCKED: adding a Git submodule creates another checkout. All work must remain in this repository checkout."
+      "BLOCKED: this git submodule form can create or mutate another checkout. All work must remain in this repository checkout. Use `git submodule status` for read-only inspection."
     );
   }
   return allowResult();
+}
+
+const readOnlyGitSubmoduleSubcommands = new Set(["status"]);
+
+function isGitSubmoduleCheckoutMutation(gitArgs) {
+  return !readOnlyGitSubmoduleSubcommands.has(gitArgs[1] ?? "");
 }
 
 function checkGitConfig(args) {
