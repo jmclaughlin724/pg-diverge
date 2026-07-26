@@ -1,6 +1,13 @@
 import { resolveConfig } from "../config/schema.js";
 import { diagnostic } from "../diagnostics/diagnostics.js";
 import { sha256, stableJson } from "../hash.js";
+import {
+  grantTargetIdentity,
+  isCommentForRefs,
+  isGrantForTargets,
+  refIdentity,
+  tableRefIdentity,
+} from "../sql/dependents.js";
 import type { RoutineDependencyConfidence } from "../sql/routine-dependencies.js";
 import type {
   Diagnostic,
@@ -187,7 +194,7 @@ function droppedObjectContext(
       continue;
     }
     rememberAffectedRef(context.affectedRefs, object.ref);
-    const identity = grantTargetIdentity(object);
+    const identity = grantTargetIdentity(object.ref);
     if (identity !== undefined) {
       context.grantTargetIdentities.add(identity);
     }
@@ -200,34 +207,10 @@ function droppedObjectContext(
 
 function isObjectDroppedWithOwner(object: SchemaObject, context: DroppedObjectContext): boolean {
   return (
-    isGrantForDroppedTarget(object, context.grantTargetIdentities) ||
+    isGrantForTargets(object, context.grantTargetIdentities) ||
     isCommentDependent(object, context.affectedRefs) ||
     isRelationStateForDroppedOwner(object, context.relationIdentities)
   );
-}
-
-function isGrantForDroppedTarget(
-  object: SchemaObject,
-  droppedTargetIdentities: ReadonlySet<string>
-): boolean {
-  if (object.ref.kind !== "grant" && object.ref.kind !== "default-privilege") {
-    return false;
-  }
-  const targetIdentity = object.metadata.targetIdentity;
-  return typeof targetIdentity === "string" && droppedTargetIdentities.has(targetIdentity);
-}
-
-function grantTargetIdentity(object: SchemaObject): string | undefined {
-  if (object.ref.kind === "schema") {
-    return object.ref.name;
-  }
-  if (object.ref.kind === "function" || object.ref.kind === "procedure") {
-    return `${object.ref.schema ?? "public"}.${object.ref.name}(${object.ref.signature ?? ""})`;
-  }
-  if (object.ref.kind === "grant" || object.ref.kind === "default-privilege") {
-    return;
-  }
-  return `${object.ref.schema ?? "public"}.${object.ref.name}`;
 }
 
 function isRelationOwner(ref: ObjectRef): boolean {
@@ -830,70 +813,7 @@ function isCommentDependent(
   object: SchemaObject,
   affectedRefs: ReadonlyMap<string, ObjectRef>
 ): boolean {
-  if (object.ref.kind !== "comment" || typeof object.metadata.descriptor !== "string") {
-    return false;
-  }
-  for (const ref of affectedRefs.values()) {
-    if (commentTargetsRef(object.metadata.descriptor, ref)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function commentTargetsRef(descriptor: string, ref: ObjectRef): boolean {
-  const schema = ref.schema ?? "public";
-  const identity = `${schema}.${ref.name}`;
-  switch (ref.kind) {
-    case "table":
-      return descriptor === `table ${identity}` || descriptor.startsWith(`column ${identity}.`);
-    case "foreign-table":
-      return (
-        descriptor === `foreign table ${identity}` || descriptor.startsWith(`column ${identity}.`)
-      );
-    case "view":
-      return descriptor === `view ${identity}` || descriptor.startsWith(`column ${identity}.`);
-    case "materialized-view":
-      return (
-        descriptor === `materialized view ${identity}` ||
-        descriptor.startsWith(`column ${identity}.`)
-      );
-    case "constraint":
-      return descriptor === `constraint ${tableRefIdentity(ref)}.${ref.name}`;
-    case "index":
-      return descriptor === `index ${identity}`;
-    case "schema":
-      return descriptor === `schema ${ref.name}`;
-    case "extension":
-      return descriptor === `extension ${ref.name}`;
-    case "sequence":
-      return descriptor === `sequence ${identity}`;
-    case "function":
-      return descriptor === `function ${identity}(${ref.signature ?? ""})`;
-    case "procedure":
-      return descriptor === `procedure ${identity}(${ref.signature ?? ""})`;
-    case "type":
-      return descriptor === `type ${identity}`;
-    case "domain":
-      return descriptor === `domain ${identity}`;
-    case "policy":
-      return descriptor === `policy ${tableRefIdentity(ref)}.${ref.name}`;
-    case "trigger":
-      return descriptor === `trigger ${tableRefIdentity(ref)}.${ref.name}`;
-    default:
-      return false;
-  }
-}
-
-function refIdentity(ref: ObjectRef): string {
-  if (ref.kind === "schema") {
-    return ref.name;
-  }
-  return `${ref.schema ?? "public"}.${ref.name}`;
-}
-
-function tableRefIdentity(ref: ObjectRef): string | undefined {
-  return ref.table ? `${ref.schema ?? "public"}.${ref.table}` : undefined;
+  return isCommentForRefs(object, affectedRefs.values());
 }
 
 function preDropKey(key: string): string {

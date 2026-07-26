@@ -17,6 +17,12 @@ import {
   readBoolean,
   readString,
 } from "../sql/ast.js";
+import {
+  grantTargetIdentity,
+  isCommentForRefs,
+  isGrantForTargets,
+  relationOwnerKinds,
+} from "../sql/dependents.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
 import { finalizeObjects } from "../sql/facts.js";
 import { objectKey } from "../sql/identifiers.js";
@@ -2444,11 +2450,33 @@ function removeOwnedObjectsAfterDrop(
 ): ObjectRef[] {
   const removed: ObjectRef[] = [];
   for (const ref of refs) {
-    if (ref.kind === "table" || ref.kind === "foreign-table") {
+    if (relationOwnerKinds.has(ref.kind)) {
       removed.push(...removeTableOwnedObjects(objects, ref));
     }
     if (ref.kind === "schema") {
       removed.push(...removeSchemaObjects(objects, ref.name));
+    }
+  }
+  removed.push(...removeAttachedDependents(objects, [...refs, ...removed]));
+  return removed;
+}
+
+function removeAttachedDependents(
+  objects: Map<string, SchemaObject>,
+  refs: ObjectRef[]
+): ObjectRef[] {
+  const targetIdentities = new Set<string>();
+  for (const ref of refs) {
+    const identity = grantTargetIdentity(ref);
+    if (identity !== undefined) {
+      targetIdentities.add(identity);
+    }
+  }
+  const removed: ObjectRef[] = [];
+  for (const [key, object] of [...objects]) {
+    if (isGrantForTargets(object, targetIdentities) || isCommentForRefs(object, refs)) {
+      objects.delete(key);
+      removed.push(object.ref);
     }
   }
   return removed;

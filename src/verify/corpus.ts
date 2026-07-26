@@ -14,7 +14,7 @@ import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { planSchemaDiff } from "../planner/schema.js";
 import { renderMigrationSplit } from "../render/migration.js";
 import { extractSourceModel } from "../source/extract.js";
-import type { Diagnostic, SupaschemaConfig } from "../types.js";
+import type { Diagnostic, SchemaModel, SupaschemaConfig } from "../types.js";
 
 export interface CorpusOptions {
   corpusDir: string;
@@ -26,6 +26,7 @@ export interface CorpusReport {
   driftOperations: number;
   idempotent: boolean;
   reconvergenceResidual: string[];
+  replayParityResidual: string[];
   stages: string[];
 }
 
@@ -38,6 +39,7 @@ export async function runCorpus(
     driftOperations: 0,
     idempotent: false,
     reconvergenceResidual: [],
+    replayParityResidual: [],
     stages: [],
   };
   const config = await loadCorpusConfig(options.corpusDir);
@@ -68,6 +70,12 @@ export async function runCorpus(
     const treeSource = `dir:${join(options.corpusDir, "tree")}`;
     const fromModel = await extractSourceModel(`database:${corpusUrl}`, { config });
     const toModel = await extractSourceModel(treeSource, { config });
+
+    diagnostics.push(...(await replayParityDiagnostics(migrationsDir, fromModel, config, report)));
+    if (hasErrors(diagnostics)) {
+      return { diagnostics, report };
+    }
+
     const plan = planSchemaDiff(fromModel, toModel, { config });
     diagnostics.push(...plan.diagnostics.filter((item) => item.severity === "error"));
     if (hasErrors(diagnostics)) {
@@ -143,6 +151,44 @@ export async function runCorpus(
   } finally {
     await dropTemporaryDatabases(options.databaseUrl, [corpusUrl]);
   }
+}
+
+async function replayParityDiagnostics(
+  migrationsDir: string,
+  databaseModel: SchemaModel,
+  config: SupaschemaConfig,
+  report: CorpusReport
+): Promise<Diagnostic[]> {
+  const replayModel = await extractSourceModel(`migrations:${migrationsDir}`, { config });
+  const replayErrors = replayModel.diagnostics.filter((item) => item.severity === "error");
+  if (replayErrors.length > 0) {
+    report.stages.push("replay parity: replay failed");
+    return replayErrors;
+  }
+  const databaseKeys = new Set(databaseModel.objects.map((object) => object.key));
+  const replayKeys = new Set(replayModel.objects.map((object) => object.key));
+  const byKey = (left: string, right: string): number => left.localeCompare(right);
+  const replayOnly = [...replayKeys].filter((key) => !databaseKeys.has(key)).sort(byKey);
+  const databaseOnly = [...databaseKeys].filter((key) => !replayKeys.has(key)).sort(byKey);
+  report.replayParityResidual = [
+    ...replayOnly.map((key) => `replay-only ${key}`),
+    ...databaseOnly.map((key) => `database-only ${key}`),
+  ];
+  if (report.replayParityResidual.length === 0) {
+    report.stages.push("replay parity: replay model matches the applied catalog");
+    return [];
+  }
+  report.stages.push(`replay parity: ${report.replayParityResidual.length} divergent object(s)`);
+  return [
+    diagnostic(
+      "SUPA_CORPUS_REPLAY_PARITY",
+      "error",
+      `${report.replayParityResidual.length} object(s) differ between the migration replay model and the catalog those migrations produced`,
+      {
+        hint: `divergent: ${report.replayParityResidual.slice(0, 6).join(", ")}`,
+      }
+    ),
+  ];
 }
 
 function isMigrationFile(name: string): boolean {

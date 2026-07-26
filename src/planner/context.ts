@@ -334,11 +334,11 @@ async function migrationBaselineDiagnostics(
   if (migrationContext.files.length === 0) {
     return [];
   }
+  if (await isMigrationDirectorySource(fromSource, migrationContext.directory, cwd)) {
+    return [];
+  }
   const baseline = migrationContext.latestGeneratedBaseline;
   if (baseline === undefined) {
-    if (await isMigrationDirectorySource(fromSource, migrationContext.directory, cwd)) {
-      return [];
-    }
     return [
       diagnostic(
         "SUPA_MIGRATION_BASELINE_UNSUPPORTED",
