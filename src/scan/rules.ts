@@ -1,3 +1,4 @@
+import { securityDefinerSearchPathIssue } from "../sql/facts.js";
 import { isSinglePrivilegeKind } from "../sql/privileges.js";
 import type { Diagnostic, MigrationPlan, ObjectRef, SchemaModel, SchemaObject } from "../types.js";
 
@@ -448,14 +449,15 @@ export const securityDefinerSearchPathRule: Rule = {
       if (object.ref.kind !== "function" && object.ref.kind !== "procedure") {
         continue;
       }
-      if (object.metadata.securityDefiner !== true || object.metadata.routineSearchPath === "") {
+      const issue = securityDefinerSearchPathIssue(object.metadata);
+      if (!issue) {
         continue;
       }
       diagnostics.push({
         code: "SUPA_RULE_SECDEF_SEARCH_PATH",
         ...(object.file === undefined ? {} : { file: object.file }),
-        hint: "Add SET search_path = '' and schema-qualify every reference in the routine body",
-        message: `SECURITY DEFINER routine "${routineKey(object.ref)}" does not set an empty search_path`,
+        hint: issue.hint,
+        message: `SECURITY DEFINER routine "${routineKey(object.ref)}" ${issue.message}`,
         ref: object.ref,
         severity: "warning",
       });

@@ -5,7 +5,11 @@ import {
   commandSegmentObjects,
 } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
 import { codeAtlasQueryEvidence } from "./atlas.mjs";
-import { responseReportsFailure, toolSucceeded } from "./response-evidence.mjs";
+import {
+  responseReportsFailure,
+  shellCommandNotFound,
+  toolSucceeded,
+} from "./response-evidence.mjs";
 import { addEvidence } from "./state.mjs";
 
 const shellToolNames = new Set(["Bash", "exec_command", "functions.exec_command"]);
@@ -29,6 +33,14 @@ export function recordToolEvidence(payload, state) {
   }
   if (!command) {
     return {};
+  }
+  if (!toolSuccess && shellCommandNotFound(payload)) {
+    addEvidence(state, {
+      incident: "shell-command-not-found",
+      kind: "tool-incident",
+      outcome: "failure",
+      summary: "shell reported command not found",
+    });
   }
   const domains = classifyCommandDomains(command);
   if (domains.length === 0) {

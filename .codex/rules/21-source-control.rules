@@ -16,7 +16,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "switch", "main"],
     decision = "allow",
-    justification = "Rule 21 allows returning to main after the current topic PR is verified merged and local main is synchronized with origin/main; the Bash hook validates the exact command shape.",
+    justification = "Rule 21 allows returning to main only when the current user prompt explicitly requests the switch and the current topic PR is verified merged; the Bash hook validates authorization and command shape.",
     match = ["git switch main"],
     not_match = ["git switch feature/demo", "git switch -C main origin/main"],
 )
@@ -24,7 +24,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "switch", "-c"],
     decision = "allow",
-    justification = "Rule 21 allows transactional topic-branch creation after explicit PR intent, origin/main fetch, and base proof; the Bash hook validates the complete command.",
+    justification = "Rule 21 allows transactional topic-branch creation only when the current user prompt explicitly requests it and origin/main fetch and base proof are complete; the Bash hook validates authorization and command shape.",
     match = ["git switch -c feature/demo origin/main"],
     not_match = ["git switch --track origin/feature/demo", "git switch -C feature/demo origin/main"],
 )
@@ -32,7 +32,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "switch", "--track"],
     decision = "allow",
-    justification = "Rule 21 allows transactional tracking of an existing origin topic branch after explicit PR intent, fetch, and base proof; the Bash hook validates the complete command.",
+    justification = "Rule 21 allows tracking an existing origin topic branch only when the current user prompt explicitly requests the switch and fetch and base proof are complete; the Bash hook validates authorization and command shape.",
     match = ["git switch --track origin/feature/demo"],
     not_match = ["git switch -c feature/demo origin/main", "git switch main"],
 )
@@ -54,19 +54,11 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["git", "worktree", "list", "--porcelain", "-z"],
-    decision = "allow",
-    justification = "Rule 21 allows the stable read-only worktree inventory form; the Bash hook rejects every other worktree command shape.",
-    match = ["git worktree list --porcelain -z"],
-    not_match = ["git worktree list", "git worktree add ../demo HEAD"],
-)
-
-prefix_rule(
-    pattern = ["git", "worktree", ["add", "lock", "move", "prune", "remove", "repair", "unlock"]],
+    pattern = ["git", "worktree"],
     decision = "forbidden",
-    justification = "Rule 21 forbids CLI worktree mutation; use host-managed worktree isolation only when the host selects it before work begins.",
-    match = ["git worktree add ../demo HEAD", "git worktree lock ../demo", "git worktree move ../demo ../moved", "git worktree prune", "git worktree remove ../demo", "git worktree repair ../demo", "git worktree unlock ../demo"],
-    not_match = ["git worktree list --porcelain -z", "git status --short"],
+    justification = "Rule 21 forbids every worktree command; continue only in the active primary checkout.",
+    match = ["git worktree list --porcelain -z", "git worktree add ../demo HEAD"],
+    not_match = ["git status --short"],
 )
 
 prefix_rule(

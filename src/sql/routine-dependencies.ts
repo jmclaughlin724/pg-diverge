@@ -1,18 +1,21 @@
 import { diagnostic } from "../diagnostics/diagnostics.js";
 import type { Diagnostic } from "../types.js";
-import type { AstStatement } from "./ast.js";
+import type { AstNode, AstStatement } from "./ast.js";
 import {
   asRecord,
   collectReferences,
   rangeVarName,
   readArray,
+  readBoolean,
   readString,
   stringList,
   stringValue,
 } from "./ast.js";
+import { normalizeIdentifier } from "./identifiers.js";
 import { parseSqlAst } from "./parser.js";
 
 const plpgsqlTrimKeywords = new Set(["begin", "end", "then", "else", "declare"]);
+const plpgsqlDeclarationModifiers = new Set(["collate", "default", "not"]);
 
 interface StatementDependencyResult {
   columnReferences: string[];
@@ -31,6 +34,21 @@ interface PlpgsqlFragments {
   fragments: StaticSqlFragment[];
   unrecognized: string[];
 }
+
+type PlpgsqlDeclaration =
+  | { kind: "typed"; name: string; typeExpression: string }
+  | { kind: "unproven"; name?: string }
+  | { kind: "untyped"; name: string };
+
+type PlpgsqlAttributeType =
+  | { kind: "direct" }
+  | { kind: "invalid" }
+  | {
+      base: string;
+      kind: "reference";
+      referenceKind: "rowtype" | "type";
+      suffix: string;
+    };
 
 export async function extractStatementDependencies(
   statement: AstStatement,
@@ -68,6 +86,7 @@ export async function extractRoutineDependencies(
       confidence: "sql-body",
       diagnostics: [],
       references: sorted(collectReferences(node.sql_body)),
+      unqualifiedReferences: collectUnqualifiedRoutineReferences(node.sql_body),
     };
   }
   const bodies = routineBodyStrings(node?.options);
@@ -93,6 +112,7 @@ export async function extractRoutineDependencies(
       ),
     ],
     references: [],
+    unqualifiedReferences: emptyUnqualifiedReferences(),
   };
 }
 
@@ -111,11 +131,15 @@ async function parseRoutineSqlBodies(
 ): Promise<RoutineDependencyResult> {
   const references = new Set<string>();
   const columnReferences = new Set<string>();
+  const unqualifiedRelations = new Set<string>();
+  const unqualifiedTypes = new Set<string>();
   const diagnostics: Diagnostic[] = [];
   for (const body of bodies) {
     const parsed = await parseStaticSql(body, file);
     addAll(references, parsed.references);
     addAll(columnReferences, parsed.columnReferences);
+    addAll(unqualifiedRelations, parsed.unqualifiedReferences.relations);
+    addAll(unqualifiedTypes, parsed.unqualifiedReferences.types);
     diagnostics.push(...parsed.diagnostics);
   }
   return {
@@ -125,6 +149,10 @@ async function parseRoutineSqlBodies(
       : "sql-string-parsed",
     diagnostics,
     references: sorted(references),
+    unqualifiedReferences: {
+      relations: sorted(unqualifiedRelations),
+      types: sorted(unqualifiedTypes),
+    },
   };
 }
 
@@ -134,11 +162,20 @@ async function parsePlpgsqlBodies(
 ): Promise<RoutineDependencyResult> {
   const references = new Set<string>();
   const columnReferences = new Set<string>();
+  const unqualifiedRelations = new Set<string>();
+  const unqualifiedTypes = new Set<string>();
   const diagnostics: Diagnostic[] = [];
   let parsedDynamic = false;
   let dynamicUnknown = false;
   let partial = false;
   for (const body of bodies) {
+    const declarations = await parsePlpgsqlDeclarations(body, file);
+    addAll(unqualifiedRelations, declarations.unqualifiedReferences.relations);
+    addAll(unqualifiedTypes, declarations.unqualifiedReferences.types);
+    if (declarations.diagnostics.length > 0) {
+      partial = true;
+      diagnostics.push(...declarations.diagnostics);
+    }
     const extracted = plpgsqlStaticSqlFragments(body);
     parsedDynamic ||= extracted.fragments.some((fragment) => fragment.source === "EXECUTE");
     dynamicUnknown ||= extracted.dynamicUnknown.length > 0;
@@ -177,6 +214,8 @@ async function parsePlpgsqlBodies(
       const parsed = await parseStaticSql(fragment.sql, file);
       addAll(references, parsed.references);
       addAll(columnReferences, parsed.columnReferences);
+      addAll(unqualifiedRelations, parsed.unqualifiedReferences.relations);
+      addAll(unqualifiedTypes, parsed.unqualifiedReferences.types);
       if (parsed.diagnostics.length > 0) {
         partial = true;
         diagnostics.push(
@@ -199,7 +238,423 @@ async function parsePlpgsqlBodies(
     confidence: plpgsqlConfidence(parsedDynamic, dynamicUnknown, partial),
     diagnostics,
     references: sorted(references),
+    unqualifiedReferences: {
+      relations: sorted(unqualifiedRelations),
+      types: sorted(unqualifiedTypes),
+    },
   };
+}
+
+async function parsePlpgsqlDeclarations(
+  body: string,
+  file: string | undefined
+): Promise<{
+  diagnostics: Diagnostic[];
+  unqualifiedReferences: RoutineUnqualifiedReferences;
+}> {
+  const diagnostics: Diagnostic[] = [];
+  const relations = new Set<string>();
+  const types = new Set<string>();
+  for (const block of plpgsqlDeclarationBlocks(body)) {
+    diagnostics.push(...(await parsePlpgsqlDeclarationBlock(block, file, relations, types)));
+  }
+  return {
+    diagnostics,
+    unqualifiedReferences: { relations: sorted(relations), types: sorted(types) },
+  };
+}
+
+async function parsePlpgsqlDeclarationBlock(
+  statements: readonly string[],
+  file: string | undefined,
+  relations: Set<string>,
+  types: Set<string>
+): Promise<Diagnostic[]> {
+  const diagnostics: Diagnostic[] = [];
+  const declaredVariables = new Set<string>();
+  for (const statement of statements) {
+    const declaration = plpgsqlDeclaration(statement);
+    const proven =
+      declaration.kind !== "unproven" &&
+      (declaration.kind !== "typed" ||
+        (await addPlpgsqlDeclarationType(
+          declaration.typeExpression,
+          file,
+          declaredVariables,
+          relations,
+          types
+        )));
+    if (!proven) {
+      diagnostics.push(plpgsqlDeclarationDiagnostic(statement, file));
+    }
+    if (declaration.name) {
+      declaredVariables.add(declaration.name);
+    }
+  }
+  return diagnostics;
+}
+
+async function addPlpgsqlDeclarationType(
+  typeExpression: string,
+  file: string | undefined,
+  declaredVariables: ReadonlySet<string>,
+  relations: Set<string>,
+  types: Set<string>
+): Promise<boolean> {
+  const attributeType = plpgsqlAttributeType(typeExpression);
+  if (attributeType.kind === "invalid") {
+    return false;
+  }
+  if (attributeType.kind === "reference") {
+    const parts = await plpgsqlAttributeTypeParts(attributeType, file);
+    return Boolean(
+      parts &&
+        addPlpgsqlAttributeReference(
+          attributeType.referenceKind,
+          parts,
+          declaredVariables,
+          relations
+        )
+    );
+  }
+  const parsed = await parseSqlAst(
+    `CREATE TABLE pg_temp.__supaschema_declaration (value ${typeExpression})`,
+    file
+  );
+  if (parsed.ast === undefined) {
+    return false;
+  }
+  addAll(types, collectUnqualifiedRoutineReferences(parsed.ast).types);
+  return true;
+}
+
+function plpgsqlDeclarationBlocks(body: string): string[][] {
+  const tokens = tokenSpans(body);
+  const blocks: string[][] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const declaration = tokens[index];
+    if (declaration?.text !== "declare") {
+      continue;
+    }
+    const beginIndex = tokens.findIndex(
+      (token, candidateIndex) => candidateIndex > index && token.text === "begin"
+    );
+    const begin = beginIndex < 0 ? undefined : tokens[beginIndex];
+    if (!begin) {
+      continue;
+    }
+    const statements = splitPlpgsqlStatements(body.slice(declaration.end, begin.start))
+      .map((statement) => statement.trim())
+      .filter(Boolean);
+    blocks.push(statements);
+    index = beginIndex;
+  }
+  return blocks;
+}
+
+function plpgsqlDeclaration(statement: string): PlpgsqlDeclaration {
+  const nameStart = firstDeclarationCodeCharacter(statement);
+  if (nameStart === undefined) {
+    return { kind: "unproven" };
+  }
+  const identifier = plpgsqlIdentifierAt(statement, nameStart);
+  if (!identifier) {
+    return { kind: "unproven" };
+  }
+  const name = normalizeIdentifier(identifier.raw);
+  let typeStart = firstDeclarationCodeCharacter(statement, identifier.end);
+  if (typeStart === undefined) {
+    return { kind: "unproven", name };
+  }
+  const constantEnd = keywordEnd(statement, typeStart, "constant");
+  if (constantEnd !== undefined) {
+    typeStart = firstDeclarationCodeCharacter(statement, constantEnd) ?? statement.length;
+  }
+  const aliasEnd = keywordEnd(statement, typeStart, "alias");
+  if (aliasEnd !== undefined) {
+    const forStart = firstDeclarationCodeCharacter(statement, aliasEnd);
+    return forStart !== undefined && keywordEnd(statement, forStart, "for") !== undefined
+      ? { kind: "untyped", name }
+      : { kind: "unproven", name };
+  }
+  const cursorEnd = plpgsqlCursorKeywordEnd(statement, typeStart);
+  if (cursorEnd !== undefined) {
+    const cursorTail = firstDeclarationCodeCharacter(statement, cursorEnd);
+    return cursorTail !== undefined &&
+      statement[cursorTail] !== "(" &&
+      keywordEnd(statement, cursorTail, "for") !== undefined
+      ? { kind: "untyped", name }
+      : { kind: "unproven", name };
+  }
+  const typeEnd = plpgsqlDeclarationTypeEnd(statement, typeStart);
+  const typeExpression = statement.slice(typeStart, typeEnd).trim();
+  return typeExpression.length > 0
+    ? { kind: "typed", name, typeExpression }
+    : { kind: "unproven", name };
+}
+
+function plpgsqlDeclarationTypeEnd(value: string, start: number): number {
+  let depth = 0;
+  let index = start;
+  while (index < value.length) {
+    const skipped = skipNonCodeSpan(value, index);
+    if (skipped !== undefined) {
+      index = skipped;
+      continue;
+    }
+    const char = value[index] ?? "";
+    if (depth === 0 && isPlpgsqlDeclarationAssignment(value, index)) {
+      return index;
+    }
+    if (depth === 0 && isIdentifierStart(char)) {
+      const end = identifierEnd(value, index);
+      const keyword = value.slice(index, end).toLowerCase();
+      if (plpgsqlDeclarationModifiers.has(keyword)) {
+        return index;
+      }
+      index = end;
+      continue;
+    }
+    depth = plpgsqlDeclarationDepth(depth, char);
+    index += 1;
+  }
+  return value.length;
+}
+
+function isPlpgsqlDeclarationAssignment(value: string, index: number): boolean {
+  return value[index] === "=" || (value[index] === ":" && value[index + 1] === "=");
+}
+
+function plpgsqlDeclarationDepth(depth: number, char: string): number {
+  if (char === "(" || char === "[") {
+    return depth + 1;
+  }
+  if (char === ")" || char === "]") {
+    return Math.max(0, depth - 1);
+  }
+  return depth;
+}
+
+function plpgsqlAttributeType(typeExpression: string): PlpgsqlAttributeType {
+  const percent = codeCharacterIndex(typeExpression, "%");
+  if (percent === undefined) {
+    return { kind: "direct" };
+  }
+  const markerStart = firstDeclarationCodeCharacter(typeExpression, percent + 1);
+  if (markerStart === undefined) {
+    return { kind: "invalid" };
+  }
+  const rowtypeEnd = keywordEnd(typeExpression, markerStart, "rowtype");
+  const typeEnd = keywordEnd(typeExpression, markerStart, "type");
+  const markerEnd = rowtypeEnd ?? typeEnd;
+  const base = typeExpression.slice(0, percent).trim();
+  if (markerEnd === undefined || base.length === 0) {
+    return { kind: "invalid" };
+  }
+  const suffix = typeExpression.slice(markerEnd).trim();
+  if (codeCharacterIndex(suffix, "%") !== undefined || !isPlpgsqlArrayTypeSuffix(suffix)) {
+    return { kind: "invalid" };
+  }
+  return {
+    base,
+    kind: "reference",
+    referenceKind: rowtypeEnd === undefined ? "type" : "rowtype",
+    suffix,
+  };
+}
+
+async function plpgsqlAttributeTypeParts(
+  attributeType: Extract<PlpgsqlAttributeType, { kind: "reference" }>,
+  file: string | undefined
+): Promise<string[] | undefined> {
+  const parsed = await parseSqlAst(
+    `CREATE TABLE pg_temp.__supaschema_declaration (value ${attributeType.base}${
+      attributeType.suffix.length > 0 ? ` ${attributeType.suffix}` : ""
+    })`,
+    file
+  );
+  return parsed.ast === undefined ? undefined : firstTypeNameParts(parsed.ast);
+}
+
+function firstTypeNameParts(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const parts = firstTypeNameParts(item);
+      if (parts) {
+        return parts;
+      }
+    }
+    return;
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return;
+  }
+  const typeName = asRecord(record.TypeName) ?? asRecord(record.typeName);
+  const parts = stringList(typeName?.names);
+  if (parts.length > 0) {
+    return parts;
+  }
+  for (const child of Object.values(record)) {
+    const childParts = firstTypeNameParts(child);
+    if (childParts) {
+      return childParts;
+    }
+  }
+}
+
+function addPlpgsqlAttributeReference(
+  kind: "rowtype" | "type",
+  parts: readonly string[],
+  declaredVariables: ReadonlySet<string>,
+  relations: Set<string>
+): boolean {
+  const first = parts[0];
+  if (!first) {
+    return false;
+  }
+  if (kind === "rowtype") {
+    if (parts.length === 1) {
+      relations.add(first);
+    }
+    return parts.length <= 2;
+  }
+  if (parts.length === 1) {
+    return declaredVariables.has(first);
+  }
+  if (parts.length === 2 && !declaredVariables.has(first)) {
+    relations.add(first);
+  }
+  return parts.length <= 3;
+}
+
+function isPlpgsqlArrayTypeSuffix(value: string): boolean {
+  let index = firstDeclarationCodeCharacter(value);
+  while (index !== undefined) {
+    const arrayEnd = keywordEnd(value, index, "array");
+    if (arrayEnd !== undefined) {
+      index = firstDeclarationCodeCharacter(value, arrayEnd);
+    }
+    if (index === undefined || value[index] !== "[") {
+      return false;
+    }
+    const bracketEnd = matchingSquareBracketEnd(value, index);
+    if (bracketEnd === undefined) {
+      return false;
+    }
+    index = firstDeclarationCodeCharacter(value, bracketEnd);
+  }
+  return true;
+}
+
+function matchingSquareBracketEnd(value: string, start: number): number | undefined {
+  let depth = 0;
+  let index = start;
+  while (index < value.length) {
+    const skipped = skipNonCodeSpan(value, index);
+    if (skipped !== undefined) {
+      index = skipped;
+      continue;
+    }
+    if (value[index] === "[") {
+      depth += 1;
+    } else if (value[index] === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+    index += 1;
+  }
+}
+
+function plpgsqlCursorKeywordEnd(statement: string, start: number): number | undefined {
+  let cursorStart = start;
+  const noEnd = keywordEnd(statement, cursorStart, "no");
+  if (noEnd === undefined) {
+    const scrollEnd = keywordEnd(statement, cursorStart, "scroll");
+    if (scrollEnd !== undefined) {
+      cursorStart = firstDeclarationCodeCharacter(statement, scrollEnd) ?? statement.length;
+    }
+    return keywordEnd(statement, cursorStart, "cursor");
+  }
+  const scrollStart = firstDeclarationCodeCharacter(statement, noEnd);
+  const scrollEnd =
+    scrollStart === undefined ? undefined : keywordEnd(statement, scrollStart, "scroll");
+  if (scrollEnd === undefined) {
+    return;
+  }
+  cursorStart = firstDeclarationCodeCharacter(statement, scrollEnd) ?? statement.length;
+  return keywordEnd(statement, cursorStart, "cursor");
+}
+
+function keywordEnd(value: string, start: number, keyword: string): number | undefined {
+  return keywordAt(value, start, keyword) ? start + keyword.length : undefined;
+}
+
+function firstDeclarationCodeCharacter(value: string, start = 0): number | undefined {
+  let index = start;
+  while (index < value.length) {
+    if (isWhitespace(value[index] ?? "")) {
+      index += 1;
+      continue;
+    }
+    if (value[index] === "-" && value[index + 1] === "-") {
+      index = skipLineComment(value, index);
+      continue;
+    }
+    if (value[index] === "/" && value[index + 1] === "*") {
+      index = skipBlockComment(value, index);
+      continue;
+    }
+    return index;
+  }
+}
+
+function plpgsqlIdentifierAt(
+  value: string,
+  start: number
+): { end: number; raw: string } | undefined {
+  const char = value[start] ?? "";
+  if (char === '"') {
+    const end = skipDoubleQuoted(value, start);
+    return end <= value.length && value[end - 1] === '"' && end > start + 2
+      ? { end, raw: value.slice(start, end) }
+      : undefined;
+  }
+  if (!isIdentifierStart(char)) {
+    return;
+  }
+  const end = identifierEnd(value, start);
+  return { end, raw: value.slice(start, end) };
+}
+
+function codeCharacterIndex(value: string, target: string): number | undefined {
+  let index = 0;
+  while (index < value.length) {
+    const skipped = skipNonCodeSpan(value, index);
+    if (skipped !== undefined) {
+      index = skipped;
+      continue;
+    }
+    if (value[index] === target) {
+      return index;
+    }
+    index += 1;
+  }
+}
+
+function plpgsqlDeclarationDiagnostic(statement: string, file: string | undefined): Diagnostic {
+  return diagnostic(
+    "SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY",
+    "warning",
+    "could not prove the type dependency in a PL/pgSQL declaration",
+    {
+      file,
+      hint: "Use a schema-qualified type or %TYPE/%ROWTYPE reference in the declaration.",
+      statement,
+    }
+  );
 }
 
 function plpgsqlConfidence(
@@ -222,15 +677,26 @@ function plpgsqlConfidence(
 async function parseStaticSql(
   sql: string,
   file: string | undefined
-): Promise<{ columnReferences: string[]; diagnostics: Diagnostic[]; references: string[] }> {
+): Promise<{
+  columnReferences: string[];
+  diagnostics: Diagnostic[];
+  references: string[];
+  unqualifiedReferences: RoutineUnqualifiedReferences;
+}> {
   const parsed = await parseSqlAst(sql, file);
   if (parsed.ast === undefined) {
-    return { columnReferences: [], diagnostics: parsed.diagnostics, references: [] };
+    return {
+      columnReferences: [],
+      diagnostics: parsed.diagnostics,
+      references: [],
+      unqualifiedReferences: emptyUnqualifiedReferences(),
+    };
   }
   return {
     columnReferences: sorted(collectColumnDependencyIdentities(parsed.ast)),
     diagnostics: parsed.diagnostics,
     references: sorted(collectReferences(parsed.ast)),
+    unqualifiedReferences: collectUnqualifiedRoutineReferences(parsed.ast),
   };
 }
 
@@ -393,6 +859,9 @@ function skipNonCodeSpan(statement: string, index: number): number | undefined {
   const char = statement[index] ?? "";
   if (char === "'") {
     return skipSingleQuoted(statement, index);
+  }
+  if (char === '"') {
+    return skipDoubleQuoted(statement, index);
   }
   if (char === "$") {
     return skipDollarQuoted(statement, index);
@@ -642,6 +1111,10 @@ function splitPlpgsqlStatements(body: string): string[] {
       index = skipSingleQuoted(body, index);
       continue;
     }
+    if (quote === '"') {
+      index = skipDoubleQuoted(body, index);
+      continue;
+    }
     if (quote === "$") {
       const end = skipDollarQuoted(body, index);
       if (end !== undefined) {
@@ -744,16 +1217,10 @@ function tokenSpans(sql: string): { end: number; start: number; text: string }[]
   let index = 0;
   while (index < sql.length) {
     const char = sql[index] ?? "";
-    if (char === "'") {
-      index = skipSingleQuoted(sql, index);
+    const skipped = skipNonCodeSpan(sql, index);
+    if (skipped !== undefined) {
+      index = skipped;
       continue;
-    }
-    if (char === "$") {
-      const end = skipDollarQuoted(sql, index);
-      if (end !== undefined) {
-        index = end;
-        continue;
-      }
     }
     if (isIdentifierStart(char)) {
       const start = index;
@@ -871,6 +1338,130 @@ function addColumnRef(
   }
 }
 
+const queryNodeTags: readonly string[] = [
+  "DeleteStmt",
+  "InsertStmt",
+  "MergeStmt",
+  "SelectStmt",
+  "UpdateStmt",
+];
+
+function collectUnqualifiedRoutineReferences(value: unknown): RoutineUnqualifiedReferences {
+  const relations = new Set<string>();
+  const types = new Set<string>();
+  collectUnqualifiedNodes(value, new Set(), relations, types);
+  return { relations: sorted(relations), types: sorted(types) };
+}
+
+function collectUnqualifiedNodes(
+  value: unknown,
+  visibleCtes: ReadonlySet<string>,
+  relations: Set<string>,
+  types: Set<string>
+): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectUnqualifiedNodes(item, visibleCtes, relations, types);
+    }
+    return;
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return;
+  }
+  const queryTags = queryNodeTags.filter((tag) => asRecord(record[tag]) !== undefined);
+  if (queryTags.length > 0) {
+    for (const tag of queryTags) {
+      const query = asRecord(record[tag]);
+      if (query) {
+        collectUnqualifiedQuery(query, visibleCtes, relations, types);
+      }
+    }
+    for (const [key, child] of Object.entries(record)) {
+      if (!queryTags.includes(key)) {
+        collectUnqualifiedNodes(child, visibleCtes, relations, types);
+      }
+    }
+    return;
+  }
+  collectUnqualifiedRelation(record, visibleCtes, relations);
+  collectUnqualifiedType(record, types);
+  for (const child of Object.values(record)) {
+    collectUnqualifiedNodes(child, visibleCtes, relations, types);
+  }
+}
+
+function collectUnqualifiedRelation(
+  record: AstNode,
+  visibleCtes: ReadonlySet<string>,
+  relations: Set<string>
+): void {
+  const rangeVar = asRecord(record.RangeVar);
+  const relation = readString(rangeVar?.relname);
+  if (relation && readString(rangeVar?.schemaname) === undefined && !visibleCtes.has(relation)) {
+    relations.add(relation);
+  }
+}
+
+function collectUnqualifiedType(record: AstNode, types: Set<string>): void {
+  const typeName = asRecord(record.TypeName) ?? asRecord(record.typeName);
+  const typeParts = stringList(typeName?.names);
+  const type = typeParts.length === 1 ? typeParts[0] : undefined;
+  if (type) {
+    types.add(type);
+  }
+}
+
+function collectUnqualifiedQuery(
+  query: AstNode,
+  outerCtes: ReadonlySet<string>,
+  relations: Set<string>,
+  types: Set<string>
+): void {
+  const withClause = asRecord(asRecord(query.withClause)?.WithClause) ?? asRecord(query.withClause);
+  const visibleCtes = new Set(outerCtes);
+  const ctes = commonTableExpressions(withClause?.ctes);
+  if (readBoolean(withClause?.recursive)) {
+    for (const cte of ctes) {
+      const name = readString(cte.ctename);
+      if (name) {
+        visibleCtes.add(name);
+      }
+    }
+    for (const cte of ctes) {
+      collectUnqualifiedNodes(cte.ctequery, visibleCtes, relations, types);
+    }
+  } else {
+    for (const cte of ctes) {
+      collectUnqualifiedNodes(cte.ctequery, visibleCtes, relations, types);
+      const name = readString(cte.ctename);
+      if (name) {
+        visibleCtes.add(name);
+      }
+    }
+  }
+  for (const [key, child] of Object.entries(query)) {
+    if (key !== "withClause") {
+      collectUnqualifiedNodes(child, visibleCtes, relations, types);
+    }
+  }
+}
+
+function commonTableExpressions(value: unknown): AstNode[] {
+  const ctes: AstNode[] = [];
+  for (const item of readArray(value)) {
+    const cte = asRecord(asRecord(item)?.CommonTableExpr) ?? asRecord(item);
+    if (cte) {
+      ctes.push(cte);
+    }
+  }
+  return ctes;
+}
+
+function emptyUnqualifiedReferences(): RoutineUnqualifiedReferences {
+  return { relations: [], types: [] };
+}
+
 function routineLanguage(options: unknown): string | undefined {
   for (const item of readArray(options)) {
     const option = asRecord(asRecord(item)?.DefElem);
@@ -911,6 +1502,21 @@ function skipSingleQuoted(sql: string, start: number): number {
       continue;
     }
     if (sql[index] === "'") {
+      return index + 1;
+    }
+    index += 1;
+  }
+  return sql.length;
+}
+
+function skipDoubleQuoted(sql: string, start: number): number {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql[index] === '"' && sql[index + 1] === '"') {
+      index += 2;
+      continue;
+    }
+    if (sql[index] === '"') {
       return index + 1;
     }
     index += 1;
@@ -969,6 +1575,12 @@ export interface RoutineDependencyResult {
   confidence: RoutineDependencyConfidence;
   diagnostics: Diagnostic[];
   references: string[];
+  unqualifiedReferences: RoutineUnqualifiedReferences;
+}
+
+export interface RoutineUnqualifiedReferences {
+  relations: string[];
+  types: string[];
 }
 
 export type RoutineDependencyConfidence =

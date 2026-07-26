@@ -14,21 +14,21 @@ codexExecPolicy: |
     {
       "pattern": ["git", "switch", "main"],
       "decision": "allow",
-      "justification": "Rule 21 allows returning to main after the current topic PR is verified merged and local main is synchronized with origin/main; the Bash hook validates the exact command shape.",
+      "justification": "Rule 21 allows returning to main only when the current user prompt explicitly requests the switch and the current topic PR is verified merged; the Bash hook validates authorization and command shape.",
       "match": ["git switch main"],
       "not_match": ["git switch feature/demo", "git switch -C main origin/main"]
     },
     {
       "pattern": ["git", "switch", "-c"],
       "decision": "allow",
-      "justification": "Rule 21 allows transactional topic-branch creation after explicit PR intent, origin/main fetch, and base proof; the Bash hook validates the complete command.",
+      "justification": "Rule 21 allows transactional topic-branch creation only when the current user prompt explicitly requests it and origin/main fetch and base proof are complete; the Bash hook validates authorization and command shape.",
       "match": ["git switch -c feature/demo origin/main"],
       "not_match": ["git switch --track origin/feature/demo", "git switch -C feature/demo origin/main"]
     },
     {
       "pattern": ["git", "switch", "--track"],
       "decision": "allow",
-      "justification": "Rule 21 allows transactional tracking of an existing origin topic branch after explicit PR intent, fetch, and base proof; the Bash hook validates the complete command.",
+      "justification": "Rule 21 allows tracking an existing origin topic branch only when the current user prompt explicitly requests the switch and fetch and base proof are complete; the Bash hook validates authorization and command shape.",
       "match": ["git switch --track origin/feature/demo"],
       "not_match": ["git switch -c feature/demo origin/main", "git switch main"]
     },
@@ -47,18 +47,11 @@ codexExecPolicy: |
       "not_match": ["git rev-parse --abbrev-ref HEAD", "git status --short"]
     },
     {
-      "pattern": ["git", "worktree", "list", "--porcelain", "-z"],
-      "decision": "allow",
-      "justification": "Rule 21 allows the stable read-only worktree inventory form; the Bash hook rejects every other worktree command shape.",
-      "match": ["git worktree list --porcelain -z"],
-      "not_match": ["git worktree list", "git worktree add ../demo HEAD"]
-    },
-    {
-      "pattern": ["git", "worktree", ["add", "lock", "move", "prune", "remove", "repair", "unlock"]],
+      "pattern": ["git", "worktree"],
       "decision": "forbidden",
-      "justification": "Rule 21 forbids CLI worktree mutation; use host-managed worktree isolation only when the host selects it before work begins.",
-      "match": ["git worktree add ../demo HEAD", "git worktree lock ../demo", "git worktree move ../demo ../moved", "git worktree prune", "git worktree remove ../demo", "git worktree repair ../demo", "git worktree unlock ../demo"],
-      "not_match": ["git worktree list --porcelain -z", "git status --short"]
+      "justification": "Rule 21 forbids every worktree command; continue only in the active primary checkout.",
+      "match": ["git worktree list --porcelain -z", "git worktree add ../demo HEAD"],
+      "not_match": ["git status --short"]
     },
     {
       "pattern": ["git", "reset"],
@@ -209,18 +202,19 @@ Upstream sources:
 
 ## Git safety
 
-- Commit, push, create a branch, open a PR, or merge only when explicitly requested.
+- Commit, push, create or switch a branch, open a PR, or merge only when explicitly requested. Branch authorization must appear in the current user prompt; commit, push, PR, merge, release, or publication intent does not imply authorization to create or switch branches.
 - Every update to `main` uses a protected pull request. Direct pushes to `main` are prohibited.
-- Work intended for publication requires a topic checkout before the first commit; a request to commit, push, merge, or release establishes PR intent. When the host selected managed worktree isolation before work began, use that checkout. Otherwise run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
-- To continue an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
+- The checkout and branch active when work begins are the only authorized workspace by default. Do not create a worktree, enter a linked worktree, or move work to another checkout.
+- When the current user prompt explicitly requests a topic branch, run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
+- When the current user prompt explicitly requests continuing an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
-- Do not use `git checkout` or `git branch` for creation or discovery. Worktree mutation is host-managed; the only allowed CLI worktree operation is `git worktree list --porcelain -z` for stable read-only inventory. Apart from the two transactional topic-branch forms above and `git switch main` after verified PR merge, do not use `git switch`.
+- Do not use `git checkout` or `git branch` for creation or discovery. Do not run any `git worktree` command. Apart from the two explicitly authorized transactional topic-branch forms above and an explicitly authorized `git switch main` after verified PR merge, do not use `git switch`.
 - After proving a topic PR merged and preserving all dirty work elsewhere, `git branch -D <topic>` is allowed only with explicit approval. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
 - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.
-- Subagents and workers may edit files only. They must not stage, commit, push, switch branches, create branches or worktrees, merge, or open or replace PRs.
+- Subagents and workers may edit files only inside the active primary checkout. They must not stage, commit, push, switch branches, create branches or worktrees, merge, or open or replace PRs.
 - Only the main agent may stage, commit, push, create or replace a PR, merge, clean up branches, and perform final source-control verification.
 
 ## Canonical policy

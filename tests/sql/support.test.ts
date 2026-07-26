@@ -1,11 +1,18 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
-import { modeledObjectSupport, unsupportedStatementSupport } from "../../src/sql/support.js";
+import {
+  modeledObjectSupport,
+  sourceIntentStatementTags,
+  unsupportedStatementSupport,
+} from "../../src/sql/support.js";
 
 describe("SQL support contract", () => {
   it("keeps the public support matrix aligned with the executable contract", async () => {
-    const docs = await readFile("docs/reference/support-matrix.mdx", "utf8");
+    const [docs, sources] = await Promise.all([
+      readFile("docs/reference/support-matrix.mdx", "utf8"),
+      readFile("docs/concepts/sources.mdx", "utf8"),
+    ]);
 
     expect(docs).toContain("src/sql/support.ts");
     for (const label of new Set(modeledObjectSupport.map((item) => item.label))) {
@@ -14,6 +21,13 @@ describe("SQL support contract", () => {
     for (const boundary of unsupportedStatementSupport.map((item) => item.boundary)) {
       expect(docs).toContain(`| ${boundary} |`);
     }
+    expect(sourceIntentStatementTags).toContain("GrantRoleStmt");
+    expect(docs).toContain("Role-membership `GRANT` and `REVOKE`");
+    expect(docs).toContain(
+      "Existing reviewed migrations replay only `ALTER POLICY` definition changes for `TO`, `USING`, and `WITH CHECK`"
+    );
+    expect(sources).toContain("absent non-ignored targets for supported `ALTER` statements");
+    expect(sources).toContain("Policy renames remain unsupported");
   });
 
   it("reports documented unsupported boundaries from parser tags", async () => {

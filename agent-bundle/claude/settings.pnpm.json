@@ -4,13 +4,7 @@
       {
         "hooks": [
           {
-            "args": [
-              "exec",
-              "supaschema",
-              "hook",
-              "schema-write"
-            ],
-            "command": "pnpm",
+            "command": "pnpm exec supaschema hook schema-write",
             "statusMessage": "Running supaschema auto-diff on schema change",
             "timeout": 130,
             "type": "command"
@@ -23,7 +17,10 @@
       {
         "hooks": [
           {
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guards/bash-policy-checks.mjs\"",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guards/bash-policy-checks.mjs"
+            ],
+            "command": "node",
             "statusMessage": "Checking general Bash safety policy",
             "timeout": 10,
             "type": "command"
@@ -34,15 +31,7 @@
       {
         "hooks": [
           {
-            "args": [
-              "exec",
-              "supaschema",
-              "hook",
-              "generated-migration-edit",
-              "--runtime",
-              "claude"
-            ],
-            "command": "pnpm",
+            "command": "pnpm exec supaschema hook generated-migration-edit --runtime claude",
             "statusMessage": "Checking supaschema generated-migration policy",
             "timeout": 10,
             "type": "command"

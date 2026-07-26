@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2 (2026-07-25)
+
+### Changes
+
+- Let migration-history replay recognize role-membership grants, apply `ALTER VIEW ... SET/RESET (security_invoker)`, and apply reviewed `ALTER POLICY` definition changes for `TO`, `USING`, and `WITH CHECK` while preserving omitted clauses; policy renames remain unsupported.
+- Extend advisory `SECURITY DEFINER` checks to detect unqualified relation and type references with an empty `search_path`, including CTE-aware SQL, PL/pgSQL statements, and PL/pgSQL declaration types, while keeping the finding report-only.
+
+### Patch Changes
+
+- Validate the complete agent-hook import graph across transitive helpers, dynamic imports with options, dependency cycles, and real Node.js builtins.
+- Root source and synchronization hooks at their installed entrypoints, preserve payload working directories for relative tool targets, generate compatible Claude command shapes, and record command-not-found incidents across POSIX shells, `cmd.exe`, and PowerShell.
+- Preserve a frozen retired-hook fixture for installer upgrades so current hook improvements do not invalidate historical checksum behavior.
+
 ## 0.5.1 (2026-07-25)
 
 ### Changes

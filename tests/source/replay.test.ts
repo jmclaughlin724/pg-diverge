@@ -49,6 +49,37 @@ function table(model: SchemaModel, key: string): SchemaObject | undefined {
   return model.objects.find((object) => object.key === key);
 }
 
+async function expectPolicyReplayMatchesDeclaration(
+  initialPolicy: string,
+  alteration: string,
+  declaredPolicy: string
+): Promise<void> {
+  const history = await extractMigrations([
+    [
+      "20240101000000_alter_policy.sql",
+      `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, active boolean);
+${initialPolicy}
+${alteration}`,
+    ],
+  ]);
+  const declared = await extractDirectory([
+    [
+      "app.sql",
+      `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, active boolean);
+${declaredPolicy}`,
+    ],
+  ]);
+
+  expect(errors(history.diagnostics)).toEqual([]);
+  expect(errors(declared.diagnostics)).toEqual([]);
+  expect(history.fingerprint).toBe(declared.fingerprint);
+  expect(table(history, "policy:app.accounts_update:accounts")?.hash).toBe(
+    table(declared, "policy:app.accounts_update:accounts")?.hash
+  );
+}
+
 function columns(object: SchemaObject | undefined): TableColumn[] {
   const value = object?.metadata.columns;
   return Array.isArray(value) ? value.filter(isTableColumn) : [];
@@ -959,6 +990,8 @@ CREATE TRIGGER accounts_touch BEFORE INSERT ON app.accounts FOR EACH ROW EXECUTE
         "20240101000000_neutral.sql",
         `SET statement_timeout = '5s';
 CREATE ROLE app_worker NOLOGIN;
+GRANT app_worker TO postgres WITH ADMIN OPTION;
+REVOKE app_worker FROM postgres;
 CREATE SCHEMA app;
 CREATE TABLE app.accounts (id integer);
 CREATE POLICY accounts_select ON app.accounts FOR SELECT USING (true);`,
@@ -967,6 +1000,125 @@ CREATE POLICY accounts_select ON app.accounts FOR SELECT USING (true);`,
 
     expect(errors(model.diagnostics)).toEqual([]);
     expect(columnNames(table(model, "table:app.accounts"))).toEqual(["id"]);
+  });
+
+  it("replays ALTER VIEW security_invoker SET like the equivalent declarative view", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_alter_view.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids AS SELECT id FROM app.accounts;
+ALTER VIEW app.account_ids SET (security_invoker = true);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids WITH (security_invoker = true) AS SELECT id FROM app.accounts;`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    expect(table(history, "view:app.account_ids")?.metadata.securityInvoker).toBe(true);
+    expect(table(history, "view:app.account_ids")?.hash).toBe(
+      table(declared, "view:app.account_ids")?.hash
+    );
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("replays ALTER VIEW security_invoker RESET without retaining stale metadata", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_reset_view.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids WITH (security_invoker = true) AS SELECT id FROM app.accounts;
+ALTER VIEW app.account_ids RESET (security_invoker);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids AS SELECT id FROM app.accounts;`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    expect(table(history, "view:app.account_ids")?.metadata.securityInvoker).toBeUndefined();
+    expect(table(history, "view:app.account_ids")?.hash).toBe(
+      table(declared, "view:app.account_ids")?.hash
+    );
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("applies ALTER VIEW options after CREATE OR REPLACE sequencing", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_replace_view.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids WITH (security_invoker = true) AS SELECT id FROM app.accounts;
+CREATE OR REPLACE VIEW app.account_ids AS SELECT id FROM app.accounts;
+ALTER VIEW app.account_ids SET (security_invoker = true);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids WITH (security_invoker = true) AS SELECT id FROM app.accounts;`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("reports missing ALTER VIEW targets as views and honors IF EXISTS", async () => {
+    const missing = await extractMigrations([
+      ["20240101000000_missing_view.sql", "ALTER VIEW app.missing SET (security_invoker = true);"],
+    ]);
+    const optional = await extractMigrations([
+      [
+        "20240101000000_optional_view.sql",
+        "ALTER VIEW IF EXISTS app.missing SET (security_invoker = true);",
+      ],
+    ]);
+    const diagnostics = errors(missing.diagnostics);
+
+    expect(diagnostics.map((item) => item.code)).toEqual(["SUPA_REPLAY_ORDER_GAP"]);
+    expect(diagnostics[0]?.message).toContain("ALTER VIEW");
+    expect(diagnostics[0]?.ref?.kind).toBe("view");
+    expect(errors(optional.diagnostics)).toEqual([]);
+  });
+
+  it("fails closed for unsupported ALTER VIEW forms", async () => {
+    for (const alteration of [
+      "ALTER VIEW app.account_ids OWNER TO app_worker;",
+      "ALTER VIEW app.account_ids SET (security_barrier = true);",
+    ]) {
+      const model = await extractMigrations([
+        [
+          "20240101000000_unsupported_view.sql",
+          `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids AS SELECT id FROM app.accounts;
+${alteration}`,
+        ],
+      ]);
+
+      expect(errors(model.diagnostics).map((item) => item.code)).toContain(
+        "SUPA_REPLAY_UNSUPPORTED"
+      );
+    }
   });
 
   it("treats duplicate-guarded role-only DO blocks as replay-neutral", async () => {
@@ -988,19 +1140,82 @@ CREATE TABLE app.accounts (id integer);`,
     expect(model.objects.map((object) => object.key)).toEqual(["schema:app", "table:app.accounts"]);
   });
 
-  it("hard-fails ALTER POLICY until replay models the mutation", async () => {
+  it("replays ALTER POLICY TO while preserving both predicates", async () => {
+    await expectPolicyReplayMatchesDeclaration(
+      `CREATE POLICY accounts_update ON app.accounts FOR UPDATE TO anon
+  USING (active)
+  WITH CHECK (id > 0);`,
+      "ALTER POLICY accounts_update ON app.accounts TO authenticated;",
+      `CREATE POLICY accounts_update ON app.accounts FOR UPDATE TO authenticated
+  USING (active)
+  WITH CHECK (id > 0);`
+    );
+  });
+
+  it("replays ALTER POLICY USING while preserving roles and WITH CHECK", async () => {
+    await expectPolicyReplayMatchesDeclaration(
+      `CREATE POLICY accounts_update ON app.accounts FOR UPDATE TO authenticated
+  USING (true)
+  WITH CHECK (active);`,
+      "ALTER POLICY accounts_update ON app.accounts USING (id IS NOT NULL);",
+      `CREATE POLICY accounts_update ON app.accounts FOR UPDATE TO authenticated
+  USING (id IS NOT NULL)
+  WITH CHECK (active);`
+    );
+  });
+
+  it("replays ALTER POLICY WITH CHECK while preserving roles and USING", async () => {
+    await expectPolicyReplayMatchesDeclaration(
+      `CREATE POLICY accounts_update ON app.accounts FOR UPDATE TO authenticated
+  USING (id IS NOT NULL)
+  WITH CHECK (true);`,
+      "ALTER POLICY accounts_update ON app.accounts WITH CHECK (active AND id > 0);",
+      `CREATE POLICY accounts_update ON app.accounts FOR UPDATE TO authenticated
+  USING (id IS NOT NULL)
+  WITH CHECK (active AND id > 0);`
+    );
+  });
+
+  it("replays ALTER POLICY TO PUBLIC while preserving both predicates", async () => {
+    await expectPolicyReplayMatchesDeclaration(
+      `CREATE POLICY accounts_update ON app.accounts FOR UPDATE TO authenticated
+  USING (active)
+  WITH CHECK (id > 0);`,
+      "ALTER POLICY accounts_update ON app.accounts TO PUBLIC;",
+      `CREATE POLICY accounts_update ON app.accounts FOR UPDATE TO PUBLIC
+  USING (active)
+  WITH CHECK (id > 0);`
+    );
+  });
+
+  it("reports an order gap when ALTER POLICY targets a missing policy", async () => {
     const model = await extractMigrations([
       [
         "20240101000000_alter_policy.sql",
         `CREATE SCHEMA app;
 CREATE TABLE app.accounts (id integer);
-CREATE POLICY accounts_select ON app.accounts FOR SELECT USING (true);
 ALTER POLICY accounts_select ON app.accounts USING (id IS NOT NULL);`,
       ],
     ]);
 
     expect(model.objects).toEqual([]);
+    expect(errors(model.diagnostics).map((item) => item.code)).toEqual(["SUPA_REPLAY_ORDER_GAP"]);
+  });
+
+  it("fails closed for ALTER POLICY rename", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_policy.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE POLICY accounts_select ON app.accounts USING (id IS NOT NULL);
+ALTER POLICY accounts_select ON app.accounts RENAME TO accounts_read;`,
+      ],
+    ]);
+
+    expect(model.objects).toEqual([]);
     expect(errors(model.diagnostics).map((item) => item.code)).toEqual(["SUPA_REPLAY_UNSUPPORTED"]);
+    expect(errors(model.diagnostics)[0]?.message).toContain("OBJECT_POLICY");
   });
 
   it("replays constraint validation to the same end state as an initially valid constraint", async () => {

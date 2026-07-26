@@ -29,7 +29,7 @@ const safeEnvTemplates = new Set([
 export function isReadCommandName(name) {
   return readCommands.has(name);
 }
-export function evaluateBashPolicy(input, env = process.env) {
+export function evaluateBashPolicy(input, env = process.env, options = {}) {
   if (!isBashPayload(input)) {
     return allowResult();
   }
@@ -39,19 +39,14 @@ export function evaluateBashPolicy(input, env = process.env) {
     return allowResult();
   }
 
-  for (const check of [
-    checkSecretArgv,
-    checkSecretEnvFileRead,
-    checkRawSqlDdlCommand,
-    checkDangerousGitAndShellWrites,
-  ]) {
+  for (const check of [checkSecretArgv, checkSecretEnvFileRead, checkRawSqlDdlCommand]) {
     const result = check(command, env);
     if (result.action !== "allow") {
       return result;
     }
   }
 
-  return allowResult();
+  return checkDangerousGitAndShellWrites(command, options);
 }
 
 function isBashPayload(input) {
@@ -166,18 +161,22 @@ const scopedGitSubcommandChecks = new Map([
   ["worktree", checkGitWorktree],
 ]);
 
-function checkGitWriteSubcommand(gitArgs, ast, tokens) {
+function checkGitWriteSubcommand(gitArgs, ast, tokens, options) {
   const subcommand = gitArgs[0] ?? "";
   const scopedCheck = scopedGitSubcommandChecks.get(subcommand);
   if (scopedCheck) {
-    return scopedCheck(gitArgs.slice(1));
+    return scopedCheck(gitArgs.slice(1), options);
   }
   const simple = simpleGitWriteBlocks.get(subcommand);
   if (simple) {
     return block(simple);
   }
   if (subcommand === "switch") {
-    return checkGitSwitch(gitArgs.slice(1));
+    return checkGitSwitch(gitArgs.slice(1), options);
+  }
+  const activeBranchBypass = checkActiveBranchBypass(subcommand, gitArgs, options);
+  if (activeBranchBypass.action === "block") {
+    return activeBranchBypass;
   }
   if (subcommand === "merge" && gitArgs.includes("--squash")) {
     return block(
@@ -187,30 +186,8 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   if (subcommand === "commit" && gitArgs.includes("--no-verify")) {
     return block("BLOCKED: --no-verify is prohibited. Fix the hook failure instead.");
   }
-  if (subcommand === "push" && isProhibitedPush(gitArgs)) {
-    return block(
-      "BLOCKED: force pushes and push --no-verify are prohibited. Publish a new topic commit and keep pre-push verification enabled."
-    );
-  }
-  if (subcommand === "push" && isPushToMain(gitArgs)) {
-    return block(
-      "BLOCKED: direct pushes to main are prohibited. Push a topic branch and merge its protected pull request."
-    );
-  }
-  if (subcommand === "push" && gitArgs.includes("HEAD")) {
-    return block(
-      "BLOCKED: symbolic HEAD pushes are ambiguous. Push an explicit topic branch or explicit HEAD:<topic> refspec."
-    );
-  }
-  if (subcommand === "push" && isImplicitPush(gitArgs)) {
-    return block(
-      "BLOCKED: implicit pushes are ambiguous. Push an explicit topic branch or use --dry-run for remote negotiation."
-    );
-  }
-  if (subcommand === "push" && isDiagnosticPush(ast, tokens, gitArgs)) {
-    return block(
-      "BLOCKED: Do not use `git push` as a diagnostic or inventory probe. Use the repo pre-push check or `git push --dry-run` only when remote negotiation must be tested."
-    );
+  if (subcommand === "push") {
+    return checkGitPush(gitArgs, ast, tokens);
   }
   if (
     subcommand === "restore" &&
@@ -218,6 +195,57 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens) {
   ) {
     return block(
       "BLOCKED: git restore --source is prohibited. It overwrites local files with content from another branch. Use git diff or git show for read-only comparisons."
+    );
+  }
+  return allowResult();
+}
+
+function checkGitPush(gitArgs, ast, tokens) {
+  if (isProhibitedPush(gitArgs)) {
+    return block(
+      "BLOCKED: force pushes and push --no-verify are prohibited. Publish a new topic commit and keep pre-push verification enabled."
+    );
+  }
+  if (isPushToMain(gitArgs)) {
+    return block(
+      "BLOCKED: direct pushes to main are prohibited. Push a topic branch and merge its protected pull request."
+    );
+  }
+  if (gitArgs.includes("HEAD")) {
+    return block(
+      "BLOCKED: symbolic HEAD pushes are ambiguous. Push an explicit topic branch or explicit HEAD:<topic> refspec."
+    );
+  }
+  if (isImplicitPush(gitArgs)) {
+    return block(
+      "BLOCKED: implicit pushes are ambiguous. Push an explicit topic branch or use --dry-run for remote negotiation."
+    );
+  }
+  if (isDiagnosticPush(ast, tokens, gitArgs)) {
+    return block(
+      "BLOCKED: Do not use `git push` as a diagnostic or inventory probe. Use the repo pre-push check or `git push --dry-run` only when remote negotiation must be tested."
+    );
+  }
+  return allowResult();
+}
+
+function checkActiveBranchBypass(subcommand, gitArgs, options) {
+  if (!options.enforceActiveBranch) {
+    return allowResult();
+  }
+  if (["checkout-index", "clone", "init", "read-tree", "update-ref"].includes(subcommand)) {
+    return block(
+      `BLOCKED: git ${subcommand} can create another checkout or bypass the active-branch boundary. Stay in the current repository and branch.`
+    );
+  }
+  if (subcommand === "symbolic-ref" && isSymbolicRefMutation(gitArgs.slice(1))) {
+    return block(
+      "BLOCKED: mutating Git HEAD through symbolic-ref bypasses the active-branch boundary. Use an explicitly authorized `git switch` form."
+    );
+  }
+  if (subcommand === "submodule" && gitArgs[1] === "add") {
+    return block(
+      "BLOCKED: adding a Git submodule creates another checkout. All work must remain in this repository checkout."
     );
   }
   return allowResult();
@@ -232,7 +260,10 @@ function checkGitConfig(args) {
   );
 }
 
-function checkGitBranch(args) {
+function checkGitBranch(args, options = {}) {
+  if (options.enforceActiveBranch && !options.branchMutationAuthorized) {
+    return blockBranchAuthorization();
+  }
   if (
     args.length === 2 &&
     ["-d", "-D", "--delete"].includes(args[0] ?? "") &&
@@ -245,20 +276,31 @@ function checkGitBranch(args) {
   );
 }
 
-function checkGitWorktree(args) {
+function checkGitWorktree(args, options = {}) {
+  if (options.blockAllWorktrees) {
+    return blockGitWorktree(options);
+  }
   if (args.length === 3 && args[0] === "list" && args[1] === "--porcelain" && args[2] === "-z") {
     return allowResult();
   }
   return blockGitWorktree();
 }
 
-function blockGitWorktree() {
+function blockGitWorktree(options = {}) {
+  if (options.blockAllWorktrees) {
+    return block(
+      "BLOCKED: all Git worktree commands are prohibited for this repository, including inventory and mutation. Continue in the active primary checkout."
+    );
+  }
   return block(
     "BLOCKED: git worktree is limited to `git worktree list --porcelain -z` for stable read-only inventory. Use host-managed isolation for worktree creation or mutation."
   );
 }
 
-function checkGitSwitch(args) {
+function checkGitSwitch(args, options = {}) {
+  if (options.enforceActiveBranch && !options.branchMutationAuthorized) {
+    return blockBranchAuthorization();
+  }
   if (args.length === 1 && args[0] === "main") {
     return allowResult();
   }
@@ -283,6 +325,19 @@ function checkGitSwitch(args) {
   );
 }
 
+function blockBranchAuthorization() {
+  return block(
+    "BLOCKED: branch mutation was not explicitly authorized by the current user prompt. Stay on the active branch, or ask the user to explicitly request a branch creation or switch."
+  );
+}
+
+function isSymbolicRefMutation(args) {
+  if (args.includes("--delete")) {
+    return true;
+  }
+  return args.filter((arg) => !arg.startsWith("-")).length > 1;
+}
+
 function isTopicBranch(value) {
   return (
     typeof value === "string" &&
@@ -296,7 +351,7 @@ function isTopicBranch(value) {
   );
 }
 
-function checkDangerousGitAndShellWrites(command) {
+function checkDangerousGitAndShellWrites(command, options = {}) {
   const ast = { segments: commandSegmentObjects(stripHeredocs(command)) };
   if (ast.segments.some((segment) => segment.nestedCommandLimitReached)) {
     return block(
@@ -316,7 +371,7 @@ function checkDangerousGitAndShellWrites(command) {
   }
 
   for (let index = 0; index < ast.segments.length; index += 1) {
-    const result = checkDangerousCommandSegment(ast, index);
+    const result = checkDangerousCommandSegment(ast, index, options);
     if (result.action !== "allow") {
       return result;
     }
@@ -325,15 +380,22 @@ function checkDangerousGitAndShellWrites(command) {
   return allowResult();
 }
 
-function checkDangerousCommandSegment(ast, index) {
+function checkDangerousCommandSegment(ast, index, options) {
   const segment = ast.segments[index];
   const tokens = segment.words;
   const name = commandName(tokens);
-  if (isDynamicWorktreeInvocation(ast.segments, index) || name === "git-worktree") {
-    return blockGitWorktree();
+  const dynamicGitInvocation = parseDynamicGitInvocation(ast.segments, index);
+  if (dynamicGitInvocation) {
+    if (dynamicGitInvocation.args[0] === "worktree") {
+      return blockGitWorktree(options);
+    }
+    return checkGitWriteSubcommand(dynamicGitInvocation.args, ast, tokens, options);
+  }
+  if (name === "git-worktree") {
+    return blockGitWorktree(options);
   }
   if (name === "gh") {
-    return checkGhPrMerge(commandArgs(tokens));
+    return checkGhPrMerge(commandArgs(tokens), options);
   }
   if (name !== "git") {
     return allowResult();
@@ -345,12 +407,17 @@ function checkDangerousCommandSegment(ast, index) {
     );
   }
   if (invocation.hasGlobalOptions && invocation.args[0] === "worktree") {
-    return blockGitWorktree();
+    return blockGitWorktree(options);
   }
-  return checkGitWriteSubcommand(invocation.args, ast, tokens);
+  return checkGitWriteSubcommand(invocation.args, ast, tokens, options);
 }
 
-function checkGhPrMerge(args) {
+function checkGhPrMerge(args, options = {}) {
+  if (options.enforceActiveBranch && args[0] === "pr" && args[1] === "checkout") {
+    return block(
+      "BLOCKED: `gh pr checkout` bypasses the active-branch policy. Use an explicitly authorized Rule 21 `git switch --track` command."
+    );
+  }
   if (args[0] !== "pr" || args[1] !== "merge") {
     return allowResult();
   }
@@ -513,6 +580,7 @@ function shellTokens(command) {
       char === ";" ||
       char === "|" ||
       char === ">" ||
+      char === "<" ||
       char === "&" ||
       char === "(" ||
       char === ")"
@@ -668,18 +736,18 @@ function configWritesAlias(args) {
   return aliasIndex !== -1 && aliasIndex < args.length - 1;
 }
 
-function isDynamicWorktreeInvocation(segments, index) {
+function parseDynamicGitInvocation(segments, index) {
   const segment = segments[index];
   const tokens = segment.words;
   const start = commandStart(tokens);
   const rawName = tokens[start] ?? "";
   const dynamicInvocation = parseGitInvocation(["git", ...tokens.slice(start + 1)]);
-  if (isDynamicExecutable(rawName) && dynamicInvocation.args[0] === "worktree") {
-    return true;
+  if (isDynamicExecutable(rawName)) {
+    return dynamicInvocation;
   }
   const substitutionTail = parseGitInvocation(["git", ...tokens]);
-  if (segment.operatorBefore !== ")" || substitutionTail.args[0] !== "worktree") {
-    return false;
+  if (segment.operatorBefore !== ")") {
+    return;
   }
   for (let openIndex = index - 1; openIndex > 0; openIndex -= 1) {
     if (segments[openIndex].operatorBefore !== "(") {
@@ -687,9 +755,10 @@ function isDynamicWorktreeInvocation(segments, index) {
     }
     const owner = segments[openIndex - 1].words;
     const ownerStart = commandStart(owner);
-    return owner[ownerStart] === "$" && owner.length === ownerStart + 1;
+    return owner[ownerStart] === "$" && owner.length === ownerStart + 1
+      ? substitutionTail
+      : undefined;
   }
-  return false;
 }
 
 function isDynamicExecutable(value) {

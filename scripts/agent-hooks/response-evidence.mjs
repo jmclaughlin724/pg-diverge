@@ -15,6 +15,11 @@ const githubNonFailureStates = new Set([
   "skipped",
   "success",
 ]);
+const shellErrorPrefixes = ["bash:", "dash:", "fish:", "sh:", "zsh:"];
+const windowsCommandNotFoundPhrases = [
+  "is not recognized as an internal or external command",
+  "is not recognized as the name of a cmdlet",
+];
 
 export function lower(value) {
   return String(value ?? "").toLowerCase();
@@ -51,6 +56,19 @@ export function responseReportsFailure(payload) {
     return structured;
   }
   return textGithubFailure(toolResponseText(payload));
+}
+
+export function shellCommandNotFound(payload) {
+  const error = typeof payload?.error === "string" ? payload.error : "";
+  const failureText = [error, toolResponseText(payload)].filter(Boolean).join("\n");
+  return failureText.split("\n").some((line) => {
+    const normalized = lower(line).trimStart();
+    return (
+      (shellErrorPrefixes.some((prefix) => normalized.startsWith(prefix)) &&
+        normalized.includes("command not found")) ||
+      windowsCommandNotFoundPhrases.some((phrase) => normalized.includes(phrase))
+    );
+  });
 }
 
 function toolOutcome(value) {

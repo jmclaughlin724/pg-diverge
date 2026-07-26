@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hookMatcherMatchesTool } from "../lib/hook-matcher.mjs";
 import { bundleDocsFiles } from "./bundle-docs.mjs";
 import { renderCodexAgent, renderCodexRule } from "./codex-rules.mjs";
 
@@ -16,11 +17,7 @@ const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const codexProjectDir = ["$(", "git rev-parse --show-toplevel", ")"].join("");
 const codexCommandTools = ["Bash"];
 const codexEditTools = ["apply_patch"];
-const codexPreToolContextTools = [
-  ...codexCommandTools,
-  ...codexEditTools,
-  ["mcp__", [".", "*"].join("")].join(""),
-];
+const codexPreToolContextTools = [[".", "*"].join("")];
 const codexPostToolContextTools = [
   ...codexCommandTools,
   ...codexEditTools,
@@ -316,8 +313,7 @@ function claudeHookConfig(runner) {
         {
           hooks: [
             {
-              args: [...runner.args, "hook", "schema-write"],
-              command: runner.command,
+              command: `${runner.commandString} hook schema-write`,
               statusMessage: "Running supaschema auto-diff on schema change",
               timeout: 130,
               type: "command",
@@ -330,7 +326,8 @@ function claudeHookConfig(runner) {
         {
           hooks: [
             {
-              command: `node "${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs"`,
+              args: [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`],
+              command: "node",
               statusMessage: "Checking general Bash safety policy",
               timeout: 10,
               type: "command",
@@ -341,8 +338,7 @@ function claudeHookConfig(runner) {
         {
           hooks: [
             {
-              args: [...runner.args, "hook", "generated-migration-edit", "--runtime", "claude"],
-              command: runner.command,
+              command: `${runner.commandString} hook generated-migration-edit --runtime claude`,
               statusMessage: "Checking supaschema generated-migration policy",
               timeout: 10,
               type: "command",
@@ -523,6 +519,7 @@ function assertClaudeHookSource(root) {
     ["SubagentStart", ".claude/hooks/context-subagent-start.mjs"],
     ["SubagentStop", ".claude/hooks/context-subagent-stop.mjs"],
     ["Stop", ".claude/hooks/context-stop.mjs"],
+    ["WorktreeCreate", ".claude/hooks/context-worktree-create.mjs"],
     ["SessionEnd", ".claude/hooks/context-session-end.mjs"],
   ]) {
     assertClaudeNodeHook(hooks, eventName, relativePath);
@@ -549,9 +546,17 @@ function assertSourceClaudeBashPreToolUseTopology(hooks) {
     .flatMap(hookHandlersFromValue);
   const handlerText = bashHandlers.map(claudeHandlerText).join("\n");
   const contextPath = `${claudeProjectDir}/.claude/hooks/context-pre-tool-use.mjs`;
+  const contextEntries = entries.filter((entry) =>
+    hookHandlersFromValue(entry).some((handler) => claudeHandlerText(handler).includes(contextPath))
+  );
   if (!handlerText.includes(contextPath)) {
     throw new Error(
       ".claude/settings.json Bash PreToolUse must resolve through .claude/hooks/context-pre-tool-use.mjs"
+    );
+  }
+  if (contextEntries.length !== 1 || contextEntries[0]?.matcher !== ".*") {
+    throw new Error(
+      ".claude/settings.json context PreToolUse must use matcher .* so every supported local tool reaches the repository boundary"
     );
   }
   if (handlerText.includes(".claude/hooks/guards/bash-policy-checks.mjs")) {
@@ -565,7 +570,7 @@ function claudeMatcherMentionsTool(matcher, toolName) {
   if (typeof matcher !== "string" || matcher.length === 0) {
     return true;
   }
-  return matcher.split("|").includes(toolName);
+  return hookMatcherMatchesTool(matcher, toolName);
 }
 
 function claudeHandlerText(handler) {

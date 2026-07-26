@@ -4,10 +4,19 @@ import { finalMessage, lower } from "./response-evidence.mjs";
 import { currentTurnState, setCorrections } from "./state.mjs";
 
 const completionWords = ["completed", "finished", "done", "implemented", "fixed"];
-const hedgeWords = ["maybe", "probably", "possibly", "likely", "might", "could", "seems"];
-const deferralTerms = ["if you want", "would you like", "i can ", "i could ", "let me know"];
+const hedgeWords = ["maybe", "probably", "possibly", "likely", "might", "seems"];
+const deferralTerms = [
+  "would you like",
+  "i can ",
+  "i could ",
+  "let me know",
+  "if you want me to",
+  "if you want, i'll ",
+  "if you want, i will ",
+];
 const menuTerms = ["option 1", "option a", "choose", "which approach", "pick one"];
 const directTerms = ["execute", "implement", "fix", "update", "do it", "make the change"];
+const toolIncidentLead = "tool incident:";
 const userDecisionTerms = [
   "approval",
   "approve",
@@ -85,6 +94,7 @@ const verificationDispositionTerms = [
 export function runResponseDetectors(payload, state, runtime) {
   const message = finalMessage(payload);
   const findings = [
+    materialToolIncidentDisclosure(message, state),
     hedgeDensity(message),
     completionClaimWithOpenItems(message, payload, state),
     verificationClaimConflict(message, state, transcriptEvidence(payload), runtime),
@@ -108,6 +118,27 @@ export function runResponseDetectors(payload, state, runtime) {
         "Revise the response using only verified evidence already present in the session. To resolve any assumptions or lack of clarity, query context7 or upstream sources prior to continuing.",
       ].join("\n"),
     ],
+  };
+}
+
+export function materialToolIncidentDisclosure(message, state) {
+  const incidentRecorded = currentTurnState(state).evidence.some(
+    (item) =>
+      item?.kind === "tool-incident" &&
+      item?.incident === "shell-command-not-found" &&
+      item?.outcome === "failure"
+  );
+  if (!incidentRecorded) {
+    return;
+  }
+  const response = lower(message.trimStart());
+  if (response.startsWith(toolIncidentLead) && response.includes("command not found")) {
+    return;
+  }
+  return {
+    id: "material-tool-incident-not-leading",
+    message:
+      "A shell command-not-found incident was recorded. Begin the final response with `Tool incident:`, explicitly say `command not found`, state what the shell attempted, and give mutation/impact and recovery evidence before the outcome. A successful retry does not make the incident optional or a read-only-search caveat.",
   };
 }
 

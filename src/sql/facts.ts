@@ -160,6 +160,7 @@ function applyStatementDependencies(object: SchemaObject, dependency: StatementD
     object.metadata.routineDependencyConfidence = dependency.routine.confidence;
     object.metadata.routineDependencies = dependency.routine.references;
     object.metadata.routineColumnDependencies = dependency.routine.columnReferences;
+    object.metadata.routineUnqualifiedReferences = dependency.routine.unqualifiedReferences;
   }
 }
 
@@ -608,6 +609,74 @@ export function routineSearchPath(options: unknown): string | undefined {
     }
     return values.join(", ");
   }
+}
+
+const provenRoutineDependencyConfidences = new Set([
+  "plpgsql-dynamic-parsed",
+  "plpgsql-static",
+  "sql-body",
+  "sql-string-parsed",
+]);
+
+export interface SecurityDefinerSearchPathIssue {
+  hint: string;
+  kind: "missing" | "nonempty" | "unproven" | "unqualified";
+  message: string;
+}
+
+export function securityDefinerSearchPathIssue(
+  facts: Readonly<Record<string, unknown>>
+): SecurityDefinerSearchPathIssue | undefined {
+  if (facts.securityDefiner !== true) {
+    return;
+  }
+  if (typeof facts.routineSearchPath !== "string") {
+    return {
+      hint: "Set a function-local search_path and schema-qualify every relation and type reference.",
+      kind: "missing",
+      message: "does not set a function-local search_path",
+    };
+  }
+  if (facts.routineSearchPath !== "") {
+    return {
+      hint: "This project requires SET search_path = '' with every relation and type reference schema-qualified.",
+      kind: "nonempty",
+      message: "sets a non-empty search_path; this project requires an empty function-local path",
+    };
+  }
+  const unqualified = routineUnqualifiedReferenceCount(facts.routineUnqualifiedReferences);
+  if (unqualified === undefined) {
+    return {
+      hint: "Use a statically analyzable routine body and schema-qualify every relation and type reference.",
+      kind: "unproven",
+      message:
+        "has an empty search_path but its relation and type references could not be proven safe",
+    };
+  }
+  if (unqualified > 0) {
+    return {
+      hint: "Schema-qualify every relation and type reference; an empty search_path still searches pg_temp implicitly.",
+      kind: "unqualified",
+      message:
+        "uses unqualified relation or type references with an empty search_path, which still searches pg_temp implicitly",
+    };
+  }
+  if (!provenRoutineDependencyConfidences.has(String(facts.routineDependencyConfidence ?? ""))) {
+    return {
+      hint: "Use a statically analyzable routine body and schema-qualify every relation and type reference.",
+      kind: "unproven",
+      message:
+        "has an empty search_path but its relation and type references could not be proven safe",
+    };
+  }
+}
+
+function routineUnqualifiedReferenceCount(value: unknown): number | undefined {
+  const facts = asRecord(value);
+  if (!(facts && Array.isArray(facts.relations) && Array.isArray(facts.types))) {
+    return;
+  }
+  return metadataStrings(facts.relations).length + metadataStrings(facts.types).length;
 }
 
 function functionLanguage(options: unknown): string | undefined {

@@ -75,6 +75,49 @@ describe("hook import graph", () => {
       ".claude/hooks/example.mjs imports non-runtime-safe module zod"
     );
   });
+
+  it("inspects the first argument of dynamic imports with options", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-hook-import-options-"));
+    await write(
+      root,
+      ".claude/hooks/example.mjs",
+      'await import("./dynamic.mjs", { with: { type: "json" } });\n'
+    );
+    await write(root, ".claude/hooks/dynamic.mjs", "export const dynamic = true;\n");
+
+    expect(hookImportGraph(root)).toContainEqual({
+      file: ".claude/hooks/example.mjs",
+      kind: "relative",
+      specifier: "./dynamic.mjs",
+      target: ".claude/hooks/dynamic.mjs",
+    });
+  });
+
+  it("rejects fake node-prefixed builtin specifiers", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-hook-import-builtin-"));
+    await write(root, ".claude/hooks/example.mjs", 'import "node:not-a-real-builtin";\n');
+
+    expect(() => check(root)).toThrow(
+      ".claude/hooks/example.mjs imports unknown Node builtin node:not-a-real-builtin"
+    );
+  });
+
+  it("transitively inspects reachable helpers outside hook roots", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-hook-import-transitive-"));
+    await write(root, ".claude/hooks/example.mjs", 'import "../../shared/helper.mjs";\n');
+    await write(root, "shared/helper.mjs", 'import "zod";\n');
+
+    expect(() => check(root)).toThrow("shared/helper.mjs imports non-runtime-safe module zod");
+  });
+
+  it("terminates on cycles in the reachable helper graph", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-hook-import-cycle-"));
+    await write(root, ".claude/hooks/example.mjs", 'import "../../shared/helper.mjs";\n');
+    await write(root, "shared/helper.mjs", 'import "../.claude/hooks/example.mjs";\n');
+
+    expect(hookImportGraph(root)).toHaveLength(2);
+    expect(() => check(root)).not.toThrow();
+  });
 });
 
 async function write(root: string, relativePath: string, content: string): Promise<void> {

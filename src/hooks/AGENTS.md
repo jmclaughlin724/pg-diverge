@@ -17,7 +17,7 @@ This directory implements the product hook commands used by editor and agent wor
 - `src/cli.ts` owns the public `supaschema hook schema-write` and `supaschema hook generated-migration-edit` commands and delegates their payloads to `output.ts`.
 - `output.ts` is the workflow composition owner: it consumes `config.ts`, `targets.ts`, `checks.ts`, and `commands.ts`.
 - `config.ts` consumes canonical config, database URL, and schema-path resolution; `checks.ts` consumes command execution and target rendering.
-- `commands.ts` owns process execution and secret redaction; `targets.ts` owns path containment and generated-migration lineage inspection.
+- `commands.ts` owns process execution and consumes `redaction.ts`, which owns secret redaction; `targets.ts` owns path containment and generated-migration lineage inspection.
 - `.claude/hooks/supaschema-source-hook.mjs` reaches this runtime through built `dist/cli.js`; generated package-consumer registrations invoke the installed `supaschema` binary directly.
 - `tests/hooks/workflow.test.ts` owns product workflow behavior. Agent registration and packaged consumer edges are covered by `tests/agent-hooks/**`, `tests/cli/editor.test.ts`, and `tests/package/contents.test.ts`.
 

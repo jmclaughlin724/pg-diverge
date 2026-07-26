@@ -6,6 +6,10 @@ import { recordToolEvidence } from "./command-evidence.mjs";
 import { preToolEvidenceGate } from "./evidence-gate.mjs";
 import { failClosedResult, runChecks, shapeHookResult, writeHookResult } from "./hook-output.mjs";
 import { mergedTopicBranchContext } from "./merged-branch-state.mjs";
+import {
+  evaluateRepositoryBoundary,
+  promptAuthorizesBranchMutation,
+} from "./repository-boundary.mjs";
 import { runResponseDetectors } from "./response-shape.mjs";
 import {
   recordObservableSkillLoad,
@@ -17,6 +21,7 @@ import {
   beginTurnState,
   clearCorrections,
   correctionsFor,
+  currentTurnState,
   markCorrectionsBlocked,
   selectTurnState,
   sessionStartState,
@@ -68,6 +73,16 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
   const runtime = options.runtime ?? "claude";
   const hookPath = options.hookPath ?? "scripts/agent-hooks/runner.mjs";
   try {
+    if (eventName === "WorktreeCreate") {
+      return shapeHookResult(
+        eventName,
+        {
+          block:
+            "BLOCKED: worktree creation is prohibited for this repository. Continue in the active primary checkout.",
+        },
+        runtime
+      );
+    }
     return withSessionState(payload, (state) => {
       const context = { hookPath, root: options.root ?? root, runtime, state };
       let result = {};
@@ -81,7 +96,12 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
         result = runChecks(eventName, payload, [promptSkills], context);
       } else if (eventName === "PreToolUse") {
         selectTurnState(payload, state);
-        result = runChecks(eventName, payload, [toolSkills, evidenceGate, bashSafety], context);
+        result = runChecks(
+          eventName,
+          payload,
+          [repositoryBoundary, toolSkills, evidenceGate, bashSafety],
+          context
+        );
       } else if (eventName === "PostToolUse" || eventName === "PostToolUseFailure") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
@@ -144,8 +164,19 @@ function evidenceGate(payload, context) {
   return preToolEvidenceGate(payload, context.state);
 }
 
-function bashSafety(payload) {
-  const result = evaluateBashPolicy(payload);
+function repositoryBoundary(payload, context) {
+  const result = evaluateRepositoryBoundary(payload, context);
+  return result.action === "block" ? { deny: result.message } : {};
+}
+
+function bashSafety(payload, context) {
+  const result = evaluateBashPolicy(payload, process.env, {
+    blockAllWorktrees: true,
+    branchMutationAuthorized: promptAuthorizesBranchMutation(
+      currentTurnState(context.state).lastPrompt
+    ),
+    enforceActiveBranch: true,
+  });
   return result.action === "block" ? { deny: result.message } : {};
 }
 
@@ -215,9 +246,7 @@ function hookRuntime() {
   const normalized = String(process.argv[1] ?? "")
     .split(path.sep)
     .join("/");
-  return normalized.includes("/.codex/hooks/") || process.env.CODEX_PROJECT_DIR
-    ? "codex"
-    : "claude";
+  return normalized.includes("/.codex/hooks/") ? "codex" : "claude";
 }
 
 function readStdinJson(eventName, runtime) {
