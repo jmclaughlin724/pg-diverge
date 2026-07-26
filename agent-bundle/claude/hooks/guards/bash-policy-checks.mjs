@@ -557,6 +557,7 @@ function shellTokens(command) {
       continue;
     }
     if (char === "\\") {
+      token += quote ? "" : "\\";
       escaped = true;
       continue;
     }
