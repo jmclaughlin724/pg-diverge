@@ -11,6 +11,7 @@ import {
   promptAuthorizesBranchMutation,
 } from "./repository-boundary.mjs";
 import { runResponseDetectors } from "./response-shape.mjs";
+import { validateSessionStartPayload } from "./session-start-schema.mjs";
 import {
   recordObservableSkillLoad,
   unresolvedPending,
@@ -29,23 +30,6 @@ import {
 } from "./state.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const claudePermissionModes = new Set([
-  "default",
-  "acceptEdits",
-  "plan",
-  "dontAsk",
-  "bypassPermissions",
-  "auto",
-]);
-const codexPermissionModes = new Set([
-  "default",
-  "acceptEdits",
-  "plan",
-  "dontAsk",
-  "bypassPermissions",
-]);
-const claudeSessionStartSources = new Set(["startup", "resume", "clear", "compact", "fork"]);
-const codexSessionStartSources = new Set(["startup", "resume", "clear", "compact"]);
 
 export function runAgentHookEvent(eventName, options = {}) {
   const runtime = options.runtime ?? hookRuntime();
@@ -270,43 +254,4 @@ function readStdinJson(eventName, runtime) {
     validateSessionStartPayload(payload, runtime);
   }
   return payload;
-}
-
-function validateSessionStartPayload(payload, runtime) {
-  requireNonEmptyString(payload, "session_id");
-  requireNullableString(payload, "transcript_path");
-  requireNonEmptyString(payload, "cwd");
-  if (payload.hook_event_name !== "SessionStart") {
-    throw new Error('hook input field "hook_event_name" must equal "SessionStart"');
-  }
-  if (runtime === "codex") {
-    requireNonEmptyString(payload, "model");
-  }
-  requirePermissionMode(payload, runtime);
-  const sources = runtime === "claude" ? claudeSessionStartSources : codexSessionStartSources;
-  if (!sources.has(payload.source)) {
-    throw new Error('hook input field "source" has an unsupported value');
-  }
-}
-
-function requirePermissionMode(payload, runtime) {
-  if (runtime === "claude" && payload.permission_mode === undefined) {
-    return;
-  }
-  const permissionModes = runtime === "claude" ? claudePermissionModes : codexPermissionModes;
-  if (!permissionModes.has(payload.permission_mode)) {
-    throw new Error('hook input field "permission_mode" has an unsupported value');
-  }
-}
-
-function requireNonEmptyString(payload, field) {
-  if (typeof payload[field] !== "string" || payload[field].length === 0) {
-    throw new Error(`hook input field "${field}" must be a non-empty string`);
-  }
-}
-
-function requireNullableString(payload, field) {
-  if (payload[field] !== null && typeof payload[field] !== "string") {
-    throw new Error(`hook input field "${field}" must be a string or null`);
-  }
 }
