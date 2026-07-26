@@ -80,7 +80,15 @@ const branchActionWords = new Set([
 ]);
 const conditionalOrNegativeWords = new Set([
   "cannot",
+  "describe",
+  "describing",
+  "document",
+  "documentation",
   "dont",
+  "example",
+  "examples",
+  "explain",
+  "explaining",
   "if",
   "never",
   "no",
@@ -88,7 +96,9 @@ const conditionalOrNegativeWords = new Set([
   "only",
   "unless",
   "until",
+  "what",
   "when",
+  "why",
   "without",
 ]);
 
@@ -500,6 +510,7 @@ function hasDynamicPathSyntax(value) {
     value.startsWith("~\\") ||
     value.includes("$") ||
     value.includes("`") ||
+    value.includes("{") ||
     hasWindowsEnvironmentExpansion(value)
   );
 }
@@ -515,6 +526,9 @@ function hasNonFileScheme(value) {
     return false;
   }
   const scheme = value.slice(0, separator);
+  if (scheme === "file") {
+    return false;
+  }
   return [...scheme].every(
     (character) =>
       (character >= "a" && character <= "z") ||

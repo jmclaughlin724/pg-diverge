@@ -2214,3 +2214,21 @@ async function write(root: string, relativePath: string, text: string): Promise<
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);
 }
+
+describe("shell command-not-found diagnostics", () => {
+  it("recognizes path-qualified shell prefixes such as /bin/bash and /usr/bin/zsh", async () => {
+    const { shellCommandNotFound } = await import(
+      "../../scripts/agent-hooks/response-evidence.mjs"
+    );
+    const cases = [
+      { error: "/bin/bash: line 1: foo: command not found", tool_response: {} },
+      { error: "/usr/bin/zsh:1: command not found: foo", tool_response: {} },
+      { error: "bash: line 1: foo: command not found", tool_response: {} },
+      { error: "zsh:1: command not found: foo", tool_response: {} },
+    ];
+    for (const payload of cases) {
+      expect(shellCommandNotFound(payload), JSON.stringify(payload)).toBe(true);
+    }
+    expect(shellCommandNotFound({ error: "some other failure", tool_response: {} })).toBe(false);
+  });
+});

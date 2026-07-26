@@ -129,6 +129,13 @@ describe("repository boundary evaluator", () => {
       bashPayload(`git -C${resolve(root, "..")} status --short`, root),
       bashPayload("printf changed > .git/HEAD", root),
       bashPayload("mktemp", root),
+      {
+        cwd: root,
+        tool_input: { file_path: `file://${outside}` },
+        tool_name: "Read",
+      },
+      bashPayload("touch ../outside.txt inside.txt", root),
+      bashPayload("touch {../outside.txt,inside.txt}", root),
     ]) {
       expect(evaluateRepositoryBoundary(payload, { root }).action).toBe("block");
     }
@@ -174,6 +181,12 @@ describe("active-branch policy", () => {
       )
     ).toBe(false);
     expect(promptAuthorizesBranchMutation("Do not create or switch branches.")).toBe(false);
+    expect(promptAuthorizesBranchMutation("Explain how to create a branch for this change.")).toBe(
+      false
+    );
+    expect(
+      promptAuthorizesBranchMutation("Describe the documentation about creating branches.")
+    ).toBe(false);
   });
 
   it("blocks every worktree command and unauthorized branch mutation in source mode", () => {

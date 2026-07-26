@@ -63,8 +63,9 @@ export function shellCommandNotFound(payload) {
   const failureText = [error, toolResponseText(payload)].filter(Boolean).join("\n");
   return failureText.split("\n").some((line) => {
     const normalized = lower(line).trimStart();
+    const shellName = normalized.slice(normalized.lastIndexOf("/") + 1);
     return (
-      (shellErrorPrefixes.some((prefix) => normalized.startsWith(prefix)) &&
+      (shellErrorPrefixes.some((prefix) => shellName.startsWith(prefix)) &&
         normalized.includes("command not found")) ||
       windowsCommandNotFoundPhrases.some((phrase) => normalized.includes(phrase))
     );
