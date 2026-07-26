@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import { isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, ok } from "../lib/assertions.js";
@@ -54,7 +55,7 @@ function importSpecifiers(file, root) {
     if (
       ts.isCallExpression(node) &&
       node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-      node.arguments.length === 1
+      node.arguments.length >= 1
     ) {
       const value = literalModuleSpecifier(node.arguments[0]);
       if (value !== undefined) {
@@ -89,19 +90,31 @@ function relativeDependency(file, specifier, root) {
 
 export function hookImportGraph(root = ROOT) {
   const edges = [];
-  for (const file of hookFiles(root)) {
+  const pending = hookFiles(root);
+  const visited = new Set();
+  while (pending.length > 0) {
+    const file = pending.shift();
+    if (file === undefined || visited.has(file)) {
+      continue;
+    }
+    visited.add(file);
     for (const specifier of importSpecifiers(file, root)) {
       if (specifier.startsWith("node:")) {
+        assert(isBuiltin(specifier), `${file} imports unknown Node builtin ${specifier}`);
         edges.push({ file, kind: "builtin", specifier });
         continue;
       }
       if (specifier.startsWith("./") || specifier.startsWith("../")) {
+        const target = relativeDependency(file, specifier, root);
         edges.push({
           file,
           kind: "relative",
           specifier,
-          target: relativeDependency(file, specifier, root),
+          target,
         });
+        if ((target.endsWith(".mjs") || target.endsWith(".js")) && !visited.has(target)) {
+          pending.push(target);
+        }
         continue;
       }
       assert(allowedBare.has(specifier), `${file} imports non-runtime-safe module ${specifier}`);

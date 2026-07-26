@@ -17,6 +17,8 @@ const hasAgentHookSources = [
 let runChecks: any;
 let shapeHookResult: any;
 let handleAgentHookEvent: any;
+let deferralLanguage: any;
+let hedgeDensity: any;
 let preToolEvidenceGate: any;
 let claimedVerificationDomains: any;
 let correctionsFor: any;
@@ -36,6 +38,9 @@ if (hasAgentHookSources) {
     "../../scripts/agent-hooks/hook-output.mjs"
   ));
   ({ handleAgentHookEvent } = await optionalImport("../../scripts/agent-hooks/runner.mjs"));
+  ({ deferralLanguage, hedgeDensity } = await optionalImport(
+    "../../scripts/agent-hooks/response-shape.mjs"
+  ));
   ({ preToolEvidenceGate } = await optionalImport("../../scripts/agent-hooks/evidence-gate.mjs"));
   ({ claimedVerificationDomains } = await optionalImport(
     "../../scripts/agent-hooks/response-claims.mjs"
@@ -991,6 +996,23 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
     }
   });
 
+  it("does not count historical could statements as dense hedging", () => {
+    const historicalFailureSummary = [
+      "Malformed hook input could silently misfire.",
+      "Claude and Codex SessionStart contracts could not safely share one schema.",
+      "Partial canonical mutations could escape synchronization.",
+    ].join(" ");
+
+    expect(hedgeDensity(historicalFailureSummary)).toBeUndefined();
+  });
+
+  it("does not classify an optional feature disposition as deferred work", () => {
+    const optionalFeatureDisposition =
+      "If you want a searchable hook-history ledger, that is a separate observability feature. It is not required for upstream parity.";
+
+    expect(deferralLanguage(optionalFeatureDisposition)).toBeUndefined();
+  });
+
   it("does not repeat an emitted signature when a revised response adds a new correction", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
@@ -1736,6 +1758,162 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
     expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
   });
 
+  it("requires shell command-not-found incidents to lead the final response after a retry", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.STATE_DIR = stateDir;
+
+    for (const runtime of ["claude", "codex"]) {
+      const payload = {
+        prompt: "fix the reporting failure",
+        session_id: `shell-command-not-found-${runtime}`,
+        turn_id: "turn-1",
+      };
+      handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime });
+
+      handleAgentHookEvent(
+        runtime === "claude" ? "PostToolUseFailure" : "PostToolUse",
+        {
+          ...payload,
+          hook_event_name: runtime === "claude" ? "PostToolUseFailure" : "PostToolUse",
+          tool_input: {
+            command: 'rg -n "`next.config.ts`" tools/soleaux',
+          },
+          tool_name: "Bash",
+          ...(runtime === "claude"
+            ? {
+                error: "zsh:1: command not found: next.config.ts",
+                is_interrupt: false,
+              }
+            : {
+                tool_response: {
+                  content: [{ text: "zsh:1: command not found: next.config.ts" }],
+                  exit_code: 127,
+                },
+              }),
+        },
+        { root, runtime }
+      );
+      handleAgentHookEvent(
+        "PostToolUse",
+        {
+          ...payload,
+          tool_input: {
+            command: "rg -n -F 'next.config.ts' tools/soleaux",
+          },
+          tool_name: "Bash",
+          tool_response: {
+            content: [{ text: "tools/soleaux/src/soleaux/frameworks/nextjs.py:1" }],
+            exit_code: 0,
+          },
+        },
+        { root, runtime }
+      );
+
+      expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
+        expect.objectContaining({
+          incident: "shell-command-not-found",
+          kind: "tool-incident",
+          outcome: "failure",
+        })
+      );
+
+      const buried = handleAgentHookEvent(
+        "Stop",
+        {
+          ...payload,
+          last_assistant_message: [
+            "The reporting fix is complete.",
+            "One malformed read-only search attempted to execute next.config.ts; it failed without mutation.",
+          ].join("\n\n"),
+        },
+        { root, runtime }
+      );
+      expect(buried.output).toMatchObject({
+        decision: "block",
+        reason: expect.stringContaining("Begin the final response with `Tool incident:`"),
+      });
+
+      const leading = handleAgentHookEvent(
+        "Stop",
+        {
+          ...payload,
+          last_assistant_message: [
+            "Tool incident: zsh attempted to execute next.config.ts and returned command not found.",
+            "Post-command hashes verified no mutation, and the search was rerun safely.",
+            "The reporting fix is complete.",
+          ].join("\n\n"),
+        },
+        { root, runtime }
+      );
+      expect(leading.output).toEqual({});
+    }
+  });
+
+  it("records native Windows command-not-found diagnostics", async () => {
+    const cases = [
+      {
+        message: "'next.config.ts' is not recognized as an internal or external command",
+        runtime: "claude",
+      },
+      {
+        message:
+          "next.config.ts : The term 'next.config.ts' is not recognized as the name of a cmdlet, function, script file, or operable program.",
+        runtime: "codex",
+      },
+    ];
+
+    for (const { message, runtime } of cases) {
+      const { root, stateDir } = await seededHookRoot();
+      process.env.STATE_DIR = stateDir;
+      const payload = {
+        prompt: "fix the reporting failure",
+        session_id: `windows-command-not-found-${runtime}`,
+      };
+      handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime });
+      handleAgentHookEvent(
+        runtime === "claude" ? "PostToolUseFailure" : "PostToolUse",
+        {
+          ...payload,
+          hook_event_name: runtime === "claude" ? "PostToolUseFailure" : "PostToolUse",
+          tool_input: { command: "next.config.ts" },
+          tool_name: "Bash",
+          ...(runtime === "claude"
+            ? { error: message, is_interrupt: false }
+            : { tool_response: { content: [{ text: message }], exit_code: 1 } }),
+        },
+        { root, runtime }
+      );
+
+      expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
+        expect.objectContaining({
+          incident: "shell-command-not-found",
+          kind: "tool-incident",
+          outcome: "failure",
+        })
+      );
+    }
+  });
+
+  it("does not promote an ordinary failed source read to a tool incident", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.STATE_DIR = stateDir;
+    const payload = { prompt: "review these hooks", session_id: "failed-source-read" };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        session_id: "failed-source-read",
+        tool_input: { command: "rg -n -F 'missing literal' scripts/agent-hooks" },
+        tool_name: "Bash",
+        tool_response: { exit_code: 1 },
+      },
+      { root, runtime: "codex" }
+    );
+
+    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
+  });
+
   it("does not create failed evidence when command outcome is unavailable", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
@@ -2036,3 +2214,21 @@ async function write(root: string, relativePath: string, text: string): Promise<
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);
 }
+
+describe("shell command-not-found diagnostics", () => {
+  it("recognizes path-qualified shell prefixes such as /bin/bash and /usr/bin/zsh", async () => {
+    const { shellCommandNotFound } = await import(
+      "../../scripts/agent-hooks/response-evidence.mjs"
+    );
+    const cases = [
+      { error: "/bin/bash: line 1: foo: command not found", tool_response: {} },
+      { error: "/usr/bin/zsh:1: command not found: foo", tool_response: {} },
+      { error: "bash: line 1: foo: command not found", tool_response: {} },
+      { error: "zsh:1: command not found: foo", tool_response: {} },
+    ];
+    for (const payload of cases) {
+      expect(shellCommandNotFound(payload), JSON.stringify(payload)).toBe(true);
+    }
+    expect(shellCommandNotFound({ error: "some other failure", tool_response: {} })).toBe(false);
+  });
+});

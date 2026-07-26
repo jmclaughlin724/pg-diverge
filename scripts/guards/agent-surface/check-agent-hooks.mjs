@@ -9,6 +9,7 @@ import {
   hookHandlers,
   runnerDeclaresFunction,
   runnerImportsEvaluateBashPolicy,
+  runnerImportsRepositoryBoundary,
 } from "./hook-topology.mjs";
 
 const claudeHookFiles = [
@@ -30,6 +31,7 @@ const sourceRepoClaudeContextHooks = [
   ".claude/hooks/context-subagent-stop.mjs",
   ".claude/hooks/context-stop.mjs",
   ".claude/hooks/context-task-completed.mjs",
+  ".claude/hooks/context-worktree-create.mjs",
   ".claude/hooks/context-session-end.mjs",
 ];
 const codexMirrorHookPaths = [
@@ -48,6 +50,7 @@ const sourceRepoCodexContextHooks = [
   ".codex/hooks/context-subagent-stop.mjs",
   ".codex/hooks/context-stop.mjs",
   ".codex/hooks/context-task-completed.mjs",
+  ".codex/hooks/context-worktree-create.mjs",
   ".codex/hooks/context-session-end.mjs",
 ];
 const codexRegisteredHookPaths = [
@@ -69,6 +72,15 @@ const removedHookPaths = [
   ".codex/hooks/block-generated-migration-edits.mjs",
   ".codex/hooks/context-permission-denied.mjs",
 ];
+const sourceRepoHookRuntimeOwners = [
+  ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
+  ".claude/hooks/supaschema-source-hook.mjs",
+  "scripts/agent-hooks/repository-boundary.mjs",
+  "scripts/agent-hooks/runner.mjs",
+];
+const consumerClaudeSettingsFiles = ["npm", "pnpm", "yarn", "bun"].map(
+  (packageManager) => `agent-bundle/claude/settings.${packageManager}.json`
+);
 
 function assertLabeledCommandHandlers(value, owner) {
   const invalid = hookHandlers(value).filter(
@@ -148,6 +160,15 @@ function assertClaudeSettings(claudeSettings, root) {
     sourceClaudeContextCommands.length === 1 && sourceClaudeSchemaCommands.length === 0,
     ".claude/settings.json Bash PreToolUse must resolve through the context hook only"
   );
+  const claudeContextPreToolUse = (claudeSettings.hooks?.PreToolUse ?? []).filter((entry) =>
+    hookHandlers(entry).some((handler) =>
+      handler.args?.some((arg) => arg.endsWith("/.claude/hooks/context-pre-tool-use.mjs"))
+    )
+  );
+  assert(
+    claudeContextPreToolUse.length === 1 && claudeContextPreToolUse[0]?.matcher === ".*",
+    ".claude/settings.json context PreToolUse must use matcher .* so every supported local tool reaches the repository boundary"
+  );
   const sourceClaudeApplyPatchSchemaCommands = claudePreToolUseCommandsFor(
     claudeSettings,
     "apply_patch"
@@ -219,6 +240,13 @@ function assertClaudeSettings(claudeSettings, root) {
     ".claude/settings.json must not register PermissionDenied without an explicit retry policy"
   );
   assert(
+    Array.isArray(claudeSettings.hooks?.WorktreeCreate) &&
+      hookHandlers(claudeSettings.hooks.WorktreeCreate).some((handler) =>
+        handler.args?.some((arg) => arg.endsWith("/.claude/hooks/context-worktree-create.mjs"))
+      ),
+    ".claude/settings.json must block WorktreeCreate through the tracked context hook"
+  );
+  assert(
     !readText("agent-bundle/claude/settings.npm.json", root).includes(
       "sync-llm-on-claude-surface-change.mjs"
     ),
@@ -280,8 +308,18 @@ function assertCodexConfig(codexConfig, root) {
   assert(
     codexConfig.hooks?.PermissionDenied === undefined &&
       codexConfig.hooks?.PostToolUseFailure === undefined &&
-      codexConfig.hooks?.TaskCompleted === undefined,
+      codexConfig.hooks?.TaskCompleted === undefined &&
+      codexConfig.hooks?.WorktreeCreate === undefined,
     ".codex/hooks.json must not register unsupported Codex hook events"
+  );
+  const codexContextPreToolUse = (codexConfig.hooks?.PreToolUse ?? []).filter((entry) =>
+    hookHandlers(entry).some((handler) =>
+      handler.command.includes(".codex/hooks/context-pre-tool-use.mjs")
+    )
+  );
+  assert(
+    codexContextPreToolUse.length === 1 && codexContextPreToolUse[0]?.matcher === ".*",
+    ".codex/hooks.json context PreToolUse must use matcher .* so every supported local tool reaches the repository boundary"
   );
   for (const [toolName, expectedSchemaCommands] of [
     ["Bash", 0],
@@ -346,6 +384,35 @@ function assertCodexConfig(codexConfig, root) {
   );
 }
 
+function assertConsumerClaudeSettings(root) {
+  const guardArg = [
+    "$",
+    "{CLAUDE_PROJECT_DIR}",
+    "/.claude/hooks/guards/bash-policy-checks.mjs",
+  ].join("");
+  for (const settingsFile of consumerClaudeSettingsFiles) {
+    const handlers = hookHandlers(readJson(settingsFile, root));
+    assert(
+      handlers.some(
+        (handler) =>
+          handler.command === "node" &&
+          Array.isArray(handler.args) &&
+          handler.args.includes(guardArg)
+      ),
+      `${settingsFile} must run the Node guard in exec form with a CLAUDE_PROJECT_DIR argument`
+    );
+    const supaschemaHandlers = handlers.filter(
+      (handler) =>
+        typeof handler.command === "string" && handler.command.includes("supaschema hook")
+    );
+    assert(
+      supaschemaHandlers.length === 2 &&
+        supaschemaHandlers.every((handler) => handler.args === undefined),
+      `${settingsFile} must run package-manager Supaschema shims in shell form without args`
+    );
+  }
+}
+
 function assertAgentBundleHookLabels(root) {
   for (const packageManager of ["npm", "pnpm", "yarn", "bun"]) {
     for (const [runtime, path] of [
@@ -367,6 +434,7 @@ export function check(root = ROOT) {
     "scripts/agent-hooks/command-evidence.mjs",
     "scripts/agent-hooks/evidence-gate.mjs",
     "scripts/agent-hooks/hook-output.mjs",
+    "scripts/agent-hooks/repository-boundary.mjs",
     "scripts/agent-hooks/response-claims.mjs",
     "scripts/agent-hooks/response-evidence.mjs",
     "scripts/agent-hooks/response-shape.mjs",
@@ -395,6 +463,13 @@ export function check(root = ROOT) {
   }
   const claudeSettings = readJson(".claude/settings.json", root);
   assertClaudeSettings(claudeSettings, root);
+  assertConsumerClaudeSettings(root);
+  for (const runtimeOwner of sourceRepoHookRuntimeOwners) {
+    assert(
+      !readText(runtimeOwner, root).includes("CODEX_PROJECT_DIR"),
+      `${runtimeOwner} must derive runtime and project ownership from its entrypoint, not CODEX_PROJECT_DIR`
+    );
+  }
 
   const codexConfig = readJson(".codex/hooks.json", root);
   assertCodexConfig(codexConfig, root);
@@ -405,7 +480,7 @@ export function check(root = ROOT) {
     for (const entry of entries) {
       assert(
         typeof entry.matcher === "string" && entry.matcher.length > 0,
-        `.codex/hooks.json ${eventName} entries must use narrow matchers`
+        `.codex/hooks.json ${eventName} entries must use explicit matchers`
       );
     }
   }
@@ -424,6 +499,11 @@ export function check(root = ROOT) {
     runnerImportsEvaluateBashPolicy(hookRunnerText) &&
       runnerDeclaresFunction(hookRunnerText, "bashSafety"),
     "scripts/agent-hooks/runner.mjs must own source-repo PreToolUse Bash safety"
+  );
+  assert(
+    runnerImportsRepositoryBoundary(hookRunnerText) &&
+      runnerDeclaresFunction(hookRunnerText, "repositoryBoundary"),
+    "scripts/agent-hooks/runner.mjs must run the repository boundary before other PreToolUse checks"
   );
 }
 

@@ -1,3 +1,4 @@
+import { hookMatcherMatchesTool } from "../../lib/hook-matcher.mjs";
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 export function hookHandlers(value) {
@@ -55,20 +56,14 @@ export function claudeMatcherMentionsTool(matcher, toolName) {
   if (typeof matcher !== "string" || matcher.length === 0) {
     return true;
   }
-  return matcher.split("|").includes(toolName);
+  return hookMatcherMatchesTool(matcher, toolName);
 }
 
 export function matcherMentionsTool(matcher, toolName) {
   if (typeof matcher !== "string") {
     return false;
   }
-  const parsedEscapedToolName = toolName.split(".").join("\\.");
-  const serializedEscapedToolName = toolName.split(".").join("\\\\.");
-  return (
-    matcher.includes(toolName) ||
-    matcher.includes(parsedEscapedToolName) ||
-    matcher.includes(serializedEscapedToolName)
-  );
+  return hookMatcherMatchesTool(matcher, toolName);
 }
 
 export function handlerCommandText(handler) {
@@ -90,6 +85,27 @@ export function runnerImportsEvaluateBashPolicy(text) {
       return;
     }
     found ||= bindings.elements.some((element) => element.name.text === "evaluateBashPolicy");
+  });
+  return found;
+}
+
+export function runnerImportsRepositoryBoundary(text) {
+  const source = parseScript(text, "scripts/agent-hooks/runner.mjs");
+  let found = false;
+  forEachNode(source, (node) => {
+    if (
+      !ts.isImportDeclaration(node) ||
+      node.moduleSpecifier?.text !== "./repository-boundary.mjs"
+    ) {
+      return;
+    }
+    const bindings = node.importClause?.namedBindings;
+    if (!(bindings && ts.isNamedImports(bindings))) {
+      return;
+    }
+    found ||= bindings.elements.some(
+      (element) => element.name.text === "evaluateRepositoryBoundary"
+    );
   });
   return found;
 }

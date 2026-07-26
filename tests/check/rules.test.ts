@@ -533,10 +533,49 @@ describe("SECURITY DEFINER search_path rule", () => {
 
   it("passes a SECURITY DEFINER routine that pins an empty search_path", () => {
     const diagnostics = securityDefinerSearchPathRule.check({
-      model: model([routineObject("safe", { routineSearchPath: "", securityDefiner: true })]),
+      model: model([
+        routineObject("safe", {
+          routineDependencyConfidence: "sql-string-parsed",
+          routineSearchPath: "",
+          routineUnqualifiedReferences: { relations: [], types: [] },
+          securityDefiner: true,
+        }),
+      ]),
     });
 
     expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags unqualified references even with an empty search_path", () => {
+    const diagnostics = securityDefinerSearchPathRule.check({
+      model: model([
+        routineObject("shadowable", {
+          routineDependencyConfidence: "sql-string-parsed",
+          routineSearchPath: "",
+          routineUnqualifiedReferences: { relations: ["accounts"], types: [] },
+          securityDefiner: true,
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("pg_temp");
+  });
+
+  it("fails closed when an empty-path routine body cannot be proven", () => {
+    const diagnostics = securityDefinerSearchPathRule.check({
+      model: model([
+        routineObject("dynamic", {
+          routineDependencyConfidence: "dynamic-sql-unknown",
+          routineSearchPath: "",
+          routineUnqualifiedReferences: { relations: [], types: [] },
+          securityDefiner: true,
+        }),
+      ]),
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("could not be proven safe");
   });
 
   it("passes a SECURITY INVOKER routine with no search_path", () => {
@@ -562,14 +601,34 @@ describe("SECURITY DEFINER search_path rule", () => {
       AS $$ SELECT 1 $$;
       CREATE OR REPLACE FUNCTION public.safe()
       RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = ''
-      AS $$ SELECT 1 $$;
+      AS $$ SELECT count(*)::int FROM public.accounts $$;
+      CREATE OR REPLACE FUNCTION public.shadowable()
+      RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = ''
+      AS $$ SELECT count(*)::int FROM accounts $$;
+      CREATE OR REPLACE FUNCTION public.declared_shadow()
+      RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+      AS $$
+      DECLARE
+        account accounts%ROWTYPE;
+      BEGIN
+        RETURN 1;
+      END;
+      $$;
     `);
 
     const diagnostics = securityDefinerSearchPathRule.check({ model: extracted });
 
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0]?.code).toBe("SUPA_RULE_SECDEF_SEARCH_PATH");
-    expect(diagnostics[0]?.ref.name).toBe("unsafe");
+    expect(diagnostics).toHaveLength(3);
+    expect(diagnostics.map((item) => item.code)).toEqual([
+      "SUPA_RULE_SECDEF_SEARCH_PATH",
+      "SUPA_RULE_SECDEF_SEARCH_PATH",
+      "SUPA_RULE_SECDEF_SEARCH_PATH",
+    ]);
+    expect(diagnostics.map((item) => item.ref.name)).toEqual([
+      "unsafe",
+      "shadowable",
+      "declared_shadow",
+    ]);
   });
 });
 

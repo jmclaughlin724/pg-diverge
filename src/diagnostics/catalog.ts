@@ -36,7 +36,7 @@ export const diagnosticCatalog: Record<string, string> = {
     "REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run inside a transaction block.",
   SUPA_CHECK_SEARCH_PATH: "Migrations must not set the session search_path.",
   SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH:
-    "SECURITY DEFINER functions must set an empty function-local search_path.",
+    "SECURITY DEFINER routines must satisfy the local search_path policy with proven schema-qualified relation and type references.",
   SUPA_CHECK_SET_NOT_NULL_SCAN:
     "SET NOT NULL scans the table unless a validated CHECK constraint proves it.",
   SUPA_CHECK_VOLATILE_DEFAULT_REWRITE: "ADD COLUMN with a volatile default rewrites the table.",
@@ -169,7 +169,7 @@ export const diagnosticCatalog: Record<string, string> = {
   SUPA_RULE_POLICY_MISSING_REQUIRED_COLUMN:
     "An RLS policy lacks a configured table column in its effective predicate.",
   SUPA_RULE_SECDEF_SEARCH_PATH:
-    "A SECURITY DEFINER routine does not pin an empty search_path, so a caller can shadow an unqualified reference and run code as the routine owner.",
+    "A SECURITY DEFINER routine violates the local search_path policy or cannot prove every relation and type reference safe from implicit pg_temp lookup.",
   SUPA_SCAN_CONTRACT_ASSERTION:
     "A TypeScript assertion appears in a file importing generated database contracts.",
   SUPA_SCAN_CONTRACT_IMPORT_RENAME: "A generated contract import was renamed locally.",

@@ -15,6 +15,10 @@ const root = resolve(import.meta.dirname, "../..");
 const claudeProjectDir = ["$", "{", "CLAUDE_PROJECT_DIR", "}"].join("");
 const codexProjectDir = ["$(", "git rev-parse --show-toplevel", ")"].join("");
 const editToolMatcher = "apply_patch";
+const syncHookSource = readFileSync(
+  join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
+  "utf8"
+);
 const curatedSkillSources = {
   ".claude/skills/supaschema-maintain/references/commands.md": "maintain commands\n",
   ".claude/skills/supaschema-maintain/SKILL.md": "maintain skill\n",
@@ -40,6 +44,12 @@ function tempSurface(files: Record<string, string | Uint8Array>): string {
 
 function read(root: string, file: string): string {
   return readFileSync(join(root, file), "utf8");
+}
+
+function withoutCodexProjectDir(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => name !== "CODEX_PROJECT_DIR")
+  );
 }
 
 function claudeHookSourceFiles(overrides: Record<string, string> = {}): Record<string, string> {
@@ -86,9 +96,11 @@ function claudeHookSettings() {
       PreToolUse: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-pre-tool-use.mjs")],
+          matcher: ".*",
         },
         {
           hooks: [claudeSupaschemaHook("generated-migration-edit")],
+          matcher: "Write|Edit|MultiEdit|apply_patch",
         },
       ],
       SessionEnd: [
@@ -104,6 +116,11 @@ function claudeHookSettings() {
       SubagentStart: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-subagent-start.mjs")],
+        },
+      ],
+      WorktreeCreate: [
+        {
+          hooks: [claudeNodeHook(".claude/hooks/context-worktree-create.mjs")],
         },
       ],
       Stop: [
@@ -189,6 +206,7 @@ describe("sync:llm", () => {
         "",
       ].join("\n"),
       ".claude/hooks/context-pre-tool-use.mjs": "process.stdout.write('pre');\n",
+      ".claude/hooks/context-worktree-create.mjs": "process.stderr.write('blocked');\n",
       ".claude/hooks/general-guard.mjs": "process.stdout.write('guard');\n",
       ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
       ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
@@ -290,7 +308,7 @@ describe("sync:llm", () => {
       agentBundle: 28,
       agents: 1,
       codexHookConfig: 1,
-      hooks: 5,
+      hooks: 6,
       publicSkills: 5,
       rules: 2,
       skills: 6,
@@ -308,6 +326,9 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks/context-pre-tool-use.mjs")).toBe(
       "process.stdout.write('pre');\n"
     );
+    expect(read(root, ".codex/hooks/context-worktree-create.mjs")).toBe(
+      "process.stderr.write('blocked');\n"
+    );
     expect(read(root, ".codex/hooks/general-guard.mjs")).toBe("process.stdout.write('native');\n");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain("general-guard.mjs");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain(
@@ -317,7 +338,7 @@ describe("sync:llm", () => {
       "npm exec -- supaschema hook schema-write"
     );
     expect(read(root, "agent-bundle/claude/settings.bun.json")).toContain(
-      '"command": "./node_modules/.bin/supaschema"'
+      '"command": "./node_modules/.bin/supaschema hook schema-write"'
     );
     expect(read(root, "agent-bundle/claude/settings.npm.json")).toContain(
       '"statusMessage": "Running supaschema auto-diff on schema change"'
@@ -352,6 +373,7 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-session-end.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
+    expect(read(root, ".codex/hooks.json")).not.toContain("WorktreeCreate");
     expect(read(root, ".codex/hooks.json")).not.toContain("general-guard.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-stop.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("sync-llm-on-claude-surface-change.mjs");
@@ -449,9 +471,10 @@ describe("sync:llm", () => {
         "# Worker",
         "",
       ].join("\n"),
-      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       ".claude/rules/supaschema.md": "# Rule\n",
       ".claude/skills/supaschema/SKILL.md": "# Skill\n",
+      ".codex/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       "package.json": `${JSON.stringify({
         name: "supaschema",
         scripts: { "sync:llm": 'node -e "process.exit(71)"' },
@@ -466,10 +489,10 @@ describe("sync:llm", () => {
 
     const output = execFileSync(
       process.execPath,
-      [join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
+      [join(project, ".codex/hooks/sync-llm-on-claude-surface-change.mjs")],
       {
         encoding: "utf8",
-        env: { ...process.env, CODEX_PROJECT_DIR: project },
+        env: withoutCodexProjectDir(),
         input: JSON.stringify(payload),
       }
     );
@@ -488,9 +511,10 @@ describe("sync:llm", () => {
         "# Worker",
         "",
       ].join("\n"),
-      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       ".claude/rules/supaschema.md": "# Rule\n",
       ".claude/skills/supaschema/SKILL.md": "# Skill\n",
+      ".codex/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       "package.json": `${JSON.stringify({
         name: "supaschema",
         scripts: {
@@ -518,10 +542,10 @@ describe("sync:llm", () => {
 
     const output = execFileSync(
       process.execPath,
-      [join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
+      [join(project, ".codex/hooks/sync-llm-on-claude-surface-change.mjs")],
       {
         encoding: "utf8",
-        env: { ...process.env, CODEX_PROJECT_DIR: project },
+        env: withoutCodexProjectDir(),
         input: JSON.stringify(payload),
       }
     );
@@ -546,9 +570,10 @@ describe("sync:llm", () => {
         "# Worker",
         "",
       ].join("\n"),
-      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "",
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       ".claude/rules/supaschema.md": "# Rule\n",
       ".claude/skills/supaschema/SKILL.md": "# Skill\n",
+      ".codex/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       "package.json": `${JSON.stringify({
         name: "supaschema",
         scripts: {
@@ -562,8 +587,8 @@ describe("sync:llm", () => {
       hook_event_name: "Stop",
       session_id: "codex-sync-stop",
     };
-    const env = { ...process.env, CODEX_PROJECT_DIR: project };
-    const hook = join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
+    const env = withoutCodexProjectDir();
+    const hook = join(project, ".codex/hooks/sync-llm-on-claude-surface-change.mjs");
 
     expect(
       execFileSync(process.execPath, [hook], {

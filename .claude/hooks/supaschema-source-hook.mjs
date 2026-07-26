@@ -55,9 +55,15 @@ try {
 
 function npmInvocation(args) {
   const execpath = process.env.npm_execpath;
-  return execpath
-    ? { args: [execpath, ...args], command: process.execPath }
-    : { args, command: process.platform === "win32" ? "npm.cmd" : "npm" };
+  if (execpath) {
+    return { args: [execpath, ...args], command: process.execPath };
+  }
+  return process.platform === "win32"
+    ? {
+        args: ["/d", "/s", "/c", "npm.cmd", ...args],
+        command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe",
+      }
+    : { args, command: "npm" };
 }
 
 function sourceHookEventName(args) {
@@ -71,9 +77,7 @@ function sourceHookRuntime(args) {
   if (explicit === "claude" || explicit === "codex") {
     return explicit;
   }
-  return hookPath.split("\\").join("/").includes("/.codex/hooks/") || process.env.CODEX_PROJECT_DIR
-    ? "codex"
-    : "claude";
+  return hookPath.split("\\").join("/").includes("/.codex/hooks/") ? "codex" : "claude";
 }
 
 function lastOutputLine(...values) {

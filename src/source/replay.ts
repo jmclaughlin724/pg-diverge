@@ -9,6 +9,7 @@ import {
   asRecord,
   astStatements,
   columnFacts,
+  listItems,
   objectWithArgsIdentity,
   qualifiedName,
   rangeVarName,
@@ -281,6 +282,9 @@ async function applyStatement(
   if (statement.tag === "AlterEnumStmt") {
     return applyAlterEnum(statement, node, objects, file);
   }
+  if (statement.tag === "AlterPolicyStmt") {
+    return await applyAlterPolicy(statement, node, objects, context, file);
+  }
   if (statement.tag === "RenameStmt") {
     return await applyRename(statement, node, objects, context, file);
   }
@@ -503,6 +507,9 @@ async function applyAlterTable(
   file: string,
   ordinal: number
 ): Promise<ReplayResult> {
+  if (readString(node.objtype) === "OBJECT_VIEW") {
+    return await applyAlterViewOptions(statement, node, objects, context, file);
+  }
   const tableName = rangeVarName(node.relation);
   if (!tableName) {
     return unsupportedStatement(statement, file, "ALTER TABLE relation could not be resolved");
@@ -542,6 +549,205 @@ async function applyAlterTable(
     }
   }
   return { diagnostics, hardFail: false, nextOrdinal };
+}
+
+async function applyAlterViewOptions(
+  statement: AstStatement,
+  node: AstNode,
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext,
+  file: string
+): Promise<ReplayResult> {
+  const viewName = rangeVarName(node.relation);
+  if (!viewName) {
+    return unsupportedStatement(statement, file, "ALTER VIEW relation could not be resolved");
+  }
+  const ref: ObjectRef = { kind: "view", ...viewName };
+  const key = objectKey(ref);
+  const target = objects.get(key);
+  if (!target) {
+    if (
+      readBoolean(node.missing_ok) === true ||
+      isConfigIgnoredSchema(viewName.schema, context.config)
+    ) {
+      return emptyResult();
+    }
+    return orderGap(
+      `ALTER VIEW target ${qualifiedDisplayName(viewName)} is absent from replay state`,
+      file,
+      statement.text,
+      ref
+    );
+  }
+  const parsed = await parseSqlAst(target.sql, target.file);
+  if (parsed.ast === undefined || hasErrors(parsed.diagnostics)) {
+    return unsupportedStatement(
+      statement,
+      file,
+      `could not parse ${key} while altering migration replay state`
+    );
+  }
+  const ast = structuredClone(parsed.ast);
+  let view: MutableRecord | undefined;
+  visitMutableAst(ast, (astNode) => {
+    view ??= mutableRecord(mutableGet(astNode, "ViewStmt"));
+  });
+  if (!view) {
+    return unsupportedStatement(statement, file, `${key} has no rewritable view definition`);
+  }
+  for (const rawCommand of readArray(node.cmds)) {
+    const error = applyAlterViewOptionCommand(view, rawCommand);
+    if (error) {
+      return unsupportedStatement(statement, file, error);
+    }
+  }
+  let sql: string;
+  try {
+    sql = deparseSync(JSON.parse(JSON.stringify(ast)));
+  } catch {
+    return unsupportedStatement(
+      statement,
+      file,
+      `could not deparse ${key} while altering migration replay state`
+    );
+  }
+  const next = makeObject(ref, sql, target.ordinal, target.file);
+  const diagnostics = await finalizeObjects([next], { normalize: context.normalize });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: undefined };
+  }
+  objects.set(key, next);
+  return { diagnostics, hardFail: false, nextOrdinal: undefined };
+}
+
+async function applyAlterPolicy(
+  statement: AstStatement,
+  node: AstNode,
+  objects: Map<string, SchemaObject>,
+  context: ReplayContext,
+  file: string
+): Promise<ReplayResult> {
+  const tableName = rangeVarName(node.table);
+  const policyName = readString(node.policy_name);
+  if (!(tableName && policyName)) {
+    return unsupportedStatement(statement, file, "ALTER POLICY target could not be resolved");
+  }
+  const ref: ObjectRef = {
+    kind: "policy",
+    name: policyName,
+    schema: tableName.schema,
+    table: tableName.name,
+  };
+  const key = objectKey(ref);
+  const target = objects.get(key);
+  if (!target) {
+    if (isConfigIgnoredSchema(tableName.schema, context.config)) {
+      return emptyResult();
+    }
+    return orderGap(
+      `ALTER POLICY target ${qualifiedDisplayName(tableName)}.${policyName} is absent from replay state`,
+      file,
+      statement.text,
+      ref
+    );
+  }
+  const parsed = await parseSqlAst(target.sql, target.file);
+  if (parsed.ast === undefined || hasErrors(parsed.diagnostics)) {
+    return unsupportedStatement(
+      statement,
+      file,
+      `could not parse ${key} while altering migration replay state`
+    );
+  }
+  const ast = structuredClone(parsed.ast);
+  let policy: MutableRecord | undefined;
+  visitMutableAst(ast, (astNode) => {
+    policy ??= mutableRecord(mutableGet(astNode, "CreatePolicyStmt"));
+  });
+  if (!policy) {
+    return unsupportedStatement(statement, file, `${key} has no rewritable policy definition`);
+  }
+  applyAlterPolicyFields(policy, node);
+  let sql: string;
+  try {
+    sql = deparseSync(JSON.parse(JSON.stringify(ast)));
+  } catch {
+    return unsupportedStatement(
+      statement,
+      file,
+      `could not deparse ${key} while altering migration replay state`
+    );
+  }
+  const next = makeObject(ref, sql, target.ordinal, target.file);
+  const diagnostics = await finalizeObjects([next], { normalize: context.normalize });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: undefined };
+  }
+  objects.set(key, next);
+  return { diagnostics, hardFail: false, nextOrdinal: undefined };
+}
+
+function applyAlterPolicyFields(policy: MutableRecord, alteration: AstNode): void {
+  const roles = readArray(alteration.roles);
+  if (roles.length > 0) {
+    mutableSet(policy, "roles", structuredClone(roles));
+  }
+  for (const field of ["qual", "with_check"]) {
+    const value = alteration[field];
+    if (value !== undefined) {
+      mutableSet(policy, field, structuredClone(value));
+    }
+  }
+}
+
+function applyAlterViewOptionCommand(view: MutableRecord, rawCommand: unknown): string | undefined {
+  const command = asRecord(asRecord(rawCommand)?.AlterTableCmd);
+  const subtype = readString(command?.subtype);
+  if (!(command && (subtype === "AT_SetRelOptions" || subtype === "AT_ResetRelOptions"))) {
+    return `unsupported ALTER VIEW subtype ${subtype ?? "unknown"} during migration replay`;
+  }
+  const options = listItems(command.def);
+  if (options.length === 0) {
+    return `ALTER VIEW ${
+      subtype === "AT_SetRelOptions" ? "SET" : "RESET"
+    } has no supported options`;
+  }
+  for (const option of options) {
+    if (!isSecurityInvokerOption(option)) {
+      return "only ALTER VIEW SET/RESET (security_invoker) is supported during migration replay";
+    }
+    updateSecurityInvokerOption(view, option, subtype === "AT_SetRelOptions");
+  }
+}
+
+function isSecurityInvokerOption(option: unknown): boolean {
+  const defElem = asRecord(asRecord(option)?.DefElem);
+  return readString(defElem?.defname)?.toLowerCase() === "security_invoker";
+}
+
+function updateSecurityInvokerOption(
+  view: MutableRecord,
+  option: unknown,
+  shouldSet: boolean
+): void {
+  const current = readArray(mutableGet(view, "options"));
+  const existingIndex = current.findIndex(isSecurityInvokerOption);
+  if (shouldSet) {
+    const next = [...current];
+    if (existingIndex >= 0) {
+      next[existingIndex] = structuredClone(option);
+    } else {
+      next.push(structuredClone(option));
+    }
+    mutableSet(view, "options", next);
+    return;
+  }
+  const next = current.filter((_item, index) => index !== existingIndex);
+  if (next.length > 0) {
+    mutableSet(view, "options", next);
+  } else {
+    Reflect.deleteProperty(view, "options");
+  }
 }
 
 async function applyAlterTableCommand(options: {

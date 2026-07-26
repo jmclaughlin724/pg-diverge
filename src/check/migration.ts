@@ -14,10 +14,17 @@ import {
   readString,
   stringList,
 } from "../sql/ast.js";
-import { routineSearchPath, routineSecurityDefiner } from "../sql/facts.js";
+import {
+  routineSearchPath,
+  routineSecurityDefiner,
+  securityDefinerSearchPathIssue,
+} from "../sql/facts.js";
 import { deparseFidelityDiagnostics } from "../sql/normalize-deparse.js";
 import { parseSqlAst } from "../sql/parser.js";
-import { extractStatementDependencies } from "../sql/routine-dependencies.js";
+import {
+  extractStatementDependencies,
+  type RoutineDependencyResult,
+} from "../sql/routine-dependencies.js";
 import type { CheckOptions, Diagnostic } from "../types.js";
 import { runConfiguredValidators } from "../validators.js";
 import {
@@ -125,6 +132,7 @@ async function forwardReferenceOrderDiagnostics(
   for (const statement of statements) {
     const dependencies = await extractStatementDependencies(statement);
     diagnostics.push(...dependencies.diagnostics);
+    diagnostics.push(...securityDefinerSearchPathDiagnostics(statement, dependencies.routine));
     facts.push({
       columnReferences: new Set(dependencies.columnReferences),
       createdColumns: createdColumnIdentities(statement),
@@ -163,6 +171,35 @@ async function forwardReferenceOrderDiagnostics(
     addAll(laterColumns, current.createdColumns);
   }
   return diagnostics;
+}
+
+function securityDefinerSearchPathDiagnostics(
+  statement: AstStatement,
+  routine: RoutineDependencyResult | undefined
+): Diagnostic[] {
+  if (statement.tag !== "CreateFunctionStmt") {
+    return [];
+  }
+  const node = asRecord(statement.node.CreateFunctionStmt);
+  if (!node) {
+    return [];
+  }
+  const issue = securityDefinerSearchPathIssue({
+    routineDependencyConfidence: routine?.confidence,
+    routineSearchPath: routineSearchPath(node.options),
+    routineUnqualifiedReferences: routine?.unqualifiedReferences,
+    securityDefiner: routineSecurityDefiner(node.options),
+  });
+  return issue
+    ? [
+        diagnostic(
+          "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH",
+          "warning",
+          `SECURITY DEFINER routine ${issue.message}`,
+          { hint: issue.hint, statement: statement.text }
+        ),
+      ]
+    : [];
 }
 
 function createdRelationIdentities(statement: AstStatement): Set<string> {
@@ -526,19 +563,6 @@ function checkFunctionStatement(node: AstNode, text: string): Diagnostic[] {
         "error",
         "FUNCTION and PROCEDURE creation must use OR REPLACE",
         { statement: text }
-      )
-    );
-  }
-  if (routineSecurityDefiner(node.options) && routineSearchPath(node.options) !== "") {
-    diagnostics.push(
-      diagnostic(
-        "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH",
-        "warning",
-        "SECURITY DEFINER functions must set an empty function-local search_path",
-        {
-          hint: "Add SET search_path = '' and schema-qualify every reference in the routine body.",
-          statement: text,
-        }
       )
     );
   }

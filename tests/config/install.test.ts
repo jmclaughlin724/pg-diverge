@@ -27,6 +27,10 @@ const codexGitRootExpression = ["$(", "git rev-parse --show-toplevel", ")"].join
 const codexGeneralGuardCommand = `node "${codexGitRootExpression}/.codex/hooks/general-guard.mjs"`;
 const legacyClaudeSyncCommand = `node "${claudeProjectDirExpression}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`;
 const legacyCodexSyncCommand = `node "${codexProjectDirExpression}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
+const retiredSyncHookFixture = join(
+  process.cwd(),
+  "tests/fixtures/agent-hooks/retired-sync-llm-on-claude-surface-change.mjs"
+);
 
 async function runScaffold(
   targetDir: string,
@@ -556,6 +560,59 @@ describe("init project setup", () => {
     });
   });
 
+  it("replaces legacy Claude exec-form hooks with canonical shell-form hooks", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "supa-init-claude-hook-command-shape-"));
+    await writeNestedFile(
+      join(consumer, ".claude/settings.json"),
+      `${JSON.stringify(
+        {
+          hooks: {
+            PostToolUse: [
+              {
+                hooks: [
+                  {
+                    args: ["exec", "--", "supaschema", "hook", "schema-write"],
+                    command: "npm",
+                    statusMessage: "old message",
+                    timeout: 1,
+                    type: "command",
+                  },
+                ],
+                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+              },
+            ],
+          },
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    await runScaffold(consumer);
+
+    const claudeSettings = JSON.parse(
+      await readFile(join(consumer, ".claude/settings.json"), "utf8")
+    );
+    const schemaWriteHooks = claudeSettings.hooks.PostToolUse.flatMap(
+      (entry: { hooks?: { args?: string[]; command?: string }[] }) =>
+        Array.isArray(entry.hooks)
+          ? entry.hooks.filter((hook) =>
+              [hook.command, ...(hook.args ?? [])]
+                .join(" ")
+                .includes("supaschema hook schema-write")
+            )
+          : []
+    );
+    expect(schemaWriteHooks).toEqual([
+      {
+        command: "npm exec -- supaschema hook schema-write",
+        statusMessage: "Running supaschema auto-diff on schema change",
+        timeout: 130,
+        type: "command",
+      },
+    ]);
+  });
+
   it("installs package guards alongside consumer-owned Bash hooks", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-consumer-bash-hook-"));
     await writeNestedFile(join(consumer, ".codex/hooks/tool-gate.mjs"), "export {};\n");
@@ -592,10 +649,7 @@ describe("init project setup", () => {
 
   it("removes retired package-owned sync hooks and unchanged scripts during upgrades", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-retired-sync-hook-"));
-    const legacyScript = await readFile(
-      join(process.cwd(), ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
-      "utf8"
-    );
+    const legacyScript = await readFile(retiredSyncHookFixture, "utf8");
     await writeNestedFile(
       join(consumer, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
       legacyScript
@@ -687,10 +741,7 @@ describe("init project setup", () => {
 
   it("preserves a modified retired sync script after removing its registration", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-modified-sync-hook-"));
-    const legacyScript = await readFile(
-      join(process.cwd(), ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
-      "utf8"
-    );
+    const legacyScript = await readFile(retiredSyncHookFixture, "utf8");
     const path = ".claude/hooks/sync-llm-on-claude-surface-change.mjs";
     await writeNestedFile(join(consumer, path), `${legacyScript}\n// consumer modification\n`);
     await writeNestedFile(

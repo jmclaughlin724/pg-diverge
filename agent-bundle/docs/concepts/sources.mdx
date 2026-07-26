@@ -250,7 +250,9 @@ supaschema diff \
 
 supaschema reads filename-sorted `.sql` files, replays supported DDL in memory, and emits a schema model without a database connection. The replay model is valid for `types --from` and as the `diff`/`plan`/`sync` before-state when it resolves to the configured `migrationsDir`. It is not a generation target, `verify` target, or drift target. A different migration directory fails with `SUPA_MIGRATION_BASELINE_UNSUPPORTED`; using replay as `--to` fails with `SUPA_SOURCE_MIGRATIONS_TARGET_UNSUPPORTED`.
 
-Replay is fail-closed for shape-corrupting gaps. Missing directories, duplicate `CREATE` objects, absent non-optional `DROP` targets, absent non-ignored `ALTER TABLE` targets, and absent enum neighbors raise `SUPA_REPLAY_ORDER_GAP` and return no objects. Unsupported top-level DDL, unsupported `ALTER TABLE` subtypes, unsupported `DROP` kinds, and unsupported rename targets raise `SUPA_REPLAY_UNSUPPORTED` and return no objects.
+Replay is fail-closed for shape-corrupting gaps. Missing directories, duplicate `CREATE` objects, absent non-optional `DROP` targets, absent non-ignored targets for supported `ALTER` statements, and absent enum neighbors raise `SUPA_REPLAY_ORDER_GAP` and return no objects. Unsupported top-level DDL, unsupported `ALTER TABLE` subtypes, unsupported `DROP` kinds, and unsupported rename targets raise `SUPA_REPLAY_UNSUPPORTED` and return no objects.
+
+For policies, replay supports only definition changes expressed by `ALTER POLICY ... TO`, `USING`, and `WITH CHECK` in existing reviewed migrations. Omitted clauses retain their current definition. Policy renames remain unsupported; this boundary does not imply support for every `ALTER POLICY` form.
 
 Replay skips configured managed or excluded schemas before planner input, so Supabase-managed history noise such as `auth` DDL can be omitted without emitting `unknown` shapes. Simple schema DDL inside idempotent `DO` blocks is replayed from the block body when it can be parsed; other data and control-plane statements remain outside the schema model.
 

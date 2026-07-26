@@ -9,7 +9,7 @@ const modelContextEvents = new Set([
 
 const decisionBlockEvents = new Set(["UserPromptSubmit", "PostToolUse", "Stop", "SubagentStop"]);
 
-const exitTwoBlockEvents = new Set(["TaskCompleted"]);
+const exitTwoBlockEvents = new Set(["TaskCompleted", "WorktreeCreate"]);
 const maxDiagnosticValueLength = 800;
 const sourceExtensions = [".cjs", ".js", ".mjs", ".ts"];
 

@@ -1,15 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const syncSurfaces = [".claude/agents", ".claude/hooks", ".claude/rules", ".claude/skills"];
@@ -27,19 +20,20 @@ const deleteHeader = "*** Delete File: ";
 const addHeader = "*** Add File: ";
 const moveHeader = "*** Move to: ";
 const statePath = ".tmp/sync-llm-on-claude-surface-change.json";
-const hookPath = fileURLToPath(import.meta.url);
-const projectDir = canonicalPath(resolve(dirname(hookPath), "..", ".."));
-const runtime = hookRuntime(hookPath);
+const runtime = hookRuntime();
 
 try {
   const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
   const hookEventName = eventName(payload);
-  const toolCwd = canonicalPath(
-    typeof payload?.cwd === "string" && payload.cwd.length > 0 ? payload.cwd : projectDir
+  const projectDir = resolve(
+    (typeof payload?.cwd === "string" && payload.cwd) ||
+      process.env.CLAUDE_PROJECT_DIR ||
+      process.env.CODEX_PROJECT_DIR ||
+      "."
   );
   const currentDigest = claudeSurfaceDigest(projectDir);
   const previousDigest = readSyncedDigest(projectDir);
-  const targets = editTargets(payload, toolCwd);
+  const targets = editTargets(payload, projectDir);
   const explicitSyncChange = targets.some((target) => isSyncTriggerSurface(projectDir, target));
   const changedSinceLastSync = previousDigest !== undefined && previousDigest !== currentDigest;
   const syncAvailable = hasSyncScript(projectDir);
@@ -201,15 +195,9 @@ function syncErrorDetail(error) {
 
 function npmInvocation(args) {
   const execpath = process.env.npm_execpath;
-  if (execpath) {
-    return { args: [execpath, ...args], command: process.execPath };
-  }
-  return process.platform === "win32"
-    ? {
-        args: ["/d", "/s", "/c", "npm.cmd", ...args],
-        command: process.env.ComSpec ?? process.env.COMSPEC ?? "cmd.exe",
-      }
-    : { args, command: "npm" };
+  return execpath
+    ? { args: [execpath, ...args], command: process.execPath }
+    : { args, command: process.platform === "win32" ? "npm.cmd" : "npm" };
 }
 
 function readSyncedDigest(projectDir) {
@@ -231,23 +219,16 @@ function writeSyncedDigest(projectDir, digest) {
 }
 
 function resolveTarget(projectDir, targetPath) {
-  return canonicalPath(
-    isAbsolute(targetPath) ? resolve(targetPath) : resolve(projectDir, targetPath)
-  );
+  return isAbsolute(targetPath) ? resolve(targetPath) : resolve(projectDir, targetPath);
 }
 
-function canonicalPath(pathname) {
-  const absolute = resolve(pathname);
-  if (existsSync(absolute)) {
-    return realpathSync(absolute);
-  }
-  const parent = dirname(absolute);
-  return parent === absolute ? absolute : join(canonicalPath(parent), basename(absolute));
-}
-
-function hookRuntime(pathname) {
-  const normalized = pathname.split(sep).join("/");
-  return normalized.includes("/.codex/hooks/") ? "codex" : "claude";
+function hookRuntime() {
+  const normalized = fileURLToPath(import.meta.url)
+    .split(sep)
+    .join("/");
+  return normalized.includes("/.codex/hooks/") || process.env.CODEX_PROJECT_DIR
+    ? "codex"
+    : "claude";
 }
 
 function eventName(payload) {

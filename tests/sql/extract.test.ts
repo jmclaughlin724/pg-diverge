@@ -184,6 +184,76 @@ describe("routine dependency extraction", () => {
     expect(routine?.metadata.routineColumnDependencies).toContain("app.accounts.secret_id");
   });
 
+  it("tracks unqualified routine relations and types without treating CTEs as relations", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.account_value()
+      RETURNS integer
+      LANGUAGE sql
+      AS $$
+        WITH recent AS (
+          SELECT id::custom_type AS value FROM accounts
+        )
+        SELECT value::integer FROM recent
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.account_value()"
+    );
+
+    expect(routine?.metadata.routineUnqualifiedReferences).toEqual({
+      relations: ["accounts"],
+      types: ["custom_type"],
+    });
+  });
+
+  it("tracks unqualified types and row types in PL/pgSQL declarations", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.declared_dependencies()
+      RETURNS integer
+      LANGUAGE plpgsql
+      AS $$
+      DECLARE
+        first integer;
+        second first%TYPE;
+        account_array accounts%ROWTYPE[];
+        account_id_array accounts.id%TYPE ARRAY[4];
+        qualified_account app.accounts%ROWTYPE[];
+        qualified_account_id app.accounts.id%TYPE ARRAY[4];
+        quoted_account app."Accounts"%ROWTYPE;
+        status custom_type[];
+        qualified_status app.custom_type;
+        quoted_status app."CustomType";
+        collated app.custom_type COLLATE "C";
+        required_count bigint NOT NULL DEFAULT 1;
+        assigned_count bigint := 2;
+        equal_assigned_count bigint = 3;
+      BEGIN
+        DECLARE
+          nested_account accounts%ROWTYPE;
+          nested_status CONSTANT custom_type := NULL;
+          "first value" integer;
+          nested_copy "first value"%TYPE;
+        BEGIN
+          NULL;
+        END;
+        RETURN second;
+      END;
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.declared_dependencies()"
+    );
+
+    expect(routine?.metadata.routineDependencyConfidence).toBe("plpgsql-static");
+    expect(routine?.metadata.routineUnqualifiedReferences).toEqual({
+      relations: ["accounts"],
+      types: ["custom_type"],
+    });
+    expect(extracted.diagnostics.map((item) => item.code)).not.toContain(
+      "SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY"
+    );
+  });
+
   it("extracts static PL/pgSQL statements and parseable dynamic SQL", async () => {
     const extracted = await extractObjectsFromSql(`
       CREATE FUNCTION app.touch_secret()
@@ -295,6 +365,35 @@ describe("routine dependency extraction", () => {
     expect(routine?.metadata.routineDependencyConfidence).toBe("plpgsql-static");
     expect(routine?.metadata.routineColumnDependencies).toEqual(
       expect.arrayContaining(["app.accounts.id", "app.accounts.secret_id"])
+    );
+  });
+
+  it("fails closed for PL/pgSQL cursors with arguments", async () => {
+    const extracted = await extractObjectsFromSql(`
+      CREATE FUNCTION app.cursor_with_arguments()
+      RETURNS integer
+      LANGUAGE plpgsql
+      AS $$
+      DECLARE
+        account_cursor CURSOR (account_id uuid) FOR
+          SELECT id FROM app.accounts WHERE id = account_id;
+      BEGIN
+        RETURN 1;
+      END;
+      $$;
+    `);
+    const routine = extracted.objects.find(
+      (object) => object.key === "function:app.cursor_with_arguments()"
+    );
+
+    expect(routine?.metadata.routineDependencyConfidence).toBe("plpgsql-partial");
+    expect(extracted.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SUPA_ROUTINE_BODY_PARTIAL_DEPENDENCY",
+          statement: expect.stringContaining("CURSOR (account_id uuid)"),
+        }),
+      ])
     );
   });
 
@@ -796,6 +895,113 @@ describe("migration checks", () => {
     expect(safe.map((item) => item.code)).not.toContain("SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH");
   });
 
+  it("checks relation qualification when SECURITY DEFINER uses an empty search_path", async () => {
+    const unqualified = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.shadowable()
+      RETURNS bigint
+      LANGUAGE sql
+      SECURITY DEFINER
+      SET search_path = ''
+      AS $$ SELECT count(*) FROM accounts $$;
+    `);
+    const qualified = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.safe()
+      RETURNS bigint
+      LANGUAGE sql
+      SECURITY DEFINER
+      SET search_path = ''
+      AS $$
+        WITH recent AS (SELECT id FROM app.accounts)
+        SELECT count(*) FROM recent
+      $$;
+    `);
+
+    expect(unqualified.map((item) => item.code)).toContain(
+      "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH"
+    );
+    expect(
+      unqualified.find((item) => item.code === "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH")?.message
+    ).toContain("pg_temp");
+    expect(qualified.map((item) => item.code)).not.toContain(
+      "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH"
+    );
+  });
+
+  it("checks PL/pgSQL declaration qualification with an empty search_path", async () => {
+    const unqualified = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.shadowable_declaration()
+      RETURNS integer
+      LANGUAGE plpgsql
+      SECURITY DEFINER
+      SET search_path = ''
+      AS $$
+      DECLARE
+        account accounts%ROWTYPE[];
+        account_id accounts.id%TYPE ARRAY[4];
+        status custom_type[];
+      BEGIN
+        RETURN 1;
+      END;
+      $$;
+    `);
+    const qualified = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.safe_declaration()
+      RETURNS integer
+      LANGUAGE plpgsql
+      SECURITY DEFINER
+      SET search_path = ''
+      AS $$
+      DECLARE
+        first integer;
+        second first%TYPE;
+        account app.accounts%ROWTYPE[];
+        account_id app.accounts.id%TYPE ARRAY[4];
+        quoted_account app."Accounts"%ROWTYPE;
+        status app.custom_type[];
+        quoted_status app."CustomType";
+        count bigint NOT NULL DEFAULT 1;
+      BEGIN
+        DECLARE
+          nested_account app.accounts%ROWTYPE;
+          nested_status CONSTANT app.custom_type := NULL;
+        BEGIN
+          NULL;
+        END;
+        RETURN second + count;
+      END;
+      $$;
+    `);
+
+    expect(unqualified.map((item) => item.code)).toContain(
+      "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH"
+    );
+    expect(qualified.map((item) => item.code)).not.toContain(
+      "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH"
+    );
+  });
+
+  it("fails closed when an empty-path SECURITY DEFINER body is not statically proven", async () => {
+    const diagnostics = await checkMigrationSql(`
+      CREATE OR REPLACE FUNCTION app.dynamic(query_sql text)
+      RETURNS void
+      LANGUAGE plpgsql
+      SECURITY DEFINER
+      SET search_path = ''
+      AS $$
+      BEGIN
+        EXECUTE query_sql;
+      END;
+      $$;
+    `);
+
+    expect(diagnostics.map((item) => item.code)).toContain(
+      "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH"
+    );
+    expect(
+      diagnostics.find((item) => item.code === "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH")?.message
+    ).toContain("could not be proven safe");
+  });
+
   it("warns when a SECURITY DEFINER function pins a non-empty search_path", async () => {
     for (const searchPath of ["public", "app, pg_temp", "'', public"]) {
       const diagnostics = await checkMigrationSql(`
@@ -980,11 +1186,19 @@ describe("unsupported source statements", () => {
     const extracted = await extractObjectsFromSql(`
       CREATE SCHEMA app;
       INSERT INTO app.audit_events (event_name) VALUES ('created');
+      GRANT app_worker TO postgres;
     `);
 
     expect(extracted.diagnostics.map((item) => item.code)).toContain(
       "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED"
     );
+    expect(
+      extracted.diagnostics.some(
+        (item) =>
+          item.code === "SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED" &&
+          item.statement?.includes("GRANT app_worker")
+      )
+    ).toBe(true);
   });
 });
 

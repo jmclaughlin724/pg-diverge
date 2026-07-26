@@ -52,6 +52,7 @@ export const sourceIntentStatementTags = new Set([
   "CallStmt",
   "DeleteStmt",
   "DoStmt",
+  "GrantRoleStmt",
   "InsertStmt",
   "RefreshMatViewStmt",
   "SelectStmt",
