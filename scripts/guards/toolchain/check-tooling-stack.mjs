@@ -11,14 +11,16 @@ import { assert, ok } from "../lib/assertions.js";
 import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js";
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
-const toolPins = {
-  "@biomejs/biome": "2.5.5",
+const exactlyPinnedTools = [
+  "@biomejs/biome",
+  "@vitest/coverage-v8",
+  "cclsp",
+  "prettier",
+  "ultracite",
+  "vitest",
+];
+const aliasPins = {
   "@typescript/native": "npm:typescript@7.0.2",
-  "@vitest/coverage-v8": "4.1.10",
-  cclsp: "0.7.0",
-  prettier: "3.9.6",
-  ultracite: "7.9.4",
-  vitest: "4.1.10",
 };
 const allowedRootDisabledBiomeRules = new Set([
   "linter.rules.performance.noAwaitInLoops",
@@ -135,6 +137,20 @@ function assertRuntimePackageSurface(files) {
 
 function isJavascriptSourceFile(file) {
   return [".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"].includes(path.extname(file));
+}
+
+function isExactVersion(spec) {
+  const segments = spec.split(".");
+  if (segments.length < 3) {
+    return false;
+  }
+  const [major, minor] = segments;
+  const [patch] = segments.slice(2).join(".").split("-");
+  return [major, minor, patch].every(isNumericSegment);
+}
+
+function isNumericSegment(value) {
+  return value.length > 0 && [...value].every((char) => char >= "0" && char <= "9");
 }
 
 function isGeneratedDistModuleSpecifier(value) {
@@ -405,12 +421,20 @@ export function check(root = ROOT) {
     exists("scripts/cclsp-language-id-proxy.mjs", root),
     "cclsp language-id proxy must exist for .mjs/.cjs TypeScript LSP support"
   );
-  for (const [name, version] of Object.entries(toolPins)) {
+  for (const name of exactlyPinnedTools) {
+    const spec = packageJson.devDependencies?.[name];
     assert(
-      packageJson.devDependencies?.[name] === version,
-      `package.json must pin ${name}@${version}`
+      typeof spec === "string" && isExactVersion(spec),
+      `package.json must pin ${name} to an exact version, found ${spec ?? "no entry"}`
     );
   }
+  for (const [name, spec] of Object.entries(aliasPins)) {
+    assert(packageJson.devDependencies?.[name] === spec, `package.json must pin ${name}@${spec}`);
+  }
+  assert(
+    packageJson.devDependencies?.vitest === packageJson.devDependencies?.["@vitest/coverage-v8"],
+    "package.json must keep vitest and @vitest/coverage-v8 on the same version"
+  );
   assert(
     packageJson.dependencies?.typescript === "npm:@typescript/typescript6@6.0.2",
     "package.json must keep the TypeScript 6 compatibility package under the runtime typescript identity"
@@ -494,7 +518,7 @@ export function check(root = ROOT) {
     !("prepare" in packageJson.scripts),
     "package.json must not install maintainer hooks through a lifecycle script"
   );
-  const biomeSchemaVersion = toolPins["@biomejs/biome"];
+  const biomeSchemaVersion = packageJson.devDependencies?.["@biomejs/biome"];
   assert(
     biome.$schema === `https://biomejs.dev/schemas/${biomeSchemaVersion}/schema.json`,
     `biome.jsonc must use the Biome ${biomeSchemaVersion} schema`

@@ -228,7 +228,27 @@ describe("tooling stack guard", () => {
       Reflect.deleteProperty(packageJson.devDependencies, "prettier");
       files["package.json"] = JSON.stringify(packageJson);
     });
-    expect(() => check(root)).toThrow("package.json must pin prettier@3.9.6");
+    expect(() => check(root)).toThrow("package.json must pin prettier to an exact version");
+  });
+
+  it("rejects a ranged tool spec where an exact pin is required", () => {
+    const root = fixture((files) => {
+      const packageJson = packageConfigSchema.parse(JSON.parse(files["package.json"] ?? "{}"));
+      packageJson.devDependencies.prettier = "^3.9.6";
+      files["package.json"] = JSON.stringify(packageJson);
+    });
+    expect(() => check(root)).toThrow("package.json must pin prettier to an exact version");
+  });
+
+  it("rejects vitest and its coverage provider drifting apart", () => {
+    const root = fixture((files) => {
+      const packageJson = packageConfigSchema.parse(JSON.parse(files["package.json"] ?? "{}"));
+      packageJson.devDependencies["@vitest/coverage-v8"] = "4.1.9";
+      files["package.json"] = JSON.stringify(packageJson);
+    });
+    expect(() => check(root)).toThrow(
+      "package.json must keep vitest and @vitest/coverage-v8 on the same version"
+    );
   });
 
   it.each([
