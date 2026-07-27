@@ -60,7 +60,7 @@ export function isCommentForRefs(object: SchemaObject, refs: Iterable<ObjectRef>
   return false;
 }
 
-export function commentTargetsRef(descriptor: string, ref: ObjectRef): boolean {
+function commentTargetsRef(descriptor: string, ref: ObjectRef): boolean {
   const schema = ref.schema ?? "public";
   const identity = `${schema}.${ref.name}`;
   switch (ref.kind) {

@@ -80,7 +80,7 @@ const hookRuntimeDirectories = [
 
 const hookRepairToolNames = new Set(["Read", "Edit", "Write", "MultiEdit"]);
 
-export function hookRuntimeRepairTarget(payload, root) {
+function hookRuntimeRepairTarget(payload, root) {
   if (!(hookRepairToolNames.has(payload?.tool_name) && typeof root === "string" && root)) {
     return;
   }

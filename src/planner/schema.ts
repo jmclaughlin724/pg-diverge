@@ -208,7 +208,7 @@ function droppedObjectContext(
 function isObjectDroppedWithOwner(object: SchemaObject, context: DroppedObjectContext): boolean {
   return (
     isGrantForTargets(object, context.grantTargetIdentities) ||
-    isCommentDependent(object, context.affectedRefs) ||
+    isCommentForRefs(object, context.affectedRefs.values()) ||
     isRelationStateForDroppedOwner(object, context.relationIdentities)
   );
 }
@@ -776,7 +776,7 @@ function appendAffectedComments(
   for (const object of objects) {
     if (
       context.operationKeys.has(object.key) ||
-      !isCommentDependent(object, context.affectedRefs)
+      !isCommentForRefs(object, context.affectedRefs.values())
     ) {
       continue;
     }
@@ -807,13 +807,6 @@ function isAffectedDependent(object: SchemaObject, dependencyIdentities: Set<str
     typeof object.metadata.targetIdentity === "string" &&
     dependencyIdentities.has(object.metadata.targetIdentity)
   );
-}
-
-function isCommentDependent(
-  object: SchemaObject,
-  affectedRefs: ReadonlyMap<string, ObjectRef>
-): boolean {
-  return isCommentForRefs(object, affectedRefs.values());
 }
 
 function preDropKey(key: string): string {

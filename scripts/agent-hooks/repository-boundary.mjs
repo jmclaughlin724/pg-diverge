@@ -85,6 +85,17 @@ const branchActionWords = new Set([
   "switch",
   "switching",
 ]);
+const localFilesystemToolNames = new Set([
+  "Edit",
+  "Glob",
+  "Grep",
+  "LS",
+  "MultiEdit",
+  "NotebookEdit",
+  "NotebookRead",
+  "Read",
+  "Write",
+]);
 const nonFileUriSchemes = new Set([
   "ftp",
   "ftps",
@@ -703,14 +714,3 @@ function pathViolationBlock(label, value, result, root) {
     );
   }
 }
-const localFilesystemToolNames = new Set([
-  "Read",
-  "Write",
-  "Edit",
-  "MultiEdit",
-  "NotebookEdit",
-  "NotebookRead",
-  "Glob",
-  "Grep",
-  "LS",
-]);
