@@ -46,7 +46,7 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 - `.codex/**` and `.agents/**` are generated or native runtime targets only where this rule names them as owners. Generated `.codex/rules/**` contain command policy or owner pointers, not the Markdown rule prose, so they do not replace the root or nested `AGENTS.md` chain.
 - `scripts/skills/sync-llm.mjs` is the writer for generated LLM mirrors and generated source-repo `.codex/hooks.json`. It MUST validate Claude hook registration and the `CLAUDE.md` root-contract import before rendering Codex hook registration. Do not hand-edit synced copies.
 - Rule 22 owns source-repo Claude/Codex hook topology and generated Codex hook registration. This rule owns the sync matrix and boundary routing.
-- Rule 13 owns packaged consumer hook templates, including the standalone `.codex/hooks/general-guard.mjs` Bash safety hook used because consumer packages do not include the maintainer context runner path.
+- Rule 13 owns packaged consumer hook templates. They contain only the Supaschema generated-migration and schema-write commands; the repository's context runner and general Bash policy remain source-repo-only.
 - `skills/supaschema` is a generated public mirror of `.claude/skills/supaschema`. It is the only supported `npx skills` source in this repository.
 - Consumer-bundled surfaces are deliberately narrow and installed by default through `supaschema init`. They include only the package-owned `.agents`, `.claude`, and `.codex` supaschema enforcement files and merged hook registration; they do not write consumer root briefs such as `AGENTS.md` or `CLAUDE.md`. Do not publish maintainer-only context hooks, optimizer skills, Code Atlas internals, FastMCP development tooling, or agent-development infrastructure without changing Rule 13 and package tests in the same change.
 - Source-repo hook runtime, Claude rules, generated Codex rule mirrors, and `.claude/settings.json` are public branch surfaces when tracked `.codex/hooks.json`, guards, or `AGENTS.md` route to them. Keep personal overlays, optimizer skills, maintainer-only agents, `.codex/config.toml`, Code Atlas internals, MCP/deployment configs, private services, and generated state gitignored.
@@ -95,5 +95,5 @@ If sync or public/private boundary validation fails:
 - Package-bundled context surfaces match Rule 13.
 - Required source-repo runtime and rules are tracked branch surfaces; personal DX and generated state remain gitignored.
 - Runtime registrations match the hook/MCP surfaces they expose.
-- Source-repo Claude and Codex shell tools match one context `PreToolUse` hook command, and consumer hook templates retain only their distinct standalone Bash guard.
+- Source-repo Claude and Codex shell tools match one context `PreToolUse` hook command, and consumer hook templates contain only Supaschema product hooks.
 - No generated mirror carries unique policy.

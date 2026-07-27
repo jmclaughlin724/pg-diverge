@@ -17,18 +17,6 @@
       {
         "hooks": [
           {
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/general-guard.mjs\"",
-            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/general-guard.mjs\"",
-            "statusMessage": "Checking general Bash safety policy",
-            "timeout": 10,
-            "type": "command"
-          }
-        ],
-        "matcher": "Bash"
-      },
-      {
-        "hooks": [
-          {
             "command": "npm exec -- supaschema hook generated-migration-edit --runtime codex",
             "statusMessage": "Checking supaschema generated-migration policy",
             "timeout": 10,

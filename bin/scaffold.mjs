@@ -38,10 +38,7 @@ const packageScripts = {
 };
 const agentBundleCopies = [
   ["agents/prompts/supaschema-install.md", ".agents/prompts/supaschema-install.md"],
-  ["claude/hooks/guards/bash-policy-checks.mjs", ".claude/hooks/guards/bash-policy-checks.mjs"],
   ["claude/rules/supaschema.md", ".claude/rules/supaschema.md"],
-  ["codex/hooks/general-guard.mjs", ".codex/hooks/general-guard.mjs"],
-  ["codex/hooks/guards/bash-policy-checks.mjs", ".codex/hooks/guards/bash-policy-checks.mjs"],
   ["codex/rules/supaschema.rules", ".codex/rules/supaschema.rules"],
 ];
 const claudeProjectDirExpression = ["$", "{CLAUDE_PROJECT_DIR}"].join("");
@@ -50,6 +47,10 @@ const obsoleteAgentBundleHookCommands = new Set([
   `node ${claudeProjectDirExpression}/.claude/hooks/sync-llm-on-claude-surface-change.mjs`,
   `node ${codexProjectDirExpression}/.codex/hooks/sync-llm-on-claude-surface-change.mjs`,
 ]);
+const retiredAgentBundleHookCommandFragments = [
+  ".claude/hooks/guards/bash-policy-checks.mjs",
+  ".codex/hooks/general-guard.mjs",
+];
 const obsoleteAgentBundleHookFiles = [
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
@@ -606,9 +607,7 @@ function removeObsoleteAgentBundleHooks(config) {
         retainedEntries.push(entry);
         continue;
       }
-      const retainedHooks = entry.hooks.filter(
-        (hook) => !obsoleteAgentBundleHookCommands.has(hookCommandIdentity(hook))
-      );
+      const retainedHooks = entry.hooks.filter((hook) => !isRetiredAgentBundleHook(hook));
       if (retainedHooks.length === entry.hooks.length) {
         retainedEntries.push(entry);
         continue;
@@ -623,6 +622,15 @@ function removeObsoleteAgentBundleHooks(config) {
     }
   }
   return { changed, value: changed ? { ...config, hooks } : config };
+}
+
+function isRetiredAgentBundleHook(hook) {
+  const identity = hookCommandIdentity(hook);
+  return (
+    identity !== undefined &&
+    (obsoleteAgentBundleHookCommands.has(identity) ||
+      retiredAgentBundleHookCommandFragments.some((fragment) => identity.includes(fragment)))
+  );
 }
 
 function removeObsoleteAgentBundleHookFile({ config, dryRun, path, result, targetDir }) {
