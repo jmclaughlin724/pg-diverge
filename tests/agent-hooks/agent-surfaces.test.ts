@@ -48,10 +48,10 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 30,
+      agentBundle: 27,
       agents: 2,
       codexHookConfig: 1,
-      hooks: 5,
+      hooks: 4,
       publicSkills: 6,
       rules: 2,
       skills: 7,
@@ -147,10 +147,10 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 28,
+      agentBundle: 25,
       agents: 0,
       codexHookConfig: 1,
-      hooks: 3,
+      hooks: 2,
       publicSkills: 5,
       rules: 1,
       skills: 5,
@@ -318,12 +318,10 @@ async function seedRequiredAgentBundleInputs(root: string): Promise<void> {
   );
   await write(root, ".claude/skills/supaschema-migrate/SKILL.md", "migrate skill\n");
   await write(root, ".claude/skills/supaschema/SKILL.md", "supaschema skill\n");
-  await write(root, ".claude/hooks/general-guard.mjs", "general guard\n");
   await write(root, ".claude/hooks/guards/bash-policy-checks.mjs", "bash guard\n");
   await write(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs", "sync hook\n");
   await write(root, ".claude/rules/supaschema.md", "# Supaschema Rule\n");
   await write(root, ".codex/hooks.json", "{}\n");
-  await write(root, ".codex/hooks/general-guard.mjs", "general guard\n");
 }
 
 async function write(

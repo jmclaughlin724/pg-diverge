@@ -95,7 +95,6 @@ describe("npm package contents", () => {
       "agent-bundle/agents/skills/supaschema-migrate/references/commands.md",
       "agent-bundle/agents/skills/supaschema-migrate/SKILL.md",
       "agent-bundle/agents/skills/supaschema/SKILL.md",
-      "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
       "agent-bundle/claude/rules/supaschema.md",
       "agent-bundle/claude/settings.npm.json",
       "agent-bundle/claude/settings.pnpm.json",
@@ -106,8 +105,6 @@ describe("npm package contents", () => {
       "agent-bundle/claude/skills/supaschema/SKILL.md",
       "agent-bundle/codex/hooks.npm.json",
       "agent-bundle/codex/hooks.pnpm.json",
-      "agent-bundle/codex/hooks/general-guard.mjs",
-      "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
       "agent-bundle/codex/rules/supaschema.rules",
       "README.md",
       "LICENSE",
@@ -117,7 +114,10 @@ describe("npm package contents", () => {
     }
     for (const sourceOnlyHook of [
       "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs",
+      "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
       "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs",
+      "agent-bundle/codex/hooks/general-guard.mjs",
+      "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
     ]) {
       expect(paths, `source-only hook reached npm package: ${sourceOnlyHook}`).not.toContain(
         sourceOnlyHook
@@ -162,7 +162,8 @@ describe("npm package contents", () => {
     );
     expect(codexHookContents).not.toContain("context-");
     expect(codexHookContents).not.toContain("scripts/agent-hooks");
-    expect(codexHookContents).toContain("general-guard.mjs");
+    expect(codexHookContents).not.toContain("general-guard.mjs");
+    expect(codexHookContents).not.toContain("bash-policy-checks.mjs");
     expect(codexHookContents).toContain("supaschema hook generated-migration-edit");
     expect(codexHookContents).toContain("supaschema hook schema-write");
     expect(codexHookContents).not.toContain("npx --no-install");

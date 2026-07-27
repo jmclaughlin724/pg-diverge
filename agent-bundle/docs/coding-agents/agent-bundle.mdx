@@ -20,9 +20,9 @@ The downloadable consumer agent bundle is intentionally narrow. Init installs on
 | Skills manifest | `agent-bundle/skills-manifest.json` with `supaschema`, `supaschema-migrate`, and `supaschema-maintain` |
 | Shared skills | The three recursive `agent-bundle/agents/skills/<name>` directories, including references |
 | Claude skills and rule | The three recursive `agent-bundle/claude/skills/<name>` directories, plus `agent-bundle/claude/rules/supaschema.md` |
-| Claude hooks and settings | `agent-bundle/claude/settings.<manager>.json`, `agent-bundle/claude/hooks/guards/bash-policy-checks.mjs` |
+| Claude hook settings | `agent-bundle/claude/settings.<manager>.json` |
 | Codex rule mirror | `agent-bundle/codex/rules/supaschema.rules` |
-| Codex hooks and settings | `agent-bundle/codex/hooks.<manager>.json`, `agent-bundle/codex/hooks/general-guard.mjs`, `agent-bundle/codex/hooks/guards/bash-policy-checks.mjs` |
+| Codex hook settings | `agent-bundle/codex/hooks.<manager>.json` |
 
 ## Install and repair
 
@@ -52,13 +52,14 @@ Rules and hooks are included in the package bundle and activated by `supaschema 
 
 ## Hook behavior
 
-The installed hooks enforce supaschema migration policy and a small Bash safety policy:
+The installed hooks are limited to Supaschema schema and migration behavior:
 
 | Hook | Event | Purpose |
 | --- | --- | --- |
 | `supaschema hook generated-migration-edit` | `PreToolUse` | Blocks edits to generated migration SQL when the lineage marker is present. |
-| `bash-policy-checks.mjs` / `general-guard.mjs` | `PreToolUse` for Bash | Blocks secret argv and secret env-file reads, raw SQL DDL through Bash, branch/worktree git commands, destructive git shortcuts, and `rm -rf` equivalents. Plain recursive `rm -r` is not blocked by this generic policy. |
 | `supaschema hook schema-write` | `PostToolUse` | Watches schema-tree SQL writes. By default it runs `supaschema diff` then checks the generated migration files; when config enables automatic sync and exactly one selected target is resolved and approved, it delegates to `supaschema sync`. |
+
+The bundle does not publish or register this repository's general Bash, Git, secret, branch, worktree, or deletion policy. Those guards are maintainer tooling for developing Supaschema itself.
 
 `supaschema hook schema-write` triggers the default migration workflow after configured schema files are edited. It writes the migration when `workflow.schema_diff` is `"on_schema_write"` and runs the replay-safety check on those generated migration paths when `workflow.migration_check` is `"after_schema_diff"`. If `workflow.migration_sync` allows automatic sync, the hook first confirms exactly one selected `sync.targets` entry is `mode: "auto"`, its database URL reference resolves when its runner needs one, and any remote target has its configured approval variable set. Only then does it call `supaschema sync`, which owns the ordered source, diff, target-selection, history, check, generated-contract, schema-closure staging, source safety, runner, and reconciliation workflow.
 

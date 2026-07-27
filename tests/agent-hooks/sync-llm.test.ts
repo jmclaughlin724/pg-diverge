@@ -207,7 +207,6 @@ describe("sync:llm", () => {
       ].join("\n"),
       ".claude/hooks/context-pre-tool-use.mjs": "process.stdout.write('pre');\n",
       ".claude/hooks/context-worktree-create.mjs": "process.stderr.write('blocked');\n",
-      ".claude/hooks/general-guard.mjs": "process.stdout.write('guard');\n",
       ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
       ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
@@ -305,10 +304,10 @@ describe("sync:llm", () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 28,
+      agentBundle: 25,
       agents: 1,
       codexHookConfig: 1,
-      hooks: 6,
+      hooks: 5,
       publicSkills: 5,
       rules: 2,
       skills: 6,
@@ -329,8 +328,9 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks/context-worktree-create.mjs")).toBe(
       "process.stderr.write('blocked');\n"
     );
-    expect(read(root, ".codex/hooks/general-guard.mjs")).toBe("process.stdout.write('native');\n");
-    expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain("general-guard.mjs");
+    expect(existsSync(join(root, ".codex/hooks/general-guard.mjs"))).toBe(false);
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("general-guard.mjs");
+    expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("bash-policy-checks.mjs");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain(
       "npm exec -- supaschema hook generated-migration-edit --runtime codex"
     );
@@ -343,8 +343,8 @@ describe("sync:llm", () => {
     expect(read(root, "agent-bundle/claude/settings.npm.json")).toContain(
       '"statusMessage": "Running supaschema auto-diff on schema change"'
     );
-    expect(read(root, "agent-bundle/claude/settings.npm.json")).toContain(
-      '"statusMessage": "Checking general Bash safety policy"'
+    expect(read(root, "agent-bundle/claude/settings.npm.json")).not.toContain(
+      "bash-policy-checks.mjs"
     );
     expect(read(root, "agent-bundle/codex/hooks.bun.json")).toContain(
       "./node_modules/.bin/supaschema hook generated-migration-edit --runtime codex"
@@ -367,9 +367,16 @@ describe("sync:llm", () => {
     expect(
       existsSync(join(root, "agent-bundle/claude/hooks/sync-llm-on-claude-surface-change.mjs"))
     ).toBe(false);
+    expect(existsSync(join(root, "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs"))).toBe(
+      false
+    );
     expect(
       existsSync(join(root, "agent-bundle/codex/hooks/sync-llm-on-claude-surface-change.mjs"))
     ).toBe(false);
+    expect(existsSync(join(root, "agent-bundle/codex/hooks/general-guard.mjs"))).toBe(false);
+    expect(existsSync(join(root, "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs"))).toBe(
+      false
+    );
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-session-end.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
@@ -419,6 +426,7 @@ describe("sync:llm", () => {
 
     expect(result.agents).toBe(0);
     expect(existsSync(join(root, ".codex/agents/stale.toml"))).toBe(false);
+    expect(existsSync(join(root, ".codex/hooks/general-guard.mjs"))).toBe(false);
     expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 

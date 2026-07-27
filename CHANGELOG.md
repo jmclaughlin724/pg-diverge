@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.4 (2026-07-27)
+
+### Patch Changes
+
+- Limit installed Claude and Codex hooks to Supaschema's generated-migration protection and schema-write automation. The npm bundle no longer publishes or scaffolds the repository's generic Bash and Git guard.
+- Remove legacy package-owned generic guard registrations when `supaschema init` upgrades an existing project, while preserving unrelated consumer hooks and leaving historical script files inert.
+
 ## 0.5.3 (2026-07-27)
 
 ### Changes

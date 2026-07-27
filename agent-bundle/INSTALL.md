@@ -24,7 +24,7 @@ supaschema config validate --json
 
 `supaschema init` installs missing text files and merges hook registration JSON. Existing non-identical text files are preserved and listed in the init result. Existing malformed or non-mergeable hook JSON is skipped and listed so the agent can repair it.
 
-On upgrade, init removes the retired package-owned `sync-llm-on-claude-surface-change.mjs` registrations. Byte-identical retired scripts are deleted after their registrations are removed; modified scripts are preserved and listed.
+On upgrade, init removes retired package-owned surface-sync and general Bash-guard registrations. Byte-identical retired surface-sync scripts are deleted after their registrations are removed; modified scripts and historical Bash-policy files are preserved but left unregistered.
 
 Shared files:
 
@@ -35,17 +35,14 @@ Claude files:
 
 - `agent-bundle/claude/rules/supaschema.md` to `.claude/rules/supaschema.md`
 - `agent-bundle/claude/skills/{supaschema,supaschema-migrate,supaschema-maintain}` recursively to the matching `.claude/skills/**` directories
-- `agent-bundle/claude/hooks/guards/bash-policy-checks.mjs` to `.claude/hooks/guards/bash-policy-checks.mjs`
 - the matching `agent-bundle/claude/settings.<manager>.json` entries into `.claude/settings.json`
 
 Codex files:
 
 - `agent-bundle/codex/rules/supaschema.rules` to `.codex/rules/supaschema.rules`
-- `agent-bundle/codex/hooks/general-guard.mjs` to `.codex/hooks/general-guard.mjs`
-- `agent-bundle/codex/hooks/guards/bash-policy-checks.mjs` to `.codex/hooks/guards/bash-policy-checks.mjs`
 - the matching `agent-bundle/codex/hooks.<manager>.json` entries into `.codex/hooks.json`
 
-No `.codex/skills/**` directory is installed. Existing non-identical Agent or Claude skill files, including references, are preserved and reported individually.
+The merged hook settings contain only `supaschema hook generated-migration-edit` and `supaschema hook schema-write`. The repository's general Bash, Git, secret, branch, worktree, and deletion policy is not part of the consumer bundle. No `.codex/skills/**` directory is installed. Existing non-identical Agent or Claude skill files, including references, are preserved and reported individually.
 
 Use the package manager that owns the project:
 

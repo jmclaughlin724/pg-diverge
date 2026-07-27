@@ -24,9 +24,9 @@ const run = promisify(execFile);
 const claudeProjectDirExpression = ["$", "{CLAUDE_PROJECT_DIR}"].join("");
 const codexProjectDirExpression = ["$", "{CODEX_PROJECT_DIR:-$PWD}"].join("");
 const codexGitRootExpression = ["$(", "git rev-parse --show-toplevel", ")"].join("");
-const codexGeneralGuardCommand = `node "${codexGitRootExpression}/.codex/hooks/general-guard.mjs"`;
 const legacyClaudeSyncCommand = `node "${claudeProjectDirExpression}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"`;
 const legacyCodexSyncCommand = `node "${codexProjectDirExpression}/.codex/hooks/sync-llm-on-claude-surface-change.mjs"`;
+const retiredCodexGeneralGuardCommand = `node "${codexGitRootExpression}/.codex/hooks/general-guard.mjs"`;
 const retiredSyncHookFixture = join(
   process.cwd(),
   "tests/fixtures/agent-hooks/retired-sync-llm-on-claude-surface-change.mjs"
@@ -472,12 +472,10 @@ describe("init project setup", () => {
     const claudeSettings = JSON.parse(
       await readFile(join(consumer, ".claude/settings.json"), "utf8")
     );
-    expect(claudeSettings.hooks.PreToolUse).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ matcher: "Bash" }),
-        expect.objectContaining({ matcher: "Write|Edit|MultiEdit|apply_patch" }),
-      ])
-    );
+    expect(claudeSettings.hooks.PreToolUse).toEqual([
+      expect.objectContaining({ matcher: "Write|Edit|MultiEdit|apply_patch" }),
+    ]);
+    expect(JSON.stringify(claudeSettings)).not.toContain("bash-policy-checks.mjs");
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     const packagedCodexHooks = JSON.parse(
       await readFile(join(process.cwd(), "agent-bundle/codex/hooks.npm.json"), "utf8")
@@ -611,7 +609,7 @@ describe("init project setup", () => {
     ]);
   });
 
-  it("installs package guards alongside consumer-owned Bash hooks", async () => {
+  it("preserves consumer-owned Bash hooks without installing the repository guard", async () => {
     const consumer = await mkdtemp(join(tmpdir(), "supa-init-consumer-bash-hook-"));
     await writeNestedFile(join(consumer, ".codex/hooks/tool-gate.mjs"), "export {};\n");
     await writeNestedFile(
@@ -639,9 +637,13 @@ describe("init project setup", () => {
       (entry: { hooks?: { command?: string }[] }) => entry.hooks?.map((hook) => hook.command) ?? []
     );
     expect(commands).toContain("node .codex/hooks/tool-gate.mjs");
-    expect(commands).toContain(codexGeneralGuardCommand);
-    expect(existsSync(join(consumer, ".codex/hooks/general-guard.mjs"))).toBe(true);
-    expect(existsSync(join(consumer, ".codex/hooks/guards/bash-policy-checks.mjs"))).toBe(true);
+    expect(commands).toContain(
+      "npm exec -- supaschema hook generated-migration-edit --runtime codex"
+    );
+    expect(commands).not.toContain(retiredCodexGeneralGuardCommand);
+    expect(existsSync(join(consumer, ".codex/hooks/general-guard.mjs"))).toBe(false);
+    expect(existsSync(join(consumer, ".codex/hooks/guards/bash-policy-checks.mjs"))).toBe(false);
+    expect(existsSync(join(consumer, ".claude/hooks/guards/bash-policy-checks.mjs"))).toBe(false);
     expect(result.skipped).toEqual([]);
   });
 
@@ -661,6 +663,20 @@ describe("init project setup", () => {
       `${JSON.stringify(
         {
           hooks: {
+            PreToolUse: [
+              {
+                hooks: [
+                  {
+                    args: [
+                      `${claudeProjectDirExpression}/.claude/hooks/guards/bash-policy-checks.mjs`,
+                    ],
+                    command: "node",
+                    type: "command",
+                  },
+                ],
+                matcher: "Bash",
+              },
+            ],
             PostToolUse: [
               {
                 hooks: [
@@ -684,6 +700,17 @@ describe("init project setup", () => {
       `${JSON.stringify(
         {
           hooks: {
+            PreToolUse: [
+              {
+                hooks: [
+                  {
+                    command: retiredCodexGeneralGuardCommand,
+                    type: "command",
+                  },
+                ],
+                matcher: "Bash",
+              },
+            ],
             PostToolUse: [
               {
                 hooks: [
@@ -720,6 +747,8 @@ describe("init project setup", () => {
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
     expect(JSON.stringify(claudeSettings)).not.toContain("sync-llm-on-claude-surface-change");
     expect(JSON.stringify(codexHooks)).not.toContain("sync-llm-on-claude-surface-change");
+    expect(JSON.stringify(claudeSettings)).not.toContain("bash-policy-checks.mjs");
+    expect(JSON.stringify(codexHooks)).not.toContain("general-guard.mjs");
     expect(JSON.stringify(claudeSettings)).toContain("node .claude/hooks/custom.mjs");
     expect(JSON.stringify(codexHooks)).toContain("node .codex/hooks/custom.mjs");
     expect(codexHooks.hooks.Stop).toBeUndefined();

@@ -37,7 +37,6 @@ const sourceRepoClaudeContextHooks = [
 const codexMirrorHookPaths = [
   ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
   ".codex/hooks/supaschema-source-hook.mjs",
-  ".codex/hooks/general-guard.mjs",
   ".codex/hooks/guards/bash-policy-checks.mjs",
 ];
 const sourceRepoCodexContextHooks = [
@@ -71,6 +70,10 @@ const removedHookPaths = [
   ".codex/hooks/auto-diff-on-schema-change.mjs",
   ".codex/hooks/block-generated-migration-edits.mjs",
   ".codex/hooks/context-permission-denied.mjs",
+  ".codex/hooks/general-guard.mjs",
+  "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs",
+  "agent-bundle/codex/hooks/general-guard.mjs",
+  "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs",
 ];
 const sourceRepoHookRuntimeOwners = [
   ".claude/hooks/sync-llm-on-claude-surface-change.mjs",
@@ -341,21 +344,29 @@ function assertCodexConfig(codexConfig, root) {
   }
   const packageCodexConfig = readJson("agent-bundle/codex/hooks.npm.json", root);
   const packageCodexHooksJson = JSON.stringify(packageCodexConfig);
+  const packageCodexHandlers = hookHandlers(packageCodexConfig);
   assert(
-    packageCodexHooksJson.includes("general-guard.mjs") &&
-      !packageCodexHooksJson.includes("context-") &&
-      !packageCodexHooksJson.includes("supaschema-source-hook.mjs") &&
-      !packageCodexHooksJson.includes("sync-llm-on-claude-surface-change.mjs") &&
-      !packageCodexHooksJson.includes("scripts/agent-hooks"),
-    "agent-bundle/codex/hooks.npm.json must keep the consumer Bash guard and strip source-only Codex hooks"
-  );
-  const packageGeneralGuard = hookHandlers(packageCodexConfig).find((handler) =>
-    handler.command?.includes(".codex/hooks/general-guard.mjs")
+    !(
+      packageCodexHooksJson.includes("general-guard.mjs") ||
+      packageCodexHooksJson.includes("bash-policy-checks.mjs") ||
+      packageCodexHooksJson.includes("context-") ||
+      packageCodexHooksJson.includes("supaschema-source-hook.mjs") ||
+      packageCodexHooksJson.includes("sync-llm-on-claude-surface-change.mjs") ||
+      packageCodexHooksJson.includes("scripts/agent-hooks")
+    ) &&
+      packageCodexHooksJson.includes("hook generated-migration-edit") &&
+      packageCodexHooksJson.includes("hook schema-write"),
+    "agent-bundle/codex/hooks.npm.json must contain only Supaschema product hooks"
   );
   assert(
-    packageGeneralGuard?.commandWindows?.includes("git rev-parse --show-toplevel") &&
-      packageGeneralGuard.commandWindows.includes('do @node "'),
-    "agent-bundle Codex general guard must provide a git-rooted, echo-suppressed commandWindows override"
+    packageCodexHandlers.length === 2 &&
+      packageCodexHandlers.every(
+        (handler) =>
+          typeof handler.command === "string" &&
+          handler.command.includes("supaschema hook") &&
+          handler.commandWindows === undefined
+      ),
+    "agent-bundle Codex handlers must be the two portable Supaschema hook commands"
   );
   assert(
     codexHooksJson.includes(".codex/hooks/supaschema-source-hook.mjs") &&
@@ -385,30 +396,26 @@ function assertCodexConfig(codexConfig, root) {
 }
 
 function assertConsumerClaudeSettings(root) {
-  const guardArg = [
-    "$",
-    "{CLAUDE_PROJECT_DIR}",
-    "/.claude/hooks/guards/bash-policy-checks.mjs",
-  ].join("");
   for (const settingsFile of consumerClaudeSettingsFiles) {
-    const handlers = hookHandlers(readJson(settingsFile, root));
-    assert(
-      handlers.some(
-        (handler) =>
-          handler.command === "node" &&
-          Array.isArray(handler.args) &&
-          handler.args.includes(guardArg)
-      ),
-      `${settingsFile} must run the Node guard in exec form with a CLAUDE_PROJECT_DIR argument`
-    );
+    const settings = readJson(settingsFile, root);
+    const settingsText = JSON.stringify(settings);
+    const handlers = hookHandlers(settings);
     const supaschemaHandlers = handlers.filter(
       (handler) =>
         typeof handler.command === "string" && handler.command.includes("supaschema hook")
     );
     assert(
-      supaschemaHandlers.length === 2 &&
+      handlers.length === 2 &&
+        supaschemaHandlers.length === 2 &&
         supaschemaHandlers.every((handler) => handler.args === undefined),
-      `${settingsFile} must run package-manager Supaschema shims in shell form without args`
+      `${settingsFile} must contain only the two package-manager Supaschema hook commands`
+    );
+    assert(
+      !(
+        settingsText.includes("bash-policy-checks.mjs") ||
+        settingsText.includes("general-guard.mjs")
+      ),
+      `${settingsFile} must not register the repository Bash policy`
     );
   }
 }

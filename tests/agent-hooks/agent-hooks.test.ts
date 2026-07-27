@@ -926,7 +926,6 @@ describe("agent hook configuration", () => {
 describe("general Bash blocker policy", () => {
   const claudeScript = ".claude/hooks/guards/bash-policy-checks.mjs";
   const sourceClaudeScript = ".claude/hooks/context-pre-tool-use.mjs";
-  const codexScript = ".codex/hooks/general-guard.mjs";
   const sourceCodexScript = ".codex/hooks/context-pre-tool-use.mjs";
   let bashPolicySessionIndex = 0;
   const nextBashPolicySessionId = (): string => {
@@ -1180,52 +1179,6 @@ describe("general Bash blocker policy", () => {
       const result = await runHook(claudeScript, preToolBash(command));
       expect(result.code, command).toBe(0);
     }
-  });
-
-  it("emits Codex PreToolUse denial JSON for the shared policy", async () => {
-    const blocked = await runHook(codexScript, preToolBash("rm -rf tmp"));
-    expect(blocked.code).toBe(0);
-    expect(codexDenial(blocked.stdout)).toContain("recursive+force rm");
-
-    const blockedWorktree = await runHook(
-      codexScript,
-      preToolBash("git worktree add ../demo HEAD")
-    );
-    expect(blockedWorktree.code).toBe(0);
-    expect(codexDenial(blockedWorktree.stdout)).toContain("git worktree is limited");
-
-    for (const command of [
-      "/usr/bin/git worktree add ../demo HEAD",
-      "git -c alias.wt=worktree wt add ../demo HEAD",
-      "$(command -v git) worktree add ../demo HEAD",
-      'env -S "git worktree add ../demo HEAD"',
-    ]) {
-      const result = await runHook(codexScript, preToolBash(command));
-      expect(result.code, command).toBe(0);
-      expect(codexDenial(result.stdout), command).toContain("BLOCKED:");
-    }
-
-    const allowedWorktree = await runHook(
-      codexScript,
-      preToolBash("git worktree list --porcelain -z")
-    );
-    expect(allowedWorktree.code).toBe(0);
-    expect(JSON.parse(allowedWorktree.stdout)).toEqual({});
-
-    const blockedSwitch = await runHook(codexScript, preToolBash("git switch feature/demo"));
-    expect(blockedSwitch.code).toBe(0);
-    expect(codexDenial(blockedSwitch.stdout)).toContain("git switch is limited");
-
-    const allowedSwitch = await runHook(
-      codexScript,
-      preToolBash("git switch -c feature/demo origin/main")
-    );
-    expect(allowedSwitch.code).toBe(0);
-    expect(JSON.parse(allowedSwitch.stdout)).toEqual({});
-
-    const allowed = await runHook(codexScript, preToolBash("rm -r tmp"));
-    expect(allowed.code).toBe(0);
-    expect(JSON.parse(allowed.stdout)).toEqual({});
   });
 
   it("blocks unsafe Bash through the source Codex context hook path", async () => {

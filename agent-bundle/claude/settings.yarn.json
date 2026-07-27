@@ -17,20 +17,6 @@
       {
         "hooks": [
           {
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guards/bash-policy-checks.mjs"
-            ],
-            "command": "node",
-            "statusMessage": "Checking general Bash safety policy",
-            "timeout": 10,
-            "type": "command"
-          }
-        ],
-        "matcher": "Bash"
-      },
-      {
-        "hooks": [
-          {
             "command": "yarn exec supaschema hook generated-migration-edit --runtime claude",
             "statusMessage": "Checking supaschema generated-migration policy",
             "timeout": 10,

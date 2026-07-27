@@ -95,25 +95,33 @@ describe("public agent and editor surfaces", () => {
     expect(stageableFiles(privatePrefixes)).toEqual([]);
   }, 15_000);
 
-  it("ships self-contained raw consumer hook registration", () => {
+  it("ships only Supaschema-specific consumer hook registration", () => {
     const packageJson = readJson<{ files?: string[] }>("package.json");
     const claudeSettings = readText("agent-bundle/claude/settings.npm.json");
     const codexHooks = readText("agent-bundle/codex/hooks.npm.json");
-    const claudeBashGuard = readText("agent-bundle/claude/hooks/guards/bash-policy-checks.mjs");
-    const codexGeneralGuard = readText("agent-bundle/codex/hooks/general-guard.mjs");
 
     expect(packageJson.files).toEqual(expect.arrayContaining(["agent-bundle"]));
     expect(packageJson.files).not.toEqual(
       expect.arrayContaining([".agents/skills/supaschema", ".claude/rules/supaschema.md"])
     );
-    expect(codexHooks).toContain("general-guard.mjs");
     expect(codexHooks).toContain("supaschema hook generated-migration-edit");
     expect(codexHooks).toContain("supaschema hook schema-write");
+    expect(codexHooks).not.toContain("general-guard.mjs");
+    expect(codexHooks).not.toContain("bash-policy-checks.mjs");
     expect(codexHooks).not.toContain("context-");
     expect(codexHooks).not.toContain("scripts/agent-hooks");
     expect(codexHooks).not.toContain("sync-llm-on-claude-surface-change.mjs");
+    expect(claudeSettings).toContain("supaschema hook generated-migration-edit");
+    expect(claudeSettings).toContain("supaschema hook schema-write");
+    expect(claudeSettings).not.toContain("bash-policy-checks.mjs");
+    expect(claudeSettings).not.toContain("general-guard.mjs");
     expect(claudeSettings).not.toContain("sync-llm-on-claude-surface-change.mjs");
-    expect(claudeBashGuard).not.toContain("user-codex-skill-policy");
-    expect(codexGeneralGuard).not.toContain("user-codex-skill-policy");
+    expect(
+      existsSync(resolve(root, "agent-bundle/claude/hooks/guards/bash-policy-checks.mjs"))
+    ).toBe(false);
+    expect(existsSync(resolve(root, "agent-bundle/codex/hooks/general-guard.mjs"))).toBe(false);
+    expect(
+      existsSync(resolve(root, "agent-bundle/codex/hooks/guards/bash-policy-checks.mjs"))
+    ).toBe(false);
   });
 });

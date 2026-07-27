@@ -23,7 +23,6 @@ const codexPostToolContextTools = [
   ...codexEditTools,
   ["mcp__", [".", "*"].join("")].join(""),
 ];
-const codexCommandToolMatcher = codexToolMatcher(codexCommandTools);
 const codexEditToolMatcher = codexToolMatcher(codexEditTools);
 const codexMutationToolMatcher = codexToolMatcher([...codexCommandTools, ...codexEditTools]);
 const codexPreToolContextMatcher = codexToolMatcher(codexPreToolContextTools);
@@ -38,7 +37,6 @@ export const agentSurfaceManifest = {
     targetRoot: ".codex/agents",
   },
   hooks: {
-    preserveFiles: ["general-guard.mjs"],
     sourceRoot: ".claude/hooks",
     targetRoot: ".codex/hooks",
   },
@@ -226,20 +224,8 @@ function agentBundleFiles(root) {
       fs.readFileSync(path.join(root, ".agents/prompts/supaschema-install.md"), "utf8"),
     ],
     [
-      "claude/hooks/guards/bash-policy-checks.mjs",
-      fs.readFileSync(path.join(root, ".claude/hooks/guards/bash-policy-checks.mjs"), "utf8"),
-    ],
-    [
       "claude/rules/supaschema.md",
       fs.readFileSync(path.join(root, ".claude/rules/supaschema.md"), "utf8"),
-    ],
-    [
-      "codex/hooks/general-guard.mjs",
-      fs.readFileSync(path.join(root, ".codex/hooks/general-guard.mjs"), "utf8"),
-    ],
-    [
-      "codex/hooks/guards/bash-policy-checks.mjs",
-      fs.readFileSync(path.join(root, ".codex/hooks/guards/bash-policy-checks.mjs"), "utf8"),
     ],
     [
       "codex/rules/supaschema.rules",
@@ -323,18 +309,6 @@ function claudeHookConfig(runner) {
         },
       ],
       PreToolUse: [
-        {
-          hooks: [
-            {
-              args: [`${claudeProjectDir}/.claude/hooks/guards/bash-policy-checks.mjs`],
-              command: "node",
-              statusMessage: "Checking general Bash safety policy",
-              timeout: 10,
-              type: "command",
-            },
-          ],
-          matcher: "Bash",
-        },
         {
           hooks: [
             {
@@ -730,31 +704,7 @@ function consumerCodexHooks(config) {
       delete hooks[eventName];
     }
   }
-  ensureConsumerCodexGeneralGuard(hooks);
   return next;
-}
-
-function ensureConsumerCodexGeneralGuard(hooks) {
-  const entries = Array.isArray(hooks.PreToolUse) ? hooks.PreToolUse : [];
-  const hasGuard = entries.some((entry) =>
-    JSON.stringify(entry).includes(".codex/hooks/general-guard.mjs")
-  );
-  if (hasGuard) {
-    return;
-  }
-  hooks.PreToolUse = [
-    {
-      hooks: [
-        codexHookCommand(
-          ".codex/hooks/general-guard.mjs",
-          10,
-          "Checking general Bash safety policy"
-        ),
-      ],
-      matcher: codexCommandToolMatcher,
-    },
-    ...entries,
-  ];
 }
 
 function withoutRepoLocalCodexHooks(entry) {
@@ -779,6 +729,8 @@ function isRepoLocalCodexHook(hook) {
     typeof hook === "object" &&
     typeof hook.command === "string" &&
     (hook.command.includes("/.codex/hooks/context-") ||
+      hook.command.includes("/.codex/hooks/general-guard.mjs") ||
+      hook.command.includes("/.codex/hooks/guards/bash-policy-checks.mjs") ||
       hook.command.includes("/.codex/hooks/sync-llm-on-claude-surface-change.mjs") ||
       hook.command.includes("scripts/agent-hooks/"))
   );
@@ -816,9 +768,8 @@ function syncDirectoryMirror(root, surface) {
   const targetRootPath = path.join(root, surface.targetRoot);
   assertDirectory(sourceRootPath, `missing source dir ${surface.sourceRoot}`);
   const sourceFiles = listFiles(sourceRootPath);
-  const mirroredFiles = mirroredSourceFiles(surface, sourceFiles);
-  syncCopiedFiles(sourceRootPath, targetRootPath, mirroredFiles);
-  removeUnmanagedFiles(targetRootPath, expectedMirrorFiles(surface, mirroredFiles));
+  syncCopiedFiles(sourceRootPath, targetRootPath, sourceFiles);
+  removeUnmanagedFiles(targetRootPath, new Set(sourceFiles));
   return { files: sourceFiles.length };
 }
 
@@ -918,11 +869,10 @@ function checkDirectoryMirror(root, surface, errors) {
   }
 
   const sourceFiles = listFiles(sourceRootPath);
-  const mirroredFiles = mirroredSourceFiles(surface, sourceFiles);
   const targetFiles = listFiles(targetRootPath);
-  pushFileSetErrors(surface, [...expectedMirrorFiles(surface, mirroredFiles)], targetFiles, errors);
+  pushFileSetErrors(surface, sourceFiles, targetFiles, errors);
 
-  for (const file of mirroredFiles.filter((item) => targetFiles.includes(item))) {
+  for (const file of sourceFiles.filter((item) => targetFiles.includes(item))) {
     const sourceFile = path.join(sourceRootPath, file);
     const targetFile = path.join(targetRootPath, file);
     if (!fs.readFileSync(sourceFile).equals(fs.readFileSync(targetFile))) {
@@ -1006,15 +956,6 @@ function pushFileSetErrors(surface, expectedFiles, actualFiles, errors) {
   if (extra.length > 0) {
     errors.push(`mirror ${surface.targetRoot} has unmanaged files: ${extra.join(", ")}`);
   }
-}
-
-function expectedMirrorFiles(surface, sourceFiles) {
-  return new Set([...sourceFiles, ...(surface.preserveFiles ?? [])]);
-}
-
-function mirroredSourceFiles(surface, sourceFiles) {
-  const preserved = new Set(surface.preserveFiles ?? []);
-  return sourceFiles.filter((file) => !preserved.has(file));
 }
 
 function assertDirectory(dir, message) {
