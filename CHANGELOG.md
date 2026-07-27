@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.3 (2026-07-27)
+
+### Changes
+
+- Fix migration-history replay so dropping tables, foreign tables, views, and materialized views also removes their owned objects, grants, and comments, and treat the configured `migrations:` history as complete baseline proof even when hand-authored migrations follow generated lineage.
+- Extend advisory `SECURITY DEFINER` checks to detect unqualified sequence references through `regclass`, relation targets in `TRUNCATE`, `LOCK`, and `ANALYZE`, and DML targets shadowed by CTE names.
+
+### Patch Changes
+
+- Harden the packaged Claude and Codex agent bundle by blocking checkout-creating or Git-metadata-mutating `git submodule` commands while retaining read-only `git submodule status`.
+
 ## 0.5.2 (2026-07-25)
 
 ### Changes
