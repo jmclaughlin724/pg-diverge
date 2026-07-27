@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
@@ -166,6 +166,99 @@ describe("repository boundary evaluator", () => {
           tool_name: "Read",
         },
         { root: linkedRoot }
+      ).action
+    ).toBe("block");
+  });
+});
+
+describe("repository boundary path inspection", () => {
+  async function boundaryFixture(prefix: string) {
+    const root = await realpath(await fixtureRoot(prefix));
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "package.json"), "{}");
+    await writeFile(join(root, "script.sed"), "s/a/b/\n");
+    const outside = await realpath(await mkdtemp(join(fixtureParent, "outside-")));
+    await writeFile(join(outside, "secret"), "s3cret\n");
+    await symlink(outside, join(root, "escape"));
+    return { outside, root };
+  }
+
+  function verdict(command: string, root: string) {
+    return evaluateRepositoryBoundary(
+      { cwd: root, tool_input: { command }, tool_name: "Bash" },
+      { root }
+    ).action;
+  }
+
+  it("does not treat regex or program expressions as read-command paths", async () => {
+    const { root } = await boundaryFixture("expressions-");
+
+    for (const command of [
+      "rg 'foo$' src",
+      "grep -rn 'bar$' src",
+      "sed -n '/foo$/p' package.json",
+      "awk '{print $1}' package.json",
+      "sed -nf script.sed package.json",
+    ]) {
+      expect([command, verdict(command, root)]).toEqual([command, "allow"]);
+    }
+  });
+
+  it("still blocks outside paths on read commands that carry expression arguments", async () => {
+    const { root } = await boundaryFixture("expression-escapes-");
+
+    for (const command of [
+      "rg 'x' /etc/hosts",
+      "cat ../secret",
+      "awk '{print}' /etc/passwd",
+      "sed -n '/foo$/p' /etc/hosts",
+    ]) {
+      expect([command, verdict(command, root)]).toEqual([command, "block"]);
+    }
+  });
+
+  it("resolves symlink components before collapsing parent segments", async () => {
+    const { root } = await boundaryFixture("symlink-order-");
+
+    for (const command of [
+      "cat escape/secret",
+      "cat escape/../secret",
+      "cat ./escape/../secret",
+      "cat escape/../../etc/hosts",
+    ]) {
+      expect([command, verdict(command, root)]).toEqual([command, "block"]);
+    }
+  });
+
+  it("exempts only known non-file URI schemes", async () => {
+    const { root } = await boundaryFixture("uri-schemes-");
+
+    expect(verdict("curl https://example.com", root)).toBe("allow");
+    expect(verdict("cat x://../../etc/hosts", root)).toBe("block");
+  });
+
+  it("inspects reader attached path options", async () => {
+    const { root } = await boundaryFixture("attached-options-");
+
+    expect(verdict("sed -f/etc/passwd package.json", root)).toBe("block");
+    expect(verdict("awk -f/etc/passwd", root)).toBe("block");
+    expect(verdict("sed -nf script.sed package.json", root)).toBe("allow");
+  });
+
+  it("limits structured path inspection to local filesystem tools", async () => {
+    const { root } = await boundaryFixture("structured-tools-");
+
+    expect(
+      evaluateRepositoryBoundary(
+        { cwd: root, tool_input: { path: "/v1/items" }, tool_name: "mcp__example__list" },
+        { root }
+      )
+    ).toEqual({ action: "allow" });
+
+    expect(
+      evaluateRepositoryBoundary(
+        { cwd: root, tool_input: { file_path: "/etc/hosts" }, tool_name: "Read" },
+        { root }
       ).action
     ).toBe("block");
   });

@@ -50,6 +50,13 @@ const directoryValueOptions = new Set([
   "-o",
   "-p",
 ]);
+const leadingExpressionCommands = new Set(["awk", "egrep", "fgrep", "grep", "rg", "sed"]);
+const patternValueOptions = new Set(["-e", "--expression", "--regexp"]);
+const readerAttachedPathFlags = new Map([
+  ["awk", "f"],
+  ["grep", "f"],
+  ["sed", "f"],
+]);
 const inlineCodeOptions = new Map([
   ["bun", new Set(["-e", "--eval", "--print"])],
   ["node", new Set(["-e", "--eval", "-p", "--print"])],
@@ -77,6 +84,19 @@ const branchActionWords = new Set([
   "starting",
   "switch",
   "switching",
+]);
+const nonFileUriSchemes = new Set([
+  "ftp",
+  "ftps",
+  "git",
+  "http",
+  "https",
+  "postgres",
+  "postgresql",
+  "sftp",
+  "ssh",
+  "ws",
+  "wss",
 ]);
 const conditionalOrNegativeWords = new Set([
   "cannot",
@@ -124,7 +144,7 @@ export function evaluateRepositoryBoundary(payload, options = {}) {
     return bashResult;
   }
 
-  for (const target of structuredPathTargets(payload)) {
+  for (const target of structuredPathTargets(payload, cwd, root)) {
     const targetCheck = inspectPath(target.value, cwd, root);
     const targetBlock = pathViolationBlock(target.label, target.value, targetCheck, root);
     if (targetBlock) {
@@ -226,11 +246,19 @@ function inspectDirectoryChange(name, args, cwd, root) {
 }
 
 function inspectCommandPathArguments(name, args, cwd, root) {
-  const pathOperands = isReadCommandName(name) || pathOperandCommands.has(name);
+  const inspectEveryArgument = !isReadCommandName(name) && pathOperandCommands.has(name);
+  let expressionPending = leadingExpressionCommands.has(name);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] ?? "";
-    const option = directoryOptionAt(name, args, index);
+    const skipped = leadingExpressionAt(argument, expressionPending);
+    if (skipped) {
+      expressionPending = false;
+      index += skipped.consumed;
+      continue;
+    }
+    const option = directoryOptionAt(name, args, index) ?? readerPathOptionAt(name, args, index);
     if (option) {
+      expressionPending = false;
       const result = inspectBoundaryPath(option.label, option.value, cwd, root);
       if (result.action === "block") {
         return result;
@@ -238,7 +266,7 @@ function inspectCommandPathArguments(name, args, cwd, root) {
       index += option.consumed;
       continue;
     }
-    if (pathOperands || looksLikePath(argument)) {
+    if (inspectEveryArgument || looksLikePath(argument)) {
       const result = inspectBoundaryPath(`${name} path`, argument, cwd, root);
       if (result.action === "block") {
         return result;
@@ -268,6 +296,35 @@ function directoryOptionAt(name, args, index) {
       value: attached.startsWith("=") ? attached.slice(1) : attached,
     };
   }
+}
+
+function leadingExpressionAt(argument, expressionPending) {
+  if (!expressionPending) {
+    return;
+  }
+  if (patternValueOptions.has(argument)) {
+    return { consumed: 1 };
+  }
+  return argument.startsWith("-") ? undefined : { consumed: 0 };
+}
+
+function readerPathOptionAt(name, args, index) {
+  const flag = readerAttachedPathFlags.get(name);
+  const argument = args[index] ?? "";
+  if (!(flag && argument.startsWith("-")) || argument.startsWith("--")) {
+    return;
+  }
+  const flagIndex = argument.indexOf(flag, 1);
+  if (flagIndex === -1) {
+    return;
+  }
+  const attached = argument.slice(flagIndex + 1);
+  if (attached.length > 0) {
+    return { consumed: 0, label: `${name} -${flag}`, value: attached };
+  }
+  return typeof args[index + 1] === "string"
+    ? { consumed: 1, label: `${name} -${flag}`, value: args[index + 1] }
+    : undefined;
 }
 
 function inspectBoundaryPath(label, value, cwd, root) {
@@ -340,7 +397,7 @@ function hasPathListSeparator(value) {
   return colon > 1;
 }
 
-function structuredPathTargets(payload) {
+function structuredPathTargets(payload, cwd, root) {
   const input = payload?.tool_input;
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return [];
@@ -356,9 +413,14 @@ function structuredPathTargets(payload) {
     }
   }
 
+  const localTool = localFilesystemToolNames.has(payload?.tool_name);
   const visit = (value, key = "") => {
     if (typeof value === "string") {
-      if (isPathField(key) && isFilesystemValue(value, key)) {
+      if (
+        isPathField(key) &&
+        isFilesystemValue(value, key) &&
+        (localTool || resolvesWithinRoot(value, cwd, root))
+      ) {
         targets.push({ label: `tool_input.${key}`, value });
       }
       return;
@@ -380,6 +442,10 @@ function structuredPathTargets(payload) {
   };
   visit(input);
   return targets;
+}
+
+function resolvesWithinRoot(value, cwd, root) {
+  return inspectPath(value, cwd, root).violation !== "outside";
 }
 
 function isPathField(key) {
@@ -428,9 +494,7 @@ function inspectPath(value, cwd, root) {
     return { resolved: candidate, violation: "dynamic" };
   }
 
-  const absolute = path.isAbsolute(candidate)
-    ? path.resolve(candidate)
-    : path.resolve(cwd, candidate);
+  const absolute = resolveSymlinkAwarePath(candidate, cwd);
   if (!isWithin(root, absolute)) {
     return { resolved: absolute, violation: "outside" };
   }
@@ -448,6 +512,38 @@ function inspectPath(value, cwd, root) {
     return { resolved: absolute, violation: "git-metadata" };
   }
   return { resolved: absolute };
+}
+
+function resolveSymlinkAwarePath(value, cwd) {
+  const absolute = path.isAbsolute(value) ? value : `${cwd}${path.sep}${value}`;
+  const parsed = path.parse(absolute);
+  let current = parsed.root;
+  for (const segment of pathSegments(absolute.slice(parsed.root.length))) {
+    if (segment === "..") {
+      current = path.dirname(current);
+      continue;
+    }
+    current = path.join(current, segment);
+    if (isSymbolicLink(current)) {
+      current = fs.realpathSync(current);
+    }
+  }
+  return current;
+}
+
+function pathSegments(value) {
+  return value
+    .split("/")
+    .flatMap((part) => part.split("\\"))
+    .filter((segment) => segment.length > 0 && segment !== ".");
+}
+
+function isSymbolicLink(candidate) {
+  try {
+    return fs.lstatSync(candidate).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 function nearestExistingPath(value) {
@@ -525,19 +621,8 @@ function hasNonFileScheme(value) {
   if (separator <= 0) {
     return false;
   }
-  const scheme = value.slice(0, separator);
-  if (scheme === "file") {
-    return false;
-  }
-  return [...scheme].every(
-    (character) =>
-      (character >= "a" && character <= "z") ||
-      (character >= "A" && character <= "Z") ||
-      (character >= "0" && character <= "9") ||
-      character === "+" ||
-      character === "-" ||
-      character === "."
-  );
+  const scheme = value.slice(0, separator).toLowerCase();
+  return scheme !== "file" && nonFileUriSchemes.has(scheme);
 }
 
 function isNullDevice(value) {
@@ -618,3 +703,14 @@ function pathViolationBlock(label, value, result, root) {
     );
   }
 }
+const localFilesystemToolNames = new Set([
+  "Read",
+  "Write",
+  "Edit",
+  "MultiEdit",
+  "NotebookEdit",
+  "NotebookRead",
+  "Glob",
+  "Grep",
+  "LS",
+]);
