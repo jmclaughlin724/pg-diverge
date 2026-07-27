@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { access, chmod, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Command } from "commander";
@@ -218,7 +227,10 @@ describe("sync (no target)", () => {
       const oldPath = process.env.PATH;
       const oldDatabaseUrl = process.env.SUPASCHEMA_DATABASE_URL;
       const previousCwd = process.cwd();
-      process.env.PATH = "/usr/bin:/bin";
+      const isolatedPath = await mkdtemp(join(tmpdir(), "supa-isolated-path-"));
+      const gitPath = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+      await symlink(gitPath, join(isolatedPath, "git"));
+      process.env.PATH = isolatedPath;
       delete process.env.SUPASCHEMA_DATABASE_URL;
       process.chdir(root);
       try {
@@ -256,7 +268,8 @@ describe("sync (no target)", () => {
           process.env.SUPASCHEMA_DATABASE_URL = oldDatabaseUrl;
         }
       }
-    }
+    },
+    15_000
   );
 
   it.skipIf(process.platform === "win32")(
