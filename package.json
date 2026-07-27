@@ -126,7 +126,7 @@
     "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
   "overrides": {
-    "@hono/node-server": "^2.0.5",
+    "@hono/node-server": "2.0.12",
     "@typescript/old": "npm:typescript@6.0.2",
     "cclsp": {
       "typescript": "$typescript"
