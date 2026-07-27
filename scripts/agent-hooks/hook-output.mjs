@@ -1,3 +1,5 @@
+import path from "node:path";
+
 const modelContextEvents = new Set([
   "SessionStart",
   "UserPromptSubmit",
@@ -63,10 +65,53 @@ export function shapeHookResult(eventName, result = {}, runtime = "claude") {
   return shaped(output, exitCode, stderr, false);
 }
 
+const defaultRemediation = [
+  "The check crashed; it did not deny this action. Hook enforcement is degraded and fail-closed.",
+  "Fix the error at the reported source, then retry.",
+  "While degraded, only Read, Edit, Write, and MultiEdit on scripts/agent-hooks, .claude/hooks, and .codex/hooks are permitted so the runtime can repair itself; every other tool call is denied.",
+  "If those repairs are also unavailable, fix the file outside the hook path: run the command yourself with the `!` prefix, or edit it in an external editor.",
+].join(" ");
+
+const hookRuntimeDirectories = [
+  path.join("scripts", "agent-hooks"),
+  path.join(".claude", "hooks"),
+  path.join(".codex", "hooks"),
+];
+
+const hookRepairToolNames = new Set(["Read", "Edit", "Write", "MultiEdit"]);
+
+function hookRuntimeRepairTarget(payload, root) {
+  if (!(hookRepairToolNames.has(payload?.tool_name) && typeof root === "string" && root)) {
+    return;
+  }
+  const candidate = payload?.tool_input?.file_path;
+  if (typeof candidate !== "string" || !candidate) {
+    return;
+  }
+  const relative = path.relative(root, path.resolve(root, candidate));
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return;
+  }
+  const owned = hookRuntimeDirectories.some(
+    (directory) => relative === directory || relative.startsWith(`${directory}${path.sep}`)
+  );
+  return owned ? relative : undefined;
+}
+
 export function failClosedResult(eventName, error, checkName = "unknown", details = {}) {
-  return {
-    block: structuredError(eventName, checkName, error, details),
-  };
+  const diagnostic = structuredError(eventName, checkName, error, details);
+  const repairTarget =
+    eventName === "PreToolUse" ? hookRuntimeRepairTarget(details.payload, details.root) : undefined;
+  if (repairTarget === undefined) {
+    return { block: diagnostic };
+  }
+  const degraded = [
+    diagnostic,
+    "",
+    `Permitted as hook-runtime repair: ${diagnosticValue(repairTarget)}`,
+    "Boundary enforcement is NOT running for this call. Repair the crash before resuming other work.",
+  ].join("\n");
+  return { contextParts: [degraded], systemMessage: degraded };
 }
 
 export function runChecks(eventName, payload, checks, context = {}) {
@@ -80,6 +125,8 @@ export function runChecks(eventName, payload, checks, context = {}) {
     } catch (error) {
       return failClosedResult(eventName, error, check.name || "anonymous", {
         hookPath: context.hookPath,
+        payload,
+        root: context.root,
         runtime: context.runtime,
       });
     }
@@ -103,10 +150,7 @@ export function mergeResult(target, addition) {
 export function structuredError(eventName, checkName, error, details = {}) {
   const message = diagnosticValue(error instanceof Error ? error.message : String(error));
   const hookPath = diagnosticValue(details.hookPath ?? "unknown");
-  const remediation = diagnosticValue(
-    details.remediation ??
-      "Inspect the reported source and rerun the hook with representative JSON input."
-  );
+  const remediation = diagnosticValue(details.remediation ?? defaultRemediation);
   return [
     "Agent hook failed closed.",
     `runtime=${diagnosticValue(details.runtime ?? "unknown")}`,

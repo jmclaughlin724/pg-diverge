@@ -739,8 +739,18 @@ function plpgsqlStatementFragment(statement: string): StaticSqlFragment | undefi
     returnStatementFragment(statement) ??
     openStatementFragment(statement) ??
     selectStatementFragment(statement) ??
-    dmlStatementFragment(statement)
+    dmlStatementFragment(statement) ??
+    relationUtilityStatementFragment(statement)
   );
+}
+
+const relationUtilityPrefixes = ["truncate ", "lock ", "analyze ", "analyse "];
+
+function relationUtilityStatementFragment(sql: string): StaticSqlFragment | undefined {
+  const lower = sql.toLowerCase();
+  return relationUtilityPrefixes.some((prefix) => lower.startsWith(prefix))
+    ? { source: "utility statement", sql }
+    : undefined;
 }
 
 function plpgsqlStatementMayContainSql(statement: string): boolean {
@@ -748,9 +758,19 @@ function plpgsqlStatementMayContainSql(statement: string): boolean {
     return false;
   }
   const tokens = new Set(tokenSpans(statement).map((token) => token.text));
-  return ["select", "insert", "update", "delete", "merge", "with", "exists"].some((token) =>
-    tokens.has(token)
-  );
+  return [
+    "select",
+    "insert",
+    "update",
+    "delete",
+    "merge",
+    "with",
+    "exists",
+    "truncate",
+    "lock",
+    "analyze",
+    "analyse",
+  ].some((token) => tokens.has(token));
 }
 
 function forLoopStatementFragment(sql: string): StaticSqlFragment | undefined {
@@ -1396,10 +1416,54 @@ function collectUnqualifiedRelation(
   visibleCtes: ReadonlySet<string>,
   relations: Set<string>
 ): void {
-  const rangeVar = asRecord(record.RangeVar);
+  const rangeVar = asRecord(record.RangeVar) ?? unwrappedRangeVar(record);
   const relation = readString(rangeVar?.relname);
   if (relation && readString(rangeVar?.schemaname) === undefined && !visibleCtes.has(relation)) {
     relations.add(relation);
+  }
+  collectRegclassRelation(record, relations);
+}
+
+function unwrappedRangeVar(record: AstNode): AstNode | undefined {
+  const relation = asRecord(record.relation);
+  return typeof relation?.relname === "string" ? relation : undefined;
+}
+
+const regclassResolutionFunctions = new Set(["nextval", "currval", "setval", "lastval"]);
+const regclassCastTypes = new Set(["regclass", "_regclass"]);
+
+function collectRegclassRelation(record: AstNode, relations: Set<string>): void {
+  const funcCall = asRecord(record.FuncCall);
+  if (funcCall) {
+    const name = stringList(funcCall.funcname).at(-1);
+    if (name !== undefined && regclassResolutionFunctions.has(name)) {
+      for (const argument of readArray(funcCall.args)) {
+        addUnqualifiedRelationLiteral(relationLiteral(asRecord(argument)), relations);
+      }
+    }
+    return;
+  }
+  const cast = asRecord(record.TypeCast);
+  const castType = stringList(asRecord(cast?.typeName)?.names).at(-1);
+  if (cast && castType !== undefined && regclassCastTypes.has(castType)) {
+    addUnqualifiedRelationLiteral(relationLiteral(asRecord(cast.arg)), relations);
+  }
+}
+
+function relationLiteral(node: AstNode | undefined): string | undefined {
+  if (!node) {
+    return;
+  }
+  const cast = asRecord(node.TypeCast);
+  if (cast) {
+    return relationLiteral(asRecord(cast.arg));
+  }
+  return readString(asRecord(asRecord(node.A_Const)?.sval)?.sval);
+}
+
+function addUnqualifiedRelationLiteral(value: string | undefined, relations: Set<string>): void {
+  if (value !== undefined && value.length > 0 && !value.includes(".")) {
+    relations.add(value);
   }
 }
 
@@ -1440,10 +1504,19 @@ function collectUnqualifiedQuery(
       }
     }
   }
+  collectDmlTargetRelation(query, relations);
   for (const [key, child] of Object.entries(query)) {
     if (key !== "withClause") {
       collectUnqualifiedNodes(child, visibleCtes, relations, types);
     }
+  }
+}
+
+function collectDmlTargetRelation(query: AstNode, relations: Set<string>): void {
+  const rangeVar = asRecord(query.relation);
+  const relation = readString(rangeVar?.relname);
+  if (relation && readString(rangeVar?.schemaname) === undefined) {
+    relations.add(relation);
   }
 }
 

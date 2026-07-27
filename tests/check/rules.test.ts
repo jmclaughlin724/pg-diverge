@@ -2,6 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { checkMigrationSql } from "../../src/check/migration.js";
 import { renderCheckReport } from "../../src/check/report.js";
 import { resolveConfig } from "../../src/config/schema.js";
 import { runRlsSafetyGate } from "../../src/pipeline/deploy-safety.js";
@@ -508,6 +509,98 @@ function routineObject(name: string, metadata: Record<string, unknown>): SchemaO
     sql: "",
   };
 }
+
+describe("SECURITY DEFINER unqualified reference detection", () => {
+  const prelude = `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id bigint, name text);
+CREATE SEQUENCE app.accounts_id_seq;
+`;
+
+  async function securityDefinerWarnings(routine: string): Promise<string[]> {
+    const diagnostics = await checkMigrationSql(`${prelude}${routine}`, {
+      config: resolveConfig(),
+    });
+    return diagnostics
+      .filter((item) => item.code === "SUPA_CHECK_SECURITY_DEFINER_SEARCH_PATH")
+      .map((item) => `${item.severity}:${item.message}`);
+  }
+
+  function sqlRoutine(body: string): string {
+    return `CREATE FUNCTION app.fn() RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $function$ ${body} $function$;
+`;
+  }
+
+  function plpgsqlRoutine(body: string): string {
+    return `CREATE FUNCTION app.fn() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $function$
+BEGIN
+${body}
+END;
+$function$;
+`;
+  }
+
+  it("flags a sequence resolved through a regclass function", async () => {
+    expect(
+      await securityDefinerWarnings(sqlRoutine("SELECT nextval('accounts_id_seq');"))
+    ).toHaveLength(1);
+  });
+
+  it("accepts a schema-qualified sequence resolved through a regclass function", async () => {
+    expect(
+      await securityDefinerWarnings(sqlRoutine("SELECT nextval('app.accounts_id_seq');"))
+    ).toEqual([]);
+  });
+
+  it("flags the late-binding text form of a regclass function argument", async () => {
+    expect(
+      await securityDefinerWarnings(sqlRoutine("SELECT nextval('accounts_id_seq'::text);"))
+    ).toHaveLength(1);
+  });
+
+  it("flags an unqualified TRUNCATE target", async () => {
+    expect(await securityDefinerWarnings(plpgsqlRoutine("TRUNCATE accounts;"))).toHaveLength(1);
+  });
+
+  it("accepts a schema-qualified TRUNCATE target", async () => {
+    expect(await securityDefinerWarnings(plpgsqlRoutine("TRUNCATE app.accounts;"))).toEqual([]);
+  });
+
+  it("flags an unqualified LOCK TABLE target", async () => {
+    expect(await securityDefinerWarnings(plpgsqlRoutine("LOCK TABLE accounts;"))).toHaveLength(1);
+  });
+
+  it("flags an unqualified ANALYZE target reached through a VacuumRelation wrapper", async () => {
+    expect(await securityDefinerWarnings(plpgsqlRoutine("ANALYZE accounts;"))).toHaveLength(1);
+  });
+
+  it("accepts a schema-qualified ANALYZE target", async () => {
+    expect(await securityDefinerWarnings(plpgsqlRoutine("ANALYZE app.accounts;"))).toEqual([]);
+  });
+
+  it("flags a DML target that a common table expression shadows", async () => {
+    expect(
+      await securityDefinerWarnings(
+        sqlRoutine("WITH accounts AS (SELECT 1 AS id) UPDATE accounts SET name = 'x';")
+      )
+    ).toHaveLength(1);
+  });
+
+  it("accepts a read-side common table expression reference", async () => {
+    expect(
+      await securityDefinerWarnings(sqlRoutine("WITH t AS (SELECT 1 AS id) SELECT id FROM t;"))
+    ).toEqual([]);
+  });
+
+  it("keeps the rule advisory rather than deploy-blocking", async () => {
+    const warnings = await securityDefinerWarnings(plpgsqlRoutine("TRUNCATE accounts;"));
+
+    expect(warnings.every((entry) => entry.startsWith("warning:"))).toBe(true);
+  });
+});
 
 describe("SECURITY DEFINER search_path rule", () => {
   it("flags a SECURITY DEFINER routine with no pinned search_path", () => {

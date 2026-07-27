@@ -17,7 +17,6 @@ const hasAgentHookSources = [
 let runChecks: any;
 let shapeHookResult: any;
 let handleAgentHookEvent: any;
-let deferralLanguage: any;
 let hedgeDensity: any;
 let preToolEvidenceGate: any;
 let claimedVerificationDomains: any;
@@ -38,9 +37,7 @@ if (hasAgentHookSources) {
     "../../scripts/agent-hooks/hook-output.mjs"
   ));
   ({ handleAgentHookEvent } = await optionalImport("../../scripts/agent-hooks/runner.mjs"));
-  ({ deferralLanguage, hedgeDensity } = await optionalImport(
-    "../../scripts/agent-hooks/response-shape.mjs"
-  ));
+  ({ hedgeDensity } = await optionalImport("../../scripts/agent-hooks/response-shape.mjs"));
   ({ preToolEvidenceGate } = await optionalImport("../../scripts/agent-hooks/evidence-gate.mjs"));
   ({ claimedVerificationDomains } = await optionalImport(
     "../../scripts/agent-hooks/response-claims.mjs"
@@ -165,6 +162,84 @@ describe.skipIf(!hasAgentHookSources)("agent hook payload mapping", () => {
     expect(result.output.systemMessage).toContain("error=could not read hook state");
     expect(result.output.systemMessage).toContain("invalid JSON");
     expect(await readFile(file, "utf8")).toBe("{not-json");
+  });
+
+  it("denies unrelated tool calls when a check crashes, with recovery instructions", () => {
+    const result = runChecks(
+      "PreToolUse",
+      { tool_input: { command: "npm test" }, tool_name: "Bash" },
+      [
+        function crashingCheck() {
+          throw new ReferenceError("someConstant is not defined");
+        },
+      ],
+      { root: process.cwd(), runtime: "claude" }
+    );
+    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
+
+    expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
+    expect(shaped.permissionDecisionReason).toContain("crashed; it did not deny this action");
+    expect(shaped.permissionDecisionReason).toContain("scripts/agent-hooks");
+    expect(shaped.permissionDecisionReason).toContain("`!` prefix");
+  });
+
+  it("permits hook-runtime repair while a check is crashing so the session can self-heal", () => {
+    const result = runChecks(
+      "PreToolUse",
+      {
+        tool_input: { file_path: "scripts/agent-hooks/repository-boundary.mjs" },
+        tool_name: "Edit",
+      },
+      [
+        function crashingCheck() {
+          throw new ReferenceError("someConstant is not defined");
+        },
+      ],
+      { root: process.cwd(), runtime: "claude" }
+    );
+    const shaped = shapeHookResult("PreToolUse", result);
+
+    expect(hookFeedback(shaped.output).permissionDecisionReason).toBeUndefined();
+    expect(shaped.output.systemMessage).toContain("Permitted as hook-runtime repair");
+    expect(shaped.output.systemMessage).toContain("Boundary enforcement is NOT running");
+  });
+
+  it("denies a crashing-check repair path that escapes the repository", () => {
+    const result = runChecks(
+      "PreToolUse",
+      {
+        tool_input: { file_path: "../outside/scripts/agent-hooks/evil.mjs" },
+        tool_name: "Write",
+      },
+      [
+        function crashingCheck() {
+          throw new ReferenceError("someConstant is not defined");
+        },
+      ],
+      { root: process.cwd(), runtime: "claude" }
+    );
+    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
+
+    expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
+  });
+
+  it("denies a crashing-check Bash call that merely mentions the hook runtime", () => {
+    const result = runChecks(
+      "PreToolUse",
+      {
+        tool_input: { command: "rm -rf scripts/agent-hooks" },
+        tool_name: "Bash",
+      },
+      [
+        function crashingCheck() {
+          throw new ReferenceError("someConstant is not defined");
+        },
+      ],
+      { root: process.cwd(), runtime: "claude" }
+    );
+    const shaped = hookFeedback(shapeHookResult("PreToolUse", result).output);
+
+    expect(shaped.permissionDecisionReason).toContain("Agent hook failed closed.");
   });
 
   it("keeps same-hook PreToolUse denial reasons from multiple checks", () => {
@@ -830,7 +905,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
     }
   });
 
-  it("continues Codex Stop once for a completion claim with open work", async () => {
+  it("continues Codex Stop once and never twice for the same correction", async () => {
+    const hedgedClosingMessage =
+      "The migration probably applies and it might be idempotent, so the plan seems correct overall.";
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
     const payload = {
@@ -846,7 +923,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
       "Stop",
       {
         background_tasks: [{ id: "019f4d1a-3671-7f91-8f4c-cc527b4ed6d1" }],
-        last_assistant_message: "**completed_actions**",
+        last_assistant_message: hedgedClosingMessage,
         session_id: "codex-stop-continuation",
         turn_id: "turn-1",
       },
@@ -855,7 +932,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
 
     expect(result.output).toMatchObject({
       decision: "block",
-      reason: expect.stringContaining("open background tasks or pending skills remain"),
+      reason: expect.stringContaining("dense hedging"),
     });
     expect(result.stdout).toContain('"decision":"block"');
 
@@ -863,7 +940,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
       "Stop",
       {
         background_tasks: [{ id: "019f4d1a-3671-7f91-8f4c-cc527b4ed6d1" }],
-        last_assistant_message: "**completed_actions**",
+        last_assistant_message: hedgedClosingMessage,
         session_id: "codex-stop-continuation",
         stop_hook_active: true,
         turn_id: "turn-1",
@@ -1004,13 +1081,6 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
     ].join(" ");
 
     expect(hedgeDensity(historicalFailureSummary)).toBeUndefined();
-  });
-
-  it("does not classify an optional feature disposition as deferred work", () => {
-    const optionalFeatureDisposition =
-      "If you want a searchable hook-history ledger, that is a separate observability feature. It is not required for upstream parity.";
-
-    expect(deferralLanguage(optionalFeatureDisposition)).toBeUndefined();
   });
 
   it("does not repeat an emitted signature when a revised response adds a new correction", async () => {
@@ -1226,32 +1296,6 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
         mainState
       )
     ).toEqual({});
-  });
-
-  it("continues Codex SubagentStop when closeout defers requested work", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = {
-      prompt: "implement the fix",
-      session_id: "codex-subagent-stop-continuation",
-      turn_id: "turn-1",
-    };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
-
-    const result = handleAgentHookEvent(
-      "SubagentStop",
-      {
-        last_assistant_message: "If you want, I can implement the fix.",
-        session_id: payload.session_id,
-        turn_id: payload.turn_id,
-      },
-      { root, runtime: "codex" }
-    );
-
-    expect(result.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("defers work"),
-    });
   });
 
   it("records Codex exec command evidence under the detector success kind", async () => {
@@ -1847,6 +1891,45 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
       );
       expect(leading.output).toEqual({});
     }
+  });
+
+  it("flags a bare tool-incident header lacking attempted-command, impact, and recovery evidence", async () => {
+    const { root, stateDir } = await seededHookRoot();
+    process.env.STATE_DIR = stateDir;
+    const payload = {
+      prompt: "fix the reporting failure",
+      session_id: "shell-command-not-found-bare-header",
+    };
+    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
+
+    handleAgentHookEvent(
+      "PostToolUse",
+      {
+        ...payload,
+        tool_input: {
+          command: 'rg -n "`next.config.ts`" tools/soleaux',
+        },
+        tool_name: "Bash",
+        tool_response: {
+          content: [{ text: "zsh:1: command not found: next.config.ts" }],
+          exit_code: 127,
+        },
+      },
+      { root, runtime: "codex" }
+    );
+
+    const bareHeader = handleAgentHookEvent(
+      "Stop",
+      {
+        ...payload,
+        last_assistant_message: "Tool incident: command not found.",
+      },
+      { root, runtime: "codex" }
+    );
+    expect(bareHeader.output).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("Begin the final response with `Tool incident:`"),
+    });
   });
 
   it("records native Windows command-not-found diagnostics", async () => {

@@ -15,7 +15,9 @@ describe("in-CREATE constraint decomposition", () => {
     );
 
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-    const keys = extracted.objects.map((object) => object.key).sort();
+    const keys = extracted.objects
+      .map((object) => object.key)
+      .sort((left, right) => left.localeCompare(right));
     expect(keys).toEqual([
       "constraint:app.accounts_email_key:accounts",
       "constraint:app.accounts_named_check:accounts",
@@ -166,10 +168,9 @@ ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
     );
 
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-    expect(extracted.objects.map((object) => object.key).sort()).toEqual([
-      "constraint:app.lexical_body_check:lexical",
-      "table:app.lexical",
-    ]);
+    expect(
+      extracted.objects.map((object) => object.key).sort((left, right) => left.localeCompare(right))
+    ).toEqual(["constraint:app.lexical_body_check:lexical", "table:app.lexical"]);
     const table = extracted.objects.find((object) => object.key === "table:app.lexical");
     expect(table?.metadata.columns).toEqual([
       expect.objectContaining({
@@ -190,10 +191,9 @@ ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
     );
 
     expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-    expect(extracted.objects.map((object) => object.key).sort()).toEqual([
-      "constraint:app.accounts_pkey:accounts",
-      "rls:app.accounts:accounts",
-    ]);
+    expect(
+      extracted.objects.map((object) => object.key).sort((left, right) => left.localeCompare(right))
+    ).toEqual(["constraint:app.accounts_pkey:accounts", "rls:app.accounts:accounts"]);
   });
 
   it("fails closed instead of partially modeling mixed unsupported ALTER TABLE subcommands", async () => {

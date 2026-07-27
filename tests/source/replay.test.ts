@@ -796,6 +796,149 @@ DROP TABLE app.accounts CASCADE;`,
     expect(table(model, "view:app.account_ids")).toBeUndefined();
   });
 
+  describe("drops remove attached grants and comments", () => {
+    const prelude = `CREATE SCHEMA app;
+CREATE TABLE app.thing (id integer primary key);`;
+
+    async function replayDrop(create: string, drop: string): Promise<SchemaModel> {
+      return await extractMigrations([
+        ["20240101000000_create.sql", `${prelude}\n${create}`],
+        ["20240102000000_drop.sql", drop],
+      ]);
+    }
+
+    function attachedObjects(model: SchemaModel): string[] {
+      return model.objects
+        .filter((object) => object.ref.kind === "grant" || object.ref.kind === "comment")
+        .map((object) => object.key);
+    }
+
+    const dropForms: [string, string, string][] = [
+      [
+        "DROP VIEW IF EXISTS unquoted",
+        `CREATE VIEW app.v_thing AS SELECT id FROM app.thing;
+GRANT SELECT ON TABLE app.v_thing TO authenticated;
+COMMENT ON VIEW app.v_thing IS 'a view';`,
+        "DROP VIEW IF EXISTS app.v_thing;",
+      ],
+      [
+        "DROP VIEW IF EXISTS quoted",
+        `CREATE VIEW app.v_thing AS SELECT id FROM app.thing;
+GRANT SELECT ON TABLE app.v_thing TO authenticated;
+COMMENT ON VIEW app.v_thing IS 'a view';`,
+        'DROP VIEW IF EXISTS "app"."v_thing";',
+      ],
+      [
+        "DROP VIEW without IF EXISTS",
+        `CREATE VIEW app.v_thing AS SELECT id FROM app.thing;
+GRANT SELECT ON TABLE app.v_thing TO authenticated;
+COMMENT ON VIEW app.v_thing IS 'a view';`,
+        "DROP VIEW app.v_thing;",
+      ],
+      [
+        "DROP MATERIALIZED VIEW IF EXISTS",
+        `CREATE MATERIALIZED VIEW app.mv_thing AS SELECT id FROM app.thing;
+GRANT SELECT ON TABLE app.mv_thing TO authenticated;
+COMMENT ON MATERIALIZED VIEW app.mv_thing IS 'a matview';`,
+        'DROP MATERIALIZED VIEW IF EXISTS "app"."mv_thing";',
+      ],
+      [
+        "DROP FUNCTION IF EXISTS",
+        `CREATE FUNCTION app.fn_thing() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;
+REVOKE ALL ON FUNCTION app.fn_thing() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.fn_thing() TO authenticated;
+COMMENT ON FUNCTION app.fn_thing() IS 'a function';`,
+        "DROP FUNCTION IF EXISTS app.fn_thing();",
+      ],
+      [
+        "DROP TABLE IF EXISTS",
+        `CREATE TABLE app.other (id integer);
+GRANT SELECT ON TABLE app.other TO authenticated;
+COMMENT ON TABLE app.other IS 'a table';
+COMMENT ON COLUMN app.other.id IS 'the id';`,
+        "DROP TABLE IF EXISTS app.other;",
+      ],
+      [
+        "DROP SEQUENCE IF EXISTS",
+        `CREATE SEQUENCE app.seq_thing;
+GRANT USAGE ON SEQUENCE app.seq_thing TO authenticated;
+COMMENT ON SEQUENCE app.seq_thing IS 'a sequence';`,
+        "DROP SEQUENCE IF EXISTS app.seq_thing;",
+      ],
+      [
+        "DROP TYPE IF EXISTS on an enum",
+        `CREATE TYPE app.status AS ENUM ('on', 'off');
+COMMENT ON TYPE app.status IS 'an enum';`,
+        "DROP TYPE IF EXISTS app.status;",
+      ],
+    ];
+
+    for (const [label, create, drop] of dropForms) {
+      it(`removes attached objects for ${label}`, async () => {
+        const model = await replayDrop(create, drop);
+        expect(errors(model.diagnostics)).toEqual([]);
+        expect(attachedObjects(model)).toEqual([]);
+      });
+    }
+
+    it("removes attached objects of CASCADE-removed dependents", async () => {
+      const model = await extractMigrations([
+        [
+          "20240101000000_create.sql",
+          `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer);
+CREATE VIEW app.account_ids AS SELECT id FROM app.accounts;
+GRANT SELECT ON TABLE app.account_ids TO authenticated;
+COMMENT ON VIEW app.account_ids IS 'derived';`,
+        ],
+        ["20240102000000_drop.sql", "DROP TABLE app.accounts CASCADE;"],
+      ]);
+
+      expect(errors(model.diagnostics)).toEqual([]);
+      expect(table(model, "view:app.account_ids")).toBeUndefined();
+      expect(attachedObjects(model)).toEqual([]);
+    });
+
+    it("does not restore a dropped grant when the relation is recreated", async () => {
+      const model = await extractMigrations([
+        [
+          "20240101000000_create.sql",
+          `${prelude}
+CREATE VIEW app.v_thing AS SELECT id FROM app.thing;
+GRANT SELECT ON TABLE app.v_thing TO authenticated;`,
+        ],
+        ["20240102000000_drop.sql", "DROP VIEW app.v_thing;"],
+        ["20240103000000_recreate.sql", "CREATE VIEW app.v_thing AS SELECT id FROM app.thing;"],
+      ]);
+
+      expect(errors(model.diagnostics)).toEqual([]);
+      expect(table(model, "view:app.v_thing")).toBeDefined();
+      expect(attachedObjects(model)).toEqual([]);
+    });
+
+    it("keeps grants and comments for objects that were not dropped", async () => {
+      const model = await replayDrop(
+        `CREATE VIEW app.v_thing AS SELECT id FROM app.thing;
+GRANT SELECT ON TABLE app.v_thing TO authenticated;
+GRANT SELECT ON TABLE app.thing TO authenticated;
+COMMENT ON TABLE app.thing IS 'kept';`,
+        "DROP VIEW app.v_thing;"
+      );
+
+      expect(errors(model.diagnostics)).toEqual([]);
+      expect(
+        model.objects
+          .filter((object) => object.ref.kind === "grant")
+          .map((object) => object.metadata.targetIdentity)
+      ).toEqual(["app.thing"]);
+      expect(
+        model.objects
+          .filter((object) => object.ref.kind === "comment")
+          .map((object) => object.metadata.descriptor)
+      ).toEqual(["table app.thing"]);
+    });
+  });
+
   it("replays drop-and-recreate indexes and constraints", async () => {
     const model = await extractMigrations([
       [
@@ -901,6 +1044,90 @@ CREATE TABLE app.accounts (id bigint);`
     expect(errors(replayed.diagnostics)).toEqual([]);
     expect(errors(declared.diagnostics)).toEqual([]);
     expect(replayed.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("accepts the configured migrations directory as the before-state with lineage present", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-migrations-lineage-match-"));
+    const migrations = join(root, "migrations");
+    const schemas = join(root, "schemas");
+    await mkdir(migrations);
+    await mkdir(schemas);
+    await writeFile(
+      join(migrations, "20240101000000_legacy.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n"
+    );
+    const config = resolveConfig({
+      migrationsDir: migrations,
+      schemaPaths: [schemas],
+      sources: { from: "empty:" },
+    });
+    const before = await extractSourceModel(`migrations:${migrations}`, { config, cwd: root });
+    const generatedPath = join(migrations, "20240102000000_generated.sql");
+    const generatedSql = "ALTER TABLE app.accounts ADD COLUMN name text;\n";
+    await writeFile(generatedPath, generatedSql);
+    const generated = await extractSourceModel(`migrations:${migrations}`, { config, cwd: root });
+    await writeFile(
+      generatedPath,
+      `-- supaschema: lineage format=${MODEL_FORMAT_VERSION} from=${before.fingerprint} to=${generated.fingerprint}
+${generatedSql}`
+    );
+    await writeFile(
+      join(migrations, "20240103000000_hand_authored.sql"),
+      "ALTER TABLE app.accounts ADD COLUMN rogue text;\n"
+    );
+    await writeFile(
+      join(schemas, "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint, name text, rogue text);\n"
+    );
+
+    const context = await buildSchemaPlanningContext({
+      config,
+      cwd: root,
+      from: `migrations:${migrations}`,
+      migrationsDir: migrations,
+      to: `dir:${schemas}`,
+    });
+
+    expect(errors(context.diagnostics)).toEqual([]);
+  });
+
+  it("blocks a non-matching migrations directory as the before-state", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-migrations-lineage-other-"));
+    const migrations = join(root, "migrations");
+    const other = join(root, "other-migrations");
+    const schemas = join(root, "schemas");
+    await mkdir(migrations);
+    await mkdir(other);
+    await mkdir(schemas);
+    await writeFile(
+      join(migrations, "20240101000000_legacy.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n"
+    );
+    await writeFile(
+      join(other, "20240101000000_legacy.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n"
+    );
+    await writeFile(
+      join(schemas, "app.sql"),
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n"
+    );
+    const config = resolveConfig({
+      migrationsDir: migrations,
+      schemaPaths: [schemas],
+      sources: { from: "empty:" },
+    });
+
+    const context = await buildSchemaPlanningContext({
+      config,
+      cwd: root,
+      from: `migrations:${other}`,
+      migrationsDir: migrations,
+      to: `dir:${schemas}`,
+    });
+
+    expect(context.diagnostics.map((item) => item.code)).toContain(
+      "SUPA_MIGRATION_BASELINE_UNSUPPORTED"
+    );
   });
 
   it("blocks hand-authored migrations after generated lineage", async () => {

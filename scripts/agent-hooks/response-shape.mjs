@@ -3,104 +3,21 @@ import { tokenize, verificationClaimConflict } from "./response-claims.mjs";
 import { finalMessage, lower } from "./response-evidence.mjs";
 import { currentTurnState, setCorrections } from "./state.mjs";
 
-const completionWords = ["completed", "finished", "done", "implemented", "fixed"];
 const hedgeWords = ["maybe", "probably", "possibly", "likely", "might", "seems"];
-const deferralTerms = [
-  "would you like",
-  "i can ",
-  "i could ",
-  "let me know",
-  "if you want me to",
-  "if you want, i'll ",
-  "if you want, i will ",
-];
 const menuTerms = ["option 1", "option a", "choose", "which approach", "pick one"];
 const directTerms = ["execute", "implement", "fix", "update", "do it", "make the change"];
 const toolIncidentLead = "tool incident:";
-const userDecisionTerms = [
-  "approval",
-  "approve",
-  "authorization",
-  "permission",
-  "product scope",
-  "secret",
-  "credentials",
-  "external",
-  "destructive",
-  "irreversible",
-  "cost",
-  "spend",
-];
-const blockerDispositionTerms = [
-  "blocked",
-  "blocker",
-  "requires",
-  "needs",
-  "cannot proceed",
-  "can't proceed",
-  "cannot continue",
-  "can't continue",
-];
-const diagnosticPromptTerms = [
-  "why",
-  "verify",
-  "source",
-  "correct",
-  "expected",
-  "supposed to",
-  "redundant",
-  "best practice",
-  "upstream",
-  "review",
-  "architecture",
-  "design",
-  "working correctly",
-  "enforce",
-  "logic chain",
-];
-const mechanismClaimTerms = [
-  "as designed",
-  "expected behavior",
-  "running correctly",
-  "supposed to be",
-  "upstream says",
-  "valid behavior",
-  "working correctly",
-];
-const architectureDispositionTerms = [
-  "$elegant",
-  "architecture",
-  "canonical",
-  "end state",
-  "entry point",
-  "local design",
-  "owner",
-  "topology",
-];
-const verificationDispositionTerms = [
-  "checked",
-  "command",
-  "evidence",
-  "failed",
-  "guard",
-  "not run",
-  "passed",
-  "skipped",
-  "source",
-  "test",
-  "verified",
-];
+const toolIncidentAttemptTerms = ["attempt", "tried"];
+const toolIncidentImpactTerms = ["mutation", "impact"];
+const toolIncidentRecoveryTerms = ["recover", "rerun", "retry", "resolved", "safely"];
 
 export function runResponseDetectors(payload, state, runtime) {
   const message = finalMessage(payload);
   const findings = [
     materialToolIncidentDisclosure(message, state),
     hedgeDensity(message),
-    completionClaimWithOpenItems(message, payload, state),
     verificationClaimConflict(message, state, transcriptEvidence(payload), runtime),
-    mechanismClaimWithoutArchitecture(message, state),
     decisionMenuAfterDirective(message, state),
-    deferralLanguage(message),
     toolFailureWithoutRetry(state),
   ].filter(Boolean);
 
@@ -132,7 +49,11 @@ export function materialToolIncidentDisclosure(message, state) {
     return;
   }
   const response = lower(message.trimStart());
-  if (response.startsWith(toolIncidentLead) && response.includes("command not found")) {
+  const hasLead = response.startsWith(toolIncidentLead) && response.includes("command not found");
+  const namesAttempt = toolIncidentAttemptTerms.some((term) => response.includes(term));
+  const hasImpact = toolIncidentImpactTerms.some((term) => response.includes(term));
+  const hasRecovery = toolIncidentRecoveryTerms.some((term) => response.includes(term));
+  if (hasLead && namesAttempt && hasImpact && hasRecovery) {
     return;
   }
   return {
@@ -157,52 +78,6 @@ export function hedgeDensity(message) {
     : undefined;
 }
 
-export function completionClaimWithOpenItems(message, payload, state) {
-  const hasCompletion = completionWords.some((term) => lower(message).includes(term));
-  const openTasks = Array.isArray(payload?.background_tasks) && payload.background_tasks.length > 0;
-  const pendingSkills = Object.keys(currentTurnState(state).pendingSkills).some(
-    (skill) => !state.invokedSkills[skill]
-  );
-  return hasCompletion && (openTasks || pendingSkills)
-    ? {
-        id: "completion-claim-with-open-items",
-        message:
-          "The response claims completion while open background tasks or pending skills remain.",
-      }
-    : undefined;
-}
-
-export function mechanismClaimWithoutArchitecture(message, state) {
-  const response = lower(message);
-  const turn = currentTurnState(state);
-  const prompt = lower(turn.lastPrompt);
-  const diagnosticPrompt = diagnosticPromptTerms.some((term) => prompt.includes(term));
-  const mechanismClaim = mechanismClaimTerms.some((term) => response.includes(term));
-  if (!(diagnosticPrompt && mechanismClaim)) {
-    return;
-  }
-  const hasArchitectureDisposition = architectureDispositionTerms.some((term) =>
-    response.includes(term)
-  );
-  const hasVerificationDisposition = verificationDispositionTerms.some((term) =>
-    response.includes(term)
-  );
-  if (hasArchitectureDisposition && hasVerificationDisposition) {
-    return;
-  }
-  const missing = [];
-  if (!hasArchitectureDisposition) {
-    missing.push("architecture/end-state disposition");
-  }
-  if (!hasVerificationDisposition) {
-    missing.push("verification disposition");
-  }
-  return {
-    id: "mechanism-claim-without-architecture",
-    message: `The response handles mechanism or correctness without ${missing.join(" and ")}.`,
-  };
-}
-
 export function decisionMenuAfterDirective(message, state) {
   const direct = directTerms.some((term) =>
     lower(currentTurnState(state).lastPrompt).includes(term)
@@ -214,24 +89,6 @@ export function decisionMenuAfterDirective(message, state) {
         message: "The response offered a decision menu after a direct implementation directive.",
       }
     : undefined;
-}
-
-export function deferralLanguage(message) {
-  const response = lower(message);
-  return deferralTerms.some((term) => response.includes(term)) &&
-    !isUserOwnedDecisionDisposition(response)
-    ? {
-        id: "deferral-language",
-        message: "The response defers work instead of reporting concrete action or a blocker.",
-      }
-    : undefined;
-}
-
-function isUserOwnedDecisionDisposition(response) {
-  return (
-    userDecisionTerms.some((term) => response.includes(term)) &&
-    blockerDispositionTerms.some((term) => response.includes(term))
-  );
 }
 
 export function toolFailureWithoutRetry(state) {

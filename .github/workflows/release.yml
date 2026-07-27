@@ -26,11 +26,11 @@ jobs:
       publish-github-package: ${{ steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_GITHUB_PACKAGE }}
       publish-npm: ${{ steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           package-manager-cache: false
@@ -56,19 +56,19 @@ jobs:
     steps:
       # The privileged publish job enforces the endpoint baseline observed in
       # the successful 0.4.0 trusted-publishing run.
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: block
           allowed-endpoints: >
             *.actions.githubusercontent.com:443 api.github.com:443 fulcio.sigstore.dev:443 github.com:443 npm.pkg.github.com:443 registry.npmjs.org:443 rekor.sigstore.dev:443 tuf-repo-cdn.sigstore.dev:443
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
       # No check-latest: use the runner's cached Node 24 toolcache (deterministic
       # patch, no nodejs.org fetch on the OIDC publish job). The npm-version
       # preflight below fails loudly if the cached npm predates 11.5.1.
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           package-manager-cache: false
@@ -126,7 +126,7 @@ jobs:
       - name: Attest tarball provenance
         if: steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_PUBLISH_NPM == 'true'
         id: attest
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-path: ${{ steps.pack.outputs.tarball_path }}
       # GitHub Release creation is part of the publish transaction.

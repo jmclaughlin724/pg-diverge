@@ -116,5 +116,5 @@ function policyRoles(node: AstNode): string[] {
       return readString(role?.rolename)?.toLowerCase();
     })
     .filter((item): item is string => item !== undefined && item.length > 0)
-    .sort();
+    .sort((left, right) => left.localeCompare(right));
 }

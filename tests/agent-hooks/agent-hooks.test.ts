@@ -541,6 +541,59 @@ describe.skipIf(!hasClaudeSessionStartHook)("Claude SessionStart input contract"
     expect(hookAdditionalContext(result.stdout)).toContain("Agent hook layer active");
     expect((await sessionState(stateDir)).contextEpoch).toBe(0);
   });
+
+  it("accepts the documented startup payload that omits permission_mode", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-claude-session-start-startup-"));
+    const result = await runHook(
+      ".claude/hooks/context-session-start.mjs",
+      {
+        cwd: process.cwd(),
+        hook_event_name: "SessionStart",
+        model: "claude-opus-5",
+        session_id: "claude-startup-contract",
+        source: "startup",
+        transcript_path: null,
+      },
+      {
+        env: {
+          ...withoutCodexProjectDir(),
+          CLAUDE_PROJECT_DIR: process.cwd(),
+          STATE_DIR: stateDir,
+        },
+      }
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).not.toContain("Agent hook failed closed.");
+    expect(hookAdditionalContext(result.stdout)).toContain("Agent hook layer active");
+  });
+
+  it("still rejects a permission_mode value outside the documented Claude set", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-claude-session-start-invalid-"));
+    const result = await runHook(
+      ".claude/hooks/context-session-start.mjs",
+      {
+        cwd: process.cwd(),
+        hook_event_name: "SessionStart",
+        permission_mode: "unsupported",
+        session_id: "claude-invalid-mode-contract",
+        source: "startup",
+        transcript_path: null,
+      },
+      {
+        env: {
+          ...withoutCodexProjectDir(),
+          CLAUDE_PROJECT_DIR: process.cwd(),
+          STATE_DIR: stateDir,
+        },
+      }
+    );
+
+    expect(result.code).toBe(0);
+    expect(hookOutput(result.stdout).systemMessage).toContain("Agent hook failed closed.");
+    expect(await readdir(stateDir)).toEqual([]);
+  });
 });
 
 describe.skipIf(!hasClaudePostToolUseFailureHook)(
@@ -1199,6 +1252,68 @@ describe("general Bash blocker policy", () => {
       expect(blocked.code, command).toBe(0);
       expect(codexDenial(blocked.stdout), command).toContain("BLOCKED:");
     }
+  });
+
+  it.each([
+    "git submodule add https://example.com/lib.git vendor/lib",
+    "git submodule update --init",
+    "git submodule update --init --recursive",
+    "git submodule update --checkout",
+    "git submodule sync",
+    "git submodule sync --recursive",
+    "git submodule absorbgitdirs",
+    "git submodule set-branch -b main vendor/lib",
+  ])(
+    "blocks submodule checkout-creating or mutating form through the source Codex context hook path: %s",
+    async (command) => {
+      const blocked = await runHook(sourceCodexScript, preToolBash(command));
+      expect(blocked.code, command).toBe(0);
+      expect(codexDenial(blocked.stdout), command).toContain("BLOCKED:");
+    }
+  );
+
+  it.each([
+    "git submodule add https://example.com/lib.git vendor/lib",
+    "git submodule update --init",
+    "git submodule update --init --recursive",
+    "git submodule update --checkout",
+    "git submodule sync",
+    "git submodule sync --recursive",
+    "git submodule absorbgitdirs",
+    "git submodule set-branch -b main vendor/lib",
+  ])(
+    "blocks submodule checkout-creating or mutating form through the source Claude context hook path: %s",
+    async (command) => {
+      const blocked = await runHook(sourceClaudeScript, preToolBash(command));
+      expect(blocked.code, command).toBe(0);
+      expect(codexDenial(blocked.stdout), command).toContain("BLOCKED:");
+    }
+  );
+
+  it.each(["git submodule status", "git submodule status --recursive"])(
+    "allows read-only git submodule status through the source Codex context hook path: %s",
+    async (command) => {
+      const allowed = await runHook(sourceCodexScript, preToolBash(command));
+      expect(allowed.code, command).toBe(0);
+      expect(codexDenial(allowed.stdout), command).toBeUndefined();
+    }
+  );
+
+  it.each(["git submodule status", "git submodule status --recursive"])(
+    "allows read-only git submodule status through the source Claude context hook path: %s",
+    async (command) => {
+      const allowed = await runHook(sourceClaudeScript, preToolBash(command));
+      expect(allowed.code, command).toBe(0);
+      expect(codexDenial(allowed.stdout), command).toBeUndefined();
+    }
+  );
+
+  it("known limitation A7: git newbranch is allowed because a git alias configured in ~/.gitconfig or .git/config outside the invoked command is invisible to this hook", async () => {
+    const result = await runHook(
+      claudeScript,
+      preToolBash("git newbranch feature/demo origin/main")
+    );
+    expect(result.code).toBe(0);
   });
 });
 

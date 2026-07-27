@@ -1252,10 +1252,11 @@ describe("grants and default privileges", () => {
     );
 
     expect(extracted.objects).toHaveLength(2);
-    expect(extracted.objects.map((object) => object.metadata.grantee).sort()).toEqual([
-      "authenticated",
-      "service_role",
-    ]);
+    expect(
+      extracted.objects
+        .map((object) => object.metadata.grantee)
+        .sort((left, right) => left.localeCompare(right))
+    ).toEqual(["authenticated", "service_role"]);
     expect(extracted.objects[0]?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
   });
 
