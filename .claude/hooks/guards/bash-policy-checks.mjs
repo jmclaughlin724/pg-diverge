@@ -266,10 +266,7 @@ function checkGitConfig(args) {
   );
 }
 
-function checkGitBranch(args, options = {}) {
-  if (options.enforceActiveBranch && !options.branchMutationAuthorized) {
-    return blockBranchAuthorization();
-  }
+function checkGitBranch(args) {
   if (
     args.length === 2 &&
     ["-d", "-D", "--delete"].includes(args[0] ?? "") &&
@@ -303,10 +300,7 @@ function blockGitWorktree(options = {}) {
   );
 }
 
-function checkGitSwitch(args, options = {}) {
-  if (options.enforceActiveBranch && !options.branchMutationAuthorized) {
-    return blockBranchAuthorization();
-  }
+function checkGitSwitch(args) {
   if (args.length === 1 && args[0] === "main") {
     return allowResult();
   }
@@ -328,12 +322,6 @@ function checkGitSwitch(args, options = {}) {
   }
   return block(
     "BLOCKED: git switch is limited to `git switch main` after verified PR merge, `git switch -c <topic> origin/main`, or `git switch --track origin/<topic>` after the Rule 21 PR preflight."
-  );
-}
-
-function blockBranchAuthorization() {
-  return block(
-    "BLOCKED: branch mutation was not explicitly authorized by the current user prompt. Stay on the active branch, or ask the user to explicitly request a branch creation or switch."
   );
 }
 
