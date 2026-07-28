@@ -283,8 +283,23 @@ describe("active-branch policy", () => {
       "allow"
     );
     expect(
-      evaluateBashPolicy(bashPayload("git switch feature/demo"), {}, sourceOptions).action
+      evaluateBashPolicy(bashPayload("git switch --no-guess feature/demo"), {}, sourceOptions)
+        .action
     ).toBe("allow");
+  });
+
+  it("rejects shell-expanded operands and guessing switches", () => {
+    for (const command of [
+      "git switch $ARGS",
+      "git switch --no-guess $ARGS",
+      "git branch -D $BRANCH",
+      "git switch $(echo main)",
+      "git switch feature/demo",
+    ]) {
+      expect([command, evaluateBashPolicy(bashPayload(command), {}, sourceOptions).action]).toEqual(
+        [command, "block"]
+      );
+    }
   });
 
   it("rejects revision expressions where a literal topic-branch name is required", () => {
@@ -310,7 +325,7 @@ describe("active-branch policy", () => {
     for (const command of [
       "git branch -D feature/demo",
       "git switch main",
-      "git switch feature/demo",
+      "git switch --no-guess feature/demo",
       "git switch -c feature/demo origin/main",
       "git switch --track origin/feature/demo",
     ]) {

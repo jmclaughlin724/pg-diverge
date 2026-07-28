@@ -307,7 +307,10 @@ function checkGitSwitch(args, options = {}) {
   if (options.subagent) {
     return blockSubagentBranchMutation();
   }
-  if (args.length === 1 && (args[0] === "main" || isTopicBranch(args[0]))) {
+  if (args.length === 1 && args[0] === "main") {
+    return allowResult();
+  }
+  if (args.length === 2 && args[0] === "--no-guess" && isTopicBranch(args[1])) {
     return allowResult();
   }
   if (
@@ -327,7 +330,7 @@ function checkGitSwitch(args, options = {}) {
     return allowResult();
   }
   return block(
-    "BLOCKED: git switch is limited to `git switch main` after verified PR merge, `git switch <existing topic>`, `git switch -c <topic> origin/main`, or `git switch --track origin/<topic>` after the Rule 21 PR preflight."
+    "BLOCKED: git switch is limited to `git switch main` after verified PR merge, `git switch --no-guess <existing local topic>`, `git switch -c <topic> origin/main`, or `git switch --track origin/<topic>` after the Rule 21 PR preflight."
   );
 }
 
