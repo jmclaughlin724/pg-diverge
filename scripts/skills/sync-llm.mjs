@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -840,7 +841,7 @@ function checkPublicSkills(root, errors) {
     return;
   }
   const targetFiles = listFiles(targetRootPath);
-  pushFileSetErrors({ targetRoot }, [...expected.keys()], targetFiles, errors);
+  pushFileSetErrors({ targetRoot }, [...expected.keys()], targetFiles, errors, targetRootPath);
   for (const [file, expectedContent] of expected) {
     if (!targetFiles.includes(file)) {
       continue;
@@ -866,7 +867,7 @@ function checkDirectoryMirror(root, surface, errors) {
 
   const sourceFiles = listFiles(sourceRootPath);
   const targetFiles = listFiles(targetRootPath);
-  pushFileSetErrors(surface, sourceFiles, targetFiles, errors);
+  pushFileSetErrors(surface, sourceFiles, targetFiles, errors, targetRootPath);
 
   for (const file of sourceFiles.filter((item) => targetFiles.includes(item))) {
     const sourceFile = path.join(sourceRootPath, file);
@@ -881,9 +882,12 @@ function checkCodexAgents(root, errors) {
   const { sourceRoot, targetRoot } = agentSurfaceManifest.agents;
   const sourceRootPath = path.join(root, sourceRoot);
   if (!fs.existsSync(sourceRootPath)) {
-    const targetFiles = listFiles(path.join(root, targetRoot));
-    if (targetFiles.length > 0) {
-      errors.push(`mirror ${targetRoot} has unmanaged files: ${targetFiles.join(", ")}`);
+    const targetRootPath = path.join(root, targetRoot);
+    const targetFiles = listFiles(targetRootPath);
+    const preserved = gitIgnoredFiles(targetRootPath, targetFiles);
+    const unmanaged = targetFiles.filter((file) => !preserved.has(file));
+    if (unmanaged.length > 0) {
+      errors.push(`mirror ${targetRoot} has unmanaged files: ${unmanaged.join(", ")}`);
     }
     return;
   }
@@ -927,7 +931,7 @@ function checkRenderedMirror(root, surface, render, errors) {
   }
   const expectedFiles = sourceFiles.map((file) => codexTargetPath(file, surface.extension));
   const targetFiles = listFiles(targetRootPath);
-  pushFileSetErrors(surface, expectedFiles, targetFiles, errors);
+  pushFileSetErrors(surface, expectedFiles, targetFiles, errors, targetRootPath);
 
   for (const file of sourceFiles) {
     const targetFile = codexTargetPath(file, surface.extension);
@@ -943,9 +947,11 @@ function checkRenderedMirror(root, surface, render, errors) {
   }
 }
 
-function pushFileSetErrors(surface, expectedFiles, actualFiles, errors) {
+function pushFileSetErrors(surface, expectedFiles, actualFiles, errors, targetRootPath) {
   const missing = expectedFiles.filter((file) => !actualFiles.includes(file));
-  const extra = actualFiles.filter((file) => !expectedFiles.includes(file));
+  const extraCandidates = actualFiles.filter((file) => !expectedFiles.includes(file));
+  const preserved = gitIgnoredFiles(targetRootPath, extraCandidates);
+  const extra = extraCandidates.filter((file) => !preserved.has(file));
   if (missing.length > 0) {
     errors.push(`mirror ${surface.targetRoot} missing files: ${missing.join(", ")}`);
   }
@@ -1051,13 +1057,33 @@ function isAlreadyExistsError(error) {
 }
 
 function removeUnmanagedFiles(targetRootPath, expectedFiles) {
-  for (const file of listFiles(targetRootPath)) {
-    if (!expectedFiles.has(file)) {
+  const unmanaged = listFiles(targetRootPath).filter((file) => !expectedFiles.has(file));
+  const preserved = gitIgnoredFiles(targetRootPath, unmanaged);
+  for (const file of unmanaged) {
+    if (!preserved.has(file)) {
       fs.rmSync(path.join(targetRootPath, file), { force: true });
     }
   }
   pruneEmptyDirectories(targetRootPath);
   fs.mkdirSync(targetRootPath, { recursive: true });
+}
+
+const GIT_CHECK_IGNORE_MAX_BUFFER = 64 * 1024 * 1024;
+
+function gitIgnoredFiles(targetRootPath, files) {
+  if (files.length === 0) {
+    return new Set();
+  }
+  const result = spawnSync("git", ["check-ignore", "--stdin", "-z"], {
+    cwd: targetRootPath,
+    encoding: "utf8",
+    input: files.join("\0"),
+    maxBuffer: GIT_CHECK_IGNORE_MAX_BUFFER,
+  });
+  if (result.error || (result.status !== 0 && result.status !== 1)) {
+    return new Set();
+  }
+  return new Set(result.stdout.split("\0").filter((entry) => entry.length > 0));
 }
 
 function pruneEmptyDirectories(root) {

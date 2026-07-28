@@ -5,6 +5,7 @@ paths:
   - "biome.jsonc"
   - ".prettier*"
   - "taplo.toml"
+  - "lefthook.yml"
   - "scripts/cclsp-*.mjs"
   - "scripts/guards/toolchain/**"
   - "package.json"
@@ -81,7 +82,7 @@ Sorting has one owner per language too, and is **deliberately conservative** —
 - `npm run guard` (via `check-all.mjs`) runs `check-tooling-stack` and `check-lsp-coverage` — the npm-only contract holds and every language stays mapped.
 - Run `npm run format` to move formatting, lint-fix, import-sort, and key-sort work forward; do not use `npm run lint` as a fixer, do not append `fix` to `npm run lint`, and do not add or run formatter aliases such as `npm run lint:fix`.
 - `npm run lint` is the required Biome-supported JS/TS/JSON/JSONC/CSS/HTML/GraphQL/SVG gate; `npm run typecheck` (tsc over `tsconfig.src.json` + `tsconfig.tools.json`) is the TS type gate.
-- Lefthook `pre-commit` formats staged files across every language owner in parallel with `stage_fixed: true` (fixes are re-staged): `npm run format -- --staged` routes the Biome-supported staged surface through Ultracite, while the pinned local Prettier binary (`npx --no-install`) owns MD/MDX/YAML, taplo owns TOML, and the `sh-syntax` port owns shell. `pre-push` runs `npm run typecheck` and `npm run guard` (which includes the cclsp coverage and tooling-stack guards).
+- Lefthook `pre-commit` is `piped` (jobs run sequentially and stop at the first failure; lefthook chains no stdio between jobs). The formatter jobs cover every language owner with `stage_fixed: true` (fixes are re-staged): `npm run format -- --staged` routes the Biome-supported staged surface through Ultracite, while the pinned local Prettier binary (`npx --no-install`) owns MD/MDX/YAML, taplo owns TOML, and the `sh-syntax` port owns shell. The final `sync-agent-surfaces` job then regenerates generated mirrors from the post-format sources via `npm run sync:llm` and stages only generator-owned output trees; it refuses to run while agent-surface source paths carry unstaged or untracked edits, so a commit can never pair stale canonical sources with fresh mirrors. `check-tooling-stack.mjs` asserts the piped mode, the trailing sync job, and its staging shape. `pre-push` runs `npm run typecheck` and `npm run guard` (which includes the cclsp coverage and tooling-stack guards).
 - The PostToolUse hook gives in-loop feedback for schema-SQL edits through the supaschema auto-diff/check lane; Biome-supported verification is owned by `npm run lint`.
 - Tooling is pinned to exact versions in root `devDependencies` (`@biomejs/biome`, `ultracite`, `vitest`, `@vitest/coverage-v8`, `prettier`, `cclsp`, the LSP servers) and in the `uv` dev group (`ruff`, `mypy`, the pylsp plugins); `check-tooling-stack.mjs` and `uv lock --check` keep them reproducible. `package.json` owns the version values — `check-tooling-stack.mjs` asserts that each tool is exactly pinned rather than restating its version, and derives the expected `biome.jsonc` `$schema` from the installed pin. Do not name a tool version in this rule or any other prose surface.
 
