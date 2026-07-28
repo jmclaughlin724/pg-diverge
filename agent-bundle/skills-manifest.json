@@ -1,7 +1,5 @@
 {
   "skills": [
-    "supaschema",
-    "supaschema-migrate",
-    "supaschema-maintain"
+    "supaschema"
   ]
 }

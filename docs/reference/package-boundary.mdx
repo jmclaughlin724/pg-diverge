@@ -24,7 +24,7 @@ There is intentionally no root `.npmignore`.
 | --- | --- | --- |
 | npm tarball | `package.json` `files` | Files downloaded into `node_modules/supaschema` |
 | Consumer setup | `supaschema init` | Files written or merged into the installing project |
-| Public `npx skills` source | Three curated directories under `skills/**` | Portable Agent Skill context installed by the Skills CLI |
+| Public `npx skills` source | One curated directory under `skills/**` | Portable Agent Skill context installed by the Skills CLI |
 | Public repository | Git-tracked public-safe files | Source, docs, examples, tests, CI, and release evidence that can be public |
 | Private maintainer workspace | Private repository or intentionally untracked local files | Private automation, credentials, plans, scratch output, and non-public operator context |
 
@@ -52,7 +52,7 @@ Consumer hook registration is limited to Supaschema's generated-migration protec
 
 ## Public npx skills source
 
-`skills/supaschema`, `skills/supaschema-migrate`, and `skills/supaschema-maintain` are generated mirrors of their canonical `.claude/skills/**` workflows. One exported ordered list owns that public inventory. Users can install one workflow without installing the npm package:
+`skills/supaschema` is a generated mirror of the canonical `.claude/skills/supaschema` workflow, including its `references/**` guides. One exported ordered list owns that public inventory. Users can install the skill without installing the npm package:
 
 ```bash
 npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/supaschema
@@ -60,7 +60,7 @@ npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/sup
 
 Do not advertise the repository root as the Skills source. The Skills CLI scans standard agent skill directories, including `.agents/skills` and `.claude/skills`; this repository uses those locations for maintainer mirrors while developing supaschema itself.
 
-Replace the final directory with `supaschema-migrate` or `supaschema-maintain` for those workflows. The Skills CLI command does not install hooks or rules. Agent Skills are `SKILL.md` folders with optional scripts, references, and assets; the supaschema rule and hooks need project files and Claude/Codex hook registration. Those surfaces ship under `node_modules/supaschema/agent-bundle/` and become active through the default `supaschema init` scaffold. Init reads the packaged skills manifest, recursively installs all three Agent and Claude skill directories while preserving conflicts, and never creates `.codex/skills/**`. Package install and default init do not invoke the Skills CLI or write consumer-owned `AGENTS.md` or `CLAUDE.md`.
+The migration and maintenance workflows are `references/` guides inside that one skill, not separate installs. The Skills CLI command does not install hooks or rules. Agent Skills are `SKILL.md` folders with optional scripts, references, and assets; the supaschema rule and hooks need project files and Claude/Codex hook registration. Those surfaces ship under `node_modules/supaschema/agent-bundle/` and become active through the default `supaschema init` scaffold. Init reads the packaged skills manifest, recursively installs the Agent and Claude skill directories while preserving conflicts, and never creates `.codex/skills/**`. Package install and default init do not invoke the Skills CLI or write consumer-owned `AGENTS.md` or `CLAUDE.md`.
 
 ## Consumer setup
 

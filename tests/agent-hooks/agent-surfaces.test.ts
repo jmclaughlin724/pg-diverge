@@ -48,13 +48,13 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 27,
+      agentBundle: 21,
       agents: 2,
       codexHookConfig: 1,
       hooks: 4,
-      publicSkills: 6,
+      publicSkills: 3,
       rules: 2,
-      skills: 7,
+      skills: 4,
       skillTargets: 1,
     });
     expect(checkAgentSurfaces({ root })).toEqual([]);
@@ -66,9 +66,9 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     expect(await readFile(join(root, "skills/supaschema/SKILL.md"), "utf8")).toBe(
       "supaschema skill\n"
     );
-    expect(
-      await readFile(join(root, "skills/supaschema-maintain/references/commands.md"), "utf8")
-    ).toBe("maintain commands\n");
+    expect(await readFile(join(root, "skills/supaschema/references/maintain.md"), "utf8")).toBe(
+      "maintain reference\n"
+    );
     expect(
       JSON.parse(await readFile(join(root, "agent-bundle/skills-manifest.json"), "utf8"))
     ).toEqual({ skills: publicSkillNames });
@@ -147,13 +147,13 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 25,
+      agentBundle: 19,
       agents: 0,
       codexHookConfig: 1,
       hooks: 2,
-      publicSkills: 5,
+      publicSkills: 2,
       rules: 1,
-      skills: 5,
+      skills: 2,
       skillTargets: 1,
     });
     expect(existsSync(join(root, ".agents/skills"))).toBe(true);
@@ -305,18 +305,7 @@ async function seedRequiredAgentBundleInputs(root: string): Promise<void> {
   await write(root, "docs/start.mdx", "# Start\n");
   await write(root, "agent-bundle/INSTALL.md", "install\n");
   await write(root, ".agents/prompts/supaschema-install.md", "install prompt\n");
-  await write(
-    root,
-    ".claude/skills/supaschema-maintain/references/commands.md",
-    "maintain commands\n"
-  );
-  await write(root, ".claude/skills/supaschema-maintain/SKILL.md", "maintain skill\n");
-  await write(
-    root,
-    ".claude/skills/supaschema-migrate/references/commands.md",
-    "migrate commands\n"
-  );
-  await write(root, ".claude/skills/supaschema-migrate/SKILL.md", "migrate skill\n");
+  await write(root, ".claude/skills/supaschema/references/maintain.md", "maintain reference\n");
   await write(root, ".claude/skills/supaschema/SKILL.md", "supaschema skill\n");
   await write(root, ".claude/hooks/guards/bash-policy-checks.mjs", "bash guard\n");
   await write(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs", "sync hook\n");
