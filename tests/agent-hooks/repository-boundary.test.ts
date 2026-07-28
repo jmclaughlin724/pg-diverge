@@ -282,6 +282,9 @@ describe("active-branch policy", () => {
     expect(evaluateBashPolicy(bashPayload("git switch main"), {}, sourceOptions).action).toBe(
       "allow"
     );
+    expect(
+      evaluateBashPolicy(bashPayload("git switch feature/demo"), {}, sourceOptions).action
+    ).toBe("allow");
   });
 
   it("still blocks branch forms outside the Rule 21 shapes", () => {

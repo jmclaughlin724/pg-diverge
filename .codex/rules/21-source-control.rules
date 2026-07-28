@@ -18,7 +18,7 @@ prefix_rule(
     decision = "allow",
     justification = "Rule 21 allows returning to main after the current topic PR is verified merged; the Bash hook validates command shape.",
     match = ["git switch main"],
-    not_match = ["git switch feature/demo", "git switch -C main origin/main"],
+    not_match = ["git switch -C main origin/main"],
 )
 
 prefix_rule(

@@ -16,7 +16,7 @@ codexExecPolicy: |
       "decision": "allow",
       "justification": "Rule 21 allows returning to main after the current topic PR is verified merged; the Bash hook validates command shape.",
       "match": ["git switch main"],
-      "not_match": ["git switch feature/demo", "git switch -C main origin/main"]
+      "not_match": ["git switch -C main origin/main"]
     },
     {
       "pattern": ["git", "switch", "-c"],
@@ -207,10 +207,11 @@ Upstream sources:
 - Every update to `main` uses a protected pull request. Direct pushes to `main` are prohibited.
 - The checkout and branch active when work begins are the only authorized workspace by default. Do not create a worktree, enter a linked worktree, or move work to another checkout.
 - When the current user prompt explicitly requests a topic branch, run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
-- When the current user prompt explicitly requests continuing an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
+- When continuing an existing remote topic branch that has no local ref, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
+- When returning to a topic branch that already exists locally — for example to address PR review findings after working elsewhere — use `git switch <branch>`. Verify the local ref matches its pushed remote first so the return cannot silently resurrect stale work.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
-- Do not use `git checkout` or `git branch` for creation or discovery. Do not run any `git worktree` command. Apart from the two explicitly authorized transactional topic-branch forms above and an explicitly authorized `git switch main` after verified PR merge, do not use `git switch`.
+- Do not use `git checkout` or `git branch` for creation or discovery. Do not run any `git worktree` command. Apart from the four forms above — `git switch main` after verified PR merge, `git switch <existing topic>`, `git switch -c <topic> origin/main`, and `git switch --track origin/<topic>` — do not use `git switch`.
 - After proving a topic PR merged and preserving all dirty work elsewhere, delete the local topic with `git branch -D <topic>`. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
