@@ -7,8 +7,14 @@
 # Bypass for an emergency commit with `LEFTHOOK=0 git commit ...` or
 # `git commit --no-verify`.
 
+# pre-commit is piped, not parallel, because the sync job must observe the
+# formatters' output. The formatters reflow .claude/** sources and re-stage them
+# via stage_fixed; generated mirrors staged before that reflow would otherwise
+# keep pre-format bytes and fail check-agent-surface-parity in CI while the
+# working tree still looks correct locally.
+
 pre-commit:
-  parallel: true
+  piped: true
   jobs:
     - name: Ultracite
       # Format + lint only the staged files; no-op when none match.
@@ -26,6 +32,11 @@ pre-commit:
       glob: "*.sh"
       run: npm run format:sh -- {staged_files}
       stage_fixed: true
+    - name: sync-agent-surfaces
+      # Runs last so mirrors are regenerated from the post-format sources. The
+      # staged paths are wholly owned by scripts/skills/sync-llm.mjs, so adding
+      # them cannot capture hand-authored work.
+      run: npm run sync:llm && git add .agents .codex skills agent-bundle
 
 pre-push:
   parallel: false
