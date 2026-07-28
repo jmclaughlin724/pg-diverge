@@ -266,7 +266,10 @@ function checkGitConfig(args) {
   );
 }
 
-function checkGitBranch(args) {
+function checkGitBranch(args, options = {}) {
+  if (options.subagent) {
+    return blockSubagentBranchMutation();
+  }
   if (
     args.length === 2 &&
     ["-d", "-D", "--delete"].includes(args[0] ?? "") &&
@@ -300,7 +303,10 @@ function blockGitWorktree(options = {}) {
   );
 }
 
-function checkGitSwitch(args) {
+function checkGitSwitch(args, options = {}) {
+  if (options.subagent) {
+    return blockSubagentBranchMutation();
+  }
   if (args.length === 1 && (args[0] === "main" || isTopicBranch(args[0]))) {
     return allowResult();
   }
@@ -332,6 +338,25 @@ function isSymbolicRefMutation(args) {
   return args.filter((arg) => !arg.startsWith("-")).length > 1;
 }
 
+function blockSubagentBranchMutation() {
+  return block(
+    "BLOCKED: subagents share the active primary checkout and must not create, switch, or delete branches. Report the finding to the orchestrator, which owns every branch operation."
+  );
+}
+
+const branchNameCharacters = new Set(
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/_-."
+);
+
+function isPlainBranchName(value) {
+  for (const character of value) {
+    if (!branchNameCharacters.has(character)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isTopicBranch(value) {
   return (
     typeof value === "string" &&
@@ -341,7 +366,13 @@ function isTopicBranch(value) {
     value !== "master" &&
     value !== "origin/main" &&
     !value.startsWith("-") &&
-    !value.startsWith("refs/")
+    !value.startsWith("refs/") &&
+    isPlainBranchName(value) &&
+    !value.includes("..") &&
+    !value.startsWith(".") &&
+    !value.startsWith("/") &&
+    !value.endsWith("/") &&
+    !value.endsWith(".lock")
   );
 }
 

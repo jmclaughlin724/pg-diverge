@@ -153,6 +153,7 @@ function bashSafety(payload) {
   const result = evaluateBashPolicy(payload, process.env, {
     blockAllWorktrees: true,
     enforceActiveBranch: true,
+    subagent: payload?.agent_id !== undefined,
   });
   return result.action === "block" ? { deny: result.message } : {};
 }

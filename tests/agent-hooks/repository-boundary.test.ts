@@ -287,6 +287,40 @@ describe("active-branch policy", () => {
     ).toBe("allow");
   });
 
+  it("rejects revision expressions where a literal topic-branch name is required", () => {
+    for (const command of [
+      "git branch -D @{-1}",
+      "git branch -D @{u}",
+      "git branch -D HEAD~1",
+      "git branch -D topic^",
+      "git branch -D refs/heads/main",
+      "git branch -D feature/demo:main",
+      "git branch -D ../main",
+      "git switch @{-1}",
+      "git switch -c @{-1} origin/main",
+    ]) {
+      expect([command, evaluateBashPolicy(bashPayload(command), {}, sourceOptions).action]).toEqual(
+        [command, "block"]
+      );
+    }
+  });
+
+  it("blocks every branch command inside a subagent", () => {
+    const subagentOptions = { ...sourceOptions, subagent: true };
+    for (const command of [
+      "git branch -D feature/demo",
+      "git switch main",
+      "git switch feature/demo",
+      "git switch -c feature/demo origin/main",
+      "git switch --track origin/feature/demo",
+    ]) {
+      expect([
+        command,
+        evaluateBashPolicy(bashPayload(command), {}, subagentOptions).action,
+      ]).toEqual([command, "block"]);
+    }
+  });
+
   it("still blocks branch forms outside the Rule 21 shapes", () => {
     expect(evaluateBashPolicy(bashPayload("git branch -D main"), {}, sourceOptions).action).toBe(
       "block"
