@@ -8,8 +8,10 @@ There are two distinct lanes. They install different things.
 
 ```bash
 npm install supaschema
-npx supaschema init      # only if lifecycle scripts did not run
+npm exec -- supaschema init
 ```
+
+Both steps are required. The published package deliberately defines no `preinstall`, `install`, `postinstall`, or `prepare` script, so installing alone leaves the consumer with downloaded files and no config, directories, hooks, or agent surfaces. Run `init` explicitly every time. Use the consuming project's own runner — `npm exec --`, `pnpm exec`, `yarn`, or `bunx` — so the locally installed version runs; bare `npx` can fetch a different version.
 
 `supaschema init` writes or repairs `supaschema.config.json`, the configured schema and migration directories, safe focused package scripts when `package.json` exists (`supaschema:diff`, `supaschema:stage`, `supaschema:types`, `supaschema:check`), and package-owned active AI enforcement under `.agents`, `.claude`, and `.codex`. It copies missing package-bundled prompt/rule/skill/hook files, merges the package-manager-specific `.claude/settings.json` and `.codex/hooks.json` entries, preserves existing non-identical files, and reports skipped non-mergeable hook config so the gap can be repaired. It does **not** write `AGENTS.md`, `CLAUDE.md`, backup directories, maintainer tooling, or apply-capable package scripts.
 
@@ -72,7 +74,9 @@ Both default to `report_only` and accept `disabled`, `report_only`, or `deploy_b
 
 ### Generation and check policy — `workflow.schema_diff`, `workflow.migration_check`
 
-These drive the bundled hooks. `schema_diff` accepts `disabled`, `manual`, or `on_schema_write` (default). `migration_check` accepts `manual`, `after_schema_diff` (default), or `required_before_complete`, which withholds completion until the check has run. Setting either to `manual` stops the automatic lane without disabling the command.
+These drive the bundled hooks. `schema_diff` accepts `disabled`, `manual`, or `on_schema_write` (default). `migration_check` accepts `manual`, `after_schema_diff` (default), or `required_before_complete`. Setting either to `manual` stops the automatic lane without disabling the command.
+
+`required_before_complete` currently behaves identically to `after_schema_diff`: the packaged bundle installs only the schema-write `PostToolUse` hook and the generated-migration `PreToolUse` hook, and no consumer `Stop` hook reads the policy. Treat it as another post-diff check mode, not as a gate that withholds agent completion.
 
 ### Supporting fields
 

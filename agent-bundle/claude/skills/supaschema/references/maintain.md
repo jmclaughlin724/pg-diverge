@@ -14,12 +14,18 @@ Read the exit code before continuing. Using the shared exit-code contract:
 
 | Exit | Here it means | Next step |
 | --- | --- | --- |
-| `0` | no planned operations; the declarative model is converged | contracts, history, and safety may still need attention |
-| `3` | drift exists between the live database and the tree | a reviewed migration is required |
+| `0` | no planned operations between the configured sources | contracts, history, and safety may still need attention |
+| `3` | drift exists and a reviewed migration is required | generate and review it |
 | `1` | runtime or argument failure | fix the invocation or environment |
 | `2` | one or more diagnostics are errors | decode in [diagnostics.md](diagnostics.md) |
 
 Exits 1 and 2 are command failures, not drift success. This same command is the CI gate.
+
+**This compares configured sources, not the live database.** With the default `sources.from: "auto"` the before-state resolves to `git:INDEX`, `git:HEAD`, or `empty:` — never a database. A database that drifted out of band still returns exit 0. To gate against live state, pass an explicit database source:
+
+```bash
+supaschema --quiet diff --fail-on-diff --from 'database:$DATABASE_URL'
+```
 
 When drift is large or blocked, triage before editing anything:
 
@@ -41,6 +47,8 @@ supaschema migrations --json
 This classifies on-disk migrations against a target's applied history: applied, pending, ghost, or out-of-order. Resolve every pending, ghost, out-of-order, stale-baseline, or lineage finding **in its owning source** before generating anything new.
 
 `SUPA_MIGRATIONS_STALE_BASELINE`: when no configured target records the pending generated version as applied, review the SQL and remove it through `supaschema migrations --prune-stale` with a resolved target, or `--force` only after explicit review. Hand-deleting lineage migrations is not a routine recovery path.
+
+**`--prune-stale` sees one target per invocation.** It classifies against the single database URL resolved for that run and deletes the resulting stale-baseline files. In a multi-target project, a version that is pending on the resolved target but already applied on another will be deleted, leaving that other target with a ghost version. Run `supaschema migrations --json` against every configured target and confirm the version is absent from all of them before pruning.
 
 ## 3. Re-prove safety and contracts
 

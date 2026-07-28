@@ -49,14 +49,16 @@ supaschema migrations       # on-disk migrations vs. applied history
 
 `doctor` is the first command to reach for when anything looks misconfigured — it reports every resolution step at once instead of failing one command at a time.
 
-Every command shares one exit-code contract:
+Exit codes share one vocabulary:
 
-| Exit | Meaning                                                    |
-| ---- | ---------------------------------------------------------- |
-| `0`  | success                                                    |
-| `1`  | runtime error — bad arguments, unreadable input, crash     |
-| `2`  | diagnostics contained at least one error                   |
-| `3`  | `--fail-on-diff` was set and the plan contained operations |
+| Exit | Meaning |
+| ---- | --- |
+| `0` | success |
+| `1` | runtime error — bad arguments, unreadable input, crash |
+| `2` | diagnostics contained at least one error |
+| `3` | `--fail-on-diff` was set and the plan contained operations |
+
+Report-only lanes are the exception: `type-contract` without `--enforce` and `onboard` both render error-severity diagnostics and still exit 0. In CI, use `type-contract --enforce` when a breaking contract must fail the build, and read the report rather than the exit code for `onboard`.
 
 Then read `supaschema.config.json` and treat four fields as the source of truth:
 

@@ -12,7 +12,7 @@ supaschema init
 
 This creates or repairs `supaschema.config.json`, configured schema directories, configured migration directories, canonical `supaschema:*` package scripts when `package.json` exists, active `.agents`, `.claude`, and `.codex` enforcement surfaces, and path-confirmation state only when multiple detected paths still need an agent or operator to choose the owning schema and migration directories. Supabase inventory or `_bootstrap` projects still receive a working config, with schema diff and migration sync set to manual workflow policy. It does not write `AGENTS.md` or `CLAUDE.md`.
 
-The package keeps its complete offline MDX reference under `node_modules/supaschema/agent-bundle/docs/`; start with `docs/index.md`. These documentation files remain inside `node_modules` and are not copied into the consumer project. `skills-manifest.json` is the ordered install inventory for the curated skills.
+The package keeps its complete offline MDX reference under `node_modules/supaschema/agent-bundle/docs/`; start with `docs/index.md`. These documentation files remain inside `node_modules` and are not copied into the consumer project. `skills-manifest.json` is the ordered install inventory for the curated `supaschema` skill.
 
 If `.supaschema/install.json` exists and says `pathConfirmationNeeded: true`, follow its `agentInstructions`, choose the owning paths from the detected candidates, and create or update `supaschema.config.json` with explicit `schemaPaths`, `sources.from`, and `migrationsDir`. After config exists, run:
 
