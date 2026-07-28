@@ -1707,94 +1707,91 @@ describe.skipIf(!databaseUrl)("sync (against a target)", () => {
     }
   });
 
-  it(
-    "generates and applies a second edit after an applied predecessor",
-    { timeout: gitFixtureTimeoutMs },
-    async () => {
-      const admin = new Client({ connectionString: databaseUrl });
-      await admin.connect();
-      const db = `supa_sync_applied_predecessor_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
-      await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
-      await admin.query(`CREATE DATABASE ${db}`);
-      const url = new URL(requiredDatabaseUrl());
-      url.pathname = `/${db}`;
-      const root = await mkdtemp(join(tmpdir(), "supa-sync-applied-predecessor-"));
-      const schemaDir = join(root, "database", "schemas");
-      const migrationsDir = join(root, "database", "migrations");
-      const schemaFile = join(schemaDir, "app.sql");
-      await mkdir(schemaDir, { recursive: true });
-      await mkdir(migrationsDir, { recursive: true });
-      await writeFile(schemaFile, "CREATE TABLE public.accounts (id bigint PRIMARY KEY);\n");
-      execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
-      const config = resolveConfig({
-        migrationsDir: "database/migrations",
-        schemaPaths: ["database/schemas"],
-        sources: { from: "auto" },
-        sync: {
-          targets: {
-            local: {
-              databaseUrl: url.toString(),
-              historyTable: "supabase_migrations.schema_migrations",
-              mode: "auto",
-              runner: "direct",
-            },
+  it("generates and applies a second edit after an applied predecessor", {
+    timeout: 30_000,
+  }, async () => {
+    const admin = new Client({ connectionString: databaseUrl });
+    await admin.connect();
+    const db = `supa_sync_applied_predecessor_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
+    await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${db}`);
+    const url = new URL(requiredDatabaseUrl());
+    url.pathname = `/${db}`;
+    const root = await mkdtemp(join(tmpdir(), "supa-sync-applied-predecessor-"));
+    const schemaDir = join(root, "database", "schemas");
+    const migrationsDir = join(root, "database", "migrations");
+    const schemaFile = join(schemaDir, "app.sql");
+    await mkdir(schemaDir, { recursive: true });
+    await mkdir(migrationsDir, { recursive: true });
+    await writeFile(schemaFile, "CREATE TABLE public.accounts (id bigint PRIMARY KEY);\n");
+    execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
+    const config = resolveConfig({
+      migrationsDir: "database/migrations",
+      schemaPaths: ["database/schemas"],
+      sources: { from: "auto" },
+      sync: {
+        targets: {
+          local: {
+            databaseUrl: url.toString(),
+            historyTable: "supabase_migrations.schema_migrations",
+            mode: "auto",
+            runner: "direct",
           },
         },
-        workflow: {
-          migration_sync: "auto",
-          rls_safety: "disabled",
-          type_generation: "disabled",
-          type_safety: "disabled",
-          zod_generation: "disabled",
-        },
-      });
-      const previousCwd = process.cwd();
-      process.chdir(root);
-      try {
-        const first = await syncMigrations({ config, directory: migrationsDir, pipeline: true });
-        const firstFiles = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql"));
+      },
+      workflow: {
+        migration_sync: "auto",
+        rls_safety: "disabled",
+        type_generation: "disabled",
+        type_safety: "disabled",
+        zod_generation: "disabled",
+      },
+    });
+    const previousCwd = process.cwd();
+    process.chdir(root);
+    try {
+      const first = await syncMigrations({ config, directory: migrationsDir, pipeline: true });
+      const firstFiles = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql"));
 
-        expect(first.applied).toBe(true);
-        expect(first.diagnostics.some((item) => item.severity === "error")).toBe(false);
-        expect(firstFiles).toHaveLength(1);
+      expect(first.applied).toBe(true);
+      expect(first.diagnostics.some((item) => item.severity === "error")).toBe(false);
+      expect(firstFiles).toHaveLength(1);
 
-        await writeFile(
-          schemaFile,
-          "CREATE TABLE public.accounts (id bigint PRIMARY KEY, email text);\n"
-        );
-        const second = await syncMigrations({ config, directory: migrationsDir, pipeline: true });
-        const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+      await writeFile(
+        schemaFile,
+        "CREATE TABLE public.accounts (id bigint PRIMARY KEY, email text);\n"
+      );
+      const second = await syncMigrations({ config, directory: migrationsDir, pipeline: true });
+      const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
 
-        expect(second.applied).toBe(true);
-        expect(second.diagnostics.some((item) => item.severity === "error")).toBe(false);
-        expect(files).toHaveLength(2);
-        const firstLineage = parseLineage(
-          await readFile(join(migrationsDir, files[0] ?? ""), "utf8")
-        );
-        const secondLineage = parseLineage(
-          await readFile(join(migrationsDir, files[1] ?? ""), "utf8")
-        );
-        expect(secondLineage?.from).toBe(firstLineage?.to);
+      expect(second.applied).toBe(true);
+      expect(second.diagnostics.some((item) => item.severity === "error")).toBe(false);
+      expect(files).toHaveLength(2);
+      const firstLineage = parseLineage(
+        await readFile(join(migrationsDir, files[0] ?? ""), "utf8")
+      );
+      const secondLineage = parseLineage(
+        await readFile(join(migrationsDir, files[1] ?? ""), "utf8")
+      );
+      expect(secondLineage?.from).toBe(firstLineage?.to);
 
-        const target = new Client({ connectionString: url.toString() });
-        await target.connect();
-        const columns = await target.query<{ column_name: string }>(
-          "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'accounts' order by ordinal_position"
-        );
-        const history = await target.query<{ version: string }>(
-          "select version from supabase_migrations.schema_migrations order by version"
-        );
-        await target.end();
-        expect(columns.rows.map((row) => row.column_name)).toEqual(["id", "email"]);
-        expect(history.rows.map((row) => row.version)).toHaveLength(2);
-      } finally {
-        process.chdir(previousCwd);
-        await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
-        await admin.end();
-      }
-    },
-    30_000
-  );
+      const target = new Client({ connectionString: url.toString() });
+      await target.connect();
+      const columns = await target.query<{ column_name: string }>(
+        "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'accounts' order by ordinal_position"
+      );
+      const history = await target.query<{ version: string }>(
+        "select version from supabase_migrations.schema_migrations order by version"
+      );
+      await target.end();
+      expect(columns.rows.map((row) => row.column_name)).toEqual(["id", "email"]);
+      expect(history.rows.map((row) => row.version)).toHaveLength(2);
+    } finally {
+      process.chdir(previousCwd);
+      await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+      await admin.end();
+    }
+  });
 
   it("auto-deploys an approved remote direct target", async () => {
     const admin = new Client({ connectionString: databaseUrl });
