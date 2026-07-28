@@ -452,11 +452,11 @@ describe("init project setup", () => {
     await writeNestedFile(join(consumer, ".codex/hooks.json"), '{"hooks":{"Stop":[]}}\n');
     await writeNestedFile(join(consumer, ".codex/skills/custom/SKILL.md"), "custom skill\n");
     await writeNestedFile(
-      join(consumer, ".agents/skills/supaschema-migrate/references/commands.md"),
+      join(consumer, ".agents/skills/supaschema/references/migrate.md"),
       "consumer Agent commands\n"
     );
     await writeNestedFile(
-      join(consumer, ".claude/skills/supaschema-maintain/SKILL.md"),
+      join(consumer, ".claude/skills/supaschema/SKILL.md"),
       "consumer Claude skill\n"
     );
 
@@ -490,18 +490,15 @@ describe("init project setup", () => {
       "custom skill\n"
     );
     expect(
-      await readFile(
-        join(consumer, ".agents/skills/supaschema-migrate/references/commands.md"),
-        "utf8"
-      )
+      await readFile(join(consumer, ".agents/skills/supaschema/references/migrate.md"), "utf8")
     ).toBe("consumer Agent commands\n");
-    expect(
-      await readFile(join(consumer, ".claude/skills/supaschema-maintain/SKILL.md"), "utf8")
-    ).toBe("consumer Claude skill\n");
+    expect(await readFile(join(consumer, ".claude/skills/supaschema/SKILL.md"), "utf8")).toBe(
+      "consumer Claude skill\n"
+    );
     expect(result.preserved).toEqual(
       expect.arrayContaining([
-        ".agents/skills/supaschema-migrate/references/commands.md",
-        ".claude/skills/supaschema-maintain/SKILL.md",
+        ".agents/skills/supaschema/references/migrate.md",
+        ".claude/skills/supaschema/SKILL.md",
       ])
     );
     expect(result.skipped).toEqual([]);

@@ -17,9 +17,9 @@ The downloadable consumer agent bundle is intentionally narrow. Init installs on
 | --- | --- |
 | Offline documentation | `agent-bundle/docs/index.md`, `agent-bundle/docs/**/*.mdx` |
 | Shared install prompt | `agent-bundle/agents/prompts/supaschema-install.md` |
-| Skills manifest | `agent-bundle/skills-manifest.json` with `supaschema`, `supaschema-migrate`, and `supaschema-maintain` |
-| Shared skills | The three recursive `agent-bundle/agents/skills/<name>` directories, including references |
-| Claude skills and rule | The three recursive `agent-bundle/claude/skills/<name>` directories, plus `agent-bundle/claude/rules/supaschema.md` |
+| Skills manifest | `agent-bundle/skills-manifest.json` with the single `supaschema` skill |
+| Shared skill | The recursive `agent-bundle/agents/skills/supaschema` directory, including its workflow references |
+| Claude skill and rule | The recursive `agent-bundle/claude/skills/supaschema` directory, plus `agent-bundle/claude/rules/supaschema.md` |
 | Claude hook settings | `agent-bundle/claude/settings.<manager>.json` |
 | Codex rule mirror | `agent-bundle/codex/rules/supaschema.rules` |
 | Codex hook settings | `agent-bundle/codex/hooks.<manager>.json` |
@@ -38,15 +38,15 @@ If the consumer repo has `AGENTS.md` or `CLAUDE.md`, those files remain consumer
 
 ## npx skills lane
 
-The public `npx skills` source is intentionally narrower than the npm setup surface. Install one of the three curated directories:
+The public `npx skills` source is intentionally narrower than the npm setup surface. Install the single curated directory:
 
 ```bash
 npx skills add https://github.com/jmclaughlin724/supaschema/tree/main/skills/supaschema
 ```
 
-Replace the final directory with `supaschema-migrate` or `supaschema-maintain` for the focused workflows. Do not use the repository root as the Skills source. The Skills CLI scans standard agent skill directories; the public source contains only the three curated directories.
+Do not use the repository root as the Skills source. The Skills CLI scans standard agent skill directories; the public source contains only that one curated directory.
 
-Those sources mirror the corresponding canonical `.claude/skills/**` trees, including command references. They install Agent Skill context only into the location selected by the Skills CLI. They do not install rule files, hook scripts, hook registration, config, or schema directories.
+The skill mirrors the canonical `.claude/skills/supaschema` tree, including its `references/` workflow guides for setup, migration, maintenance, and diagnostics. It installs Agent Skill context only into the location selected by the Skills CLI. It does not install rule files, hook scripts, hook registration, config, or schema directories.
 
 Rules and hooks are included in the package bundle and activated by `supaschema init`.
 

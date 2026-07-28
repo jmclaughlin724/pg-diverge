@@ -20,10 +20,8 @@ const syncHookSource = readFileSync(
   "utf8"
 );
 const curatedSkillSources = {
-  ".claude/skills/supaschema-maintain/references/commands.md": "maintain commands\n",
-  ".claude/skills/supaschema-maintain/SKILL.md": "maintain skill\n",
-  ".claude/skills/supaschema-migrate/references/commands.md": "migrate commands\n",
-  ".claude/skills/supaschema-migrate/SKILL.md": "migrate skill\n",
+  ".claude/skills/supaschema/references/migrate.md": "migrate reference\n",
+  ".claude/skills/supaschema/SKILL.md": "supaschema skill\n",
 };
 
 function tempSurface(files: Record<string, string | Uint8Array>): string {
@@ -304,13 +302,13 @@ describe("sync:llm", () => {
     const result = syncAgentSurfaces({ root });
 
     expect(result).toMatchObject({
-      agentBundle: 25,
+      agentBundle: 19,
       agents: 1,
       codexHookConfig: 1,
       hooks: 5,
-      publicSkills: 5,
+      publicSkills: 2,
       rules: 2,
-      skills: 6,
+      skills: 3,
       skillTargets: 1,
     });
     expect(read(root, ".codex/rules/21-source-control.rules")).toContain(
@@ -392,11 +390,9 @@ describe("sync:llm", () => {
     expect(read(root, ".codex/hooks.json")).not.toContain("CODEX_PROJECT_DIR");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
     expect(read(root, "skills/supaschema/SKILL.md")).toBe("# supaschema\n");
-    expect(read(root, "skills/supaschema-migrate/references/commands.md")).toBe(
-      "migrate commands\n"
-    );
-    expect(read(root, "agent-bundle/claude/skills/supaschema-maintain/SKILL.md")).toBe(
-      "maintain skill\n"
+    expect(read(root, "skills/supaschema/references/migrate.md")).toBe("migrate reference\n");
+    expect(read(root, "agent-bundle/claude/skills/supaschema/references/migrate.md")).toBe(
+      "migrate reference\n"
     );
     expect(JSON.parse(read(root, "agent-bundle/skills-manifest.json"))).toEqual({
       skills: publicSkillNames,
