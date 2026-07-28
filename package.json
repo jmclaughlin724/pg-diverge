@@ -1,6 +1,6 @@
 {
   "name": "supaschema",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Declarative PostgreSQL schema management: fast, AI-ready, and zero-config, with replay-safe migrations and generated TypeScript and Zod.",
   "keywords": [
     "ai-coding-agents",

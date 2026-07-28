@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.5 (2026-07-28)
+
+### Breaking Changes
+
+- Consolidate the three published Agent Skills into a single `supaschema` skill. `skills/supaschema-migrate` and `skills/supaschema-maintain` no longer exist as `npx skills` sources, and `supaschema init` now installs one skill directory instead of three. Existing installed copies are preserved by init and are no longer updated; install `skills/supaschema` to receive the consolidated workflows.
+
+### Changes
+
+- Reshape the published skill around progressive disclosure. `SKILL.md` is now a short routing surface — orientation commands, the shared exit-code contract, and a lane table — with `references/setup.md`, `references/migrate.md`, `references/maintain.md`, `references/safety.md`, and `references/diagnostics.md` loaded only when a lane needs them.
+- Document the safety lane for the first time: the `scan` rule packs for schema hygiene, migration lock risk, RLS coverage, and grant exposure; `scan --contract-usage` detection of application code that works around generated contracts; the `type-contract` breaking-change gate; and the `workflow.rls_safety` and `workflow.type_safety` deploy policies.
+
+### Patch Changes
+
+- Add the `doctor`, `plan`, `inspect`, `fingerprint`, and `contracts` commands and the `text`/`json`/`github`/`sarif` reporter formats to the published skill, and route it to the support matrix, the full diagnostic catalog, and the library API.
+- Document `workflow.schema_diff` and `workflow.migration_check` policy values, including `required_before_complete`, in the skill's configuration reference.
+
 ## 0.5.4 (2026-07-27)
 
 ### Patch Changes

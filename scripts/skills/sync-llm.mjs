@@ -8,11 +8,7 @@ import { bundleDocsFiles } from "./bundle-docs.mjs";
 import { renderCodexAgent, renderCodexRule } from "./codex-rules.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-export const publicSkillNames = Object.freeze([
-  "supaschema",
-  "supaschema-migrate",
-  "supaschema-maintain",
-]);
+export const publicSkillNames = Object.freeze(["supaschema"]);
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const codexProjectDir = ["$(", "git rev-parse --show-toplevel", ")"].join("");
 const codexCommandTools = ["Bash"];
