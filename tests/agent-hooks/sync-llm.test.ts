@@ -162,9 +162,11 @@ describe("sync:llm", () => {
   it("builds a sorted byte-exact MDX bundle and excludes non-MDX sources", () => {
     const nestedBytes = Buffer.from([0x23, 0x20, 0x41, 0x0d, 0x0a, 0x00, 0xff]);
     const root = tempSurface({
+      "docs/.cache/hidden.mdx": "# Hidden\n",
       "docs/a/first.mdx": nestedBytes,
       "docs/docs.json": "{}\n",
       "docs/image.svg": "<svg />\n",
+      "docs/node_modules/some-dep/README.mdx": "# Dependency\n",
       "docs/z-last.mdx": "# Z\n",
     });
 
@@ -174,6 +176,8 @@ describe("sync:llm", () => {
     expect(files.get("docs/z-last.mdx")).toEqual(Buffer.from("# Z\n"));
     expect(files.has("docs/docs.json")).toBe(false);
     expect(files.has("docs/image.svg")).toBe(false);
+    expect(files.has("docs/node_modules/some-dep/README.mdx")).toBe(false);
+    expect(files.has("docs/.cache/hidden.mdx")).toBe(false);
     expect(files.get("docs/index.md")?.toString("utf8")).toBe(
       [
         "# Supaschema Documentation",
@@ -423,6 +427,31 @@ describe("sync:llm", () => {
     expect(result.agents).toBe(0);
     expect(existsSync(join(root, ".codex/agents/stale.toml"))).toBe(false);
     expect(existsSync(join(root, ".codex/hooks/general-guard.mjs"))).toBe(false);
+    expect(checkAgentSurfaces({ root })).toEqual([]);
+  });
+
+  it("preserves git-ignored local overlays inside generated targets", () => {
+    const root = tempSurface({
+      ".agents/prompts/supaschema-install.md": "# Install\n",
+      ".agents/skills/local/SKILL.md": "# personal overlay\n",
+      ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
+      ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
+      ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
+      ".claude/rules/supaschema.md": "# Supaschema rule\n",
+      ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
+      ".codex/agents/stale.toml": 'name = "stale"\n',
+      ".codex/hooks.json": `${JSON.stringify({ hooks: {} })}\n`,
+      ".codex/hooks/local.mjs": "export const local = true;\n",
+      ".gitignore": ".agents/skills/local/\n.codex/hooks/local.mjs\n",
+      "agent-bundle/INSTALL.md": "# Agent bundle install\n",
+    });
+    execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
+
+    syncAgentSurfaces({ root });
+
+    expect(read(root, ".agents/skills/local/SKILL.md")).toBe("# personal overlay\n");
+    expect(read(root, ".codex/hooks/local.mjs")).toBe("export const local = true;\n");
+    expect(existsSync(join(root, ".codex/agents/stale.toml"))).toBe(false);
     expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 
