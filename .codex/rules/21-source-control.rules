@@ -16,15 +16,15 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "switch", "main"],
     decision = "allow",
-    justification = "Rule 21 allows returning to main only when the current user prompt explicitly requests the switch and the current topic PR is verified merged; the Bash hook validates authorization and command shape.",
+    justification = "Rule 21 allows returning to main after the current topic PR is verified merged; the Bash hook validates command shape.",
     match = ["git switch main"],
-    not_match = ["git switch feature/demo", "git switch -C main origin/main"],
+    not_match = ["git switch -C main origin/main"],
 )
 
 prefix_rule(
     pattern = ["git", "switch", "-c"],
     decision = "allow",
-    justification = "Rule 21 allows transactional topic-branch creation only when the current user prompt explicitly requests it and origin/main fetch and base proof are complete; the Bash hook validates authorization and command shape.",
+    justification = "Rule 21 allows transactional topic-branch creation once origin/main fetch and base proof are complete; the Bash hook validates command shape.",
     match = ["git switch -c feature/demo origin/main"],
     not_match = ["git switch --track origin/feature/demo", "git switch -C feature/demo origin/main"],
 )
@@ -32,7 +32,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "switch", "--track"],
     decision = "allow",
-    justification = "Rule 21 allows tracking an existing origin topic branch only when the current user prompt explicitly requests the switch and fetch and base proof are complete; the Bash hook validates authorization and command shape.",
+    justification = "Rule 21 allows tracking an existing origin topic branch once fetch and base proof are complete; the Bash hook validates command shape.",
     match = ["git switch --track origin/feature/demo"],
     not_match = ["git switch -c feature/demo origin/main", "git switch main"],
 )
@@ -48,7 +48,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "branch"],
     decision = "allow",
-    justification = "The Bash hook limits git branch to one approved merged-topic deletion and blocks creation, discovery, main deletion, and unsupported forms.",
+    justification = "The Bash hook limits git branch to one merged-topic deletion and blocks creation, discovery, main deletion, and unsupported forms.",
     match = ["git branch -D feature/demo", "git branch feature/demo"],
     not_match = ["git rev-parse --abbrev-ref HEAD", "git status --short"],
 )

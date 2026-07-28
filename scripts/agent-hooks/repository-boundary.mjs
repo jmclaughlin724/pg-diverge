@@ -65,26 +65,6 @@ const inlineCodeOptions = new Map([
   ["php", new Set(["-r"])],
   ["ruby", new Set(["-e"])],
 ]);
-const branchActionWords = new Set([
-  "add",
-  "adding",
-  "change",
-  "changing",
-  "create",
-  "creating",
-  "delete",
-  "deleting",
-  "make",
-  "making",
-  "move",
-  "moving",
-  "remove",
-  "removing",
-  "start",
-  "starting",
-  "switch",
-  "switching",
-]);
 const localFilesystemToolNames = new Set([
   "Edit",
   "Glob",
@@ -109,30 +89,6 @@ const nonFileUriSchemes = new Set([
   "ws",
   "wss",
 ]);
-const conditionalOrNegativeWords = new Set([
-  "cannot",
-  "describe",
-  "describing",
-  "document",
-  "documentation",
-  "dont",
-  "example",
-  "examples",
-  "explain",
-  "explaining",
-  "if",
-  "never",
-  "no",
-  "not",
-  "only",
-  "unless",
-  "until",
-  "what",
-  "when",
-  "why",
-  "without",
-]);
-
 export function evaluateRepositoryBoundary(payload, options = {}) {
   const root = fs.realpathSync(options.root);
   const gitMetadata = path.join(root, ".git");
@@ -164,31 +120,6 @@ export function evaluateRepositoryBoundary(payload, options = {}) {
   }
 
   return allow();
-}
-
-export function promptAuthorizesBranchMutation(prompt) {
-  const tokens = promptTokens(prompt);
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index] ?? "";
-    if (
-      token === "git" &&
-      (tokens[index + 1] === "branch" || tokens[index + 1] === "switch") &&
-      !hasConditionalOrNegativeContext(tokens, index)
-    ) {
-      return true;
-    }
-    if (!branchActionWords.has(token)) {
-      continue;
-    }
-    const nearby = tokens.slice(Math.max(0, index - 2), index + 7);
-    if (
-      nearby.some((candidate) => candidate === "branch" || candidate === "branches") &&
-      !hasConditionalOrNegativeContext(tokens, index)
-    ) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function inspectBashCommand(payload, cwd, root) {
@@ -650,39 +581,6 @@ function isLinkedWorktreeMetadata(gitMetadata) {
     }
     throw error;
   }
-}
-
-function promptTokens(value) {
-  const normalized = String(value ?? "")
-    .toLowerCase()
-    .replaceAll("don't", "do not")
-    .replaceAll("dont", "do not");
-  const tokens = [];
-  let token = "";
-  for (const character of normalized) {
-    const isTokenCharacter =
-      (character >= "a" && character <= "z") ||
-      (character >= "0" && character <= "9") ||
-      character === "/" ||
-      character === "_" ||
-      character === "-";
-    if (isTokenCharacter) {
-      token += character;
-    } else if (token) {
-      tokens.push(token);
-      token = "";
-    }
-  }
-  if (token) {
-    tokens.push(token);
-  }
-  return tokens;
-}
-
-function hasConditionalOrNegativeContext(tokens, actionIndex) {
-  return tokens
-    .slice(Math.max(0, actionIndex - 6), actionIndex)
-    .some((token) => conditionalOrNegativeWords.has(token));
 }
 
 function allow() {

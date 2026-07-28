@@ -6,10 +6,7 @@ import { recordToolEvidence } from "./command-evidence.mjs";
 import { preToolEvidenceGate } from "./evidence-gate.mjs";
 import { failClosedResult, runChecks, shapeHookResult, writeHookResult } from "./hook-output.mjs";
 import { mergedTopicBranchContext } from "./merged-branch-state.mjs";
-import {
-  evaluateRepositoryBoundary,
-  promptAuthorizesBranchMutation,
-} from "./repository-boundary.mjs";
+import { evaluateRepositoryBoundary } from "./repository-boundary.mjs";
 import { runResponseDetectors } from "./response-shape.mjs";
 import { validateSessionStartPayload } from "./session-start-schema.mjs";
 import {
@@ -22,7 +19,6 @@ import {
   beginTurnState,
   clearCorrections,
   correctionsFor,
-  currentTurnState,
   markCorrectionsBlocked,
   selectTurnState,
   sessionStartState,
@@ -153,13 +149,11 @@ function repositoryBoundary(payload, context) {
   return result.action === "block" ? { deny: result.message } : {};
 }
 
-function bashSafety(payload, context) {
+function bashSafety(payload) {
   const result = evaluateBashPolicy(payload, process.env, {
     blockAllWorktrees: true,
-    branchMutationAuthorized: promptAuthorizesBranchMutation(
-      currentTurnState(context.state).lastPrompt
-    ),
     enforceActiveBranch: true,
+    subagent: payload?.agent_id !== undefined,
   });
   return result.action === "block" ? { deny: result.message } : {};
 }

@@ -21,7 +21,7 @@ export function mergedTopicBranchContext(root) {
     contextParts: [
       [
         `Merged-topic checkout detected: the unique commits on '${branch}' are already contained in origin/main (tree-identical squash commit ${squashCommit}).`,
-        "An ahead count on this branch does not mean unmerged content; it means Rule 21 post-merge closeout is pending: `git fetch --prune origin`, fast-forward local main, `git switch main`, then delete the merged topic only with explicit user approval.",
+        "An ahead count on this branch does not mean unmerged content; it means Rule 21 post-merge closeout is pending: `git fetch --prune origin`, fast-forward local main, `git switch main`, then delete the merged topic with `git branch -D` as routine cleanup.",
         `Owner: ${closeoutRulePath}.`,
       ].join("\n"),
     ],

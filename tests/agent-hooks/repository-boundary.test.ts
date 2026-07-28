@@ -3,10 +3,7 @@ import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
-import {
-  evaluateRepositoryBoundary,
-  promptAuthorizesBranchMutation,
-} from "../../scripts/agent-hooks/repository-boundary.mjs";
+import { evaluateRepositoryBoundary } from "../../scripts/agent-hooks/repository-boundary.mjs";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const fixtureParent = resolve(repositoryRoot, ".tmp/repository-boundary-tests");
@@ -265,35 +262,99 @@ describe("repository boundary path inspection", () => {
 });
 
 describe("active-branch policy", () => {
-  it("requires an explicit, non-conditional branch request in the current prompt", () => {
-    expect(promptAuthorizesBranchMutation("Create a new branch for this change.")).toBe(true);
-    expect(promptAuthorizesBranchMutation("Switch to the existing feature branch.")).toBe(true);
-    expect(
-      promptAuthorizesBranchMutation(
-        "Create a blocking hook. Stay on the active branch unless told to add or switch branches."
-      )
-    ).toBe(false);
-    expect(promptAuthorizesBranchMutation("Do not create or switch branches.")).toBe(false);
-    expect(promptAuthorizesBranchMutation("Explain how to create a branch for this change.")).toBe(
-      false
-    );
-    expect(
-      promptAuthorizesBranchMutation("Describe the documentation about creating branches.")
-    ).toBe(false);
-  });
+  const sourceOptions = {
+    blockAllWorktrees: true,
+    enforceActiveBranch: true,
+  };
 
-  it("blocks every worktree command and unauthorized branch mutation in source mode", () => {
-    const sourceOptions = {
-      blockAllWorktrees: true,
-      branchMutationAuthorized: false,
-      enforceActiveBranch: true,
-    };
+  it("allows the Rule 21 branch forms on command shape alone", () => {
     expect(
-      evaluateBashPolicy(bashPayload("git worktree list --porcelain -z"), {}, sourceOptions).action
-    ).toBe("block");
+      evaluateBashPolicy(bashPayload("git branch -D feature/demo"), {}, sourceOptions).action
+    ).toBe("allow");
     expect(
       evaluateBashPolicy(bashPayload("git switch -c feature/demo origin/main"), {}, sourceOptions)
         .action
+    ).toBe("allow");
+    expect(
+      evaluateBashPolicy(bashPayload("git switch --track origin/feature/demo"), {}, sourceOptions)
+        .action
+    ).toBe("allow");
+    expect(evaluateBashPolicy(bashPayload("git switch main"), {}, sourceOptions).action).toBe(
+      "allow"
+    );
+    expect(
+      evaluateBashPolicy(bashPayload("git switch --no-guess feature/demo"), {}, sourceOptions)
+        .action
+    ).toBe("allow");
+  });
+
+  it("rejects shell-expanded operands and guessing switches", () => {
+    for (const command of [
+      "git switch $ARGS",
+      "git switch --no-guess $ARGS",
+      "git branch -D $BRANCH",
+      "git switch $(echo main)",
+      "git switch feature/demo",
+    ]) {
+      expect([command, evaluateBashPolicy(bashPayload(command), {}, sourceOptions).action]).toEqual(
+        [command, "block"]
+      );
+    }
+  });
+
+  it("rejects revision expressions where a literal topic-branch name is required", () => {
+    for (const command of [
+      "git branch -D @{-1}",
+      "git branch -D @{u}",
+      "git branch -D HEAD~1",
+      "git branch -D topic^",
+      "git branch -D refs/heads/main",
+      "git branch -D feature/demo:main",
+      "git branch -D ../main",
+      "git switch @{-1}",
+      "git switch -c @{-1} origin/main",
+    ]) {
+      expect([command, evaluateBashPolicy(bashPayload(command), {}, sourceOptions).action]).toEqual(
+        [command, "block"]
+      );
+    }
+  });
+
+  it("blocks every branch command inside a subagent", () => {
+    const subagentOptions = { ...sourceOptions, subagent: true };
+    for (const command of [
+      "git branch -D feature/demo",
+      "git switch main",
+      "git switch --no-guess feature/demo",
+      "git switch -c feature/demo origin/main",
+      "git switch --track origin/feature/demo",
+    ]) {
+      expect([
+        command,
+        evaluateBashPolicy(bashPayload(command), {}, subagentOptions).action,
+      ]).toEqual([command, "block"]);
+    }
+  });
+
+  it("still blocks branch forms outside the Rule 21 shapes", () => {
+    expect(evaluateBashPolicy(bashPayload("git branch -D main"), {}, sourceOptions).action).toBe(
+      "block"
+    );
+    expect(evaluateBashPolicy(bashPayload("git branch -D one two"), {}, sourceOptions).action).toBe(
+      "block"
+    );
+    expect(
+      evaluateBashPolicy(bashPayload("git branch feature/demo"), {}, sourceOptions).action
+    ).toBe("block");
+    expect(
+      evaluateBashPolicy(bashPayload("git switch -C feature/demo origin/main"), {}, sourceOptions)
+        .action
+    ).toBe("block");
+  });
+
+  it("blocks every worktree command and active-branch bypass in source mode", () => {
+    expect(
+      evaluateBashPolicy(bashPayload("git worktree list --porcelain -z"), {}, sourceOptions).action
     ).toBe("block");
     expect(
       evaluateBashPolicy(bashPayload("git update-ref refs/heads/demo HEAD"), {}, sourceOptions)
@@ -302,16 +363,6 @@ describe("active-branch policy", () => {
     expect(evaluateBashPolicy(bashPayload("gh pr checkout 123"), {}, sourceOptions).action).toBe(
       "block"
     );
-    expect(
-      evaluateBashPolicy(
-        bashPayload("git switch -c feature/demo origin/main"),
-        {},
-        {
-          ...sourceOptions,
-          branchMutationAuthorized: true,
-        }
-      ).action
-    ).toBe("allow");
   });
 });
 
@@ -353,17 +404,27 @@ describe("registered repository boundary hooks", () => {
     expect(malformed.stderr).toContain("Agent hook failed closed");
   });
 
-  it("uses the current prompt to deny or allow only the approved switch shape", async () => {
+  it("allows approved branch shapes under a prompt that never mentions branches, and denies force-create under a prompt that asks for a branch", async () => {
     const stateDir = await fixtureRoot("branch-state-");
     const promptScript = ".claude/hooks/context-user-prompt-submit.mjs";
     const preToolScript = ".claude/hooks/context-pre-tool-use.mjs";
-    const command = "git switch -c feature/demo origin/main";
 
-    const promptCases: [string, string, boolean][] = [
-      ["branch-denied", "Stay on the active branch. Do not switch branches.", true],
-      ["branch-allowed", "Create a new branch for this change.", false],
+    const cases: [string, string, string, boolean][] = [
+      [
+        "shape-allowed",
+        "Stay on the active branch. Do not switch branches.",
+        "git switch -c feature/demo origin/main",
+        false,
+      ],
+      ["shape-allowed-delete", "Tidy up after the merge.", "git branch -D feature/demo", false],
+      [
+        "shape-denied",
+        "Create a new branch for this change.",
+        "git switch -C feature/demo origin/main",
+        true,
+      ],
     ];
-    for (const [sessionId, prompt, expectedDenial] of promptCases) {
+    for (const [sessionId, prompt, command, expectedDenial] of cases) {
       const promptResult = await runHook(
         promptScript,
         {
@@ -383,7 +444,7 @@ describe("registered repository boundary hooks", () => {
       );
       expect(result.code).toBe(0);
       if (expectedDenial) {
-        expect(denial(result.stdout)).toContain("not explicitly authorized");
+        expect(denial(result.stdout)).toContain("git switch is limited to");
       } else {
         expect(result.stdout).toBe("");
       }

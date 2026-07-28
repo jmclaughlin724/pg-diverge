@@ -267,8 +267,8 @@ function checkGitConfig(args) {
 }
 
 function checkGitBranch(args, options = {}) {
-  if (options.enforceActiveBranch && !options.branchMutationAuthorized) {
-    return blockBranchAuthorization();
+  if (options.subagent) {
+    return blockSubagentBranchMutation();
   }
   if (
     args.length === 2 &&
@@ -304,10 +304,13 @@ function blockGitWorktree(options = {}) {
 }
 
 function checkGitSwitch(args, options = {}) {
-  if (options.enforceActiveBranch && !options.branchMutationAuthorized) {
-    return blockBranchAuthorization();
+  if (options.subagent) {
+    return blockSubagentBranchMutation();
   }
   if (args.length === 1 && args[0] === "main") {
+    return allowResult();
+  }
+  if (args.length === 2 && args[0] === "--no-guess" && isTopicBranch(args[1])) {
     return allowResult();
   }
   if (
@@ -327,13 +330,7 @@ function checkGitSwitch(args, options = {}) {
     return allowResult();
   }
   return block(
-    "BLOCKED: git switch is limited to `git switch main` after verified PR merge, `git switch -c <topic> origin/main`, or `git switch --track origin/<topic>` after the Rule 21 PR preflight."
-  );
-}
-
-function blockBranchAuthorization() {
-  return block(
-    "BLOCKED: branch mutation was not explicitly authorized by the current user prompt. Stay on the active branch, or ask the user to explicitly request a branch creation or switch."
+    "BLOCKED: git switch is limited to `git switch main` after verified PR merge, `git switch --no-guess <existing local topic>`, `git switch -c <topic> origin/main`, or `git switch --track origin/<topic>` after the Rule 21 PR preflight."
   );
 }
 
@@ -342,6 +339,25 @@ function isSymbolicRefMutation(args) {
     return true;
   }
   return args.filter((arg) => !arg.startsWith("-")).length > 1;
+}
+
+function blockSubagentBranchMutation() {
+  return block(
+    "BLOCKED: subagents share the active primary checkout and must not create, switch, or delete branches. Report the finding to the orchestrator, which owns every branch operation."
+  );
+}
+
+const branchNameCharacters = new Set(
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/_-."
+);
+
+function isPlainBranchName(value) {
+  for (const character of value) {
+    if (!branchNameCharacters.has(character)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isTopicBranch(value) {
@@ -353,7 +369,13 @@ function isTopicBranch(value) {
     value !== "master" &&
     value !== "origin/main" &&
     !value.startsWith("-") &&
-    !value.startsWith("refs/")
+    !value.startsWith("refs/") &&
+    isPlainBranchName(value) &&
+    !value.includes("..") &&
+    !value.startsWith(".") &&
+    !value.startsWith("/") &&
+    !value.endsWith("/") &&
+    !value.endsWith(".lock")
   );
 }
 

@@ -14,21 +14,21 @@ codexExecPolicy: |
     {
       "pattern": ["git", "switch", "main"],
       "decision": "allow",
-      "justification": "Rule 21 allows returning to main only when the current user prompt explicitly requests the switch and the current topic PR is verified merged; the Bash hook validates authorization and command shape.",
+      "justification": "Rule 21 allows returning to main after the current topic PR is verified merged; the Bash hook validates command shape.",
       "match": ["git switch main"],
-      "not_match": ["git switch feature/demo", "git switch -C main origin/main"]
+      "not_match": ["git switch -C main origin/main"]
     },
     {
       "pattern": ["git", "switch", "-c"],
       "decision": "allow",
-      "justification": "Rule 21 allows transactional topic-branch creation only when the current user prompt explicitly requests it and origin/main fetch and base proof are complete; the Bash hook validates authorization and command shape.",
+      "justification": "Rule 21 allows transactional topic-branch creation once origin/main fetch and base proof are complete; the Bash hook validates command shape.",
       "match": ["git switch -c feature/demo origin/main"],
       "not_match": ["git switch --track origin/feature/demo", "git switch -C feature/demo origin/main"]
     },
     {
       "pattern": ["git", "switch", "--track"],
       "decision": "allow",
-      "justification": "Rule 21 allows tracking an existing origin topic branch only when the current user prompt explicitly requests the switch and fetch and base proof are complete; the Bash hook validates authorization and command shape.",
+      "justification": "Rule 21 allows tracking an existing origin topic branch once fetch and base proof are complete; the Bash hook validates command shape.",
       "match": ["git switch --track origin/feature/demo"],
       "not_match": ["git switch -c feature/demo origin/main", "git switch main"]
     },
@@ -42,7 +42,7 @@ codexExecPolicy: |
     {
       "pattern": ["git", "branch"],
       "decision": "allow",
-      "justification": "The Bash hook limits git branch to one approved merged-topic deletion and blocks creation, discovery, main deletion, and unsupported forms.",
+      "justification": "The Bash hook limits git branch to one merged-topic deletion and blocks creation, discovery, main deletion, and unsupported forms.",
       "match": ["git branch -D feature/demo", "git branch feature/demo"],
       "not_match": ["git rev-parse --abbrev-ref HEAD", "git status --short"]
     },
@@ -202,15 +202,19 @@ Upstream sources:
 
 ## Git safety
 
-- Commit, push, create or switch a branch, open a PR, or merge only when explicitly requested. Branch authorization must appear in the current user prompt; commit, push, PR, merge, release, or publication intent does not imply authorization to create or switch branches.
+- Commit, push, open a PR, or merge only when explicitly requested. Branch creation, switching, and merged-topic deletion are judged by command shape: the Bash hook permits only the transactional forms below, and the agent still needs a task reason to use them.
+- Deleting a merged topic branch is routine cleanup, not a gated action. Once a topic PR is proved merged, delete the local branch as part of post-merge closeout without waiting for separate approval.
 - Every update to `main` uses a protected pull request. Direct pushes to `main` are prohibited.
 - The checkout and branch active when work begins are the only authorized workspace by default. Do not create a worktree, enter a linked worktree, or move work to another checkout.
 - When the current user prompt explicitly requests a topic branch, run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
-- When the current user prompt explicitly requests continuing an existing remote topic branch, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
+- When continuing an existing remote topic branch that has no local ref, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
+- When returning to a topic branch that already exists locally — for example to address PR review findings after working elsewhere — use `git switch --no-guess <branch>`. `--no-guess` is required: Git's default DWIM behavior would otherwise create and track a new local branch from a unique `origin/<branch>`, bypassing the fetch and base-proof path above. Verify the local ref matches its pushed remote first so the return cannot silently resurrect stale work.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
-- Do not use `git checkout` or `git branch` for creation or discovery. Do not run any `git worktree` command. Apart from the two explicitly authorized transactional topic-branch forms above and an explicitly authorized `git switch main` after verified PR merge, do not use `git switch`.
-- After proving a topic PR merged and preserving all dirty work elsewhere, `git branch -D <topic>` is allowed only with explicit approval. Never delete `main`, an unmerged branch, or more than one branch per command.
+- Do not use `git checkout` or `git branch` for creation or discovery. Do not run any `git worktree` command. Apart from the four forms above — `git switch main` after verified PR merge, `git switch --no-guess <existing local topic>`, `git switch -c <topic> origin/main`, and `git switch --track origin/<topic>` — do not use `git switch`.
+- Branch operands must be literal, validated topic-branch names. Revision expressions such as `@{-1}`, `HEAD~1`, or `topic^`, and unexpanded shell operands such as `$BRANCH` or `$(cmd)`, are rejected: Git resolves them to other refs, including `main`, and `git branch -D` deletes regardless of merge state.
+- Subagents must never create, switch, or delete a branch. The Bash hook denies every branch command when the call carries `agent_id`, because subagents share the active primary checkout.
+- After proving a topic PR merged and preserving all dirty work elsewhere, delete the local topic with `git branch -D <topic>`. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
 - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.

@@ -59,6 +59,8 @@ describe.skipIf(!hasModule)("merged-branch-state", () => {
     expect(result.contextParts[0]).toContain("'topic'");
     expect(result.contextParts[0]).toContain(squash);
     expect(result.contextParts[0]).toContain("21-source-control");
+    expect(result.contextParts[0]).toContain("routine cleanup");
+    expect(result.contextParts[0]).not.toContain("explicit user approval");
   });
 
   it("stays silent on the main checkout", { timeout: gitFixtureTimeoutMs }, async () => {
