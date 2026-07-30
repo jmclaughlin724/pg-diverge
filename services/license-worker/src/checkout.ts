@@ -63,6 +63,7 @@ export function successUrlWithSessionId(baseUrl: string): string {
 
 export interface CheckoutRequest {
   cancelUrl: string;
+  githubUser?: string;
   plan: string;
   planPrice: PlanPrice;
   repo: string;
@@ -80,6 +81,7 @@ export async function createCheckoutSession(
     "line_items[0][quantity]": "1",
     "metadata[plan]": request.plan,
     "metadata[repo]": request.repo,
+    ...(request.githubUser === undefined ? {} : { "metadata[github_user]": request.githubUser }),
     mode: request.planPrice.mode,
     success_url: request.successUrl,
   });

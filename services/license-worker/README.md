@@ -6,7 +6,8 @@ The signing/verification logic and the full self-serve loop are implemented here
 
 ## Routes
 
-- `GET /checkout?repo=acme/app&plan=bundle` creates a repo-bound Checkout Session and redirects to its hosted Stripe URL. The price and mode come from the operator `STRIPE_PRICE_MAP`, never the query, so a buyer cannot self-select a price. Subscription-mode entries must also set `intervalDays` (the paid-through period in days, such as `30` for a monthly price); the issued token's expiry matches that interval on first payment and each `invoice.paid` renewal, while one-time `payment` prices default to 365 days. Dynamic payment methods are used; `payment_method_types` is never sent. The `success_url` carries `{CHECKOUT_SESSION_ID}` so the buyer lands on a page that can call `/license`.
+- `GET /checkout?repo=acme/app&plan=bundle` redirects the buyer into the GitHub OAuth flow instead of creating a session from the raw query: it validates the repo/plan shape and the operator price map, then 302s to GitHub with a signed ten-minute state token. The buyer never sets the licensed repo directly. The price and mode come from the operator `STRIPE_PRICE_MAP`, never the query, so a buyer cannot self-select a price. Subscription-mode entries must also set `intervalDays` (the paid-through period in days, such as `30` for a monthly price); the issued token's expiry matches that interval on first payment and each `invoice.paid` renewal, while one-time `payment` prices default to 365 days. Dynamic payment methods are used; `payment_method_types` is never sent. The `success_url` carries `{CHECKOUT_SESSION_ID}` so the buyer lands on a page that can call `/license`.
+- `GET /auth/github/callback` verifies the state signature and expiry, exchanges the OAuth code, and checks the authenticated user's repository permission (`GET /repos/{owner}/{repo}/collaborators/{user}/permission`, requiring admin or write). Only then does it create the Checkout Session server-side, with `metadata.repo` set to the verified repo and `metadata.github_user` to the authenticated login. Non-collaborators get 403; no Stripe session is created on any denial path.
 - `GET /contracts?repo=acme/app&name=main` retrieves a schema contract when the request carries an unexpired repo-bound license token in `Authorization`.
 - `PUT /contracts?repo=acme/app&name=main` stores a schema contract when the request carries an unexpired repo-bound token in `Authorization`. The payload must match the `SchemaContract` JSON shape from `src/contract/schema.ts`.
 - `DELETE /contracts?repo=acme/app&name=main` deletes a schema contract when the request carries an unexpired repo-bound license token in `Authorization`.
@@ -38,14 +39,16 @@ The signing/verification logic and the full self-serve loop are implemented here
    ```bash
    STRIPE_CATALOG_APPROVED=1 node scripts/stripe/create-catalog.mjs
    ```
-5. Set the Worker secrets and deployment-specific plan map in Cloudflare:
+5. Register a GitHub OAuth App with callback URL `https://<worker-origin>/auth/github/callback` (scope `read:user` is sufficient; the permission check calls the collaborators API), then set the Worker secrets and deployment-specific plan map in Cloudflare:
    ```bash
+   wrangler secret put GITHUB_OAUTH_CLIENT_ID --config services/license-worker/wrangler.toml
+   wrangler secret put GITHUB_OAUTH_CLIENT_SECRET --config services/license-worker/wrangler.toml
    wrangler secret put SUPASCHEMA_LICENSE_PRIVATE_KEY --config services/license-worker/wrangler.toml < "$keydir/supaschema_license_private.pem"
    wrangler secret put STRIPE_WEBHOOK_SECRET --config services/license-worker/wrangler.toml
    wrangler secret put STRIPE_SECRET_KEY --config services/license-worker/wrangler.toml
    wrangler secret put STRIPE_PRICE_MAP --config services/license-worker/wrangler.toml
    ```
 6. Run `wrangler deploy --config services/license-worker/wrangler.toml` from the repository root (the root `wrangler.toml` targets the docs Worker), then add the Worker `/webhook` URL as a Stripe webhook endpoint subscribed to `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and (for subscription-mode prices) `invoice.paid`.
-7. Link buyers to `/checkout` with a repo and plan query; the Worker binds the issued license to that repo via `metadata.repo` and `metadata.plan`.
+7. Link buyers to `/checkout` with a repo and plan query. The Worker routes them through GitHub OAuth first and binds the issued license to the repo they provably write to via `metadata.repo`, `metadata.plan`, and `metadata.github_user`.
 
-Provisioning the Cloudflare account, the Stripe account, the restricted key, and the signing key is the operator's responsibility. This repo intentionally contains none of them.
+Provisioning the Cloudflare account, the Stripe account, the restricted key, the GitHub OAuth App, and the signing key is the operator's responsibility. This repo intentionally contains none of them.

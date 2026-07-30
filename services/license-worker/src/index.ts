@@ -8,6 +8,12 @@ import {
   successUrlWithSessionId,
 } from "./checkout.js";
 import {
+  createOAuthState,
+  type GitHubFetch,
+  verifyOAuthState,
+  verifyRepoOwnership,
+} from "./github-oauth.js";
+import {
   canonicalRepo,
   isEntitled,
   issueLicenseToken,
@@ -24,6 +30,10 @@ export interface LicenseWorkerEnv {
   CHECKOUT_SUCCESS_URL: string;
 
   CONTRACT_KV: WorkerStore;
+
+  GITHUB_OAUTH_CLIENT_ID: string;
+
+  GITHUB_OAUTH_CLIENT_SECRET: string;
 
   LICENSE_KV: WorkerStore;
 
@@ -51,6 +61,8 @@ interface CheckoutCompletion {
 interface LicenseWorkerRuntime {
   cancelUrl: string;
   contracts: WorkerStore;
+  githubOauthClientId: string;
+  githubOauthClientSecret: string;
   licensePublicKeyPem: string;
   licenses: WorkerStore;
   planCatalog: ReadonlyMap<string, PlanPrice>;
@@ -63,6 +75,8 @@ interface LicenseWorkerRuntime {
 type LicenseWorkerStringKey =
   | "CHECKOUT_CANCEL_URL"
   | "CHECKOUT_SUCCESS_URL"
+  | "GITHUB_OAUTH_CLIENT_ID"
+  | "GITHUB_OAUTH_CLIENT_SECRET"
   | "STRIPE_PRICE_MAP"
   | "STRIPE_SECRET_KEY"
   | "STRIPE_WEBHOOK_SECRET"
@@ -322,12 +336,12 @@ async function handleLicenseRetrieval(url: URL, store: WorkerStore): Promise<Res
   return response;
 }
 
-async function handleCheckout(
+function handleCheckout(
   request: Request,
   runtime: LicenseWorkerRuntime,
   url: URL,
-  stripeFetch: StripeFetch
-): Promise<Response> {
+  nowSeconds: number
+): Response {
   if (request.method !== "GET") {
     return new Response("method not allowed", { status: 405 });
   }
@@ -339,15 +353,53 @@ async function handleCheckout(
   if (!isValidPlan(plan)) {
     return new Response("invalid plan", { status: 400 });
   }
-  const planPrice = runtime.planCatalog.get(plan);
+  if (runtime.planCatalog.get(plan) === undefined) {
+    return new Response("unknown plan", { status: 404 });
+  }
+  const authorize = new URL("https://github.com/login/oauth/authorize");
+  authorize.searchParams.set("client_id", runtime.githubOauthClientId);
+  authorize.searchParams.set("redirect_uri", `${url.origin}/auth/github/callback`);
+  authorize.searchParams.set("scope", "read:user");
+  authorize.searchParams.set("state", createOAuthState(repo, plan, nowSeconds, runtime.privateKey));
+  return new Response(null, { headers: { location: authorize.toString() }, status: 302 });
+}
+
+async function handleOAuthCallback(
+  url: URL,
+  runtime: LicenseWorkerRuntime,
+  nowSeconds: number,
+  githubFetch: GitHubFetch,
+  stripeFetch: StripeFetch
+): Promise<Response> {
+  const code = url.searchParams.get("code");
+  const stateToken = url.searchParams.get("state");
+  if (code === null || code.length === 0 || stateToken === null) {
+    return new Response("missing code or state", { status: 400 });
+  }
+  const state = verifyOAuthState(stateToken, runtime.licensePublicKeyPem, nowSeconds);
+  if (state === null || !isValidRepo(state.repo) || !isValidPlan(state.plan)) {
+    return new Response("invalid state", { status: 400 });
+  }
+  const planPrice = runtime.planCatalog.get(state.plan);
   if (planPrice === undefined) {
     return new Response("unknown plan", { status: 404 });
   }
+  const identity = await verifyRepoOwnership(
+    githubFetch,
+    runtime.githubOauthClientId,
+    runtime.githubOauthClientSecret,
+    code,
+    state
+  );
+  if (!identity.ok) {
+    return new Response(identity.reason, { status: identity.status });
+  }
   const checkout: CheckoutRequest = {
     cancelUrl: runtime.cancelUrl,
-    plan,
+    githubUser: identity.login,
+    plan: state.plan,
     planPrice,
-    repo,
+    repo: state.repo,
     successUrl: successUrlWithSessionId(runtime.successUrl),
   };
   try {
@@ -462,6 +514,8 @@ function licenseWorkerRuntime(
   const licenses = stores.licenses;
   const cancelUrl = requiredString(env, "CHECKOUT_CANCEL_URL", errors);
   const successUrl = requiredString(env, "CHECKOUT_SUCCESS_URL", errors);
+  const githubOauthClientId = requiredString(env, "GITHUB_OAUTH_CLIENT_ID", errors);
+  const githubOauthClientSecret = requiredString(env, "GITHUB_OAUTH_CLIENT_SECRET", errors);
   const priceMap = requiredString(env, "STRIPE_PRICE_MAP", errors);
   const stripeSecretKey = requiredString(env, "STRIPE_SECRET_KEY", errors);
   const stripeWebhookSecret = requiredString(env, "STRIPE_WEBHOOK_SECRET", errors);
@@ -510,6 +564,8 @@ function licenseWorkerRuntime(
     !hasStoreMethods(contracts) ||
     !hasStoreMethods(licenses) ||
     cancelUrl === undefined ||
+    githubOauthClientId === undefined ||
+    githubOauthClientSecret === undefined ||
     successUrl === undefined ||
     planCatalog === undefined ||
     privateKey === undefined ||
@@ -524,6 +580,8 @@ function licenseWorkerRuntime(
     runtime: {
       cancelUrl,
       contracts,
+      githubOauthClientId,
+      githubOauthClientSecret,
       licensePublicKeyPem,
       licenses,
       planCatalog,
@@ -547,7 +605,7 @@ export function handleLicenseWorker(
   env: LicenseWorkerEnv,
   stores: Partial<LicenseWorkerStores>,
   nowSeconds: number,
-  stripeFetch: StripeFetch
+  fetchImpl: typeof fetch
 ): Promise<Response> {
   const readiness = licenseWorkerRuntime(env, stores);
   const runtime = readiness.runtime;
@@ -556,7 +614,10 @@ export function handleLicenseWorker(
   }
   const url = new URL(request.url);
   if (url.pathname === "/checkout") {
-    return handleCheckout(request, runtime, url, stripeFetch);
+    return Promise.resolve(handleCheckout(request, runtime, url, nowSeconds));
+  }
+  if (url.pathname === "/auth/github/callback") {
+    return handleOAuthCallback(url, runtime, nowSeconds, fetchImpl, fetchImpl);
   }
   if (url.pathname === "/contracts") {
     return handleContractRegistry(request, runtime, url, nowSeconds);

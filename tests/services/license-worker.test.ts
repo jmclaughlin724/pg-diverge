@@ -22,6 +22,8 @@ function testEnv(): LicenseWorkerEnv {
     CHECKOUT_CANCEL_URL: "https://supaschema.com/pricing",
     CHECKOUT_SUCCESS_URL: "https://supaschema.com/license",
     CONTRACT_KV: createMemoryStore(),
+    GITHUB_OAUTH_CLIENT_ID: "github-oauth-client-id",
+    GITHUB_OAUTH_CLIENT_SECRET: "github-oauth-client-secret",
     LICENSE_KV: createMemoryStore(),
     STRIPE_PRICE_MAP: JSON.stringify({
       bundle: { mode: "payment", price: "price_payment" },
@@ -362,5 +364,111 @@ describe("license worker", () => {
       fakeFetch
     );
     expect(await renewal.json()).toEqual({ renewed: true, repo: "acme/app" });
+  });
+});
+
+describe("github oauth checkout flow", () => {
+  function oauthFetch(permission: string, stripeBodies: string[]): typeof fetch {
+    return (input, init) => {
+      const url = String(input);
+      if (url === "https://github.com/login/oauth/access_token") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: "gho_test" }), { status: 200 })
+        );
+      }
+      if (url === "https://api.github.com/user") {
+        return Promise.resolve(new Response(JSON.stringify({ login: "buyer" }), { status: 200 }));
+      }
+      if (url === "https://api.github.com/repos/acme/app/collaborators/buyer/permission") {
+        return Promise.resolve(new Response(JSON.stringify({ permission }), { status: 200 }));
+      }
+      if (url === "https://api.stripe.com/v1/checkout/sessions") {
+        stripeBodies.push(String(init?.body ?? ""));
+        return Promise.resolve(
+          new Response(JSON.stringify({ url: "https://checkout.stripe.com/c/pay/cs_test_new" }), {
+            status: 200,
+          })
+        );
+      }
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    };
+  }
+
+  function stateToken(repo: string, plan: string): string {
+    return issueLicenseToken({ exp: nowSeconds + 600, plan, repo }, privateKey);
+  }
+
+  it("redirects /checkout into GitHub OAuth with a signed state", async () => {
+    const env = testEnv();
+    const response = await handleLicenseWorker(
+      new Request("https://license.workers.dev/checkout?repo=acme/app&plan=bundle"),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.origin).toBe("https://github.com");
+    expect(location.pathname).toBe("/login/oauth/authorize");
+    expect(location.searchParams.get("client_id")).toBe("github-oauth-client-id");
+    expect(location.searchParams.get("redirect_uri")).toBe(
+      "https://license.workers.dev/auth/github/callback"
+    );
+    const state = location.searchParams.get("state") ?? "";
+    const claims = verifyLicenseToken(
+      state,
+      createPublicKey(privateKey).export({ format: "pem", type: "spki" }).toString()
+    );
+    expect(claims).toMatchObject({ plan: "bundle", repo: "acme/app" });
+  });
+
+  it("creates the Stripe session from the verified identity at the callback", async () => {
+    const env = testEnv();
+    const stripeBodies: string[] = [];
+    const response = await handleLicenseWorker(
+      new Request(
+        `https://license.workers.dev/auth/github/callback?code=oauth-code&state=${stateToken("acme/app", "bundle")}`
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      oauthFetch("admin", stripeBodies)
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("https://checkout.stripe.com/c/pay/cs_test_new");
+    expect(stripeBodies).toHaveLength(1);
+    expect(stripeBodies[0]).toContain("metadata%5Brepo%5D=acme%2Fapp");
+    expect(stripeBodies[0]).toContain("metadata%5Bgithub_user%5D=buyer");
+  });
+
+  it("denies the callback without creating a Stripe session when permission is insufficient", async () => {
+    const env = testEnv();
+    const stripeBodies: string[] = [];
+    const denied = await handleLicenseWorker(
+      new Request(
+        `https://license.workers.dev/auth/github/callback?code=oauth-code&state=${stateToken("acme/app", "bundle")}`
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      oauthFetch("none", stripeBodies)
+    );
+    expect(denied.status).toBe(403);
+    expect(stripeBodies).toHaveLength(0);
+
+    const tampered = await handleLicenseWorker(
+      new Request(
+        `https://license.workers.dev/auth/github/callback?code=oauth-code&state=${stateToken("acme/app", "bundle")}tampered`
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      oauthFetch("admin", stripeBodies)
+    );
+    expect(tampered.status).toBe(400);
+    expect(stripeBodies).toHaveLength(0);
   });
 });
