@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderMigration } from "../../src/render/migration.js";
 import { extractSourceModel, filterModelBySchemas } from "../../src/source/extract.js";
+import { extractObjectsFromSql } from "../../src/sql/extract.js";
 
 async function modelFromSql(sql: string) {
   const root = await mkdtemp(join(tmpdir(), "supa-normalize-"));
@@ -608,6 +609,45 @@ describe("rls facet merge", () => {
     expect(sql).not.toContain("DISABLE ROW LEVEL SECURITY");
   });
 
+  it("plans no rls replace when a raw extract transition matches the catalog state", async () => {
+    const sql =
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\n";
+    const catalogShaped = await modelFromSql(sql);
+    const extracted = await extractObjectsFromSql(sql, { config: { managedSchemas: [] } });
+    const extractOnly = {
+      diagnostics: [],
+      fingerprint: "fuzz:extract-only",
+      objects: extracted.objects,
+      source: "fuzz:extract-only",
+    };
+    const plan = planSchemaDiff(catalogShaped, extractOnly);
+
+    expect(plan.operations.filter((operation) => operation.ref.kind === "rls")).toEqual([]);
+  });
+
+  it("still plans an rls replace when the effective state differs", async () => {
+    const before = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\n"
+    );
+    const extracted = await extractObjectsFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t DISABLE ROW LEVEL SECURITY;\n",
+      { config: { managedSchemas: [] } }
+    );
+    const after = {
+      diagnostics: [],
+      fingerprint: "fuzz:extract-only",
+      objects: extracted.objects,
+      source: "fuzz:extract-only",
+    };
+    const plan = planSchemaDiff(before, after, { config: { destructiveChanges: "allow" } });
+
+    expect(
+      plan.operations.some(
+        (operation) => operation.kind === "replace" && operation.ref.kind === "rls"
+      )
+    ).toBe(true);
+  });
+
   it("extracts policy command and predicate metadata", async () => {
     const model = await modelFromSql(
       "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint, tenant_id bigint);\nALTER TABLE app.accounts ENABLE ROW LEVEL SECURITY;\nCREATE POLICY accounts_select ON app.accounts FOR SELECT TO public USING (tenant_id > 0);\nCREATE POLICY accounts_insert ON app.accounts FOR INSERT TO public;\n"
@@ -646,13 +686,24 @@ describe("rls facet merge", () => {
 });
 
 describe("comment state transitions", () => {
-  it.each(["NULL", "''"])("removes a prior comment with IS %s", async (value) => {
+  it("removes a prior comment with IS NULL", async () => {
     const model = await modelFromSql(
-      `CREATE SCHEMA app;\nCOMMENT ON SCHEMA app IS 'docs';\nCOMMENT ON SCHEMA app IS ${value};\n`
+      "CREATE SCHEMA app;\nCOMMENT ON SCHEMA app IS 'docs';\nCOMMENT ON SCHEMA app IS NULL;\n"
     );
 
     expect(errors(model)).toEqual([]);
     expect(model.objects.filter((object) => object.ref.kind === "comment")).toEqual([]);
+  });
+
+  it("keeps an empty-string comment as a distinct comment", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCOMMENT ON SCHEMA app IS 'docs';\nCOMMENT ON SCHEMA app IS '';\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const comments = model.objects.filter((object) => object.ref.kind === "comment");
+    expect(comments).toHaveLength(1);
+    expect(comments[0]?.metadata.description).toBe("");
   });
 });
 

@@ -713,6 +713,43 @@ describe("diff lineage chain gate", () => {
     expect(secondLineage?.from).toBe(firstLineage?.to);
   });
 
+  it("replays an uncommitted hand-authored tail instead of blocking on it", {
+    timeout: 120_000,
+  }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-tail-replay-"));
+    const schemaFile = join(repo, "schemas", "app.sql");
+    await mkdir(join(repo, "schemas"), { recursive: true });
+    await mkdir(join(repo, "migrations"), { recursive: true });
+    await writeFile(
+      join(repo, "supaschema.config.json"),
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto" },
+        sync: { targets: {} },
+      })
+    );
+    await writeFile(schemaFile, "CREATE TABLE public.accounts (id bigint PRIMARY KEY);\n");
+    await git(repo, ["init"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v1"]);
+
+    await writeFile(
+      join(repo, "migrations", "20260101000000_hand.sql"),
+      "ALTER TABLE public.accounts ADD COLUMN name text;\n"
+    );
+    await writeFile(
+      schemaFile,
+      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text, email text);\n"
+    );
+    const result = await cli(["diff", "--name", "tail"], { cwd: repo });
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain("SUPA_DIFF_MIGRATIONS_DIRTY");
+    const generated = await readFile(result.stdout.trim(), "utf8");
+    expect(generated).toContain("email");
+    expect(generated).not.toContain("ADD COLUMN name");
+  });
+
   it("keeps the lineage chain continuous across scoped --schema diffs", {
     timeout: 120_000,
   }, async () => {

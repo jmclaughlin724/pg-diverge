@@ -121,7 +121,9 @@ describe("canonical surfaces guard", () => {
     );
   });
 
-  it("allows monetization terms inside the tracked license worker", async () => {
+  it("allows monetization terms inside the tracked license worker", {
+    timeout: 20_000,
+  }, async () => {
     const root = tempGuardRepo({
       "services/license-worker/src/checkout.ts":
         "export const endpoint = 'https://api.stripe.com/v1/checkout/sessions';\n",

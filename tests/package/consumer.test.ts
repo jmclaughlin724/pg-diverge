@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  expectedHeaderFragments,
   expectedMigrationFragments,
   expectedTypesFragments,
   expectedZodFragments,
@@ -217,11 +218,11 @@ describe("consumer lifecycle: install then use the published package", () => {
     expect(types.code, types.stderr).toBe(0);
 
     const typesFile = await readFile(join(consumer, "database.types.ts"), "utf8");
-    for (const fragment of expectedTypesFragments) {
+    for (const fragment of [...expectedHeaderFragments, ...expectedTypesFragments]) {
       expect(typesFile, fragment).toContain(fragment);
     }
     const zodFile = await readFile(join(consumer, "database.zod.ts"), "utf8");
-    for (const fragment of expectedZodFragments) {
+    for (const fragment of [...expectedHeaderFragments, ...expectedZodFragments]) {
       expect(zodFile, fragment).toContain(fragment);
     }
   }, 300_000);
@@ -622,11 +623,11 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     const types = await capture(process.execPath, [binPath2, "types"], consumer2);
     expect(types.code, types.stderr).toBe(0);
     const typesFile = await readFile(join(consumer2, "database.types.ts"), "utf8");
-    for (const fragment of expectedTypesFragments) {
+    for (const fragment of [...expectedHeaderFragments, ...expectedTypesFragments]) {
       expect(typesFile, fragment).toContain(fragment);
     }
     const zodFile = await readFile(join(consumer2, "database.zod.ts"), "utf8");
-    for (const fragment of expectedZodFragments) {
+    for (const fragment of [...expectedHeaderFragments, ...expectedZodFragments]) {
       expect(zodFile, fragment).toContain(fragment);
     }
   });

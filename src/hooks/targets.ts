@@ -198,6 +198,17 @@ function bashArtifactTargets(command: string, projectDir: string): ArtifactEditT
 const shellCommandSeparators = new Set(["&&", "||", ";", "|"]);
 const shellRedirections = new Set([">", ">>", ">|"]);
 const directWriteCommands = new Set(["rm", "mv", "cp", "touch", "truncate", "tee"]);
+const shellAssignmentCommands = new Set(["declare", "export", "local", "readonly", "typeset"]);
+
+function mvMoveOperands(
+  operands: string[],
+  targetDirectory: string | undefined
+): { destination: string | undefined; sources: string[] } {
+  if (targetDirectory !== undefined) {
+    return { destination: targetDirectory, sources: operands };
+  }
+  return { destination: operands.at(-1), sources: operands.slice(0, -1) };
+}
 
 function bashSegmentTargets(
   segment: string[],
@@ -207,6 +218,31 @@ function bashSegmentTargets(
   if (segment.length === 0) {
     return [];
   }
+  const targets = redirectionTargets(segment, projectDir, variables);
+  const commandIndex = shellCommandIndex(segment, variables);
+  if (commandIndex === -1) {
+    return targets;
+  }
+  const command = basename(segment[commandIndex] ?? "");
+  const args = shellCommandArguments(segment.slice(commandIndex + 1));
+  if (shellAssignmentCommands.has(command)) {
+    for (const arg of args) {
+      const assignment = environmentAssignment(arg, variables);
+      if (assignment !== undefined) {
+        variables.set(assignment.name, assignment.value);
+      }
+    }
+  }
+  targets.push(...directWriteTargets(command, args, projectDir, variables));
+  targets.push(...flagWriteTargets(command, args, projectDir, variables));
+  return targets;
+}
+
+function redirectionTargets(
+  segment: string[],
+  projectDir: string,
+  variables: Map<string, string>
+): ArtifactEditTarget[] {
   const targets: ArtifactEditTarget[] = [];
   for (let index = 0; index < segment.length - 1; index += 1) {
     if (shellRedirections.has(segment[index] ?? "")) {
@@ -219,47 +255,80 @@ function bashSegmentTargets(
       }
     }
   }
-  const commandIndex = shellCommandIndex(segment, variables);
-  if (commandIndex === -1) {
-    return targets;
+  return targets;
+}
+
+function directWriteTargets(
+  command: string,
+  args: string[],
+  projectDir: string,
+  variables: Map<string, string>
+): ArtifactEditTarget[] {
+  if (!directWriteCommands.has(command)) {
+    return [];
   }
-  const command = basename(segment[commandIndex] ?? "");
-  const args = shellCommandArguments(segment.slice(commandIndex + 1));
-  if (directWriteCommands.has(command)) {
-    const operands = args
-      .filter((token) => !token.startsWith("-"))
-      .map((token) => expandShellVariables(token, variables));
-    const targetDirectory =
-      command === "cp" || command === "mv" ? shellTargetDirectory(args, variables) : undefined;
-    const selected = directWriteOperands(command, operands, targetDirectory);
-    targets.push(
-      ...selected.map(
+  const operands = args
+    .filter((token, index) => {
+      if (token.startsWith("-")) {
+        return false;
+      }
+      const previous = args[index - 1];
+      return previous !== "-t" && previous !== "--target-directory";
+    })
+    .map((token) => expandShellVariables(token, variables));
+  const targetDirectory =
+    command === "cp" || command === "mv" ? shellTargetDirectory(args, variables) : undefined;
+  if (command === "mv") {
+    const { destination, sources } = mvMoveOperands(operands, targetDirectory);
+    return [
+      ...sources.map(
         (path): ArtifactEditTarget => ({
-          operation: command === "rm" ? "delete" : "write",
+          operation: "delete",
           path: resolveHookTarget(projectDir, path),
         })
-      )
-    );
+      ),
+      ...(destination === undefined
+        ? []
+        : [
+            {
+              operation: "write" as const,
+              path: resolveHookTarget(projectDir, destination),
+            },
+          ]),
+    ];
   }
+  const selected = directWriteOperands(command, operands, targetDirectory);
+  return selected.map(
+    (path): ArtifactEditTarget => ({
+      operation: command === "rm" ? "delete" : "write",
+      path: resolveHookTarget(projectDir, path),
+    })
+  );
+}
+
+function flagWriteTargets(
+  command: string,
+  args: string[],
+  projectDir: string,
+  variables: Map<string, string>
+): ArtifactEditTarget[] {
   const inPlaceSed = command === "sed" && args.some(isInPlaceSedFlag);
   const writeFlag = args.some((arg) => writeFlags.has(arg) || arg.startsWith("--write="));
-  if (inPlaceSed || writeFlag) {
-    const flagTargets = args
-      .map(writeFlagTarget)
-      .filter((path): path is string => path !== undefined)
-      .map((path) => expandShellVariables(path, variables));
-    targets.push(
-      ...[...args.filter((arg) => !arg.startsWith("-") && isPotentialPath(arg)), ...flagTargets]
-        .map((path) => expandShellVariables(path, variables))
-        .map(
-          (path): ArtifactEditTarget => ({
-            operation: "write",
-            path: resolveHookTarget(projectDir, path),
-          })
-        )
-    );
+  if (!(inPlaceSed || writeFlag)) {
+    return [];
   }
-  return targets;
+  const flagTargets = args
+    .map(writeFlagTarget)
+    .filter((path): path is string => path !== undefined)
+    .map((path) => expandShellVariables(path, variables));
+  return [...args.filter((arg) => !arg.startsWith("-") && isPotentialPath(arg)), ...flagTargets]
+    .map((path) => expandShellVariables(path, variables))
+    .map(
+      (path): ArtifactEditTarget => ({
+        operation: "write",
+        path: resolveHookTarget(projectDir, path),
+      })
+    );
 }
 
 const writeFlags = new Set(["--fix", "--write", "-w"]);
@@ -432,21 +501,21 @@ function shellTokens(command: string): string[] {
   for (let index = 0; index < command.length; index += 1) {
     const char = command[index] ?? "";
     if (quote) {
-      if (char === quote) {
-        quote = undefined;
-      } else if (char === "\\" && quote === '"' && index + 1 < command.length) {
-        index += 1;
-        current += command[index] ?? "";
-      } else {
-        current += char;
-      }
+      const consumed = consumeQuotedChar(command, index, quote, current);
+      current = consumed.current;
+      index = consumed.index;
+      quote = consumed.quote;
       continue;
     }
     if (char === "'" || char === '"') {
       quote = char;
       continue;
     }
-    if (char === "\\") {
+    if (
+      char === "\\" &&
+      index + 1 < command.length &&
+      shellEscapable.has(command[index + 1] ?? "")
+    ) {
       index += 1;
       current += command[index] ?? "";
       continue;
@@ -467,6 +536,49 @@ function shellTokens(command: string): string[] {
   push();
   return tokens;
 }
+
+function consumeQuotedChar(
+  command: string,
+  index: number,
+  quote: "'" | '"',
+  current: string
+): { current: string; index: number; quote: "'" | '"' | undefined } {
+  const char = command[index] ?? "";
+  if (char === quote) {
+    return { current, index, quote: undefined };
+  }
+  if (
+    char === "\\" &&
+    quote === '"' &&
+    index + 1 < command.length &&
+    doubleQuoteEscapable.has(command[index + 1] ?? "")
+  ) {
+    return { current: current + (command[index + 1] ?? ""), index: index + 1, quote };
+  }
+  return { current: current + char, index, quote };
+}
+
+// A backslash only escapes shell-special characters; before any other char it
+// is a literal path separator so Windows drive paths (C:\Users\...) survive.
+const shellEscapable = new Set([
+  " ",
+  "\t",
+  "\n",
+  "\r",
+  "'",
+  '"',
+  "`",
+  "$",
+  "\\",
+  "|",
+  ";",
+  ">",
+  "<",
+  "&",
+  "(",
+  ")",
+]);
+const doubleQuoteEscapable = new Set(['"', "\\", "$", "`"]);
 
 function shellOperator(command: string, index: number): string | undefined {
   const pair = command.slice(index, index + 2);

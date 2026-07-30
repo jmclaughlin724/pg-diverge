@@ -2,6 +2,7 @@
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
+import { emitBuildWarnings, readBuildInfo } from "./build-info.js";
 import { selfCheckCatalog } from "./catalog/selfcheck.js";
 import { type CheckCommandOptions, runCheckCommand } from "./cli/check-selection.js";
 import { registerDiffCommands } from "./cli/diff.js";
@@ -68,6 +69,7 @@ interface VerifyCommandOptions {
 const program = new Command();
 configureCliShared(program);
 const cliVersion = await readPackageVersion();
+await emitBuildWarnings(await readBuildInfo(cliVersion));
 program
   .name("supaschema")
   .description("Generate deterministic, replay-safe PostgreSQL/Supabase migrations from SQL trees.")

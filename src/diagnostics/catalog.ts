@@ -9,6 +9,8 @@ export interface DiagnosticDefinition {
 }
 
 const diagnosticSummaries: Record<string, string> = {
+  SUPA_BUILD_STALE_DIST:
+    "The compiled dist is older than src in a repository checkout; rebuild before trusting CLI behavior.",
   SUPA_CATALOG_EXTRACT_FAILED: "Live catalog extraction failed; check the database URL and role.",
   SUPA_CATALOG_SNAPSHOT_VERSION:
     "The catalog snapshot was produced by a different supaschema model version; hashes may not be comparable.",
@@ -230,6 +232,8 @@ const diagnosticSummaries: Record<string, string> = {
   SUPA_SYNC_TARGET_URL_UNRESOLVED: "The selected sync target's database URL could not be resolved.",
   SUPA_SYNC_VERIFY_URL_UNRESOLVED:
     "Sync could not resolve the disposable database URL required to verify pending migrations before apply.",
+  SUPA_TYPES_CONTRACT_DRIFT:
+    "A generated TypeScript/Zod contract does not match regenerated output; run supaschema types to refresh it.",
   SUPA_VALIDATOR_FAILED: "A configured external validator reported diagnostics.",
   SUPA_VALIDATOR_UNAVAILABLE: "A configured external validator is not installed.",
   SUPA_VALIDATOR_UNKNOWN: "Unknown validator name in the validators config.",
@@ -248,6 +252,43 @@ const diagnosticSummaries: Record<string, string> = {
 };
 
 const diagnosticDefinitionOverrides: Record<string, Omit<DiagnosticDefinition, "summary">> = {
+  SUPA_BUILD_STALE_DIST: {
+    cause:
+      "A repository checkout ran the compiled CLI from dist while src contained newer edits, so the executed behavior did not include the latest source. This only fires in a checkout layout; installed packages ship no src directory.",
+    commands: ["npm run build", "supaschema doctor"],
+    docs: "docs/commands/doctor.mdx",
+    expectedEvidence: [
+      "doctor build identity reports a built timestamp newer than the latest src edit",
+      "the warning disappears on the next CLI run after a rebuild",
+    ],
+    forbiddenActions: [
+      "do not suppress the warning to keep testing against a stale dist",
+      "do not treat stale-dist behavior as evidence of a source regression",
+    ],
+    recoverySteps: [
+      "Run npm run build in the repository checkout.",
+      "Re-run the CLI command and confirm doctor build identity reflects the rebuild.",
+    ],
+  },
+  SUPA_TYPES_CONTRACT_DRIFT: {
+    cause:
+      "types --check regenerated the configured TypeScript/Zod contracts and found the on-disk outputs missing or different. Generated contracts are projections of the schema source; the header fingerprint identifies the model the file was generated from.",
+    commands: ["supaschema types", "supaschema types --check"],
+    docs: "docs/commands/types.mdx",
+    expectedEvidence: [
+      "types --check exits 0 after a refresh",
+      "the reviewed generated diff contains only explained changes",
+    ],
+    forbiddenActions: [
+      "do not manually edit generated TypeScript or Zod contracts to silence drift",
+      "do not commit application casts or aliases that hide contract drift",
+    ],
+    recoverySteps: [
+      "Confirm the schema source matches the intended state with supaschema doctor.",
+      "Run supaschema types and review the generated diff.",
+      "Commit the refreshed contracts together with the owning schema change.",
+    ],
+  },
   SUPA_CATALOG_EXTRACT_FAILED: {
     cause:
       "Catalog SQL failed before Supaschema could build a live model. Typical causes are an unreachable URL, insufficient pg_catalog visibility, or a configured schema boundary that was not applied at query time.",

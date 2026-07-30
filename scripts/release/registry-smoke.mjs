@@ -8,7 +8,11 @@ const ROOT = process.cwd();
 const packageJson = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const packageName = packageJson.name;
 const packageVersion = packageJson.version;
-const spec = `${packageName}@${packageVersion}`;
+const spec = process.env.SUPASCHEMA_REGISTRY_SMOKE_SPEC ?? `${packageName}@${packageVersion}`;
+const expectedVersion =
+  process.env.SUPASCHEMA_REGISTRY_SMOKE_SPEC === undefined
+    ? packageVersion
+    : resolveSpecVersion(spec);
 const nodeBinDir = dirname(process.execPath);
 const pnpmTool = "pnpm@11.1.2";
 const bunTool = "bun@1.3.14";
@@ -79,9 +83,21 @@ function smokeBun() {
 function assertVersion(runner, cwd) {
   const output = runner(["--version"], cwd).trim();
   const version = lastNonEmptyLine(output);
-  if (version !== packageVersion) {
-    fail(`expected ${packageName} ${packageVersion}, got ${output}`);
+  if (version !== expectedVersion) {
+    fail(`expected ${packageName} ${expectedVersion}, got ${output}`);
   }
+}
+
+function resolveSpecVersion(spec) {
+  const output = execFileSync("npm", ["view", spec, "version"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  }).trim();
+  const version = lastNonEmptyLine(output);
+  if (version.length === 0) {
+    fail(`npm view could not resolve a version for ${spec}`);
+  }
+  return version;
 }
 
 function lastNonEmptyLine(output) {

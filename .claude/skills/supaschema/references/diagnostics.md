@@ -38,6 +38,8 @@ The tables below cover the codes that block generation most often. They are **no
 | `SUPA_DIFF_GENERATED_CONTRACT_DIRTY`, `SUPA_DIFF_MIGRATIONS_DIRTY` | Generated contracts or migration files carry unstaged changes beyond a proven `git:INDEX` closure, or are dirty against another Git baseline. Repair or close that migration unit before diffing again. |
 | `SUPA_DIFF_CONFIG_DIRTY`, `SUPA_DIFF_SCOPED_DIRTY_SCHEMA` | A scoped `--schema` diff cannot own dirty global config or dirty schema files outside the requested filter. Close the owning unit, or use an unscoped diff that owns the change. |
 | `SUPA_SELFCHECK_*` | A live catalog's re-extracted rendered SQL diverges in object identity. Fix the model/render owner. |
+| `SUPA_BUILD_STALE_DIST` | The CLI ran from a checkout whose `dist` is older than `src`. Run `npm run build` and re-run; never treat stale-dist behavior as a source regression. |
+| `SUPA_TYPES_CONTRACT_DRIFT` | `types --check` found generated contracts missing or stale. Run `supaschema types`, review the generated diff, and commit it with the owning schema change; never hand-edit the contract to silence drift. |
 | `SUPA_GENERATED_ARTIFACT_EDIT` | Change declarative SQL or generator config, run `supaschema doctor`, then regenerate with `supaschema sync` or, only when schema state already matches, `supaschema types`. Review the generated diff and preserve unexplained drift. |
 | `SUPA_GENERATED_ARTIFACT_GUARD_FAILED` | The hook could not prove the write safe because its payload or config could not be classified. The write remains denied. Run `supaschema config validate`, repair the first error, run `supaschema doctor`, and retry the original operation. Never bypass or unregister the hook. |
 

@@ -62,6 +62,7 @@ Rule 21 owns the git transaction: dirty-worktree preservation, task-owned stagin
 - `.github/workflows/release.yml` creates GitHub Releases with `--notes-file` from `scripts/release/changelog-notes.mjs`, not `--generate-notes`.
 - `npm run guard` runs `guard:release-version` through `scripts/guards/check-all.mjs`.
 - `tests/release/action.test.ts` verifies the composite action default follows `package.json` and does not drift to npm dist-tags.
+- Snapshot publishing is the one permitted dist-tag write: `snapshot.yml` publishes immutable `X.Y.(Z+1)-dev.<sha>` builds to the `next` tag from protected `main` pushes. The `latest` tag remains release.yml-only, and consuming a snapshot always resolves to an exact version before install; dist-tags remain forbidden for action execution.
 - The release checklist and release PR checklist require `$update` after versioning and before release verification or merge. The audit is semantic and is reviewed through its changed owners and validation evidence; do not add a forgeable marker file or brittle prose guard to simulate execution proof.
 - Rule 09 release workflow checks, Rule 13 package checks, Rule 14 editing safety, Rule 18 generated-surface sync, and Rule 21 source-control checks remain required where their surfaces are touched.
 

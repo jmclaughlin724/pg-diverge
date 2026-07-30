@@ -25,6 +25,8 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_SUPABASE_VIEW_SECURITY_INVOKER` | warning | A view in an exposed schema does not set `security_invoker`, so RLS applies as the view owner. |
 | `SUPA_CATALOG_EXTRACT_FAILED` | error | Catalog extraction failed against the supplied database. |
 | `SUPA_CATALOG_SNAPSHOT_VERSION` | warning | A `catalog:` snapshot was produced by a different supaschema model version; regenerate it to keep hashes comparable. |
+| `SUPA_BUILD_STALE_DIST` | warning | The CLI ran from a repository checkout whose compiled `dist` is older than `src`; run `npm run build` and re-run the command. Installed packages ship no `src`, so this only fires in a checkout. |
+| `SUPA_TYPES_CONTRACT_DRIFT` | error | `types --check` found a generated TypeScript/Zod contract missing or different from regenerated output; run `supaschema types` and commit the refreshed contracts with the owning schema change. |
 | `SUPA_DIFF_LINEAGE_BROKEN` | error | The plan's from-state does not continue the newest pending supaschema migration in the output directory. |
 | `SUPA_DIFF_LINEAGE_DUPLICATE` | error | A pending supaschema migration already covers this exact from/to transition. |
 | `SUPA_DIFF_EMPTY_PLAN` | error | A disk write was explicitly requested, but the diff planned no operations. |

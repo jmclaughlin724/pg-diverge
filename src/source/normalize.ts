@@ -801,9 +801,7 @@ function applyCommentTransitions(objects: SchemaObject[]): SchemaObject[] {
       return true;
     }
     return (
-      latestByTarget.get(object.key) === object &&
-      typeof object.metadata.description === "string" &&
-      object.metadata.description.length > 0
+      latestByTarget.get(object.key) === object && typeof object.metadata.description === "string"
     );
   });
 }

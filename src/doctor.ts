@@ -1,6 +1,7 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Client } from "pg";
+import { readBuildInfo } from "./build-info.js";
 import { extractCatalogModel } from "./catalog/extract.js";
 import { selfCheckCatalog } from "./catalog/selfcheck.js";
 import type { SupaschemaConfig } from "./config/schema.js";
@@ -9,6 +10,7 @@ import { databaseUrlLane, resolveDatabaseUrl } from "./database/url.js";
 import { hasErrors } from "./diagnostics/diagnostics.js";
 import { readMigrationContext } from "./migrations/context.js";
 import { migrationsStatus } from "./migrations/status.js";
+import { isMigrationDirectorySource } from "./planner/context.js";
 import { extractSourceModel } from "./source/extract.js";
 import { currentBaselineFingerprints } from "./source/resolve.js";
 import { parseSqlAst } from "./sql/parser.js";
@@ -47,6 +49,7 @@ export async function runDoctor(
   const parser = await sqlParserCheck();
   checks.push(
     nodeVersionCheck(),
+    buildIdentityCheck(await readBuildInfo()),
     parser.check,
     configCheck(options.configPath),
     await installPathConfirmationCheck(cwd, options.configPath)
@@ -84,6 +87,20 @@ function nodeVersionCheck(): DoctorCheck {
     detail: `running ${process.versions.node}, requires >=${minimumNodeVersion}`,
     name: "node version",
     status: nodeMeetsMinimum(process.versions.node) ? "pass" : "fail",
+  };
+}
+
+function buildIdentityCheck(info: Awaited<ReturnType<typeof readBuildInfo>>): DoctorCheck {
+  const commit = info.commit === null ? "unknown commit" : info.commit.slice(0, 12);
+  const built = info.builtAt ?? "unknown build time";
+  let dirty = "unknown tree state";
+  if (info.dirty !== null) {
+    dirty = info.dirty ? "dirty tree" : "clean tree";
+  }
+  return {
+    detail: `${info.version} (${commit}, built ${built}, ${dirty})`,
+    name: "build identity",
+    status: "pass",
   };
 }
 
@@ -211,6 +228,21 @@ async function migrationReplayChecks(
       },
     ];
   }
+  const context = await readMigrationContext(config.migrationsDir, { cwd });
+  if (context.files.length === 0) {
+    return [
+      {
+        detail: `${migrationsDir} has no migrations yet`,
+        name: "migration replay",
+        status: "skip",
+      },
+      {
+        detail: "automatic baseline starts with the first migration",
+        name: "automatic baseline",
+        status: "skip",
+      },
+    ];
+  }
   const source = `migrations:${config.migrationsDir}`;
   const model = await extractSourceModel(source, { config, cwd });
   const errors = model.diagnostics.filter((item) => item.severity === "error");
@@ -229,11 +261,12 @@ async function migrationReplayChecks(
       },
     ];
   }
-  const context = await readMigrationContext(config.migrationsDir, { cwd });
   const requiresReplay =
     context.files.length > 0 &&
     (context.latestGeneratedBaseline === undefined || context.unprovenBaselineFiles.length > 0);
-  const automaticBaseline = config.sources.from === "auto" || config.sources.from === source;
+  const automaticBaseline =
+    config.sources.from === "auto" ||
+    (await isMigrationDirectorySource(config.sources.from, config.migrationsDir, cwd));
   return [
     {
       detail: `${model.objects.length} objects, fingerprint ${model.fingerprint}`,

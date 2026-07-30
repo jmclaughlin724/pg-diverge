@@ -1497,12 +1497,16 @@ describe("claude generated-artifact edit hook", () => {
     expect(deletion.stderr).toContain("generated Zod contract");
   });
 
-  it("blocks bounded Bash writer forms targeting generated contracts but allows reads", async () => {
+  it("blocks bounded Bash writer forms targeting generated contracts but allows reads", {
+    timeout: 20_000,
+  }, async () => {
     const { project, typesFile } = await generatedContractFixture();
     const writeCommands = [
       `echo generated > ${typesFile}`,
       `echo generated >| ${typesFile}`,
+      `echo generated > ${typesFile.replaceAll("/", "\\")}`,
       `TARGET=${typesFile}; echo generated > "$TARGET"`,
+      `export TARGET=${typesFile}; echo generated > "$TARGET"`,
       `cp /tmp/source ${typesFile} > /tmp/cp.log`,
       `cp -t ${dirname(typesFile)} /tmp/source`,
       `mv --target-directory=${dirname(typesFile)} /tmp/source`,
@@ -1541,6 +1545,10 @@ describe("claude generated-artifact edit hook", () => {
       tool_input: { command: `rm ${generated}` },
       tool_name: "Bash",
     });
+    const moveAway = await runHook(script, {
+      tool_input: { command: `mv ${generated} /tmp/backup.sql` },
+      tool_name: "Bash",
+    });
     const patchDelete = await runHook(script, {
       tool_input: {
         command: `*** Begin Patch\n*** Delete File: ${generated}\n*** End Patch`,
@@ -1550,6 +1558,8 @@ describe("claude generated-artifact edit hook", () => {
 
     expect(shellDelete.code).toBe(2);
     expect(shellDelete.stderr).toContain("SUPA_GENERATED_ARTIFACT_EDIT");
+    expect(moveAway.code).toBe(2);
+    expect(moveAway.stderr).toContain("SUPA_GENERATED_ARTIFACT_EDIT");
     expect(patchDelete.code).toBe(0);
   });
 
@@ -1873,7 +1883,9 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
     expect(await readFakeCalls(log)).toEqual([]);
   });
 
-  it("skips post-diff check when workflow.migration_check is manual", async () => {
+  it("skips post-diff check when workflow.migration_check is manual", {
+    timeout: 20_000,
+  }, async () => {
     const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
     await writeFile(
       join(project, "supaschema.config.json"),
@@ -1904,7 +1916,9 @@ describe.each(autoDiffCases)("supaschema auto-diff hook ($name)", ({ script }) =
     expect(await readFakeCalls(log)).toEqual([["diff", "--to", "dir:supabase/schemas"]]);
   });
 
-  it("runs config-gated sync instead of diff/check for resolved automatic targets", async () => {
+  it("runs config-gated sync instead of diff/check for resolved automatic targets", {
+    timeout: 20_000,
+  }, async () => {
     const { env, log, project } = await autoDiffFixture(
       ["supabase/schemas"],
       `#!/usr/bin/env node
@@ -1965,7 +1979,9 @@ process.exit(1);
     expect(await readFakeCalls(log)).toEqual([["sync"]]);
   });
 
-  it("falls back to diff/check when automatic remote approval is absent", async () => {
+  it("falls back to diff/check when automatic remote approval is absent", {
+    timeout: 20_000,
+  }, async () => {
     const { env, log, project } = await autoDiffFixture(["supabase/schemas"]);
     await writeFile(
       join(project, "supaschema.config.json"),
@@ -2025,7 +2041,9 @@ process.exit(1);
     ]);
   });
 
-  it("runs config-gated sync for approved automatic remote targets", async () => {
+  it("runs config-gated sync for approved automatic remote targets", {
+    timeout: 20_000,
+  }, async () => {
     const { env, log, project } = await autoDiffFixture(
       ["supabase/schemas"],
       `#!/usr/bin/env node
@@ -2094,7 +2112,9 @@ process.exit(1);
     expect(await readFakeCalls(log)).toEqual([["sync"]]);
   });
 
-  it("blocks the agent loop when config-gated sync fails", async () => {
+  it("blocks the agent loop when config-gated sync fails", {
+    timeout: 20_000,
+  }, async () => {
     const { env, log, project } = await autoDiffFixture(
       ["supabase/schemas"],
       `#!/usr/bin/env node

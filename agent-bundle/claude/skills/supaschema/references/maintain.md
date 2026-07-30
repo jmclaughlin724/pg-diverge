@@ -57,7 +57,7 @@ supaschema check
 supaschema types
 ```
 
-Run the full migration-directory replay check unless the owning workflow intentionally selects a narrower changed-file lane. Fix unsafe SQL or stale model coverage in the canonical schema, migration, parser, or type-generation owner and regenerate — never by patching the generated file.
+Run the full migration-directory replay check unless the owning workflow intentionally selects a narrower changed-file lane. In CI, gate with `supaschema types --check` instead: it compares regenerated contracts (including the provenance header) against on-disk outputs without writing, and fails with `SUPA_TYPES_CONTRACT_DRIFT` until `supaschema types` refreshes them. Fix unsafe SQL or stale model coverage in the canonical schema, migration, parser, or type-generation owner and regenerate — never by patching the generated file.
 
 ## 4. Review the generated deltas
 

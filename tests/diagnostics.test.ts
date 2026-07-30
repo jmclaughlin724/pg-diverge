@@ -45,4 +45,24 @@ describe("structured diagnostic catalog", () => {
       ])
     );
   });
+
+  it("ships a rebuild-first recovery for stale dist builds", () => {
+    expect(diagnosticDefinitions.SUPA_BUILD_STALE_DIST).toMatchObject({
+      commands: expect.arrayContaining(["npm run build", "supaschema doctor"]),
+      forbiddenActions: expect.arrayContaining([
+        expect.stringContaining("do not suppress the warning"),
+      ]),
+      recoverySteps: expect.arrayContaining([expect.stringContaining("npm run build")]),
+    });
+  });
+
+  it("ships a regenerate-first recovery for contract drift", () => {
+    expect(diagnosticDefinitions.SUPA_TYPES_CONTRACT_DRIFT).toMatchObject({
+      commands: expect.arrayContaining(["supaschema types", "supaschema types --check"]),
+      forbiddenActions: expect.arrayContaining([
+        expect.stringContaining("do not manually edit generated TypeScript or Zod contracts"),
+      ]),
+      recoverySteps: expect.arrayContaining([expect.stringContaining("supaschema types")]),
+    });
+  });
 });

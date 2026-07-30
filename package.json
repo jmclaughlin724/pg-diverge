@@ -66,7 +66,7 @@
     "bench:plot:headtohead": "node benchmarks/plot-head-to-head.js --bars-only benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-xl-bars.svg && node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-xl.svg && node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xxl.json docs/images/benchmarks/head-to-head-xxl.svg && node benchmarks/plot-head-to-head.js --workflow benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-workflow-xl.svg && npm run format -- docs/images/benchmarks",
     "bench:scan-aggregate": "npm run build && node dist/scan/aggregate.js",
     "benchmark": "npm run build && node dist/benchmark/run.js",
-    "build": "node scripts/clean-dist.mjs && tsc -b tsconfig.src.json --force && node dist/config/schema-gen.js && node scripts/ensure-bin-executable.mjs",
+    "build": "node scripts/clean-dist.mjs && tsc -b tsconfig.src.json --force && node dist/config/schema-gen.js && node scripts/ensure-bin-executable.mjs && node scripts/build/write-build-info.mjs",
     "changeset": "changeset",
     "check": "npm run build && npm run lint && npm run typecheck && npm test",
     "check:package": "publint && attw --pack . --profile esm-only",

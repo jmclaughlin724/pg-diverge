@@ -20,6 +20,28 @@ describe("CI governance guard", () => {
     expect(args).not.toContain("--exclude-standard");
   });
 
+  it("covers the snapshot publish lane invariants", () => {
+    const source = readFileSync(
+      resolve("scripts/guards/ci-release/check-ci-governance.mjs"),
+      "utf8"
+    );
+    expect(source).toContain('parsed.get("snapshot.yml")');
+    expect(source).toContain("snapshot-npm");
+    expect(source).toContain("--tag next");
+    expect(source).toContain("node scripts/release/snapshot-version.mjs");
+    expect(source).toContain("SUPASCHEMA_REGISTRY_SMOKE_SPEC");
+  });
+
+  it("covers the consumer canary lane invariants", () => {
+    const source = readFileSync(
+      resolve("scripts/guards/ci-release/check-ci-governance.mjs"),
+      "utf8"
+    );
+    expect(source).toContain('parsed.get("consumer-canary.yml")');
+    expect(source).toContain("secrets.CONSUMER_CANARY_TOKEN");
+    expect(source).toContain("node scripts/release/consumer-canary.mjs");
+  });
+
   it("scans tracked exec-policy rule files only", () => {
     const source = ts.createSourceFile(
       "check-codex-execpolicy.mjs",

@@ -25,6 +25,39 @@ async function doctorProject(migrationSql: string) {
 }
 
 describe("doctor readiness", () => {
+  it("skips migration replay checks while the migrations directory is empty", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "supa-doctor-"));
+    await mkdir(join(cwd, "migrations"));
+    await mkdir(join(cwd, "schemas"));
+    await writeFile(join(cwd, "schemas", "app.sql"), "CREATE SCHEMA app;\n");
+    const config = resolveConfig({
+      migrationsDir: "migrations",
+      schemaPaths: ["schemas"],
+      sources: { from: "auto" },
+    });
+
+    const report = await runDoctor(config, { cwd });
+    const replay = report.checks.find((check) => check.name === "migration replay");
+
+    expect(replay).toMatchObject({ status: "skip" });
+  });
+
+  it("accepts equivalent migrations source spellings as the automatic baseline", async () => {
+    const fixture = await doctorProject(
+      "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n"
+    );
+    const config = resolveConfig({
+      migrationsDir: "migrations",
+      schemaPaths: ["schemas"],
+      sources: { from: "migrations:./migrations" },
+    });
+
+    const report = await runDoctor(config, { cwd: fixture.cwd });
+    const baseline = report.checks.find((check) => check.name === "automatic baseline");
+
+    expect(baseline).toMatchObject({ status: "pass" });
+  });
+
   it("reports parser grammar, replay fingerprint, and automatic migration adoption", async () => {
     const fixture = await doctorProject(
       "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\n"
@@ -36,6 +69,12 @@ describe("doctor readiness", () => {
       expect.objectContaining({
         detail: expect.stringContaining("AST 170007"),
         name: "sql parser",
+        status: "pass",
+      })
+    );
+    expect(report.checks).toContainEqual(
+      expect.objectContaining({
+        name: "build identity",
         status: "pass",
       })
     );

@@ -53,6 +53,18 @@ export function rlsStateFromMetadata(metadata: Record<string, unknown>): RlsStat
   }
 }
 
+export function rlsStateFromObjectMetadata(
+  metadata: Record<string, unknown>
+): RlsState | undefined {
+  const state = rlsStateFromMetadata(metadata);
+  if (state) {
+    return state;
+  }
+  if (isRlsTransitionSubtype(metadata.rlsTransition)) {
+    return applyRlsTransition(defaultRlsState, metadata.rlsTransition);
+  }
+}
+
 export function rlsStateSql(schema: string | undefined, table: string, state: RlsState): string {
   return renderRlsStateTransition(schema, table, defaultRlsState, state);
 }

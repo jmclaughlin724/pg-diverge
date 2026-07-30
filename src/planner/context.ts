@@ -402,7 +402,7 @@ async function migrationBaselineDiagnostics(
   ];
 }
 
-async function isMigrationDirectorySource(
+export async function isMigrationDirectorySource(
   source: string,
   migrationsDir: string,
   cwd: string

@@ -13,7 +13,7 @@ import { resolveDatabaseUrl } from "../database/url.js";
 import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { MODEL_FORMAT_VERSION } from "../hash.js";
 import { defaultMigrationName, migrationFiles, nextMigrationFile } from "../migrations/files.js";
-import { latestLineage, parseLineage } from "../migrations/lineage.js";
+import { latestLineage, lineagePrefix, parseLineage } from "../migrations/lineage.js";
 import { migrationFileVersion, migrationsStatus } from "../migrations/status.js";
 import { pathContainsOrEqual } from "../paths.js";
 import { buildSchemaDiffPlan } from "../pipeline/diff.js";
@@ -563,7 +563,7 @@ async function diffWorkspacePreflightDiagnostics(
   const diagnostics: Diagnostic[] = [];
   const blockingMigrations =
     options.replace === undefined
-      ? dirtyEntries.filter((entry) => entryTouchesPath(entry, migrationsDir))
+      ? await dirtyClosureMigrations(dirtyEntries, migrationsDir, options.from)
       : [];
   if (blockingMigrations.length > 0) {
     diagnostics.push(
@@ -628,6 +628,36 @@ async function diffWorkspacePreflightDiagnostics(
     );
   }
   return diagnostics;
+}
+
+// Git baselines miss every uncommitted migration file, so any dirty migration
+// blocks generation. A migrations: replay baseline reads those same files as
+// its before-state, so only lineage-bearing (generated) files must still be
+// closed or pruned first; a hand-authored tail is legitimate replay input.
+async function dirtyClosureMigrations(
+  dirtyEntries: GitStatusEntry[],
+  migrationsDir: string,
+  from: string
+): Promise<GitStatusEntry[]> {
+  const dirty = dirtyEntries.filter((entry) => entryTouchesPath(entry, migrationsDir));
+  if (from.startsWith("git:")) {
+    return dirty;
+  }
+  const generated: GitStatusEntry[] = [];
+  for (const entry of dirty) {
+    if (await hasLineageMarker(entry.path)) {
+      generated.push(entry);
+    }
+  }
+  return generated;
+}
+
+async function hasLineageMarker(path: string): Promise<boolean> {
+  try {
+    return (await readFile(path, "utf8")).includes(lineagePrefix);
+  } catch {
+    return true;
+  }
 }
 
 async function gitStatusEntries(paths: string[]): Promise<GitStatusEntry[]> {

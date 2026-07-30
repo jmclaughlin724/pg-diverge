@@ -81,6 +81,7 @@ describe("npm package contents", () => {
     const required = [
       "dist/index.js",
       "dist/index.d.ts",
+      "dist/build-info.json",
       packageBinPath(),
       "bin/scaffold.mjs",
       "bin/config-contract.mjs",
