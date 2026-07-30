@@ -1,6 +1,8 @@
 import { type StripeFetch, stripePost } from "./stripe-api.js";
 
 export interface PlanPrice {
+  intervalDays?: number;
+
   mode: "payment" | "subscription";
 
   price: string;
@@ -25,15 +27,30 @@ export function parsePlanCatalog(raw: string): PlanCatalog {
     }
     const price = Reflect.get(value, "price");
     const mode = Reflect.get(value, "mode");
+    const intervalDays = planIntervalDays(Reflect.get(value, "intervalDays"), plan);
     if (typeof price !== "string" || !price.startsWith("price_")) {
       throw new Error(`STRIPE_PRICE_MAP["${plan}"].price must be a Stripe price id`);
     }
     if (mode !== "payment" && mode !== "subscription") {
       throw new Error(`STRIPE_PRICE_MAP["${plan}"].mode must be "payment" or "subscription"`);
     }
-    catalog.set(plan, { mode, price });
+    catalog.set(plan, {
+      mode,
+      price,
+      ...(intervalDays === undefined ? {} : { intervalDays }),
+    });
   }
   return catalog;
+}
+
+function planIntervalDays(value: unknown, plan: string): number | undefined {
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(`STRIPE_PRICE_MAP["${plan}"].intervalDays must be a positive integer`);
+  }
+  return value;
 }
 
 export function successUrlWithSessionId(baseUrl: string): string {
