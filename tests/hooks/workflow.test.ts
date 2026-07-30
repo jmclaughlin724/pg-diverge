@@ -137,25 +137,25 @@ process.exit(2);
 });
 
 describe("generated-artifact Bash wrappers", () => {
+  const project = join(tmpdir(), "supaschema-hook-wrappers");
+  const contract = join(project, "database.types.ts");
   const targets = (command: string) =>
-    generatedArtifactEditTargets({ tool_input: { command }, tool_name: "Bash" }, "/repo");
+    generatedArtifactEditTargets({ tool_input: { command }, tool_name: "Bash" }, project);
 
   it("classifies writes hidden behind command prefixes", () => {
     expect(targets("command rm database.types.ts")).toEqual([
-      { operation: "delete", path: "/repo/database.types.ts" },
+      { operation: "delete", path: contract },
     ]);
-    expect(targets("env rm database.types.ts")).toEqual([
-      { operation: "delete", path: "/repo/database.types.ts" },
-    ]);
+    expect(targets("env rm database.types.ts")).toEqual([{ operation: "delete", path: contract }]);
     expect(targets("sudo -u postgres rm database.types.ts")).toEqual([
-      { operation: "delete", path: "/repo/database.types.ts" },
+      { operation: "delete", path: contract },
     ]);
     expect(targets("env -u HOME rm database.types.ts")).toEqual([
-      { operation: "delete", path: "/repo/database.types.ts" },
+      { operation: "delete", path: contract },
     ]);
-    expect(targets("nohup mv database.types.ts /tmp/backup")).toEqual([
-      { operation: "delete", path: "/repo/database.types.ts" },
-      { operation: "write", path: "/tmp/backup" },
+    expect(targets("nohup mv database.types.ts backup")).toEqual([
+      { operation: "delete", path: contract },
+      { operation: "write", path: join(project, "backup") },
     ]);
   });
 });
