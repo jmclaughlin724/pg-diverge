@@ -704,6 +704,8 @@ ALTER TABLE app.accounts RENAME COLUMN email TO contact_email;`,
       name: "contact_email",
       table: "accounts",
     });
+    expect(comments[0]?.sql).toContain("contact_email");
+    expect(comments[0]?.sql).not.toContain("accounts.email");
   });
 
   it("rebinds table and column comment identities when the table is renamed", async () => {
@@ -727,6 +729,48 @@ ALTER TABLE app.accounts RENAME TO customers;`,
     expect(targets).toContainEqual(
       expect.objectContaining({ kind: "column", name: "email", table: "customers" })
     );
+    for (const comment of model.objects.filter((object) => object.ref.kind === "comment")) {
+      expect(comment.sql).toContain("customers");
+      expect(comment.sql).not.toContain("accounts");
+    }
+
+    const declarative = await extractMigrations([
+      [
+        "20240101000000_commented_table.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.customers (id integer, email text);
+COMMENT ON TABLE app.customers IS 'directory';
+COMMENT ON COLUMN app.customers.email IS 'contact';`,
+      ],
+    ]);
+    const replayHashes = model.objects
+      .filter((object) => object.ref.kind === "comment")
+      .map((object) => object.hash)
+      .sort();
+    const declarativeHashes = declarative.objects
+      .filter((object) => object.ref.kind === "comment")
+      .map((object) => object.hash)
+      .sort();
+    expect(replayHashes).toEqual(declarativeHashes);
+  });
+
+  it("preserves empty-string comments and deletes only IS NULL comments", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_empty_comment.sql",
+        `CREATE SCHEMA app;
+CREATE SCHEMA other;
+COMMENT ON SCHEMA app IS '';
+COMMENT ON SCHEMA other IS 'temp';
+COMMENT ON SCHEMA other IS NULL;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const comments = model.objects.filter((object) => object.ref.kind === "comment");
+    expect(comments).toHaveLength(1);
+    expect(comments[0]?.metadata.description).toBe("");
+    expect(comments[0]?.metadata.commentTarget).toMatchObject({ kind: "schema", name: "app" });
   });
 
   it("hard-fails unsupported rename types without returning partial objects", async () => {

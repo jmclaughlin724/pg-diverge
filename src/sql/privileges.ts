@@ -841,6 +841,16 @@ export function commentDescriptor(target: CommentTarget): string {
   return `${kind} ${target.schema ?? "public"}.${target.name}`;
 }
 
+export function commentStatementSql(target: CommentTarget, description: string | null): string {
+  const descriptor = commentDescriptor(target);
+  const kindEnd = descriptor.indexOf(" ");
+  const head =
+    kindEnd === -1 ? descriptor.toUpperCase() : descriptor.slice(0, kindEnd).toUpperCase();
+  const rest = kindEnd === -1 ? "" : descriptor.slice(kindEnd);
+  const value = description === null ? "NULL" : `'${description.replaceAll("'", "''")}'`;
+  return `COMMENT ON ${head}${rest} IS ${value}`;
+}
+
 function grantPrivileges(value: unknown): string[] {
   return grantPrivilegeMetadata(value)?.privileges ?? ["ALL"];
 }

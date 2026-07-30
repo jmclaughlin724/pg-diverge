@@ -29,7 +29,7 @@ import { finalizeObjects } from "../sql/facts.js";
 import { objectKey } from "../sql/identifiers.js";
 import { shapeHash, stripLocations } from "../sql/object-hash.js";
 import { parseSqlAst } from "../sql/parser.js";
-import { buildCommentObject } from "../sql/privileges.js";
+import { buildCommentObject, commentStatementSql } from "../sql/privileges.js";
 import {
   applyRlsTransition,
   defaultRlsState,
@@ -429,10 +429,7 @@ async function applyExtractedObject(
   if (isNormalizedAmendmentMarker(object)) {
     return await applyNormalizedAmendment(object, objects, context);
   }
-  if (
-    object.ref.kind === "comment" &&
-    (typeof object.metadata.description !== "string" || object.metadata.description.length === 0)
-  ) {
+  if (object.ref.kind === "comment" && typeof object.metadata.description !== "string") {
     objects.delete(object.key);
     return emptyResult();
   }
@@ -1519,10 +1516,10 @@ async function applyRename(
 ): Promise<ReplayResult> {
   const renameType = readString(node.renameType);
   if (renameType === "OBJECT_COLUMN") {
-    return await applyColumnRename(statement, node, objects, file);
+    return await applyColumnRename(statement, node, objects, context, file);
   }
   if (renameType === "OBJECT_TABLE" || renameType === "OBJECT_FOREIGN_TABLE") {
-    return await applyTableRename(statement, node, objects, renameType, file);
+    return await applyTableRename(statement, node, objects, renameType, context, file);
   }
   if (renameType === "OBJECT_INDEX") {
     return await applyIndexRename(statement, node, objects, context, file);
@@ -1538,6 +1535,7 @@ async function applyColumnRename(
   statement: AstStatement,
   node: AstNode,
   objects: Map<string, SchemaObject>,
+  context: ReplayContext,
   file: string
 ): Promise<ReplayResult> {
   const tableName = rangeVarName(node.relation);
@@ -1580,7 +1578,7 @@ async function applyColumnRename(
     column.name === oldName ? { ...column, name: newName } : column
   );
   updateColumnScopedMetadata(objects, tableName, oldName, newName);
-  rebindCommentTargets(objects, (target) =>
+  await rebindCommentTargets(objects, context, (target) =>
     target.kind === "column" &&
     target.schema === tableName.schema &&
     target.table === tableName.name &&
@@ -1603,6 +1601,7 @@ async function applyTableRename(
   node: AstNode,
   objects: Map<string, SchemaObject>,
   renameType: string,
+  context: ReplayContext,
   file: string
 ): Promise<ReplayResult> {
   const oldTable = rangeVarName(node.relation);
@@ -1627,7 +1626,7 @@ async function applyTableRename(
   if (rekeyed.hardFail) {
     return rekeyed;
   }
-  rebindCommentTargets(objects, (target) => {
+  await rebindCommentTargets(objects, context, (target) => {
     if (
       target.kind === "table" &&
       target.schema === oldTable.schema &&
@@ -1856,10 +1855,11 @@ function updateTableShape(
   table.sql = `${table.sql};\n${statement}`;
 }
 
-function rebindCommentTargets(
+async function rebindCommentTargets(
   objects: Map<string, SchemaObject>,
+  context: ReplayContext,
   rebind: (target: CommentTarget) => CommentTarget | undefined
-): void {
+): Promise<void> {
   for (const [key, object] of [...objects.entries()]) {
     if (object.ref.kind !== "comment") {
       continue;
@@ -1877,10 +1877,14 @@ function rebindCommentTargets(
     const rebound = buildCommentObject({
       description: typeof description === "string" || description === null ? description : null,
       ordinal: object.ordinal,
-      sql: object.sql,
+      sql: commentStatementSql(
+        next,
+        typeof description === "string" || description === null ? description : null
+      ),
       target: next,
       ...(object.file === undefined ? {} : { file: object.file }),
     });
+    await finalizeObjects([rebound], { normalize: context.normalize });
     objects.set(rebound.key, rebound);
   }
 }
@@ -2108,6 +2112,9 @@ function shouldRewriteTableReferenceSql(
   if (object.ref.kind === "table" || object.ref.kind === "foreign-table") {
     return false;
   }
+  if (object.ref.kind === "comment") {
+    return true;
+  }
   if (object.ref.table === newTableName) {
     return true;
   }
@@ -2162,8 +2169,45 @@ function renameColumnReferencesInTableScopedSql(
     changed ||= renameAlterTableColumnReferences(node, table, oldName, newName);
     changed ||= renameIndexColumnReferences(node, table, oldName, newName);
     changed ||= renamePolicyColumnReferences(node, table, oldName, newName);
+    changed ||= renameCommentColumnReferences(node, table, oldName, newName);
   });
   return changed;
+}
+
+function commentStatement(node: MutableRecord): MutableRecord | undefined {
+  return mutableRecord(mutableGet(node, "CommentStmt"));
+}
+
+function commentNameItems(comment: MutableRecord): MutableRecord[] {
+  return readArray(mutableGet(mutableRecord(mutableGet(comment, "object")), "items"))
+    .map((item) => mutableRecord(mutableGet(mutableRecord(item), "String")))
+    .filter((item): item is MutableRecord => item !== undefined);
+}
+
+function renameCommentColumnReferences(
+  node: MutableRecord,
+  table: QualifiedName,
+  oldName: string,
+  newName: string
+): boolean {
+  const comment = commentStatement(node);
+  if (!comment || mutableGet(comment, "objtype") !== "OBJECT_COLUMN") {
+    return false;
+  }
+  const items = commentNameItems(comment);
+  const column = items.at(-1);
+  const owner = items.at(-2);
+  const schema = items.at(-3);
+  if (
+    !(column && owner) ||
+    mutableGet(owner, "sval") !== table.name ||
+    (schema !== undefined && mutableGet(schema, "sval") !== table.schema) ||
+    mutableGet(column, "sval") !== oldName
+  ) {
+    return false;
+  }
+  mutableSet(column, "sval", newName);
+  return true;
 }
 
 function renameAlterTableColumnReferences(
@@ -2246,8 +2290,44 @@ function renameRangeVarReferences(ast: unknown, oldTable: QualifiedName, newName
       mutableSet(node, "relname", newName);
       changed = true;
     }
+    changed ||= renameCommentTableReferences(node, oldTable, newName);
   });
   return changed;
+}
+
+function renameCommentTableReferences(
+  node: MutableRecord,
+  oldTable: QualifiedName,
+  newName: string
+): boolean {
+  const comment = commentStatement(node);
+  if (!comment) {
+    return false;
+  }
+  const objtype = mutableGet(comment, "objtype");
+  if (objtype === "OBJECT_TABLE" || objtype === "OBJECT_FOREIGN_TABLE") {
+    const relation = mutableRecord(mutableGet(comment, "object"));
+    if (relation && mutableRangeVarMatches(relation, oldTable)) {
+      mutableSet(relation, "relname", newName);
+      return true;
+    }
+    return false;
+  }
+  if (objtype !== "OBJECT_COLUMN") {
+    return false;
+  }
+  const items = commentNameItems(comment);
+  const owner = items.at(-2);
+  const schema = items.at(-3);
+  if (
+    !owner ||
+    mutableGet(owner, "sval") !== oldTable.name ||
+    (schema !== undefined && mutableGet(schema, "sval") !== oldTable.schema)
+  ) {
+    return false;
+  }
+  mutableSet(owner, "sval", newName);
+  return true;
 }
 
 function visitMutableAst(value: unknown, visit: (node: MutableRecord) => void): void {
