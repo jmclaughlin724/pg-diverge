@@ -65,21 +65,6 @@ def _denied(p: Path) -> bool:
     return any(part in DENIED_PARTS for part in p.parts)
 
 
-def _ensure_cli_built() -> bool:
-    try:
-        subprocess.run(
-            ["npm", "run", "build"],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return (REPO_ROOT / "dist" / "cli.js").is_file()
-
-
 def _resolve(raw: str) -> Path:
     pp = PurePosixPath(raw.strip())
     if pp.is_absolute() or any(s in {"", ".", ".."} for s in pp.parts):
@@ -307,11 +292,11 @@ def repo_safety_scan(
     if v.startswith("database:") or "://" in v:
         raise ToolError("repo_safety_scan stays local; database/URL sources are not allowed")
     cli = REPO_ROOT / "dist" / "cli.js"
-    if not cli.is_file() and not _ensure_cli_built():
+    if not cli.is_file():
         return {
             "ok": False,
             "stdout": None,
-            "stderr": "dist/cli.js is missing and `npm run build` did not produce it",
+            "stderr": "dist/cli.js is missing; run `npm run build` in the repository first",
         }
     args = ["node", "dist/cli.js", "scan", "--reporter", "json"]
     if v:
