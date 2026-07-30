@@ -646,6 +646,8 @@ describe("rls facet merge", () => {
         (operation) => operation.kind === "replace" && operation.ref.kind === "rls"
       )
     ).toBe(true);
+    const sql = renderMigration(plan, { includeHeader: false });
+    expect(sql).toContain("DISABLE ROW LEVEL SECURITY");
   });
 
   it("extracts policy command and predicate metadata", async () => {

@@ -14,6 +14,7 @@ MAX_READ_BYTES = 120_000
 
 DENIED_PARTS = {
     ".git",
+    ".tmp",
     ".venv",
     "__pycache__",
     "dist",

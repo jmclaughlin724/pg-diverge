@@ -169,15 +169,28 @@ export function extractInvoiceRenewal(event: unknown): InvoiceRenewal | null {
   if (invoice === null || property(invoice, "billing_reason") !== "subscription_cycle") {
     return null;
   }
-  const subscription = property(invoice, "subscription");
+  const subscription = invoiceSubscriptionId(invoice);
   const invoiceId = property(invoice, "id");
-  if (typeof subscription !== "string" || subscription.length === 0) {
+  if (subscription === undefined) {
     return null;
   }
   return {
     invoiceId: typeof invoiceId === "string" && invoiceId.length > 0 ? invoiceId : subscription,
     subscriptionId: subscription,
   };
+}
+
+function invoiceSubscriptionId(invoice: object): string | undefined {
+  const parent = asObject(property(invoice, "parent"));
+  if (parent !== null && property(parent, "type") === "subscription_details") {
+    const details = asObject(property(parent, "subscription_details"));
+    const modern = details === null ? undefined : property(details, "subscription");
+    if (typeof modern === "string" && modern.length > 0) {
+      return modern;
+    }
+  }
+  const legacy = property(invoice, "subscription");
+  return typeof legacy === "string" && legacy.length > 0 ? legacy : undefined;
 }
 
 interface SubscriptionRecord {
@@ -303,10 +316,10 @@ async function handleLicenseRetrieval(url: URL, store: WorkerStore): Promise<Res
     return new Response("invalid session_id", { status: 400 });
   }
   const token = await store.get(sessionId);
-  if (token === null) {
-    return jsonResponse({ pending: true }, 404);
-  }
-  return jsonResponse({ license: token });
+  const response =
+    token === null ? jsonResponse({ pending: true }, 404) : jsonResponse({ license: token });
+  response.headers.set("cache-control", "no-store");
+  return response;
 }
 
 async function handleCheckout(
@@ -587,6 +600,7 @@ function handleLicenseCors(
 function withCorsOrigin(response: Response, allowedOrigin: string): Response {
   const headers = new Headers(response.headers);
   headers.set("access-control-allow-origin", allowedOrigin);
+  headers.set("cache-control", "no-store");
   headers.set("vary", "Origin");
   return new Response(response.body, {
     headers,

@@ -48,6 +48,7 @@ REJECTED_PATHS = [
     "node_modules/foo/index.js",
     "secrets/plan.txt",
     "plans/roadmap.md",
+    ".tmp/agent-hooks/c2Vzc2lvbg.json",
 ]
 
 

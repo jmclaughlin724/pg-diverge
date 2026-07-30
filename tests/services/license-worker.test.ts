@@ -100,6 +100,7 @@ describe("license worker", () => {
 
     expect(response.status).toBe(404);
     expect(response.headers.get("access-control-allow-origin")).toBe("https://supaschema.com");
+    expect(response.headers.get("cache-control")).toBe("no-store");
 
     const preflight = await handleLicenseWorker(
       new Request("https://license.workers.dev/license", { method: "OPTIONS" }),
@@ -326,5 +327,40 @@ describe("license worker", () => {
     const renewed = await env.LICENSE_KV.get("cs_test_123");
     expect(renewed).not.toBeNull();
     expect(renewed).not.toBe(original);
+  });
+
+  it("renews from the basil invoice parent subscription shape", async () => {
+    const env = testEnv();
+    await handleLicenseWorker(
+      signedWebhookRequest(completionEvent({ subscription: "sub_123" }), nowSeconds),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+
+    const renewal = await handleLicenseWorker(
+      signedWebhookRequest(
+        {
+          data: {
+            object: {
+              billing_reason: "subscription_cycle",
+              id: "in_basil",
+              parent: {
+                subscription_details: { subscription: "sub_123" },
+                type: "subscription_details",
+              },
+            },
+          },
+          type: "invoice.paid",
+        },
+        nowSeconds + 100
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds + 100,
+      fakeFetch
+    );
+    expect(await renewal.json()).toEqual({ renewed: true, repo: "acme/app" });
   });
 });

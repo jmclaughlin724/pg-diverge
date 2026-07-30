@@ -6,7 +6,7 @@ import {
   defaultRlsState,
   type RlsState,
   renderRlsStateTransition,
-  rlsStateFromMetadata,
+  rlsStateFromObjectMetadata,
 } from "../sql/rls.js";
 import type { TableColumn } from "../sql/table-shape.js";
 import type {
@@ -640,7 +640,7 @@ function renderRlsTransition(
 }
 
 function requiredRlsState(object: SchemaObject): RlsState {
-  const state = rlsStateFromMetadata(object.metadata);
+  const state = rlsStateFromObjectMetadata(object.metadata);
   if (!state) {
     throw new Error(`RLS object ${object.key} has no canonical state`);
   }
