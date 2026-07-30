@@ -31,7 +31,6 @@ benchmarks/results
 advisor-plans/
 .planning/
 .vscode/
-scripts/stripe/
 !scripts/agent-hooks/
 !scripts/agent-hooks/*.mjs
 .agents/*

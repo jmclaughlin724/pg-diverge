@@ -1,7 +1,16 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { ROOT } from "../../../scripts/guards/lib/repository.js";
 import { check } from "../../../scripts/guards/repo-surface/check-public-repo-surface.mjs";
 import { tempGuardRepo } from "../fixture.js";
+
+const privatePaths: { agentPrivate: string[]; heldPrivate: string[] } = JSON.parse(
+  readFileSync(
+    new URL("../../../scripts/guards/repo-surface/private-paths.json", import.meta.url),
+    "utf8"
+  )
+);
 
 describe("public repo surface guard", () => {
   it("allows agent runtime skill targets without a public-surface catalog", () => {
@@ -27,20 +36,58 @@ describe("public repo surface guard", () => {
 
   it("blocks unignored private local paths before they can be staged", () => {
     const root = tempGuardRepo({
-      "scripts/stripe/local.mjs": "export {};\n",
+      "advisor-plans/local.md": "# local\n",
     });
     expect(() => check(root)).toThrow("unignored local files that could be staged");
   });
 
   it("blocks tracked private local paths with an untrack-only repair", () => {
     const root = tempGuardRepo({
-      "scripts/stripe/local.mjs": "export {};\n",
+      ".planning/roadmap.md": "# roadmap\n",
     });
-    execFileSync("git", ["add", "scripts/stripe/local.mjs"], {
+    execFileSync("git", ["add", ".planning/roadmap.md"], {
       cwd: root,
       stdio: "ignore",
     });
     expect(() => check(root)).toThrow("tracked public GitHub exposure");
+  });
+
+  it("blocks the wired stripe catalog tooling left untracked on disk", () => {
+    const root = tempGuardRepo({
+      "scripts/stripe/create-catalog.mjs": "export {};\n",
+    });
+    expect(() => check(root)).toThrow("wired maintainer tooling must be tracked");
+  });
+
+  it("allows the wired stripe catalog tooling once tracked", () => {
+    const root = tempGuardRepo({
+      "scripts/stripe/create-catalog.mjs": "export {};\n",
+    });
+    execFileSync("git", ["add", "scripts/stripe/create-catalog.mjs"], {
+      cwd: root,
+      stdio: "ignore",
+    });
+    expect(() => check(root)).not.toThrow();
+  });
+
+  it("keeps every canonical private prefix covered by .gitignore and wired prefixes clear", () => {
+    const prefixes = [...privatePaths.heldPrivate, ...privatePaths.agentPrivate];
+    expect(prefixes.length).toBeGreaterThan(0);
+    for (const prefix of prefixes) {
+      const probe = `${prefix}parity-probe`;
+      expect(
+        () => execFileSync("git", ["check-ignore", probe], { cwd: ROOT, stdio: "ignore" }),
+        probe
+      ).not.toThrow();
+    }
+    expect(privatePaths.heldPrivate).not.toContain("scripts/stripe/");
+    expect(privatePaths.agentPrivate).not.toContain("scripts/stripe/");
+    expect(() =>
+      execFileSync("git", ["check-ignore", "scripts/stripe/create-catalog.mjs"], {
+        cwd: ROOT,
+        stdio: "ignore",
+      })
+    ).toThrow();
   });
 
   it("blocks wired maintainer tooling left untracked on disk", () => {

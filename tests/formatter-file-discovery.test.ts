@@ -73,12 +73,7 @@ describe("formatter file discovery", () => {
   });
 
   it("keeps local repository and Biome inventory in the shared file owner", () => {
-    expect(LOCAL_BIOME_PATHS).toEqual([
-      "scripts/stripe",
-      ".claude/skills",
-      ".claude/settings.local.json",
-      ".vscode",
-    ]);
+    expect(LOCAL_BIOME_PATHS).toEqual([".claude/skills", ".claude/settings.local.json", ".vscode"]);
     expect(LOCAL_REPOSITORY_FILES).toEqual(
       expect.arrayContaining([".mcp.json", "biome.jsonc", "cclsp.json", "fastmcp.json"])
     );

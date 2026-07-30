@@ -1,4 +1,5 @@
 import { createHmac, createPublicKey, generateKeyPairSync } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { successUrlWithSessionId } from "../../services/license-worker/src/checkout.js";
 import {
@@ -64,6 +65,13 @@ function completionEvent(overrides: Record<string, unknown> = {}) {
 const nowSeconds = 1_800_000_000;
 const fakeFetch: typeof fetch = () =>
   Promise.reject(new Error("unexpected external fetch in test"));
+
+const basilInvoicePaid: {
+  api_version: string;
+  data: { object: { parent: { subscription_details: { subscription: string } } } };
+} = JSON.parse(
+  readFileSync(new URL("./fixtures/invoice-paid.basil.json", import.meta.url), "utf8")
+);
 
 describe("successUrlWithSessionId", () => {
   it("inserts the session query before any URL fragment", () => {
@@ -332,6 +340,8 @@ describe("license worker", () => {
   });
 
   it("renews from the basil invoice parent subscription shape", async () => {
+    expect(basilInvoicePaid.api_version).toBe("2025-03-31.basil");
+    expect(basilInvoicePaid.data.object.parent.subscription_details.subscription).toBe("sub_123");
     const env = testEnv();
     await handleLicenseWorker(
       signedWebhookRequest(completionEvent({ subscription: "sub_123" }), nowSeconds),
@@ -342,22 +352,7 @@ describe("license worker", () => {
     );
 
     const renewal = await handleLicenseWorker(
-      signedWebhookRequest(
-        {
-          data: {
-            object: {
-              billing_reason: "subscription_cycle",
-              id: "in_basil",
-              parent: {
-                subscription_details: { subscription: "sub_123" },
-                type: "subscription_details",
-              },
-            },
-          },
-          type: "invoice.paid",
-        },
-        nowSeconds + 100
-      ),
+      signedWebhookRequest(basilInvoicePaid, nowSeconds + 100),
       env,
       { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
       nowSeconds + 100,

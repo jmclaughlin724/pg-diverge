@@ -12,6 +12,17 @@ from pydantic import Field
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MAX_READ_BYTES = 120_000
 
+PRIVATE_PATHS_FILE = REPO_ROOT / "scripts" / "guards" / "repo-surface" / "private-paths.json"
+
+
+def _load_private_prefixes() -> tuple[str, ...]:
+    data = json.loads(PRIVATE_PATHS_FILE.read_text(encoding="utf8"))
+    prefixes = data["heldPrivate"] + data["agentPrivate"]
+    return tuple(p for p in prefixes if isinstance(p, str) and p.endswith("/"))
+
+
+PRIVATE_PREFIXES = _load_private_prefixes()
+
 DENIED_PARTS = {
     ".git",
     ".tmp",
@@ -62,6 +73,8 @@ def _denied(p: Path) -> bool:
     if n.startswith(".env") or n.endswith(SECRET_SUFFIXES):
         return True
     if n in SECRET_NAMES or n.startswith(".dev.vars."):
+        return True
+    if p.as_posix().startswith(PRIVATE_PREFIXES):
         return True
     return any(part in DENIED_PARTS for part in p.parts)
 

@@ -68,7 +68,9 @@ describe("public agent and editor surfaces", () => {
     expect(
       files.includes("cclsp.json") || stageableFiles(["cclsp.json"]).includes("cclsp.json")
     ).toBe(true);
-    const privatePrefixes = ["advisor-plans/", "scripts/stripe/"];
+    const { heldPrivate: privatePrefixes } = readJson<{ heldPrivate: string[] }>(
+      "scripts/guards/repo-surface/private-paths.json"
+    );
     for (const prefix of privatePrefixes) {
       expect(
         files.some((file) => file.startsWith(prefix)),

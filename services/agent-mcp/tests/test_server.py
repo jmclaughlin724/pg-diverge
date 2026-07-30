@@ -51,6 +51,15 @@ REJECTED_PATHS = [
     ".tmp/agent-hooks/c2Vzc2lvbg.json",
 ]
 
+PRIVATE_PREFIX_READS = [
+    "advisor-plans/pricing.md",
+    ".planning/roadmap.md",
+    ".claude/plans/session.md",
+    ".claude/agents/reviewer.md",
+    ".codex/agents/worker.md",
+    ".vscode/settings.json",
+]
+
 
 def _mcp_configured_servers() -> set[str]:
     """Server names configured in the repo .mcp.json (source of truth)."""
@@ -181,6 +190,33 @@ async def test_read_context_file_rejects_unsafe_paths(bad_path: str) -> None:
             await _read_context(client, bad_path)
     message = str(error.value)
     assert "repo-relative paths only" in message or "path is denied" in message
+
+
+@pytest.mark.parametrize("private_path", PRIVATE_PREFIX_READS)
+async def test_read_context_file_rejects_canonical_private_prefixes(private_path: str) -> None:
+    async with Client(transport=mcp) as client:
+        with pytest.raises(ToolError) as error:
+            await _read_context(client, private_path)
+    assert "path is denied" in str(error.value)
+
+
+def test_private_prefixes_track_canonical_owner() -> None:
+    data = json.loads(
+        (REPO_ROOT / "scripts/guards/repo-surface/private-paths.json").read_text(encoding="utf8")
+    )
+    assert set(server.PRIVATE_PREFIXES) == set(data["heldPrivate"]) | set(data["agentPrivate"])
+    assert "scripts/stripe/" not in server.PRIVATE_PREFIXES
+
+
+async def test_read_context_file_reads_tracked_stripe_catalog_tooling() -> None:
+
+    assert (REPO_ROOT / "scripts/stripe/create-catalog.mjs").is_file()
+
+    async with Client(transport=mcp) as client:
+        payload = await _read_context(client, "scripts/stripe/create-catalog.mjs")
+
+    assert payload["path"] == "scripts/stripe/create-catalog.mjs"
+    assert "recommendedCatalog" in payload["text"]
 
 
 async def test_secret_suffix_variants_are_all_rejected() -> None:

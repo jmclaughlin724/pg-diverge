@@ -1,21 +1,30 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, ok } from "../lib/assertions.js";
 import { run } from "../lib/process.js";
 import { exists, ROOT } from "../lib/repository.js";
 
-const privatePrefixes = [
-  ".claude/agents/",
-  ".claude/plans/",
-  ".codex/agents/",
-  ".planning/",
-  ".vscode/",
-  "advisor-plans/",
-  "scripts/stripe/",
-];
+const privatePaths = JSON.parse(
+  readFileSync(new URL("./private-paths.json", import.meta.url), "utf8")
+);
+assert(
+  Array.isArray(privatePaths.heldPrivate) &&
+    Array.isArray(privatePaths.agentPrivate) &&
+    [...privatePaths.heldPrivate, ...privatePaths.agentPrivate].every(
+      (prefix) => typeof prefix === "string" && prefix.endsWith("/")
+    ),
+  "private-paths.json must define heldPrivate and agentPrivate arrays of trailing-slash prefixes"
+);
+const privatePrefixes = [...privatePaths.heldPrivate, ...privatePaths.agentPrivate];
 
-const wiredPrefixes = ["cloudflare/", "services/agent-mcp/", "services/license-worker/"];
+const wiredPrefixes = [
+  "cloudflare/",
+  "scripts/stripe/",
+  "services/agent-mcp/",
+  "services/license-worker/",
+];
 const wiredArtifactDirs = new Set([
   "__pycache__",
   ".mypy_cache",

@@ -276,9 +276,10 @@ CODEOWNERS is advisory while `required_approving_review_count` is `0` and `requi
 
 This rule owns `.gitignore` content policy. Repo surfaces stay tracked or stay out; the publish surface is Rule 13's `package.json#files` allowlist, never `.gitignore`.
 
-- `.gitignore` covers only build artifacts, env/secret files, OS noise, agent session/personal state (`.claude/plans`, `.claude/agents/`, `.codex/agents/`, `.claude/scheduled_tasks.lock`, `.claude/settings.local.json`), editor state (`.vscode/`), and the held business-sensitive set: `advisor-plans/`, `.planning/`, `scripts/stripe/`. Publishing a held path is an irreversible public-repo exposure and requires an explicit user decision in the same change.
-- `.gitignore` MUST NOT hide source surfaces that tracked files reference. Wired maintainer tooling stays tracked: `services/agent-mcp/`, `services/license-worker/`, `cloudflare/`, `wrangler.toml`, `pyproject.toml`, `uv.lock`, `fastmcp.json`, `.mcp.json`, `.codex/config.toml`, and `.github/workflows/python.yml`.
-- `scripts/guards/repo-surface/check-public-repo-surface.mjs` enforces both invariants: held-private paths are never tracked or stageable, and wired tooling present on disk is always tracked. Changing either set means updating `.gitignore`, the guard, its tests, and this rule in the same change.
+- `.gitignore` covers only build artifacts, env/secret files, OS noise, agent session/personal state (`.claude/plans`, `.claude/agents/`, `.codex/agents/`, `.claude/scheduled_tasks.lock`, `.claude/settings.local.json`), editor state (`.vscode/`), and the held business-sensitive set: `advisor-plans/`, `.planning/`. Publishing a held path is an irreversible public-repo exposure and requires an explicit user decision in the same change.
+- `scripts/guards/repo-surface/private-paths.json` is the machine-readable owner of the private-path set, in two buckets: `heldPrivate` (never public, never agent-MCP-readable: `advisor-plans/`, `.planning/`) and `agentPrivate` (public-repo-private user state: `.claude/plans/`, `.claude/agents/`, `.codex/agents/`, `.vscode/`). The repo-surface guard and the agent-MCP `repo_context_query` read path both consume this file; do not maintain a third private-path list anywhere else.
+- `.gitignore` MUST NOT hide source surfaces that tracked files reference. Wired maintainer tooling stays tracked: `services/agent-mcp/`, `services/license-worker/`, `scripts/stripe/`, `cloudflare/`, `wrangler.toml`, `pyproject.toml`, `uv.lock`, `fastmcp.json`, `.mcp.json`, `.codex/config.toml`, and `.github/workflows/python.yml`.
+- `scripts/guards/repo-surface/check-public-repo-surface.mjs` enforces both invariants: held-private paths are never tracked or stageable, and wired tooling present on disk is always tracked. Changing either set means updating `private-paths.json`, `.gitignore`, the guard, its tests, and this rule in the same change.
 - The `.agents/.claude/.codex` ignore-with-unignore pattern is the deliberate privacy filter for the local skills library (the 2026-06 public-surface reduction); do not collapse it without an explicit user decision.
 
 ## Pull-request workflow
@@ -294,6 +295,10 @@ gh pr merge <number> --squash --delete-branch
 ```
 
 Do not use `--merge`, `--rebase`, `--admin`, `--disable-auto`, local squash merges, force-push workarounds, or repo-local merge wrappers unless the user explicitly approves the exception and the reason is recorded in the PR.
+
+### Multi-session branches
+
+When more than one agent session works the same topic branch, keep one standing coordination note for the branch under `.claude/plans/` that records the current tip and check state, the files each session has in flight, review-thread resolutions the other session must not revert, and which session owns staging and commits. Announce in the note before editing a file another session has in flight, and re-read it before reverting or rewriting any hunk the current session did not author. `.claude/plans/` is agent-private, so the note never reaches the public repo; delete it during post-merge closeout.
 
 ## Post-merge closeout
 

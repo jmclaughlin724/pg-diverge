@@ -1,0 +1,9 @@
+{
+  "heldPrivate": [".planning/", "advisor-plans/"],
+  "agentPrivate": [
+    ".claude/agents/",
+    ".claude/plans/",
+    ".codex/agents/",
+    ".vscode/"
+  ]
+}

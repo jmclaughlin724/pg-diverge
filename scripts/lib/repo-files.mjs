@@ -65,12 +65,7 @@ export const REPOSITORY_DENY_SEGMENTS = new Set([
   "plans",
 ]);
 
-export const LOCAL_BIOME_PATHS = [
-  "scripts/stripe",
-  ".claude/skills",
-  ".claude/settings.local.json",
-  ".vscode",
-];
+export const LOCAL_BIOME_PATHS = [".claude/skills", ".claude/settings.local.json", ".vscode"];
 
 export function isRepositoryContextPath(file) {
   if (LOCAL_REPOSITORY_FILES.includes(file)) {
