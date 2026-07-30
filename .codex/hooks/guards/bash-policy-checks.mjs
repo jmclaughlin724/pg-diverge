@@ -190,6 +190,14 @@ function checkGitWriteSubcommand(gitArgs, ast, tokens, options) {
     return checkGitPush(gitArgs, ast, tokens);
   }
   if (
+    (subcommand === "commit" || subcommand === "merge") &&
+    pipedToCommands(ast, tokens, exitMaskingTruncators)
+  ) {
+    return block(
+      `BLOCKED: piping git ${subcommand} through tail/head hides hook output and replaces the exit status with the truncator's, so a failed ${subcommand} reads as success. Run git ${subcommand} bare; when output must be scoped, redirect to a file and verify the exit code explicitly.`
+    );
+  }
+  if (
     subcommand === "restore" &&
     gitArgs.some((arg) => arg === "-s" || arg.startsWith("--source"))
   ) {
@@ -990,15 +998,41 @@ function isDiagnosticPush(ast, gitPushTokens, args) {
   if (args.some((arg) => arg === "--dry-run" || arg === "-n")) {
     return false;
   }
-  const index = ast.segments.findIndex((segment) => segment.words === gitPushTokens);
+  return pipedToCommands(ast, gitPushTokens, ["awk", "grep", "head", "sed", "tail", "wc"]);
+}
+
+const exitMaskingTruncators = ["head", "tail"];
+
+function pipedToCommands(ast, tokens, names) {
+  const index = ast.segments.findIndex((segment) => segment.words === tokens);
   if (index === -1) {
     return false;
   }
-  const next = ast.segments[index + 1];
-  return (
-    next?.operatorBefore === "|" &&
-    ["awk", "grep", "head", "sed", "tail", "wc"].includes(commandName(next.words))
-  );
+  let next = index + 1;
+  while (next < ast.segments.length && isRedirectFragment(ast.segments[next])) {
+    next += 1;
+  }
+  const segment = ast.segments[next];
+  return segment?.operatorBefore === "|" && names.includes(commandName(segment.words));
+}
+
+function isRedirectFragment(segment) {
+  if (segment.operatorBefore === ">" || segment.operatorBefore === "<") {
+    return true;
+  }
+  return segment.operatorBefore === "&" && segment.words.every(isFdNumber);
+}
+
+function isFdNumber(word) {
+  if (word.length === 0) {
+    return false;
+  }
+  for (const char of word) {
+    if (char < "0" || char > "9") {
+      return false;
+    }
+  }
+  return true;
 }
 
 function stripHeredocs(command) {

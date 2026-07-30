@@ -219,6 +219,7 @@ Upstream sources:
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
 - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.
+- Run `git commit`, `git push`, and merge commands bare. Never pipe them through `tail`, `head`, or another truncator: the pipe hides hook output and replaces the command's exit status with the truncator's, so a failed commit reads as success. When output must be scoped, redirect to a file, verify the exit code explicitly, then read the file. The Bash-safety hook blocks the piped shapes; the `codexExecPolicy` argv grammar cannot express pipes, so this shape is hook-enforced only.
 - Subagents and workers may edit files only inside the active primary checkout. They must not stage, commit, push, switch branches, create branches or worktrees, merge, or open or replace PRs.
 - Only the main agent may stage, commit, push, create or replace a PR, merge, clean up branches, and perform final source-control verification.
 
@@ -320,6 +321,7 @@ Address every PR review comment and failing check before merge, and mark each re
 ## Enforced by
 
 - SessionStart merged-topic detection: `scripts/agent-hooks/merged-branch-state.mjs` (via the shared hook runner) injects post-merge closeout context when the current checkout's unique commits are already tree-contained in `origin/main`, so a squash-merged topic surviving as the active checkout is self-announcing in both Claude and Codex sessions.
+- `.claude/hooks/guards/bash-policy-checks.mjs` blocks `git commit`/`git merge` piped through `tail`/`head` and `git push` piped through output consumers, including when an fd redirection such as `2>&1` sits between the command and the pipe, so hook output and exit status cannot be silently masked.
 - `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, canonical Rule 21 path, retired duplicate rule paths, Bash hook, and PR template stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, repository rulesets, and topics to `.github/repo-policy.json`.

@@ -336,6 +336,36 @@ describe("active-branch policy", () => {
     }
   });
 
+  it("blocks git commit/merge/push piped through output truncators, even behind fd redirections", () => {
+    for (const command of [
+      "git commit -m msg | tail -3",
+      "git commit -m msg 2>&1 | tail -3",
+      "git commit -m msg | head -5",
+      "git merge feature/demo | tail -3",
+      "git merge feature/demo 2>&1 | head -5",
+      "git push origin feature/demo 2>&1 | tail -3",
+      "git push origin feature/demo | tail -3",
+    ]) {
+      expect([command, evaluateBashPolicy(bashPayload(command), {}, sourceOptions).action]).toEqual(
+        [command, "block"]
+      );
+    }
+  });
+
+  it("allows bare git writes, file redirection, dry-run pipes, and read-only pipes", () => {
+    for (const command of [
+      "git commit -m msg",
+      "git commit -m msg > /tmp/commit.log 2>&1",
+      "git push origin feature/demo",
+      "git push origin feature/demo --dry-run | tail -3",
+      "git log | tail -3",
+    ]) {
+      expect([command, evaluateBashPolicy(bashPayload(command), {}, sourceOptions).action]).toEqual(
+        [command, "allow"]
+      );
+    }
+  });
+
   it("still blocks branch forms outside the Rule 21 shapes", () => {
     expect(evaluateBashPolicy(bashPayload("git branch -D main"), {}, sourceOptions).action).toBe(
       "block"
