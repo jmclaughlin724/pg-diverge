@@ -48,7 +48,11 @@ async function gitHubJson(
   if (!response.ok) {
     return { json: null, status: response.status };
   }
-  return { json: await response.json(), status: response.status };
+  try {
+    return { json: await response.json(), status: response.status };
+  } catch {
+    return { json: null, status: response.status };
+  }
 }
 
 export async function exchangeOAuthCode(

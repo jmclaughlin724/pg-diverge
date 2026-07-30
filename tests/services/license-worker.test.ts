@@ -464,6 +464,52 @@ describe("github oauth checkout flow", () => {
       oauthFetch("admin", stripeBodies)
     );
     expect(tampered.status).toBe(400);
+
+    it("rejects a replayed state token and survives a non-JSON exchange response", async () => {
+      const env = testEnv();
+      const stripeBodies: string[] = [];
+      const callbackUrl = `https://license.workers.dev/auth/github/callback?code=oauth-code&state=${stateToken("acme/app", "bundle")}`;
+
+      const first = await handleLicenseWorker(
+        new Request(callbackUrl),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds,
+        oauthFetch("admin", stripeBodies)
+      );
+      expect(first.status).toBe(302);
+      expect(stripeBodies).toHaveLength(1);
+
+      const replay = await handleLicenseWorker(
+        new Request(callbackUrl),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds,
+        oauthFetch("admin", stripeBodies)
+      );
+      expect(replay.status).toBe(400);
+      expect(await replay.text()).toBe("state already used");
+      expect(stripeBodies).toHaveLength(1);
+
+      const malformedFetch: typeof fetch = (input) => {
+        const url = String(input);
+        if (url === "https://github.com/login/oauth/access_token") {
+          return Promise.resolve(new Response("not json", { status: 200 }));
+        }
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      };
+      const malformed = await handleLicenseWorker(
+        new Request(
+          `https://license.workers.dev/auth/github/callback?code=other-code&state=${stateToken("acme/app", "pro")}`
+        ),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds + 100,
+        malformedFetch
+      );
+      expect(malformed.status).toBe(502);
+      expect(stripeBodies).toHaveLength(1);
+    });
     expect(stripeBodies).toHaveLength(0);
   });
 });

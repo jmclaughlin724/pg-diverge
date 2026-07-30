@@ -380,6 +380,11 @@ async function handleOAuthCallback(
   if (state === null || !isValidRepo(state.repo) || !isValidPlan(state.plan)) {
     return new Response("invalid state", { status: 400 });
   }
+  const stateKey = `oauth-state:${stateToken}`;
+  if ((await runtime.licenses.get(stateKey)) !== null) {
+    return new Response("state already used", { status: 400 });
+  }
+  await runtime.licenses.put(stateKey, "1");
   const planPrice = runtime.planCatalog.get(state.plan);
   if (planPrice === undefined) {
     return new Response("unknown plan", { status: 404 });
