@@ -59,6 +59,16 @@ describe("Mintlify docs worker", () => {
     expect(request.url).toBe("https://supaschema.mintlify.dev/.well-known/acme-challenge/token");
   });
 
+  it("strips the checkout session id before proxying to the docs origin", async () => {
+    const fetchMock = setFetchMock(() => Promise.resolve(new Response("ok")));
+
+    await worker.fetch(new Request("https://supaschema.com/license?session_id=cs_test_secret"));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = firstFetchRequest(fetchMock);
+    expect(request.url).toBe("https://supaschema.mintlify.dev/license");
+  });
+
   it("rewrites Mintlify origin redirects to the custom domain", async () => {
     setFetchMock(() =>
       Promise.resolve(Response.redirect("https://supaschema.mintlify.dev/docs/quickstart", 302))

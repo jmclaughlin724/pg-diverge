@@ -59,7 +59,7 @@ SEARCH_FILES = {
 
 def _denied(p: Path) -> bool:
     n = p.name
-    if n == ".env" or n.startswith(".env.") or n.endswith(SECRET_SUFFIXES):
+    if n.startswith(".env") or n.endswith(SECRET_SUFFIXES):
         return True
     if n in SECRET_NAMES or n.startswith(".dev.vars."):
         return True
@@ -338,7 +338,32 @@ def _redact_url_passwords(text: str) -> str:
     return "".join(out)
 
 
+def _redact_quoted_assignments(text: str) -> str:
+    out: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        eq = text.find("=", cursor)
+        if eq == -1:
+            out.append(text[cursor:])
+            break
+        name_start = max(text.rfind(" ", 0, eq) + 1, 0)
+        name = text[name_start:eq]
+        quote = text[eq + 1 : eq + 2]
+        if quote not in ("'", '"') or not any(m in name.upper() for m in SECRET_NAME_MARKERS):
+            out.append(text[cursor : eq + 1])
+            cursor = eq + 1
+            continue
+        close = text.find(quote, eq + 2)
+        if close == -1:
+            out.append(text[cursor:])
+            break
+        out.append(f"{text[cursor:name_start]}{name}={quote}***{quote}")
+        cursor = close + 1
+    return "".join(out)
+
+
 def _redact(text: str) -> str:
+    text = _redact_quoted_assignments(text)
     words = []
     mask_next = False
     for word in _redact_url_passwords(text).split(" "):
@@ -348,7 +373,12 @@ def _redact(text: str) -> str:
             continue
         mask_next = False
         name, separator, value = word.partition("=")
-        if separator and value and any(m in name.upper() for m in SECRET_NAME_MARKERS):
+        if (
+            separator
+            and value
+            and value.strip("\"'") != "***"
+            and any(m in name.upper() for m in SECRET_NAME_MARKERS)
+        ):
             words.append(f"{name}=***")
             continue
         if word.startswith("-") and any(

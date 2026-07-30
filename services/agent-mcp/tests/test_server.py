@@ -201,7 +201,7 @@ async def test_secret_suffix_variants_are_all_rejected() -> None:
 async def test_dotenv_family_is_rejected() -> None:
 
     async with Client(transport=mcp) as client:
-        for path in (".env", ".env.local", ".env.production"):
+        for path in (".env", ".env.local", ".env.production", ".envrc"):
             with pytest.raises(ToolError) as error:
                 await _read_context(client, path)
             assert "path is denied" in str(error.value)
@@ -480,3 +480,5 @@ async def test_session_state_redacts_recorded_commands(
     assert db_password not in evidence[2]["command"]
     assert "--api-key ***" in evidence[2]["command"]
     assert "--token ***" in evidence[2]["command"]
+    assert server._redact(f'TOKEN="to ken" npm test') == "TOKEN=*** npm test".replace("***", '"***"')
+    assert "to ken" not in server._redact("API_SECRET='multi word secret' run")

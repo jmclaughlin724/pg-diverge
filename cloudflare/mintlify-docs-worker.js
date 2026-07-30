@@ -13,6 +13,7 @@ export default {
 
     const upstreamUrl = new URL(request.url);
     upstreamUrl.hostname = DOCS_URL;
+    upstreamUrl.searchParams.delete("session_id");
 
     const proxyRequest = new Request(upstreamUrl, request);
     proxyRequest.headers.set("Host", DOCS_URL);
