@@ -67,13 +67,9 @@ export const REPOSITORY_DENY_SEGMENTS = new Set([
 
 export const LOCAL_BIOME_PATHS = [
   "scripts/stripe",
-  "services/license-worker",
-  "cloudflare",
   ".claude/skills",
   ".claude/settings.local.json",
-  ".mcp.json",
   ".vscode",
-  "fastmcp.json",
 ];
 
 export function isRepositoryContextPath(file) {

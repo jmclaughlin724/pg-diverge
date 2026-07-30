@@ -1,0 +1,22 @@
+name = "supaschema-license-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+CHECKOUT_CANCEL_URL = "https://supaschema.com/pricing"
+CHECKOUT_SUCCESS_URL = "https://supaschema.com/license"
+
+[secrets]
+required = [
+  "STRIPE_PRICE_MAP",
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "SUPASCHEMA_LICENSE_PRIVATE_KEY",
+]
+
+[[kv_namespaces]]
+binding = "CONTRACT_KV"
+
+[[kv_namespaces]]
+binding = "LICENSE_KV"

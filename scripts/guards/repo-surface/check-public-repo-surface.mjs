@@ -13,7 +13,6 @@ const privatePrefixes = [
   ".vscode/",
   "advisor-plans/",
   "scripts/stripe/",
-  "services/license-worker/",
 ];
 
 const wiredPrefixes = ["cloudflare/", "services/agent-mcp/"];

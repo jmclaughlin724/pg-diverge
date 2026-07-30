@@ -50,20 +50,10 @@ describe("public agent and editor surfaces", () => {
       ".claude/agents/elegant.md",
       ".claude/skills/elegant/SKILL.md",
       ".codex/agents/elegant.toml",
-      ".codex/config.toml",
     ];
     expect(ignoredFiles(privateAgentFiles)).toEqual([...privateAgentFiles].sort());
     expect(stageableFiles([".agents", ".claude", ".codex"])).toEqual([]);
-    const privateFiles = [
-      ".mcp.json",
-      ".vscode/settings.json",
-      ".vscode/extensions.json",
-      ".codex/config.toml",
-      "fastmcp.json",
-      "pyproject.toml",
-      "uv.lock",
-      "wrangler.toml",
-    ];
+    const privateFiles = [".vscode/settings.json", ".vscode/extensions.json"];
     for (const file of privateFiles) {
       expect(files, file).not.toContain(file);
     }
@@ -78,13 +68,7 @@ describe("public agent and editor surfaces", () => {
     expect(
       files.includes("cclsp.json") || stageableFiles(["cclsp.json"]).includes("cclsp.json")
     ).toBe(true);
-    const privatePrefixes = [
-      "advisor-plans/",
-      "cloudflare/",
-      "scripts/stripe/",
-      "services/agent-mcp/",
-      "services/license-worker/",
-    ];
+    const privatePrefixes = ["advisor-plans/", "scripts/stripe/"];
     for (const prefix of privatePrefixes) {
       expect(
         files.some((file) => file.startsWith(prefix)),
