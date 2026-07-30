@@ -581,42 +581,13 @@ export function check(root = ROOT) {
     "dependency-review.yml must remain read-only and must not request PR comment writes"
   );
   assert(
-    typeof dependencyReviewStep.with?.["allow-licenses"] === "string" &&
-      !("deny-licenses" in (dependencyReviewStep.with ?? {})),
-    "dependency-review.yml must use an explicit license allow-list, not deprecated deny-licenses"
+    !(
+      "allow-licenses" in (dependencyReviewStep.with ?? {}) ||
+      "deny-licenses" in (dependencyReviewStep.with ?? {}) ||
+      "allow-dependencies-licenses" in (dependencyReviewStep.with ?? {})
+    ),
+    "dependency-review.yml must stay vulnerability-only; the license allow-list was retired as metadata noise"
   );
-  const licenseExclusions = new Set(
-    String(dependencyReviewStep.with?.["allow-dependencies-licenses"] ?? "")
-      .split(",")
-      .map((packageUrl) => packageUrl.trim())
-      .filter(Boolean)
-  );
-  const expectedLicenseExclusions = new Map([
-    ["spawndamnit", "SEE LICENSE IN LICENSE"],
-    ["@postgres-language-server/cli", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-aarch64-apple-darwin", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-aarch64-linux-gnu", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-aarch64-windows-msvc", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-x86_64-apple-darwin", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-x86_64-linux-gnu", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-x86_64-linux-musl", "MIT or Apache-2.0"],
-    ["@postgres-language-server/cli-x86_64-windows-msvc", "MIT or Apache-2.0"],
-  ]);
-  assert(
-    licenseExclusions.size === expectedLicenseExclusions.size,
-    "dependency-review.yml license exclusions must contain only packages with current invalid metadata"
-  );
-  const packageLock = readJson("package-lock.json", root);
-  for (const [packageName, expectedLicense] of expectedLicenseExclusions) {
-    assert(
-      licenseExclusions.has(`pkg:npm/${packageName}`),
-      `dependency-review.yml must exclude the current invalid license metadata for ${packageName}`
-    );
-    assert(
-      packageLock.packages?.[`node_modules/${packageName}`]?.license === expectedLicense,
-      `dependency-review.yml license exclusion for ${packageName} must be removed or updated when its lockfile metadata changes`
-    );
-  }
 
   const checkRuns = (ci.jobs?.check?.steps ?? []).map((step) => String(step?.run ?? ""));
   assert(

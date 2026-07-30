@@ -25,6 +25,7 @@ DENIED_PARTS = {
     "venv",
 }
 SECRET_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
+SECRET_NAMES = {".dev.vars", ".netrc", ".npmrc", ".pgpass", ".pypirc"}
 SEARCH_PREFIXES = (
     "src/",
     "tests/",
@@ -58,6 +59,8 @@ SEARCH_FILES = {
 def _denied(p: Path) -> bool:
     n = p.name
     if n == ".env" or n.startswith(".env.") or n.endswith(SECRET_SUFFIXES):
+        return True
+    if n in SECRET_NAMES or n.startswith(".dev.vars."):
         return True
     return any(part in DENIED_PARTS for part in p.parts)
 
@@ -263,6 +266,19 @@ def repo_context_query(
     raise ToolError("unsupported repo context action")
 
 
+def _scan_source(value: str) -> str:
+    if value in ("empty:", "git:HEAD", "git:INDEX"):
+        return value
+    for prefix in ("dir:", "dump:", "catalog:", "migrations:"):
+        if value.startswith(prefix):
+            rel = _resolve(value[len(prefix) :])
+            return f"{prefix}{rel.as_posix()}"
+    raise ToolError(
+        "unsupported source; use a repo-relative dir:/dump:/catalog:/migrations: path, "
+        "empty:, git:HEAD, or git:INDEX"
+    )
+
+
 @mcp.tool(annotations=READ_ONLY_TOOL)
 def repo_safety_scan(
     source: Annotated[
@@ -275,9 +291,15 @@ def repo_safety_scan(
         raise ToolError("unsafe source value")
     if v.startswith("database:") or "://" in v:
         raise ToolError("repo_safety_scan stays local; database/URL sources are not allowed")
+    cli = REPO_ROOT / "dist" / "cli.js"
+    if not cli.is_file():
+        return {
+            "ok": False,
+            "error": "dist/cli.js is missing; run `npm run build` in the repository first",
+        }
     args = ["node", "dist/cli.js", "scan", "--reporter", "json"]
     if v:
-        args += ["--from", v]
+        args += ["--from", _scan_source(v)]
     r = subprocess.run(args, cwd=REPO_ROOT, capture_output=True, text=True, timeout=60, check=False)
     stdout: Any
     try:
@@ -285,6 +307,44 @@ def repo_safety_scan(
     except json.JSONDecodeError:
         stdout = r.stdout[:MAX_READ_BYTES]
     return {"ok": r.returncode == 0, "stdout": stdout, "stderr": r.stderr[:MAX_READ_BYTES]}
+
+
+SECRET_NAME_MARKERS = ("ACCESS_KEY", "API_KEY", "PASSWORD", "PRIVATE_KEY", "SECRET", "TOKEN")
+
+
+def _redact_url_passwords(text: str) -> str:
+    out: list[str] = []
+    index = 0
+    while True:
+        scheme_at = text.find("://", index)
+        if scheme_at == -1:
+            out.append(text[index:])
+            break
+        at_sign = -1
+        authority_end = scheme_at + 3
+        while authority_end < len(text) and text[authority_end] not in "/?# \t\n\r\"'":
+            if text[authority_end] == "@":
+                at_sign = authority_end
+            authority_end += 1
+        colon = text.find(":", scheme_at + 3, at_sign if at_sign != -1 else authority_end)
+        if at_sign == -1 or colon == -1:
+            out.append(text[index:authority_end])
+            index = authority_end
+            continue
+        out.append(f"{text[index : colon + 1]}***")
+        index = at_sign
+    return "".join(out)
+
+
+def _redact(text: str) -> str:
+    words = []
+    for word in _redact_url_passwords(text).split(" "):
+        name, separator, value = word.partition("=")
+        if separator and value and any(m in name.upper() for m in SECRET_NAME_MARKERS):
+            words.append(f"{name}=***")
+        else:
+            words.append(word)
+    return " ".join(words)
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)
@@ -318,7 +378,11 @@ def session_state(
             if isinstance(item, dict):
                 evidence.append(
                     {
-                        k: item.get(k)
+                        k: (
+                            _redact(str(item.get(k)))
+                            if k in ("command", "summary") and item.get(k) is not None
+                            else item.get(k)
+                        )
                         for k in (
                             "kind",
                             "domains",

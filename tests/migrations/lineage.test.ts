@@ -729,7 +729,6 @@ describe("diff lineage chain gate", () => {
         sync: { targets: {} },
       })
     );
-    await writeFile(schemaFile, "CREATE TABLE public.accounts (id bigint PRIMARY KEY);\n");
     await git(repo, ["init"]);
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "v1"]);
@@ -744,7 +743,7 @@ describe("diff lineage chain gate", () => {
     await git(repo, ["commit", "-m", "v2 with generated closure"]);
 
     await writeFile(
-      join(repo, "migrations", "20260101000000_hand.sql"),
+      join(repo, "migrations", "20261231235959_hand.sql"),
       "ALTER TABLE public.accounts ADD COLUMN email text;\n"
     );
     await writeFile(
@@ -752,9 +751,13 @@ describe("diff lineage chain gate", () => {
       "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text, email text, phone text);\n"
     );
     const result = await cli(["diff", "--name", "tail"], { cwd: repo });
-    expect(result.code, result.stderr).toBe(0);
     expect(result.stderr).not.toContain("SUPA_DIFF_MIGRATIONS_DIRTY");
-    const generated = await readFile(result.stdout.trim(), "utf8");
+    expect(result.stderr).toContain("SUPA_DIFF_LINEAGE_BROKEN");
+
+    const continued = await cli(["diff", "--name", "tail", "--no-check-chain"], { cwd: repo });
+    expect(continued.code, continued.stderr).toBe(0);
+    expect(continued.stderr).not.toContain("SUPA_DIFF_MIGRATIONS_DIRTY");
+    const generated = await readFile(continued.stdout.trim(), "utf8");
     expect(generated).toContain("phone");
     expect(generated).not.toContain("ADD COLUMN email");
   });

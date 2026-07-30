@@ -371,3 +371,98 @@ async def test_status_upstream_all_capabilities_only_advertise_configured_server
             assert item["server"] in configured, (
                 f"{item['server']} flagged configured but missing from .mcp.json"
             )
+
+
+async def test_credential_file_names_are_rejected() -> None:
+
+    secret_paths = [
+        ".npmrc",
+        ".netrc",
+        ".pgpass",
+        ".pypirc",
+        ".dev.vars",
+        ".dev.vars.local",
+        "cloudflare/.dev.vars",
+    ]
+    async with Client(transport=mcp) as client:
+        for path in secret_paths:
+            with pytest.raises(ToolError) as error:
+                await _read_context(client, path)
+            assert "path is denied" in str(error.value)
+
+
+def test_scan_source_containment() -> None:
+    assert server._scan_source("empty:") == "empty:"
+    assert server._scan_source("git:HEAD") == "git:HEAD"
+    assert server._scan_source("git:INDEX") == "git:INDEX"
+    assert server._scan_source("dir:src") == "dir:src"
+    for bad in (
+        "dir:../../outside",
+        "dump:/absolute/path",
+        "catalog:../escape.json",
+        "migrations:/etc/passwd",
+        "dir:.env",
+        "database:postgres://u:p@h/db",
+        "http://example.com",
+    ):
+        with pytest.raises(ToolError):
+            server._scan_source(bad)
+
+
+async def test_repo_safety_scan_reports_missing_dist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "REPO_ROOT", tmp_path)
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool("repo_safety_scan", {"source": "dir:src"})
+    assert result.data["ok"] is False
+    assert "npm run build" in result.data["error"]
+
+
+async def test_session_state_redacts_recorded_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "REPO_ROOT", tmp_path)
+    session_id = "redaction-ledger"
+    db_password = "pass" + "word"
+    stripe_key = "sk_live_" + "abc123"
+    db_url = "postgres://user:" + db_password + "@host"
+    encoded = base64.urlsafe_b64encode(session_id.encode()).decode().rstrip("=")
+    state_dir = tmp_path / ".tmp" / "agent-hooks"
+    state_dir.mkdir(parents=True)
+    (state_dir / f"{encoded}.json").write_text(
+        json.dumps(
+            {
+                "turns": {
+                    "turn-1": {
+                        "evidence": [
+                            {
+                                "kind": "command",
+                                "domains": ["test"],
+                                "outcome": "pass",
+                                "summary": "tests passed",
+                                "command": f"SUPASCHEMA_DATABASE_URL={db_url} npm test",
+                            },
+                            {
+                                "kind": "command",
+                                "domains": ["guard"],
+                                "outcome": "pass",
+                                "summary": f"STRIPE_SECRET_KEY={stripe_key} npm run guard",
+                                "command": "npm run guard",
+                            },
+                        ]
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    async with Client(transport=mcp) as client:
+        result = await client.call_tool("session_state", {"session_id": session_id})
+
+    evidence = result.data["evidence"]
+    assert db_password not in evidence[0]["command"]
+    assert "postgres://user:***@host" in evidence[0]["command"]
+    assert stripe_key not in evidence[1]["summary"]
+    assert evidence[0]["summary"] == "tests passed"

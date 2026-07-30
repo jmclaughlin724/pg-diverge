@@ -341,6 +341,7 @@ describe("active-branch policy", () => {
       "git commit -m msg | tail -3",
       "git commit -m msg 2>&1 | tail -3",
       "git commit -m msg | head -5",
+      "git commit -m msg | tee /tmp/commit.log | tail -3",
       "git merge feature/demo | tail -3",
       "git merge feature/demo 2>&1 | head -5",
       "git push origin feature/demo 2>&1 | tail -3",
@@ -359,6 +360,7 @@ describe("active-branch policy", () => {
       "git push origin feature/demo",
       "git push origin feature/demo --dry-run | tail -3",
       "git log | tail -3",
+      "git log | tee /tmp/log | tail -3",
     ]) {
       expect([command, evaluateBashPolicy(bashPayload(command), {}, sourceOptions).action]).toEqual(
         [command, "allow"]

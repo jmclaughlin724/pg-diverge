@@ -249,6 +249,12 @@ export function check(root = ROOT) {
       `.codex/config.toml must enable ${serverName}`
     );
   }
+  for (const serverName of registryOnlyServers) {
+    assert(
+      codexServers[serverName]?.enabled === false,
+      `.codex/config.toml must explicitly disable registry-only server ${serverName}`
+    );
+  }
   for (const serverName of disallowedServers) {
     assert(!codexServers[serverName], `.codex/config.toml must not expose ${serverName} MCP`);
   }

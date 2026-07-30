@@ -16,6 +16,16 @@ const privatePrefixes = [
 ];
 
 const wiredPrefixes = ["cloudflare/", "services/agent-mcp/"];
+const wiredArtifactDirs = new Set([
+  "__pycache__",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".venv",
+  "coverage",
+  "dist",
+  "node_modules",
+]);
 const wiredExact = new Set([
   ".codex/config.toml",
   ".github/workflows/python.yml",
@@ -41,7 +51,7 @@ function bulletList(files) {
   return files.map((file) => `- ${file}`).join("\n");
 }
 
-function untrackedWiredSurfaces(tracked, root) {
+function untrackedWiredSurfaces(tracked, stageable, ignored, root) {
   const missing = [];
   for (const file of wiredExact) {
     if (exists(file, root) && !tracked.includes(file)) {
@@ -49,11 +59,32 @@ function untrackedWiredSurfaces(tracked, root) {
     }
   }
   for (const prefix of wiredPrefixes) {
-    if (exists(prefix, root) && !tracked.some((file) => file.startsWith(prefix))) {
-      missing.push(prefix);
+    if (exists(prefix, root)) {
+      missing.push(...untrackedUnderPrefix(prefix, tracked, stageable, ignored));
     }
   }
   return missing;
+}
+
+function untrackedUnderPrefix(prefix, tracked, stageable, ignored) {
+  const missing = [
+    ...stageable.filter((file) => file.startsWith(prefix)),
+    ...ignored.filter((file) => file.startsWith(prefix) && isWiredSource(prefix, file)),
+  ];
+  if (
+    !(
+      tracked.some((file) => file.startsWith(prefix)) ||
+      missing.some((file) => file.startsWith(prefix))
+    )
+  ) {
+    missing.push(prefix);
+  }
+  return missing;
+}
+
+function isWiredSource(prefix, file) {
+  const firstSegment = file.slice(prefix.length).split("/", 1)[0] ?? "";
+  return !wiredArtifactDirs.has(firstSegment);
 }
 
 function failureMessage({ trackedPrivate, stageablePrivate, untrackedWired }) {
@@ -96,10 +127,11 @@ export function check(root = ROOT) {
   const stageable = gitPaths(["ls-files", "--others", "--exclude-standard"], root).filter((file) =>
     exists(file, root)
   );
+  const ignored = gitPaths(["ls-files", "--others", "--ignored", "--exclude-standard"], root);
 
   const trackedPrivate = tracked.filter(isPrivateSurface);
   const stageablePrivate = stageable.filter(isPrivateSurface);
-  const untrackedWired = untrackedWiredSurfaces(tracked, root);
+  const untrackedWired = untrackedWiredSurfaces(tracked, stageable, ignored, root);
 
   assert(
     trackedPrivate.length === 0 && stageablePrivate.length === 0 && untrackedWired.length === 0,

@@ -1008,12 +1008,22 @@ function pipedToCommands(ast, tokens, names) {
   if (index === -1) {
     return false;
   }
-  let next = index + 1;
-  while (next < ast.segments.length && isRedirectFragment(ast.segments[next])) {
-    next += 1;
+  let cursor = index;
+  while (cursor + 1 < ast.segments.length) {
+    const next = ast.segments[cursor + 1];
+    if (isRedirectFragment(next)) {
+      cursor += 1;
+      continue;
+    }
+    if (next?.operatorBefore !== "|") {
+      return false;
+    }
+    if (names.includes(commandName(next.words))) {
+      return true;
+    }
+    cursor += 1;
   }
-  const segment = ast.segments[next];
-  return segment?.operatorBefore === "|" && names.includes(commandName(segment.words));
+  return false;
 }
 
 function isRedirectFragment(segment) {

@@ -39,6 +39,7 @@ interface CheckoutCompletion {
   plan: string;
   repo: string;
   sessionId: string;
+  subscriptionId?: string;
 }
 
 interface LicenseWorkerRuntime {
@@ -136,7 +137,66 @@ export function extractCheckoutCompletion(event: unknown): CheckoutCompletion | 
   if (typeof plan !== "string" || !isValidPlan(plan)) {
     return null;
   }
-  return { plan, repo, sessionId };
+  const subscription = property(session, "subscription");
+  return {
+    plan,
+    repo,
+    sessionId,
+    ...(typeof subscription === "string" && subscription.length > 0
+      ? { subscriptionId: subscription }
+      : {}),
+  };
+}
+
+interface InvoiceRenewal {
+  invoiceId: string;
+  subscriptionId: string;
+}
+
+export function extractInvoiceRenewal(event: unknown): InvoiceRenewal | null {
+  const root = asObject(event);
+  if (root === null || property(root, "type") !== "invoice.paid") {
+    return null;
+  }
+  const data = asObject(property(root, "data"));
+  const invoice = data === null ? null : asObject(property(data, "object"));
+  if (invoice === null || property(invoice, "billing_reason") !== "subscription_cycle") {
+    return null;
+  }
+  const subscription = property(invoice, "subscription");
+  const invoiceId = property(invoice, "id");
+  if (typeof subscription !== "string" || subscription.length === 0) {
+    return null;
+  }
+  return {
+    invoiceId: typeof invoiceId === "string" && invoiceId.length > 0 ? invoiceId : subscription,
+    subscriptionId: subscription,
+  };
+}
+
+interface SubscriptionRecord {
+  plan: string;
+  repo: string;
+  sessionId: string;
+}
+
+function parseSubscriptionRecord(raw: string): SubscriptionRecord | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const record = asObject(parsed);
+    if (record === null) {
+      return null;
+    }
+    const sessionId = property(record, "sessionId");
+    const repo = property(record, "repo");
+    const plan = property(record, "plan");
+    if (typeof sessionId !== "string" || typeof repo !== "string" || typeof plan !== "string") {
+      return null;
+    }
+    return { plan, repo, sessionId };
+  } catch {
+    return null;
+  }
 }
 
 async function handleWebhook(
@@ -162,20 +222,44 @@ async function handleWebhook(
     return new Response("invalid payload", { status: 400 });
   }
   const completion = extractCheckoutCompletion(event);
-  if (completion === null) {
-    return jsonResponse({ ignored: true });
+  if (completion !== null) {
+    const existing = await runtime.licenses.get(completion.sessionId);
+    if (existing !== null) {
+      return jsonResponse({ idempotent: true, issued: true });
+    }
+    const token = issueLicenseToken(
+      licenseClaimsFor(completion.repo, completion.plan, nowSeconds),
+      runtime.privateKey
+    );
+    await runtime.licenses.put(completion.sessionId, token);
+    if (completion.subscriptionId !== undefined) {
+      const record: SubscriptionRecord = {
+        plan: completion.plan,
+        repo: completion.repo,
+        sessionId: completion.sessionId,
+      };
+      await runtime.licenses.put(
+        `subscription:${completion.subscriptionId}`,
+        JSON.stringify(record)
+      );
+    }
+    return jsonResponse({ issued: true, repo: completion.repo });
   }
-
-  const existing = await runtime.licenses.get(completion.sessionId);
-  if (existing !== null) {
-    return jsonResponse({ idempotent: true, issued: true });
+  const renewal = extractInvoiceRenewal(event);
+  if (renewal !== null) {
+    const raw = await runtime.licenses.get(`subscription:${renewal.subscriptionId}`);
+    const record = raw === null ? null : parseSubscriptionRecord(raw);
+    if (record === null) {
+      return jsonResponse({ ignored: true });
+    }
+    const token = issueLicenseToken(
+      licenseClaimsFor(record.repo, record.plan, nowSeconds),
+      runtime.privateKey
+    );
+    await runtime.licenses.put(record.sessionId, token);
+    return jsonResponse({ renewed: true, repo: record.repo });
   }
-  const token = issueLicenseToken(
-    licenseClaimsFor(completion.repo, completion.plan, nowSeconds),
-    runtime.privateKey
-  );
-  await runtime.licenses.put(completion.sessionId, token);
-  return jsonResponse({ issued: true, repo: completion.repo });
+  return jsonResponse({ ignored: true });
 }
 
 async function handleLicenseRetrieval(url: URL, store: WorkerStore): Promise<Response> {
@@ -432,10 +516,51 @@ export function handleLicenseWorker(
   if (url.pathname === "/webhook") {
     return handleWebhook(request, runtime, nowSeconds);
   }
-  if (url.pathname === "/license" && request.method === "GET") {
-    return handleLicenseRetrieval(url, runtime.licenses);
+  if (url.pathname === "/license") {
+    return handleLicenseCors(request, url, runtime);
   }
   return Promise.resolve(new Response("not found", { status: 404 }));
+}
+
+// The success page lives on the docs origin (for example supaschema.com)
+// while this Worker serves /license from its own origin, so browser retrieval
+// needs an explicit CORS allowance scoped to the configured success origin.
+function handleLicenseCors(
+  request: Request,
+  url: URL,
+  runtime: LicenseWorkerRuntime
+): Promise<Response> {
+  const allowedOrigin = new URL(runtime.successUrl).origin;
+  if (request.method === "OPTIONS") {
+    return Promise.resolve(
+      new Response(null, {
+        headers: {
+          "access-control-allow-headers": "content-type",
+          "access-control-allow-methods": "GET, OPTIONS",
+          "access-control-allow-origin": allowedOrigin,
+          "access-control-max-age": "86400",
+        },
+        status: 204,
+      })
+    );
+  }
+  if (request.method !== "GET") {
+    return Promise.resolve(new Response("not found", { status: 404 }));
+  }
+  return handleLicenseRetrieval(url, runtime.licenses).then((response) =>
+    withCorsOrigin(response, allowedOrigin)
+  );
+}
+
+function withCorsOrigin(response: Response, allowedOrigin: string): Response {
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", allowedOrigin);
+  headers.set("vary", "Origin");
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
 }
 
 const worker = {

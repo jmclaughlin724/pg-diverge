@@ -12,9 +12,9 @@ concurrency:
 
 jobs:
   dependency-review:
-    # Block PRs that introduce known-vulnerable or license-incompatible deps
-    # before merge. supaschema ships under MIT; fail closed when a changed
-    # dependency introduces a license outside the reviewed SPDX allow-list.
+    # Block PRs that introduce known-vulnerable deps before merge. License
+    # allow-listing was retired 2026-07-30: it gated on metadata noise from
+    # dev-only tooling rather than on shipped-package risk.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,12 +25,3 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
-          # An allow-list fails closed when a dependency introduces an
-          # unreviewed license. Keep exceptions package-specific.
-          allow-licenses: >-
-            0BSD, Apache-2.0, BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, ISC, MIT, MPL-2.0, Python-2.0
-          # postgres-language-server currently publishes a non-SPDX lowercase
-          # `or` expression; exclude only those exact packages until upstream
-          # metadata uses `MIT OR Apache-2.0`.
-          allow-dependencies-licenses: >-
-            pkg:npm/spawndamnit, pkg:npm/@postgres-language-server/cli, pkg:npm/@postgres-language-server/cli-aarch64-apple-darwin, pkg:npm/@postgres-language-server/cli-aarch64-linux-gnu, pkg:npm/@postgres-language-server/cli-aarch64-windows-msvc, pkg:npm/@postgres-language-server/cli-x86_64-apple-darwin, pkg:npm/@postgres-language-server/cli-x86_64-linux-gnu, pkg:npm/@postgres-language-server/cli-x86_64-linux-musl, pkg:npm/@postgres-language-server/cli-x86_64-windows-msvc

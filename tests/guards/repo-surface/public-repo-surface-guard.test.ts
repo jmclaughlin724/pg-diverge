@@ -68,4 +68,31 @@ describe("public repo surface guard", () => {
     });
     expect(() => check(root)).not.toThrow();
   });
+
+  it("blocks untracked helpers beneath a partially tracked wired prefix", () => {
+    const root = tempGuardRepo({
+      "services/agent-mcp/pyproject.toml": "[project]\n",
+      "services/agent-mcp/helper.py": "x = 1\n",
+    });
+    execFileSync("git", ["add", "services/agent-mcp/pyproject.toml"], {
+      cwd: root,
+      stdio: "ignore",
+    });
+    expect(() => check(root)).toThrow("services/agent-mcp/helper.py");
+  });
+
+  it("blocks ignored non-artifact files beneath a wired prefix but allows artifacts", () => {
+    const root = tempGuardRepo({
+      ".gitignore": "services/agent-mcp/local-only.py\nservices/agent-mcp/.venv/\n",
+      "services/agent-mcp/pyproject.toml": "[project]\n",
+      "services/agent-mcp/local-only.py": "x = 1\n",
+      "services/agent-mcp/.venv/lib/python3.12/site-packages/pkg.py": "x = 1\n",
+    });
+    execFileSync("git", ["add", "services/agent-mcp/pyproject.toml"], {
+      cwd: root,
+      stdio: "ignore",
+    });
+    expect(() => check(root)).toThrow("services/agent-mcp/local-only.py");
+    expect(() => check(root)).not.toThrow("services/agent-mcp/.venv");
+  });
 });

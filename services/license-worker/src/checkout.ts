@@ -37,8 +37,11 @@ export function parsePlanCatalog(raw: string): PlanCatalog {
 }
 
 export function successUrlWithSessionId(baseUrl: string): string {
-  const separator = baseUrl.includes("?") ? "&" : "?";
-  return `${baseUrl}${separator}session_id={CHECKOUT_SESSION_ID}`;
+  const fragmentIndex = baseUrl.indexOf("#");
+  const base = fragmentIndex === -1 ? baseUrl : baseUrl.slice(0, fragmentIndex);
+  const fragment = fragmentIndex === -1 ? "" : baseUrl.slice(fragmentIndex);
+  const separator = base.includes("?") ? "&" : "?";
+  return `${base}${separator}session_id={CHECKOUT_SESSION_ID}${fragment}`;
 }
 
 export interface CheckoutRequest {
