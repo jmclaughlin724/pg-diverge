@@ -24,7 +24,7 @@ import {
 const SHOULD_CREATE_GITHUB_RELEASE_IF =
   "steps.preflight.outputs.SUPASCHEMA_RELEASE_SHOULD_CREATE_GITHUB_RELEASE == 'true'";
 
-function assertWorkflowBasics(parsed) {
+function assertWorkflowBasics(parsed, allowedActionPatterns) {
   for (const [file, { doc, raw }] of parsed) {
     assert(
       permissionsAreReadOnly(doc?.permissions),
@@ -48,6 +48,12 @@ function assertWorkflowBasics(parsed) {
       assert(
         isSha40(ref),
         `${file}: \`uses: ${uses}\` must pin a full 40-character commit SHA (got "${ref}")`
+      );
+      assert(
+        action.startsWith("actions/") ||
+          action.startsWith("github/") ||
+          allowedActionPatterns.has(`${action}@*`),
+        `${file}: third-party action ${action} must be allowlisted in .github/repo-policy.json selectedActions.patterns_allowed`
       );
       if (action === "actions/checkout") {
         assert(
@@ -473,8 +479,11 @@ export function check(root = ROOT) {
     parsed.set(file, { doc: parseYaml(raw), raw });
   }
   const packageJson = readJson("package.json", root);
+  const allowedActionPatterns = new Set(
+    readJson(".github/repo-policy.json", root).actions?.selectedActions?.patterns_allowed ?? []
+  );
 
-  assertWorkflowBasics(parsed);
+  assertWorkflowBasics(parsed, allowedActionPatterns);
 
   for (const file of ["ci.yml", "dependency-review.yml", "docs.yml"]) {
     const doc = parsed.get(file)?.doc;

@@ -208,6 +208,7 @@ export function check(root = ROOT) {
     "selected Actions policy must allow GitHub-owned actions and deny the broad verified-creator set"
   );
   const requiredThirdPartyActions = [
+    "astral-sh/setup-uv@*",
     "codecov/codecov-action@*",
     "ossf/scorecard-action@*",
     "oven-sh/setup-bun@*",
