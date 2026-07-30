@@ -15,7 +15,7 @@ const privatePrefixes = [
   "scripts/stripe/",
 ];
 
-const wiredPrefixes = ["cloudflare/", "services/agent-mcp/"];
+const wiredPrefixes = ["cloudflare/", "services/agent-mcp/", "services/license-worker/"];
 const wiredArtifactDirs = new Set([
   "__pycache__",
   ".mypy_cache",
@@ -127,7 +127,7 @@ function failureMessage({ trackedPrivate, stageablePrivate, untrackedWired }) {
 }
 
 export function check(root = ROOT) {
-  const tracked = gitPaths(["ls-files", "--cached"], root).filter((file) => exists(file, root));
+  const tracked = gitPaths(["ls-files", "--cached"], root);
   const stageable = gitPaths(["ls-files", "--others", "--exclude-standard"], root).filter((file) =>
     exists(file, root)
   );

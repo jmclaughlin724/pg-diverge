@@ -2179,7 +2179,9 @@ function commentStatement(node: MutableRecord): MutableRecord | undefined {
 }
 
 function commentNameItems(comment: MutableRecord): MutableRecord[] {
-  return readArray(mutableGet(mutableRecord(mutableGet(comment, "object")), "items"))
+  const object = mutableRecord(mutableGet(comment, "object"));
+  const list = mutableRecord(mutableGet(object, "List")) ?? object;
+  return readArray(mutableGet(list, "items"))
     .map((item) => mutableRecord(mutableGet(mutableRecord(item), "String")))
     .filter((item): item is MutableRecord => item !== undefined);
 }
@@ -2306,12 +2308,18 @@ function renameCommentTableReferences(
   }
   const objtype = mutableGet(comment, "objtype");
   if (objtype === "OBJECT_TABLE" || objtype === "OBJECT_FOREIGN_TABLE") {
-    const relation = mutableRecord(mutableGet(comment, "object"));
-    if (relation && mutableRangeVarMatches(relation, oldTable)) {
-      mutableSet(relation, "relname", newName);
-      return true;
+    const items = commentNameItems(comment);
+    const owner = items.at(-1);
+    const schema = items.at(-2);
+    if (
+      !owner ||
+      mutableGet(owner, "sval") !== oldTable.name ||
+      (schema !== undefined && mutableGet(schema, "sval") !== oldTable.schema)
+    ) {
+      return false;
     }
-    return false;
+    mutableSet(owner, "sval", newName);
+    return true;
   }
   if (objtype !== "OBJECT_COLUMN") {
     return false;

@@ -43,7 +43,10 @@ export async function extractCatalogModel(options: ExtractCatalogOptions): Promi
   const catalogPool: CatalogPool = Object.assign(pool, {
     schemaFilter: managedSchemaFilterFor({
       schemas: {
-        include: config.schemas.include,
+        include:
+          config.schemas.include.length === 0
+            ? config.schemas.include
+            : [...new Set([...config.schemas.include, ...overlaySchemas])],
         exclude: config.schemas.exclude.filter((schema) => !overlaySchemas.includes(schema)),
       },
     }),

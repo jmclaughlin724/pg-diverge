@@ -99,7 +99,17 @@ export function overlayRetainedSchemas(config: SupaschemaConfig): string[] {
   if (config.managedSchemaOverlays.length === 0) {
     return [];
   }
-  return config.schemas.exclude.filter((schema) => config.managedSchemas.includes(schema));
+  const retained = config.schemas.exclude.filter((schema) =>
+    config.managedSchemas.includes(schema)
+  );
+  if (config.schemas.include.length > 0) {
+    retained.push(
+      ...config.managedSchemas.filter(
+        (schema) => !(config.schemas.include.includes(schema) || retained.includes(schema))
+      )
+    );
+  }
+  return retained;
 }
 
 export function retainCatalogOverlayObjects(

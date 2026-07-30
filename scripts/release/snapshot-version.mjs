@@ -27,6 +27,24 @@ export function stampVersion(packageJson, packageJsonPath, lockfilePath, version
   writeFileSync(lockfilePath, `${JSON.stringify(lockfile, null, 2)}\n`);
 }
 
+export function probePublished(spec, cwd) {
+  try {
+    return (
+      execFileSync("npm", ["view", spec, "version"], {
+        cwd,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim() === spec.slice(spec.lastIndexOf("@") + 1)
+    );
+  } catch (error) {
+    const detail = `${error.stderr?.toString?.() ?? ""}${error.message ?? ""}`;
+    if (detail.includes("E404")) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 function isDigit(char) {
   return char >= "0" && char <= "9";
 }
@@ -44,17 +62,7 @@ function main() {
   const version = computeSnapshotVersion(packageJson.version, sha);
   const spec = `${packageJson.name}@${version}`;
 
-  let published = false;
-  try {
-    published =
-      execFileSync("npm", ["view", spec, "version"], {
-        cwd: ROOT,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim() === version;
-  } catch {
-    published = false;
-  }
+  const published = probePublished(spec, ROOT);
 
   stampVersion(packageJson, packageJsonPath, lockfilePath, version);
 

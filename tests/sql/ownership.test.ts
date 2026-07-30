@@ -18,6 +18,18 @@ describe("overlayRetainedSchemas", () => {
     expect(overlayRetainedSchemas(config)).toEqual(["auth"]);
   });
 
+  it("retains managed schemas omitted from a non-empty include filter", () => {
+    expect(
+      overlayRetainedSchemas(
+        resolveConfig({
+          managedSchemas: ["auth"],
+          managedSchemaOverlays: ["policy:auth.select_own:accounts"],
+          schemas: { exclude: [], include: ["public"] },
+        })
+      )
+    ).toEqual(["auth"]);
+  });
+
   it("keeps SQL exclusion when no overlays are configured", () => {
     expect(
       overlayRetainedSchemas(
