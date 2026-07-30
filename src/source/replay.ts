@@ -29,6 +29,7 @@ import { finalizeObjects } from "../sql/facts.js";
 import { objectKey } from "../sql/identifiers.js";
 import { shapeHash, stripLocations } from "../sql/object-hash.js";
 import { parseSqlAst } from "../sql/parser.js";
+import { buildCommentObject } from "../sql/privileges.js";
 import {
   applyRlsTransition,
   defaultRlsState,
@@ -41,6 +42,7 @@ import { ignoredStatementTags, sourceIntentStatementTags } from "../sql/support.
 import { columnConstraintSyntheses } from "../sql/table-constraints.js";
 import { canonicalColumnType, canonicalizeRegclassLiterals } from "../sql/table-shape.js";
 import type {
+  CommentTarget,
   Diagnostic,
   ObjectKind,
   ObjectRef,
@@ -1578,6 +1580,14 @@ async function applyColumnRename(
     column.name === oldName ? { ...column, name: newName } : column
   );
   updateColumnScopedMetadata(objects, tableName, oldName, newName);
+  rebindCommentTargets(objects, (target) =>
+    target.kind === "column" &&
+    target.schema === tableName.schema &&
+    target.table === tableName.name &&
+    target.name === oldName
+      ? { ...target, name: newName }
+      : undefined
+  );
   return await rebindTableScopedColumnSql(
     objects,
     tableName,
@@ -1617,6 +1627,18 @@ async function applyTableRename(
   if (rekeyed.hardFail) {
     return rekeyed;
   }
+  rebindCommentTargets(objects, (target) => {
+    if (
+      target.kind === "table" &&
+      target.schema === oldTable.schema &&
+      target.name === oldTable.name
+    ) {
+      return { ...target, name: newName };
+    }
+    if (target.table === oldTable.name && (target.schema ?? "public") === oldTable.schema) {
+      return { ...target, table: newName };
+    }
+  });
   return await rebindTableReferences(objects, oldTable, newName, file, statement.text);
 }
 
@@ -1832,6 +1854,35 @@ function updateTableShape(
   table.metadata = { ...table.metadata, canonicalShape: nextShape };
   table.hash = shapeHash(nextShape, table.key, table.ref);
   table.sql = `${table.sql};\n${statement}`;
+}
+
+function rebindCommentTargets(
+  objects: Map<string, SchemaObject>,
+  rebind: (target: CommentTarget) => CommentTarget | undefined
+): void {
+  for (const [key, object] of [...objects.entries()]) {
+    if (object.ref.kind !== "comment") {
+      continue;
+    }
+    const target = commentTarget(object);
+    if (target === undefined) {
+      continue;
+    }
+    const next = rebind(target);
+    if (next === undefined) {
+      continue;
+    }
+    objects.delete(key);
+    const description = object.metadata.description;
+    const rebound = buildCommentObject({
+      description: typeof description === "string" || description === null ? description : null,
+      ordinal: object.ordinal,
+      sql: object.sql,
+      target: next,
+      ...(object.file === undefined ? {} : { file: object.file }),
+    });
+    objects.set(rebound.key, rebound);
+  }
 }
 
 function updateColumnScopedMetadata(

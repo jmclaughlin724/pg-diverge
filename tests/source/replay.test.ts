@@ -685,6 +685,50 @@ ALTER TABLE app.accounts RENAME TO customers;`,
     expect(table(model, "view:app.account_ids")?.sql).toContain("customers");
   });
 
+  it("rebinds a column comment identity when the column is renamed", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_commented_column.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, email text);
+COMMENT ON COLUMN app.accounts.email IS 'contact';
+ALTER TABLE app.accounts RENAME COLUMN email TO contact_email;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const comments = model.objects.filter((object) => object.ref.kind === "comment");
+    expect(comments).toHaveLength(1);
+    expect(comments[0]?.metadata.commentTarget).toMatchObject({
+      kind: "column",
+      name: "contact_email",
+      table: "accounts",
+    });
+  });
+
+  it("rebinds table and column comment identities when the table is renamed", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_commented_table.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, email text);
+COMMENT ON TABLE app.accounts IS 'directory';
+COMMENT ON COLUMN app.accounts.email IS 'contact';
+ALTER TABLE app.accounts RENAME TO customers;`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const targets = model.objects
+      .filter((object) => object.ref.kind === "comment")
+      .map((object) => object.metadata.commentTarget);
+    expect(targets).toHaveLength(2);
+    expect(targets).toContainEqual(expect.objectContaining({ kind: "table", name: "customers" }));
+    expect(targets).toContainEqual(
+      expect.objectContaining({ kind: "column", name: "email", table: "customers" })
+    );
+  });
+
   it("hard-fails unsupported rename types without returning partial objects", async () => {
     const model = await extractMigrations([
       [
