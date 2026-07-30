@@ -416,7 +416,7 @@ async def test_repo_safety_scan_reports_missing_dist(
     async with Client(transport=mcp) as client:
         result = await client.call_tool("repo_safety_scan", {"source": "dir:src"})
     assert result.data["ok"] is False
-    assert "npm run build" in result.data["error"]
+    assert "npm run build" in result.data["stderr"]
 
 
 async def test_session_state_redacts_recorded_commands(

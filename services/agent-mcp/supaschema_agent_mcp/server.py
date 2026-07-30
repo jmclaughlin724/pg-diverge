@@ -295,7 +295,8 @@ def repo_safety_scan(
     if not cli.is_file():
         return {
             "ok": False,
-            "error": "dist/cli.js is missing; run `npm run build` in the repository first",
+            "stdout": None,
+            "stderr": "dist/cli.js is missing; run `npm run build` in the repository first",
         }
     args = ["node", "dist/cli.js", "scan", "--reporter", "json"]
     if v:
