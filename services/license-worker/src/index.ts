@@ -7,7 +7,13 @@ import {
   parsePlanCatalog,
   successUrlWithSessionId,
 } from "./checkout.js";
-import { isEntitled, issueLicenseToken, licenseClaimsFor, verifyLicenseToken } from "./issue.js";
+import {
+  canonicalRepo,
+  isEntitled,
+  issueLicenseToken,
+  licenseClaimsFor,
+  verifyLicenseToken,
+} from "./issue.js";
 import type { WorkerStore } from "./store.js";
 import type { StripeFetch } from "./stripe-api.js";
 import { verifyStripeSignature } from "./webhook.js";
@@ -277,6 +283,9 @@ async function handleLicenseRetrieval(url: URL, store: WorkerStore): Promise<Res
   if (sessionId === null || sessionId.length === 0) {
     return new Response("missing session_id", { status: 400 });
   }
+  if (sessionId.includes(":")) {
+    return new Response("invalid session_id", { status: 400 });
+  }
   const token = await store.get(sessionId);
   if (token === null) {
     return jsonResponse({ pending: true }, 404);
@@ -358,7 +367,7 @@ function contractStorageKey(url: URL): { key: string; repo: string } | null {
   if (!(isValidRepo(repo) && isValidRegistryName(name))) {
     return null;
   }
-  return { key: `contract:${repo}:${name}`, repo };
+  return { key: `contract:${canonicalRepo(repo)}:${name}`, repo };
 }
 
 function isRegistryAuthorized(

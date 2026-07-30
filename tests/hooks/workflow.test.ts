@@ -157,5 +157,11 @@ describe("generated-artifact Bash wrappers", () => {
       { operation: "delete", path: contract },
       { operation: "write", path: join(project, "backup") },
     ]);
+    expect(targets("install source.sql database.types.ts")).toEqual([
+      { operation: "write", path: contract },
+    ]);
+    expect(targets("install -d database/types")).toEqual([
+      { operation: "write", path: join(project, "database", "types") },
+    ]);
   });
 });

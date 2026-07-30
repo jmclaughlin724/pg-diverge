@@ -5,7 +5,11 @@ import {
   handleLicenseWorker,
   type LicenseWorkerEnv,
 } from "../../services/license-worker/src/index.js";
-import { isEntitled, licenseClaimsFor } from "../../services/license-worker/src/issue.js";
+import {
+  isEntitled,
+  issueLicenseToken,
+  licenseClaimsFor,
+} from "../../services/license-worker/src/issue.js";
 import { createMemoryStore } from "../../services/license-worker/src/store.js";
 
 const webhookSecret = "whsec_test_secret";
@@ -143,6 +147,44 @@ describe("license worker", () => {
     );
     expect(await asyncPaid.json()).toEqual({ issued: true, repo: "acme/app" });
     expect(await env.LICENSE_KV.get("cs_test_123")).not.toBeNull();
+  });
+
+  it("rejects internal storage keys as license retrieval session ids", async () => {
+    const env = testEnv();
+    await env.LICENSE_KV.put(
+      "subscription:sub_123",
+      JSON.stringify({ plan: "pro", repo: "acme/app", sessionId: "cs_test_123" })
+    );
+
+    const response = await handleLicenseWorker(
+      new Request("https://worker.test/license?session_id=subscription:sub_123"),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe("invalid session_id");
+  });
+
+  it("stores contracts under the canonical repository casing", async () => {
+    const env = testEnv();
+    const token = issueLicenseToken(licenseClaimsFor("Acme/App", "pro", nowSeconds), privateKey);
+    const put = await handleLicenseWorker(
+      new Request("https://worker.test/contracts?repo=Acme/App&name=schema", {
+        body: JSON.stringify({ schemas: {} }),
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        method: "PUT",
+      }),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+
+    expect(await put.json()).toEqual({ stored: true });
+    expect(await env.CONTRACT_KV.get("contract:acme/app:schema")).not.toBeNull();
   });
 
   it("repairs a missing subscription mapping on a webhook retry", async () => {

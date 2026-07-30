@@ -197,7 +197,7 @@ function bashArtifactTargets(command: string, projectDir: string): ArtifactEditT
 
 const shellCommandSeparators = new Set(["&&", "||", ";", "|"]);
 const shellRedirections = new Set([">", ">>", ">|"]);
-const directWriteCommands = new Set(["rm", "mv", "cp", "touch", "truncate", "tee"]);
+const directWriteCommands = new Set(["cp", "install", "mv", "rm", "tee", "touch", "truncate"]);
 const shellAssignmentCommands = new Set(["declare", "export", "local", "readonly", "typeset"]);
 
 function mvMoveOperands(
@@ -277,7 +277,9 @@ function directWriteTargets(
     })
     .map((token) => expandShellVariables(token, variables));
   const targetDirectory =
-    command === "cp" || command === "mv" ? shellTargetDirectory(args, variables) : undefined;
+    command === "cp" || command === "mv" || command === "install"
+      ? shellTargetDirectory(args, variables)
+      : undefined;
   if (command === "mv") {
     const { destination, sources } = mvMoveOperands(operands, targetDirectory);
     const targets: ArtifactEditTarget[] = sources.map((path) => ({
@@ -288,6 +290,14 @@ function directWriteTargets(
       targets.push({ operation: "write", path: resolveHookTarget(projectDir, destination) });
     }
     return targets;
+  }
+  if (command === "install" && (args.includes("-d") || args.includes("--directory"))) {
+    return operands.map(
+      (path): ArtifactEditTarget => ({
+        operation: "write",
+        path: resolveHookTarget(projectDir, path),
+      })
+    );
   }
   const selected = directWriteOperands(command, operands, targetDirectory);
   return selected.map(
@@ -333,7 +343,7 @@ function directWriteOperands(
   if (targetDirectory !== undefined) {
     return command === "mv" ? [...operands, targetDirectory] : [targetDirectory];
   }
-  if (command === "cp") {
+  if (command === "cp" || command === "install") {
     return operands.slice(-1);
   }
   return operands;
