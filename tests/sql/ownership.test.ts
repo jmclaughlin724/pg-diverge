@@ -124,20 +124,21 @@ describe("retainCatalogOverlayObjects", () => {
     expect(retained).toEqual([overlayPolicy]);
   });
 
-  it("matches configured overlays for table-scoped comment keys", () => {
+  it("matches configured overlays for table-scoped comment keys in both forms", () => {
     const columnComment = buildCommentObject({
       description: "contact",
       ordinal: 2,
       sql: "COMMENT ON COLUMN auth.accounts.email IS 'contact'",
       target: { kind: "column", name: "email", schema: "auth", table: "accounts" },
     });
-    const overlayConfig = resolveConfig({
-      managedSchemas: ["auth"],
-      managedSchemaOverlays: [columnComment.key],
-      schemas: { exclude: ["auth"], include: [] },
-    });
-
-    expect(columnComment.key).not.toContain(":accounts");
-    expect(isManagedSchemaOverlay(columnComment, overlayConfig)).toBe(true);
+    const legacyKey = columnComment.key.slice(0, -":accounts".length);
+    for (const key of [columnComment.key, legacyKey]) {
+      const overlayConfig = resolveConfig({
+        managedSchemas: ["auth"],
+        managedSchemaOverlays: [key],
+        schemas: { exclude: ["auth"], include: [] },
+      });
+      expect(isManagedSchemaOverlay(columnComment, overlayConfig)).toBe(true);
+    }
   });
 });

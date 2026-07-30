@@ -216,7 +216,7 @@ async function collectConstraintComments(pool: CatalogQuery): Promise<SchemaObje
 
 async function collectExtensionComments(pool: CatalogQuery): Promise<SchemaObject[]> {
   const rows = await pool.query(`
-    select e.extname as name, d.description as description
+    select e.extname as name, n.nspname as schema, d.description as description
     from pg_description d
     join pg_extension e on e.oid = d.objoid
     join pg_namespace n on n.oid = e.extnamespace
@@ -227,11 +227,13 @@ async function collectExtensionComments(pool: CatalogQuery): Promise<SchemaObjec
   `);
   return rows.rows.map((row) => {
     const name = text(row.name);
-    return commentObject(
+    const object = commentObject(
       { kind: "extension", name },
       `EXTENSION ${quoteIdent(name)}`,
       text(row.description)
     );
+    object.metadata.schema = text(row.schema);
+    return object;
   });
 }
 
