@@ -270,6 +270,15 @@ Required repository ruleset:
 
 CODEOWNERS is advisory while `required_approving_review_count` is `0` and `require_code_owner_reviews` is `false`. Do not describe code-owner review as enforced unless those settings change.
 
+## Repository surface policy
+
+This rule owns `.gitignore` content policy. Repo surfaces stay tracked or stay out; the publish surface is Rule 13's `package.json#files` allowlist, never `.gitignore`.
+
+- `.gitignore` covers only build artifacts, env/secret files, OS noise, agent session/personal state (`.claude/plans`, `.claude/agents/`, `.codex/agents/`, `.claude/scheduled_tasks.lock`, `.claude/settings.local.json`), editor state (`.vscode/`), and the held business-sensitive set: `advisor-plans/`, `.planning/`, `scripts/stripe/`. Publishing a held path is an irreversible public-repo exposure and requires an explicit user decision in the same change.
+- `.gitignore` MUST NOT hide source surfaces that tracked files reference. Wired maintainer tooling stays tracked: `services/agent-mcp/`, `services/license-worker/`, `cloudflare/`, `wrangler.toml`, `pyproject.toml`, `uv.lock`, `fastmcp.json`, `.mcp.json`, `.codex/config.toml`, and `.github/workflows/python.yml`.
+- `scripts/guards/repo-surface/check-public-repo-surface.mjs` enforces both invariants: held-private paths are never tracked or stageable, and wired tooling present on disk is always tracked. Changing either set means updating `.gitignore`, the guard, its tests, and this rule in the same change.
+- The `.agents/.claude/.codex` ignore-with-unignore pattern is the deliberate privacy filter for the local skills library (the 2026-06 public-surface reduction); do not collapse it without an explicit user decision.
+
 ## Pull-request workflow
 
 Use this path for every commit intended for `main`.
