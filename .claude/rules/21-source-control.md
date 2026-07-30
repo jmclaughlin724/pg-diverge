@@ -206,6 +206,7 @@ Upstream sources:
 - Deleting a merged topic branch is routine cleanup, not a gated action. Once a topic PR is proved merged, delete the local branch as part of post-merge closeout without waiting for separate approval.
 - Every update to `main` uses a protected pull request. Direct pushes to `main` are prohibited.
 - The checkout and branch active when work begins are the only authorized workspace by default. Do not create a worktree, enter a linked worktree, or move work to another checkout.
+- Keep one active topic branch at a time. Do not create a separate branch off the active branch (no stacked branches); follow-up commits and review fixes for an open PR stay on its branch. Once the active branch's PR is squash-merged, the branch is archived: complete the post-merge closeout below and delete it locally and remotely before any new work, which starts on a fresh topic from `origin/main`.
 - When the current user prompt explicitly requests a topic branch, run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
 - When continuing an existing remote topic branch that has no local ref, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
 - When returning to a topic branch that already exists locally — for example to address PR review findings after working elsewhere — use `git switch --no-guess <branch>`. `--no-guess` is required: Git's default DWIM behavior would otherwise create and track a new local branch from a unique `origin/<branch>`, bypassing the fetch and base-proof path above. Verify the local ref matches its pushed remote first so the return cannot silently resurrect stale work.
@@ -283,7 +284,7 @@ This rule owns `.gitignore` content policy. Repo surfaces stay tracked or stay o
 
 Use this path for every commit intended for `main`.
 
-Enter the topic checkout before the first commit, so local `main` never carries unpublished work. Use the transactional branch paths defined above. Commit, push, and open the PR only from that topic checkout. Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch with commits outside the requested task.
+Enter the topic checkout before the first commit, so local `main` never carries unpublished work. Use the transactional branch paths defined above. Commit, push, and open the PR only from that topic checkout. A topic branch lives for exactly one PR cycle: while its PR is open, follow-up commits and review fixes stay on it; after squash merge it is archived, never reused for a follow-up PR. Do not open a PR from a long-lived, release-scoped, conflict-producing, or overbroad branch with commits outside the requested task.
 
 Merge PRs with GitHub's squash merge path:
 
@@ -302,7 +303,7 @@ After a PR merge, complete local and remote cleanup before starting another task
 3. Verify the merge commit is contained by `origin/main`, the remote head is absent, the local head is absent, and the active checkout is no longer the merged topic branch.
 4. Verify local `main` equals `origin/main` when the merge operated from the primary checkout.
 
-Squash merging creates a new commit and leaves the original topic commits outside `main` ancestry. An ahead count on a surviving squash-merged topic branch does not mean its content is unmerged; it means cleanup is incomplete. Delete the merged topic branch instead of resetting, force-pushing, or continuing work on it.
+Squash merging creates a new commit and leaves the original topic commits outside `main` ancestry. An ahead count on a surviving squash-merged topic branch does not mean its content is unmerged; it means cleanup is incomplete. Archive the merged topic branch — delete it locally and remotely — instead of resetting, force-pushing, or continuing work on it.
 
 STOP before further edits when the merge succeeds but local cleanup fails. Preserve any dirty work, prove the PR and tree state, and obtain explicit approval for destructive recovery rather than silently carrying new work on the merged branch.
 

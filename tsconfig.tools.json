@@ -29,6 +29,7 @@
     "cloudflare/**/*.js",
     "scripts/**/*.js",
     "scripts/**/*.mjs",
+    "services/**/*.ts",
     "src/**/*.ts"
   ]
 }

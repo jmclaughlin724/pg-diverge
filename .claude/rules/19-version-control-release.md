@@ -31,7 +31,7 @@ Changesets may collect PR-local release intent and may drive `npm run release:ve
 
 When asked to create or update to version `<version>`, do all of this in the same change:
 
-1. Inspect `git status --short --branch` and preserve unrelated dirty work.
+1. Inspect `git status --short --branch`; Rule 21 owns preservation of unrelated dirty work.
 2. Update `package.json` and `package-lock.json` together. Prefer `npm version <version> --no-git-tag-version` unless both files already carry the requested version.
 3. Add or update the top `CHANGELOG.md` entry as `## <version> (YYYY-MM-DD)` with concise, source-grounded release notes.
 4. Keep `action.yml` `inputs.version.default` unset; the action runner defaults from `package.json`. Keep exact-version validation text generic and do not duplicate `<version>` in the runner message.
@@ -44,13 +44,10 @@ A version bump that only changes `package.json` and `package-lock.json` is incom
 
 ## Git and PR transaction
 
-When the user asks to stage, commit, push, or create a PR after a version bump:
+Rule 21 owns the git transaction: dirty-worktree preservation, task-owned staging, hooks, the single-active-branch lifecycle, and PR creation and mergeability verification. When the user asks to stage, commit, push, or create a PR after a version bump, this rule adds only the release specifics:
 
-- Stage only task-owned hunks after reviewing `git diff`.
 - Use a release-specific commit message such as `Prepare release <version>` or `Enforce release version surfaces`.
-- Let local hooks run. Do not use `--no-verify`.
-- Push only the intended release branch after Rule 21 verifies the active checkout; never reuse a merged topic branch.
-- Before creating or replacing a PR, complete Rule 21 PR preflight and mergeability verification.
+- Push only the intended release branch after Rule 21 verifies the active checkout.
 - When asked for a PR, create a non-draft PR unless the user explicitly says draft. Include the version, changelog, release-surface parity, base branch, head branch, commit count, changed-file count, mergeability result, and verification commands in the PR body.
 - If CI fails on a version-coupled surface, fix the source drift and add or update guard coverage so the same miss fails locally next time.
 
@@ -68,7 +65,7 @@ When the user asks to stage, commit, push, or create a PR after a version bump:
 - The release checklist and release PR checklist require `$update` after versioning and before release verification or merge. The audit is semantic and is reviewed through its changed owners and validation evidence; do not add a forgeable marker file or brittle prose guard to simulate execution proof.
 - Rule 09 release workflow checks, Rule 13 package checks, Rule 14 editing safety, Rule 18 generated-surface sync, and Rule 21 source-control checks remain required where their surfaces are touched.
 
-STOP if a version bump leaves any known release surface on the previous version, skips `$update` after the final release-owned changes, adds a GitHub Action default version, uses an npm dist-tag for action execution, omits the changelog top entry, publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`, commits generated mirrors without syncing from the canonical owner, bypasses hooks, weakens a guard/test to make the release pass, reuses a merged topic branch, or opens a PR before Rule 21 scope and mergeability verification passes.
+STOP if a version bump leaves any known release surface on the previous version, skips `$update` after the final release-owned changes, adds a GitHub Action default version, uses an npm dist-tag for action execution, omits the changelog top entry, publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`, commits generated mirrors without syncing from the canonical owner, bypasses hooks, weakens a guard/test to make the release pass, or opens a PR before Rule 21 scope and mergeability verification passes.
 
 ## Verification
 
