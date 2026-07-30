@@ -181,6 +181,7 @@ export function extractInvoiceRenewal(event: unknown): InvoiceRenewal | null {
 }
 
 interface SubscriptionRecord {
+  intervalDays: number;
   plan: string;
   repo: string;
   sessionId: string;
@@ -196,10 +197,19 @@ function parseSubscriptionRecord(raw: string): SubscriptionRecord | null {
     const sessionId = property(record, "sessionId");
     const repo = property(record, "repo");
     const plan = property(record, "plan");
+    const intervalDays = property(record, "intervalDays");
     if (typeof sessionId !== "string" || typeof repo !== "string" || typeof plan !== "string") {
       return null;
     }
-    return { plan, repo, sessionId };
+    return {
+      intervalDays:
+        typeof intervalDays === "number" && Number.isInteger(intervalDays) && intervalDays >= 1
+          ? intervalDays
+          : 365,
+      plan,
+      repo,
+      sessionId,
+    };
   } catch {
     return null;
   }
@@ -217,6 +227,7 @@ async function ensureSubscriptionRecord(
     return;
   }
   const record: SubscriptionRecord = {
+    intervalDays: runtime.planCatalog.get(completion.plan)?.intervalDays ?? 365,
     plan: completion.plan,
     repo: completion.repo,
     sessionId: completion.sessionId,
@@ -254,7 +265,12 @@ async function handleWebhook(
       return jsonResponse({ idempotent: true, issued: true });
     }
     const token = issueLicenseToken(
-      licenseClaimsFor(completion.repo, completion.plan, nowSeconds),
+      licenseClaimsFor(
+        completion.repo,
+        completion.plan,
+        nowSeconds,
+        runtime.planCatalog.get(completion.plan)?.intervalDays ?? 365
+      ),
       runtime.privateKey
     );
     await runtime.licenses.put(completion.sessionId, token);
@@ -269,7 +285,7 @@ async function handleWebhook(
       return jsonResponse({ ignored: true });
     }
     const token = issueLicenseToken(
-      licenseClaimsFor(record.repo, record.plan, nowSeconds),
+      licenseClaimsFor(record.repo, record.plan, nowSeconds, record.intervalDays),
       runtime.privateKey
     );
     await runtime.licenses.put(record.sessionId, token);

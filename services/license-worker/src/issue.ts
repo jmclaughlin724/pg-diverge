@@ -95,7 +95,12 @@ export function isEntitled(
   );
 }
 
-export function licenseClaimsFor(repo: string, plan: string, nowSeconds: number): LicenseClaims {
-  const oneYear = 365 * 24 * 60 * 60;
-  return { exp: nowSeconds + oneYear, plan, repo: canonicalRepo(repo) };
+export function licenseClaimsFor(
+  repo: string,
+  plan: string,
+  nowSeconds: number,
+  intervalDays = 365
+): LicenseClaims {
+  const secondsPerDay = 24 * 60 * 60;
+  return { exp: nowSeconds + intervalDays * secondsPerDay, plan, repo: canonicalRepo(repo) };
 }

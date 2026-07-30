@@ -1,4 +1,4 @@
-import { createHmac, generateKeyPairSync } from "node:crypto";
+import { createHmac, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { successUrlWithSessionId } from "../../services/license-worker/src/checkout.js";
 import {
@@ -9,6 +9,7 @@ import {
   isEntitled,
   issueLicenseToken,
   licenseClaimsFor,
+  verifyLicenseToken,
 } from "../../services/license-worker/src/issue.js";
 import { createMemoryStore } from "../../services/license-worker/src/store.js";
 
@@ -209,6 +210,63 @@ describe("license worker", () => {
       repo: "acme/app",
       sessionId: "cs_test_123",
     });
+  });
+
+  it("matches subscription token expiry to the plan's paid interval", async () => {
+    const env = testEnv();
+    env.STRIPE_PRICE_MAP = JSON.stringify({
+      pro: { intervalDays: 30, mode: "subscription", price: "price_monthly" },
+    });
+
+    const completion = await handleLicenseWorker(
+      signedWebhookRequest(
+        completionEvent({
+          metadata: { plan: "pro", repo: "acme/app" },
+          subscription: "sub_monthly",
+        }),
+        nowSeconds
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+    expect(await completion.json()).toEqual({ issued: true, repo: "acme/app" });
+
+    const publicKeyPem = createPublicKey(privateKey)
+      .export({ format: "pem", type: "spki" })
+      .toString();
+    const issued = await env.LICENSE_KV.get("cs_test_123");
+    if (issued === null) {
+      throw new Error("expected a minted token");
+    }
+    const claims = verifyLicenseToken(issued, publicKeyPem);
+    expect(claims?.exp).toBe(nowSeconds + 30 * 24 * 60 * 60);
+
+    await handleLicenseWorker(
+      signedWebhookRequest(
+        {
+          data: {
+            object: {
+              billing_reason: "subscription_cycle",
+              id: "in_renew_monthly",
+              subscription: "sub_monthly",
+            },
+          },
+          type: "invoice.paid",
+        },
+        nowSeconds
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+    const renewed = await env.LICENSE_KV.get("cs_test_123");
+    if (renewed === null) {
+      throw new Error("expected a renewed token");
+    }
+    expect(verifyLicenseToken(renewed, publicKeyPem)?.exp).toBe(nowSeconds + 30 * 24 * 60 * 60);
   });
 
   it("renews a subscription token from invoice.paid under the original session id", async () => {
