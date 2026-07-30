@@ -6,7 +6,7 @@ The signing/verification logic and the full self-serve loop are implemented here
 
 ## Routes
 
-- `GET /checkout?repo=acme/app&plan=bundle` creates a repo-bound Checkout Session and redirects to its hosted Stripe URL. The price and mode come from the operator `STRIPE_PRICE_MAP`, never the query, so a buyer cannot self-select a price. Dynamic payment methods are used; `payment_method_types` is never sent. The `success_url` carries `{CHECKOUT_SESSION_ID}` so the buyer lands on a page that can call `/license`.
+- `GET /checkout?repo=acme/app&plan=bundle` creates a repo-bound Checkout Session and redirects to its hosted Stripe URL. The price and mode come from the operator `STRIPE_PRICE_MAP`, never the query, so a buyer cannot self-select a price. Subscription-mode entries must also set `intervalDays` (the paid-through period in days, such as `30` for a monthly price); the issued token's expiry matches that interval on first payment and each `invoice.paid` renewal, while one-time `payment` prices default to 365 days. Dynamic payment methods are used; `payment_method_types` is never sent. The `success_url` carries `{CHECKOUT_SESSION_ID}` so the buyer lands on a page that can call `/license`.
 - `GET /contracts?repo=acme/app&name=main` retrieves a schema contract when the request carries an unexpired repo-bound license token in `Authorization`.
 - `PUT /contracts?repo=acme/app&name=main` stores a schema contract when the request carries an unexpired repo-bound token in `Authorization`. The payload must match the `SchemaContract` JSON shape from `src/contract/schema.ts`.
 - `DELETE /contracts?repo=acme/app&name=main` deletes a schema contract when the request carries an unexpired repo-bound license token in `Authorization`.
