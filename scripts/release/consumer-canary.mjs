@@ -126,7 +126,7 @@ function cloneConsumer(repo, ref, destination, token) {
   });
 }
 
-function runGates(consumerRoot, manager, gates) {
+function runGates(consumerRoot, manager, gates, env) {
   const results = [];
   for (const gate of gates) {
     const argv = gateArgv(gate);
@@ -135,7 +135,7 @@ function runGates(consumerRoot, manager, gates) {
         ? ["corepack", ["pnpm", "exec", "supaschema", ...argv]]
         : ["npx", ["--yes", "supaschema", ...argv]];
     try {
-      execFileSync(command, args, { cwd: consumerRoot, stdio: ["ignore", "pipe", "pipe"] });
+      execFileSync(command, args, { cwd: consumerRoot, env, stdio: ["ignore", "pipe", "pipe"] });
       results.push({ gate, ok: true });
     } catch {
       results.push({ gate, ok: false });
@@ -154,15 +154,24 @@ function main() {
     : resolveSpec(options.spec, workRoot);
 
   cloneConsumer(options.repo, options.ref, consumerRoot, token);
+  const { CONSUMER_CANARY_TOKEN: _canaryToken, ...consumerEnv } = process.env;
   const manager = detectPackageManager(consumerRoot);
   if (manager === "pnpm") {
     applyPnpmOverride(join(consumerRoot, "pnpm-workspace.yaml"), spec);
-    execFileSync("corepack", pnpmInstallArgs(), { cwd: consumerRoot, stdio: "inherit" });
+    execFileSync("corepack", pnpmInstallArgs(), {
+      cwd: consumerRoot,
+      env: consumerEnv,
+      stdio: "inherit",
+    });
   } else {
-    execFileSync("npm", npmInstallArgs(spec), { cwd: consumerRoot, stdio: "inherit" });
+    execFileSync("npm", npmInstallArgs(spec), {
+      cwd: consumerRoot,
+      env: consumerEnv,
+      stdio: "inherit",
+    });
   }
 
-  const results = runGates(consumerRoot, manager, options.gates);
+  const results = runGates(consumerRoot, manager, options.gates, consumerEnv);
   for (const result of results) {
     console.log(`${result.ok ? "PASS" : "FAIL"} ${result.gate}`);
   }

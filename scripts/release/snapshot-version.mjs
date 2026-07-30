@@ -15,6 +15,18 @@ export function computeSnapshotVersion(baseVersion, sha) {
   return `${major}.${minor}.${patch + 1}-dev.${sha}`;
 }
 
+export function stampVersion(packageJson, packageJsonPath, lockfilePath, version) {
+  packageJson.version = version;
+  writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+
+  const lockfile = JSON.parse(readFileSync(lockfilePath, "utf8"));
+  lockfile.version = version;
+  if (lockfile.packages !== undefined && lockfile.packages[""] !== undefined) {
+    lockfile.packages[""].version = version;
+  }
+  writeFileSync(lockfilePath, `${JSON.stringify(lockfile, null, 2)}\n`);
+}
+
 function isDigit(char) {
   return char >= "0" && char <= "9";
 }
@@ -44,17 +56,7 @@ function main() {
     published = false;
   }
 
-  if (!published) {
-    packageJson.version = version;
-    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
-
-    const lockfile = JSON.parse(readFileSync(lockfilePath, "utf8"));
-    lockfile.version = version;
-    if (lockfile.packages !== undefined && lockfile.packages[""] !== undefined) {
-      lockfile.packages[""].version = version;
-    }
-    writeFileSync(lockfilePath, `${JSON.stringify(lockfile, null, 2)}\n`);
-  }
+  stampVersion(packageJson, packageJsonPath, lockfilePath, version);
 
   console.log(`version=${version}`);
   console.log(`published=${published}`);
