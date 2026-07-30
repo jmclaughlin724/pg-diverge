@@ -563,7 +563,7 @@ async function diffWorkspacePreflightDiagnostics(
   const diagnostics: Diagnostic[] = [];
   const blockingMigrations =
     options.replace === undefined
-      ? await dirtyClosureMigrations(dirtyEntries, migrationsDir, options.from)
+      ? await dirtyClosureMigrations(dirtyEntries, migrationsDir, options.from, options.schema)
       : [];
   if (blockingMigrations.length > 0) {
     diagnostics.push(
@@ -630,26 +630,23 @@ async function diffWorkspacePreflightDiagnostics(
   return diagnostics;
 }
 
-// Git baselines miss every uncommitted migration file, so any dirty migration
-// blocks generation. A migrations: replay baseline reads those same files as
-// its before-state, so only lineage-bearing (generated) files must still be
-// closed or pruned first; a hand-authored tail is legitimate replay input.
 async function dirtyClosureMigrations(
   dirtyEntries: GitStatusEntry[],
   migrationsDir: string,
-  from: string
+  from: string,
+  schema: string | undefined
 ): Promise<GitStatusEntry[]> {
   const dirty = dirtyEntries.filter((entry) => entryTouchesPath(entry, migrationsDir));
   if (from.startsWith("git:")) {
     return dirty;
   }
-  const generated: GitStatusEntry[] = [];
+  const blocking: GitStatusEntry[] = [];
   for (const entry of dirty) {
-    if (await hasLineageMarker(entry.path)) {
-      generated.push(entry);
+    if (schema !== undefined || (await hasLineageMarker(entry.path))) {
+      blocking.push(entry);
     }
   }
-  return generated;
+  return blocking;
 }
 
 async function hasLineageMarker(path: string): Promise<boolean> {

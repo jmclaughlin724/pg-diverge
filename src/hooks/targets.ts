@@ -280,22 +280,14 @@ function directWriteTargets(
     command === "cp" || command === "mv" ? shellTargetDirectory(args, variables) : undefined;
   if (command === "mv") {
     const { destination, sources } = mvMoveOperands(operands, targetDirectory);
-    return [
-      ...sources.map(
-        (path): ArtifactEditTarget => ({
-          operation: "delete",
-          path: resolveHookTarget(projectDir, path),
-        })
-      ),
-      ...(destination === undefined
-        ? []
-        : [
-            {
-              operation: "write" as const,
-              path: resolveHookTarget(projectDir, destination),
-            },
-          ]),
-    ];
+    const targets: ArtifactEditTarget[] = sources.map((path) => ({
+      operation: "delete",
+      path: resolveHookTarget(projectDir, path),
+    }));
+    if (destination !== undefined) {
+      targets.push({ operation: "write", path: resolveHookTarget(projectDir, destination) });
+    }
+    return targets;
   }
   const selected = directWriteOperands(command, operands, targetDirectory);
   return selected.map(
@@ -558,8 +550,6 @@ function consumeQuotedChar(
   return { current: current + char, index, quote };
 }
 
-// A backslash only escapes shell-special characters; before any other char it
-// is a literal path separator so Windows drive paths (C:\Users\...) survive.
 const shellEscapable = new Set([
   " ",
   "\t",

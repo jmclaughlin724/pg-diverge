@@ -142,9 +142,6 @@ function appendChangedAndDroppedOperations(
   }
 }
 
-// Catalog and normalized-source rls objects carry {rlsEnabled, rlsForced},
-// while the raw extract path keeps a single AT_* transition; both describe the
-// same effective state, so hash inequality alone must not plan a replace.
 function sameRlsState(before: SchemaObject, after: SchemaObject): boolean {
   if (before.ref.kind !== "rls" || after.ref.kind !== "rls") {
     return false;

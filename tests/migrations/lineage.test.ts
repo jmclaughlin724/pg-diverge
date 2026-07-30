@@ -735,19 +735,28 @@ describe("diff lineage chain gate", () => {
     await git(repo, ["commit", "-m", "v1"]);
 
     await writeFile(
+      schemaFile,
+      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text);\n"
+    );
+    const first = await cli(["diff", "--name", "first"], { cwd: repo });
+    expect(first.code, first.stderr).toBe(0);
+    await git(repo, ["add", "schemas/app.sql", "migrations"]);
+    await git(repo, ["commit", "-m", "v2 with generated closure"]);
+
+    await writeFile(
       join(repo, "migrations", "20260101000000_hand.sql"),
-      "ALTER TABLE public.accounts ADD COLUMN name text;\n"
+      "ALTER TABLE public.accounts ADD COLUMN email text;\n"
     );
     await writeFile(
       schemaFile,
-      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text, email text);\n"
+      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text, email text, phone text);\n"
     );
     const result = await cli(["diff", "--name", "tail"], { cwd: repo });
     expect(result.code, result.stderr).toBe(0);
     expect(result.stderr).not.toContain("SUPA_DIFF_MIGRATIONS_DIRTY");
     const generated = await readFile(result.stdout.trim(), "utf8");
-    expect(generated).toContain("email");
-    expect(generated).not.toContain("ADD COLUMN name");
+    expect(generated).toContain("phone");
+    expect(generated).not.toContain("ADD COLUMN email");
   });
 
   it("keeps the lineage chain continuous across scoped --schema diffs", {
