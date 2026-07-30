@@ -37,10 +37,12 @@ const wiredExact = new Set([
 ]);
 
 function gitPaths(args, root) {
-  return run("git", [...args, "-z"], {}, root)
-    .stdout.split("\0")
-    .filter(Boolean)
-    .sort();
+  const separator = args.indexOf("--");
+  const argv =
+    separator === -1
+      ? [...args, "-z"]
+      : [...args.slice(0, separator), "-z", ...args.slice(separator)];
+  return run("git", argv, {}, root).stdout.split("\0").filter(Boolean).sort();
 }
 
 function isPrivateSurface(file) {
@@ -83,8 +85,10 @@ function untrackedUnderPrefix(prefix, tracked, stageable, ignored) {
 }
 
 function isWiredSource(prefix, file) {
-  const firstSegment = file.slice(prefix.length).split("/", 1)[0] ?? "";
-  return !wiredArtifactDirs.has(firstSegment);
+  return !file
+    .slice(prefix.length)
+    .split("/")
+    .some((segment) => wiredArtifactDirs.has(segment));
 }
 
 function failureMessage({ trackedPrivate, stageablePrivate, untrackedWired }) {
@@ -127,7 +131,10 @@ export function check(root = ROOT) {
   const stageable = gitPaths(["ls-files", "--others", "--exclude-standard"], root).filter((file) =>
     exists(file, root)
   );
-  const ignored = gitPaths(["ls-files", "--others", "--ignored", "--exclude-standard"], root);
+  const ignored = gitPaths(
+    ["ls-files", "--others", "--ignored", "--exclude-standard", "--", ...wiredPrefixes],
+    root
+  );
 
   const trackedPrivate = tracked.filter(isPrivateSurface);
   const stageablePrivate = stageable.filter(isPrivateSurface);

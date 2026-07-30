@@ -49,14 +49,14 @@ describe("Mintlify docs worker", () => {
     expect(request.headers.get("Host")).toBe("supaschema.mintlify.dev");
   });
 
-  it("passes unrelated well-known paths through unchanged", async () => {
+  it("proxies unrelated well-known paths to the docs origin instead of looping", async () => {
     const fetchMock = setFetchMock(() => Promise.resolve(new Response("ok")));
 
     await worker.fetch(new Request("https://supaschema.com/.well-known/acme-challenge/token"));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = firstFetchRequest(fetchMock);
-    expect(request.url).toBe("https://supaschema.com/.well-known/acme-challenge/token");
+    expect(request.url).toBe("https://supaschema.mintlify.dev/.well-known/acme-challenge/token");
   });
 
   it("rewrites Mintlify origin redirects to the custom domain", async () => {

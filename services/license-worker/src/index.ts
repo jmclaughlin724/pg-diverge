@@ -522,9 +522,6 @@ export function handleLicenseWorker(
   return Promise.resolve(new Response("not found", { status: 404 }));
 }
 
-// The success page lives on the docs origin (for example supaschema.com)
-// while this Worker serves /license from its own origin, so browser retrieval
-// needs an explicit CORS allowance scoped to the configured success origin.
 function handleLicenseCors(
   request: Request,
   url: URL,

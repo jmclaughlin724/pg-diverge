@@ -11,7 +11,7 @@ The signing/verification logic and the full self-serve loop are implemented here
 - `PUT /contracts?repo=acme/app&name=main` stores a schema contract when the request carries an unexpired repo-bound token in `Authorization`. The payload must match the `SchemaContract` JSON shape from `src/contract/schema.ts`.
 - `DELETE /contracts?repo=acme/app&name=main` deletes a schema contract when the request carries an unexpired repo-bound license token in `Authorization`.
 - `POST /webhook` verifies the Stripe signature over the raw body, then mints a repo-bound token keyed by the Checkout session id on `checkout.session.completed` or `checkout.session.async_payment_succeeded` (delayed payment methods complete unpaid first). A Stripe retry returns the stored token, never a second mint. For subscription-mode prices it also records the subscription id, and a later `invoice.paid` renewal (`billing_reason` = `subscription_cycle`) re-mints the token under the original session id so the buyer's existing `/license` link keeps working.
-- `GET /license?session_id=cs_test_123` lets the buyer retrieve their token after the success redirect, or returns `404 { "pending": true }` until the webhook has stored it. The token never returns to Stripe.
+- `GET /license?session_id=cs_test_123` lets the buyer retrieve their token after the success redirect, or returns `404 { "pending": true }` until the webhook has stored it. The token never returns to Stripe. The success page lives on the docs origin (for example supaschema.com) while this Worker serves `/license` from its own origin, so responses carry `Access-Control-Allow-Origin` scoped to the configured `CHECKOUT_SUCCESS_URL` origin and `OPTIONS` preflights return 204.
 
 ## Code map
 
