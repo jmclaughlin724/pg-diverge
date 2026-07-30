@@ -97,8 +97,8 @@ function claudeHookSettings() {
           matcher: ".*",
         },
         {
-          hooks: [claudeSupaschemaHook("generated-migration-edit")],
-          matcher: "Write|Edit|MultiEdit|apply_patch",
+          hooks: [claudeSupaschemaHook("generated-artifact-edit")],
+          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
         },
       ],
       SessionEnd: [
@@ -274,7 +274,7 @@ describe("sync:llm", () => {
             {
               hooks: [
                 {
-                  command: `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex`,
+                  command: `node "${codexProjectDir}/.codex/hooks/supaschema-source-hook.mjs" hook generated-artifact-edit --runtime codex`,
                   type: "command",
                 },
               ],
@@ -334,7 +334,7 @@ describe("sync:llm", () => {
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("general-guard.mjs");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("bash-policy-checks.mjs");
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain(
-      "npm exec -- supaschema hook generated-migration-edit --runtime codex"
+      "npm exec -- supaschema hook generated-artifact-edit --runtime codex"
     );
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).toContain(
       "npm exec -- supaschema hook schema-write"
@@ -349,7 +349,7 @@ describe("sync:llm", () => {
       "bash-policy-checks.mjs"
     );
     expect(read(root, "agent-bundle/codex/hooks.bun.json")).toContain(
-      "./node_modules/.bin/supaschema hook generated-migration-edit --runtime codex"
+      "./node_modules/.bin/supaschema hook generated-artifact-edit --runtime codex"
     );
     expect(read(root, "agent-bundle/codex/hooks.bun.json")).not.toContain(
       "bunx --no-install supaschema"

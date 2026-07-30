@@ -33,7 +33,7 @@ export function registerToolCommands(program: Command, context: ToolCommandConte
     .option("--database-url <url>", "database URL to probe (default: normal resolution order)")
     .option("--json", "print the report as JSON")
     .description(
-      "Diagnose the environment: Node version, parser, config, URL resolution, database reachability, CREATEDB capability, migrations history, and the declarative tree."
+      "Diagnose the environment: parser and target compatibility, config discovery, database/catalog readiness, migration replay and baseline selection, history, and the declarative tree."
     )
     .action(async (options: { databaseUrl?: string; json?: boolean }) => {
       const config = await context.loadCliConfig();

@@ -7,7 +7,7 @@ import { extractSourceModel } from "../../src/source/extract.js";
 
 describe("model format versioning", () => {
   it("uses model format version 5 for structured grant identity", () => {
-    expect(MODEL_FORMAT_VERSION).toBe(5);
+    expect(MODEL_FORMAT_VERSION).toBe(6);
   });
 
   it("stamps extracted models with the current format version", async () => {

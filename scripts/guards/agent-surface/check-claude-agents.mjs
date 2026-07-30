@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { list, parseFrontmatter, scalar } from "../../lib/frontmatter.mjs";
 import { assert, ok } from "../lib/assertions.js";
-import { gitTrackedFiles, ROOT, readJson } from "../lib/repository.js";
+import { gitTrackedFiles, ROOT } from "../lib/repository.js";
 
 const forbiddenFragments = ["Anilize", "anilize", "@anilize", "anilize-code-map"];
 const permissionModes = new Set([
@@ -44,9 +44,6 @@ export function check(root = ROOT) {
   if (agentFiles.length === 0 || !fs.existsSync(path.join(root, ".claude/settings.json"))) {
     return "CLAUDE_AGENTS_SKIPPED_PRIVATE_SURFACE";
   }
-  const enabledMcpServers = new Set(
-    readJson(".claude/settings.json", root).enabledMcpjsonServers ?? []
-  );
   const availableSkills = new Set(listDirectories(skillDir, root, trackedFiles));
   const names = new Map();
 
@@ -77,12 +74,6 @@ export function check(root = ROOT) {
 
     for (const skill of list(frontmatter, "skills")) {
       assert(availableSkills.has(skill), `${relativePath} references missing skill ${skill}`);
-    }
-    for (const server of list(frontmatter, "mcpServers")) {
-      assert(
-        enabledMcpServers.has(server),
-        `${relativePath} references disabled MCP server ${server}`
-      );
     }
   }
 

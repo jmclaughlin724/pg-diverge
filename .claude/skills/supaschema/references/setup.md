@@ -50,11 +50,11 @@ Do not create a parallel schema tree, a second migrations directory, duplicate d
 
 ### Diff baseline — `sources.from`
 
-`sources.from` owns the before-state; `schemaPaths` owns the after-state. Install writes `sources.from: "auto"`. For generation, `auto` resolves a proven staged closure as `git:INDEX` before trying `git:HEAD`, and the chosen snapshot must match generated migration lineage when migrations exist. A `migrations:` before-state is allowed only when it resolves to `migrationsDir` and replay succeeds; it is never a generation target. Use explicit `--from` or `--to` for `dump:`, `dir:`, `git:`, `catalog:`, `empty:`, or `database:` inputs outside those defaults.
+`sources.from` owns the before-state; `schemaPaths` owns the after-state. Install writes `sources.from: "auto"`. For generation, `auto` resolves a proven staged closure as `git:INDEX`, selects `migrations:<migrationsDir>` for first-lineage adoption or a hand-authored tail, and tries `git:HEAD` only when generated lineage is contiguous. It uses `empty:` only when no migration corpus exists. A `migrations:` before-state is allowed only when it resolves to `migrationsDir` and replay succeeds; it is never a generation target. If replay fails, resolve the first named migration diagnostic and rerun; do not patch generated types or select an unrelated fallback source. Use explicit `--from` or `--to` for `dump:`, `dir:`, `git:`, `catalog:`, `empty:`, or `database:` inputs outside those defaults.
 
 ### Generated contracts — `typesFile`, `zodFile`, `zodTypesImportPath`, `workflow.type_generation`, `workflow.zod_generation`, `workflow.type_usage`
 
-`supaschema types` creates or refreshes TypeScript and Zod outputs from the configured schema source, including schema-defined views, materialized views, view-on-view dependencies, functions, enums, and composites. `workflow.type_usage: "zod_validated"` means agents should use the generated Zod validators at runtime boundaries.
+`supaschema types` creates or refreshes TypeScript and Zod outputs from the configured schema source, including schema-defined views, materialized views, view-on-view dependencies, functions, enums, and composites. `workflow.type_usage: "zod_validated"` means agents should use the generated Zod validators at runtime boundaries. Never use `types` to overwrite unexplained drift: repair the declarative source, config, or replay baseline first, then regenerate and review the diff.
 
 If a view depends on an extension-owned relation outside the configured schema source, fix the supported source or model — do not patch consumers with casts, aliases, or local contract copies. If a modeled relation, function, extension, or expression should resolve but stays `unknown`, fix that owner. Unsupported PostgreSQL scalars that upstream maps to `unknown` are intentional and must not gain local mappings.
 
@@ -76,7 +76,7 @@ Both default to `report_only` and accept `disabled`, `report_only`, or `deploy_b
 
 These drive the bundled hooks. `schema_diff` accepts `disabled`, `manual`, or `on_schema_write` (default). `migration_check` accepts `manual`, `after_schema_diff` (default), or `required_before_complete`. Setting either to `manual` stops the automatic lane without disabling the command.
 
-`required_before_complete` currently behaves identically to `after_schema_diff`: the packaged bundle installs only the schema-write `PostToolUse` hook and the generated-migration `PreToolUse` hook, and no consumer `Stop` hook reads the policy. Treat it as another post-diff check mode, not as a gate that withholds agent completion.
+`required_before_complete` currently behaves identically to `after_schema_diff`: the packaged bundle installs only the schema-write `PostToolUse` hook and the generated-artifact `PreToolUse` hook, and no consumer `Stop` hook reads the policy. Treat it as another post-diff check mode, not as a gate that withholds agent completion.
 
 ### Supporting fields
 
@@ -101,4 +101,4 @@ When the bundled `PostToolUse` hook is wired (`.claude/settings.json` / `.codex/
 
 If `workflow.migration_sync` allows automatic sync, the hook first confirms exactly one `sync.targets` entry is selected with `mode: "auto"`, its database URL reference resolves when its runner needs one, and any remote target has its configured approval variable set. Only then does it delegate to `supaschema sync`. If `check` or `sync` fails, inspect the diagnostic, fix the canonical source, and rerun the failing command.
 
-The registered commands are `supaschema hook schema-write` and `supaschema hook generated-migration-edit`. They are hidden internal entrypoints that read a hook payload on stdin — the settings templates wire them, and you should never invoke them by hand. To exercise the behavior, edit a schema file or attempt a generated-migration edit and observe the hook result.
+The registered commands are `supaschema hook schema-write` and `supaschema hook generated-artifact-edit`. They are hidden internal entrypoints that read a hook payload on stdin — the settings templates wire them, and you should never invoke them by hand. The artifact hook protects lineage-marked migrations plus the exact configured `typesFile` and `zodFile` outputs across editor, patch, and bounded Bash write lanes. It denies rather than failing open when malformed input or invalid config prevents classification; resolve `SUPA_GENERATED_ARTIFACT_GUARD_FAILED` with `supaschema config validate` and `supaschema doctor`. To exercise the behavior, edit a schema file or attempt a generated-artifact edit and observe the hook result.

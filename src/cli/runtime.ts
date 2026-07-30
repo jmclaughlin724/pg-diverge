@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { Command } from "commander";
 import { loadConfig } from "../config/schema.js";
 import {
@@ -28,7 +30,12 @@ export function loadCliConfig(): Promise<SupaschemaConfig> {
 }
 
 export function currentConfigPath(): string | undefined {
-  return globalOptions().config;
+  const explicit = globalOptions().config;
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  const discovered = resolve(process.cwd(), "supaschema.config.json");
+  return existsSync(discovered) ? discovered : undefined;
 }
 
 export async function runHookFailOpen(action: () => Promise<void>): Promise<void> {

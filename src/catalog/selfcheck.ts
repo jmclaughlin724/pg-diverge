@@ -1,9 +1,12 @@
-import { diagnostic } from "../diagnostics/diagnostics.js";
+import type { SupaschemaConfig } from "../config/schema.js";
+import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
+import { normalizeSourceObjects } from "../source/normalize.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
-import type { Diagnostic } from "../types.js";
+import type { Diagnostic, SchemaModel } from "../types.js";
 import { extractCatalogModel } from "./extract.js";
 
 export interface SelfCheckOptions {
+  config?: Partial<SupaschemaConfig>;
   databaseUrl: string;
 }
 
@@ -15,10 +18,18 @@ export interface SelfCheckResult {
 
 export async function selfCheckCatalog(options: SelfCheckOptions): Promise<SelfCheckResult> {
   const model = await extractCatalogModel({
+    ...(options.config === undefined ? {} : { config: options.config }),
     databaseUrl: options.databaseUrl,
     source: "selfcheck",
   });
+  return await selfCheckCatalogModel(model);
+}
+
+export async function selfCheckCatalogModel(model: SchemaModel): Promise<SelfCheckResult> {
   const diagnostics: Diagnostic[] = [...model.diagnostics];
+  if (hasErrors(diagnostics)) {
+    return { checkedObjects: 0, diagnostics, mismatches: 0 };
+  }
   const script = [...model.objects]
     .sort((left, right) => left.ordinal - right.ordinal)
     .map((object) => `${object.sql};`)
@@ -28,9 +39,17 @@ export async function selfCheckCatalog(options: SelfCheckOptions): Promise<SelfC
     config: { managedSchemas: [] },
     file: "selfcheck:rendered",
   });
-  diagnostics.push(...reparsed.diagnostics.filter((item) => item.severity === "error"));
+  const normalizationDiagnostics: Diagnostic[] = [];
+  const normalizedObjects = await normalizeSourceObjects(
+    reparsed.objects,
+    normalizationDiagnostics
+  );
+  diagnostics.push(
+    ...reparsed.diagnostics.filter((item) => item.severity === "error"),
+    ...normalizationDiagnostics
+  );
   const catalogByKey = new Map(model.objects.map((object) => [object.key, object]));
-  const reparsedByKey = new Map(reparsed.objects.map((object) => [object.key, object]));
+  const reparsedByKey = new Map(normalizedObjects.map((object) => [object.key, object]));
   let mismatches = 0;
   for (const [key, object] of catalogByKey) {
     const other = reparsedByKey.get(key);

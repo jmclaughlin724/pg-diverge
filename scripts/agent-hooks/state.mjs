@@ -137,7 +137,6 @@ export function normalizeState(value) {
   }
   const currentTurn = turns[currentTurnId] ?? emptyTurn();
   return {
-    atlasAdvisories: currentTurn.atlasAdvisories,
     contextEpoch: integerValue(value?.contextEpoch),
     currentTurnId,
     evidence: currentTurn.evidence,
@@ -224,7 +223,6 @@ function normalizeTurns(value) {
   const turns = {};
   for (const [id, turn] of Object.entries(value)) {
     turns[validateStateKey(id)] = {
-      atlasAdvisories: objectValue(turn?.atlasAdvisories),
       evidence: Array.isArray(turn?.evidence) ? turn.evidence : [],
       lastPrompt: typeof turn?.lastPrompt === "string" ? turn.lastPrompt : "",
       pendingSkills: objectValue(turn?.pendingSkills),
@@ -235,7 +233,6 @@ function normalizeTurns(value) {
 
 function emptyTurn() {
   return {
-    atlasAdvisories: {},
     evidence: [],
     lastPrompt: "",
     pendingSkills: {},

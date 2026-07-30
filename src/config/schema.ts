@@ -287,7 +287,7 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
     const from = sourceProperties.from;
     if (isRecord(from)) {
       from.description =
-        'Default before-state source. For generation, "auto" resolves git:HEAD as a candidate baseline, then empty: only for a first migration with no existing migration corpus. Existing generated migrations must prove the same baseline through lineage.';
+        'Default before-state source. For generation, "auto" uses a proven git:INDEX closure, replays migrations:<migrationsDir> for adoption or a hand-authored tail, uses git:HEAD only for contiguous lineage, and uses empty: only when no migration corpus exists.';
       from.examples = [
         "auto",
         "git:HEAD",

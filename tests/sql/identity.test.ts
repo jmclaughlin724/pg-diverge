@@ -151,10 +151,12 @@ describe("AST object identity", () => {
     const variants: Record<string, unknown>[] = [
       { columnPrivileges: { SELECT: ["other_id"] } },
       { grantee: "service_role" },
+      { grantOptionColumnPrivileges: { SELECT: ["id"] } },
+      { grantOptionPrivileges: ["SELECT"] },
       { kindPhrase: "VIEW" },
+      { privileges: ["UPDATE"] },
       { targetIdentity: "app.other_accounts" },
       { verb: "REVOKE" },
-      { withGrantOption: true },
     ];
 
     for (const metadata of variants) {
@@ -171,6 +173,17 @@ describe("AST object identity", () => {
 
     expect(scoped.key).toBe(objectWide.key);
     expect(scoped.hash).not.toBe(objectWide.hash);
+  });
+
+  it("canonicalizes pg_catalog qualification in constraint casts", async () => {
+    const implicit = await singleObject(
+      "ALTER TABLE app.accounts ADD CONSTRAINT accounts_payload CHECK (payload IS NULL OR validate(payload::json));"
+    );
+    const explicit = await singleObject(
+      "ALTER TABLE app.accounts ADD CONSTRAINT accounts_payload CHECK (payload IS NULL OR validate(payload::pg_catalog.json));"
+    );
+
+    expect(implicit.hash).toBe(explicit.hash);
   });
 
   it("hashes scoped ALL like PostgreSQL's explicit column privilege set", async () => {

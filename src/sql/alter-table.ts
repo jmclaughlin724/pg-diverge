@@ -2,6 +2,7 @@ import { deparseSync } from "pgsql-deparser";
 import type { SchemaObject } from "../types.js";
 import type { AstNode, QualifiedName } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readNumber, readString } from "./ast.js";
+import { isRlsTransitionSubtype } from "./rls.js";
 import { makeObject } from "./statements.js";
 import { allocateDefaultConstraintName, constraintMetadata } from "./table-constraints.js";
 
@@ -10,7 +11,8 @@ export function alterTableObjects(
   statement: string,
   ordinal: number,
   file: string | undefined,
-  existingConstraintNames: Iterable<string> = []
+  existingConstraintNames: Iterable<string> = [],
+  sourceSqlMatchesAst = true
 ): SchemaObject[] | undefined {
   const table = rangeVarName(node.relation);
   if (!table) {
@@ -30,7 +32,8 @@ export function alterTableObjects(
       statement,
       ordinal,
       file,
-      allocatedConstraintNames
+      allocatedConstraintNames,
+      commands.length === 1 && sourceSqlMatchesAst
     );
     if (object) {
       objects.push(object);
@@ -51,24 +54,29 @@ function alterTableCommandObject(
   statement: string,
   ordinal: number,
   file: string | undefined,
-  existingConstraintNames: Iterable<string>
+  existingConstraintNames: Iterable<string>,
+  singleCommand: boolean
 ): SchemaObject | undefined {
   const subtype = readString(command.subtype);
   if (subtype === "AT_AddConstraint") {
-    return addConstraintObject(command, alterTable, table, ordinal, file, existingConstraintNames);
+    return addConstraintObject(
+      command,
+      alterTable,
+      table,
+      statement,
+      ordinal,
+      file,
+      existingConstraintNames,
+      singleCommand
+    );
   }
-  if (
-    subtype === "AT_EnableRowSecurity" ||
-    subtype === "AT_DisableRowSecurity" ||
-    subtype === "AT_ForceRowSecurity" ||
-    subtype === "AT_NoForceRowSecurity"
-  ) {
+  if (isRlsTransitionSubtype(subtype)) {
     return makeObject(
       { kind: "rls", name: table.name, schema: table.schema, table: table.name },
       statement,
       ordinal,
       file,
-      { rlsSubtype: subtype }
+      { rlsTransition: subtype }
     );
   }
   if (subtype === "AT_ColumnDefault") {
@@ -108,20 +116,26 @@ function addConstraintObject(
   command: AstNode,
   alterTable: AstNode,
   table: QualifiedName,
+  statement: string,
   ordinal: number,
   file: string | undefined,
-  existingConstraintNames: Iterable<string>
+  existingConstraintNames: Iterable<string>,
+  singleCommand: boolean
 ): SchemaObject | undefined {
   const constraint = asRecord(asRecord(command.def)?.Constraint);
+  const declaredName = readString(constraint?.conname);
   const name =
-    readString(constraint?.conname) ??
+    declaredName ??
     (constraint
       ? allocateDefaultConstraintName(table.name, constraint, [], existingConstraintNames)
       : undefined);
-  const sql =
-    constraint && name
-      ? canonicalAddConstraintSql(alterTable, command, constraint, name)
-      : undefined;
+  let sql: string | undefined;
+  if (constraint && name) {
+    sql =
+      declaredName && singleCommand
+        ? statement
+        : canonicalAddConstraintSql(alterTable, command, constraint, name);
+  }
   return constraint && name && sql
     ? makeObject(
         { kind: "constraint", name, schema: table.schema, table: table.name },

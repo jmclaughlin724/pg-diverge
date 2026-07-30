@@ -45,7 +45,7 @@ Root `action.yml` and `action.yaml` are GitHub Action metadata files, not workfl
 
 ## Repo-wide code graph
 
-Use Code Atlas (Rule 10) before broad source, route, dependency, consumer, DB, API, worker, generated-surface, or deploy claims. Code Atlas is not a substitute for cclsp precision: it narrows the owner and blast-radius map, then cclsp and direct source reads prove exact symbol behavior.
+Use cclsp and direct source reads for source, route, dependency, consumer, DB, generated-surface, and deploy claims.
 
 ## One owner per concern (no fighting tools)
 
@@ -66,7 +66,7 @@ Use Code Atlas (Rule 10) before broad source, route, dependency, consumer, DB, A
 - **SQL has no standalone text formatter.** Supaschema renders migrations deterministically and is the source of truth for SQL safety via AST/model semantic guards (Rule 07), fidelity-gated `normalize: "deparse"`, `checkMigrationSql`, and the `postgres-language-server` LSP. Do not add pgformatter or another SQL formatter lane to `npm run format`; formatting-only rewrites are not allowed to touch generated migrations, fixtures, corpus, or benchmark evidence.
 - **taplo** owns TOML formatting; apply it with `npm run format:toml` (`scripts/format-toml.mjs`, `taplo format`). `reorder_keys`/`reorder_arrays` stay at their `false` defaults because TOML order is semantic here (`pyproject.toml` sections, `wrangler.toml`, `.codex/config.toml`). taplo also provides the editor LSP.
 - **shfmt** owns shell formatting via the maintained `sh-syntax` WASM port of `mvdan/sh`; apply it with `npm run format:sh` (`scripts/format-sh.mjs`, 2-space indent). It only formats — shell has no key/import sort. `bash-language-server` provides the editor LSP.
-- `scripts/lib/repo-files.mjs` is the shared owner for repository file inventory, active local paths, and deny segments. Formatters and Code Atlas consume that policy; Code Atlas does not own a duplicate local configuration or consumer map. Git-discovered formatter candidates must be regular files whose real paths stay inside the repository; symlink candidates are never writable formatter inputs.
+- `scripts/lib/repo-files.mjs` is the shared owner for repository file inventory, active local paths, and deny segments. Git-discovered formatter candidates must be regular files whose real paths stay inside the repository; symlink candidates are never writable formatter inputs.
 - Custom repository-wide formatter scripts must discover tracked and unignored files through Git (`git ls-files --cached --others --exclude-standard`) and then scope that set to their owned roots. They must not recursively enter ignored directories, private state, nested worktrees, dependency trees, or build output.
 
 ## Import and key sorting
@@ -86,7 +86,7 @@ Sorting has one owner per language too, and is **deliberately conservative** —
 - The PostToolUse hook gives in-loop feedback for schema-SQL edits through the supaschema auto-diff/check lane; Biome-supported verification is owned by `npm run lint`.
 - Tooling is pinned to exact versions in root `devDependencies` (`@biomejs/biome`, `ultracite`, `vitest`, `@vitest/coverage-v8`, `prettier`, `cclsp`, the LSP servers) and in the `uv` dev group (`ruff`, `mypy`, the pylsp plugins); `check-tooling-stack.mjs` and `uv lock --check` keep them reproducible. `package.json` owns the version values — `check-tooling-stack.mjs` asserts that each tool is exactly pinned rather than restating its version, and derives the expected `biome.jsonc` `$schema` from the installed pin. Do not name a tool version in this rule or any other prose surface.
 
-STOP if a new language ships without a cclsp mapping, if a Biome-supported active repository surface is committed unformatted, if Python fails ruff/mypy, if schema SQL bypasses the supaschema semantic guards, if a second formatter is added that competes with the one owner for a language, if Code Atlas regains a duplicate repository path map, if pgformatter or another SQL formatter lane is introduced, if blanket key sorting is enabled over semantic/conventional order (Biome `useSortedKeys` on globally or taplo `reorder_keys` on), or if pnpm/Turborepo is reintroduced.
+STOP if a new language ships without a cclsp mapping, if a Biome-supported active repository surface is committed unformatted, if Python fails ruff/mypy, if schema SQL bypasses the supaschema semantic guards, if a second formatter is added that competes with the one owner for a language, if pgformatter or another SQL formatter lane is introduced, if blanket key sorting is enabled over semantic/conventional order (Biome `useSortedKeys` on globally or taplo `reorder_keys` on), or if pnpm/Turborepo is reintroduced.
 
 ## Verification
 

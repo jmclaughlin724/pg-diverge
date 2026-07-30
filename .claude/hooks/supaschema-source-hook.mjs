@@ -68,7 +68,7 @@ function npmInvocation(args) {
 
 function sourceHookEventName(args) {
   const hookIndex = args.indexOf("hook");
-  return args[hookIndex + 1] === "generated-migration-edit" ? "PreToolUse" : "PostToolUse";
+  return args[hookIndex + 1] === "generated-artifact-edit" ? "PreToolUse" : "PostToolUse";
 }
 
 function sourceHookRuntime(args) {

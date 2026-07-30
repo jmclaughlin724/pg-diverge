@@ -1,5 +1,5 @@
 import { sha256 } from "../hash.js";
-import type { ObjectRef, SchemaObject } from "../types.js";
+import type { CommentTarget, ObjectRef, SchemaObject } from "../types.js";
 import type { AstNode } from "./ast.js";
 import {
   asRecord,
@@ -151,8 +151,9 @@ export interface PrivilegeMetadataInput {
 
 export interface PrivilegeMetadata {
   columnPrivileges?: Record<string, string[]>;
+  grantOptionColumnPrivileges?: Record<string, string[]>;
+  grantOptionPrivileges: string[];
   privileges: string[];
-  withGrantOption: boolean;
 }
 
 interface PrivilegeAccumulator {
@@ -163,19 +164,38 @@ interface PrivilegeAccumulator {
 export function mergePrivilegeMetadata(
   inputs: readonly PrivilegeMetadataInput[]
 ): PrivilegeMetadata | undefined {
-  if (inputs.length === 0 || new Set(inputs.map((input) => input.withGrantOption)).size !== 1) {
+  if (inputs.length === 0) {
     return;
   }
-  const accumulator: PrivilegeAccumulator = {
+  const all: PrivilegeAccumulator = {
+    columnsByPrivilege: new Map(),
+    objectWidePrivileges: new Set(),
+  };
+  const grantable: PrivilegeAccumulator = {
     columnsByPrivilege: new Map(),
     objectWidePrivileges: new Set(),
   };
   for (const input of inputs) {
-    if (!mergePrivilegeInput(input, accumulator)) {
+    if (!mergePrivilegeInput(input, all)) {
+      return;
+    }
+    if (input.withGrantOption && !mergePrivilegeInput(input, grantable)) {
       return;
     }
   }
-  return accumulatedPrivilegeMetadata(accumulator, inputs[0]?.withGrantOption === true);
+  const privileges = accumulatedPrivilegeSet(all);
+  const grantOptions = accumulatedPrivilegeSet(grantable);
+  if (!privileges) {
+    return;
+  }
+  return {
+    ...(privileges.columnPrivileges ? { columnPrivileges: privileges.columnPrivileges } : {}),
+    ...(grantOptions?.columnPrivileges
+      ? { grantOptionColumnPrivileges: grantOptions.columnPrivileges }
+      : {}),
+    grantOptionPrivileges: grantOptions?.privileges ?? [],
+    privileges: privileges.privileges,
+  };
 }
 
 function mergePrivilegeInput(
@@ -242,12 +262,16 @@ function mergePrivilegeValue(
   accumulator.columnsByPrivilege.delete(privilege);
 }
 
-function accumulatedPrivilegeMetadata(
-  accumulator: PrivilegeAccumulator,
-  withGrantOption: boolean
-): PrivilegeMetadata | undefined {
+interface PrivilegeSetMetadata {
+  columnPrivileges?: Record<string, string[]>;
+  privileges: string[];
+}
+
+function accumulatedPrivilegeSet(
+  accumulator: PrivilegeAccumulator
+): PrivilegeSetMetadata | undefined {
   if (accumulator.objectWidePrivileges.has("ALL")) {
-    return { privileges: ["ALL"], withGrantOption };
+    return { privileges: ["ALL"] };
   }
   const privileges = [
     ...new Set([...accumulator.objectWidePrivileges, ...accumulator.columnsByPrivilege.keys()]),
@@ -266,8 +290,37 @@ function accumulatedPrivilegeMetadata(
   return {
     ...(Object.keys(columnPrivileges).length > 0 ? { columnPrivileges } : {}),
     privileges,
-    withGrantOption,
   };
+}
+
+export function privilegeMetadataFromRecord(
+  metadata: Record<string, unknown>
+): PrivilegeMetadata | undefined {
+  const inputs = privilegeMetadataInputsFromRecord(metadata);
+  return inputs ? mergePrivilegeMetadata(inputs) : undefined;
+}
+
+export function privilegeMetadataInputsFromRecord(
+  metadata: Record<string, unknown>
+): PrivilegeMetadataInput[] | undefined {
+  if (!Array.isArray(metadata.grantOptionPrivileges)) {
+    return;
+  }
+  const inputs: PrivilegeMetadataInput[] = [
+    {
+      columnPrivileges: metadata.columnPrivileges,
+      privileges: metadata.privileges,
+      withGrantOption: false,
+    },
+  ];
+  if (metadata.grantOptionPrivileges.length > 0) {
+    inputs.push({
+      columnPrivileges: metadata.grantOptionColumnPrivileges,
+      privileges: metadata.grantOptionPrivileges,
+      withGrantOption: true,
+    });
+  }
+  return inputs;
 }
 
 export function renderPrivilegeList(
@@ -328,6 +381,8 @@ export interface GrantObjectInput {
   columnPrivileges?: Record<string, string[]>;
   file?: string | undefined;
   grantee: string;
+  grantOptionColumnPrivileges?: Record<string, string[]>;
+  grantOptionPrivileges?: string[];
   kindPhrase: string;
   ordinal: number;
   privileges: string[];
@@ -338,23 +393,81 @@ export interface GrantObjectInput {
   withGrantOption?: boolean;
 }
 
-export function buildGrantObject(input: GrantObjectInput): SchemaObject {
+export interface GrantSqlInput {
+  columnPrivileges?: Record<string, string[]>;
+  grantee: string;
+  grantOptionColumnPrivileges?: Record<string, string[]>;
+  grantOptionPrivileges: string[];
+  kindPhrase: string;
+  privileges: string[];
+  targetRendered: string;
+  verb: "GRANT" | "REVOKE";
+}
+
+export function renderGrantSql(input: GrantSqlInput): string {
   const keyword = input.verb === "GRANT" ? "TO" : "FROM";
-  const merged = mergePrivilegeMetadata([
+  const statement = (list: string[], columns: Record<string, string[]> | undefined, suffix = "") =>
+    `${input.verb} ${renderPrivilegeList(list, columns)} ON ${input.kindPhrase} ${input.targetRendered} ${keyword} ${renderRole(input.grantee)}${suffix}`;
+  const base = statement(input.privileges, input.columnPrivileges);
+  const grantable =
+    input.verb === "GRANT" && input.grantOptionPrivileges.length > 0
+      ? statement(
+          input.grantOptionPrivileges,
+          input.grantOptionColumnPrivileges,
+          " WITH GRANT OPTION"
+        )
+      : undefined;
+  const samePrivilegeSet =
+    input.privileges.join("\u0000") === input.grantOptionPrivileges.join("\u0000") &&
+    JSON.stringify(input.columnPrivileges ?? {}) ===
+      JSON.stringify(input.grantOptionColumnPrivileges ?? {});
+  return grantable && samePrivilegeSet
+    ? grantable
+    : [base, grantable].filter((value): value is string => value !== undefined).join(";\n");
+}
+
+export function buildGrantObject(input: GrantObjectInput): SchemaObject {
+  const privilegeInputs: PrivilegeMetadataInput[] = [
     {
       columnPrivileges: input.columnPrivileges,
       privileges: input.privileges,
       withGrantOption: input.withGrantOption === true,
     },
-  ]);
+  ];
+  if (input.grantOptionPrivileges && input.grantOptionPrivileges.length > 0) {
+    privilegeInputs[0] = {
+      columnPrivileges: input.columnPrivileges,
+      privileges: input.privileges,
+      withGrantOption: false,
+    };
+    privilegeInputs.push({
+      columnPrivileges: input.grantOptionColumnPrivileges,
+      privileges: input.grantOptionPrivileges,
+      withGrantOption: true,
+    });
+  }
+  const merged = mergePrivilegeMetadata(privilegeInputs);
   if (!merged) {
     throw new Error("invalid grant privilege metadata");
   }
   const privileges = merged.columnPrivileges
     ? merged.privileges
     : normalizePrivileges(merged.privileges, input.kindPhrase);
-  const suffix = input.verb === "GRANT" && merged.withGrantOption ? " WITH GRANT OPTION" : "";
-  const canonicalSql = `${input.verb} ${renderPrivilegeList(privileges, merged.columnPrivileges)} ON ${input.kindPhrase} ${input.targetRendered} ${keyword} ${renderRole(input.grantee)}${suffix}`;
+  const grantOptionPrivileges = merged.grantOptionColumnPrivileges
+    ? merged.grantOptionPrivileges
+    : normalizePrivileges(merged.grantOptionPrivileges, input.kindPhrase);
+  const canonicalSql = renderGrantSql({
+    ...(merged.columnPrivileges ? { columnPrivileges: merged.columnPrivileges } : {}),
+    ...(merged.grantOptionColumnPrivileges
+      ? { grantOptionColumnPrivileges: merged.grantOptionColumnPrivileges }
+      : {}),
+    grantOptionPrivileges,
+    grantee: input.grantee,
+    kindPhrase: input.kindPhrase,
+    privileges,
+    targetRendered: input.targetRendered,
+    verb: input.verb,
+  });
   const ref: ObjectRef = {
     kind: "grant",
     name: `${input.verb.toLowerCase()}:${input.kindPhrase.toLowerCase().replaceAll(" ", "-")}:${input.targetIdentity}:${input.grantee}`,
@@ -364,13 +477,16 @@ export function buildGrantObject(input: GrantObjectInput): SchemaObject {
   }
   return makeObject(ref, canonicalSql, input.ordinal, input.file, {
     ...(merged.columnPrivileges ? { columnPrivileges: merged.columnPrivileges } : {}),
+    ...(merged.grantOptionColumnPrivileges
+      ? { grantOptionColumnPrivileges: merged.grantOptionColumnPrivileges }
+      : {}),
+    grantOptionPrivileges,
     grantee: input.grantee,
     kindPhrase: input.kindPhrase,
     privileges,
     target: input.targetRendered,
     targetIdentity: input.targetIdentity,
     verb: input.verb,
-    withGrantOption: merged.withGrantOption,
   });
 }
 
@@ -378,24 +494,57 @@ export interface DefaultPrivilegeObjectInput {
   file?: string | undefined;
   forRole?: string | undefined;
   grantee: string;
+  grantOptionPrivileges?: string[];
   objectType: string;
   ordinal: number;
   privileges: string[];
   schema?: string | undefined;
   verb: "GRANT" | "REVOKE";
+  withGrantOption?: boolean;
 }
 
 export function buildDefaultPrivilegeObject(input: DefaultPrivilegeObjectInput): SchemaObject {
   const scope = input.schema ? `in ${input.schema}` : "";
   const roleScope = input.forRole ? `for ${input.forRole}` : "for current-role";
-  const privileges = normalizePrivileges(input.privileges, input.objectType);
-  const clauses = [
+  const merged = mergePrivilegeMetadata([
+    {
+      privileges: input.privileges,
+      withGrantOption: input.withGrantOption === true,
+    },
+    ...(input.grantOptionPrivileges && input.grantOptionPrivileges.length > 0
+      ? [
+          {
+            privileges: input.grantOptionPrivileges,
+            withGrantOption: true,
+          },
+        ]
+      : []),
+  ]);
+  if (!merged) {
+    throw new Error("invalid default privilege metadata");
+  }
+  const privileges = normalizePrivileges(merged.privileges, input.objectType);
+  const grantOptionPrivileges = normalizePrivileges(merged.grantOptionPrivileges, input.objectType);
+  const prefix = [
     "ALTER DEFAULT PRIVILEGES",
     input.forRole ? `FOR ROLE ${renderRole(input.forRole)}` : "",
     input.schema ? `IN SCHEMA ${quoteIdent(input.schema)}` : "",
-    `${input.verb} ${privileges.join(", ")} ON ${input.objectType}`,
-    `${input.verb === "GRANT" ? "TO" : "FROM"} ${renderRole(input.grantee)}`,
   ].filter(Boolean);
+  const statement = (list: string[], suffix = "") =>
+    [
+      ...prefix,
+      `${input.verb} ${list.join(", ")} ON ${input.objectType}`,
+      `${input.verb === "GRANT" ? "TO" : "FROM"} ${renderRole(input.grantee)}${suffix}`,
+    ].join(" ");
+  const base = statement(privileges);
+  const grantable =
+    input.verb === "GRANT" && grantOptionPrivileges.length > 0
+      ? statement(grantOptionPrivileges, " WITH GRANT OPTION")
+      : undefined;
+  const canonicalSql =
+    grantable && privileges.join("\u0000") === grantOptionPrivileges.join("\u0000")
+      ? grantable
+      : [base, grantable].filter((value): value is string => value !== undefined).join(";\n");
   const ref: ObjectRef = {
     kind: "default-privilege",
     name: `${input.verb.toLowerCase()}:${roleScope}:${scope || "global"}:${input.objectType.toLowerCase()}:${input.grantee}`,
@@ -403,8 +552,9 @@ export function buildDefaultPrivilegeObject(input: DefaultPrivilegeObjectInput):
   if (input.schema) {
     ref.schema = input.schema;
   }
-  return makeObject(ref, clauses.join(" "), input.ordinal, input.file, {
+  return makeObject(ref, canonicalSql, input.ordinal, input.file, {
     forRole: input.forRole,
+    grantOptionPrivileges,
     grantee: input.grantee,
     objectType: input.objectType,
     privileges,
@@ -483,6 +633,7 @@ export function defaultPrivilegesFromAst(
   }
   const isGrant = readBoolean(action.is_grant);
   const verb = isGrant ? "GRANT" : "REVOKE";
+  const withGrantOption = isGrant && readBoolean(action.grant_option);
   const objectType = defaultPrivilegeKinds.get(readString(action.objtype) ?? "OBJECT_TABLE");
   const privileges = grantPrivileges(action.privileges);
   const grantees = readArray(action.grantees)
@@ -508,6 +659,7 @@ export function defaultPrivilegesFromAst(
             privileges,
             schema,
             verb,
+            withGrantOption,
           })
         );
       }
@@ -516,14 +668,14 @@ export function defaultPrivilegesFromAst(
   return objects;
 }
 
-const commentObjectKinds = new Map([
+const commentObjectKinds = new Map<string, CommentTarget["kind"]>([
   ["OBJECT_COLUMN", "column"],
   ["OBJECT_DOMAIN", "domain"],
   ["OBJECT_EXTENSION", "extension"],
-  ["OBJECT_FOREIGN_TABLE", "foreign table"],
+  ["OBJECT_FOREIGN_TABLE", "foreign-table"],
   ["OBJECT_FUNCTION", "function"],
   ["OBJECT_INDEX", "index"],
-  ["OBJECT_MATVIEW", "materialized view"],
+  ["OBJECT_MATVIEW", "materialized-view"],
   ["OBJECT_POLICY", "policy"],
   ["OBJECT_PROCEDURE", "procedure"],
   ["OBJECT_SCHEMA", "schema"],
@@ -533,6 +685,13 @@ const commentObjectKinds = new Map([
   ["OBJECT_TRIGGER", "trigger"],
   ["OBJECT_TYPE", "type"],
   ["OBJECT_VIEW", "view"],
+]);
+
+const tableScopedCommentObjectTypes = new Set([
+  "OBJECT_COLUMN",
+  "OBJECT_POLICY",
+  "OBJECT_TABCONSTRAINT",
+  "OBJECT_TRIGGER",
 ]);
 
 export function isInitdbDefaultComment(
@@ -549,60 +708,137 @@ export function commentObjectFromAst(
   file?: string
 ): SchemaObject | undefined {
   const objtype = readString(node.objtype);
-  const kindWord = objtype ? commentObjectKinds.get(objtype) : undefined;
-  if (!kindWord) {
+  const kind = objtype ? commentObjectKinds.get(objtype) : undefined;
+  if (!kind) {
     return;
   }
-  const target = commentTarget(node.object, objtype ?? "");
+  const target = commentTarget(node.object, objtype ?? "", kind);
   if (!target) {
     return;
   }
-  const descriptor = `${kindWord} ${target.identity}`;
-  const ref: ObjectRef = { kind: "comment", name: sha256(descriptor).slice(0, 16) };
-  if (target.schema) {
-    ref.schema = target.schema;
-  }
-  return makeObject(ref, statement, ordinal, file, {
+  return buildCommentObject({
     description: readString(node.comment) ?? stringValue(node.comment) ?? null,
-    descriptor,
+    ...(file === undefined ? {} : { file }),
+    ordinal,
+    sql: statement,
+    target,
   });
 }
 
 function commentTarget(
   object: unknown,
-  objtype: string
-): { identity: string; schema?: string } | undefined {
+  objtype: string,
+  kind: CommentTarget["kind"]
+): CommentTarget | undefined {
   if (objtype === "OBJECT_FUNCTION" || objtype === "OBJECT_PROCEDURE") {
-    const identity = objectWithArgsIdentity(object);
-    if (!identity) {
-      return;
-    }
-    return {
-      identity: `${identity.schema}.${identity.name}(${identity.signature})`,
-      schema: identity.schema,
-    };
+    return routineCommentTarget(object, kind);
   }
   if (objtype === "OBJECT_TYPE" || objtype === "OBJECT_DOMAIN") {
-    const typeNode = asRecord(object);
-    const named = qualifiedName(asRecord(typeNode?.TypeName)?.names ?? typeNode?.names);
-    if (named) {
-      return { identity: `${named.schema}.${named.name}`, schema: named.schema };
-    }
-    return { identity: normalizeSql(typeNameToSql(object)) };
+    return typeCommentTarget(object, kind);
   }
+  return namedCommentTarget(object, objtype, kind);
+}
 
+function routineCommentTarget(
+  object: unknown,
+  kind: CommentTarget["kind"]
+): CommentTarget | undefined {
+  const identity = objectWithArgsIdentity(object);
+  if (!identity) {
+    return;
+  }
+  return {
+    kind,
+    name: identity.name,
+    schema: identity.schema,
+    signature: identity.signature,
+  };
+}
+
+function typeCommentTarget(object: unknown, kind: CommentTarget["kind"]): CommentTarget {
+  const typeNode = asRecord(object);
+  const named = qualifiedName(asRecord(typeNode?.TypeName)?.names ?? typeNode?.names);
+  return named
+    ? { kind, name: named.name, schema: named.schema }
+    : { kind, name: normalizeSql(typeNameToSql(object)) };
+}
+
+function namedCommentTarget(
+  object: unknown,
+  objtype: string,
+  kind: CommentTarget["kind"]
+): CommentTarget | undefined {
   const parts = stringList(object);
   if (parts.length === 0) {
     const single = stringValue(object) ?? readString(object);
-    return single ? { identity: single } : undefined;
+    return single ? { kind, name: single } : undefined;
   }
   if (objtype === "OBJECT_SCHEMA") {
-    return { identity: parts.join(".") };
+    return { kind, name: parts.join(".") };
   }
-  if (parts.length >= 2) {
-    return { identity: parts.join("."), schema: parts[0] ?? "" };
+  if (objtype === "OBJECT_EXTENSION") {
+    return { kind, name: parts.at(-1) ?? "" };
   }
-  return { identity: `public.${parts[0] ?? ""}`, schema: "public" };
+  if (tableScopedCommentObjectTypes.has(objtype)) {
+    const name = parts.at(-1);
+    const table = parts.at(-2);
+    if (!(name && table)) {
+      return;
+    }
+    return {
+      kind,
+      name,
+      schema: parts.at(-3) ?? "public",
+      table,
+    };
+  }
+  return {
+    kind,
+    name: parts.at(-1) ?? "",
+    schema: parts.at(-2) ?? "public",
+  };
+}
+
+export interface BuildCommentObjectInput {
+  description: string | null;
+  file?: string;
+  ordinal: number;
+  sql: string;
+  target: CommentTarget;
+}
+
+export function buildCommentObject(input: BuildCommentObjectInput): SchemaObject {
+  const descriptor = commentDescriptor(input.target);
+  const ref: ObjectRef = {
+    kind: "comment",
+    name: sha256(descriptor).slice(0, 16),
+    ...(input.target.schema === undefined ? {} : { schema: input.target.schema }),
+    ...(input.target.table === undefined ? {} : { table: input.target.table }),
+  };
+  return makeObject(ref, input.sql, input.ordinal, input.file, {
+    commentTarget: input.target,
+    description: input.description,
+    descriptor,
+  });
+}
+
+export function commentDescriptor(target: CommentTarget): string {
+  const kind = target.kind.replaceAll("-", " ");
+  if (target.kind === "schema" || target.kind === "extension") {
+    return `${kind} ${target.name}`;
+  }
+  if (target.kind === "function" || target.kind === "procedure") {
+    return `${kind} ${target.schema ?? "public"}.${target.name}(${target.signature ?? ""})`;
+  }
+  if (
+    target.kind === "column" ||
+    target.kind === "constraint" ||
+    target.kind === "policy" ||
+    target.kind === "trigger"
+  ) {
+    return `${kind} ${target.schema ?? "public"}.${target.table ?? ""}.${target.name}`;
+  }
+  return `${kind} ${target.schema ?? "public"}.${target.name}`;
 }
 
 function grantPrivileges(value: unknown): string[] {
@@ -612,7 +848,7 @@ function grantPrivileges(value: unknown): string[] {
 function grantPrivilegeMetadata(value: unknown): PrivilegeMetadata | undefined {
   const privileges = readArray(value);
   if (privileges.length === 0) {
-    return { privileges: ["ALL"], withGrantOption: false };
+    return { grantOptionPrivileges: [], privileges: ["ALL"] };
   }
   return mergePrivilegeMetadata(
     privileges.map((item) => {

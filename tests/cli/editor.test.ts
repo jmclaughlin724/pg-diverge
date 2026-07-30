@@ -81,7 +81,6 @@ describe("public agent and editor surfaces", () => {
     const privatePrefixes = [
       "advisor-plans/",
       "cloudflare/",
-      "scripts/code-atlas/",
       "scripts/stripe/",
       "services/agent-mcp/",
       "services/license-worker/",
@@ -104,14 +103,14 @@ describe("public agent and editor surfaces", () => {
     expect(packageJson.files).not.toEqual(
       expect.arrayContaining([".agents/skills/supaschema", ".claude/rules/supaschema.md"])
     );
-    expect(codexHooks).toContain("supaschema hook generated-migration-edit");
+    expect(codexHooks).toContain("supaschema hook generated-artifact-edit");
     expect(codexHooks).toContain("supaschema hook schema-write");
     expect(codexHooks).not.toContain("general-guard.mjs");
     expect(codexHooks).not.toContain("bash-policy-checks.mjs");
     expect(codexHooks).not.toContain("context-");
     expect(codexHooks).not.toContain("scripts/agent-hooks");
     expect(codexHooks).not.toContain("sync-llm-on-claude-surface-change.mjs");
-    expect(claudeSettings).toContain("supaschema hook generated-migration-edit");
+    expect(claudeSettings).toContain("supaschema hook generated-artifact-edit");
     expect(claudeSettings).toContain("supaschema hook schema-write");
     expect(claudeSettings).not.toContain("bash-policy-checks.mjs");
     expect(claudeSettings).not.toContain("general-guard.mjs");

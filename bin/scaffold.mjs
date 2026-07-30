@@ -772,7 +772,10 @@ function hookCommandIdentity(hook) {
 }
 
 function supaschemaHookIdentity(commandLine) {
-  for (const name of ["generated-migration-edit", "schema-write"]) {
+  if (commandLine.includes("supaschema hook generated-migration-edit")) {
+    return "supaschema hook generated-artifact-edit";
+  }
+  for (const name of ["generated-artifact-edit", "schema-write"]) {
     if (commandLine.includes(`supaschema hook ${name}`)) {
       return `supaschema hook ${name}`;
     }

@@ -4,7 +4,6 @@ import {
   commandSegmentObjects,
   isReadCommandName,
 } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
-import { atlasAdvisoryTarget, isCodeAtlasQuery } from "./atlas.mjs";
 import { discoverSkills } from "./skill-frontmatter.mjs";
 import {
   pathMatches,
@@ -128,15 +127,13 @@ export function updateToolSkills(payload, state, options = {}) {
     }
   }
   const pending = unresolvedPending(state);
-  const contextParts = [
-    ...newlyPending.map((skill) => `Skill ${skill.name} applies to this tool use: ${skill.reason}`),
-    ...(pending.length > 0 ? atlasPreEditContext(payload, turn, options.root) : []),
-  ];
+  const contextParts = newlyPending.map(
+    (skill) => `Skill ${skill.name} applies to this tool use: ${skill.reason}`
+  );
   if (
     pending.length === 0 ||
     !toolGateSet.has(typeof payload?.tool_name === "string" ? payload.tool_name : "") ||
-    isObservableLoad(payload, options.root) ||
-    isCodeAtlasQuery(payload)
+    isObservableLoad(payload, options.root)
   ) {
     return contextParts.length > 0 ? { contextParts } : {};
   }
@@ -388,28 +385,6 @@ function appendSkillPaths(paths, token) {
       paths.push(expanded);
     }
   }
-}
-
-function atlasPreEditContext(payload, turn, root) {
-  if (
-    !toolGateSet.has(typeof payload?.tool_name === "string" ? payload.tool_name : "") ||
-    isCodeAtlasQuery(payload) ||
-    isObservableLoad(payload, root)
-  ) {
-    return [];
-  }
-  const target = atlasAdvisoryTarget(payload, root);
-  if (!target || target.includes("/SKILL.md")) {
-    return [];
-  }
-  const key = `pre-edit:${target}`;
-  if (turn.atlasAdvisories[key]) {
-    return [];
-  }
-  turn.atlasAdvisories[key] = true;
-  return [
-    `Code Atlas pre-edit evidence for ${target}: run \`npm run code-atlas:query -- pre-edit ${target} --json\` before broad edits; use \`trace-change\` for wider impact planning.`,
-  ];
 }
 
 function observableLoadAction(items) {

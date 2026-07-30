@@ -339,6 +339,7 @@ export function check(root = ROOT) {
     "ci.yml",
     "dependency-review.yml",
     "docs.yml",
+    "python.yml",
     "release.yml",
     "scorecard.yml",
   ];
@@ -537,7 +538,7 @@ export function check(root = ROOT) {
     "ci.yml check-os must use npm run test:matrix so examples failures stay in quality"
   );
 
-  assert(!files.includes("python.yml"), "python.yml must stay private with the agent MCP service");
+  assert(files.includes("python.yml"), "python.yml must stay tracked with the agent MCP service");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

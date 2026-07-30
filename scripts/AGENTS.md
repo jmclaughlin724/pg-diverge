@@ -1,6 +1,6 @@
 # scripts/ — repo tooling
 
-Maintainer scripts: guards, agent-hook runtime, agent-surface sync, docs linting, release/github helpers, and local-only code-atlas/stripe tooling.
+Maintainer scripts: guards, agent-hook runtime, agent-surface sync, docs linting, release/github helpers, and local-only Stripe tooling.
 
 ## Subfolders
 
@@ -9,7 +9,7 @@ Maintainer scripts: guards, agent-hook runtime, agent-surface sync, docs linting
 - `skills/` — `sync-llm.mjs` agent-surface sync writer
 - `docs-lint/` — canonical docs-standard CLI and its internal inspectors
 - `lib/` — shared Git-visible file discovery for formatter adapters
-- `code-atlas/`, `stripe/` — local-only (gitignored)
+- `stripe/` — local-only (gitignored)
 
 ## Top-level scripts
 

@@ -98,12 +98,12 @@ export async function runCorpus(
     if (rendered.concurrentSql !== undefined) {
       await applySql(corpusUrl, rendered.concurrentSql);
     }
-    const firstFingerprint = await catalogFingerprint(corpusUrl, "corpus:first-apply");
+    const firstFingerprint = await catalogFingerprint(corpusUrl, "corpus:first-apply", config);
     await applyMigrationSql(corpusUrl, rendered.sql);
     if (rendered.concurrentSql !== undefined) {
       await applySql(corpusUrl, rendered.concurrentSql);
     }
-    const secondFingerprint = await catalogFingerprint(corpusUrl, "corpus:second-apply");
+    const secondFingerprint = await catalogFingerprint(corpusUrl, "corpus:second-apply", config);
     report.idempotent = firstFingerprint === secondFingerprint;
     if (!report.idempotent) {
       diagnostics.push(

@@ -46,14 +46,14 @@ This rule owns source-repo agent runtime as public branch infrastructure. Requir
 - `npm run sync:llm:check` MUST fail when `.codex/hooks.json` or generated templates drift.
 - The surface-change hook `.claude/hooks/sync-llm-on-claude-surface-change.mjs` MUST trigger sync after successful edits to `.claude/agents/**`, `.claude/hooks/**`, `.claude/rules/**`, `.claude/skills/**`, `.codex/hooks.json`, `agent-bundle/codex/hooks.*.json`, or `scripts/skills/sync-llm.mjs`. Claude MUST also run it from `PostToolUseFailure` because a failed tool may have committed a partial canonical mutation.
 - `.gitignore` MUST NOT ignore required source-repo runtime or rule surfaces: `.claude/settings.json`, `.claude/hooks/context-*.mjs`, `.claude/hooks/supaschema-source-hook.mjs`, `.codex/hooks/context-*.mjs`, `.codex/hooks/supaschema-source-hook.mjs`, `scripts/agent-hooks/*.mjs`, `.claude/rules/*.md`, and `.codex/rules/*.rules`.
-- `.gitignore` MUST keep personal agent overlays, optimizer skills, maintainer agents, `.codex/config.toml`, MCP/server/deployment configs, Code Atlas internals, private services, scratch planning, and generated state local-only.
+- `.gitignore` MUST keep personal agent overlays, optimizer skills, maintainer agents, `.codex/config.toml`, MCP/server/deployment configs, private services, scratch planning, and generated state local-only.
 - Do not use `.gitignore`, `git update-index --assume-unchanged`, or `git update-index --skip-worktree` as the boundary for files required by tracked hook registration or tracked guards. If a tracked branch file references it, the referenced runtime file must be tracked or the reference must be removed.
 - If a source-repo runtime surface must become packaged or scaffolded for consumers, update Rule 13, public-surface guards, package tests, scaffold behavior, and docs in the same change.
 
 ## Public/private boundary
 
 - Public branch surfaces include tracked product code, tracked guards, tracked tests, `AGENTS.md`, `.claude/settings.json`, source-repo context hook entrypoints, `scripts/agent-hooks/*.mjs`, Claude rules, generated Codex rule mirrors, public supaschema consumer rule/skill surfaces, and consumer-safe `agent-bundle/**` templates.
-- Local-only surfaces include optimizer skills, maintainer-only Claude/Codex agents, personal `.agents` or `.claude` overlays, `.codex/config.toml`, Code Atlas data/support, MCP development tooling, deployment configs, private services, scratch planning, and generated state.
+- Local-only surfaces include optimizer skills, maintainer-only Claude/Codex agents, personal `.agents` or `.claude` overlays, `.codex/config.toml`, MCP development tooling, deployment configs, private services, scratch planning, and generated state.
 - Package surfaces include only what `package.json#files` allows and Rule 13 permits. Consumer setup must remain explicit and must not copy maintainer-only local DX surfaces.
 - Source-repo runtime can be public branch code without becoming package code. `package.json#files`, package tests, and `npm pack --dry-run --json` own that second boundary.
 
@@ -101,6 +101,6 @@ If sync or guard validation fails:
 - `npm run guard:agent` passes.
 - Source Claude and Codex configs register `Stop`, `SubagentStop`, and `SessionEnd`; Claude registers `PostToolUseFailure` and blocking `WorktreeCreate`; Codex omits unsupported events; their shared response/evidence runtime is tracked; and generated mirrors preserve each runtime contract.
 - Every supported local source-repo Claude and Codex tool matches exactly one context `PreToolUse` hook command, and the shared runner supplies repository confinement, worktree denial, Rule 21 branch command shapes, and Bash safety.
-- Consumer hook templates contain only the Supaschema generated-migration and schema-write commands.
+- Consumer hook templates contain only the Supaschema generated-artifact and schema-write commands.
 - Required source-repo hook runtime and rules are public branch surfaces, while package output still excludes source-only context hooks and `scripts/agent-hooks/**`.
 - Tests cover drift detection and repair for generated Codex hook registration.

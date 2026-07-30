@@ -2,26 +2,12 @@ import { describe, expect, it } from "vitest";
 import { check } from "../../../scripts/guards/fastmcp/check-fastmcp-agent.mjs";
 import { tempGuardRepo } from "../fixture.js";
 
-const activeServerNames = [
-  "cloudflare-api",
-  "cloudflare-docs",
-  "supaschema",
-  "context7",
-  "mintlify",
-  "openaiDeveloperDocs",
-  "ultracite",
-  "zod",
-  "supaschema-docs",
-];
 const cloudflareRegistryAuthorization = ["Bearer $", "{input:cloudflare-api-token}"].join("");
 
 type ServerConfig = Record<string, unknown>;
 
 interface FixtureState {
-  claudeDisabledServers: string[];
-  claudeServers: string[];
   codexServers: Record<string, ServerConfig>;
-  enableAllProjectMcpServers: boolean;
   extraFiles: Record<string, string>;
   registryInputs: Record<string, unknown>[];
   registryServers: Record<string, ServerConfig>;
@@ -103,11 +89,8 @@ DENIED_PARTS
 "secrets"
 "plans"
 SECRET_SUFFIXES
-CODE_MAP_AFFORDANCE_TOOLS
-code_atlas_query
 repo_context_query
 repo_safety_scan
-["node", "scripts/code-atlas/query.mjs"
 ["node", "dist/cli.js", "scan"
 upstream_mcp_capabilities
 Pointer index only
@@ -122,10 +105,7 @@ raise ToolError(
 
 const fixture = (mutate?: (state: FixtureState) => void): string => {
   const state: FixtureState = {
-    claudeDisabledServers: ["stripe"],
-    claudeServers: [...activeServerNames],
     codexServers: structuredClone(codexServers),
-    enableAllProjectMcpServers: false,
     extraFiles: {},
     registryInputs: [
       {
@@ -156,11 +136,7 @@ const fixture = (mutate?: (state: FixtureState) => void): string => {
       inputs: state.registryInputs,
       mcpServers: state.registryServers,
     }),
-    ".claude/settings.json": JSON.stringify({
-      enableAllProjectMcpServers: state.enableAllProjectMcpServers,
-      enabledMcpjsonServers: state.claudeServers,
-      disabledMcpjsonServers: state.claudeDisabledServers,
-    }),
+    ".claude/settings.json": "{}",
     ".codex/config.toml": renderCodexConfig(state.codexServers),
     "package.json": JSON.stringify({
       type: "module",
@@ -204,38 +180,20 @@ const renderTomlValue = (value: unknown): string => {
 };
 
 describe("FastMCP agent guard", () => {
-  it("accepts canonical activation while Stripe remains registry-only and disabled", () => {
+  it("accepts canonical registry and Codex activation without Claude approval preferences", () => {
     expect(check(fixture())).toBe("FASTMCP_AGENT_OK");
   });
 
-  it("rejects Claude and Codex activation mismatch", () => {
+  it("does not own Claude project-server approval preferences", () => {
     const root = fixture((state) => {
-      state.claudeServers = state.claudeServers.filter((serverName) => serverName !== "zod");
+      state.extraFiles[".claude/settings.json"] = JSON.stringify({
+        enableAllProjectMcpServers: true,
+        enabledMcpjsonServers: ["supaschema"],
+        disabledMcpjsonServers: ["context7"],
+      });
     });
 
-    expect(() => check(root)).toThrow(
-      ".claude/settings.json must enable exactly the approved MCP servers"
-    );
-  });
-
-  it("rejects automatic approval for all project MCP servers", () => {
-    const root = fixture((state) => {
-      state.enableAllProjectMcpServers = true;
-    });
-
-    expect(() => check(root)).toThrow(
-      ".claude/settings.json enableAllProjectMcpServers must remain false"
-    );
-  });
-
-  it("rejects disabling an approved active Claude MCP server", () => {
-    const root = fixture((state) => {
-      state.claudeDisabledServers.push("supaschema");
-    });
-
-    expect(() => check(root)).toThrow(
-      ".claude/settings.json must disable exactly the registry-only MCP servers"
-    );
+    expect(check(root)).toBe("FASTMCP_AGENT_OK");
   });
 
   it("rejects an activated unregistered server", () => {
@@ -258,7 +216,6 @@ describe("FastMCP agent guard", () => {
         args: ["unreviewed-server.mjs"],
       };
       state.registryServers.unapproved = unapprovedServer;
-      state.claudeServers.push("unapproved");
       state.codexServers.unapproved = structuredClone(unapprovedServer);
     });
 

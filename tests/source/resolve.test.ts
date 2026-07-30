@@ -58,7 +58,19 @@ describe("generation source defaults", () => {
     expect(resolved.notice).toContain("--from git:HEAD");
   });
 
-  it("blocks auto with existing migrations and no repository baseline", async () => {
+  it("checks Git HEAD in the requested repository directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-resolve-"));
+    let checkedCwd: string | undefined;
+
+    await resolveGenerationSourceDefaults({ cwd: root }, config, (cwd) => {
+      checkedCwd = cwd;
+      return Promise.resolve(false);
+    });
+
+    expect(checkedCwd).toBe(root);
+  });
+
+  it("replays existing migrations when auto has no repository baseline", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-source-resolve-"));
     await mkdir(join(root, "migrations"), { recursive: true });
     await writeFile(join(root, "migrations", "20260101000000_existing.sql"), "select 1;");
@@ -70,11 +82,25 @@ describe("generation source defaults", () => {
       async () => false
     );
 
-    expect(resolved.from).toBe("empty:");
-    expect(resolved.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_SOURCE_BASELINE_REQUIRED"
+    expect(resolved.from).toBe("migrations:migrations");
+    expect(resolved.diagnostics).toEqual([]);
+    expect(resolved.notice).toContain("--from migrations:migrations");
+  });
+
+  it("prefers migration replay over git HEAD for a hand-authored tail", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-resolve-"));
+    await mkdir(join(root, "migrations"), { recursive: true });
+    await writeFile(
+      join(root, "migrations", "20260101000000_generated.sql"),
+      "-- supaschema: lineage format=5 from=before to=after\nSELECT 1;\n"
     );
-    expect(resolved.notice).not.toContain("--from empty:");
+    await writeFile(join(root, "migrations", "20260102000000_manual.sql"), "CREATE SCHEMA app;\n");
+    const custom = resolveConfig({ migrationsDir: "migrations" });
+
+    const resolved = await resolveGenerationSourceDefaults({ cwd: root }, custom, async () => true);
+
+    expect(resolved.from).toBe("migrations:migrations");
+    expect(resolved.diagnostics).toEqual([]);
   });
 
   it("falls back to empty: for a first migration with no git HEAD", async () => {

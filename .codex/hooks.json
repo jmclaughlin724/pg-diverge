@@ -54,14 +54,14 @@
       {
         "hooks": [
           {
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-source-hook.mjs\" hook generated-migration-edit --runtime codex",
-            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/supaschema-source-hook.mjs\" hook generated-migration-edit --runtime codex",
-            "statusMessage": "Checking supaschema generated-migration policy",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/supaschema-source-hook.mjs\" hook generated-artifact-edit --runtime codex",
+            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/supaschema-source-hook.mjs\" hook generated-artifact-edit --runtime codex",
+            "statusMessage": "Checking supaschema generated-artifact policy",
             "timeout": 10,
             "type": "command"
           }
         ],
-        "matcher": "apply_patch"
+        "matcher": "Bash|apply_patch"
       }
     ],
     "SessionStart": [

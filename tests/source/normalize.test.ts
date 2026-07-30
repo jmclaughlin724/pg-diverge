@@ -269,12 +269,20 @@ $$;`);
     expect(all.fingerprint).toBe(explicit.fingerprint);
   });
 
-  it("keeps duplicate diagnostics when grant options conflict", async () => {
+  it("preserves per-privilege grant options without duplicate diagnostics", async () => {
     const model = await modelFromSql(
       "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO PUBLIC;\nGRANT INSERT ON TABLE app.t TO PUBLIC WITH GRANT OPTION;\n"
     );
 
-    expect(errors(model).map((item) => item.code)).toContain("SUPA_EXTRACT_DUPLICATE_OBJECT");
+    expect(errors(model)).toEqual([]);
+    const grant = model.objects.find((object) => object.ref.kind === "grant");
+    expect(grant?.metadata).toMatchObject({
+      grantOptionPrivileges: ["INSERT"],
+      privileges: ["INSERT", "SELECT"],
+    });
+    expect(grant?.sql).toContain("GRANT INSERT, SELECT ON TABLE");
+    expect(grant?.sql).toContain("GRANT INSERT ON TABLE");
+    expect(grant?.sql).toContain("WITH GRANT OPTION");
   });
 
   it("merges split default-privilege statements with a real default to revoke", async () => {
@@ -557,6 +565,49 @@ describe("rls facet merge", () => {
     expect(rls[0]?.sql).toContain("FORCE ROW LEVEL SECURITY");
   });
 
+  it.each([
+    [
+      "ENABLE then DISABLE",
+      "ALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\nALTER TABLE app.t DISABLE ROW LEVEL SECURITY;",
+    ],
+    [
+      "FORCE then NO FORCE",
+      "ALTER TABLE app.t FORCE ROW LEVEL SECURITY;\nALTER TABLE app.t NO FORCE ROW LEVEL SECURITY;",
+    ],
+  ])("removes the default RLS state after %s", async (_label, transitions) => {
+    const model = await modelFromSql(
+      `CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\n${transitions}\n`
+    );
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects.filter((object) => object.ref.kind === "rls")).toEqual([]);
+  });
+
+  it("applies RLS transitions in source order", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t DISABLE ROW LEVEL SECURITY;\nALTER TABLE app.t FORCE ROW LEVEL SECURITY;\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\n"
+    );
+    const rls = model.objects.find((object) => object.ref.kind === "rls");
+
+    expect(errors(model)).toEqual([]);
+    expect(rls?.metadata).toMatchObject({ rlsEnabled: true, rlsForced: true });
+  });
+
+  it("renders only the RLS state bit that changed", async () => {
+    const before = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\nALTER TABLE app.t FORCE ROW LEVEL SECURITY;\n"
+    );
+    const after = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER TABLE app.t ENABLE ROW LEVEL SECURITY;\n"
+    );
+    const sql = renderMigration(
+      planSchemaDiff(before, after, { config: { destructiveChanges: "allow" } })
+    );
+
+    expect(sql).toContain('ALTER TABLE "app"."t" NO FORCE ROW LEVEL SECURITY;');
+    expect(sql).not.toContain("DISABLE ROW LEVEL SECURITY");
+  });
+
   it("extracts policy command and predicate metadata", async () => {
     const model = await modelFromSql(
       "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint, tenant_id bigint);\nALTER TABLE app.accounts ENABLE ROW LEVEL SECURITY;\nCREATE POLICY accounts_select ON app.accounts FOR SELECT TO public USING (tenant_id > 0);\nCREATE POLICY accounts_insert ON app.accounts FOR INSERT TO public;\n"
@@ -591,6 +642,17 @@ describe("rls facet merge", () => {
         usingColumns: undefined,
       },
     ]);
+  });
+});
+
+describe("comment state transitions", () => {
+  it.each(["NULL", "''"])("removes a prior comment with IS %s", async (value) => {
+    const model = await modelFromSql(
+      `CREATE SCHEMA app;\nCOMMENT ON SCHEMA app IS 'docs';\nCOMMENT ON SCHEMA app IS ${value};\n`
+    );
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects.filter((object) => object.ref.kind === "comment")).toEqual([]);
   });
 });
 

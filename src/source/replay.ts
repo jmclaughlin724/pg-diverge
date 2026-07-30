@@ -18,6 +18,7 @@ import {
   readString,
 } from "../sql/ast.js";
 import {
+  commentTarget,
   grantTargetIdentity,
   isCommentForRefs,
   isGrantForTargets,
@@ -28,6 +29,13 @@ import { finalizeObjects } from "../sql/facts.js";
 import { objectKey } from "../sql/identifiers.js";
 import { shapeHash, stripLocations } from "../sql/object-hash.js";
 import { parseSqlAst } from "../sql/parser.js";
+import {
+  applyRlsTransition,
+  defaultRlsState,
+  isRlsTransitionSubtype,
+  rlsStateFromMetadata,
+  rlsStateSql,
+} from "../sql/rls.js";
 import { expressionSql, makeObject } from "../sql/statements.js";
 import { ignoredStatementTags, sourceIntentStatementTags } from "../sql/support.js";
 import { columnConstraintSyntheses } from "../sql/table-constraints.js";
@@ -419,6 +427,13 @@ async function applyExtractedObject(
   if (isNormalizedAmendmentMarker(object)) {
     return await applyNormalizedAmendment(object, objects, context);
   }
+  if (
+    object.ref.kind === "comment" &&
+    (typeof object.metadata.description !== "string" || object.metadata.description.length === 0)
+  ) {
+    objects.delete(object.key);
+    return emptyResult();
+  }
   const existing = objects.get(object.key);
   if (existing && isReplayPrivilegeObject(object)) {
     return await mergeReplayPrivilege(existing, object, objects, context, file, statement.text);
@@ -776,6 +791,9 @@ async function applyAlterTableCommand(options: {
   }
 
   const subtype = readString(command.subtype);
+  if (isRlsTransitionSubtype(subtype)) {
+    return await applyRlsMutation(options, subtype);
+  }
   const custom = await applyColumnMutation(
     options.statement,
     subtype,
@@ -810,6 +828,55 @@ async function applyAlterTableCommand(options: {
     return { diagnostics, hardFail: true, nextOrdinal: options.ordinal };
   }
   return applyExtractedObjects(options, extracted, diagnostics);
+}
+
+async function applyRlsMutation(
+  options: {
+    context: ReplayContext;
+    file: string;
+    objects: Map<string, SchemaObject>;
+    ordinal: number;
+    statement: AstStatement;
+    table: SchemaObject;
+  },
+  transition: Parameters<typeof applyRlsTransition>[1]
+): Promise<ReplayResult> {
+  const ref: ObjectRef = {
+    kind: "rls",
+    name: options.table.ref.name,
+    ...(options.table.ref.schema === undefined ? {} : { schema: options.table.ref.schema }),
+    table: options.table.ref.name,
+  };
+  const key = objectKey(ref);
+  const existing = options.objects.get(key);
+  const before = existing ? rlsStateFromMetadata(existing.metadata) : defaultRlsState;
+  if (!before) {
+    return unsupportedStatement(
+      options.statement,
+      options.file,
+      `RLS state for ${key} is not canonical`
+    );
+  }
+  const after = applyRlsTransition(before, transition);
+  if (!(after.rlsEnabled || after.rlsForced)) {
+    options.objects.delete(key);
+    return { ...emptyResult(), nextOrdinal: options.ordinal + 1 };
+  }
+  const next = makeObject(
+    ref,
+    rlsStateSql(ref.schema, ref.table ?? ref.name, after),
+    existing?.ordinal ?? options.ordinal,
+    existing?.file ?? options.file,
+    { ...after }
+  );
+  const diagnostics = await finalizeObjects([next], {
+    normalize: options.context.normalize,
+  });
+  if (hasErrors(diagnostics)) {
+    return { diagnostics, hardFail: true, nextOrdinal: options.ordinal + 1 };
+  }
+  options.objects.set(key, next);
+  return { diagnostics, hardFail: false, nextOrdinal: options.ordinal + 1 };
 }
 
 async function applyExtractedObjects(
@@ -1036,7 +1103,8 @@ async function applyConstraintUsingIndex(
         statement.text,
         ordinal,
         file,
-        constraintNamesForTable(objects, table)
+        constraintNamesForTable(objects, table),
+        false
       )
     : undefined;
   if (!extracted || extracted.length === 0) {
@@ -1811,6 +1879,15 @@ function removeColumnDependents(
 ): void {
   for (const [key, object] of objects) {
     if (object.ref.schema !== table.ref.schema || object.ref.table !== table.ref.name) {
+      continue;
+    }
+    const target = commentTarget(object);
+    if (
+      target?.kind === "column" &&
+      target.table === table.ref.name &&
+      target.name === columnName
+    ) {
+      objects.delete(key);
       continue;
     }
     if (metadataReferencesColumn(object.metadata, table.ref, columnName)) {

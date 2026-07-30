@@ -262,15 +262,15 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
   it("keeps leading-slash skill prompts pending until an observable load", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "/code-atlas map scripts", session_id: "slash-session" };
+    const payload = { prompt: "/fastmcp inspect the server", session_id: "slash-session" };
 
     const prompt = handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
     expect(prompt.output).toMatchObject({
       hookSpecificOutput: expect.objectContaining({
-        additionalContext: expect.stringContaining("Load code-atlas"),
+        additionalContext: expect.stringContaining("Load fastmcp"),
       }),
     });
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("fastmcp");
 
     const blocked = handleAgentHookEvent(
       "PreToolUse",
@@ -292,7 +292,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
   it("blocks apply_patch edits while a required Claude skill is pending", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "apply-patch-pending" };
+    const payload = { prompt: "use $fastmcp for the server", session_id: "apply-patch-pending" };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
 
     const blocked = handleAgentHookEvent(
@@ -318,38 +318,34 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
   it("clears pending only after a Skill tool load or SKILL.md read", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "clear-session" };
+    const payload = { prompt: "use $fastmcp for the server", session_id: "clear-session" };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("fastmcp");
 
     handleAgentHookEvent(
       "PostToolUse",
-      { session_id: "clear-session", tool_input: { skill: "code-atlas" }, tool_name: "Skill" },
+      { session_id: "clear-session", tool_input: { skill: "fastmcp" }, tool_name: "Skill" },
       { root, runtime: "claude" }
     );
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty("fastmcp");
 
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
     handleAgentHookEvent(
       "PostToolUse",
       {
         session_id: "clear-session",
-        tool_input: { file_path: join(root, ".claude/skills/code-atlas/SKILL.md") },
+        tool_input: { file_path: join(root, ".claude/skills/fastmcp/SKILL.md") },
         tool_name: "Read",
       },
       { root, runtime: "claude" }
     );
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty("fastmcp");
   }, 15_000);
 
   it("allows the first observable Claude skill load before blocking governed work", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "load-first" };
+    const payload = { prompt: "use $fastmcp for the server", session_id: "load-first" };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
 
     const unrelatedRead = handleAgentHookEvent(
@@ -376,7 +372,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       {
         session_id: "load-first",
         tool_input: {
-          command: "sed -n '1,120p' .claude/skills/code-atlas/SKILL.md",
+          command: "sed -n '1,120p' .claude/skills/fastmcp/SKILL.md",
         },
         tool_name: "Bash",
       },
@@ -403,55 +399,16 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     });
   });
 
-  it("allows Code Atlas evidence acquisition while Claude skills are pending", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "atlas-first" };
-    handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
-
-    const atlasQuery = {
-      session_id: "atlas-first",
-      tool_input: {
-        command:
-          "npm run code-atlas:query -- pre-edit scripts/guards/agent-surface/check-agent-hooks.mjs --json",
-      },
-      tool_name: "Bash",
-    };
-    const allowed = handleAgentHookEvent("PreToolUse", atlasQuery, { root, runtime: "claude" });
-    expect(allowed.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...atlasQuery,
-        tool_response: { exit_code: 0 },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "code-atlas-query",
-          outcome: "success",
-          queryKind: "pre-edit",
-          value: "scripts/guards/agent-surface/check-agent-hooks.mjs",
-        }),
-      ])
-    );
-  });
-
   it("does not emit advisory context for already loaded tool-triggered skills", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "quiet-loaded-skill" };
+    const payload = { prompt: "use $fastmcp for the server", session_id: "quiet-loaded-skill" };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
     handleAgentHookEvent(
       "PostToolUse",
       {
         session_id: "quiet-loaded-skill",
-        tool_input: { skill: "code-atlas" },
+        tool_input: { skill: "fastmcp" },
         tool_name: "Skill",
       },
       { root, runtime: "claude" }
@@ -468,20 +425,18 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     );
 
     expect(allowed.output.hookSpecificOutput).toBeUndefined();
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty("fastmcp");
   });
 
   it("does not clear mid-prompt skill tokens without an observable load", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "please use $code-atlas after checking scripts", session_id: "mid" };
+    const payload = { prompt: "please use $fastmcp after checking the server", session_id: "mid" };
 
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
 
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("code-atlas");
-    expect(readSessionState(payload).invokedSkills).not.toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).toHaveProperty("fastmcp");
+    expect(readSessionState(payload).invokedSkills).not.toHaveProperty("fastmcp");
   });
 
   it("keeps generic hook prose from loading unrelated skills", async () => {
@@ -536,7 +491,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
     const payload = {
-      prompt: "$code-atlas $optimizer $adversarial-verification $task-creator $supaschema $update",
+      prompt: "$fastmcp $optimizer $adversarial-verification $task-creator $supaschema $update",
       session_id: "explicit-skill-list",
     };
 
@@ -549,7 +504,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     expect(pending).toEqual(
       [
         "adversarial-verification",
-        "code-atlas",
+        "fastmcp",
         "optimizer",
         "supaschema",
         "task-creator",
@@ -586,9 +541,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
   it("keeps pending skill enforcement scoped to the active turn", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const first = { prompt: "use $code-atlas for scripts", session_id: "turn-scope" };
+    const first = { prompt: "use $fastmcp for the server", session_id: "turn-scope" };
     handleAgentHookEvent("UserPromptSubmit", first, { root, runtime: "claude" });
-    expect(currentTurnState(readSessionState(first)).pendingSkills).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(first)).pendingSkills).toHaveProperty("fastmcp");
 
     const second = { prompt: "plain follow-up", session_id: "turn-scope" };
     handleAgentHookEvent("UserPromptSubmit", second, { root, runtime: "claude" });
@@ -603,9 +558,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       { root, runtime: "claude" }
     );
     expect(allowed.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
-    expect(currentTurnState(readSessionState(second)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
+    expect(currentTurnState(readSessionState(second)).pendingSkills).not.toHaveProperty("fastmcp");
   });
 
   it("keeps Codex skill matches advisory across turn ids", async () => {
@@ -613,7 +566,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     process.env.STATE_DIR = stateDir;
     handleAgentHookEvent(
       "UserPromptSubmit",
-      { prompt: "use $code-atlas", session_id: "codex-turn", turn_id: "turn-a" },
+      { prompt: "use $fastmcp", session_id: "codex-turn", turn_id: "turn-a" },
       { root, runtime: "codex" }
     );
     expect(currentTurnState(readSessionState({ session_id: "codex-turn" })).pendingSkills).toEqual(
@@ -633,7 +586,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
   it("observes MCP SKILL.md reads as skill loads", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "mcp-load" };
+    const payload = { prompt: "use $fastmcp for the server", session_id: "mcp-load" };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "claude" });
 
     handleAgentHookEvent(
@@ -642,23 +595,21 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
         session_id: "mcp-load",
         tool_input: {
           action: "read",
-          target: ".agents/skills/code-atlas/SKILL.md",
+          target: ".agents/skills/fastmcp/SKILL.md",
         },
         tool_name: "mcp__supaschema__repo_context_query",
       },
       { root, runtime: "claude" }
     );
 
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-    expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty("fastmcp");
+    expect(readSessionState(payload).invokedSkills).toHaveProperty("fastmcp");
   });
 
   it("observes shell SKILL.md reads as skill loads in Codex", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "shell-load" };
+    const payload = { prompt: "use $fastmcp for the server", session_id: "shell-load" };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
 
     handleAgentHookEvent(
@@ -666,23 +617,21 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       {
         session_id: "shell-load",
         tool_input: {
-          command: "sed -n '1,120p' .agents/skills/code-atlas/SKILL.md",
+          command: "sed -n '1,120p' .agents/skills/fastmcp/SKILL.md",
         },
         tool_name: "Bash",
       },
       { root, runtime: "codex" }
     );
 
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-    expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty("fastmcp");
+    expect(readSessionState(payload).invokedSkills).toHaveProperty("fastmcp");
   });
 
   it("observes shell SKILL.md reads with Windows separators in Codex", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
-    const payload = { prompt: "use $code-atlas for scripts", session_id: "shell-load-win-path" };
+    const payload = { prompt: "use $fastmcp for the server", session_id: "shell-load-win-path" };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
 
     handleAgentHookEvent(
@@ -690,24 +639,22 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       {
         session_id: "shell-load-win-path",
         tool_input: {
-          command: "sed -n '1,120p' .agents\\skills\\code-atlas\\SKILL.md",
+          command: "sed -n '1,120p' .agents\\skills\\fastmcp\\SKILL.md",
         },
         tool_name: "Bash",
       },
       { root, runtime: "codex" }
     );
 
-    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty(
-      "code-atlas"
-    );
-    expect(readSessionState(payload).invokedSkills).toHaveProperty("code-atlas");
+    expect(currentTurnState(readSessionState(payload)).pendingSkills).not.toHaveProperty("fastmcp");
+    expect(readSessionState(payload).invokedSkills).toHaveProperty("fastmcp");
   });
 
   it("ignores non-reader shell SKILL.md tokens when another segment reads a file", async () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
     const payload = {
-      prompt: "use $code-atlas for scripts",
+      prompt: "use $fastmcp for the server",
       session_id: "shell-load-non-reader-token",
     };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
@@ -717,7 +664,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       {
         session_id: "shell-load-non-reader-token",
         tool_input: {
-          command: "echo .agents\\skills\\code-atlas\\SKILL.md && sed -n '1,20p' README.md",
+          command: "echo .agents\\skills\\fastmcp\\SKILL.md && sed -n '1,20p' README.md",
         },
         tool_name: "Bash",
       },
@@ -725,7 +672,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     );
 
     expect(currentTurnState(readSessionState(payload)).pendingSkills).toEqual({});
-    expect(readSessionState(payload).invokedSkills).not.toHaveProperty("code-atlas");
+    expect(readSessionState(payload).invokedSkills).not.toHaveProperty("fastmcp");
   });
 
   it("advises the mirrored Codex skill for an apply_patch file trigger", async () => {
@@ -757,7 +704,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
     const payload = {
-      prompt: "$code-atlas $optimizer $update",
+      prompt: "$fastmcp $optimizer $update",
       session_id: "nested-multi-shell-load",
     };
     handleAgentHookEvent("UserPromptSubmit", payload, { root, runtime: "codex" });
@@ -767,7 +714,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
       tool_input: {
         command: [
           "bash -lc \"sed -n '1,120p'",
-          ".agents/skills/code-atlas/SKILL.md",
+          ".agents/skills/fastmcp/SKILL.md",
           ".agents/skills/optimizer/SKILL.md",
           '.agents/skills/update/SKILL.md"',
         ].join(" "),
@@ -790,10 +737,10 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     );
 
     const state = readSessionState(payload);
-    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("code-atlas");
+    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("fastmcp");
     expect(currentTurnState(state).pendingSkills).not.toHaveProperty("optimizer");
     expect(currentTurnState(state).pendingSkills).not.toHaveProperty("update");
-    expect(state.invokedSkills).toHaveProperty("code-atlas");
+    expect(state.invokedSkills).toHaveProperty("fastmcp");
     expect(state.invokedSkills).toHaveProperty("optimizer");
     expect(state.invokedSkills).toHaveProperty("update");
 
@@ -813,7 +760,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
     const { root, stateDir } = await seededHookRoot();
     process.env.STATE_DIR = stateDir;
     const payload = {
-      prompt: "$optimizer $code-atlas",
+      prompt: "$optimizer $fastmcp",
       session_id: "parallel-skill-loads",
       turn_id: "turn-a",
     };
@@ -838,7 +785,7 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
         {
           session_id: "parallel-skill-loads",
           tool_input: {
-            command: `sed -n '1,120p' ${join(root, ".agents/skills/code-atlas/SKILL.md")}`,
+            command: `sed -n '1,120p' ${join(root, ".agents/skills/fastmcp/SKILL.md")}`,
           },
           tool_name: "Bash",
           turn_id: "turn-a",
@@ -850,9 +797,9 @@ describe.skipIf(!hasAgentHookSources)("agent hook skill matcher state", () => {
 
     const state = readSessionState(payload);
     expect(currentTurnState(state).pendingSkills).not.toHaveProperty("optimizer");
-    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("code-atlas");
+    expect(currentTurnState(state).pendingSkills).not.toHaveProperty("fastmcp");
     expect(state.invokedSkills).toHaveProperty("optimizer");
-    expect(state.invokedSkills).toHaveProperty("code-atlas");
+    expect(state.invokedSkills).toHaveProperty("fastmcp");
   });
 });
 
@@ -1358,149 +1305,6 @@ describe.skipIf(!hasAgentHookSources)("agent hook evidence and stop safety", () 
       });
     }
     expect(currentTurnState(readSessionState(payload)).evidence).toHaveLength(shapes.length);
-
-    const atlasCommand =
-      "node scripts/code-atlas/query.mjs pre-edit scripts/agent-hooks/command-evidence.mjs";
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        session_id: payload.session_id,
-        tool_input: { cmd: atlasCommand },
-        tool_name: "exec_command",
-        tool_response: { exit_code: 0 },
-      },
-      { root, runtime: "codex" }
-    );
-    expect(currentTurnState(readSessionState(payload)).evidence.at(-1)).toMatchObject({
-      command: atlasCommand,
-      kind: "code-atlas-query",
-      outcome: "success",
-      queryKind: "pre-edit",
-      value: "scripts/agent-hooks/command-evidence.mjs",
-    });
-  });
-
-  it.each([
-    ["isError", false, "success"],
-    ["isError", true, "failure"],
-    ["is_error", false, "success"],
-    ["is_error", true, "failure"],
-  ])("records the local Atlas tool from top-level %s=%s", async (key, value, outcome) => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { session_id: `local-${key}-${value}`, turn_id: "turn-1" };
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...payload,
-        tool_input: {
-          kind: "pre-edit",
-          value: "scripts/agent-hooks/command-evidence.mjs",
-        },
-        tool_name: "mcp__supaschema__code_atlas_query",
-        tool_response: { [key]: value },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toContainEqual(
-      expect.objectContaining({
-        kind: "code-atlas-query",
-        outcome,
-        queryKind: "pre-edit",
-      })
-    );
-  });
-
-  it("does not infer a local Atlas outcome from nested isError", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { session_id: "nested-local-outcome", turn_id: "turn-1" };
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...payload,
-        tool_input: { kind: "impact", value: "scripts/agent-hooks/command-evidence.mjs" },
-        tool_name: "mcp__supaschema__code_atlas_query",
-        tool_response: { data: { isError: false } },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it.each([
-    "describe_snapshot_schema",
-    "filter_review_findings",
-    "get_coverage_overlay",
-    "get_function_dependencies",
-    "get_impact_of_change",
-    "get_regression_scope",
-    "get_review_context",
-    "pre_edit_brief",
-    "query_snapshot",
-    "run_review",
-    "set_review_guidelines",
-    "update_ai_finding_status",
-    "clear_findings",
-    "configure_ai_provider",
-    "generate_review",
-    "unknown_direct_tool",
-  ])("does not record removed direct CodeAtlas tool %s", async (tool) => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const payload = { session_id: `removed-live-${tool}`, turn_id: "turn-1" };
-
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...payload,
-        tool_input: {},
-        tool_name: `mcp__codeatlas__${tool}`,
-        tool_response: { isError: false },
-      },
-      { root, runtime: "claude" }
-    );
-
-    expect(currentTurnState(readSessionState(payload)).evidence).toEqual([]);
-  });
-
-  it("requires local Atlas evidence for a Code Atlas passed claim", async () => {
-    const { root, stateDir } = await seededHookRoot();
-    process.env.STATE_DIR = stateDir;
-    const livePayload = { session_id: "missing-atlas-claim", turn_id: "turn-1" };
-
-    const liveClaim = handleAgentHookEvent(
-      "Stop",
-      { ...livePayload, last_assistant_message: "Code Atlas passed." },
-      { root, runtime: "claude" }
-    );
-    expect(liveClaim.output).toMatchObject({
-      decision: "block",
-      reason: expect.stringContaining("no successful evidence was recorded for: code-atlas"),
-    });
-
-    const localPayload = { session_id: "local-atlas-claim", turn_id: "turn-1" };
-    handleAgentHookEvent(
-      "PostToolUse",
-      {
-        ...localPayload,
-        tool_input: { kind: "pre-edit", value: "scripts/agent-hooks/command-evidence.mjs" },
-        tool_name: "mcp__supaschema__code_atlas_query",
-        tool_response: { isError: false },
-      },
-      { root, runtime: "claude" }
-    );
-
-    const localClaim = handleAgentHookEvent(
-      "Stop",
-      { ...localPayload, last_assistant_message: "Code Atlas passed." },
-      { root, runtime: "claude" }
-    );
-    expect(localClaim.output).toEqual({});
   });
 
   it("reads exec command aliases from transcript evidence", async () => {
@@ -2100,35 +1904,6 @@ async function createSeededSkillRoot(): Promise<string> {
   await Promise.all([
     writeSkill(
       root,
-      "code-atlas",
-      `---
-name: code-atlas
-description: Build and query the local Code Atlas.
-metadata:
-  keywords:
-    - code atlas
-    - code-atlas
-    - code map
-    - repo graph
-    - graph proof
-    - scripts
-  file-triggers:
-    - scripts/code-atlas/**
-    - .mcp.json
-    - fastmcp.json
-    - services/agent-mcp/**
-    - .claude/rules/10-code-atlas.md
-    - .claude/rules/11-agent-mcp-fastmcp.md
-    - scripts/guards/code-atlas/**
-    - scripts/guards/fastmcp/**
-    - scripts/guards/**
----
-
-# Code Atlas
-`
-    ),
-    writeSkill(
-      root,
       "optimizer",
       `---
 name: optimizer
@@ -2144,8 +1919,6 @@ metadata:
     - sync ownership
     - generated mirrors
     - package boundary
-    - fastmcp
-    - code atlas
     - hook enforcer
   file-triggers:
     - .claude/skills/**
@@ -2154,9 +1927,7 @@ metadata:
     - skills/supaschema/**
     - agent-bundle/**
     - services/agent-mcp/**
-    - scripts/code-atlas/**
     - scripts/guards/fastmcp/**
-    - scripts/guards/code-atlas/**
     - .claude/hooks/**
     - .claude/rules/**
     - .codex/hooks/**
@@ -2186,7 +1957,6 @@ metadata:
     - .codex/config.toml
     - .claude/rules/11-agent-mcp-fastmcp.md
     - scripts/guards/fastmcp/**
-    - scripts/code-atlas/**
 ---
 
 # FastMCP

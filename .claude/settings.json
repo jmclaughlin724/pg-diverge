@@ -1,20 +1,6 @@
 {
-  "enableAllProjectMcpServers": false,
-  "enabledMcpjsonServers": [
-    "cloudflare-api",
-    "cloudflare-docs",
-    "supaschema",
-    "context7",
-    "mintlify",
-    "openaiDeveloperDocs",
-    "ultracite",
-    "zod",
-    "supaschema-docs"
-  ],
-  "disabledMcpjsonServers": ["stripe"],
-  "env": {
-    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000"
-  },
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {},
   "hooks": {
     "SessionStart": [
       {
@@ -62,7 +48,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|apply_patch",
+        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -70,11 +56,11 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/supaschema-source-hook.mjs",
               "hook",
-              "generated-migration-edit",
+              "generated-artifact-edit",
               "--runtime",
               "claude"
             ],
-            "statusMessage": "Checking supaschema generated-migration policy",
+            "statusMessage": "Checking supaschema generated-artifact policy",
             "timeout": 10
           }
         ]
@@ -82,7 +68,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch|mcp__supaschema__code_atlas_query",
+        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -128,7 +114,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch|mcp__supaschema__code_atlas_query",
+        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch",
         "hooks": [
           {
             "type": "command",

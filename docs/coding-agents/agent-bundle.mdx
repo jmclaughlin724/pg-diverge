@@ -5,7 +5,7 @@ sidebarTitle: "Agent bundle"
 keywords: ["agent bundle", "Claude Code", "Codex", "AGENTS.md", "hooks"]
 ---
 
-The agent bundle gives coding agents the same migration workflow that humans use: edit declarative SQL, generate with `diff`, check replay safety, and never hand-edit generated migration files.
+The agent bundle gives coding agents the same migration workflow that humans use: edit declarative SQL, generate with `diff`, check replay safety, and never hand-edit generated migrations or configured TypeScript/Zod contracts.
 
 `supaschema init` installs the package-owned enforcement bundle by default. The raw files also ship under `node_modules/supaschema/agent-bundle/` so agents can audit or repair files that init reported as skipped and read the complete public MDX documentation offline.
 
@@ -56,8 +56,10 @@ The installed hooks are limited to Supaschema schema and migration behavior:
 
 | Hook | Event | Purpose |
 | --- | --- | --- |
-| `supaschema hook generated-migration-edit` | `PreToolUse` | Blocks edits to generated migration SQL when the lineage marker is present. |
+| `supaschema hook generated-artifact-edit` | `PreToolUse` | Blocks writes to lineage-marked migration SQL and the exact configured `typesFile` / `zodFile` outputs across editor, patch, literal/assigned redirection, and bounded Bash writer lanes. |
 | `supaschema hook schema-write` | `PostToolUse` | Watches schema-tree SQL writes. By default it runs `supaschema diff` then checks the generated migration files; when config enables automatic sync and exactly one selected target is resolved and approved, it delegates to `supaschema sync`. |
+
+The artifact hook recognizes only write-capable targets that can reach Supaschema-owned outputs; it is not a general Bash policy. It covers `>|`, literal shell assignments used by write targets, redirection-aware `cp`/`mv`, target-directory forms, and bounded write flags such as `--write=<path>`. Only an `apply_patch` delete-only change for a stale generated migration is the reviewed recovery lane; Bash deletion and deletion of configured generated contracts stay blocked. If malformed input or invalid config prevents classification, the hook denies with `SUPA_GENERATED_ARTIFACT_GUARD_FAILED`; run `supaschema config validate`, repair the first error, run `supaschema doctor`, and retry. When a generated artifact is targeted, change declarative SQL or generator config, run `supaschema doctor`, then run `supaschema sync`; use `supaschema types` only when schema sources already match the intended state. Preserve unexplained generated drift, review the regenerated diff, and use `supaschema explain <CODE>` for the structured procedure.
 
 The bundle does not publish or register this repository's general Bash, Git, secret, branch, worktree, or deletion policy. Those guards are maintainer tooling for developing Supaschema itself.
 

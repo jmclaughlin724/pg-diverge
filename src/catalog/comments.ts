@@ -1,15 +1,13 @@
-import { sha256 } from "../hash.js";
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
-import { isInitdbDefaultComment } from "../sql/privileges.js";
-import { makeObject } from "../sql/statements.js";
-import type { SchemaObject } from "../types.js";
-import { type CatalogQuery, managedSchemaFilter, notExtensionMember, text } from "./query.js";
+import { buildCommentObject, isInitdbDefaultComment } from "../sql/privileges.js";
+import type { CommentTarget, SchemaObject } from "../types.js";
+import { type CatalogQuery, catalogSchemaFilter, notExtensionMember, text } from "./query.js";
 
-const relationCommentWords = new Map([
+const relationCommentKinds = new Map<string, CommentTarget["kind"]>([
   ["S", "sequence"],
-  ["f", "foreign table"],
+  ["f", "foreign-table"],
   ["i", "index"],
-  ["m", "materialized view"],
+  ["m", "materialized-view"],
   ["p", "table"],
   ["r", "table"],
   ["v", "view"],
@@ -39,28 +37,34 @@ async function collectRelationComments(pool: CatalogQuery): Promise<SchemaObject
     join pg_namespace n on n.oid = c.relnamespace
     left join pg_attribute a on a.attrelid = c.oid and a.attnum = d.objsubid and d.objsubid > 0
     where d.classoid = 'pg_class'::regclass
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname, d.objsubid
   `);
   for (const row of rows.rows) {
     const schema = text(row.schema);
     const name = text(row.name);
-    const word = relationCommentWords.get(text(row.relkind));
-    if (!word) {
+    const kind = relationCommentKinds.get(text(row.relkind));
+    if (!kind) {
       continue;
     }
     const isColumn = typeof row.column_number === "number" && row.column_number > 0;
     if (isColumn && !row.column_name) {
       continue;
     }
-    const descriptor = isColumn
-      ? `column ${schema}.${name}.${text(row.column_name)}`
-      : `${word} ${schema}.${name}`;
+    const target: CommentTarget = isColumn
+      ? {
+          kind: "column",
+          name: text(row.column_name),
+          schema,
+          table: name,
+        }
+      : { kind, name, schema };
+    const label = kind.replaceAll("-", " ");
     const targetSql = isColumn
       ? `COLUMN ${formatQualifiedName(schema, name)}.${quoteIdent(text(row.column_name))}`
-      : `${word.toUpperCase()} ${formatQualifiedName(schema, name)}`;
-    objects.push(commentObject(descriptor, targetSql, schema, text(row.description)));
+      : `${label.toUpperCase()} ${formatQualifiedName(schema, name)}`;
+    objects.push(commentObject(target, targetSql, text(row.description)));
   }
   return objects;
 }
@@ -73,7 +77,7 @@ async function collectFunctionComments(pool: CatalogQuery): Promise<SchemaObject
     join pg_proc p on p.oid = d.objoid
     join pg_namespace n on n.oid = p.pronamespace
     where d.classoid = 'pg_proc'::regclass
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("p", "pg_proc")}
     order by n.nspname, p.proname
   `);
@@ -82,9 +86,8 @@ async function collectFunctionComments(pool: CatalogQuery): Promise<SchemaObject
     const name = text(row.name);
     const args = text(row.args);
     return commentObject(
-      `function ${schema}.${name}(${args})`,
+      { kind: "function", name, schema, signature: args },
       `FUNCTION ${formatQualifiedName(schema, name)}(${args})`,
-      schema,
       text(row.description)
     );
   });
@@ -96,7 +99,7 @@ async function collectSchemaComments(pool: CatalogQuery): Promise<SchemaObject[]
     from pg_description d
     join pg_namespace n on n.oid = d.objoid
     where d.classoid = 'pg_namespace'::regclass
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
     order by n.nspname
   `);
   const objects: SchemaObject[] = [];
@@ -106,7 +109,7 @@ async function collectSchemaComments(pool: CatalogQuery): Promise<SchemaObject[]
     if (isInitdbDefaultComment(`schema ${name}`, description)) {
       continue;
     }
-    objects.push(commentObject(`schema ${name}`, `SCHEMA ${name}`, undefined, description));
+    objects.push(commentObject({ kind: "schema", name }, `SCHEMA ${name}`, description));
   }
   return objects;
 }
@@ -119,18 +122,17 @@ async function collectTypeComments(pool: CatalogQuery): Promise<SchemaObject[]> 
     join pg_type t on t.oid = d.objoid
     join pg_namespace n on n.oid = t.typnamespace
     where d.classoid = 'pg_type'::regclass
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("t", "pg_type")}
     order by n.nspname, t.typname
   `);
   return rows.rows.map((row) => {
     const schema = text(row.schema);
     const name = text(row.name);
-    const word = text(row.typtype) === "d" ? "domain" : "type";
+    const kind = text(row.typtype) === "d" ? "domain" : "type";
     return commentObject(
-      `${word} ${schema}.${name}`,
-      `${word.toUpperCase()} ${formatQualifiedName(schema, name)}`,
-      schema,
+      { kind, name, schema },
+      `${kind.toUpperCase()} ${formatQualifiedName(schema, name)}`,
       text(row.description)
     );
   });
@@ -145,7 +147,7 @@ async function collectPolicyComments(pool: CatalogQuery): Promise<SchemaObject[]
     join pg_class c on c.oid = p.polrelid
     join pg_namespace n on n.oid = c.relnamespace
     where d.classoid = 'pg_policy'::regclass
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname, p.polname
   `);
@@ -154,9 +156,8 @@ async function collectPolicyComments(pool: CatalogQuery): Promise<SchemaObject[]
     const table = text(row.table_name);
     const name = text(row.name);
     return commentObject(
-      `policy ${schema}.${table}.${name}`,
+      { kind: "policy", name, schema, table },
       `POLICY ${quoteIdent(name)} ON ${formatQualifiedName(schema, table)}`,
-      schema,
       text(row.description)
     );
   });
@@ -172,7 +173,7 @@ async function collectTriggerComments(pool: CatalogQuery): Promise<SchemaObject[
     join pg_namespace n on n.oid = c.relnamespace
     where d.classoid = 'pg_trigger'::regclass
       and not t.tgisinternal
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname, t.tgname
   `);
@@ -181,9 +182,8 @@ async function collectTriggerComments(pool: CatalogQuery): Promise<SchemaObject[
     const table = text(row.table_name);
     const name = text(row.name);
     return commentObject(
-      `trigger ${schema}.${table}.${name}`,
+      { kind: "trigger", name, schema, table },
       `TRIGGER ${quoteIdent(name)} ON ${formatQualifiedName(schema, table)}`,
-      schema,
       text(row.description)
     );
   });
@@ -198,7 +198,7 @@ async function collectConstraintComments(pool: CatalogQuery): Promise<SchemaObje
     join pg_class r on r.oid = c.conrelid
     join pg_namespace n on n.oid = r.relnamespace
     where d.classoid = 'pg_constraint'::regclass
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("r", "pg_class")}
     order by n.nspname, r.relname, c.conname
   `);
@@ -207,9 +207,8 @@ async function collectConstraintComments(pool: CatalogQuery): Promise<SchemaObje
     const table = text(row.table_name);
     const name = text(row.name);
     return commentObject(
-      `constraint ${schema}.${table}.${name}`,
+      { kind: "constraint", name, schema, table },
       `CONSTRAINT ${quoteIdent(name)} ON ${formatQualifiedName(schema, table)}`,
-      schema,
       text(row.description)
     );
   });
@@ -223,33 +222,24 @@ async function collectExtensionComments(pool: CatalogQuery): Promise<SchemaObjec
     join pg_namespace n on n.oid = e.extnamespace
     where d.classoid = 'pg_extension'::regclass
       and e.extname <> 'plpgsql'
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
     order by e.extname
   `);
   return rows.rows.map((row) => {
     const name = text(row.name);
     return commentObject(
-      `extension ${name}`,
+      { kind: "extension", name },
       `EXTENSION ${quoteIdent(name)}`,
-      undefined,
       text(row.description)
     );
   });
 }
 
 function commentObject(
-  descriptor: string,
+  target: CommentTarget,
   targetSql: string,
-  schema: string | undefined,
   description: string
 ): SchemaObject {
   const sql = `COMMENT ON ${targetSql} IS '${description.replaceAll("'", "''")}'`;
-  const ref: { kind: "comment"; name: string; schema?: string } = {
-    kind: "comment",
-    name: sha256(descriptor).slice(0, 16),
-  };
-  if (schema) {
-    ref.schema = schema;
-  }
-  return makeObject(ref, sql, 0, undefined, { description, descriptor });
+  return buildCommentObject({ description, ordinal: 0, sql, target });
 }

@@ -2,6 +2,12 @@ import { resolveConfig } from "../config/schema.js";
 import { lineageLine } from "../migrations/lineage.js";
 import { notNullProofConstraintName } from "../migrations/not-null.js";
 import { quoteIdent } from "../sql/identifiers.js";
+import {
+  defaultRlsState,
+  type RlsState,
+  renderRlsStateTransition,
+  rlsStateFromMetadata,
+} from "../sql/rls.js";
 import type { TableColumn } from "../sql/table-shape.js";
 import type {
   Diagnostic,
@@ -396,8 +402,9 @@ function renderReplace(operation: MigrationOperation): string {
     case "type":
     case "domain":
     case "sequence":
-    case "rls":
       return `${renderDrop(before)}\n${renderCreate(after)}`;
+    case "rls":
+      return renderRlsTransition(before, after);
     case "schema":
     case "extension":
       return renderCreate(after);
@@ -446,6 +453,7 @@ function renderCreate(object: SchemaObject): string {
     case "trigger":
       return `${renderDrop(object)}\n${ensureSemicolon(object.sql)}`;
     case "rls":
+      return renderRlsTransition(undefined, object);
     case "default-privilege":
     case "comment":
       return ensureSemicolon(object.sql);
@@ -595,7 +603,7 @@ function renderDrop(object: SchemaObject): string {
     case "policy":
       return `DROP POLICY IF EXISTS ${quoteIdent(ref.name)} ON ${qualifiedTableRef(ref)};`;
     case "rls":
-      return `ALTER TABLE ${qualifiedTableRef(ref)} DISABLE ROW LEVEL SECURITY;`;
+      return renderRlsTransition(object, undefined);
     case "comment":
       return typeof object.metadata.commentDropSql === "string"
         ? ensureSemicolon(object.metadata.commentDropSql)
@@ -607,6 +615,36 @@ function renderDrop(object: SchemaObject): string {
     default:
       throw new Error(`unsupported drop operation for ${ref.kind}`);
   }
+}
+
+function renderRlsTransition(
+  before: SchemaObject | undefined,
+  after: SchemaObject | undefined
+): string {
+  const object = after ?? before;
+  if (!object) {
+    throw new Error("RLS transition has no state object");
+  }
+  const beforeState = before ? requiredRlsState(before) : defaultRlsState;
+  const afterState = after ? requiredRlsState(after) : defaultRlsState;
+  const sql = renderRlsStateTransition(
+    object.ref.schema,
+    object.ref.table ?? object.ref.name,
+    beforeState,
+    afterState
+  );
+  if (sql.length === 0) {
+    throw new Error(`RLS transition for ${object.key} has no state change`);
+  }
+  return ensureSemicolon(sql);
+}
+
+function requiredRlsState(object: SchemaObject): RlsState {
+  const state = rlsStateFromMetadata(object.metadata);
+  if (!state) {
+    throw new Error(`RLS object ${object.key} has no canonical state`);
+  }
+  return state;
 }
 
 function columnFromMetadata(value: unknown): TableColumn {

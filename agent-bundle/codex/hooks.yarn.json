@@ -17,13 +17,13 @@
       {
         "hooks": [
           {
-            "command": "yarn exec supaschema hook generated-migration-edit --runtime codex",
-            "statusMessage": "Checking supaschema generated-migration policy",
+            "command": "yarn exec supaschema hook generated-artifact-edit --runtime codex",
+            "statusMessage": "Checking supaschema generated-artifact policy",
             "timeout": 10,
             "type": "command"
           }
         ],
-        "matcher": "apply_patch"
+        "matcher": "Bash|apply_patch"
       }
     ]
   }

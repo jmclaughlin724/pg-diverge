@@ -1,27 +1,35 @@
 import { Pool } from "pg";
+import { resolveConfig, type SupaschemaConfig } from "../config/schema.js";
 import { diagnostic } from "../diagnostics/diagnostics.js";
 import { suppressDefaultAclImpliedGrants } from "../grants/default-acl.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { finalizeObjects } from "../sql/facts.js";
 import { formatQualifiedName, quoteIdent, stripOuterDoubleQuotes } from "../sql/identifiers.js";
 import { policyMetadataFromSql } from "../sql/policies.js";
+import { rlsStateSql } from "../sql/rls.js";
 import { makeObject } from "../sql/statements.js";
 import type { SchemaModel, SchemaObject } from "../types.js";
 import { collectComments } from "./comments.js";
 import { collectForeignObjects } from "./foreign.js";
 import { collectDefaultPrivileges, collectGrants } from "./grants.js";
-import { managedSchemaFilter, notExtensionMember } from "./query.js";
+import {
+  type CatalogQuery,
+  catalogSchemaFilter,
+  managedSchemaFilterFor,
+  notExtensionMember,
+} from "./query.js";
 import { collectSequences } from "./sequences.js";
 import { collectTables } from "./tables.js";
 import { collectTypes } from "./types.js";
 
 export interface ExtractCatalogOptions {
+  config?: Partial<SupaschemaConfig>;
   databaseUrl: string;
   normalize?: boolean;
   source?: string;
 }
 
-type CatalogPool = Pick<Pool, "query">;
+type CatalogPool = Pick<Pool, "query"> & Pick<CatalogQuery, "schemaFilter">;
 
 export async function extractCatalogModel(options: ExtractCatalogOptions): Promise<SchemaModel> {
   const pool = new Pool({
@@ -29,23 +37,26 @@ export async function extractCatalogModel(options: ExtractCatalogOptions): Promi
     max: 4,
     options: "-c search_path=",
   });
+  const catalogPool: CatalogPool = Object.assign(pool, {
+    schemaFilter: managedSchemaFilterFor(resolveConfig(options.config)),
+  });
   pool.on("error", () => undefined);
   try {
     const sections = await Promise.all([
-      collectSection((objects) => appendSchemas(pool, objects, 0)),
-      collectSection((objects) => appendExtensions(pool, objects, 0)),
-      collectTypes(pool),
-      collectSequences(pool),
-      collectTables(pool),
-      collectForeignObjects(pool),
-      collectSection((objects) => appendFunctions(pool, objects, 0)),
-      collectSection((objects) => appendViews(pool, objects, 0)),
-      collectSection((objects) => appendIndexes(pool, objects, 0)),
-      collectSection((objects) => appendTriggers(pool, objects, 0)),
-      collectSection((objects) => appendPoliciesAndRls(pool, objects, 0)),
-      collectGrants(pool),
-      collectDefaultPrivileges(pool),
-      collectComments(pool),
+      collectSection((objects) => appendSchemas(catalogPool, objects, 0)),
+      collectSection((objects) => appendExtensions(catalogPool, objects, 0)),
+      collectTypes(catalogPool),
+      collectSequences(catalogPool),
+      collectTables(catalogPool),
+      collectForeignObjects(catalogPool),
+      collectSection((objects) => appendFunctions(catalogPool, objects, 0)),
+      collectSection((objects) => appendViews(catalogPool, objects, 0)),
+      collectSection((objects) => appendIndexes(catalogPool, objects, 0)),
+      collectSection((objects) => appendTriggers(catalogPool, objects, 0)),
+      collectSection((objects) => appendPoliciesAndRls(catalogPool, objects, 0)),
+      collectGrants(catalogPool),
+      collectDefaultPrivileges(catalogPool),
+      collectComments(catalogPool),
     ]);
     const objects: SchemaObject[] = suppressDefaultAclImpliedGrants(sections.flat());
     objects.forEach((object, index) => {
@@ -95,7 +106,7 @@ async function appendSchemas(
   const result = await pool.query<Record<string, unknown>>(`
     select n.nspname as name
     from pg_namespace n
-    where ${managedSchemaFilter}
+    where ${catalogSchemaFilter(pool)}
       and n.nspname <> 'public'
     order by nspname
   `);
@@ -121,7 +132,7 @@ async function appendExtensions(
     from pg_extension e
     join pg_namespace n on n.oid = e.extnamespace
     where e.extname <> 'plpgsql'
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
     order by e.extname
   `);
   for (const row of result.rows) {
@@ -157,7 +168,7 @@ async function appendFunctions(
       pg_get_functiondef(p.oid) as definition
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
-    where ${managedSchemaFilter}
+    where ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("p", "pg_proc")}
       and p.prokind in ('f', 'p')
     order by n.nspname, p.proname, oidvectortypes(p.proargtypes)
@@ -208,7 +219,7 @@ async function appendViews(
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where c.relkind in ('v', 'm')
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname
   `);
@@ -286,7 +297,7 @@ async function appendIndexes(
     join pg_index i on i.indexrelid = index_class.oid
     join pg_class table_class on table_class.oid = i.indrelid
     where index_class.relkind in ('i', 'I')
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("index_class", "pg_class")}
       and ${notExtensionMember("table_class", "pg_class")}
       and not exists (
@@ -330,7 +341,7 @@ async function appendTriggers(
     join pg_class c on c.oid = t.tgrelid
     join pg_namespace n on n.oid = c.relnamespace
     where not t.tgisinternal
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname, t.tgname
   `);
@@ -364,7 +375,7 @@ async function appendPoliciesAndRls(
     join pg_namespace n on n.oid = c.relnamespace
     where c.relkind in ('r', 'p')
       and (c.relrowsecurity or c.relforcerowsecurity)
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
     order by n.nspname, c.relname
   `);
@@ -372,24 +383,17 @@ async function appendPoliciesAndRls(
     const schema = stringValue(row.schema);
     const name = stringValue(row.name);
 
-    const statements: string[] = [];
-    if (row.rls) {
-      statements.push(`ALTER TABLE ${formatQualifiedName(schema, name)} ENABLE ROW LEVEL SECURITY`);
-    }
-    if (row.force) {
-      statements.push(`ALTER TABLE ${formatQualifiedName(schema, name)} FORCE ROW LEVEL SECURITY`);
-    }
+    const state = {
+      rlsEnabled: row.rls === true,
+      rlsForced: row.force === true,
+    };
     objects.push(
       makeObject(
         { kind: "rls", name, schema, table: name },
-        statements.join(";\n"),
+        rlsStateSql(schema, name, state),
         nextOrdinal,
         undefined,
-        {
-          rlsEnabled: row.rls === true,
-          rlsForced: row.force === true,
-          rlsSubtype: row.rls === true ? "AT_EnableRowSecurity" : "AT_ForceRowSecurity",
-        }
+        state
       )
     );
     nextOrdinal += 1;
@@ -411,7 +415,7 @@ async function appendPoliciesAndRls(
       join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = pg_policies.schemaname
         and c.relname = pg_policies.tablename
-        and ${managedSchemaFilter}
+        and ${catalogSchemaFilter(pool)}
         and ${notExtensionMember("c", "pg_class")}
     )
     order by schemaname, tablename, policyname

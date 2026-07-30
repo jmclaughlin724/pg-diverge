@@ -7,7 +7,6 @@ import { parseRuntimeSource, RuntimeSourceKind, sourceAuto } from "../config/con
 import { diagnostic } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { readMigrationContext } from "../migrations/context.js";
-import { migrationFiles } from "../migrations/files.js";
 import { redactSecrets } from "../redaction.js";
 import {
   extractSourceModel,
@@ -71,7 +70,7 @@ export interface SchemaPlanningContextOptions {
 export async function resolveGenerationSourceDefaults(
   options: ResolveGenerationSourceOptions,
   config: SupaschemaConfig,
-  gitHeadExists: () => Promise<boolean> = defaultGitHeadExists
+  gitHeadExists: (cwd?: string) => Promise<boolean> = defaultGitHeadExists
 ): Promise<ResolvedGenerationSources> {
   const defaulted: string[] = [];
   const diagnostics: Diagnostic[] = [];
@@ -86,33 +85,44 @@ export async function resolveGenerationSourceDefaults(
   }
 
   let from = options.from;
-  let fromDefaultBlocked = false;
   if (from === undefined) {
     if (config.sources.from === sourceAuto) {
-      const stagedBaseline = await stagedGenerationBaseline(cwd, config, migrationsDir);
-      if (stagedBaseline) {
-        from = stagedBaseline;
-      } else if (await gitHeadExists()) {
-        from = "git:HEAD";
-      } else if (await hasMigrationCorpus(cwd, migrationsDir)) {
-        from = "empty:";
-        fromDefaultBlocked = true;
-        diagnostics.push(baselineRequiredDiagnostic(migrationsDir));
-      } else {
-        from = "empty:";
-      }
+      from = await automaticGenerationBaseline(cwd, config, migrationsDir, gitHeadExists);
     } else {
       from = config.sources.from;
     }
-    if (!fromDefaultBlocked) {
-      defaulted.push(`--from ${redactSecrets(from)}`);
-    }
+    defaulted.push(`--from ${redactSecrets(from)}`);
   }
 
   diagnostics.push(...(await planningSourceDiagnostics(from, to, mode, migrationsDir, cwd)));
   const notice =
     defaulted.length > 0 ? `defaults: ${defaulted.join(" · ")} (flags override)\n` : undefined;
   return { diagnostics, from, notice, to };
+}
+
+async function automaticGenerationBaseline(
+  cwd: string,
+  config: SupaschemaConfig,
+  migrationsDir: string,
+  gitHeadExists: (cwd?: string) => Promise<boolean>
+): Promise<string> {
+  const stagedBaseline = await stagedGenerationBaseline(cwd, config, migrationsDir);
+  if (stagedBaseline) {
+    return stagedBaseline;
+  }
+  const migrationContext = await readMigrationContext(migrationsDir, { cwd });
+  const hasMigrations = migrationContext.files.length > 0;
+  const requiresReplay =
+    hasMigrations &&
+    (migrationContext.latestGeneratedBaseline === undefined ||
+      migrationContext.unprovenBaselineFiles.length > 0);
+  if (requiresReplay) {
+    return `migrations:${migrationsDir}`;
+  }
+  if (await gitHeadExists(cwd)) {
+    return "git:HEAD";
+  }
+  return hasMigrations ? `migrations:${migrationsDir}` : "empty:";
 }
 
 async function stagedGenerationBaseline(
@@ -186,6 +196,24 @@ export async function buildSchemaPlanningContext(
   const extractStart = performance.now();
   const fullFrom = await extractSourceModel(options.from, extractOptions);
   const fromMs = performance.now() - extractStart;
+  const fromErrors = fullFrom.diagnostics.filter((item) => item.severity === "error");
+  if (
+    fromErrors.length > 0 &&
+    parseRuntimeSource(options.from)?.kind === RuntimeSourceKind.Migrations
+  ) {
+    diagnostics.push(
+      ...fromErrors,
+      diagnostic(
+        "SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED",
+        "error",
+        "the configured migration corpus could not be replayed into a proven baseline",
+        {
+          hint: "Resolve the first replay diagnostic in the named migration file, then rerun the same command. Do not patch generated types or select an unrelated fallback baseline.",
+        }
+      )
+    );
+    return { diagnostics, fromMs, planStart: performance.now(), toMs: 0 };
+  }
   const migrationContext = await readMigrationContext(migrationsDir, {
     ...corpusOptions,
     ...(options.excludeMigrationFiles === undefined
@@ -310,21 +338,6 @@ async function migrationGenerationSourceDiagnostics(
   ];
 }
 
-async function hasMigrationCorpus(cwd: string, migrationsDir: string): Promise<boolean> {
-  return (await migrationFiles(resolve(cwd, migrationsDir))).length > 0;
-}
-
-function baselineRequiredDiagnostic(migrationsDir: string): Diagnostic {
-  return diagnostic(
-    "SUPA_SOURCE_BASELINE_REQUIRED",
-    "error",
-    "sources.from: auto could not resolve a repository baseline for existing migrations",
-    {
-      hint: `Review ${migrationsDir}, then set sources.from to database:, git:, dir:, dump:, catalog:, or empty:.`,
-    }
-  );
-}
-
 async function migrationBaselineDiagnostics(
   fromSource: string,
   from: SchemaModel,
@@ -338,15 +351,17 @@ async function migrationBaselineDiagnostics(
     return [];
   }
   const baseline = migrationContext.latestGeneratedBaseline;
+  const replayPath = relative(cwd, migrationContext.directory) || ".";
+  const replaySource = `migrations:${replayPath}`;
   if (baseline === undefined) {
     return [
       diagnostic(
-        "SUPA_MIGRATION_BASELINE_UNSUPPORTED",
+        "SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED",
         "error",
-        "existing migrations do not expose a generated lineage baseline for the selected source",
+        "the migration corpus has no generated lineage baseline, so the selected source cannot prove its current state",
         {
           file: migrationContext.unprovenBaselineFiles.at(-1) ?? migrationContext.files.at(-1),
-          hint: "Use the matching migrations: corpus for first lineage adoption, or a source whose fingerprint matches an existing generated lineage baseline.",
+          hint: `Replay the configured corpus with ${replaySource}; sources.from:auto selects this recovery lane automatically.`,
         }
       ),
     ];
@@ -354,12 +369,12 @@ async function migrationBaselineDiagnostics(
   if (migrationContext.unprovenBaselineFiles.length > 0) {
     return [
       diagnostic(
-        "SUPA_MIGRATION_BASELINE_UNSUPPORTED",
+        "SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED",
         "error",
-        "hand-authored migrations appear after the newest generated lineage baseline",
+        "hand-authored migrations appear after the newest generated lineage baseline, so lineage alone cannot prove the current state",
         {
           file: migrationContext.unprovenBaselineFiles.at(-1),
-          hint: "Keep the generated lineage chain contiguous; move the schema change to the declarative tree and regenerate the next migration.",
+          hint: `Replay the configured corpus with ${replaySource}; sources.from:auto selects this recovery lane automatically. After the next generated migration, keep the lineage chain contiguous by making future schema changes in the declarative tree.`,
         }
       ),
     ];

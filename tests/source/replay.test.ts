@@ -166,7 +166,7 @@ describe("migrations source replay", () => {
     expect(first.formatVersion).toBe(MODEL_FORMAT_VERSION);
     expect(first.objects).toHaveLength(246);
     expect(first.fingerprint).toBe(
-      "4f372c330acc0e0aa9ff067597cbb9b1095298ebbc88565759db92ccacca5be7"
+      "13e63abff9a09d43a51c2a503fc8035225ad4960a893925f77dabe6a1b91c5e2"
     );
     expect(second.objects.map(({ hash, key }) => ({ hash, key }))).toEqual(
       first.objects.map(({ hash, key }) => ({ hash, key }))
@@ -1174,8 +1174,38 @@ ${generatedSql}`
     });
 
     expect(context.diagnostics.map((item) => item.code)).toContain(
-      "SUPA_MIGRATION_BASELINE_UNSUPPORTED"
+      "SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED"
     );
+  });
+
+  it("replays RLS state transitions across migration files", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_create.sql",
+        "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint);\nALTER TABLE app.accounts ENABLE ROW LEVEL SECURITY;\nALTER TABLE app.accounts FORCE ROW LEVEL SECURITY;",
+      ],
+      ["20240102000000_relax.sql", "ALTER TABLE app.accounts NO FORCE ROW LEVEL SECURITY;"],
+    ]);
+    const rls = model.objects.find((object) => object.ref.kind === "rls");
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(rls?.metadata).toMatchObject({ rlsEnabled: true, rlsForced: false });
+  });
+
+  it("removes comments through NULL and owning-column drops", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_create.sql",
+        "CREATE SCHEMA app;\nCREATE TABLE app.accounts (id bigint, email text);\nCOMMENT ON TABLE app.accounts IS 'accounts';\nCOMMENT ON COLUMN app.accounts.email IS 'email';",
+      ],
+      [
+        "20240102000000_remove.sql",
+        "COMMENT ON TABLE app.accounts IS NULL;\nALTER TABLE app.accounts DROP COLUMN email;",
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    expect(model.objects.filter((object) => object.ref.kind === "comment")).toEqual([]);
   });
 
   it("replays policy drop before recreating the policy name", async () => {

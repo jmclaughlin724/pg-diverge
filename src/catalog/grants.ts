@@ -8,7 +8,7 @@ import {
 import type { SchemaObject } from "../types.js";
 import {
   type CatalogQuery,
-  managedSchemaFilter,
+  catalogSchemaFilter,
   notExtensionMember,
   text,
   textArray,
@@ -35,6 +35,17 @@ interface CatalogGrant {
 
 type CatalogGrantGroups = Map<string, CatalogGrant[]>;
 
+interface CatalogDefaultPrivilege {
+  forRole?: string;
+  grantee: string;
+  objectType: string;
+  privileges: string[];
+  schema?: string;
+  withGrantOption: boolean;
+}
+
+type CatalogDefaultPrivilegeGroups = Map<string, CatalogDefaultPrivilege[]>;
+
 function addCatalogGrant(groups: CatalogGrantGroups, grant: CatalogGrant): void {
   const identity = [grant.kindPhrase, grant.targetIdentity, grant.grantee].join(":");
   const grants = groups.get(identity) ?? [];
@@ -57,13 +68,15 @@ function buildCatalogGrants(groups: CatalogGrantGroups): SchemaObject[] {
       }))
     );
     if (!merged) {
-      throw new Error(
-        `Catalog grant ${identity} has mixed grant-option states or invalid privilege metadata`
-      );
+      throw new Error(`Catalog grant ${identity} has invalid privilege metadata`);
     }
     objects.push(
       buildGrantObject({
         ...(merged.columnPrivileges ? { columnPrivileges: merged.columnPrivileges } : {}),
+        ...(merged.grantOptionColumnPrivileges
+          ? { grantOptionColumnPrivileges: merged.grantOptionColumnPrivileges }
+          : {}),
+        grantOptionPrivileges: merged.grantOptionPrivileges,
         grantee: first.grantee,
         kindPhrase: first.kindPhrase,
         ordinal: 0,
@@ -72,7 +85,6 @@ function buildCatalogGrants(groups: CatalogGrantGroups): SchemaObject[] {
         targetIdentity: first.targetIdentity,
         targetRendered: first.targetRendered,
         verb: "GRANT",
-        withGrantOption: merged.withGrantOption,
       })
     );
   }
@@ -99,7 +111,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     lateral aclexplode(c.relacl) as acl
     where c.relacl is not null
       and c.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
       and acl.grantee <> c.relowner
       and not exists (
@@ -144,7 +156,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
       and a.attnum > 0
       and not a.attisdropped
       and c.relkind in ('r', 'p', 'v', 'm', 'f')
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("c", "pg_class")}
       and acl.grantee <> c.relowner
       and not exists (
@@ -187,7 +199,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     from pg_namespace n,
     lateral aclexplode(n.nspacl) as acl
     where n.nspacl is not null
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and acl.grantee <> n.nspowner
       and not exists (
         select 1 from pg_init_privs i, lateral aclexplode(i.initprivs) ia
@@ -226,7 +238,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     join pg_namespace n on n.oid = p.pronamespace,
     lateral aclexplode(p.proacl) as acl
     where p.proacl is not null
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("p", "pg_proc")}
       and acl.grantee <> p.proowner
       and not exists (
@@ -269,7 +281,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where p.proacl is not null
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("p", "pg_proc")}
       and not exists (
         select 1 from aclexplode(p.proacl) acl
@@ -305,7 +317,7 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
     lateral aclexplode(t.typacl) as acl
     where t.typacl is not null
       and t.typtype in ('e', 'd', 'c', 'r')
-      and ${managedSchemaFilter}
+      and ${catalogSchemaFilter(pool)}
       and ${notExtensionMember("t", "pg_type")}
       and acl.grantee <> t.typowner
       and not exists (
@@ -346,7 +358,14 @@ export async function collectGrants(pool: CatalogQuery): Promise<SchemaObject[]>
 }
 
 export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<SchemaObject[]> {
-  const objects: SchemaObject[] = [];
+  return [
+    ...(await collectGrantedDefaultPrivileges(pool)),
+    ...(await collectRevokedDefaultPrivileges(pool)),
+  ];
+}
+
+async function collectGrantedDefaultPrivileges(pool: CatalogQuery): Promise<SchemaObject[]> {
+  const grantGroups: CatalogDefaultPrivilegeGroups = new Map();
   const rows = await pool.query(`
     select pg_get_userbyid(d.defaclrole) as for_role,
       d.defaclrole = current_user::regrole as is_current_role,
@@ -358,7 +377,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     from pg_default_acl d
     left join pg_namespace n on n.oid = d.defaclnamespace,
     lateral aclexplode(d.defaclacl) as acl
-    where (d.defaclnamespace = 0 or (${managedSchemaFilter}))
+    where (d.defaclnamespace = 0 or (${catalogSchemaFilter(pool)}))
       and ${notExtensionMember("d", "pg_default_acl")}
       and not exists (
         select 1
@@ -378,28 +397,64 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     const grantee = text(row.grantee);
     const privileges = textArray(row.privileges);
     const identity = `${ownerRole}:${text(row.objtype)}:${grantee}`;
-    if (catalogGrantOption(row.is_grantable, identity)) {
-      throw new Error(
-        `Catalog default privilege ${identity} uses a grant option that cannot be represented safely`
-      );
-    }
+    const withGrantOption = catalogGrantOption(row.is_grantable, identity);
 
-    if (grantee === ownerRole || isBuiltinDefaultGrant(objectType, grantee, privileges)) {
+    if (
+      grantee === ownerRole ||
+      (!withGrantOption && isBuiltinDefaultGrant(objectType, grantee, privileges))
+    ) {
       continue;
+    }
+    const schema = row.schema === null ? undefined : text(row.schema);
+    const key = [forRole ?? "", schema ?? "", objectType, grantee].join(":");
+    const group = grantGroups.get(key) ?? [];
+    group.push({
+      ...(forRole === undefined ? {} : { forRole }),
+      grantee,
+      objectType,
+      privileges,
+      ...(schema === undefined ? {} : { schema }),
+      withGrantOption,
+    });
+    grantGroups.set(key, group);
+  }
+  return buildCatalogDefaultPrivileges(grantGroups);
+}
+
+function buildCatalogDefaultPrivileges(grantGroups: CatalogDefaultPrivilegeGroups): SchemaObject[] {
+  const objects: SchemaObject[] = [];
+  for (const [identity, grants] of grantGroups) {
+    const first = grants[0];
+    if (!first) {
+      continue;
+    }
+    const merged = mergePrivilegeMetadata(
+      grants.map((grant) => ({
+        privileges: grant.privileges,
+        withGrantOption: grant.withGrantOption,
+      }))
+    );
+    if (!merged) {
+      throw new Error(`Catalog default privilege ${identity} has invalid privilege metadata`);
     }
     objects.push(
       buildDefaultPrivilegeObject({
-        forRole,
-        grantee,
-        objectType,
+        forRole: first.forRole,
+        grantOptionPrivileges: merged.grantOptionPrivileges,
+        grantee: first.grantee,
+        objectType: first.objectType,
         ordinal: 0,
-        privileges,
-        schema: row.schema === null ? undefined : text(row.schema),
+        privileges: merged.privileges,
+        schema: first.schema,
         verb: "GRANT",
       })
     );
   }
+  return objects;
+}
 
+async function collectRevokedDefaultPrivileges(pool: CatalogQuery): Promise<SchemaObject[]> {
+  const objects: SchemaObject[] = [];
   const revokedDefaults = await pool.query(`
     select pg_get_userbyid(d.defaclrole) as for_role,
       d.defaclrole = current_user::regrole as is_current_role,
@@ -408,7 +463,7 @@ export async function collectDefaultPrivileges(pool: CatalogQuery): Promise<Sche
     from pg_default_acl d
     left join pg_namespace n on n.oid = d.defaclnamespace
     where d.defaclobjtype in ('f', 'T')
-      and (d.defaclnamespace = 0 or (${managedSchemaFilter}))
+      and (d.defaclnamespace = 0 or (${catalogSchemaFilter(pool)}))
       and ${notExtensionMember("d", "pg_default_acl")}
       and not exists (
         select 1

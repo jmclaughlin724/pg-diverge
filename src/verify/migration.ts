@@ -419,10 +419,12 @@ async function compareVerificationCatalogs(
   diagnostics: Diagnostic[]
 ): Promise<void> {
   const afterMigration = await extractCatalogModel({
+    config,
     databaseUrl: migrationUrl,
     source: "verify:migration",
   });
   const expectedTarget = await extractCatalogModel({
+    config,
     databaseUrl: targetUrl,
     source: "verify:target",
   });

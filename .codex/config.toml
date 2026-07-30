@@ -1,0 +1,63 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+[features]
+hooks = true
+
+[mcp_servers.cloudflare-api]
+enabled = true
+required = false
+url = "https://mcp.cloudflare.com/mcp"
+bearer_token_env_var = "CLOUDFLARE_API_TOKEN"
+
+[mcp_servers.cloudflare-docs]
+url = "https://docs.mcp.cloudflare.com/mcp"
+
+[mcp_servers.supaschema]
+command = "uv"
+args = [
+  "run",
+  "--package",
+  "supaschema-agent-mcp",
+  "fastmcp",
+  "run",
+  "fastmcp.json",
+  "--skip-env",
+]
+default_tools_approval_mode = "approve"
+startup_timeout_sec = 20.0
+
+[mcp_servers.context7]
+enabled = true
+required = false
+url = "https://mcp.context7.com/mcp"
+default_tools_approval_mode = "approve"
+startup_timeout_sec = 20.0
+
+[mcp_servers.mintlify]
+url = "https://mintlify.com/docs/mcp"
+
+[mcp_servers.openaiDeveloperDocs]
+enabled = true
+required = false
+url = "https://developers.openai.com/mcp"
+default_tools_approval_mode = "approve"
+startup_timeout_sec = 20.0
+
+[mcp_servers.ultracite]
+enabled = true
+required = false
+url = "https://gitmcp.io/haydenbleasel/ultracite"
+default_tools_approval_mode = "approve"
+startup_timeout_sec = 20.0
+
+[mcp_servers.zod]
+enabled = true
+required = false
+url = "https://mcp.inkeep.com/zod/mcp"
+default_tools_approval_mode = "approve"
+startup_timeout_sec = 20.0
+
+[mcp_servers.supaschema-docs]
+url = "https://supaschema.com/docs/mcp"
+default_tools_approval_mode = "approve"
+startup_timeout_sec = 20.0

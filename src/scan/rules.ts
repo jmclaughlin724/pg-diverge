@@ -103,50 +103,7 @@ function tableKey(ref: ObjectRef): string {
 }
 
 function isRlsEnabledObject(object: SchemaObject): boolean {
-  return (
-    object.ref.kind === "rls" &&
-    (object.metadata.rlsSubtype === "AT_EnableRowSecurity" ||
-      object.metadata.rlsEnabled === true ||
-      containsEnableRowLevelSecurity(object.sql))
-  );
-}
-
-function containsEnableRowLevelSecurity(sql: string): boolean {
-  const tokens = splitWhitespace(sql).map((token) => token.toUpperCase());
-  for (let index = 0; index <= tokens.length - 4; index += 1) {
-    if (
-      tokens[index] === "ENABLE" &&
-      tokens[index + 1] === "ROW" &&
-      tokens[index + 2] === "LEVEL" &&
-      tokens[index + 3] === "SECURITY"
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function splitWhitespace(value: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  for (const char of value) {
-    if (isWhitespace(char)) {
-      if (current.length > 0) {
-        tokens.push(current);
-        current = "";
-      }
-    } else {
-      current += char;
-    }
-  }
-  if (current.length > 0) {
-    tokens.push(current);
-  }
-  return tokens;
-}
-
-function isWhitespace(char: string): boolean {
-  return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
+  return object.ref.kind === "rls" && object.metadata.rlsEnabled === true;
 }
 
 function rlsEnabledTableKeys(model: SchemaModel): Set<string> {

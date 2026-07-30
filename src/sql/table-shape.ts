@@ -287,13 +287,47 @@ function canonicalConstraint(constraint: AstNode, impliedColumns: string[]): Can
     if (constraintIdentityKeys.has(key)) {
       continue;
     }
-    payload[key] = stripLocations(value);
+    payload[key] = canonicalConstraintPayload(stripLocations(value));
   }
   return {
     columns: [...columns],
     payload,
     type: readString(constraint.contype) ?? "",
   };
+}
+
+function canonicalConstraintPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalConstraintPayload);
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return value;
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) {
+    result[key] =
+      key === "TypeName" || key === "typeName"
+        ? canonicalConstraintTypeName(child)
+        : canonicalConstraintPayload(child);
+  }
+  return result;
+}
+
+function canonicalConstraintTypeName(value: unknown): unknown {
+  const wrapper = asRecord(value);
+  const typeName = asRecord(wrapper?.TypeName) ?? wrapper;
+  if (!typeName) {
+    return canonicalConstraintPayload(value);
+  }
+  const normalized: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(typeName)) {
+    normalized[key] =
+      key === "names"
+        ? readArray(child).filter((part) => stringList([part])[0] !== "pg_catalog")
+        : canonicalConstraintPayload(child);
+  }
+  return wrapper?.TypeName === undefined ? normalized : { TypeName: normalized };
 }
 
 function constraintColumns(fkAttrs: string[], keys: string[], impliedColumns: string[]): string[] {

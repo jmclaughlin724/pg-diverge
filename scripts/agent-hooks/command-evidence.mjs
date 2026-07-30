@@ -4,7 +4,6 @@ import {
   commandName,
   commandSegmentObjects,
 } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
-import { codeAtlasQueryEvidence } from "./atlas.mjs";
 import {
   responseReportsFailure,
   shellCommandNotFound,
@@ -16,22 +15,11 @@ const shellToolNames = new Set(["Bash", "exec_command", "functions.exec_command"
 
 export function recordToolEvidence(payload, state) {
   const command = shellCommand(payload);
-  const atlasEvidence = codeAtlasQueryEvidence(normalizeShellPayload(payload, command));
-  if (!(command || atlasEvidence)) {
+  if (!command) {
     return {};
   }
   const toolSuccess = toolSucceeded(payload);
   if (toolSuccess === undefined) {
-    return {};
-  }
-  if (atlasEvidence) {
-    addEvidence(state, {
-      ...atlasEvidence,
-      outcome: toolSuccess ? "success" : "failure",
-      summary: `Code Atlas query ${toolSuccess ? "succeeded" : "failed"}`,
-    });
-  }
-  if (!command) {
     return {};
   }
   if (!toolSuccess && shellCommandNotFound(payload)) {
@@ -184,23 +172,6 @@ function commandInput(input) {
     return input.command;
   }
   return typeof input?.cmd === "string" ? input.cmd : "";
-}
-
-function normalizeShellPayload(payload, command) {
-  if (!command) {
-    return payload;
-  }
-  const input =
-    payload?.tool_input &&
-    typeof payload.tool_input === "object" &&
-    !Array.isArray(payload.tool_input)
-      ? payload.tool_input
-      : {};
-  return {
-    ...payload,
-    tool_input: { ...input, command },
-    tool_name: "Bash",
-  };
 }
 
 function transcriptTimestamp(entry) {
@@ -393,9 +364,6 @@ function addNpmDomains(domains, args) {
   }
   if (script === "build") {
     domains.add("build");
-  }
-  if (script.startsWith("code-atlas")) {
-    domains.add("code-atlas");
   }
 }
 

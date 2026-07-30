@@ -4,7 +4,6 @@ import { run } from "./lib/process.js";
 import { ROOT } from "./lib/repository.js";
 
 const guards = [
-  ["node", ["scripts/guards/code-atlas/check-code-atlas.mjs"]],
   ["node", ["scripts/guards/toolchain/check-tooling-stack.mjs"]],
   ["node", ["scripts/guards/fastmcp/check-fastmcp-agent.mjs"]],
   ["node", ["scripts/guards/repo-surface/check-public-repo-surface.mjs"]],
@@ -26,24 +25,8 @@ const guards = [
   ["node", ["scripts/guards/ci-release/check-release-version-surfaces.mjs"]],
 ];
 
-const publicCheckoutGuards = [
-  ["node", ["scripts/guards/code-atlas/check-code-atlas.mjs"]],
-  ["node", ["scripts/guards/toolchain/check-tooling-stack.mjs"]],
-  ["node", ["scripts/guards/fastmcp/check-fastmcp-agent.mjs"]],
-  ["node", ["scripts/guards/toolchain/check-lsp-coverage.mjs"]],
-  ["node", ["scripts/guards/agent-surface/check-agent-hooks.mjs"]],
-];
-
 for (const [command, args] of guards) {
   run(command, args, { stdio: "inherit" }, ROOT);
-}
-
-if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT !== "1") {
-  const publicCheckoutEnv = { ...process.env, SUPASCHEMA_PUBLIC_CHECKOUT: "1" };
-  for (const [command, args] of publicCheckoutGuards) {
-    run(command, args, { env: publicCheckoutEnv, stdio: "inherit" }, ROOT);
-  }
-  ok("PUBLIC_CHECKOUT_GUARDS_OK");
 }
 
 ok("ALL_GUARDS_OK");

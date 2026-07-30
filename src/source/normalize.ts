@@ -10,7 +10,14 @@ import {
   builtinPublicDefault,
   isBuiltinDefaultGrant,
   mergePrivilegeMetadata,
+  privilegeMetadataInputsFromRecord,
 } from "../sql/privileges.js";
+import {
+  applyRlsTransition,
+  defaultRlsState,
+  isRlsTransitionSubtype,
+  rlsStateSql,
+} from "../sql/rls.js";
 import { expressionSql, makeObject } from "../sql/statements.js";
 import { canonicalizeRegclassLiterals } from "../sql/table-shape.js";
 import type { Diagnostic, SchemaObject } from "../types.js";
@@ -29,7 +36,8 @@ export async function normalizeSourceObjects(
   const afterGenerated = applyColumnGeneratedAmendments(afterIdentity, diagnostics);
   const afterPartitions = applyTablePartitionAmendments(afterGenerated, diagnostics);
   const afterOwnedBy = applySequenceOwnedByAmendments(afterPartitions, diagnostics);
-  const afterRls = await mergeRlsFacets(afterOwnedBy, options);
+  const afterComments = applyCommentTransitions(afterOwnedBy);
+  const afterRls = await mergeRlsFacets(afterComments, options);
   const merged = await mergeSplitPrivileges(afterRls, options);
   return suppressDefaultAclImpliedGrants(suppressDefaultEqualPrivileges(merged));
 }
@@ -777,12 +785,28 @@ function sequenceShapeWithoutOwner(shape: Record<string, unknown>): Record<strin
   return rest;
 }
 
-const rlsSubtypeOrder = new Map([
-  ["AT_EnableRowSecurity", 0],
-  ["AT_DisableRowSecurity", 1],
-  ["AT_ForceRowSecurity", 2],
-  ["AT_NoForceRowSecurity", 3],
-]);
+function applyCommentTransitions(objects: SchemaObject[]): SchemaObject[] {
+  const latestByTarget = new Map<string, SchemaObject>();
+  for (const object of objects) {
+    if (object.ref.kind !== "comment") {
+      continue;
+    }
+    const previous = latestByTarget.get(object.key);
+    if (!previous || object.ordinal >= previous.ordinal) {
+      latestByTarget.set(object.key, object);
+    }
+  }
+  return objects.filter((object) => {
+    if (object.ref.kind !== "comment") {
+      return true;
+    }
+    return (
+      latestByTarget.get(object.key) === object &&
+      typeof object.metadata.description === "string" &&
+      object.metadata.description.length > 0
+    );
+  });
+}
 
 async function mergeRlsFacets(
   objects: SchemaObject[],
@@ -790,7 +814,7 @@ async function mergeRlsFacets(
 ): Promise<SchemaObject[]> {
   const groups = new Map<string, SchemaObject[]>();
   for (const object of objects) {
-    if (object.ref.kind !== "rls" || typeof object.metadata.rlsSubtype !== "string") {
+    if (object.ref.kind !== "rls" || !isRlsTransitionSubtype(object.metadata.rlsTransition)) {
       continue;
     }
     const group = groups.get(object.key) ?? [];
@@ -800,37 +824,34 @@ async function mergeRlsFacets(
   const replacements = new Map<string, SchemaObject>();
   const removed = new Set<SchemaObject>();
   for (const [key, group] of groups) {
-    if (group.length < 2) {
-      continue;
-    }
-    const ordered = [...group].sort(
-      (left, right) =>
-        (rlsSubtypeOrder.get(String(left.metadata.rlsSubtype)) ?? 9) -
-        (rlsSubtypeOrder.get(String(right.metadata.rlsSubtype)) ?? 9)
-    );
+    const ordered = [...group].sort((left, right) => left.ordinal - right.ordinal);
     const first = ordered[0];
     if (!first) {
       continue;
     }
+    let state = defaultRlsState;
+    for (const member of ordered) {
+      const transition = member.metadata.rlsTransition;
+      if (isRlsTransitionSubtype(transition)) {
+        state = applyRlsTransition(state, transition);
+      }
+    }
+    for (const member of group) {
+      removed.add(member);
+    }
+    if (!(state.rlsEnabled || state.rlsForced)) {
+      continue;
+    }
     const merged = makeObject(
       first.ref,
-      ordered.map((member) => member.sql).join(";\n"),
+      rlsStateSql(first.ref.schema, first.ref.table ?? first.ref.name, state),
       first.ordinal,
       first.file,
-      {
-        rlsEnabled: ordered.some((member) => member.metadata.rlsSubtype === "AT_EnableRowSecurity"),
-        rlsForced: ordered.some((member) => member.metadata.rlsSubtype === "AT_ForceRowSecurity"),
-        rlsSubtype: ordered.some((member) => member.metadata.rlsSubtype === "AT_EnableRowSecurity")
-          ? "AT_EnableRowSecurity"
-          : String(first.metadata.rlsSubtype),
-      }
+      { ...state }
     );
     merged.dependencies = mergedDependencies(ordered);
     await finalizeObject(merged, { normalize: options.normalize === true });
     replacements.set(key, merged);
-    for (const member of group) {
-      removed.add(member);
-    }
   }
   return replaceMembers(objects, removed, replacements);
 }
@@ -840,7 +861,7 @@ function replaceMembers(
   removed: Set<SchemaObject>,
   replacements: Map<string, SchemaObject>
 ): SchemaObject[] {
-  if (replacements.size === 0) {
+  if (removed.size === 0) {
     return objects;
   }
   const result: SchemaObject[] = [];
@@ -914,13 +935,13 @@ function mergeGrantPrivilegeGroup(
   group: SchemaObject[]
 ): SchemaObject | undefined {
   const meta = first.metadata;
-  const privilegeMetadata = mergePrivilegeMetadata(
-    group.map((item) => ({
-      columnPrivileges: item.metadata.columnPrivileges,
-      privileges: item.metadata.privileges,
-      withGrantOption: item.metadata.withGrantOption === true,
-    }))
+  const privilegeInputs = group.flatMap(
+    (item) => privilegeMetadataInputsFromRecord(item.metadata) ?? []
   );
+  if (privilegeInputs.length === 0) {
+    return;
+  }
+  const privilegeMetadata = mergePrivilegeMetadata(privilegeInputs);
   if (
     !privilegeMetadata ||
     typeof meta.grantee !== "string" ||
@@ -935,7 +956,11 @@ function mergeGrantPrivilegeGroup(
     ...(privilegeMetadata.columnPrivileges
       ? { columnPrivileges: privilegeMetadata.columnPrivileges }
       : {}),
+    ...(privilegeMetadata.grantOptionColumnPrivileges
+      ? { grantOptionColumnPrivileges: privilegeMetadata.grantOptionColumnPrivileges }
+      : {}),
     file: first.file,
+    grantOptionPrivileges: privilegeMetadata.grantOptionPrivileges,
     grantee: meta.grantee,
     kindPhrase: meta.kindPhrase,
     ordinal: first.ordinal,
@@ -944,7 +969,6 @@ function mergeGrantPrivilegeGroup(
     targetIdentity: meta.targetIdentity,
     targetRendered: meta.target,
     verb: meta.verb,
-    withGrantOption: privilegeMetadata.withGrantOption,
   });
 }
 
@@ -953,9 +977,13 @@ function mergeDefaultPrivilegeGroup(
   group: SchemaObject[]
 ): SchemaObject | undefined {
   const meta = first.metadata;
-  const privileges = unionPrivileges(group);
+  const privilegeInputs = group.flatMap(
+    (item) => privilegeMetadataInputsFromRecord(item.metadata) ?? []
+  );
+  const privilegeMetadata =
+    privilegeInputs.length > 0 ? mergePrivilegeMetadata(privilegeInputs) : undefined;
   if (
-    !privileges ||
+    !privilegeMetadata ||
     typeof meta.grantee !== "string" ||
     typeof meta.objectType !== "string" ||
     (meta.verb !== "GRANT" && meta.verb !== "REVOKE")
@@ -965,30 +993,14 @@ function mergeDefaultPrivilegeGroup(
   return buildDefaultPrivilegeObject({
     file: first.file,
     forRole: typeof meta.forRole === "string" ? meta.forRole : undefined,
+    grantOptionPrivileges: privilegeMetadata.grantOptionPrivileges,
     grantee: meta.grantee,
     objectType: meta.objectType,
     ordinal: first.ordinal,
-    privileges,
+    privileges: privilegeMetadata.privileges,
     schema: typeof meta.schema === "string" ? meta.schema : undefined,
     verb: meta.verb,
   });
-}
-
-function unionPrivileges(group: SchemaObject[]): string[] | undefined {
-  const union = new Set<string>();
-  for (const member of group) {
-    const privileges = member.metadata.privileges;
-    if (!Array.isArray(privileges) || privileges.some((item) => typeof item !== "string")) {
-      return;
-    }
-    for (const privilege of privileges) {
-      if (privilege === "ALL") {
-        return ["ALL"];
-      }
-      union.add(privilege);
-    }
-  }
-  return [...union].sort((left, right) => left.localeCompare(right));
 }
 
 function mergedDependencies(group: SchemaObject[]): string[] {

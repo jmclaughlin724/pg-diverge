@@ -119,7 +119,7 @@ function assertClaudeSettings(claudeSettings, root) {
   }
   assert(
     settingsText.includes("/.claude/hooks/supaschema-source-hook.mjs") &&
-      settingsText.includes('"generated-migration-edit"') &&
+      settingsText.includes('"generated-artifact-edit"') &&
       settingsText.includes('"schema-write"'),
     ".claude/settings.json must register the tracked source-repo supaschema hook launcher"
   );
@@ -157,11 +157,11 @@ function assertClaudeSettings(claudeSettings, root) {
   const sourceClaudeSchemaCommands = sourceClaudeBashCommands.filter(
     (command) =>
       command.includes(".claude/hooks/supaschema-source-hook.mjs") &&
-      command.includes("generated-migration-edit")
+      command.includes("generated-artifact-edit")
   );
   assert(
-    sourceClaudeContextCommands.length === 1 && sourceClaudeSchemaCommands.length === 0,
-    ".claude/settings.json Bash PreToolUse must resolve through the context hook only"
+    sourceClaudeContextCommands.length === 1 && sourceClaudeSchemaCommands.length === 1,
+    ".claude/settings.json Bash PreToolUse must resolve through context plus the generated-artifact hook"
   );
   const claudeContextPreToolUse = (claudeSettings.hooks?.PreToolUse ?? []).filter((entry) =>
     hookHandlers(entry).some((handler) =>
@@ -178,11 +178,11 @@ function assertClaudeSettings(claudeSettings, root) {
   ).filter(
     (command) =>
       command.includes(".claude/hooks/supaschema-source-hook.mjs") &&
-      command.includes("generated-migration-edit")
+      command.includes("generated-artifact-edit")
   );
   assert(
     sourceClaudeApplyPatchSchemaCommands.length === 1,
-    ".claude/settings.json apply_patch PreToolUse must register the generated-migration policy hook"
+    ".claude/settings.json apply_patch PreToolUse must register the generated-artifact policy hook"
   );
   assert(
     !sourceClaudeBashCommands.some((command) =>
@@ -218,10 +218,8 @@ function assertClaudeSettings(claudeSettings, root) {
   );
   const claudeContextMatcher = claudeContextPostToolUse?.matcher;
   assert(
-    typeof claudeContextMatcher === "string" &&
-      claudeContextMatcher.split("|").includes("mcp__supaschema__code_atlas_query") &&
-      !claudeContextMatcher.split("|").includes("mcp__codeatlas__.*"),
-    ".claude/settings.json must dispatch only local Code Atlas MCP results to the context PostToolUse hook"
+    typeof claudeContextMatcher === "string" && claudeContextMatcher.split("|").includes("Bash"),
+    ".claude/settings.json must dispatch Bash results to the context PostToolUse hook"
   );
   assert(
     hookHandlers(claudePostToolUse).some((handler) =>
@@ -325,7 +323,7 @@ function assertCodexConfig(codexConfig, root) {
     ".codex/hooks.json context PreToolUse must use matcher .* so every supported local tool reaches the repository boundary"
   );
   for (const [toolName, expectedSchemaCommands] of [
-    ["Bash", 0],
+    ["Bash", 1],
     ["apply_patch", 1],
   ]) {
     const commands = codexPreToolUseCommandsFor(codexConfig, toolName);
@@ -335,11 +333,11 @@ function assertCodexConfig(codexConfig, root) {
     const schemaCommands = commands.filter(
       (command) =>
         command.includes(".codex/hooks/supaschema-source-hook.mjs") &&
-        command.includes("generated-migration-edit")
+        command.includes("generated-artifact-edit")
     );
     assert(
       contextCommands.length === 1 && schemaCommands.length === expectedSchemaCommands,
-      `.codex/hooks.json ${toolName} PreToolUse must keep the expected context and generated-migration hook topology`
+      `.codex/hooks.json ${toolName} PreToolUse must keep the expected context and generated-artifact hook topology`
     );
   }
   const packageCodexConfig = readJson("agent-bundle/codex/hooks.npm.json", root);
@@ -354,7 +352,7 @@ function assertCodexConfig(codexConfig, root) {
       packageCodexHooksJson.includes("sync-llm-on-claude-surface-change.mjs") ||
       packageCodexHooksJson.includes("scripts/agent-hooks")
     ) &&
-      packageCodexHooksJson.includes("hook generated-migration-edit") &&
+      packageCodexHooksJson.includes("hook generated-artifact-edit") &&
       packageCodexHooksJson.includes("hook schema-write"),
     "agent-bundle/codex/hooks.npm.json must contain only Supaschema product hooks"
   );
@@ -370,7 +368,7 @@ function assertCodexConfig(codexConfig, root) {
   );
   assert(
     codexHooksJson.includes(".codex/hooks/supaschema-source-hook.mjs") &&
-      codexHooksJson.includes("hook generated-migration-edit") &&
+      codexHooksJson.includes("hook generated-artifact-edit") &&
       codexHooksJson.includes("hook schema-write"),
     ".codex/hooks.json must register the tracked source-repo supaschema hook launcher"
   );
@@ -437,7 +435,6 @@ function assertAgentBundleHookLabels(root) {
 export function check(root = ROOT) {
   const sourceRepoAgentRuntimeFiles = [
     ".claude/settings.json",
-    "scripts/agent-hooks/atlas.mjs",
     "scripts/agent-hooks/command-evidence.mjs",
     "scripts/agent-hooks/evidence-gate.mjs",
     "scripts/agent-hooks/hook-output.mjs",

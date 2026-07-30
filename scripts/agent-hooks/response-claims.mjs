@@ -10,7 +10,6 @@ const verificationDomainLexicon = [
   ["package", ["package", "packages", "tarball"]],
   ["github-checks", ["ci", "github"]],
   ["sync", ["sync", "synced"]],
-  ["code-atlas", ["atlas"]],
 ];
 const verificationDomainOfWord = new Map(
   verificationDomainLexicon.flatMap(([domain, words]) => words.map((word) => [word, domain]))
@@ -298,12 +297,7 @@ function hasUnresolvedFailure(evidence, domain) {
 }
 
 function hasSuccessfulEvidence(evidence, domain) {
-  return evidence.some((item) => {
-    if (domain === "code-atlas" && item.kind === "code-atlas-query" && item.outcome !== "failure") {
-      return true;
-    }
-    return isSuccessEvidence(item) && domainsOf(item).includes(domain);
-  });
+  return evidence.some((item) => isSuccessEvidence(item) && domainsOf(item).includes(domain));
 }
 
 function isSuccessEvidence(item) {

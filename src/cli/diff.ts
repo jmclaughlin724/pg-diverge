@@ -540,7 +540,7 @@ async function diffWorkspacePreflightDiagnostics(
   config: SupaschemaConfig,
   configPath: string | undefined
 ): Promise<Diagnostic[]> {
-  if (!(options.from.startsWith("git:") && options.to.startsWith("dir:"))) {
+  if (!options.to.startsWith("dir:")) {
     return [];
   }
   const toDir = normalizeGitPath(options.to.slice("dir:".length));

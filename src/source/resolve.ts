@@ -62,7 +62,7 @@ export async function currentBaselineFingerprints(
   config: SupaschemaConfig,
   cwd: string = process.cwd()
 ): Promise<CurrentBaselineFingerprints> {
-  const head = (await defaultGitHeadExists())
+  const head = (await defaultGitHeadExists(cwd))
     ? await sourceFingerprint("git:HEAD", config, cwd)
     : undefined;
   const tree = await sourceFingerprint(defaultTreeSource(config), config, cwd);
@@ -84,9 +84,10 @@ async function sourceFingerprint(
   }
 }
 
-export async function defaultGitHeadExists(): Promise<boolean> {
+export async function defaultGitHeadExists(cwd: string = process.cwd()): Promise<boolean> {
   try {
     await execFileAsync("git", ["rev-parse", "--verify", "--quiet", "HEAD"], {
+      cwd,
       maxBuffer: 1024 * 1024,
     });
     return true;

@@ -27,19 +27,45 @@ describe("public repo surface guard", () => {
 
   it("blocks unignored private local paths before they can be staged", () => {
     const root = tempGuardRepo({
-      "scripts/code-atlas/local.mjs": "export {};\n",
+      "scripts/stripe/local.mjs": "export {};\n",
     });
     expect(() => check(root)).toThrow("unignored local files that could be staged");
   });
 
   it("blocks tracked private local paths with an untrack-only repair", () => {
     const root = tempGuardRepo({
-      "scripts/code-atlas/local.mjs": "export {};\n",
+      "scripts/stripe/local.mjs": "export {};\n",
     });
-    execFileSync("git", ["add", "scripts/code-atlas/local.mjs"], {
+    execFileSync("git", ["add", "scripts/stripe/local.mjs"], {
       cwd: root,
       stdio: "ignore",
     });
     expect(() => check(root)).toThrow("tracked public GitHub exposure");
+  });
+
+  it("blocks wired maintainer tooling left untracked on disk", () => {
+    const root = tempGuardRepo({
+      "services/agent-mcp/pyproject.toml": "[project]\n",
+    });
+    expect(() => check(root)).toThrow("wired maintainer tooling must be tracked");
+  });
+
+  it("blocks wired config files left untracked on disk", () => {
+    const root = tempGuardRepo({
+      "fastmcp.json": "{}\n",
+    });
+    expect(() => check(root)).toThrow("wired maintainer tooling must be tracked");
+  });
+
+  it("allows wired maintainer tooling once tracked", () => {
+    const root = tempGuardRepo({
+      "services/agent-mcp/pyproject.toml": "[project]\n",
+      "fastmcp.json": "{}\n",
+    });
+    execFileSync("git", ["add", "services/agent-mcp/pyproject.toml", "fastmcp.json"], {
+      cwd: root,
+      stdio: "ignore",
+    });
+    expect(() => check(root)).not.toThrow();
   });
 });

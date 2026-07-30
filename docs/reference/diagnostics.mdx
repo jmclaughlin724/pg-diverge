@@ -18,6 +18,8 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_EXTRACT_UNSUPPORTED` | error | The source contains DDL that `supaschema` cannot model safely. |
 | `SUPA_EXTRACT_DUPLICATE_OBJECT` | error | Two source statements claim the same object identity. |
 | `SUPA_EXTRACT_SIDE_EFFECT_UNSUPPORTED` | error | The source contains a data/control-plane side-effect statement that is not a replay-safe schema object. |
+| `SUPA_GENERATED_ARTIFACT_EDIT` | error | A write targeted a lineage-marked migration or configured TypeScript/Zod contract. Change declarative SQL or generator config, prove readiness with `doctor`, regenerate, and review the generated diff. |
+| `SUPA_GENERATED_ARTIFACT_GUARD_FAILED` | error | The generated-artifact hook could not classify a write because its payload or config was invalid, so it denied the operation. Run `supaschema config validate`, repair the first error, run `supaschema doctor`, and retry instead of bypassing the hook. |
 | `SUPA_OBJECT_PARSE_FAILED` | error | Object SQL did not parse, so its identity hash fell back to normalized text. |
 | `SUPA_SUPABASE_MANAGED_SCHEMA` | error | A schema listed in `managedSchemas` was edited as declarative source. |
 | `SUPA_SUPABASE_VIEW_SECURITY_INVOKER` | warning | A view in an exposed schema does not set `security_invoker`, so RLS applies as the view owner. |
@@ -39,7 +41,8 @@ A missing source-intent diagnostic is useful only when it names the absent sourc
 | `SUPA_DIFF_REPLACE_NOT_LATEST` | error | `diff --replace` targeted a generated migration older than the configured migration directory tip. |
 | `SUPA_MIGRATION_BASELINE_MISMATCH` | error | The resolved `sources.from` model does not match the generated migration-tree baseline. Recover from the source state that produced the baseline, use `diff --replace`, or — when the pending migration's end-state was never committed and no target records it as applied — review and delete the pending migration, then regenerate from the current tree. |
 | `SUPA_MIGRATION_BASELINE_FORMAT_DRIFT` | warning | The latest generated migration-tree lineage was produced by a different model format, so old and current fingerprints are not directly comparable. Same-format mismatches still block. |
-| `SUPA_MIGRATION_BASELINE_UNSUPPORTED` | error | The selected before-state does not match the configured migration corpus, or existing migrations cannot prove a generated-lineage baseline for source-backed generation. |
+| `SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED` | error | Generated lineage is absent, a hand-authored tail follows it, or migration replay failed. Resolve the first replay diagnostic and use the configured `migrations:` corpus as the generation before-state; never patch generated contracts or select an unrelated fallback baseline. |
+| `SUPA_MIGRATION_BASELINE_UNSUPPORTED` | error | The selected `migrations:` before-state does not resolve to the configured migration corpus. |
 | `SUPA_MIGRATIONS_STALE_BASELINE` | warning | A pending generated migration's lineage end-state matches neither the current `git:HEAD` schema fingerprint nor the current tree fingerprint; its baseline is unreproducible. If no target records the version as applied, review and delete it, then regenerate. |
 | `SUPA_MIGRATION_CORPUS_PARSE_SKIPPED` | warning | A configured migration file could not be fully parsed for source intent; destructive changes in that file may still require explicit hints. |
 | `SUPA_PLAN_DESTRUCTIVE_HINT_REQUIRED` | error | A destructive change lacks an explicit hint. |

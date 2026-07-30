@@ -134,6 +134,27 @@ async function fixtures(): Promise<{
   return { generated, handAuthored };
 }
 
+async function generatedContractFixture(): Promise<{
+  project: string;
+  typesFile: string;
+  zodFile: string;
+}> {
+  const project = await mkdtemp(join(tmpdir(), "supa-generated-contract-hook-"));
+  const typesFile = join(project, "packages", "database", "src", "types.ts");
+  const zodFile = join(project, "packages", "database", "src", "zod.ts");
+  await mkdir(dirname(typesFile), { recursive: true });
+  await writeFile(typesFile, "export interface Database {}\n");
+  await writeFile(zodFile, "export const SupaschemaZod = {};\n");
+  await writeFile(
+    join(project, "supaschema.config.json"),
+    JSON.stringify({
+      typesFile: "packages/database/src/types.ts",
+      zodFile: "packages/database/src/zod.ts",
+    })
+  );
+  return { project, typesFile, zodFile };
+}
+
 async function autoDiffFixture(
   schemaPaths: string[],
   fakeSupaschema?: string,
@@ -626,7 +647,7 @@ describe.skipIf(!hasClaudePostToolUseFailureHook)(
 describe("source hook launcher diagnostics", () => {
   it.each([
     {
-      args: ["hook", "generated-migration-edit", "--runtime", "codex"],
+      args: ["hook", "generated-artifact-edit", "--runtime", "codex"],
       eventName: "PreToolUse",
     },
     {
@@ -702,6 +723,14 @@ describe("agent hook configuration", () => {
           "node",
           `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/context-pre-tool-use.mjs`,
         ].join(" "),
+        [
+          "node",
+          `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/supaschema-source-hook.mjs`,
+          "hook",
+          "generated-artifact-edit",
+          "--runtime",
+          "claude",
+        ].join(" "),
       ]);
       expect(
         hookEntries(settings, "PreToolUse").find((entry) =>
@@ -716,7 +745,7 @@ describe("agent hook configuration", () => {
           args: [
             `${workspaceVariable("CLAUDE_PROJECT_DIR")}/.claude/hooks/supaschema-source-hook.mjs`,
             "hook",
-            "generated-migration-edit",
+            "generated-artifact-edit",
             "--runtime",
             "claude",
           ],
@@ -738,7 +767,7 @@ describe("agent hook configuration", () => {
       const postToolUseText = JSON.stringify(hookEntries(settings, "PostToolUse"));
       const postToolUseFailureText = JSON.stringify(hookEntries(settings, "PostToolUseFailure"));
       expect(hookEntries(settings, "PostToolUse").map((entry) => entry.matcher)).toEqual([
-        "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch|mcp__supaschema__code_atlas_query",
+        "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch",
         "Bash|Write|Edit|MultiEdit|apply_patch",
         "Bash|Write|Edit|MultiEdit|apply_patch",
       ]);
@@ -799,17 +828,18 @@ describe("agent hook configuration", () => {
     expect(preToolUseText).not.toContain("functions.");
     expect(postToolUseText).not.toContain("exec_command");
     expect(postToolUseText).not.toContain("functions.");
-    expect(JSON.stringify(config)).toContain("hook generated-migration-edit");
+    expect(JSON.stringify(config)).toContain("hook generated-artifact-edit");
     expect(JSON.stringify(config)).toContain("hook schema-write");
     expect(JSON.stringify(config)).not.toContain("npm exec -- supaschema");
     expect(JSON.stringify(config)).not.toContain("pnpm exec supaschema");
     expect(JSON.stringify(config)).not.toContain("npx --no-install supaschema");
     expect(codexPreToolUseCommandsFor(config, "Bash")).toEqual([
       `node "${codexGitRoot}/.codex/hooks/context-pre-tool-use.mjs"`,
+      `node "${codexGitRoot}/.codex/hooks/supaschema-source-hook.mjs" hook generated-artifact-edit --runtime codex`,
     ]);
     expect(codexPreToolUseCommandsFor(config, "apply_patch")).toEqual(
       expect.arrayContaining([
-        `node "${codexGitRoot}/.codex/hooks/supaschema-source-hook.mjs" hook generated-migration-edit --runtime codex`,
+        `node "${codexGitRoot}/.codex/hooks/supaschema-source-hook.mjs" hook generated-artifact-edit --runtime codex`,
       ])
     );
     expect(hookEntries(config, "Stop")).toHaveLength(1);
@@ -1402,8 +1432,8 @@ describe("llm surface sync hook", () => {
   });
 });
 
-describe("claude generated-migration edit hook", () => {
-  const script = "supaschema hook generated-migration-edit --runtime claude";
+describe("claude generated-artifact edit hook", () => {
+  const script = "supaschema hook generated-artifact-edit --runtime claude";
 
   it("blocks edits to migrations carrying the lineage marker", async () => {
     const { generated } = await fixtures();
@@ -1413,7 +1443,7 @@ describe("claude generated-migration edit hook", () => {
     });
 
     expect(result.code).toBe(2);
-    expect(result.stderr).toContain("supaschema diff");
+    expect(result.stderr).toContain("SUPA_GENERATED_ARTIFACT_EDIT");
   });
 
   it("blocks apply_patch updates to migrations carrying the lineage marker", async () => {
@@ -1425,7 +1455,7 @@ describe("claude generated-migration edit hook", () => {
     });
 
     expect(result.code).toBe(2);
-    expect(result.stderr).toContain("supaschema diff");
+    expect(result.stderr).toContain("SUPA_GENERATED_ARTIFACT_EDIT");
   });
 
   it("allows deleting a stale generated migration", async () => {
@@ -1437,6 +1467,90 @@ describe("claude generated-migration edit hook", () => {
     });
 
     expect(result.code).toBe(0);
+  });
+
+  it("blocks writes and deletes to configured generated contracts", async () => {
+    const { project, typesFile, zodFile } = await generatedContractFixture();
+    const write = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { file_path: typesFile },
+        tool_name: "Write",
+      },
+      { cwd: project }
+    );
+    const patch = `*** Begin Patch\n*** Delete File: ${zodFile}\n*** End Patch`;
+    const deletion = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { command: patch },
+        tool_name: "apply_patch",
+      },
+      { cwd: project }
+    );
+
+    expect(write.code).toBe(2);
+    expect(write.stderr).toContain("generated TypeScript contract");
+    expect(deletion.code).toBe(2);
+    expect(deletion.stderr).toContain("generated Zod contract");
+  });
+
+  it("blocks bounded Bash writer forms targeting generated contracts but allows reads", async () => {
+    const { project, typesFile } = await generatedContractFixture();
+    const writeCommands = [
+      `echo generated > ${typesFile}`,
+      `echo generated >| ${typesFile}`,
+      `TARGET=${typesFile}; echo generated > "$TARGET"`,
+      `cp /tmp/source ${typesFile} > /tmp/cp.log`,
+      `cp -t ${dirname(typesFile)} /tmp/source`,
+      `mv --target-directory=${dirname(typesFile)} /tmp/source`,
+      `prettier --write=${typesFile}`,
+    ];
+    for (const command of writeCommands) {
+      const write = await runHook(
+        script,
+        {
+          cwd: project,
+          tool_input: { command },
+          tool_name: "Bash",
+        },
+        { cwd: project }
+      );
+
+      expect(write.code, command).toBe(2);
+      expect(write.stderr, command).toContain("SUPA_GENERATED_ARTIFACT_EDIT");
+    }
+    const read = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { command: `cat ${typesFile}` },
+        tool_name: "Bash",
+      },
+      { cwd: project }
+    );
+
+    expect(read.code).toBe(0);
+  });
+
+  it("blocks shell deletion while preserving the reviewed delete-only patch lane", async () => {
+    const { generated } = await fixtures();
+    const shellDelete = await runHook(script, {
+      tool_input: { command: `rm ${generated}` },
+      tool_name: "Bash",
+    });
+    const patchDelete = await runHook(script, {
+      tool_input: {
+        command: `*** Begin Patch\n*** Delete File: ${generated}\n*** End Patch`,
+      },
+      tool_name: "apply_patch",
+    });
+
+    expect(shellDelete.code).toBe(2);
+    expect(shellDelete.stderr).toContain("SUPA_GENERATED_ARTIFACT_EDIT");
+    expect(patchDelete.code).toBe(0);
   });
 
   it("allows hand-authored migrations, new files, and non-sql edits", {
@@ -1458,8 +1572,32 @@ describe("claude generated-migration edit hook", () => {
   });
 });
 
-describe("codex generated-migration tool gate", () => {
-  const script = "supaschema hook generated-migration-edit --runtime codex";
+describe("codex generated-artifact tool gate", () => {
+  const script = "supaschema hook generated-artifact-edit --runtime codex";
+
+  it("fails closed when config or hook input cannot be classified", async () => {
+    const project = await mkdtemp(join(tmpdir(), "supa-invalid-artifact-hook-"));
+    await writeFile(join(project, "supaschema.config.json"), "{");
+    const invalidConfig = await runHook(
+      script,
+      {
+        cwd: project,
+        tool_input: { file_path: "generated.ts" },
+        tool_name: "Write",
+      },
+      { cwd: project }
+    );
+    const invalidPayload = await runHook(script, {}, { cwd: project, stdin: "{" });
+
+    for (const result of [invalidConfig, invalidPayload]) {
+      expect(result.code).toBe(0);
+      const output = hookOutput(result.stdout);
+      expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
+      expect(output.hookSpecificOutput?.permissionDecisionReason).toContain(
+        "SUPA_GENERATED_ARTIFACT_GUARD_FAILED"
+      );
+    }
+  });
 
   it("denies apply_patch updates to migrations carrying the lineage marker", async () => {
     const { generated } = await fixtures();
@@ -1472,7 +1610,9 @@ describe("codex generated-migration tool gate", () => {
     expect(result.code).toBe(0);
     const output = hookOutput(result.stdout);
     expect(output.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(output.hookSpecificOutput?.permissionDecisionReason).toContain("supaschema diff");
+    expect(output.hookSpecificOutput?.permissionDecisionReason).toContain(
+      "SUPA_GENERATED_ARTIFACT_EDIT"
+    );
   });
 
   it("allows hand-authored targets and emits empty output", async () => {

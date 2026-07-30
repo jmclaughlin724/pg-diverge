@@ -309,13 +309,13 @@ function claudeHookConfig(runner) {
         {
           hooks: [
             {
-              command: `${runner.commandString} hook generated-migration-edit --runtime claude`,
-              statusMessage: "Checking supaschema generated-migration policy",
+              command: `${runner.commandString} hook generated-artifact-edit --runtime claude`,
+              statusMessage: "Checking supaschema generated-artifact policy",
               timeout: 10,
               type: "command",
             },
           ],
-          matcher: "Write|Edit|MultiEdit|apply_patch",
+          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
         },
       ],
     },
@@ -375,11 +375,11 @@ export function renderSourceCodexHooks(root = ROOT) {
             codexHookCommand(
               ".codex/hooks/supaschema-source-hook.mjs",
               10,
-              "Checking supaschema generated-migration policy",
-              "hook generated-migration-edit --runtime codex"
+              "Checking supaschema generated-artifact policy",
+              "hook generated-artifact-edit --runtime codex"
             ),
           ],
-          matcher: codexEditToolMatcher,
+          matcher: codexMutationToolMatcher,
         },
       ],
       SessionStart: [
@@ -497,7 +497,7 @@ function assertClaudeHookSource(root) {
   }
 
   assertSourceClaudeBashPreToolUseTopology(hooks);
-  assertClaudeCommand(hooks, "PreToolUse", "generated-migration-edit");
+  assertClaudeCommand(hooks, "PreToolUse", "generated-artifact-edit");
   assertClaudeCommand(hooks, "PostToolUse", "schema-write");
   assertClaudeNodeHook(hooks, "PostToolUse", ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
   assertClaudeNodeHook(

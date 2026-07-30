@@ -13,7 +13,6 @@ Read only the rules and skills directly applicable to the current task.
 | General operating discipline, gates, `$elegant`, enforcement closure, npm-only tooling, or closeout | `.claude/rules/01-operating-rules.md` |
 | Technical decisions, upstream research, evidence fallbacks, or escalation | `.claude/rules/05-decision-protocol.md` |
 | PostgreSQL or Supabase migrations, source-intent extraction, or generated schema surfaces | `.claude/rules/supaschema.md` |
-| Repository graph, dependency, consumer, route, owner, or impact discovery | `.claude/rules/10-code-atlas.md` |
 | Agent MCP or FastMCP behavior and public surfaces | `.claude/rules/11-agent-mcp-fastmcp.md` |
 | Skill loading, hook context, observable loading, enforcement, or hook state | `.claude/rules/12-skill-loading-enforcement.md` |
 | Package exports, npm package boundaries, or public consumers | `.claude/rules/13-npm-package-boundary.md` |
@@ -118,8 +117,6 @@ Biome's linter will catch most issues automatically. Focus your attention on:
 ## Discovery
 
 Begin with the smallest relevant file, symbol, route, package, test, diff, log, or command.
-
-Use Code Atlas according to `.claude/rules/10-code-atlas.md` when the task requires repository-wide dependency, ownership, consumer, route, or impact discovery.
 
 Use focused source searches when the location or symbol is already known.
 

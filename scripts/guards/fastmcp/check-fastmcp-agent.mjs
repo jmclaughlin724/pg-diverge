@@ -12,7 +12,6 @@ const required = [
   "pyproject.toml",
   "fastmcp.json",
   ".mcp.json",
-  ".claude/settings.json",
   ".codex/config.toml",
 ];
 
@@ -63,12 +62,11 @@ const expectedRegistryServers = {
   zod: { type: "http", url: "https://mcp.inkeep.com/zod/mcp" },
   "supaschema-docs": { type: "http", url: "https://supaschema.com/docs/mcp" },
 };
-const disallowedServers = ["MCP_DOCKER", "cclsp", "codeatlas", "next-devtools", "render", "sentry"];
+const disallowedServers = ["MCP_DOCKER", "cclsp", "next-devtools", "render", "sentry"];
 const unsupportedProjectClientConfigs = [
   ".cursor/mcp.json",
   ".gemini/settings.json",
   ".vscode/mcp.json",
-  ".continue/mcpServers/codeatlas.yaml",
 ];
 const expectedCodexWiring = {
   "cloudflare-api": {
@@ -155,10 +153,6 @@ function assertSameServerNames(actual, expected, message) {
 }
 
 export function check(root = ROOT) {
-  if (process.env.SUPASCHEMA_PUBLIC_CHECKOUT === "1" || !exists(required[0], root)) {
-    return "FASTMCP_AGENT_SKIPPED_LOCAL_ONLY";
-  }
-
   for (const file of required) {
     assert(exists(file, root), `missing ${file}`);
   }
@@ -175,11 +169,8 @@ export function check(root = ROOT) {
     '"secrets"',
     '"plans"',
     "SECRET_SUFFIXES",
-    "CODE_MAP_AFFORDANCE_TOOLS",
-    "code_atlas_query",
     "repo_context_query",
     "repo_safety_scan",
-    '["node", "scripts/code-atlas/query.mjs"',
     '["node", "dist/cli.js", "scan"',
     "upstream_mcp_capabilities",
     "Pointer index only",
@@ -236,44 +227,6 @@ export function check(root = ROOT) {
     mcp["supaschema-docs"]?.url === "https://supaschema.com/docs/mcp",
     ".mcp.json supaschema-docs must use /docs/mcp"
   );
-  const settings = readJson(".claude/settings.json", root);
-  assert(
-    settings.enableAllProjectMcpServers === false,
-    ".claude/settings.json enableAllProjectMcpServers must remain false"
-  );
-  const disabledClaudeServers = settings.disabledMcpjsonServers;
-  assert(
-    Array.isArray(disabledClaudeServers),
-    ".claude/settings.json disabledMcpjsonServers must be an array"
-  );
-  assertSameServerNames(
-    disabledClaudeServers,
-    registryOnlyServers,
-    ".claude/settings.json must disable exactly the registry-only MCP servers"
-  );
-  const claudeServers = settings.enabledMcpjsonServers;
-  assert(
-    Array.isArray(claudeServers),
-    ".claude/settings.json enabledMcpjsonServers must be an array"
-  );
-  assertSameServerNames(
-    claudeServers,
-    requiredSharedServers,
-    ".claude/settings.json must enable exactly the approved MCP servers"
-  );
-  for (const serverName of requiredSharedServers) {
-    assert(claudeServers.includes(serverName), `.claude/settings.json must enable ${serverName}`);
-  }
-  for (const serverName of disallowedServers) {
-    assert(
-      !claudeServers.includes(serverName),
-      `.claude/settings.json must not enable ${serverName}`
-    );
-  }
-  assert(
-    !claudeServers.includes("repo_context"),
-    ".claude/settings.json must not enable legacy repo_context"
-  );
   const codexConfig = parseToml(readText(".codex/config.toml", root));
   const codexServers = codexConfig.mcp_servers ?? {};
   for (const [serverName, config] of Object.entries(codexServers)) {
@@ -312,14 +265,6 @@ export function check(root = ROOT) {
     requiredSharedServers,
     ".codex/config.toml must activate exactly the approved MCP servers"
   );
-  assertSameServerNames(
-    claudeServers,
-    activeCodexServers,
-    "Claude and Codex MCP activation subsets must match"
-  );
-  for (const serverName of claudeServers) {
-    assert(mcp[serverName], `.claude/settings.json enables unregistered MCP server ${serverName}`);
-  }
   for (const [serverName, expectedWiring] of Object.entries(expectedCodexWiring)) {
     assert(
       isDeepStrictEqual(codexWiring(codexServers[serverName]), expectedWiring),

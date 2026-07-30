@@ -1,7 +1,9 @@
+import type { SupaschemaConfig } from "../config/schema.js";
 import { stripOuterDoubleQuotes } from "../sql/identifiers.js";
 
 export interface CatalogQuery {
   query: (text: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
+  schemaFilter?: string;
 }
 
 const supabasePlatformOwnerRoles = [
@@ -52,6 +54,25 @@ export const managedSchemaFilter = `
     )
   )
 `;
+
+export function managedSchemaFilterFor(config: Pick<SupaschemaConfig, "schemas">): string {
+  const clauses = [`(${managedSchemaFilter})`];
+  if (config.schemas.include.length > 0) {
+    clauses.push(`n.nspname in (${config.schemas.include.map(sqlLiteral).join(", ")})`);
+  }
+  if (config.schemas.exclude.length > 0) {
+    clauses.push(`n.nspname not in (${config.schemas.exclude.map(sqlLiteral).join(", ")})`);
+  }
+  return clauses.join("\n  and ");
+}
+
+export function catalogSchemaFilter(query: Pick<CatalogQuery, "schemaFilter">): string {
+  return query.schemaFilter ?? managedSchemaFilter;
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
 
 export function text(value: unknown): string {
   return typeof value === "string" ? value : String(value);

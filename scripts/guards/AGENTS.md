@@ -13,7 +13,6 @@ Single-concern `check-*.mjs` guards proving repo invariants, grouped by domain. 
 - `repo-surface/` — `check-public-repo-surface.mjs`, `check-repo-layout.mjs` (Rule 13/20)
 - `docs-config/` — `check-config-standardization.mjs`, `check-rule-citations.mjs`, `check-schema.mjs`
 - `fastmcp/check-fastmcp-agent.mjs` (Rule 11)
-- `code-atlas/check-code-atlas.mjs` (Rule 10)
 
 ## Owners
 

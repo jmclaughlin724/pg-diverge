@@ -1,8 +1,9 @@
 import { formatQualifiedName, quoteIdent } from "../sql/identifiers.js";
 import {
   builtinPublicDefault,
-  mergePrivilegeMetadata,
   type PrivilegeMetadata,
+  privilegeMetadataFromRecord,
+  renderGrantSql,
   renderPrivilegeList,
 } from "../sql/privileges.js";
 import type { MigrationOperation, ObjectRef, SchemaObject } from "../types.js";
@@ -147,9 +148,20 @@ export function renderGrantCreate(object: SchemaObject): string {
   if (!metadata) {
     return ensureSemicolon(object.sql);
   }
-  const keyword = metadata.verb === "GRANT" ? "TO" : "FROM";
-  const suffix = metadata.verb === "GRANT" && metadata.withGrantOption ? " WITH GRANT OPTION" : "";
-  return `${metadata.verb} ${renderPrivilegeList(metadata.privileges, metadata.columnPrivileges)} ON ${metadata.kindPhrase} ${metadata.target} ${keyword} ${renderRole(metadata.grantee)}${suffix};`;
+  return ensureSemicolon(
+    renderGrantSql({
+      ...(metadata.columnPrivileges ? { columnPrivileges: metadata.columnPrivileges } : {}),
+      ...(metadata.grantOptionColumnPrivileges
+        ? { grantOptionColumnPrivileges: metadata.grantOptionColumnPrivileges }
+        : {}),
+      grantOptionPrivileges: metadata.grantOptionPrivileges,
+      grantee: metadata.grantee,
+      kindPhrase: metadata.kindPhrase,
+      privileges: metadata.privileges,
+      targetRendered: metadata.target,
+      verb: metadata.verb,
+    })
+  );
 }
 
 export function renderGrantDrop(object: SchemaObject): string {
@@ -179,13 +191,7 @@ function grantRenderMetadata(object: SchemaObject): GrantRenderMetadata | undefi
   ) {
     return;
   }
-  const privilegeMetadata = mergePrivilegeMetadata([
-    {
-      columnPrivileges: object.metadata.columnPrivileges,
-      privileges: object.metadata.privileges,
-      withGrantOption: object.metadata.withGrantOption === true,
-    },
-  ]);
+  const privilegeMetadata = privilegeMetadataFromRecord(object.metadata);
   if (!privilegeMetadata) {
     return;
   }
