@@ -35,7 +35,7 @@ The tables below cover the codes that block generation most often. They are **no
 | Code | Resolution |
 | --- | --- |
 | `SUPA_DIFF_EMPTY_PLAN` | A named or file-output diff produced no operations. |
-| `SUPA_DIFF_GENERATED_CONTRACT_DIRTY`, `SUPA_DIFF_MIGRATIONS_DIRTY` | Generated contracts or migration files carry unstaged changes beyond a proven `git:INDEX` closure, or are dirty against another Git baseline. Repair or close that migration unit before diffing again. |
+| `SUPA_DIFF_GENERATED_CONTRACT_DIRTY`, `SUPA_DIFF_MIGRATIONS_DIRTY` | Generated contracts or migration files carry unstaged changes beyond a proven `git:INDEX` closure, or are dirty against another Git baseline. Under a `migrations:` replay baseline only lineage-bearing (generated) dirty files block; a hand-authored tail is legitimate replay input for an unscoped diff. Repair or close the dirty migration unit before diffing again. |
 | `SUPA_DIFF_CONFIG_DIRTY`, `SUPA_DIFF_SCOPED_DIRTY_SCHEMA` | A scoped `--schema` diff cannot own dirty global config or dirty schema files outside the requested filter. Close the owning unit, or use an unscoped diff that owns the change. |
 | `SUPA_SELFCHECK_*` | A live catalog's re-extracted rendered SQL diverges in object identity. Fix the model/render owner. |
 | `SUPA_BUILD_STALE_DIST` | The CLI ran from a checkout whose `dist` is older than `src`. Run `npm run build` and re-run; never treat stale-dist behavior as a source regression. |

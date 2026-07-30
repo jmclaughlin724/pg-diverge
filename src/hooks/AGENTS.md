@@ -26,7 +26,7 @@ This directory implements the product hook commands used by editor and agent wor
 - Keep this package-safe hook runtime separate from `scripts/agent-hooks/**`.
 - Keep each module on the dependency edge documented above; do not introduce a second workflow, process, path, config, or output owner.
 - Hook output must be deterministic, concise, and actionable for the calling editor or agent.
-- Do not weaken generated-artifact protection without updating config ownership, policy, tests, and consumer docs. Only a delete-only `apply_patch` target may use generated-migration recovery; Bash deletion and configured TypeScript/Zod contract deletion are blocked. Classification failures must return a runtime-specific denial, never silently fail open.
+- Do not weaken generated-artifact protection without updating config ownership, policy, tests, and consumer docs. Only a delete-only `apply_patch` target may use generated-migration recovery; Bash deletion and configured TypeScript/Zod contract deletion are blocked. `mv` classifies its sources as deletes and its destination as a write; plain and `export`-ed shell assignments feed variable expansion before target resolution; backslashes survive as path separators except before shell-special characters, so Windows drive paths classify like POSIX paths. Classification failures must return a runtime-specific denial, never silently fail open.
 
 ## Verification
 
