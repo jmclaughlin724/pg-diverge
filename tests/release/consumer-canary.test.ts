@@ -10,6 +10,7 @@ import {
   isTarballSpec,
   npmInstallArgs,
   parseCanaryArgs,
+  pnpmInstallArgs,
   pnpmOverrideValue,
 } from "../../scripts/release/consumer-canary.mjs";
 
@@ -104,6 +105,12 @@ describe("applyPnpmOverride", () => {
     expect(written).toContain("esbuild: true");
     expect(written).toContain("supaschema: 0.5.6-dev.abc1234");
     expect(written).toContain("apps/*");
+  });
+});
+
+describe("pnpmInstallArgs", () => {
+  it("disables frozen lockfiles so the injected override can resolve", () => {
+    expect(pnpmInstallArgs()).toEqual(["pnpm", "install", "--no-frozen-lockfile"]);
   });
 });
 

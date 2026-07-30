@@ -8,7 +8,7 @@ import { resolveConfig } from "../config/schema.js";
 import { expandEnvReference } from "../database/url.js";
 import { diagnostic, isDiagnostic } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
-import { commentTarget } from "../sql/dependents.js";
+import { commentTarget, objectSchema } from "../sql/dependents.js";
 import { extractObjectsFromSql } from "../sql/extract.js";
 import { isManagedSchemaOverlay } from "../sql/ownership.js";
 import type {
@@ -276,20 +276,6 @@ function schemaOrExtensionCommentTargetKey(object: SchemaObject): string | undef
 function filteredExtensionCommentTargetKey(object: SchemaObject): string | undefined {
   const target = commentTarget(object);
   return target?.kind === "extension" ? `extension:${target.name}` : undefined;
-}
-
-export function objectSchema(object: SchemaObject): string {
-  if (object.ref.kind === "schema") {
-    return object.ref.name;
-  }
-  const target = commentTarget(object);
-  if (target?.kind === "schema") {
-    return target.name;
-  }
-  if (object.ref.kind === "extension" && typeof object.metadata.schema === "string") {
-    return object.metadata.schema;
-  }
-  return object.ref.schema ?? "public";
 }
 
 function diagnosticSchemas(item: Diagnostic): string[] {

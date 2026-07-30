@@ -90,6 +90,10 @@ export function npmInstallArgs(spec) {
   return ["install", target, "--no-save", "--no-audit", "--no-fund"];
 }
 
+export function pnpmInstallArgs() {
+  return ["pnpm", "install", "--no-frozen-lockfile"];
+}
+
 export function gateArgv(gate) {
   return gate.split(" ").filter((part) => part.length > 0);
 }
@@ -153,7 +157,7 @@ function main() {
   const manager = detectPackageManager(consumerRoot);
   if (manager === "pnpm") {
     applyPnpmOverride(join(consumerRoot, "pnpm-workspace.yaml"), spec);
-    execFileSync("corepack", ["pnpm", "install"], { cwd: consumerRoot, stdio: "inherit" });
+    execFileSync("corepack", pnpmInstallArgs(), { cwd: consumerRoot, stdio: "inherit" });
   } else {
     execFileSync("npm", npmInstallArgs(spec), { cwd: consumerRoot, stdio: "inherit" });
   }

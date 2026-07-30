@@ -53,8 +53,9 @@ jobs:
         run: node scripts/release/snapshot-version.mjs >> "$GITHUB_OUTPUT"
       - run: npm run build
       - run: npm run check:package
+      # Pack unconditionally so a rerun after a failed attestation can retry
+      # the attest step even when the version is already published.
       - name: Pack package
-        if: steps.snapshot.outputs.published == 'false'
         id: pack
         run: |
           tarball="$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" --silent)"
@@ -78,7 +79,6 @@ jobs:
         if: steps.snapshot.outputs.published == 'false'
         run: npm publish "$SUPASCHEMA_TARBALL" --access public --provenance --tag next
       - name: Attest tarball provenance
-        if: steps.snapshot.outputs.published == 'false'
         id: attest
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:

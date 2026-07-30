@@ -8,17 +8,13 @@ import { diagnostic } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { readMigrationContext } from "../migrations/context.js";
 import { redactSecrets } from "../redaction.js";
-import {
-  extractSourceModel,
-  filterModelBySchemas,
-  objectSchema,
-  parseSchemaFilter,
-} from "../source/extract.js";
+import { extractSourceModel, filterModelBySchemas, parseSchemaFilter } from "../source/extract.js";
 import {
   defaultGitHeadExists,
   defaultTreeSource,
   type ResolvedSources,
 } from "../source/resolve.js";
+import { objectSchema } from "../sql/dependents.js";
 import type {
   Diagnostic,
   MigrationBaselineProof,

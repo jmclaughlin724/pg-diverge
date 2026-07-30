@@ -194,3 +194,17 @@ export function refIdentity(ref: ObjectRef): string {
 export function tableRefIdentity(ref: ObjectRef): string | undefined {
   return ref.table ? `${ref.schema ?? "public"}.${ref.table}` : undefined;
 }
+
+export function objectSchema(object: SchemaObject): string {
+  if (object.ref.kind === "schema") {
+    return object.ref.name;
+  }
+  const target = commentTarget(object);
+  if (target?.kind === "schema") {
+    return target.name;
+  }
+  if (object.ref.kind === "extension" && typeof object.metadata.schema === "string") {
+    return object.metadata.schema;
+  }
+  return object.ref.schema ?? "public";
+}

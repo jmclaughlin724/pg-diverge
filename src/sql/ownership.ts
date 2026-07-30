@@ -1,5 +1,6 @@
 import { diagnostic } from "../diagnostics/diagnostics.js";
 import type { Diagnostic, SchemaObject, SupaschemaConfig } from "../types.js";
+import { objectSchema } from "./dependents.js";
 
 export function withManagedSchemaDiagnostics(
   objects: SchemaObject[],
@@ -91,5 +92,26 @@ function managedSchema(object: SchemaObject, config: SupaschemaConfig): string |
     typeof object.metadata.schema === "string" ? object.metadata.schema : undefined;
   return [refSchema, metadataSchema].find(
     (candidate) => candidate !== undefined && config.managedSchemas.includes(candidate)
+  );
+}
+
+export function overlayRetainedSchemas(config: SupaschemaConfig): string[] {
+  if (config.managedSchemaOverlays.length === 0) {
+    return [];
+  }
+  return config.schemas.exclude.filter((schema) => config.managedSchemas.includes(schema));
+}
+
+export function retainCatalogOverlayObjects(
+  objects: SchemaObject[],
+  overlaySchemas: string[],
+  config: SupaschemaConfig
+): SchemaObject[] {
+  if (overlaySchemas.length === 0) {
+    return objects;
+  }
+  return objects.filter(
+    (object) =>
+      !overlaySchemas.includes(objectSchema(object)) || isManagedSchemaOverlay(object, config)
   );
 }

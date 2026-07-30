@@ -81,15 +81,21 @@ export function verifyLicenseToken(token: string, publicKeyPem: string): License
   }
 }
 
+export function canonicalRepo(repo: string): string {
+  return repo.toLowerCase();
+}
+
 export function isEntitled(
   claims: LicenseClaims | null,
   repo: string,
   nowSeconds: number
 ): boolean {
-  return claims !== null && claims.repo === repo && claims.exp > nowSeconds;
+  return (
+    claims !== null && canonicalRepo(claims.repo) === canonicalRepo(repo) && claims.exp > nowSeconds
+  );
 }
 
 export function licenseClaimsFor(repo: string, plan: string, nowSeconds: number): LicenseClaims {
   const oneYear = 365 * 24 * 60 * 60;
-  return { exp: nowSeconds + oneYear, plan, repo };
+  return { exp: nowSeconds + oneYear, plan, repo: canonicalRepo(repo) };
 }

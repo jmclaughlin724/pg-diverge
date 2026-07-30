@@ -5,6 +5,7 @@ import { suppressDefaultAclImpliedGrants } from "../grants/default-acl.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { finalizeObjects } from "../sql/facts.js";
 import { formatQualifiedName, quoteIdent, stripOuterDoubleQuotes } from "../sql/identifiers.js";
+import { overlayRetainedSchemas, retainCatalogOverlayObjects } from "../sql/ownership.js";
 import { policyMetadataFromSql } from "../sql/policies.js";
 import { rlsStateSql } from "../sql/rls.js";
 import { makeObject } from "../sql/statements.js";
@@ -32,13 +33,20 @@ export interface ExtractCatalogOptions {
 type CatalogPool = Pick<Pool, "query"> & Pick<CatalogQuery, "schemaFilter">;
 
 export async function extractCatalogModel(options: ExtractCatalogOptions): Promise<SchemaModel> {
+  const config = resolveConfig(options.config);
+  const overlaySchemas = overlayRetainedSchemas(config);
   const pool = new Pool({
     connectionString: options.databaseUrl,
     max: 4,
     options: "-c search_path=",
   });
   const catalogPool: CatalogPool = Object.assign(pool, {
-    schemaFilter: managedSchemaFilterFor(resolveConfig(options.config)),
+    schemaFilter: managedSchemaFilterFor({
+      schemas: {
+        include: config.schemas.include,
+        exclude: config.schemas.exclude.filter((schema) => !overlaySchemas.includes(schema)),
+      },
+    }),
   });
   pool.on("error", () => undefined);
   try {
@@ -58,7 +66,11 @@ export async function extractCatalogModel(options: ExtractCatalogOptions): Promi
       collectDefaultPrivileges(catalogPool),
       collectComments(catalogPool),
     ]);
-    const objects: SchemaObject[] = suppressDefaultAclImpliedGrants(sections.flat());
+    const objects: SchemaObject[] = retainCatalogOverlayObjects(
+      suppressDefaultAclImpliedGrants(sections.flat()),
+      overlaySchemas,
+      config
+    );
     objects.forEach((object, index) => {
       object.ordinal = index;
     });

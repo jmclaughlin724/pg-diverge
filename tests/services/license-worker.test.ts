@@ -5,6 +5,7 @@ import {
   handleLicenseWorker,
   type LicenseWorkerEnv,
 } from "../../services/license-worker/src/index.js";
+import { isEntitled, licenseClaimsFor } from "../../services/license-worker/src/issue.js";
 import { createMemoryStore } from "../../services/license-worker/src/store.js";
 
 const webhookSecret = "whsec_test_secret";
@@ -68,6 +69,16 @@ describe("successUrlWithSessionId", () => {
     expect(successUrlWithSessionId("https://example.com/license")).toBe(
       "https://example.com/license?session_id={CHECKOUT_SESSION_ID}"
     );
+  });
+});
+
+describe("canonicalRepo entitlement", () => {
+  it("matches GitHub repo identifiers case-insensitively", () => {
+    const claims = licenseClaimsFor("Jmclaughlin724/Anilize", "pro", nowSeconds);
+    expect(claims.repo).toBe("jmclaughlin724/anilize");
+    expect(isEntitled(claims, "JMCLAUGHLIN724/ANILIZE", nowSeconds)).toBe(true);
+    expect(isEntitled(claims, "jmclaughlin724/anilize", nowSeconds)).toBe(true);
+    expect(isEntitled(claims, "jmclaughlin724/other", nowSeconds)).toBe(false);
   });
 });
 
