@@ -114,4 +114,13 @@ describe("staleDistWarning", () => {
   it("returns null without a build timestamp", async () => {
     expect(await staleDistWarning({ ...stamp, builtAt: null }, await tempRoot())).toBeNull();
   });
+
+  it("fails open when the source tree cannot be traversed", async () => {
+    const root = await tempRoot();
+    const sourceRoot = join(root, "src");
+    await mkdir(sourceRoot);
+    const { symlink } = await import("node:fs/promises");
+    await symlink(join(root, "missing-target"), join(sourceRoot, "broken.ts"));
+    expect(await staleDistWarning(stamp, root)).toBeNull();
+  });
 });

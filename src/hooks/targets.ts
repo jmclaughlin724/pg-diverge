@@ -365,6 +365,26 @@ function isPotentialPath(value: string): boolean {
   return value !== "" && !value.includes("=");
 }
 
+const shellNullaryWrappers = new Set(["builtin", "command", "exec", "nohup"]);
+const shellWrapperValueOptions: Record<string, Set<string>> = {
+  env: new Set(["-C", "-P", "-S", "-u", "--chdir", "--split-string", "--unset", "--argv0"]),
+  sudo: new Set([
+    "-C",
+    "-g",
+    "-h",
+    "-p",
+    "-R",
+    "-T",
+    "-t",
+    "-U",
+    "-u",
+    "--chdir",
+    "--group",
+    "--host",
+    "--user",
+  ]),
+};
+
 function shellCommandIndex(segment: string[], variables: Map<string, string>): number {
   let index = 0;
   while (index < segment.length) {
@@ -379,9 +399,34 @@ function shellCommandIndex(segment: string[], variables: Map<string, string>): n
       index = redirection.nextIndex;
       continue;
     }
+    const wrapperSkip = shellWrapperSkip(segment, index);
+    if (wrapperSkip > 0) {
+      index += wrapperSkip;
+      continue;
+    }
     return index;
   }
   return -1;
+}
+
+function shellWrapperSkip(segment: string[], index: number): number {
+  const token = basename(segment[index] ?? "");
+  if (shellNullaryWrappers.has(token)) {
+    return 1;
+  }
+  const valueOptions = shellWrapperValueOptions[token];
+  if (valueOptions === undefined) {
+    return 0;
+  }
+  let skip = 1;
+  while (index + skip < segment.length) {
+    const option = segment[index + skip] ?? "";
+    if (!option.startsWith("-")) {
+      break;
+    }
+    skip += valueOptions.has(option) ? 2 : 1;
+  }
+  return skip;
 }
 
 function shellCommandArguments(segment: string[]): string[] {

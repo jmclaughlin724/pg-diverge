@@ -450,6 +450,15 @@ async def test_session_state_redacts_recorded_commands(
                                 "summary": f"STRIPE_SECRET_KEY={stripe_key} npm run guard",
                                 "command": "npm run guard",
                             },
+                            {
+                                "kind": "command",
+                                "domains": ["test"],
+                                "outcome": "pass",
+                                "summary": "flag form",
+                                "command": (
+                                    f"npm test -- --api-key {stripe_key} --token {db_password}"
+                                ),
+                            },
                         ]
                     }
                 }
@@ -466,3 +475,7 @@ async def test_session_state_redacts_recorded_commands(
     assert "postgres://user:***@host" in evidence[0]["command"]
     assert stripe_key not in evidence[1]["summary"]
     assert evidence[0]["summary"] == "tests passed"
+    assert stripe_key not in evidence[2]["command"]
+    assert db_password not in evidence[2]["command"]
+    assert "--api-key ***" in evidence[2]["command"]
+    assert "--token ***" in evidence[2]["command"]

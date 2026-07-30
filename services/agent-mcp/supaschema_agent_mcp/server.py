@@ -354,12 +354,24 @@ def _redact_url_passwords(text: str) -> str:
 
 def _redact(text: str) -> str:
     words = []
+    mask_next = False
     for word in _redact_url_passwords(text).split(" "):
+        if mask_next and word:
+            words.append("***")
+            mask_next = False
+            continue
+        mask_next = False
         name, separator, value = word.partition("=")
         if separator and value and any(m in name.upper() for m in SECRET_NAME_MARKERS):
             words.append(f"{name}=***")
-        else:
+            continue
+        if word.startswith("-") and any(
+            m in word.upper().replace("-", "_") for m in SECRET_NAME_MARKERS
+        ):
             words.append(word)
+            mask_next = True
+            continue
+        words.append(word)
     return " ".join(words)
 
 

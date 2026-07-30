@@ -199,6 +199,25 @@ function parseSubscriptionRecord(raw: string): SubscriptionRecord | null {
   }
 }
 
+async function ensureSubscriptionRecord(
+  runtime: LicenseWorkerRuntime,
+  completion: NonNullable<ReturnType<typeof extractCheckoutCompletion>>
+): Promise<void> {
+  if (completion.subscriptionId === undefined) {
+    return;
+  }
+  const key = `subscription:${completion.subscriptionId}`;
+  if ((await runtime.licenses.get(key)) !== null) {
+    return;
+  }
+  const record: SubscriptionRecord = {
+    plan: completion.plan,
+    repo: completion.repo,
+    sessionId: completion.sessionId,
+  };
+  await runtime.licenses.put(key, JSON.stringify(record));
+}
+
 async function handleWebhook(
   request: Request,
   runtime: LicenseWorkerRuntime,
@@ -225,6 +244,7 @@ async function handleWebhook(
   if (completion !== null) {
     const existing = await runtime.licenses.get(completion.sessionId);
     if (existing !== null) {
+      await ensureSubscriptionRecord(runtime, completion);
       return jsonResponse({ idempotent: true, issued: true });
     }
     const token = issueLicenseToken(
@@ -232,17 +252,7 @@ async function handleWebhook(
       runtime.privateKey
     );
     await runtime.licenses.put(completion.sessionId, token);
-    if (completion.subscriptionId !== undefined) {
-      const record: SubscriptionRecord = {
-        plan: completion.plan,
-        repo: completion.repo,
-        sessionId: completion.sessionId,
-      };
-      await runtime.licenses.put(
-        `subscription:${completion.subscriptionId}`,
-        JSON.stringify(record)
-      );
-    }
+    await ensureSubscriptionRecord(runtime, completion);
     return jsonResponse({ issued: true, repo: completion.repo });
   }
   const renewal = extractInvoiceRenewal(event);

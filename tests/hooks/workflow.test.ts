@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { schemaWriteHookOutput } from "../../src/hooks/output.js";
-import { hookEditTargets } from "../../src/hooks/targets.js";
+import { generatedArtifactEditTargets, hookEditTargets } from "../../src/hooks/targets.js";
 
 const previousHookBin = process.env.SUPASCHEMA_HOOK_BIN;
 const previousHookLog = process.env.SUPASCHEMA_HOOK_LOG;
@@ -133,5 +133,29 @@ process.exit(2);
     expect(calls[0]).toEqual(["diff", "--to", "dir:database/schemas"]);
     expect(calls[1]?.[0]).toBe("check");
     expect(calls[1]?.[1]).toContain("database/migrations/20260101000000_generated.sql");
+  });
+});
+
+describe("generated-artifact Bash wrappers", () => {
+  const targets = (command: string) =>
+    generatedArtifactEditTargets({ tool_input: { command }, tool_name: "Bash" }, "/repo");
+
+  it("classifies writes hidden behind command prefixes", () => {
+    expect(targets("command rm database.types.ts")).toEqual([
+      { operation: "delete", path: "/repo/database.types.ts" },
+    ]);
+    expect(targets("env rm database.types.ts")).toEqual([
+      { operation: "delete", path: "/repo/database.types.ts" },
+    ]);
+    expect(targets("sudo -u postgres rm database.types.ts")).toEqual([
+      { operation: "delete", path: "/repo/database.types.ts" },
+    ]);
+    expect(targets("env -u HOME rm database.types.ts")).toEqual([
+      { operation: "delete", path: "/repo/database.types.ts" },
+    ]);
+    expect(targets("nohup mv database.types.ts /tmp/backup")).toEqual([
+      { operation: "delete", path: "/repo/database.types.ts" },
+      { operation: "write", path: "/tmp/backup" },
+    ]);
   });
 });

@@ -323,11 +323,16 @@ function canonicalConstraintTypeName(value: unknown): unknown {
   const normalized: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(typeName)) {
     normalized[key] =
-      key === "names"
-        ? readArray(child).filter((part) => stringList([part])[0] !== "pg_catalog")
-        : canonicalConstraintPayload(child);
+      key === "names" ? stripLeadingPgCatalog(readArray(child)) : canonicalConstraintPayload(child);
   }
   return wrapper?.TypeName === undefined ? normalized : { TypeName: normalized };
+}
+
+function stripLeadingPgCatalog(parts: unknown[]): unknown[] {
+  if (parts.length > 1 && stringList([parts[0]])[0] === "pg_catalog") {
+    return parts.slice(1);
+  }
+  return parts;
 }
 
 function constraintColumns(fkAttrs: string[], keys: string[], impliedColumns: string[]): string[] {

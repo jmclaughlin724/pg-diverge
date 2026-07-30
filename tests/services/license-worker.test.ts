@@ -145,6 +145,30 @@ describe("license worker", () => {
     expect(await env.LICENSE_KV.get("cs_test_123")).not.toBeNull();
   });
 
+  it("repairs a missing subscription mapping on a webhook retry", async () => {
+    const env = testEnv();
+    await env.LICENSE_KV.put("cs_test_123", "previously-minted-token");
+
+    const response = await handleLicenseWorker(
+      signedWebhookRequest(completionEvent({ subscription: "sub_123" }), nowSeconds),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+
+    expect(await response.json()).toEqual({ idempotent: true, issued: true });
+    const mapping = await env.LICENSE_KV.get("subscription:sub_123");
+    if (mapping === null) {
+      throw new Error("expected subscription mapping to be repaired");
+    }
+    expect(JSON.parse(mapping)).toMatchObject({
+      plan: "bundle",
+      repo: "acme/app",
+      sessionId: "cs_test_123",
+    });
+  });
+
   it("renews a subscription token from invoice.paid under the original session id", async () => {
     const env = testEnv();
     const completion = await handleLicenseWorker(

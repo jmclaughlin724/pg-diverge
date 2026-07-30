@@ -206,3 +206,33 @@ ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
     expect(extracted.diagnostics.map((item) => item.code)).toContain("SUPA_EXTRACT_UNSUPPORTED");
   });
 });
+
+describe("constraint type-name canonicalization", () => {
+  const constraintHash = (objects: { hash: string; ref: { kind: string } }[]) =>
+    objects.find((object) => object.ref.kind === "constraint")?.hash;
+
+  it("strips pg_catalog only as a leading qualifier", async () => {
+    const userType = await extractObjectsFromSql(
+      "CREATE TABLE app.t (id bigint CHECK (id::app.pg_catalog IS NOT NULL));",
+      { file: "t.sql" }
+    );
+    const bareType = await extractObjectsFromSql(
+      "CREATE TABLE app.t (id bigint CHECK (id::app IS NOT NULL));",
+      { file: "t.sql" }
+    );
+    expect(constraintHash(userType.objects)).toBeDefined();
+    expect(constraintHash(userType.objects)).not.toBe(constraintHash(bareType.objects));
+  });
+
+  it("normalizes builtin pg_catalog-qualified types to their unqualified form", async () => {
+    const qualified = await extractObjectsFromSql(
+      "CREATE TABLE app.t (id bigint CHECK (id::pg_catalog.int8 IS NOT NULL));",
+      { file: "t.sql" }
+    );
+    const plain = await extractObjectsFromSql(
+      "CREATE TABLE app.t (id bigint CHECK (id::int8 IS NOT NULL));",
+      { file: "t.sql" }
+    );
+    expect(constraintHash(qualified.objects)).toBe(constraintHash(plain.objects));
+  });
+});

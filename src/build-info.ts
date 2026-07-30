@@ -52,16 +52,20 @@ export async function staleDistWarning(
   if (Number.isNaN(builtAtMs)) {
     return null;
   }
-  const sourceRoot = join(packageRoot, "src");
-  const sourceStat = await stat(sourceRoot).catch(() => null);
-  if (sourceStat === null || !sourceStat.isDirectory()) {
+  try {
+    const sourceRoot = join(packageRoot, "src");
+    const sourceStat = await stat(sourceRoot);
+    if (!sourceStat.isDirectory()) {
+      return null;
+    }
+    const newestSourceMs = await newestMtimeMs(sourceRoot);
+    if (newestSourceMs <= builtAtMs) {
+      return null;
+    }
+    return "SUPA_BUILD_STALE_DIST: compiled dist is older than src; run npm run build before trusting CLI behavior";
+  } catch {
     return null;
   }
-  const newestSourceMs = await newestMtimeMs(sourceRoot);
-  if (newestSourceMs <= builtAtMs) {
-    return null;
-  }
-  return "SUPA_BUILD_STALE_DIST: compiled dist is older than src; run npm run build before trusting CLI behavior";
 }
 
 export async function emitBuildWarnings(info: BuildInfo): Promise<void> {

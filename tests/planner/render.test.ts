@@ -3,6 +3,7 @@ import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderGrantCreate, renderGrantDrop } from "../../src/render/guards.js";
 import { renderMigration } from "../../src/render/migration.js";
 import { extractObjectsFromSql } from "../../src/sql/extract.js";
+import { buildGrantObject } from "../../src/sql/privileges.js";
 import type { SchemaModel } from "../../src/types.js";
 import { hasUnqualifiedCatalogName } from "../catalog/qualification.js";
 
@@ -120,6 +121,26 @@ describe("privilege rendering", () => {
     );
     expect(grant && renderGrantDrop(grant)).toBe(
       'REVOKE SELECT ("id", "name") ON TABLE "app"."accounts" FROM "authenticated";'
+    );
+  });
+
+  it("revokes merged column-level grant options explicitly", () => {
+    const object = buildGrantObject({
+      grantOptionColumnPrivileges: { SELECT: ["id"] },
+      grantOptionPrivileges: ["SELECT"],
+      grantee: "authenticated",
+      kindPhrase: "TABLE",
+      ordinal: 0,
+      privileges: ["SELECT"],
+      schema: "app",
+      targetIdentity: "app.accounts",
+      targetRendered: '"app"."accounts"',
+      verb: "GRANT",
+    });
+
+    expect(renderGrantDrop(object)).toBe(
+      'REVOKE SELECT ON TABLE "app"."accounts" FROM "authenticated";\n' +
+        'REVOKE SELECT ("id") ON TABLE "app"."accounts" FROM "authenticated";'
     );
   });
 
