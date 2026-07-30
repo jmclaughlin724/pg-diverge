@@ -37,10 +37,10 @@ export async function generateTypeContracts(
   const zodPolicy = options.config.workflow.zod_generation;
   const writeTypes =
     target !== "stdout" &&
-    (await shouldWriteGeneratedOutput(typesPath, typesPolicy, options.honorWorkflowPolicy));
+    (await shouldWriteGeneratedOutput(typesPath, typesPolicy, options.honorWorkflowPolicy, check));
   const writeZod =
     target !== "stdout" &&
-    (await shouldWriteGeneratedOutput(zodPath, zodPolicy, options.honorWorkflowPolicy));
+    (await shouldWriteGeneratedOutput(zodPath, zodPolicy, options.honorWorkflowPolicy, check));
   if (target !== "stdout" && !writeTypes && !writeZod) {
     return {
       checked: [],
@@ -157,7 +157,8 @@ async function writeGeneratedOutput(path: string, contents: string): Promise<str
 async function shouldWriteGeneratedOutput(
   path: string,
   policy: SupaschemaConfig["workflow"]["type_generation"],
-  honorWorkflowPolicy: boolean | undefined
+  honorWorkflowPolicy: boolean | undefined,
+  checkMode = false
 ): Promise<boolean> {
   if (honorWorkflowPolicy !== true) {
     return true;
@@ -166,6 +167,9 @@ async function shouldWriteGeneratedOutput(
     return false;
   }
   if (policy === "create_or_refresh") {
+    return true;
+  }
+  if (checkMode) {
     return true;
   }
   return await pathExists(path);

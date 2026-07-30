@@ -13,7 +13,10 @@ afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
 });
 
-async function typesProgram() {
+async function typesProgram(workflow?: {
+  type_generation: "refresh_existing";
+  zod_generation: "refresh_existing";
+}) {
   const root = await mkdtemp(join(tmpdir(), "supa-types-cli-"));
   tempRoots.push(root);
   const schemas = join(root, "schemas");
@@ -23,6 +26,7 @@ async function typesProgram() {
     schemaPaths: [schemas],
     typesFile: join(root, "database.types.ts"),
     zodFile: join(root, "database.zod.ts"),
+    ...(workflow === undefined ? {} : { workflow }),
   });
   const program = new Command();
   program.exitOverride();
@@ -75,5 +79,16 @@ describe("types --check CLI", () => {
 
     expect(await run(program, ["types", "--check"])).toBe(2);
     expect(stderr.mock.calls.flat().join("")).toContain("SUPA_TYPES_CONTRACT_DRIFT");
+  });
+
+  it("exits 2 when refresh-only outputs are deleted instead of passing with 0 checked", async () => {
+    const { program, stderr, stdout } = await typesProgram({
+      type_generation: "refresh_existing",
+      zod_generation: "refresh_existing",
+    });
+
+    expect(await run(program, ["types", "--check"])).toBe(2);
+    expect(stderr.mock.calls.flat().join("")).toContain("SUPA_TYPES_CONTRACT_DRIFT");
+    expect(stdout.mock.calls.flat().join("")).not.toContain("contracts up to date (0 checked)");
   });
 });

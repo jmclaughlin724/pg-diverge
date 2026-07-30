@@ -127,6 +127,9 @@ async function stagedGenerationBaseline(
   migrationsDir: string
 ): Promise<string | undefined> {
   const migrationContext = await readMigrationContext(migrationsDir, { cwd });
+  if (migrationContext.unprovenBaselineFiles.length > 0) {
+    return;
+  }
   const baseline = migrationContext.latestGeneratedBaseline;
   if (baseline === undefined || !(await isStagedWithoutWorktreeChanges(baseline.file, cwd))) {
     return;

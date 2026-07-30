@@ -762,6 +762,51 @@ describe("diff lineage chain gate", () => {
     expect(generated).not.toContain("ADD COLUMN email");
   });
 
+  it("replays a staged hand-authored tail instead of choosing the staged closure", {
+    timeout: 120_000,
+  }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-staged-tail-"));
+    const schemaFile = join(repo, "schemas", "app.sql");
+    await mkdir(join(repo, "schemas"), { recursive: true });
+    await mkdir(join(repo, "migrations"), { recursive: true });
+    await writeFile(
+      join(repo, "supaschema.config.json"),
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto" },
+        sync: { targets: {} },
+      })
+    );
+    await writeFile(schemaFile, "CREATE TABLE public.accounts (id bigint PRIMARY KEY);\n");
+    await git(repo, ["init"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v1"]);
+
+    await writeFile(
+      schemaFile,
+      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text);\n"
+    );
+    const first = await cli(["diff", "--name", "first"], { cwd: repo });
+    expect(first.code, first.stderr).toBe(0);
+    const firstFile = first.stdout.trim();
+    await git(repo, ["add", "schemas/app.sql", firstFile]);
+
+    await writeFile(
+      join(repo, "migrations", "20261231235959_hand.sql"),
+      "ALTER TABLE public.accounts ADD COLUMN email text;\n"
+    );
+    await git(repo, ["add", "migrations/20261231235959_hand.sql"]);
+    await writeFile(
+      schemaFile,
+      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text, email text);\n"
+    );
+
+    const result = await cli(["diff", "--name", "tail", "--dry-run"], { cwd: repo });
+    expect(result.stderr).toContain("--from migrations:migrations");
+    expect(result.stderr).not.toContain("SUPA_MIGRATION_BASELINE_REPLAY_REQUIRED");
+  });
+
   it("keeps the lineage chain continuous across scoped --schema diffs", {
     timeout: 120_000,
   }, async () => {
