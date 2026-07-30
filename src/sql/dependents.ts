@@ -203,7 +203,10 @@ export function objectSchema(object: SchemaObject): string {
   if (target?.kind === "schema") {
     return target.name;
   }
-  if (object.ref.kind === "extension" && typeof object.metadata.schema === "string") {
+  if (
+    (object.ref.kind === "extension" || target?.kind === "extension") &&
+    typeof object.metadata.schema === "string"
+  ) {
     return object.metadata.schema;
   }
   return object.ref.schema ?? "public";

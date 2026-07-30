@@ -12,7 +12,8 @@ export function computeSnapshotVersion(baseVersion, sha) {
     throw new Error(`snapshot versions require a stable X.Y.Z base version, found ${baseVersion}`);
   }
   const [major, minor, patch] = parts.map(Number);
-  return `${major}.${minor}.${patch + 1}-dev.${sha}`;
+  const identifier = [...sha].every(isDigit) ? `g${sha}` : sha;
+  return `${major}.${minor}.${patch + 1}-dev.${identifier}`;
 }
 
 export function stampVersion(packageJson, packageJsonPath, lockfilePath, version) {

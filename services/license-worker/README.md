@@ -40,10 +40,10 @@ The signing/verification logic and the full self-serve loop are implemented here
    ```
 5. Set the Worker secrets and deployment-specific plan map in Cloudflare:
    ```bash
-   wrangler secret put SUPASCHEMA_LICENSE_PRIVATE_KEY < "$keydir/supaschema_license_private.pem"
-   wrangler secret put STRIPE_WEBHOOK_SECRET
-   wrangler secret put STRIPE_SECRET_KEY
-   wrangler secret put STRIPE_PRICE_MAP
+   wrangler secret put SUPASCHEMA_LICENSE_PRIVATE_KEY --config services/license-worker/wrangler.toml < "$keydir/supaschema_license_private.pem"
+   wrangler secret put STRIPE_WEBHOOK_SECRET --config services/license-worker/wrangler.toml
+   wrangler secret put STRIPE_SECRET_KEY --config services/license-worker/wrangler.toml
+   wrangler secret put STRIPE_PRICE_MAP --config services/license-worker/wrangler.toml
    ```
 6. Run `wrangler deploy --config services/license-worker/wrangler.toml` from the repository root (the root `wrangler.toml` targets the docs Worker), then add the Worker `/webhook` URL as a Stripe webhook endpoint subscribed to `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and (for subscription-mode prices) `invoice.paid`.
 7. Link buyers to `/checkout` with a repo and plan query; the Worker binds the issued license to that repo via `metadata.repo` and `metadata.plan`.
