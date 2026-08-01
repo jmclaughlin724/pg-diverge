@@ -1,384 +1,263 @@
 import fs from "node:fs";
+import path from "node:path";
+import { toolSucceeded } from "./response-evidence.mjs";
 import {
-  commandArgs,
-  commandName,
-  commandSegmentObjects,
-} from "../../.claude/hooks/guards/bash-policy-checks.mjs";
-import {
-  responseReportsFailure,
-  shellCommandNotFound,
-  toolSucceeded,
-} from "./response-evidence.mjs";
+  executableName,
+  parseShellCommand,
+  parseStaticArguments,
+  staticWordValue,
+} from "./shell-command.mjs";
 import { addEvidence } from "./state.mjs";
 
-const shellToolNames = new Set(["Bash", "exec_command", "functions.exec_command"]);
-
-export function recordToolEvidence(payload, state) {
+export function recordToolEvidence(payload, state, options = {}) {
   const command = shellCommand(payload);
   if (!command) {
     return {};
   }
-  const toolSuccess = toolSucceeded(payload);
+  const observedOutcome = toolSucceeded(payload);
+  const toolSuccess =
+    observedOutcome ??
+    (payload?.hook_event_name === "PostToolUse" && options.runtime === "claude" ? true : undefined);
   if (toolSuccess === undefined) {
     return {};
   }
-  if (!toolSuccess && shellCommandNotFound(payload)) {
-    addEvidence(state, {
-      incident: "shell-command-not-found",
-      kind: "tool-incident",
-      outcome: "failure",
-      summary: "shell reported command not found",
-    });
+  const domains = classifyCommandDomains(command, options);
+  for (const domain of domains) {
+    addEvidence(state, { domain, outcome: toolSuccess ? "success" : "failure" });
   }
-  const domains = classifyCommandDomains(command);
-  if (domains.length === 0) {
-    return {};
-  }
-  const success = commandEvidenceSucceeded(toolSuccess, domains, payload);
-  addEvidence(state, {
-    command,
-    domains,
-    kind: success ? "verified-command" : "failed-command",
-    outcome: success ? "success" : "failure",
-    summary: success ? "verification command succeeded" : "verification command failed",
-  });
   return {};
 }
 
-export function transcriptEvidence(payload) {
-  const file = typeof payload?.transcript_path === "string" ? payload.transcript_path : "";
-  if (!file) {
-    return [];
-  }
-  try {
-    const entries = fs
-      .readFileSync(file, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line))
-      .filter((entry) => entry && typeof entry === "object");
-    return [
-      ...entries.flatMap(transcriptToolResultEvidence),
-      ...transcriptFunctionCallEvidence(entries),
-    ];
-  } catch {
-    return [];
-  }
-}
-
-function transcriptToolResultEvidence(entry) {
-  if (entry?.type !== "tool_result") {
-    return [];
-  }
-  const command = transcriptCommand(entry);
-  const domains = classifyCommandDomains(command);
-  if (!(command && domains.length > 0)) {
-    return [];
-  }
-  const toolSuccess = transcriptToolSucceeded(entry);
-  if (toolSuccess === undefined) {
-    return [];
-  }
-  const success = commandEvidenceSucceeded(toolSuccess, domains, entry);
-  return [
-    {
-      at: transcriptTimestamp(entry),
-      command,
-      domains,
-      kind: success ? "verified-command" : "failed-command",
-      outcome: success ? "success" : "failure",
-      summary: String(entry.tool_name ?? "tool_result"),
-    },
-  ];
-}
-
-function transcriptFunctionCallEvidence(entries) {
-  const calls = new Map();
-  const evidence = [];
-  for (const entry of entries) {
-    const payload = entry?.payload;
-    if (payload?.type === "function_call" && typeof payload.call_id === "string") {
-      calls.set(payload.call_id, payload);
-      continue;
-    }
-    if (payload?.type !== "function_call_output" || typeof payload.call_id !== "string") {
-      continue;
-    }
-    const call = calls.get(payload.call_id);
-    const command = transcriptFunctionCommand(call);
-    const domains = classifyCommandDomains(command);
-    if (!(command && domains.length > 0)) {
-      continue;
-    }
-    const toolSuccess = toolSucceeded({ tool_response: payload.output });
-    if (toolSuccess === undefined) {
-      continue;
-    }
-    const success = commandEvidenceSucceeded(toolSuccess, domains, {
-      tool_response: payload.output,
-    });
-    evidence.push({
-      at: transcriptTimestamp(entry),
-      command,
-      domains,
-      kind: success ? "verified-command" : "failed-command",
-      outcome: success ? "success" : "failure",
-      summary: String(call?.name ?? "function_call"),
-    });
-  }
-  return evidence;
-}
-
-function transcriptToolSucceeded(entry) {
-  const nested = toolSucceeded(entry);
-  if (nested !== undefined) {
-    return nested;
-  }
-  return entry?.status === "success" ? true : undefined;
-}
-
-export function unresolvedFailures(evidence) {
-  return evidence
-    .filter(isActionableFailure)
-    .filter((failure) => !failureHasLaterSuccess(failure, evidence));
-}
-
-export function failureLabels(failures) {
-  return [...new Set(failures.map(failureLabel))];
-}
-
-function transcriptCommand(entry) {
-  return commandInput(entry?.tool_input);
-}
-
-function transcriptFunctionCommand(call) {
-  if (!call || typeof call !== "object") {
-    return "";
-  }
-  const name = typeof call.name === "string" ? call.name : "";
-  if (!shellToolNames.has(name)) {
-    return "";
-  }
-  return commandInput(jsonObject(call.arguments));
+export function classifyCommandDomains(command, options = {}) {
+  const domains = new Set();
+  classifyShellSource(command, domains, {
+    depth: 0,
+    root: options.root ?? process.cwd(),
+    scripts: packageScripts(options.root ?? process.cwd()),
+    visitedScripts: new Set(),
+  });
+  return [...domains].sort();
 }
 
 function shellCommand(payload) {
-  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
-  return shellToolNames.has(name) ? commandInput(payload?.tool_input) : "";
-}
-
-function commandInput(input) {
-  if (typeof input?.command === "string") {
+  if (payload?.tool_name !== "Bash") {
+    return "";
+  }
+  const input = payload?.tool_input ?? {};
+  if (typeof input.command === "string") {
     return input.command;
   }
-  return typeof input?.cmd === "string" ? input.cmd : "";
-}
-
-function transcriptTimestamp(entry) {
-  return typeof entry?.timestamp === "string" ? entry.timestamp : undefined;
-}
-
-function jsonObject(value) {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value;
+  if (typeof input.cmd === "string") {
+    return input.cmd;
   }
-  if (typeof value !== "string") {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
+  return "";
 }
 
-function commandEvidenceSucceeded(toolSuccess, domains, payload) {
-  if (!toolSuccess) {
-    return false;
-  }
-  if (domains.includes("github-checks") && responseReportsFailure(payload)) {
-    return false;
-  }
-  return true;
-}
-
-function isActionableFailure(item) {
-  return item.kind === "failed-command" && item.outcome === "failure";
-}
-
-function failureHasLaterSuccess(failure, evidence) {
-  return evidence.some(
-    (item) =>
-      successfulCommandEvidence(item) && item.at > failure.at && sameEvidenceScope(failure, item)
-  );
-}
-
-function sameEvidenceScope(failure, success) {
-  const failureDomains = itemDomains(failure);
-  const successDomains = itemDomains(success);
-  if (failureDomains.length > 0 && successDomains.length > 0) {
-    return failureDomains.some((domain) => successDomains.includes(domain));
-  }
-  return Boolean(failure.command && success.command && failure.command === success.command);
-}
-
-function itemDomains(item) {
-  return Array.isArray(item?.domains)
-    ? item.domains.filter((domain) => typeof domain === "string")
-    : [];
-}
-
-function failureLabel(item) {
-  const domains = itemDomains(item);
-  if (domains.length > 0) {
-    return domains.join("+");
-  }
-  return item.command ? `command:${item.command}` : "unknown";
-}
-
-function successfulCommandEvidence(item) {
-  return (
-    (item.kind === "verified-command" || item.kind === "successful-command") &&
-    item.outcome !== "failure"
-  );
-}
-
-function classifyCommandDomains(command) {
-  const domains = new Set();
-  let segments = [];
-  try {
-    segments = commandSegmentObjects(command);
-  } catch {
-    segments = [];
-  }
-  for (const segment of segments) {
-    const tokens = segment.words ?? [];
-    const name = commandName(tokens);
-    const args = commandArgs(tokens);
-    addSegmentDomains(domains, name, args);
-  }
-  return [...domains];
-}
-
-function addSegmentDomains(domains, name, args) {
-  if (name === "gh") {
-    addGithubDomains(domains, args);
+function classifyShellSource(source, domains, context) {
+  if (context.depth > 12) {
     return;
   }
+  const analysis = parseShellCommand(source);
+  if (analysis.errors.length > 0) {
+    return;
+  }
+  for (const invocation of analysis.invocations) {
+    const name = executableName(invocation.executable);
+    const args = invocation.arguments.map(staticWordValue);
+    if (!name || args.some((value) => value === null)) {
+      continue;
+    }
+    classifyInvocation(name, args, domains, context);
+  }
+}
+
+function classifyInvocation(name, args, domains, context) {
   if (name === "npm") {
-    addNpmDomains(domains, args);
+    classifyNpm(args, domains, context);
     return;
   }
-  const unwrapped = unwrapPackageRunner(name, args);
-  const toolName = unwrapped.name;
-  const toolArgs = unwrapped.args;
-  if (["vitest", "jest", "mocha", "node"].includes(toolName)) {
-    addToolDomains(domains, toolName, toolArgs);
+  if (name === "npx") {
+    classifyPackageRunner(args, domains, context);
+    return;
+  }
+  if (name === "gh") {
+    classifyGithub(args, domains);
+    return;
+  }
+  if (name === "node") {
+    classifyNode(args, domains, context.root);
+    return;
+  }
+  if (name === "uv") {
+    classifyUv(args, domains, context);
+    return;
+  }
+  classifyVerificationExecutable(name, args, domains);
+}
+
+function classifyNpm(args, domains, context) {
+  const parsed = parseValues(args);
+  const command = parsed.positionals[0] ?? "";
+  if (command === "pack") {
+    domains.add("package");
+    return;
+  }
+  if (command === "test" || command === "t") {
+    domains.add("test");
+    classifyPackageScript("test", domains, context);
+    return;
+  }
+  if (command === "run" || command === "run-script") {
+    const script = parsed.positionals[1];
+    if (script) {
+      classifyPackageScript(script, domains, context);
+    }
   }
 }
 
-function unwrapPackageRunner(name, args) {
-  if (!(name === "npx" || name === "pnpx")) {
-    return { args, name };
+function classifyPackageScript(name, domains, context) {
+  if (context.visitedScripts.has(name)) {
+    return;
   }
-  const valueOptions = new Set(["--call", "--package", "--userconfig", "-c", "-p"]);
-  let index = 0;
-  while (index < args.length) {
-    const arg = args[index] ?? "";
-    if (arg === "--") {
-      index += 1;
-      break;
-    }
-    if (!arg.startsWith("-") || arg === "-") {
-      break;
-    }
-    index += 1;
-    if (valueOptions.has(arg) && index < args.length) {
-      index += 1;
-    }
+  const source = context.scripts[name];
+  if (typeof source !== "string") {
+    return;
   }
-  return { args: args.slice(index + 1), name: args[index] ?? "" };
+  context.visitedScripts.add(name);
+  classifyShellSource(source, domains, { ...context, depth: context.depth + 1 });
 }
 
-function addGithubDomains(domains, args) {
+function classifyPackageRunner(args, domains, context) {
+  const parsed = parseValues(args, {
+    call: { short: "c", type: "string" },
+    package: { multiple: true, short: "p", type: "string" },
+    userconfig: { type: "string" },
+  });
+  const name = executableName(parsed.positionals[0]);
+  if (name) {
+    classifyInvocation(name, parsed.positionals.slice(1), domains, context);
+  }
+}
+
+function classifyNode(args, domains, root) {
+  const parsed = parseValues(args, { test: { type: "boolean" } });
+  if (parsed.values.test) {
+    domains.add("test");
+  }
+  const script = parsed.positionals[0];
+  if (!script) {
+    return;
+  }
+  const resolved = path.resolve(root, script);
+  const relative = path.relative(root, resolved).split(path.sep).join("/");
+  if (relative.startsWith("scripts/guards/")) {
+    domains.add("guard");
+  }
+  if (relative === "scripts/lint.mjs") {
+    domains.add("lint");
+  }
+  if (relative.startsWith("scripts/docs-lint/")) {
+    domains.add("docs");
+  }
+  if (relative === "scripts/skills/sync-llm.mjs") {
+    domains.add("sync");
+  }
+  if (resolved.split(path.sep).includes("vitest")) {
+    domains.add("test");
+  }
+}
+
+function classifyUv(args, domains, context) {
+  if (args[0] !== "run") {
+    return;
+  }
+  const parsed = parseValues(args.slice(1), {
+    directory: { type: "string" },
+    package: { type: "string" },
+  });
+  const name = executableName(parsed.positionals[0]);
+  if (name) {
+    classifyInvocation(name, parsed.positionals.slice(1), domains, context);
+  }
+}
+
+const SIMPLE_VERIFICATION_DOMAINS = new Map([
+  ["vitest", "test"],
+  ["jest", "test"],
+  ["mocha", "test"],
+  ["pytest", "test"],
+  ["mypy", "typecheck"],
+  ["biome", "lint"],
+  ["ultracite", "lint"],
+  ["publint", "package"],
+  ["attw", "package"],
+  ["mint", "docs"],
+]);
+
+function classifyVerificationExecutable(name, args, domains) {
+  if (helpOrVersion(args)) {
+    return;
+  }
+  const simple = SIMPLE_VERIFICATION_DOMAINS.get(name);
+  if (simple) {
+    domains.add(simple);
+    return;
+  }
+  if (name === "tsc") {
+    domains.add(args.includes("--noEmit") ? "typecheck" : "build");
+    return;
+  }
+  if (name === "ruff" && args[0] === "check") {
+    domains.add("lint");
+  }
+}
+
+function classifyGithub(args, domains) {
+  if (args[0] === "pr" && (args[1] === "checks" || args[1] === "status")) {
+    domains.add("github-checks");
+    return;
+  }
+  if (args[0] === "run" && (args[1] === "list" || args[1] === "view" || args[1] === "watch")) {
+    domains.add("github-checks");
+    return;
+  }
+  if (args[0] !== "api") {
+    return;
+  }
+  const endpoint = args.slice(1).find((value) => !value.startsWith("-"));
+  if (!endpoint) {
+    return;
+  }
+  let parsed;
+  try {
+    parsed = new URL(endpoint, "https://api.github.invalid");
+  } catch {
+    return;
+  }
+  const segments = parsed.pathname.split("/").filter(Boolean);
   if (
-    (args[0] === "pr" && ["checks", "status"].includes(args[1] ?? "")) ||
-    (args[0] === "pr" &&
-      args[1] === "view" &&
-      args.some((arg) => arg.includes("statusCheckRollup"))) ||
-    (args[0] === "run" && ["view", "watch", "list"].includes(args[1] ?? "")) ||
-    (args[0] === "api" &&
-      args.some(
-        (arg) =>
-          arg.includes("/actions/") || arg.includes("/check-runs") || arg.includes("/commits/")
-      ))
+    segments.includes("actions") ||
+    segments.includes("check-runs") ||
+    segments.includes("commits")
   ) {
     domains.add("github-checks");
   }
 }
 
-function addNpmDomains(domains, args) {
-  if (args[0] === "pack") {
-    domains.add("package");
-    return;
-  }
-  if (args[0] === "test") {
-    domains.add("test");
-    return;
-  }
-  if (args[0] !== "run") {
-    return;
-  }
-  const script = args.find((arg, index) => index > 0 && !arg.startsWith("-")) ?? "";
-  if (!script) {
-    return;
-  }
-  if (script === "check") {
-    domains.add("build");
-    domains.add("lint");
-    domains.add("test");
-    domains.add("typecheck");
-    return;
-  }
-  if (script === "guard" || script.startsWith("guard:")) {
-    domains.add("guard");
-  }
-  if (script === "test" || script.includes("test") || script.includes("vitest")) {
-    domains.add("test");
-  }
-  if (script.includes("typecheck")) {
-    domains.add("typecheck");
-  }
-  if (script.includes("lint")) {
-    domains.add("lint");
-  }
-  if (script.startsWith("docs:")) {
-    domains.add("docs");
-  }
-  if (script.includes("package") || script.includes("pack")) {
-    domains.add("package");
-  }
-  if (script.startsWith("sync:")) {
-    domains.add("sync");
-  }
-  if (script === "build") {
-    domains.add("build");
-  }
+function parseValues(args, options = {}) {
+  const words = args.map((value, index) => ({ end: index, pos: index, text: value, value }));
+  return parseStaticArguments(words, { options });
 }
 
-function addToolDomains(domains, name, args) {
-  const versionProbe = args.some((arg) => arg === "--version" || arg === "--help");
-  if (["vitest", "jest", "mocha"].includes(name) && !versionProbe) {
-    domains.add("test");
-  }
-  if (name === "node" && args.some((arg) => arg.includes("vitest")) && !versionProbe) {
-    domains.add("test");
-  }
-  if (name === "node" && args.some((arg) => arg.includes("scripts/guards/"))) {
-    domains.add("guard");
-  }
-  if (name === "node" && args.some((arg) => arg.includes("scripts/skills/sync-llm.mjs"))) {
-    domains.add("sync");
+function helpOrVersion(args) {
+  return args.some((value) => value === "--help" || value === "--version" || value === "-h");
+}
+
+function packageScripts(root) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    return manifest?.scripts && typeof manifest.scripts === "object" ? manifest.scripts : {};
+  } catch {
+    return {};
   }
 }

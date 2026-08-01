@@ -5,7 +5,6 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { bundleDocsFiles } from "../../scripts/skills/bundle-docs.mjs";
 import {
-  checkAgentSurfaces,
   publicSkillNames,
   renderSourceCodexHooks,
   syncAgentSurfaces,
@@ -19,14 +18,30 @@ const syncHookSource = readFileSync(
   join(root, ".claude/hooks/sync-llm-on-claude-surface-change.mjs"),
   "utf8"
 );
+const editTargetsSource = readFileSync(join(root, "scripts/agent-hooks/edit-targets.mjs"), "utf8");
+const agentSurfaceManifestSource = readFileSync(
+  join(root, "scripts/skills/agent-surface-manifest.mjs"),
+  "utf8"
+);
+const publicSupaschemaSkill = `---
+name: supaschema
+description: Maintain Supaschema workflows.
+metadata:
+  public: true
+---
+
+# Supaschema
+`;
 const curatedSkillSources = {
   ".claude/skills/supaschema/references/migrate.md": "migrate reference\n",
-  ".claude/skills/supaschema/SKILL.md": "supaschema skill\n",
+  ".claude/skills/supaschema/SKILL.md": publicSupaschemaSkill,
 };
 
 function tempSurface(files: Record<string, string | Uint8Array>): string {
   const root = mkdtempSync(join(tmpdir(), "supa-sync-llm-"));
   const sourceFiles = {
+    "scripts/agent-hooks/edit-targets.mjs": editTargetsSource,
+    "scripts/skills/agent-surface-manifest.mjs": agentSurfaceManifestSource,
     ...curatedSkillSources,
     ...(Object.keys(files).some((file) => file.startsWith("docs/"))
       ? {}
@@ -75,6 +90,7 @@ function claudeHookSettings() {
       PostToolUse: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-post-tool-use.mjs")],
+          matcher: "Bash|Read|Skill",
         },
         {
           hooks: [claudeSupaschemaHook("schema-write")],
@@ -86,19 +102,18 @@ function claudeHookSettings() {
       PostToolUseFailure: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-post-tool-use-failure.mjs")],
-        },
-        {
-          hooks: [claudeNodeHook(".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
+          matcher: "Bash",
         },
       ],
       PreToolUse: [
         {
           hooks: [claudeNodeHook(".claude/hooks/context-pre-tool-use.mjs")],
-          matcher: ".*",
+          matcher:
+            "Agent|Bash|Edit|Glob|Grep|MultiEdit|NotebookEdit|Read|Task|WebFetch|WebSearch|Write|apply_patch",
         },
         {
           hooks: [claudeSupaschemaHook("generated-artifact-edit")],
-          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+          matcher: "Write|Edit|MultiEdit|apply_patch",
         },
       ],
       SessionEnd: [
@@ -116,9 +131,9 @@ function claudeHookSettings() {
           hooks: [claudeNodeHook(".claude/hooks/context-subagent-start.mjs")],
         },
       ],
-      WorktreeCreate: [
+      TaskCompleted: [
         {
-          hooks: [claudeNodeHook(".claude/hooks/context-worktree-create.mjs")],
+          hooks: [claudeNodeHook(".claude/hooks/context-task-completed.mjs")],
         },
       ],
       Stop: [
@@ -208,7 +223,6 @@ describe("sync:llm", () => {
         "",
       ].join("\n"),
       ".claude/hooks/context-pre-tool-use.mjs": "process.stdout.write('pre');\n",
-      ".claude/hooks/context-worktree-create.mjs": "process.stderr.write('blocked');\n",
       ".claude/hooks/guards/bash-policy-checks.mjs": "export {};\n",
       ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
@@ -224,7 +238,7 @@ describe("sync:llm", () => {
       ].join("\n"),
       ".claude/rules/supaschema.md": "# Supaschema rule\n",
       ".claude/skills/elegant/SKILL.md": "# elegant\n",
-      ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
+      ".claude/skills/supaschema/SKILL.md": publicSupaschemaSkill,
       ".codex/agents/stale.toml": 'name = "stale"\n',
       ".codex/hooks.json": `${JSON.stringify({
         hooks: {
@@ -309,7 +323,7 @@ describe("sync:llm", () => {
       agentBundle: 19,
       agents: 1,
       codexHookConfig: 1,
-      hooks: 5,
+      hooks: 4,
       publicSkills: 2,
       rules: 2,
       skills: 3,
@@ -326,9 +340,6 @@ describe("sync:llm", () => {
     );
     expect(read(root, ".codex/hooks/context-pre-tool-use.mjs")).toBe(
       "process.stdout.write('pre');\n"
-    );
-    expect(read(root, ".codex/hooks/context-worktree-create.mjs")).toBe(
-      "process.stderr.write('blocked');\n"
     );
     expect(existsSync(join(root, ".codex/hooks/general-guard.mjs"))).toBe(false);
     expect(read(root, "agent-bundle/codex/hooks.npm.json")).not.toContain("general-guard.mjs");
@@ -381,8 +392,9 @@ describe("sync:llm", () => {
     );
     expect(read(root, ".codex/hooks.json")).toContain("context-session-start.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-session-end.mjs");
+    expect(read(root, ".codex/hooks.json")).toContain("Refreshing agent hook state");
+    expect(read(root, ".codex/hooks.json")).not.toContain("Loading supaschema agent context");
     expect(read(root, ".codex/hooks.json")).toContain("context-pre-tool-use.mjs");
-    expect(read(root, ".codex/hooks.json")).not.toContain("WorktreeCreate");
     expect(read(root, ".codex/hooks.json")).not.toContain("general-guard.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("context-stop.mjs");
     expect(read(root, ".codex/hooks.json")).toContain("sync-llm-on-claude-surface-change.mjs");
@@ -393,19 +405,18 @@ describe("sync:llm", () => {
     );
     expect(read(root, ".codex/hooks.json")).not.toContain("CODEX_PROJECT_DIR");
     expect(read(root, ".agents/skills/elegant/SKILL.md")).toBe("# elegant\n");
-    expect(read(root, "skills/supaschema/SKILL.md")).toBe("# supaschema\n");
+    expect(read(root, "skills/supaschema/SKILL.md")).toBe(publicSupaschemaSkill);
     expect(read(root, "skills/supaschema/references/migrate.md")).toBe("migrate reference\n");
     expect(read(root, "agent-bundle/claude/skills/supaschema/references/migrate.md")).toBe(
       "migrate reference\n"
     );
     expect(JSON.parse(read(root, "agent-bundle/skills-manifest.json"))).toEqual({
-      skills: publicSkillNames,
+      skills: publicSkillNames(root),
     });
     expect(read(root, "skills/README.md")).toBe("# Public skills\n");
     expect(existsSync(join(root, "skills/elegant/SKILL.md"))).toBe(false);
     expect(existsSync(join(root, ".codex/skills"))).toBe(false);
     expect(existsSync(join(root, ".codex/rules/stale.rules"))).toBe(false);
-    expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 
   it("allows public clean checkouts without private Claude agents", () => {
@@ -415,7 +426,7 @@ describe("sync:llm", () => {
       ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
       ".claude/rules/supaschema.md": "# Supaschema rule\n",
-      ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
+      ".claude/skills/supaschema/SKILL.md": publicSupaschemaSkill,
       ".codex/agents/stale.toml": 'name = "stale"\n',
       ".codex/hooks.json": `${JSON.stringify({ hooks: {} })}\n`,
       ".codex/hooks/general-guard.mjs": "process.stdout.write('native');\n",
@@ -427,7 +438,6 @@ describe("sync:llm", () => {
     expect(result.agents).toBe(0);
     expect(existsSync(join(root, ".codex/agents/stale.toml"))).toBe(false);
     expect(existsSync(join(root, ".codex/hooks/general-guard.mjs"))).toBe(false);
-    expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 
   it("preserves git-ignored local overlays inside generated targets", () => {
@@ -438,7 +448,7 @@ describe("sync:llm", () => {
       ".claude/hooks/supaschema-source-hook.mjs": "export {};\n",
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": "process.stdout.write('{}');\n",
       ".claude/rules/supaschema.md": "# Supaschema rule\n",
-      ".claude/skills/supaschema/SKILL.md": "# supaschema\n",
+      ".claude/skills/supaschema/SKILL.md": publicSupaschemaSkill,
       ".codex/agents/stale.toml": 'name = "stale"\n',
       ".codex/hooks.json": `${JSON.stringify({ hooks: {} })}\n`,
       ".codex/hooks/local.mjs": "export const local = true;\n",
@@ -452,7 +462,6 @@ describe("sync:llm", () => {
     expect(read(root, ".agents/skills/local/SKILL.md")).toBe("# personal overlay\n");
     expect(read(root, ".codex/hooks/local.mjs")).toBe("export const local = true;\n");
     expect(existsSync(join(root, ".codex/agents/stale.toml"))).toBe(false);
-    expect(checkAgentSurfaces({ root })).toEqual([]);
   });
 
   it("blocks Codex hook rendering when present Claude hook registration is incomplete", () => {
@@ -583,16 +592,11 @@ describe("sync:llm", () => {
       }
     );
 
-    expect(JSON.parse(output)).toMatchObject({
-      hookSpecificOutput: {
-        additionalContext: "SYNC_LLM_OK",
-        hookEventName: "PostToolUse",
-      },
-    });
+    expect(output).toBe("{}\n");
     expect(read(project, "sync-count.txt")).toBe("1");
   });
 
-  it("syncs Codex surface drift from Stop and returns valid empty Stop JSON", () => {
+  it("does not run surface sync from Stop", () => {
     const project = tempSurface({
       ".claude/agents/worker.md": [
         "---",
@@ -631,15 +635,6 @@ describe("sync:llm", () => {
       })
     ).toBe("{}\n");
 
-    writeFileSync(join(project, ".claude/rules/supaschema.md"), "# Rule changed\n");
-
-    expect(
-      execFileSync(process.execPath, [hook], {
-        encoding: "utf8",
-        env,
-        input: JSON.stringify(payload),
-      })
-    ).toBe("{}\n");
-    expect(read(project, "sync-count.txt")).toBe("1");
+    expect(existsSync(join(project, "sync-count.txt"))).toBe(false);
   });
 });

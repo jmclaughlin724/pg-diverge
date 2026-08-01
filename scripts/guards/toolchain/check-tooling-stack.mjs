@@ -2,11 +2,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import {
-  commandArgs,
-  commandName,
-  commandSegmentObjects,
-} from "../../../.claude/hooks/guards/bash-policy-checks.mjs";
+import { parseShellCommand, staticWordValue } from "../../agent-hooks/shell-command.mjs";
 import { publicSkillNames } from "../../skills/sync-llm.mjs";
 import { assert, ok } from "../lib/assertions.js";
 import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js";
@@ -162,24 +158,26 @@ function isGeneratedDistModuleSpecifier(value) {
   );
 }
 
-function unwrappedPackageRunnerCommand(words) {
-  const name = commandName(words);
-  const args = commandArgs(words);
-  if (name === "npx") {
-    return args[0] === "--no-install" ? args.slice(1) : args;
+function unwrappedPackageRunnerWords(invocation) {
+  const words = [
+    invocation.executable ?? "",
+    ...invocation.arguments.map((word) => staticWordValue(word) ?? ""),
+  ];
+  if (words[0] === "npx") {
+    return words[1] === "--no-install" ? words.slice(2) : words.slice(1);
   }
-  if (name === "npm" && args[0] === "exec") {
-    return args[1] === "--" ? args.slice(2) : args.slice(1);
+  if (words[0] === "npm" && words[1] === "exec") {
+    return words[2] === "--" ? words.slice(3) : words.slice(2);
   }
   return words;
 }
 
 function invokesDirectBiomeOrUltracite(command) {
-  return commandSegmentObjects(command).some((segment) => {
-    const words = unwrappedPackageRunnerCommand(segment.words);
-    const name = commandName(words);
-    const args = commandArgs(words);
-    return name === "biome" || (name === "ultracite" && ultraciteWriteCommands.has(args[0]));
+  return parseShellCommand(command).invocations.some((invocation) => {
+    const words = unwrappedPackageRunnerWords(invocation);
+    return (
+      words[0] === "biome" || (words[0] === "ultracite" && ultraciteWriteCommands.has(words[1]))
+    );
   });
 }
 
@@ -237,10 +235,10 @@ function assertUltraciteEntryPoints(packageJson, lefthook, root) {
       `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must route Biome and Ultracite through npm scripts`
     );
   }
-  assertMirrorSyncOrdering(lefthook, preCommitJobs);
+  assertMirrorSyncOrdering(lefthook, preCommitJobs, root);
 }
 
-function assertMirrorSyncOrdering(lefthook, preCommitJobs) {
+function assertMirrorSyncOrdering(lefthook, preCommitJobs, root) {
   assert(
     lefthook?.["pre-commit"]?.piped === true,
     "lefthook pre-commit must run piped so the mirror sync job observes formatter output and is skipped on failure"
@@ -256,8 +254,8 @@ function assertMirrorSyncOrdering(lefthook, preCommitJobs) {
     "sync-agent-surfaces must regenerate mirrors through npm run sync:llm"
   );
   assert(
-    syncRun.includes(expectedMirrorAddCommand()),
-    `sync-agent-surfaces must stage exactly the generator-owned output trees: ${expectedMirrorAddCommand()}`
+    syncRun.includes(expectedMirrorAddCommand(root)),
+    `sync-agent-surfaces must stage exactly the generator-owned output trees: ${expectedMirrorAddCommand(root)}`
   );
   assert(
     syncRun.includes("git diff --quiet -- .claude docs scripts/skills"),
@@ -275,8 +273,8 @@ function assertMirrorSyncOrdering(lefthook, preCommitJobs) {
   }
 }
 
-function expectedMirrorAddCommand() {
-  const skillTrees = publicSkillNames.map((name) => `skills/${name}`);
+function expectedMirrorAddCommand(root) {
+  const skillTrees = publicSkillNames(root).map((name) => `skills/${name}`);
   return [
     "git add .agents/skills .codex",
     ...skillTrees,
@@ -604,7 +602,7 @@ export function check(root = ROOT) {
   );
   assert(
     biome.files?.includes?.includes("!agent-bundle"),
-    "biome.jsonc must exclude generated agent-bundle files; npm run sync:llm:check owns that mirror"
+    "biome.jsonc must exclude generated agent-bundle files; npm run sync:llm owns that mirror"
   );
   assert(
     biome.linter?.rules?.correctness?.useImportExtensions?.level === "error",

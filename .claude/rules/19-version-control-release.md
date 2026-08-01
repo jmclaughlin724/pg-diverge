@@ -91,7 +91,6 @@ For rule or generated agent-surface changes, also run:
 
 ```bash
 npm run sync:llm
-npm run sync:llm:check
 ```
 
 ## Failure behavior

@@ -19,8 +19,7 @@ out/
 **/.mypy_cache/**
 
 # Generated agent-surface mirrors — format the `.claude` source instead and let
-# `npm run sync:llm` regenerate these; formatting them directly would drift the
-# byte-identical parity that check-agent-surface-parity enforces.
+# `npm run sync:llm` regenerate these; generated mirrors are writer-owned.
 .agents/**
 .codex/**
 agent-bundle/**

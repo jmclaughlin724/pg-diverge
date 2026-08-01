@@ -1,5 +1,5 @@
 ---
-description: Generated agent-surface sync ownership for Claude, Codex, package hook templates, and drift repair.
+description: Generated agent-surface ownership, synchronization, and hook-registration projections.
 paths:
   - ".claude/agents/**"
   - ".claude/hooks/**"
@@ -11,96 +11,67 @@ paths:
   - ".codex/hooks/**"
   - ".codex/hooks.json"
   - ".codex/rules/**"
-  - "agent-bundle/codex/hooks.*.json"
-  - "scripts/guards/agent-surface/check-agent-hooks.mjs"
-  - "scripts/guards/agent-surface/check-agent-surface-parity.mjs"
+  - "agent-bundle/**"
+  - "scripts/guards/agent-surface/**"
+  - "scripts/skills/agent-surface-manifest.mjs"
   - "scripts/skills/sync-llm.mjs"
 ---
 
-# Rule 22 - Generated agent-surface sync ownership
+# Rule 22 — Generated agent-surface sync ownership
 
 ## Contract
 
-This rule owns the generated agent-surface sync invariant. `scripts/skills/sync-llm.mjs` is the single writer for generated Claude-to-Codex and Claude-to-Agents outputs, including source-repo `.codex/hooks.json`.
+`scripts/skills/sync-llm.mjs` is the single idempotent writer for generated Claude-to-Codex, Claude-to-Agents, public-skill, and consumer-bundle outputs. Generated surfaces are never independent inputs.
 
-This rule owns source-repo agent runtime as public branch infrastructure. Required hook entrypoints, shared hook runtime modules, Claude settings, Claude rules, and generated Codex rule mirrors are tracked GitHub branch code. They are not npm package or consumer install surfaces unless Rule 13 explicitly promotes them.
+Synchronization is always the actual write operation. There is no check-only sync command or read-only parity mode. Run `npm run sync:llm`; content-identical writes are skipped.
 
-## Hard rules
+## Ownership
 
-- `.claude/settings.json` owns maintainer Claude hook registration.
-- `scripts/skills/sync-llm.mjs` MUST validate present Claude hook registration before rendering `.codex/hooks.json`.
-- `CLAUDE.md` MUST import `@AGENTS.md` when `.claude/settings.json` enables maintainer hooks. `scripts/skills/sync-llm.mjs` MUST fail before rendering `.codex/hooks.json` if the import is missing.
-- Hook behavior is verified through executable tests, not policy phrase scanning.
-- Source Claude and Codex hook registration MUST include `Stop` and `SubagentStop` response-shape enforcement through the shared runtime. Claude MUST route failed supported tools through `PostToolUseFailure`; Codex MUST keep its documented nonzero-result handling in `PostToolUse`. Both runtimes MUST register advisory `SessionEnd` cleanup. Claude MUST register `WorktreeCreate` as a blocking command hook; generated Codex configuration MUST omit that unsupported event. The generated Codex configuration must emit valid JSON for stop events and preserve one-shot continuation loop protection.
-- `scripts/skills/sync-llm.mjs` MUST write `.codex/hooks.json`, `.codex/hooks/**` mirrors, `.codex/agents/**`, `.codex/rules/**`, `.agents/skills/**`, the curated public skill directories, `agent-bundle/skills-manifest.json`, both Agent and Claude bundle skill trees, and `agent-bundle/codex/hooks.*.json`. One exported ordered list owns every curated skill projection; consumers must not duplicate it.
-- `.codex/hooks.json` MUST NOT be hand-authored as an input. Edit `.claude/settings.json`, `.claude/hooks/**`, or `scripts/skills/sync-llm.mjs`, then run `npm run sync:llm`.
-- Source-repo `.claude/settings.json` MUST register exactly one `PreToolUse` context hook with matcher `.*`: `.claude/hooks/context-pre-tool-use.mjs`. It MUST NOT also register `.claude/hooks/guards/bash-policy-checks.mjs` as a direct source Claude `PreToolUse` hook.
-- Source-repo `.codex/hooks.json` MUST register exactly one `PreToolUse` context hook with matcher `.*`. It MUST NOT register `.codex/hooks/general-guard.mjs` in the source repo.
-- Source-repo Codex hook commands MUST resolve repo-local entrypoints from the Git root: POSIX commands use `$(git rev-parse --show-toplevel)`, and every handler MUST provide an equivalent `commandWindows` override whose loop body suppresses command echo so hook stdout remains protocol-only JSON. Commands MUST NOT rely on undocumented `CODEX_PROJECT_DIR` injection or the session working directory. Once launched, a mirrored hook MUST derive its canonical project root from its own entrypoint path and use the payload `cwd` only to resolve relative tool targets.
-- `scripts/agent-hooks/runner.mjs` MUST own source-repo Claude and Codex `PreToolUse` dispatch order: repository boundary first, skill/context gate, response-evidence gate, then Bash safety through `.claude/hooks/guards/bash-policy-checks.mjs`. The repository boundary MUST cover every supported local tool, deny paths outside the canonical project root, and deny linked worktrees and all worktree commands. Branch commands are constrained by command shape in the Bash-safety layer, not by prompt-text authorization. Rule 12 owns the Stop-time evidence gate that blocks green claims while failed `github-checks` evidence remains unresolved.
-- Consumer Codex hook templates under `agent-bundle/codex/hooks.*.json` MUST be rendered from the same source Codex hook config, MUST strip repo-local context hooks, the source-repo surface-change sync hook, `scripts/agent-hooks/**`, source-repo Supaschema hook launcher commands, `.codex/hooks/general-guard.mjs`, and raw Bash-policy modules, and MUST retain only the two Supaschema product hook commands.
-- Consumer Claude and Codex package-manager or package-bin shims MUST use shell-form `command` strings without `args` so Windows `.cmd` or `.bat` shims remain executable.
-- Generated targets MUST NOT carry unique policy. Durable requirements belong in this rule, the owning Claude rule, the owning skill, or the sync script.
-- Generated-target sweeps MUST preserve git-ignored files inside generated targets, and the drift check MUST NOT report them: they are user-owned local overlays (personal skills, local hooks), not stale generated output. Outside a git work tree there are no ignore semantics, so every unmanaged file stays removable there.
-- `checkAgentSurfaces({ root })` MUST compare generated targets with their rendered output, including `.codex/hooks.json`.
-- `npm run sync:llm:check` MUST fail when `.codex/hooks.json` or generated templates drift.
-- The surface-change hook `.claude/hooks/sync-llm-on-claude-surface-change.mjs` MUST trigger sync after successful edits to `.claude/agents/**`, `.claude/hooks/**`, `.claude/rules/**`, `.claude/skills/**`, `.codex/hooks.json`, `agent-bundle/codex/hooks.*.json`, or `scripts/skills/sync-llm.mjs`. Claude MUST also run it from `PostToolUseFailure` because a failed tool may have committed a partial canonical mutation.
-- `.gitignore` MUST NOT ignore required source-repo runtime or rule surfaces: `.claude/settings.json`, `.claude/hooks/context-*.mjs`, `.claude/hooks/supaschema-source-hook.mjs`, `.codex/hooks/context-*.mjs`, `.codex/hooks/supaschema-source-hook.mjs`, `scripts/agent-hooks/*.mjs`, `.claude/rules/*.md`, and `.codex/rules/*.rules`.
-- `.gitignore` MUST keep personal agent overlays (`.claude/agents/`, `.codex/agents/`), optimizer skills, scratch planning (`.claude/plans`, `.planning/`), editor state (`.vscode/`), session state, and generated state local-only. `.codex/config.toml` and the MCP/FastMCP/deployment configs are tracked checked-in owners (Rule 11), and maintainer services are tracked; the held business-sensitive set is owned by Rule 21.
-- Do not use `.gitignore`, `git update-index --assume-unchanged`, or `git update-index --skip-worktree` as the boundary for files required by tracked hook registration or tracked guards. If a tracked branch file references it, the referenced runtime file must be tracked or the reference must be removed.
-- If a source-repo runtime surface must become packaged or scaffolded for consumers, update Rule 13, public-surface guards, package tests, scaffold behavior, and docs in the same change.
+- `.claude/settings.json` owns source Claude hook registration.
+- `.claude/hooks/**`, `.claude/rules/**`, `.claude/skills/**`, and `.claude/agents/**` own their generated projections.
+- `scripts/skills/agent-surface-manifest.mjs` owns canonical source roots, applicable source file types, target roots, and target-trigger classification. This includes MDX documentation, agent prompt sources, and sync-writer modules in addition to Claude-owned surfaces.
+- Parsed skill frontmatter with `metadata.public: true` owns public skill publication; no separate skill-name list exists.
+- `.codex/config.toml` remains a direct runtime owner and is not generated.
+- Consumer templates contain only the Supaschema generated-artifact protection and schema-write workflow hooks.
 
-## Public/private boundary
+## Hook registration projection
 
-- Public branch surfaces include tracked product code, tracked guards, tracked tests, `AGENTS.md`, `.claude/settings.json`, source-repo context hook entrypoints, `scripts/agent-hooks/*.mjs`, Claude rules, generated Codex rule mirrors, public supaschema consumer rule/skill surfaces, and consumer-safe `agent-bundle/**` templates.
-- Local-only surfaces include optimizer skills, maintainer-only Claude/Codex agents, personal `.agents` or `.claude` overlays, `.codex/config.toml`, MCP development tooling, deployment configs, private services, scratch planning, and generated state.
-- Package surfaces include only what `package.json#files` allows and Rule 13 permits. Consumer setup must remain explicit and must not copy maintainer-only local DX surfaces.
-- Source-repo runtime can be public branch code without becoming package code. `package.json#files`, package tests, and `npm pack --dry-run --json` own that second boundary.
+- Source Claude and generated Codex register silent `SessionStart` and `SessionEnd`, prompt matching, subagent advisory context, and Stop verification-conflict checks.
+- Context `PreToolUse` uses `Agent|Bash|Edit|Glob|Grep|MultiEdit|NotebookEdit|Read|Task|WebFetch|WebSearch|Write|apply_patch` in both runtimes.
+- Context `PostToolUse` uses `Bash|Read|Skill`. Claude alone registers `PostToolUseFailure` for `Bash` and `TaskCompleted` for unresolved required skills.
+- Claude product and surface hooks use `Write|Edit|MultiEdit|apply_patch`; Codex product and surface hooks use `apply_patch`.
+- `WorktreeCreate` is not registered. Surface sync is not registered for Bash, failure, Stop, or unrelated events.
+- Codex commands resolve the repository with `git rev-parse --show-toplevel` and provide a Windows equivalent; they do not depend on undocumented project-root injection.
+
+## Target-first synchronization
+
+- The surface-sync `PostToolUse` hook parses the explicit edit target before reading package configuration or doing other work.
+- Only canonical-source edits identified structurally by source root and file type in `agent-surface-manifest.mjs` run `npm run sync:llm`.
+- Bash, failure, Stop, generated-target, and unrelated edit events return immediately without hashing, digest state, or repair.
+- Generated drift is reported by guards and tests. It is never silently repaired after an unrelated event.
+- Hook-boundary writer failures are visible and non-blocking. Direct writer and guard commands retain their ordinary failing exit status.
 
 ## Enforcement chain
 
-- Rule: this file states the owner and generated-target contract.
-- Hook: `.claude/hooks/sync-llm-on-claude-surface-change.mjs` runs `npm run sync:llm` when source or generated hook-registration surfaces change.
-- Guard: `scripts/guards/agent-surface/check-agent-hooks.mjs` verifies source Claude/Codex single-context-hook topology, repository-boundary ownership, runtime-specific failure events, Claude-only `WorktreeCreate` blocking, git-rooted Codex commands, advisory SessionEnd cleanup, source-only hook/package stripping, consumer product-hook exclusivity, `Stop` and `SubagentStop` registration, and sync-script ownership. `scripts/guards/agent-surface/check-agent-surface-parity.mjs` runs `checkAgentSurfaces`.
-- Test: `tests/agent-hooks/repository-boundary.test.ts`, `tests/agent-hooks/sync-llm.test.ts`, `tests/agent-hooks/agent-hook-core.test.ts`, `tests/agent-hooks/agent-hooks.test.ts`, and `tests/agent-hooks/agent-surfaces.test.ts` cover repository confinement, worktree denial, Rule 21 branch command shapes, Claude import validation, runtime-specific SessionStart schemas, Claude failure evidence, nested-directory Codex execution, SessionEnd cleanup, source-repo Codex hook topology, source runner Bash blocking, generated-surface drift repair, advisory Codex skill routing, and `Stop`/`SubagentStop` continuation behavior.
-- CI: `npm run guard` runs the agent-surface guards.
-- Skill (advisory, local-only): `.claude/skills/optimizer/SKILL.md` tells agents to edit the sync owner or Claude registration, keep required source-repo runtime tracked, keep consumer package output narrow, run sync, and run the guards. It is local-only DX, not a deterministic enforcement layer; the Hook, Guard, Test, and CI rows above are the real enforcement.
+- `npm run guard:agent` runs the actual sync writer before topology and import-closure guards.
+- `scripts/guards/agent-surface/check-agent-hooks.mjs` owns exact registration and consumer-template topology.
+- `scripts/guards/agent-surface/check-hook-import-graph.mjs` owns runtime import closure.
+- Focused tests under `tests/agent-hooks/**` own writer idempotence, target-first behavior, runtime decisions, and consumer projections.
 
 ## Verification
 
-When this rule, hook registration, sync ownership, generated agent surfaces, or package hook templates change, run:
-
 ```bash
 npm run sync:llm
-npm run sync:llm:check
 npm run guard:agent
-npm run guard
-```
-
-Run focused tests for the changed owner:
-
-```bash
 npm test -- tests/agent-hooks/sync-llm.test.ts tests/agent-hooks/agent-hook-core.test.ts tests/agent-hooks/agent-surfaces.test.ts tests/agent-hooks/agent-hooks.test.ts
 ```
 
-## Failure behavior
-
-If sync or guard validation fails:
-
-1. Treat the failure as blocking.
-2. Identify whether the defect is in `.claude/settings.json`, `.claude/hooks/**`, `scripts/skills/sync-llm.mjs`, generated output, or package template stripping.
-3. Fix the canonical owner or sync script first.
-4. Re-run `npm run sync:llm`.
-5. Re-run the failed guard or test.
-6. Do not patch generated targets directly to silence drift.
+For consumer-boundary changes, also run `npm run guard:public-surface` and `npm run check:package`.
 
 ## Done means
 
-- `.codex/hooks.json` is generated by `npm run sync:llm`.
-- `npm run sync:llm:check` passes.
-- `npm run guard:agent` passes.
-- Source Claude and Codex configs register `Stop`, `SubagentStop`, and `SessionEnd`; Claude registers `PostToolUseFailure` and blocking `WorktreeCreate`; Codex omits unsupported events; their shared response/evidence runtime is tracked; and generated mirrors preserve each runtime contract.
-- Every supported local source-repo Claude and Codex tool matches exactly one context `PreToolUse` hook command, and the shared runner supplies repository confinement, worktree denial, Rule 21 branch command shapes, and Bash safety.
-- Consumer hook templates contain only the Supaschema generated-artifact and schema-write commands.
-- Required source-repo hook runtime and rules are public branch surfaces, while package output still excludes source-only context hooks and `scripts/agent-hooks/**`.
-- Tests cover drift detection and repair for generated Codex hook registration.
+- The actual writer has run after the final canonical edit.
+- Generated Codex, Agents, public-skill, and consumer surfaces reflect parsed canonical inputs.
+- Maintainer registrations implement the exact event and matcher contract above.
+- Consumer templates contain exactly the two product hooks with runtime-correct edit matchers.
+- No check-only sync command, digest state, generated-target trigger, or duplicate publication list remains.

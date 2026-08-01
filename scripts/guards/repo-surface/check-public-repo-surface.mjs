@@ -44,7 +44,6 @@ const wiredExact = new Set([
   "uv.lock",
   "wrangler.toml",
 ]);
-
 function gitPaths(args, root) {
   const separator = args.indexOf("--");
   const argv =

@@ -12,6 +12,7 @@ Read only the rules and skills directly applicable to the current task.
 | --- | --- |
 | General operating discipline, gates, `$elegant`, enforcement closure, npm-only tooling, or closeout | `.claude/rules/01-operating-rules.md` |
 | Technical decisions, upstream research, evidence fallbacks, or escalation | `.claude/rules/05-decision-protocol.md` |
+| Repository discovery, language tooling, AST/LSP use, or structural inspection | `.claude/rules/06-multi-language-toolchain.md` |
 | PostgreSQL or Supabase migrations, source-intent extraction, or generated schema surfaces | `.claude/rules/supaschema.md` |
 | Agent MCP or FastMCP behavior and public surfaces | `.claude/rules/11-agent-mcp-fastmcp.md` |
 | Skill loading, hook context, observable loading, enforcement, or hook state | `.claude/rules/12-skill-loading-enforcement.md` |
@@ -55,8 +56,8 @@ Write code that is **accessible, performant, type-safe, and maintainable**. Focu
 
 Implement the requested behavior using the simplest maintainable approach that fits the existing repository.
 
-- Follow established local architecture, naming, contracts, frameworks, and helper APIs.
-- Read enough surrounding code to understand the affected behavior and ownership boundary, then stop exploring.
+- Follow established architecture, naming, contracts, and frameworks as defined by rules.
+- Absorb enough surrounding code to understand the affected behavior and ownership boundary, then stop exploring.
 - Keep changes within the smallest practical behavioral and ownership surface.
 - Prefer clear names, strong types, simple control flow, minimal mutation, and focused functions.
 - Prefer direct implementations over speculative frameworks or generalized infrastructure.

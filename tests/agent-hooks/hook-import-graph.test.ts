@@ -5,9 +5,72 @@ import { describe, expect, it } from "vitest";
 import {
   check,
   hookImportGraph,
+  reachableHookDependencies,
 } from "../../scripts/guards/agent-surface/check-hook-import-graph.mjs";
+import { sessionLifecycleEntrypoints } from "../../scripts/guards/agent-surface/hook-topology.mjs";
 
 describe("hook import graph", () => {
+  it("keeps session lifecycle entrypoints isolated from the non-lifecycle runner", () => {
+    const graph = hookImportGraph(process.cwd());
+    for (const entrypoint of sessionLifecycleEntrypoints) {
+      expect(graph).toContainEqual({
+        file: entrypoint,
+        kind: "relative",
+        specifier: "../../scripts/agent-hooks/session-lifecycle.mjs",
+        target: "scripts/agent-hooks/session-lifecycle.mjs",
+      });
+      expect(graph).not.toContainEqual(
+        expect.objectContaining({
+          file: entrypoint,
+          target: "scripts/agent-hooks/runner.mjs",
+        })
+      );
+      expect(reachableHookDependencies(graph, entrypoint)).not.toContain(
+        "scripts/agent-hooks/runner.mjs"
+      );
+    }
+  });
+
+  it("rejects an indirect lifecycle dependency on the non-lifecycle runtime", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-hook-import-lifecycle-"));
+    await write(
+      root,
+      ".claude/hooks/context-session-start.mjs",
+      'import "../../scripts/agent-hooks/session-lifecycle.mjs";\n'
+    );
+    await write(
+      root,
+      "scripts/agent-hooks/session-lifecycle.mjs",
+      'import "./lifecycle-bridge.mjs";\n'
+    );
+    await write(root, "scripts/agent-hooks/lifecycle-bridge.mjs", 'import "./runner.mjs";\n');
+    await write(root, "scripts/agent-hooks/runner.mjs", "export {};\n");
+
+    const graph = hookImportGraph(root);
+    expect(reachableHookDependencies(graph, ".claude/hooks/context-session-start.mjs")).toContain(
+      "scripts/agent-hooks/runner.mjs"
+    );
+    expect(() => check(root)).toThrow(
+      ".claude/hooks/context-session-start.mjs reaches non-lifecycle hook runtime"
+    );
+  });
+
+  it("rejects process-spawning builtins from the lifecycle import closure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-hook-import-lifecycle-builtin-"));
+    await write(
+      root,
+      ".claude/hooks/context-session-start.mjs",
+      'import "../../scripts/agent-hooks/session-lifecycle.mjs";\n'
+    );
+    await write(
+      root,
+      "scripts/agent-hooks/session-lifecycle.mjs",
+      'import "node:child_process";\n'
+    );
+
+    expect(() => check(root)).toThrow("node:child_process");
+  });
+
   it("maps multiline imports, re-exports, literal dynamic imports, and builtins", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-hook-import-graph-"));
     await write(
@@ -72,7 +135,7 @@ describe("hook import graph", () => {
     const bareRoot = await mkdtemp(join(tmpdir(), "supa-hook-import-bare-"));
     await write(bareRoot, ".claude/hooks/example.mjs", 'import "zod";\n');
     expect(() => check(bareRoot)).toThrow(
-      ".claude/hooks/example.mjs imports non-runtime-safe module zod"
+      ".claude/hooks/example.mjs imports undeclared runtime module zod"
     );
   });
 
@@ -107,7 +170,7 @@ describe("hook import graph", () => {
     await write(root, ".claude/hooks/example.mjs", 'import "../../shared/helper.mjs";\n');
     await write(root, "shared/helper.mjs", 'import "zod";\n');
 
-    expect(() => check(root)).toThrow("shared/helper.mjs imports non-runtime-safe module zod");
+    expect(() => check(root)).toThrow("shared/helper.mjs imports undeclared runtime module zod");
   });
 
   it("terminates on cycles in the reachable helper graph", async () => {

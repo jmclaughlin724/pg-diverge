@@ -11,7 +11,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|apply_patch|mcp__.*"
+        "matcher": "Bash|Read|Skill"
       },
       {
         "hooks": [
@@ -23,7 +23,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|apply_patch"
+        "matcher": "apply_patch"
       },
       {
         "hooks": [
@@ -49,7 +49,7 @@
             "type": "command"
           }
         ],
-        "matcher": ".*"
+        "matcher": "Agent|Bash|Edit|Glob|Grep|MultiEdit|NotebookEdit|Read|Task|WebFetch|WebSearch|Write|apply_patch"
       },
       {
         "hooks": [
@@ -61,7 +61,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|apply_patch"
+        "matcher": "apply_patch"
       }
     ],
     "SessionStart": [
@@ -70,7 +70,7 @@
           {
             "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/context-session-start.mjs\"",
             "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/context-session-start.mjs\"",
-            "statusMessage": "Loading supaschema agent context",
+            "statusMessage": "Refreshing agent hook state",
             "timeout": 10,
             "type": "command"
           }
@@ -125,13 +125,6 @@
             "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/context-stop.mjs\"",
             "statusMessage": "Checking supaschema final-response evidence",
             "timeout": 10,
-            "type": "command"
-          },
-          {
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "statusMessage": "Syncing supaschema Claude agent surfaces",
-            "timeout": 130,
             "type": "command"
           }
         ]

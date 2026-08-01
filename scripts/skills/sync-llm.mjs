@@ -4,69 +4,46 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { discoverSkills } from "../agent-hooks/skill-frontmatter.mjs";
 import { hookMatcherMatchesTool } from "../lib/hook-matcher.mjs";
+import { agentSurfaceManifest } from "./agent-surface-manifest.mjs";
 import { bundleDocsFiles } from "./bundle-docs.mjs";
 import { renderCodexAgent, renderCodexRule } from "./codex-rules.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-export const publicSkillNames = Object.freeze(["supaschema"]);
+export function publicSkillNames(root = ROOT) {
+  return discoverSkills(root, "claude")
+    .filter((skill) => skill.isPublic)
+    .map((skill) => skill.name)
+    .sort((left, right) => left.localeCompare(right));
+}
 const claudeProjectDir = shellParameter("CLAUDE_PROJECT_DIR");
 const codexProjectDir = ["$(", "git rev-parse --show-toplevel", ")"].join("");
-const codexCommandTools = ["Bash"];
 const codexEditTools = ["apply_patch"];
-const codexPreToolContextTools = [[".", "*"].join("")];
-const codexPostToolContextTools = [
-  ...codexCommandTools,
-  ...codexEditTools,
-  ["mcp__", [".", "*"].join("")].join(""),
+const preToolContextTools = [
+  "Agent",
+  "Bash",
+  "Edit",
+  "Glob",
+  "Grep",
+  "MultiEdit",
+  "NotebookEdit",
+  "Read",
+  "Task",
+  "WebFetch",
+  "WebSearch",
+  "Write",
+  "apply_patch",
 ];
+const postToolContextTools = ["Bash", "Read", "Skill"];
 const codexEditToolMatcher = codexToolMatcher(codexEditTools);
-const codexMutationToolMatcher = codexToolMatcher([...codexCommandTools, ...codexEditTools]);
-const codexPreToolContextMatcher = codexToolMatcher(codexPreToolContextTools);
-const codexPostToolContextMatcher = codexToolMatcher(codexPostToolContextTools);
-
-export const agentSurfaceManifest = {
-  agentBundle: {
-    targetRoot: "agent-bundle",
-  },
-  agents: {
-    sourceRoot: ".claude/agents",
-    targetRoot: ".codex/agents",
-  },
-  hooks: {
-    sourceRoot: ".claude/hooks",
-    targetRoot: ".codex/hooks",
-  },
-  publicSkills: {
-    sourceRoot: ".claude/skills",
-    targetRoot: "skills",
-  },
-  rules: {
-    sourceRoot: ".claude/rules",
-    targetRoot: ".codex/rules",
-  },
-  skills: {
-    sourceRoot: ".claude/skills",
-    targetRoots: [".agents/skills"],
-  },
-};
+const codexPreToolContextMatcher = codexToolMatcher(preToolContextTools);
+const codexPostToolContextMatcher = codexToolMatcher(postToolContextTools);
 
 export function runCli(argv = process.argv.slice(2), root = ROOT) {
-  const args = new Set(argv);
-  const unknown = argv.filter((arg) => arg !== "--check");
-  if (unknown.length > 0) {
-    process.stderr.write(`Unknown sync:llm argument(s): ${unknown.join(", ")}\n`);
+  if (argv.length > 0) {
+    process.stderr.write(`Unknown sync:llm argument(s): ${argv.join(", ")}\n`);
     process.exit(2);
-  }
-
-  if (args.has("--check")) {
-    const errors = checkAgentSurfaces({ root });
-    if (errors.length > 0) {
-      process.stderr.write(`${errors.join("\n")}\n`);
-      process.exit(1);
-    }
-    process.stdout.write("SYNC_LLM_CHECK_OK\n");
-    return;
   }
 
   const result = syncAgentSurfaces({ root });
@@ -94,18 +71,6 @@ export function syncAgentSurfaces({ root = ROOT } = {}) {
     skills: skillResult.files,
     skillTargets: skillResult.targets,
   };
-}
-
-export function checkAgentSurfaces({ root = ROOT } = {}) {
-  const errors = [];
-  checkSkills(root, errors);
-  checkPublicSkills(root, errors);
-  checkDirectoryMirror(root, agentSurfaceManifest.hooks, errors);
-  checkCodexHookConfig(root, errors);
-  checkCodexAgents(root, errors);
-  checkCodexRules(root, errors);
-  checkAgentBundle(root, errors);
-  return errors;
 }
 
 function syncSkills(root) {
@@ -147,75 +112,11 @@ function syncCodexHookConfig(root) {
   return { files: 1 };
 }
 
-function checkCodexHookConfig(root, errors) {
-  let expected;
-  try {
-    expected = jsonText(renderSourceCodexHooks(root));
-  } catch (error) {
-    errors.push(
-      error instanceof Error ? `Codex hook config input invalid: ${error.message}` : String(error)
-    );
-    return;
-  }
-
-  const target = path.join(root, ".codex/hooks.json");
-  if (!fs.existsSync(target)) {
-    errors.push("missing generated Codex hook config .codex/hooks.json");
-    return;
-  }
-  const actual = fs.readFileSync(target, "utf8");
-  if (actual !== expected) {
-    errors.push("generated Codex hook config drifted: .codex/hooks.json");
-  }
-}
-
-function checkAgentBundle(root, errors) {
-  const targetRootPath = path.join(root, agentSurfaceManifest.agentBundle.targetRoot);
-  if (!fs.existsSync(targetRootPath)) {
-    errors.push(`missing raw agent bundle dir ${agentSurfaceManifest.agentBundle.targetRoot}`);
-    return;
-  }
-  const expected = safeAgentBundleFiles(root, errors);
-  if (expected.size === 0) {
-    return;
-  }
-  const actualFiles = listFiles(targetRootPath);
-  pushFileSetErrors(
-    { targetRoot: agentSurfaceManifest.agentBundle.targetRoot },
-    [...expected.keys()],
-    actualFiles,
-    errors
-  );
-  for (const [file, expectedContent] of expected) {
-    if (!actualFiles.includes(file)) {
-      continue;
-    }
-    const actualContent = fs.readFileSync(
-      path.join(targetRootPath, file),
-      Buffer.isBuffer(expectedContent) ? undefined : "utf8"
-    );
-    if (!fileContentsEqual(actualContent, expectedContent)) {
-      errors.push(`raw agent bundle drifted: ${file}`);
-    }
-  }
-}
-
-function safeAgentBundleFiles(root, errors) {
-  try {
-    return agentBundleFiles(root);
-  } catch (error) {
-    errors.push(
-      error instanceof Error ? `raw agent bundle input missing: ${error.message}` : String(error)
-    );
-    return new Map();
-  }
-}
-
 function agentBundleFiles(root) {
   const sourceCodexHooks = renderSourceCodexHooks(root);
   const files = new Map([
     ["INSTALL.md", fs.readFileSync(path.join(root, "agent-bundle", "INSTALL.md"), "utf8")],
-    ["skills-manifest.json", jsonText({ skills: publicSkillNames })],
+    ["skills-manifest.json", jsonText({ skills: publicSkillNames(root) })],
     [
       "agents/prompts/supaschema-install.md",
       fs.readFileSync(path.join(root, ".agents/prompts/supaschema-install.md"), "utf8"),
@@ -254,7 +155,7 @@ function agentBundleFiles(root) {
 
 function curatedSkillFiles(root, sourceRoot) {
   const files = new Map();
-  for (const skillName of publicSkillNames) {
+  for (const skillName of publicSkillNames(root)) {
     const skillRoot = path.join(root, sourceRoot, skillName);
     assertDirectory(skillRoot, `missing curated skill dir ${sourceRoot}/${skillName}`);
     for (const file of listFiles(skillRoot)) {
@@ -302,7 +203,7 @@ function claudeHookConfig(runner) {
               type: "command",
             },
           ],
-          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+          matcher: "Write|Edit|MultiEdit|apply_patch",
         },
       ],
       PreToolUse: [
@@ -315,7 +216,7 @@ function claudeHookConfig(runner) {
               type: "command",
             },
           ],
-          matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+          matcher: "Write|Edit|MultiEdit|apply_patch",
         },
       ],
     },
@@ -346,7 +247,7 @@ export function renderSourceCodexHooks(root = ROOT) {
               "hook schema-write"
             ),
           ],
-          matcher: codexMutationToolMatcher,
+          matcher: codexEditToolMatcher,
         },
         {
           hooks: [
@@ -379,7 +280,7 @@ export function renderSourceCodexHooks(root = ROOT) {
               "hook generated-artifact-edit --runtime codex"
             ),
           ],
-          matcher: codexMutationToolMatcher,
+          matcher: codexEditToolMatcher,
         },
       ],
       SessionStart: [
@@ -388,7 +289,7 @@ export function renderSourceCodexHooks(root = ROOT) {
             codexHookCommand(
               ".codex/hooks/context-session-start.mjs",
               10,
-              "Loading supaschema agent context"
+              "Refreshing agent hook state"
             ),
           ],
           matcher: "startup|resume|clear|compact",
@@ -434,11 +335,6 @@ export function renderSourceCodexHooks(root = ROOT) {
               ".codex/hooks/context-stop.mjs",
               10,
               "Checking supaschema final-response evidence"
-            ),
-            codexHookCommand(
-              ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-              130,
-              "Syncing supaschema Claude agent surfaces"
             ),
           ],
         },
@@ -488,9 +384,9 @@ function assertClaudeHookSource(root) {
     ["PostToolUse", ".claude/hooks/context-post-tool-use.mjs"],
     ["PostToolUseFailure", ".claude/hooks/context-post-tool-use-failure.mjs"],
     ["SubagentStart", ".claude/hooks/context-subagent-start.mjs"],
+    ["TaskCompleted", ".claude/hooks/context-task-completed.mjs"],
     ["SubagentStop", ".claude/hooks/context-subagent-stop.mjs"],
     ["Stop", ".claude/hooks/context-stop.mjs"],
-    ["WorktreeCreate", ".claude/hooks/context-worktree-create.mjs"],
     ["SessionEnd", ".claude/hooks/context-session-end.mjs"],
   ]) {
     assertClaudeNodeHook(hooks, eventName, relativePath);
@@ -500,11 +396,6 @@ function assertClaudeHookSource(root) {
   assertClaudeCommand(hooks, "PreToolUse", "generated-artifact-edit");
   assertClaudeCommand(hooks, "PostToolUse", "schema-write");
   assertClaudeNodeHook(hooks, "PostToolUse", ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
-  assertClaudeNodeHook(
-    hooks,
-    "PostToolUseFailure",
-    ".claude/hooks/sync-llm-on-claude-surface-change.mjs"
-  );
 }
 
 function assertSourceClaudeBashPreToolUseTopology(hooks) {
@@ -525,10 +416,9 @@ function assertSourceClaudeBashPreToolUseTopology(hooks) {
       ".claude/settings.json Bash PreToolUse must resolve through .claude/hooks/context-pre-tool-use.mjs"
     );
   }
-  if (contextEntries.length !== 1 || contextEntries[0]?.matcher !== ".*") {
-    throw new Error(
-      ".claude/settings.json context PreToolUse must use matcher .* so every supported local tool reaches the repository boundary"
-    );
+  const expectedMatcher = preToolContextTools.join("|");
+  if (contextEntries.length !== 1 || contextEntries[0]?.matcher !== expectedMatcher) {
+    throw new Error(`.claude/settings.json context PreToolUse must use matcher ${expectedMatcher}`);
   }
   if (handlerText.includes(".claude/hooks/guards/bash-policy-checks.mjs")) {
     throw new Error(
@@ -813,151 +703,6 @@ function syncCodexRules(root) {
   syncTextFiles(targetRootPath, renderedFiles);
 
   return { files: sourceFiles.length };
-}
-
-function checkSkills(root, errors) {
-  const { sourceRoot, targetRoots } = agentSurfaceManifest.skills;
-  for (const targetRoot of targetRoots) {
-    checkDirectoryMirror(root, { sourceRoot, targetRoot }, errors);
-  }
-}
-
-function checkPublicSkills(root, errors) {
-  const { sourceRoot, targetRoot } = agentSurfaceManifest.publicSkills;
-  let expected;
-  try {
-    expected = curatedSkillFiles(root, sourceRoot);
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : String(error));
-    return;
-  }
-  const targetRootPath = path.join(root, targetRoot);
-  const readme = path.join(targetRootPath, "README.md");
-  if (fs.existsSync(readme)) {
-    expected.set("README.md", fs.readFileSync(readme));
-  }
-  if (!fs.existsSync(targetRootPath)) {
-    errors.push(`missing mirror dir ${targetRoot}`);
-    return;
-  }
-  const targetFiles = listFiles(targetRootPath);
-  pushFileSetErrors({ targetRoot }, [...expected.keys()], targetFiles, errors, targetRootPath);
-  for (const [file, expectedContent] of expected) {
-    if (!targetFiles.includes(file)) {
-      continue;
-    }
-    const actualContent = fs.readFileSync(path.join(targetRootPath, file));
-    if (!fileContentsEqual(actualContent, expectedContent)) {
-      errors.push(`mirror drifted for ${targetRoot}: ${file}`);
-    }
-  }
-}
-
-function checkDirectoryMirror(root, surface, errors) {
-  const sourceRootPath = path.join(root, surface.sourceRoot);
-  const targetRootPath = path.join(root, surface.targetRoot);
-  if (!fs.existsSync(sourceRootPath)) {
-    errors.push(`missing source dir ${surface.sourceRoot}`);
-    return;
-  }
-  if (!fs.existsSync(targetRootPath)) {
-    errors.push(`missing mirror dir ${surface.targetRoot}`);
-    return;
-  }
-
-  const sourceFiles = listFiles(sourceRootPath);
-  const targetFiles = listFiles(targetRootPath);
-  pushFileSetErrors(surface, sourceFiles, targetFiles, errors, targetRootPath);
-
-  for (const file of sourceFiles.filter((item) => targetFiles.includes(item))) {
-    const sourceFile = path.join(sourceRootPath, file);
-    const targetFile = path.join(targetRootPath, file);
-    if (!fs.readFileSync(sourceFile).equals(fs.readFileSync(targetFile))) {
-      errors.push(`mirror drifted for ${surface.targetRoot}: ${file}`);
-    }
-  }
-}
-
-function checkCodexAgents(root, errors) {
-  const { sourceRoot, targetRoot } = agentSurfaceManifest.agents;
-  const sourceRootPath = path.join(root, sourceRoot);
-  if (!fs.existsSync(sourceRootPath)) {
-    const targetRootPath = path.join(root, targetRoot);
-    const targetFiles = listFiles(targetRootPath);
-    const preserved = gitIgnoredFiles(targetRootPath, targetFiles);
-    const unmanaged = targetFiles.filter((file) => !preserved.has(file));
-    if (unmanaged.length > 0) {
-      errors.push(`mirror ${targetRoot} has unmanaged files: ${unmanaged.join(", ")}`);
-    }
-    return;
-  }
-  checkRenderedMirror(
-    root,
-    { extension: ".toml", sourceRoot, targetRoot },
-    renderCodexAgent,
-    errors
-  );
-}
-
-function checkCodexRules(root, errors) {
-  const { sourceRoot, targetRoot } = agentSurfaceManifest.rules;
-  checkRenderedMirror(
-    root,
-    { extension: ".rules", sourceRoot, targetRoot },
-    renderCodexRule,
-    errors
-  );
-}
-
-function checkRenderedMirror(root, surface, render, errors) {
-  const sourceRootPath = path.join(root, surface.sourceRoot);
-  const targetRootPath = path.join(root, surface.targetRoot);
-  if (!fs.existsSync(sourceRootPath)) {
-    errors.push(`missing source dir ${surface.sourceRoot}`);
-    return;
-  }
-  if (!fs.existsSync(targetRootPath)) {
-    errors.push(`missing rendered mirror dir ${surface.targetRoot}`);
-    return;
-  }
-
-  const sourceFiles = listFiles(sourceRootPath);
-  for (const file of sourceFiles) {
-    try {
-      assertMarkdownFile(surface.sourceRoot, file, "source");
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  const expectedFiles = sourceFiles.map((file) => codexTargetPath(file, surface.extension));
-  const targetFiles = listFiles(targetRootPath);
-  pushFileSetErrors(surface, expectedFiles, targetFiles, errors, targetRootPath);
-
-  for (const file of sourceFiles) {
-    const targetFile = codexTargetPath(file, surface.extension);
-    if (!targetFiles.includes(targetFile)) {
-      continue;
-    }
-    const sourcePath = path.join(sourceRootPath, file);
-    const expected = render(fs.readFileSync(sourcePath, "utf8"), display(root, sourcePath));
-    const actual = fs.readFileSync(path.join(targetRootPath, targetFile), "utf8");
-    if (actual !== expected) {
-      errors.push(`rendered mirror drifted for ${surface.targetRoot}: ${targetFile}`);
-    }
-  }
-}
-
-function pushFileSetErrors(surface, expectedFiles, actualFiles, errors, targetRootPath) {
-  const missing = expectedFiles.filter((file) => !actualFiles.includes(file));
-  const extraCandidates = actualFiles.filter((file) => !expectedFiles.includes(file));
-  const preserved = gitIgnoredFiles(targetRootPath, extraCandidates);
-  const extra = extraCandidates.filter((file) => !preserved.has(file));
-  if (missing.length > 0) {
-    errors.push(`mirror ${surface.targetRoot} missing files: ${missing.join(", ")}`);
-  }
-  if (extra.length > 0) {
-    errors.push(`mirror ${surface.targetRoot} has unmanaged files: ${extra.join(", ")}`);
-  }
 }
 
 function assertDirectory(dir, message) {

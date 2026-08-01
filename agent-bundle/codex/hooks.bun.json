@@ -10,7 +10,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|apply_patch"
+        "matcher": "apply_patch"
       }
     ],
     "PreToolUse": [
@@ -23,7 +23,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|apply_patch"
+        "matcher": "apply_patch"
       }
     ]
   }

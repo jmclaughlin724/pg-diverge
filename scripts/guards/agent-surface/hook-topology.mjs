@@ -1,6 +1,14 @@
 import { hookMatcherMatchesTool } from "../../lib/hook-matcher.mjs";
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
+export const sessionLifecycleEntrypointsFor = (runtimeRoot) =>
+  ["start", "end"].map((phase) => `${runtimeRoot}/hooks/context-session-${phase}.mjs`);
+
+export const sessionLifecycleEntrypoints = [
+  ...sessionLifecycleEntrypointsFor(".claude"),
+  ...sessionLifecycleEntrypointsFor(".codex"),
+];
+
 export function hookHandlers(value) {
   const out = [];
   const visit = (candidate) => {
@@ -89,23 +97,18 @@ export function runnerImportsEvaluateBashPolicy(text) {
   return found;
 }
 
-export function runnerImportsRepositoryBoundary(text) {
-  const source = parseScript(text, "scripts/agent-hooks/runner.mjs");
+export function importsNamedBinding(text, sourceName, moduleSpecifier, bindingName) {
+  const source = parseScript(text, sourceName);
   let found = false;
   forEachNode(source, (node) => {
-    if (
-      !ts.isImportDeclaration(node) ||
-      node.moduleSpecifier?.text !== "./repository-boundary.mjs"
-    ) {
+    if (!ts.isImportDeclaration(node) || node.moduleSpecifier?.text !== moduleSpecifier) {
       return;
     }
     const bindings = node.importClause?.namedBindings;
     if (!(bindings && ts.isNamedImports(bindings))) {
       return;
     }
-    found ||= bindings.elements.some(
-      (element) => element.name.text === "evaluateRepositoryBoundary"
-    );
+    found ||= bindings.elements.some((element) => element.name.text === bindingName);
   });
   return found;
 }

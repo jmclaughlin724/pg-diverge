@@ -31,9 +31,9 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 | Nested Codex briefs | `<subfolder>/AGENTS.md` | loaded hierarchically by Codex for matching subtrees | no generated sync; validate scoped routes with `npm run guard` |
 | Claude runtime entrypoint | `CLAUDE.md` | Claude Code | keep as a runtime entrypoint for Claude Code only; unique durable policy belongs in `AGENTS.md` or scoped rules |
 | Rules | `.claude/rules/**` | Codex rule pointers/mirrors when packaged | `npm run sync:llm`; rule guard if available |
-| Skills | `.claude/skills/**`; ordered public list in `scripts/skills/sync-llm.mjs` | `.agents/skills/**`; curated `skills/**`; Agent/Claude bundle skill trees and manifest | `npm run sync:llm` |
+| Skills | `.claude/skills/**`; parsed `metadata.public` frontmatter marks public skills | `.agents/skills/**`; public `skills/**`; Agent/Claude bundle skill trees and manifest | `npm run sync:llm` |
 | Hooks | `.claude/hooks/**` | `.codex/hooks/**` mirrors or native adapters where supported | edit Claude/shared owner, then sync or update native adapter |
-| Native Codex hook registration | `scripts/skills/sync-llm.mjs` plus `.claude/settings.json`; see Rule 22 | `.codex/hooks.json` and packaged consumer registration | `npm run sync:llm`, `npm run sync:llm:check`, hook/package guards |
+| Native Codex hook registration | `scripts/skills/sync-llm.mjs` plus `.claude/settings.json`; see Rule 22 | `.codex/hooks.json` and packaged consumer registration | idempotent `npm run sync:llm`, hook/package guards |
 | MCP registry | `.mcp.json`, `fastmcp.json` | local MCP clients and package docs | `npm run guard:fastmcp`, `npm run guard:agent` |
 | Consumer agent bundle | curated `.claude/skills/**`, `.claude/rules/supaschema.md`, consumer hook sources, `agent-bundle/INSTALL.md`, `package.json#files`, `bin/scaffold.mjs`, `scripts/skills/sync-llm.mjs` | raw npm tarball bundle, ordered skills manifest, and default installed project scaffold | `npm run sync:llm`, `npm run check:package`, `npm pack --dry-run --json`, lifecycle tests |
 
@@ -61,8 +61,8 @@ This rule owns the canonical-owner and generated-mirror sync matrix for agent-fa
 | Supaschema consumer skill/rule/hook | `npm run sync:llm`, package checks when bundled |
 | Maintainer skill only | `npm run sync:llm` for mirrored skills |
 | Hook source | `npm run guard:agent`, focused hook tests, `npm run sync:llm` if mirrored |
-| Shared runtime adapter | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused hook/sync tests |
-| Generated Codex hook registration or package hook templates | `npm run sync:llm`, `npm run sync:llm:check`, `npm run guard:agent`, focused sync/hook tests |
+| Shared runtime adapter | `npm run sync:llm`, `npm run guard:agent`, focused hook/sync tests |
+| Generated Codex hook registration or package hook templates | `npm run sync:llm`, `npm run guard:agent`, focused sync/hook tests |
 | Public/private agent-surface boundary | `npm run guard:public-surface`, `npm run check:package`, focused editor/package tests |
 | MCP surface | `npm run guard:fastmcp`, `npm run guard:agent` |
 | Package bundle | `npm run check:package`, `npm pack --dry-run --json`, lifecycle tests |
@@ -82,9 +82,9 @@ For package-bundled consumer surfaces, also run `npm run check:package` and `npm
 
 If sync or public/private boundary validation fails:
 
-1. Identify whether the failure is in the canonical owner, sync script, generated target, native runtime config, or package allowlist.
+1. Identify whether the failure is in the canonical owner, sync script, generated target, native runtime config, or parsed public-skill metadata.
 2. Fix the canonical owner or sync script first.
-3. Re-run the narrow sync/check.
+3. Re-run the actual narrow sync and applicable guard.
 4. Do not patch generated mirrors directly.
 5. Do not hide required source-repo runtime behind `.gitignore`; add or repair tracked guard/test enforcement and keep package output narrow instead.
 6. If another session owns overlapping generated output, preserve unrelated hunks per Rule 14.

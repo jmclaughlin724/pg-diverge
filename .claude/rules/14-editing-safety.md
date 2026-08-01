@@ -43,7 +43,7 @@ This rule owns file-edit safety, generated-artifact discipline, concurrent-chang
 
 Before deleting, renaming, privatizing, or changing a public export/package surface:
 
-1. Use cclsp/LSP for references when the symbol is in code.
+1. Establish owners and consumers from repository instructions, manifests, and the applicable AST/LSP tooling.
 2. Use exact fixed-string search for docs, fixtures, generated-surface references, package manifests, examples, and prose.
 3. Update or retire consumers in the same change.
 4. Update tests, docs, package boundary expectations, and generated mirrors if the public surface changed.

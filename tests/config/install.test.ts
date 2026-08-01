@@ -473,7 +473,7 @@ describe("init project setup", () => {
       await readFile(join(consumer, ".claude/settings.json"), "utf8")
     );
     expect(claudeSettings.hooks.PreToolUse).toEqual([
-      expect.objectContaining({ matcher: "Bash|Write|Edit|MultiEdit|apply_patch" }),
+      expect.objectContaining({ matcher: "Write|Edit|MultiEdit|apply_patch" }),
     ]);
     expect(JSON.stringify(claudeSettings)).not.toContain("bash-policy-checks.mjs");
     const codexHooks = JSON.parse(await readFile(join(consumer, ".codex/hooks.json"), "utf8"));
@@ -571,7 +571,7 @@ describe("init project setup", () => {
                     type: "command",
                   },
                 ],
-                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+                matcher: "Write|Edit|MultiEdit|apply_patch",
               },
             ],
           },
@@ -683,7 +683,7 @@ describe("init project setup", () => {
                   },
                   { command: "node .claude/hooks/custom.mjs", type: "command" },
                 ],
-                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+                matcher: "Write|Edit|MultiEdit|apply_patch",
               },
             ],
           },
@@ -781,7 +781,7 @@ describe("init project setup", () => {
                     type: "command",
                   },
                 ],
-                matcher: "Bash|Write|Edit|MultiEdit|apply_patch",
+                matcher: "Write|Edit|MultiEdit|apply_patch",
               },
             ],
           },

@@ -34,7 +34,7 @@ This rule owns repo-wide authorization, gate integrity, enforcement closure, can
 ## Evidence and execution
 
 - Use repo evidence for local behavior and authoritative upstream sources for material external claims. Absence from one search is not proof that a surface does not exist; try one or two meaningful fallbacks before concluding it is unavailable.
-- Use structured APIs, language servers, compilers, and direct source reads for structural ownership, dependency, consumer, generated-surface, delete, rename, move, and rollout claims.
+- Use repository instructions and manifests to establish ownership. Use structured APIs, language servers, compilers, and parsers for dependency, consumer, route, generated-surface, delete, rename, move, and rollout claims; use direct source reads and exact fixed-string searches for final proof.
 - Resolve technical implementation choices from evidence. Ask the user only for product scope, irreversible or outward-facing actions, secrets, spending, material permission expansion, or genuine instruction conflicts.
 - For complex work, use a short plan or checklist when it prevents missed dependencies. Continue through implementation and relevant validation, update the user at major phase changes, and stop routine tool narration.
 - Use subagents only when authorized and when bounded independent work improves coverage or latency. Require evidence, files inspected, uncertainty, risks, and validation; keep final judgment and integration in the parent.

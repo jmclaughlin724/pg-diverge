@@ -246,8 +246,17 @@ function columnDefaultExpression(
     if (expressionStart === undefined) {
       return;
     }
+    let start = expressionStart - byteOffset;
+    let cursor = start - 1;
+    while (cursor >= 0 && sql[cursor] === " ") {
+      cursor -= 1;
+    }
+    while (cursor >= 0 && sql[cursor] === "(") {
+      start = cursor;
+      cursor -= 1;
+    }
     const end = located[index + 1]?.location ?? element.end;
-    let text = sql.slice(expressionStart - byteOffset, end).trim();
+    let text = sql.slice(start, end).trim();
     if (text.endsWith(",")) {
       text = text.slice(0, -1).trimEnd();
     }

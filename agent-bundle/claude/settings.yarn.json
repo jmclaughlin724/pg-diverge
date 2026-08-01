@@ -10,7 +10,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch"
+        "matcher": "Write|Edit|MultiEdit|apply_patch"
       }
     ],
     "PreToolUse": [
@@ -23,7 +23,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch"
+        "matcher": "Write|Edit|MultiEdit|apply_patch"
       }
     ]
   }

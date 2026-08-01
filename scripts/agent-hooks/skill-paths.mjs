@@ -1,34 +1,26 @@
 import path from "node:path";
-
-const patchPrefixes = ["*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "];
+import { minimatch } from "minimatch";
+import { governedToolTargetStrings } from "./edit-targets.mjs";
 
 export function payloadPaths(payload, root) {
-  const input = payload?.tool_input ?? {};
-  const out = [];
-  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
-  if (
-    ["Edit", "MultiEdit", "Read", "Write"].includes(name) &&
-    typeof input.file_path === "string"
-  ) {
-    out.push(repoRelative(input.file_path, root));
-  }
-  if (name === "NotebookEdit" && typeof input.notebook_path === "string") {
-    out.push(repoRelative(input.notebook_path, root));
-  }
-  if (name === "apply_patch" && typeof input.command === "string") {
-    out.push(...patchPaths(input.command, root));
-  }
-  if (name.startsWith("mcp__")) {
-    out.push(...deepPathStrings(input, root));
-  }
-  return unique(out.filter(Boolean));
+  return unique(
+    governedToolTargetStrings(payload)
+      .map((value) => repoRelative(value, root))
+      .filter(Boolean)
+  );
 }
 
 export function pathMatches(trigger, candidate) {
-  if (trigger.endsWith("/**")) {
-    return candidate.startsWith(trigger.slice(0, -3));
-  }
-  return trigger === candidate;
+  return minimatch(normalizePath(candidate), normalizePath(trigger), {
+    dot: true,
+    magicalBraces: true,
+    nocase: false,
+    nonegate: true,
+  });
+}
+
+function normalizePath(value) {
+  return String(value).split("\\").join("/");
 }
 
 export function skillFromSkillPath(value, root) {
@@ -62,42 +54,4 @@ export function uniqueByName(items) {
     seen.add(item.name);
     return true;
   });
-}
-
-function patchPaths(text, root) {
-  const out = [];
-  for (const line of text.split("\n")) {
-    for (const prefix of patchPrefixes) {
-      if (line.startsWith(prefix)) {
-        out.push(repoRelative(line.slice(prefix.length).trim(), root));
-      }
-    }
-  }
-  return out;
-}
-
-function deepPathStrings(value, root) {
-  const out = [];
-  const visit = (item, key = "") => {
-    if (typeof item === "string") {
-      if (key.includes("path") || key === "target" || key === "uri" || item.endsWith("SKILL.md")) {
-        out.push(repoRelative(item, root));
-      }
-      return;
-    }
-    if (!item || typeof item !== "object") {
-      return;
-    }
-    if (Array.isArray(item)) {
-      for (const entry of item) {
-        visit(entry, key);
-      }
-      return;
-    }
-    for (const [nextKey, nextValue] of Object.entries(item)) {
-      visit(nextValue, nextKey.toLowerCase());
-    }
-  };
-  visit(value);
-  return out;
 }
