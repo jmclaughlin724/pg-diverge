@@ -12,8 +12,8 @@ Read only the rules and skills directly applicable to the current task.
 | --- | --- |
 | General operating discipline, gates, `$elegant`, enforcement closure, npm-only tooling, or closeout | `.claude/rules/01-operating-rules.md` |
 | Technical decisions, upstream research, evidence fallbacks, or escalation | `.claude/rules/05-decision-protocol.md` |
+| Repository discovery, language tooling, AST/LSP use, or structural inspection | `.claude/rules/06-multi-language-toolchain.md` |
 | PostgreSQL or Supabase migrations, source-intent extraction, or generated schema surfaces | `.claude/rules/supaschema.md` |
-| Repository graph, dependency, consumer, route, owner, or impact discovery | `.claude/rules/10-code-atlas.md` |
 | Agent MCP or FastMCP behavior and public surfaces | `.claude/rules/11-agent-mcp-fastmcp.md` |
 | Skill loading, hook context, observable loading, enforcement, or hook state | `.claude/rules/12-skill-loading-enforcement.md` |
 | Package exports, npm package boundaries, or public consumers | `.claude/rules/13-npm-package-boundary.md` |
@@ -56,8 +56,8 @@ Write code that is **accessible, performant, type-safe, and maintainable**. Focu
 
 Implement the requested behavior using the simplest maintainable approach that fits the existing repository.
 
-- Follow established local architecture, naming, contracts, frameworks, and helper APIs.
-- Read enough surrounding code to understand the affected behavior and ownership boundary, then stop exploring.
+- Follow established architecture, naming, contracts, and frameworks as defined by rules.
+- Absorb enough surrounding code to understand the affected behavior and ownership boundary, then stop exploring.
 - Keep changes within the smallest practical behavioral and ownership surface.
 - Prefer clear names, strong types, simple control flow, minimal mutation, and focused functions.
 - Prefer direct implementations over speculative frameworks or generalized infrastructure.
@@ -119,7 +119,7 @@ Biome's linter will catch most issues automatically. Focus your attention on:
 
 Begin with the smallest relevant file, symbol, route, package, test, diff, log, or command.
 
-Use Code Atlas according to `.claude/rules/10-code-atlas.md` when the task requires repository-wide dependency, ownership, consumer, route, or impact discovery.
+Use repository instructions and manifests to establish ownership. Use configured AST/LSP tooling when the active client exposes it; otherwise use the repository's compiler, parser, and AST commands for symbols, imports, consumers, and structural impact. Use direct source reads and exact fixed-string searches for final proof.
 
 Use focused source searches when the location or symbol is already known.
 

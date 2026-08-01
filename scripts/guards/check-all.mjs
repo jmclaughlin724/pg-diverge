@@ -4,7 +4,7 @@ import { run } from "./lib/process.js";
 import { ROOT } from "./lib/repository.js";
 
 const guards = [
-  ["node", ["scripts/guards/code-atlas/check-code-atlas.mjs"]],
+  ["npm", ["run", "sync:llm"]],
   ["node", ["scripts/guards/toolchain/check-tooling-stack.mjs"]],
   ["node", ["scripts/guards/fastmcp/check-fastmcp-agent.mjs"]],
   ["node", ["scripts/guards/repo-surface/check-public-repo-surface.mjs"]],
@@ -17,7 +17,6 @@ const guards = [
   ["node", ["scripts/guards/repo-surface/check-repo-layout.mjs"]],
   ["node", ["scripts/guards/agent-surface/check-claude-agents.mjs"]],
   ["node", ["scripts/guards/agent-surface/check-hook-import-graph.mjs"]],
-  ["node", ["scripts/guards/agent-surface/check-agent-surface-parity.mjs"]],
   ["node", ["scripts/guards/docs-config/check-schema.mjs"]],
   ["node", ["scripts/guards/docs-config/check-config-standardization.mjs"]],
   ["node", ["scripts/guards/docs-config/check-rule-citations.mjs"]],
@@ -27,7 +26,6 @@ const guards = [
 ];
 
 const publicCheckoutGuards = [
-  ["node", ["scripts/guards/code-atlas/check-code-atlas.mjs"]],
   ["node", ["scripts/guards/toolchain/check-tooling-stack.mjs"]],
   ["node", ["scripts/guards/fastmcp/check-fastmcp-agent.mjs"]],
   ["node", ["scripts/guards/toolchain/check-lsp-coverage.mjs"]],

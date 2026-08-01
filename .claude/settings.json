@@ -25,7 +25,7 @@
             "args": [
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-session-start.mjs"
             ],
-            "statusMessage": "Loading supaschema agent context",
+            "statusMessage": "Refreshing agent hook state",
             "timeout": 10
           }
         ]
@@ -48,7 +48,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": ".*",
+        "matcher": "Agent|Bash|Edit|Glob|Grep|MultiEdit|NotebookEdit|Read|Task|WebFetch|WebSearch|Write|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -82,7 +82,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch|mcp__supaschema__code_atlas_query",
+        "matcher": "Bash|Read|Skill",
         "hooks": [
           {
             "type": "command",
@@ -96,7 +96,7 @@
         ]
       },
       {
-        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch",
+        "matcher": "Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -112,7 +112,7 @@
         ]
       },
       {
-        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch",
+        "matcher": "Write|Edit|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -128,7 +128,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "Agent|Bash|Edit|MultiEdit|NotebookEdit|Read|Skill|Task|Write|apply_patch|mcp__supaschema__code_atlas_query",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
@@ -138,20 +138,6 @@
             ],
             "statusMessage": "Recording failed supaschema hook evidence",
             "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Write|Edit|MultiEdit|apply_patch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"
-            ],
-            "statusMessage": "Syncing supaschema Claude agent surfaces",
-            "timeout": 130
           }
         ]
       }
@@ -166,6 +152,21 @@
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-start.mjs"
             ],
             "statusMessage": "Loading supaschema subagent context",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-task-completed.mjs"
+            ],
+            "statusMessage": "Checking required supaschema skills",
             "timeout": 10
           }
         ]
@@ -194,36 +195,6 @@
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-subagent-stop.mjs"
             ],
             "statusMessage": "Checking supaschema subagent closeout",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "TaskCompleted": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-task-completed.mjs"
-            ],
-            "statusMessage": "Checking supaschema task completion",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "WorktreeCreate": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-worktree-create.mjs"
-            ],
-            "statusMessage": "Blocking prohibited worktree creation",
             "timeout": 10
           }
         ]

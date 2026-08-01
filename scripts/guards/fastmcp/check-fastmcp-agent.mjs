@@ -63,12 +63,11 @@ const expectedRegistryServers = {
   zod: { type: "http", url: "https://mcp.inkeep.com/zod/mcp" },
   "supaschema-docs": { type: "http", url: "https://supaschema.com/docs/mcp" },
 };
-const disallowedServers = ["MCP_DOCKER", "cclsp", "codeatlas", "next-devtools", "render", "sentry"];
+const disallowedServers = ["MCP_DOCKER", "cclsp", "next-devtools", "render", "sentry"];
 const unsupportedProjectClientConfigs = [
   ".cursor/mcp.json",
   ".gemini/settings.json",
   ".vscode/mcp.json",
-  ".continue/mcpServers/codeatlas.yaml",
 ];
 const expectedCodexWiring = {
   "cloudflare-api": {
@@ -175,11 +174,8 @@ export function check(root = ROOT) {
     '"secrets"',
     '"plans"',
     "SECRET_SUFFIXES",
-    "CODE_MAP_AFFORDANCE_TOOLS",
-    "code_atlas_query",
     "repo_context_query",
     "repo_safety_scan",
-    '["node", "scripts/code-atlas/query.mjs"',
     '["node", "dist/cli.js", "scan"',
     "upstream_mcp_capabilities",
     "Pointer index only",

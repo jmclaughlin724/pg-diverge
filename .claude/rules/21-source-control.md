@@ -14,21 +14,21 @@ codexExecPolicy: |
     {
       "pattern": ["git", "switch", "main"],
       "decision": "allow",
-      "justification": "Rule 21 allows returning to main after the current topic PR is verified merged; the Bash hook validates command shape.",
+      "justification": "Rule 21 allows returning to main only after the current topic PR is verified merged.",
       "match": ["git switch main"],
       "not_match": ["git switch -C main origin/main"]
     },
     {
       "pattern": ["git", "switch", "-c"],
       "decision": "allow",
-      "justification": "Rule 21 allows transactional topic-branch creation once origin/main fetch and base proof are complete; the Bash hook validates command shape.",
+      "justification": "Rule 21 allows transactional topic-branch creation only after origin/main fetch and base proof are complete.",
       "match": ["git switch -c feature/demo origin/main"],
       "not_match": ["git switch --track origin/feature/demo", "git switch -C feature/demo origin/main"]
     },
     {
       "pattern": ["git", "switch", "--track"],
       "decision": "allow",
-      "justification": "Rule 21 allows tracking an existing origin topic branch once fetch and base proof are complete; the Bash hook validates command shape.",
+      "justification": "Rule 21 allows tracking an existing origin topic branch only after fetch and base proof are complete.",
       "match": ["git switch --track origin/feature/demo"],
       "not_match": ["git switch -c feature/demo origin/main", "git switch main"]
     },
@@ -41,8 +41,8 @@ codexExecPolicy: |
     },
     {
       "pattern": ["git", "branch"],
-      "decision": "allow",
-      "justification": "The Bash hook limits git branch to one merged-topic deletion and blocks creation, discovery, main deletion, and unsupported forms.",
+      "decision": "prompt",
+      "justification": "Rule 21 limits git branch to one verified merged-topic deletion; native prefix policy cannot prove the operand or merge state.",
       "match": ["git branch -D feature/demo", "git branch feature/demo"],
       "not_match": ["git rev-parse --abbrev-ref HEAD", "git status --short"]
     },
@@ -147,7 +147,7 @@ codexExecPolicy: |
     {
       "pattern": ["gh", "pr", "merge"],
       "decision": "prompt",
-      "justification": "Keep selector-before-flag merge forms behind policy validation; the Bash hook then permits only GitHub squash merge with branch deletion.",
+      "justification": "Keep selector-before-flag merge forms behind approval because native prefix policy cannot validate the complete merge argument shape.",
       "match": ["gh pr merge 53 --rebase", "gh pr merge 53 --squash --delete-branch"],
       "not_match": ["gh pr view 53"]
     },
@@ -164,8 +164,6 @@ paths:
   - ".gitignore"
   - ".gitattributes"
   - ".claude/rules/21-source-control.md"
-  - ".claude/hooks/**"
-  - ".codex/hooks/**"
   - "scripts/github/**"
   - "scripts/guards/ci-release/check-github-process.mjs"
   - "scripts/guards/check-all.mjs"
@@ -202,7 +200,7 @@ Upstream sources:
 
 ## Git safety
 
-- Commit, push, open a PR, or merge only when explicitly requested. Branch creation, switching, and merged-topic deletion are judged by command shape: the Bash hook permits only the transactional forms below, and the agent still needs a task reason to use them.
+- Commit, push, open a PR, or merge only when explicitly requested. Native Codex command rules cover expressible command prefixes; this rule and the agent action boundary own prerequisites and complete argument semantics that prefix policy cannot prove.
 - Deleting a merged topic branch is routine cleanup, not a gated action. Once a topic PR is proved merged, delete the local branch as part of post-merge closeout without waiting for separate approval.
 - Every update to `main` uses a protected pull request. Direct pushes to `main` are prohibited.
 - The checkout and branch active when work begins are the only authorized workspace by default. Do not create a worktree, enter a linked worktree, or move work to another checkout.
@@ -213,7 +211,7 @@ Upstream sources:
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
 - Do not use `git checkout` or `git branch` for creation or discovery. Do not run any `git worktree` command. Apart from the four forms above — `git switch main` after verified PR merge, `git switch --no-guess <existing local topic>`, `git switch -c <topic> origin/main`, and `git switch --track origin/<topic>` — do not use `git switch`.
 - Branch operands must be literal, validated topic-branch names. Revision expressions such as `@{-1}`, `HEAD~1`, or `topic^`, and unexpanded shell operands such as `$BRANCH` or `$(cmd)`, are rejected: Git resolves them to other refs, including `main`, and `git branch -D` deletes regardless of merge state.
-- Subagents must never create, switch, or delete a branch. The Bash hook denies every branch command when the call carries `agent_id`, because subagents share the active primary checkout.
+- Subagents must never create, switch, or delete a branch because they share the active primary checkout.
 - After proving a topic PR merged and preserving all dirty work elsewhere, delete the local topic with `git branch -D <topic>`. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
@@ -309,8 +307,7 @@ Address every PR review comment and failing check before merge, and mark each re
 
 ## Enforced by
 
-- SessionStart merged-topic detection: `scripts/agent-hooks/merged-branch-state.mjs` (via the shared hook runner) injects post-merge closeout context when the current checkout's unique commits are already tree-contained in `origin/main`, so a squash-merged topic surviving as the active checkout is self-announcing in both Claude and Codex sessions.
-- `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, canonical Rule 21 path, retired duplicate rule paths, Bash hook, and PR template stay synchronized.
+- `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, canonical Rule 21 path, retired duplicate rule paths, and PR template stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, repository rulesets, and topics to `.github/repo-policy.json`.
 - Rule 12 command evidence records GitHub check commands as `github-checks`; final claims must reflect the recorded result.
@@ -318,18 +315,11 @@ Address every PR review comment and failing check before merge, and mark each re
 
 ## Verification
 
-After GitHub process, PR template, policy, package script, guard, hook, or related rule changes, run:
+After GitHub process, PR template, policy, package script, guard, or related rule changes, run:
 
 ```bash
 npm run guard:github-process
 npm run sync:llm
-npm run sync:llm:check
-```
-
-For GitHub check evidence behavior, also run:
-
-```bash
-npm test -- tests/agent-hooks/agent-hook-core.test.ts
 ```
 
 Before merging a PR, run:

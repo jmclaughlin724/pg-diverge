@@ -25,18 +25,26 @@ describe("public repo surface guard", () => {
     expect(() => check(root)).not.toThrow();
   });
 
+  it("blocks a retired Code Atlas client config even when Git ignores it", () => {
+    const root = tempGuardRepo({
+      ".continue/mcpServers/codeatlas.yaml": "name: retired\n",
+      ".gitignore": ".continue/\n",
+    });
+    expect(() => check(root)).toThrow("retired project integrations must remain absent");
+  });
+
   it("blocks unignored private local paths before they can be staged", () => {
     const root = tempGuardRepo({
-      "scripts/code-atlas/local.mjs": "export {};\n",
+      "scripts/stripe/local.mjs": "export {};\n",
     });
     expect(() => check(root)).toThrow("unignored local files that could be staged");
   });
 
   it("blocks tracked private local paths with an untrack-only repair", () => {
     const root = tempGuardRepo({
-      "scripts/code-atlas/local.mjs": "export {};\n",
+      "scripts/stripe/local.mjs": "export {};\n",
     });
-    execFileSync("git", ["add", "scripts/code-atlas/local.mjs"], {
+    execFileSync("git", ["add", "scripts/stripe/local.mjs"], {
       cwd: root,
       stdio: "ignore",
     });

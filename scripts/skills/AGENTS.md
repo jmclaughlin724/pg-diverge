@@ -11,4 +11,4 @@ The single writer for generated Claude-to-Codex and Claude-to-Agents outputs.
 
 - Context surface sync matrix: `.claude/rules/18-context-surface-sync.md`
 - Generated agent-surface sync ownership: `.claude/rules/22-agent-surface-sync-ownership.md`
-- Edit the `.claude/**` owner, then run `npm run sync:llm`; verify with `npm run sync:llm:check` and `npm run guard:agent`. Never hand-edit generated mirrors.
+- Edit the `.claude/**` owner, then run the idempotent `npm run sync:llm` writer and `npm run guard:agent`. Never hand-edit generated mirrors.

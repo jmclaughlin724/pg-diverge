@@ -4,19 +4,19 @@ Shared Claude and Codex hook runtime, imported by both `.claude/hooks/**` and `.
 
 ## Contents
 
-- `runner.mjs` — event dispatcher (skill gate and Bash safety)
+- `hook-entrypoint.mjs` — shared stdin, runtime, output, and input-error handling
+- `session-lifecycle.mjs` — silent SessionStart state refresh and SessionEnd cleanup
+- `runner.mjs` — non-lifecycle event dispatcher (required skill context and Bash safety)
 - `command-evidence.mjs` — command-evidence recording and verification-domain classification
 - `response-evidence.mjs` — tool-outcome, GitHub-failure, and exit-code parsing
-- `response-claims.mjs` and `response-shape.mjs` — final-response claim and closeout correction checks
-- `evidence-gate.mjs` — prevents further mutations while a response-evidence correction is unresolved
+- `response-claims.mjs` — parser-driven success claims checked only against unresolved structured failure evidence
 - `skills.mjs` — skill discovery, prompt/tool matching, observable-load detection
 - `state.mjs` — serialized per-session state
-- `hook-output.mjs` and `atlas.mjs` — event output and Code Atlas helpers
-- `merged-branch-state.mjs` — squash-merged topic-checkout context
+- `hook-output.mjs` — event output shaping and failure diagnostics
 
 ## Dependency topology
 
-- `.claude/settings.json` registers canonical `.claude/hooks/context-*.mjs` entrypoints; each delegates one event to `runner.mjs`.
+- `.claude/settings.json` registers canonical `.claude/hooks/context-*.mjs` entrypoints. Session lifecycle entrypoints delegate only to `session-lifecycle.mjs`; all other context entrypoints delegate to `runner.mjs`.
 - `runner.mjs` owns source-repo dispatch and composes the shared runtime modules above plus `.claude/hooks/guards/bash-policy-checks.mjs`.
 - `scripts/skills/sync-llm.mjs` byte-mirrors canonical hook sources into `.codex/hooks/**`, renders `.codex/hooks.json`, and generates the package-manager-specific consumer configs under `agent-bundle/**`.
 - `.claude/hooks/supaschema-source-hook.mjs` bootstraps `dist/cli.js`, whose canonical source hook workflow is `src/hooks/**`.

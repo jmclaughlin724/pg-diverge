@@ -38,7 +38,6 @@ export const LOCAL_REPOSITORY_PREFIXES = [
   "services/",
   ".github/workflows/",
   ".claude/rules/",
-  ".claude/skills/code-atlas/",
   ".claude/skills/fastmcp/",
   ".claude/skills/optimizer/",
   ".claude/skills/supaschema/",
@@ -46,7 +45,6 @@ export const LOCAL_REPOSITORY_PREFIXES = [
   ".claude/hooks/",
   ".codex/rules/",
   ".codex/hooks/",
-  ".agents/skills/code-atlas/",
   ".agents/skills/fastmcp/",
   ".agents/skills/optimizer/",
   ".agents/skills/supaschema/",
@@ -68,7 +66,6 @@ export const REPOSITORY_DENY_SEGMENTS = new Set([
 ]);
 
 export const LOCAL_BIOME_PATHS = [
-  "scripts/code-atlas",
   "scripts/stripe",
   "services/license-worker",
   "cloudflare",

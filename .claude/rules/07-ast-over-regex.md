@@ -16,7 +16,7 @@ paths:
 
 This rule owns the policy that structural analysis uses an AST/parser, and that AST/parser use is sanctioned throughout the repo wherever it applies — with no restriction by directory, language, or surface.
 
-Guards, hooks, scripts, source, and tests use a real AST/parser for structural analysis anywhere in the repo. Wherever a parser exists for the format — TypeScript compiler API for JS/TS, libpg_query for SQL, `JSON.parse` for JSON, a YAML/TOML parser for config, mdast for Markdown/MDX, the Python `ast` module, `sh-syntax` for shell — it is the preferred tool for structural questions.
+Guards, hooks, scripts, source, and tests use a real AST/parser for structural analysis anywhere in the repo. Wherever a parser exists for the format — TypeScript compiler API for JS/TS, libpg_query for SQL, `JSON.parse` for JSON, a YAML/TOML parser for config, mdast for Markdown/MDX, the Python `ast` module, or the owned shell parsers below — it is the preferred tool for structural questions.
 
 Regex cannot see structure: quote style, whitespace, type parameters, comments, string contents, and node nesting all create bypasses (an adversarial pass found ~12 in the regex-era shape detector — single/mixed quotes, `z .enum`, `z.enum (`, a marker smuggled inside a string) and false positives. A parser sees the real tree, so that whole class of holes is gone by construction. Literal string operations remain appropriate for non-structural scalar-value tests (a version prefix, a path suffix, membership in a known set). When a Zod config field must emit a JSON Schema `pattern` keyword, inject it with `.meta({ pattern: "..." })` instead of `.regex()` — `zodTypesImportPath` in `src/config/schema.ts` is the canonical example; the emitted schema is identical and source stays free of regex literals.
 
@@ -31,12 +31,13 @@ Guards enforce observable structure or behavior — AST shape, file existence, J
 | TypeScript / JS / JSX structure | TypeScript compiler API via `scripts/guards/lib/typescript-ast.js` (`parse`, `parseScript`, `forEachNode`) |
 | Postgres schema SQL (tables, RLS, functions…) | the real Postgres parser via `scripts/guards/lib/sql-ast.js` (libpg-query / libpg_query) |
 | Python structure | the `ast` module (see `scripts/guards/code-shape/check-pattern-engine.mjs` for the in-guard pattern) |
-| Shell structure | `parse` from `sh-syntax` |
+| Bash tool-command structure in agent hooks | synchronous `parse` from `unbash` through `scripts/agent-hooks/shell-command.mjs` |
+| Shell-file structure and multi-dialect formatting | `parse` / `print` from `sh-syntax` (mvdan/sh WASM) |
 | `package.json` / `tsconfig` / JSON config | `JSON.parse` + object walks |
 | YAML / TOML config | a YAML parser / `taplo` parser |
 | Markdown / MDX structure | a markdown AST (mdast) |
 
-The parser owners are `scripts/guards/lib/typescript-ast.js` and `scripts/guards/lib/sql-ast.js`.
+The parser owners are `scripts/guards/lib/typescript-ast.js`, `scripts/guards/lib/sql-ast.js`, and `scripts/agent-hooks/shell-command.mjs`. The TypeScript compiler API is sufficient for this repository's syntax and import analysis; do not add `ts-morph` unless a concrete project-model or mutation requirement exceeds that owner.
 
 ## Regex resolution sequence
 
@@ -54,7 +55,7 @@ Run `npm run guard` or `node scripts/guards/code-shape/check-canonical-surfaces.
 
 ## Failure behavior
 
-Convert regex to the canonical parser for the format (TypeScript AST, libpg-query, Python `ast`, `sh-syntax`, `JSON.parse`, YAML/TOML parser, mdast).
+Convert regex to the canonical parser for the format (TypeScript AST, libpg-query, Python `ast`, `unbash` for Bash hook commands, `sh-syntax` for shell files, `JSON.parse`, YAML/TOML parser, mdast).
 
 ## Done means
 

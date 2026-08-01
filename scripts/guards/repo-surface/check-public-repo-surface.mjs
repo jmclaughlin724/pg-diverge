@@ -10,7 +10,6 @@ const privatePrefixes = [
   ".vscode/",
   "advisor-plans/",
   "cloudflare/",
-  "scripts/code-atlas/",
   "scripts/stripe/",
   "services/agent-mcp/",
   "services/license-worker/",
@@ -24,6 +23,7 @@ const privateExact = new Set([
   "uv.lock",
   "wrangler.toml",
 ]);
+const retiredExact = new Set([".continue/mcpServers/codeatlas.yaml"]);
 
 function gitPaths(args, root) {
   return run("git", [...args, "-z"], {}, root)
@@ -61,6 +61,12 @@ function failureMessage(tracked, stageable) {
 }
 
 export function check(root = ROOT) {
+  const retired = [...retiredExact].filter((file) => exists(file, root));
+  assert(
+    retired.length === 0,
+    `retired project integrations must remain absent:\n${bulletList(retired)}`
+  );
+
   const tracked = gitPaths(["ls-files", "--cached"], root)
     .filter((file) => exists(file, root))
     .filter(isPrivateSurface);

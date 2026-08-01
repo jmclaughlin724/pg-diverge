@@ -1,86 +1,26 @@
+import path from "node:path";
+import { toolSucceeded } from "./response-evidence.mjs";
 import {
-  commandArgs,
-  commandName,
-  commandSegmentObjects,
-  isReadCommandName,
-} from "../../.claude/hooks/guards/bash-policy-checks.mjs";
-import { atlasAdvisoryTarget, isCodeAtlasQuery } from "./atlas.mjs";
+  executableName,
+  parseShellCommand,
+  parseStaticArguments,
+  staticWordValue,
+} from "./shell-command.mjs";
 import { discoverSkills } from "./skill-frontmatter.mjs";
-import {
-  pathMatches,
-  payloadPaths,
-  skillFromSkillPath,
-  unique,
-  uniqueByName,
-} from "./skill-paths.mjs";
+import { pathMatches, payloadPaths, unique, uniqueByName } from "./skill-paths.mjs";
 import { currentTurnState } from "./state.mjs";
 
-const toolGateSet = new Set([
-  "Agent",
-  "Bash",
-  "Edit",
-  "Glob",
-  "Grep",
-  "MultiEdit",
-  "NotebookEdit",
-  "Read",
-  "Task",
-  "WebFetch",
-  "WebSearch",
-  "Write",
-  "apply_patch",
-]);
-const lowSignalPromptTerms = new Set([
-  "change",
-  "check",
-  "correct",
-  "done",
-  "fix",
-  "implement",
-  "issue",
-  "plan",
-  "task",
-  "test",
-  "that",
-  "this",
-  "update",
-  "use",
-  "verify",
-  "with",
-  "without",
-  "work",
-]);
-
 export function updatePromptSkills(payload, state, options = {}) {
-  const prompt = promptText(payload);
+  const inventory = discoverSkills(options.root, options.runtime);
+  const matched = scorePrompt(promptText(payload), inventory);
   const turn = currentTurnState(state);
-  turn.lastPrompt = prompt;
-  const matched = scorePrompt(prompt, discoverSkills(options.root, options.runtime));
   const pendingMatches = [];
-  if (options.runtime === "codex") {
-    turn.pendingSkills = {};
-    const applicable = matched.filter((skill) => !state.invokedSkills[skill.name]);
-    return applicable.length === 0
-      ? {}
-      : {
-          contextParts: [
-            [
-              "Relevant skill context is available for this turn.",
-              ...applicable.map((skill) => `- ${skill.name}: ${skill.reason}`),
-              observableLoadAction(applicable),
-            ].join("\n"),
-          ],
-        };
-  }
   for (const skill of matched) {
-    if (!state.invokedSkills[skill.name]) {
-      pendingMatches.push(skill);
-      turn.pendingSkills[skill.name] = {
-        path: skill.path,
-        reason: skill.reason,
-        source: "UserPromptSubmit",
-      };
+    if (state.loadedSkills[skill.name]) {
+      continue;
     }
+    pendingMatches.push(skill);
+    turn.pendingSkills[skill.name] = { at: now(), trigger: skill.trigger };
   }
   if (pendingMatches.length === 0) {
     return {};
@@ -88,134 +28,101 @@ export function updatePromptSkills(payload, state, options = {}) {
   return {
     contextParts: [
       [
-        "Deterministic skill context is required before governed work.",
-        ...pendingMatches.map((skill) => `- Load ${skill.name}: ${skill.reason}`),
-        "Slash commands and inline skill tokens only request context; they do not load it.",
-        observableLoadAction(pendingMatches),
+        "Required repository skill invocation:",
+        ...pendingMatches.map(formatRequiredSkill),
+        "Before taking task actions, invoke each listed skill through the Skill tool or read its SKILL.md completely when that tool is unavailable.",
       ].join("\n"),
     ],
   };
 }
 
-export function updateToolSkills(payload, state, options = {}) {
-  const turn = currentTurnState(state);
-  const matched = scoreTool(payload, discoverSkills(options.root, options.runtime), options.root);
-  if (options.runtime === "codex") {
-    turn.pendingSkills = {};
-    const applicable = matched.filter((skill) => !state.invokedSkills[skill.name]);
-    return applicable.length === 0
-      ? {}
-      : {
-          contextParts: [
-            ...applicable.map(
-              (skill) => `Skill ${skill.name} applies to this tool use: ${skill.reason}`
-            ),
-            observableLoadAction(applicable),
-          ],
-        };
+export function updateFileTriggeredSkills(payload, state, options = {}) {
+  const inventory = discoverSkills(options.root, options.runtime);
+  const targets = payloadPaths(payload, options.root);
+  if (targets.length === 0) {
+    return {};
   }
-  const newlyPending = [];
-  for (const skill of matched) {
-    if (!state.invokedSkills[skill.name]) {
-      if (!turn.pendingSkills[skill.name]) {
-        newlyPending.push(skill);
-      }
-      turn.pendingSkills[skill.name] = {
-        path: skill.path,
-        reason: skill.reason,
-        source: "PreToolUse",
-      };
+  const turn = currentTurnState(state);
+  const matched = inventory.flatMap((skill) => {
+    if (state.loadedSkills[skill.name]) {
+      return [];
     }
+    const signals = [];
+    for (const candidate of targets) {
+      for (const trigger of skill.fileTriggers) {
+        if (pathMatches(trigger, candidate)) {
+          signals.push({ candidate, trigger });
+        }
+      }
+    }
+    return signals.length > 0 ? [{ ...skill, matchSignals: signals }] : [];
+  });
+  for (const skill of matched) {
+    turn.pendingSkills[skill.name] ??= { at: now(), trigger: "file-trigger" };
   }
-  const pending = unresolvedPending(state);
-  const contextParts = [
-    ...newlyPending.map((skill) => `Skill ${skill.name} applies to this tool use: ${skill.reason}`),
-    ...(pending.length > 0 ? atlasPreEditContext(payload, turn, options.root) : []),
-  ];
-  if (
-    pending.length === 0 ||
-    !toolGateSet.has(typeof payload?.tool_name === "string" ? payload.tool_name : "") ||
-    isObservableLoad(payload, options.root) ||
-    isCodeAtlasQuery(payload)
-  ) {
-    return contextParts.length > 0 ? { contextParts } : {};
-  }
-  if (isSubagentInvocation(payload)) {
-    return {
-      contextParts: [
-        ...contextParts,
-        [
-          "Skills pending from the parent task are not loaded in this subagent's isolated context:",
-          ...pending.map((item) => `- ${item.name}: ${item.reason}`),
-          observableLoadAction(pending),
-          "If this subagent lacks a skill-loading tool, report findings for the orchestrator to apply in the main session. Subagent skill gating is advisory because PreToolUse fires inside subagents while SubagentStart cannot block and the subagent may lack the Skill/Read tools.",
-        ].join("\n"),
-      ],
-    };
-  }
-  return {
-    contextParts,
-    deny: [
-      "Required skills are pending, and this governed tool call was not an observable skill load.",
-      ...pending.map((item) => `- ${item.name}: ${item.reason}`),
-      observableLoadAction(pending),
-      "Retry the blocked tool only after PostToolUse records the skill load.",
-    ].join("\n"),
-  };
-}
-
-export function recordObservableSkillLoad(payload, state, options = {}) {
-  const loaded = observedLoadedSkills(payload, options.root);
-  const turn = currentTurnState(state);
-  for (const skill of loaded) {
-    state.invokedSkills[skill] = {
-      at: new Date().toISOString(),
-      contextEpoch: state.contextEpoch,
-      source: typeof payload?.tool_name === "string" ? payload.tool_name : "",
-    };
-    delete turn.pendingSkills[skill];
-  }
-  return loaded.length > 0
+  return matched.length > 0
     ? {
-        contextParts: loaded.map((skill) => `Observed skill load: ${skill}`),
+        contextParts: [
+          [
+            "Required repository skill invocation for this tool target:",
+            ...matched.map(formatRequiredToolSkill),
+            "Before further task actions, invoke each listed skill through the Skill tool or read its SKILL.md completely when that tool is unavailable.",
+          ].join("\n"),
+        ],
       }
     : {};
 }
 
+export function recordObservableSkillLoad(payload, state, options = {}) {
+  const inventory = discoverSkills(options.root, options.runtime);
+  const loaded = observedLoadedSkills(payload, inventory, options.root);
+  const turn = currentTurnState(state);
+  const at = now();
+  for (const name of loaded) {
+    if (state.loadedSkills[name] && !turn.pendingSkills[name]) {
+      continue;
+    }
+    state.loadedSkills[name] = at;
+    delete turn.pendingSkills[name];
+  }
+  return {};
+}
+
 export function unresolvedPending(state) {
   return Object.entries(currentTurnState(state).pendingSkills)
-    .filter(([name]) => !state.invokedSkills[name])
+    .filter(([name]) => !state.loadedSkills[name])
     .map(([name, value]) => ({
       name,
-      path: typeof value?.path === "string" ? value.path : "",
-      reason: typeof value?.reason === "string" ? value.reason : "Skill is pending.",
+      path: "",
+      reason: reasonForTrigger(value?.trigger),
+      trigger: value?.trigger,
     }));
 }
 
-export function observedLoadedSkills(payload, root) {
-  const name = typeof payload?.tool_name === "string" ? payload.tool_name : "";
-  if (name === "Skill") {
-    const value = payload?.tool_input?.skill;
-    return typeof value === "string" && value.length > 0 ? [cleanSkillToken(value)] : [];
+export function pendingSkillMessage(state) {
+  const pending = unresolvedPending(state);
+  if (pending.length === 0) {
+    return "";
   }
-  if (name === "Read") {
-    return skillsFromPayloadPaths(payload, root);
-  }
-  if (name.startsWith("mcp__")) {
-    return skillsFromPayloadPaths(payload, root);
-  }
-  if (name === "Bash") {
-    return skillsFromCommand(payload, root);
-  }
-  return [];
+  return [
+    "Load the required repository skill before continuing:",
+    ...pending.map((item) => `- ${item.name}: ${item.reason}`),
+  ].join("\n");
 }
 
-export function isObservableLoad(payload, root) {
-  return observedLoadedSkills(payload, root).length > 0;
+export function observedLoadedSkills(payload, inventoryOrRoot, rootMaybe) {
+  const inventory = Array.isArray(inventoryOrRoot)
+    ? inventoryOrRoot
+    : discoverSkills(inventoryOrRoot, "claude");
+  const root = Array.isArray(inventoryOrRoot) ? rootMaybe : inventoryOrRoot;
+  if (!successfulPostToolUse(payload)) {
+    return [];
+  }
+  return observableSkillLoadRequests(payload, inventory, root);
 }
 
-export function isSubagentInvocation(payload) {
-  return Boolean(payload?.agent_id);
+export function isObservableLoad(payload, root, runtime = "claude") {
+  return observableSkillLoadRequests(payload, discoverSkills(root, runtime), root).length > 0;
 }
 
 export function promptText(payload) {
@@ -226,22 +133,96 @@ export function promptText(payload) {
   return values.filter((item) => typeof item === "string").join("\n");
 }
 
+function observableSkillLoadRequests(payload, inventory, root) {
+  const byName = new Map(inventory.map((skill) => [skill.name, skill]));
+  const byPath = new Map(inventory.map((skill) => [path.resolve(skill.path), skill.name]));
+  const toolName = typeof payload?.tool_name === "string" ? payload.tool_name : "";
+  if (toolName === "Skill") {
+    const value = payload?.tool_input?.skill;
+    const name = typeof value === "string" ? cleanSkillToken(value) : "";
+    return byName.has(name) ? [name] : [];
+  }
+  if (toolName === "Read") {
+    if (payload?.tool_input?.offset !== undefined || payload?.tool_input?.limit !== undefined) {
+      return [];
+    }
+    const file = payload?.tool_input?.file_path;
+    if (typeof file !== "string" || file.length === 0) {
+      return [];
+    }
+    const name = byPath.get(resolveCandidatePath(file, root));
+    return name ? [name] : [];
+  }
+  if (toolName !== "Bash") {
+    return [];
+  }
+  const command =
+    typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
+  return unique(
+    literalCatPaths(command)
+      .map((file) => byPath.get(resolveCandidatePath(file, root)))
+      .filter(Boolean)
+  );
+}
+
+function successfulPostToolUse(payload) {
+  if (payload?.hook_event_name !== "PostToolUse") {
+    return false;
+  }
+  return toolSucceeded(payload) !== false;
+}
+
+function literalCatPaths(command) {
+  if (!command) {
+    return [];
+  }
+  const analysis = parseShellCommand(command);
+  if (analysis.errors.length > 0) {
+    return [];
+  }
+  const files = [];
+  for (const invocation of analysis.invocations) {
+    if (
+      executableName(invocation.executable) !== "cat" ||
+      invocation.captured ||
+      invocation.hasRedirection ||
+      invocation.piped
+    ) {
+      continue;
+    }
+    const parsed = parseStaticArguments(invocation.arguments);
+    if (parsed.dynamicIndexes.size > 0) {
+      continue;
+    }
+    if (parsed.tokens.some((token) => token.kind === "option")) {
+      continue;
+    }
+    for (const token of parsed.tokens) {
+      if (token.kind !== "positional") {
+        continue;
+      }
+      const value = staticWordValue(invocation.arguments[token.index]);
+      if (value !== null) {
+        files.push(value);
+      }
+    }
+  }
+  return files;
+}
+
 function scorePrompt(prompt, skills) {
   const normalized = prompt.toLowerCase();
   const explicit = [];
   const keyword = [];
   for (const skill of skills) {
-    const hits = [];
-    const explicitMatch = promptNamesSkill(normalized, skill.name);
-    if (explicitMatch) {
-      hits.push(skill.name);
+    const explicitToken = namedSkillToken(normalized, skill.name);
+    if (explicitToken) {
+      explicit.push({ ...skill, matchSignals: [explicitToken], trigger: "prompt-explicit" });
+      continue;
     }
-    const keywordHits = matchingKeywords(normalized, skill.keywords);
-    hits.push(...keywordHits);
-    if (explicitMatch) {
-      explicit.push(promptSkillMatch(skill, hits));
-    } else if (keywordHits.length > 0) {
-      keyword.push(promptSkillMatch(skill, keywordHits));
+    const keywords = matchingKeywords(normalized, skill.keywords);
+    if (keywords.length > 0) {
+      keyword.push({ ...skill, matchSignals: keywords, trigger: "prompt-keyword" });
     }
   }
   const explicitMatches = uniqueByName(explicit);
@@ -250,25 +231,14 @@ function scorePrompt(prompt, skills) {
   return [...explicitMatches, ...keywordMatches.slice(0, Math.max(0, 5 - explicitMatches.length))];
 }
 
-function promptSkillMatch(skill, hits) {
-  return {
-    name: skill.name,
-    path: skill.relativePath,
-    reason: `matched prompt signal: ${unique(hits).slice(0, 4).join(", ")}`,
-  };
-}
-
-function promptNamesSkill(prompt, name) {
+function namedSkillToken(prompt, name) {
   const normalizedName = name.toLowerCase();
-  if (promptHasDelimitedTerm(prompt, `$${normalizedName}`)) {
-    return true;
+  for (const token of [`$${normalizedName}`, `/${normalizedName}`]) {
+    if (promptHasDelimitedTerm(prompt, token)) {
+      return token;
+    }
   }
-  if (promptHasDelimitedTerm(prompt, `/${normalizedName}`)) {
-    return true;
-  }
-  return (
-    !lowSignalPromptTerms.has(normalizedName) && promptHasDelimitedTerm(prompt, normalizedName)
-  );
+  return "";
 }
 
 function matchingKeywords(prompt, keywords) {
@@ -276,7 +246,6 @@ function matchingKeywords(prompt, keywords) {
     keywords
       .map((keyword) => keyword.toLowerCase().trim())
       .filter((keyword) => keyword.length >= 3)
-      .filter((keyword) => !lowSignalPromptTerms.has(keyword))
       .filter((keyword) => promptHasDelimitedTerm(prompt, keyword))
   );
 }
@@ -303,127 +272,45 @@ function promptHasDelimitedTerm(prompt, term) {
   return false;
 }
 
-function scoreTool(payload, skills, root) {
-  const paths = payloadPaths(payload, root);
-  const out = [];
-  for (const skill of skills) {
-    const pathHits = skill.fileTriggers.filter((trigger) =>
-      paths.some((candidate) => pathMatches(trigger, candidate))
-    );
-    if (pathHits.length > 0) {
-      out.push({
-        name: skill.name,
-        path: skill.relativePath,
-        reason: `matched file trigger: ${pathHits.slice(0, 4).join(", ")}`,
-      });
-    }
+function reasonForTrigger(trigger) {
+  if (trigger === "prompt-explicit") {
+    return "the prompt explicitly named this skill";
   }
-  return uniqueByName(out).slice(0, 5);
+  if (trigger === "prompt-keyword") {
+    return "the prompt matched a curated keyword";
+  }
+  if (trigger === "file-trigger") {
+    return "the tool target matched a configured file trigger";
+  }
+  return "skill context is pending";
 }
 
-function skillsFromPayloadPaths(payload, root) {
-  return unique(
-    payloadPaths(payload, root)
-      .map((file) => skillFromSkillPath(file, root))
-      .filter(Boolean)
-  );
-}
-
-function skillsFromCommand(payload, root) {
-  const command =
-    typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
-  return unique(
-    commandSkillPaths(command)
-      .map((file) => skillFromSkillPath(file, root))
-      .filter(Boolean)
-  );
-}
-
-function commandSkillPaths(command) {
-  const paths = [];
-  const readerSegments = parsedCommandSegments(command.split("\\").join("/")).filter((segment) =>
-    isReadCommandName(commandName(segment.words))
-  );
-  for (const segment of readerSegments) {
-    for (const token of commandArgs(segment.words)) {
-      appendSkillPaths(paths, token);
-    }
-  }
-  return paths;
-}
-
-function parsedCommandSegments(command) {
-  try {
-    return commandSegmentObjects(command);
-  } catch {
-    return [];
-  }
-}
-
-function expandSkillPathToken(value) {
-  const normalized = value.split("\\").join("/");
-  const open = normalized.indexOf("{");
-  const close = open === -1 ? -1 : normalized.indexOf("}", open + 1);
-  if (
-    open === -1 ||
-    close === -1 ||
-    !normalized.slice(0, open).includes("/skills/") ||
-    !normalized.slice(close + 1).endsWith("/SKILL.md")
-  ) {
-    return [normalized];
-  }
-  const prefix = normalized.slice(0, open);
-  const suffix = normalized.slice(close + 1);
-  const inner = normalized.slice(open + 1, close);
-  return inner
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => `${prefix}${item}${suffix}`);
-}
-
-function appendSkillPaths(paths, token) {
-  for (const expanded of expandSkillPathToken(token)) {
-    if (expanded.includes("/skills/") && expanded.endsWith("/SKILL.md")) {
-      paths.push(expanded);
-    }
-  }
-}
-
-function atlasPreEditContext(payload, turn, root) {
-  if (
-    !toolGateSet.has(typeof payload?.tool_name === "string" ? payload.tool_name : "") ||
-    isCodeAtlasQuery(payload) ||
-    isObservableLoad(payload, root)
-  ) {
-    return [];
-  }
-  const target = atlasAdvisoryTarget(payload, root);
-  if (!target || target.includes("/SKILL.md")) {
-    return [];
-  }
-  const key = `pre-edit:${target}`;
-  if (turn.atlasAdvisories[key]) {
-    return [];
-  }
-  turn.atlasAdvisories[key] = true;
+function formatRequiredSkill(skill) {
+  const signal = skill.matchSignals.map((item) => `"${item}"`).join(", ");
+  const matchReason =
+    skill.trigger === "prompt-explicit"
+      ? `the prompt explicitly names ${signal}`
+      : `the prompt contains configured trigger ${signal}`;
+  const scope = skill.whenToUse || skill.description || "the skill's declared workflow applies";
   return [
-    `Code Atlas pre-edit evidence for ${target}: run \`npm run code-atlas:query -- pre-edit ${target} --json\` before broad edits; use \`trace-change\` for wider impact planning.`,
-  ];
+    `- ${skill.name}`,
+    `  Why: ${matchReason}. ${scope}`,
+    `  Load: ${skill.relativePath}`,
+  ].join("\n");
 }
 
-function observableLoadAction(items) {
-  const paths = unique(items.map((item) => item.path).filter(Boolean));
-  if (paths.length === 0) {
-    return "Run an observable skill load now: use the Skill tool or read each required SKILL.md file before governed work.";
-  }
-  return `Run this observable skill load now: \`sed -n '1,220p' ${paths
-    .map(shellQuote)
-    .join(" ")}\`.`;
+function formatRequiredToolSkill(skill) {
+  const signal = skill.matchSignals[0];
+  const scope = skill.whenToUse || skill.description || "the skill's declared workflow applies";
+  return [
+    `- ${skill.name}`,
+    `  Why: target "${signal.candidate}" matches configured file trigger "${signal.trigger}". ${scope}`,
+    `  Load: ${skill.relativePath}`,
+  ].join("\n");
 }
 
-function shellQuote(value) {
-  return `'${value.split("'").join("'\"'\"'")}'`;
+function resolveCandidatePath(value, root) {
+  return path.resolve(root, value);
 }
 
 function cleanSkillToken(value) {
@@ -438,4 +325,8 @@ function isTermBoundary(char) {
 function isAsciiLetterOrDigit(char) {
   const code = char.charCodeAt(0);
   return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+}
+
+function now() {
+  return new Date().toISOString();
 }

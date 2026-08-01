@@ -103,11 +103,8 @@ DENIED_PARTS
 "secrets"
 "plans"
 SECRET_SUFFIXES
-CODE_MAP_AFFORDANCE_TOOLS
-code_atlas_query
 repo_context_query
 repo_safety_scan
-["node", "scripts/code-atlas/query.mjs"
 ["node", "dist/cli.js", "scan"
 upstream_mcp_capabilities
 Pointer index only

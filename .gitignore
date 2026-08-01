@@ -33,7 +33,6 @@ advisor-plans/
 fastmcp.json
 services/agent-mcp/
 services/license-worker/
-scripts/code-atlas/
 scripts/stripe/
 !scripts/agent-hooks/
 !scripts/agent-hooks/*.mjs

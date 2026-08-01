@@ -4,8 +4,8 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  failClosedResult,
   shapeHookResult,
+  unexpectedFailureResult,
   writeHookResult,
 } from "../../scripts/agent-hooks/hook-output.mjs";
 
@@ -42,7 +42,7 @@ try {
   const runtime = sourceHookRuntime(process.argv.slice(2));
   const shaped = shapeHookResult(
     eventName,
-    failClosedResult(eventName, error, "sourceHookLauncher", {
+    unexpectedFailureResult(eventName, error, "sourceHookLauncher", {
       hookPath,
       remediation: "Run npm run build, inspect the reported launcher source, and rerun the hook.",
       runtime,

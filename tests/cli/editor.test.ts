@@ -81,7 +81,6 @@ describe("public agent and editor surfaces", () => {
     const privatePrefixes = [
       "advisor-plans/",
       "cloudflare/",
-      "scripts/code-atlas/",
       "scripts/stripe/",
       "services/agent-mcp/",
       "services/license-worker/",

@@ -4,6 +4,7 @@ description: Use when working on PostgreSQL or Supabase schema changes in a supa
 license: MIT
 metadata:
   compliance: agent-skills-v1
+  public: true
   keywords:
     - supaschema
     - schema migration

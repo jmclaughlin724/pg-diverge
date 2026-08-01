@@ -1,3 +1,7 @@
+import { runHookEntrypoint } from "./hook-entrypoint.mjs";
+import { shapeHookResult, shapeSessionStateFailure } from "./hook-output.mjs";
+import { clearSessionState, refreshSessionState } from "./state.mjs";
+
 const sessionStartContracts = {
   claude: {
     modelRequired: false,
@@ -20,14 +24,41 @@ const sessionStartContracts = {
   },
 };
 
-export function validateSessionStartPayload(payload, runtime) {
-  const contract = sessionStartContracts[runtime] ?? sessionStartContracts.codex;
+export function runSessionLifecycleEvent(eventName, options = {}) {
+  runHookEntrypoint(eventName, handleSessionLifecycleEvent, {
+    ...options,
+    validatePayload: validateLifecyclePayload,
+  });
+}
+
+export function handleSessionLifecycleEvent(eventName, payload, options = {}) {
+  const runtime = options.runtime ?? "claude";
+  const hookPath = options.hookPath ?? "scripts/agent-hooks/session-lifecycle.mjs";
+  try {
+    if (eventName === "SessionStart") {
+      refreshSessionState(payload);
+    } else if (eventName === "SessionEnd") {
+      clearSessionState(payload);
+    } else {
+      throw new Error(`unsupported session lifecycle event: ${eventName}`);
+    }
+    return shapeHookResult(eventName, {}, runtime);
+  } catch (error) {
+    return shapeSessionStateFailure(eventName, error, { hookPath, runtime });
+  }
+}
+
+function validateLifecyclePayload(payload, runtime, eventName) {
   requireNonEmptyString(payload, "session_id");
   requireNullableString(payload, "transcript_path");
   requireNonEmptyString(payload, "cwd");
-  if (payload.hook_event_name !== "SessionStart") {
-    throw new Error('hook input field "hook_event_name" must equal "SessionStart"');
+  if (payload.hook_event_name !== eventName) {
+    throw new Error(`hook input field "hook_event_name" must equal "${eventName}"`);
   }
+  if (eventName !== "SessionStart") {
+    return;
+  }
+  const contract = sessionStartContracts[runtime] ?? sessionStartContracts.codex;
   if (contract.modelRequired) {
     requireNonEmptyString(payload, "model");
   }

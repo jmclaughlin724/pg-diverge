@@ -6,9 +6,16 @@ import { fileURLToPath } from "node:url";
 import { assert, ok } from "../lib/assertions.js";
 import { ROOT } from "../lib/repository.js";
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
+import { sessionLifecycleEntrypoints } from "./hook-topology.mjs";
 
 const roots = [".claude/hooks", ".codex/hooks", "scripts/agent-hooks"];
-const allowedBare = new Set([]);
+const lifecycleRuntimeFiles = new Set([
+  "scripts/agent-hooks/hook-entrypoint.mjs",
+  "scripts/agent-hooks/hook-output.mjs",
+  "scripts/agent-hooks/session-lifecycle.mjs",
+  "scripts/agent-hooks/state.mjs",
+]);
+const lifecycleBuiltins = new Set(["node:crypto", "node:fs", "node:path", "node:url"]);
 
 function walk(dir) {
   if (!fs.existsSync(dir)) {
@@ -92,6 +99,7 @@ export function hookImportGraph(root = ROOT) {
   const edges = [];
   const pending = hookFiles(root);
   const visited = new Set();
+  const declaredPackages = rootPackageDependencies(root);
   while (pending.length > 0) {
     const file = pending.shift();
     if (file === undefined || visited.has(file)) {
@@ -117,15 +125,83 @@ export function hookImportGraph(root = ROOT) {
         }
         continue;
       }
-      assert(allowedBare.has(specifier), `${file} imports non-runtime-safe module ${specifier}`);
+      assert(
+        declaredPackages.has(packageName(specifier)),
+        `${file} imports undeclared runtime module ${specifier}`
+      );
       edges.push({ file, kind: "bare", specifier });
     }
   }
   return edges;
 }
 
+function rootPackageDependencies(root) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  return new Set([
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.devDependencies ?? {}),
+  ]);
+}
+
+function packageName(specifier) {
+  const parts = specifier.split("/");
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+}
+
+export function reachableHookDependencies(graph, entrypoint) {
+  const adjacency = new Map();
+  for (const edge of graph) {
+    if (edge.kind !== "relative") {
+      continue;
+    }
+    const targets = adjacency.get(edge.file) ?? [];
+    targets.push(edge.target);
+    adjacency.set(edge.file, targets);
+  }
+
+  const reachable = new Set();
+  const visited = new Set([entrypoint]);
+  const pending = [entrypoint];
+  while (pending.length > 0) {
+    const file = pending.shift();
+    for (const target of adjacency.get(file) ?? []) {
+      if (visited.has(target)) {
+        continue;
+      }
+      visited.add(target);
+      reachable.add(target);
+      pending.push(target);
+    }
+  }
+  return [...reachable].sort();
+}
+
 export function check(root = ROOT) {
-  hookImportGraph(root);
+  const graph = hookImportGraph(root);
+  for (const entrypoint of sessionLifecycleEntrypoints) {
+    if (!fs.existsSync(path.join(root, entrypoint))) {
+      continue;
+    }
+    const reachable = reachableHookDependencies(graph, entrypoint);
+    const reachableFiles = new Set([entrypoint, ...reachable]);
+    const unexpected = [
+      ...reachable
+        .filter((file) => !lifecycleRuntimeFiles.has(file))
+        .map((file) => `relative:${file}`),
+      ...graph
+        .filter(
+          (edge) =>
+            edge.kind === "builtin" &&
+            reachableFiles.has(edge.file) &&
+            !lifecycleBuiltins.has(edge.specifier)
+        )
+        .map((edge) => `${edge.file} -> ${edge.specifier}`),
+    ];
+    assert(
+      unexpected.length === 0,
+      `${entrypoint} reaches non-lifecycle hook runtime:\n${unexpected.join("\n")}`
+    );
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

@@ -6,7 +6,7 @@ import { list, parseFrontmatter, scalar } from "../../lib/frontmatter.mjs";
 import { assert, ok } from "../lib/assertions.js";
 import { gitTrackedFiles, ROOT, readJson } from "../lib/repository.js";
 
-const forbiddenFragments = ["Anilize", "anilize", "@anilize", "anilize-code-map"];
+const forbiddenFragments = ["Anilize", "anilize", "@anilize"];
 const permissionModes = new Set([
   "default",
   "acceptEdits",
