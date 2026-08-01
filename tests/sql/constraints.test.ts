@@ -157,6 +157,26 @@ ALTER TABLE ONLY app.a ADD CONSTRAINT a_pkey PRIMARY KEY (id);`,
     expect(inlineTable?.hash).toBe(alteredTable?.hash);
   });
 
+  it("keeps parenthesized column DEFAULT expressions balanced", async () => {
+    const extracted = await extractObjectsFromSql(
+      `CREATE TABLE app.invites (
+  id uuid PRIMARY KEY,
+  expires_at timestamptz not null default (now() + interval '10 minutes')
+);`,
+      { config: { normalize: "off" }, file: "invites.sql" }
+    );
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    const table = extracted.objects.find((object) => object.key === "table:app.invites");
+    expect(table?.metadata.columns).toEqual([
+      expect.objectContaining({ name: "id" }),
+      expect.objectContaining({
+        defaultExpression: "(now() + interval '10 minutes')",
+        name: "expires_at",
+      }),
+    ]);
+  });
+
   it("slices CREATE TABLE elements with PostgreSQL lexical rules", async () => {
     const extracted = await extractObjectsFromSql(
       `CREATE TABLE app.lexical /* comment ( before elements */ (
