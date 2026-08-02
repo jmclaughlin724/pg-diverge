@@ -76,7 +76,7 @@ export function updateFileTriggeredSkills(payload, state, options = {}) {
 
 export function recordObservableSkillLoad(payload, state, options = {}) {
   const inventory = discoverSkills(options.root, options.runtime);
-  const loaded = observedLoadedSkills(payload, inventory, options.root, options.runtime);
+  const loaded = observedLoadedSkills(payload, inventory, options.root);
   const turn = currentTurnState(state);
   const at = now();
   for (const name of loaded) {
@@ -111,13 +111,12 @@ export function pendingSkillMessage(state) {
   ].join("\n");
 }
 
-export function observedLoadedSkills(payload, inventoryOrRoot, rootMaybe, runtimeMaybe) {
+export function observedLoadedSkills(payload, inventoryOrRoot, rootMaybe) {
   const inventory = Array.isArray(inventoryOrRoot)
     ? inventoryOrRoot
     : discoverSkills(inventoryOrRoot, "claude");
   const root = Array.isArray(inventoryOrRoot) ? rootMaybe : inventoryOrRoot;
-  const runtime = Array.isArray(inventoryOrRoot) ? runtimeMaybe : "claude";
-  if (!successfulPostToolUse(payload, runtime)) {
+  if (!eligiblePostToolUse(payload)) {
     return [];
   }
   const requests = observableSkillLoadRequests(payload, inventory, root);
@@ -214,15 +213,12 @@ function structuredToolText(value) {
   }
 }
 
-function successfulPostToolUse(payload, runtime) {
+function eligiblePostToolUse(payload) {
   if (payload?.hook_event_name !== "PostToolUse") {
     return false;
   }
   const outcome = toolSucceeded(payload);
-  if (outcome !== undefined) {
-    return outcome;
-  }
-  return runtime !== "codex" || payload?.tool_name !== "Bash";
+  return outcome !== false;
 }
 
 function literalCatPaths(command) {
@@ -233,31 +229,35 @@ function literalCatPaths(command) {
   if (analysis.errors.length > 0) {
     return [];
   }
+  const statements = analysis.script?.commands ?? [];
+  if (statements.length !== 1) {
+    return [];
+  }
+  const statement = statements[0];
+  const commandNode = statement?.command;
+  if (
+    statement?.type !== "Statement" ||
+    statement.background ||
+    (statement.redirects ?? []).length > 0 ||
+    commandNode?.type !== "Command" ||
+    (commandNode.redirects ?? []).length > 0 ||
+    executableName(staticWordValue(commandNode.name)) !== "cat"
+  ) {
+    return [];
+  }
+  const commandArguments = commandNode.suffix ?? [];
+  const parsed = parseStaticArguments(commandArguments);
+  if (parsed.dynamicIndexes.size > 0 || parsed.tokens.some((token) => token.kind === "option")) {
+    return [];
+  }
   const files = [];
-  for (const invocation of analysis.invocations) {
-    if (
-      executableName(invocation.executable) !== "cat" ||
-      invocation.captured ||
-      invocation.hasRedirection ||
-      invocation.piped
-    ) {
+  for (const token of parsed.tokens) {
+    if (token.kind !== "positional") {
       continue;
     }
-    const parsed = parseStaticArguments(invocation.arguments);
-    if (parsed.dynamicIndexes.size > 0) {
-      continue;
-    }
-    if (parsed.tokens.some((token) => token.kind === "option")) {
-      continue;
-    }
-    for (const token of parsed.tokens) {
-      if (token.kind !== "positional") {
-        continue;
-      }
-      const value = staticWordValue(invocation.arguments[token.index]);
-      if (value !== null) {
-        files.push(value);
-      }
+    const value = staticWordValue(commandArguments[token.index]);
+    if (value !== null) {
+      files.push(value);
     }
   }
   return files;

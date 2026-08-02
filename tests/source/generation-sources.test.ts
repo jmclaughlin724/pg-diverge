@@ -400,6 +400,47 @@ describe("generation source planning", () => {
     expect(context.from).toBeUndefined();
   });
 
+  it("keeps automatic migration replay out of the drift gate", async () => {
+    const fixture = await createFixture();
+    const config = resolveConfig({ migrationsDir: "migrations", schemaPaths: ["schemas"] });
+
+    const drift = await resolveGenerationSourceDefaults(
+      { cwd: fixture.root, mode: "drift" },
+      config,
+      async () => true
+    );
+    expect(drift.from).toBe("git:HEAD");
+    expect(drift.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+
+    const driftWithoutGit = await resolveGenerationSourceDefaults(
+      { cwd: fixture.root, mode: "drift" },
+      config,
+      async () => false
+    );
+    expect(driftWithoutGit.from).toBe("empty:");
+
+    const generation = await resolveGenerationSourceDefaults(
+      { cwd: fixture.root },
+      config,
+      async () => true
+    );
+    expect(generation.from).toBe(fixture.migrationsSource);
+  });
+
+  it("does not enforce the generation baseline gate in drift planning", async () => {
+    const fixture = await createFixture();
+    const context = await buildSchemaPlanningContext({
+      config: fixture.config,
+      cwd: fixture.root,
+      from: "empty:",
+      mode: "drift",
+      to: "empty:",
+    });
+
+    expect(context.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(context.from).toBeDefined();
+  });
+
   it.each(generationCommandCases)(
     "rejects migrations replay as the $command target",
     async ({ command }) => {

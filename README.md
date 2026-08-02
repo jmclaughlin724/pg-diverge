@@ -100,7 +100,7 @@ Read config as four decisions: `schemaPaths` and `migrationsDir` define the recu
 | CLI | `diff`, `stage`, `apply`, `types`, `check`, `verify`, `sync`, `scan`, `migrations`, `config validate`, inspection commands, diagnostics, and shell completion. |
 | Library | Typed ESM exports for the same core pipeline, including extraction, planning, rendering, checking, verification, apply/sync, type generation, and config loading. |
 | Agent bundle | A public-safe prompt, rules, skills, and hooks for Claude, Codex, and AGENTS-compatible tools working in a consuming repository. |
-| Docs site | Mintlify task guides, command pages, configuration references, comparison pages, support matrix, diagnostics, and support guidance. |
+| Docs site | Task guides, command pages, configuration references, comparison pages, support matrix, diagnostics, and support guidance. |
 
 See [what's included](https://supaschema.com/docs/whats-included), [library API](https://supaschema.com/docs/reference/library-api), and [coding agents](https://supaschema.com/docs/coding-agents).
 

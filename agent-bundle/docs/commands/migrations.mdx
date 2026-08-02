@@ -33,31 +33,22 @@ npx supaschema migrations --json
 
 ## Flags
 
-<ParamField path="--migrations-dir" type="path">
-  Directory containing numbered migration files.
-</ParamField>
-
-<ParamField path="--database-url" type="url">
-  Target database whose applied history should be compared.
-</ParamField>
-
-<ParamField path="--history-table" type="schema.table">
-  Migration history table. Use this for non-Supabase runners.
-</ParamField>
-
-<ParamField path="--json" type="boolean">
-  Print the reconciliation report as JSON.
-</ParamField>
+| Name               | Type         | Description                                                 |
+| ------------------ | ------------ | ----------------------------------------------------------- |
+| `--migrations-dir` | path         | Directory containing numbered migration files.              |
+| `--database-url`   | url          | Target database whose applied history should be compared.   |
+| `--history-table`  | schema.table | Migration history table. Use this for non-Supabase runners. |
+| `--json`           | boolean      | Print the reconciliation report as JSON.                    |
 
 ## Status values
 
-| Status | Meaning |
-| --- | --- |
-| `applied` | File exists and version appears in history |
-| `pending` | File exists but version is not applied |
-| `ghost` | Version is applied but file is missing |
-| `out-of-order` | File version is older than the current applied tip and is not applied |
-| `pending (no target)` | No database URL was available |
+| Status                | Meaning                                                               |
+| --------------------- | --------------------------------------------------------------------- |
+| `applied`             | File exists and version appears in history                            |
+| `pending`             | File exists but version is not applied                                |
+| `ghost`               | Version is applied but file is missing                                |
+| `out-of-order`        | File version is older than the current applied tip and is not applied |
+| `pending (no target)` | No database URL was available                                         |
 
 Resolve ghost and out-of-order states before running `sync`.
 

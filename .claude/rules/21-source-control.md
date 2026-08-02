@@ -193,9 +193,8 @@ Upstream sources:
 ## Dirty worktree rules
 
 - A dirty worktree is normal. Do not block on a clean tree unless a specific Git operation requires it.
-- Preserve hunks and files not intentionally authored in the current task.
+- Rule 14 owns concurrent-edit preservation. Treat files changed by other processes or sessions as user-owned and preserve hunks not authored by the current task.
 - Do not revert, stash, reset, clean, or overwrite unrelated tracked or untracked work.
-- A file changed by a watcher, dev server, hook, subagent, or parallel session is user-owned unless the current task started that process.
 - Stage only task-owned hunks after reviewing the intended diff.
 
 ## Git safety
@@ -207,11 +206,11 @@ Upstream sources:
 - Keep one active topic branch at a time. Do not create a separate branch off the active branch (no stacked branches); follow-up commits and review fixes for an open PR stay on its branch. Once the active branch's PR is squash-merged, the branch is archived: complete the post-merge closeout below and delete it locally and remotely before any new work, which starts on a fresh topic from `origin/main`.
 - When the current user prompt explicitly requests a topic branch, run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
 - When continuing an existing remote topic branch that has no local ref, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
-- When returning to a topic branch that already exists locally — for example to address PR review findings after working elsewhere — use `git switch --no-guess <branch>`. `--no-guess` is required: Git's default DWIM behavior would otherwise create and track a new local branch from a unique `origin/<branch>`, bypassing the fetch and base-proof path above. Verify the local ref matches its pushed remote first so the return cannot silently resurrect stale work.
+- When returning to a topic branch that already exists locally, for example to address PR review findings after working elsewhere, use `git switch --no-guess <branch>`. `--no-guess` is required: Git's default DWIM behavior would otherwise create and track a new local branch from a unique `origin/<branch>`, bypassing the fetch and base-proof path above. Verify the local ref matches its pushed remote first so the return cannot silently resurrect stale work.
 - Never commit PR-scoped work on local `main` and push it to a branch ref. Do not create a recovery path that moves task commits off local `main` after the fact.
 - Let lefthook, pre-commit, and pre-push run. Never use `--no-verify`.
-- Do not use `git checkout` or `git branch` for creation or discovery. Do not run any `git worktree` command. Apart from the four forms above — `git switch main` after verified PR merge, `git switch --no-guess <existing local topic>`, `git switch -c <topic> origin/main`, and `git switch --track origin/<topic>` — do not use `git switch`.
-- Branch operands must be literal, validated topic-branch names. Revision expressions such as `@{-1}`, `HEAD~1`, or `topic^`, and unexpanded shell operands such as `$BRANCH` or `$(cmd)`, are rejected: Git resolves them to other refs, including `main`, and `git branch -D` deletes regardless of merge state.
+- Do not use `git checkout` or `git branch` for creation or discovery. Do not run any `git worktree` command. Do not use `git switch` apart from the four forms above: `git switch main` after verified PR merge, `git switch --no-guess <existing local topic>`, `git switch -c <topic> origin/main`, and `git switch --track origin/<topic>`.
+- Branch operands must be literal, validated topic-branch names. Reject previous-checkout shorthand such as `@{-1}`: `git branch -D` expands this syntax (the same expansion `git check-ref-format --branch` performs) to another branch, including `main`, and deletes it regardless of merge state. Reject unexpanded shell operands such as `$BRANCH` or `$(cmd)` for the same reason: an unvalidated value can name the wrong branch. `HEAD~1` and `topic^` are not valid branch-name syntax and fail closed instead of silently resolving, but keep operands to validated literal names only.
 - Subagents must never create, switch, or delete a branch because they share the active primary checkout.
 - After proving a topic PR merged and preserving all dirty work elsewhere, delete the local topic with `git branch -D <topic>`. Never delete `main`, an unmerged branch, or more than one branch per command.
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
@@ -223,50 +222,14 @@ Upstream sources:
 
 ## Canonical policy
 
-`.github/repo-policy.json` is the machine-readable owner for intended GitHub repository and branch-protection state.
+`.github/repo-policy.json` is the machine-readable owner for intended GitHub repository, Actions, branch-protection, and ruleset state. `npm run guard:github-process` asserts the policy file stays synchronized, and `npm run github:audit-settings` compares live GitHub state against it. Read the policy file for the current values instead of restating them here.
 
-Required repository settings:
+These change-protocol rules govern how that policy may move, and cannot live in the JSON:
 
-- `default_branch` MUST be `main`.
-- Repository topics MUST match `repositoryTopics` in `.github/repo-policy.json`.
-- `allow_squash_merge` MUST be `true`.
-- `allow_rebase_merge` MUST be `false`.
-- `allow_merge_commit` MUST be `false`.
-- `allow_auto_merge` SHOULD be `true`.
-- `delete_branch_on_merge` MUST be `true`.
-- `web_commit_signoff_required` MUST be `false`.
 - Commit signoff MUST NOT be enforced by GitHub settings, CI, package scripts, PR template checklists, or repo guards unless the user explicitly approves a new contributor-certificate policy in the same change.
-
-Required GitHub Actions repository settings:
-
-- GitHub Actions MUST be enabled.
-- Repository Actions policy MUST require full-length SHA pinning.
-- Repository Actions policy MUST allow GitHub-owned actions plus only the reviewed third-party repositories named by `.github/repo-policy.json`; every executable ref remains full-SHA pinned.
-- Default `GITHUB_TOKEN` permissions MUST be read-only.
-- GitHub Actions MUST NOT be allowed to create or approve pull-request reviews.
-- First-time outside contributor workflow approval MUST remain enabled for public-fork PRs.
-
-Required `main` branch protection:
-
-- `required_linear_history` MUST be `true`.
-- `direct_pushes` MUST be `false`; every update to `main` must use a pull request.
+- If required reviews or status checks are introduced, update `.github/repo-policy.json`, CODEOWNERS expectations, the PR template, and this rule in the same change.
+- Ruleset bypass actors MUST remain empty unless the user explicitly approves a break-glass path and the reason is recorded in this rule.
 - Classic branch protection MUST NOT duplicate required status checks or pull-request review settings; the repository ruleset owns those gates.
-- `required_conversation_resolution` MUST be `true` for PRs when PRs are used.
-- `enforce_admins` MUST be `true`.
-- `allow_force_pushes` MUST be `false`.
-- `allow_deletions` MUST be `false`.
-- `required_signatures` MUST be `false`.
-- Review and status-check settings MUST match `.github/repo-policy.json`; if required reviews or status checks are introduced, update the policy, CODEOWNERS expectations, PR template, and this rule in the same change.
-
-Required repository ruleset:
-
-- A repository branch ruleset named `main branch policy` MUST be active and target the default branch.
-- The ruleset MUST block deletion and non-fast-forward updates and require linear history.
-- The ruleset MUST require pull requests with squash as the only merge method and zero approvals while the repository has only one independent maintainer.
-- The ruleset MUST require the stable `CI required` and Dependency Review from the GitHub Actions integration, with strict current-main testing.
-- Ruleset bypass actors MUST remain empty unless the user explicitly approves a break-glass path and the reason is recorded in the rule.
-- A `release tag policy` ruleset MUST block deletion and non-fast-forward updates for `v*` tags.
-- The `release` environment MUST allow only the `main` branch. Add an independent required reviewer when the maintainer set can satisfy that gate without self-approval.
 
 CODEOWNERS is advisory while `required_approving_review_count` is `0` and `require_code_owner_reviews` is `false`. Do not describe code-owner review as enforced unless those settings change.
 
@@ -294,7 +257,7 @@ gh pr merge <number> --squash --delete-branch
 
 Do not use `--merge`, `--rebase`, `--admin`, `--disable-auto`, local squash merges, force-push workarounds, or repo-local merge wrappers unless the user explicitly approves the exception and the reason is recorded in the PR.
 
-### Multi-session branches
+## Multi-session branches
 
 When more than one agent session works the same topic branch, keep one standing coordination note for the branch under `.claude/plans/` that records the current tip and check state, the files each session has in flight, review-thread resolutions the other session must not revert, and which session owns staging and commits. Announce in the note before editing a file another session has in flight, and re-read it before reverting or rewriting any hunk the current session did not author. `.claude/plans/` is agent-private, so the note never reaches the public repo; delete it during post-merge closeout.
 
@@ -307,13 +270,13 @@ After a PR merge, complete local and remote cleanup before starting another task
 3. Verify the merge commit is contained by `origin/main`, the remote head is absent, the local head is absent, and the active checkout is no longer the merged topic branch.
 4. Verify local `main` equals `origin/main` when the merge operated from the primary checkout.
 
-Squash merging creates a new commit and leaves the original topic commits outside `main` ancestry. An ahead count on a surviving squash-merged topic branch does not mean its content is unmerged; it means cleanup is incomplete. Archive the merged topic branch — delete it locally and remotely — instead of resetting, force-pushing, or continuing work on it.
+Squash merging creates a new commit and leaves the original topic commits outside `main` ancestry. An ahead count on a surviving squash-merged topic branch does not mean its content is unmerged; it means cleanup is incomplete. Archive the merged topic branch by deleting it locally and remotely, instead of resetting, force-pushing, or continuing work on it.
 
 STOP before further edits when the merge succeeds but local cleanup fails. Preserve any dirty work, prove the PR and tree state, and obtain explicit approval for destructive recovery rather than silently carrying new work on the merged branch.
 
 ## PR review and check resolution
 
-Address every PR review comment and failing check before merge, and mark each resolved only when its correction lands — never before, and never for a valid finding left unaddressed.
+Address every PR review comment and failing check before merge, and mark each resolved only when its correction lands: never before, and never for a valid finding left unaddressed.
 
 1. Verify the finding against upstream canonical sources before acting (Rule 05): official docs, the repo's own rules, or the installed dependency. An unverified review claim is a blocker, not a directive. When a suggestion conflicts with repo policy or upstream guidance, resolve it with the upstream-correct action and note the conflict rather than following the literal suggestion.
 2. Fix the finding in the canonical owner, or record an owner-scoped not-applicable reason with evidence, and commit that correction.
@@ -323,7 +286,7 @@ Address every PR review comment and failing check before merge, and mark each re
 
 ## Enforced by
 
-- `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, canonical Rule 21 path, retired duplicate rule paths, and PR template stay synchronized.
+- `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, canonical Rule 21 path, and retired duplicate rule paths stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, repository rulesets, and topics to `.github/repo-policy.json`.
 - Rule 12 command evidence records GitHub check commands as `github-checks`; final claims must reflect the recorded result.

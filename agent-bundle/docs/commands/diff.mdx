@@ -31,70 +31,23 @@ If there is nothing to migrate, zero-flag `diff` exits `0` and writes no file. I
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Before-state source. Defaults to `config.sources.from`. A `migrations:` value
-  must match the selected migrations directory.
-</ParamField>
-
-<ParamField path="--to" type="source">
-  Desired-state source. Defaults to `dir:<config.schemaPaths[0]>`. Migration
-  replay is not supported here.
-</ParamField>
-
-<ParamField path="--out" type="path | stdout">
-  Write SQL to a specific file or print to stdout.
-</ParamField>
-
-<ParamField path="--name" type="snake_case">
-  Override the descriptive part of the timestamped migration filename.
-</ParamField>
-
-<ParamField path="--migrations-dir" type="path">
-  Override the directory where timestamped migrations are written.
-</ParamField>
-
-<ParamField path="--replace" type="path">
-  Replace one unapplied supaschema-generated migration in the selected
-  migrations directory. The file must contain lineage metadata, the planned
-  `--from` fingerprint must match the file's original lineage baseline, and any
-  resolvable configured target must not record the migration version as applied.
-</ParamField>
-
-<ParamField path="--schema" type="names">
-  Diff only the comma-separated PostgreSQL schema names.
-</ParamField>
-
-<ParamField path="--dry-run" type="boolean">
-  Print the migration and target path without writing files.
-</ParamField>
-
-<ParamField path="--json" type="boolean">
-  Print a structured payload with fingerprint, operations, and SQL.
-</ParamField>
-
-<ParamField path="--fail-on-diff" type="boolean">
-  Exit `3` when the plan contains operations. Use this for drift gates.
-</ParamField>
-
-<ParamField path="--no-check-chain" type="boolean">
-  Skip the lineage-chain gate against pending supaschema migrations.
-</ParamField>
-
-<ParamField path="--summary" type="boolean">
-  Print operation and diagnostic counts before any error exit.
-</ParamField>
-
-<ParamField path="--write-hints" type="path">
-  Write blocked destructive object keys as a `hints.destructive` skeleton.
-</ParamField>
-
-<ParamField path="--timing" type="boolean">
-  Print extract, plan, and render timings to stderr.
-</ParamField>
-
-<ParamField path="--watch" type="boolean">
-  Re-run on `dir:` source changes. Implies `--dry-run --summary`.
-</ParamField>
+| Name               | Type           | Description                                                                                                                                                                                                                                                                                                 |
+| ------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--from`           | source         | Before-state source. Defaults to `config.sources.from`. A `migrations:` value must match the selected migrations directory.                                                                                                                                                                                 |
+| `--to`             | source         | Desired-state source. Defaults to `dir:<config.schemaPaths[0]>`. Migration replay is not supported here.                                                                                                                                                                                                    |
+| `--out`            | path \| stdout | Write SQL to a specific file or print to stdout.                                                                                                                                                                                                                                                            |
+| `--name`           | snake_case     | Override the descriptive part of the timestamped migration filename.                                                                                                                                                                                                                                        |
+| `--migrations-dir` | path           | Override the directory where timestamped migrations are written.                                                                                                                                                                                                                                            |
+| `--replace`        | path           | Replace one unapplied supaschema-generated migration in the selected migrations directory. The file must contain lineage metadata, the planned `--from` fingerprint must match the file's original lineage baseline, and any resolvable configured target must not record the migration version as applied. |
+| `--schema`         | names          | Diff only the comma-separated PostgreSQL schema names.                                                                                                                                                                                                                                                      |
+| `--dry-run`        | boolean        | Print the migration and target path without writing files.                                                                                                                                                                                                                                                  |
+| `--json`           | boolean        | Print a structured payload with fingerprint, operations, and SQL.                                                                                                                                                                                                                                           |
+| `--fail-on-diff`   | boolean        | Exit `3` when the plan contains operations. Use this for drift gates.                                                                                                                                                                                                                                       |
+| `--no-check-chain` | boolean        | Skip the lineage-chain gate against pending supaschema migrations.                                                                                                                                                                                                                                          |
+| `--summary`        | boolean        | Print operation and diagnostic counts before any error exit.                                                                                                                                                                                                                                                |
+| `--write-hints`    | path           | Write blocked destructive object keys as a `hints.destructive` skeleton.                                                                                                                                                                                                                                    |
+| `--timing`         | boolean        | Print extract, plan, and render timings to stderr.                                                                                                                                                                                                                                                          |
+| `--watch`          | boolean        | Re-run on `dir:` source changes. Implies `--dry-run --summary`.                                                                                                                                                                                                                                             |
 
 ## Source specifiers
 
@@ -108,15 +61,15 @@ Before planning a `git:` to `dir:` diff, supaschema checks the workspace for alr
 
 Use `--replace` for a generated migration that has not been applied and needs to be regenerated from the same original baseline. Git only proves the source snapshot; applied state is checked from configured database migration history when a target is resolvable.
 
-| Format | Example | Use |
-| --- | --- | --- |
-| `database:<url>` | `database:$STAGING_DB` | Live database introspection |
-| `git:<ref>` | `git:origin/main` | Schema files at a git ref |
-| `dir:<path>` | `dir:database/schemas` | Schema files on disk |
-| `dump:<path>` | `dump:baseline.sql` | SQL dump file or stdin with `dump:-` |
-| `catalog:<path>` | `catalog:snapshot.json` | Saved supaschema catalog snapshot |
+| Format              | Example                          | Use                                                 |
+| ------------------- | -------------------------------- | --------------------------------------------------- |
+| `database:<url>`    | `database:$STAGING_DB`           | Live database introspection                         |
+| `git:<ref>`         | `git:origin/main`                | Schema files at a git ref                           |
+| `dir:<path>`        | `dir:database/schemas`           | Schema files on disk                                |
+| `dump:<path>`       | `dump:baseline.sql`              | SQL dump file or stdin with `dump:-`                |
+| `catalog:<path>`    | `catalog:snapshot.json`          | Saved supaschema catalog snapshot                   |
 | `migrations:<path>` | `migrations:database/migrations` | Configured migration corpus replay as `--from` only |
-| `empty:` | `empty:` | Empty baseline for first migrations |
+| `empty:`            | `empty:`                         | Empty baseline for first migrations                 |
 
 ## Exit codes
 

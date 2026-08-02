@@ -10,9 +10,9 @@ Read only the rules and skills directly applicable to the current task.
 
 | When the task concerns | Canonical owner |
 | --- | --- |
-| General operating discipline, gates, `$elegant`, enforcement closure, npm-only tooling, or closeout | `.claude/rules/01-operating-rules.md` |
+| General operating discipline, gates, `$elegant`, enforcement closure, or closeout | `.claude/rules/01-operating-rules.md` |
 | Technical decisions, upstream research, evidence fallbacks, or escalation | `.claude/rules/05-decision-protocol.md` |
-| Repository discovery, language tooling, AST/LSP use, or structural inspection | `.claude/rules/06-multi-language-toolchain.md` |
+| Repository discovery, LSP coverage, formatter and linter ownership, or npm-only tooling | `.claude/rules/06-multi-language-toolchain.md` |
 | PostgreSQL or Supabase migrations, source-intent extraction, or generated schema surfaces | `.claude/rules/supaschema.md` |
 | Agent MCP or FastMCP behavior and public surfaces | `.claude/rules/11-agent-mcp-fastmcp.md` |
 | Skill loading, hook context, observable loading, enforcement, or hook state | `.claude/rules/12-skill-loading-enforcement.md` |
@@ -65,7 +65,6 @@ Implement the requested behavior using the simplest maintainable approach that f
 - Add an abstraction only when it removes meaningful complexity or duplication or clearly matches an established repository pattern.
 - Preserve existing public contracts unless the requested work explicitly replaces them.
 - Avoid unrelated refactoring, formatting churn, file movement, metadata changes, and opportunistic cleanup.
-- Add comments only when they explain non-obvious intent, constraints, or behavior.
 
 Avoid:
 
@@ -113,7 +112,7 @@ Biome's linter will catch most issues automatically. Focus your attention on:
 3. **Architecture decisions** - Component structure, data flow, and API design
 4. **Edge cases** - Handle boundary conditions and error states
 5. **User experience** - Accessibility, performance, and usability considerations
-6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
+6. **Documentation** - Prefer self-documenting code
 
 ## Discovery
 

@@ -15,10 +15,9 @@ Each generated migration is:
 
 Reference run: 2026-07-21 on a MacBook Pro (Apple M4 Max, 14 cores, 36 GB), macOS 26.5.1, Node 24.18.0, PostgreSQL 17.6, Supabase CLI 2.109.1, and supaschema 0.4.3. Every cell used one warmup and three measured iterations, except XXL with one measured iteration.
 
-<Info>
-  Short version: supaschema stays fast at large schema sizes, keeps F1 at
-  `1.000`, and produces migrations that survive a second apply.
-</Info>
+:::info
+Short version: supaschema stays fast at large schema sizes, keeps F1 at `1.000`, and produces migrations that survive a second apply.
+:::
 
 ## Speed and accuracy
 
@@ -85,11 +84,8 @@ SUPABASE_TELEMETRY_DISABLED=1 BENCH_ALL_SEQUENTIAL=1 bash benchmarks/tools/bench
 npm run bench:plot:docs
 ```
 
-<Warning>
-  Never point the harness at development, staging, or production. It creates and
-  drops comparison databases. Publication results are advisory and sensitive to
-  the machine and installed tool versions; `npm run benchmark` is a separate
-  internal threshold suite, not the publication command or a CI gate.
-</Warning>
+:::warning
+Never point the harness at development, staging, or production. It creates and drops comparison databases. Publication results are advisory and sensitive to the machine and installed tool versions; `npm run benchmark` is a separate internal threshold suite, not the publication command or a CI gate.
+:::
 
 The harness and comparison utilities live in the repository's `benchmarks/` directory. The ignored comparison JSONs and generated summary are the source evidence; the 14 tracked SVGs are the publication artifacts.

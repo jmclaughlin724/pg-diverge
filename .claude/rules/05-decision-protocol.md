@@ -21,11 +21,15 @@ Do not research stable local facts already established by direct source or tests
 
 ## Decision rules
 
-- Prefer a platform's first-class mechanism when it satisfies the repo's constraints; do not treat upstream validity as proof of local correctness.
+- Prefer a platform's first-class mechanism when it satisfies the repo's constraints. Do not treat upstream validity as proof of local correctness.
 - Synthesize retrieved evidence before acting. Parallelize independent reads or searches; keep dependent retrieval and mutation steps sequential.
-- Make implementation choices when evidence and repository constraints determine the answer. Do not poll the user with a technical menu merely to avoid judgment.
+- Make implementation choices when evidence and repository constraints determine the answer. Do not poll the user with a technical menu to avoid judgment.
 - Escalate product scope, priorities, destructive or outward-facing actions, secrets, spending, material permission expansion, or conflicting user instructions.
 - State material sources and uncertainty in the final result when they affect the decision.
+
+## Verification
+
+No command proves this rule; it is a judgment contract. Before completion, confirm three things: material claims cite repo or upstream evidence, fallback searches ran before any absence claim, and user-owned decisions were escalated rather than guessed.
 
 ## Failure behavior
 

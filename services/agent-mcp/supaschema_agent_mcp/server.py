@@ -165,11 +165,6 @@ def _upstream_mcp_capabilities(
             "use_for": "Ultracite linting and formatting docs.",
         },
         {
-            "server": "mintlify",
-            "family": "docs",
-            "use_for": "Mintlify authoring and validation docs.",
-        },
-        {
             "server": "cloudflare-docs",
             "family": "docs",
             "use_for": "Cloudflare product documentation.",

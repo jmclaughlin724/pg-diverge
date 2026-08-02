@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -214,6 +214,163 @@ describe("actual context hook entrypoints", () => {
       code: "ENOENT",
     });
   });
+
+  it("credits exact Codex Bash skill content through the actual entrypoints", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-codex-load-"));
+    const env = { ...process.env, STATE_DIR: stateDir };
+    const sessionId = "entrypoint-codex-load";
+    const skillPath = ".agents/skills/optimizer/SKILL.md";
+
+    const prompt = await runHook(
+      join(root, ".codex/hooks/context-user-prompt-submit.mjs"),
+      {
+        hook_event_name: "UserPromptSubmit",
+        prompt: "$optimizer",
+        session_id: sessionId,
+      },
+      env
+    );
+    expect(prompt.code).toBe(0);
+
+    const command = `cat ${skillPath}`;
+    const load = await runHook(
+      join(root, ".codex/hooks/context-pre-tool-use.mjs"),
+      {
+        hook_event_name: "PreToolUse",
+        session_id: sessionId,
+        tool_input: { command },
+        tool_name: "Bash",
+      },
+      env
+    );
+    expect(hookOutput(load.stdout).hookSpecificOutput?.permissionDecision).toBeUndefined();
+
+    const recorded = await runHook(
+      join(root, ".codex/hooks/context-post-tool-use.mjs"),
+      {
+        hook_event_name: "PostToolUse",
+        session_id: sessionId,
+        tool_input: { command },
+        tool_name: "Bash",
+        tool_response: await readFile(join(root, skillPath), "utf8"),
+      },
+      env
+    );
+    expect(recorded).toMatchObject({ code: 0, stderr: "", stdout: "" });
+
+    const governed = await runHook(
+      join(root, ".codex/hooks/context-pre-tool-use.mjs"),
+      {
+        hook_event_name: "PreToolUse",
+        session_id: sessionId,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
+      },
+      env
+    );
+    expect(hookOutput(governed.stdout).hookSpecificOutput?.permissionDecision).toBeUndefined();
+  });
+
+  it("serializes concurrent evidence updates through the actual hook entrypoint", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-concurrent-state-"));
+    const env = { ...process.env, STATE_DIR: stateDir };
+    const hook = join(root, ".claude/hooks/context-post-tool-use.mjs");
+    const sessionId = "concurrent-entrypoint";
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        runHookAsync(
+          hook,
+          {
+            hook_event_name: "PostToolUse",
+            session_id: sessionId,
+            tool_input: { command: "npm test" },
+            tool_name: "Bash",
+            tool_response: { exit_code: 0 },
+            turn_id: `turn-${index}`,
+          },
+          env
+        )
+      )
+    );
+
+    expect(results.every((result) => result.code === 0 && result.stdout === "")).toBe(true);
+    const state = JSON.parse(
+      await readFile(join(stateDir, `${Buffer.from(sessionId).toString("base64url")}.json`), "utf8")
+    );
+    const turns =
+      state && typeof state === "object" && !Array.isArray(state) && state.turns
+        ? Object.values(state.turns)
+        : [];
+    const evidence = turns.flatMap((turn) =>
+      turn && typeof turn === "object" && !Array.isArray(turn) && Array.isArray(turn.evidence)
+        ? turn.evidence
+        : []
+    );
+    expect(evidence).toHaveLength(8);
+    expect(evidence).toEqual(
+      expect.arrayContaining(
+        Array.from({ length: 8 }, () =>
+          expect.objectContaining({ domain: "test", outcome: "success" })
+        )
+      )
+    );
+  });
+
+  it("keeps a masked success from resolving an actual Stop failure conflict", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-outcome-state-"));
+    const env = { ...process.env, STATE_DIR: stateDir };
+    const sessionId = "entrypoint-outcome";
+    const failed = await runHook(
+      join(root, ".claude/hooks/context-post-tool-use-failure.mjs"),
+      {
+        hook_event_name: "PostToolUseFailure",
+        session_id: sessionId,
+        tool_input: { command: "npm test" },
+        tool_name: "Bash",
+      },
+      env
+    );
+    expect(failed).toMatchObject({ code: 0, stderr: "", stdout: "" });
+
+    const masked = await runHook(
+      join(root, ".claude/hooks/context-post-tool-use.mjs"),
+      {
+        hook_event_name: "PostToolUse",
+        session_id: sessionId,
+        tool_input: { command: "npm test || true" },
+        tool_name: "Bash",
+      },
+      env
+    );
+    expect(masked).toMatchObject({ code: 0, stderr: "", stdout: "" });
+
+    const contradicted = await runHook(
+      join(root, ".claude/hooks/context-stop.mjs"),
+      {
+        hook_event_name: "Stop",
+        last_assistant_message: "Tests passed.",
+        session_id: sessionId,
+        stop_hook_active: false,
+      },
+      env
+    );
+    expect(hookOutput(contradicted.stdout)).toMatchObject({
+      decision: "block",
+      reason: expect.stringContaining("test"),
+    });
+
+    const honest = await runHook(
+      join(root, ".claude/hooks/context-stop.mjs"),
+      {
+        hook_event_name: "Stop",
+        last_assistant_message: "Tests passed previously, but the current tests failed.",
+        session_id: sessionId,
+        stop_hook_active: false,
+      },
+      env
+    );
+    expect(honest).toMatchObject({ code: 0, stderr: "", stdout: "" });
+  });
 });
 
 describe("target-first stateless surface sync", () => {
@@ -242,6 +399,11 @@ describe("target-first stateless surface sync", () => {
         tool_name: "Edit",
       },
       {
+        hook_event_name: "PostToolUse",
+        tool_input: { file_path: ".agents/prompts/unrelated.md" },
+        tool_name: "Edit",
+      },
+      {
         hook_event_name: "PostToolUseFailure",
         tool_input: { command: canonicalPatch() },
         tool_name: "apply_patch",
@@ -257,6 +419,10 @@ describe("target-first stateless surface sync", () => {
     for (const payload of [
       { tool_input: { command: canonicalPatch() }, tool_name: "apply_patch" },
       { tool_input: { file_path: "docs/guide.mdx" }, tool_name: "Edit" },
+      {
+        tool_input: { file_path: ".agents/prompts/supaschema-install.md" },
+        tool_name: "Edit",
+      },
       { tool_input: { file_path: "scripts/skills/bundle-docs.mjs" }, tool_name: "Edit" },
     ]) {
       const canonical = await runHook(
@@ -266,7 +432,7 @@ describe("target-first stateless surface sync", () => {
       );
       expect(canonical).toMatchObject({ code: 0, stderr: "", stdout: "{}\n" });
     }
-    expect(await readFile(fixture.log, "utf8")).toBe("sync\nsync\nsync\n");
+    expect(await readFile(fixture.log, "utf8")).toBe("sync\nsync\nsync\nsync\n");
     await expect(
       readFile(join(fixture.root, ".tmp", "sync-llm-on-claude-surface-change.json"))
     ).rejects.toMatchObject({ code: "ENOENT" });
@@ -357,6 +523,35 @@ function runRawHook(
     stderr: result.stderr,
     stdout: result.stdout,
   };
+}
+
+function runHookAsync(
+  hook: string,
+  payload: Record<string, unknown>,
+  env: NodeJS.ProcessEnv
+): Promise<{ code: number; stderr: string; stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [hook], {
+      cwd: root,
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stderr = "";
+    let stdout = "";
+    child.stderr.setEncoding("utf8");
+    child.stdout.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({ code: code ?? 1, stderr, stdout });
+    });
+    child.stdin.end(JSON.stringify(payload));
+  });
 }
 
 interface SurfaceFixture {

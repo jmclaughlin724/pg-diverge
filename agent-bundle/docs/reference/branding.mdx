@@ -1,8 +1,7 @@
 ---
 title: "Brand assets"
-description: "Where supaschema logo and brand images live, and how to use them across Mintlify, GitHub, README, and generated visuals."
-keywords:
-  ["brand assets", "logo", "favicon", "social preview", "Mintlify", "GitHub"]
+description: "Where supaschema logo and brand images live, and how to use them across the docs site, GitHub, README, and generated visuals."
+keywords: ["brand assets", "logo", "favicon", "social preview", "GitHub"]
 ---
 
 Use this page when adding, replacing, or wiring supaschema logo and brand assets.
@@ -11,34 +10,32 @@ Use this page when adding, replacing, or wiring supaschema logo and brand assets
 
 Committed public brand assets live under `docs/images/brand/`.
 
-| Asset | Use |
-| --- | --- |
-| `supaschema-logo-light.png` | Mintlify logo for light mode. |
-| `supaschema-logo-dark.png` | Mintlify logo for dark mode. |
+| Asset                        | Use                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `supaschema-logo-light.png`  | Docs site logo for light mode.                                               |
+| `supaschema-logo-dark.png`   | Docs site logo for dark mode.                                                |
 | `supaschema-logo-readme.png` | GitHub README logo with a solid background for light and dark GitHub themes. |
-| `supaschema-mark.png` | Square 1:1 emblem for icon and favicon derivatives. |
-| `favicon.png` | Mintlify favicon. |
-| `github-social-preview.png` | Repository social preview uploaded in GitHub settings. |
-| `mintlify-og-background.png` | Mintlify social thumbnail background. |
+| `supaschema-mark.png`        | Square 1:1 emblem for icon and favicon derivatives.                          |
+| `favicon.png`                | Docs site favicon.                                                           |
+| `github-social-preview.png`  | Repository social preview uploaded in GitHub settings.                       |
+| `og-background.png`          | Social thumbnail background.                                                 |
 
-<Warning>
-  Do not commit Photoshop source files or oversized source PNGs under `docs/`.
-  The Mintlify docs source is public repository content, not npm package
-  content.
-</Warning>
+:::warning
+Do not commit Photoshop source files or oversized source PNGs under `docs/`. The docs source is public repository content, not npm package content.
+:::
 
-## Mintlify usage
+## Docs site usage
 
-Mintlify branding is configured in `docs/docs.json`.
+Docs branding is configured in `docs/blume.config.ts`.
 
 Use root-relative paths for docs assets:
 
-- `logo.light` points to `/images/brand/supaschema-logo-light.png`.
-- `logo.dark` points to `/images/brand/supaschema-logo-dark.png`.
-- `favicon` points to `/images/brand/favicon.png`.
-- `thumbnails.background` points to `/images/brand/mintlify-og-background.png`.
+- The light logo points to `/images/brand/supaschema-logo-light.png`.
+- The dark logo points to `/images/brand/supaschema-logo-dark.png`.
+- The favicon points to `/images/brand/favicon.png`.
+- The social image points to `/images/brand/og-background.png`.
 
-Prefer `thumbnails.background` for social previews. It keeps Mintlify's generated page title and description overlays. Use a global `seo.metatags["og:image"]` only when every page should use the exact same static image.
+Set a per-page `seo.image` only when a page needs a different social image from the site default.
 
 <Color variant="table">
   <Color.Row title="Brand">

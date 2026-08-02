@@ -13,7 +13,7 @@ paths:
   - "AGENTS.md"
 ---
 
-# Rule 19 — Version control and release
+# Rule 19 - Version control and release
 
 ## Contract
 
@@ -66,7 +66,13 @@ Rule 21 owns the git transaction: dirty-worktree preservation, task-owned stagin
 - The release checklist and release PR checklist require `$update` after versioning and before release verification or merge. The audit is semantic and is reviewed through its changed owners and validation evidence; do not add a forgeable marker file or brittle prose guard to simulate execution proof.
 - Rule 09 release workflow checks, Rule 13 package checks, Rule 14 editing safety, Rule 18 generated-surface sync, and Rule 21 source-control checks remain required where their surfaces are touched.
 
-STOP if a version bump leaves any known release surface on the previous version, skips `$update` after the final release-owned changes, adds a GitHub Action default version, uses an npm dist-tag for action execution, omits the changelog top entry, publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`, commits generated mirrors without syncing from the canonical owner, bypasses hooks, weakens a guard/test to make the release pass, or opens a PR before Rule 21 scope and mergeability verification passes.
+STOP if a version bump does any of these:
+
+- Leaves any known release surface on the previous version, or skips `$update` after the final release-owned changes.
+- Adds a GitHub Action default version, or uses an npm dist-tag for action execution.
+- Omits the changelog top entry, or publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`.
+- Commits generated mirrors without syncing from the canonical owner, bypasses hooks, or weakens a guard or test to make the release pass.
+- Opens a PR before Rule 21 scope and mergeability verification passes.
 
 ## Verification
 
@@ -95,8 +101,8 @@ npm run sync:llm
 
 ## Failure behavior
 
-Fix the drift in the canonical source. Do not add an action version default, loosen the exact-version validation, skip the changelog, bypass hooks, or patch generated mirrors directly.
+Fix the drift in the canonical source. Do not add an action version default, loosen the exact-version validation, skip the changelog, bypass hooks, or patch generated mirrors directly (Rule 14).
 
 ## Done means
 
-All version-coupled surfaces agree with the package version, `$update` has closed every confirmed impact after the final release-owned changes, the changelog top entry names that version and is the GitHub Release body source, local release-version guards pass, and requested git/PR actions are completed without touching unrelated work.
+All version-coupled surfaces agree with the package version, `$update` has closed every confirmed impact after the final release-owned changes, the changelog top entry names that version and is the GitHub Release body source, local release-version guards pass, and requested git and PR actions completed without touching unrelated work.

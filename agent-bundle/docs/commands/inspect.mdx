@@ -26,13 +26,10 @@ npx supaschema inspect --from git:HEAD~1 --schema public,auth
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Source to inspect. Defaults to the configured schema tree.
-</ParamField>
-
-<ParamField path="--schema" type="names">
-  Include only the comma-separated PostgreSQL schema names.
-</ParamField>
+| Name       | Type   | Description                                                |
+| ---------- | ------ | ---------------------------------------------------------- |
+| `--from`   | source | Source to inspect. Defaults to the configured schema tree. |
+| `--schema` | names  | Include only the comma-separated PostgreSQL schema names.  |
 
 ## Exit codes
 

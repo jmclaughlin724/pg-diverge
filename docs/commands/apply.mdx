@@ -22,30 +22,14 @@ When a selected Supabase CLI target has no resolved database URL, the Supabase C
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Override the before-state source used by safety and verification.
-</ParamField>
-
-<ParamField path="--to" type="source">
-  Override the target schema source used by safety and verification.
-</ParamField>
-
-<ParamField path="--migrations-dir" type="path">
-  Directory containing migration files. Defaults to `config.migrationsDir`.
-</ParamField>
-
-<ParamField path="--database-url" type="url">
-  Explicit target database used for history reconciliation and direct-runner
-  apply.
-</ParamField>
-
-<ParamField path="--target" type="name">
-  Override config target selection with one configured `sync.targets.<name>` target.
-</ParamField>
-
-<ParamField path="--runner" type="direct | supabase-cli">
-  Override the configured runner for the selected target.
-</ParamField>
+| Name               | Type                   | Description                                                                        |
+| ------------------ | ---------------------- | ---------------------------------------------------------------------------------- |
+| `--from`           | source                 | Override the before-state source used by safety and verification.                  |
+| `--to`             | source                 | Override the target schema source used by safety and verification.                 |
+| `--migrations-dir` | path                   | Directory containing migration files. Defaults to `config.migrationsDir`.          |
+| `--database-url`   | url                    | Explicit target database used for history reconciliation and direct-runner apply.  |
+| `--target`         | name                   | Override config target selection with one configured `sync.targets.<name>` target. |
+| `--runner`         | direct \| supabase-cli | Override the configured runner for the selected target.                            |
 
 ## Refusal cases
 

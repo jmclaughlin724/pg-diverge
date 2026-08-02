@@ -41,7 +41,10 @@ export function verificationClaimConflict(message, state) {
 function parseSuccessClaims(tokens) {
   const claims = new Set();
   for (let predicateIndex = 0; predicateIndex < tokens.length; predicateIndex += 1) {
-    if (!successPredicate(tokens, predicateIndex)) {
+    if (
+      !successPredicate(tokens, predicateIndex) ||
+      describesHistoricalVerification(tokens, predicateIndex)
+    ) {
       continue;
     }
     const found = domainsBeforePredicate(tokens, predicateIndex);
@@ -50,6 +53,85 @@ function parseSuccessClaims(tokens) {
     }
   }
   return claims;
+}
+
+function describesHistoricalVerification(tokens, predicateIndex) {
+  let startIndex = 0;
+  for (let index = predicateIndex - 1; index >= 0; index -= 1) {
+    if (temporalAssertionBoundary(tokens[index])) {
+      startIndex = index + 1;
+      break;
+    }
+  }
+  let endIndex = tokens.length;
+  for (let index = predicateIndex + 1; index < tokens.length; index += 1) {
+    if (temporalAssertionBoundary(tokens[index])) {
+      endIndex = index;
+      break;
+    }
+  }
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const token = tokens[index];
+    if (
+      historicalMarker(token) &&
+      historicalMarkerDescribesPredicate(tokens, index, predicateIndex)
+    ) {
+      return true;
+    }
+    if (token === "baseline" && index !== predicateIndex) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function temporalAssertionBoundary(token) {
+  switch (token) {
+    case "but":
+    case "currently":
+    case "however":
+    case "now":
+    case "still":
+    case "today":
+    case "yet":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function historicalMarker(token) {
+  switch (token) {
+    case "before":
+    case "earlier":
+    case "formerly":
+    case "previously":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function historicalMarkerDescribesPredicate(tokens, markerIndex, predicateIndex) {
+  if (markerIndex < predicateIndex) {
+    for (let index = markerIndex + 1; index < predicateIndex; index += 1) {
+      if (negatesClaim(tokens[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  for (let index = predicateIndex + 1; index < markerIndex; index += 1) {
+    switch (tokens[index]) {
+      case "after":
+      case "despite":
+      case "following":
+        return false;
+      default:
+        break;
+    }
+  }
+  return true;
 }
 
 function domainsBeforePredicate(tokens, predicateIndex) {

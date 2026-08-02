@@ -31,7 +31,7 @@ function listMdxFiles(root) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const absolute = path.join(directory, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) {
+        if (entry.name === "node_modules" || entry.name === "dist" || entry.name.startsWith(".")) {
           continue;
         }
         visit(absolute);

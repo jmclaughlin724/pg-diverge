@@ -11,7 +11,6 @@ const nonCode = new Set([
   "gitignore",
   "gitkeep",
   "license",
-  "mintignore",
   "nvmrc",
   "prettierignore",
   "png",

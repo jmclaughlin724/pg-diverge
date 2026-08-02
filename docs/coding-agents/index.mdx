@@ -59,7 +59,7 @@ The public npm package includes the consumer-safe raw surfaces needed for that w
   >
     Copyable setup instructions for another coding agent.
   </Card>
-  <Card title="Rule" icon="scale-balanced" href="/coding-agents/agent-bundle">
+  <Card title="Rule" icon="scale" href="/coding-agents/agent-bundle">
     Durable migration policy: generated files are not hand-edited, destructive
     intent must be explicit, and apply is config-gated.
   </Card>
@@ -100,7 +100,7 @@ Use these only when the agent or documentation client supports them.
     `https://supaschema.com/docs/llms.txt`.
   </Card>
   <Card title="MCP docs" icon="plug">
-    Mintlify MCP endpoint for documentation-aware clients at
+    Documentation MCP endpoint for documentation-aware clients at
     `https://supaschema.com/docs/mcp`.
   </Card>
   <Card
@@ -113,9 +113,6 @@ Use these only when the agent or documentation client supports them.
   </Card>
 </CardGroup>
 
-<Note>
-  The npm package is the project integration path. `npx skills` is useful for
-  reusable agent context, but it cannot replace project config,
-  path-confirmation state, or the active agent surfaces installed by `supaschema
-  init`.
-</Note>
+:::note
+The npm package is the project integration path. `npx skills` is useful for reusable agent context, but it cannot replace project config, path-confirmation state, or the active agent surfaces installed by `supaschema init`.
+:::

@@ -1,5 +1,7 @@
 ---
 description: Generated agent-surface ownership, synchronization, and hook-registration projections.
+enforcement:
+  type: enforced
 paths:
   - ".claude/agents/**"
   - ".claude/hooks/**"
@@ -17,7 +19,7 @@ paths:
   - "scripts/skills/sync-llm.mjs"
 ---
 
-# Rule 22 — Generated agent-surface sync ownership
+# Rule 22 - Generated agent-surface sync ownership
 
 ## Contract
 
@@ -29,7 +31,7 @@ Synchronization is always the actual write operation. There is no check-only syn
 
 - `.claude/settings.json` owns source Claude hook registration.
 - `.claude/hooks/**`, `.claude/rules/**`, `.claude/skills/**`, and `.claude/agents/**` own their generated projections.
-- `scripts/skills/agent-surface-manifest.mjs` owns canonical source roots, applicable source file types, target roots, and target-trigger classification. This includes MDX documentation, agent prompt sources, and sync-writer modules in addition to Claude-owned surfaces.
+- `scripts/skills/agent-surface-manifest.mjs` owns canonical source roots, exact source files where ownership is singular, applicable source file types, targets, and target-trigger classification. The only agent prompt input is `.agents/prompts/supaschema-install.md`; sibling prompt files are unrelated and must not trigger sync.
 - Parsed skill frontmatter with `metadata.public: true` owns public skill publication; no separate skill-name list exists.
 - `.codex/config.toml` remains a direct runtime owner and is not generated.
 - Consumer templates contain only the Supaschema generated-artifact protection and schema-write workflow hooks.
@@ -46,7 +48,7 @@ Synchronization is always the actual write operation. There is no check-only syn
 ## Target-first synchronization
 
 - The surface-sync `PostToolUse` hook parses the explicit edit target before reading package configuration or doing other work.
-- Only canonical-source edits identified structurally by source root and file type in `agent-surface-manifest.mjs` run `npm run sync:llm`.
+- Only canonical-source edits identified structurally by exact source file or source root and file type in `agent-surface-manifest.mjs` run `npm run sync:llm`.
 - Bash, failure, Stop, generated-target, and unrelated edit events return immediately without hashing, digest state, or repair.
 - Generated drift is reported by guards and tests. It is never silently repaired after an unrelated event.
 - Hook-boundary writer failures are visible and non-blocking. Direct writer and guard commands retain their ordinary failing exit status.
@@ -67,6 +69,17 @@ npm test -- tests/agent-hooks/sync-llm.test.ts tests/agent-hooks/agent-hook-core
 ```
 
 For consumer-boundary changes, also run `npm run guard:public-surface` and `npm run check:package`.
+
+## Failure behavior
+
+If sync, writer, or registration validation fails:
+
+1. Identify whether the failure is in a canonical source (`.claude/hooks/**`, `.claude/rules/**`, `.claude/skills/**`, `.claude/agents/**`, `.claude/settings.json`), the manifest (`scripts/skills/agent-surface-manifest.mjs`), or the writer (`scripts/skills/sync-llm.mjs`).
+2. Fix the canonical source or the manifest's source roots, exact files, and target-trigger classification first. Never hand-edit `.codex/hooks.json`, `.codex/hooks/**`, `.codex/rules/**`, `.codex/agents/**`, `.agents/skills/**`, public `skills/**`, or `agent-bundle/**`.
+3. Re-run `npm run sync:llm`. A content-identical write is a no-op, so a persistent diff after rerunning means the source or manifest fix was incomplete.
+4. Re-run `npm run guard:agent` so the topology and import-closure guards prove the projection against the regenerated targets.
+5. If the failure is a missed or over-eager sync trigger, fix the classification in `agent-surface-manifest.mjs`; do not add ad hoc hashing, digest state, or a second sync path.
+6. If a consumer-boundary check fails, fix the stripping or rendering logic in `sync-llm.mjs` (source-only hook removal, package-manager command materialization); do not patch the generated `agent-bundle/**` output directly.
 
 ## Done means
 

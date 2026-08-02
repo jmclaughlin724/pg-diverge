@@ -12,20 +12,18 @@ supaschema uses the `files` allowlist in `package.json` as the npm package bound
 
 There is intentionally no root `.npmignore`.
 
-<Note>
-  npm treats `files` as an allowlist. A root `.npmignore` is a denylist. This
-  repository has many maintainer-only support files, so allowing known package
-  contents is safer than trying to exclude everything that should not publish.
-</Note>
+:::note
+npm treats `files` as an allowlist. A root `.npmignore` is a denylist. This repository has many maintainer-only support files, so allowing known package contents is safer than trying to exclude everything that should not publish.
+:::
 
 ## Four surfaces
 
-| Surface | Source of truth | Purpose |
-| --- | --- | --- |
-| npm tarball | `package.json` `files` | Files downloaded into `node_modules/supaschema` |
-| Consumer setup | `supaschema init` | Files written or merged into the installing project |
-| Public `npx skills` source | One curated directory under `skills/**` | Portable Agent Skill context installed by the Skills CLI |
-| Public repository | Git-tracked public-safe files | Source, docs, examples, tests, CI, and release evidence that can be public |
+| Surface                      | Source of truth                                           | Purpose                                                                                 |
+| ---------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| npm tarball                  | `package.json` `files`                                    | Files downloaded into `node_modules/supaschema`                                         |
+| Consumer setup               | `supaschema init`                                         | Files written or merged into the installing project                                     |
+| Public `npx skills` source   | One curated directory under `skills/**`                   | Portable Agent Skill context installed by the Skills CLI                                |
+| Public repository            | Git-tracked public-safe files                             | Source, docs, examples, tests, CI, and release evidence that can be public              |
 | Private maintainer workspace | Private repository or intentionally untracked local files | Private automation, credentials, plans, scratch output, and non-public operator context |
 
 The npm tarball and consumer setup are not the same thing. The tarball is what npm downloads. The installer is the script that uses selected tarball files and generated templates to prepare the consuming project.
@@ -126,13 +124,13 @@ Sources:
 
 The test owners and release smoke script prove the package surfaces, and they move together with this page and the guards (no single test should grow to cover another's surface):
 
-| Phase | Owner | Proves |
-| --- | --- | --- |
-| Download | `tests/package/contents.test.ts` | The shipped file list, package-size budget, and broad-directory denylist so docs, examples, benchmarks, corpus fixtures, source, tests, services, and maintainer scripts cannot silently bloat the download. |
-| Setup | `tests/config/install.test.ts` | The shared scaffolder creates the consuming project setup (config, schema/migration dirs, agent bundle, install manifest). |
-| Use | `tests/package/consumer.test.ts` | The full chain end to end: pack, `npm install` the tarball into a throwaway project, edit a schema in the scaffolded tree, then run the _installed_ `supaschema` binary and confirm an accurate, replay-safe migration and accurate generated types. |
-| Package-manager smoke | `scripts/release/package-smoke.mjs` | The packed tarball installs and initializes through the supported consumer package managers and workspace recovery paths using current supported client behavior. |
-| Registry smoke | `scripts/release/registry-smoke.mjs` | Operator proof that npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun can download `supaschema@<version>` from the npm registry and execute the installed binary after publication. |
+| Phase                 | Owner                                | Proves                                                                                                                                                                                                                                               |
+| --------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Download              | `tests/package/contents.test.ts`     | The shipped file list, package-size budget, and broad-directory denylist so docs, examples, benchmarks, corpus fixtures, source, tests, services, and maintainer scripts cannot silently bloat the download.                                         |
+| Setup                 | `tests/config/install.test.ts`       | The shared scaffolder creates the consuming project setup (config, schema/migration dirs, agent bundle, install manifest).                                                                                                                           |
+| Use                   | `tests/package/consumer.test.ts`     | The full chain end to end: pack, `npm install` the tarball into a throwaway project, edit a schema in the scaffolded tree, then run the _installed_ `supaschema` binary and confirm an accurate, replay-safe migration and accurate generated types. |
+| Package-manager smoke | `scripts/release/package-smoke.mjs`  | The packed tarball installs and initializes through the supported consumer package managers and workspace recovery paths using current supported client behavior.                                                                                    |
+| Registry smoke        | `scripts/release/registry-smoke.mjs` | Operator proof that npm, pnpm 11 with `minimumReleaseAge` disabled for the install, and Bun can download `supaschema@<version>` from the npm registry and execute the installed binary after publication.                                            |
 
 The "use" proof installs the real tarball rather than extracting it, because a bare extract cannot run the CLI — `dist/cli.js` needs its runtime dependencies. This is the npm-documented "install the tarball, run the installed bin" pattern.
 
@@ -140,12 +138,9 @@ The published package must not define `preinstall`, `install`, `postinstall`, or
 
 `npm run release:verify` is the prepublish release-facing entry point. It calls the installed-CLI use proof and then the package-manager smoke after the package checks, so use that command for release readiness. After publication, `npm run release:registry-smoke` proves registry availability and package-manager download behavior that a local tarball cannot prove.
 
-<Note>
-  A local registry (Verdaccio) publish-then-install flow remains optional for
-  prepublish rehearsal. Production release uses the real npm registry after
-  publish because dist-tags, registry freshness, and package-manager download
-  behavior cannot be fully proven from a local tarball.
-</Note>
+:::note
+A local registry (Verdaccio) publish-then-install flow remains optional for prepublish rehearsal. Production release uses the real npm registry after publish because dist-tags, registry freshness, and package-manager download behavior cannot be fully proven from a local tarball.
+:::
 
 ## Verification
 

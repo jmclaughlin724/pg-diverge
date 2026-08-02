@@ -12,7 +12,7 @@ paths:
   - ".claude/**"
 ---
 
-# Rule 16 — File size and composition
+# Rule 16 - File size and composition
 
 ## Contract
 
@@ -23,7 +23,7 @@ This rule owns source and context-surface composition. Oversized files usually m
 - Hand-written source files should stay under 500 lines unless a parser/planner table or test fixture genuinely needs more.
 - CLI entrypoints, package public entrypoints, hook runners, and MCP server entrypoints should stay thin and delegate to named modules.
 - `SKILL.md` files should stay under 500 lines. Move long details into skill-local `references/**`.
-- Rule files target 60-100 prose lines. If a rule keeps growing, split by owner or move procedure into a skill.
+- Rule files should stay under 100 prose lines unless the rule's scope genuinely requires more. Split by owner or move procedure into a skill when a rule keeps growing.
 - Generated files, snapshots, vendored references, benchmark evidence, and generated migration output are exempt, but must remain clearly generated or fixture-owned.
 
 ## Split decision table

@@ -21,22 +21,28 @@ export function recordToolEvidence(payload, state, options = {}) {
   if (toolSuccess === undefined) {
     return {};
   }
-  const domains = classifyCommandDomains(command, options);
+  const outcome = toolSuccess ? "success" : "failure";
+  const domains = classifyCommandOutcomeDomains(command, outcome, options);
   for (const domain of domains) {
-    addEvidence(state, { domain, outcome: toolSuccess ? "success" : "failure" });
+    addEvidence(state, { domain, outcome });
   }
   return {};
 }
 
 export function classifyCommandDomains(command, options = {}) {
-  const domains = new Set();
-  classifyShellSource(command, domains, {
+  return classifyCommandOutcomeDomains(command, "success", options);
+}
+
+export function classifyCommandOutcomeDomains(command, outcome, options = {}) {
+  const result = classifyShellSource(command, {
     depth: 0,
+    mode: "evidence",
+    outcome: outcome === "failure" ? "failure" : "success",
     root: options.root ?? process.cwd(),
     scripts: packageScripts(options.root ?? process.cwd()),
     visitedScripts: new Set(),
   });
-  return [...domains].sort();
+  return [...result.domains].sort();
 }
 
 function shellCommand(payload) {
@@ -53,81 +59,201 @@ function shellCommand(payload) {
   return "";
 }
 
-function classifyShellSource(source, domains, context) {
+function classifyShellSource(source, context) {
   if (context.depth > 12) {
-    return;
+    return emptyClassification();
   }
   const analysis = parseShellCommand(source);
   if (analysis.errors.length > 0) {
-    return;
+    return emptyClassification();
   }
-  for (const invocation of analysis.invocations) {
-    const name = executableName(invocation.executable);
-    const args = invocation.arguments.map(staticWordValue);
-    if (!name || args.some((value) => value === null)) {
-      continue;
-    }
-    classifyInvocation(name, args, domains, context);
+  if (context.mode === "cause") {
+    return classifyFailureCauseScript(analysis.script, context);
   }
+  return context.outcome === "failure"
+    ? classifyFailureEvidenceScript(analysis.script, context)
+    : classifySuccessEvidenceScript(analysis.script, context);
 }
 
-function classifyInvocation(name, args, domains, context) {
-  if (name === "npm") {
-    classifyNpm(args, domains, context);
+function classifySuccessEvidenceScript(script, context) {
+  const node = singleOutcomeNode(script);
+  return node ? classifySuccessEvidenceNode(node, context) : emptyClassification();
+}
+
+function classifySuccessEvidenceNode(node, context) {
+  if (node?.type === "Command") {
+    return classifyCommandNode(node, context);
+  }
+  if (node?.type !== "AndOr") {
+    return emptyClassification();
+  }
+  const commands = node.commands ?? [];
+  if (commands.length === 1) {
+    return classifySuccessEvidenceNode(commands[0], context);
+  }
+  if (!hasOnlyOperator(node, "&&")) {
+    return emptyClassification();
+  }
+  return combineClassifications(
+    commands.map((command) => classifySuccessEvidenceNode(command, context))
+  );
+}
+
+function classifyFailureEvidenceScript(script, context) {
+  const node = singleOutcomeNode(script);
+  return node ? classifyFailureEvidenceNode(node, context) : emptyClassification();
+}
+
+function classifyFailureEvidenceNode(node, context) {
+  if (node?.type === "Command") {
+    return classifyCommandNode(node, context);
+  }
+  if (node?.type !== "AndOr") {
+    return emptyClassification();
+  }
+  const commands = node.commands ?? [];
+  if (commands.length === 1) {
+    return classifyFailureEvidenceNode(commands[0], context);
+  }
+  if (hasOnlyOperator(node, "||")) {
+    return combineClassifications(
+      commands.map((command) => classifyFailureEvidenceNode(command, context))
+    );
+  }
+  if (!hasOnlyOperator(node, "&&")) {
+    return emptyClassification();
+  }
+  const possibleCauses = combineClassifications(
+    commands.map((command) => classifyFailureCauseNode(command, context))
+  );
+  return possibleCauses.complete && possibleCauses.domains.size === 1
+    ? possibleCauses
+    : emptyClassification();
+}
+
+function classifyFailureCauseScript(script, context) {
+  const node = singleOutcomeNode(script);
+  return node ? classifyFailureCauseNode(node, context) : emptyClassification();
+}
+
+function classifyFailureCauseNode(node, context) {
+  if (node?.type === "Command") {
+    return classifyCommandNode(node, { ...context, mode: "cause" });
+  }
+  if (node?.type !== "AndOr") {
+    return emptyClassification();
+  }
+  const commands = node.commands ?? [];
+  if (commands.length === 1) {
+    return classifyFailureCauseNode(commands[0], context);
+  }
+  if (!(hasOnlyOperator(node, "&&") || hasOnlyOperator(node, "||"))) {
+    return emptyClassification();
+  }
+  return combineClassifications(
+    commands.map((command) => classifyFailureCauseNode(command, context))
+  );
+}
+
+function singleOutcomeNode(script) {
+  const statements = script?.commands ?? [];
+  if (statements.length !== 1) {
     return;
+  }
+  const statement = statements[0];
+  if (
+    statement?.type !== "Statement" ||
+    statement.background ||
+    (statement.redirects ?? []).length > 0
+  ) {
+    return;
+  }
+  return statement.command;
+}
+
+function hasOnlyOperator(node, expected) {
+  const commands = node.commands ?? [];
+  const operators = node.operators ?? [];
+  return (
+    commands.length > 1 &&
+    operators.length === commands.length - 1 &&
+    operators.every((operator) => operator === expected)
+  );
+}
+
+function classifyCommandNode(node, context) {
+  if ((node.redirects ?? []).length > 0) {
+    return emptyClassification();
+  }
+  const name = executableName(staticWordValue(node.name));
+  const args = (node.suffix ?? []).map(staticWordValue);
+  if (!name || args.some((value) => value === null)) {
+    return emptyClassification();
+  }
+  return classifyInvocation(name, args, context);
+}
+
+function classifyInvocation(name, args, context) {
+  if (helpOrVersion(args)) {
+    return emptyClassification();
+  }
+  if (name === "npm") {
+    return classifyNpm(args, context);
   }
   if (name === "npx") {
-    classifyPackageRunner(args, domains, context);
-    return;
+    return classifyPackageRunner(args, context);
   }
   if (name === "gh") {
-    classifyGithub(args, domains);
-    return;
+    return classifyGithub(args);
   }
   if (name === "node") {
-    classifyNode(args, domains, context.root);
-    return;
+    return classifyNode(args, context.root);
   }
   if (name === "uv") {
-    classifyUv(args, domains, context);
-    return;
+    return classifyUv(args, context);
   }
-  classifyVerificationExecutable(name, args, domains);
+  return classifyVerificationExecutable(name, args);
 }
 
-function classifyNpm(args, domains, context) {
+function classifyNpm(args, context) {
   const parsed = parseValues(args);
   const command = parsed.positionals[0] ?? "";
   if (command === "pack") {
-    domains.add("package");
-    return;
+    return knownClassification("package");
   }
   if (command === "test" || command === "t") {
-    domains.add("test");
-    classifyPackageScript("test", domains, context);
-    return;
+    const direct = knownClassification("test");
+    if (context.outcome === "success" && context.mode === "evidence") {
+      return combineClassifications([direct, classifyPackageScript("test", context)], true);
+    }
+    return direct;
   }
   if (command === "run" || command === "run-script") {
     const script = parsed.positionals[1];
     if (script) {
-      classifyPackageScript(script, domains, context);
+      return classifyPackageScript(script, context);
     }
   }
+  return emptyClassification();
 }
 
-function classifyPackageScript(name, domains, context) {
+function classifyPackageScript(name, context) {
   if (context.visitedScripts.has(name)) {
-    return;
+    return emptyClassification();
   }
   const source = context.scripts[name];
   if (typeof source !== "string") {
-    return;
+    return emptyClassification();
   }
   context.visitedScripts.add(name);
-  classifyShellSource(source, domains, { ...context, depth: context.depth + 1 });
+  try {
+    return classifyShellSource(source, { ...context, depth: context.depth + 1 });
+  } finally {
+    context.visitedScripts.delete(name);
+  }
 }
 
-function classifyPackageRunner(args, domains, context) {
+function classifyPackageRunner(args, context) {
   const parsed = parseValues(args, {
     call: { short: "c", type: "string" },
     package: { multiple: true, short: "p", type: "string" },
@@ -135,18 +261,20 @@ function classifyPackageRunner(args, domains, context) {
   });
   const name = executableName(parsed.positionals[0]);
   if (name) {
-    classifyInvocation(name, parsed.positionals.slice(1), domains, context);
+    return classifyInvocation(name, parsed.positionals.slice(1), context);
   }
+  return emptyClassification();
 }
 
-function classifyNode(args, domains, root) {
+function classifyNode(args, root) {
+  const domains = new Set();
   const parsed = parseValues(args, { test: { type: "boolean" } });
   if (parsed.values.test) {
     domains.add("test");
   }
   const script = parsed.positionals[0];
   if (!script) {
-    return;
+    return classification(domains, domains.size > 0);
   }
   const resolved = path.resolve(root, script);
   const relative = path.relative(root, resolved).split(path.sep).join("/");
@@ -165,11 +293,12 @@ function classifyNode(args, domains, root) {
   if (resolved.split(path.sep).includes("vitest")) {
     domains.add("test");
   }
+  return classification(domains, domains.size > 0);
 }
 
-function classifyUv(args, domains, context) {
+function classifyUv(args, context) {
   if (args[0] !== "run") {
-    return;
+    return emptyClassification();
   }
   const parsed = parseValues(args.slice(1), {
     directory: { type: "string" },
@@ -177,8 +306,9 @@ function classifyUv(args, domains, context) {
   });
   const name = executableName(parsed.positionals[0]);
   if (name) {
-    classifyInvocation(name, parsed.positionals.slice(1), domains, context);
+    return classifyInvocation(name, parsed.positionals.slice(1), context);
   }
+  return emptyClassification();
 }
 
 const SIMPLE_VERIFICATION_DOMAINS = new Map([
@@ -191,57 +321,58 @@ const SIMPLE_VERIFICATION_DOMAINS = new Map([
   ["ultracite", "lint"],
   ["publint", "package"],
   ["attw", "package"],
-  ["mint", "docs"],
+  ["blume", "docs"],
 ]);
 
-function classifyVerificationExecutable(name, args, domains) {
-  if (helpOrVersion(args)) {
-    return;
-  }
+function classifyVerificationExecutable(name, args) {
   const simple = SIMPLE_VERIFICATION_DOMAINS.get(name);
   if (simple) {
-    domains.add(simple);
-    return;
+    return knownClassification(simple);
   }
   if (name === "tsc") {
-    domains.add(args.includes("--noEmit") ? "typecheck" : "build");
-    return;
+    return knownClassification(args.includes("--noEmit") ? "typecheck" : "build");
   }
   if (name === "ruff" && args[0] === "check") {
-    domains.add("lint");
+    return knownClassification("lint");
   }
+  return emptyClassification();
 }
 
-function classifyGithub(args, domains) {
-  if (args[0] === "pr" && (args[1] === "checks" || args[1] === "status")) {
-    domains.add("github-checks");
-    return;
+function classifyGithub(args) {
+  if (args[0] === "pr" && args[1] === "checks") {
+    return knownClassification("github-checks");
   }
-  if (args[0] === "run" && (args[1] === "list" || args[1] === "view" || args[1] === "watch")) {
-    domains.add("github-checks");
-    return;
+  if (args[0] === "run" && args[1] === "watch") {
+    const parsed = parseValues(args.slice(2), {
+      "exit-status": { type: "boolean" },
+    });
+    if (parsed.values["exit-status"] === true) {
+      return knownClassification("github-checks");
+    }
   }
-  if (args[0] !== "api") {
-    return;
+  return emptyClassification();
+}
+
+function emptyClassification() {
+  return classification(new Set(), false);
+}
+
+function knownClassification(...domains) {
+  return classification(new Set(domains), true);
+}
+
+function classification(domains, complete) {
+  return { complete, domains };
+}
+
+function combineClassifications(items, complete = items.every((item) => item.complete)) {
+  const domains = new Set();
+  for (const item of items) {
+    for (const domain of item.domains) {
+      domains.add(domain);
+    }
   }
-  const endpoint = args.slice(1).find((value) => !value.startsWith("-"));
-  if (!endpoint) {
-    return;
-  }
-  let parsed;
-  try {
-    parsed = new URL(endpoint, "https://api.github.invalid");
-  } catch {
-    return;
-  }
-  const segments = parsed.pathname.split("/").filter(Boolean);
-  if (
-    segments.includes("actions") ||
-    segments.includes("check-runs") ||
-    segments.includes("commits")
-  ) {
-    domains.add("github-checks");
-  }
+  return classification(domains, complete);
 }
 
 function parseValues(args, options = {}) {
@@ -250,7 +381,12 @@ function parseValues(args, options = {}) {
 }
 
 function helpOrVersion(args) {
-  return args.some((value) => value === "--help" || value === "--version" || value === "-h");
+  for (const value of args) {
+    if (value === "--help" || value === "--version" || value === "-h") {
+      return true;
+    }
+  }
+  return false;
 }
 
 function packageScripts(root) {

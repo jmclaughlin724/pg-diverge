@@ -1,7 +1,9 @@
 import { resolveConfig } from "../config/schema.js";
 import { lineageLine } from "../migrations/lineage.js";
 import { notNullProofConstraintName } from "../migrations/not-null.js";
+import { commentTarget } from "../sql/dependents.js";
 import { quoteIdent } from "../sql/identifiers.js";
+import { commentTargetSql } from "../sql/privileges.js";
 import {
   defaultRlsState,
   type RlsState,
@@ -604,10 +606,16 @@ function renderDrop(object: SchemaObject): string {
       return `DROP POLICY IF EXISTS ${quoteIdent(ref.name)} ON ${qualifiedTableRef(ref)};`;
     case "rls":
       return renderRlsTransition(object, undefined);
-    case "comment":
-      return typeof object.metadata.commentDropSql === "string"
-        ? ensureSemicolon(object.metadata.commentDropSql)
-        : `COMMENT ON ${String(object.metadata.descriptor ?? ref.name)} IS NULL;`;
+    case "comment": {
+      if (typeof object.metadata.commentDropSql === "string") {
+        return ensureSemicolon(object.metadata.commentDropSql);
+      }
+      const target = commentTarget(object);
+      if (target === undefined) {
+        throw new Error(`comment object ${object.key} has no comment target`);
+      }
+      return `COMMENT ON ${commentTargetSql(target)} IS NULL;`;
+    }
     case "grant":
       return renderGrantDrop(object);
     case "default-privilege":

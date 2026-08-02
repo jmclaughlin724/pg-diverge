@@ -841,14 +841,26 @@ export function commentDescriptor(target: CommentTarget): string {
   return `${kind} ${target.schema ?? "public"}.${target.name}`;
 }
 
+export function commentTargetSql(target: CommentTarget): string {
+  const kind = target.kind.replaceAll("-", " ").toUpperCase();
+  if (target.kind === "schema" || target.kind === "extension") {
+    return `${kind} ${quoteIdent(target.name)}`;
+  }
+  if (target.kind === "function" || target.kind === "procedure") {
+    return `${kind} ${formatQualifiedName(target.schema ?? "public", target.name)}(${target.signature ?? ""})`;
+  }
+  if (target.kind === "constraint" || target.kind === "policy" || target.kind === "trigger") {
+    return `${kind} ${quoteIdent(target.name)} ON ${formatQualifiedName(target.schema ?? "public", target.table ?? "")}`;
+  }
+  if (target.kind === "column") {
+    return `${kind} ${formatQualifiedName(target.schema ?? "public", target.table ?? "")}.${quoteIdent(target.name)}`;
+  }
+  return `${kind} ${formatQualifiedName(target.schema ?? "public", target.name)}`;
+}
+
 export function commentStatementSql(target: CommentTarget, description: string | null): string {
-  const descriptor = commentDescriptor(target);
-  const kindEnd = descriptor.indexOf(" ");
-  const head =
-    kindEnd === -1 ? descriptor.toUpperCase() : descriptor.slice(0, kindEnd).toUpperCase();
-  const rest = kindEnd === -1 ? "" : descriptor.slice(kindEnd);
   const value = description === null ? "NULL" : `'${description.replaceAll("'", "''")}'`;
-  return `COMMENT ON ${head}${rest} IS ${value}`;
+  return `COMMENT ON ${commentTargetSql(target)} IS ${value}`;
 }
 
 function grantPrivileges(value: unknown): string[] {

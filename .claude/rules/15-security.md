@@ -14,7 +14,7 @@ paths:
   - ".codex/**"
 ---
 
-# Rule 15 — Security
+# Rule 15 - Security
 
 ## Contract
 

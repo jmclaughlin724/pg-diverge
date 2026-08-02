@@ -84,12 +84,9 @@ const collectMdxDescendants = (node, name, matches = []) => {
   return matches;
 };
 
-export function inspectMdxNode(node, displayFile, violations, state) {
+export function inspectMdxNode(node, displayFile, violations) {
   if (!isMdxJsxNode(node)) {
     return;
-  }
-  if (node.name === "ParamField") {
-    state.hasParamField = true;
   }
   if (node.name === "img") {
     inspectImgElement(node, displayFile, violations);
@@ -226,7 +223,7 @@ export function inspectImageFrame(node, ancestors, displayFile, violations) {
     violations.push({
       file: displayFile,
       line: lineOf(node),
-      msg: "`<img>` elements in docs must be wrapped in a Mintlify <Frame>",
+      msg: "`<img>` elements in docs must be wrapped in a <Frame>",
       rule: "image-frame",
     });
   }

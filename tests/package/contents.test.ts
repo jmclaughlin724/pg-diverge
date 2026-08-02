@@ -88,7 +88,7 @@ describe("npm package contents", () => {
       "supaschema-config.schema.json",
       "agent-bundle/INSTALL.md",
       "agent-bundle/skills-manifest.json",
-      "agent-bundle/docs/coding-agents.mdx",
+      "agent-bundle/docs/coding-agents/index.mdx",
       "agent-bundle/docs/index.md",
       "agent-bundle/agents/prompts/supaschema-install.md",
       "agent-bundle/agents/skills/supaschema/references/diagnostics.md",

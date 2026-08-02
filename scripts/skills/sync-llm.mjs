@@ -114,12 +114,13 @@ function syncCodexHookConfig(root) {
 
 function agentBundleFiles(root) {
   const sourceCodexHooks = renderSourceCodexHooks(root);
+  const sourcePrompt = agentSurfaceManifest.sourcePrompts;
   const files = new Map([
     ["INSTALL.md", fs.readFileSync(path.join(root, "agent-bundle", "INSTALL.md"), "utf8")],
     ["skills-manifest.json", jsonText({ skills: publicSkillNames(root) })],
     [
-      "agents/prompts/supaschema-install.md",
-      fs.readFileSync(path.join(root, ".agents/prompts/supaschema-install.md"), "utf8"),
+      path.relative(agentSurfaceManifest.agentBundle.targetRoot, sourcePrompt.targetFile),
+      fs.readFileSync(path.join(root, sourcePrompt.sourceFile), "utf8"),
     ],
     [
       "claude/rules/supaschema.md",

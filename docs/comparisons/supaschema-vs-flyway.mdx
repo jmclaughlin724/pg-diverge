@@ -21,17 +21,17 @@ Use `supaschema` to generate and check a Postgres migration from declarative SQL
 
 ## Comparison
 
-| Capability | supaschema | Flyway |
-| --- | --- | --- |
-| Primary role | Generate and check migrations | Apply versioned migrations (runner) |
-| Migration source | Declarative SQL, diffed via parse trees | Versioned SQL scripts you author (or Java) |
-| Auto-generate from a schema diff | Yes, free | Paid (Flyway Enterprise `generate`); Community is hand-authored |
-| Live database needed to generate | No | Not applicable in Community; Enterprise generate compares schemas |
-| Replay-safety and lock-hazard checks | Yes, free (`supaschema check`) | Paid (Enterprise code checks and drift detection) |
-| Applies migrations | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`flyway migrate`) |
-| Database support | Any PostgreSQL database (any provider) | Many database engines |
-| Generated types | TypeScript and Zod from the SQL tree | None |
-| Editions | Open source (MIT) | Community (free) and Enterprise (paid) |
+| Capability                           | supaschema                                                            | Flyway                                                            |
+| ------------------------------------ | --------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Primary role                         | Generate and check migrations                                         | Apply versioned migrations (runner)                               |
+| Migration source                     | Declarative SQL, diffed via parse trees                               | Versioned SQL scripts you author (or Java)                        |
+| Auto-generate from a schema diff     | Yes, free                                                             | Paid (Flyway Enterprise `generate`); Community is hand-authored   |
+| Live database needed to generate     | No                                                                    | Not applicable in Community; Enterprise generate compares schemas |
+| Replay-safety and lock-hazard checks | Yes, free (`supaschema check`)                                        | Paid (Enterprise code checks and drift detection)                 |
+| Applies migrations                   | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`flyway migrate`)                                            |
+| Database support                     | Any PostgreSQL database (any provider)                                | Many database engines                                             |
+| Generated types                      | TypeScript and Zod from the SQL tree                                  | None                                                              |
+| Editions                             | Open source (MIT)                                                     | Community (free) and Enterprise (paid)                            |
 
 ## Why choose supaschema for generation
 
@@ -47,16 +47,14 @@ Use `supaschema` to generate and check a Postgres migration from declarative SQL
 
 A practical setup is `supaschema diff` and `supaschema check` to author and prove the SQL, then either `supaschema sync` for PostgreSQL targets or Flyway Community to apply the versioned script.
 
-<Info>
-  Flyway editions and feature gating are set by Redgate and can change. Last
-  verified 2026-06-17 against Redgate Flyway documentation; confirm current
-  terms before relying on them.
-</Info>
+:::info
+Flyway editions and feature gating are set by Redgate and can change. Last verified 2026-06-17 against Redgate Flyway documentation; confirm current terms before relying on them.
+:::
 
 <CardGroup cols={2}>
   <Card
     title="Liquibase comparison"
-    icon="layer-group"
+    icon="layers"
     href="/comparisons/supaschema-vs-liquibase"
   >
     How supaschema compares to Liquibase's changelog-based migration runner.

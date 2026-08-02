@@ -29,49 +29,23 @@ The database URL must point at a PostgreSQL instance where the role can create t
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Before-state source. Defaults to `config.sources.from`.
-</ParamField>
-
-<ParamField path="--to" type="source">
-  Target source. Defaults to `dir:<config.schemaPaths[0]>`.
-</ParamField>
-
-<ParamField path="--migration" type="path">
-  Migration SQL to apply twice. Defaults to the newest `.sql` file in the
-  migrations directory.
-</ParamField>
-
-<ParamField path="--migrations-dir" type="path">
-  Directory used to resolve the default migration file.
-</ParamField>
-
-<ParamField path="--database-url" type="url">
-  PostgreSQL admin URL. Also resolves from `SUPASCHEMA_DATABASE_URL` or Supabase
-  local discovery.
-</ParamField>
-
-<ParamField path="--ensure-roles" type="boolean">
-  Create missing `NOLOGIN` roles referenced by grants or policies.
-</ParamField>
-
-<ParamField path="--ensure-environment" type="boolean">
-  Stub common Supabase-managed Auth, Vault, and cron surfaces.
-</ParamField>
-
-<ParamField path="--no-ensure-environment" type="boolean">
-  Disable the Supabase environment stub when another command enabled it.
-</ParamField>
-
-<ParamField path="--keep-databases" type="boolean">
-  Keep temporary databases after failure and print their names.
-</ParamField>
+| Name                      | Type    | Description                                                                                     |
+| ------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
+| `--from`                  | source  | Before-state source. Defaults to `config.sources.from`.                                         |
+| `--to`                    | source  | Target source. Defaults to `dir:<config.schemaPaths[0]>`.                                       |
+| `--migration`             | path    | Migration SQL to apply twice. Defaults to the newest `.sql` file in the migrations directory.   |
+| `--migrations-dir`        | path    | Directory used to resolve the default migration file.                                           |
+| `--database-url`          | url     | PostgreSQL admin URL. Also resolves from `SUPASCHEMA_DATABASE_URL` or Supabase local discovery. |
+| `--ensure-roles`          | boolean | Create missing `NOLOGIN` roles referenced by grants or policies.                                |
+| `--ensure-environment`    | boolean | Stub common Supabase-managed Auth, Vault, and cron surfaces.                                    |
+| `--no-ensure-environment` | boolean | Disable the Supabase environment stub when another command enabled it.                          |
+| `--keep-databases`        | boolean | Keep temporary databases after failure and print their names.                                   |
 
 ## Environment variables
 
-| Variable | Use |
-| --- | --- |
-| `SUPASCHEMA_DATABASE_URL` | Default database URL |
+| Variable                         | Use                                                                |
+| -------------------------------- | ------------------------------------------------------------------ |
+| `SUPASCHEMA_DATABASE_URL`        | Default database URL                                               |
 | `SUPASCHEMA_VERIFY_ALLOW_REMOTE` | Set to `1` only for intentionally disposable remote infrastructure |
 
 ## Exit codes

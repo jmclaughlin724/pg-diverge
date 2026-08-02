@@ -9,9 +9,10 @@ const shellExecutables = new Set(["bash", "dash", "ksh", "sh", "zsh"]);
 
 export function parseShellCommand(source) {
   const state = { errors: [], invocations: [], seenScripts: new WeakSet() };
-  collectSource(String(source ?? ""), emptyContext(), state);
+  const script = parse(String(source ?? ""));
+  collectScript(script, emptyContext(), state);
   expandStaticExecutors(state);
-  return { errors: state.errors, invocations: state.invocations };
+  return { errors: state.errors, invocations: state.invocations, script };
 }
 
 export function staticWordValue(word) {

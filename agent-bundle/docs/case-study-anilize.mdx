@@ -32,12 +32,12 @@ The 8,271 figure is what supaschema models. Supabase-managed declarations are ex
 
 A 282-object slice of the real tree (three schemas: identity, calculators, messaging — 73 RLS policies among them) was diffed against itself plus a small additive change, supaschema versus the default Supabase CLI engine, one iteration, both applied to a throwaway Postgres and re-applied:
 
-|  | supaschema | Supabase CLI (default) |
-| --- | --- | --- |
-| Diff latency | **361 ms** | 35,293 ms (~**98× slower**) |
-| Migration applies once → target catalog | yes | yes |
-| Migration applies **twice** (crash-safe re-run) | **yes** | **no** |
-| Reaches the target catalog after re-run | **yes** | **no** |
+|                                                 | supaschema | Supabase CLI (default)      |
+| ----------------------------------------------- | ---------- | --------------------------- |
+| Diff latency                                    | **361 ms** | 35,293 ms (~**98× slower**) |
+| Migration applies once → target catalog         | yes        | yes                         |
+| Migration applies **twice** (crash-safe re-run) | **yes**    | **no**                      |
+| Reaches the target catalog after re-run         | **yes**    | **no**                      |
 
 The Supabase engine emitted an unguarded `CREATE TABLE public.…(…)` (no `IF NOT EXISTS`) and an unguarded `CREATE INDEX`, so the second apply fails with `relation "…" already exists`. supaschema's output is guarded by construction (`IF NOT EXISTS`, catalog-checked `DO` blocks), so a crashed or retried deploy simply runs the file again.
 

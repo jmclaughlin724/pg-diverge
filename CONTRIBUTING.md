@@ -39,7 +39,7 @@ Do not bypass hooks with `--no-verify` or `LEFTHOOK=0`. Fix the failure locally;
 | `npm run guard` | repo guard suite: public surface, package/tooling, config, CI, GitHub process, release metadata |
 | `npm run check:package` | `publint` + `attw` package-shape checks |
 | `npm run fixture:verify` | render a fixture migration, apply twice, compare catalogs |
-| `npm run docs:check` | Mintlify validation, links, accessibility (only if `docs/**` changed) |
+| `npm run docs:check` | Docs lint, Blume config/frontmatter validation, links, and build (only if `docs/**` changed) |
 
 Run the **narrowest** command that proves your change, then broaden when you touch shared planner, parser, renderer, hook, or package surfaces.
 

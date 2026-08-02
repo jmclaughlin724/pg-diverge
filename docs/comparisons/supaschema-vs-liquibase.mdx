@@ -21,17 +21,17 @@ Use `supaschema` to generate and check a Postgres migration from declarative SQL
 
 ## Comparison
 
-| Capability | supaschema | Liquibase |
-| --- | --- | --- |
-| Primary role | Generate and check migrations | Apply changelog migrations (runner) |
-| Change format | Declarative PostgreSQL SQL | Changelog (XML / YAML / JSON / SQL changesets) |
-| Generate a migration | Diffs declarative SQL parse trees | `diff` / `diff-changelog` compares two databases or snapshots |
-| Live database needed to generate | No | Yes, `diff` compares two database states |
-| Replay-safety and lock-hazard checks | Yes, free (`supaschema check`) | Policy checks are a paid Liquibase Secure feature |
-| Applies migrations | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`liquibase update`) |
-| Database support | Any PostgreSQL database (any provider) | Many database engines |
-| Generated types | TypeScript and Zod from the SQL tree | None |
-| Editions | Open source (MIT) | Community (free, Functional Source License since 5.0) and Liquibase Secure (paid) |
+| Capability                           | supaschema                                                            | Liquibase                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Primary role                         | Generate and check migrations                                         | Apply changelog migrations (runner)                                               |
+| Change format                        | Declarative PostgreSQL SQL                                            | Changelog (XML / YAML / JSON / SQL changesets)                                    |
+| Generate a migration                 | Diffs declarative SQL parse trees                                     | `diff` / `diff-changelog` compares two databases or snapshots                     |
+| Live database needed to generate     | No                                                                    | Yes, `diff` compares two database states                                          |
+| Replay-safety and lock-hazard checks | Yes, free (`supaschema check`)                                        | Policy checks are a paid Liquibase Secure feature                                 |
+| Applies migrations                   | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`liquibase update`)                                                          |
+| Database support                     | Any PostgreSQL database (any provider)                                | Many database engines                                                             |
+| Generated types                      | TypeScript and Zod from the SQL tree                                  | None                                                                              |
+| Editions                             | Open source (MIT)                                                     | Community (free, Functional Source License since 5.0) and Liquibase Secure (paid) |
 
 ## Why choose supaschema for generation
 
@@ -48,11 +48,9 @@ Use `supaschema` to generate and check a Postgres migration from declarative SQL
 
 A practical setup is `supaschema diff` and `supaschema check` to author and prove the SQL, then either `supaschema sync` for PostgreSQL targets or Liquibase to apply and track it.
 
-<Info>
-  Liquibase editions and licensing are set by Liquibase and can change. Last
-  verified 2026-06-17 against Liquibase documentation; confirm current terms
-  before relying on them.
-</Info>
+:::info
+Liquibase editions and licensing are set by Liquibase and can change. Last verified 2026-06-17 against Liquibase documentation; confirm current terms before relying on them.
+:::
 
 <CardGroup cols={2}>
   <Card

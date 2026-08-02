@@ -3,33 +3,36 @@
 import { globSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inspectDocsJson } from "./docs-json.mjs";
 import { inspectLocalRunnerConvention } from "./local-runner.mjs";
 import { inspectDocsPage } from "./page.mjs";
-import { routeForDocFile } from "./paths.mjs";
 
 const DOCS_GLOB = "docs/**/*.{md,mdx}";
+const EXCLUDED_DOC_PREFIXES = [
+  "docs/node_modules/",
+  "docs/.blume/",
+  "docs/.blume-verify/",
+  "docs/dist/",
+];
 const toPosix = (path) => path.replaceAll("\\", "/");
 
+const discoverDocsFiles = (rootDir) =>
+  globSync(DOCS_GLOB, { cwd: rootDir })
+    .map(toPosix)
+    .filter((file) => !EXCLUDED_DOC_PREFIXES.some((prefix) => file.startsWith(prefix)))
+    .sort();
+
 export function lintDocsStandard({ rootDir = process.cwd(), files } = {}) {
-  const relativeFiles = (files ?? globSync(DOCS_GLOB, { cwd: rootDir })).map(toPosix).sort();
+  const relativeFiles = (files ?? discoverDocsFiles(rootDir)).map(toPosix).sort();
   const violations = [];
-  const frontmatterByRoute = new Map();
   const isFullDocsLint = files === undefined;
 
   for (const file of relativeFiles) {
     const absoluteFile = isAbsolute(file) ? file : join(rootDir, file);
     const displayFile = toPosix(isAbsolute(file) ? relative(rootDir, absoluteFile) : file);
     const text = readFileSync(absoluteFile, "utf8");
-    const frontmatter = inspectDocsPage(text, displayFile, violations);
-    if (frontmatter) {
-      frontmatterByRoute.set(routeForDocFile(displayFile), frontmatter);
-    }
+    inspectDocsPage(text, displayFile, violations);
   }
 
-  inspectDocsJson(rootDir, relativeFiles, frontmatterByRoute, violations, {
-    requireConfig: files === undefined,
-  });
   if (isFullDocsLint) {
     inspectLocalRunnerConvention(rootDir, violations);
   }
@@ -55,7 +58,7 @@ function formatViolations(violations, pageCount) {
 }
 
 function runCli() {
-  const files = globSync(DOCS_GLOB, { cwd: process.cwd() }).map(toPosix).sort();
+  const files = discoverDocsFiles(process.cwd());
   const violations = lintDocsStandard();
   const output = formatViolations(violations, files.length);
   if (violations.length === 0) {

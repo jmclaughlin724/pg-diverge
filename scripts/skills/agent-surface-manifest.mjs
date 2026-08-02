@@ -28,9 +28,8 @@ export const agentSurfaceManifest = Object.freeze({
     targetRoots: Object.freeze([".agents/skills"]),
   }),
   sourcePrompts: Object.freeze({
-    sourceExtension: ".md",
-    sourceRoot: ".agents/prompts",
-    targetRoot: "agent-bundle/agents/prompts",
+    sourceFile: ".agents/prompts/supaschema-install.md",
+    targetFile: "agent-bundle/agents/prompts/supaschema-install.md",
   }),
   syncImplementation: Object.freeze({
     sourceExtension: ".mjs",
@@ -43,6 +42,9 @@ export function isCanonicalAgentSurfaceSource(relativePath) {
     return true;
   }
   for (const surface of Object.values(agentSurfaceManifest)) {
+    if (typeof surface.sourceFile === "string" && relativePath === surface.sourceFile) {
+      return true;
+    }
     if (typeof surface.sourceRoot !== "string") {
       continue;
     }

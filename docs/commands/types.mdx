@@ -37,19 +37,11 @@ npx supaschema types --out stdout
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Schema source to parse. Defaults to the configured schema tree.
-</ParamField>
-
-<ParamField path="--out" type="path | stdout">
-  TypeScript output path. `stdout` prints types and skips the Zod file.
-</ParamField>
-
-<ParamField path="--check" type="boolean">
-  Verify on-disk contracts match regenerated output without writing. Exits 0
-  when identical, 2 with `SUPA_TYPES_CONTRACT_DRIFT` when a file is missing or
-  would change. Cannot be combined with `--out`.
-</ParamField>
+| Name      | Type           | Description                                                                                                                                                                                            |
+| --------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--from`  | source         | Schema source to parse. Defaults to the configured schema tree.                                                                                                                                        |
+| `--out`   | path \| stdout | TypeScript output path. `stdout` prints types and skips the Zod file.                                                                                                                                  |
+| `--check` | boolean        | Verify on-disk contracts match regenerated output without writing. Exits 0 when identical, 2 with `SUPA_TYPES_CONTRACT_DRIFT` when a file is missing or would change. Cannot be combined with `--out`. |
 
 ## Provenance header
 
@@ -64,10 +56,10 @@ Every generated contract opens with a provenance header naming the generator ver
 
 ## Output paths
 
-| Config key | Default |
-| --- | --- |
-| `typesFile` | `database.types.ts` |
-| `zodFile` | `database.zod.ts` |
+| Config key           | Default                                                             |
+| -------------------- | ------------------------------------------------------------------- |
+| `typesFile`          | `database.types.ts`                                                 |
+| `zodFile`            | `database.zod.ts`                                                   |
 | `zodTypesImportPath` | derived from `typesFile` during joint generation; otherwise omitted |
 
 Commit generated outputs when reviewers should see app-type impact in the same pull request as schema changes.

@@ -83,7 +83,7 @@ export async function resolveGenerationSourceDefaults(
   let from = options.from;
   if (from === undefined) {
     if (config.sources.from === sourceAuto) {
-      from = await automaticGenerationBaseline(cwd, config, migrationsDir, gitHeadExists);
+      from = await automaticGenerationBaseline(cwd, config, migrationsDir, mode, gitHeadExists);
     } else {
       from = config.sources.from;
     }
@@ -100,6 +100,7 @@ async function automaticGenerationBaseline(
   cwd: string,
   config: SupaschemaConfig,
   migrationsDir: string,
+  mode: SchemaPlanningMode,
   gitHeadExists: (cwd?: string) => Promise<boolean>
 ): Promise<string> {
   const stagedBaseline = await stagedGenerationBaseline(cwd, config, migrationsDir);
@@ -108,6 +109,9 @@ async function automaticGenerationBaseline(
   }
   const migrationContext = await readMigrationContext(migrationsDir, { cwd });
   const hasMigrations = migrationContext.files.length > 0;
+  if (mode === "drift") {
+    return (await gitHeadExists(cwd)) ? "git:HEAD" : "empty:";
+  }
   const requiresReplay =
     hasMigrations &&
     (migrationContext.latestGeneratedBaseline === undefined ||
@@ -221,7 +225,8 @@ export async function buildSchemaPlanningContext(
   });
   const toStart = performance.now();
   const fullTo = await extractSourceModel(options.to, extractOptions);
-  if (options.checkMigrationBaseline !== false) {
+  const mode = options.mode ?? "generation";
+  if (options.checkMigrationBaseline !== false && mode === "generation") {
     diagnostics.push(
       ...(await migrationBaselineDiagnostics(options.from, fullFrom, migrationContext, cwd))
     );

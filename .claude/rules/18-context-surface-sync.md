@@ -8,7 +8,6 @@ paths:
   - ".claude/**"
   - ".codex/**"
   - ".agents/**"
-  - ".gemini/**"
   - ".mcp.json"
   - "fastmcp.json"
   - "scripts/skills/**"
@@ -17,11 +16,11 @@ paths:
   - "package.json"
 ---
 
-# Rule 18 — Context surface sync
+# Rule 18 - Context surface sync
 
 ## Contract
 
-This rule owns the canonical-owner and generated-mirror sync matrix for agent-facing context surfaces. Edit the owner first, then run the narrow sync that target requires. Do not patch generated mirrors while leaving their owner stale.
+This rule owns the canonical-owner and generated-mirror sync matrix for agent-facing context surfaces, plus the root-brief and tracked-runtime boundaries. Edit the owner first, then run the narrow sync that target requires. Rule 14 owns the prohibition on hand-editing generated artifacts; do not leave an owner stale while its mirror moves.
 
 ## Owner matrix
 
@@ -85,8 +84,8 @@ If sync or public/private boundary validation fails:
 1. Identify whether the failure is in the canonical owner, sync script, generated target, native runtime config, or parsed public-skill metadata.
 2. Fix the canonical owner or sync script first.
 3. Re-run the actual narrow sync and applicable guard.
-4. Do not patch generated mirrors directly.
-5. Do not hide required source-repo runtime behind `.gitignore`; add or repair tracked guard/test enforcement and keep package output narrow instead.
+4. Do not patch generated mirrors directly (Rule 14).
+5. Do not hide required source-repo runtime behind `.gitignore`; add or repair tracked guard and test enforcement and keep package output narrow instead.
 6. If another session owns overlapping generated output, preserve unrelated hunks per Rule 14.
 
 ## Done means

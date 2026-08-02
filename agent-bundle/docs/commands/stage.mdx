@@ -18,14 +18,10 @@ npx supaschema stage --migrations-dir database/migrations
 
 ## Flags
 
-<ParamField path="--migrations-dir" type="path">
-  Migration files directory. Defaults to `config.migrationsDir`.
-</ParamField>
-
-<ParamField path="--dry-run" type="boolean">
-  Print generated migration files that would be staged without changing the git
-  index.
-</ParamField>
+| Name               | Type    | Description                                                                          |
+| ------------------ | ------- | ------------------------------------------------------------------------------------ |
+| `--migrations-dir` | path    | Migration files directory. Defaults to `config.migrationsDir`.                       |
+| `--dry-run`        | boolean | Print generated migration files that would be staged without changing the git index. |
 
 ## Refusal cases
 

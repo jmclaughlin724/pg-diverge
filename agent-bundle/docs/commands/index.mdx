@@ -127,27 +127,21 @@ Open the command page when you need exact flags or exit codes.
 
 When you omit flags, supaschema reads `supaschema.config.json`.
 
-| Area | Default |
-| --- | --- |
-| `--from` | `config.sources.from`; for generation, `"auto"` resolves valid `git:HEAD` as a candidate baseline, then generated migration lineage must match when migrations exist |
-| `--to` | `dir:<config.schemaPaths[0]>` |
-| Migration output | `config.migrationsDir` |
-| `check` input | every `.sql` file in `config.migrationsDir`; fails when none exist unless `--allow-empty` is passed |
-| `verify --migration` | newest `.sql` file in `config.migrationsDir` |
+| Area                 | Default                                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--from`             | `config.sources.from`; for generation, `"auto"` resolves valid `git:HEAD` as a candidate baseline, then generated migration lineage must match when migrations exist |
+| `--to`               | `dir:<config.schemaPaths[0]>`                                                                                                                                        |
+| Migration output     | `config.migrationsDir`                                                                                                                                               |
+| `check` input        | every `.sql` file in `config.migrationsDir`; fails when none exist unless `--allow-empty` is passed                                                                  |
+| `verify --migration` | newest `.sql` file in `config.migrationsDir`                                                                                                                         |
 
 ## Global flags
 
-<ParamField path="--config" type="path">
-  Use an explicit JSON config file instead of `supaschema.config.json`.
-</ParamField>
-
-<ParamField path="--env" type="string">
-  Read the database URL from a named `environments` entry in config.
-</ParamField>
-
-<ParamField path="--quiet" type="boolean">
-  Suppress non-essential diagnostic output.
-</ParamField>
+| Name       | Type    | Description                                                           |
+| ---------- | ------- | --------------------------------------------------------------------- |
+| `--config` | path    | Use an explicit JSON config file instead of `supaschema.config.json`. |
+| `--env`    | string  | Read the database URL from a named `environments` entry in config.    |
+| `--quiet`  | boolean | Suppress non-essential diagnostic output.                             |
 
 ## Exit codes
 

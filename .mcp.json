@@ -35,10 +35,6 @@
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
     },
-    "mintlify": {
-      "type": "http",
-      "url": "https://mintlify.com/docs/mcp"
-    },
     "openaiDeveloperDocs": {
       "type": "http",
       "url": "https://developers.openai.com/mcp"

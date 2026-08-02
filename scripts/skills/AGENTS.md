@@ -5,6 +5,7 @@ The single writer for generated Claude-to-Codex and Claude-to-Agents outputs.
 ## Contents
 
 - `sync-llm.mjs` — writes `.codex/hooks.json`, `.codex/hooks/**`, `.codex/agents/**`, `.codex/rules/**`, `.agents/skills/**`, public `skills/supaschema`, and `agent-bundle/**` from `.claude/**` owners
+- `agent-surface-manifest.mjs` — declares canonical sync source roots, exact singular source files, and generated targets used by both the writer and target-first hook
 - `codex-rules.mjs` — Codex agent/rule rendering helpers
 
 ## Owners

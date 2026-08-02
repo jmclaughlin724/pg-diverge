@@ -23,29 +23,18 @@ npx supaschema contracts diff --from schema-contract.json
 
 ## Subcommands
 
-<ParamField path="export" type="command">
-  Build a JSON schema contract from `--from`, defaulting to the configured
-  schema tree.
-</ParamField>
-
-<ParamField path="diff" type="command">
-  Compare `--from <file>` with `--to <source>`, defaulting `--to` to the
-  configured schema tree.
-</ParamField>
+| Name     | Type    | Description                                                                                    |
+| -------- | ------- | ---------------------------------------------------------------------------------------------- |
+| `export` | command | Build a JSON schema contract from `--from`, defaulting to the configured schema tree.          |
+| `diff`   | command | Compare `--from <file>` with `--to <source>`, defaulting `--to` to the configured schema tree. |
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Schema source used by `export`.
-</ParamField>
-
-<ParamField path="--to" type="source">
-  Candidate source used by `diff`. Defaults to the configured schema tree.
-</ParamField>
-
-<ParamField path="--out" type="file | stdout">
-  Output destination for `export`. Defaults to `stdout`.
-</ParamField>
+| Name     | Type           | Description                                                              |
+| -------- | -------------- | ------------------------------------------------------------------------ |
+| `--from` | source         | Schema source used by `export`.                                          |
+| `--to`   | source         | Candidate source used by `diff`. Defaults to the configured schema tree. |
+| `--out`  | file \| stdout | Output destination for `export`. Defaults to `stdout`.                   |
 
 ## Boundaries
 

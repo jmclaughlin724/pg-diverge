@@ -105,8 +105,6 @@ For plain PostgreSQL and hosted PostgreSQL providers, `apply` can use the direct
 
 Teams that already use `psql`, a deployment job, Terraform-controlled operations, Flyway, Liquibase, a platform migration service, or another reviewed SQL runner can keep that external apply step. That is an operational boundary, not a reason to duplicate schema ownership or generated types in an ORM.
 
-<Note>
-  `apply` is the canonical package-owned apply pipeline. External runners are a
-  deliberate integration choice when a team already has a separate deployment
-  owner.
-</Note>
+:::note
+`apply` is the canonical package-owned apply pipeline. External runners are a deliberate integration choice when a team already has a separate deployment owner.
+:::

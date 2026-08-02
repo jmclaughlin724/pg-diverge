@@ -36,7 +36,6 @@ const registryServers: Record<string, ServerConfig> = {
     ],
   },
   context7: { type: "http", url: "https://mcp.context7.com/mcp" },
-  mintlify: { type: "http", url: "https://mintlify.com/docs/mcp" },
   openaiDeveloperDocs: {
     type: "http",
     url: "https://developers.openai.com/mcp",
@@ -72,7 +71,6 @@ const codexServers: Record<string, ServerConfig> = {
     ],
   },
   context7: { url: "https://mcp.context7.com/mcp" },
-  mintlify: { url: "https://mintlify.com/docs/mcp" },
   openaiDeveloperDocs: { url: "https://developers.openai.com/mcp" },
   ultracite: { url: "https://gitmcp.io/haydenbleasel/ultracite" },
   zod: { url: "https://mcp.inkeep.com/zod/mcp" },

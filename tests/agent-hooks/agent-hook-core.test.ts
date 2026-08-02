@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
-import { classifyCommandDomains } from "../../scripts/agent-hooks/command-evidence.mjs";
+import {
+  classifyCommandDomains,
+  classifyCommandOutcomeDomains,
+} from "../../scripts/agent-hooks/command-evidence.mjs";
 import {
   editTargetStrings,
   governedToolTargetStrings,
@@ -22,6 +25,7 @@ import {
   sessionStatePath,
   writeSessionState,
 } from "../../scripts/agent-hooks/state.mjs";
+import { isCanonicalAgentSurfaceSource } from "../../scripts/skills/agent-surface-manifest.mjs";
 
 const repositoryRoot = process.cwd();
 const originalStateDir = process.env.STATE_DIR;
@@ -109,6 +113,53 @@ describe("parser-backed command and edit analysis", () => {
     ]);
     expect(classifyCommandDomains("printf 'npm test' && unknown-command")).toEqual([]);
     expect(classifyCommandDomains("npm run does-not-exist")).toEqual([]);
+    for (const inspection of [
+      "npm test -- --help",
+      "npx vitest --help",
+      "gh pr status",
+      "gh run list",
+      "gh run view 123",
+      "gh run watch 123",
+      "gh api repos/example/project/actions/runs",
+    ]) {
+      expect(classifyCommandDomains(inspection), inspection).toEqual([]);
+    }
+    expect(classifyCommandDomains("gh run watch 123 --exit-status")).toEqual(["github-checks"]);
+  });
+
+  it("records only outcomes proven by the enclosing shell AST", () => {
+    for (const command of [
+      "npm test || true",
+      "npm test; true",
+      "npm test | cat",
+      "result=$(npm test); true",
+      "bash -c 'npm test || true'",
+    ]) {
+      expect(classifyCommandDomains(command, { root: repositoryRoot }), command).toEqual([]);
+    }
+
+    expect(classifyCommandDomains("npm test && npm run lint", { root: repositoryRoot })).toEqual([
+      "lint",
+      "test",
+    ]);
+    expect(
+      classifyCommandOutcomeDomains("npm test && npm run lint", "failure", {
+        root: repositoryRoot,
+      })
+    ).toEqual([]);
+    expect(
+      classifyCommandOutcomeDomains("npm run typecheck", "failure", { root: repositoryRoot })
+    ).toEqual(["typecheck"]);
+    expect(
+      classifyCommandOutcomeDomains("npm run check:package", "failure", {
+        root: repositoryRoot,
+      })
+    ).toEqual(["package"]);
+  });
+
+  it("classifies only the exact owned prompt as a surface-sync source", () => {
+    expect(isCanonicalAgentSurfaceSource(".agents/prompts/supaschema-install.md")).toBe(true);
+    expect(isCanonicalAgentSurfaceSource(".agents/prompts/unrelated.md")).toBe(false);
   });
 });
 
@@ -141,6 +192,7 @@ describe("narrow Bash enforcement", () => {
       "block"
     );
     expect(evaluate("cat .env").action).toBe("block");
+    expect(evaluate("command cat -- .env").action).toBe("block");
     expect(evaluate("cat config/.pgpass").action).toBe("block");
     expect(evaluate("cat .env.example")).toEqual({ action: "allow" });
     expect(evaluate("cat .env.template")).toEqual({ action: "allow" });
@@ -149,6 +201,12 @@ describe("narrow Bash enforcement", () => {
   it("blocks parser-confirmed literal PostgreSQL DDL arguments only", () => {
     expect(evaluate("psql -c 'CREATE TABLE app.accounts (id bigint)'").action).toBe("block");
     expect(evaluate("psql --command='ALTER TABLE app.accounts ADD COLUMN name text'").action).toBe(
+      "block"
+    );
+    expect(
+      evaluate("psql -v ON_ERROR_STOP=1 -XAtc 'CREATE TABLE app.audit (id bigint)'").action
+    ).toBe("block");
+    expect(evaluate("env psql -c 'CREATE POLICY p ON app.accounts USING (true)'").action).toBe(
       "block"
     );
     expect(evaluate("supabase db execute --sql 'DROP TABLE app.accounts'").action).toBe("block");
@@ -163,6 +221,7 @@ describe("narrow Bash enforcement", () => {
     const env = { ...process.env, HOME: dirname(root) };
 
     expect(evaluate("rm -rf /", { env, root }).action).toBe("block");
+    expect(evaluate("rm --recursive --force /", { env, root }).action).toBe("block");
     expect(evaluate(`rm -rf ${root}`, { env, root }).action).toBe("block");
     expect(evaluate("rm -rf ..", { env, root }).action).toBe("block");
     expect(evaluate("rm -rf $TARGET", { env, root }).action).toBe("block");
@@ -205,6 +264,27 @@ describe("skill routing context", () => {
     expect(preTool("skill-shell", "Bash", { command }, fixture).output).toEqual({});
     postTool("skill-shell", "Bash", { command }, fixture, { stdout: fixture.skillSource });
     expect(currentTurnState(readSessionState(shellSession)).pendingSkills).not.toHaveProperty(
+      "fastmcp"
+    );
+
+    const codexFixture = {
+      ...fixture,
+      options: { ...fixture.options, runtime: "codex" },
+    };
+    const codexSession = { prompt: "$fastmcp", session_id: "skill-codex-shell" };
+    handleAgentHookEvent("UserPromptSubmit", codexSession, codexFixture.options);
+    const codexCommand = `cat '${fixture.codexFastmcpSkill}'`;
+    expect(
+      preTool(codexSession.session_id, "Bash", { command: codexCommand }, codexFixture).output
+    ).toEqual({});
+    postTool(
+      codexSession.session_id,
+      "Bash",
+      { command: codexCommand },
+      codexFixture,
+      fixture.skillSource
+    );
+    expect(currentTurnState(readSessionState(codexSession)).pendingSkills).not.toHaveProperty(
       "fastmcp"
     );
   });
@@ -259,6 +339,13 @@ describe("skill routing context", () => {
       content: `${fixture.skillSource}truncated`,
     });
     postTool(sessionId, "Bash", { command: "cat .claude/skills/*/SKILL.md" }, fixture);
+    postTool(sessionId, "Bash", { command: `cat ${fixture.fastmcpSkill}; true` }, fixture, {
+      stdout: fixture.skillSource,
+    });
+    postTool(sessionId, "Bash", { command: `cat ${fixture.fastmcpSkill}` }, fixture, {
+      exit_code: 1,
+      stdout: fixture.skillSource,
+    });
     postTool(sessionId, "Grep", { path: fixture.fastmcpSkill, pattern: "#" }, fixture);
     postTool(sessionId, "Skill", { skill: "not-in-inventory" }, fixture);
     handleAgentHookEvent(
@@ -350,6 +437,9 @@ describe("structured verification conflicts", () => {
     expect(stop(sessionId, "Tests passed.", fixture).output).toEqual({});
     failedCommand(sessionId, "npm test", fixture);
     expect(stop(sessionId, "Tests failed; the error remains.", fixture).output).toEqual({});
+    expect(
+      stop(sessionId, "Tests passed previously, but the current tests failed.", fixture).output
+    ).toEqual({});
     expect(stop(sessionId, "Tests passed.", fixture).output).toMatchObject({
       decision: "block",
       reason: expect.stringContaining("test"),
@@ -411,6 +501,15 @@ describe("structured verification conflicts", () => {
     expect(claimedVerificationDomains("Tests did not pass.")).toEqual([]);
     expect(claimedVerificationDomains("Here are options for running tests.")).toEqual([]);
     expect(claimedVerificationDomains("Could tests pass after another change?")).toEqual([]);
+    expect(claimedVerificationDomains("Tests passed previously, but now fail.")).toEqual([]);
+    expect(claimedVerificationDomains("Earlier tests passed. The current tests failed.")).toEqual(
+      []
+    );
+    expect(claimedVerificationDomains("Tests previously failed but tests now passed.")).toEqual([
+      "test",
+    ]);
+    expect(claimedVerificationDomains("Tests passed after previously failing.")).toEqual(["test"]);
+    expect(claimedVerificationDomains("Tests passed previously but are failing now.")).toEqual([]);
   });
 });
 
@@ -556,6 +655,7 @@ describe("hook output contracts", () => {
 });
 
 interface HookFixture {
+  codexFastmcpSkill: string;
   fastmcpSkill: string;
   options: { root: string; runtime: "claude" | "codex" };
   root: string;
@@ -567,7 +667,11 @@ async function hookFixture(): Promise<HookFixture> {
   const root = await mkdtemp(join(tmpdir(), "supa-agent-hook-root-"));
   const stateDir = await mkdtemp(join(tmpdir(), "supa-agent-hook-state-"));
   const fastmcpSkill = join(root, ".claude", "skills", "fastmcp", "SKILL.md");
-  await mkdir(dirname(fastmcpSkill), { recursive: true });
+  const codexFastmcpSkill = join(root, ".agents", "skills", "fastmcp", "SKILL.md");
+  await Promise.all([
+    mkdir(dirname(fastmcpSkill), { recursive: true }),
+    mkdir(dirname(codexFastmcpSkill), { recursive: true }),
+  ]);
   const skillSource = [
     "---",
     "name: fastmcp",
@@ -584,8 +688,18 @@ async function hookFixture(): Promise<HookFixture> {
     "Use the parser-backed workflow.",
     "",
   ].join("\n");
-  await writeFile(fastmcpSkill, skillSource);
-  return { fastmcpSkill, options: { root, runtime: "claude" }, root, skillSource, stateDir };
+  await Promise.all([
+    writeFile(fastmcpSkill, skillSource),
+    writeFile(codexFastmcpSkill, skillSource),
+  ]);
+  return {
+    codexFastmcpSkill,
+    fastmcpSkill,
+    options: { root, runtime: "claude" },
+    root,
+    skillSource,
+    stateDir,
+  };
 }
 
 function preTool(
@@ -606,7 +720,7 @@ function postTool(
   toolName: string,
   toolInput: Record<string, unknown>,
   fixture: HookFixture,
-  toolResponse: Record<string, unknown> = {}
+  toolResponse: unknown = {}
 ) {
   return handleAgentHookEvent(
     "PostToolUse",

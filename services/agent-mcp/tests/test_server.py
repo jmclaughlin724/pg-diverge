@@ -374,7 +374,7 @@ async def test_status_upstream_docs_capabilities_match_mcp_json() -> None:
 
     returned = {item["server"] for item in docs_capabilities}
 
-    assert returned == {"cloudflare-docs", "mintlify"}
+    assert returned == {"cloudflare-docs"}
     assert returned <= configured, (
         f"advertised docs servers not in .mcp.json: {returned - configured}"
     )

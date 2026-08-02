@@ -33,9 +33,6 @@ url = "https://mcp.context7.com/mcp"
 default_tools_approval_mode = "approve"
 startup_timeout_sec = 20.0
 
-[mcp_servers.mintlify]
-url = "https://mintlify.com/docs/mcp"
-
 [mcp_servers.openaiDeveloperDocs]
 enabled = true
 required = false

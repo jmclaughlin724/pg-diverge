@@ -21,16 +21,16 @@ Use `supaschema` when you want free, Postgres-native migration generation plus r
 
 ## Comparison
 
-| Capability | supaschema | Atlas |
-| --- | --- | --- |
-| Migration-safety linting cost | Free (`supaschema check`) | `atlas migrate lint` is Atlas Pro only since v0.38 (2025-10-28) |
-| Custom policy linting | Free rule packs in `scan` | Schema-policy rules are Atlas Pro only |
-| Database focus | Any PostgreSQL database (any provider) | Many database engines |
-| Parser | PostgreSQL's parser (libpg_query) compiled to WebAssembly | Its own multi-engine schema engine |
-| Docker or shadow database | Not required | Often used for diffing |
-| RLS policy body changes | Compared structurally | Postgres RLS coverage varies by feature |
-| Generated types | TypeScript and Zod from the schema files | Not the same generated-type workflow |
-| Apply to production | No, generation and proof only | Yes, Atlas applies migrations |
+| Capability                    | supaschema                                                | Atlas                                                           |
+| ----------------------------- | --------------------------------------------------------- | --------------------------------------------------------------- |
+| Migration-safety linting cost | Free (`supaschema check`)                                 | `atlas migrate lint` is Atlas Pro only since v0.38 (2025-10-28) |
+| Custom policy linting         | Free rule packs in `scan`                                 | Schema-policy rules are Atlas Pro only                          |
+| Database focus                | Any PostgreSQL database (any provider)                    | Many database engines                                           |
+| Parser                        | PostgreSQL's parser (libpg_query) compiled to WebAssembly | Its own multi-engine schema engine                              |
+| Docker or shadow database     | Not required                                              | Often used for diffing                                          |
+| RLS policy body changes       | Compared structurally                                     | Postgres RLS coverage varies by feature                         |
+| Generated types               | TypeScript and Zod from the schema files                  | Not the same generated-type workflow                            |
+| Apply to production           | No, generation and proof only                             | Yes, Atlas applies migrations                                   |
 
 ## Why the workflow differs
 
@@ -38,16 +38,14 @@ Use `supaschema` when you want free, Postgres-native migration generation plus r
 
 Atlas is a larger platform that spans multiple database engines and adds hosted reporting and CI integration. Starting with Atlas v0.38, `atlas migrate lint` and the custom schema-policy rule language require Atlas Pro. Atlas's current pricing pages describe separate CLI seat, pipeline project, and target-database pricing. If migration linting was the reason you used Atlas and you want a free Postgres-native option, `supaschema check` covers that lane.
 
-<Info>
-  Atlas pricing and feature gating are set by Atlas and can change. Last
-  verified 2026-06-18 against the Atlas documentation; confirm current terms
-  before relying on them.
-</Info>
+:::info
+Atlas pricing and feature gating are set by Atlas and can change. Last verified 2026-06-18 against the Atlas documentation; confirm current terms before relying on them.
+:::
 
 <CardGroup cols={2}>
   <Card
     title="Atlas lint is paid: free alternatives"
-    icon="scale-balanced"
+    icon="scale"
     href="/comparisons/atlas-migrate-lint-paid-alternatives"
   >
     The free Postgres migration-safety options after the v0.38 change.

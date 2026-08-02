@@ -49,55 +49,22 @@ Supabase targets can use `runner: "supabase-cli"` without a `databaseUrl`; the S
 
 ## Flags
 
-<ParamField path="--from" type="source">
-  Override the configured before-state source for an explicit recovery or
-  reconciliation run. A `migrations:` value must match the selected migrations
-  directory.
-</ParamField>
+| Name                      | Type                   | Description                                                                                                                                                     |
+| ------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--from`                  | source                 | Override the configured before-state source for an explicit recovery or reconciliation run. A `migrations:` value must match the selected migrations directory. |
+| `--to`                    | source                 | Override the configured target schema source. Ordinary schema edits should keep the configured declarative tree. Migration replay is not supported here.        |
+| `--migrations-dir`        | path                   | Directory containing migration files.                                                                                                                           |
+| `--database-url`          | url                    | Target database used for history reconciliation.                                                                                                                |
+| `--target`                | name                   | Override config target selection with one configured `sync.targets.<name>` target.                                                                              |
+| `--runner`                | direct \| supabase-cli | Override the configured runner for the selected target.                                                                                                         |
+| `--no-diff`               | boolean                | Skip schema diff generation. Pending migrations are still reconciled and checked.                                                                               |
+| `--ensure-roles`          | boolean                | Create missing `NOLOGIN` roles referenced by grants/policies on the verification server.                                                                        |
+| `--ensure-environment`    | boolean                | Stub Supabase-provisioned surfaces in verify temporary databases.                                                                                               |
+| `--no-ensure-environment` | boolean                | Disable the Supabase environment stub when another command or config enables it.                                                                                |
 
-<ParamField path="--to" type="source">
-  Override the configured target schema source. Ordinary schema edits should
-  keep the configured declarative tree. Migration replay is not supported here.
-</ParamField>
-
-<ParamField path="--migrations-dir" type="path">
-  Directory containing migration files.
-</ParamField>
-
-<ParamField path="--database-url" type="url">
-  Target database used for history reconciliation.
-</ParamField>
-
-<ParamField path="--target" type="name">
-  Override config target selection with one configured `sync.targets.<name>` target.
-</ParamField>
-
-<ParamField path="--runner" type="direct | supabase-cli">
-  Override the configured runner for the selected target.
-</ParamField>
-
-<ParamField path="--no-diff" type="boolean">
-  Skip schema diff generation. Pending migrations are still reconciled and
-  checked.
-</ParamField>
-
-<ParamField path="--ensure-roles" type="boolean">
-  Create missing `NOLOGIN` roles referenced by grants/policies on the
-  verification server.
-</ParamField>
-
-<ParamField path="--ensure-environment" type="boolean">
-  Stub Supabase-provisioned surfaces in verify temporary databases.
-</ParamField>
-
-<ParamField path="--no-ensure-environment" type="boolean">
-  Disable the Supabase environment stub when another command or config enables
-  it.
-</ParamField>
-
-<ParamField path="sync.targets.<name>.runner" type="direct | supabase-cli">
-  Target runner configured in `supaschema.config.json`.
-</ParamField>
+| Name                         | Type                   | Description                                           |
+| ---------------------------- | ---------------------- | ----------------------------------------------------- |
+| `sync.targets.<name>.runner` | direct \| supabase-cli | Target runner configured in `supaschema.config.json`. |
 
 ## Refusal cases
 

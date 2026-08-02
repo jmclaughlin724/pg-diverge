@@ -19,15 +19,15 @@ Use `supaschema` when you want to remove the ORM from schema ownership, migratio
 
 ## Comparison
 
-| Capability | supaschema | Prisma |
-| --- | --- | --- |
-| Schema source of truth | Declarative PostgreSQL SQL | `schema.prisma` DSL |
-| Migration generation | Diffs PostgreSQL parse trees (libpg_query) | Diffs the Prisma schema against migration history |
-| Temporary database to generate | Not required | `prisma migrate dev` uses a shadow database |
-| Replay-safety and lock-hazard linting | Yes (`supaschema check`) | Not a built-in migration linter |
-| RLS, views, triggers | Modeled and diffed structurally in SQL | Prisma Migrate's native coverage is limited; Prisma's own guidance routes advanced objects through Atlas |
-| Application data contract | Generated TypeScript and Zod from SQL | Prisma Client types from the schema |
-| Applies migrations | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`prisma migrate deploy`) |
+| Capability                            | supaschema                                                            | Prisma                                                                                                   |
+| ------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Schema source of truth                | Declarative PostgreSQL SQL                                            | `schema.prisma` DSL                                                                                      |
+| Migration generation                  | Diffs PostgreSQL parse trees (libpg_query)                            | Diffs the Prisma schema against migration history                                                        |
+| Temporary database to generate        | Not required                                                          | `prisma migrate dev` uses a shadow database                                                              |
+| Replay-safety and lock-hazard linting | Yes (`supaschema check`)                                              | Not a built-in migration linter                                                                          |
+| RLS, views, triggers                  | Modeled and diffed structurally in SQL                                | Prisma Migrate's native coverage is limited; Prisma's own guidance routes advanced objects through Atlas |
+| Application data contract             | Generated TypeScript and Zod from SQL                                 | Prisma Client types from the schema                                                                      |
+| Applies migrations                    | Yes, through explicit or approved automatic `supaschema sync` targets | Yes (`prisma migrate deploy`)                                                                            |
 
 ## Use supaschema instead of Prisma for schema, migrations, and types
 
@@ -55,10 +55,9 @@ How the workflow maps onto what Prisma does:
 
 See [ORM-free applications](/concepts/orm-free-applications) for the canonical directive.
 
-<Info>
-  Last verified 2026-06-17 against the Prisma documentation. Prisma evolves;
-  confirm current behavior before relying on it.
-</Info>
+:::info
+Last verified 2026-06-17 against the Prisma documentation. Prisma evolves; confirm current behavior before relying on it.
+:::
 
 <CardGroup cols={2}>
   <Card

@@ -754,6 +754,31 @@ COMMENT ON COLUMN app.customers.email IS 'contact';`,
     expect(replayHashes).toEqual(declarativeHashes);
   });
 
+  it("rebuilds renamed comment SQL with quoted identifiers", async () => {
+    const model = await extractMigrations([
+      [
+        "20240101000000_rename_quoted_table.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, email text);
+COMMENT ON TABLE app.accounts IS 'directory';
+COMMENT ON COLUMN app.accounts.email IS 'contact';
+ALTER TABLE app.accounts RENAME TO "Purchase Order";`,
+      ],
+    ]);
+
+    expect(errors(model.diagnostics)).toEqual([]);
+    const comments = model.objects.filter((object) => object.ref.kind === "comment");
+    expect(comments).toHaveLength(2);
+    const tableComment = comments.find(
+      (object) => object.metadata.descriptor === "table app.Purchase Order"
+    );
+    expect(tableComment?.sql).toBe(`COMMENT ON TABLE app."Purchase Order" IS 'directory'`);
+    const columnComment = comments.find(
+      (object) => object.metadata.descriptor === "column app.Purchase Order.email"
+    );
+    expect(columnComment?.sql).toBe(`COMMENT ON COLUMN app."Purchase Order".email IS 'contact'`);
+  });
+
   it("preserves empty-string comments and deletes only IS NULL comments", async () => {
     const model = await extractMigrations([
       [
