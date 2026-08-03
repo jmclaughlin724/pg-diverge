@@ -13,5 +13,10 @@
   },
   "devDependencies": {
     "@astrojs/cloudflare": "14.1.7"
+  },
+  "overrides": {
+    "@vercel/routing-utils": {
+      "path-to-regexp": "6.3.0"
+    }
   }
 }
