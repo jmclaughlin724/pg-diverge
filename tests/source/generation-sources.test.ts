@@ -427,6 +427,32 @@ describe("generation source planning", () => {
     expect(generation.from).toBe(fixture.migrationsSource);
   });
 
+  it("resolves the automatic baseline from the same corpus the plan reads under --replace", async () => {
+    const fixture = await createFixture();
+    const replacedMigration = join(fixture.root, "migrations", "20260101000000_source.sql");
+    const config = resolveConfig({ migrationsDir: "migrations", schemaPaths: ["schemas"] });
+
+    const withoutExclusion = await resolveGenerationSourceDefaults(
+      { cwd: fixture.root },
+      config,
+      async () => true
+    );
+    expect(withoutExclusion.from).toBe(fixture.migrationsSource);
+
+    const withExclusion = await resolveGenerationSourceDefaults(
+      {
+        cwd: fixture.root,
+        excludeMigrationFiles: [
+          replacedMigration,
+          replacedMigration.replace(".sql", ".concurrent.sql"),
+        ],
+      },
+      config,
+      async () => true
+    );
+    expect(withExclusion.from).toBe("git:HEAD");
+  });
+
   it("does not enforce the generation baseline gate in drift planning", async () => {
     const fixture = await createFixture();
     const context = await buildSchemaPlanningContext({

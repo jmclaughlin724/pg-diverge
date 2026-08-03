@@ -12,7 +12,9 @@ import { extractSourceModel, filterModelBySchemas, parseSchemaFilter } from "../
 import {
   defaultGitHeadExists,
   defaultTreeSource,
+  extractGenerationSourceModel,
   type ResolvedSources,
+  sourceFingerprint,
 } from "../source/resolve.js";
 import { objectSchema } from "../sql/dependents.js";
 import type {
@@ -34,6 +36,7 @@ export type SchemaPlanningMode = "drift" | "generation";
 
 export interface ResolveGenerationSourceOptions {
   cwd?: string;
+  excludeMigrationFiles?: readonly string[];
   from?: string;
   migrationsDir?: string;
   mode?: SchemaPlanningMode;
@@ -83,7 +86,14 @@ export async function resolveGenerationSourceDefaults(
   let from = options.from;
   if (from === undefined) {
     if (config.sources.from === sourceAuto) {
-      from = await automaticGenerationBaseline(cwd, config, migrationsDir, mode, gitHeadExists);
+      from = await automaticGenerationBaseline(
+        cwd,
+        config,
+        migrationsDir,
+        mode,
+        gitHeadExists,
+        options.excludeMigrationFiles
+      );
     } else {
       from = config.sources.from;
     }
@@ -101,16 +111,25 @@ async function automaticGenerationBaseline(
   config: SupaschemaConfig,
   migrationsDir: string,
   mode: SchemaPlanningMode,
-  gitHeadExists: (cwd?: string) => Promise<boolean>
+  gitHeadExists: (cwd?: string) => Promise<boolean>,
+  excludeMigrationFiles: readonly string[] | undefined
 ): Promise<string> {
   if (mode === "drift") {
     return (await gitHeadExists(cwd)) ? "git:HEAD" : "empty:";
   }
-  const stagedBaseline = await stagedGenerationBaseline(cwd, config, migrationsDir);
+  const stagedBaseline = await stagedGenerationBaseline(
+    cwd,
+    config,
+    migrationsDir,
+    excludeMigrationFiles
+  );
   if (stagedBaseline) {
     return stagedBaseline;
   }
-  const migrationContext = await readMigrationContext(migrationsDir, { cwd });
+  const migrationContext = await readMigrationContext(
+    migrationsDir,
+    migrationCorpusOptions(cwd, excludeMigrationFiles)
+  );
   const hasMigrations = migrationContext.files.length > 0;
   const requiresReplay =
     hasMigrations &&
@@ -143,21 +162,34 @@ async function provesGeneratedBaseline(
   if (baseline === undefined) {
     return true;
   }
-  try {
-    const model = await extractSourceModel(source, { config, cwd });
-    return model.fingerprint === baseline.fingerprint;
-  } catch {
+  const fingerprint = await sourceFingerprint(source, config, cwd);
+  if (fingerprint === undefined) {
     const baselineDiagnosticsOwnUnreadableSources = true;
     return baselineDiagnosticsOwnUnreadableSources;
   }
+  return fingerprint === baseline.fingerprint;
+}
+
+function migrationCorpusOptions(
+  cwd: string | undefined,
+  excludeMigrationFiles: readonly string[] | undefined
+): { cwd?: string; excludeFiles?: readonly string[] } {
+  return {
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(excludeMigrationFiles === undefined ? {} : { excludeFiles: excludeMigrationFiles }),
+  };
 }
 
 async function stagedGenerationBaseline(
   cwd: string,
   config: SupaschemaConfig,
-  migrationsDir: string
+  migrationsDir: string,
+  excludeMigrationFiles: readonly string[] | undefined
 ): Promise<string | undefined> {
-  const migrationContext = await readMigrationContext(migrationsDir, { cwd });
+  const migrationContext = await readMigrationContext(
+    migrationsDir,
+    migrationCorpusOptions(cwd, excludeMigrationFiles)
+  );
   if (migrationContext.unprovenBaselineFiles.length > 0) {
     return;
   }
@@ -165,12 +197,12 @@ async function stagedGenerationBaseline(
   if (baseline === undefined || !(await isStagedWithoutWorktreeChanges(baseline.file, cwd))) {
     return;
   }
-  try {
-    const index = await extractSourceModel("git:INDEX", { config, cwd });
-    return index.fingerprint === baseline.fingerprint ? "git:INDEX" : undefined;
-  } catch {
-    // If the index cannot be inspected, fall back to the configured source.
+  const indexFingerprint = await sourceFingerprint("git:INDEX", config, cwd);
+  if (indexFingerprint === undefined) {
+    const unreadableIndexFallsBackToConfiguredSource = undefined;
+    return unreadableIndexFallsBackToConfiguredSource;
   }
+  return indexFingerprint === baseline.fingerprint ? "git:INDEX" : undefined;
 }
 
 async function isStagedWithoutWorktreeChanges(file: string, cwd: string): Promise<boolean> {
@@ -222,9 +254,8 @@ export async function buildSchemaPlanningContext(
       ? {}
       : { excludeMigrationFiles: options.excludeMigrationFiles }),
   };
-  const corpusOptions = options.cwd === undefined ? {} : { cwd: options.cwd };
   const extractStart = performance.now();
-  const fullFrom = await extractSourceModel(options.from, extractOptions);
+  const fullFrom = await extractGenerationSourceModel(options.from, extractOptions);
   const fromMs = performance.now() - extractStart;
   const fromErrors = fullFrom.diagnostics.filter((item) => item.severity === "error");
   if (
@@ -244,12 +275,10 @@ export async function buildSchemaPlanningContext(
     );
     return { diagnostics, fromMs, planStart: performance.now(), toMs: 0 };
   }
-  const migrationContext = await readMigrationContext(migrationsDir, {
-    ...corpusOptions,
-    ...(options.excludeMigrationFiles === undefined
-      ? {}
-      : { excludeFiles: options.excludeMigrationFiles }),
-  });
+  const migrationContext = await readMigrationContext(
+    migrationsDir,
+    migrationCorpusOptions(options.cwd, options.excludeMigrationFiles)
+  );
   const toStart = performance.now();
   const fullTo = await extractSourceModel(options.to, extractOptions);
   const mode = options.mode ?? "generation";

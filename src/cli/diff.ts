@@ -152,12 +152,28 @@ type WithSources<T> = T & {
   to: string;
 };
 
-async function withSourceDefaults<T extends PlanCommandOptions>(
+export function replacedMigrationFiles(replace: string | undefined): string[] | undefined {
+  if (replace === undefined) {
+    return;
+  }
+  const replacementPath = resolve(process.cwd(), replace);
+  return [replacementPath, `${stripSqlExtension(replacementPath)}.concurrent.sql`];
+}
+
+async function withSourceDefaults<T extends PlanCommandOptions & { replace?: string }>(
   options: T,
   config: SupaschemaConfig
 ): Promise<WithSources<T>> {
   const mode = planningMode(options);
-  const resolved = await resolveGenerationSourceDefaults({ ...options, mode }, config);
+  const excludeMigrationFiles = replacedMigrationFiles(options.replace);
+  const resolved = await resolveGenerationSourceDefaults(
+    {
+      ...options,
+      ...(excludeMigrationFiles === undefined ? {} : { excludeMigrationFiles }),
+      mode,
+    },
+    config
+  );
   if (resolved.notice !== undefined) {
     process.stderr.write(resolved.notice);
   }
@@ -506,19 +522,11 @@ function buildPlan(
   options: WithSources<PlanCommandOptions> & { migrationsDir?: string; replace?: string },
   config: SupaschemaConfig
 ): Promise<MigrationPlan> {
-  const replacementPath =
-    options.replace === undefined ? undefined : resolve(process.cwd(), options.replace);
+  const excludeMigrationFiles = replacedMigrationFiles(options.replace);
   return buildSchemaDiffPlan({
     ...(options.replace === undefined ? {} : { checkMigrationBaseline: false }),
     config,
-    ...(replacementPath === undefined
-      ? {}
-      : {
-          excludeMigrationFiles: [
-            replacementPath,
-            `${stripSqlExtension(replacementPath)}.concurrent.sql`,
-          ],
-        }),
+    ...(excludeMigrationFiles === undefined ? {} : { excludeMigrationFiles }),
     from: options.from,
     ...(options.migrationsDir === undefined ? {} : { migrationsDir: options.migrationsDir }),
     mode: options.mode,

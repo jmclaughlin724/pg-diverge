@@ -1,17 +1,21 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../../src/config/schema.js";
 import { resolveGenerationSourceDefaults } from "../../src/planner/context.js";
 import {
   defaultTreeSource,
+  extractGenerationSourceModel,
   resolveMigrationsDir,
   resolveSourceDefaults,
 } from "../../src/source/resolve.js";
 import { verifyMigration } from "../../src/verify/migration.js";
 
 const config = resolveConfig();
+const execFileAsync = promisify(execFile);
 
 describe("generation source defaults", () => {
   it("passes explicit sources through without a notice", async () => {
@@ -174,6 +178,72 @@ describe("generation source defaults", () => {
     expect(() =>
       resolveConfig({ sources: { from: "empty:", to: "migrations:supabase/migrations" } })
     ).toThrow();
+  });
+});
+
+describe("generation source model reuse", () => {
+  it("extracts a git revision once across the prove and plan phases", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-memo-"));
+    await mkdir(join(root, "schemas"), { recursive: true });
+    await writeFile(
+      join(root, "schemas", "app.sql"),
+      "CREATE TABLE public.accounts (id bigint);\n"
+    );
+    await execFileAsync("git", ["init", "-q", "."], { cwd: root });
+    await execFileAsync("git", ["config", "user.email", "test@example.test"], { cwd: root });
+    await execFileAsync("git", ["config", "user.name", "test"], { cwd: root });
+    await execFileAsync("git", ["add", "-A"], { cwd: root });
+    await execFileAsync("git", ["commit", "-qm", "schema"], { cwd: root });
+    const custom = resolveConfig({ migrationsDir: "migrations", schemaPaths: ["schemas"] });
+
+    const proved = await extractGenerationSourceModel("git:HEAD", { config: custom, cwd: root });
+    const planned = await extractGenerationSourceModel("git:HEAD", { config: custom, cwd: root });
+
+    expect(planned).toBe(proved);
+    expect(planned.objects.length).toBeGreaterThan(0);
+  });
+
+  it("does not reuse models across differing extraction inputs", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-memo-scope-"));
+    await mkdir(join(root, "schemas"), { recursive: true });
+    await writeFile(
+      join(root, "schemas", "app.sql"),
+      "CREATE TABLE public.accounts (id bigint);\n"
+    );
+    await execFileAsync("git", ["init", "-q", "."], { cwd: root });
+    await execFileAsync("git", ["config", "user.email", "test@example.test"], { cwd: root });
+    await execFileAsync("git", ["config", "user.name", "test"], { cwd: root });
+    await execFileAsync("git", ["add", "-A"], { cwd: root });
+    await execFileAsync("git", ["commit", "-qm", "schema"], { cwd: root });
+    const custom = resolveConfig({ migrationsDir: "migrations", schemaPaths: ["schemas"] });
+    const unnormalized = resolveConfig({
+      migrationsDir: "migrations",
+      normalize: "off",
+      schemaPaths: ["schemas"],
+    });
+
+    const first = await extractGenerationSourceModel("git:HEAD", { config: custom, cwd: root });
+    const second = await extractGenerationSourceModel("git:HEAD", {
+      config: unnormalized,
+      cwd: root,
+    });
+
+    expect(second).not.toBe(first);
+  });
+
+  it("never memoizes live database or catalog sources", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-source-live-"));
+    const dump = join(root, "baseline.sql");
+    await writeFile(dump, "CREATE TABLE public.accounts (id bigint);\n");
+    const custom = resolveConfig({ migrationsDir: "migrations", schemaPaths: ["schemas"] });
+
+    const first = await extractGenerationSourceModel(`dump:${dump}`, { config: custom, cwd: root });
+    const second = await extractGenerationSourceModel(`dump:${dump}`, {
+      config: custom,
+      cwd: root,
+    });
+
+    expect(second).not.toBe(first);
   });
 });
 
