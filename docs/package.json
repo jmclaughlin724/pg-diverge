@@ -18,6 +18,9 @@
     "@ai-sdk/provider-utils": {
       "undici": "6.28.0"
     },
+    "miniflare": {
+      "undici": "7.29.0"
+    },
     "@vercel/routing-utils": {
       "path-to-regexp": "6.3.0"
     }

@@ -296,7 +296,8 @@ describe("minimal private hook state", () => {
     const originalOpenSync = fs.openSync;
     let injectedFailure = false;
     vi.spyOn(fs, "openSync").mockImplementation((file, flags, mode) => {
-      if (!injectedFailure && String(file).includes(".json.lock/owner-")) {
+      const target = String(file);
+      if (!injectedFailure && target.includes(".json.lock") && target.includes("owner-")) {
         injectedFailure = true;
         throw Object.assign(new Error("transient owner-file race"), { code: "EINVAL" });
       }

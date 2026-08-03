@@ -17,6 +17,7 @@ dev = [
 
 [tool.uv]
 package = false
+constraint-dependencies = ["cryptography>=50.0.0"]
 
 [tool.uv.workspace]
 members = ["services/agent-mcp"]
