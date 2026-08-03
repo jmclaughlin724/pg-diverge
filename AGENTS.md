@@ -11,6 +11,7 @@ Read only the rules and skills directly applicable to the current task.
 | When the task concerns | Canonical owner |
 | --- | --- |
 | General operating discipline, gates, `$elegant`, enforcement closure, or closeout | `.claude/rules/01-operating-rules.md` |
+| Public Blume docs pages under `docs/`, their writing standard, or their components | `.claude/rules/02-blume-writing-standards.md`, `.claude/rules/03-blume-component-reference.md` |
 | Technical decisions, upstream research, evidence fallbacks, or escalation | `.claude/rules/05-decision-protocol.md` |
 | Repository discovery, LSP coverage, formatter and linter ownership, or npm-only tooling | `.claude/rules/06-multi-language-toolchain.md` |
 | PostgreSQL or Supabase migrations, source-intent extraction, or generated schema surfaces | `.claude/rules/supaschema.md` |
@@ -127,6 +128,8 @@ Do not dump full repositories, generated trees, large logs, minified files, data
 Read applicable instruction files, rules, skills, and tool documentation completely unless a file is unexpectedly large.
 
 ## Editing
+
+Review the available tools and the owning context, and complete the research the change depends on, before writing anything. `.claude/rules/05-decision-protocol.md` owns that gate.
 
 Follow `.claude/rules/14-editing-safety.md` for editing and deletion requirements.
 

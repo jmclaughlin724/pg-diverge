@@ -7,12 +7,11 @@ import {
   parseStaticArguments,
   staticWordValue,
 } from "./shell-command.mjs";
-import { discoverSkills } from "./skill-frontmatter.mjs";
 import { pathMatches, payloadPaths, unique, uniqueByName } from "./skill-paths.mjs";
 import { currentTurnState } from "./state.mjs";
 
 export function updatePromptSkills(payload, state, options = {}) {
-  const inventory = discoverSkills(options.root, options.runtime);
+  const inventory = requiredInventory(options);
   const matched = scorePrompt(promptText(payload), inventory);
   const turn = currentTurnState(state);
   const pendingMatches = [];
@@ -38,7 +37,7 @@ export function updatePromptSkills(payload, state, options = {}) {
 }
 
 export function updateFileTriggeredSkills(payload, state, options = {}) {
-  const inventory = discoverSkills(options.root, options.runtime);
+  const inventory = requiredInventory(options);
   const targets = payloadPaths(payload, options.root);
   if (targets.length === 0) {
     return {};
@@ -75,7 +74,7 @@ export function updateFileTriggeredSkills(payload, state, options = {}) {
 }
 
 export function recordObservableSkillLoad(payload, state, options = {}) {
-  const inventory = discoverSkills(options.root, options.runtime);
+  const inventory = requiredInventory(options);
   const loaded = observedLoadedSkills(payload, inventory, options.root);
   const turn = currentTurnState(state);
   const at = now();
@@ -111,11 +110,7 @@ export function pendingSkillMessage(state) {
   ].join("\n");
 }
 
-export function observedLoadedSkills(payload, inventoryOrRoot, rootMaybe) {
-  const inventory = Array.isArray(inventoryOrRoot)
-    ? inventoryOrRoot
-    : discoverSkills(inventoryOrRoot, "claude");
-  const root = Array.isArray(inventoryOrRoot) ? rootMaybe : inventoryOrRoot;
+function observedLoadedSkills(payload, inventory, root) {
   if (!eligiblePostToolUse(payload)) {
     return [];
   }
@@ -133,8 +128,8 @@ export function observedLoadedSkills(payload, inventoryOrRoot, rootMaybe) {
     : [];
 }
 
-export function isObservableLoad(payload, root, runtime = "claude") {
-  return observableSkillLoadRequests(payload, discoverSkills(root, runtime), root).length > 0;
+export function isObservableLoad(payload, inventory, root) {
+  return observableSkillLoadRequests(payload, inventory, root).length > 0;
 }
 
 export function promptText(payload) {
@@ -156,6 +151,13 @@ function observableSkillLoadRequests(payload, inventory, root) {
     return readToolLoadRequest(payload, byPath, root);
   }
   return toolName === "Bash" ? bashToolLoadRequests(payload, byPath, root) : [];
+}
+
+function requiredInventory(options) {
+  if (!Array.isArray(options.inventory)) {
+    throw new Error("skill inventory is required");
+  }
+  return options.inventory;
 }
 
 function skillToolLoadRequest(payload, byName) {

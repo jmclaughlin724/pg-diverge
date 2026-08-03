@@ -53,7 +53,10 @@ function formatViolations(violations, pageCount) {
   for (const violation of violations) {
     lines.push(`  ${violation.file}:${violation.line}  [${violation.rule}] ${violation.msg}`);
   }
-  lines.push("", 'See AGENTS.md "Documentation authoring standard" for the full contract.');
+  lines.push(
+    "",
+    "See .claude/rules/02-blume-writing-standards.md and .claude/rules/03-blume-component-reference.md for the full contract."
+  );
   return lines.join("\n");
 }
 

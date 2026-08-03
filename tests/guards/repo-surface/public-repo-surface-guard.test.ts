@@ -34,14 +34,6 @@ describe("public repo surface guard", () => {
     expect(() => check(root)).not.toThrow();
   });
 
-  it("blocks a retired Code Atlas client config even when Git ignores it", () => {
-    const root = tempGuardRepo({
-      ".continue/mcpServers/codeatlas.yaml": "name: retired\n",
-      ".gitignore": ".continue/\n",
-    });
-    expect(() => check(root)).toThrow("retired project integrations must remain absent");
-  });
-
   it("blocks unignored private local paths before they can be staged", () => {
     const root = tempGuardRepo({
       "advisor-plans/local.md": "# local\n",

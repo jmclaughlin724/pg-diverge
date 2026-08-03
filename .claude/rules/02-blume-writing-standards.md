@@ -40,7 +40,7 @@ Sources:
 
 - Every docs page is `.md` or `.mdx` under `docs/`.
 - Every page declares `title`, `description`, and the repo's `keywords` list. `keywords` is registered through `frontmatter.extend` in `docs/blume.config.ts`.
-- Any other frontmatter key must be a Blume-recognized field: `type`, `date`, `authors`, `slug`, `draft`, `lastModified`, `sidebar.*`, `seo.*`, or `search.*`. Unknown keys fail `blume doctor`.
+- Any other frontmatter key must be a Blume-recognized field: `type`, `date`, `authors`, `slug`, `draft`, `deprecated`, `hidden`, `icon`, `noindex`, `lastModified`, `ai.*`, `changelog.*`, `sidebar.*`, `seo.*`, or `search.*`. Unknown keys fail `blume doctor`.
 - Use `sidebar.label` for a short navigation title and `sidebar.hidden: true` to keep a page out of navigation.
 - Use kebab-case filenames. Navigation derives from folder structure plus `meta.ts` files; there is no navigation manifest.
 - Internal links are extensionless and root-relative, such as `/configuration/hints`. `blume validate` proves internal links, anchors, and asset references.
@@ -51,7 +51,7 @@ Sources:
 ## AI readiness
 
 - Blume serves `llms.txt`, `llms-full.txt`, raw page sources at `.md`/`.mdx` URLs, and `agent-readability.json` from static output.
-- The Ask AI and MCP surfaces (`/mcp`, `/.well-known/mcp.json`) require server output with a deployment adapter. Enable them only with an explicit deployment decision.
+- The MCP surface (`/mcp`, `/.well-known/mcp.json`) always requires server output with a deployment adapter. Self-hosted Ask AI requires it too; Ask AI pointed at an external `ai.ask.endpoint` does not. Enable them only with an explicit deployment decision.
 - Use `draft: true` only for genuinely unpublished pages; drafts are excluded from production builds and AI surfaces.
 
 ## Verification

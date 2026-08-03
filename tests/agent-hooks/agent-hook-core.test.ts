@@ -1,4 +1,13 @@
-import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -22,8 +31,9 @@ import {
   currentTurnState,
   normalizeState,
   readSessionState,
+  refreshSessionState,
   sessionStatePath,
-  writeSessionState,
+  withSessionState,
 } from "../../scripts/agent-hooks/state.mjs";
 import { isCanonicalAgentSurfaceSource } from "../../scripts/skills/agent-surface-manifest.mjs";
 
@@ -538,11 +548,165 @@ describe("minimal private hook state", () => {
     expect((await stat(file)).mode % 0o1000).toBe(0o600);
   });
 
+  it("recovers an empty lock directory instead of failing the hook", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "empty-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    await mkdir(lockDirectory, { mode: 0o700, recursive: true });
+
+    const result = handleAgentHookEvent(
+      "PreToolUse",
+      {
+        session_id: payload.session_id,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
+      },
+      fixture.options
+    );
+
+    expect(result.output.systemMessage).toBeUndefined();
+    expect(existsSync(lockDirectory)).toBe(false);
+  });
+
+  it("reclaims a lock whose recorded owner process has exited", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "dead-owner-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    const token = "00000000-0000-4000-8000-0000000000de";
+    const exited = spawnSync(process.execPath, ["-e", ""]);
+    await mkdir(lockDirectory, { mode: 0o700, recursive: true });
+    await writeFile(
+      join(lockDirectory, `owner-${token}.json`),
+      `${JSON.stringify({ acquiredAt: new Date().toISOString(), pid: exited.pid, token })}\n`,
+      { mode: 0o600 }
+    );
+
+    const result = handleAgentHookEvent(
+      "PreToolUse",
+      {
+        session_id: payload.session_id,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
+      },
+      fixture.options
+    );
+
+    expect(JSON.stringify(result)).not.toContain("timed out waiting for session state lock");
+    expect(result.output.systemMessage).toBeUndefined();
+    expect(existsSync(lockDirectory)).toBe(false);
+  });
+
+  it("discards a superseded lock owner when the session restarts", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "superseded-owner-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    const token = "00000000-0000-4000-8000-0000000000aa";
+    await mkdir(lockDirectory, { mode: 0o700, recursive: true });
+    await writeFile(
+      join(lockDirectory, `owner-${token}.json`),
+      `${JSON.stringify({ acquiredAt: new Date().toISOString(), pid: process.pid, token })}\n`,
+      { mode: 0o600 }
+    );
+
+    expect(handleSessionLifecycleEvent("SessionStart", payload, fixture.options).stdout).toBe("");
+    expect(existsSync(lockDirectory)).toBe(false);
+    expect(readSessionState(payload).sessionId).toBe(payload.session_id);
+  });
+
+  it("keeps malformed lock ownership visible without deleting it", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "malformed-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    await mkdir(lockDirectory, { mode: 0o700, recursive: true });
+    await writeFile(join(lockDirectory, "unexpected"), "not owner metadata", { mode: 0o600 });
+
+    const result = handleAgentHookEvent(
+      "PreToolUse",
+      {
+        session_id: payload.session_id,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
+      },
+      fixture.options
+    );
+
+    expect(result.output.systemMessage).toContain("invalid session state lock owner");
+    expect(result.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
+    expect(existsSync(join(lockDirectory, "unexpected"))).toBe(true);
+  });
+
+  it("rejects a stale commit and preserves the successor lock owner", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "aba-lock" };
+    const lockDirectory = `${sessionStatePath(payload)}.lock`;
+    const successorToken = "00000000-0000-4000-8000-000000000001";
+    const successorName = `owner-${successorToken}.json`;
+
+    expect(() =>
+      withSessionState(payload, (state) => {
+        const [ownerName] = readdirSync(lockDirectory);
+        const ownerPath = join(lockDirectory, ownerName);
+        const owner = JSON.parse(readFileSync(ownerPath, "utf8"));
+        expect(Object.keys(owner).sort()).toEqual(["acquiredAt", "pid", "token"]);
+        expect(statSync(lockDirectory).mode % 0o1000).toBe(0o700);
+        expect(statSync(ownerPath).mode % 0o1000).toBe(0o600);
+
+        unlinkSync(ownerPath);
+        writeFileSync(
+          join(lockDirectory, successorName),
+          `${JSON.stringify({ acquiredAt: new Date().toISOString(), pid: process.pid, token: successorToken })}\n`,
+          { mode: 0o600 }
+        );
+        state.loadedSkills.optimizer = new Date().toISOString();
+        return { state };
+      })
+    ).toThrow("lost session state lock ownership");
+
+    expect(readdirSync(lockDirectory)).toEqual([successorName]);
+    expect(existsSync(sessionStatePath(payload))).toBe(false);
+    unlinkSync(join(lockDirectory, successorName));
+    rmdirSync(lockDirectory);
+  });
+
+  it("discovers skills only for inventory events and labels discovery failures", async () => {
+    const stateDirectory = await mkdtemp(join(tmpdir(), "supa-agent-hook-discovery-state-"));
+    const fixtureRoot = await mkdtemp(join(tmpdir(), "supa-agent-hook-discovery-root-"));
+    const skillDirectory = join(fixtureRoot, ".claude", "skills", "broken");
+    await mkdir(skillDirectory, { recursive: true });
+    await writeFile(join(skillDirectory, "SKILL.md"), "---\nmetadata: [\n---\n");
+    process.env.STATE_DIR = stateDirectory;
+    const options: { root: string; runtime: "claude" } = {
+      root: fixtureRoot,
+      runtime: "claude",
+    };
+
+    const stop = handleAgentHookEvent(
+      "Stop",
+      { last_assistant_message: "Done.", session_id: "discovery-stop" },
+      options
+    );
+    expect(stop.output.systemMessage).toBeUndefined();
+
+    const prompt = handleAgentHookEvent(
+      "UserPromptSubmit",
+      { prompt: "hello", session_id: "discovery-prompt" },
+      options
+    );
+    expect(prompt.output.systemMessage).toContain("check=skillDiscovery");
+    expect(prompt.output.systemMessage).not.toContain("check=sessionState");
+    expect(existsSync(sessionStatePath({ session_id: "discovery-prompt" }))).toBe(false);
+  });
+
   it("does not rewrite state for no-op events", async () => {
     const fixture = await hookFixture();
     process.env.STATE_DIR = fixture.stateDir;
     const payload = { session_id: "no-op-state" };
-    writeSessionState(payload, normalizeState({}, payload.session_id));
+    refreshSessionState(payload);
     const file = sessionStatePath(payload);
     const before = (await stat(file)).mtimeMs;
 
@@ -563,14 +727,26 @@ describe("minimal private hook state", () => {
     const fixture = await hookFixture();
     process.env.STATE_DIR = fixture.stateDir;
     const expired = { session_id: "expired-state" };
-    writeSessionState(expired, normalizeState({}, expired.session_id));
+    refreshSessionState(expired);
     const expiredFile = sessionStatePath(expired);
     const expiredValue = JSON.parse(await readFile(expiredFile, "utf8"));
     expiredValue.updatedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     await writeFile(expiredFile, `${JSON.stringify(expiredValue)}\n`, { mode: 0o600 });
 
     expect(readSessionState(expired).sessionId).toBe(expired.session_id);
-    expect(existsSync(expiredFile)).toBe(false);
+    expect(existsSync(expiredFile)).toBe(true);
+    handleAgentHookEvent(
+      "PreToolUse",
+      {
+        session_id: expired.session_id,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
+      },
+      fixture.options
+    );
+    expect(Date.parse(JSON.parse(await readFile(expiredFile, "utf8")).updatedAt)).toBeGreaterThan(
+      Date.parse(expiredValue.updatedAt)
+    );
 
     const malformed = { session_id: "malformed-state" };
     const malformedFile = sessionStatePath(malformed);
@@ -632,9 +808,10 @@ describe("minimal private hook state", () => {
 
     expect(handleSessionLifecycleEvent("SessionStart", payload, fixture.options).stdout).toBe("");
     expect(existsSync(sessionStatePath(payload))).toBe(true);
-    const state = readSessionState(payload);
-    state.loadedSkills.fastmcp = new Date().toISOString();
-    writeSessionState(payload, state);
+    withSessionState(payload, (state) => {
+      state.loadedSkills.fastmcp = new Date().toISOString();
+      return { state };
+    });
     expect(
       handleSessionLifecycleEvent("SessionStart", { ...payload, source: "resume" }, fixture.options)
         .stdout

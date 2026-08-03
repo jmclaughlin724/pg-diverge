@@ -1,7 +1,18 @@
-import { spawn, spawnSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  stat,
+  unlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const root = process.cwd();
@@ -215,7 +226,7 @@ describe("actual context hook entrypoints", () => {
     });
   });
 
-  it("credits exact Codex Bash skill content through the actual entrypoints", async () => {
+  it("recovers a killed owner while crediting exact Codex skill content", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-codex-load-"));
     const env = { ...process.env, STATE_DIR: stateDir };
     const sessionId = "entrypoint-codex-load";
@@ -232,7 +243,11 @@ describe("actual context hook entrypoints", () => {
     );
     expect(prompt.code).toBe(0);
 
+    const lockHolder = await startLockHolder(sessionId, env);
+    await killProcess(lockHolder);
+
     const command = `cat ${skillPath}`;
+    const recoveryStartedAt = Date.now();
     const load = await runHook(
       join(root, ".codex/hooks/context-pre-tool-use.mjs"),
       {
@@ -257,6 +272,7 @@ describe("actual context hook entrypoints", () => {
       env
     );
     expect(recorded).toMatchObject({ code: 0, stderr: "", stdout: "" });
+    expect(Date.now() - recoveryStartedAt).toBeLessThan(2000);
 
     const governed = await runHook(
       join(root, ".codex/hooks/context-pre-tool-use.mjs"),
@@ -269,6 +285,123 @@ describe("actual context hook entrypoints", () => {
       env
     );
     expect(hookOutput(governed.stdout).hookSpecificOutput?.permissionDecision).toBeUndefined();
+    expect(
+      await pathExists(join(stateDir, `${Buffer.from(sessionId).toString("base64url")}.json.lock`))
+    ).toBe(false);
+  });
+
+  it("never age-steals a live owner and lets SessionEnd reclaim it after SIGKILL", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-live-lock-"));
+    const env = { ...process.env, STATE_DIR: stateDir };
+    const sessionId = "entrypoint-live-lock";
+    const lockDirectory = join(
+      stateDir,
+      `${Buffer.from(sessionId).toString("base64url")}.json.lock`
+    );
+    const lockHolder = await startLockHolder(sessionId, env);
+    try {
+      const [ownerName] = await readdir(lockDirectory);
+      const ownerPath = join(lockDirectory, ownerName);
+      const owner = JSON.parse(await readFile(ownerPath, "utf8"));
+      const oldDate = new Date(Date.now() - 60_000);
+      owner.acquiredAt = oldDate.toISOString();
+      await writeFile(ownerPath, `${JSON.stringify(owner)}\n`, { mode: 0o600 });
+      await utimes(lockDirectory, oldDate, oldDate);
+      await utimes(ownerPath, oldDate, oldDate);
+
+      const startedAt = Date.now();
+      const liveEnd = await runHook(
+        join(root, ".claude/hooks/context-session-end.mjs"),
+        {
+          cwd: root,
+          hook_event_name: "SessionEnd",
+          reason: "clear",
+          session_id: sessionId,
+          transcript_path: null,
+        },
+        env
+      );
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(elapsedMs).toBeGreaterThanOrEqual(450);
+      expect(elapsedMs).toBeLessThan(2000);
+      expect(hookOutput(liveEnd.stdout).systemMessage).toContain(
+        "timed out waiting for session state lock"
+      );
+      expect(await readdir(lockDirectory)).toEqual([ownerName]);
+      expect((await stat(lockDirectory)).mode % 0o1000).toBe(0o700);
+      expect((await stat(ownerPath)).mode % 0o1000).toBe(0o600);
+      expect(Object.keys(owner).sort()).toEqual(["acquiredAt", "pid", "token"]);
+    } finally {
+      await killProcess(lockHolder);
+    }
+
+    const recoveredEnd = await runHook(
+      join(root, ".claude/hooks/context-session-end.mjs"),
+      {
+        cwd: root,
+        hook_event_name: "SessionEnd",
+        reason: "clear",
+        session_id: sessionId,
+        transcript_path: null,
+      },
+      env
+    );
+    expect(recoveredEnd).toMatchObject({ code: 0, stderr: "", stdout: "" });
+    expect(await pathExists(lockDirectory)).toBe(false);
+  });
+
+  it("reclaims lock candidates left by killed waiters through the actual entrypoint", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-killed-waiters-"));
+    const env = { ...process.env, STATE_DIR: stateDir };
+    const hook = join(root, ".claude/hooks/context-pre-tool-use.mjs");
+    const sessionId = "killed-lock-waiters";
+    const encodedSessionId = Buffer.from(sessionId).toString("base64url");
+    const candidatePrefix = `.${encodedSessionId}.json.lock.`;
+    const lockHolder = await startLockHolder(sessionId, env);
+    const waiters = Array.from({ length: 4 }, (_, index) =>
+      startHookProcess(
+        hook,
+        {
+          hook_event_name: "PreToolUse",
+          session_id: sessionId,
+          tool_input: { file_path: `README-${index}.md` },
+          tool_name: "Read",
+        },
+        env
+      )
+    );
+    try {
+      const candidates = await waitForLockCandidates(stateDir, candidatePrefix, waiters.length);
+      expect(candidates).toHaveLength(waiters.length);
+      await Promise.all(waiters.map(({ child }) => killProcess(child)));
+      const emptyCandidate = join(stateDir, candidates[0]);
+      for (const ownerName of await readdir(emptyCandidate)) {
+        await unlink(join(emptyCandidate, ownerName));
+      }
+      expect(await readdir(emptyCandidate)).toEqual([]);
+    } finally {
+      await Promise.all([...waiters.map(({ child }) => child), lockHolder].map(killProcess));
+      await Promise.all(waiters.map(({ result }) => result));
+    }
+
+    const recovery = await runHook(
+      hook,
+      {
+        hook_event_name: "PreToolUse",
+        session_id: sessionId,
+        tool_input: { file_path: "README.md" },
+        tool_name: "Read",
+      },
+      env
+    );
+
+    expect(recovery).toMatchObject({ code: 0, stderr: "", stdout: "" });
+    expect(
+      (await readdir(stateDir)).filter(
+        (entry) => entry.startsWith(candidatePrefix) && entry.endsWith(".tmp")
+      )
+    ).toEqual([]);
   });
 
   it("serializes concurrent evidence updates through the actual hook entrypoint", async () => {
@@ -276,6 +409,8 @@ describe("actual context hook entrypoints", () => {
     const env = { ...process.env, STATE_DIR: stateDir };
     const hook = join(root, ".claude/hooks/context-post-tool-use.mjs");
     const sessionId = "concurrent-entrypoint";
+    const lockHolder = await startLockHolder(sessionId, env);
+    await killProcess(lockHolder);
     const results = await Promise.all(
       Array.from({ length: 8 }, (_, index) =>
         runHookAsync(
@@ -293,7 +428,7 @@ describe("actual context hook entrypoints", () => {
       )
     );
 
-    expect(results.every((result) => result.code === 0 && result.stdout === "")).toBe(true);
+    expect(results).toEqual(Array.from({ length: 8 }, () => ({ code: 0, stderr: "", stdout: "" })));
     const state = JSON.parse(
       await readFile(join(stateDir, `${Buffer.from(sessionId).toString("base64url")}.json`), "utf8")
     );
@@ -530,28 +665,147 @@ function runHookAsync(
   payload: Record<string, unknown>,
   env: NodeJS.ProcessEnv
 ): Promise<{ code: number; stderr: string; stdout: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [hook], {
-      cwd: root,
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stderr = "";
-    let stdout = "";
-    child.stderr.setEncoding("utf8");
-    child.stdout.setEncoding("utf8");
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      resolve({ code: code ?? 1, stderr, stdout });
-    });
-    child.stdin.end(JSON.stringify(payload));
+  return startHookProcess(hook, payload, env).result;
+}
+
+function startHookProcess(
+  hook: string,
+  payload: Record<string, unknown>,
+  env: NodeJS.ProcessEnv
+): {
+  child: ChildProcessWithoutNullStreams;
+  result: Promise<{ code: number; stderr: string; stdout: string }>;
+} {
+  const child = spawn(process.execPath, [hook], {
+    cwd: root,
+    env,
+    stdio: ["pipe", "pipe", "pipe"],
   });
+  const result = new Promise<{ code: number; stderr: string; stdout: string }>(
+    (resolve, reject) => {
+      let stderr = "";
+      let stdout = "";
+      child.stderr.setEncoding("utf8");
+      child.stdout.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        resolve({ code: code ?? 1, stderr, stdout });
+      });
+    }
+  );
+  child.stdin.end(JSON.stringify(payload));
+  return { child, result };
+}
+
+async function startLockHolder(
+  sessionId: string,
+  env: NodeJS.ProcessEnv
+): Promise<ChildProcessWithoutNullStreams> {
+  const stateModule = pathToFileURL(join(root, "scripts/agent-hooks/state.mjs")).href;
+  const source = [
+    `import { withSessionState } from ${JSON.stringify(stateModule)};`,
+    `withSessionState({ session_id: ${JSON.stringify(sessionId)} }, (state) => {`,
+    '  process.stdout.write("locked\\n");',
+    "  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000);",
+    "  return { state };",
+    "});",
+  ].join("\n");
+  const child = spawn(process.execPath, ["--input-type=module", "--eval", source], {
+    cwd: root,
+    env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearTimeout(timeout);
+        child.off("error", onError);
+        child.off("close", onClose);
+        child.stdout.off("data", onData);
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+      const onError = (error: Error) => finish(error);
+      const onClose = (code: number | null) =>
+        finish(new Error(`lock holder exited before acquiring the lock: ${code}; ${stderr}`));
+      const onData = (chunk: string) =>
+        finish(
+          chunk === "locked\n" ? undefined : new Error(`unexpected lock holder output: ${chunk}`)
+        );
+      const timeout = setTimeout(
+        () => finish(new Error(`timed out waiting for lock holder; ${stderr}`)),
+        5000
+      );
+      child.once("error", onError);
+      child.once("close", onClose);
+      child.stdout.once("data", onData);
+    });
+  } catch (error) {
+    await killProcess(child);
+    throw error;
+  }
+  return child;
+}
+
+async function killProcess(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  const closed = new Promise<void>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", () => resolve());
+  });
+  if (!child.kill("SIGKILL")) {
+    throw new Error("failed to kill process");
+  }
+  await closed;
+}
+
+async function waitForLockCandidates(
+  directory: string,
+  prefix: string,
+  expectedCount: number
+): Promise<string[]> {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const candidates = (await readdir(directory)).filter(
+      (entry) => entry.startsWith(prefix) && entry.endsWith(".tmp")
+    );
+    if (candidates.length === expectedCount) {
+      return candidates;
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 20);
+    });
+  }
+  throw new Error(`timed out waiting for ${expectedCount} lock candidates`);
+}
+
+async function pathExists(file: string): Promise<boolean> {
+  try {
+    await stat(file);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 interface SurfaceFixture {

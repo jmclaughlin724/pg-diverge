@@ -1,6 +1,7 @@
 import { addLinkViolation, inspectImageSrc } from "./links.mjs";
 
-const CALLOUT_COMPONENTS = new Set(["Note", "Info", "Tip", "Warning", "Danger", "Check"]);
+const CALLOUT_DIRECTIVES = new Set(["danger", "info", "note", "success", "tip", "warning"]);
+const DIRECTIVE_FENCE = ":::";
 
 const lineOf = (node) => node.position?.start?.line ?? 1;
 
@@ -229,13 +230,26 @@ export function inspectImageFrame(node, ancestors, displayFile, violations) {
   }
 }
 
+const opensCalloutDirective = (node) => {
+  if (node.type !== "paragraph") {
+    return false;
+  }
+  const [first] = node.children ?? [];
+  if (first?.type !== "text" || !first.value.startsWith(DIRECTIVE_FENCE)) {
+    return false;
+  }
+  const [openingLine] = first.value.slice(DIRECTIVE_FENCE.length).split("\n");
+  const [directive] = openingLine.split("[");
+  return CALLOUT_DIRECTIVES.has(directive.trim());
+};
+
 export function inspectAdjacentCallouts(node, displayFile, violations) {
-  let previousCallout;
+  let previousCallout = false;
   for (const child of node.children ?? []) {
     if (isWhitespaceText(child)) {
       continue;
     }
-    const currentCallout = isMdxJsxNode(child) && CALLOUT_COMPONENTS.has(child.name);
+    const currentCallout = opensCalloutDirective(child);
     if (currentCallout && previousCallout) {
       violations.push({
         file: displayFile,
@@ -244,6 +258,6 @@ export function inspectAdjacentCallouts(node, displayFile, violations) {
         rule: "callout-spacing",
       });
     }
-    previousCallout = currentCallout ? child : undefined;
+    previousCallout = currentCallout;
   }
 }

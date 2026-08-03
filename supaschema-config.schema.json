@@ -507,6 +507,7 @@
             "git:HEAD",
             "empty:",
             "dir:baseline/schemas",
+            "migrations:supabase/migrations",
             "database:$DATABASE_URL"
           ],
           "oneOf": [

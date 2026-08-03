@@ -1,5 +1,7 @@
-import type { KeyObject } from "node:crypto";
-import { issueLicenseToken, verifyLicenseToken } from "./issue.js";
+import { type KeyObject, randomBytes } from "node:crypto";
+import { issueSignedToken, verifySignedToken } from "./signed-token.js";
+
+const oauthStateTokenType = "SUPASCHEMA-OAUTH-STATE";
 
 export type GitHubFetch = (
   input: string,
@@ -7,8 +9,14 @@ export type GitHubFetch = (
 ) => Promise<Response>;
 
 export interface OAuthStateClaims {
+  nonce: string;
   plan: string;
   repo: string;
+}
+
+interface OAuthStateTokenClaims extends OAuthStateClaims {
+  exp: number;
+  purpose: "oauth-state";
 }
 
 export type VerifiedIdentity =
@@ -24,7 +32,17 @@ export function createOAuthState(
   nowSeconds: number,
   privateKey: KeyObject
 ): string {
-  return issueLicenseToken({ exp: nowSeconds + stateLifetimeSeconds, plan, repo }, privateKey);
+  return issueSignedToken(
+    oauthStateTokenType,
+    {
+      exp: nowSeconds + stateLifetimeSeconds,
+      nonce: randomBytes(32).toString("base64url"),
+      plan,
+      purpose: "oauth-state",
+      repo,
+    },
+    privateKey
+  );
 }
 
 export function verifyOAuthState(
@@ -32,11 +50,23 @@ export function verifyOAuthState(
   publicKeyPem: string,
   nowSeconds: number
 ): OAuthStateClaims | null {
-  const claims = verifyLicenseToken(token, publicKeyPem);
-  if (claims === null || claims.exp <= nowSeconds) {
+  const claims = verifySignedToken(token, oauthStateTokenType, publicKeyPem);
+  if (!isOAuthStateTokenClaims(claims) || claims.exp <= nowSeconds) {
     return null;
   }
-  return { plan: claims.plan, repo: claims.repo };
+  return { nonce: claims.nonce, plan: claims.plan, repo: claims.repo };
+}
+
+function isOAuthStateTokenClaims(value: unknown): value is OAuthStateTokenClaims {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof Reflect.get(value, "exp") === "number" &&
+    typeof Reflect.get(value, "nonce") === "string" &&
+    typeof Reflect.get(value, "plan") === "string" &&
+    Reflect.get(value, "purpose") === "oauth-state" &&
+    typeof Reflect.get(value, "repo") === "string"
+  );
 }
 
 async function gitHubJson(

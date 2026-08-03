@@ -7,6 +7,11 @@ import {
   verifyOAuthState,
   verifyRepoOwnership,
 } from "../../services/license-worker/src/github-oauth.js";
+import {
+  issueLicenseToken,
+  licenseClaimsFor,
+  verifyLicenseToken,
+} from "../../services/license-worker/src/issue.js";
 
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 const publicKeyPem = publicKey.export({ format: "pem", type: "spki" }).toString();
@@ -29,10 +34,26 @@ function fetchRouter(routes: Record<string, (init?: RequestInit) => Response>): 
 describe("oauth state tokens", () => {
   it("round-trips a signed state with repo and plan", () => {
     const token = createOAuthState("acme/app", "bundle", nowSeconds, privateKey);
-    expect(verifyOAuthState(token, publicKeyPem, nowSeconds + 1)).toEqual({
+    expect(verifyOAuthState(token, publicKeyPem, nowSeconds + 1)).toMatchObject({
       plan: "bundle",
       repo: "acme/app",
     });
+  });
+
+  it("uses unique, purpose-bound state tokens that cannot authorize registry access", () => {
+    const first = createOAuthState("acme/app", "bundle", nowSeconds, privateKey);
+    const second = createOAuthState("acme/app", "bundle", nowSeconds, privateKey);
+    expect(second).not.toBe(first);
+    expect(verifyOAuthState(first, publicKeyPem, nowSeconds + 1)?.nonce).not.toBe(
+      verifyOAuthState(second, publicKeyPem, nowSeconds + 1)?.nonce
+    );
+    expect(verifyLicenseToken(first, publicKeyPem)).toBeNull();
+
+    const license = issueLicenseToken(
+      licenseClaimsFor("acme/app", "bundle", nowSeconds),
+      privateKey
+    );
+    expect(verifyOAuthState(license, publicKeyPem, nowSeconds + 1)).toBeNull();
   });
 
   it("rejects tampered and expired state", () => {

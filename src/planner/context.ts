@@ -103,15 +103,15 @@ async function automaticGenerationBaseline(
   mode: SchemaPlanningMode,
   gitHeadExists: (cwd?: string) => Promise<boolean>
 ): Promise<string> {
+  if (mode === "drift") {
+    return (await gitHeadExists(cwd)) ? "git:HEAD" : "empty:";
+  }
   const stagedBaseline = await stagedGenerationBaseline(cwd, config, migrationsDir);
   if (stagedBaseline) {
     return stagedBaseline;
   }
   const migrationContext = await readMigrationContext(migrationsDir, { cwd });
   const hasMigrations = migrationContext.files.length > 0;
-  if (mode === "drift") {
-    return (await gitHeadExists(cwd)) ? "git:HEAD" : "empty:";
-  }
   const requiresReplay =
     hasMigrations &&
     (migrationContext.latestGeneratedBaseline === undefined ||
@@ -120,9 +120,36 @@ async function automaticGenerationBaseline(
     return `migrations:${migrationsDir}`;
   }
   if (await gitHeadExists(cwd)) {
-    return "git:HEAD";
+    const contiguous = await provesGeneratedBaseline(
+      "git:HEAD",
+      migrationContext.latestGeneratedBaseline,
+      config,
+      cwd
+    );
+    if (contiguous) {
+      return "git:HEAD";
+    }
+    return `migrations:${migrationsDir}`;
   }
   return hasMigrations ? `migrations:${migrationsDir}` : "empty:";
+}
+
+async function provesGeneratedBaseline(
+  source: string,
+  baseline: MigrationBaselineProof | undefined,
+  config: SupaschemaConfig,
+  cwd: string
+): Promise<boolean> {
+  if (baseline === undefined) {
+    return true;
+  }
+  try {
+    const model = await extractSourceModel(source, { config, cwd });
+    return model.fingerprint === baseline.fingerprint;
+  } catch {
+    const baselineDiagnosticsOwnUnreadableSources = true;
+    return baselineDiagnosticsOwnUnreadableSources;
+  }
 }
 
 async function stagedGenerationBaseline(
@@ -400,7 +427,7 @@ async function migrationBaselineDiagnostics(
       "sources.from does not match the current generated migration-tree baseline",
       {
         file: baseline.file,
-        hint: `${fromSource} is ${from.fingerprint.slice(0, 12)}..., but ${baseline.source} ends at ${baseline.fingerprint.slice(0, 12)}.... Use the source state that produced the migration baseline, or use diff --replace for generated migration replacement. If the pending generated migration's end-state was never committed and no target records it as applied, review and delete that pending migration, then regenerate from the current tree.`,
+        hint: `${fromSource} is ${from.fingerprint.slice(0, 12)}..., but ${baseline.source} ends at ${baseline.fingerprint.slice(0, 12)}.... Replay the corpus with ${replaySource} when no committed tree reproduces that baseline; sources.from:auto selects this recovery lane automatically. Otherwise use the source state that produced the baseline, or diff --replace for an unapplied generated migration. Delete and regenerate the migration only after confirming with \`supaschema migrations\` that no target records it as applied.`,
       }
     ),
   ];

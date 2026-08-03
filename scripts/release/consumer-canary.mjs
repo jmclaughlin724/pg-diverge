@@ -98,11 +98,27 @@ export function gateArgv(gate) {
   return gate.split(" ").filter((part) => part.length > 0);
 }
 
-function cloneUrl(repo) {
-  if (repo.startsWith("https://") || repo.startsWith("git@") || repo.startsWith("file:")) {
-    return repo;
+export function cloneTarget(repo) {
+  const url =
+    repo.startsWith("https://") || repo.startsWith("git@") || repo.startsWith("file:")
+      ? repo
+      : `https://github.com/${repo}.git`;
+  if (!url.startsWith("https://")) {
+    return { authenticated: false, url };
   }
-  return `https://github.com/${repo}.git`;
+  try {
+    const parsed = new URL(url);
+    return {
+      authenticated:
+        parsed.hostname === "github.com" &&
+        parsed.port === "" &&
+        parsed.username === "" &&
+        parsed.password === "",
+      url,
+    };
+  } catch {
+    return { authenticated: false, url };
+  }
 }
 
 function writeAskpass() {
@@ -115,12 +131,20 @@ function writeAskpass() {
   return script;
 }
 
-function cloneConsumer(repo, ref, destination, token) {
-  const env = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
-  if (token !== undefined && cloneUrl(repo).startsWith("https://")) {
-    env.GIT_ASKPASS = writeAskpass();
+export function cloneConfiguration(repo, token, sourceEnv = process.env, askpass = writeAskpass) {
+  const target = cloneTarget(repo);
+  const { CONSUMER_CANARY_TOKEN: _canaryToken, ...processEnv } = sourceEnv;
+  const env = { ...processEnv, GIT_TERMINAL_PROMPT: "0" };
+  if (token !== undefined && target.authenticated) {
+    env.CONSUMER_CANARY_TOKEN = token;
+    env.GIT_ASKPASS = askpass();
   }
-  execFileSync("git", ["clone", "--depth", "1", "--branch", ref, cloneUrl(repo), destination], {
+  return { env, target };
+}
+
+function cloneConsumer(repo, ref, destination, token) {
+  const { env, target } = cloneConfiguration(repo, token);
+  execFileSync("git", ["clone", "--depth", "1", "--branch", ref, target.url, destination], {
     env,
     stdio: ["ignore", "pipe", "pipe"],
   });

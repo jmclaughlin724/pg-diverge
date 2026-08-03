@@ -16,6 +16,23 @@ export function computeSnapshotVersion(baseVersion, sha) {
   return `${major}.${minor}.${patch + 1}-dev.${identifier}`;
 }
 
+export function snapshotCommitSha(version) {
+  if (typeof version !== "string") {
+    return null;
+  }
+  const marker = "-dev.";
+  const markerIndex = version.lastIndexOf(marker);
+  if (markerIndex === -1) {
+    return null;
+  }
+  const identifier = version.slice(markerIndex + marker.length);
+  const sha =
+    identifier.startsWith("g") && identifier.length > 1 && [...identifier.slice(1)].every(isDigit)
+      ? identifier.slice(1)
+      : identifier;
+  return sha.length > 0 && [...sha].every(isHexDigit) ? sha : null;
+}
+
 export function stampVersion(packageJson, packageJsonPath, lockfilePath, version) {
   packageJson.version = version;
   writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
@@ -48,6 +65,10 @@ export function probePublished(spec, cwd) {
 
 function isDigit(char) {
   return char >= "0" && char <= "9";
+}
+
+function isHexDigit(char) {
+  return isDigit(char) || (char >= "a" && char <= "f");
 }
 
 function main() {

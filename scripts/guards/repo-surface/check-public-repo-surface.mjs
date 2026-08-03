@@ -19,12 +19,7 @@ assert(
 );
 const privatePrefixes = [...privatePaths.heldPrivate, ...privatePaths.agentPrivate];
 
-const wiredPrefixes = [
-  "cloudflare/",
-  "scripts/stripe/",
-  "services/agent-mcp/",
-  "services/license-worker/",
-];
+const wiredPrefixes = ["scripts/stripe/", "services/agent-mcp/", "services/license-worker/"];
 const wiredArtifactDirs = new Set([
   "__pycache__",
   ".mypy_cache",

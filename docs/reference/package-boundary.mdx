@@ -36,7 +36,7 @@ The primary public package name is `supaschema` on npmjs.org. Releases also publ
 
 Do not add broad repo directories to the allowlist just because a single file is needed. Add the narrowest file or directory that matches the consumer contract.
 
-The source `docs/` tree, examples, benchmarks, corpus fixtures, source files, tests, services, and maintainer scripts stay out of the npm tarball. The narrow documentation exception is the consumer-safe projection under `agent-bundle/docs/`: the canonical sync writer copies every `docs/**/*.mdx` file byte-for-byte and generates a sorted URL index, while `docs.json`, images, and all other non-MDX files remain excluded. The projection stays inside `node_modules` for offline reference and is never copied by `supaschema init`.
+The source `docs/` tree, examples, benchmarks, corpus fixtures, source files, tests, services, and maintainer scripts stay out of the npm tarball. The narrow documentation exception is the consumer-safe projection under `agent-bundle/docs/`: the canonical sync writer copies every `docs/**/*.mdx` file byte-for-byte and generates a sorted URL index, while `blume.config.ts`, `meta.ts` navigation files, images, and all other non-MDX files remain excluded. The projection stays inside `node_modules` for offline reference and is never copied by `supaschema init`.
 
 Generated build caches must not live inside an allowlisted directory: a broad entry like `dist` ships everything beneath it, so write a `tsBuildInfoFile` to `.tmp/` rather than `dist/`. `tests/package/contents.test.ts` fails if any `.tsbuildinfo`, source file, public-support directory, or maintainer tooling reaches the tarball.
 

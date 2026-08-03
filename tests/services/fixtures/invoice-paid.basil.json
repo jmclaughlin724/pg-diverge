@@ -12,6 +12,31 @@
       "customer": "cus_basil",
       "amount_paid": 9900,
       "status": "paid",
+      "lines": {
+        "data": [
+          {
+            "id": "il_basil",
+            "object": "line_item",
+            "parent": {
+              "type": "subscription_item_details",
+              "subscription_item_details": {
+                "subscription": "sub_123",
+                "subscription_item": "si_123"
+              }
+            },
+            "period": {
+              "start": 1802592000,
+              "end": 1805270400
+            },
+            "pricing": {
+              "type": "price_details",
+              "price_details": {
+                "price": "price_subscription"
+              }
+            }
+          }
+        ]
+      },
       "parent": {
         "type": "subscription_details",
         "subscription_details": {

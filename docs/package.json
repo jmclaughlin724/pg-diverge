@@ -9,9 +9,9 @@
     "validate": "blume validate"
   },
   "dependencies": {
-    "blume": "^1.1.4"
+    "blume": "1.2.1"
   },
   "devDependencies": {
-    "@astrojs/cloudflare": "^14.1.7"
+    "@astrojs/cloudflare": "14.1.7"
   }
 }

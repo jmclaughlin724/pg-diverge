@@ -24,7 +24,7 @@ This rule owns file-edit safety, generated-artifact discipline, concurrent-chang
 
 ## Editing rules
 
-- Read enough local context before editing.
+- Satisfy the Rule 05 research-before-acting gate before the first write: owner and current source read, applicable rules and skills loaded, available tooling reviewed, and required upstream research complete.
 - Keep changes owner-scoped and use the canonical owner that satisfies the requested end state.
 - Prefer structured edits (`apply_patch`, editor tool, AST/LSP rename, or repo codemod) over shell write tricks for source changes.
 - Treat edit-tool success as transport evidence only. Inspect the resulting file or diff and run the narrow owner check before claiming the patch worked; an `apply_patch` success or `Done` message does not prove the intended content landed.

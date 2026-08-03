@@ -360,9 +360,13 @@ function assertSnapshotYaml(parsed) {
     !snapshot.raw.includes("gh release create"),
     "snapshot.yml must not create GitHub Releases or tags"
   );
+  const registrySmokeStep = steps.find((step) =>
+    String(step?.run ?? "").includes("node scripts/release/registry-smoke.mjs")
+  );
+  const immutableSnapshotSpec = ["supaschema@$", "{{ steps.snapshot.outputs.version }}"].join("");
   assert(
-    snapshot.raw.includes("SUPASCHEMA_REGISTRY_SMOKE_SPEC"),
-    "snapshot.yml must registry-smoke the next dist-tag after publish"
+    registrySmokeStep?.env?.SUPASCHEMA_REGISTRY_SMOKE_SPEC === immutableSnapshotSpec,
+    "snapshot.yml must registry-smoke the immutable version emitted by the stamp step"
   );
   assert(
     (publishJob.steps ?? []).some((step) => stepActionName(step) === "actions/attest"),

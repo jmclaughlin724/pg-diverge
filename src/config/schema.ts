@@ -293,6 +293,7 @@ function enrichNestedSchema(properties: Record<string, unknown>): void {
         "git:HEAD",
         "empty:",
         "dir:baseline/schemas",
+        "migrations:supabase/migrations",
         "database:$DATABASE_URL",
       ];
       from.oneOf = [

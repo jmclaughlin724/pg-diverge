@@ -166,6 +166,13 @@ function validFiles() {
         },
       ],
     }),
+    ".claude/skills/supaschema/SKILL.md": `---
+name: supaschema
+description: Consumer skill published to the public skills tree.
+metadata:
+  public: true
+---
+`,
     ".gitignore": "",
     "package-lock.json": "{}\n",
     "package.json": `${JSON.stringify(validPackage())}\n`,

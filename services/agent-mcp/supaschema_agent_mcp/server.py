@@ -354,7 +354,9 @@ def _redact_quoted_assignments(text: str) -> str:
         if eq == -1:
             out.append(text[cursor:])
             break
-        name_start = max(text.rfind(" ", 0, eq) + 1, 0)
+        name_start = eq
+        while name_start > cursor and not text[name_start - 1].isspace():
+            name_start -= 1
         name = text[name_start:eq]
         quote = text[eq + 1 : eq + 2]
         if quote not in ("'", '"') or not any(m in name.upper() for m in SECRET_NAME_MARKERS):
@@ -370,12 +372,31 @@ def _redact_quoted_assignments(text: str) -> str:
     return "".join(out)
 
 
+def _split_preserving_whitespace(text: str) -> list[str]:
+    if not text:
+        return []
+    parts: list[str] = []
+    start = 0
+    whitespace = text[0].isspace()
+    for index, character in enumerate(text[1:], start=1):
+        if character.isspace() == whitespace:
+            continue
+        parts.append(text[start:index])
+        start = index
+        whitespace = character.isspace()
+    parts.append(text[start:])
+    return parts
+
+
 def _redact(text: str) -> str:
     text = _redact_quoted_assignments(text)
     words = []
     mask_next = False
-    for word in _redact_url_passwords(text).split(" "):
-        if mask_next and word:
+    for word in _split_preserving_whitespace(_redact_url_passwords(text)):
+        if not word or word.isspace():
+            words.append(word)
+            continue
+        if mask_next:
             words.append("***")
             mask_next = False
             continue
@@ -396,7 +417,7 @@ def _redact(text: str) -> str:
             mask_next = True
             continue
         words.append(word)
-    return " ".join(words)
+    return "".join(words)
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)

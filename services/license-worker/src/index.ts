@@ -18,10 +18,11 @@ import {
   isEntitled,
   issueLicenseToken,
   licenseClaimsFor,
+  licenseClaimsThrough,
   verifyLicenseToken,
 } from "./issue.js";
 import type { WorkerStore } from "./store.js";
-import type { StripeFetch } from "./stripe-api.js";
+import { type StripeFetch, stripeGet } from "./stripe-api.js";
 import { verifyStripeSignature } from "./webhook.js";
 
 export interface LicenseWorkerEnv {
@@ -71,6 +72,8 @@ interface LicenseWorkerRuntime {
   stripeWebhookSecret: string;
   successUrl: string;
 }
+
+const oauthStateCookieName = "supaschema_oauth_state";
 
 type LicenseWorkerStringKey =
   | "CHECKOUT_CANCEL_URL"
@@ -170,7 +173,14 @@ export function extractCheckoutCompletion(event: unknown): CheckoutCompletion | 
 
 interface InvoiceRenewal {
   invoiceId: string;
+  periods: InvoicePaidPeriod[];
   subscriptionId: string;
+}
+
+interface InvoicePaidPeriod {
+  paidThrough: number;
+  priceId: string;
+  subscriptionId?: string;
 }
 
 export function extractInvoiceRenewal(event: unknown): InvoiceRenewal | null {
@@ -185,13 +195,64 @@ export function extractInvoiceRenewal(event: unknown): InvoiceRenewal | null {
   }
   const subscription = invoiceSubscriptionId(invoice);
   const invoiceId = property(invoice, "id");
-  if (subscription === undefined) {
+  if (subscription === undefined || typeof invoiceId !== "string" || invoiceId.length === 0) {
     return null;
   }
   return {
-    invoiceId: typeof invoiceId === "string" && invoiceId.length > 0 ? invoiceId : subscription,
+    invoiceId,
+    periods: invoicePaidPeriods(invoice),
     subscriptionId: subscription,
   };
+}
+
+function invoicePaidPeriods(invoice: object): InvoicePaidPeriod[] {
+  const lines = asObject(property(invoice, "lines"));
+  const data = lines === null ? undefined : property(lines, "data");
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  const periods: InvoicePaidPeriod[] = [];
+  for (const value of data) {
+    const line = asObject(value);
+    if (line === null) {
+      continue;
+    }
+    const period = asObject(property(line, "period"));
+    const paidThrough = period === null ? undefined : property(period, "end");
+    const priceId = invoiceLinePriceId(line);
+    if (!isUnixTimestamp(paidThrough) || priceId === undefined) {
+      continue;
+    }
+    const subscriptionId = invoiceLineSubscriptionId(line);
+    periods.push({
+      paidThrough,
+      priceId,
+      ...(subscriptionId === undefined ? {} : { subscriptionId }),
+    });
+  }
+  return periods;
+}
+
+function invoiceLinePriceId(line: object): string | undefined {
+  const pricing = asObject(property(line, "pricing"));
+  const priceDetails = pricing === null ? null : asObject(property(pricing, "price_details"));
+  const modern = priceDetails === null ? undefined : property(priceDetails, "price");
+  if (typeof modern === "string" && modern.length > 0) {
+    return modern;
+  }
+  const legacyPrice = asObject(property(line, "price"));
+  const legacy = legacyPrice === null ? undefined : property(legacyPrice, "id");
+  return typeof legacy === "string" && legacy.length > 0 ? legacy : undefined;
+}
+
+function invoiceLineSubscriptionId(line: object): string | undefined {
+  const parent = asObject(property(line, "parent"));
+  if (parent === null || property(parent, "type") !== "subscription_item_details") {
+    return;
+  }
+  const details = asObject(property(parent, "subscription_item_details"));
+  const subscription = details === null ? undefined : property(details, "subscription");
+  return typeof subscription === "string" && subscription.length > 0 ? subscription : undefined;
 }
 
 function invoiceSubscriptionId(invoice: object): string | undefined {
@@ -208,8 +269,10 @@ function invoiceSubscriptionId(invoice: object): string | undefined {
 }
 
 interface SubscriptionRecord {
-  intervalDays: number;
+  lastInvoiceId?: string;
+  paidThrough: number;
   plan: string;
+  priceId: string;
   repo: string;
   sessionId: string;
 }
@@ -224,16 +287,24 @@ function parseSubscriptionRecord(raw: string): SubscriptionRecord | null {
     const sessionId = property(record, "sessionId");
     const repo = property(record, "repo");
     const plan = property(record, "plan");
-    const intervalDays = property(record, "intervalDays");
-    if (typeof sessionId !== "string" || typeof repo !== "string" || typeof plan !== "string") {
+    const priceId = property(record, "priceId");
+    const paidThrough = property(record, "paidThrough");
+    const lastInvoiceId = property(record, "lastInvoiceId");
+    if (
+      typeof sessionId !== "string" ||
+      typeof repo !== "string" ||
+      typeof plan !== "string" ||
+      typeof priceId !== "string" ||
+      !isUnixTimestamp(paidThrough) ||
+      (lastInvoiceId !== undefined && typeof lastInvoiceId !== "string")
+    ) {
       return null;
     }
     return {
-      intervalDays:
-        typeof intervalDays === "number" && Number.isInteger(intervalDays) && intervalDays >= 1
-          ? intervalDays
-          : 365,
+      ...(lastInvoiceId === undefined ? {} : { lastInvoiceId }),
+      paidThrough,
       plan,
+      priceId,
       repo,
       sessionId,
     };
@@ -244,28 +315,158 @@ function parseSubscriptionRecord(raw: string): SubscriptionRecord | null {
 
 async function ensureSubscriptionRecord(
   runtime: LicenseWorkerRuntime,
-  completion: NonNullable<ReturnType<typeof extractCheckoutCompletion>>
-): Promise<void> {
-  if (completion.subscriptionId === undefined) {
-    return;
+  completion: NonNullable<ReturnType<typeof extractCheckoutCompletion>>,
+  stripeFetch: StripeFetch
+): Promise<SubscriptionRecord | null> {
+  const planPrice = runtime.planCatalog.get(completion.plan);
+  if (completion.subscriptionId === undefined || planPrice?.mode !== "subscription") {
+    return null;
   }
   const key = `subscription:${completion.subscriptionId}`;
-  if ((await runtime.licenses.get(key)) !== null) {
-    return;
+  const raw = await runtime.licenses.get(key);
+  const existing = raw === null ? null : parseSubscriptionRecord(raw);
+  if (existing !== null) {
+    return existing.plan === completion.plan &&
+      existing.priceId === planPrice.price &&
+      canonicalRepo(existing.repo) === canonicalRepo(completion.repo) &&
+      existing.sessionId === completion.sessionId
+      ? existing
+      : null;
+  }
+  const subscription = await stripeGet(
+    stripeFetch,
+    runtime.stripeSecretKey,
+    `subscriptions/${encodeURIComponent(completion.subscriptionId)}`
+  );
+  const paidThrough = subscriptionPaidThrough(subscription, planPrice.price);
+  if (paidThrough === null) {
+    return null;
   }
   const record: SubscriptionRecord = {
-    intervalDays: runtime.planCatalog.get(completion.plan)?.intervalDays ?? 365,
+    paidThrough,
     plan: completion.plan,
+    priceId: planPrice.price,
     repo: completion.repo,
     sessionId: completion.sessionId,
   };
   await runtime.licenses.put(key, JSON.stringify(record));
+  return record;
+}
+
+function subscriptionPaidThrough(subscription: object, priceId: string): number | null {
+  const items = asObject(property(subscription, "items"));
+  const data = items === null ? undefined : property(items, "data");
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  const matchingPeriods: number[] = [];
+  for (const value of data) {
+    const item = asObject(value);
+    const price = item === null ? null : asObject(property(item, "price"));
+    if (item === null || price === null || property(price, "id") !== priceId) {
+      continue;
+    }
+    const paidThrough = property(item, "current_period_end");
+    if (isUnixTimestamp(paidThrough)) {
+      matchingPeriods.push(paidThrough);
+    }
+  }
+  return matchingPeriods.length === 1 ? (matchingPeriods[0] ?? null) : null;
+}
+
+function isUnixTimestamp(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+async function handleCheckoutCompletion(
+  completion: CheckoutCompletion,
+  runtime: LicenseWorkerRuntime,
+  nowSeconds: number,
+  stripeFetch: StripeFetch
+): Promise<Response> {
+  const planPrice = runtime.planCatalog.get(completion.plan);
+  if (planPrice === undefined) {
+    return jsonResponse({ ignored: true });
+  }
+  const existing = await runtime.licenses.get(completion.sessionId);
+  if (existing !== null) {
+    if (planPrice.mode === "subscription") {
+      try {
+        const record = await ensureSubscriptionRecord(runtime, completion, stripeFetch);
+        if (record === null) {
+          return new Response("invalid subscription paid-through period", { status: 500 });
+        }
+      } catch {
+        return new Response("subscription lookup failed", { status: 502 });
+      }
+    }
+    return jsonResponse({ idempotent: true, issued: true });
+  }
+  let paidThrough: number | undefined;
+  if (planPrice.mode === "subscription") {
+    try {
+      const record = await ensureSubscriptionRecord(runtime, completion, stripeFetch);
+      paidThrough = record?.paidThrough;
+    } catch {
+      return new Response("subscription lookup failed", { status: 502 });
+    }
+    if (paidThrough === undefined || paidThrough <= nowSeconds) {
+      return new Response("invalid subscription paid-through period", { status: 500 });
+    }
+  }
+  const claims =
+    paidThrough === undefined
+      ? licenseClaimsFor(
+          completion.repo,
+          completion.plan,
+          nowSeconds,
+          planPrice.intervalDays ?? 365
+        )
+      : licenseClaimsThrough(completion.repo, completion.plan, paidThrough);
+  await runtime.licenses.put(completion.sessionId, issueLicenseToken(claims, runtime.privateKey));
+  return jsonResponse({ issued: true, repo: completion.repo });
+}
+
+async function handleInvoiceRenewal(
+  renewal: InvoiceRenewal,
+  runtime: LicenseWorkerRuntime,
+  nowSeconds: number
+): Promise<Response> {
+  const subscriptionKey = `subscription:${renewal.subscriptionId}`;
+  const raw = await runtime.licenses.get(subscriptionKey);
+  const record = raw === null ? null : parseSubscriptionRecord(raw);
+  if (record === null) {
+    return jsonResponse({ ignored: true });
+  }
+  if (record.lastInvoiceId === renewal.invoiceId) {
+    return jsonResponse({ idempotent: true, renewed: true });
+  }
+  const matchingPeriods = renewal.periods.filter(
+    (period) =>
+      period.priceId === record.priceId &&
+      (period.subscriptionId === undefined || period.subscriptionId === renewal.subscriptionId)
+  );
+  const paidThrough = matchingPeriods.length === 1 ? matchingPeriods[0]?.paidThrough : undefined;
+  if (paidThrough === undefined) {
+    return new Response("invalid invoice paid-through period", { status: 500 });
+  }
+  if (paidThrough <= record.paidThrough || paidThrough <= nowSeconds) {
+    return jsonResponse({ ignored: true });
+  }
+  const claims = licenseClaimsThrough(record.repo, record.plan, paidThrough);
+  await runtime.licenses.put(record.sessionId, issueLicenseToken(claims, runtime.privateKey));
+  await runtime.licenses.put(
+    subscriptionKey,
+    JSON.stringify({ ...record, lastInvoiceId: renewal.invoiceId, paidThrough })
+  );
+  return jsonResponse({ renewed: true, repo: record.repo });
 }
 
 async function handleWebhook(
   request: Request,
   runtime: LicenseWorkerRuntime,
-  nowSeconds: number
+  nowSeconds: number,
+  stripeFetch: StripeFetch
 ): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("method not allowed", { status: 405 });
@@ -286,37 +487,11 @@ async function handleWebhook(
   }
   const completion = extractCheckoutCompletion(event);
   if (completion !== null) {
-    const existing = await runtime.licenses.get(completion.sessionId);
-    if (existing !== null) {
-      await ensureSubscriptionRecord(runtime, completion);
-      return jsonResponse({ idempotent: true, issued: true });
-    }
-    const token = issueLicenseToken(
-      licenseClaimsFor(
-        completion.repo,
-        completion.plan,
-        nowSeconds,
-        runtime.planCatalog.get(completion.plan)?.intervalDays ?? 365
-      ),
-      runtime.privateKey
-    );
-    await runtime.licenses.put(completion.sessionId, token);
-    await ensureSubscriptionRecord(runtime, completion);
-    return jsonResponse({ issued: true, repo: completion.repo });
+    return handleCheckoutCompletion(completion, runtime, nowSeconds, stripeFetch);
   }
   const renewal = extractInvoiceRenewal(event);
   if (renewal !== null) {
-    const raw = await runtime.licenses.get(`subscription:${renewal.subscriptionId}`);
-    const record = raw === null ? null : parseSubscriptionRecord(raw);
-    if (record === null) {
-      return jsonResponse({ ignored: true });
-    }
-    const token = issueLicenseToken(
-      licenseClaimsFor(record.repo, record.plan, nowSeconds, record.intervalDays),
-      runtime.privateKey
-    );
-    await runtime.licenses.put(record.sessionId, token);
-    return jsonResponse({ renewed: true, repo: record.repo });
+    return handleInvoiceRenewal(renewal, runtime, nowSeconds);
   }
   return jsonResponse({ ignored: true });
 }
@@ -359,12 +534,19 @@ function handleCheckout(
   const authorize = new URL("https://github.com/login/oauth/authorize");
   authorize.searchParams.set("client_id", runtime.githubOauthClientId);
   authorize.searchParams.set("redirect_uri", `${url.origin}/auth/github/callback`);
-  authorize.searchParams.set("scope", "read:user");
-  authorize.searchParams.set("state", createOAuthState(repo, plan, nowSeconds, runtime.privateKey));
-  return new Response(null, { headers: { location: authorize.toString() }, status: 302 });
+  const stateToken = createOAuthState(repo, plan, nowSeconds, runtime.privateKey);
+  authorize.searchParams.set("state", stateToken);
+  return new Response(null, {
+    headers: {
+      location: authorize.toString(),
+      "set-cookie": oauthStateCookie(stateToken, 600),
+    },
+    status: 302,
+  });
 }
 
 async function handleOAuthCallback(
+  request: Request,
   url: URL,
   runtime: LicenseWorkerRuntime,
   nowSeconds: number,
@@ -376,11 +558,14 @@ async function handleOAuthCallback(
   if (code === null || code.length === 0 || stateToken === null) {
     return new Response("missing code or state", { status: 400 });
   }
+  if (requestCookie(request, oauthStateCookieName) !== stateToken) {
+    return new Response("invalid state", { status: 400 });
+  }
   const state = verifyOAuthState(stateToken, runtime.licensePublicKeyPem, nowSeconds);
   if (state === null || !isValidRepo(state.repo) || !isValidPlan(state.plan)) {
     return new Response("invalid state", { status: 400 });
   }
-  const stateKey = `oauth-state:${stateToken}`;
+  const stateKey = `oauth-state:${state.nonce}`;
   if ((await runtime.licenses.get(stateKey)) !== null) {
     return new Response("state already used", { status: 400 });
   }
@@ -409,9 +594,30 @@ async function handleOAuthCallback(
   };
   try {
     const sessionUrl = await createCheckoutSession(stripeFetch, runtime.stripeSecretKey, checkout);
-    return new Response(null, { headers: { location: sessionUrl }, status: 302 });
+    return new Response(null, {
+      headers: {
+        location: sessionUrl,
+        "set-cookie": oauthStateCookie("", 0),
+      },
+      status: 302,
+    });
   } catch {
     return new Response("checkout unavailable", { status: 502 });
+  }
+}
+
+function oauthStateCookie(value: string, maxAgeSeconds: number): string {
+  return `${oauthStateCookieName}=${value}; HttpOnly; Max-Age=${maxAgeSeconds}; Path=/auth/github/callback; SameSite=Lax; Secure`;
+}
+
+function requestCookie(request: Request, name: string): string | undefined {
+  const header = request.headers.get("cookie") ?? "";
+  for (const part of header.split(";")) {
+    const trimmed = part.trim();
+    const separator = trimmed.indexOf("=");
+    if (separator > 0 && trimmed.slice(0, separator) === name) {
+      return trimmed.slice(separator + 1);
+    }
   }
 }
 
@@ -622,13 +828,13 @@ export function handleLicenseWorker(
     return Promise.resolve(handleCheckout(request, runtime, url, nowSeconds));
   }
   if (url.pathname === "/auth/github/callback") {
-    return handleOAuthCallback(url, runtime, nowSeconds, fetchImpl, fetchImpl);
+    return handleOAuthCallback(request, url, runtime, nowSeconds, fetchImpl, fetchImpl);
   }
   if (url.pathname === "/contracts") {
     return handleContractRegistry(request, runtime, url, nowSeconds);
   }
   if (url.pathname === "/webhook") {
-    return handleWebhook(request, runtime, nowSeconds);
+    return handleWebhook(request, runtime, nowSeconds, fetchImpl);
   }
   if (url.pathname === "/license") {
     return handleLicenseCors(request, url, runtime);

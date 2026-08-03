@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyPnpmOverride,
+  cloneConfiguration,
+  cloneTarget,
   detectPackageManager,
   gateArgv,
   isExactVersionSpec,
@@ -53,6 +55,63 @@ describe("parseCanaryArgs", () => {
     expect(() => parseCanaryArgs([])).toThrow("--repo is required");
     expect(() => parseCanaryArgs(["--repo"])).toThrow("missing value");
     expect(() => parseCanaryArgs(["--repo", "x", "--nope", "y"])).toThrow("unknown argument");
+  });
+});
+
+describe("cloneTarget", () => {
+  it("enables token authentication only for the exact GitHub HTTPS host", () => {
+    expect(cloneTarget("jmclaughlin724/anilize")).toEqual({
+      authenticated: true,
+      url: "https://github.com/jmclaughlin724/anilize.git",
+    });
+    expect(cloneTarget("https://github.com/jmclaughlin724/anilize.git")).toEqual({
+      authenticated: true,
+      url: "https://github.com/jmclaughlin724/anilize.git",
+    });
+    expect(cloneTarget("https://github.com.evil.example/jmclaughlin724/anilize.git")).toEqual({
+      authenticated: false,
+      url: "https://github.com.evil.example/jmclaughlin724/anilize.git",
+    });
+    expect(cloneTarget("https://github.com@evil.example/private.git")).toEqual({
+      authenticated: false,
+      url: "https://github.com@evil.example/private.git",
+    });
+    expect(cloneTarget("https://attacker@github.com/acme/private.git")).toEqual({
+      authenticated: false,
+      url: "https://attacker@github.com/acme/private.git",
+    });
+    expect(cloneTarget("https://github.com:444/acme/private.git")).toEqual({
+      authenticated: false,
+      url: "https://github.com:444/acme/private.git",
+    });
+    expect(cloneTarget("file:///tmp/consumer")).toEqual({
+      authenticated: false,
+      url: "file:///tmp/consumer",
+    });
+  });
+
+  it("removes clone credentials entirely for non-GitHub targets", () => {
+    const sourceEnv = { CONSUMER_CANARY_TOKEN: "secret-token", PATH: "/usr/bin" };
+    const external = cloneConfiguration(
+      "https://github.com.evil.example/private.git",
+      "secret-token",
+      sourceEnv,
+      () => "/tmp/should-not-be-created"
+    );
+    expect(external.env).toEqual({ GIT_TERMINAL_PROMPT: "0", PATH: "/usr/bin" });
+    expect(external.env).not.toHaveProperty("CONSUMER_CANARY_TOKEN");
+    expect(external.env).not.toHaveProperty("GIT_ASKPASS");
+
+    const github = cloneConfiguration(
+      "https://github.com/acme/private.git",
+      "secret-token",
+      sourceEnv,
+      () => "/tmp/test-askpass"
+    );
+    expect(github.env).toMatchObject({
+      CONSUMER_CANARY_TOKEN: "secret-token",
+      GIT_ASKPASS: "/tmp/test-askpass",
+    });
   });
 });
 

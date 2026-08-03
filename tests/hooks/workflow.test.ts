@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { schemaWriteHookOutput } from "../../src/hooks/output.js";
-import { hookEditTargets } from "../../src/hooks/targets.js";
+import { generatedArtifactEditTargets, hookEditTargets } from "../../src/hooks/targets.js";
 
 const previousHookBin = process.env.SUPASCHEMA_HOOK_BIN;
 const previousHookLog = process.env.SUPASCHEMA_HOOK_LOG;
@@ -34,6 +34,45 @@ afterEach(() => {
 });
 
 describe("schema-write hook", () => {
+  it.each([
+    ["GNU -i", "sed -i 's/old/new/' supaschema-config.schema.json"],
+    ["GNU -i.bak", "sed -i.bak 's/old/new/' supaschema-config.schema.json"],
+    ["GNU -ibak", "sed -ibak 's/old/new/' supaschema-config.schema.json"],
+    ["GNU --in-place", "sed --in-place 's/old/new/' supaschema-config.schema.json"],
+    ["GNU --in-place=.bak", "sed --in-place=.bak 's/old/new/' supaschema-config.schema.json"],
+    ["BSD -i empty suffix", "sed -i '' 's/old/new/' supaschema-config.schema.json"],
+    ["BSD -i backup suffix", "sed -i .bak 's/old/new/' supaschema-config.schema.json"],
+  ])("detects %s writes to generated artifacts", (_dialect, command) => {
+    const project = join(tmpdir(), "supaschema-hook-project");
+    expect(
+      generatedArtifactEditTargets(
+        {
+          tool_input: { command },
+          tool_name: "Bash",
+        },
+        project
+      )
+    ).toEqual([
+      {
+        operation: "write",
+        path: join(project, "supaschema-config.schema.json"),
+      },
+    ]);
+  });
+
+  it("does not classify read-only sed as a generated-artifact write", () => {
+    const project = join(tmpdir(), "supaschema-hook-project");
+    expect(
+      generatedArtifactEditTargets(
+        {
+          tool_input: { command: "sed -n '1,20p' supaschema-config.schema.json" },
+          tool_name: "Bash",
+        },
+        project
+      )
+    ).toEqual([]);
+  });
+
   it("accepts canonical edit and apply-patch targets", () => {
     const project = join(tmpdir(), "supaschema-hook-project");
     expect(

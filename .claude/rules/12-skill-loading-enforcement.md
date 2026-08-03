@@ -50,7 +50,11 @@ Git, branch, reset, push, merge, and worktree commands are outside hook enforcem
 ## State
 
 - Canonical state lives at `<repo>/.tmp/agent-hooks`; `STATE_DIR` exists only for isolated tests.
-- Directories use mode `0700`; state and lock files use `0600`. Writes are atomic and serialized.
+- State and lock directories use mode `0700`; state and lock-owner files use `0600`. Writes are atomic and serialized.
+- Skill discovery stays outside the lock and runs only for events that use the inventory. Each lock directory contains one ephemeral owner file with only a PID, random ownership token, and acquisition timestamp.
+- Waiting processes prepare per-session candidate directories whose names bind the waiter PID and ownership token. A later acquisition removes only an empty candidate or its single expected owner file when that PID is definitely dead; live or malformed candidates remain visible, and age never grants ownership.
+- `SessionStart` discards its own session's recognized lock owners before resetting that session's state, because a starting session has no live prior holder. This is the only reclaim path that does not consult process liveness; it is scoped to that one session's lock, and malformed owner files stay on disk for triage.
+- Reclaim a lock only when its recorded process is definitely dead; never steal a valid live owner based on age. State commits and lock release require the exact ownership token, so a killed hook is recovered within the next acquire budget without allowing an earlier owner to remove or overwrite a successor.
 - State expires after 24 hours and is bounded to 20 turns and 50 evidence records.
 - Persist only session and turn identifiers, skill identifiers, trigger codes, timestamps, and verification domain/outcome records. Never persist prompts, command text, transcripts, responses, or raw tool output.
 - Skip unchanged writes. Treat malformed state as empty, repair it on the next mutation, and emit a visible warning instead of denying a tool.

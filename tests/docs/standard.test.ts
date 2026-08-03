@@ -335,12 +335,36 @@ sidebar: "left"
     const violations = await lintOne(
       "docs/page.mdx",
       page(`
-<Note>First note.</Note>
-<Tip>Second tip.</Tip>
+:::note
+First note.
+:::
+
+:::tip[Titled]
+Second tip.
+:::
 `)
     );
 
     expect(violations.map((violation) => violation.rule)).toEqual(["callout-spacing"]);
+  });
+
+  it("accepts callouts separated by explanatory content", async () => {
+    const violations = await lintOne(
+      "docs/page.mdx",
+      page(`
+:::note
+First note.
+:::
+
+Prose that explains why the second callout follows.
+
+:::tip
+Second tip.
+:::
+`)
+    );
+
+    expect(violations.map((violation) => violation.rule)).not.toContain("callout-spacing");
   });
 
   it("requires sentence-case body headings while allowing commands, acronyms, and code", async () => {

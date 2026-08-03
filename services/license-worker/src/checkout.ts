@@ -34,6 +34,11 @@ export function parsePlanCatalog(raw: string): PlanCatalog {
     if (mode !== "payment" && mode !== "subscription") {
       throw new Error(`STRIPE_PRICE_MAP["${plan}"].mode must be "payment" or "subscription"`);
     }
+    if (mode === "subscription" && intervalDays !== undefined) {
+      throw new Error(
+        `STRIPE_PRICE_MAP["${plan}"].intervalDays is only valid for one-time payment plans`
+      );
+    }
     catalog.set(plan, {
       mode,
       price,

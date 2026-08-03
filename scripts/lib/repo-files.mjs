@@ -34,7 +34,6 @@ export const LOCAL_REPOSITORY_PREFIXES = [
   "corpus/",
   "benchmarks/",
   "bin/",
-  "cloudflare/",
   "services/",
   ".github/workflows/",
   ".claude/rules/",

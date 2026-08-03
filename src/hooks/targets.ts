@@ -319,11 +319,14 @@ function flagWriteTargets(
   if (!(inPlaceSed || writeFlag)) {
     return [];
   }
+  const writeOperands = inPlaceSed
+    ? sedInPlaceWriteOperands(args)
+    : args.filter((arg) => !arg.startsWith("-") && isPotentialPath(arg));
   const flagTargets = args
     .map(writeFlagTarget)
     .filter((path): path is string => path !== undefined)
     .map((path) => expandShellVariables(path, variables));
-  return [...args.filter((arg) => !arg.startsWith("-") && isPotentialPath(arg)), ...flagTargets]
+  return [...writeOperands, ...flagTargets]
     .map((path) => expandShellVariables(path, variables))
     .map(
       (path): ArtifactEditTarget => ({
@@ -334,6 +337,39 @@ function flagWriteTargets(
 }
 
 const writeFlags = new Set(["--fix", "--write", "-w"]);
+
+function sedInPlaceWriteOperands(args: string[]): string[] {
+  const operands: string[] = [];
+  let scriptProvidedByFlag = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    if (isInPlaceSedFlag(arg)) {
+      const possibleBackupSuffix = args[index + 1] ?? "";
+      if (arg === "-i" && possibleBackupSuffix.startsWith(".")) {
+        index += 1;
+      }
+      continue;
+    }
+    if (arg === "-e" || arg === "--expression" || arg === "-f" || arg === "--file") {
+      scriptProvidedByFlag = true;
+      index += 1;
+      continue;
+    }
+    if (
+      arg.startsWith("-e") ||
+      arg.startsWith("--expression=") ||
+      arg.startsWith("-f") ||
+      arg.startsWith("--file=")
+    ) {
+      scriptProvidedByFlag = true;
+      continue;
+    }
+    if (!arg.startsWith("-") && isPotentialPath(arg)) {
+      operands.push(arg);
+    }
+  }
+  return scriptProvidedByFlag ? operands : operands.slice(1);
+}
 
 function directWriteOperands(
   command: string,
@@ -368,7 +404,7 @@ function writeFlagTarget(value: string): string | undefined {
 }
 
 function isInPlaceSedFlag(value: string): boolean {
-  return value === "-i" || value.startsWith("-i.");
+  return value.startsWith("-i") || value === "--in-place" || value.startsWith("--in-place=");
 }
 
 function isPotentialPath(value: string): boolean {

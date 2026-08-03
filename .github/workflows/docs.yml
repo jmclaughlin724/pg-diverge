@@ -34,6 +34,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            docs/package-lock.json
       - run: npm ci
       - run: npm ci --prefix docs
       - run: npm run docs:check

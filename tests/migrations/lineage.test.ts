@@ -762,6 +762,57 @@ describe("diff lineage chain gate", () => {
     expect(generated).not.toContain("ADD COLUMN email");
   });
 
+  it("replays when no committed tree reproduces the generated baseline", {
+    timeout: 120_000,
+  }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), "supa-unreproducible-baseline-"));
+    const schemaFile = join(repo, "schemas", "app.sql");
+    await mkdir(join(repo, "schemas"), { recursive: true });
+    await mkdir(join(repo, "migrations"), { recursive: true });
+    await writeFile(
+      join(repo, "supaschema.config.json"),
+      JSON.stringify({
+        migrationsDir: "migrations",
+        schemaPaths: ["schemas"],
+        sources: { from: "auto" },
+        sync: { targets: {} },
+      })
+    );
+    await git(repo, ["init"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v1"]);
+
+    await writeFile(
+      schemaFile,
+      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text);\n"
+    );
+    const first = await cli(["diff", "--name", "first"], { cwd: repo });
+    expect(first.code, first.stderr).toBe(0);
+    const baselineLineage = parseLineage(await readFile(first.stdout.trim(), "utf8"));
+
+    await writeFile(
+      schemaFile,
+      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text, email text);\n"
+    );
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "v2 with a migration its tree cannot reproduce"]);
+
+    await writeFile(
+      schemaFile,
+      "CREATE TABLE public.accounts (id bigint PRIMARY KEY, name text, email text, phone text);\n"
+    );
+    const next = await cli(["diff", "--name", "next"], { cwd: repo });
+
+    expect(next.stderr).not.toContain("SUPA_MIGRATION_BASELINE_MISMATCH");
+    expect(next.code, next.stderr).toBe(0);
+    const nextLineage = parseLineage(await readFile(next.stdout.trim(), "utf8"));
+    expect(nextLineage?.from).toBe(baselineLineage?.to);
+
+    const generatedSql = await readFile(next.stdout.trim(), "utf8");
+    expect(generatedSql).toContain("email");
+    expect(generatedSql).toContain("phone");
+  });
+
   it("replays a staged hand-authored tail instead of choosing the staged closure", {
     timeout: 120_000,
   }, async () => {

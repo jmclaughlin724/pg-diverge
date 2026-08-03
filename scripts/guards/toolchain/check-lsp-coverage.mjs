@@ -50,7 +50,7 @@ export function check(root = ROOT) {
     .filter(Boolean);
 
   for (const file of trackedFiles) {
-    if (ignoredFiles.has(file)) {
+    if (ignoredFiles.has(path.basename(file))) {
       continue;
     }
     const extension = extensionFor(file);

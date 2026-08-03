@@ -9,14 +9,13 @@ const fallbackTurnId = "turn-0";
 const lockPollMs = 20;
 const lockTimeoutMs = 8000;
 const sessionEndLockTimeoutMs = 500;
-const staleLockMs = 30_000;
 const stateTtlMs = 24 * 60 * 60 * 1000;
 const maxTurns = 20;
 const maxEvidenceEntries = 50;
 const directoryMode = 0o700;
 const fileMode = 0o600;
 
-export function stateDir() {
+function stateDir() {
   return process.env.STATE_DIR ?? defaultStateDir;
 }
 
@@ -25,7 +24,7 @@ export function sessionStatePath(payload) {
   return path.join(stateDir(), `${Buffer.from(id).toString("base64url")}.json`);
 }
 
-export function validateSessionId(id) {
+function validateSessionId(id) {
   if (id.length === 0 || id.length > 200) {
     throw new Error("invalid session id length");
   }
@@ -44,14 +43,8 @@ export function readSessionState(payload) {
   return readStateRecord(payload).state;
 }
 
-export function writeSessionState(payload, state) {
-  const normalized = normalizeState(state, sessionId(payload));
-  normalized.updatedAt = now();
-  writeStateFile(sessionStatePath(payload), normalized);
-}
-
 export function withSessionState(payload, callback) {
-  return withSessionLock(payload, () => {
+  return withSessionLock(payload, (lock) => {
     const record = readStateRecord(payload);
     const before = JSON.stringify(record.state);
     const result = callback(record.state, { warning: record.warning });
@@ -59,7 +52,7 @@ export function withSessionState(payload, callback) {
     const changed = before !== JSON.stringify(next);
     if (changed || record.needsRepair) {
       next.updatedAt = now();
-      writeStateFile(sessionStatePath(payload), next);
+      writeStateFile(sessionStatePath(payload), next, lock.assertOwned);
     }
     return result?.value;
   });
@@ -67,14 +60,15 @@ export function withSessionState(payload, callback) {
 
 export function refreshSessionState(payload) {
   purgeLegacyHookState();
-  withSessionLock(payload, () => {
+  discardSupersededLockOwners(payload);
+  withSessionLock(payload, (lock) => {
     const state = emptyState(sessionId(payload));
     state.updatedAt = now();
-    writeStateFile(sessionStatePath(payload), state);
+    writeStateFile(sessionStatePath(payload), state, lock.assertOwned);
   });
 }
 
-export function purgeLegacyHookState() {
+function purgeLegacyHookState() {
   if (stateDir() !== defaultStateDir) {
     return 0;
   }
@@ -106,7 +100,8 @@ export function purgeLegacyHookState() {
 export function clearSessionState(payload) {
   withSessionLock(
     payload,
-    () => {
+    (lock) => {
+      lock.assertOwned();
       unlinkIfPresent(sessionStatePath(payload));
     },
     sessionEndLockTimeoutMs
@@ -196,8 +191,7 @@ function readStateRecord(payload) {
     const parsed = JSON.parse(raw);
     assertPersistedState(parsed, sessionId(payload));
     if (Date.now() - Date.parse(parsed.updatedAt) > stateTtlMs) {
-      unlinkIfPresent(file);
-      return { needsRepair: false, state: emptyState(sessionId(payload)) };
+      return { needsRepair: true, state: emptyState(sessionId(payload)) };
     }
     fs.chmodSync(file, fileMode);
     return { needsRepair: false, state: normalizeState(parsed, sessionId(payload)) };
@@ -335,56 +329,304 @@ function pruneTurns(state) {
   state.turns = Object.fromEntries(entries.slice(-maxTurns));
 }
 
-function writeStateFile(file, state) {
+function writeStateFile(file, state, assertOwned) {
   ensurePrivateDirectory(path.dirname(file));
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.tmp`);
-  let descriptor;
   try {
-    descriptor = fs.openSync(temporary, "wx", fileMode);
-    fs.writeFileSync(descriptor, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-    fs.fsyncSync(descriptor);
-    fs.closeSync(descriptor);
-    descriptor = undefined;
+    writePrivateFile(temporary, `${JSON.stringify(state, null, 2)}\n`);
+    assertOwned();
     fs.renameSync(temporary, file);
     fs.chmodSync(file, fileMode);
   } finally {
-    if (descriptor !== undefined) {
-      fs.closeSync(descriptor);
-    }
     unlinkIfPresent(temporary);
   }
 }
 
 function withSessionLock(payload, callback, timeoutMs = lockTimeoutMs) {
-  const release = acquireSessionLock(payload, timeoutMs);
+  const lock = acquireSessionLock(payload, timeoutMs);
   try {
-    return callback();
+    return callback(lock);
   } finally {
-    release();
+    lock.release();
   }
 }
 
 function acquireSessionLock(payload, timeoutMs) {
   const lockPath = `${sessionStatePath(payload)}.lock`;
   ensurePrivateDirectory(path.dirname(lockPath));
-  const startedAt = Date.now();
-  while (true) {
-    try {
-      const descriptor = fs.openSync(lockPath, "wx", fileMode);
-      fs.closeSync(descriptor);
-      return () => unlinkIfPresent(lockPath);
-    } catch (error) {
-      if (error?.code !== "EEXIST") {
-        throw error;
+  reclaimDeadLockCandidates(lockPath);
+  const startedAt = process.hrtime.bigint();
+  let candidate = prepareLockCandidate(lockPath);
+  try {
+    while (true) {
+      try {
+        fs.renameSync(candidate.directory, lockPath);
+        const ownerPath = path.join(lockPath, candidate.ownerName);
+        candidate = undefined;
+        if (lockHasOnlyOwner(lockPath, ownerPath)) {
+          return lockLease(lockPath, ownerPath);
+        }
+        unlinkIfPresent(ownerPath);
+        removeDirectoryIfEmpty(lockPath);
+        candidate = prepareLockCandidate(lockPath);
+      } catch (error) {
+        if (!(error?.code === "EEXIST" || error?.code === "ENOTEMPTY")) {
+          throw error;
+        }
+        reclaimDeadLockOwners(lockPath);
       }
-      clearStaleLock(lockPath);
-      if (Date.now() - startedAt > timeoutMs) {
+      if (Number(process.hrtime.bigint() - startedAt) / 1_000_000 >= timeoutMs) {
         throw new Error(`timed out waiting for session state lock: ${path.basename(lockPath)}`, {
-          cause: error,
+          cause: new Error("the recorded lock owner is still live or ownership is contended"),
         });
       }
       sleep(lockPollMs);
     }
+  } finally {
+    if (candidate) {
+      removeLockCandidate(candidate);
+    }
+  }
+}
+
+function prepareLockCandidate(lockPath) {
+  const token = randomUUID();
+  const ownerName = `owner-${token}.json`;
+  const directory = path.join(
+    path.dirname(lockPath),
+    `.${path.basename(lockPath)}.${process.pid}.${token}.tmp`
+  );
+  const ownerPath = path.join(directory, ownerName);
+  const metadata = { acquiredAt: now(), pid: process.pid, token };
+  let createdDirectory = false;
+  try {
+    fs.mkdirSync(directory, { mode: directoryMode });
+    createdDirectory = true;
+    fs.chmodSync(directory, directoryMode);
+    writePrivateFile(ownerPath, `${JSON.stringify(metadata)}\n`);
+    return { directory, ownerName, ownerPath };
+  } catch (error) {
+    if (createdDirectory) {
+      unlinkIfPresent(ownerPath);
+      removeDirectoryIfEmpty(directory);
+    }
+    throw error;
+  }
+}
+
+function writePrivateFile(file, contents) {
+  const descriptor = fs.openSync(file, "wx", fileMode);
+  try {
+    fs.writeFileSync(descriptor, contents, "utf8");
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+function removeLockCandidate(candidate) {
+  unlinkIfPresent(candidate.ownerPath);
+  removeDirectoryIfEmpty(candidate.directory);
+}
+
+function lockLease(lockPath, ownerPath) {
+  return {
+    assertOwned: () => {
+      if (!lockHasOnlyOwner(lockPath, ownerPath)) {
+        throw new Error(`lost session state lock ownership: ${path.basename(lockPath)}`);
+      }
+    },
+    release: () => {
+      unlinkIfPresent(ownerPath);
+      removeDirectoryIfEmpty(lockPath);
+    },
+  };
+}
+
+function lockHasOnlyOwner(lockPath, ownerPath) {
+  try {
+    const entries = fs.readdirSync(lockPath);
+    if (!(entries.length === 1 && entries[0] === path.basename(ownerPath))) {
+      return false;
+    }
+    return readLockOwner(ownerPath, entries[0])?.pid === process.pid;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function reclaimDeadLockOwners(lockPath) {
+  let entries;
+  try {
+    const lockStat = fs.lstatSync(lockPath);
+    if (!lockStat.isDirectory()) {
+      throw new Error(`invalid session state lock: ${path.basename(lockPath)} is not a directory`);
+    }
+    entries = fs.readdirSync(lockPath, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  if (entries.length === 0) {
+    removeDirectoryIfEmpty(lockPath);
+    return;
+  }
+  for (const entry of entries) {
+    const ownerPath = path.join(lockPath, entry.name);
+    const owner = entry.isFile() ? readLockOwner(ownerPath, entry.name) : undefined;
+    if (owner === null) {
+      continue;
+    }
+    if (!owner) {
+      throw new Error(`invalid session state lock owner: ${entry.name}`);
+    }
+    if (!processIsLive(owner.pid)) {
+      unlinkIfPresent(ownerPath);
+    }
+  }
+  removeDirectoryIfEmpty(lockPath);
+}
+
+function reclaimDeadLockCandidates(lockPath) {
+  const parentDirectory = path.dirname(lockPath);
+  const candidatePrefix = `.${path.basename(lockPath)}.`;
+  let entries;
+  try {
+    entries = fs.readdirSync(parentDirectory, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const identity = lockCandidateIdentity(entry.name, candidatePrefix);
+    if (!(identity && !processIsLive(identity.pid))) {
+      continue;
+    }
+    removeDeadLockCandidate(path.join(parentDirectory, entry.name), identity.token);
+  }
+}
+
+function lockCandidateIdentity(candidateName, candidatePrefix) {
+  if (!(candidateName.startsWith(candidatePrefix) && candidateName.endsWith(".tmp"))) {
+    return;
+  }
+  const identity = candidateName.slice(candidatePrefix.length, -".tmp".length);
+  const separator = identity.indexOf(".");
+  if (separator <= 0 || identity.indexOf(".", separator + 1) !== -1) {
+    return;
+  }
+  const rawPid = identity.slice(0, separator);
+  const pid = Number(rawPid);
+  const token = identity.slice(separator + 1);
+  if (!(Number.isSafeInteger(pid) && pid > 0 && String(pid) === rawPid && isLockToken(token))) {
+    return;
+  }
+  return { pid, token };
+}
+
+function isLockToken(value) {
+  const segments = value.split("-");
+  const expectedLengths = [8, 4, 4, 4, 12];
+  return (
+    segments.length === expectedLengths.length &&
+    segments.every(
+      (segment, index) =>
+        segment.length === expectedLengths[index] &&
+        [...segment].every((character) => "0123456789abcdef".includes(character.toLowerCase()))
+    )
+  );
+}
+
+function removeDeadLockCandidate(candidateDirectory, token) {
+  let entries;
+  try {
+    entries = fs.readdirSync(candidateDirectory, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  if (entries.length === 0) {
+    removeDirectoryIfEmpty(candidateDirectory);
+    return;
+  }
+  const ownerName = `owner-${token}.json`;
+  if (!(entries.length === 1 && entries[0].isFile() && entries[0].name === ownerName)) {
+    return;
+  }
+  unlinkIfPresent(path.join(candidateDirectory, ownerName));
+  removeDirectoryIfEmpty(candidateDirectory);
+}
+
+function discardSupersededLockOwners(payload) {
+  const lockPath = `${sessionStatePath(payload)}.lock`;
+  let entries;
+  try {
+    entries = fs.readdirSync(lockPath, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") {
+      return;
+    }
+    throw error;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile()) {
+      continue;
+    }
+    const ownerPath = path.join(lockPath, entry.name);
+    if (readLockOwner(ownerPath, entry.name)) {
+      unlinkIfPresent(ownerPath);
+    }
+  }
+  removeDirectoryIfEmpty(lockPath);
+}
+
+function readLockOwner(ownerPath, ownerName) {
+  if (!(ownerName.startsWith("owner-") && ownerName.endsWith(".json"))) {
+    return;
+  }
+  try {
+    const value = JSON.parse(fs.readFileSync(ownerPath, "utf8"));
+    const expectedToken = ownerName.slice("owner-".length, -".json".length);
+    const fields = isRecord(value) ? Object.keys(value).sort() : [];
+    if (
+      fields.join(",") !== "acquiredAt,pid,token" ||
+      !Number.isSafeInteger(value.pid) ||
+      value.pid <= 0 ||
+      value.token !== expectedToken ||
+      timestamp(value.acquiredAt) === undefined
+    ) {
+      return;
+    }
+    return value;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    if (error instanceof SyntaxError) {
+      return;
+    }
+    throw error;
+  }
+}
+
+function processIsLive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== "ESRCH";
   }
 }
 
@@ -393,13 +635,11 @@ function ensurePrivateDirectory(directory) {
   fs.chmodSync(directory, directoryMode);
 }
 
-function clearStaleLock(lockPath) {
+function removeDirectoryIfEmpty(lockPath) {
   try {
-    if (Date.now() - fs.statSync(lockPath).mtimeMs > staleLockMs) {
-      fs.unlinkSync(lockPath);
-    }
+    fs.rmdirSync(lockPath);
   } catch (error) {
-    if (error?.code !== "ENOENT") {
+    if (!(error?.code === "ENOENT" || error?.code === "ENOTEMPTY" || error?.code === "EEXIST")) {
       throw error;
     }
   }

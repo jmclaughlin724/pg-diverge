@@ -6,7 +6,6 @@ paths:
   - "services/**"
   - "tests/**"
   - "bin/**"
-  - "cloudflare/**"
   - ".claude/hooks/**"
 ---
 

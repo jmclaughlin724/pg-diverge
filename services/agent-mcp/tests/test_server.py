@@ -518,3 +518,14 @@ async def test_session_state_redacts_recorded_commands(
     assert "--token ***" in evidence[2]["command"]
     assert server._redact('TOKEN="to ken" npm test') == 'TOKEN="***" npm test'
     assert "to ken" not in server._redact("API_SECRET='multi word secret' run")
+    whitespace_secret = "multi-whitespace-secret"
+    redacted_whitespace = server._redact(
+        f"npm test -- --api-key  {whitespace_secret}\n--token\t{whitespace_secret}"
+    )
+    assert whitespace_secret not in redacted_whitespace
+    assert "--api-key  ***" in redacted_whitespace
+    assert "--token\t***" in redacted_whitespace
+    quoted_whitespace = server._redact(
+        "SAFE=ok\tTOKEN=\"first secret\"\nAPI_SECRET='second secret'"
+    )
+    assert quoted_whitespace == "SAFE=ok\tTOKEN=\"***\"\nAPI_SECRET='***'"

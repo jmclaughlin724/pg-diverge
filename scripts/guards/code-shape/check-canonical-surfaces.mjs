@@ -13,7 +13,6 @@ const codeRoots = [
   ".claude/skills/",
   "benchmarks/",
   "bin/",
-  "cloudflare/",
   "scripts/",
   "services/",
   "src/",

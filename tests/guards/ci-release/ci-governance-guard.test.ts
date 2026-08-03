@@ -30,6 +30,7 @@ describe("CI governance guard", () => {
     expect(source).toContain("--tag next");
     expect(source).toContain("node scripts/release/snapshot-version.mjs");
     expect(source).toContain("SUPASCHEMA_REGISTRY_SMOKE_SPEC");
+    expect(source).toContain("steps.snapshot.outputs.version");
   });
 
   it("covers the consumer canary lane invariants", () => {

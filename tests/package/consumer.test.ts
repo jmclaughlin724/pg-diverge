@@ -441,7 +441,15 @@ describe("consumer lifecycle: package install then supaschema init reaches confi
     );
     expect(
       existsSync(
-        join(consumer2, "node_modules", "supaschema", "agent-bundle", "docs", "coding-agents.mdx")
+        join(
+          consumer2,
+          "node_modules",
+          "supaschema",
+          "agent-bundle",
+          "docs",
+          "coding-agents",
+          "index.mdx"
+        )
       )
     ).toBe(true);
     expect(

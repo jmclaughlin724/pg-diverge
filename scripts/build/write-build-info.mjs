@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { snapshotCommitSha } from "../release/snapshot-version.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -16,27 +17,12 @@ async function git(args) {
   }
 }
 
-function snapshotSha(version) {
-  if (typeof version !== "string") {
-    return null;
-  }
-  const marker = "-dev.";
-  const at = version.lastIndexOf(marker);
-  if (at === -1) {
-    return null;
-  }
-  const sha = version.slice(at + marker.length);
-  return sha.length > 0 && [...sha].every((char) => "0123456789abcdef".includes(char))
-    ? sha
-    : null;
-}
-
 const raw = await readFile(join(root, "package.json"), "utf8");
 const version = JSON.parse(raw).version;
 const commit = await git(["rev-parse", "HEAD"]);
 const porcelain = await git(["status", "--porcelain"]);
 
-const devSha = snapshotSha(version);
+const devSha = snapshotCommitSha(version);
 const builtAt =
   devSha === null
     ? new Date().toISOString()

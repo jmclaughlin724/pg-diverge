@@ -20,13 +20,17 @@
     "benchmarks/results",
     "coverage",
     "dist",
+    "docs/.blume",
+    "docs/.blume-verify",
+    "docs/dist",
+    "docs/node_modules",
     "node_modules"
   ],
   "include": [
     "benchmarks/**/*.js",
     "benchmarks/**/*.mjs",
     "bin/**/*.mjs",
-    "cloudflare/**/*.js",
+    "docs/**/*.ts",
     "scripts/**/*.js",
     "scripts/**/*.mjs",
     "services/**/*.ts",

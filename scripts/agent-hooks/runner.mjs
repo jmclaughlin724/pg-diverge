@@ -8,9 +8,11 @@ import {
   runChecks,
   shapeHookResult,
   shapeSessionStateFailure,
+  unexpectedFailureResult,
 } from "./hook-output.mjs";
 import { verificationClaimConflict } from "./response-claims.mjs";
 import { finalMessage } from "./response-evidence.mjs";
+import { discoverSkills } from "./skill-frontmatter.mjs";
 import {
   isObservableLoad,
   pendingSkillMessage,
@@ -30,9 +32,23 @@ export function runAgentHookEvent(eventName, options = {}) {
 export function handleAgentHookEvent(eventName, payload, options = {}) {
   const runtime = options.runtime ?? "claude";
   const hookPath = options.hookPath ?? "scripts/agent-hooks/runner.mjs";
+  const hookRoot = options.root ?? root;
+  let inventory;
+  try {
+    inventory = skillDiscoveryEvents.has(eventName) ? discoverSkills(hookRoot, runtime) : [];
+  } catch (error) {
+    return shapeHookResult(
+      eventName,
+      unexpectedFailureResult(eventName, error, "skillDiscovery", {
+        hookPath,
+        runtime,
+      }),
+      runtime
+    );
+  }
   try {
     return withSessionState(payload, (state, metadata) => {
-      const context = { hookPath, root: options.root ?? root, runtime, state };
+      const context = { hookPath, inventory, root: hookRoot, runtime, state };
       let result = {};
 
       if (eventName === "UserPromptSubmit") {
@@ -86,7 +102,7 @@ function fileTriggeredSkills(payload, context) {
 
 function pendingSkillGate(payload, context) {
   const message = pendingSkillMessage(context.state);
-  if (!message || isObservableLoad(payload, context.root, context.runtime)) {
+  if (!message || isObservableLoad(payload, context.inventory, context.root)) {
     return {};
   }
   return isSubagentPayload(payload) ? { contextParts: [message] } : { deny: message };
@@ -142,3 +158,5 @@ function verificationConflict(payload, context) {
 function isSubagentPayload(payload) {
   return typeof payload?.agent_id === "string" && payload.agent_id.length > 0;
 }
+
+const skillDiscoveryEvents = new Set(["PostToolUse", "PreToolUse", "UserPromptSubmit"]);

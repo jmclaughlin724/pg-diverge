@@ -126,7 +126,7 @@ export const activeAgentFiles = [
 export const rawAgentBundleFiles = [
   "node_modules/supaschema/agent-bundle/INSTALL.md",
   "node_modules/supaschema/agent-bundle/skills-manifest.json",
-  "node_modules/supaschema/agent-bundle/docs/coding-agents.mdx",
+  "node_modules/supaschema/agent-bundle/docs/coding-agents/index.mdx",
   "node_modules/supaschema/agent-bundle/docs/index.md",
   "node_modules/supaschema/agent-bundle/agents/prompts/supaschema-install.md",
   "node_modules/supaschema/agent-bundle/agents/skills/supaschema/references/diagnostics.md",
