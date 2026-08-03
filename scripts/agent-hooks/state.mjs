@@ -367,8 +367,10 @@ function acquireSessionLock(payload, timeoutMs) {
   }
 }
 
+const retryableLockInitializationCodes = new Set(["EACCES", "EBUSY", "EINVAL", "ENOENT", "EPERM"]);
+
 function isRetryableLockInitializationError(error) {
-  return error?.code === "ENOENT" || error?.code === "EINVAL";
+  return retryableLockInitializationCodes.has(error?.code);
 }
 
 function lockWaitExpired(startedAt, timeoutMs) {
@@ -530,11 +532,20 @@ function ensurePrivateDirectory(directory) {
   fs.chmodSync(directory, directoryMode);
 }
 
+const concurrentlyHeldDirectoryCodes = new Set([
+  "EACCES",
+  "EBUSY",
+  "EEXIST",
+  "ENOENT",
+  "ENOTEMPTY",
+  "EPERM",
+]);
+
 function removeDirectoryIfEmpty(lockPath) {
   try {
     fs.rmdirSync(lockPath);
   } catch (error) {
-    if (!(error?.code === "ENOENT" || error?.code === "ENOTEMPTY" || error?.code === "EEXIST")) {
+    if (!concurrentlyHeldDirectoryCodes.has(error?.code)) {
       throw error;
     }
   }
