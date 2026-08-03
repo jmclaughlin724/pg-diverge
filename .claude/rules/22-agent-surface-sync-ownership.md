@@ -40,7 +40,7 @@ Synchronization is always the actual write operation. There is no check-only syn
 
 - Source Claude and generated Codex register silent `SessionStart` and `SessionEnd`, prompt matching, subagent advisory context, and Stop verification-conflict checks.
 - Context `PreToolUse` uses `Agent|Bash|Edit|Glob|Grep|MultiEdit|NotebookEdit|Read|Task|WebFetch|WebSearch|Write|apply_patch` in both runtimes.
-- Context `PostToolUse` uses `Bash|Read|Skill`. Claude alone registers `PostToolUseFailure` for `Bash` and `TaskCompleted` for unresolved required skills.
+- Context `PostToolUse` uses `Bash|Read|Skill`. Claude alone registers `PostToolUseFailure` for `Bash`.
 - Claude product and surface hooks use `Write|Edit|MultiEdit|apply_patch`; Codex product and surface hooks use `apply_patch`.
 - `WorktreeCreate` is not registered. Surface sync is not registered for Bash, failure, Stop, or unrelated events.
 - Codex commands resolve the repository with `git rev-parse --show-toplevel` and provide a Windows equivalent; they do not depend on undocumented project-root injection.

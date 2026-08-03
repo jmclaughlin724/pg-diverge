@@ -19,10 +19,6 @@ metadata:
     - schema safety scan
     - type contract regression
     - SUPA diagnostic
-  file-triggers:
-    - "**/schemas/**/*.sql"
-    - "**/migrations/**/*.sql"
-    - "supaschema.config.json"
 ---
 
 # supaschema

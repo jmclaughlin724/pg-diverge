@@ -16,7 +16,7 @@ Read only the rules and skills directly applicable to the current task.
 | Repository discovery, LSP coverage, formatter and linter ownership, or npm-only tooling | `.claude/rules/06-multi-language-toolchain.md` |
 | PostgreSQL or Supabase migrations, source-intent extraction, or generated schema surfaces | `.claude/rules/supaschema.md` |
 | Agent MCP or FastMCP behavior and public surfaces | `.claude/rules/11-agent-mcp-fastmcp.md` |
-| Skill loading, hook context, observable loading, enforcement, or hook state | `.claude/rules/12-skill-loading-enforcement.md` |
+| Hook enforcement boundaries (Bash safety, verification conflicts, lifecycle silence) | `.claude/rules/12-skill-loading-enforcement.md` |
 | Package exports, npm package boundaries, or public consumers | `.claude/rules/13-npm-package-boundary.md` |
 | Editing safety, deletions, or required removal sweeps | `.claude/rules/14-editing-safety.md` |
 | Agent instructions, prompts, tool routing, or response standards | `.claude/rules/17-prompt-craft-standards.md` |

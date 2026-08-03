@@ -15,9 +15,7 @@ export function discoverSkills(root = defaultRoot, runtime = "claude") {
     const name = stringValue(frontmatter.name) || path.basename(directory);
     out.push({
       description: stringValue(frontmatter.description),
-      fileTriggers: stringArray(metadata["file-triggers"]),
       isPublic: metadata.public === true,
-      keywords: stringArray(metadata.keywords),
       name,
       path: file,
       relativePath: path.relative(root, file).split(path.sep).join("/"),
@@ -80,8 +78,4 @@ function recordValue(value) {
 
 function stringValue(value) {
   return typeof value === "string" ? value : "";
-}
-
-function stringArray(value) {
-  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }

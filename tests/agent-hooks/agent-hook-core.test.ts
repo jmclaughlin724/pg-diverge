@@ -28,7 +28,6 @@ import { handleAgentHookEvent } from "../../scripts/agent-hooks/runner.mjs";
 import { handleSessionLifecycleEvent } from "../../scripts/agent-hooks/session-lifecycle.mjs";
 import { parseShellCommand } from "../../scripts/agent-hooks/shell-command.mjs";
 import {
-  currentTurnState,
   inspectSessionState,
   normalizeState,
   readSessionState,
@@ -243,225 +242,6 @@ describe("narrow Bash enforcement", () => {
     expect(evaluate("rm -r /", { env, root })).toEqual({ action: "allow" });
     expect(evaluate("rm -f /", { env, root })).toEqual({ action: "allow" });
     expect(evaluate("rm -rf 'unterminated", { env, root })).toEqual({ action: "allow" });
-  });
-});
-
-describe("skill routing context", () => {
-  it("blocks governed main-session tools until a complete observed skill load", async () => {
-    const fixture = await hookFixture();
-    process.env.STATE_DIR = fixture.stateDir;
-    const session = { prompt: "Use $fastmcp for this change", session_id: "skill-main" };
-
-    handleAgentHookEvent("UserPromptSubmit", session, fixture.options);
-    expect(currentTurnState(readSessionState(session)).pendingSkills).toHaveProperty("fastmcp");
-
-    const ordinaryEdit = preTool("skill-main", "Edit", { file_path: "src/cli.ts" }, fixture);
-    expect(ordinaryEdit.output.hookSpecificOutput).toMatchObject({
-      permissionDecision: "deny",
-      permissionDecisionReason: expect.stringContaining("fastmcp"),
-    });
-
-    const loadRead = preTool("skill-main", "Read", { file_path: fixture.fastmcpSkill }, fixture);
-    expect(loadRead.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
-    postTool("skill-main", "Read", { file_path: fixture.fastmcpSkill }, fixture, {
-      content: fixture.skillSource,
-    });
-
-    expect(currentTurnState(readSessionState(session)).pendingSkills).not.toHaveProperty("fastmcp");
-    expect(preTool("skill-main", "Edit", { file_path: "src/cli.ts" }, fixture).output).toEqual({});
-
-    const shellSession = { prompt: "$fastmcp", session_id: "skill-shell" };
-    handleAgentHookEvent("UserPromptSubmit", shellSession, fixture.options);
-    const command = `cat '${fixture.fastmcpSkill}'`;
-    expect(preTool("skill-shell", "Bash", { command }, fixture).output).toEqual({});
-    postTool("skill-shell", "Bash", { command }, fixture, { stdout: fixture.skillSource });
-    expect(currentTurnState(readSessionState(shellSession)).pendingSkills).not.toHaveProperty(
-      "fastmcp"
-    );
-
-    const sedSession = { prompt: "$fastmcp", session_id: "skill-sed" };
-    handleAgentHookEvent("UserPromptSubmit", sedSession, fixture.options);
-    const sedCommand = `sed -n '1,999p' '${fixture.fastmcpSkill}'`;
-    expect(preTool("skill-sed", "Bash", { command: sedCommand }, fixture).output).toEqual({});
-    postTool("skill-sed", "Bash", { command: sedCommand }, fixture, {
-      stdout: fixture.skillSource,
-    });
-    expect(currentTurnState(readSessionState(sedSession)).pendingSkills).not.toHaveProperty(
-      "fastmcp"
-    );
-
-    const codexFixture = {
-      ...fixture,
-      options: { ...fixture.options, runtime: "codex" },
-    };
-    const codexSession = { prompt: "$fastmcp", session_id: "skill-codex-shell" };
-    handleAgentHookEvent("UserPromptSubmit", codexSession, codexFixture.options);
-    const codexCommand = `cat '${fixture.codexFastmcpSkill}'`;
-    expect(
-      preTool(codexSession.session_id, "Bash", { command: codexCommand }, codexFixture).output
-    ).toEqual({});
-    postTool(
-      codexSession.session_id,
-      "Bash",
-      { command: codexCommand },
-      codexFixture,
-      fixture.skillSource
-    );
-    expect(currentTurnState(readSessionState(codexSession)).pendingSkills).not.toHaveProperty(
-      "fastmcp"
-    );
-  });
-
-  it("matches curated keywords and file triggers from parsed skill frontmatter", async () => {
-    const fixture = await hookFixture();
-    process.env.STATE_DIR = fixture.stateDir;
-
-    handleAgentHookEvent(
-      "UserPromptSubmit",
-      { prompt: "Please inspect the fast mcp service", session_id: "keyword" },
-      fixture.options
-    );
-    expect(
-      currentTurnState(readSessionState({ session_id: "keyword" })).pendingSkills
-    ).toHaveProperty("fastmcp");
-
-    const fileTriggered = preTool(
-      "file-trigger",
-      "Edit",
-      { file_path: "services/agent-mcp/server.py" },
-      fixture
-    );
-    expect(fileTriggered.output.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(fileTriggered.output.hookSpecificOutput?.additionalContext).toContain(
-      'target "services/agent-mcp/server.py" matches configured file trigger "services/agent-mcp/**"'
-    );
-    expect(fileTriggered.output.hookSpecificOutput?.additionalContext).toContain(
-      "Maintain the local FastMCP server."
-    );
-    expect(fileTriggered.output.hookSpecificOutput?.additionalContext).toContain(
-      ".claude/skills/fastmcp/SKILL.md"
-    );
-    expect(
-      currentTurnState(readSessionState({ session_id: "file-trigger" })).pendingSkills.fastmcp
-        ?.trigger
-    ).toBe("file-trigger");
-  });
-
-  it("rejects partial, wildcard, search-only, unknown, and failed load evidence", async () => {
-    const fixture = await hookFixture();
-    process.env.STATE_DIR = fixture.stateDir;
-    const sessionId = "invalid-loads";
-    handleAgentHookEvent(
-      "UserPromptSubmit",
-      { prompt: "$fastmcp", session_id: sessionId },
-      fixture.options
-    );
-
-    postTool(sessionId, "Read", { file_path: fixture.fastmcpSkill, limit: 20 }, fixture);
-    postTool(sessionId, "Read", { file_path: fixture.fastmcpSkill }, fixture, {
-      content: `${fixture.skillSource}truncated`,
-    });
-    postTool(sessionId, "Bash", { command: "cat .claude/skills/*/SKILL.md" }, fixture);
-    postTool(sessionId, "Bash", { command: `cat ${fixture.fastmcpSkill}; true` }, fixture, {
-      stdout: fixture.skillSource,
-    });
-    postTool(sessionId, "Bash", { command: `cat ${fixture.fastmcpSkill}` }, fixture, {
-      exit_code: 1,
-      stdout: fixture.skillSource,
-    });
-    const partialSed = preTool(
-      sessionId,
-      "Bash",
-      { command: `sed -n '1,1p' ${fixture.fastmcpSkill}` },
-      fixture
-    );
-    expect(partialSed.output.hookSpecificOutput?.permissionDecision).toBe("deny");
-    const mutatingSed = preTool(
-      sessionId,
-      "Bash",
-      { command: `sed -i 's/FastMCP/changed/' ${fixture.fastmcpSkill}` },
-      fixture
-    );
-    expect(mutatingSed.output.hookSpecificOutput?.permissionDecision).toBe("deny");
-    postTool(sessionId, "Grep", { path: fixture.fastmcpSkill, pattern: "#" }, fixture);
-    postTool(sessionId, "Skill", { skill: "not-in-inventory" }, fixture);
-    handleAgentHookEvent(
-      "PostToolUseFailure",
-      {
-        hook_event_name: "PostToolUseFailure",
-        session_id: sessionId,
-        tool_input: { command: `cat ${fixture.fastmcpSkill}` },
-        tool_name: "Bash",
-      },
-      fixture.options
-    );
-
-    expect(
-      currentTurnState(readSessionState({ session_id: sessionId })).pendingSkills
-    ).toHaveProperty("fastmcp");
-
-    postTool(sessionId, "Skill", { skill: "fastmcp" }, fixture);
-    expect(
-      currentTurnState(readSessionState({ session_id: sessionId })).pendingSkills
-    ).not.toHaveProperty("fastmcp");
-  });
-
-  it("carries pending prompt context to subagents without blocking tools", async () => {
-    const fixture = await hookFixture();
-    process.env.STATE_DIR = fixture.stateDir;
-    const sessionId = "subagent-skills";
-    handleAgentHookEvent(
-      "UserPromptSubmit",
-      { prompt: "$fastmcp", session_id: sessionId },
-      fixture.options
-    );
-
-    const subagentTool = handleAgentHookEvent(
-      "PreToolUse",
-      {
-        agent_id: "worker-1",
-        session_id: sessionId,
-        tool_input: { file_path: "src/cli.ts" },
-        tool_name: "Edit",
-      },
-      fixture.options
-    );
-    expect(subagentTool.output.hookSpecificOutput?.permissionDecision).toBeUndefined();
-    expect(subagentTool.output.hookSpecificOutput?.additionalContext).toContain("fastmcp");
-
-    const start = handleAgentHookEvent(
-      "SubagentStart",
-      { agent_id: "worker-1", session_id: sessionId },
-      fixture.options
-    );
-    expect(start.output.hookSpecificOutput?.additionalContext).toContain("fastmcp");
-  });
-
-  it("blocks only Claude task completion while required skills remain pending", async () => {
-    const fixture = await hookFixture();
-    process.env.STATE_DIR = fixture.stateDir;
-    const sessionId = "task-completion";
-    handleAgentHookEvent(
-      "UserPromptSubmit",
-      { prompt: "$fastmcp", session_id: sessionId },
-      fixture.options
-    );
-
-    expect(
-      handleAgentHookEvent("TaskCompleted", { session_id: sessionId }, fixture.options).output
-    ).toMatchObject({ decision: "block", reason: expect.stringContaining("fastmcp") });
-
-    postTool(sessionId, "Skill", { skill: "fastmcp" }, fixture);
-    expect(
-      handleAgentHookEvent("TaskCompleted", { session_id: sessionId }, fixture.options).output
-    ).toEqual({});
-    expect(
-      handleAgentHookEvent(
-        "TaskCompleted",
-        { session_id: sessionId },
-        { ...fixture.options, runtime: "codex" }
-      ).output
-    ).toEqual({});
   });
 });
 
@@ -734,35 +514,6 @@ describe("minimal private hook state", () => {
     rmdirSync(lockDirectory);
   });
 
-  it("discovers skills only for inventory events and labels discovery failures", async () => {
-    const stateDirectory = await mkdtemp(join(tmpdir(), "supa-agent-hook-discovery-state-"));
-    const fixtureRoot = await mkdtemp(join(tmpdir(), "supa-agent-hook-discovery-root-"));
-    const skillDirectory = join(fixtureRoot, ".claude", "skills", "broken");
-    await mkdir(skillDirectory, { recursive: true });
-    await writeFile(join(skillDirectory, "SKILL.md"), "---\nmetadata: [\n---\n");
-    process.env.STATE_DIR = stateDirectory;
-    const options: { root: string; runtime: "claude" } = {
-      root: fixtureRoot,
-      runtime: "claude",
-    };
-
-    const stop = handleAgentHookEvent(
-      "Stop",
-      { last_assistant_message: "Done.", session_id: "discovery-stop" },
-      options
-    );
-    expect(stop.output.systemMessage).toBeUndefined();
-
-    const prompt = handleAgentHookEvent(
-      "UserPromptSubmit",
-      { prompt: "hello", session_id: "discovery-prompt" },
-      options
-    );
-    expect(prompt.output.systemMessage).toContain("check=skillDiscovery");
-    expect(prompt.output.systemMessage).not.toContain("check=sessionState");
-    expect(existsSync(sessionStatePath({ session_id: "discovery-prompt" }))).toBe(false);
-  });
-
   it("does not rewrite state for no-op events", async () => {
     const fixture = await hookFixture();
     process.env.STATE_DIR = fixture.stateDir;
@@ -947,8 +698,6 @@ async function hookFixture(): Promise<HookFixture> {
     "metadata:",
     "  keywords:",
     '    - "fast mcp"',
-    "  file-triggers:",
-    '    - "services/agent-mcp/**"',
     "---",
     "",
     "# FastMCP",
@@ -968,19 +717,6 @@ async function hookFixture(): Promise<HookFixture> {
     skillSource,
     stateDir,
   };
-}
-
-function preTool(
-  sessionId: string,
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  fixture: HookFixture
-) {
-  return handleAgentHookEvent(
-    "PreToolUse",
-    { session_id: sessionId, tool_input: toolInput, tool_name: toolName },
-    fixture.options
-  );
 }
 
 function postTool(

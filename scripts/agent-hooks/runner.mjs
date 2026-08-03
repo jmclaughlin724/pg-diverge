@@ -8,19 +8,9 @@ import {
   runChecks,
   shapeHookResult,
   shapeSessionStateFailure,
-  unexpectedFailureResult,
 } from "./hook-output.mjs";
 import { verificationClaimConflict } from "./response-claims.mjs";
 import { finalMessage } from "./response-evidence.mjs";
-import { discoverSkills } from "./skill-frontmatter.mjs";
-import {
-  isObservableLoad,
-  pendingSkillMessage,
-  recordObservableSkillLoad,
-  unresolvedPending,
-  updateFileTriggeredSkills,
-  updatePromptSkills,
-} from "./skills.mjs";
 import { beginTurnState, selectTurnState, withSessionState } from "./state.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -33,47 +23,22 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
   const runtime = options.runtime ?? "claude";
   const hookPath = options.hookPath ?? "scripts/agent-hooks/runner.mjs";
   const hookRoot = options.root ?? root;
-  let inventory;
-  try {
-    inventory = skillDiscoveryEvents.has(eventName) ? discoverSkills(hookRoot, runtime) : [];
-  } catch (error) {
-    return shapeHookResult(
-      eventName,
-      unexpectedFailureResult(eventName, error, "skillDiscovery", {
-        hookPath,
-        runtime,
-      }),
-      runtime
-    );
-  }
   try {
     return withSessionState(payload, (state, metadata) => {
-      const context = { hookPath, inventory, root: hookRoot, runtime, state };
+      const context = { hookPath, root: hookRoot, runtime, state };
       let result = {};
 
       if (eventName === "UserPromptSubmit") {
         beginTurnState(payload, state);
-        result = runChecks(eventName, payload, [promptSkills], context);
       } else if (eventName === "PreToolUse") {
         selectTurnState(payload, state);
-        result = runChecks(
-          eventName,
-          payload,
-          [fileTriggeredSkills, pendingSkillGate, bashSafety],
-          context
-        );
+        result = runChecks(eventName, payload, [bashSafety], context);
       } else if (eventName === "PostToolUse") {
         selectTurnState(payload, state);
-        result = runChecks(eventName, payload, [observableSkillLoad, toolEvidence], context);
+        result = runChecks(eventName, payload, [toolEvidence], context);
       } else if (eventName === "PostToolUseFailure") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [toolEvidence], context);
-      } else if (eventName === "SubagentStart") {
-        selectTurnState(payload, state);
-        result = runChecks(eventName, payload, [subagentContext], context);
-      } else if (eventName === "TaskCompleted") {
-        selectTurnState(payload, state);
-        result = runChecks(eventName, payload, [taskCompletionSkillGate], context);
       } else if (eventName === "Stop" || eventName === "SubagentStop") {
         selectTurnState(payload, state);
         result = runChecks(eventName, payload, [verificationConflict], context);
@@ -92,32 +57,12 @@ export function handleAgentHookEvent(eventName, payload, options = {}) {
   }
 }
 
-function promptSkills(payload, context) {
-  return updatePromptSkills(payload, context.state, context);
-}
-
-function fileTriggeredSkills(payload, context) {
-  return updateFileTriggeredSkills(payload, context.state, context);
-}
-
-function pendingSkillGate(payload, context) {
-  const message = pendingSkillMessage(context.state);
-  if (!message || isObservableLoad(payload, context.inventory, context.root)) {
-    return {};
-  }
-  return isSubagentPayload(payload) ? { contextParts: [message] } : { deny: message };
-}
-
 function bashSafety(payload, context) {
   if (payload?.tool_name !== "Bash") {
     return {};
   }
   const result = evaluateBashPolicy(payload, process.env, { root: context.root });
   return result.action === "block" ? { deny: result.message } : {};
-}
-
-function observableSkillLoad(payload, context) {
-  return recordObservableSkillLoad(payload, context.state, context);
 }
 
 function toolEvidence(payload, context) {
@@ -127,26 +72,6 @@ function toolEvidence(payload, context) {
   });
 }
 
-function subagentContext(_payload, context) {
-  const pending = unresolvedPending(context.state);
-  if (pending.length === 0) {
-    return {};
-  }
-  return {
-    contextParts: [
-      [
-        "Subagent starts with isolated context and inherited loaded skills are not assumed.",
-        ...pending.map((item) => `- Pending skill for parent task: ${item.name}: ${item.reason}`),
-      ].join("\n"),
-    ],
-  };
-}
-
-function taskCompletionSkillGate(_payload, context) {
-  const message = pendingSkillMessage(context.state);
-  return context.runtime === "claude" && message ? { block: message } : {};
-}
-
 function verificationConflict(payload, context) {
   if (payload?.stop_hook_active) {
     return {};
@@ -154,9 +79,3 @@ function verificationConflict(payload, context) {
   const conflict = verificationClaimConflict(finalMessage(payload), context.state);
   return conflict ? { block: conflict.message } : {};
 }
-
-function isSubagentPayload(payload) {
-  return typeof payload?.agent_id === "string" && payload.agent_id.length > 0;
-}
-
-const skillDiscoveryEvents = new Set(["PostToolUse", "PreToolUse", "UserPromptSubmit"]);

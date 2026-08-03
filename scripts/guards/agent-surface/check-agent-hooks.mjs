@@ -518,7 +518,6 @@ export function check(root = ROOT) {
     "scripts/agent-hooks/shell-command.mjs",
     "scripts/agent-hooks/skill-frontmatter.mjs",
     "scripts/agent-hooks/skill-paths.mjs",
-    "scripts/agent-hooks/skills.mjs",
     "scripts/agent-hooks/state.mjs",
   ];
   assert(
@@ -528,7 +527,6 @@ export function check(root = ROOT) {
   const hookEntrypointText = readText("scripts/agent-hooks/hook-entrypoint.mjs", root);
   const hookRuntimeText = readText("scripts/agent-hooks/hook-runtime.mjs", root);
   const hookRunnerText = readText("scripts/agent-hooks/runner.mjs", root);
-  const hookSkillsText = readText("scripts/agent-hooks/skills.mjs", root);
   const hookStateText = readText("scripts/agent-hooks/state.mjs", root);
   const sessionLifecycleText = readText("scripts/agent-hooks/session-lifecycle.mjs", root);
   const sourceHookText = readText(".claude/hooks/supaschema-source-hook.mjs", root);
@@ -573,14 +571,6 @@ export function check(root = ROOT) {
     ),
     "repository hook and MCP owners must not synthesize persistent hook state"
   );
-  assert(
-    hookSkillsText.includes('toolName === "Read"') &&
-      hookSkillsText.includes('executable === "cat"') &&
-      hookSkillsText.includes('executable === "sed"') &&
-      hookSkillsText.includes("delivered === expected"),
-    "observable skill loads must recognize exact complete Read, cat, and safe sed delivery"
-  );
-
   for (const lifecycleEntrypoint of sessionLifecycleEntrypoints) {
     const entrypointText = readText(lifecycleEntrypoint, root);
     assert(
