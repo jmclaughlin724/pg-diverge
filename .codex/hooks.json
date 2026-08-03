@@ -24,18 +24,6 @@
           }
         ],
         "matcher": "apply_patch"
-      },
-      {
-        "hooks": [
-          {
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "commandWindows": "for /f \"delims=\" %S in ('git rev-parse --show-toplevel') do @node \"%S/.codex/hooks/sync-llm-on-claude-surface-change.mjs\"",
-            "statusMessage": "Syncing supaschema Claude agent surfaces",
-            "timeout": 130,
-            "type": "command"
-          }
-        ],
-        "matcher": "apply_patch"
       }
     ],
     "PreToolUse": [

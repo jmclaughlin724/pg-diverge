@@ -96,20 +96,6 @@
             "timeout": 130
           }
         ]
-      },
-      {
-        "matcher": "Write|Edit|MultiEdit|apply_patch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-llm-on-claude-surface-change.mjs"
-            ],
-            "statusMessage": "Syncing supaschema Claude agent surfaces",
-            "timeout": 130
-          }
-        ]
       }
     ],
     "PostToolUseFailure": [

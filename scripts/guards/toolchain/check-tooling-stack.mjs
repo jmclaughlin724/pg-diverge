@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { parseShellCommand, staticWordValue } from "../../agent-hooks/shell-command.mjs";
-import { publicSkillNames } from "../../skills/sync-llm.mjs";
 import { assert, ok } from "../lib/assertions.js";
 import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js";
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
@@ -238,55 +237,24 @@ function assertUltraciteEntryPoints(packageJson, lefthook, root) {
       `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must route Biome and Ultracite through npm scripts`
     );
   }
-  assertMirrorSyncOrdering(lefthook, preCommitJobs, root);
+  assertNoSurfaceSyncJob(lefthook, preCommitJobs);
 }
 
-function assertMirrorSyncOrdering(lefthook, preCommitJobs, root) {
+function assertNoSurfaceSyncJob(lefthook, preCommitJobs) {
   assert(
     lefthook?.["pre-commit"]?.piped === true,
-    "lefthook pre-commit must run piped so the mirror sync job observes formatter output and is skipped on failure"
+    "lefthook pre-commit must run piped so a failing formatter skips the remaining jobs"
   );
-  const lastJob = preCommitJobs.at(-1);
-  assert(
-    lastJob?.name === "sync-agent-surfaces",
-    "lefthook pre-commit must end with the sync-agent-surfaces job so mirrors regenerate after every stage_fixed formatter"
-  );
-  const syncRun = String(lastJob?.run ?? "");
-  assert(
-    syncRun.includes("npm run sync:llm"),
-    "sync-agent-surfaces must regenerate mirrors through npm run sync:llm"
-  );
-  assert(
-    syncRun.includes(expectedMirrorAddCommand(root)),
-    `sync-agent-surfaces must stage exactly the generator-owned output trees: ${expectedMirrorAddCommand(root)}`
-  );
-  assert(
-    syncRun.includes("git diff --quiet -- .claude docs scripts/skills"),
-    "sync-agent-surfaces must refuse to regenerate while agent-surface source paths carry unstaged edits"
-  );
-  assert(
-    syncRun.includes("git ls-files --others --exclude-standard -- .claude docs scripts/skills"),
-    "sync-agent-surfaces must refuse to regenerate while agent-surface source paths carry untracked files"
-  );
-  for (const job of preCommitJobs.slice(0, -1)) {
+  for (const job of preCommitJobs) {
     assert(
       job?.stage_fixed === true,
-      `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must use stage_fixed so the trailing sync job sees re-staged formatter output`
+      `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must use stage_fixed so formatter output reaches the commit`
+    );
+    assert(
+      !String(job?.run ?? "").includes("sync:llm"),
+      `lefthook pre-commit job ${job?.name ?? "(unnamed)"} must not run sync:llm; npm run sync:llm is an explicit command owned by guard:agent`
     );
   }
-}
-
-function expectedMirrorAddCommand(root) {
-  const skillTrees = publicSkillNames(root).map((name) => `skills/${name}`);
-  return [
-    "git add .agents/skills .codex",
-    ...skillTrees,
-    "agent-bundle/agents",
-    "agent-bundle/claude",
-    "agent-bundle/codex",
-    "agent-bundle/docs",
-    "agent-bundle/skills-manifest.json",
-  ].join(" ");
 }
 
 function assertBiomeLanguageSurface(biome) {

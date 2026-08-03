@@ -257,16 +257,6 @@ export function renderSourceCodexHooks(root = ROOT) {
           ],
           matcher: codexEditToolMatcher,
         },
-        {
-          hooks: [
-            codexHookCommand(
-              ".codex/hooks/sync-llm-on-claude-surface-change.mjs",
-              130,
-              "Syncing supaschema Claude agent surfaces"
-            ),
-          ],
-          matcher: codexEditToolMatcher,
-        },
       ],
       PreToolUse: [
         {
@@ -403,7 +393,6 @@ function assertClaudeHookSource(root) {
   assertSourceClaudeBashPreToolUseTopology(hooks);
   assertClaudeCommand(hooks, "PreToolUse", "generated-artifact-edit");
   assertClaudeCommand(hooks, "PostToolUse", "schema-write");
-  assertClaudeNodeHook(hooks, "PostToolUse", ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
 }
 
 function assertSourceClaudeBashPreToolUseTopology(hooks) {
@@ -626,7 +615,6 @@ function isRepoLocalCodexHook(hook) {
     (hook.command.includes("/.codex/hooks/context-") ||
       hook.command.includes("/.codex/hooks/general-guard.mjs") ||
       hook.command.includes("/.codex/hooks/guards/bash-policy-checks.mjs") ||
-      hook.command.includes("/.codex/hooks/sync-llm-on-claude-surface-change.mjs") ||
       hook.command.includes("scripts/agent-hooks/"))
   );
 }

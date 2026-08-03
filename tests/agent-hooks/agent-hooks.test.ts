@@ -1,16 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  stat,
-  utimes,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -61,9 +52,7 @@ describe("registered hook topology", () => {
     expect(matcherFor(settings, "PostToolUse", "hook schema-write")).toBe(
       "Write|Edit|MultiEdit|apply_patch"
     );
-    expect(matcherFor(settings, "PostToolUse", "sync-llm-on-claude-surface-change.mjs")).toBe(
-      "Write|Edit|MultiEdit|apply_patch"
-    );
+    expect(JSON.stringify(settings.hooks.PostToolUse)).not.toContain("sync-llm");
     expect(JSON.stringify(settings.hooks.TaskCompleted)).toContain("context-task-completed.mjs");
     expect(JSON.stringify(settings.hooks.PostToolUseFailure)).not.toContain("sync-llm");
     expect(JSON.stringify(settings.hooks.Stop)).not.toContain("sync-llm");
@@ -91,9 +80,7 @@ describe("registered hook topology", () => {
     expect(matcherFor(config, "PostToolUse", "context-post-tool-use.mjs")).toBe("Bash|Read|Skill");
     expect(matcherFor(config, "PreToolUse", "generated-artifact-edit")).toBe("apply_patch");
     expect(matcherFor(config, "PostToolUse", "hook schema-write")).toBe("apply_patch");
-    expect(matcherFor(config, "PostToolUse", "sync-llm-on-claude-surface-change.mjs")).toBe(
-      "apply_patch"
-    );
+    expect(JSON.stringify(config.hooks.PostToolUse)).not.toContain("sync-llm");
     expect(JSON.stringify(config)).not.toContain("CODEX_PROJECT_DIR");
     expect(JSON.stringify(config)).toContain("git rev-parse --show-toplevel");
   });
@@ -184,7 +171,6 @@ describe("actual context hook entrypoints", () => {
         ["context-pre-tool-use.mjs", ""],
         ["context-session-start.mjs", ""],
         ["supaschema-source-hook.mjs", ""],
-        ["sync-llm-on-claude-surface-change.mjs", "{}\n"],
       ];
 
       for (const [hookName, stdout] of hooks) {
@@ -523,93 +509,6 @@ describe("actual context hook entrypoints", () => {
   });
 });
 
-describe("target-first stateless surface sync", () => {
-  it("runs actual sync only after successful canonical edit events", async () => {
-    const fixture = await surfaceSyncFixture();
-
-    for (const payload of [
-      {
-        hook_event_name: "PostToolUse",
-        tool_input: { command: "sed -n '1,20p' .claude/rules/12.md" },
-        tool_name: "Bash",
-      },
-      {
-        hook_event_name: "PostToolUse",
-        tool_input: { file_path: ".codex/rules/12.rules" },
-        tool_name: "Edit",
-      },
-      {
-        hook_event_name: "PostToolUse",
-        tool_input: { file_path: "docs/image.png" },
-        tool_name: "Edit",
-      },
-      {
-        hook_event_name: "PostToolUse",
-        tool_input: { file_path: "scripts/skills/AGENTS.md" },
-        tool_name: "Edit",
-      },
-      {
-        hook_event_name: "PostToolUse",
-        tool_input: { file_path: ".agents/prompts/unrelated.md" },
-        tool_name: "Edit",
-      },
-      {
-        hook_event_name: "PostToolUseFailure",
-        tool_input: { command: canonicalPatch() },
-        tool_name: "apply_patch",
-      },
-      { hook_event_name: "Stop", last_assistant_message: "done" },
-    ]) {
-      const result = await runHook(
-        fixture.hook,
-        { cwd: fixture.root, ...payload },
-        hookEnvironment("claude")
-      );
-      expect(result.code).toBe(0);
-      expect(result.stdout).toBe("");
-    }
-    await expect(readFile(fixture.log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-
-    for (const payload of [
-      { tool_input: { command: canonicalPatch() }, tool_name: "apply_patch" },
-      { tool_input: { file_path: "docs/guide.mdx" }, tool_name: "Edit" },
-      {
-        tool_input: { file_path: ".agents/prompts/supaschema-install.md" },
-        tool_name: "Edit",
-      },
-      { tool_input: { file_path: "scripts/skills/bundle-docs.mjs" }, tool_name: "Edit" },
-    ]) {
-      const canonical = await runHook(
-        fixture.hook,
-        { cwd: fixture.root, hook_event_name: "PostToolUse", ...payload },
-        hookEnvironment("claude")
-      );
-      expect(canonical).toMatchObject({ code: 0, stderr: "", stdout: "" });
-    }
-    expect(await readFile(fixture.log, "utf8")).toBe("sync\nsync\nsync\nsync\n");
-    await expect(
-      readFile(join(fixture.root, ".tmp", "sync-llm-on-claude-surface-change.json"))
-    ).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("returns before reading package configuration for unrelated edits", async () => {
-    const fixture = await surfaceSyncFixture({ packageSource: "{not-json" });
-    const result = await runHook(
-      fixture.hook,
-      {
-        cwd: fixture.root,
-        hook_event_name: "PostToolUse",
-        tool_input: { file_path: "src/cli.ts" },
-        tool_name: "Edit",
-      },
-      hookEnvironment("claude")
-    );
-
-    expect(result).toMatchObject({ code: 0, stderr: "", stdout: "" });
-    await expect(readFile(fixture.log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-  });
-});
-
 function matcherFor(config: any, eventName: string, commandFragment: string): string | undefined {
   for (const entry of config.hooks?.[eventName] ?? []) {
     if (hookHandlers(entry).some((handler) => handlerText(handler).includes(commandFragment))) {
@@ -817,60 +716,4 @@ async function pathExists(file: string): Promise<boolean> {
     }
     throw error;
   }
-}
-
-interface SurfaceFixture {
-  hook: string;
-  log: string;
-  root: string;
-}
-
-async function surfaceSyncFixture(
-  options: { packageSource?: string } = {}
-): Promise<SurfaceFixture> {
-  const fixtureRoot = await mkdtemp(join(tmpdir(), "supa-surface-sync-"));
-  const hook = join(fixtureRoot, ".claude", "hooks", "sync-llm-on-claude-surface-change.mjs");
-  const log = join(fixtureRoot, "sync.log");
-  const files = [
-    [join(root, ".claude", "hooks", "sync-llm-on-claude-surface-change.mjs"), hook],
-    [
-      join(root, "scripts", "agent-hooks", "edit-targets.mjs"),
-      join(fixtureRoot, "scripts", "agent-hooks", "edit-targets.mjs"),
-    ],
-    [
-      join(root, "scripts", "agent-hooks", "hook-runtime.mjs"),
-      join(fixtureRoot, "scripts", "agent-hooks", "hook-runtime.mjs"),
-    ],
-    [
-      join(root, "scripts", "skills", "agent-surface-manifest.mjs"),
-      join(fixtureRoot, "scripts", "skills", "agent-surface-manifest.mjs"),
-    ],
-  ];
-  for (const [source, target] of files) {
-    await mkdir(dirname(target), { recursive: true });
-    await copyFile(source, target);
-  }
-  await mkdir(join(fixtureRoot, ".claude", "rules"), { recursive: true });
-  await writeFile(join(fixtureRoot, ".claude", "rules", "12.md"), "# Rule\n");
-  await writeFile(
-    join(fixtureRoot, "sync-marker.mjs"),
-    'import { appendFileSync } from "node:fs";\nappendFileSync("sync.log", "sync\\n");\n'
-  );
-  await writeFile(
-    join(fixtureRoot, "package.json"),
-    options.packageSource ??
-      `${JSON.stringify({ name: "supaschema", scripts: { "sync:llm": "node sync-marker.mjs" } })}\n`
-  );
-  return { hook, log, root: fixtureRoot };
-}
-
-function canonicalPatch(): string {
-  return [
-    "*** Begin Patch",
-    "*** Update File: .claude/rules/12.md",
-    "@@",
-    "-# Rule",
-    "+# Updated rule",
-    "*** End Patch",
-  ].join("\n");
 }

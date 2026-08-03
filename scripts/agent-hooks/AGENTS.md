@@ -20,7 +20,7 @@ Shared Claude and Codex hook runtime, imported by both `.claude/hooks/**` and `.
 - `runner.mjs` owns source-repo dispatch and composes the shared runtime modules above plus `.claude/hooks/guards/bash-policy-checks.mjs`.
 - `scripts/skills/sync-llm.mjs` byte-mirrors canonical hook sources into `.codex/hooks/**`, renders `.codex/hooks.json`, and generates the package-manager-specific consumer configs under `agent-bundle/**`.
 - `.claude/hooks/supaschema-source-hook.mjs` bootstraps `dist/cli.js`, whose canonical source hook workflow is `src/hooks/**`.
-- `.claude/hooks/sync-llm-on-claude-surface-change.mjs` invokes the canonical `npm run sync:llm` generator after owned-surface mutations.
+- No hook runs `npm run sync:llm`. Agent-surface synchronization is an explicit command owned by `npm run guard:agent` and the `scripts/guards/check-all.mjs` drift gate.
 - Consumer hook templates invoke only the compiled Supaschema generated-artifact and schema-write hooks on actual edit tools; the source-repository Bash policy remains private to `runner.mjs`.
 - `check-hook-import-graph.mjs` parses static import, re-export, and literal dynamic-import edges with the TypeScript AST and resolves every relative target. The two command/runtime edges above are intentionally non-import edges and are enforced by the hook registration, sync, package, and focused runtime tests.
 

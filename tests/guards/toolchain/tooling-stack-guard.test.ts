@@ -209,17 +209,6 @@ metadata:
     - name: prettier
       run: npx --no-install prettier --write {staged_files}
       stage_fixed: true
-    - name: sync-agent-surfaces
-      run: |
-        set -e
-        if ! git diff --quiet -- .claude docs scripts/skills .agents/prompts agent-bundle/INSTALL.md skills/README.md CLAUDE.md; then
-          exit 1
-        fi
-        if [ -n "$(git ls-files --others --exclude-standard -- .claude docs scripts/skills .agents/prompts agent-bundle/INSTALL.md skills/README.md CLAUDE.md)" ]; then
-          exit 1
-        fi
-        npm run sync:llm
-        git add .agents/skills .codex skills/supaschema agent-bundle/agents agent-bundle/claude agent-bundle/codex agent-bundle/docs agent-bundle/skills-manifest.json
 `,
     "vitest.config.ts": `
 environment: "node"
@@ -344,6 +333,16 @@ describe("tooling stack guard", () => {
       files["biome.jsonc"] = JSON.stringify(biome);
     });
     expect(() => check(root)).toThrow("biome.jsonc must");
+  });
+
+  it("rejects a lefthook pre-commit job that runs the agent-surface sync", () => {
+    const root = fixture((files) => {
+      files["lefthook.yml"] = `${files["lefthook.yml"]}    - name: sync-agent-surfaces
+      run: npm run sync:llm
+      stage_fixed: true
+`;
+    });
+    expect(() => check(root)).toThrow("must not run sync:llm");
   });
 
   it("rejects a broad .claude/skills Biome exclusion", () => {

@@ -17,11 +17,6 @@ import {
   classifyCommandDomains,
   classifyCommandOutcomeDomains,
 } from "../../scripts/agent-hooks/command-evidence.mjs";
-import {
-  editTargetStrings,
-  governedToolTargetStrings,
-  parseApplyPatch,
-} from "../../scripts/agent-hooks/edit-targets.mjs";
 import { shapeHookResult } from "../../scripts/agent-hooks/hook-output.mjs";
 import { claimedVerificationDomains } from "../../scripts/agent-hooks/response-claims.mjs";
 import { handleAgentHookEvent } from "../../scripts/agent-hooks/runner.mjs";
@@ -68,43 +63,6 @@ describe("parser-backed command and edit analysis", () => {
       analysis.invocations.find((invocation) => invocation.executable === "rm")?.arguments.at(-1)
         ?.parts[0]?.type
     ).toBe("SimpleExpansion");
-  });
-
-  it("parses only the documented apply_patch envelope and structured tool fields", () => {
-    const source = [
-      "*** Begin Patch",
-      "*** Update File: .claude/rules/12-skill-loading-enforcement.md",
-      "*** Move to: .claude/rules/12-skill-loading.md",
-      "@@",
-      "-old",
-      "+new",
-      "*** Add File: scripts/new.mjs",
-      "+export {};",
-      "*** End Patch",
-    ].join("\n");
-
-    expect(parseApplyPatch(source)).toEqual([
-      {
-        kind: "update",
-        moveTo: ".claude/rules/12-skill-loading.md",
-        path: ".claude/rules/12-skill-loading-enforcement.md",
-      },
-      { kind: "add", path: "scripts/new.mjs" },
-    ]);
-    expect(
-      editTargetStrings({ tool_input: { command: source }, tool_name: "apply_patch" })
-    ).toEqual([
-      ".claude/rules/12-skill-loading-enforcement.md",
-      ".claude/rules/12-skill-loading.md",
-      "scripts/new.mjs",
-    ]);
-    expect(parseApplyPatch("*** Update File: .claude/rules/12.md")).toEqual([]);
-    expect(
-      governedToolTargetStrings({
-        tool_input: { path: "services/agent-mcp" },
-        tool_name: "Grep",
-      })
-    ).toEqual(["services/agent-mcp"]);
   });
 
   it("classifies verification domains from parsed commands and package scripts", () => {

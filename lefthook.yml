@@ -38,21 +38,6 @@ pre-commit:
       glob: "*.sh"
       run: npm run format:sh -- {staged_files}
       stage_fixed: true
-    - name: sync-agent-surfaces
-      run: |
-        set -e
-        if ! git diff --quiet -- .claude docs scripts/skills .agents/prompts agent-bundle/INSTALL.md skills/README.md CLAUDE.md; then
-          echo "sync-agent-surfaces: unstaged edits exist under agent-surface source paths (.claude, docs, scripts/skills, .agents/prompts, agent-bundle/INSTALL.md, skills/README.md, CLAUDE.md)." >&2
-          echo "Stage or revert those edits first so regenerated mirrors match the canonical sources in this commit." >&2
-          exit 1
-        fi
-        if [ -n "$(git ls-files --others --exclude-standard -- .claude docs scripts/skills .agents/prompts agent-bundle/INSTALL.md skills/README.md CLAUDE.md)" ]; then
-          echo "sync-agent-surfaces: untracked files exist under agent-surface source paths (.claude, docs, scripts/skills, .agents/prompts, agent-bundle/INSTALL.md, skills/README.md, CLAUDE.md)." >&2
-          echo "Stage or remove those files first so regenerated mirrors match the canonical sources in this commit." >&2
-          exit 1
-        fi
-        npm run sync:llm
-        git add .agents/skills .codex skills/supaschema agent-bundle/agents agent-bundle/claude agent-bundle/codex agent-bundle/docs agent-bundle/skills-manifest.json
 
 pre-push:
   parallel: false
