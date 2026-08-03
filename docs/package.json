@@ -15,6 +15,9 @@
     "@astrojs/cloudflare": "14.1.7"
   },
   "overrides": {
+    "@ai-sdk/provider-utils": {
+      "undici": "6.28.0"
+    },
     "@vercel/routing-utils": {
       "path-to-regexp": "6.3.0"
     }
