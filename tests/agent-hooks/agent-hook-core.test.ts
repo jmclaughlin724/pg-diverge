@@ -304,12 +304,12 @@ describe("minimal private hook state", () => {
     });
 
     withSessionState(payload, (state) => {
-      state.loadedSkills.optimizer = new Date().toISOString();
+      state.turnSequence = 7;
       return { state };
     });
 
     expect(injectedFailure).toBe(true);
-    expect(readSessionState(payload).loadedSkills).toHaveProperty("optimizer");
+    expect(readSessionState(payload).turnSequence).toBe(7);
     expect(existsSync(`${sessionStatePath(payload)}.lock`)).toBe(false);
   });
 
@@ -461,7 +461,7 @@ describe("minimal private hook state", () => {
           `${JSON.stringify({ acquiredAt: new Date().toISOString(), pid: process.pid, token: successorToken })}\n`,
           { mode: 0o600 }
         );
-        state.loadedSkills.optimizer = new Date().toISOString();
+        state.turnSequence = 7;
         return { state };
       })
     ).toThrow("lost session state lock ownership");
@@ -579,7 +579,6 @@ describe("minimal private hook state", () => {
             domain: `test-${turnIndex}-${evidenceIndex}`,
             outcome: "failure",
           })),
-          pendingSkills: {},
         },
       ])
     );
@@ -587,7 +586,6 @@ describe("minimal private hook state", () => {
       {
         createdAt: at,
         currentTurnId: "turn-24",
-        loadedSkills: {},
         sessionId: "bounded",
         turnSequence: 25,
         turns,
@@ -609,14 +607,14 @@ describe("minimal private hook state", () => {
     expect(handleSessionLifecycleEvent("SessionStart", payload, fixture.options).stdout).toBe("");
     expect(existsSync(sessionStatePath(payload))).toBe(true);
     withSessionState(payload, (state) => {
-      state.loadedSkills.fastmcp = new Date().toISOString();
+      state.turnSequence = 9;
       return { state };
     });
     expect(
       handleSessionLifecycleEvent("SessionStart", { ...payload, source: "resume" }, fixture.options)
         .stdout
     ).toBe("");
-    expect(readSessionState(payload).loadedSkills).toEqual({});
+    expect(readSessionState(payload).turnSequence).toBe(0);
     expect(handleSessionLifecycleEvent("SessionEnd", payload, fixture.options).stdout).toBe("");
     expect(existsSync(sessionStatePath(payload))).toBe(false);
   });

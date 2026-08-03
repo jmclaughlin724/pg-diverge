@@ -158,7 +158,6 @@ export function normalizeState(value, expectedSessionId = "default") {
   return {
     createdAt: timestamp(value?.createdAt) ?? now(),
     currentTurnId,
-    loadedSkills: normalizeLoadedSkills(value?.loadedSkills),
     sessionId: session,
     turnSequence: nonNegativeInteger(value?.turnSequence),
     turns: boundedTurns,
@@ -230,7 +229,7 @@ function assertPersistedState(value, expectedSessionId) {
   if (!(timestamp(value.createdAt) && timestamp(value.updatedAt))) {
     throw new Error("state timestamps are invalid");
   }
-  if (!(isRecord(value.turns) && isRecord(value.loadedSkills))) {
+  if (!isRecord(value.turns)) {
     throw new Error("state collections are invalid");
   }
 }
@@ -240,7 +239,6 @@ function emptyState(id) {
   return {
     createdAt: time,
     currentTurnId: fallbackTurnId,
-    loadedSkills: {},
     sessionId: id,
     turnSequence: 0,
     turns: { [fallbackTurnId]: emptyTurn(time) },
@@ -249,7 +247,7 @@ function emptyState(id) {
 }
 
 function emptyTurn(at = now()) {
-  return { createdAt: at, evidence: [], pendingSkills: {} };
+  return { createdAt: at, evidence: [] };
 }
 
 function normalizeTurns(value) {
@@ -263,41 +261,9 @@ function normalizeTurns(value) {
     turns[id] = {
       createdAt: timestamp(rawTurn?.createdAt) ?? now(),
       evidence: normalizeEvidence(rawTurn?.evidence),
-      pendingSkills: normalizePendingSkills(rawTurn?.pendingSkills),
     };
   }
   return turns;
-}
-
-function normalizeLoadedSkills(value) {
-  if (!isRecord(value)) {
-    return {};
-  }
-  const loaded = {};
-  for (const [rawName, rawAt] of Object.entries(value)) {
-    const name = identifier(rawName);
-    const at = timestamp(rawAt);
-    if (name && at) {
-      loaded[name] = at;
-    }
-  }
-  return loaded;
-}
-
-function normalizePendingSkills(value) {
-  if (!isRecord(value)) {
-    return {};
-  }
-  const pending = {};
-  for (const [rawName, rawValue] of Object.entries(value)) {
-    const name = identifier(rawName);
-    const at = timestamp(rawValue?.at);
-    const trigger = triggerCode(rawValue?.trigger);
-    if (name && at && trigger) {
-      pending[name] = { at, trigger };
-    }
-  }
-  return pending;
 }
 
 function normalizeEvidence(value) {
@@ -618,10 +584,6 @@ function identifier(value) {
     }
   }
   return value;
-}
-
-function triggerCode(value) {
-  return ["prompt-explicit", "prompt-keyword", "file-trigger"].includes(value) ? value : "";
 }
 
 function timestamp(value) {
