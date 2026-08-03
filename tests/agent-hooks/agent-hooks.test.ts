@@ -230,13 +230,13 @@ describe("actual context hook entrypoints", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-codex-load-"));
     const env = { ...process.env, STATE_DIR: stateDir };
     const sessionId = "entrypoint-codex-load";
-    const skillPath = ".agents/skills/optimizer/SKILL.md";
+    const skillPath = ".agents/skills/supaschema/SKILL.md";
 
     const prompt = await runHook(
       join(root, ".codex/hooks/context-user-prompt-submit.mjs"),
       {
         hook_event_name: "UserPromptSubmit",
-        prompt: "$optimizer",
+        prompt: "$supaschema",
         session_id: sessionId,
       },
       env
