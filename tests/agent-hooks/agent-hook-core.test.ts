@@ -8,7 +8,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -544,8 +544,10 @@ describe("minimal private hook state", () => {
     expect(serialized).not.toContain(commandMarker);
     expect(serialized).not.toContain("lastPrompt");
     expect(serialized).not.toContain("command");
-    expect((await stat(fixture.stateDir)).mode % 0o1000).toBe(0o700);
-    expect((await stat(file)).mode % 0o1000).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(fixture.stateDir)).mode % 0o1000).toBe(0o700);
+      expect((await stat(file)).mode % 0o1000).toBe(0o600);
+    }
   });
 
   it("recovers an empty lock directory instead of failing the hook", async () => {
@@ -554,6 +556,8 @@ describe("minimal private hook state", () => {
     const payload = { session_id: "empty-lock" };
     const lockDirectory = `${sessionStatePath(payload)}.lock`;
     await mkdir(lockDirectory, { mode: 0o700, recursive: true });
+    const oldDate = new Date(Date.now() - 60_000);
+    await utimes(lockDirectory, oldDate, oldDate);
 
     const result = handleAgentHookEvent(
       "PreToolUse",
@@ -622,7 +626,11 @@ describe("minimal private hook state", () => {
     const payload = { session_id: "malformed-lock" };
     const lockDirectory = `${sessionStatePath(payload)}.lock`;
     await mkdir(lockDirectory, { mode: 0o700, recursive: true });
-    await writeFile(join(lockDirectory, "unexpected"), "not owner metadata", { mode: 0o600 });
+    const unexpectedOwner = join(lockDirectory, "unexpected");
+    await writeFile(unexpectedOwner, "not owner metadata", { mode: 0o600 });
+    const oldDate = new Date(Date.now() - 60_000);
+    await utimes(lockDirectory, oldDate, oldDate);
+    await utimes(unexpectedOwner, oldDate, oldDate);
 
     const result = handleAgentHookEvent(
       "PreToolUse",
@@ -653,8 +661,10 @@ describe("minimal private hook state", () => {
         const ownerPath = join(lockDirectory, ownerName);
         const owner = JSON.parse(readFileSync(ownerPath, "utf8"));
         expect(Object.keys(owner).sort()).toEqual(["acquiredAt", "pid", "token"]);
-        expect(statSync(lockDirectory).mode % 0o1000).toBe(0o700);
-        expect(statSync(ownerPath).mode % 0o1000).toBe(0o600);
+        if (process.platform !== "win32") {
+          expect(statSync(lockDirectory).mode % 0o1000).toBe(0o700);
+          expect(statSync(ownerPath).mode % 0o1000).toBe(0o600);
+        }
 
         unlinkSync(ownerPath);
         writeFileSync(

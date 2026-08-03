@@ -1,5 +1,26 @@
 ---
+enforcement:
+  type: judgment-only
 description: Repo-wide authorization, gate integrity, enforcement closure, evidence, and closeout.
+paths:
+  - "src/**"
+  - "tests/**"
+  - "docs/**"
+  - "scripts/**"
+  - "bin/**"
+  - "benchmarks/**"
+  - "services/**"
+  - ".claude/**"
+  - ".codex/**"
+  - ".agents/**"
+  - ".github/**"
+  - "AGENTS.md"
+  - "CLAUDE.md"
+  - "package.json"
+  - "biome.jsonc"
+  - "lefthook.yml"
+  - "wrangler.toml"
+  - "tsconfig*.json"
 ---
 
 # Rule 01 - Operating rules

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const defaultStateDir = path.join(projectRoot, ".tmp", "agent-hooks");
 const fallbackTurnId = "turn-0";
+const lockInitializationGraceMs = 1000;
 const lockPollMs = 20;
 const lockTimeoutMs = 8000;
 const sessionEndLockTimeoutMs = 500;
@@ -354,63 +355,38 @@ function withSessionLock(payload, callback, timeoutMs = lockTimeoutMs) {
 function acquireSessionLock(payload, timeoutMs) {
   const lockPath = `${sessionStatePath(payload)}.lock`;
   ensurePrivateDirectory(path.dirname(lockPath));
-  reclaimDeadLockCandidates(lockPath);
   const startedAt = process.hrtime.bigint();
-  let candidate = prepareLockCandidate(lockPath);
-  try {
-    while (true) {
-      try {
-        fs.renameSync(candidate.directory, lockPath);
-        const ownerPath = path.join(lockPath, candidate.ownerName);
-        candidate = undefined;
-        if (lockHasOnlyOwner(lockPath, ownerPath)) {
-          return lockLease(lockPath, ownerPath);
-        }
-        unlinkIfPresent(ownerPath);
-        removeDirectoryIfEmpty(lockPath);
-        candidate = prepareLockCandidate(lockPath);
-      } catch (error) {
-        if (!(error?.code === "EEXIST" || error?.code === "ENOTEMPTY")) {
-          throw error;
-        }
-        reclaimDeadLockOwners(lockPath);
+  const token = randomUUID();
+  const ownerName = `owner-${token}.json`;
+  const ownerPath = path.join(lockPath, ownerName);
+  const metadata = { acquiredAt: now(), pid: process.pid, token };
+
+  while (true) {
+    try {
+      fs.mkdirSync(lockPath, { mode: directoryMode });
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
       }
+      reclaimDeadLockOwners(lockPath);
       if (Number(process.hrtime.bigint() - startedAt) / 1_000_000 >= timeoutMs) {
         throw new Error(`timed out waiting for session state lock: ${path.basename(lockPath)}`, {
-          cause: new Error("the recorded lock owner is still live or ownership is contended"),
+          cause: error,
         });
       }
       sleep(lockPollMs);
+      continue;
     }
-  } finally {
-    if (candidate) {
-      removeLockCandidate(candidate);
-    }
-  }
-}
 
-function prepareLockCandidate(lockPath) {
-  const token = randomUUID();
-  const ownerName = `owner-${token}.json`;
-  const directory = path.join(
-    path.dirname(lockPath),
-    `.${path.basename(lockPath)}.${process.pid}.${token}.tmp`
-  );
-  const ownerPath = path.join(directory, ownerName);
-  const metadata = { acquiredAt: now(), pid: process.pid, token };
-  let createdDirectory = false;
-  try {
-    fs.mkdirSync(directory, { mode: directoryMode });
-    createdDirectory = true;
-    fs.chmodSync(directory, directoryMode);
-    writePrivateFile(ownerPath, `${JSON.stringify(metadata)}\n`);
-    return { directory, ownerName, ownerPath };
-  } catch (error) {
-    if (createdDirectory) {
+    try {
+      fs.chmodSync(lockPath, directoryMode);
+      writePrivateFile(ownerPath, `${JSON.stringify(metadata)}\n`);
+      return lockLease(lockPath, ownerPath);
+    } catch (error) {
       unlinkIfPresent(ownerPath);
-      removeDirectoryIfEmpty(directory);
+      removeDirectoryIfEmpty(lockPath);
+      throw error;
     }
-    throw error;
   }
 }
 
@@ -422,11 +398,6 @@ function writePrivateFile(file, contents) {
   } finally {
     fs.closeSync(descriptor);
   }
-}
-
-function removeLockCandidate(candidate) {
-  unlinkIfPresent(candidate.ownerPath);
-  removeDirectoryIfEmpty(candidate.directory);
 }
 
 function lockLease(lockPath, ownerPath) {
@@ -473,7 +444,9 @@ function reclaimDeadLockOwners(lockPath) {
     throw error;
   }
   if (entries.length === 0) {
-    removeDirectoryIfEmpty(lockPath);
+    if (!lockArtifactIsRecent(lockPath)) {
+      removeDirectoryIfEmpty(lockPath);
+    }
     return;
   }
   for (const entry of entries) {
@@ -483,6 +456,9 @@ function reclaimDeadLockOwners(lockPath) {
       continue;
     }
     if (!owner) {
+      if (lockArtifactIsRecent(ownerPath) || lockArtifactIsRecent(lockPath)) {
+        return;
+      }
       throw new Error(`invalid session state lock owner: ${entry.name}`);
     }
     if (!processIsLive(owner.pid)) {
@@ -492,81 +468,15 @@ function reclaimDeadLockOwners(lockPath) {
   removeDirectoryIfEmpty(lockPath);
 }
 
-function reclaimDeadLockCandidates(lockPath) {
-  const parentDirectory = path.dirname(lockPath);
-  const candidatePrefix = `.${path.basename(lockPath)}.`;
-  let entries;
+function lockArtifactIsRecent(file) {
   try {
-    entries = fs.readdirSync(parentDirectory, { withFileTypes: true });
+    return Date.now() - fs.statSync(file).mtimeMs < lockInitializationGraceMs;
   } catch (error) {
     if (error?.code === "ENOENT") {
-      return;
+      return true;
     }
     throw error;
   }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const identity = lockCandidateIdentity(entry.name, candidatePrefix);
-    if (!(identity && !processIsLive(identity.pid))) {
-      continue;
-    }
-    removeDeadLockCandidate(path.join(parentDirectory, entry.name), identity.token);
-  }
-}
-
-function lockCandidateIdentity(candidateName, candidatePrefix) {
-  if (!(candidateName.startsWith(candidatePrefix) && candidateName.endsWith(".tmp"))) {
-    return;
-  }
-  const identity = candidateName.slice(candidatePrefix.length, -".tmp".length);
-  const separator = identity.indexOf(".");
-  if (separator <= 0 || identity.indexOf(".", separator + 1) !== -1) {
-    return;
-  }
-  const rawPid = identity.slice(0, separator);
-  const pid = Number(rawPid);
-  const token = identity.slice(separator + 1);
-  if (!(Number.isSafeInteger(pid) && pid > 0 && String(pid) === rawPid && isLockToken(token))) {
-    return;
-  }
-  return { pid, token };
-}
-
-function isLockToken(value) {
-  const segments = value.split("-");
-  const expectedLengths = [8, 4, 4, 4, 12];
-  return (
-    segments.length === expectedLengths.length &&
-    segments.every(
-      (segment, index) =>
-        segment.length === expectedLengths[index] &&
-        [...segment].every((character) => "0123456789abcdef".includes(character.toLowerCase()))
-    )
-  );
-}
-
-function removeDeadLockCandidate(candidateDirectory, token) {
-  let entries;
-  try {
-    entries = fs.readdirSync(candidateDirectory, { withFileTypes: true });
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      return;
-    }
-    throw error;
-  }
-  if (entries.length === 0) {
-    removeDirectoryIfEmpty(candidateDirectory);
-    return;
-  }
-  const ownerName = `owner-${token}.json`;
-  if (!(entries.length === 1 && entries[0].isFile() && entries[0].name === ownerName)) {
-    return;
-  }
-  unlinkIfPresent(path.join(candidateDirectory, ownerName));
-  removeDirectoryIfEmpty(candidateDirectory);
 }
 
 function discardSupersededLockOwners(payload) {

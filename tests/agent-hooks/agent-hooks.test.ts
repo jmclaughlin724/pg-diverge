@@ -6,7 +6,6 @@ import {
   readdir,
   readFile,
   stat,
-  unlink,
   utimes,
   writeFile,
 } from "node:fs/promises";
@@ -329,8 +328,10 @@ describe("actual context hook entrypoints", () => {
         "timed out waiting for session state lock"
       );
       expect(await readdir(lockDirectory)).toEqual([ownerName]);
-      expect((await stat(lockDirectory)).mode % 0o1000).toBe(0o700);
-      expect((await stat(ownerPath)).mode % 0o1000).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect((await stat(lockDirectory)).mode % 0o1000).toBe(0o700);
+        expect((await stat(ownerPath)).mode % 0o1000).toBe(0o600);
+      }
       expect(Object.keys(owner).sort()).toEqual(["acquiredAt", "pid", "token"]);
     } finally {
       await killProcess(lockHolder);
@@ -351,14 +352,16 @@ describe("actual context hook entrypoints", () => {
     expect(await pathExists(lockDirectory)).toBe(false);
   });
 
-  it("reclaims lock candidates left by killed waiters through the actual entrypoint", async () => {
+  it("leaves no lock artifacts when contending waiters are killed", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-killed-waiters-"));
     const env = { ...process.env, STATE_DIR: stateDir };
     const hook = join(root, ".claude/hooks/context-pre-tool-use.mjs");
     const sessionId = "killed-lock-waiters";
     const encodedSessionId = Buffer.from(sessionId).toString("base64url");
-    const candidatePrefix = `.${encodedSessionId}.json.lock.`;
+    const lockName = `${encodedSessionId}.json.lock`;
+    const lockDirectory = join(stateDir, lockName);
     const lockHolder = await startLockHolder(sessionId, env);
+    const ownerNames = await readdir(lockDirectory);
     const waiters = Array.from({ length: 4 }, (_, index) =>
       startHookProcess(
         hook,
@@ -372,14 +375,13 @@ describe("actual context hook entrypoints", () => {
       )
     );
     try {
-      const candidates = await waitForLockCandidates(stateDir, candidatePrefix, waiters.length);
-      expect(candidates).toHaveLength(waiters.length);
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 100);
+      });
+      expect(waiters.every(({ child }) => child.exitCode === null)).toBe(true);
+      expect(await readdir(stateDir)).toEqual([lockName]);
       await Promise.all(waiters.map(({ child }) => killProcess(child)));
-      const emptyCandidate = join(stateDir, candidates[0]);
-      for (const ownerName of await readdir(emptyCandidate)) {
-        await unlink(join(emptyCandidate, ownerName));
-      }
-      expect(await readdir(emptyCandidate)).toEqual([]);
+      expect(await readdir(lockDirectory)).toEqual(ownerNames);
     } finally {
       await Promise.all([...waiters.map(({ child }) => child), lockHolder].map(killProcess));
       await Promise.all(waiters.map(({ result }) => result));
@@ -397,11 +399,7 @@ describe("actual context hook entrypoints", () => {
     );
 
     expect(recovery).toMatchObject({ code: 0, stderr: "", stdout: "" });
-    expect(
-      (await readdir(stateDir)).filter(
-        (entry) => entry.startsWith(candidatePrefix) && entry.endsWith(".tmp")
-      )
-    ).toEqual([]);
+    expect(await pathExists(lockDirectory)).toBe(false);
   });
 
   it("serializes concurrent evidence updates through the actual hook entrypoint", async () => {
@@ -774,26 +772,6 @@ async function killProcess(child: ChildProcessWithoutNullStreams): Promise<void>
     throw new Error("failed to kill process");
   }
   await closed;
-}
-
-async function waitForLockCandidates(
-  directory: string,
-  prefix: string,
-  expectedCount: number
-): Promise<string[]> {
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    const candidates = (await readdir(directory)).filter(
-      (entry) => entry.startsWith(prefix) && entry.endsWith(".tmp")
-    );
-    if (candidates.length === expectedCount) {
-      return candidates;
-    }
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 20);
-    });
-  }
-  throw new Error(`timed out waiting for ${expectedCount} lock candidates`);
 }
 
 async function pathExists(file: string): Promise<boolean> {
