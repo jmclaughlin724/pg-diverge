@@ -86,13 +86,59 @@ function isDigit(char) {
   return code >= 48 && code <= 57;
 }
 
+function citationNumberViolations(
+  rel,
+  lineNumber,
+  rawNumbers,
+  validNumbers,
+  isRuleSource,
+  ownerNumber
+) {
+  return rawNumbers.flatMap((raw) => {
+    const number = raw.padStart(2, "0");
+    if (!validNumbers.has(number)) {
+      return [`${rel}:${lineNumber}: cites "rule ${raw}" but no rule ${number} exists`];
+    }
+    if (isRuleSource && number !== ownerNumber) {
+      return [
+        `${rel}:${lineNumber}: cross-rule citation "rule ${raw}" is prohibited; rule sources must be self-contained`,
+      ];
+    }
+    return [];
+  });
+}
+
+function crossRuleFilenameViolations(
+  rel,
+  lineNumber,
+  line,
+  citedNumbers,
+  numberedRuleNames,
+  ownerNumber
+) {
+  const normalizedLine = line.toLowerCase();
+  return [...numberedRuleNames].flatMap(([number, name]) => {
+    if (number === ownerNumber || citedNumbers.has(number)) {
+      return [];
+    }
+    const stem = name.slice(0, -path.extname(name).length);
+    return normalizedLine.includes(name) || normalizedLine.includes(stem)
+      ? [
+          `${rel}:${lineNumber}: cross-rule filename "${name}" is prohibited; rule sources must be self-contained`,
+        ]
+      : [];
+  });
+}
+
 export function check(root = ROOT) {
   const ruleDir = path.join(root, ".claude", "rules");
   const validNumbers = new Set();
+  const numberedRuleNames = new Map();
   for (const name of fs.readdirSync(ruleDir)) {
     const prefix = numberedRulePrefix(name);
     if (prefix !== undefined) {
       validNumbers.add(prefix);
+      numberedRuleNames.set(prefix, name);
     }
   }
   assert(validNumbers.size > 0, "no numbered .claude/rules/NN-*.md files found");
@@ -104,13 +150,34 @@ export function check(root = ROOT) {
   const violations = [];
 
   function scanText(rel, text) {
+    const isRuleSource = rel.startsWith(".claude/rules/") && rel.endsWith(".md");
+    const ownerNumber = isRuleSource ? numberedRulePrefix(path.basename(rel)) : undefined;
     const lines = text.split("\n");
     for (let index = 0; index < lines.length; index += 1) {
-      for (const raw of ruleCitationNumbers(lines[index] ?? "")) {
-        const nn = raw.padStart(2, "0");
-        if (!validNumbers.has(nn)) {
-          violations.push(`${rel}:${index + 1}: cites "rule ${raw}" but no rule ${nn} exists`);
-        }
+      const line = lines[index] ?? "";
+      const rawNumbers = ruleCitationNumbers(line);
+      const citedNumbers = new Set(rawNumbers.map((raw) => raw.padStart(2, "0")));
+      violations.push(
+        ...citationNumberViolations(
+          rel,
+          index + 1,
+          rawNumbers,
+          validNumbers,
+          isRuleSource,
+          ownerNumber
+        )
+      );
+      if (isRuleSource) {
+        violations.push(
+          ...crossRuleFilenameViolations(
+            rel,
+            index + 1,
+            line,
+            citedNumbers,
+            numberedRuleNames,
+            ownerNumber
+          )
+        );
       }
     }
   }
@@ -135,7 +202,7 @@ export function check(root = ROOT) {
     }
   }
 
-  assert(violations.length === 0, `stale rule citations found:\n${violations.join("\n")}`);
+  assert(violations.length === 0, `rule citation violations found:\n${violations.join("\n")}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

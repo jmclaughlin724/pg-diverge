@@ -1,4 +1,3 @@
-import base64
 import json
 import subprocess
 from pathlib import Path, PurePosixPath
@@ -9,19 +8,20 @@ from fastmcp.exceptions import PromptError, ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = PROJECT_ROOT
 MAX_READ_BYTES = 120_000
-
 PRIVATE_PATHS_FILE = REPO_ROOT / "scripts" / "guards" / "repo-surface" / "private-paths.json"
 
 
-def _load_private_prefixes() -> tuple[str, ...]:
+def _load_private_roots() -> tuple[str, ...]:
     data = json.loads(PRIVATE_PATHS_FILE.read_text(encoding="utf8"))
     prefixes = data["heldPrivate"] + data["agentPrivate"]
-    return tuple(p for p in prefixes if isinstance(p, str) and p.endswith("/"))
+    return tuple(p.removesuffix("/") for p in prefixes if isinstance(p, str) and p.endswith("/"))
 
 
-PRIVATE_PREFIXES = _load_private_prefixes()
+PRIVATE_ROOTS = _load_private_roots()
+PRIVATE_ROOTS_CASEFOLDED = tuple(root.casefold() for root in PRIVATE_ROOTS)
 
 DENIED_PARTS = {
     ".git",
@@ -69,14 +69,17 @@ SEARCH_FILES = {
 
 
 def _denied(p: Path) -> bool:
-    n = p.name
+    n = p.name.casefold()
     if n.startswith(".env") or n.endswith(SECRET_SUFFIXES):
         return True
     if n in SECRET_NAMES or n.startswith(".dev.vars."):
         return True
-    if p.as_posix().startswith(PRIVATE_PREFIXES):
+    posix_path = p.as_posix().casefold()
+    if any(
+        posix_path == root or posix_path.startswith(f"{root}/") for root in PRIVATE_ROOTS_CASEFOLDED
+    ):
         return True
-    return any(part in DENIED_PARTS for part in p.parts)
+    return any(part.casefold() in DENIED_PARTS for part in p.parts)
 
 
 def _resolve(raw: str) -> Path:
@@ -241,9 +244,7 @@ def server_status() -> dict[str, Any]:
             "and focused tests. Validate MCP/client configuration with npm run guard:fastmcp."
         ),
         "session_state_hint": (
-            "Use session_state(session_id='<id>') to read this session's agent-hook ledger "
-            "(edited targets, recorded evidence, response-correction lanes) and self-verify "
-            "investigation coverage before editing or finalizing."
+            "session_state validates a session id and reports that no persisted state is available."
         ),
         "blocked_capabilities": [
             "live database, mutating, or generic SQL",
@@ -300,6 +301,7 @@ def repo_safety_scan(
         raise ToolError("unsafe source value")
     if v.startswith("database:") or "://" in v:
         raise ToolError("repo_safety_scan stays local; database/URL sources are not allowed")
+    normalized_source = _scan_source(v) if v else None
     cli = REPO_ROOT / "dist" / "cli.js"
     if not cli.is_file():
         return {
@@ -308,8 +310,8 @@ def repo_safety_scan(
             "stderr": "dist/cli.js is missing; run `npm run build` in the repository first",
         }
     args = ["node", "dist/cli.js", "scan", "--reporter", "json"]
-    if v:
-        args += ["--from", _scan_source(v)]
+    if normalized_source:
+        args += ["--from", normalized_source]
     r = subprocess.run(args, cwd=REPO_ROOT, capture_output=True, text=True, timeout=60, check=False)
     stdout: Any
     try:
@@ -319,181 +321,21 @@ def repo_safety_scan(
     return {"ok": r.returncode == 0, "stdout": stdout, "stderr": r.stderr[:MAX_READ_BYTES]}
 
 
-SECRET_NAME_MARKERS = ("ACCESS_KEY", "API_KEY", "PASSWORD", "PRIVATE_KEY", "SECRET", "TOKEN")
-
-
-def _redact_url_passwords(text: str) -> str:
-    out: list[str] = []
-    index = 0
-    while True:
-        scheme_at = text.find("://", index)
-        if scheme_at == -1:
-            out.append(text[index:])
-            break
-        at_sign = -1
-        authority_end = scheme_at + 3
-        while authority_end < len(text) and text[authority_end] not in "/?# \t\n\r\"'":
-            if text[authority_end] == "@":
-                at_sign = authority_end
-            authority_end += 1
-        colon = text.find(":", scheme_at + 3, at_sign if at_sign != -1 else authority_end)
-        if at_sign == -1 or colon == -1:
-            out.append(text[index:authority_end])
-            index = authority_end
-            continue
-        out.append(f"{text[index : colon + 1]}***")
-        index = at_sign
-    return "".join(out)
-
-
-def _redact_quoted_assignments(text: str) -> str:
-    out: list[str] = []
-    cursor = 0
-    while cursor < len(text):
-        eq = text.find("=", cursor)
-        if eq == -1:
-            out.append(text[cursor:])
-            break
-        name_start = eq
-        while name_start > cursor and not text[name_start - 1].isspace():
-            name_start -= 1
-        name = text[name_start:eq]
-        quote = text[eq + 1 : eq + 2]
-        if quote not in ("'", '"') or not any(m in name.upper() for m in SECRET_NAME_MARKERS):
-            out.append(text[cursor : eq + 1])
-            cursor = eq + 1
-            continue
-        close = text.find(quote, eq + 2)
-        if close == -1:
-            out.append(text[cursor:])
-            break
-        out.append(f"{text[cursor:name_start]}{name}={quote}***{quote}")
-        cursor = close + 1
-    return "".join(out)
-
-
-def _split_preserving_whitespace(text: str) -> list[str]:
-    if not text:
-        return []
-    parts: list[str] = []
-    start = 0
-    whitespace = text[0].isspace()
-    for index, character in enumerate(text[1:], start=1):
-        if character.isspace() == whitespace:
-            continue
-        parts.append(text[start:index])
-        start = index
-        whitespace = character.isspace()
-    parts.append(text[start:])
-    return parts
-
-
-def _redact(text: str) -> str:
-    text = _redact_quoted_assignments(text)
-    words = []
-    mask_next = False
-    for word in _split_preserving_whitespace(_redact_url_passwords(text)):
-        if not word or word.isspace():
-            words.append(word)
-            continue
-        if mask_next:
-            words.append("***")
-            mask_next = False
-            continue
-        mask_next = False
-        name, separator, value = word.partition("=")
-        if (
-            separator
-            and value
-            and value.strip("\"'") != "***"
-            and any(m in name.upper() for m in SECRET_NAME_MARKERS)
-        ):
-            words.append(f"{name}=***")
-            continue
-        if word.startswith("-") and any(
-            m in word.upper().replace("-", "_") for m in SECRET_NAME_MARKERS
-        ):
-            words.append(word)
-            mask_next = True
-            continue
-        words.append(word)
-    return "".join(words)
-
-
 @mcp.tool(annotations=READ_ONLY_TOOL)
 def session_state(
     session_id: Annotated[str, Field(description="Session id to inspect")],
 ) -> dict[str, Any]:
-    """Read a session's agent-hook ledger: edits, evidence, and response-correction lanes."""
+    """Read loaded skills, pending skills, and verification evidence for one hook session."""
     sid = (session_id or "").strip()
     if not sid or len(sid) > 200:
         raise ToolError("invalid session id")
     if any(ch in sid for ch in ("/", "\\", "\0")) or ".." in sid:
         raise ToolError("invalid session id")
-    encoded = base64.urlsafe_b64encode(sid.encode()).decode().rstrip("=")
-    state_file = REPO_ROOT / ".tmp" / "agent-hooks" / f"{encoded}.json"
-    if not state_file.is_file():
-        return {"ok": True, "session_id": sid, "state": None, "note": "no session state file found"}
-    try:
-        raw = json.loads(state_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"ok": True, "session_id": sid, "state": None, "note": "session state unreadable"}
-    turns = raw.get("turns", {}) if isinstance(raw, dict) else {}
-    response_corrections = raw.get("responseCorrections", {}) if isinstance(raw, dict) else {}
-    evidence: list[dict[str, Any]] = []
-    edited: list[str] = []
-    pending: dict[str, str] = {}
-    corrections: list[dict[str, Any]] = []
-    for turn in turns.values():
-        if not isinstance(turn, dict):
-            continue
-        for item in turn.get("evidence") or []:
-            if isinstance(item, dict):
-                evidence.append(
-                    {
-                        k: (
-                            _redact(str(item.get(k)))
-                            if k in ("command", "summary") and item.get(k) is not None
-                            else item.get(k)
-                        )
-                        for k in (
-                            "kind",
-                            "domains",
-                            "outcome",
-                            "summary",
-                            "command",
-                        )
-                    }
-                )
-        for target in turn.get("editedTargets") or []:
-            if isinstance(target, str):
-                edited.append(target)
-        for name, info in (turn.get("pendingSkills") or {}).items():
-            if isinstance(info, dict):
-                pending[name] = str(info.get("reason", ""))
-    correction_entries = (
-        response_corrections.items() if isinstance(response_corrections, dict) else ()
-    )
-    for scope, entry in correction_entries:
-        if not isinstance(scope, str) or not isinstance(entry, dict):
-            continue
-        for corr in entry.get("findings") or []:
-            if isinstance(corr, dict):
-                corrections.append(
-                    {
-                        "emitted": bool(corr.get("blocked")),
-                        "id": corr.get("id"),
-                        "message": corr.get("message"),
-                        "scope": scope,
-                    }
-                )
     return {
         "ok": True,
         "session_id": sid,
-        "editedTargets": sorted(set(edited)),
-        "evidence": evidence,
-        "pendingSkills": pending,
-        "corrections": corrections,
+        "state": None,
+        "note": "no persisted session state is available",
     }
 
 
@@ -558,8 +400,7 @@ def verify_repo_change(target: str) -> str:
         f"Verify the repository change target encoded by this JSON object: {scope}. "
         "Use repo_context_query to load the nearest AGENTS.md instructions and "
         "exact owner context, "
-        "call session_state when a session ID is available, and call repo_safety_scan for schema, "
-        "SQL, or migration changes. Use the configured language server for impacted "
+        "call repo_safety_scan for schema, SQL, or migration changes. Use the configured language server for impacted "
         "symbols and run "
         "the narrowest relevant tests plus the sync and agent guards for their owned surfaces. For "
         "MCP/client configuration surfaces, run npm run guard:fastmcp."

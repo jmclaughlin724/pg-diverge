@@ -18,10 +18,10 @@ This rule owns the repo-local FastMCP agent server surface: local stdio, read-on
 ## Server scope and capabilities
 
 - `supaschema` is the canonical supaschema FastMCP server (`services/agent-mcp`, package `supaschema-agent-mcp`) for local repo-agent context. It stays read-only and local stdio.
-- `supaschema` may expose whatever local read-only tools the server owns. The guard does not freeze the tool count or require a hard-coded catalog. Current core capabilities include `server_status`, repo context reads and search, a local safety scan, and session-state inspection.
+- `supaschema` may expose whatever local read-only tools the server owns. The guard does not freeze the tool count or require a hard-coded catalog. Current core capabilities include `server_status`, repo context reads and search, a local safety scan, and session-state status.
 - Repo context tools must read and search non-secret repo files on a deny-list model (AGENTS instructions, rules, skills, source, schemas, tooling config) and return the nearest agent instructions when supported.
 - Safety-scan tools must run read-only `supaschema scan` through fixed argv (`node dist/cli.js scan --reporter json`): input-validated, no database, no mutation. Caller sources are limited to repo-contained forms: repo-relative `dir:`, `dump:`, `catalog:`, and `migrations:` payloads resolved inside the repository with the same deny-list, plus `empty:`, `git:HEAD`, and `git:INDEX`. A missing `dist/cli.js` returns an actionable build instruction instead of a raw subprocess error.
-- Session-state tools may read the local agent-hook ledger without exposing writes. They must redact secret-shaped values (URL passwords, SECRET/TOKEN/KEY-style env assignments) from recorded commands and summaries before returning them.
+- The session-state tool validates the supplied identifier and returns `state: null` without filesystem or subprocess access.
 - Secrets and credentials stay blocked: `.env*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `.npmrc`, `.netrc`, `.pgpass`, `.pypirc`, `.dev.vars*`, and `secrets/`, plus `.git`, caches and build output, and archived `plans/`.
 - No tool may expose live-database SQL, SQL mutation, a generic SQL engine, arbitrary shell execution, DB or API mutation, credential reads, external LLM calls, or proxy calls to other MCP servers.
 - The detailed implementation and verification owner is `.claude/skills/fastmcp/SKILL.md` and `services/agent-mcp/supaschema_agent_mcp/server.py`.
@@ -47,7 +47,7 @@ STOP if any of these occurs:
 - The approved registry or Codex activation set, transport, authentication, command wiring, or approval posture drifts.
 - A guard starts owning optional Claude project-server approval preferences.
 - Canonical skill changes are not followed by `npm run sync:llm`.
-- A FastMCP change ships without `npm run guard:fastmcp`, `npm run guard:agent`, and the relevant Python checks (Rule 04).
+- A FastMCP change ships without `npm run guard:fastmcp`, `npm run guard:agent`, and the relevant Python checks.
 
 ## Verification
 

@@ -11,8 +11,8 @@ The signing/verification logic and the full self-serve loop are implemented here
 - `GET /contracts?repo=acme/app&name=main` retrieves a schema contract when the request carries an unexpired repo-bound license token in `Authorization`.
 - `PUT /contracts?repo=acme/app&name=main` stores a schema contract when the request carries an unexpired repo-bound token in `Authorization`. The payload must match the `SchemaContract` JSON shape from `src/contract/schema.ts`.
 - `DELETE /contracts?repo=acme/app&name=main` deletes a schema contract when the request carries an unexpired repo-bound license token in `Authorization`.
-- `POST /webhook` verifies the Stripe signature over the raw body, then mints a repo-bound token keyed by the Checkout session id on `checkout.session.completed` or `checkout.session.async_payment_succeeded` (delayed payment methods complete unpaid first). A Stripe retry returns the stored token, never a second mint. For subscription prices, the Worker retrieves the matching Stripe Subscription Item and sets token expiry to its Basil `current_period_end`. A later `invoice.paid` renewal (`billing_reason` = `subscription_cycle`) matches the configured price in the invoice lines and advances expiry exactly to `period.end`; duplicate or stale invoices cannot extend it. Subscription ids come from the Basil (`2025-03-31.basil`) `invoice.parent.subscription_details.subscription` shape with the legacy top-level `invoice.subscription` field as fallback for older endpoint versions.
-- `GET /license?session_id=cs_test_123` lets the buyer retrieve their token after the success redirect, or returns `404 { "pending": true }` until the webhook has stored it. The token never returns to Stripe. The success page lives on the docs origin (for example supaschema.com) while this Worker serves `/license` from its own origin, so responses carry `Access-Control-Allow-Origin` scoped to the configured `CHECKOUT_SUCCESS_URL` origin and `OPTIONS` preflights return 204.
+- `POST /webhook` verifies the Stripe signature over the raw body, then mints a repo-bound token keyed by the Checkout session id on `checkout.session.completed` or `checkout.session.async_payment_succeeded` (delayed payment methods complete unpaid first). A Stripe retry returns the stored token, never a second mint. For subscription prices, the Worker retrieves the matching Stripe Subscription Item and sets token expiry to its Basil `current_period_end`. A later `invoice.paid` renewal (`billing_reason` = `subscription_cycle`) matches the configured price in the invoice lines and advances expiry exactly to `period.end`; a SQLite-backed Durable Object keyed by the original Checkout session serializes renewal state so overlapping, duplicate, or stale invoices cannot shorten it. Subscription ids come from the Basil (`2025-03-31.basil`) `invoice.parent.subscription_details.subscription` shape with the legacy top-level `invoice.subscription` field as fallback for older endpoint versions.
+- `GET /license?session_id=cs_test_123` lets the buyer retrieve their token after the success redirect, or returns `404 { "pending": true }` until the webhook has stored it. The token never returns to Stripe. The checkout redirects to the private, no-index success page at `https://supaschema.com/license`; that page polls this Worker at `https://license.supaschema.com/license`, displays the token, and lets the buyer copy it. Responses carry `Access-Control-Allow-Origin` scoped to the configured success-page origin, and `OPTIONS` preflights return 204.
 
 ## Code map
 
@@ -21,8 +21,11 @@ The signing/verification logic and the full self-serve loop are implemented here
 - `src/webhook.ts` - `verifyStripeSignature` (raw-body HMAC-SHA256, replay window, constant-time compare).
 - `src/stripe-api.ts` - authenticated Stripe REST GET/POST transport.
 - `src/checkout.ts` - `parsePlanCatalog` (operator `STRIPE_PRICE_MAP`), `createCheckoutSession`, `successUrlWithSessionId`.
+- `src/oauth-state.ts` - atomic, expiring OAuth-state consumption shared by the Worker and its Durable Object.
 - `src/store.ts` - `WorkerStore` interface (Cloudflare KV bindings satisfy it) and `createMemoryStore` for tests.
-- `src/index.ts` - the Worker router (`handleLicenseWorker`) dispatching `/checkout`, `/contracts`, `/webhook`, `/license`; the default export injects the KV store and the global `fetch`.
+- `src/subscription-renewal.ts` - atomic per-Checkout-session renewal state and monotonic paid-through enforcement.
+- `src/index.ts` - the Worker router (`handleLicenseWorker`) dispatching `/checkout`, `/contracts`, `/webhook`, `/license`.
+- `src/worker.ts` - the Cloudflare entry point plus the renewal and OAuth-state Durable Objects.
 - `scripts/stripe/create-catalog.mjs` - one-shot product/price catalog creation owner; it emits the `STRIPE_PRICE_MAP` JSON consumed by the Worker.
 
 ## Deployment Handoff
@@ -35,7 +38,7 @@ The signing/verification logic and the full self-serve loop are implemented here
    cat "$keydir/supaschema_license_public.pem"
    ```
 2. The Worker derives the public key from `SUPASCHEMA_LICENSE_PRIVATE_KEY` at startup and uses it to verify contract-route bearer tokens; no package key embedding is required.
-3. Keep `services/license-worker/wrangler.toml` as the canonical Worker config. It declares `LICENSE_KV` and `CONTRACT_KV` without ids so Wrangler provisions the namespaces during deploy and writes the account-specific ids after provisioning.
+3. Keep `services/license-worker/wrangler.toml` as the canonical Worker config. It declares `LICENSE_KV` and `CONTRACT_KV` without ids, provisions the SQLite-backed `SUBSCRIPTION_RENEWALS` and `OAUTH_STATES` Durable Object namespaces, and publishes the Worker on the `license.supaschema.com` custom domain used by the success page.
 4. Create the Stripe catalog with the approved prices:
    ```bash
    STRIPE_CATALOG_APPROVED=1 node scripts/stripe/create-catalog.mjs

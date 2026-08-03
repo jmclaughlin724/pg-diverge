@@ -39,6 +39,7 @@
       "!.claude/skills/code-review/references/workflow-backed-code-review.js",
       "!.claude/skills/deep-research/references/workflow-backed-deep-research.js",
       "!agent-bundle",
+      "!**/*.astro",
       "!tests/fixtures/sample-project/supabase/functions",
       "!.agents",
       "!.codex"
@@ -90,6 +91,19 @@
         "rules": {
           "performance": {
             "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "services/license-worker/src/cloudflare-workers.d.ts",
+        "services/license-worker/src/worker.ts"
+      ],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnresolvedImports": "off"
           }
         }
       }

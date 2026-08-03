@@ -17,12 +17,22 @@ import {
   canonicalRepo,
   isEntitled,
   issueLicenseToken,
+  type LicenseClaims,
   licenseClaimsFor,
   licenseClaimsThrough,
   verifyLicenseToken,
 } from "./issue.js";
+import type { OAuthStateNamespace } from "./oauth-state.js";
 import type { WorkerStore } from "./store.js";
 import { type StripeFetch, stripeGet } from "./stripe-api.js";
+import {
+  type InvoicePaidPeriod,
+  type InvoiceRenewal,
+  parseSubscriptionRecord,
+  type SubscriptionRecord,
+  type SubscriptionRenewalNamespace,
+  subscriptionRecordKey,
+} from "./subscription-renewal.js";
 import { verifyStripeSignature } from "./webhook.js";
 
 export interface LicenseWorkerEnv {
@@ -38,11 +48,15 @@ export interface LicenseWorkerEnv {
 
   LICENSE_KV: WorkerStore;
 
+  OAUTH_STATES: OAuthStateNamespace;
+
   STRIPE_PRICE_MAP: string;
 
   STRIPE_SECRET_KEY: string;
 
   STRIPE_WEBHOOK_SECRET: string;
+
+  SUBSCRIPTION_RENEWALS: SubscriptionRenewalNamespace;
 
   SUPASCHEMA_LICENSE_PRIVATE_KEY: string;
 }
@@ -66,10 +80,12 @@ interface LicenseWorkerRuntime {
   githubOauthClientSecret: string;
   licensePublicKeyPem: string;
   licenses: WorkerStore;
+  oauthStates: OAuthStateNamespace;
   planCatalog: ReadonlyMap<string, PlanPrice>;
   privateKey: ReturnType<typeof createPrivateKey>;
   stripeSecretKey: string;
   stripeWebhookSecret: string;
+  subscriptionRenewals: SubscriptionRenewalNamespace;
   successUrl: string;
 }
 
@@ -171,18 +187,6 @@ export function extractCheckoutCompletion(event: unknown): CheckoutCompletion | 
   };
 }
 
-interface InvoiceRenewal {
-  invoiceId: string;
-  periods: InvoicePaidPeriod[];
-  subscriptionId: string;
-}
-
-interface InvoicePaidPeriod {
-  paidThrough: number;
-  priceId: string;
-  subscriptionId?: string;
-}
-
 export function extractInvoiceRenewal(event: unknown): InvoiceRenewal | null {
   const root = asObject(event);
   if (root === null || property(root, "type") !== "invoice.paid") {
@@ -268,51 +272,6 @@ function invoiceSubscriptionId(invoice: object): string | undefined {
   return typeof legacy === "string" && legacy.length > 0 ? legacy : undefined;
 }
 
-interface SubscriptionRecord {
-  lastInvoiceId?: string;
-  paidThrough: number;
-  plan: string;
-  priceId: string;
-  repo: string;
-  sessionId: string;
-}
-
-function parseSubscriptionRecord(raw: string): SubscriptionRecord | null {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    const record = asObject(parsed);
-    if (record === null) {
-      return null;
-    }
-    const sessionId = property(record, "sessionId");
-    const repo = property(record, "repo");
-    const plan = property(record, "plan");
-    const priceId = property(record, "priceId");
-    const paidThrough = property(record, "paidThrough");
-    const lastInvoiceId = property(record, "lastInvoiceId");
-    if (
-      typeof sessionId !== "string" ||
-      typeof repo !== "string" ||
-      typeof plan !== "string" ||
-      typeof priceId !== "string" ||
-      !isUnixTimestamp(paidThrough) ||
-      (lastInvoiceId !== undefined && typeof lastInvoiceId !== "string")
-    ) {
-      return null;
-    }
-    return {
-      ...(lastInvoiceId === undefined ? {} : { lastInvoiceId }),
-      paidThrough,
-      plan,
-      priceId,
-      repo,
-      sessionId,
-    };
-  } catch {
-    return null;
-  }
-}
-
 async function ensureSubscriptionRecord(
   runtime: LicenseWorkerRuntime,
   completion: NonNullable<ReturnType<typeof extractCheckoutCompletion>>,
@@ -322,16 +281,16 @@ async function ensureSubscriptionRecord(
   if (completion.subscriptionId === undefined || planPrice?.mode !== "subscription") {
     return null;
   }
-  const key = `subscription:${completion.subscriptionId}`;
+  const key = subscriptionRecordKey(completion.subscriptionId);
   const raw = await runtime.licenses.get(key);
   const existing = raw === null ? null : parseSubscriptionRecord(raw);
   if (existing !== null) {
-    return existing.plan === completion.plan &&
+    const matchesCompletion =
+      existing.plan === completion.plan &&
       existing.priceId === planPrice.price &&
       canonicalRepo(existing.repo) === canonicalRepo(completion.repo) &&
-      existing.sessionId === completion.sessionId
-      ? existing
-      : null;
+      existing.sessionId === completion.sessionId;
+    return matchesCompletion ? existing : null;
   }
   const subscription = await stripeGet(
     stripeFetch,
@@ -432,34 +391,31 @@ async function handleInvoiceRenewal(
   runtime: LicenseWorkerRuntime,
   nowSeconds: number
 ): Promise<Response> {
-  const subscriptionKey = `subscription:${renewal.subscriptionId}`;
-  const raw = await runtime.licenses.get(subscriptionKey);
-  const record = raw === null ? null : parseSubscriptionRecord(raw);
+  const rawRecord = await runtime.licenses.get(subscriptionRecordKey(renewal.subscriptionId));
+  const record = rawRecord === null ? null : parseSubscriptionRecord(rawRecord);
   if (record === null) {
     return jsonResponse({ ignored: true });
   }
-  if (record.lastInvoiceId === renewal.invoiceId) {
-    return jsonResponse({ idempotent: true, renewed: true });
-  }
-  const matchingPeriods = renewal.periods.filter(
-    (period) =>
-      period.priceId === record.priceId &&
-      (period.subscriptionId === undefined || period.subscriptionId === renewal.subscriptionId)
-  );
-  const paidThrough = matchingPeriods.length === 1 ? matchingPeriods[0]?.paidThrough : undefined;
-  if (paidThrough === undefined) {
-    return new Response("invalid invoice paid-through period", { status: 500 });
-  }
-  if (paidThrough <= record.paidThrough || paidThrough <= nowSeconds) {
+  try {
+    const outcome = await runtime.subscriptionRenewals
+      .getByName(record.sessionId)
+      .renew(renewal.subscriptionId, renewal, nowSeconds);
+    if (outcome.kind === "renewed") {
+      return jsonResponse({ renewed: true, repo: outcome.repo });
+    }
+    if (outcome.kind === "idempotent") {
+      return jsonResponse({ idempotent: true, renewed: true });
+    }
+    if (outcome.kind === "invalid") {
+      return new Response("invalid invoice paid-through period", { status: 500 });
+    }
+    if (outcome.kind === "unavailable") {
+      return new Response("subscription renewal state unavailable", { status: 503 });
+    }
     return jsonResponse({ ignored: true });
+  } catch {
+    return new Response("subscription renewal unavailable", { status: 503 });
   }
-  const claims = licenseClaimsThrough(record.repo, record.plan, paidThrough);
-  await runtime.licenses.put(record.sessionId, issueLicenseToken(claims, runtime.privateKey));
-  await runtime.licenses.put(
-    subscriptionKey,
-    JSON.stringify({ ...record, lastInvoiceId: renewal.invoiceId, paidThrough })
-  );
-  return jsonResponse({ renewed: true, repo: record.repo });
 }
 
 async function handleWebhook(
@@ -496,19 +452,78 @@ async function handleWebhook(
   return jsonResponse({ ignored: true });
 }
 
-async function handleLicenseRetrieval(url: URL, store: WorkerStore): Promise<Response> {
+function handleLicenseRetrieval(url: URL, runtime: LicenseWorkerRuntime): Promise<Response> {
   const sessionId = url.searchParams.get("session_id");
   if (sessionId === null || sessionId.length === 0) {
-    return new Response("missing session_id", { status: 400 });
+    return Promise.resolve(new Response("missing session_id", { status: 400 }));
   }
   if (sessionId.includes(":")) {
-    return new Response("invalid session_id", { status: 400 });
+    return Promise.resolve(new Response("invalid session_id", { status: 400 }));
   }
-  const token = await store.get(sessionId);
+  return sessionLicenseResponse(sessionId, runtime);
+}
+
+async function sessionLicenseResponse(
+  sessionId: string,
+  runtime: LicenseWorkerRuntime
+): Promise<Response> {
+  const directToken = await runtime.licenses.get(sessionId);
+  if (directToken === null) {
+    return licenseRetrievalResponse(null);
+  }
+  const directClaims = verifiedLicenseClaims(directToken, runtime);
+  const directMode =
+    directClaims === null ? undefined : runtime.planCatalog.get(directClaims.plan)?.mode;
+  if (directClaims === null || directMode === undefined) {
+    return unavailableLicenseResponse("license unavailable");
+  }
+  if (directMode === "payment") {
+    return licenseRetrievalResponse(directToken);
+  }
+  let coordinatedToken: string | null;
+  try {
+    coordinatedToken = await runtime.subscriptionRenewals
+      .getByName(sessionId)
+      .license("", sessionId);
+  } catch {
+    return unavailableLicenseResponse("subscription license unavailable");
+  }
+  if (coordinatedToken !== null) {
+    const claims = verifiedLicenseClaims(coordinatedToken, runtime);
+    if (
+      claims === null ||
+      runtime.planCatalog.get(claims.plan)?.mode !== "subscription" ||
+      claims.plan !== directClaims.plan ||
+      canonicalRepo(claims.repo) !== canonicalRepo(directClaims.repo)
+    ) {
+      return unavailableLicenseResponse("subscription license unavailable");
+    }
+    return licenseRetrievalResponse(
+      claims.exp >= directClaims.exp ? coordinatedToken : directToken
+    );
+  }
+  return licenseRetrievalResponse(directToken);
+}
+
+function licenseRetrievalResponse(token: string | null): Response {
   const response =
     token === null ? jsonResponse({ pending: true }, 404) : jsonResponse({ license: token });
   response.headers.set("cache-control", "no-store");
   return response;
+}
+
+function unavailableLicenseResponse(message: string): Response {
+  const response = new Response(message, { status: 503 });
+  response.headers.set("cache-control", "no-store");
+  return response;
+}
+
+function verifiedLicenseClaims(token: string, runtime: LicenseWorkerRuntime): LicenseClaims | null {
+  const claims = verifyLicenseToken(token, runtime.licensePublicKeyPem);
+  if (claims === null || !isUnixTimestamp(claims.exp)) {
+    return null;
+  }
+  return claims;
 }
 
 function handleCheckout(
@@ -565,11 +580,17 @@ async function handleOAuthCallback(
   if (state === null || !isValidRepo(state.repo) || !isValidPlan(state.plan)) {
     return new Response("invalid state", { status: 400 });
   }
-  const stateKey = `oauth-state:${state.nonce}`;
-  if ((await runtime.licenses.get(stateKey)) !== null) {
+  let consumed: boolean;
+  try {
+    consumed = await runtime.oauthStates
+      .getByName(state.nonce)
+      .consume(state.expiresAt, nowSeconds);
+  } catch {
+    return new Response("oauth state unavailable", { status: 503 });
+  }
+  if (!consumed) {
     return new Response("state already used", { status: 400 });
   }
-  await runtime.licenses.put(stateKey, "1");
   const planPrice = runtime.planCatalog.get(state.plan);
   if (planPrice === undefined) {
     return new Response("unknown plan", { status: 404 });
@@ -716,6 +737,16 @@ function hasStoreMethods(value: unknown): value is WorkerStore {
   );
 }
 
+function hasSubscriptionRenewalNamespace(value: unknown): value is SubscriptionRenewalNamespace {
+  const namespace = asObject(value);
+  return namespace !== null && typeof property(namespace, "getByName") === "function";
+}
+
+function hasOAuthStateNamespace(value: unknown): value is OAuthStateNamespace {
+  const namespace = asObject(value);
+  return namespace !== null && typeof property(namespace, "getByName") === "function";
+}
+
 function licenseWorkerRuntime(
   env: LicenseWorkerEnv,
   stores: Partial<LicenseWorkerStores>
@@ -723,6 +754,8 @@ function licenseWorkerRuntime(
   const errors: string[] = [];
   const contracts = stores.contracts;
   const licenses = stores.licenses;
+  const oauthStates = env.OAUTH_STATES;
+  const subscriptionRenewals = env.SUBSCRIPTION_RENEWALS;
   const cancelUrl = requiredString(env, "CHECKOUT_CANCEL_URL", errors);
   const successUrl = requiredString(env, "CHECKOUT_SUCCESS_URL", errors);
   const githubOauthClientId = requiredString(env, "GITHUB_OAUTH_CLIENT_ID", errors);
@@ -770,10 +803,18 @@ function licenseWorkerRuntime(
   if (!hasStoreMethods(licenses)) {
     errors.push("LICENSE_KV must provide get, put, and delete");
   }
+  if (!hasOAuthStateNamespace(oauthStates)) {
+    errors.push("OAUTH_STATES must provide getByName");
+  }
+  if (!hasSubscriptionRenewalNamespace(subscriptionRenewals)) {
+    errors.push("SUBSCRIPTION_RENEWALS must provide getByName");
+  }
   if (
     errors.length > 0 ||
     !hasStoreMethods(contracts) ||
     !hasStoreMethods(licenses) ||
+    !hasOAuthStateNamespace(oauthStates) ||
+    !hasSubscriptionRenewalNamespace(subscriptionRenewals) ||
     cancelUrl === undefined ||
     githubOauthClientId === undefined ||
     githubOauthClientSecret === undefined ||
@@ -795,10 +836,12 @@ function licenseWorkerRuntime(
       githubOauthClientSecret,
       licensePublicKeyPem,
       licenses,
+      oauthStates,
       planCatalog,
       privateKey,
       stripeSecretKey,
       stripeWebhookSecret,
+      subscriptionRenewals,
       successUrl,
     },
   };
@@ -864,7 +907,7 @@ function handleLicenseCors(
   if (request.method !== "GET") {
     return Promise.resolve(new Response("not found", { status: 404 }));
   }
-  return handleLicenseRetrieval(url, runtime.licenses).then((response) =>
+  return handleLicenseRetrieval(url, runtime).then((response) =>
     withCorsOrigin(response, allowedOrigin)
   );
 }
@@ -880,17 +923,3 @@ function withCorsOrigin(response: Response, allowedOrigin: string): Response {
     statusText: response.statusText,
   });
 }
-
-const worker = {
-  fetch(request: Request, env: LicenseWorkerEnv): Promise<Response> {
-    return handleLicenseWorker(
-      request,
-      env,
-      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
-      Math.floor(Date.now() / 1000),
-      globalThis.fetch
-    );
-  },
-};
-
-export default worker;

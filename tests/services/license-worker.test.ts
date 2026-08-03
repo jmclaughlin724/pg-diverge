@@ -17,29 +17,134 @@ import {
   isEntitled,
   issueLicenseToken,
   licenseClaimsFor,
+  licenseClaimsThrough,
   verifyLicenseToken,
 } from "../../services/license-worker/src/issue.js";
+import {
+  consumeOAuthState,
+  type OAuthStateNamespace,
+} from "../../services/license-worker/src/oauth-state.js";
 import { createMemoryStore } from "../../services/license-worker/src/store.js";
+import {
+  coordinatedSubscriptionLicense,
+  coordinateSubscriptionRenewal,
+  type RenewalOutcome,
+  type SubscriptionRenewalCoordinatorStore,
+  type SubscriptionRenewalCoordinatorTransaction,
+  type SubscriptionRenewalNamespace,
+} from "../../services/license-worker/src/subscription-renewal.js";
 
 const webhookSecret = "whsec_test_secret";
 const { privateKey } = generateKeyPairSync("ed25519");
 const privateKeyPem = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+const licensePublicKeyPem = createPublicKey(privateKey)
+  .export({ format: "pem", type: "spki" })
+  .toString();
 
 function testEnv(): LicenseWorkerEnv {
-  return {
+  let env: LicenseWorkerEnv;
+  env = {
     CHECKOUT_CANCEL_URL: "https://supaschema.com/pricing",
     CHECKOUT_SUCCESS_URL: "https://supaschema.com/license",
     CONTRACT_KV: createMemoryStore(),
     GITHUB_OAUTH_CLIENT_ID: "github-oauth-client-id",
     GITHUB_OAUTH_CLIENT_SECRET: "github-oauth-client-secret",
     LICENSE_KV: createMemoryStore(),
+    OAUTH_STATES: createMemoryOAuthStates(),
     STRIPE_PRICE_MAP: JSON.stringify({
       bundle: { mode: "payment", price: "price_payment" },
       pro: { mode: "subscription", price: "price_subscription" },
     }),
     STRIPE_SECRET_KEY: "sk_test_secret",
     STRIPE_WEBHOOK_SECRET: webhookSecret,
+    SUBSCRIPTION_RENEWALS: createMemorySubscriptionRenewals(() => env),
     SUPASCHEMA_LICENSE_PRIVATE_KEY: privateKeyPem,
+  };
+  return env;
+}
+
+function createMemoryOAuthStates(): OAuthStateNamespace {
+  const stores = new Map<string, MemorySubscriptionRenewalStore>();
+  return {
+    getByName: (nonce) => {
+      const coordinator = stores.get(nonce) ?? new MemorySubscriptionRenewalStore();
+      stores.set(nonce, coordinator);
+      return {
+        consume: (expiresAt, stateNowSeconds) =>
+          consumeOAuthState(coordinator, expiresAt, stateNowSeconds),
+      };
+    },
+  };
+}
+
+class MemorySubscriptionRenewalStore
+  implements SubscriptionRenewalCoordinatorStore, SubscriptionRenewalCoordinatorTransaction
+{
+  private readonly values = new Map<string, unknown>();
+
+  private transactionTail: Promise<void> = Promise.resolve();
+
+  get(key: string): Promise<unknown | undefined> {
+    return Promise.resolve(this.values.get(key));
+  }
+
+  put(key: string, value: unknown): Promise<void> {
+    this.values.set(key, value);
+    return Promise.resolve();
+  }
+
+  setAlarm(_scheduledTime: number): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async transaction<T>(
+    callback: (transaction: SubscriptionRenewalCoordinatorTransaction) => Promise<T>
+  ): Promise<T> {
+    const preceding = this.transactionTail;
+    let release: (() => void) | undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.transactionTail = preceding.then(
+      () => current,
+      () => current
+    );
+    await preceding;
+    try {
+      return await callback(this);
+    } finally {
+      release?.();
+    }
+  }
+}
+
+function createMemorySubscriptionRenewals(
+  env: () => LicenseWorkerEnv
+): SubscriptionRenewalNamespace {
+  const stores = new Map<string, MemorySubscriptionRenewalStore>();
+  return {
+    getByName: (coordinatorId) => {
+      const coordinator = stores.get(coordinatorId) ?? new MemorySubscriptionRenewalStore();
+      stores.set(coordinatorId, coordinator);
+      return {
+        license: (routedSubscriptionId, sessionId) =>
+          coordinatedSubscriptionLicense(
+            coordinator,
+            env().LICENSE_KV,
+            routedSubscriptionId,
+            sessionId
+          ),
+        renew: (routedSubscriptionId, renewal, renewalNowSeconds): Promise<RenewalOutcome> =>
+          coordinateSubscriptionRenewal(
+            coordinator,
+            env().LICENSE_KV,
+            privateKey,
+            routedSubscriptionId,
+            renewal,
+            renewalNowSeconds
+          ),
+      };
+    },
   };
 }
 
@@ -53,6 +158,28 @@ function signedWebhookRequest(event: unknown, nowSeconds: number): Request {
     headers: { "stripe-signature": `t=${nowSeconds},v1=${signature}` },
     method: "POST",
   });
+}
+
+async function retrieveLicenseToken(
+  env: LicenseWorkerEnv,
+  sessionId = "cs_test_123"
+): Promise<string> {
+  const response = await handleLicenseWorker(
+    new Request(`https://license.workers.dev/license?session_id=${sessionId}`),
+    env,
+    { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+    nowSeconds,
+    fakeFetch
+  );
+  const body: unknown = await response.json();
+  if (typeof body !== "object" || body === null) {
+    throw new Error("expected a license response");
+  }
+  const token = Reflect.get(body, "license");
+  if (typeof token !== "string") {
+    throw new Error("expected a license token");
+  }
+  return token;
 }
 
 function completionEvent(overrides: Record<string, unknown> = {}) {
@@ -192,6 +319,35 @@ describe("license worker", () => {
     expect(preflight.headers.get("access-control-allow-origin")).toBe("https://supaschema.com");
   });
 
+  it("serves verified one-time tokens and rejects a tampered direct token", async () => {
+    const env = testEnv();
+    const paymentToken = issueLicenseToken(
+      licenseClaimsFor("acme/app", "bundle", nowSeconds),
+      privateKey
+    );
+    await env.LICENSE_KV.put("cs_payment", paymentToken);
+
+    const paymentResponse = await handleLicenseWorker(
+      new Request("https://license.workers.dev/license?session_id=cs_payment"),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+    expect(paymentResponse.status).toBe(200);
+    expect(await paymentResponse.json()).toEqual({ license: paymentToken });
+
+    await env.LICENSE_KV.put("cs_payment", `${paymentToken}tampered`);
+    const tamperedResponse = await handleLicenseWorker(
+      new Request("https://license.workers.dev/license?session_id=cs_payment"),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+    expect(tamperedResponse.status).toBe(503);
+  });
+
   it("issues on async_payment_succeeded and ignores unpaid completions", async () => {
     const env = testEnv();
     const unpaid = await handleLicenseWorker(
@@ -268,10 +424,13 @@ describe("license worker", () => {
     expect(await env.CONTRACT_KV.get("contract:acme/app:schema")).not.toBeNull();
   });
 
-  it("repairs a missing subscription mapping on a webhook retry", async () => {
+  it("repairs a missing subscription record on a webhook retry", async () => {
     const env = testEnv();
-    await env.LICENSE_KV.put("cs_test_123", "previously-minted-token");
     const paidThrough = nowSeconds + 2_700_000;
+    await env.LICENSE_KV.put(
+      "cs_test_123",
+      issueLicenseToken(licenseClaimsThrough("acme/app", "pro", paidThrough), privateKey)
+    );
 
     const response = await handleLicenseWorker(
       signedWebhookRequest(
@@ -288,17 +447,42 @@ describe("license worker", () => {
     );
 
     expect(await response.json()).toEqual({ idempotent: true, issued: true });
-    const mapping = await env.LICENSE_KV.get("subscription:sub_123");
-    if (mapping === null) {
-      throw new Error("expected subscription mapping to be repaired");
+    const rawRecord = await env.LICENSE_KV.get("subscription:sub_123");
+    if (rawRecord === null) {
+      throw new Error("expected subscription record to be repaired");
     }
-    expect(JSON.parse(mapping)).toMatchObject({
+    expect(JSON.parse(rawRecord)).toMatchObject({
       paidThrough,
       plan: "pro",
       priceId: "price_subscription",
       repo: "acme/app",
       sessionId: "cs_test_123",
     });
+  });
+
+  it("keeps an initializing subscription license in the pending state", async () => {
+    const env = testEnv();
+    await env.LICENSE_KV.put(
+      "subscription:sub_123",
+      JSON.stringify({
+        paidThrough: nowSeconds + 2_700_000,
+        plan: "pro",
+        priceId: "price_subscription",
+        repo: "acme/app",
+        sessionId: "cs_test_123",
+      })
+    );
+
+    const response = await handleLicenseWorker(
+      new Request("https://license.workers.dev/license?session_id=cs_test_123"),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      fakeFetch
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ pending: true });
   });
 
   it("matches subscription token expiry to Stripe's paid-through boundaries", async () => {
@@ -348,10 +532,7 @@ describe("license worker", () => {
       fakeFetch
     );
     expect(await renewal.json()).toEqual({ renewed: true, repo: "acme/app" });
-    const renewed = await env.LICENSE_KV.get("cs_test_123");
-    if (renewed === null) {
-      throw new Error("expected a renewed token");
-    }
+    const renewed = await retrieveLicenseToken(env);
     expect(verifyLicenseToken(renewed, publicKeyPem)?.exp).toBe(renewedPaidThrough);
 
     const replay = await handleLicenseWorker(
@@ -362,7 +543,7 @@ describe("license worker", () => {
       fakeFetch
     );
     expect(await replay.json()).toEqual({ idempotent: true, renewed: true });
-    expect(await env.LICENSE_KV.get("cs_test_123")).toBe(renewed);
+    expect(await retrieveLicenseToken(env)).toBe(renewed);
 
     const stale = await handleLicenseWorker(
       signedWebhookRequest(
@@ -375,7 +556,388 @@ describe("license worker", () => {
       fakeFetch
     );
     expect(await stale.json()).toEqual({ ignored: true });
-    expect(await env.LICENSE_KV.get("cs_test_123")).toBe(renewed);
+    expect(await retrieveLicenseToken(env)).toBe(renewed);
+  });
+
+  it("serializes overlapping renewals without regressing the paid-through period", async () => {
+    const env = testEnv();
+    const initialPaidThrough = nowSeconds + 2_700_000;
+    await handleLicenseWorker(
+      signedWebhookRequest(
+        completionEvent({
+          metadata: { plan: "pro", repo: "acme/app" },
+          subscription: "sub_123",
+        }),
+        nowSeconds
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      subscriptionFetch("price_subscription", initialPaidThrough)
+    );
+
+    const newerPaidThrough = initialPaidThrough + 5_400_000;
+    const olderPaidThrough = initialPaidThrough + 2_700_000;
+    const responses = await Promise.all([
+      handleLicenseWorker(
+        signedWebhookRequest(
+          invoicePaidEvent("in_newer", "sub_123", "price_subscription", newerPaidThrough),
+          nowSeconds + 100
+        ),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds + 100,
+        fakeFetch
+      ),
+      handleLicenseWorker(
+        signedWebhookRequest(
+          invoicePaidEvent("in_older", "sub_123", "price_subscription", olderPaidThrough),
+          nowSeconds + 100
+        ),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds + 100,
+        fakeFetch
+      ),
+    ]);
+    expect(responses.every((response) => response.ok)).toBe(true);
+
+    const publicKeyPem = createPublicKey(privateKey)
+      .export({ format: "pem", type: "spki" })
+      .toString();
+    expect(verifyLicenseToken(await retrieveLicenseToken(env), publicKeyPem)?.exp).toBe(
+      newerPaidThrough
+    );
+  });
+
+  it("routes renewed legacy subscriptions through their original session", async () => {
+    const env = testEnv();
+    const initialPaidThrough = nowSeconds + 2_700_000;
+    await env.LICENSE_KV.put(
+      "subscription:sub_legacy",
+      JSON.stringify({
+        paidThrough: initialPaidThrough,
+        plan: "pro",
+        priceId: "price_subscription",
+        repo: "acme/app",
+        sessionId: "cs_legacy",
+      })
+    );
+    const legacyToken = issueLicenseToken(
+      licenseClaimsThrough("acme/app", "pro", initialPaidThrough),
+      privateKey
+    );
+    await env.LICENSE_KV.put("cs_legacy", legacyToken);
+
+    expect(await retrieveLicenseToken(env, "cs_legacy")).toBe(legacyToken);
+
+    const renewedPaidThrough = initialPaidThrough + 2_700_000;
+    const renewal = await handleLicenseWorker(
+      signedWebhookRequest(
+        invoicePaidEvent("in_legacy", "sub_legacy", "price_subscription", renewedPaidThrough),
+        nowSeconds + 100
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds + 100,
+      fakeFetch
+    );
+
+    expect(renewal.status).toBe(200);
+    const publicKeyPem = createPublicKey(privateKey)
+      .export({ format: "pem", type: "spki" })
+      .toString();
+    expect(
+      verifyLicenseToken(await retrieveLicenseToken(env, "cs_legacy"), publicKeyPem)?.exp
+    ).toBe(renewedPaidThrough);
+  });
+
+  it("preserves the maximum verified legacy token and record paid-through", async () => {
+    const firstPaidThrough = nowSeconds + 2_700_000;
+    const middlePaidThrough = firstPaidThrough + 2_700_000;
+    const lastPaidThrough = middlePaidThrough + 2_700_000;
+    const cases = [
+      {
+        recordPaidThrough: firstPaidThrough,
+        sessionId: "cs_token_later",
+        subscriptionId: "sub_token_later",
+        tokenPaidThrough: lastPaidThrough,
+      },
+      {
+        recordPaidThrough: lastPaidThrough,
+        sessionId: "cs_record_later",
+        subscriptionId: "sub_record_later",
+        tokenPaidThrough: firstPaidThrough,
+      },
+    ];
+
+    for (const legacy of cases) {
+      const env = testEnv();
+      await env.LICENSE_KV.put(
+        `subscription:${legacy.subscriptionId}`,
+        JSON.stringify({
+          paidThrough: legacy.recordPaidThrough,
+          plan: "pro",
+          priceId: "price_subscription",
+          repo: "acme/app",
+          sessionId: legacy.sessionId,
+        })
+      );
+      await env.LICENSE_KV.put(
+        legacy.sessionId,
+        issueLicenseToken(
+          licenseClaimsThrough("acme/app", "pro", legacy.tokenPaidThrough),
+          privateKey
+        )
+      );
+
+      const renewal = await handleLicenseWorker(
+        signedWebhookRequest(
+          invoicePaidEvent(
+            `in_${legacy.subscriptionId}`,
+            legacy.subscriptionId,
+            "price_subscription",
+            middlePaidThrough
+          ),
+          nowSeconds + 100
+        ),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds + 100,
+        fakeFetch
+      );
+
+      expect(await renewal.json()).toEqual({ ignored: true });
+      expect(
+        verifyLicenseToken(await retrieveLicenseToken(env, legacy.sessionId), licensePublicKeyPem)
+          ?.exp
+      ).toBe(lastPaidThrough);
+    }
+  });
+
+  it("merges a newer verified direct token into existing coordinated state", async () => {
+    const env = testEnv();
+    const initialPaidThrough = nowSeconds + 2_700_000;
+    await handleLicenseWorker(
+      signedWebhookRequest(
+        completionEvent({
+          metadata: { plan: "pro", repo: "acme/app" },
+          subscription: "sub_diverged",
+        }),
+        nowSeconds
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      subscriptionFetch("price_subscription", initialPaidThrough)
+    );
+
+    const coordinatedPaidThrough = initialPaidThrough + 2_700_000;
+    const coordinatedRenewal = await handleLicenseWorker(
+      signedWebhookRequest(
+        invoicePaidEvent(
+          "in_coordinated",
+          "sub_diverged",
+          "price_subscription",
+          coordinatedPaidThrough
+        ),
+        nowSeconds + 100
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds + 100,
+      fakeFetch
+    );
+    expect(coordinatedRenewal.status).toBe(200);
+
+    const directPaidThrough = coordinatedPaidThrough + 2_700_000;
+    await env.LICENSE_KV.put(
+      "subscription:sub_diverged",
+      JSON.stringify({
+        lastInvoiceId: "in_direct",
+        paidThrough: directPaidThrough,
+        plan: "pro",
+        priceId: "price_subscription",
+        repo: "acme/app",
+        sessionId: "cs_test_123",
+      })
+    );
+    await env.LICENSE_KV.put(
+      "cs_test_123",
+      issueLicenseToken(licenseClaimsThrough("acme/app", "pro", directPaidThrough), privateKey)
+    );
+    expect(verifyLicenseToken(await retrieveLicenseToken(env), licensePublicKeyPem)?.exp).toBe(
+      directPaidThrough
+    );
+
+    const staleRenewal = await handleLicenseWorker(
+      signedWebhookRequest(
+        invoicePaidEvent(
+          "in_between",
+          "sub_diverged",
+          "price_subscription",
+          coordinatedPaidThrough + 1_350_000
+        ),
+        nowSeconds + 200
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds + 200,
+      fakeFetch
+    );
+    expect(await staleRenewal.json()).toEqual({ ignored: true });
+    expect(verifyLicenseToken(await retrieveLicenseToken(env), licensePublicKeyPem)?.exp).toBe(
+      directPaidThrough
+    );
+  });
+
+  it("rejects forged or identity-mismatched tokens during legacy migration", async () => {
+    const initialPaidThrough = nowSeconds + 2_700_000;
+    const forgedPaidThrough = initialPaidThrough + 5_400_000;
+    const validToken = issueLicenseToken(
+      licenseClaimsThrough("acme/app", "pro", initialPaidThrough),
+      privateKey
+    );
+    const [header, , signature] = validToken.split(".");
+    if (header === undefined || signature === undefined) {
+      throw new Error("expected a three-part signed token");
+    }
+    const forgedPayload = Buffer.from(
+      JSON.stringify(licenseClaimsThrough("acme/app", "pro", forgedPaidThrough))
+    ).toString("base64url");
+    const cases = [
+      {
+        exerciseRetrieval: true,
+        sessionId: "cs_forged",
+        token: `${header}.${forgedPayload}.${signature}`,
+      },
+      {
+        exerciseRetrieval: false,
+        sessionId: "cs_mismatched",
+        token: issueLicenseToken(
+          licenseClaimsThrough("other/repo", "pro", forgedPaidThrough),
+          privateKey
+        ),
+      },
+      {
+        exerciseRetrieval: false,
+        sessionId: "cs_wrong_plan",
+        token: issueLicenseToken(
+          licenseClaimsThrough("acme/app", "bundle", forgedPaidThrough),
+          privateKey
+        ),
+      },
+    ];
+
+    for (const legacy of cases) {
+      const env = testEnv();
+      const subscriptionId = `sub_${legacy.sessionId}`;
+      await env.LICENSE_KV.put(
+        `subscription:${subscriptionId}`,
+        JSON.stringify({
+          paidThrough: initialPaidThrough,
+          plan: "pro",
+          priceId: "price_subscription",
+          repo: "acme/app",
+          sessionId: legacy.sessionId,
+        })
+      );
+      await env.LICENSE_KV.put(legacy.sessionId, legacy.token);
+
+      const renewal = await handleLicenseWorker(
+        signedWebhookRequest(
+          invoicePaidEvent(
+            `in_${legacy.sessionId}`,
+            subscriptionId,
+            "price_subscription",
+            initialPaidThrough + 2_700_000
+          ),
+          nowSeconds + 100
+        ),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds + 100,
+        fakeFetch
+      );
+
+      expect(renewal.status).toBe(503);
+      expect(await env.LICENSE_KV.get(legacy.sessionId)).toBe(legacy.token);
+      if (legacy.exerciseRetrieval) {
+        const retrieval = await handleLicenseWorker(
+          new Request(`https://license.workers.dev/license?session_id=${legacy.sessionId}`),
+          env,
+          { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+          nowSeconds,
+          fakeFetch
+        );
+        expect(retrieval.status).toBe(503);
+      }
+
+      await env.LICENSE_KV.put(
+        legacy.sessionId,
+        issueLicenseToken(licenseClaimsThrough("acme/app", "pro", initialPaidThrough), privateKey)
+      );
+      const retry = await handleLicenseWorker(
+        signedWebhookRequest(
+          invoicePaidEvent(
+            `in_retry_${legacy.sessionId}`,
+            subscriptionId,
+            "price_subscription",
+            initialPaidThrough + 2_700_000
+          ),
+          nowSeconds + 200
+        ),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds + 200,
+        fakeFetch
+      );
+      expect(retry.status).toBe(200);
+      expect(
+        verifyLicenseToken(await retrieveLicenseToken(env, legacy.sessionId), licensePublicKeyPem)
+          ?.exp
+      ).toBe(initialPaidThrough + 2_700_000);
+    }
+  });
+
+  it("routes renewed subscriptions independently of reverse KV state", async () => {
+    const env = testEnv();
+    const initialPaidThrough = nowSeconds + 2_700_000;
+    await handleLicenseWorker(
+      signedWebhookRequest(
+        completionEvent({
+          metadata: { plan: "pro", repo: "acme/app" },
+          subscription: "sub_routed",
+        }),
+        nowSeconds
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds,
+      subscriptionFetch("price_subscription", initialPaidThrough)
+    );
+    const renewedPaidThrough = initialPaidThrough + 2_700_000;
+    const renewal = await handleLicenseWorker(
+      signedWebhookRequest(
+        invoicePaidEvent("in_routed", "sub_routed", "price_subscription", renewedPaidThrough),
+        nowSeconds + 100
+      ),
+      env,
+      { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+      nowSeconds + 100,
+      fakeFetch
+    );
+    expect(renewal.status).toBe(200);
+
+    expect(await env.LICENSE_KV.get("subscription-session:cs_test_123")).toBeNull();
+    expect(verifyLicenseToken(await retrieveLicenseToken(env), licensePublicKeyPem)?.exp).toBe(
+      renewedPaidThrough
+    );
+
+    await env.LICENSE_KV.put("subscription-session:cs_test_123", "sub_stale");
+    expect(verifyLicenseToken(await retrieveLicenseToken(env), licensePublicKeyPem)?.exp).toBe(
+      renewedPaidThrough
+    );
   });
 
   it("fails closed on missing or ambiguous subscription paid-through periods", async () => {
@@ -481,8 +1043,7 @@ describe("license worker", () => {
       fakeFetch
     );
     expect(await renewal.json()).toEqual({ renewed: true, repo: "acme/app" });
-    const renewed = await env.LICENSE_KV.get("cs_test_123");
-    expect(renewed).not.toBeNull();
+    const renewed = await retrieveLicenseToken(env);
     expect(renewed).not.toBe(original);
   });
 
@@ -514,13 +1075,11 @@ describe("license worker", () => {
       fakeFetch
     );
     expect(await renewal.json()).toEqual({ renewed: true, repo: "acme/app" });
-    const renewed = await env.LICENSE_KV.get("cs_test_123");
+    const renewed = await retrieveLicenseToken(env);
     const publicKeyPem = createPublicKey(privateKey)
       .export({ format: "pem", type: "spki" })
       .toString();
-    expect(renewed === null ? null : verifyLicenseToken(renewed, publicKeyPem)?.exp).toBe(
-      1_805_270_400
-    );
+    expect(verifyLicenseToken(renewed, publicKeyPem)?.exp).toBe(1_805_270_400);
   });
 });
 
@@ -709,6 +1268,32 @@ describe("github oauth checkout flow", () => {
       malformedFetch
     );
     expect(malformed.status).toBe(502);
+    expect(stripeBodies).toHaveLength(1);
+  });
+
+  it("atomically consumes a state before concurrent callbacks create checkout sessions", async () => {
+    const env = testEnv();
+    const stripeBodies: string[] = [];
+    const callbackState = stateToken("acme/app", "bundle");
+
+    const responses = await Promise.all([
+      handleLicenseWorker(
+        callbackRequest("oauth-code-one", callbackState),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds,
+        oauthFetch("admin", stripeBodies)
+      ),
+      handleLicenseWorker(
+        callbackRequest("oauth-code-two", callbackState),
+        env,
+        { contracts: env.CONTRACT_KV, licenses: env.LICENSE_KV },
+        nowSeconds,
+        oauthFetch("admin", stripeBodies)
+      ),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([302, 400]);
     expect(stripeBodies).toHaveLength(1);
   });
 });

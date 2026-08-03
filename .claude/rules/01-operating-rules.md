@@ -34,7 +34,7 @@ This rule owns repo-wide authorization, gate integrity, enforcement closure, can
 - Answer, explain, review, diagnose, research, or plan requests authorize inspection and reporting. Do not edit files or perform external writes unless the user also asks for a change.
 - Change, build, fix, or implement requests authorize in-scope local edits and relevant non-destructive validation.
 - Get explicit confirmation before destructive or irreversible actions, external writes, real spending, secret use, or material scope expansion. Stage, commit, push, publish, deploy, merge, and send only when asked.
-- Preserve concurrent work per Rule 14. Leave unrelated changes untouched.
+- Leave unrelated changes untouched.
 
 ## Gate integrity and enforcement closure
 
@@ -54,7 +54,7 @@ This rule owns repo-wide authorization, gate integrity, enforcement closure, can
 
 ## Evidence and execution
 
-- Use repo evidence for local behavior and authoritative upstream sources for material external claims. Rule 05 owns research depth, fallbacks, and escalation.
+- Use repo evidence for local behavior and authoritative upstream sources for material external claims.
 - Use repository instructions and manifests to establish ownership. Use structured APIs, language servers, compilers, and parsers for dependency, consumer, route, generated-surface, delete, rename, move, and rollout claims. Use direct source reads and exact fixed-string searches for final proof.
 - Resolve technical implementation choices from evidence. Ask the user only for product scope, irreversible or outward-facing actions, secrets, spending, material permission expansion, or genuine instruction conflicts.
 - For complex work, use a short plan or checklist when it prevents missed dependencies. Continue through implementation and relevant validation. Update the user at major phase changes and stop routine tool narration.
@@ -62,7 +62,6 @@ This rule owns repo-wide authorization, gate integrity, enforcement closure, can
 - Protect context. Scope commands before printing, byte-cap unknown or potentially large output, preserve exit status when it matters, and read instruction, skill, tool, and policy files completely.
 - Validate in proportion to risk with the narrowest command that proves the outcome. Broaden only when shared behavior or an owner rule requires it. If validation is unavailable, state what was not run and why.
 - Keep durable policy in `.claude/rules/**`, reusable workflows in `.claude/skills/**`, deterministic enforcement in hooks or guards, and generated mirrors under their declared sync owner.
-- Rule 06 owns the npm-only package-manager contract and `package-lock.json` preservation.
 
 Stop when the requested outcome, impacted-owner follow-through, enforcement closure, and relevant validation are complete. Do not add unrelated cleanup or recommendations. When missing authority, evidence, or an external dependency blocks completion, report the concrete blocker and the smallest next decision.
 

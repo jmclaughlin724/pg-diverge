@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import { agentSurfaceManifest } from "./agent-surface-manifest.mjs";
 
 const docsBaseUrl = "https://supaschema.com/docs";
+const bundleDocsSurface = agentSurfaceManifest.bundleDocs;
+const excludedSourceDirectories = new Set(bundleDocsSurface.excludedSourceDirectories);
 
 export function bundleDocsFiles(root) {
   const docsRoot = path.join(root, "docs");
@@ -25,13 +28,23 @@ export function bundleDocsFiles(root) {
 }
 
 function listMdxFiles(root) {
+  const rootStats = fs.lstatSync(root);
+  if (rootStats.isSymbolicLink() || !rootStats.isDirectory()) {
+    throw new Error(`documentation source must be a regular directory: ${root}`);
+  }
   const files = [];
 
   const visit = (directory) => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const absolute = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new Error(`documentation source contains a symbolic link: ${absolute}`);
+      }
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name === "dist" || entry.name.startsWith(".")) {
+        if (
+          excludedSourceDirectories.has(entry.name) ||
+          (bundleDocsSurface.excludeHiddenSourceDirectories && entry.name.startsWith("."))
+        ) {
           continue;
         }
         visit(absolute);

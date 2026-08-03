@@ -140,41 +140,58 @@ describe("registered hook topology", () => {
 });
 
 describe("actual context hook entrypoints", () => {
+  it("allows Git but blocks positive Bash safety matches through a Claude runtime", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-runtime-state-"));
+    const hook = join(root, ".claude", "hooks", "context-pre-tool-use.mjs");
+    const env = hookEnvironment("claude", { STATE_DIR: stateDir });
+
+    const git = await runHook(
+      hook,
+      {
+        hook_event_name: "PreToolUse",
+        session_id: "claude-git",
+        tool_input: { command: "git reset --hard HEAD" },
+        tool_name: "Bash",
+      },
+      env
+    );
+    expect(git.code).toBe(0);
+    expect(hookOutput(git.stdout).hookSpecificOutput?.permissionDecision).toBeUndefined();
+
+    const unsafe = await runHook(
+      hook,
+      {
+        hook_event_name: "PreToolUse",
+        session_id: "claude-secret",
+        tool_input: { command: "cat .env" },
+        tool_name: "Bash",
+      },
+      env
+    );
+    expect(unsafe.code).toBe(0);
+    expect(hookOutput(unsafe.stdout).hookSpecificOutput).toMatchObject({
+      permissionDecision: "deny",
+      permissionDecisionReason: expect.stringContaining("secret-bearing file"),
+    });
+  });
+
   it.each([".claude", ".codex"])(
-    "allows Git but blocks positive Bash safety matches through %s",
+    "makes every already-loaded Codex hook family inert through %s wrappers",
     async (runtimeRoot) => {
-      const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-runtime-state-"));
-      const hook = join(root, runtimeRoot, "hooks", "context-pre-tool-use.mjs");
-      const env = { ...process.env, STATE_DIR: stateDir };
+      const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-disabled-state-"));
+      const env = hookEnvironment("codex", { STATE_DIR: stateDir });
+      const hooks: readonly (readonly [hookName: string, stdout: string])[] = [
+        ["context-pre-tool-use.mjs", ""],
+        ["context-session-start.mjs", ""],
+        ["supaschema-source-hook.mjs", ""],
+        ["sync-llm-on-claude-surface-change.mjs", "{}\n"],
+      ];
 
-      const git = await runHook(
-        hook,
-        {
-          hook_event_name: "PreToolUse",
-          session_id: `${runtimeRoot}-git`,
-          tool_input: { command: "git reset --hard HEAD" },
-          tool_name: "Bash",
-        },
-        env
-      );
-      expect(git.code).toBe(0);
-      expect(hookOutput(git.stdout).hookSpecificOutput?.permissionDecision).toBeUndefined();
-
-      const unsafe = await runHook(
-        hook,
-        {
-          hook_event_name: "PreToolUse",
-          session_id: `${runtimeRoot}-secret`,
-          tool_input: { command: "cat .env" },
-          tool_name: "Bash",
-        },
-        env
-      );
-      expect(unsafe.code).toBe(0);
-      expect(hookOutput(unsafe.stdout).hookSpecificOutput).toMatchObject({
-        permissionDecision: "deny",
-        permissionDecisionReason: expect.stringContaining("secret-bearing file"),
-      });
+      for (const [hookName, stdout] of hooks) {
+        const result = await runRawHook(join(root, runtimeRoot, "hooks", hookName), "", env);
+        expect(result).toEqual({ code: 0, stderr: "", stdout });
+      }
+      expect(await readdir(stateDir)).toEqual([]);
     }
   );
 
@@ -183,7 +200,7 @@ describe("actual context hook entrypoints", () => {
     const result = await runRawHook(
       join(root, ".claude/hooks/context-pre-tool-use.mjs"),
       "{not-json",
-      { ...process.env, STATE_DIR: stateDir }
+      hookEnvironment("claude", { STATE_DIR: stateDir })
     );
 
     expect(result.code).toBe(0);
@@ -194,7 +211,7 @@ describe("actual context hook entrypoints", () => {
 
   it("runs silent SessionStart and SessionEnd lifecycle entrypoints", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-lifecycle-"));
-    const env = { ...process.env, STATE_DIR: stateDir };
+    const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const common = {
       cwd: root,
       permission_mode: "default",
@@ -225,14 +242,14 @@ describe("actual context hook entrypoints", () => {
     });
   });
 
-  it("recovers a killed owner while crediting exact Codex skill content", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-codex-load-"));
-    const env = { ...process.env, STATE_DIR: stateDir };
-    const sessionId = "entrypoint-codex-load";
-    const skillPath = ".agents/skills/supaschema/SKILL.md";
+  it("recovers a killed owner while crediting exact skill content", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-skill-load-"));
+    const env = hookEnvironment("claude", { STATE_DIR: stateDir });
+    const sessionId = "entrypoint-skill-load";
+    const skillPath = ".claude/skills/supaschema/SKILL.md";
 
     const prompt = await runHook(
-      join(root, ".codex/hooks/context-user-prompt-submit.mjs"),
+      join(root, ".claude/hooks/context-user-prompt-submit.mjs"),
       {
         hook_event_name: "UserPromptSubmit",
         prompt: "$supaschema",
@@ -248,7 +265,7 @@ describe("actual context hook entrypoints", () => {
     const command = `cat ${skillPath}`;
     const recoveryStartedAt = Date.now();
     const load = await runHook(
-      join(root, ".codex/hooks/context-pre-tool-use.mjs"),
+      join(root, ".claude/hooks/context-pre-tool-use.mjs"),
       {
         hook_event_name: "PreToolUse",
         session_id: sessionId,
@@ -260,7 +277,7 @@ describe("actual context hook entrypoints", () => {
     expect(hookOutput(load.stdout).hookSpecificOutput?.permissionDecision).toBeUndefined();
 
     const recorded = await runHook(
-      join(root, ".codex/hooks/context-post-tool-use.mjs"),
+      join(root, ".claude/hooks/context-post-tool-use.mjs"),
       {
         hook_event_name: "PostToolUse",
         session_id: sessionId,
@@ -274,7 +291,7 @@ describe("actual context hook entrypoints", () => {
     expect(Date.now() - recoveryStartedAt).toBeLessThan(2000);
 
     const governed = await runHook(
-      join(root, ".codex/hooks/context-pre-tool-use.mjs"),
+      join(root, ".claude/hooks/context-pre-tool-use.mjs"),
       {
         hook_event_name: "PreToolUse",
         session_id: sessionId,
@@ -291,7 +308,7 @@ describe("actual context hook entrypoints", () => {
 
   it("never age-steals a live owner and lets SessionEnd reclaim it after SIGKILL", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-live-lock-"));
-    const env = { ...process.env, STATE_DIR: stateDir };
+    const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const sessionId = "entrypoint-live-lock";
     const lockDirectory = join(
       stateDir,
@@ -354,7 +371,7 @@ describe("actual context hook entrypoints", () => {
 
   it("leaves no lock artifacts when contending waiters are killed", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-killed-waiters-"));
-    const env = { ...process.env, STATE_DIR: stateDir };
+    const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const hook = join(root, ".claude/hooks/context-pre-tool-use.mjs");
     const sessionId = "killed-lock-waiters";
     const encodedSessionId = Buffer.from(sessionId).toString("base64url");
@@ -404,7 +421,7 @@ describe("actual context hook entrypoints", () => {
 
   it("serializes concurrent evidence updates through the actual hook entrypoint", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-concurrent-state-"));
-    const env = { ...process.env, STATE_DIR: stateDir };
+    const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const hook = join(root, ".claude/hooks/context-post-tool-use.mjs");
     const sessionId = "concurrent-entrypoint";
     const lockHolder = await startLockHolder(sessionId, env);
@@ -451,7 +468,7 @@ describe("actual context hook entrypoints", () => {
 
   it("keeps a masked success from resolving an actual Stop failure conflict", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "supa-hook-outcome-state-"));
-    const env = { ...process.env, STATE_DIR: stateDir };
+    const env = hookEnvironment("claude", { STATE_DIR: stateDir });
     const sessionId = "entrypoint-outcome";
     const failed = await runHook(
       join(root, ".claude/hooks/context-post-tool-use-failure.mjs"),
@@ -543,9 +560,13 @@ describe("target-first stateless surface sync", () => {
       },
       { hook_event_name: "Stop", last_assistant_message: "done" },
     ]) {
-      const result = await runHook(fixture.hook, { cwd: fixture.root, ...payload }, process.env);
+      const result = await runHook(
+        fixture.hook,
+        { cwd: fixture.root, ...payload },
+        hookEnvironment("claude")
+      );
       expect(result.code).toBe(0);
-      expect(result.stdout).toBe("{}\n");
+      expect(result.stdout).toBe("");
     }
     await expect(readFile(fixture.log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
 
@@ -561,9 +582,9 @@ describe("target-first stateless surface sync", () => {
       const canonical = await runHook(
         fixture.hook,
         { cwd: fixture.root, hook_event_name: "PostToolUse", ...payload },
-        process.env
+        hookEnvironment("claude")
       );
-      expect(canonical).toMatchObject({ code: 0, stderr: "", stdout: "{}\n" });
+      expect(canonical).toMatchObject({ code: 0, stderr: "", stdout: "" });
     }
     expect(await readFile(fixture.log, "utf8")).toBe("sync\nsync\nsync\nsync\n");
     await expect(
@@ -581,10 +602,10 @@ describe("target-first stateless surface sync", () => {
         tool_input: { file_path: "src/cli.ts" },
         tool_name: "Edit",
       },
-      process.env
+      hookEnvironment("claude")
     );
 
-    expect(result).toMatchObject({ code: 0, stderr: "", stdout: "{}\n" });
+    expect(result).toMatchObject({ code: 0, stderr: "", stdout: "" });
     await expect(readFile(fixture.log, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
@@ -626,6 +647,18 @@ function handlerText(handler: any): string {
 
 function hookOutput(stdout: string): any {
   return stdout.trim() ? JSON.parse(stdout) : {};
+}
+
+function hookEnvironment(
+  runtime: "claude" | "codex",
+  overrides: NodeJS.ProcessEnv = {}
+): NodeJS.ProcessEnv {
+  const env = { ...process.env, ...overrides };
+  if (runtime === "codex") {
+    env.CODEX_THREAD_ID = env.CODEX_THREAD_ID ?? "test-codex-thread";
+    return env;
+  }
+  return Object.fromEntries(Object.entries(env).filter(([name]) => name !== "CODEX_THREAD_ID"));
 }
 
 function runHook(
@@ -796,13 +829,17 @@ async function surfaceSyncFixture(
   options: { packageSource?: string } = {}
 ): Promise<SurfaceFixture> {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "supa-surface-sync-"));
-  const hook = join(fixtureRoot, ".codex", "hooks", "sync-llm-on-claude-surface-change.mjs");
+  const hook = join(fixtureRoot, ".claude", "hooks", "sync-llm-on-claude-surface-change.mjs");
   const log = join(fixtureRoot, "sync.log");
   const files = [
     [join(root, ".claude", "hooks", "sync-llm-on-claude-surface-change.mjs"), hook],
     [
       join(root, "scripts", "agent-hooks", "edit-targets.mjs"),
       join(fixtureRoot, "scripts", "agent-hooks", "edit-targets.mjs"),
+    ],
+    [
+      join(root, "scripts", "agent-hooks", "hook-runtime.mjs"),
+      join(fixtureRoot, "scripts", "agent-hooks", "hook-runtime.mjs"),
     ],
     [
       join(root, "scripts", "skills", "agent-surface-manifest.mjs"),

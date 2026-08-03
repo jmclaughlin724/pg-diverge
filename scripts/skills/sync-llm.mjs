@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { discoverSkills } from "../agent-hooks/skill-frontmatter.mjs";
 import { hookMatcherMatchesTool } from "../lib/hook-matcher.mjs";
 import { agentSurfaceManifest } from "./agent-surface-manifest.mjs";
+import {
+  assertSafeAgentSurfaceSources,
+  assertSafeAgentSurfaceTargets,
+} from "./agent-surface-safety.mjs";
 import { bundleDocsFiles } from "./bundle-docs.mjs";
 import { renderCodexAgent, renderCodexRule } from "./codex-rules.mjs";
 
@@ -53,6 +56,8 @@ export function runCli(argv = process.argv.slice(2), root = ROOT) {
 }
 
 export function syncAgentSurfaces({ root = ROOT } = {}) {
+  assertSafeAgentSurfaceSources(root);
+  assertSafeAgentSurfaceTargets(root);
   const skillResult = syncSkills(root);
   const publicSkillResult = syncPublicSkills(root);
   const hookResult = syncDirectoryMirror(root, agentSurfaceManifest.hooks);
@@ -60,6 +65,8 @@ export function syncAgentSurfaces({ root = ROOT } = {}) {
   const agentResult = syncCodexAgents(root);
   const ruleResult = syncCodexRules(root);
   const agentBundleResult = syncAgentBundle(root);
+  assertSafeAgentSurfaceSources(root);
+  assertSafeAgentSurfaceTargets(root);
 
   return {
     agentBundle: agentBundleResult.files,
@@ -107,7 +114,7 @@ function syncAgentBundle(root) {
 }
 
 function syncCodexHookConfig(root) {
-  const target = path.join(root, ".codex/hooks.json");
+  const target = path.join(root, agentSurfaceManifest.codexHookConfig.targetFile);
   writeFileIfChanged(target, jsonText(renderSourceCodexHooks(root)));
   return { files: 1 };
 }
@@ -723,7 +730,7 @@ function writeFileIfChanged(file, content) {
   if (fileContentsEqual(current, content)) {
     return;
   }
-  writeFileAtomic(file, content);
+  writeFile(file, content);
 }
 
 function fileContentsEqual(actual, expected) {
@@ -753,7 +760,7 @@ function copyFileIfChanged(sourceFile, targetFile) {
   if (currentBytes?.equals(sourceBytes)) {
     return;
   }
-  writeFileAtomic(targetFile, sourceBytes);
+  writeFile(targetFile, sourceBytes);
 }
 
 function readExistingFile(file, encoding) {
@@ -767,39 +774,13 @@ function readExistingFile(file, encoding) {
   }
 }
 
-function writeFileAtomic(file, content) {
+function writeFile(file, content) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tempFile = createExclusiveTempFile(path.dirname(file), path.basename(file), content);
-  try {
-    fs.renameSync(tempFile, file);
-  } catch (error) {
-    fs.rmSync(tempFile, { force: true });
-    throw error;
-  }
-}
-
-function createExclusiveTempFile(dir, basename, content) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const tempFile = path.join(dir, `.${basename}.${process.pid}.${randomUUID()}.tmp`);
-    try {
-      fs.writeFileSync(tempFile, content, { flag: "wx" });
-      return tempFile;
-    } catch (error) {
-      if (isAlreadyExistsError(error)) {
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw new Error(`unable to create exclusive temp file for ${path.join(dir, basename)}`);
+  fs.writeFileSync(file, content);
 }
 
 function isNotFoundError(error) {
   return Boolean(error && typeof error === "object" && error.code === "ENOENT");
-}
-
-function isAlreadyExistsError(error) {
-  return Boolean(error && typeof error === "object" && error.code === "EEXIST");
 }
 
 function removeUnmanagedFiles(targetRootPath, expectedFiles) {
@@ -854,6 +835,10 @@ function listFiles(root) {
   if (!fs.existsSync(root)) {
     return [];
   }
+  const rootStats = fs.lstatSync(root);
+  if (rootStats.isSymbolicLink() || !rootStats.isDirectory()) {
+    throw new Error(`agent-surface source must be a regular directory: ${root}`);
+  }
   const out = [];
   const visit = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -862,6 +847,8 @@ function listFiles(root) {
         visit(absolute);
       } else if (entry.isFile()) {
         out.push(path.relative(root, absolute).split(path.sep).join("/"));
+      } else if (entry.isSymbolicLink()) {
+        throw new Error(`agent-surface directory contains a symbolic link: ${absolute}`);
       }
     }
   };

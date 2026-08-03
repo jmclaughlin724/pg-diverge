@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { suppressDefaultAclImpliedGrants } from "../../src/grants/default-acl.js";
 import { planSchemaDiff } from "../../src/planner/schema.js";
 import { renderMigration } from "../../src/render/migration.js";
 import { extractSourceModel, filterModelBySchemas } from "../../src/source/extract.js";
@@ -284,6 +285,154 @@ $$;`);
     expect(grant?.sql).toContain("GRANT INSERT, SELECT ON TABLE");
     expect(grant?.sql).toContain("GRANT INSERT ON TABLE");
     expect(grant?.sql).toContain("WITH GRANT OPTION");
+  });
+
+  it("preserves explicit per-object privileges alongside future default privileges", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT INSERT, SELECT ON TABLES TO app_user;\nCREATE TABLE app.t (id bigint);\nGRANT INSERT, SELECT ON TABLE app.t TO app_user;\nGRANT INSERT ON TABLE app.t TO app_user WITH GRANT OPTION;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata).toMatchObject({
+      grantOptionPrivileges: ["INSERT"],
+      privileges: ["INSERT", "SELECT"],
+    });
+    expect(grants[0]?.sql).toBe(
+      'GRANT INSERT, SELECT ON TABLE "app"."t" TO "app_user";\nGRANT INSERT ON TABLE "app"."t" TO "app_user" WITH GRANT OPTION'
+    );
+  });
+
+  it("renders explicit grants when adding defaults for an existing table", async () => {
+    const before = await modelFromSql("CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\n");
+    const after = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT INSERT, SELECT ON TABLES TO app_user;\nGRANT INSERT, SELECT ON TABLE app.t TO app_user;\nGRANT INSERT ON TABLE app.t TO app_user WITH GRANT OPTION;\n"
+    );
+
+    expect(errors(before)).toEqual([]);
+    expect(errors(after)).toEqual([]);
+    const sql = renderMigration(planSchemaDiff(before, after), { includeHeader: false });
+    expect(sql).toContain(
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA "app" GRANT INSERT, SELECT ON TABLES TO "app_user";'
+    );
+    expect(sql).toContain('GRANT INSERT, SELECT ON TABLE "app"."t" TO "app_user";');
+    expect(sql).toContain('GRANT INSERT ON TABLE "app"."t" TO "app_user" WITH GRANT OPTION;');
+  });
+
+  it("retains an ordinary grant when the matching default was declared after the table", async () => {
+    const before = await modelFromSql("CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\n");
+    const after = await modelFromSql(
+      "CREATE SCHEMA app;\nCREATE TABLE app.t (id bigint);\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO app_user;\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(before)).toEqual([]);
+    expect(errors(after)).toEqual([]);
+    expect(after.objects.filter((object) => object.ref.kind === "grant")).toHaveLength(1);
+    expect(renderMigration(planSchemaDiff(before, after), { includeHeader: false })).toContain(
+      'GRANT SELECT ON TABLE "app"."t" TO "app_user";'
+    );
+  });
+
+  it("suppresses an ordinary grant when the matching default predates the table", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO app_user;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects.filter((object) => object.ref.kind === "grant")).toEqual([]);
+  });
+
+  it("retains a privilege added to defaults after the table was created", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO app_user;\nCREATE TABLE app.t (id bigint);\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT INSERT ON TABLES TO app_user;\nGRANT INSERT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.privileges).toEqual(["INSERT"]);
+    const defaults = model.objects.filter((object) => object.ref.kind === "default-privilege");
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0]?.metadata.privileges).toEqual(["INSERT", "SELECT"]);
+  });
+
+  it("retains an object grant when matching default transitions net to no default", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO app_user;\nCREATE TABLE app.t (id bigint);\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE SELECT ON TABLES FROM app_user;\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grants = model.objects.filter((object) => object.ref.kind === "grant");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.metadata.privileges).toEqual(["SELECT"]);
+    expect(model.objects.filter((object) => object.ref.kind === "default-privilege")).toEqual([]);
+  });
+
+  it("retains an ordinary grant revoked from the default before table creation", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT INSERT, SELECT ON TABLES TO app_user;\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE SELECT ON TABLES FROM app_user;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects.filter((object) => object.ref.kind === "grant")).toHaveLength(1);
+  });
+
+  it("retains a grant option revoked from the default before table creation", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT INSERT, SELECT ON TABLES TO app_user WITH GRANT OPTION;\nALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE SELECT ON TABLES FROM app_user;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO app_user WITH GRANT OPTION;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grant = model.objects.find((object) => object.ref.kind === "grant");
+    expect(grant?.metadata.grantOptionPrivileges).toEqual(["SELECT"]);
+  });
+
+  it("retains a grant when the target creation order is unavailable", async () => {
+    const extracted = await extractObjectsFromSql(
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO app_user;\nGRANT SELECT ON TABLE app.external TO app_user;\n"
+    );
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(
+      suppressDefaultAclImpliedGrants(extracted.objects).filter(
+        (object) => object.ref.kind === "grant"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("keeps catalog-style equal ordinals collapsible", async () => {
+    const extracted = await extractObjectsFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO app_user;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+    const catalogStyleObjects = extracted.objects.map((object) => ({ ...object, ordinal: 0 }));
+
+    expect(extracted.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+    expect(
+      suppressDefaultAclImpliedGrants(catalogStyleObjects).filter(
+        (object) => object.ref.kind === "grant"
+      )
+    ).toEqual([]);
+  });
+
+  it("retains an explicit grant when defaults belong to another owner role", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES FOR ROLE owner_a IN SCHEMA app GRANT SELECT ON TABLES TO app_user;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO app_user;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    const grant = model.objects.find((object) => object.ref.kind === "grant");
+    expect(grant?.metadata.privileges).toEqual(["SELECT"]);
+    expect(grant?.sql).toBe('GRANT SELECT ON TABLE "app"."t" TO "app_user"');
+  });
+
+  it("suppresses a per-object grant option covered by the current-role default", async () => {
+    const model = await modelFromSql(
+      "CREATE SCHEMA app;\nALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT ON TABLES TO app_user WITH GRANT OPTION;\nCREATE TABLE app.t (id bigint);\nGRANT SELECT ON TABLE app.t TO app_user WITH GRANT OPTION;\n"
+    );
+
+    expect(errors(model)).toEqual([]);
+    expect(model.objects.filter((object) => object.ref.kind === "grant")).toEqual([]);
   });
 
   it("merges split default-privilege statements with a real default to revoke", async () => {

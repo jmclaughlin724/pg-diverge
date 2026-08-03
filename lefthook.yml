@@ -27,7 +27,7 @@ pre-commit:
       run: npm run format -- --staged
       stage_fixed: true
     - name: prettier
-      glob: "*.{md,mdx,yml,yaml}"
+      glob: "*.{astro,md,mdx,yml,yaml}"
       run: npx --no-install prettier --write {staged_files}
       stage_fixed: true
     - name: taplo

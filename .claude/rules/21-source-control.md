@@ -178,8 +178,6 @@ paths:
 
 This rule is the single owner for source-control state and lifecycle: dirty worktrees, Git command safety, branch creation, staging, commits, pushes, GitHub repository settings, pull requests, squash merging, local and remote branch cleanup, and live settings audit.
 
-Rule 14 owns file-edit safety and deletion/rename sweeps. Rule 09 owns GitHub Actions workflow posture. Rule 19 owns release-version transactions.
-
 Upstream sources:
 
 - GitHub protected branches: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches>
@@ -193,7 +191,6 @@ Upstream sources:
 ## Dirty worktree rules
 
 - A dirty worktree is normal. Do not block on a clean tree unless a specific Git operation requires it.
-- Rule 14 owns concurrent-edit preservation. Treat files changed by other processes or sessions as user-owned and preserve hunks not authored by the current task.
 - Do not revert, stash, reset, clean, or overwrite unrelated tracked or untracked work.
 - Stage only task-owned hunks after reviewing the intended diff.
 
@@ -202,7 +199,6 @@ Upstream sources:
 - Commit, push, open a PR, or merge only when explicitly requested. Native Codex command rules cover expressible command prefixes; this rule and the agent action boundary own prerequisites and complete argument semantics that prefix policy cannot prove.
 - Deleting a merged topic branch is routine cleanup, not a gated action. Once a topic PR is proved merged, delete the local branch as part of post-merge closeout without waiting for separate approval.
 - Every update to `main` uses a protected pull request. Direct pushes to `main` are prohibited.
-- The checkout and branch active when work begins are the only authorized workspace by default. Do not create a worktree, enter a linked worktree, or move work to another checkout.
 - Keep one active topic branch at a time. Do not create a separate branch off the active branch (no stacked branches); follow-up commits and review fixes for an open PR stay on its branch. Once the active branch's PR is squash-merged, the branch is archived: complete the post-merge closeout below and delete it locally and remotely before any new work, which starts on a fresh topic from `origin/main`.
 - When the current user prompt explicitly requests a topic branch, run `git fetch origin main`, prove `HEAD` equals `origin/main`, and create and enter the topic branch atomically with `git switch -c <branch> origin/main`.
 - When continuing an existing remote topic branch that has no local ref, fetch it, prove `HEAD` equals `origin/main` and the remote topic is based on fetched `origin/main`, then use `git switch --track origin/<branch>`.
@@ -216,7 +212,7 @@ Upstream sources:
 - Do not use `git switch -C`, `--force-create`, `--force`, `--discard-changes`, `--merge`, or their short forms.
 - Do not use `git reset`, `git restore --source`, `git stash`, `git merge --squash`, force-push, or destructive branch operations without explicit approval.
 - Do not use `git push` as a diagnostic. Use the repo pre-push script or `git push --dry-run` only when remote negotiation itself must be tested.
-- Run `git commit`, `git push`, and merge commands bare. Never pipe them through `tail`, `head`, or another truncator: the pipe hides hook output and replaces the command's exit status with the truncator's, so a failed commit reads as success. When output must be scoped, redirect to a file, verify the exit code explicitly, then read the file. The Bash-safety hook blocks the piped shapes; the `codexExecPolicy` argv grammar cannot express pipes, so this shape is hook-enforced only.
+- Run `git commit`, `git push`, and merge commands bare. Never pipe them through `tail`, `head`, or another truncator, and never redirect their output into a scratch file: either shape hides hook output or the command's real result. Let the command result remain visible and use the tool's own output limit only for display.
 - Subagents and workers may edit files only inside the active primary checkout. They must not stage, commit, push, switch branches, create branches or worktrees, merge, or open or replace PRs.
 - Only the main agent may stage, commit, push, create or replace a PR, merge, clean up branches, and perform final source-control verification.
 
@@ -235,7 +231,7 @@ CODEOWNERS is advisory while `required_approving_review_count` is `0` and `requi
 
 ## Repository surface policy
 
-This rule owns `.gitignore` content policy. Repo surfaces stay tracked or stay out; the publish surface is Rule 13's `package.json#files` allowlist, never `.gitignore`.
+This rule owns `.gitignore` content policy. Repo surfaces stay tracked or stay out; `.gitignore` never defines published package contents.
 
 - `.gitignore` covers only build artifacts, env/secret files, OS noise, agent session/personal state (`.claude/plans`, `.claude/agents/`, `.codex/agents/`, `.claude/scheduled_tasks.lock`, `.claude/settings.local.json`), editor state (`.vscode/`), and the held business-sensitive set: `advisor-plans/`, `.planning/`. Publishing a held path is an irreversible public-repo exposure and requires an explicit user decision in the same change. The tracked nested `docs/.gitignore` owns Blume build output (`.blume/`, `.blume-verify/`, `dist/`) for the private docs package.
 - `scripts/guards/repo-surface/private-paths.json` is the machine-readable owner of the private-path set, in two buckets: `heldPrivate` (never public, never agent-MCP-readable: `advisor-plans/`, `.planning/`) and `agentPrivate` (public-repo-private user state: `.claude/plans/`, `.claude/agents/`, `.codex/agents/`, `.vscode/`). The repo-surface guard and the agent-MCP `repo_context_query` read path both consume this file; do not maintain a third private-path list anywhere else.
@@ -259,7 +255,7 @@ Do not use `--merge`, `--rebase`, `--admin`, `--disable-auto`, local squash merg
 
 ## Multi-session branches
 
-When more than one agent session works the same topic branch, keep one standing coordination note for the branch under `.claude/plans/` that records the current tip and check state, the files each session has in flight, review-thread resolutions the other session must not revert, and which session owns staging and commits. Announce in the note before editing a file another session has in flight, and re-read it before reverting or rewriting any hunk the current session did not author. `.claude/plans/` is agent-private, so the note never reaches the public repo; delete it during post-merge closeout.
+When more than one agent session works on the same topic branch, use user-visible session updates and the shared checkout, re-read status and diffs before overlapping edits, preserve every hunk not owned by the current task, and keep one main session responsible for staging and commits.
 
 ## Post-merge closeout
 
@@ -278,9 +274,8 @@ STOP before further edits when the merge succeeds but local cleanup fails. Prese
 
 Address every PR review comment and failing check before merge, and mark each resolved only when its correction lands: never before, and never for a valid finding left unaddressed.
 
-1. Verify the finding against upstream canonical sources before acting (Rule 05): official docs, the repo's own rules, or the installed dependency. An unverified review claim is a blocker, not a directive. When a suggestion conflicts with repo policy or upstream guidance, resolve it with the upstream-correct action and note the conflict rather than following the literal suggestion.
-2. Fix the finding in the canonical owner, or record an owner-scoped not-applicable reason with evidence, and commit that correction.
-3. Only then resolve the review thread (`gh api graphql` `resolveReviewThread`) or re-run the failing check to success. Resolving a thread or dismissing a check before its correction is committed, or resolving a valid unaddressed finding, is prohibited.
+1. Fix the finding in the canonical owner, or record an owner-scoped not-applicable reason with evidence, and commit that correction.
+2. Only then resolve the review thread (`gh api graphql` `resolveReviewThread`) or re-run the failing check to success. Resolving a thread or dismissing a check before its correction is committed, or resolving a valid unaddressed finding, is prohibited.
 
 `required_conversation_resolution` is enforced on `main` PRs, so unresolved threads block merge; do not resolve threads prematurely to unblock a merge.
 
@@ -289,7 +284,6 @@ Address every PR review comment and failing check before merge, and mark each re
 - `npm run guard:github-process` (`scripts/guards/ci-release/check-github-process.mjs`) asserts the policy file, package commands, canonical Rule 21 path, and retired duplicate rule paths stay synchronized.
 - `npm run guard` runs `guard:github-process` through `scripts/guards/check-all.mjs`.
 - `npm run github:audit-settings` (`scripts/github/audit-settings.mjs`) compares live GitHub repository settings, Actions permissions, `main` branch protection, repository rulesets, and topics to `.github/repo-policy.json`.
-- Rule 12 command evidence records GitHub check commands as `github-checks`; final claims must reflect the recorded result.
 - `.github/PULL_REQUEST_TEMPLATE.md` records the short operator checklist for PR authors and reviewers.
 
 ## Verification

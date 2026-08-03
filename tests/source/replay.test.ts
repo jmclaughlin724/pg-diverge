@@ -1075,6 +1075,146 @@ ALTER TABLE app.accounts ADD CONSTRAINT accounts_name_check CHECK (name IS NOT N
     expect(table(model, "constraint:app.accounts_name_check:accounts")).toBeDefined();
   });
 
+  it("hashes each constraint in a replayed multi-command ALTER like the declarative tree", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_add_constraints.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, score integer);
+ALTER TABLE app.accounts
+  ADD CONSTRAINT accounts_id_positive CHECK (id > 0),
+  ADD CONSTRAINT accounts_score_positive CHECK (score > 0);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer,
+  score integer,
+  CONSTRAINT accounts_id_positive CHECK (id > 0),
+  CONSTRAINT accounts_score_positive CHECK (score > 0)
+);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const constraintKeys = [
+      "constraint:app.accounts_id_positive:accounts",
+      "constraint:app.accounts_score_positive:accounts",
+    ];
+    for (const key of constraintKeys) {
+      expect(table(history, key)?.hash).toBe(table(declared, key)?.hash);
+    }
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("preserves single-command ADD CONSTRAINT source facets during replay", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_add_constraint.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, included integer);
+ALTER TABLE ONLY app.accounts
+  ADD CONSTRAINT accounts_id_key UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer,
+  included integer,
+  CONSTRAINT accounts_id_key UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80)
+);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const key = "constraint:app.accounts_id_key:accounts";
+    const replayedConstraint = table(history, key);
+    expect(replayedConstraint?.sql).toContain("ALTER TABLE ONLY app.accounts");
+    expect(replayedConstraint?.sql).toContain("INCLUDE (included)");
+    expect(replayedConstraint?.sql).toContain("WITH (fillfactor = 80)");
+    expect(replayedConstraint?.hash).toBe(table(declared, key)?.hash);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("preserves source facets and the allocated name for an unnamed single command", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_add_constraint.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, included integer);
+ALTER TABLE ONLY app.accounts
+  ADD UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer,
+  included integer,
+  UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80)
+);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const key = "constraint:app.accounts_id_key:accounts";
+    const replayedConstraint = table(history, key);
+    expect(replayedConstraint?.sql).toContain('CONSTRAINT "accounts_id_key"');
+    expect(replayedConstraint?.sql).toContain("INCLUDE (included)");
+    expect(replayedConstraint?.sql).toContain("WITH (fillfactor = 80)");
+    expect(replayedConstraint?.hash).toBe(table(declared, key)?.hash);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
+  it("preserves source facets for an unnamed constraint in a multi-command ALTER", async () => {
+    const history = await extractMigrations([
+      [
+        "20240101000000_add_constraints.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (id integer, included integer, score integer);
+-- résumé
+ALTER TABLE ONLY app.accounts
+  ADD UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80),
+  ADD CONSTRAINT accounts_score_positive CHECK (score > 0);`,
+      ],
+    ]);
+    const declared = await extractDirectory([
+      [
+        "app.sql",
+        `CREATE SCHEMA app;
+CREATE TABLE app.accounts (
+  id integer,
+  included integer,
+  score integer,
+  UNIQUE (id) INCLUDE (included) WITH (fillfactor = 80),
+  CONSTRAINT accounts_score_positive CHECK (score > 0)
+);`,
+      ],
+    ]);
+
+    expect(errors(history.diagnostics)).toEqual([]);
+    expect(errors(declared.diagnostics)).toEqual([]);
+    const key = "constraint:app.accounts_id_key:accounts";
+    const replayedConstraint = table(history, key);
+    expect(replayedConstraint?.sql).toContain("ALTER TABLE ONLY");
+    expect(replayedConstraint?.sql).toContain('CONSTRAINT "accounts_id_key"');
+    expect(replayedConstraint?.sql).toContain("INCLUDE (included)");
+    expect(replayedConstraint?.sql).toContain("WITH (fillfactor = 80)");
+    expect(replayedConstraint?.hash).toBe(table(declared, key)?.hash);
+    expect(history.fingerprint).toBe(declared.fingerprint);
+  });
+
   it("replays index rename before recreating the old index name", async () => {
     const model = await extractMigrations([
       [

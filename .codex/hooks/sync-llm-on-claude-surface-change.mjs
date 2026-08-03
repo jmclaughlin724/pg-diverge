@@ -4,6 +4,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { editTargetStrings } from "../../scripts/agent-hooks/edit-targets.mjs";
+import { hookRuntime, hookRuntimeDisabled } from "../../scripts/agent-hooks/hook-runtime.mjs";
 import { isCanonicalAgentSurfaceSource } from "../../scripts/skills/agent-surface-manifest.mjs";
 
 const hookPath = fileURLToPath(import.meta.url);
@@ -11,6 +12,9 @@ const projectDir = canonicalPath(resolve(dirname(hookPath), "..", ".."));
 const runtime = hookRuntime(hookPath);
 
 try {
+  if (hookRuntimeDisabled(runtime)) {
+    emitNoop();
+  }
   const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
   if (payload?.hook_event_name !== "PostToolUse") {
     emitNoop();
@@ -100,11 +104,6 @@ function canonicalPath(pathname) {
   }
   const parent = dirname(absolute);
   return parent === absolute ? absolute : join(canonicalPath(parent), basename(absolute));
-}
-
-function hookRuntime(pathname) {
-  const normalized = pathname.split(sep).join("/");
-  return normalized.includes("/.codex/hooks/") ? "codex" : "claude";
 }
 
 function emitNoop() {

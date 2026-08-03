@@ -16,7 +16,7 @@ paths:
 
 This rule owns the Python developer toolchain for `services/agent-mcp`: uv workspace layout, ruff formatting and linting, mypy strict typing, pytest, pip-audit, and pylsp/cclsp integration.
 
-The Python side of this repo is a single uv workspace member: `services/agent-mcp` (`supaschema-agent-mcp`), the read-only local supaschema FastMCP side service. There is no FastAPI, no `services/api`, no `services/workers`, and no web HTTP API here. The server is FastMCP (`fastmcp` plus `pydantic`), and Rule 11 owns its server boundary, capabilities, and wiring. This rule owns only the Python developer toolchain: format, lint, types, tests, supply chain, and the pylsp language server. The `py:*` commands are npm scripts that shell out to `uv`; Rule 06 owns the npm-only package-manager contract.
+The Python side of this repo is a single uv workspace member: `services/agent-mcp` (`supaschema-agent-mcp`), the read-only local supaschema FastMCP side service. There is no FastAPI, no `services/api`, no `services/workers`, and no web HTTP API here. The server is FastMCP (`fastmcp` plus `pydantic`). This rule owns only the Python developer toolchain: format, lint, types, tests, supply chain, and the pylsp language server. The `py:*` commands are npm scripts that shell out to `uv`.
 
 ## Layout
 
@@ -27,11 +27,10 @@ The Python side of this repo is a single uv workspace member: `services/agent-mc
 ## Skill routing
 
 - Use `$python` for Python app and library work: server/CLI entry points, `pyproject.toml`/uv/dependency groups, tests, packaging, supply-chain provenance, async/concurrency, logging, debugging, profiling, and typing boundaries. This rule's repo-owned commands and gates stay authoritative over generic skill defaults.
-- For the FastMCP server contract itself (read-only deny-list surface, transport, capabilities, config alignment), defer to Rule 11. Do not restate it here.
 
 ## Language server (cclsp + pylsp)
 
-- Code navigation and refactors for agents go through the cclsp MCP server. Rule 06 owns the per-language cclsp map; this rule owns the Python server details below. Tracked root `cclsp.json` maps `.py`/`.pyi` to `uv run pylsp` so it reads the locked workspace `.venv` and root config. The file is source-repository tooling and is never published or scaffolded.
+- Code navigation and refactors for agents go through the cclsp MCP server. Tracked root `cclsp.json` maps `.py`/`.pyi` to `uv run pylsp` so it reads the locked workspace `.venv` and root config. The file is source-repository tooling and is never published or scaffolded.
 - Root `cclsp.json` passes plugin configuration directly as `initializationOptions.pylsp`, not `initializationOptions.settings.pylsp`: cclsp forwards the object unchanged and pylsp reads the top-level `pylsp` key. Its `restartInterval: 5` applies only to pylsp and restarts the same `uv run pylsp` command every five minutes.
 - The Python LSP is python-lsp-server (pylsp), pinned in the root dev group, with the editor plugins `python-lsp-ruff`, `pylsp-rope`, and `pyls-memestra`. All three live in `[dependency-groups] dev`. Install or refresh with `uv sync`, never a global pip: the plugins must share the workspace `.venv` or `uv run pylsp` cannot see them.
 - Root `cclsp.json` and local `.vscode/settings.json` configure `python-lsp-ruff` as the sole formatter/linter plugin: `formatEnabled: true` runs Ruff formatting, `format: ["I"]` applies Ruff import-sorting fixes, and `signature.formatter: "ruff"` uses Ruff for signature rendering. Rope provides refactors, memestra flags deprecations, and pylsp's redundant built-ins (pycodestyle, pyflakes, mccabe, autopep8, yapf, flake8, pylint, pydocstyle) are disabled.
@@ -57,14 +56,14 @@ npm run py:typecheck      # uv run --package supaschema-agent-mcp mypy services/
 npm run py:test           # uv run --package supaschema-agent-mcp pytest services/agent-mcp/tests
 ```
 
-Apply Python fixes locally with `npm run py:fix`, which runs `ruff check --fix` for lint and import sorting, then `ruff format`. The repo-wide write command `npm run format` chains it (Rule 06). The `py:format:check` and `py:lint` variants are the read-only CI gates.
+Apply Python fixes locally with `npm run py:fix`, which runs `ruff check --fix` for lint and import sorting, then `ruff format`. The repo-wide write command `npm run format` chains it. The `py:format:check` and `py:lint` variants are the read-only CI gates.
 
 ## Gates
 
 - `.github/workflows/python.yml` is tracked with `services/agent-mcp`: the Python CI lane runs on every checkout and requires the tracked FastMCP service files. The focused local lane remains the `py:*` command set above.
 - The `--package supaschema-agent-mcp` selector is mandatory. The workspace root has no runtime deps (`dependencies = []`, `package = false`) and does not depend on the member, so a bare `uv run mypy` or `uv run pytest` resolves in the root env that lacks `fastmcp`/`mcp`/`pydantic` and fails with `import-not-found`.
-- `npm run guard:lsp-coverage` (`scripts/guards/toolchain/check-lsp-coverage.mjs`, part of `npm run guard`) hard-blocks if any tracked code extension, including `.py`/`.pyi`, is not mapped in tracked root `cclsp.json`. Rule 06 governs the cclsp map itself.
-- `npm run guard:fastmcp` (`scripts/guards/fastmcp/check-fastmcp-agent.mjs`) keeps the FastMCP server surface aligned; Rule 11 owns it, not the Python toolchain.
+- `npm run guard:lsp-coverage` (`scripts/guards/toolchain/check-lsp-coverage.mjs`, part of `npm run guard`) hard-blocks if any tracked code extension, including `.py`/`.pyi`, is not mapped in tracked root `cclsp.json`.
+- `npm run guard:fastmcp` (`scripts/guards/fastmcp/check-fastmcp-agent.mjs`) keeps the FastMCP server surface aligned.
 - After changing any dev tool or runtime dependency, run `uv lock` and commit `uv.lock`. The `uv sync --locked` step fails the PR on drift.
 
 STOP if any of these occurs:
@@ -96,4 +95,4 @@ Fix ruff, mypy, pytest, uv lock drift, and package selector errors in the Python
 
 ## Done means
 
-Python code is formatted, linted, typed, and tested; `uv.lock` is current when dependencies changed; and FastMCP-specific behavior still passes Rule 11 checks.
+Python code is formatted, linted, typed, and tested; `uv.lock` is current when dependencies changed; and FastMCP-specific behavior passes its relevant checks.

@@ -1,7 +1,10 @@
 name = "supaschema-license-worker"
-main = "src/index.ts"
+main = "src/worker.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+preview_urls = false
+routes = [{ pattern = "license.supaschema.com", custom_domain = true }]
 
 [vars]
 CHECKOUT_CANCEL_URL = "https://supaschema.com/pricing"
@@ -22,3 +25,19 @@ binding = "CONTRACT_KV"
 
 [[kv_namespaces]]
 binding = "LICENSE_KV"
+
+[[durable_objects.bindings]]
+name = "SUBSCRIPTION_RENEWALS"
+class_name = "SubscriptionRenewalCoordinator"
+
+[[durable_objects.bindings]]
+name = "OAUTH_STATES"
+class_name = "OAuthStateCoordinator"
+
+[exports.SubscriptionRenewalCoordinator]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.OAuthStateCoordinator]
+type = "durable-object"
+storage = "sqlite"

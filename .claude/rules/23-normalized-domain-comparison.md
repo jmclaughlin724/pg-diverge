@@ -18,7 +18,7 @@ Sources:
 - Node.js `path.relative` trailing-separator change at v23.0.0: <https://github.com/nodejs/node/issues/55424>: `path.relative` output for paths that differ only by a trailing separator is not stable across Node versions.
 - Property-based / equivalence-class testing: the `fast-check` dependency already in this repo (`tests/core/paths.test.ts`, `tests/core/property.test.ts`).
 
-This repo supports Node 22 and Node 24 (Rule 09 CI matrix). A path check that relies on `path.relative`'s trailing-separator output is correct on one and may be wrong on the other.
+This repo supports Node 22 and Node 24. A path check that relies on `path.relative`'s trailing-separator output is correct on one and may be wrong on the other.
 
 ## Hard rules
 

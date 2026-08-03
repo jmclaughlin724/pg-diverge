@@ -8,12 +8,18 @@ import {
   unexpectedFailureResult,
   writeHookResult,
 } from "../../scripts/agent-hooks/hook-output.mjs";
+import { hookRuntime, hookRuntimeDisabled } from "../../scripts/agent-hooks/hook-runtime.mjs";
 
 const hookPath = fileURLToPath(import.meta.url);
 const root = resolve(dirname(hookPath), "..", "..");
 const cli = join(root, "dist", "cli.js");
+const explicitRuntime = sourceHookRuntime(process.argv.slice(2));
+const runtime = hookRuntime(hookPath, explicitRuntime);
 
 try {
+  if (hookRuntimeDisabled(runtime)) {
+    process.exit(0);
+  }
   if (!existsSync(cli)) {
     const npm = npmInvocation(["run", "build", "--silent"]);
     const result = spawnSync(npm.command, npm.args, {
@@ -39,7 +45,6 @@ try {
   await import(pathToFileURL(cli).href);
 } catch (error) {
   const eventName = sourceHookEventName(process.argv.slice(2));
-  const runtime = sourceHookRuntime(process.argv.slice(2));
   const shaped = shapeHookResult(
     eventName,
     unexpectedFailureResult(eventName, error, "sourceHookLauncher", {
@@ -74,10 +79,7 @@ function sourceHookEventName(args) {
 function sourceHookRuntime(args) {
   const runtimeIndex = args.indexOf("--runtime");
   const explicit = args[runtimeIndex + 1];
-  if (explicit === "claude" || explicit === "codex") {
-    return explicit;
-  }
-  return hookPath.split("\\").join("/").includes("/.codex/hooks/") ? "codex" : "claude";
+  return explicit === "claude" || explicit === "codex" ? explicit : undefined;
 }
 
 function lastOutputLine(...values) {

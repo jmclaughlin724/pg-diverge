@@ -19,6 +19,7 @@ const syncHookSource = readFileSync(
   "utf8"
 );
 const editTargetsSource = readFileSync(join(root, "scripts/agent-hooks/edit-targets.mjs"), "utf8");
+const hookRuntimeSource = readFileSync(join(root, "scripts/agent-hooks/hook-runtime.mjs"), "utf8");
 const agentSurfaceManifestSource = readFileSync(
   join(root, "scripts/skills/agent-surface-manifest.mjs"),
   "utf8"
@@ -41,6 +42,7 @@ function tempSurface(files: Record<string, string | Uint8Array>): string {
   const root = mkdtempSync(join(tmpdir(), "supa-sync-llm-"));
   const sourceFiles = {
     "scripts/agent-hooks/edit-targets.mjs": editTargetsSource,
+    "scripts/agent-hooks/hook-runtime.mjs": hookRuntimeSource,
     "scripts/skills/agent-surface-manifest.mjs": agentSurfaceManifestSource,
     ...curatedSkillSources,
     ...(Object.keys(files).some((file) => file.startsWith("docs/"))
@@ -59,9 +61,11 @@ function read(root: string, file: string): string {
   return readFileSync(join(root, file), "utf8");
 }
 
-function withoutCodexProjectDir(): NodeJS.ProcessEnv {
+function claudeHookEnvironment(): NodeJS.ProcessEnv {
   return Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => name !== "CODEX_PROJECT_DIR")
+    Object.entries(process.env).filter(
+      ([name]) => name !== "CODEX_PROJECT_DIR" && name !== "CODEX_THREAD_ID"
+    )
   );
 }
 
@@ -516,7 +520,6 @@ describe("sync:llm", () => {
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       ".claude/rules/supaschema.md": "# Rule\n",
       ".claude/skills/supaschema/SKILL.md": "# Skill\n",
-      ".codex/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       "package.json": `${JSON.stringify({
         name: "supaschema",
         scripts: { "sync:llm": 'node -e "process.exit(71)"' },
@@ -531,18 +534,18 @@ describe("sync:llm", () => {
 
     const output = execFileSync(
       process.execPath,
-      [join(project, ".codex/hooks/sync-llm-on-claude-surface-change.mjs")],
+      [join(project, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
       {
         encoding: "utf8",
-        env: withoutCodexProjectDir(),
+        env: claudeHookEnvironment(),
         input: JSON.stringify(payload),
       }
     );
 
-    expect(output).toBe("{}\n");
+    expect(output).toBe("");
   });
 
-  it("syncs for Codex apply_patch tool names that edit Claude surfaces", () => {
+  it("syncs for apply_patch tool names that edit Claude surfaces", () => {
     const project = tempSurface({
       ".claude/agents/worker.md": [
         "---",
@@ -556,7 +559,6 @@ describe("sync:llm", () => {
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       ".claude/rules/supaschema.md": "# Rule\n",
       ".claude/skills/supaschema/SKILL.md": "# Skill\n",
-      ".codex/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       "package.json": `${JSON.stringify({
         name: "supaschema",
         scripts: {
@@ -584,15 +586,15 @@ describe("sync:llm", () => {
 
     const output = execFileSync(
       process.execPath,
-      [join(project, ".codex/hooks/sync-llm-on-claude-surface-change.mjs")],
+      [join(project, ".claude/hooks/sync-llm-on-claude-surface-change.mjs")],
       {
         encoding: "utf8",
-        env: withoutCodexProjectDir(),
+        env: claudeHookEnvironment(),
         input: JSON.stringify(payload),
       }
     );
 
-    expect(output).toBe("{}\n");
+    expect(output).toBe("");
     expect(read(project, "sync-count.txt")).toBe("1");
   });
 
@@ -610,7 +612,6 @@ describe("sync:llm", () => {
       ".claude/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       ".claude/rules/supaschema.md": "# Rule\n",
       ".claude/skills/supaschema/SKILL.md": "# Skill\n",
-      ".codex/hooks/sync-llm-on-claude-surface-change.mjs": syncHookSource,
       "package.json": `${JSON.stringify({
         name: "supaschema",
         scripts: {
@@ -622,10 +623,10 @@ describe("sync:llm", () => {
     const payload = {
       cwd: project,
       hook_event_name: "Stop",
-      session_id: "codex-sync-stop",
+      session_id: "claude-sync-stop",
     };
-    const env = withoutCodexProjectDir();
-    const hook = join(project, ".codex/hooks/sync-llm-on-claude-surface-change.mjs");
+    const env = claudeHookEnvironment();
+    const hook = join(project, ".claude/hooks/sync-llm-on-claude-surface-change.mjs");
 
     expect(
       execFileSync(process.execPath, [hook], {
@@ -633,7 +634,7 @@ describe("sync:llm", () => {
         env,
         input: JSON.stringify(payload),
       })
-    ).toBe("{}\n");
+    ).toBe("");
 
     expect(existsSync(join(project, "sync-count.txt"))).toBe(false);
   });

@@ -182,19 +182,37 @@ function readToolLoadRequest(payload, byPath, root) {
 function bashToolLoadRequests(payload, byPath, root) {
   const command =
     typeof payload?.tool_input?.command === "string" ? payload.tool_input.command : "";
-  const files = literalCatPaths(command);
-  if (files.length === 0) {
+  const readRequest = literalSkillReadRequest(command);
+  if (!readRequest || readRequest.files.length === 0) {
     return [];
   }
   const requests = [];
-  for (const file of files) {
+  for (const file of readRequest.files) {
     const skill = byPath.get(resolveCandidatePath(file, root));
     if (!skill) {
       return [];
     }
     requests.push({ name: skill.name, path: path.resolve(skill.path) });
   }
+  if (
+    readRequest.lastLine !== undefined &&
+    readRequest.lastLine < totalLineCount(requests.map((request) => request.path))
+  ) {
+    return [];
+  }
   return uniqueByName(requests);
+}
+
+function totalLineCount(files) {
+  let count = 0n;
+  for (const file of files) {
+    const source = fs.readFileSync(file, "utf8");
+    if (source.length === 0) {
+      continue;
+    }
+    count += BigInt(source.split("\n").length - (source.endsWith("\n") ? 1 : 0));
+  }
+  return count;
 }
 
 function structuredToolText(value) {
@@ -223,17 +241,17 @@ function eligiblePostToolUse(payload) {
   return outcome !== false;
 }
 
-function literalCatPaths(command) {
+function literalSkillReadRequest(command) {
   if (!command) {
-    return [];
+    return;
   }
   const analysis = parseShellCommand(command);
   if (analysis.errors.length > 0) {
-    return [];
+    return;
   }
   const statements = analysis.script?.commands ?? [];
   if (statements.length !== 1) {
-    return [];
+    return;
   }
   const statement = statements[0];
   const commandNode = statement?.command;
@@ -242,27 +260,54 @@ function literalCatPaths(command) {
     statement.background ||
     (statement.redirects ?? []).length > 0 ||
     commandNode?.type !== "Command" ||
-    (commandNode.redirects ?? []).length > 0 ||
-    executableName(staticWordValue(commandNode.name)) !== "cat"
+    (commandNode.redirects ?? []).length > 0
   ) {
-    return [];
+    return;
   }
   const commandArguments = commandNode.suffix ?? [];
   const parsed = parseStaticArguments(commandArguments);
-  if (parsed.dynamicIndexes.size > 0 || parsed.tokens.some((token) => token.kind === "option")) {
-    return [];
+  if (parsed.dynamicIndexes.size > 0) {
+    return;
   }
-  const files = [];
-  for (const token of parsed.tokens) {
-    if (token.kind !== "positional") {
-      continue;
-    }
-    const value = staticWordValue(commandArguments[token.index]);
-    if (value !== null) {
-      files.push(value);
-    }
+  const executable = executableName(staticWordValue(commandNode.name));
+  if (executable === "cat") {
+    return parsed.tokens.some((token) => token.kind === "option")
+      ? undefined
+      : { files: parsed.positionals };
   }
-  return files;
+  return executable === "sed" ? literalSedReadRequest(parsed.args) : undefined;
+}
+
+function literalSedReadRequest(args) {
+  if (args.length < 3 || !new Set(["-n", "--quiet", "--silent"]).has(args[0])) {
+    return;
+  }
+  const expression = args[1];
+  const lastLine = fromStartSedLastLine(expression);
+  if (lastLine === false) {
+    return;
+  }
+  const files = args.slice(2);
+  if (!files.every((file) => !file.startsWith("-"))) {
+    return;
+  }
+  return lastLine === undefined ? { files } : { files, lastLine };
+}
+
+function fromStartSedLastLine(expression) {
+  if (!(expression.startsWith("1,") && expression.endsWith("p"))) {
+    return false;
+  }
+  const end = expression.slice(2, -1);
+  if (end === "$") {
+    return;
+  }
+  return end.length > 0 && [...end].every(isAsciiDigit) ? BigInt(end) : false;
+}
+
+function isAsciiDigit(char) {
+  const code = char.charCodeAt(0);
+  return code >= 48 && code <= 57;
 }
 
 function scorePrompt(prompt, skills) {

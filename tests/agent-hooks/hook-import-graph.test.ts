@@ -71,6 +71,19 @@ describe("hook import graph", () => {
     expect(() => check(root)).toThrow("node:child_process");
   });
 
+  it("rejects bare packages from the lifecycle import closure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supa-hook-import-lifecycle-package-"));
+    await write(root, "package.json", '{"dependencies":{"zod":"1.0.0"}}\n');
+    await write(
+      root,
+      ".claude/hooks/context-session-start.mjs",
+      'import "../../scripts/agent-hooks/session-lifecycle.mjs";\n'
+    );
+    await write(root, "scripts/agent-hooks/session-lifecycle.mjs", 'import "zod";\n');
+
+    expect(() => check(root)).toThrow("scripts/agent-hooks/session-lifecycle.mjs -> zod");
+  });
+
   it("maps multiline imports, re-exports, literal dynamic imports, and builtins", async () => {
     const root = await mkdtemp(join(tmpdir(), "supa-hook-import-graph-"));
     await write(

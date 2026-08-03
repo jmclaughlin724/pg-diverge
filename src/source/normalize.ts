@@ -38,8 +38,15 @@ export async function normalizeSourceObjects(
   const afterOwnedBy = applySequenceOwnedByAmendments(afterPartitions, diagnostics);
   const afterComments = applyCommentTransitions(afterOwnedBy);
   const afterRls = await mergeRlsFacets(afterComments, options);
-  const merged = await mergeSplitPrivileges(afterRls, options);
-  return suppressDefaultAclImpliedGrants(suppressDefaultEqualPrivileges(merged));
+  const mergedGrants = await mergeSplitPrivileges(afterRls, "grant", options);
+  const withoutDefaultEquals = suppressDefaultEqualPrivileges(mergedGrants);
+  const withoutImpliedGrants = suppressDefaultAclImpliedGrants(withoutDefaultEquals);
+  const mergedDefaults = await mergeSplitPrivileges(
+    withoutImpliedGrants,
+    "default-privilege",
+    options
+  );
+  return mergedDefaults;
 }
 
 function suppressDefaultEqualPrivileges(objects: SchemaObject[]): SchemaObject[] {
@@ -879,11 +886,12 @@ function replaceMembers(
 
 async function mergeSplitPrivileges(
   objects: SchemaObject[],
+  kind: "default-privilege" | "grant",
   options: SourceNormalizeOptions
 ): Promise<SchemaObject[]> {
   const groups = new Map<string, SchemaObject[]>();
   for (const object of objects) {
-    if (object.ref.kind !== "grant" && object.ref.kind !== "default-privilege") {
+    if (object.ref.kind !== kind) {
       continue;
     }
     const group = groups.get(object.key) ?? [];

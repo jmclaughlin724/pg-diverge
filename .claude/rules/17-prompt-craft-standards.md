@@ -16,18 +16,18 @@ paths:
 
 ## Contract
 
-This rule owns how agent instructions are written and delivered. Stable prevention policy may live in the root brief or rules; repeatable workflows belong in skills, deterministic enforcement belongs in hooks or guards, and generated mirrors remain targets rather than owners. Rule 18 owns the root `AGENTS.md` exemption from route-map, concision, section-order, and content-placement prescriptions.
+This rule owns how agent instructions are written and delivered. Stable prevention policy may live in the root brief or rules; repeatable workflows belong in skills, deterministic enforcement belongs in hooks or guards, and generated mirrors remain targets rather than owners.
 
 Upstream Responses API guidance for prompt economy, skills, multi-agent delegation, reasoning controls, and tool orchestration lives in the optimizer skill reference `codex/prompting/responses-prompt-and-tool-contract.md`. Load it when a change turns on that guidance rather than restating it here.
 
 ## Surface selection
 
-- Root `AGENTS.md`: canonical Codex project instruction brief. Preserve its user-defined content and structure (Rule 18).
+- Root `AGENTS.md`: canonical Codex project instruction brief.
 - Nested `<subfolder>/AGENTS.md`: directory-scoped context that may serve as a concise route map or owner brief for that subtree.
 - `.claude/rules/**`: durable policy, boundaries, STOP gates, and verification paths.
 - `.claude/skills/**`: repeatable procedures, examples, references, scripts, and assets.
 - `.claude/hooks/**` and `scripts/agent-hooks/**`: deterministic lifecycle enforcement.
-- `.codex/**` and `.agents/**`: runtime config or generated/synced mirrors as defined by Rule 18.
+- `.codex/**` and `.agents/**`: runtime config or generated/synced mirrors.
 - `README.md`: npm package landing page, not agent policy.
 - `docs/**`: Blume public docs, not agent policy.
 
@@ -40,8 +40,6 @@ Every non-stub rule or skill must include:
 - direct rules before examples, history, or reference detail;
 - verification and failure behavior when the surface is executable;
 - no unresolved placeholders, no machine-local absolute paths, no stale plan text.
-
-Skill-loading metadata must use the existing Rule 12 hook-enforcement path. For repo-managed skills, use `metadata.keywords` for literal prompt signals and `metadata.file-triggers` for structured file and tool path signals. Do not add `intent-patterns`, regex intent fields, or parallel matcher metadata. If matching behavior changes, update `scripts/agent-hooks/skills.mjs`, `scripts/guards/agent-surface/check-agent-hooks.mjs`, and Rule 12 together.
 
 ## Collaboration and response contract
 
@@ -67,10 +65,6 @@ Prompts generated for another session agent must include:
 11. Acceptance criteria.
 
 Generated prompts must not contain unresolved placeholders, invented paths, invented commands, secrets, local-only absolute paths, or unverified repo facts. If repo access is unavailable, label file paths and commands as assumptions and tell the session agent to inspect them first.
-
-## AGENTS.md scope
-
-Rule 18 owns the root-brief boundary: do not prescribe the root `AGENTS.md` length, section order, level of detail, route-map role, or content placement, and preserve its user-authored content unless the user explicitly requests a root-brief edit. Content-shaping guidance in this rule applies only to nested `<subfolder>/AGENTS.md` files, which may stay concise, describe local ownership and commands, and route deeper procedures to rules or skills.
 
 ## Style
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import {
+import fs, {
   existsSync,
   readdirSync,
   readFileSync,
@@ -11,7 +11,7 @@ import {
 import { mkdir, mkdtemp, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateBashPolicy } from "../../.claude/hooks/guards/bash-policy-checks.mjs";
 import {
   classifyCommandDomains,
@@ -29,6 +29,7 @@ import { handleSessionLifecycleEvent } from "../../scripts/agent-hooks/session-l
 import { parseShellCommand } from "../../scripts/agent-hooks/shell-command.mjs";
 import {
   currentTurnState,
+  inspectSessionState,
   normalizeState,
   readSessionState,
   refreshSessionState,
@@ -41,6 +42,7 @@ const repositoryRoot = process.cwd();
 const originalStateDir = process.env.STATE_DIR;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   if (originalStateDir === undefined) {
     delete process.env.STATE_DIR;
   } else {
@@ -277,6 +279,17 @@ describe("skill routing context", () => {
       "fastmcp"
     );
 
+    const sedSession = { prompt: "$fastmcp", session_id: "skill-sed" };
+    handleAgentHookEvent("UserPromptSubmit", sedSession, fixture.options);
+    const sedCommand = `sed -n '1,999p' '${fixture.fastmcpSkill}'`;
+    expect(preTool("skill-sed", "Bash", { command: sedCommand }, fixture).output).toEqual({});
+    postTool("skill-sed", "Bash", { command: sedCommand }, fixture, {
+      stdout: fixture.skillSource,
+    });
+    expect(currentTurnState(readSessionState(sedSession)).pendingSkills).not.toHaveProperty(
+      "fastmcp"
+    );
+
     const codexFixture = {
       ...fixture,
       options: { ...fixture.options, runtime: "codex" },
@@ -356,6 +369,20 @@ describe("skill routing context", () => {
       exit_code: 1,
       stdout: fixture.skillSource,
     });
+    const partialSed = preTool(
+      sessionId,
+      "Bash",
+      { command: `sed -n '1,1p' ${fixture.fastmcpSkill}` },
+      fixture
+    );
+    expect(partialSed.output.hookSpecificOutput?.permissionDecision).toBe("deny");
+    const mutatingSed = preTool(
+      sessionId,
+      "Bash",
+      { command: `sed -i 's/FastMCP/changed/' ${fixture.fastmcpSkill}` },
+      fixture
+    );
+    expect(mutatingSed.output.hookSpecificOutput?.permissionDecision).toBe("deny");
     postTool(sessionId, "Grep", { path: fixture.fastmcpSkill, pattern: "#" }, fixture);
     postTool(sessionId, "Skill", { skill: "not-in-inventory" }, fixture);
     handleAgentHookEvent(
@@ -524,6 +551,30 @@ describe("structured verification conflicts", () => {
 });
 
 describe("minimal private hook state", () => {
+  it("retries a transient owner-file initialization race", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const payload = { session_id: "retry-owner-initialization" };
+    const originalOpenSync = fs.openSync;
+    let injectedFailure = false;
+    vi.spyOn(fs, "openSync").mockImplementation((file, flags, mode) => {
+      if (!injectedFailure && String(file).includes(".json.lock/owner-")) {
+        injectedFailure = true;
+        throw Object.assign(new Error("transient owner-file race"), { code: "EINVAL" });
+      }
+      return originalOpenSync(file, flags, mode);
+    });
+
+    withSessionState(payload, (state) => {
+      state.loadedSkills.optimizer = new Date().toISOString();
+      return { state };
+    });
+
+    expect(injectedFailure).toBe(true);
+    expect(readSessionState(payload).loadedSkills).toHaveProperty("optimizer");
+    expect(existsSync(`${sessionStatePath(payload)}.lock`)).toBe(false);
+  });
+
   it("persists no prompt or command text and uses private permissions", async () => {
     const fixture = await hookFixture();
     process.env.STATE_DIR = fixture.stateDir;
@@ -731,6 +782,36 @@ describe("minimal private hook state", () => {
     );
 
     expect((await stat(file)).mtimeMs).toBe(before);
+  });
+
+  it("inspects state without repairing file mode and preserves malformed warnings", async () => {
+    const fixture = await hookFixture();
+    process.env.STATE_DIR = fixture.stateDir;
+    const valid = { session_id: "read-only-inspection" };
+    refreshSessionState(valid);
+    const validFile = sessionStatePath(valid);
+    if (process.platform !== "win32") {
+      fs.chmodSync(validFile, 0o644);
+    }
+
+    const validRecord = inspectSessionState(valid);
+
+    expect(validRecord.found).toBe(true);
+    expect(validRecord.warning).toBeUndefined();
+    expect(validRecord.state.sessionId).toBe(valid.session_id);
+    if (process.platform !== "win32") {
+      expect(statSync(validFile).mode % 0o1000).toBe(0o644);
+    }
+
+    const malformed = { session_id: "read-only-malformed" };
+    const malformedFile = sessionStatePath(malformed);
+    await writeFile(malformedFile, "{not-json", { mode: 0o600 });
+    const malformedRecord = inspectSessionState(malformed);
+
+    expect(malformedRecord.found).toBe(true);
+    expect(malformedRecord.warning).toContain("ignored invalid JSON");
+    expect(malformedRecord.state.sessionId).toBe(malformed.session_id);
+    expect(inspectSessionState({ session_id: "missing-inspection" }).found).toBe(false);
   });
 
   it("expires state after 24 hours and treats malformed state as empty with a warning", async () => {

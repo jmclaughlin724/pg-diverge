@@ -57,7 +57,7 @@ When resolving a regex violation, use `ast-grep` as the first discovery or codem
 
 ## Decision posture
 
-This is a technical decision. Resolve it by Rule 05 (research the upstream best practice), not a guess. Where a first-class parser exists for the format, it is the canonical choice.
+Research authoritative upstream best practice rather than guessing. Where a first-class parser exists for the format, it is the canonical choice.
 
 STOP if regex ships for structural analysis anywhere in the repo where an AST/parser can express the check. STOP if a guard requires a documentation file to contain a specific prose string instead of testing behavior or structure; let the rule own its wording.
 

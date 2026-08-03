@@ -56,10 +56,18 @@ function listSkillFiles(root) {
   if (!fs.existsSync(root)) {
     return [];
   }
+  const rootStats = fs.lstatSync(root);
+  if (rootStats.isSymbolicLink() || !rootStats.isDirectory()) {
+    throw new Error(`skill source must be a regular directory: ${root}`);
+  }
   const out = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     const file = path.join(root, entry.name, "SKILL.md");
     if (entry.isDirectory() && fs.existsSync(file)) {
+      const fileStats = fs.lstatSync(file);
+      if (fileStats.isSymbolicLink() || !fileStats.isFile()) {
+        throw new Error(`skill source must be a regular file: ${file}`);
+      }
       out.push(file);
     }
   }

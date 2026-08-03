@@ -1,7 +1,14 @@
 export default {
   embeddedLanguageFormatting: "auto",
   endOfLine: "lf",
+  plugins: ["prettier-plugin-astro"],
   overrides: [
+    {
+      files: "docs/**/*.astro",
+      options: {
+        parser: "astro",
+      },
+    },
     {
       files: "docs/**/*.{md,mdx}",
       options: {

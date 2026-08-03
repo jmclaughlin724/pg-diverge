@@ -161,7 +161,7 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     expect(existsSync(join(root, ".codex/rules"))).toBe(true);
   });
 
-  it("does not follow pre-existing temp-file symlinks while syncing mirrors", async () => {
+  it("rejects pre-existing temp-file symlinks while syncing mirrors", async () => {
     if (process.platform === "win32") {
       return;
     }
@@ -176,16 +176,101 @@ describe("agent surface sync", { timeout: 30_000 }, () => {
     const tempCandidate = join(targetDir, `.SKILL.md.${process.pid}.${timestamp}.tmp`);
     await symlink(sentinel, tempCandidate);
 
-    const originalNow = Date.now;
-    Date.now = () => timestamp;
-    try {
-      syncAgentSurfaces({ root });
-    } finally {
-      Date.now = originalNow;
-    }
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      `.agents/skills/supaschema/.SKILL.md.${process.pid}.${timestamp}.tmp: symbolic links are not allowed`
+    );
 
     expect(await readFile(sentinel, "utf8")).toBe("keep\n");
-    expect(await readFile(join(targetDir, "SKILL.md"), "utf8")).toBe(publicSupaschemaSkill);
+    expect(existsSync(join(targetDir, "SKILL.md"))).toBe(false);
+  });
+
+  it("rejects generated target-root symlinks before writing outside the repository", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-target-outside-"));
+    await write(outside, "sentinel.txt", "keep\n");
+    await symlink(outside, join(root, ".agents/skills"), "dir");
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".agents/skills: symbolic links are not allowed"
+    );
+    expect(await readFile(join(outside, "sentinel.txt"), "utf8")).toBe("keep\n");
+    expect(existsSync(join(outside, "supaschema/SKILL.md"))).toBe(false);
+  });
+
+  it("rejects source-root symlinks before copying external files", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-source-outside-"));
+    await write(outside, "supaschema/SKILL.md", publicSupaschemaSkill);
+    await rm(join(root, ".claude/skills"), { recursive: true });
+    await symlink(outside, join(root, ".claude/skills"), "dir");
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".claude/skills: symbolic links are not allowed"
+    );
+    expect(existsSync(join(root, ".agents/skills/supaschema/SKILL.md"))).toBe(false);
+    expect(existsSync(join(root, "skills/supaschema/SKILL.md"))).toBe(false);
+  });
+
+  it("rejects nested source symlinks before reading their targets", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-nested-source-outside-"));
+    const sentinel = join(outside, "sentinel.mjs");
+    await writeFile(sentinel, "external secret\n");
+    await rm(join(root, ".claude/hooks/sample-hook.mjs"));
+    await symlink(sentinel, join(root, ".claude/hooks/sample-hook.mjs"));
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".claude/hooks/sample-hook.mjs: symbolic links are not allowed"
+    );
+    expect(existsSync(join(root, ".codex/hooks/sample-hook.mjs"))).toBe(false);
+  });
+
+  it("rejects exact source-file symlinks before reading their targets", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-source-file-outside-"));
+    const sentinel = join(outside, "install.md");
+    await writeFile(sentinel, "external install prompt\n");
+    await rm(join(root, ".agents/prompts/supaschema-install.md"));
+    await symlink(sentinel, join(root, ".agents/prompts/supaschema-install.md"));
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".agents/prompts/supaschema-install.md: symbolic links are not allowed"
+    );
+    expect(existsSync(join(root, "agent-bundle/agents/prompts/supaschema-install.md"))).toBe(false);
+  });
+
+  it("rejects nested generated file symlinks instead of reading their targets", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const root = await seedSurfaceRoot();
+    const outside = await mkdtemp(join(tmpdir(), "supa-agent-file-outside-"));
+    const sentinel = join(outside, "sentinel.mjs");
+    await writeFile(sentinel, "keep\n");
+    await mkdir(join(root, ".codex/hooks"), { recursive: true });
+    await symlink(sentinel, join(root, ".codex/hooks/sample-hook.mjs"));
+
+    expect(() => syncAgentSurfaces({ root })).toThrow(
+      ".codex/hooks/sample-hook.mjs: symbolic links are not allowed"
+    );
+    expect(await readFile(sentinel, "utf8")).toBe("keep\n");
   });
 
   it("renders Claude agents as Codex custom-agent TOML", () => {

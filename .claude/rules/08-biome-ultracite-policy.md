@@ -25,7 +25,7 @@ Sources:
 - Ultracite Biome provider: <https://www.ultracite.ai/docs/provider/biome>
 - Ultracite documentation: <https://www.ultracite.ai/docs>
 
-Biome is the canonical JS/TS/JSX/TSX/JSON/JSONC/CSS/HTML/GraphQL formatter and linter. Ultracite supplies the shared preset and agent-facing docs; package scripts consume the same root policy. This rule owns the JS/TS Biome/Ultracite policy. Rule 06 owns the cross-language format/lint/type ownership map and the npm-only contract, and Rule 07 governs the AST-over-regex contract for the guard scripts that enforce this policy.
+Biome is the canonical JS/TS/JSX/TSX/JSON/JSONC/CSS/HTML/GraphQL formatter and linter. Ultracite supplies the shared preset and agent-facing docs; package scripts consume the same root policy. This rule owns the JS/TS Biome/Ultracite policy.
 
 ## Hard rules
 
@@ -39,9 +39,9 @@ Biome is the canonical JS/TS/JSX/TSX/JSON/JSONC/CSS/HTML/GraphQL formatter and l
 - Complexity stays enforced by the inherited Ultracite preset. Do not add a root, file-, or folder-specific `noExcessiveCognitiveComplexity` migration cap; refactor source or change the shared rule intentionally after a fresh upstream audit.
 - Active source, benchmark, bin, script, and test files must not import generated `dist` output. Package scripts may execute compiled `dist` entrypoints after `npm run build`; source modules must import source-owned modules.
 - `src/index.ts` is the only approved `noBarrelFile` exception because it is the package's public API entrypoint.
-- Exact Biome, Ultracite, and Vitest tool pins live in `package.json`; the root `package-lock.json` and npm-only tooling guard prove the package-manager contract (Rule 06).
+- Exact Biome, Ultracite, and Vitest tool pins live in `package.json`; the root `package-lock.json` and npm-only tooling guard prove the package-manager contract.
 - Keep generated contract/artifact outputs (including root `database.types.ts` and `database.zod.ts`), build output, dependency directories, virtualenvs, caches and nested hook-state `.tmp` directories, archived plans, nested `.claude/worktrees/**` checkouts, and generated agent mirrors out of the Biome surface. Canonical `.claude/skills/**`, `.claude/settings.local.json`, local worker/script code, ignored MCP/editor JSON, codemod-generated active source/docs, tracked HTML, and generated documentation SVGs remain governed. The only canonical-skill exceptions are the two exact workflow-host payloads named in `biome.jsonc`; they are byte-preserved binary extractions with injected globals and top-level returns, not standalone JavaScript. SVG-producing benchmark and diagram scripts must finish through `npm run format -- <output-path>` so regenerated assets are canonical immediately.
-- Biome does not own Markdown, MDX, YAML, or SQL. Rule 06 owns the per-language formatter map and the docs validation gate; do not point Biome at those surfaces.
+- Biome does not own Markdown, MDX, YAML, or SQL. Do not point Biome at those surfaces.
 - Local Biome suppression comments are forbidden. Investigate the related upstream rule, fix the code, or adjust the shared `biome.jsonc` policy with a repo-wide rationale.
 - Do not add a second Biome config that drifts from the root policy without first creating a deliberate shared-config design and updating this rule.
 - When adding a governed root or ignored-local path, update `scripts/lib/repo-files.mjs`, run `npm run format` as the only write/fix path, and then run the read-only gates. During agent work, invoke Biome/Ultracite only through the npm scripts; do not run `npm run lint fix` and do not add formatter aliases such as `npm run lint:fix`.

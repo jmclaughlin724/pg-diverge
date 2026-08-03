@@ -9,10 +9,12 @@ import { exists, gitFiles, ROOT, readJson, readText } from "../lib/repository.js
 import { forEachNode, parseScript, ts } from "../lib/typescript-ast.js";
 
 const exactlyPinnedTools = [
+  "@astrojs/language-server",
   "@biomejs/biome",
   "@vitest/coverage-v8",
   "cclsp",
   "prettier",
+  "prettier-plugin-astro",
   "ultracite",
   "vitest",
 ];
@@ -48,6 +50,7 @@ const expectedBiomeExclusions = [
   "!.claude/worktrees",
   ...extractedWorkflowBiomeExclusions,
   "!agent-bundle",
+  "!**/*.astro",
   "!tests/fixtures/sample-project/supabase/functions",
   "!.agents",
   "!.codex",
@@ -337,7 +340,22 @@ function assertNoDisabledBiomeRules(value, rulePath = "linter.rules", allowedDis
 
 function assertBiomeOverrides(overrides) {
   const allowedDisabled = new Map([
+    [
+      "services/license-worker/src/cloudflare-workers.d.ts",
+      new Set(["linter.rules.correctness.noUnresolvedImports"]),
+    ],
+    [
+      "services/license-worker/src/worker.ts",
+      new Set(["linter.rules.correctness.noUnresolvedImports"]),
+    ],
     ["src/index.ts", new Set(["linter.rules.performance.noBarrelFile"])],
+  ]);
+  const allowedScopes = new Set([
+    JSON.stringify([
+      "services/license-worker/src/cloudflare-workers.d.ts",
+      "services/license-worker/src/worker.ts",
+    ]),
+    JSON.stringify(["src/index.ts"]),
   ]);
   for (const override of overrides) {
     const includes = override.includes ?? [];
@@ -357,9 +375,8 @@ function assertBiomeOverrides(overrides) {
       "biome.jsonc must inherit Ultracite noExcessiveCognitiveComplexity without a migration cap"
     );
 
-    const isAllowedBarrelOverride = includes.length === 1 && includes[0] === "src/index.ts";
     assert(
-      isAllowedBarrelOverride,
+      allowedScopes.has(JSON.stringify(includes)),
       `biome.jsonc override is not allowed for ${includes.join(", ") || "(none)"}`
     );
   }
@@ -400,6 +417,17 @@ function assertCclspWiring(config) {
   assert(
     javascriptServer.initializationOptions?.tsserver?.path === undefined,
     "cclsp.json must let the TypeScript proxy inject the tsserver path"
+  );
+  const astroServer = config.servers?.find((server) => server.extensions?.includes("astro"));
+  assert(astroServer, "cclsp.json must map .astro files");
+  assert(
+    JSON.stringify(astroServer.command) ===
+      JSON.stringify(["npx", "--no-install", "astro-ls", "--stdio"]),
+    "cclsp.json must run the repository-installed Astro language server"
+  );
+  assert(
+    astroServer.initializationOptions?.typescript?.tsdk === "node_modules/typescript/lib",
+    "cclsp.json must give astro-ls the repository TypeScript SDK"
   );
   for (const server of config.servers ?? []) {
     assert(
@@ -532,11 +560,11 @@ export function check(root = ROOT) {
     "test:matrix:coverage must be the coverage equivalent of test:matrix"
   );
   assert(
-    packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{md,mdx,yml,yaml}"',
-    "format:md must run Prettier write over MDX/Markdown/YAML"
+    packageJson.scripts?.["format:md"] === 'prettier --write "**/*.{astro,md,mdx,yml,yaml}"',
+    "format:md must run Prettier write over Astro/MDX/Markdown/YAML"
   );
   assert(
-    packageJson.scripts?.["format:md:check"] === 'prettier --check "**/*.{md,mdx,yml,yaml}"',
+    packageJson.scripts?.["format:md:check"] === 'prettier --check "**/*.{astro,md,mdx,yml,yaml}"',
     "format:md:check must run the read-only Prettier check over the format:md glob"
   );
   assert(!("format:sql" in packageJson.scripts), "SQL formatter lane must not be reintroduced");
@@ -583,6 +611,7 @@ export function check(root = ROOT) {
   for (const token of [
     'embeddedLanguageFormatting: "auto"',
     'endOfLine: "lf"',
+    'plugins: ["prettier-plugin-astro"]',
     "printWidth: 80",
     'proseWrap: "never"',
     "tabWidth: 2",

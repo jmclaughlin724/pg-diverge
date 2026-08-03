@@ -2,6 +2,23 @@
 enforcement:
   type: judgment-only
 description: Editing safety, generated-artifact discipline, concurrent-change preservation, and source deletion sweeps.
+codexExecPolicy: |
+  [
+    {
+      "pattern": [["mktemp", "tempfile"]],
+      "decision": "forbidden",
+      "justification": "Temporary and scratch working-state commands are forbidden.",
+      "match": ["mktemp -d", "tempfile"],
+      "not_match": ["mkdir src/new-feature", "npm run sync:llm", "git status --short"]
+    },
+    {
+      "pattern": ["git", "clone"],
+      "decision": "forbidden",
+      "justification": "Reviewable-work invariant.",
+      "match": ["git clone . ../demo", "git clone https://example.com/repo.git demo"],
+      "not_match": ["git status --short", "git show main:package.json"]
+    }
+  ]
 paths:
   - "src/**"
   - "tests/**"
@@ -20,11 +37,14 @@ paths:
 
 ## Contract
 
-This rule owns file-edit safety, generated-artifact discipline, concurrent-change preservation, and deletion/rename sweeps. Rule 21 is the single owner for worktrees, Git commands, staging, commits, pushes, branches, pull requests, merges, and branch cleanup.
+This rule owns file-edit safety, reviewable in-place work, generated-artifact discipline, concurrent-change preservation, and deletion/rename sweeps.
+
+## Reviewable-work invariant
+
+Agent-authored task work must be performed directly on intended canonical files in the active checkout and remain visible to Git. Do not create or use intermediate, disposable, copied, alternate, temporary, scratch, cache, ignored, or hidden working state anywhere, and do not redirect work to evade a permission, hook, guard, status, diff, or review boundary. If a validation path requires such state, skip it and report the check as unrun.
 
 ## Editing rules
 
-- Satisfy the Rule 05 research-before-acting gate before the first write: owner and current source read, applicable rules and skills loaded, available tooling reviewed, and required upstream research complete.
 - Keep changes owner-scoped and use the canonical owner that satisfies the requested end state.
 - Prefer structured edits (`apply_patch`, editor tool, AST/LSP rename, or repo codemod) over shell write tricks for source changes.
 - Treat edit-tool success as transport evidence only. Inspect the resulting file or diff and run the narrow owner check before claiming the patch worked; an `apply_patch` success or `Done` message does not prove the intended content landed.
@@ -50,7 +70,7 @@ Before deleting, renaming, privatizing, or changing a public export/package surf
 
 ## Verification
 
-Review every touched file and run its owner checks. Before staging or any other source-control action, follow Rule 21.
+Review every touched file and run its owner checks.
 
 ## Failure behavior
 

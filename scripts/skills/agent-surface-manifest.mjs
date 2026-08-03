@@ -7,9 +7,18 @@ export const agentSurfaceManifest = Object.freeze({
     targetRoot: ".codex/agents",
   }),
   bundleDocs: Object.freeze({
+    excludedSourceDirectories: Object.freeze(["dist", "node_modules"]),
+    excludeHiddenSourceDirectories: true,
     sourceExtension: ".mdx",
     sourceRoot: "docs",
     targetRoot: "agent-bundle/docs",
+  }),
+  claudeContract: Object.freeze({
+    sourceFile: "CLAUDE.md",
+  }),
+  codexHookConfig: Object.freeze({
+    sourceFile: ".claude/settings.json",
+    targetFile: ".codex/hooks.json",
   }),
   hooks: Object.freeze({
     sourceRoot: ".claude/hooks",
@@ -38,9 +47,6 @@ export const agentSurfaceManifest = Object.freeze({
 });
 
 export function isCanonicalAgentSurfaceSource(relativePath) {
-  if (relativePath === ".claude/settings.json") {
-    return true;
-  }
   for (const surface of Object.values(agentSurfaceManifest)) {
     if (typeof surface.sourceFile === "string" && relativePath === surface.sourceFile) {
       return true;

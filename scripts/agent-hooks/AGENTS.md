@@ -5,13 +5,14 @@ Shared Claude and Codex hook runtime, imported by both `.claude/hooks/**` and `.
 ## Contents
 
 - `hook-entrypoint.mjs` — shared stdin, runtime, output, and input-error handling
+- `hook-runtime.mjs` — shared runtime identity and disabled-Codex short circuit
 - `session-lifecycle.mjs` — silent SessionStart state refresh and SessionEnd cleanup
 - `runner.mjs` — non-lifecycle event dispatcher (main-session skill gate, subagent advisory context, Bash safety, and verification conflicts)
 - `command-evidence.mjs` — shell-AST outcome attribution and domain-only verification evidence recording
 - `response-evidence.mjs` — structured tool-outcome parsing only
 - `response-claims.mjs` — parser-driven success claims checked only against unresolved structured failure evidence
 - `skills.mjs` — skill discovery, prompt/tool matching, and exact-content observable-load detection from structured tool results and the shell AST
-- `state.mjs` — serialized per-session state
+- `state.mjs` — hook event-state model
 - `hook-output.mjs` — event output shaping and failure diagnostics
 
 ## Dependency topology

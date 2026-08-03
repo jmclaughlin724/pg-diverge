@@ -66,7 +66,7 @@
     "bench:plot:headtohead": "node benchmarks/plot-head-to-head.js --bars-only benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-xl-bars.svg && node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-xl.svg && node benchmarks/plot-head-to-head.js benchmarks/results/comparison-xxl.json docs/images/benchmarks/head-to-head-xxl.svg && node benchmarks/plot-head-to-head.js --workflow benchmarks/results/comparison-xl.json docs/images/benchmarks/head-to-head-workflow-xl.svg && npm run format -- docs/images/benchmarks",
     "bench:scan-aggregate": "npm run build && node dist/scan/aggregate.js",
     "benchmark": "npm run build && node dist/benchmark/run.js",
-    "build": "node scripts/clean-dist.mjs && tsc -b tsconfig.src.json --force && node dist/config/schema-gen.js && node scripts/ensure-bin-executable.mjs && node scripts/build/write-build-info.mjs",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.src.json && node dist/config/schema-gen.js && node scripts/ensure-bin-executable.mjs && node scripts/build/write-build-info.mjs",
     "changeset": "changeset",
     "check": "npm run build && npm run lint && npm run typecheck && npm test",
     "check:package": "publint && attw --pack . --profile esm-only",
@@ -83,8 +83,8 @@
     "fixture:verify": "npm run build && out=$(mktemp -d)/basic.sql && node dist/cli.js --config tests/fixtures/basic/supaschema.config.json diff --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --out \"$out\" && node dist/cli.js --config tests/fixtures/basic/supaschema.config.json verify --from dir:tests/fixtures/basic/from --to dir:tests/fixtures/basic/to --migration \"$out\"",
     "format": "node scripts/format.mjs",
     "format:json": "sort-package-json",
-    "format:md": "prettier --write \"**/*.{md,mdx,yml,yaml}\"",
-    "format:md:check": "prettier --check \"**/*.{md,mdx,yml,yaml}\"",
+    "format:md": "prettier --write \"**/*.{astro,md,mdx,yml,yaml}\"",
+    "format:md:check": "prettier --check \"**/*.{astro,md,mdx,yml,yaml}\"",
     "format:sh": "node scripts/format-sh.mjs",
     "format:toml": "node scripts/format-toml.mjs",
     "github:audit-settings": "node scripts/github/audit-settings.mjs",
@@ -118,7 +118,7 @@
     "test:examples": "vitest run tests/examples/project.test.ts --maxWorkers=1",
     "test:matrix": "vitest run --exclude tests/examples/project.test.ts",
     "test:matrix:coverage": "vitest run --coverage --exclude tests/examples/project.test.ts",
-    "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
+    "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json"
   },
   "overrides": {
     "@hono/node-server": "2.0.12",
@@ -140,8 +140,10 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.3",
     "@ast-grep/cli": "0.45.0",
+    "@astrojs/language-server": "2.16.13",
     "@biomejs/biome": "2.5.5",
     "@changesets/cli": "^2.31.0",
+    "@cloudflare/workers-types": "5.20260801.1",
     "@postgres-language-server/cli": "0.25.7",
     "@taplo/cli": "0.7.0",
     "@types/node": "^26.0.0",
@@ -156,6 +158,7 @@
     "mdast-util-to-string": "^4.0.0",
     "minimatch": "10.2.5",
     "prettier": "3.9.6",
+    "prettier-plugin-astro": "0.14.1",
     "publint": "^0.3.21",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",

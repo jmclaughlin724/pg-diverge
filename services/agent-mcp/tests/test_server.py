@@ -11,15 +11,13 @@ the server's whole reason to exist:
    while one allowlisted file (``AGENTS.md``) reads successfully.
 3. ``server_status`` advertises docs-research MCP servers that are actually
    configured in ``.mcp.json`` (runtime catalog-drift pin).
-4. ``session_state`` reads actor-scoped response corrections from the canonical
-   top-level agent-hook ledger and ignores ownership-ambiguous legacy entries.
+4. ``session_state`` reports that no persisted state is available.
 5. ``review_repo_change`` routes an explicit, safely encoded diff scope to the
    canonical live workflow without forwarding credentials.
 """
 
 from __future__ import annotations
 
-import base64
 import json
 from pathlib import Path
 
@@ -58,6 +56,19 @@ PRIVATE_PREFIX_READS = [
     ".claude/agents/reviewer.md",
     ".codex/agents/worker.md",
     ".vscode/settings.json",
+]
+
+MIXED_CASE_REJECTED_PATHS = [
+    ".PLANNING",
+    "ADVISOR-PLANS/pricing.md",
+    ".CLAUDE/AGENTS/reviewer.md",
+    ".CODEX/AGENTS/worker.md",
+    ".VSCODE/settings.json",
+    "SECRETS/app.txt",
+    "src/SERVER.KEY",
+    ".ENV.LOCAL",
+    ".DEV.VARS.LOCAL",
+    ".NPMRC",
 ]
 
 
@@ -200,12 +211,34 @@ async def test_read_context_file_rejects_canonical_private_prefixes(private_path
     assert "path is denied" in str(error.value)
 
 
-def test_private_prefixes_track_canonical_owner() -> None:
+@pytest.mark.parametrize("bad_path", MIXED_CASE_REJECTED_PATHS)
+async def test_case_variants_cannot_bypass_read_or_scan_denials(bad_path: str) -> None:
+    async with Client(transport=mcp) as client:
+        with pytest.raises(ToolError, match="path is denied"):
+            await _read_context(client, bad_path)
+        with pytest.raises(ToolError, match="path is denied"):
+            await client.call_tool("repo_safety_scan", {"source": f"dir:{bad_path}"})
+
+
+@pytest.mark.parametrize(
+    "private_root",
+    server.PRIVATE_ROOTS,
+)
+async def test_exact_private_roots_are_rejected(private_root: str) -> None:
+    async with Client(transport=mcp) as client:
+        with pytest.raises(ToolError, match="path is denied"):
+            await _read_context(client, private_root)
+        with pytest.raises(ToolError, match="path is denied"):
+            await client.call_tool("repo_safety_scan", {"source": f"dir:{private_root}"})
+
+
+def test_private_roots_track_canonical_owner() -> None:
     data = json.loads(
         (REPO_ROOT / "scripts/guards/repo-surface/private-paths.json").read_text(encoding="utf8")
     )
-    assert set(server.PRIVATE_PREFIXES) == set(data["heldPrivate"]) | set(data["agentPrivate"])
-    assert "scripts/stripe/" not in server.PRIVATE_PREFIXES
+    expected_roots = {path.removesuffix("/") for path in data["heldPrivate"] + data["agentPrivate"]}
+    assert set(server.PRIVATE_ROOTS) == expected_roots
+    assert "scripts/stripe" not in server.PRIVATE_ROOTS
 
 
 async def test_read_context_file_reads_tracked_stripe_catalog_tooling() -> None:
@@ -282,58 +315,16 @@ async def test_repo_safety_scan_rejects_database_source() -> None:
     assert "stays local" in str(error.value)
 
 
-async def test_session_state_reads_actor_scoped_corrections(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(server, "REPO_ROOT", tmp_path)
-    session_id = "actor-ledger"
-    encoded = base64.urlsafe_b64encode(session_id.encode()).decode().rstrip("=")
-    state_dir = tmp_path / ".tmp" / "agent-hooks"
-    state_dir.mkdir(parents=True)
-    (state_dir / f"{encoded}.json").write_text(
-        json.dumps(
-            {
-                "responseCorrections": {
-                    "main": {
-                        "findings": [
-                            {"blocked": True, "id": "main-correction", "message": "main message"}
-                        ]
-                    },
-                    "agent:worker-1": {
-                        "findings": [
-                            {
-                                "blocked": False,
-                                "id": "agent-correction",
-                                "message": "agent message",
-                            }
-                        ]
-                    },
-                },
-                "turns": {
-                    "turn-1": {"corrections": [{"id": "legacy-correction", "message": "legacy"}]}
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
+async def test_session_state_reports_no_persisted_state() -> None:
     async with Client(transport=mcp) as client:
-        result = await client.call_tool("session_state", {"session_id": session_id})
+        result = await client.call_tool("session_state", {"session_id": "active-session"})
 
-    assert result.data["corrections"] == [
-        {
-            "emitted": True,
-            "id": "main-correction",
-            "message": "main message",
-            "scope": "main",
-        },
-        {
-            "emitted": False,
-            "id": "agent-correction",
-            "message": "agent message",
-            "scope": "agent:worker-1",
-        },
-    ]
+    assert result.data == {
+        "note": "no persisted session state is available",
+        "ok": True,
+        "session_id": "active-session",
+        "state": None,
+    }
 
 
 async def test_repo_context_query_searches_allowlisted_repo_files() -> None:
@@ -399,6 +390,7 @@ async def test_status_upstream_all_capabilities_only_advertise_configured_server
     assert "nearest AGENTS.md instructions" in result.data["repo_context_hint"]
     assert "configured language server" in result.data["repo_context_hint"]
     assert "npm run guard:fastmcp" in result.data["repo_context_hint"]
+    assert "no persisted state is available" in result.data["session_state_hint"]
     assert "live database, mutating, or generic SQL" in result.data["blocked_capabilities"]
     assert "raw SQL" not in result.data["blocked_capabilities"]
     assert "next-devtools" not in {item["server"] for item in payload["capabilities"]}
@@ -454,78 +446,3 @@ async def test_repo_safety_scan_reports_missing_dist(
         result = await client.call_tool("repo_safety_scan", {"source": "dir:src"})
     assert result.data["ok"] is False
     assert "npm run build" in result.data["stderr"]
-
-
-async def test_session_state_redacts_recorded_commands(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(server, "REPO_ROOT", tmp_path)
-    session_id = "redaction-ledger"
-    db_password = "pass" + "word"
-    stripe_key = "sk_live_" + "abc123"
-    db_url = "postgres://user:" + db_password + "@host"
-    encoded = base64.urlsafe_b64encode(session_id.encode()).decode().rstrip("=")
-    state_dir = tmp_path / ".tmp" / "agent-hooks"
-    state_dir.mkdir(parents=True)
-    (state_dir / f"{encoded}.json").write_text(
-        json.dumps(
-            {
-                "turns": {
-                    "turn-1": {
-                        "evidence": [
-                            {
-                                "kind": "command",
-                                "domains": ["test"],
-                                "outcome": "pass",
-                                "summary": "tests passed",
-                                "command": f"SUPASCHEMA_DATABASE_URL={db_url} npm test",
-                            },
-                            {
-                                "kind": "command",
-                                "domains": ["guard"],
-                                "outcome": "pass",
-                                "summary": f"STRIPE_SECRET_KEY={stripe_key} npm run guard",
-                                "command": "npm run guard",
-                            },
-                            {
-                                "kind": "command",
-                                "domains": ["test"],
-                                "outcome": "pass",
-                                "summary": "flag form",
-                                "command": (
-                                    f"npm test -- --api-key {stripe_key} --token {db_password}"
-                                ),
-                            },
-                        ]
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    async with Client(transport=mcp) as client:
-        result = await client.call_tool("session_state", {"session_id": session_id})
-
-    evidence = result.data["evidence"]
-    assert db_password not in evidence[0]["command"]
-    assert "postgres://user:***@host" in evidence[0]["command"]
-    assert stripe_key not in evidence[1]["summary"]
-    assert evidence[0]["summary"] == "tests passed"
-    assert stripe_key not in evidence[2]["command"]
-    assert db_password not in evidence[2]["command"]
-    assert "--api-key ***" in evidence[2]["command"]
-    assert "--token ***" in evidence[2]["command"]
-    assert server._redact('TOKEN="to ken" npm test') == 'TOKEN="***" npm test'
-    assert "to ken" not in server._redact("API_SECRET='multi word secret' run")
-    whitespace_secret = "multi-whitespace-secret"
-    redacted_whitespace = server._redact(
-        f"npm test -- --api-key  {whitespace_secret}\n--token\t{whitespace_secret}"
-    )
-    assert whitespace_secret not in redacted_whitespace
-    assert "--api-key  ***" in redacted_whitespace
-    assert "--token\t***" in redacted_whitespace
-    quoted_whitespace = server._redact(
-        "SAFE=ok\tTOKEN=\"first secret\"\nAPI_SECRET='second secret'"
-    )
-    assert quoted_whitespace == "SAFE=ok\tTOKEN=\"***\"\nAPI_SECRET='***'"

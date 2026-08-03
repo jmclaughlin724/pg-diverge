@@ -1,10 +1,65 @@
 import { deparseSync } from "pgsql-deparser";
 import type { SchemaObject } from "../types.js";
-import type { AstNode, QualifiedName } from "./ast.js";
+import type { AstNode, AstStatement, QualifiedName } from "./ast.js";
 import { asRecord, rangeVarName, readArray, readNumber, readString } from "./ast.js";
+import { formatQualifiedName, quoteIdent } from "./identifiers.js";
 import { isRlsTransitionSubtype } from "./rls.js";
-import { makeObject } from "./statements.js";
+import { splitTopLevel } from "./split.js";
+import { fromByteString, makeObject, toByteString } from "./statements.js";
 import { allocateDefaultConstraintName, constraintMetadata } from "./table-constraints.js";
+
+export function sourceAddConstraintCommand(
+  alterTable: AstNode,
+  command: AstNode,
+  statement: AstStatement,
+  existingConstraintNames: Iterable<string> = []
+): { command: AstNode; statement: string } | undefined {
+  const constraint = asRecord(asRecord(command.def)?.Constraint);
+  const constraintLocation = readNumber(constraint?.location);
+  const relation = rangeVarName(alterTable.relation);
+  if (!(constraint && relation && constraintLocation !== undefined)) {
+    return;
+  }
+  const declaredName = readString(constraint.conname);
+  const constraintName =
+    declaredName ??
+    allocateDefaultConstraintName(relation.name, constraint, [], existingConstraintNames);
+  if (!constraintName) {
+    return;
+  }
+  const relativeLocation = constraintLocation - statement.byteStart;
+  const statementBytes = toByteString(statement.text);
+  if (relativeLocation < 0 || relativeLocation >= statementBytes.length) {
+    return;
+  }
+  const constraintClause = splitTopLevel(fromByteString(statementBytes.slice(relativeLocation)))[0];
+  if (!constraintClause) {
+    return;
+  }
+  const sourceConstraintClause = declaredName
+    ? constraintClause
+    : `CONSTRAINT ${quoteIdent(constraintName)} ${constraintClause}`;
+  const relationNode =
+    asRecord(asRecord(alterTable.relation)?.RangeVar) ?? asRecord(alterTable.relation);
+  const only = relationNode?.inh === true ? "" : " ONLY";
+  const ifExists = alterTable.missing_ok === true ? " IF EXISTS" : "";
+  const relationKind =
+    readString(alterTable.objtype) === "OBJECT_FOREIGN_TABLE" ? "FOREIGN TABLE" : "TABLE";
+  const sourceCommand = structuredClone(command);
+  if (!declaredName) {
+    sourceCommand.def = {
+      ...(asRecord(sourceCommand.def) ?? {}),
+      Constraint: { ...structuredClone(constraint), conname: constraintName },
+    };
+  }
+  return {
+    command: sourceCommand,
+    statement: `ALTER ${relationKind}${ifExists}${only} ${formatQualifiedName(
+      relation.schema,
+      relation.name
+    )} ADD ${sourceConstraintClause}`,
+  };
+}
 
 export function alterTableObjects(
   node: AstNode,

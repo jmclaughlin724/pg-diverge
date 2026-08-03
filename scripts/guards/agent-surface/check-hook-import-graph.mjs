@@ -12,6 +12,7 @@ const roots = [".claude/hooks", ".codex/hooks", "scripts/agent-hooks"];
 const lifecycleRuntimeFiles = new Set([
   "scripts/agent-hooks/hook-entrypoint.mjs",
   "scripts/agent-hooks/hook-output.mjs",
+  "scripts/agent-hooks/hook-runtime.mjs",
   "scripts/agent-hooks/session-lifecycle.mjs",
   "scripts/agent-hooks/state.mjs",
 ]);
@@ -199,6 +200,9 @@ export function check(root = ROOT) {
             reachableFiles.has(edge.file) &&
             !lifecycleBuiltins.has(edge.specifier)
         )
+        .map((edge) => `${edge.file} -> ${edge.specifier}`),
+      ...graph
+        .filter((edge) => edge.kind === "bare" && reachableFiles.has(edge.file))
         .map((edge) => `${edge.file} -> ${edge.specifier}`),
     ];
     assert(

@@ -19,8 +19,6 @@ paths:
 
 This rule owns the operator workflow for version bumps, release notes, the mandatory `$update` audit, and release-control git work. When a user says to update supaschema to a version, that is one release-version transaction: update every version-coupled surface, run `$update` after versioning, prove parity with the guards, then stage, commit, push, or open the PR when requested. Do not ask the user to enumerate these steps.
 
-Rules 09, 13, 14, 18, and 21 remain the owners for CI posture, package contents, editing safety, generated-surface sync, and the complete source-control lifecycle. This rule connects those owners into the version bump path.
-
 ## Release-note owner
 
 `CHANGELOG.md` is the canonical release-note owner for npm and GitHub releases. The top entry for `package.json` `version` must be `## <version> (YYYY-MM-DD)` and must contain non-empty, user-readable notes. `scripts/release/changelog-notes.mjs` extracts that entry for GitHub Release creation; do not use GitHub auto-generated release notes as the published release body.
@@ -31,7 +29,7 @@ Changesets may collect PR-local release intent and may drive `npm run release:ve
 
 When asked to create or update to version `<version>`, do all of this in the same change:
 
-1. Inspect `git status --short --branch`; Rule 21 owns preservation of unrelated dirty work.
+1. Inspect `git status --short --branch`.
 2. Update `package.json` and `package-lock.json` together. Prefer `npm version <version> --no-git-tag-version` unless both files already carry the requested version.
 3. Add or update the top `CHANGELOG.md` entry as `## <version> (YYYY-MM-DD)` with concise, source-grounded release notes.
 4. Keep `action.yml` `inputs.version.default` unset; the action runner defaults from `package.json`. Keep exact-version validation text generic and do not duplicate `<version>` in the runner message.
@@ -44,10 +42,10 @@ A version bump that only changes `package.json` and `package-lock.json` is incom
 
 ## Git and PR transaction
 
-Rule 21 owns the git transaction: dirty-worktree preservation, task-owned staging, hooks, the single-active-branch lifecycle, and PR creation and mergeability verification. When the user asks to stage, commit, push, or create a PR after a version bump, this rule adds only the release specifics:
+When the user asks to stage, commit, push, or create a PR after a version bump, use these release specifics:
 
 - Use a release-specific commit message such as `Prepare release <version>` or `Enforce release version surfaces`.
-- Push only the intended release branch after Rule 21 verifies the active checkout.
+- Push only the intended release branch.
 - When asked for a PR, create a non-draft PR unless the user explicitly says draft. Include the version, changelog, release-surface parity, base branch, head branch, commit count, changed-file count, mergeability result, and verification commands in the PR body.
 - If CI fails on a version-coupled surface, fix the source drift and add or update guard coverage so the same miss fails locally next time.
 
@@ -64,7 +62,6 @@ Rule 21 owns the git transaction: dirty-worktree preservation, task-owned stagin
 - `tests/release/action.test.ts` verifies the composite action default follows `package.json` and does not drift to npm dist-tags.
 - Snapshot publishing is the one permitted dist-tag write: `snapshot.yml` publishes immutable `X.Y.(Z+1)-dev.<sha>` builds to the `next` tag from protected `main` pushes. The `latest` tag remains release.yml-only, and consuming a snapshot always resolves to an exact version before install; dist-tags remain forbidden for action execution.
 - The release checklist and release PR checklist require `$update` after versioning and before release verification or merge. The audit is semantic and is reviewed through its changed owners and validation evidence; do not add a forgeable marker file or brittle prose guard to simulate execution proof.
-- Rule 09 release workflow checks, Rule 13 package checks, Rule 14 editing safety, Rule 18 generated-surface sync, and Rule 21 source-control checks remain required where their surfaces are touched.
 
 STOP if a version bump does any of these:
 
@@ -72,7 +69,6 @@ STOP if a version bump does any of these:
 - Adds a GitHub Action default version, or uses an npm dist-tag for action execution.
 - Omits the changelog top entry, or publishes a GitHub Release body from auto-generated notes instead of `CHANGELOG.md`.
 - Commits generated mirrors without syncing from the canonical owner, bypasses hooks, or weakens a guard or test to make the release pass.
-- Opens a PR before Rule 21 scope and mergeability verification passes.
 
 ## Verification
 
@@ -101,7 +97,7 @@ npm run sync:llm
 
 ## Failure behavior
 
-Fix the drift in the canonical source. Do not add an action version default, loosen the exact-version validation, skip the changelog, bypass hooks, or patch generated mirrors directly (Rule 14).
+Fix the drift in the canonical source. Do not add an action version default, loosen the exact-version validation, skip the changelog, or bypass hooks.
 
 ## Done means
 

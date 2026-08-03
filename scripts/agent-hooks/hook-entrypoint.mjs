@@ -1,39 +1,38 @@
 import fs from "node:fs";
-import path from "node:path";
 import { shapeHookResult, unexpectedFailureResult, writeHookResult } from "./hook-output.mjs";
+import { hookRuntime, hookRuntimeDisabled } from "./hook-runtime.mjs";
 
 export function runHookEntrypoint(eventName, handler, options = {}) {
   const runtime = options.runtime ?? hookRuntime();
   const hookPath = options.hookPath ?? process.argv[1] ?? "unknown";
-  let shaped;
-  try {
-    const payload = readStdinJson();
-    options.validatePayload?.(payload, runtime, eventName);
-    shaped = handler(eventName, payload, {
-      ...options,
-      hookPath,
-      runtime,
-    });
-  } catch (error) {
-    shaped = shapeHookResult(
-      eventName,
-      unexpectedFailureResult(eventName, error, "hookInput", {
+  let shaped = disabledHookResult(eventName, runtime);
+  if (shaped === undefined) {
+    try {
+      const payload = readStdinJson();
+      options.validatePayload?.(payload, runtime, eventName);
+      shaped = handler(eventName, payload, {
+        ...options,
         hookPath,
-        remediation: `Send one valid JSON object on stdin matching the ${eventName} hook schema.`,
         runtime,
-      }),
-      runtime
-    );
+      });
+    } catch (error) {
+      shaped = shapeHookResult(
+        eventName,
+        unexpectedFailureResult(eventName, error, "hookInput", {
+          hookPath,
+          remediation: `Send one valid JSON object on stdin matching the ${eventName} hook schema.`,
+          runtime,
+        }),
+        runtime
+      );
+    }
   }
   writeHookResult(shaped);
   process.exit(shaped.exitCode);
 }
 
-function hookRuntime() {
-  const normalized = String(process.argv[1] ?? "")
-    .split(path.sep)
-    .join("/");
-  return normalized.includes("/.codex/hooks/") ? "codex" : "claude";
+function disabledHookResult(eventName, runtime) {
+  return hookRuntimeDisabled(runtime) ? shapeHookResult(eventName, {}, runtime) : undefined;
 }
 
 function readStdinJson() {

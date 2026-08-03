@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const defaultStateDir = path.join(projectRoot, ".tmp", "agent-hooks");
 const fallbackTurnId = "turn-0";
 const lockInitializationGraceMs = 1000;
 const lockPollMs = 20;
@@ -17,7 +14,15 @@ const directoryMode = 0o700;
 const fileMode = 0o600;
 
 function stateDir() {
-  return process.env.STATE_DIR ?? defaultStateDir;
+  const configured = process.env.STATE_DIR;
+  if (typeof configured !== "string" || configured.length === 0) {
+    throw new Error("persistent hook state is not configured");
+  }
+  return path.resolve(configured);
+}
+
+function statePersistenceEnabled() {
+  return typeof process.env.STATE_DIR === "string" && process.env.STATE_DIR.length > 0;
 }
 
 export function sessionStatePath(payload) {
@@ -41,10 +46,29 @@ function validateSessionId(id) {
 }
 
 export function readSessionState(payload) {
+  if (!statePersistenceEnabled()) {
+    return emptyState(sessionId(payload));
+  }
   return readStateRecord(payload).state;
 }
 
+export function inspectSessionState(payload) {
+  if (!statePersistenceEnabled()) {
+    return { found: false, state: emptyState(sessionId(payload)) };
+  }
+  const record = readStateRecord(payload, { repairFileMode: false });
+  return {
+    found: record.found,
+    state: record.state,
+    ...(record.warning ? { warning: record.warning } : {}),
+  };
+}
+
 export function withSessionState(payload, callback) {
+  if (!statePersistenceEnabled()) {
+    const result = callback(emptyState(sessionId(payload)), {});
+    return result?.value;
+  }
   return withSessionLock(payload, (lock) => {
     const record = readStateRecord(payload);
     const before = JSON.stringify(record.state);
@@ -60,7 +84,9 @@ export function withSessionState(payload, callback) {
 }
 
 export function refreshSessionState(payload) {
-  purgeLegacyHookState();
+  if (!statePersistenceEnabled()) {
+    return;
+  }
   discardSupersededLockOwners(payload);
   withSessionLock(payload, (lock) => {
     const state = emptyState(sessionId(payload));
@@ -69,36 +95,10 @@ export function refreshSessionState(payload) {
   });
 }
 
-function purgeLegacyHookState() {
-  if (stateDir() !== defaultStateDir) {
-    return 0;
-  }
-  let removed = 0;
-  const legacySyncState = path.join(projectRoot, ".tmp", "sync-llm-on-claude-surface-change.json");
-  if (unlinkIfPresent(legacySyncState)) {
-    removed += 1;
-  }
-  if (!fs.existsSync(defaultStateDir)) {
-    return removed;
-  }
-  for (const entry of fs.readdirSync(defaultStateDir, { withFileTypes: true })) {
-    if (!(entry.isFile() && entry.name.endsWith(".json"))) {
-      continue;
-    }
-    const file = path.join(defaultStateDir, entry.name);
-    try {
-      const value = JSON.parse(fs.readFileSync(file, "utf8"));
-      if (isRecord(value) && Object.hasOwn(value, "contextEpoch") && unlinkIfPresent(file)) {
-        removed += 1;
-      }
-    } catch {
-      // Malformed current-format state remains visible to its owning session.
-    }
-  }
-  return removed;
-}
-
 export function clearSessionState(payload) {
+  if (!statePersistenceEnabled()) {
+    return;
+  }
   withSessionLock(
     payload,
     (lock) => {
@@ -177,14 +177,14 @@ export function addEvidence(state, evidence) {
   trimEvidence(state.turns);
 }
 
-function readStateRecord(payload) {
+function readStateRecord(payload, { repairFileMode = true } = {}) {
   const file = sessionStatePath(payload);
   let raw;
   try {
     raw = fs.readFileSync(file, "utf8");
   } catch (error) {
     if (error?.code === "ENOENT") {
-      return { needsRepair: false, state: emptyState(sessionId(payload)) };
+      return { found: false, needsRepair: false, state: emptyState(sessionId(payload)) };
     }
     return malformedState(payload, file, "read failure");
   }
@@ -192,10 +192,16 @@ function readStateRecord(payload) {
     const parsed = JSON.parse(raw);
     assertPersistedState(parsed, sessionId(payload));
     if (Date.now() - Date.parse(parsed.updatedAt) > stateTtlMs) {
-      return { needsRepair: true, state: emptyState(sessionId(payload)) };
+      return { found: true, needsRepair: true, state: emptyState(sessionId(payload)) };
     }
-    fs.chmodSync(file, fileMode);
-    return { needsRepair: false, state: normalizeState(parsed, sessionId(payload)) };
+    if (repairFileMode) {
+      fs.chmodSync(file, fileMode);
+    }
+    return {
+      found: true,
+      needsRepair: false,
+      state: normalizeState(parsed, sessionId(payload)),
+    };
   } catch (error) {
     return malformedState(
       payload,
@@ -207,6 +213,7 @@ function readStateRecord(payload) {
 
 function malformedState(payload, file, category) {
   return {
+    found: true,
     needsRepair: true,
     state: emptyState(sessionId(payload)),
     warning: `Hook state warning: ignored ${category} in ${path.basename(file)} and continued with empty state.`,
@@ -369,7 +376,7 @@ function acquireSessionLock(payload, timeoutMs) {
         throw error;
       }
       reclaimDeadLockOwners(lockPath);
-      if (Number(process.hrtime.bigint() - startedAt) / 1_000_000 >= timeoutMs) {
+      if (lockWaitExpired(startedAt, timeoutMs)) {
         throw new Error(`timed out waiting for session state lock: ${path.basename(lockPath)}`, {
           cause: error,
         });
@@ -385,9 +392,21 @@ function acquireSessionLock(payload, timeoutMs) {
     } catch (error) {
       unlinkIfPresent(ownerPath);
       removeDirectoryIfEmpty(lockPath);
+      if (isRetryableLockInitializationError(error) && !lockWaitExpired(startedAt, timeoutMs)) {
+        sleep(lockPollMs);
+        continue;
+      }
       throw error;
     }
   }
+}
+
+function isRetryableLockInitializationError(error) {
+  return error?.code === "ENOENT" || error?.code === "EINVAL";
+}
+
+function lockWaitExpired(startedAt, timeoutMs) {
+  return Number(process.hrtime.bigint() - startedAt) / 1_000_000 >= timeoutMs;
 }
 
 function writePrivateFile(file, contents) {

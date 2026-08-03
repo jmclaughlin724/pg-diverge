@@ -9,6 +9,7 @@ export type GitHubFetch = (
 ) => Promise<Response>;
 
 export interface OAuthStateClaims {
+  expiresAt: number;
   nonce: string;
   plan: string;
   repo: string;
@@ -54,7 +55,12 @@ export function verifyOAuthState(
   if (!isOAuthStateTokenClaims(claims) || claims.exp <= nowSeconds) {
     return null;
   }
-  return { nonce: claims.nonce, plan: claims.plan, repo: claims.repo };
+  return {
+    expiresAt: claims.exp,
+    nonce: claims.nonce,
+    plan: claims.plan,
+    repo: claims.repo,
+  };
 }
 
 function isOAuthStateTokenClaims(value: unknown): value is OAuthStateTokenClaims {

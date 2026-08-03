@@ -3,7 +3,7 @@ import { deparseSync } from "pgsql-deparser";
 import { diagnostic, hasErrors } from "../diagnostics/diagnostics.js";
 import { fingerprintObjects, MODEL_FORMAT_VERSION } from "../hash.js";
 import { type MigrationFilesOptions, migrationFiles } from "../migrations/files.js";
-import { alterTableObjects } from "../sql/alter-table.js";
+import { alterTableObjects, sourceAddConstraintCommand } from "../sql/alter-table.js";
 import type { AstNode, AstStatement, ColumnFacts, QualifiedName } from "../sql/ast.js";
 import {
   asRecord,
@@ -807,12 +807,30 @@ async function applyAlterTableCommand(options: {
     return custom.nextOrdinal === undefined ? { ...custom, nextOrdinal: options.ordinal } : custom;
   }
 
+  const existingConstraintNames = constraintNamesForTable(options.objects, options.table);
+  const sourceSqlMatchesAst = readArray(options.node.cmds).length === 1;
+  const declaredConstraintName = readString(asRecord(asRecord(command.def)?.Constraint)?.conname);
+  const sourceCommand =
+    sourceSqlMatchesAst && declaredConstraintName !== undefined
+      ? undefined
+      : sourceAddConstraintCommand(
+          options.node,
+          command,
+          options.statement,
+          existingConstraintNames
+        );
+  const commandStatement =
+    sourceCommand?.statement ?? (sourceSqlMatchesAst ? options.statement.text : undefined);
   const extracted = alterTableObjects(
-    { ...options.node, cmds: [options.rawCommand] },
-    options.statement.text,
+    {
+      ...options.node,
+      cmds: [sourceCommand ? { AlterTableCmd: sourceCommand.command } : options.rawCommand],
+    },
+    commandStatement ?? options.statement.text,
     options.ordinal,
     options.file,
-    constraintNamesForTable(options.objects, options.table)
+    existingConstraintNames,
+    commandStatement !== undefined
   );
   if (!extracted || extracted.length === 0) {
     return unsupportedStatement(

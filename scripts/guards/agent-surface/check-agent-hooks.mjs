@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseToml } from "smol-toml";
 import { assert, ok } from "../lib/assertions.js";
 import { exists, ROOT, readJson, readText } from "../lib/repository.js";
 import {
@@ -508,6 +509,7 @@ export function check(root = ROOT) {
     "scripts/agent-hooks/edit-targets.mjs",
     "scripts/agent-hooks/hook-entrypoint.mjs",
     "scripts/agent-hooks/hook-output.mjs",
+    "scripts/agent-hooks/hook-runtime.mjs",
     "scripts/agent-hooks/postgres-ddl.mjs",
     "scripts/agent-hooks/response-claims.mjs",
     "scripts/agent-hooks/response-evidence.mjs",
@@ -523,7 +525,61 @@ export function check(root = ROOT) {
     sourceRepoAgentRuntimeFiles.every((file) => exists(file, root)),
     `source-repo agent hook runtime is incomplete; missing ${sourceRepoAgentRuntimeFiles.filter((file) => !exists(file, root)).join(", ")}`
   );
+  const hookEntrypointText = readText("scripts/agent-hooks/hook-entrypoint.mjs", root);
+  const hookRuntimeText = readText("scripts/agent-hooks/hook-runtime.mjs", root);
   const hookRunnerText = readText("scripts/agent-hooks/runner.mjs", root);
+  const hookSkillsText = readText("scripts/agent-hooks/skills.mjs", root);
+  const hookStateText = readText("scripts/agent-hooks/state.mjs", root);
+  const sessionLifecycleText = readText("scripts/agent-hooks/session-lifecycle.mjs", root);
+  const sourceHookText = readText(".claude/hooks/supaschema-source-hook.mjs", root);
+  const syncHookText = readText(".claude/hooks/sync-llm-on-claude-surface-change.mjs", root);
+  const agentMcpText = readText("services/agent-mcp/supaschema_agent_mcp/server.py", root);
+  const codexRuntimeConfig = parseToml(readText(".codex/config.toml", root));
+  assert(
+    codexRuntimeConfig.features?.hooks === false,
+    ".codex/config.toml must keep native Codex hooks disabled"
+  );
+  assert(
+    hookRuntimeText.includes("process.env.CODEX_THREAD_ID") &&
+      hookRuntimeText.includes('return runtime === "codex"') &&
+      hookEntrypointText.includes("disabledHookResult") &&
+      hookEntrypointText.indexOf("disabledHookResult") <
+        hookEntrypointText.indexOf("readStdinJson"),
+    "the shared hook entrypoint must disable an active Codex runtime before reading hook input"
+  );
+  assert(
+    [hookEntrypointText, sourceHookText, syncHookText].every((source) =>
+      source.includes("hookRuntimeDisabled")
+    ) &&
+      [
+        hookEntrypointText,
+        hookRunnerText,
+        sessionLifecycleText,
+        sourceHookText,
+        syncHookText,
+      ].every((source) => !source.includes(".codex/config.toml")),
+    "every active hook family must delegate Codex hook-disable enforcement to hook-runtime.mjs"
+  );
+  assert(
+    sourceHookText.indexOf("hookRuntimeDisabled") < sourceHookText.indexOf("existsSync(cli)") &&
+      syncHookText.indexOf("hookRuntimeDisabled") < syncHookText.indexOf('readFileSync(0, "utf8")'),
+    "standalone source and sync hooks must disable Codex before filesystem reads or subprocesses"
+  );
+  assert(
+    !(
+      hookStateText.includes(".tmp/agent-hooks") ||
+      hookStateText.includes("defaultStateDir") ||
+      agentMcpText.includes("STATE_DIR")
+    ),
+    "repository hook and MCP owners must not synthesize persistent hook state"
+  );
+  assert(
+    hookSkillsText.includes('toolName === "Read"') &&
+      hookSkillsText.includes('executable === "cat"') &&
+      hookSkillsText.includes('executable === "sed"') &&
+      hookSkillsText.includes("delivered === expected"),
+    "observable skill loads must recognize exact complete Read, cat, and safe sed delivery"
+  );
 
   for (const lifecycleEntrypoint of sessionLifecycleEntrypoints) {
     const entrypointText = readText(lifecycleEntrypoint, root);
