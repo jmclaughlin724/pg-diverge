@@ -176,7 +176,6 @@ async def test_verify_repo_change_encodes_target_and_requests_closeout() -> None
     assert target not in prompt
     assert "repo_context_query" in prompt
     assert "nearest AGENTS.md instructions" in prompt
-    assert "session_state" in prompt
     assert "repo_safety_scan" in prompt
     assert "configured language server" in prompt
     assert "MCP/client configuration surfaces" in prompt

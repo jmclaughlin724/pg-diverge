@@ -118,7 +118,7 @@
     "test:examples": "vitest run tests/examples/project.test.ts --maxWorkers=1",
     "test:matrix": "vitest run --exclude tests/examples/project.test.ts",
     "test:matrix:coverage": "vitest run --coverage --exclude tests/examples/project.test.ts",
-    "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json"
+    "typecheck": "tsc -p tsconfig.src.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
   "overrides": {
     "@hono/node-server": "2.0.12",
