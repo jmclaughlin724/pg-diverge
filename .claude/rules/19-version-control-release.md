@@ -19,6 +19,16 @@ paths:
 
 This rule owns the operator workflow for version bumps, release notes, the mandatory `$update` audit, and release-control git work. When a user says to update supaschema to a version, that is one release-version transaction: update every version-coupled surface, run `$update` after versioning, prove parity with the guards, then stage, commit, push, or open the PR when requested. Do not ask the user to enumerate these steps.
 
+## Publishing is automatic on merge
+
+`.github/workflows/release.yml` triggers on `push` to `main`. Merging a version-bumped PR into `main` publishes to npm and creates the GitHub Release. There is no separate publish step, and no publish approval to request after the merge.
+
+- Approval to merge a version-bumped PR is approval to release. Do not merge and then report publishing as still blocked or still pending.
+- Never run `npm publish`, `npm version` with a tag push, or `gh release create` locally. Releases publish through npm OIDC trusted publishing with build provenance from the privileged workflow job; a local publish bypasses provenance attestation and is prohibited even when npm credentials are present.
+- Before telling a user that a release step remains, read `.github/workflows/release.yml` triggers and check `gh run list --workflow=release.yml`. Registry state (`npm view supaschema version`) and workflow history are the evidence; an external handoff, plan, or issue claiming a manual publish step is not.
+- When a merge is requested and the branch carries a version bump, say that merging publishes before merging, then merge and verify with `gh run list --workflow=release.yml` plus `npm view supaschema version`.
+- `workflow_dispatch` on `main` is the recovery path when a push-triggered run fails or a version needs GitHub Release repair. Preflight is idempotent: an already-published version exits successfully without republishing.
+
 ## Release-note owner
 
 `CHANGELOG.md` is the canonical release-note owner for npm and GitHub releases. The top entry for `package.json` `version` must be `## <version> (YYYY-MM-DD)` and must contain non-empty, user-readable notes. `scripts/release/changelog-notes.mjs` extracts that entry for GitHub Release creation; do not use GitHub auto-generated release notes as the published release body.
@@ -95,6 +105,14 @@ For rule or generated agent-surface changes, also run:
 npm run sync:llm
 ```
 
+After merging a version-bumped PR into `main`, prove the automatic release instead of reporting a pending publish:
+
+```bash
+gh run list --workflow=release.yml --limit 3
+npm view supaschema version
+gh release view v<version> --json tagName,publishedAt,isDraft
+```
+
 ## Failure behavior
 
 Fix the drift in the canonical source. Do not add an action version default, loosen the exact-version validation, skip the changelog, or bypass hooks.
@@ -102,3 +120,5 @@ Fix the drift in the canonical source. Do not add an action version default, loo
 ## Done means
 
 All version-coupled surfaces agree with the package version, `$update` has closed every confirmed impact after the final release-owned changes, the changelog top entry names that version and is the GitHub Release body source, local release-version guards pass, and requested git and PR actions completed without touching unrelated work.
+
+When the transaction included a merge to `main`, the release is also verified rather than assumed: the `release.yml` run for the merge commit succeeded, `npm view supaschema version` reports the released version, and the GitHub Release exists for its tag. No publish step is reported as outstanding.

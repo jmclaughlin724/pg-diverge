@@ -253,6 +253,8 @@ gh pr merge <number> --squash --delete-branch
 
 Do not use `--merge`, `--rebase`, `--admin`, `--disable-auto`, local squash merges, force-push workarounds, or repo-local merge wrappers unless the user explicitly approves the exception and the reason is recorded in the PR.
 
+Merging to `main` publishes. `.github/workflows/release.yml` triggers on `push` to `main`, so merging a version-bumped PR releases to npm and creates the GitHub Release with no further action. Say so before merging such a branch, and never report publishing as a remaining step afterward. Prove the release with `gh run list --workflow=release.yml` and `npm view supaschema version` instead of requesting a publish approval.
+
 ## Multi-session branches
 
 When more than one agent session works on the same topic branch, use user-visible session updates and the shared checkout, re-read status and diffs before overlapping edits, preserve every hunk not owned by the current task, and keep one main session responsible for staging and commits.
