@@ -253,6 +253,8 @@ gh pr merge <number> --squash --delete-branch
 
 Do not use `--merge`, `--rebase`, `--admin`, `--disable-auto`, local squash merges, force-push workarounds, or repo-local merge wrappers unless the user explicitly approves the exception and the reason is recorded in the PR.
 
+Merging a version-bumped PR into `main` also publishes the release. The release-versioning rule owns that contract, its constraints, and its post-merge proof commands; read it before merging such a branch instead of restating its policy here.
+
 ## Multi-session branches
 
 When more than one agent session works on the same topic branch, use user-visible session updates and the shared checkout, re-read status and diffs before overlapping edits, preserve every hunk not owned by the current task, and keep one main session responsible for staging and commits.
