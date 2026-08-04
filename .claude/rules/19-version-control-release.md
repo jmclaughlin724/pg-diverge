@@ -19,14 +19,15 @@ paths:
 
 This rule owns the operator workflow for version bumps, release notes, the mandatory `$update` audit, and release-control git work. When a user says to update supaschema to a version, that is one release-version transaction: update every version-coupled surface, run `$update` after versioning, prove parity with the guards, then stage, commit, push, or open the PR when requested. Do not ask the user to enumerate these steps.
 
-## Publishing is automatic on merge
+## Publishing is automatic when a version bump merges
 
-`.github/workflows/release.yml` triggers on `push` to `main`. Merging a version-bumped PR into `main` publishes to npm and creates the GitHub Release. There is no separate publish step, and no publish approval to request after the merge.
+`.github/workflows/release.yml` triggers on `push` to `main`, and its preflight decides whether the pushed version still needs publishing. Merging a PR that bumps `package.json` `version` therefore publishes to npm and creates the GitHub Release with no separate publish step and no publish approval to request afterward. Merging a PR that leaves the version unchanged releases nothing: preflight finds the version already published and exits successfully.
 
 - Approval to merge a version-bumped PR is approval to release. Do not merge and then report publishing as still blocked or still pending.
 - Never run `npm publish`, `npm version` with a tag push, or `gh release create` locally. Releases publish through npm OIDC trusted publishing with build provenance from the privileged workflow job; a local publish bypasses provenance attestation and is prohibited even when npm credentials are present.
-- Before telling a user that a release step remains, read `.github/workflows/release.yml` triggers and check `gh run list --workflow=release.yml`. Registry state (`npm view supaschema version`) and workflow history are the evidence; an external handoff, plan, or issue claiming a manual publish step is not.
-- When a merge is requested and the branch carries a version bump, say that merging publishes before merging, then merge and verify with `gh run list --workflow=release.yml` plus `npm view supaschema version`.
+- Before telling a user that a release step remains, read `.github/workflows/release.yml` triggers and resolve the release run for the merge commit. Registry state, the GitHub Release, and that run's conclusion are the evidence; an external handoff, plan, or issue claiming a manual publish step is not.
+- When a merge is requested and the branch carries a version bump, say that merging publishes before merging, then merge and verify with the post-merge commands below.
+- Tie release proof to the merge SHA and to a terminal conclusion. `gh run list --workflow=release.yml` alone lists recent runs and can match an older success, so it never proves the current release; use `--commit <merge-sha>` and wait for the run to finish. A published npm version does not prove the GitHub Release step succeeded, so check both.
 - `workflow_dispatch` on `main` is the recovery path when a push-triggered run fails or a version needs GitHub Release repair. Preflight is idempotent: an already-published version exits successfully without republishing.
 
 ## Release-note owner
@@ -105,10 +106,11 @@ For rule or generated agent-surface changes, also run:
 npm run sync:llm
 ```
 
-After merging a version-bumped PR into `main`, prove the automatic release instead of reporting a pending publish:
+After merging a version-bumped PR into `main`, prove the automatic release instead of reporting a pending publish. Resolve the run for the merge commit, wait for it, and check its conclusion:
 
 ```bash
-gh run list --workflow=release.yml --limit 3
+gh run list --workflow=release.yml --commit <merge-sha> --json databaseId,status,conclusion
+gh run watch <run-id> --exit-status
 npm view supaschema version
 gh release view v<version> --json tagName,publishedAt,isDraft
 ```
