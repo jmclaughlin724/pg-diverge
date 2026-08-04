@@ -21,14 +21,16 @@ This rule owns the operator workflow for version bumps, release notes, the manda
 
 ## Publishing is automatic when a version bump merges
 
-`.github/workflows/release.yml` triggers on `push` to `main`, and its preflight decides whether the pushed version still needs publishing. Merging a PR that bumps `package.json` `version` therefore publishes to npm and creates the GitHub Release with no separate publish step and no publish approval to request afterward. Merging a PR that leaves the version unchanged releases nothing: preflight finds the version already published and exits successfully.
+`.github/workflows/release.yml` triggers on `push` to `main`, and its preflight decides whether the pushed version still needs publishing. Merging a PR that bumps `package.json` `version` therefore publishes to npm and creates the GitHub Release with no separate publish step and no publish approval to request afterward. Merging a PR that leaves the version unchanged makes no stable release: preflight finds the version already published and exits successfully.
+
+Every `main` push also runs `.github/workflows/snapshot.yml`, which publishes an immutable `X.Y.(Z+1)-dev.<sha>` build to the `next` dist-tag. Do not tell a user that a version-unchanged merge published nothing; it produced no `latest` release, and its snapshot run can still fail and needs the same attention as any other failed workflow.
 
 - Approval to merge a version-bumped PR is approval to release. Do not merge and then report publishing as still blocked or still pending.
 - Never run `npm publish`, `npm version` with a tag push, or `gh release create` locally. Releases publish through npm OIDC trusted publishing with build provenance from the privileged workflow job; a local publish bypasses provenance attestation and is prohibited even when npm credentials are present.
 - Before telling a user that a release step remains, read `.github/workflows/release.yml` triggers and resolve the release run for the merge commit. Registry state, the GitHub Release, and that run's conclusion are the evidence; an external handoff, plan, or issue claiming a manual publish step is not.
 - When a merge is requested and the branch carries a version bump, say that merging publishes before merging, then merge and verify with the post-merge commands below.
 - Tie release proof to the merge SHA and to a terminal conclusion. `gh run list --workflow=release.yml` alone lists recent runs and can match an older success, so it never proves the current release; use `--commit <merge-sha>` and wait for the run to finish. A published npm version does not prove the GitHub Release step succeeded, so check both.
-- `workflow_dispatch` on `main` is the recovery path when a push-triggered run fails or a version needs GitHub Release repair. Preflight is idempotent: an already-published version exits successfully without republishing.
+- Repair a partially failed release by re-running that merge commit's own failed run, not by dispatching `main`. The workflow checks out `github.sha`, derives the version from that checkout, and creates the tag with `--target "$GITHUB_SHA"`, so a dispatch after later commits land would tag the release at the wrong commit or act on a different version. Use `workflow_dispatch` only when `main` still points at the commit needing repair. Preflight is idempotent either way: an already-published version exits successfully without republishing.
 
 ## Release-note owner
 
@@ -111,7 +113,7 @@ After merging a version-bumped PR into `main`, prove the automatic release inste
 ```bash
 gh run list --workflow=release.yml --commit <merge-sha> --json databaseId,status,conclusion
 gh run watch <run-id> --exit-status
-npm view supaschema version
+npm view supaschema@<version> version
 gh release view v<version> --json tagName,publishedAt,isDraft
 ```
 
@@ -123,4 +125,4 @@ Fix the drift in the canonical source. Do not add an action version default, loo
 
 All version-coupled surfaces agree with the package version, `$update` has closed every confirmed impact after the final release-owned changes, the changelog top entry names that version and is the GitHub Release body source, local release-version guards pass, and requested git and PR actions completed without touching unrelated work.
 
-When the transaction included a merge to `main`, the release is also verified rather than assumed: the `release.yml` run for the merge commit succeeded, `npm view supaschema version` reports the released version, and the GitHub Release exists for its tag. No publish step is reported as outstanding.
+When the transaction included a merge to `main`, the release is also verified rather than assumed: the `release.yml` run for that merge commit concluded successfully, `npm view supaschema@<version> version` resolves the exact released version, and the GitHub Release exists for its tag. No publish step is reported as outstanding.
