@@ -310,9 +310,11 @@ describe("managed schema policy", () => {
       },
     });
 
-    expect(extracted.objects.map((object) => object.key).toSorted()).toEqual(
-      managedSchemaOverlays.toSorted()
-    );
+    expect(
+      extracted.objects
+        .map((object) => object.key)
+        .toSorted((left, right) => left.localeCompare(right))
+    ).toEqual(managedSchemaOverlays.toSorted((left, right) => left.localeCompare(right)));
   });
 
   it("blocks schemas listed in managedSchemas", async () => {

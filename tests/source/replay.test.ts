@@ -746,11 +746,11 @@ COMMENT ON COLUMN app.customers.email IS 'contact';`,
     const replayHashes = model.objects
       .filter((object) => object.ref.kind === "comment")
       .map((object) => object.hash)
-      .sort();
+      .sort((left, right) => left.localeCompare(right));
     const declarativeHashes = declarative.objects
       .filter((object) => object.ref.kind === "comment")
       .map((object) => object.hash)
-      .sort();
+      .sort((left, right) => left.localeCompare(right));
     expect(replayHashes).toEqual(declarativeHashes);
   });
 

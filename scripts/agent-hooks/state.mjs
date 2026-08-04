@@ -449,7 +449,7 @@ function reclaimDeadLockOwners(lockPath) {
       throw new Error(`invalid session state lock owner: ${entry.name}`);
     }
     if (!processIsLive(owner.pid)) {
-      unlinkIfPresent(ownerPath);
+      unlinkOwnerReclaimedConcurrently(ownerPath);
     }
   }
   removeDirectoryIfEmpty(lockPath);
@@ -483,7 +483,7 @@ function discardSupersededLockOwners(payload) {
     }
     const ownerPath = path.join(lockPath, entry.name);
     if (readLockOwner(ownerPath, entry.name)) {
-      unlinkIfPresent(ownerPath);
+      unlinkOwnerReclaimedConcurrently(ownerPath);
     }
   }
   removeDirectoryIfEmpty(lockPath);
@@ -551,12 +551,31 @@ function removeDirectoryIfEmpty(lockPath) {
   }
 }
 
+const concurrentlyHeldFileCodes = new Set(["EACCES", "EBUSY", "EPERM"]);
+const concurrentlyHeldFileRetryLimit = 5;
+
 function unlinkIfPresent(file) {
+  for (let remainingRetries = concurrentlyHeldFileRetryLimit; ; remainingRetries -= 1) {
+    try {
+      fs.unlinkSync(file);
+      return true;
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        return false;
+      }
+      if (!(concurrentlyHeldFileCodes.has(error?.code) && remainingRetries > 0)) {
+        throw error;
+      }
+      sleep(lockPollMs);
+    }
+  }
+}
+
+function unlinkOwnerReclaimedConcurrently(ownerPath) {
   try {
-    fs.unlinkSync(file);
-    return true;
+    return unlinkIfPresent(ownerPath);
   } catch (error) {
-    if (error?.code !== "ENOENT") {
+    if (!concurrentlyHeldFileCodes.has(error?.code)) {
       throw error;
     }
     return false;
